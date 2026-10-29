@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt [opts]
+usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree [opts]
   fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
   fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]
@@ -49,7 +49,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   calibrate <owner/repo> <pr> [--json]
     join findings against live ground truth (thread states + files changed since the
     review head). Read-only; reports outcomes + tier precision, never auto-tunes.
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate: stdout is exactly one JSON envelope (schema_version 1);
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -201,7 +201,7 @@ normalize_bitbucket() { # $1 = meta, $2 = diffstat array
 normalize_azure() { # $1 = meta, $2 = iteration changes, $3 = numstat map
   jq -n --argjson m "$1" --argjson ch "$2" --argjson ns "$3" '
       ($ch | if type=="array" then . else [] end) as $files
-      | ([ $files[] | (.item.path // "") as $p
+      | ([ $files[] | ((.item.path // "") | sub("^/";"")) as $p
         | ($ns[$p] // {adds:0,dels:0}) as $s
         | {path:$p, status:(.changeType // "edit"), additions:$s.adds, deletions:$s.dels} ]) as $fl
       | {schema_version:"1", provider:"azure",
@@ -299,14 +299,16 @@ fetch_provider_bundle() { # uses globals: provider repo pr dir
     [[ -z "$tok" ]] && fail "auth-missing" "azure git fetch needs AZURE_DEVOPS_EXT_PAT or an az login with token access"
     tmp=$(mktemp -d); enc=$(printf ':%s' "$tok" | base64 | tr -d '\n')
     trap 'rm -rf "$tmp"' EXIT
-    git init -q "$tmp" && git -C "$tmp" -c http.extraHeader="AUTHORIZATION: Basic $enc" fetch -q "$remote" "$hs" "$bs" 2>"$dir/.diff.err"       || fail "fetch-failed" "azure git fetch failed: $(head -c 200 "$dir/.diff.err")"
+    git init -q "$tmp" || fail "fetch-failed" "azure temp clone init failed"
+    { echo '[http]'; echo "extraHeader = AUTHORIZATION: Basic $enc"; } >> "$tmp/.git/config" || fail "fetch-failed" "azure temp clone config failed"
+    git -C "$tmp" fetch -q "$remote" "$hs" "$bs" 2>"$dir/.diff.err"       || fail "fetch-failed" "azure git fetch failed: $(head -c 200 "$dir/.diff.err")"
     git -C "$tmp" diff "$bs" "$hs" > "$dir/full.diff" 2>/dev/null || fail "fetch-failed" "azure diff failed"
     rm -rf "$tmp"; trap - EXIT
     threads=$(az rest --method get --url "$org/$project/_apis/git/repositories/$rname/pullRequests/$pr/threads?api-version=7.1" --query value -o json 2>/dev/null || echo "[]")
     jq '[.[] | select(.threadContext == null)]' <<<"$threads" > "$dir/reviews.json" 2>/dev/null || echo "[]" > "$dir/reviews.json"
     jq '[.[] | select(.threadContext != null)]' <<<"$threads" > "$dir/inline.json" 2>/dev/null || echo "[]" > "$dir/inline.json"
     iid=$(az rest --method get --url "$org/$project/_apis/git/repositories/$rname/pullRequests/$pr/iterations?api-version=7.1" --query "max_by(value, &id).id" -o tsv 2>/dev/null || true)
-    chg=$(if [[ -n "$iid" ]]; then az rest --method get --url "$org/$project/_apis/git/repositories/$rname/pullRequests/$pr/iterations/$iid/changes?api-version=7.1" --query value -o json 2>/dev/null || echo "[]"; else echo "[]"; fi)
+    chg=$(if [[ -n "$iid" ]]; then az rest --method get --url "$org/$project/_apis/git/repositories/$rname/pullRequests/$pr/iterations/$iid/changes?api-version=7.1" --query changeEntries -o json 2>/dev/null || echo "[]"; else echo "[]"; fi)
     ns=$(diff_numstat_map "$dir/full.diff")
     normalize_azure "$meta" "$chg" "$ns" > "$dir/PR.json" || fail "fetch-failed" "could not normalize Azure PR $pr"
     ;;
@@ -1103,7 +1105,7 @@ if [[ "$cmd" == "triage" ]]; then
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
   dir=".review/$pr"
-  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post first)"
+  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   case "$tstatus" in open|addressed|wont-fix|false-positive|deferred) ;;
     *) fail "bad-triage-status" "refusing triage: unknown status '$tstatus' (want open|addressed|wont-fix|false-positive|deferred)";; esac
   tfull=$(resolve_sig "$(cat "$dir/findings.json")" "$tsig")
@@ -1156,7 +1158,7 @@ if [[ "$cmd" == "report" ]]; then
   case "$kind_f" in all|inline|section) ;;
     *) fail "bad-kind" "unknown --kind '$kind_f' (want all|inline|section)";; esac
   dir=".review/$pr"
-  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post first)"
+  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   now=$(now_utc)
   head_sha=""; base_sha=""
   if [[ -f "$dir/PR.json" ]]; then
@@ -1252,7 +1254,7 @@ if [[ "$cmd" == "next" ]]; then
   if [[ -z "$rep_out" ]] || jq -e '.error != null' <<<"$rep_out" >/dev/null 2>&1; then
     if [[ "$json_mode" == "true" ]]; then
       if [[ -n "$rep_out" ]]; then echo "$rep_out" >&9; else fail "report-failed" "next: report produced no output"; fi
-    else echo "next: cannot read store (run post first)" >&2; fi
+    else echo "next: cannot read store (run post or record first)" >&2; fi
     exit 1
   fi
   top=$(jq -c '.data.items[0] // null' <<<"$rep_out")
@@ -1286,7 +1288,7 @@ if [[ "$cmd" == "show" ]]; then
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
   dir=".review/$pr"
-  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post first)"
+  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   [[ -z "$ssig" ]] && fail "missing-sig" "show needs --sig <sig> (short prefix ok)"
   now=$(now_utc)
   sfull=$(resolve_sig "$(cat "$dir/findings.json")" "$ssig")
@@ -1449,7 +1451,7 @@ if [[ "$cmd" == "calibrate" ]]; then
   prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
   if [[ "$prov" != "github" ]]; then fail "provider-unimplemented" "calibrate on $prov is not implemented yet (no live thread join for it)"; fi
   [[ -f "$dir/post.json" ]] || fail "missing-post" "missing $dir/post.json (post for real first — calibration needs a posted review id)"
-  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post first)"
+  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   now=$(now_utc)
   review_id=$(jq -r '.review.id // empty' "$dir/post.json")
   head0=$(jq -r '.head // empty' "$dir/post.json")
