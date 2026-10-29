@@ -125,6 +125,15 @@ pr_field() { # $1 = dir, $2 = head_sha|base_sha|state|author
   fi
 }
 
+# resolve_bundle_dir <slug> — sets dir; local-* slugs and bare slugs with a
+# matching .review/local-* dir resolve local (adopt-style); else .review/<slug>.
+resolve_bundle_dir() {
+  case "$1" in
+    local-*) dir=".review/$1";;
+    *) if [[ -d ".review/local-$1" && ! -f ".review/$1/PR.json" ]]; then dir=".review/local-$1"; else dir=".review/$1"; fi;;
+  esac
+}
+
 # Stats derived from the reviewed diff itself (providers without native per-file
 # stats). Output: {path: {adds, dels}}. Rename/binary edges approximate — the
 # API file list stays authoritative; this only fills +/- counts.
@@ -589,7 +598,7 @@ write_toc_roles() { # $1 = dir, $2 = toc title line
     fi
     echo; echo "## coverage manifest"
     total=$(jq '.files | length' "$dir/PR.json" 2>/dev/null || echo "?")
-    (grep '^diff --git' "$dir/full.diff" || true) | sed 's/.* b\///' | sort -u > "$dir/.difffiles"
+    awk '/^diff --git /{if(file!=""){if(has)print file};file=$0;sub(/.* b\//,"",file);has=0} /^@@/{has=1} END{if(file!=""&&has)print file}' "$dir/full.diff" | sort -u > "$dir/.difffiles"
     n_diff=$(wc -l < "$dir/.difffiles" | tr -d ' ')
     echo "files in PR: $total | files with diff hunks: $n_diff"
     omitted=$(jq -r '.files[].path' "$dir/PR.json" 2>/dev/null | while IFS= read -r p; do
@@ -752,10 +761,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
   mkdir -p "$dir"
   "${diff_cmd[@]}" > "$dir/full.diff" 2>"$dir/.diff.err" || fail "diff-failed" "git diff failed: $(head -c 200 "$dir/.diff.err")"
   if ! grep -q '^@@' "$dir/full.diff" 2>/dev/null; then
-    rm -f "$dir/full.diff"
-    rmdir "$dir" 2>/dev/null || true
-    echo "nothing to review: empty diff (no hunks)"
-    exit 0
+    warn "no @@ hunks — binary/mode-only changes; bundle kept, anchors unchecked, everything kept"
   fi
   diff_sha=$(shasum -a 256 "$dir/full.diff" | cut -d' ' -f1)
   # File list + stat come from range forms of the same endpoints the diff came
@@ -779,7 +785,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
     echo; echo "## stat"
     printf '%s\n' "$numstat" | awk 'NF==3 {print $3" (+"$1"/-"$2")"}'
     echo; echo "## coverage manifest"
-    (grep '^diff --git' "$dir/full.diff" || true) | sed 's/.* b\///' | sort -u > "$dir/.difffiles"
+    awk '/^diff --git /{if(file!=""){if(has)print file};file=$0;sub(/.* b\//,"",file);has=0} /^@@/{has=1} END{if(file!=""&&has)print file}' "$dir/full.diff" | sort -u > "$dir/.difffiles"
     n_diff=$(wc -l < "$dir/.difffiles" | tr -d ' ')
     echo "files changed: $total | files with diff hunks: $n_diff"
     omitted=$(printf '%s\n' "$file_list" | while IFS= read -r p; do
@@ -1000,8 +1006,9 @@ if [[ "$cmd" == "record" ]]; then
     *) echo "unknown flag $1" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
-  case "$pr" in local-*) dir=".review/$pr"; prov="local";;
-    *) dir=".review/$pr"
+  resolve_bundle_dir "$pr"
+  case "$dir" in .review/local-*) prov="local";;
+    *)
       prov=$(jq -r '.provider // empty' "$dir/PR.json" 2>/dev/null || true)
       if [[ -z "$prov" ]]; then fail "not-local" "record works on local bundles and provider PRs (fetch-local / fetch --provider first); GitHub PRs use post"; fi
       if [[ "$prov" == "github" ]]; then fail "not-local" "GitHub PRs use post; record is for local bundles and provider PRs"; fi;; esac
@@ -1120,7 +1127,7 @@ if [[ "$cmd" == "triage" ]]; then
     *) echo "unknown flag $1" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
-  dir=".review/$pr"
+  resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   case "$tstatus" in open|addressed|wont-fix|false-positive|deferred) ;;
     *) fail "bad-triage-status" "refusing triage: unknown status '$tstatus' (want open|addressed|wont-fix|false-positive|deferred)";; esac
@@ -1173,7 +1180,7 @@ if [[ "$cmd" == "report" ]]; then
     *) fail "bad-status" "unknown --status '$status_f' (want all|open|addressed|deferred|wont-fix|false-positive)";; esac
   case "$kind_f" in all|inline|section) ;;
     *) fail "bad-kind" "unknown --kind '$kind_f' (want all|inline|section)";; esac
-  dir=".review/$pr"
+  resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   now=$(now_utc)
   head_sha=""; base_sha=""
@@ -1303,7 +1310,7 @@ if [[ "$cmd" == "show" ]]; then
     *) echo "unknown flag $1" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
-  dir=".review/$pr"
+  resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   [[ -z "$ssig" ]] && fail "missing-sig" "show needs --sig <sig> (short prefix ok)"
   now=$(now_utc)
@@ -1368,7 +1375,7 @@ if [[ "$cmd" == "verify" ]]; then
     *) echo "unknown flag $1" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
-  dir=".review/$pr"
+  resolve_bundle_dir "$pr"
   [[ -f "$dir/patch.json" ]] || fail "missing-patch" "missing $dir/patch.json (nothing claimed to verify)"
   now=$(now_utc)
   vcmd=$(jq -r '.verifyCmd // empty' "$dir/patch.json")
@@ -1462,8 +1469,8 @@ if [[ "$cmd" == "calibrate" ]]; then
     *) echo "unknown flag $1" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
-  dir=".review/$pr"
-  [[ "$pr" == local-* ]] && fail "no-threads" "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)"
+  resolve_bundle_dir "$pr"
+  [[ "$dir" == .review/local-* ]] && fail "no-threads" "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)"
   prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
   if [[ "$prov" != "github" ]]; then fail "provider-unimplemented" "calibrate on $prov is not implemented yet (no live thread join for it)"; fi
   [[ -f "$dir/post.json" ]] || fail "missing-post" "missing $dir/post.json (post for real first — calibration needs a posted review id)"
