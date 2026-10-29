@@ -1,0 +1,85 @@
+name: Release
+
+# Tag-driven publish: `git tag -a vX.Y.Z -m "notes" && git push origin vX.Y.Z`.
+# The tag annotation becomes the GitHub Release notes (falls back to generated
+# notes when empty). No changesets: single package, single maintainer — the only
+# things to enforce are version sync, a secret-free tarball, and provenance.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Run checks and pack without publishing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Publish @stainless-code/verdict + GitHub Release
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # npm trusted publishing (OIDC) needs npm >= 11.5.1, which ships with
+      # Node 24. No install step: the package ships raw files, zero deps.
+      - name: Setup Node + npm for trusted publishing
+        uses: actions/setup-node@949feb2413d6458794dcd249b2ab7e3e # v7
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify version sync (VERSION == package.json == tag)
+        shell: bash
+        run: |
+          file_ver=$(cat VERSION)
+          pkg_ver=$(node -p "require('./package.json').version")
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            tag_ver="${GITHUB_REF_NAME#v}"
+          else
+            # workflow_dispatch dry-run: check the two files agree.
+            tag_ver="$pkg_ver"
+          fi
+          echo "VERSION=$file_ver package.json=$pkg_ver tag=$tag_ver"
+          if [[ "$file_ver" != "$pkg_ver" || "$pkg_ver" != "$tag_ver" ]]; then
+            echo "::error::version mismatch: bump VERSION, package.json, and the tag together"
+            exit 1
+          fi
+
+      - name: Pack and assert no secrets in the tarball
+        shell: bash
+        run: |
+          npm pack --dry-run 2>&1 | tee pack.log
+          if grep -iE '\.env|secret|token|key\.json|\.pem$' pack.log; then
+            echo "::error::tarball file list looks secret-bearing — check package.json files[]"
+            exit 1
+          fi
+
+      - name: Publish to npm (OIDC trusted publishing + provenance)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run != true }}
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run != true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          notes="$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME")"
+          if [[ -z "${notes// /}" ]]; then
+            gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "$notes"
+          fi

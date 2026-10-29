@@ -1,0 +1,49 @@
+---
+title: Comparison
+description: "Verdict against CodeRabbit, Greptile, Pullfrog, and human-only review."
+search:
+  tags: ["comparison", "alternatives", "coderabbit", "greptile", "pullfrog"]
+---
+
+The real competition is anything that reviews a pull request: CodeRabbit, Greptile,
+and Pullfrog, plus a long tail of same-shaped SaaS reviewers (Sourcery, Qodo, cubic:
+subscription plus dashboard, different logos) and the status quo of human-only review.
+
+| Reviewer                  | Price and ask                                                                        | Where they win                                                     | What Verdict does differently                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| CodeRabbit                | Per-dev subscription, GitHub App plus webhooks                                       | Polish, merge gating, enterprise surface                           | Same review depth, zero subscription, zero app install, zero metering. Loses hosted gating by design.                                       |
+| Greptile                  | 30 dollars per dev per month with 50 reviews, 1 dollar per extra, per-author credits | Whole-codebase graph context, careful actionable comments          | Graph-grade context via full-diff plus caller tracing, unlimited re-reviews at no extra cost, any model. Loses the managed graph by design. |
+| Pullfrog                  | SaaS with free personal and OSS tiers plus BYOK billing, GitHub App                  | Configurable automations beyond review (fix CI, conflicts, triage) | Review craft without accounts, keys-out, or meters. Loses automations beyond review by design.                                              |
+| Human-only and gh aliases | Salaries plus waiting                                                                | Judgment, taste, context                                           | Every PR gets a grounded first pass in minutes. Humans spend attention on the hard 10 percent.                                              |
+
+<Callout type="info" title="Prices change">
+  Check the vendors for current numbers. The shape below does not change.
+</Callout>
+
+Every competitor charges
+rent on the review (seats, credits, keys, dashboards) for craft that runs fine without
+any of it. Verdict wins the single transaction (fetch, review, post, stop) on setup
+cost, blast radius, model freedom, and verifiability per line of machinery.
+
+## Complements, not competitors
+
+clawpatch (machine-checked fix-to-revalidate loops for whole-repo campaigns), pstack
+(verification culture and multi-model endurance) shaped this skill's discipline and compose after the verdict
+posts. None of them reviews a stranger's PR on demand for near-zero setup, so none of
+them is the alternative a buyer evaluates.
+
+## Lineage
+
+Verdict's review core descends from Pullfrog's open-source action, credited in
+[NOTICE](https://github.com/stainless-code/verdict/blob/main/NOTICE.md). The craft is
+shared on purpose. The meters are Verdict's disagreement, and the table above states
+it plainly.
+
+<CardGroup cols={2}>
+  <Card title="Why Verdict" href="/why-verdict">
+    The pains this solves and what it refuses to be.
+  </Card>
+  <Card title="How it reviews" href="/how-it-reviews">
+    How claims carry proof and memory survives re-reviews.
+  </Card>
+</CardGroup>

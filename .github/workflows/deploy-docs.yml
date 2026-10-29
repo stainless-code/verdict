@@ -1,0 +1,77 @@
+name: Deploy docs
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-docs-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 🚀 Build & Deploy docs (FTP)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       contains(github.event.pull_request.labels.*.name, 'docs'))
+    runs-on: ubuntu-latest
+    # Private repo: the changelog source reads releases via GITHUB_TOKEN.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # A closed PR checkout defaults to a dead merge ref, so pin the merge commit on main.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+          # The sitemap's lastmod reads `git log` per file.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup
+
+      - name: Validate docs links
+        working-directory: apps/docs
+        run: bun run validate --strict
+
+      - name: Typecheck docs site
+        working-directory: apps/docs
+        run: bun run check --isolated
+
+      - name: Build docs site
+        working-directory: apps/docs
+        run: bun run build
+
+      - name: Audit docs site
+        working-directory: apps/docs
+        run: bun run audit
+
+      # Same convention as lossless: the FTP user lands in the subsite
+      # directory, so server-dir stays ./ — the account behind FTP_HOST
+      # must be rooted at /verdict/, not the domain root.
+      - name: Upload to /verdict via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          security: strict
+          local-dir: ./apps/docs/dist/
+          server-dir: ./
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**

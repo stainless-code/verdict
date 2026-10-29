@@ -1,0 +1,15 @@
+name: Setup
+description: Setup Bun, then install the docs packages (frozen lockfile)
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.4.4
+
+    - name: Install docs packages
+      shell: bash
+      working-directory: apps/docs
+      run: bun install --frozen-lockfile

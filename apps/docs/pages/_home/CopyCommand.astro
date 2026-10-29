@@ -1,0 +1,63 @@
+---
+import Icon from "blume/components/Icon.astro";
+
+interface Props {
+  command: string;
+  /** `surface` for page backgrounds, `paper` for the white pill on the accent band. */
+  tone?: "surface" | "paper";
+}
+
+const { command, tone = "surface" } = Astro.props;
+
+const box =
+  tone === "paper"
+    ? "border-transparent bg-[var(--landing-paper)]"
+    : "border-border bg-[var(--landing-surface)]";
+const code =
+  tone === "paper" ? "text-[var(--landing-ink)]" : "text-foreground";
+const copyButton =
+  tone === "paper"
+    ? "bg-[#f4f4f5] text-[#6b6b75] hover:text-[#18181b]"
+    : "bg-muted text-muted-foreground hover:text-foreground";
+---
+
+<div
+  class={`flex w-fit max-w-full items-center gap-4 rounded-xl border py-2.5 pr-2.5 pl-5 ${box}`}
+  data-landing-command
+>
+  <span aria-hidden="true" class="select-none font-mono text-base text-[var(--landing-faint)]">$</span>
+  <code class={`min-w-0 flex-1 truncate text-left font-mono text-base ${code}`} data-landing-command-text>{command}</code>
+  <button
+    aria-label={`Copy ${command}`}
+    class={`inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors ${copyButton}`}
+    data-landing-copy
+    data-command={command}
+    type="button"
+  >
+    <Icon name="copy" size={15} />
+  </button>
+</div>
+
+<script is:inline>
+  (() => {
+    if (document.documentElement.dataset.landingCopyBound === "true") return;
+    document.documentElement.dataset.landingCopyBound = "true";
+    const CHECK =
+      '<svg height="15" width="15" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>';
+    document.addEventListener("click", async (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      const button = target?.closest("[data-landing-copy]");
+      if (!(button instanceof HTMLElement)) return;
+      try {
+        await navigator.clipboard.writeText(button.dataset.command ?? "");
+      } catch {
+        return;
+      }
+      const original = button.innerHTML;
+      button.innerHTML = CHECK;
+      setTimeout(() => {
+        button.innerHTML = original;
+      }, 1500);
+    });
+  })();
+</script>

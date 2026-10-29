@@ -1,0 +1,77 @@
+---
+title: Quickstart
+description: "First Verdict review in five minutes: install, fetch, review, post."
+search:
+  tags: ["quickstart", "getting-started", "install"]
+---
+
+Order matters, so follow the steps.
+
+<Callout type="info" title="Requirements">
+  `gh` (authed), `jq`, and a token with `repo` scope. Verdict brings everything
+  else.
+</Callout>
+
+<Steps>
+  <Step title="Install the skill">
+    <Tabs>
+      <Tab title="skills.sh">
+        ```bash
+        npx skills add stainless-code/verdict
+        ```
+      </Tab>
+      <Tab title="Clone">
+        ```bash
+        git clone https://github.com/stainless-code/verdict.git
+        cd verdict && ./install.sh
+        ```
+        `install.sh` runs `doctor` first and symlinks the skill into your agent's
+        skills directory. `git pull` is the updater.
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Fetch the bundle">
+    ```bash
+    ./scripts/review.sh fetch owner/repo 123
+    ```
+    One command pulls the diff, metadata, threads, and file roles into `.review/123/`.
+    No clone needed. Done when the directory holds `PR.json`, `full.diff`, `toc.txt`,
+    and `roles.txt`.
+  </Step>
+  <Step title="Review with any agent">
+    Hand your agent three things: `SKILL.md`, `prompts/system.md`, `prompts/review.md`,
+    plus the bundle from step 2. The agent reads the whole diff first, fans out
+    read-only lens subagents with one falsifiable question each, and writes exactly
+    one `.review/123/review.json`.
+  </Step>
+  <Step title="Post">
+    ```bash
+    ./scripts/review.sh post owner/repo 123 --approve=false
+    ```
+    Anchors are machine-checked against the diff hunks, suggestions go in as real
+    GitHub suggestion blocks, and exactly one review lands. Done when one review
+    exists: one `review.json`, one post call.
+  </Step>
+  <Step title="Re-review new commits">
+    ```bash
+    ./scripts/review.sh fetch owner/repo 123 --base-sha <prior-reviewed-sha>
+    ```
+    Then review with `prompts/incremental-review.md` instead of `prompts/review.md`.
+    Recorded findings are never re-reported. Threads retire by rule.
+  </Step>
+</Steps>
+
+## What you got
+
+A grounded first pass on the PR in minutes, with every claim carrying an evidence
+rung and every comment anchored to a real hunk. Humans spend their attention on the
+hard parts.
+
+<CardGroup cols={2}>
+  <Card title="Manual" href="/manual">
+    Every verb, the store schema, and the doctrines.
+  </Card>
+  <Card title="Why Verdict" href="/why-verdict">
+    The pains this solves and what it refuses to be.
+  </Card>
+</CardGroup>

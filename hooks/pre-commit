@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# pre-commit: formatting gate. CHECK-ONLY — never rewrites files.
+# (auto-write would reflow protected prompt examples; see README ## Formatting.)
+# Wired by install.sh via `git config core.hooksPath`. Filenames with spaces
+# are not supported (this repo has none).
+set -euo pipefail
+
+staged=""
+while IFS= read -r f; do
+  case "$f" in *.md|*.mdx|*.json|*.ts) staged="$staged$f
+";; esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+if [[ -z "$staged" ]]; then exit 0; fi
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun not found — formatting unchecked (see README ## Formatting)"
+  exit 0
+fi
+
+printf '%s' "$staged" | xargs bun fmt --check -- || {
+  echo "pre-commit: formatting issues above."
+  echo "Fix only non-example hunks (never reflow prompts/ examples) or run:"
+  echo "  git diff --cached --name-only | grep -E '\\.(md|json|ts)$' | xargs bun fmt --check --"
+  echo "If the only diffs are protected prompt examples, commit with --no-verify and say why."
+  exit 1
+}

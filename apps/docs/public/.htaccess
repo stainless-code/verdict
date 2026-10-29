@@ -1,0 +1,107 @@
+
+Options -Indexes
+DirectoryIndex index.html
+
+# .well-known/ stays reachable: requests target files inside it whose names
+# do not start with a dot (ACME challenge, etc.).
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
+ErrorDocument 404 /verdict/404.html
+
+<IfModule mod_headers.c>
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+  # Self assets + hashed _astro bundles, local search, inline theme/banner
+  # scripts (data-attr driven, no nonce). No analytics and no external CDNs;
+  # relax script-src, connect-src and img-src if either is added.
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; upgrade-insecure-requests"
+</IfModule>
+
+# llms.txt + raw .md/.mdx mirrors: static hosting does not apply Astro endpoint
+# response headers, so declare UTF-8 and the right type here, and keep the
+# mirrors out of the index (canonical HTML pages are what should be crawled).
+# robots.txt is intentionally excluded.
+<IfModule mod_mime.c>
+  AddType text/plain .txt
+  AddType text/markdown .md .mdx
+  AddCharset UTF-8 .txt .md .mdx
+</IfModule>
+<FilesMatch "\.mdx?$">
+  Header set X-Robots-Tag "noindex"
+  # Negotiated responses serve .md twins at canonical URLs: keep those indexable.
+  Header unset X-Robots-Tag env=REDIRECT_NEGOTIATED_MD
+</FilesMatch>
+<FilesMatch "^llms(-full|-small)?\.txt$">
+  Header set X-Robots-Tag "noindex"
+</FilesMatch>
+
+# Agent discovery (isitagentready): Apache port of dist/_headers.
+# Apache ignores that file, so this is what actually ships headers under /verdict.
+<IfModule mod_mime.c>
+  AddType application/json .json
+</IfModule>
+
+# Compound extension needs a filename match: AddType splits on dots.
+<FilesMatch "\.tar\.gz$">
+  ForceType application/gzip
+</FilesMatch>
+
+# Homepage Link header (RFC 8288 / RFC 9727 s3). Minimal form. Keep in sync with dist/_headers.
+<IfModule mod_setenvif.c>
+  SetEnvIf Request_URI "^/verdict/$" IS_VERDICT_HOME
+  SetEnvIf Request_URI "^/verdict/index\.html$" IS_VERDICT_HOME
+</IfModule>
+<IfModule mod_headers.c>
+  Header always set Link "</verdict/.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </verdict/.well-known/ai-catalog.json>; rel=\"ai-catalog\"; type=\"application/ai-catalog+json\", </verdict/openapi.json>; rel=\"service-desc\"; type=\"application/json\", </verdict/agent-readability.json>; rel=\"describedby\"; type=\"application/json\", </verdict/llms.txt>; rel=\"describedby\"; type=\"text/plain\", </verdict/index.md>; rel=\"alternate\"; type=\"text/markdown\"" env=IS_VERDICT_HOME
+  # Internal rewrites rename request env vars with a REDIRECT_ prefix.
+  Header always set Link "</verdict/.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </verdict/.well-known/ai-catalog.json>; rel=\"ai-catalog\"; type=\"application/ai-catalog+json\", </verdict/openapi.json>; rel=\"service-desc\"; type=\"application/json\", </verdict/agent-readability.json>; rel=\"describedby\"; type=\"application/json\", </verdict/llms.txt>; rel=\"describedby\"; type=\"text/plain\", </verdict/index.md>; rel=\"alternate\"; type=\"text/markdown\"" env=REDIRECT_IS_VERDICT_HOME
+</IfModule>
+
+# Extensionless file needs explicit type (else text/plain fails the scan).
+<Files "api-catalog">
+  ForceType 'application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"'
+</Files>
+
+# Serve the catalog with its advertised media type (matches Link rel=ai-catalog).
+<Files "ai-catalog.json">
+  ForceType application/ai-catalog+json
+</Files>
+
+<IfModule mod_headers.c>
+  <FilesMatch "(^ai-catalog\.json$|^ard\.json$|^api-catalog$|^agent-readability\.json$|index\.json$)">
+    Header set Access-Control-Allow-Origin "*"
+  </FilesMatch>
+</IfModule>
+
+# Pragmatic Accept: text/markdown (static-first, not strict RFC).
+# Subdir rules shadow the domain-root rewrite block, so both live here.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+RewriteCond %{REQUEST_URI} \.(css|js|mjs|map|png|jpe?g|webp|gif|svg|avif|ico|woff2?|ttf|otf|eot|xml|txt|json|pdf|mp4|webm|mp3|wav|ogg|zip)$ [NC]
+RewriteRule ^ - [L]
+RewriteCond %{REQUEST_URI} \.mdx?$ [NC]
+RewriteRule ^ - [L]
+
+# /verdict/ -> /verdict/index.md
+RewriteCond %{HTTP:Accept} text/markdown [NC]
+RewriteCond %{HTTP:Accept} !text/markdown(?:\s*;\s*(?!q\s*=)[^;,]+)*\s*;\s*q\s*=\s*0(\.0*)?(\s*[;,]|\s*$) [NC]
+RewriteRule ^$ /verdict/index.md [L,T=text/markdown,E=NEGOTIATED_MD:1]
+
+# /verdict/index.html -> /verdict/index.md (same representation as /verdict/)
+RewriteCond %{HTTP:Accept} text/markdown [NC]
+RewriteCond %{HTTP:Accept} !text/markdown(?:\s*;\s*(?!q\s*=)[^;,]+)*\s*;\s*q\s*=\s*0(\.0*)?(\s*[;,]|\s*$) [NC]
+RewriteRule ^index\.html$ /verdict/index.md [L,T=text/markdown,E=NEGOTIATED_MD:1]
+
+# /verdict/<route> -> twin .md
+RewriteCond %{HTTP:Accept} text/markdown [NC]
+RewriteCond %{HTTP:Accept} !text/markdown(?:\s*;\s*(?!q\s*=)[^;,]+)*\s*;\s*q\s*=\s*0(\.0*)?(\s*[;,]|\s*$) [NC]
+RewriteCond %{REQUEST_FILENAME} !\.md$ [NC]
+RewriteCond %{DOCUMENT_ROOT}/verdict/$1.md -f
+RewriteRule ^(.+?)/?$ /verdict/$1.md [L,T=text/markdown,E=NEGOTIATED_MD:1]
+</IfModule>

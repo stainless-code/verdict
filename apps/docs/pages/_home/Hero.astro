@@ -1,0 +1,41 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Icon from "blume/components/Icon.astro";
+import CopyCommand from "./CopyCommand.astro";
+---
+
+<section class="mx-auto max-w-[1160px] px-6 pt-16 pb-24 sm:pt-24 sm:pb-[144px]">
+  <div class="mx-auto max-w-3xl text-center">
+    <h1
+      class="mx-auto mt-5 max-w-3xl text-balance font-display font-semibold text-5xl leading-[1.02] tracking-tight sm:text-6xl"
+    >
+      <span class="block">PR reviews</span>
+      <span class="block text-accent">with receipts.</span>
+    </h1>
+
+    <p class="mx-auto mt-6 max-w-2xl text-balance text-lg text-muted-foreground">
+      One command fetches, your agent reviews, exactly one review posts.
+    </p>
+
+    <div class="mt-8 flex justify-center">
+      <CopyCommand command="npx skills add stainless-code/verdict" />
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center justify-center gap-4">
+      <a
+        class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] bg-accent px-5 font-medium text-base text-[var(--blume-accent-foreground)] transition-opacity hover:opacity-90"
+        href={contentHref("/manual")}
+      >
+        Read the manual
+        <Icon name="arrow-right" size={14} />
+      </a>
+      <a
+        class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] border border-border px-5 font-medium text-base text-foreground transition-colors hover:border-foreground"
+        href="#verbs"
+      >
+        How it works
+        <Icon name="arrow-right" size={14} />
+      </a>
+    </div>
+  </div>
+</section>

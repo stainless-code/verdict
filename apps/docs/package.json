@@ -1,0 +1,20 @@
+{
+  "name": "@stainless-code/verdict-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "audit": "blume audit --fail-on error",
+    "build": "blume build",
+    "check": "blume check",
+    "dev": "blume dev",
+    "preview": "blume preview",
+    "validate": "blume validate"
+  },
+  "dependencies": {
+    "blume": "^2.2.5"
+  },
+  "engines": {
+    "bun": ">=1.0.31",
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@stainless-code/verdict",
+  "version": "0.1.0",
+  "description": "Local on-demand PR review for any coding agent. Evidence-graded findings, machine gates, zero install.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stainless-code/verdict.git"
+  },
+  "keywords": [
+    "agent-skills",
+    "code-review",
+    "github",
+    "verdict"
+  ],
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "LICENSE",
+    "VERSION",
+    "scripts/",
+    "prompts/"
+  ]
+}

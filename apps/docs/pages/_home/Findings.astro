@@ -1,0 +1,58 @@
+---
+const rungs = ["said", "pointed", "walked", "ran", "reproduced"];
+---
+
+<section class="mx-auto max-w-[1160px] px-6 py-24 sm:py-[144px]">
+  <div class="mx-auto max-w-2xl text-center">
+    <h2 class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[52px] sm:leading-[1.02]">
+      What a finding carries.
+    </h2>
+    <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
+      Every finding ships with proof attached, or it does not ship.
+    </p>
+  </div>
+  <div class="mt-12 grid gap-4 sm:grid-cols-12">
+    <div class="rounded-2xl border border-border p-8 sm:col-span-7">
+      <h3 class="font-display font-semibold text-2xl tracking-tight">An evidence rung</h3>
+      <p class="mt-2 max-w-[52ch] text-sm text-muted-foreground">
+        Unproven claims are labeled, never posted as fact. The rung decides how far a
+        finding travels.
+      </p>
+      <ol class="mt-6 space-y-2">
+        {
+          rungs.map((rung, i) => (
+            <li class="flex items-center gap-3">
+              <span
+                aria-hidden="true"
+                class="h-2 rounded-full bg-accent"
+                style={`width: ${(i + 1) * 36}px; opacity: ${0.35 + i * 0.16}`}
+              />
+              <code class="font-mono text-sm">{rung}</code>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+    <div class="rounded-2xl border border-border p-8 sm:col-span-5">
+      <h3 class="font-display font-semibold text-xl tracking-tight">Keep-biased machinery</h3>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Partitioned anchor validation, stale-SHA and double-post guards, binding verdicts
+        behind --bind. One bad anchor never fails a post.
+      </p>
+    </div>
+    <div class="rounded-2xl border border-border p-8 sm:col-span-5">
+      <h3 class="font-display font-semibold text-xl tracking-tight">Stable memory</h3>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Line-number-free finding signatures with status and history, so re-reviews never
+        re-report and threads retire by rule, not by fiat.
+      </p>
+    </div>
+    <div class="rounded-2xl border border-border p-8 sm:col-span-7">
+      <h3 class="font-display font-semibold text-xl tracking-tight">A machine surface</h3>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Every verb speaks --json envelopes. SARIF export feeds scanners. Calibrate joins
+        predictions against live ground truth.
+      </p>
+    </div>
+  </div>
+</section>

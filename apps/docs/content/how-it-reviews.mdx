@@ -1,0 +1,58 @@
+---
+title: How it reviews
+description: "Evidence rungs, severity that decides, keep-biased machinery, stable memory."
+search:
+  tags: ["concepts", "evidence", "severity", "anchors", "memory"]
+---
+
+Three mechanisms separate a Verdict review from confident prose: proof attached to
+every claim, machinery biased toward keeping good findings, and memory that survives
+re-reviews.
+
+## Evidence rungs
+
+Every finding carries one rung: `said`, `pointed`, `walked`, `ran`, `reproduced`.
+The rung is the proof behind the claim, and it decides how far the finding travels.
+`said`-only findings ship labeled `unproven` or die in triage. Nothing posts as fact
+that was never shown.
+
+## Severity that decides
+
+`critical`, `important`, `informational`: ranked, stored at write time, never parsed
+from prose. Severity maps to the author's next action, and machine rules gate the
+strong moves. Binding verdicts need `--bind`. Approval is refused with open findings.
+Self-verdicts downgrade. The review never blocks what it cannot justify.
+
+## Keep-biased machinery
+
+Anchor validation is partitioned: ambiguity keeps a finding, only provably-outside
+anchors move to the body. Stale-SHA and double-post guards make re-runs safe.
+Suggestions render as real GitHub suggestion blocks, or the post refuses to fake them.
+One bad anchor never fails a post. The machinery is biased the way a good reviewer
+is: skeptical of its own doubts, strict about its claims.
+
+## Stable memory
+
+Findings carry line-number-free signatures with status and append-only history, so a
+rebase never orphans them. Incremental re-reviews dedupe by signature: recorded
+findings are not re-reported unless the delta changes them. Threads retire by rule
+(reformat is not addressed, human threads untouched). Deferred work is explicit,
+never silent.
+
+## Measured, not asserted
+
+`calibrate` joins predictions against live ground truth: merged status, follow-up
+fixes, human agreement. Accuracy is a number from your own history, not a claim on a
+landing page. That loop is also the product's moat: every calibration run voluntarily
+contributes tuning data no warehouse-bound SaaS can collect.
+
+The full operator reference is the [manual](/manual).
+
+<CardGroup cols={2}>
+  <Card title="Comparison" href="/comparison">
+    The honest table, concessions included.
+  </Card>
+  <Card title="Changelog" href="/changelog">
+    Every Verdict release, newest first.
+  </Card>
+</CardGroup>

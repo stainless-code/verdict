@@ -1,0 +1,10 @@
+.review/
+.env
+.env.local
+.DS_Store
+node_modules/
+dist/
+.blume/
+.blume-verify/
+# Local-only working notes (strategy, scratch). Never commit.
+.agents/local/

@@ -1,0 +1,110 @@
+/* Verdict landing stamp: genre modern-minimal, tone technical, posture band. */
+/* Nav: edge-aligned wordmark plus version chip and toggle, no hairline chase. */
+/* Footer: link columns over a legal line, house pattern. */
+/* Signature: the accent second line of the hero head, once. Arrows are spaced */
+/* icons on actions, never glued punctuation. Copy carries no em dashes. */
+/* Answered F15: the band carries the paper-on-ink inverse of the primary button. */
+
+:root {
+  --blume-background: #fafafa;
+  --blume-foreground: #18181b;
+  --blume-muted: #f4f4f5;
+  --blume-muted-foreground: #52525b;
+  --blume-border: #e4e4e7;
+  --blume-accent: #ae2a1e;
+  --blume-accent-foreground: #ffffff;
+
+  --landing-surface: #ffffff;
+  --landing-faint: #6b6b75;
+  --landing-band: #9e2b21;
+  --landing-band-ink: #ffffff;
+  --landing-paper: #ffffff;
+  --landing-ink: #18181b;
+}
+
+:root[data-theme="dark"] {
+  --blume-background: #18181b;
+  --blume-foreground: #fafafa;
+  --blume-muted: #27272a;
+  --blume-muted-foreground: #a1a1aa;
+  --blume-border: #3f3f46;
+  --blume-accent: #f2a192;
+  --blume-accent-foreground: #18181b;
+
+  --landing-surface: #202024;
+  --landing-faint: #96969f;
+  --landing-band: #9e2b21;
+  --landing-band-ink: #ffffff;
+  --landing-paper: #ffffff;
+  --landing-ink: #18181b;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Landing measure: individual bands pin to one shared 1160px (72.5rem)
+   content column. Fluid gutters reproduce that exactly at 1440, hold a 24px
+   floor on small screens, and keep the column capped and centered above 1440.
+   Opt-in: only landing bands use this class. The header's fluid pin in
+   pages/index.astro is the same measure for the nav. */
+.landing-gutter {
+  padding-inline: max(1.5rem, calc((100vw - 72.5rem) / 2));
+}
+
+body {
+  background: var(--blume-background);
+  color: var(--blume-foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--blume-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Logo hover: the verdict stamps itself in. Resting state is fully drawn
+   (safe for favicon/OG raster), the draw only plays on brand hover, once
+   per mouseenter. Same hook shape as the house pattern
+   (a:has(> span > .logo-svg)), own motion language. */
+.logo-bar {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+a:has(> span > .logo-svg):hover .logo-check {
+  animation: verdict-draw 320ms ease;
+}
+
+a:has(> span > .logo-svg):hover .logo-bar {
+  animation: verdict-wipe 320ms ease;
+}
+
+@keyframes verdict-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes verdict-wipe {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 0.65;
+  }
+}

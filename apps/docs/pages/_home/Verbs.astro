@@ -1,0 +1,43 @@
+---
+const rows = [
+  {
+    verb: "fetch",
+    command: "./scripts/review.sh fetch owner/repo 123",
+    body: "Pulls the diff, metadata, threads, and file roles into one bundle. No clone needed.",
+  },
+  {
+    verb: "review",
+    command: "any agent + SKILL.md + prompts/",
+    body: "A synthesizer reads the whole diff first, then fans out read-only lens subagents, one falsifiable question each.",
+  },
+  {
+    verb: "post",
+    command: "./scripts/review.sh post owner/repo 123",
+    body: "Anchors machine-checked against the diff hunks, suggestions embedded as real GitHub suggestion blocks.",
+  },
+];
+---
+
+<section id="verbs" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-24 sm:py-[144px]">
+  <div class="mx-auto max-w-2xl text-center">
+    <h2 class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[52px] sm:leading-[1.02]">
+      Three verbs do the whole job.
+    </h2>
+    <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
+      Fetch the bundle, review with any agent, post exactly once.
+    </p>
+  </div>
+  <ol class="mt-12 border-border border-t">
+    {
+      rows.map((row) => (
+        <li class="grid gap-2 border-border border-b py-8 sm:grid-cols-[220px_1fr] sm:gap-8">
+          <span class="font-display font-semibold text-2xl tracking-tight">{row.verb}</span>
+          <div>
+            <code class="font-mono text-sm text-accent">{row.command}</code>
+            <p class="mt-2 max-w-[65ch] text-muted-foreground">{row.body}</p>
+          </div>
+        </li>
+      ))
+    }
+  </ol>
+</section>

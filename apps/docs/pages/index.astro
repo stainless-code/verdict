@@ -1,0 +1,222 @@
+---
+import data from "blume:data";
+import { contentHref } from "blume/components/content/base-href.ts";
+import { THEME_INIT_SCRIPT } from "blume/components/layout/head-scripts.ts";
+import Fonts from "blume/components/layout/Fonts.astro";
+import Header from "../components/blume/Header.astro";
+import Hero from "./_home/Hero.astro";
+import Statement from "./_home/Statement.astro";
+import Verbs from "./_home/Verbs.astro";
+import Findings from "./_home/Findings.astro";
+import FinalCta from "./_home/FinalCta.astro";
+import VerdictMark from "./_home/VerdictMark.astro";
+import "blume:theme";
+
+const { config } = data;
+const pageTitle = `${config.title}: PR reviews with receipts`;
+const year = new Date().getFullYear();
+const siteUrl = (config.site ?? "").replace(/\/$/, "");
+const canonicalUrl = `${siteUrl}${contentHref("/")}`.replace(/\/$/, "");
+const ogImageUrl = `${siteUrl}${contentHref("/og/index.png")}`;
+const websiteId = `${siteUrl}#website`;
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@id": websiteId,
+      "@type": "WebSite",
+      name: config.title,
+      url: canonicalUrl,
+    },
+    {
+      "@id": `${canonicalUrl}#page`,
+      "@type": "WebPage",
+      inLanguage: "en",
+      name: pageTitle,
+      url: canonicalUrl,
+      description: config.description,
+      isPartOf: { "@id": websiteId },
+    },
+  ],
+};
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={config.description} />
+    <link href={contentHref("/favicon.svg")} rel="icon" type="image/svg+xml" />
+    <link href={contentHref("/favicon-dark.svg")} media="(prefers-color-scheme: dark)" rel="icon" type="image/svg+xml" />
+    <link href={contentHref("/favicon.svg")} media="(prefers-color-scheme: light)" rel="icon" type="image/svg+xml" />
+    <link href={contentHref("/apple-touch-icon.png")} rel="apple-touch-icon" />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={config.title} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={config.description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={pageTitle} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    <meta name="twitter:image:alt" content={pageTitle} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={config.description} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <link rel="manifest" href={contentHref("/site.webmanifest")} />
+    <meta name="apple-mobile-web-app-title" content={config.title} />
+    <Fonts cssVars={data.fontCssVars ?? []} />
+    <script data-mode={data.config.theme.mode} is:inline set:html={THEME_INIT_SCRIPT} />
+  </head>
+  <body>
+    <Header
+      site={{ title: config.title }}
+      logo={data.config.logo}
+      navigation={data.navigation}
+      route="/"
+      searchEnabled={data.config.search.enabled}
+      hasSidebar={false}
+      hasDrawer={false}
+    />
+    <main>
+      <Hero />
+      <Statement />
+      <Verbs />
+      <Findings />
+      <section class="landing-gutter bg-muted py-24 sm:py-[144px]">
+        <div class="mx-auto max-w-[1160px]">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[52px] sm:leading-[1.02]">
+            Against the meters.
+          </h2>
+          <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
+            The craft is portable. The meters are not.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-4 sm:grid-cols-12">
+          <div class="rounded-2xl border border-border bg-[var(--landing-surface)] p-8 sm:col-span-5">
+            <h3 class="font-display font-semibold text-xl tracking-tight">The hosted reviewers</h3>
+            <p class="mt-2 max-w-[52ch] text-sm text-muted-foreground">
+              CodeRabbit, Greptile, and Pullfrog review pull requests behind subscriptions,
+              credit meters, and app installs. Some bill every re-review as a new review.
+            </p>
+          </div>
+          <div class="rounded-2xl border border-accent bg-[var(--landing-surface)] p-8 sm:col-span-7">
+            <h3 class="font-display font-semibold text-xl tracking-tight">Verdict</h3>
+            <p class="mt-2 max-w-[52ch] text-sm text-muted-foreground">
+              The same review depth with zero subscription, zero install, zero metering,
+              unlimited re-reviews, and any model. Hosted merge gating is conceded loudly.
+              Everything else stays local.
+            </p>
+            <a href={contentHref("/comparison")} class="mt-4 inline-block text-sm font-medium text-accent">
+              Full comparison
+            </a>
+          </div>
+        </div>
+        </div>
+      </section>
+      <FinalCta />
+    </main>
+    <footer class="border-border border-t">
+      <div class="mx-auto max-w-[1160px] px-6 py-14">
+        <div class="grid gap-12 lg:grid-cols-[254px_1fr]">
+          <div>
+            <p class="flex items-center gap-2 font-display font-semibold tracking-tight">
+              <VerdictMark />
+              {config.title}
+            </p>
+            <p class="mt-4 max-w-[254px] text-[14px] text-muted-foreground leading-[22px]">
+              Local on-demand PR review for any coding agent. Evidence-graded findings,
+              machine gates, zero install.
+            </p>
+          </div>
+          <nav aria-label="Footer" class="grid grid-cols-2 gap-x-12 gap-y-10 sm:grid-cols-3">
+            <div>
+              <h3 class="font-mono text-xs uppercase tracking-[0.1em] text-[var(--landing-faint)]">Docs</h3>
+              <ul class="mt-3 space-y-3">
+                <li>
+                  <a href={contentHref("/quickstart")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Quickstart
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/manual")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Manual
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/why-verdict")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Why Verdict
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/comparison")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Comparison
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/how-it-reviews")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    How it reviews
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/changelog")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Changelog
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="font-mono text-xs uppercase tracking-[0.1em] text-[var(--landing-faint)]">Project</h3>
+              <ul class="mt-3 space-y-3">
+                <li>
+                  <a href="https://github.com/stainless-code/verdict" rel="noreferrer" target="_blank" class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Skill repo
+                  </a>
+                </li>
+                <li>
+                  <a href="https://github.com/stainless-code/verdict/blob/main/LICENSE" rel="noreferrer" target="_blank" class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    MIT license
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="font-mono text-xs uppercase tracking-[0.1em] text-[var(--landing-faint)]">House</h3>
+              <ul class="mt-3 space-y-3">
+                <li>
+                  <a href="https://stainless-code.com" rel="noreferrer" target="_blank" class="text-base text-muted-foreground transition-colors hover:text-foreground">
+                    stainless-code
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="mt-11 border-border border-t pt-5">
+          <div class="mx-auto flex flex-col items-center justify-between gap-2 font-mono text-xs text-[var(--landing-faint)] sm:flex-row">
+            <span>© {year} {config.title} · MIT</span>
+            <span>Built and maintained by <a href="https://github.com/stainless-code" rel="noreferrer" target="_blank" class="transition-colors hover:text-foreground">stainless-code</a></span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  /* Landing alignment: pin every band (nav, hero, sections, footer) to one
+     shared 1160px (72.5rem) content column with 1.5rem fluid gutters, same
+     measure as the lossless landing. The header chrome is full-bleed, so
+     fluid gutters pin its content box to that same column on this page only
+     (Astro scopes page CSS here; :global reaches the header rendered above).
+     Sections and footer already use mx-auto max-w-[1160px] px-6. */
+  :global(header[data-blume-header]) {
+    padding-inline: max(1.5rem, calc((100vw - 72.5rem) / 2));
+  }
+</style>

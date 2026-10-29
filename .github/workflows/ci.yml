@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: 💅 Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Run format check
+        run: bun fmt --check .
+
+  lint:
+    name: 🕵 Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Lint shell entry points
+        run: shellcheck -S warning scripts/review.sh install.sh hooks/pre-commit
+
+  docs:
+    name: 📖 Docs site
+    runs-on: ubuntu-latest
+    # Private repo: the changelog source reads releases via GITHUB_TOKEN.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # blume --strict fails on BLUME_SHALLOW_GIT_HISTORY: lastmod reads git log per file.
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Validate docs links
+        working-directory: apps/docs
+        run: bun run validate --strict
+
+      - name: Typecheck the docs app
+        working-directory: apps/docs
+        run: bun run check --isolated
+
+      - name: Build the docs site
+        working-directory: apps/docs
+        run: bun run build
+
+      - name: Audit the built site
+        working-directory: apps/docs
+        run: bun run audit
+
+  audit:
+    name: 🛡 Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: bun audit (block on high/critical)
+        shell: bash
+        working-directory: apps/docs
+        run: |
+          # bun exits 1 both for findings at or above the level and for a
+          # registry outage. An outage is a warning, not a block: we cannot
+          # act on it. Capture the exit code directly; a pipe into tee would
+          # report tee's status, not bun's.
+          set +e
+          out=$(NO_COLOR=1 bun audit --audit-level=high 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$out"
+          if [ "$code" -eq 0 ]; then exit 0; fi
+          # bun wording: "error: POST <url> - ConnectionRefused",
+          # "<registry> did not answer the audit request; skipped",
+          # "<registry> returned a non-JSON audit response".
+          if ! grep -qE '[0-9]+ vulnerabilit' <<<"$out" &&
+             grep -qE 'error: (GET|POST) |did not answer the audit request|non-JSON audit response' <<<"$out"; then
+            echo "::warning::advisory registry unreachable; audit skipped"
+            exit 0
+          fi
+          exit "$code"
+
+  ci-complete:
+    name: CI complete
+    needs: [format, lint, docs, audit]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed
+        if: |
+          needs.format.result != 'success' ||
+            needs.lint.result != 'success' ||
+            needs.docs.result != 'success' ||
+            needs.audit.result != 'success'
+        run: exit 1
+
+      - name: OK
+        run: echo "CI requirements satisfied"
