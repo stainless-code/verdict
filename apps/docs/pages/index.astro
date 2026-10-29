@@ -88,27 +88,37 @@ const jsonLd = {
       <Statement />
       <Verbs />
       <Findings />
-      <section class="landing-gutter bg-muted py-24 sm:py-[144px]">
+      <section class="landing-gutter bg-muted py-16 sm:py-24">
         <div class="mx-auto max-w-[1160px]">
-        <div class="mx-auto max-w-2xl text-center">
+        <div class="max-w-2xl">
           <h2 class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[52px] sm:leading-[1.02]">
             Against the meters.
           </h2>
-          <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
+          <p class="mt-4 max-w-xl text-balance text-lg text-muted-foreground">
             The craft is portable. The meters are not.
           </p>
         </div>
         <div class="mt-12 grid gap-4 sm:grid-cols-12">
           <div class="rounded-2xl border border-border bg-[var(--landing-surface)] p-8 sm:col-span-5">
             <h3 class="font-display font-semibold text-xl tracking-tight">The hosted reviewers</h3>
-            <p class="mt-2 max-w-[52ch] text-sm text-muted-foreground">
-              CodeRabbit, Greptile, and Pullfrog review pull requests behind subscriptions,
-              credit meters, and app installs. Some bill every re-review as a new review.
-            </p>
+            <ul class="mt-6 border-border border-t">
+              <li class="border-border border-b py-4">
+                <p class="font-display font-semibold text-base tracking-tight">CodeRabbit</p>
+                <p class="mt-1 text-base text-muted-foreground">Per-dev subscription plus GitHub App</p>
+              </li>
+              <li class="border-border border-b py-4">
+                <p class="font-display font-semibold text-base tracking-tight">Greptile</p>
+                <p class="mt-1 text-base text-muted-foreground">30 dollars per dev for 50 reviews, 1 dollar per extra</p>
+              </li>
+              <li class="py-4">
+                <p class="font-display font-semibold text-base tracking-tight">Pullfrog</p>
+                <p class="mt-1 text-base text-muted-foreground">SaaS tiers plus GitHub App</p>
+              </li>
+            </ul>
           </div>
           <div class="rounded-2xl border border-accent bg-[var(--landing-surface)] p-8 sm:col-span-7">
             <h3 class="font-display font-semibold text-xl tracking-tight">Verdict</h3>
-            <p class="mt-2 max-w-[52ch] text-sm text-muted-foreground">
+            <p class="mt-2 max-w-[52ch] text-base text-muted-foreground">
               The same review depth with zero subscription, zero install, zero metering,
               unlimited re-reviews, and any model. Hosted merge gating is conceded loudly.
               Everything else stays local.
@@ -137,7 +147,7 @@ const jsonLd = {
           </div>
           <nav aria-label="Footer" class="grid grid-cols-2 gap-x-12 gap-y-10 sm:grid-cols-3">
             <div>
-              <h3 class="font-mono text-xs uppercase tracking-[0.1em] text-[var(--landing-faint)]">Docs</h3>
+              <h3 class="text-sm font-medium text-[var(--landing-faint)]">Docs</h3>
               <ul class="mt-3 space-y-3">
                 <li>
                   <a href={contentHref("/quickstart")} class="text-base text-muted-foreground transition-colors hover:text-foreground">
@@ -172,7 +182,7 @@ const jsonLd = {
               </ul>
             </div>
             <div>
-              <h3 class="font-mono text-xs uppercase tracking-[0.1em] text-[var(--landing-faint)]">Project</h3>
+              <h3 class="text-sm font-medium text-[var(--landing-faint)]">Project</h3>
               <ul class="mt-3 space-y-3">
                 <li>
                   <a href="https://github.com/stainless-code/verdict" rel="noreferrer" target="_blank" class="text-base text-muted-foreground transition-colors hover:text-foreground">
@@ -187,7 +197,7 @@ const jsonLd = {
               </ul>
             </div>
             <div>
-              <h3 class="font-mono text-xs uppercase tracking-[0.1em] text-[var(--landing-faint)]">House</h3>
+              <h3 class="text-sm font-medium text-[var(--landing-faint)]">House</h3>
               <ul class="mt-3 space-y-3">
                 <li>
                   <a href="https://stainless-code.com" rel="noreferrer" target="_blank" class="text-base text-muted-foreground transition-colors hover:text-foreground">
@@ -199,9 +209,9 @@ const jsonLd = {
           </nav>
         </div>
         <div class="mt-11 border-border border-t pt-5">
-          <div class="mx-auto flex flex-col items-center justify-between gap-2 font-mono text-xs text-[var(--landing-faint)] sm:flex-row">
-            <span>© {year} {config.title} · MIT</span>
-            <span>Built and maintained by <a href="https://github.com/stainless-code" rel="noreferrer" target="_blank" class="transition-colors hover:text-foreground">stainless-code</a></span>
+          <div class="mx-auto flex flex-col items-center justify-between gap-2 text-xs text-[var(--landing-faint)] sm:flex-row">
+            <span>© 2026 stainless-code, <a href="https://github.com/stainless-code/verdict/blob/main/LICENSE" rel="noreferrer" target="_blank" class="transition-colors hover:text-foreground">MIT licensed</a></span>
+            <span>Built and maintained by <a href="https://stainless-code.com" rel="noreferrer" target="_blank" class="transition-colors hover:text-foreground">stainless-code</a></span>
           </div>
         </div>
       </div>

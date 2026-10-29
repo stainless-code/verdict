@@ -17,15 +17,17 @@ const code =
   tone === "paper" ? "text-[var(--landing-ink)]" : "text-foreground";
 const copyButton =
   tone === "paper"
-    ? "bg-[#f4f4f5] text-[#6b6b75] hover:text-[#18181b]"
+    ? "bg-[var(--landing-paper-muted)] text-[var(--landing-paper-faint)] hover:text-[var(--landing-ink)]"
     : "bg-muted text-muted-foreground hover:text-foreground";
+const dollar =
+  tone === "paper" ? "text-[var(--landing-paper-faint)]" : "text-[var(--landing-faint)]";
 ---
 
 <div
   class={`flex w-fit max-w-full items-center gap-4 rounded-xl border py-2.5 pr-2.5 pl-5 ${box}`}
   data-landing-command
 >
-  <span aria-hidden="true" class="select-none font-mono text-base text-[var(--landing-faint)]">$</span>
+  <span aria-hidden="true" class={`select-none font-mono text-base ${dollar}`}>$</span>
   <code class={`min-w-0 flex-1 truncate text-left font-mono text-base ${code}`} data-landing-command-text>{command}</code>
   <button
     aria-label={`Copy ${command}`}

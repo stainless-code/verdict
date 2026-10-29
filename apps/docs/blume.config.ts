@@ -101,7 +101,7 @@ export default defineConfig({
   },
 
   footer: {
-    copyright: `© ${new Date().getFullYear()} Verdict · MIT`,
+    copyright: `© 2026 stainless-code, MIT licensed.`,
     links: [
       {
         label: "Skill repo",

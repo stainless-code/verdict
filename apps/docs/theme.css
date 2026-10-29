@@ -20,6 +20,10 @@
   --landing-band-ink: #ffffff;
   --landing-paper: #ffffff;
   --landing-ink: #18181b;
+  --landing-paper-muted: #f4f4f5;
+  --landing-paper-faint: #6b6b75;
+  --landing-brand: #ae2a1e;
+  --landing-brand-ink: #ffffff;
 }
 
 :root[data-theme="dark"] {
@@ -37,6 +41,10 @@
   --landing-band-ink: #ffffff;
   --landing-paper: #ffffff;
   --landing-ink: #18181b;
+  --landing-paper-muted: #f4f4f5;
+  --landing-paper-faint: #6b6b75;
+  --landing-brand: #ae2a1e;
+  --landing-brand-ink: #ffffff;
 }
 
 html,
@@ -61,6 +69,16 @@ body {
 :focus-visible {
   outline: 2px solid var(--blume-accent);
   outline-offset: 2px;
+}
+
+::selection {
+  background: var(--blume-accent);
+  color: var(--blume-accent-foreground);
+}
+
+.font-display {
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
