@@ -7,7 +7,8 @@ set -euo pipefail
 
 staged=""
 while IFS= read -r f; do
-  case "$f" in *.md|*.mdx|*.json|*.ts) staged="$staged$f
+  # prompts/ examples are never reflowed (see README ## Formatting).
+  case "$f" in prompts/*) continue;; *.md|*.mdx|*.json|*.ts) staged="$staged$f
 ";; esac
 done < <(git diff --cached --name-only --diff-filter=ACM)
 
@@ -20,7 +21,7 @@ fi
 printf '%s' "$staged" | xargs bun fmt --check -- || {
   echo "pre-commit: formatting issues above."
   echo "Fix only non-example hunks (never reflow prompts/ examples) or run:"
-  echo "  git diff --cached --name-only | grep -E '\\.(md|json|ts)$' | xargs bun fmt --check --"
+  echo "  git diff --cached --name-only | grep -E '\\.(md|json|ts)$' | grep -v '^prompts/' | xargs bun fmt --check --"
   echo "If the only diffs are protected prompt examples, commit with --no-verify and say why."
   exit 1
 }

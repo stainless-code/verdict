@@ -25,7 +25,13 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run format check
-        run: bun fmt --check .
+        shell: bash
+        run: |
+          # prompts/ examples are never reflowed (see README ## Formatting):
+          # exempt here and in hooks/pre-commit, enforced by review, not fmt.
+          # Extensions are the set bun fmt parses (it hard-errors on others);
+          # bun.lock etc. are skipped the same way `bun fmt --check .` skips them.
+          git ls-files -z '*.md' '*.mdx' '*.json' '*.ts' '*.js' '*.mjs' '*.cjs' '*.css' '*.html' '*.yml' '*.yaml' '*.webmanifest' ':!prompts/**' | xargs -r -0 bun fmt --check --
 
   lint:
     name: 🕵 Lint
@@ -95,8 +101,18 @@ jobs:
           # registry outage. An outage is a warning, not a block: we cannot
           # act on it. Capture the exit code directly; a pipe into tee would
           # report tee's status, not bun's.
+          # Ignored: two highs that live only in Blume's build-time subtree and
+          # never reach the published artifact (this repo ships static HTML, no
+          # tarball at all): path-to-regexp 6.1.0 from @astrojs/vercel's
+          # routing-utils (GHSA-9wv6-86v2-598j), and zod 4.1.11 from astro's
+          # content layer, unfixable in range (GHSA-mrhx-c7xc-m3w5; bun audit
+          # fix resolves 0 of 3). Reassess on every Blume bump; any other path
+          # still blocks.
           set +e
-          out=$(NO_COLOR=1 bun audit --audit-level=high 2>&1)
+          out=$(NO_COLOR=1 bun audit --audit-level=high \
+            --ignore=GHSA-9wv6-86v2-598j \
+            --ignore=GHSA-mrhx-c7xc-m3w5 \
+            2>&1)
           code=$?
           set -e
           printf '%s\n' "$out"
