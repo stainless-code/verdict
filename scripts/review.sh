@@ -136,7 +136,7 @@ diff_numstat_map() { # $1 = full.diff
 # PR.json schema post/report understand. Sets $dir/{PR.json,full.diff,reviews.json,inline.json}.
 normalize_gitlab() { # $1 = meta, $2 = changes, $3 = numstat map
   jq -n --argjson m "$1" --argjson ch "$2" --argjson ns "$3" '
-      (($ch.changes // $ch // []) | if type=="array" then . else [] end) as $files
+      ($ch | if type=="array" then . elif type=="object" then (.changes // []) else [] end | if type=="array" then . else [] end) as $files
       | ([ $files[] | . as $f
         | ($ns[($f.new_path)] // $ns[($f.old_path)] // {adds:0,dels:0}) as $s
         | {path:(if $f.new_path == "/dev/null" or $f.new_path == null then $f.old_path else $f.new_path end),
@@ -153,17 +153,18 @@ normalize_gitlab() { # $1 = meta, $2 = changes, $3 = numstat map
          draft:($m.draft // false), files:$fl,
          additions:([$fl[].additions] | add // 0), deletions:([$fl[].deletions] | add // 0)} '
 }
-normalize_gitcafe() { # $1 = meta, $2 = changes items
+normalize_gitcafe() { # $1 = meta (cafe envelope: .data.resource), $2 = diff items
   jq -n --argjson m "$1" --argjson it "$2" '
-      (($it.items // $it) | if type=="array" then . else [] end) as $files
+      ($m.data.resource // $m.data // $m) as $r
+      | ($it | if type=="array" then . elif type=="object" then (.data.items // .items // []) else [] end) as $files
       | {schema_version:"1", provider:"gitcafe",
-         number:$m.number, title:($m.title // ""), body:($m.description // ""),
-         base_ref:($m.targetBranch // ""), head_ref:($m.sourceBranch // ""),
-         base_sha:($m.observedBaseOid // ""), head_sha:($m.headOid // ""),
-         author:($m.author.handle // $m.author.login // $m.author.displayName // ""),
-         url:null,
-         state:(if $m.state == "open" or $m.state == "closed" or $m.state == "merged" then $m.state else "unknown" end),
-         draft:($m.draft // false),
+         number:$r.number, title:($r.title // ""), body:($r.description // ""),
+         base_ref:($r.targetBranch // ""), head_ref:($r.sourceBranch // ""),
+         base_sha:($r.observedBaseOid // $r.baseOid // ""), head_sha:($r.sourceOid // $r.headOid // ""),
+         author:($r.author.handle // $r.author.login // $r.author.displayName // $r.authorHandle // ""),
+         url:($m.data.url // $r.url // null),
+         state:(if $r.state == "open" or $r.state == "closed" or $r.state == "merged" then $r.state else "unknown" end),
+         draft:($r.draft // false),
          files:([$files[] | {path, status:(.status // "modified"), additions:(.additions // 0), deletions:(.deletions // 0)}]),
          additions:([$files[] | .additions] | add // 0),
          deletions:([$files[] | .deletions] | add // 0)} '
@@ -221,13 +222,14 @@ fetch_provider_bundle() { # uses globals: provider repo pr dir
     need glab
     meta=$(glab mr view "$pr" -R "$repo" -F json 2>"$dir/.meta.err") || fail "fetch-failed" "glab mr view failed for $repo!$pr: $(head -c 200 "$dir/.meta.err") (auth? iid?)"
     pid=$(glab api "projects/$(jq -sRr @uri <<<"$repo")" --jq .id 2>/dev/null) || fail "fetch-failed" "cannot resolve GitLab project id for $repo"
-    changes=$(glab api "projects/$pid/merge_requests/$pr/changes" --paginate 2>/dev/null || echo '{"changes":[]}')
+    # /changes deprecated since 15.7, removal in API v5: prefer /diffs, keep /changes fallback
+    changes=$(glab api "projects/$pid/merge_requests/$pr/diffs" --paginate 2>/dev/null || glab api "projects/$pid/merge_requests/$pr/changes" --paginate 2>/dev/null || echo '{"changes":[]}')
     echo "» glab mr diff -> $dir/full.diff"
     glab mr diff "$pr" -R "$repo" --raw > "$dir/full.diff" 2>"$dir/.diff.err" || fail "fetch-failed" "glab mr diff failed: $(head -c 200 "$dir/.diff.err")"
     notes=$(glab mr note list "$pr" -R "$repo" -F json 2>/dev/null || echo "[]")
     nn=$(jq 'if type=="array" then . else (.notes // .discussions // []) end' <<<"$notes" 2>/dev/null || echo "[]")
-    printf '%s' "$nn" | jq '[.[] | select(.type == "DiffNote")]' > "$dir/inline.json" 2>/dev/null || echo "[]" > "$dir/inline.json"
-    printf '%s' "$nn" | jq '[.[] | select(.type != "DiffNote")]' > "$dir/reviews.json" 2>/dev/null || echo "[]" > "$dir/reviews.json"
+    printf '%s' "$nn" | jq '[.[] | select(.type == "DiffNote" or any(.notes[]?; .type == "DiffNote"))]' > "$dir/inline.json" 2>/dev/null || echo "[]" > "$dir/inline.json"
+    printf '%s' "$nn" | jq '[.[] | select(.type != "DiffNote" and all(.notes[]?; .type != "DiffNote"))]' > "$dir/reviews.json" 2>/dev/null || echo "[]" > "$dir/reviews.json"
     ns=$(diff_numstat_map "$dir/full.diff")
     normalize_gitlab "$meta" "$changes" "$ns" > "$dir/PR.json" || fail "fetch-failed" "could not normalize GitLab MR $pr"
     ;;
@@ -235,12 +237,26 @@ fetch_provider_bundle() { # uses globals: provider repo pr dir
     need cafe
     meta=$(cafe pr view "$pr" -R "$repo" --json 2>"$dir/.meta.err") || fail "fetch-failed" "cafe pr view failed: $(head -c 200 "$dir/.meta.err") (auth? number?)"
     items=$(cafe pr diff "$pr" -R "$repo" --patch --json 2>"$dir/.diff.err") || fail "fetch-failed" "cafe pr diff failed: $(head -c 200 "$dir/.diff.err")"
-    jq -r '[(.items // . // [])[] | "diff --git a/\(.path) b/\(.path)", (if ((.patch // "") | contains("@@")) then .patch else "" end)] | join("\n")' <<<"$items" > "$dir/full.diff"
+    jq -r '[(. | if type=="array" then . elif type=="object" then (.data.items // .items // []) else [] end)[] | "diff --git a/\(.path) b/\(.path)", (if ((.patch // "") | contains("@@")) then .patch else "" end)] | join("\n")' <<<"$items" > "$dir/full.diff"
+    nh=$(jq '[(. | if type=="array" then . elif type=="object" then (.data.items // .items // []) else [] end)[] | select(((.patch // "") | contains("@@") | not) and (.hunks != null))] | length' <<<"$items" 2>/dev/null || echo 0)
+    [[ "$nh" != "0" ]] && warn "$nh cafe files carry structured hunks the builder does not render — anchors unchecked for those paths"
     grep -q '^@@' "$dir/full.diff" 2>/dev/null || warn "no hunks indexed from cafe patch — anchors unchecked, everything kept"
-    revs=$(cafe pr reviews "$pr" -R "$repo" --json 2>/dev/null || echo "[]")
-    jq 'if type=="array" then . else (.reviews // []) end' <<<"$revs" > "$dir/reviews.json" 2>/dev/null || echo "[]" > "$dir/reviews.json"
-    cmts=$(cafe pr comments "$pr" -R "$repo" --filter all --json 2>/dev/null || echo "[]")
-    jq 'if type=="array" then . else (.comments // []) end' <<<"$cmts" > "$dir/inline.json" 2>/dev/null || echo "[]" > "$dir/inline.json"
+    revs="[]"; cursor=""; for _ in $(seq 1 20); do
+      rargs=(); [[ -n "$cursor" ]] && rargs=(--cursor "$cursor")
+      page=$(cafe pr reviews "$pr" -R "$repo" --json "${rargs[@]}" 2>/dev/null || echo '{}')
+      revs=$(jq -n --argjson a "$revs" --argjson b "$(jq '.data.items // .items // []' <<<"$page" 2>/dev/null || echo '[]')" '$a + $b')
+      cursor=$(jq -r '.data.next // .next // empty' <<<"$page" 2>/dev/null || true)
+      [[ -z "$cursor" ]] && break
+    done
+    printf '%s' "$revs" > "$dir/reviews.json"
+    cmts="[]"; cursor=""; for _ in $(seq 1 20); do
+      cargs=(); [[ -n "$cursor" ]] && cargs=(--cursor "$cursor")
+      page=$(cafe pr comments "$pr" -R "$repo" --filter all --json "${cargs[@]}" 2>/dev/null || echo '{}')
+      cmts=$(jq -n --argjson a "$cmts" --argjson b "$(jq '.data.items // .items // []' <<<"$page" 2>/dev/null || echo '[]')" '$a + $b')
+      cursor=$(jq -r '.data.next // .next // empty' <<<"$page" 2>/dev/null || true)
+      [[ -z "$cursor" ]] && break
+    done
+    printf '%s' "$cmts" > "$dir/inline.json"
     normalize_gitcafe "$meta" "$items" > "$dir/PR.json" || fail "fetch-failed" "could not normalize GitCafe PR $pr"
     ;;
   forgejo)
@@ -270,13 +286,13 @@ fetch_provider_bundle() { # uses globals: provider repo pr dir
     curl -sfL "${auth[@]}" "$base/diff" > "$dir/full.diff" 2>"$dir/.diff.err" || fail "fetch-failed" "bitbucket diff failed: $(head -c 200 "$dir/.diff.err")"
     ds="[]"; url="$base/diffstat?pagelen=100"
     while [[ -n "$url" && "$url" != "null" ]]; do
-      page=$(curl -sf "${auth[@]}" "$url" 2>/dev/null || echo '{}')
+      page=$(curl -sfL "${auth[@]}" "$url" 2>/dev/null || echo '{}')
       ds=$(jq -n --argjson a "$ds" --argjson b "$(jq '.values // []' <<<"$page")" '$a + $b')
       url=$(jq -r '.next // empty' <<<"$page")
     done
     cm="[]"; url="$base/comments?pagelen=100"
     while [[ -n "$url" && "$url" != "null" ]]; do
-      page=$(curl -sf "${auth[@]}" "$url" 2>/dev/null || echo '{}')
+      page=$(curl -sfL "${auth[@]}" "$url" 2>/dev/null || echo '{}')
       cm=$(jq -n --argjson a "$cm" --argjson b "$(jq '.values // []' <<<"$page")" '$a + $b')
       url=$(jq -r '.next // empty' <<<"$page")
     done
