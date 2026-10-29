@@ -7,6 +7,12 @@
 1. **Task list** as first action.
 2. **Checkout / context.** Run `./scripts/review.sh fetch owner/repo N`
    (writes `.review/N/PR.json`, `.review/N/full.diff`, `.review/N/toc.txt`).
+   Non-GitHub host: add `--provider gitlab|gitcafe|forgejo|bitbucket|azure`
+   (same bundle shape, `PR.json` normalized; `record`, `report` and `triage`
+   work on provider bundles — only `post` and `calibrate` refuse them for now).
+   Local variant: `fetch-local owner/repo <name>` writes `.review/local-<name>/`
+   with `source.json` instead of `PR.json` — no `reviews.json`/`inline.json`
+   exist, so skip thread-context reads entirely. Absence of threads is not signal.
    Read the **complete raw diff end-to-end**, using TOC file line ranges as coverage checklist.
    Done when every TOC range has been read — an unread range is how findings get missed.
 3. **Triage.** Orient: what kind of thing is this (domain, seams crossed, external contracts,
@@ -66,7 +72,7 @@
 details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
-7. **Submit.** Write exactly one `.review/N/review.json` with `{body, approved, comments[]}` (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); `post` validates anchors, merges the findings store, and submits. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
+7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); `post` validates anchors, merges the findings store, and submits. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
    Track coverage yourself against the TOC — no tool checks it; an unread range is how findings get missed.
 
 ## Review body format (Default format — at most two parts, in order)
@@ -90,7 +96,11 @@ cleanup, slow path → own inline (or `###` if no anchor) at real severity, howe
 **Blank line between every block element** (GitHub parser quirk with `<details>/<summary>` —
 without it markdown renders as literal text).
 
-### Metadata comment (fill from PR.json — never count by hand)
+### Metadata comment (fill from PR.json — or source.json for local bundles — never count by hand)
+
+Local variant: fill `head_sha_short` from `source.json` (`dirty` when the worktree
+moved since fetch), `range` instead of the commits block, and
+`- Mode: Review (local, unposted)`.
 
 ```html
 <!--

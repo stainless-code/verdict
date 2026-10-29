@@ -10,6 +10,7 @@ GitHub I/O. No servers, no external services, no daemons.
 - **Evidence-graded findings** — every finding carries an evidence rung (`said` → `reproduced`) plus severity; unproven claims are labeled, not posted as fact.
 - **Keep-biased machinery** — partitioned anchor validation, stale-SHA and double-post guards, binding verdicts behind `--bind`. One bad anchor never fails a post.
 - **Machine surface** — every verb speaks `--json` envelopes; SARIF export for scanners/CI; a `calibrate` verb that joins predictions against live ground truth.
+- **No-PR reviews** — `fetch-local` bundles the worktree, `record` merges the findings store, `adopt` carries them into a PR fetch later. Same review, no GitHub object.
 - **Any model** — the invoker is the review model; lenses can run cheaper. No model pins, no slugs.
 
 Full manual: [`docs/manual.md`](docs/manual.md). Vision and strategy: [`docs/vision.md`](docs/vision.md).
@@ -52,6 +53,11 @@ export GH_TOKEN=...   # or gh auth login
 ./scripts/review.sh triage owner/repo 123 --sig <sig8> --status wont-fix --rationale "..."
 ./scripts/review.sh report owner/repo 123         # ranked read, no network
 ./scripts/review.sh calibrate owner/repo 123      # predictions vs ground truth
+
+# no PR? same review against the worktree (never posts)
+./scripts/review.sh fetch-local owner/repo work   # bundle: git diff, no GitHub
+# feed SKILL.md + prompts/system.md + prompts/review.md + the bundle to any agent
+./scripts/review.sh record owner/repo local-work  # validate anchors, merge store
 ```
 
 ## Layout
@@ -65,7 +71,7 @@ verdict/
   apps/docs/          # Blume docs site (index + manual mirror) — deploys to /verdict/
   docs/vision.md      # what it is, strategy; narrative lives on the site
   prompts/            # system, review, incremental, address, fix-ci, build, ci, subagent
-  scripts/review.sh   # fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate
+  scripts/review.sh   # fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt
 ```
 
 ## Updating

@@ -59,6 +59,16 @@ Order matters, so follow the steps.
     Then review with `prompts/incremental-review.md` instead of `prompts/review.md`.
     Recorded findings are never re-reported. Threads retire by rule.
   </Step>
+  <Step title="No PR? Review the worktree">
+    ```bash
+    ./scripts/review.sh fetch-local owner/repo work
+    ./scripts/review.sh record owner/repo local-work
+    ```
+    Same review, no GitHub object: bundle the worktree (`--staged`, `--range`,
+    `--base`, and `--stash` variants exist), review it the same way, and `record`
+    merges the findings store instead of posting. `adopt` carries the findings
+    into a PR fetch later.
+  </Step>
 </Steps>
 
 ## What you got
@@ -68,7 +78,10 @@ rung and every comment anchored to a real hunk. Humans spend their attention on 
 hard parts.
 
 <CardGroup cols={2}>
-  <Card title="Manual" href="/manual">
+  <Card
+    title="Manual"
+    href="https://github.com/stainless-code/verdict/blob/main/docs/manual.md"
+  >
     Every verb, the store schema, and the doctrines.
   </Card>
   <Card title="Why Verdict" href="/why-verdict">

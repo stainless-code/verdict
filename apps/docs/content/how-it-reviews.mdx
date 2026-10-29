@@ -34,8 +34,9 @@ is: skeptical of its own doubts, strict about its claims.
 ## Stable memory
 
 Findings carry line-number-free signatures with status and append-only history, so a
-rebase never orphans them. Incremental re-reviews dedupe by signature: recorded
-findings are not re-reported unless the delta changes them. Threads retire by rule
+rebase never orphans them. Signatures are versioned (`sig_version`, specced in the
+manual) — the cross-run join key for deltas, calibration, and external policy tools.
+Incremental re-reviews dedupe by signature: recorded findings are not re-reported unless the delta changes them. Threads retire by rule
 (reformat is not addressed, human threads untouched). Deferred work is explicit,
 never silent.
 
@@ -46,7 +47,7 @@ fixes, human agreement. Accuracy is a number from your own history, not a claim 
 landing page. That loop is also the product's moat: every calibration run voluntarily
 contributes tuning data no warehouse-bound SaaS can collect.
 
-The full operator reference is the [manual](/manual).
+The full operator reference is the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md).
 
 <CardGroup cols={2}>
   <Card title="Comparison" href="/comparison">

@@ -16,11 +16,19 @@ the model is whatever agent you invoke.
 # Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt.
 
 # 2. Review with any agent. Load prompts/system.md, then the one mode file
-#    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
+#    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
 
 # 3. Post. Done when exactly one review lands — one review.json, one post call.
 ./scripts/review.sh post owner/repo 123 --approve=false
 ```
+
+Local changes (no PR): `./scripts/review.sh fetch-local owner/repo work
+[--staged] [--range A..B] [--base R] [--stash [n]] [-- paths...]` writes
+`.review/local-work/` (source.json instead of PR.json), the bundle is reviewed
+the same way, and `./scripts/review.sh record owner/repo local-work` merges it
+to `findings.json` — read with `report`, never `post` (no PR target).
+`adopt owner/repo 123 --from local-work` carries a local review into a fresh
+PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
 Between runs the operator may run `./scripts/review.sh triage …` (status changes), `report`
 (ranked read), or `calibrate` (predictions vs ground truth); agents never call `triage` — they propose via `triage[]`.
@@ -30,15 +38,16 @@ then load `prompts/incremental-review.md` instead of `prompts/review.md`.
 
 ## Mode router
 
-| Ask                                   | Load                            | Terminal write                     |
-| ------------------------------------- | ------------------------------- | ---------------------------------- |
-| Review a PR                           | `prompts/review.md`             | one review                         |
-| New commits landed                    | `prompts/incremental-review.md` | one review OR no-review note       |
-| Address review threads                | `prompts/address-reviews.md`    | commit/push + one reply per thread |
-| Fix failing CI                        | `prompts/fix-ci.md`             | commit/push + summary              |
-| Implement / build                     | `prompts/build.md`              | commit/push + PR link              |
-| Draft a review report without posting | `prompts/ci.md`                 | report markdown file, no post      |
-| Anything else                         | `prompts/system.md` + task text | summary stdout                     |
+| Ask                                   | Load                                       | Terminal write                         |
+| ------------------------------------- | ------------------------------------------ | -------------------------------------- |
+| Review a PR                           | `prompts/review.md`                        | one review                             |
+| Review local changes (no PR)          | `prompts/review.md` + `source.json` bundle | `record`, then `report` — never `post` |
+| New commits landed                    | `prompts/incremental-review.md`            | one review OR no-review note           |
+| Address review threads                | `prompts/address-reviews.md`               | commit/push + one reply per thread     |
+| Fix failing CI                        | `prompts/fix-ci.md`                        | commit/push + summary                  |
+| Implement / build                     | `prompts/build.md`                         | commit/push + PR link                  |
+| Draft a review report without posting | `prompts/ci.md`                            | report markdown file, no post          |
+| Anything else                         | `prompts/system.md` + task text            | summary stdout                         |
 
 `prompts/system.md` loads on every run. `prompts/reviewer-subagent.md` is the
 contract for lens subagents the Review modes dispatch — the orchestrator reads it

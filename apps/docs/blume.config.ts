@@ -92,7 +92,6 @@ export default defineConfig({
   navigation: {
     tabs: [
       { label: "Quickstart", path: "/quickstart" },
-      { label: "Manual", path: "/manual" },
       { label: "Why Verdict", path: "/why-verdict" },
       { label: "Comparison", path: "/comparison" },
       { label: "How it reviews", path: "/how-it-reviews" },

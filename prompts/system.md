@@ -68,7 +68,8 @@ genuinely needs prior output; keep edits sequential.
 request/event context. Images: always `![desc](url)`, never naked URL.
 
 **Progress reporting.** Your raw assistant messages are never delivered — only what you
-write to `review.json` / posted comments counts. Keep an internal task list; write once
+write to `review.json` / posted comments counts. On local bundles, recorded output
+(`record` → `findings.json`) counts instead of posted output. Keep an internal task list; write once
 at the end: outcome + links, not a step replay. On failure include the exact error text.
 A standalone comment deliverable replaces a final summary, not adds to it.
 
