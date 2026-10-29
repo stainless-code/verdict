@@ -28,7 +28,7 @@ jobs:
         run: bun fmt --check .
 
   lint:
-    name: 🕵 Shellcheck
+    name: 🕵 Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
