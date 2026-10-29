@@ -591,8 +591,8 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
   echo "done: $dir/PR.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($files files)"
     echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + $dir/PR.json + $dir/full.diff (+ $dir/roles.txt) to any agent; ask it to write $dir/review.json"
     if [[ "$json_mode" == "true" ]]; then
-      jq -n --arg d "$dir" --arg hs "$(jq -r '.headRefOid // empty' "$dir/PR.json")" \
-        --arg bs "$(jq -r '.baseRefOid // empty' "$dir/PR.json")" --argjson files "$(jq '.files | length' "$dir/PR.json")" \
+      jq -n --arg d "$dir" --arg hs "$(pr_field "$dir" head_sha)" \
+        --arg bs "$(pr_field "$dir" base_sha)" --argjson files "$(jq '.files | length' "$dir/PR.json")" \
         --argjson adds "$(jq '.additions // 0' "$dir/PR.json")" --argjson dels "$(jq '.deletions // 0' "$dir/PR.json")" \
         --argjson hunks "$({ grep '^@@' "$dir/full.diff" || true; } | wc -l | tr -d ' ')" \
         --argjson omitted "$(to_json_array "$omitted")" \
@@ -1062,9 +1062,14 @@ if [[ "$cmd" == "adopt" ]]; then
     '[.[] | . + {lastSeen:$sha, history:(.history + [{at:$now, event:"adopted", actor:"script", note:("from " + $from)}])}]' "$from_dir/findings.json")
   reanchored=$(jq -c '.[]' <<<"$entries" | while IFS= read -r e; do
     p=$(jq -r '.path // empty' <<<"$e"); line=$(jq -r '.line // empty' <<<"$e")
+    side=$(jq -r '.side // "RIGHT"' <<<"$e" | tr '[:lower:]' '[:upper:]'); start=$(jq -r '.start_line // empty' <<<"$e")
     if [[ -z "$p" || -z "$line" ]] || ! [[ "$line" =~ ^[0-9]+$ ]]; then printf '%s\n' "$e"; continue; fi
+    [[ -z "$start" ]] && start="$line"
+    if ! [[ "$start" =~ ^[0-9]+$ ]]; then printf '%s\n' "$e"; continue; fi
+    if (( start > line )); then tmp="$start"; start="$line"; line="$tmp"; fi
+    want="NEW"; [[ "$side" == "LEFT" ]] && want="OLD"
     key="$p"; [[ "$key" == a/* || "$key" == b/* ]] && key="${key:2}"
-    if awk -F'\t' -v f="$key" -v a="$line" -v b="$line" '$1==f && $2=="NEW" && $3<=a && b<=$4 {found=1; exit} END{exit !found}' "$dir/hunks.tsv"; then
+    if awk -F'\t' -v f="$key" -v w="$want" -v a="$start" -v b="$line" '$1==f && $2==w && $3<=a && b<=$4 {found=1; exit} END{exit !found}' "$dir/hunks.tsv"; then
       printf '%s\n' "$e"
     else
       jq -c '.anchored = false' <<<"$e"
