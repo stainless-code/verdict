@@ -25,9 +25,9 @@ Pick one route per machine (two copies = double-loaded skill):
 ```bash
 # registry (copies files; -g installs globally, omit for project-local)
 npx skills add stainless-code/verdict -g
-# refresh registry copies any time
-npx skills update       # project scope (global when run outside a project)
-npx skills update -g    # global skills
+# refresh registry copies any time (filters match skill names, not owner/repo)
+npx skills check    # report outdated, change nothing
+npx skills update   # update everything in scope (add -g for global)
 
 # source install (symlink; `git pull` updates, no updater daemon by design)
 git clone https://github.com/stainless-code/verdict.git
