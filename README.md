@@ -34,7 +34,18 @@ cd verdict
 `install.sh` runs `doctor` first and links into the skill dirs of the major
 harnesses (`~/.agents`, `~/.claude`, `~/.cursor`, `~/.config/opencode`,
 `~/.copilot`, `~/.gemini`, `~/.config/goose`, `~/.qwen`, `~/.codeium/windsurf`;
-skips occupied slots, never overwrites). Anything else on the
+skips occupied slots, never overwrites without `--force`, never touches a
+foreign `core.hooksPath`). Scoped management without reinstalling everything:
+
+```bash
+./install.sh --agent cursor            # link one harness
+./install.sh --list                    # link status, no changes
+./install.sh --check                   # doctor + verify links
+./install.sh --uninstall               # remove our links (foreign files untouched)
+./install.sh --uninstall --agent cursor
+```
+
+Anything else on the
 [agent list](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)
 is one `npx skills add -a <agent>` away.
 
