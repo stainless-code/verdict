@@ -125,8 +125,8 @@ Additive store changes only within a major. See the changelog at the bottom of
 ## Formatting
 
 Markdown is normalized with one-shot `bun fmt` runs and human review. Tables and JSON
-blocks stay tidy, and prompt examples are never reflowed. No formatter config is committed
-(Bun is already the house runtime): prose line length is intentionally unmanaged
+blocks stay tidy, and prompt examples are never reflowed. We commit no formatter config
+(Bun is already the house runtime); we leave prose line length unmanaged
 (renderers and agents don't care).
 Contributors: run `bun fmt --check .` before pushing; fix only what it flags outside
 `prompts/` examples. `install.sh` wires `hooks/pre-commit` (check-only, never rewrites),
