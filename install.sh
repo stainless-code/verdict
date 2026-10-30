@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 # verdict installer: doctor-gated symlink into harness skill dirs.
 # Mini `npx skills` for this repo: link, list, check, uninstall — one skill, no
-# registry. Bare run links every harness (skipping occupied slots); narrow with
-# --agent. No auto-updater by design — `git pull` keeps symlinked installs current.
+# registry. Bare run links every known harness (skipping occupied slots); narrow
+# with --agent, or point at any present-or-future agent dir with --dir. No
+# auto-updater by design — `git pull` keeps symlinked installs current.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
+TAB="$(printf '\t')"
 
 usage() {
   cat <<EOF
-usage: install.sh [--agent NAME]... [--all] [--force] [--uninstall] [--list] [--check] [--help]
+usage: install.sh [--agent NAME]... [--dir PATH]... [--all] [--force] [--uninstall] [--list] [--check] [--help]
 
   (no flags)     link into every known harness dir (skips occupied slots)
   --agent NAME   only this harness (repeatable): agents claude cursor opencode
                  copilot gemini goose qwen windsurf
-  --all          every harness (the default)
+  --dir PATH     extra skills dir (repeatable, absolute path) — any agent,
+                 present or future, that keeps skills in a directory
+  --all          every known harness (the default)
   --force        replace occupied non-directory slots; override foreign hooksPath
   --uninstall    remove our links in scope (never touches foreign files)
   --list         show link status in scope; no changes, no doctor
@@ -44,14 +48,29 @@ agent_dir() { # $1 = name; prints its skills dir
 }
 
 SCOPE=""
+DIRS=""
 FORCE=0
 MODE="install"
 while [ $# -gt 0 ]; do
   case "$1" in
     --agent)
       [ $# -ge 2 ] || die "--agent needs a name"
-      agent_dir "$2" >/dev/null || die "unknown agent: $2"
+      agent_dir "$2" >/dev/null || die "unknown agent: $2 (try --dir PATH)"
       SCOPE="$SCOPE $2"
+      shift 2
+      ;;
+    --dir)
+      [ $# -ge 2 ] || die "--dir needs a path"
+      case "$2" in
+        /*) ;;
+        *) die "--dir needs an absolute path: $2" ;;
+      esac
+      if [ -n "$DIRS" ]; then
+        DIRS="$DIRS
+$2"
+      else
+        DIRS="$2"
+      fi
       shift 2
       ;;
     --all)
@@ -68,17 +87,31 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$SCOPE" ] || SCOPE="agents claude cursor opencode copilot gemini goose qwen windsurf"
 
-if [ "$MODE" = "list" ]; then
+scope_list() { # prints "label<TAB>dir" lines for names + raw dirs
+  local a d
   for a in $SCOPE; do
-    d="$(agent_dir "$a")/verdict"
-    if [ -L "$d" ] && [ "$(readlink "$d")" = "$SRC" ]; then
-      echo "linked:   $a ($d)"
-    elif [ -e "$d" ] || [ -L "$d" ]; then
-      echo "occupied: $a ($d — not our link)"
-    else
-      echo "absent:   $a"
-    fi
+    printf '%s\t%s\n' "$a" "$(agent_dir "$a")"
   done
+  if [ -n "$DIRS" ]; then
+    while IFS= read -r d; do
+      [ -n "$d" ] || continue
+      printf '%s\t%s\n' "$d" "$d"
+    done <<<"$DIRS"
+  fi
+}
+
+if [ "$MODE" = "list" ]; then
+  while IFS= read -r line; do
+    label="${line%%$TAB*}"
+    d="${line#*$TAB}"
+    if [ -L "$d/verdict" ] && [ "$(readlink "$d/verdict")" = "$SRC" ]; then
+      echo "linked:   $label ($d)"
+    elif [ -e "$d/verdict" ] || [ -L "$d/verdict" ]; then
+      echo "occupied: $label ($d/verdict — not our link)"
+    else
+      echo "absent:   $label"
+    fi
+  done <<<"$(scope_list)"
   exit 0
 fi
 
@@ -88,29 +121,31 @@ fi
 
 if [ "$MODE" = "uninstall" ]; then
   n=0
-  for a in $SCOPE; do
-    d="$(agent_dir "$a")/verdict"
-    if [ -L "$d" ] && [ "$(readlink "$d")" = "$SRC" ]; then
-      rm "$d" && echo "removed: $a" && n=$((n + 1))
+  while IFS= read -r line; do
+    label="${line%%$TAB*}"
+    d="${line#*$TAB}"
+    if [ -L "$d/verdict" ] && [ "$(readlink "$d/verdict")" = "$SRC" ]; then
+      rm "$d/verdict" && echo "removed: $label" && n=$((n + 1))
     else
-      echo "skip: $a (not our link)"
+      echo "skip: $label (not our link)"
     fi
-  done
+  done <<<"$(scope_list)"
   echo "done: removed $n link(s)."
   exit 0
 fi
 
 if [ "$MODE" = "check" ]; then
   bad=0
-  for a in $SCOPE; do
-    d="$(agent_dir "$a")/verdict"
-    if [ -L "$d" ] && [ "$(readlink "$d")" = "$SRC" ]; then
-      echo "ok: $a"
+  while IFS= read -r line; do
+    label="${line%%$TAB*}"
+    d="${line#*$TAB}"
+    if [ -L "$d/verdict" ] && [ "$(readlink "$d/verdict")" = "$SRC" ]; then
+      echo "ok: $label"
     else
-      echo "FAIL: $a ($d missing or foreign)"
+      echo "FAIL: $label ($d/verdict missing or foreign)"
       bad=$((bad + 1))
     fi
-  done
+  done <<<"$(scope_list)"
   [ "$bad" = 0 ] || exit 1
   echo "check: scope ok."
   exit 0
@@ -118,10 +153,9 @@ fi
 
 linked=0
 skipped=0
-link_into() { # $1 = agent name
-  dir="$(agent_dir "$1")"
-  dest="$dir/verdict"
-  mkdir -p "$dir"
+link_into() { # $1 = label, $2 = dir
+  mkdir -p "$2"
+  dest="$2/verdict"
   if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$SRC" ]; then
     echo "ok: $1 already linked"
     linked=$((linked + 1))
@@ -155,6 +189,10 @@ wire_hooks() {
   fi
 }
 
-for a in $SCOPE; do link_into "$a"; done
+while IFS= read -r line; do
+  label="${line%%$TAB*}"
+  d="${line#*$TAB}"
+  link_into "$label" "$d"
+done <<<"$(scope_list)"
 wire_hooks
 echo "done: $linked linked, $skipped skipped. update anytime: git -C \"$SRC\" pull (symlinks stay current)."

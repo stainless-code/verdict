@@ -39,6 +39,7 @@ foreign `core.hooksPath`). Scoped management without reinstalling everything:
 
 ```bash
 ./install.sh --agent cursor            # link one harness
+./install.sh --dir ~/.foo/skills       # link any other agent's skills dir
 ./install.sh --list                    # link status, no changes
 ./install.sh --check                   # doctor + verify links
 ./install.sh --uninstall               # remove our links (foreign files untouched)
