@@ -42,6 +42,8 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     refuse on unexpected dirt (own .review/ scratch ignored). No network. Machine clean-tree gate for mutating modes.
   verify <owner/repo> <pr> [--timeout <secs, default 300>] [--json]
     execute patch.json verifyCmd with a watchdog, record exit + tail into the patch record.
+    Runs in its own process group (timeout kills the tree); known secret values
+    are redacted from the recorded tail.
     Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.
   doctor [--json]
     preflight the harness: gh auth + scopes, jq, hash tooling, git, API reachability.
@@ -1383,7 +1385,13 @@ if [[ "$cmd" == "verify" ]]; then
   if ! [[ "$timeout_s" =~ ^[0-9]+$ ]] || (( timeout_s <= 0 )); then fail "bad-timeout" "timeout must be a positive number of seconds"; fi
   echo "» verify: $vcmd (timeout ${timeout_s}s)"
   : > "$dir/.verify.out"; : > "$dir/.verify.timeout"
+  # Own process group so the timeout kill stops the whole tree: a backgrounded
+  # child would otherwise survive and its exit 0 get recorded as proof.
+  # Monitor mode assigns the background job its own pgid on Linux and macOS
+  # (no setsid(1) on macOS); restored immediately after spawn.
+  set -m
   bash -c "$vcmd" >"$dir/.verify.out" 2>&1 & vpid=$!
+  set +m
   # Polling watchdog (portable, orphan-free): no background sleeper exists to outlive
   # us holding pipes open. Needs ps(1) to spot zombies (finished-but-unreaped reads
   # alive under kill -0); without ps the timeout cannot be enforced — say so loudly.
@@ -1398,14 +1406,45 @@ if [[ "$cmd" == "verify" ]]; then
       sleep 1; elapsed=$(( elapsed + 1 ))
     done
     if [[ -n "$alive" ]]; then
-      kill -9 "$vpid" 2>/dev/null || true
+      kill -9 -- "-$vpid" 2>/dev/null || true
       timed_out="true"; echo "timeout after ${timeout_s}s" > "$dir/.verify.timeout"
     fi
   else
     warn "no ps(1) — timeout unenforced for this run"
   fi
   vcode=0; wait "$vpid" || vcode=$?
+  # Post-reap sweep: a parent that exits fast can leave the tree running
+  # (decoy exit), which the poll loop never sees. If the group outlives the
+  # parent, stop it and refuse the proof — an unverified tree is not a verified
+  # one. Grace period lets legitimate stragglers (log flushers) finish instead
+  # of tripping the mark. Deliberate setsid(1) escapers leave the group and stay
+  # out of reach; containment beyond this is documented as out of scope.
+  if kill -0 -- "-$vpid" 2>/dev/null; then
+    sleep 2
+    if kill -0 -- "-$vpid" 2>/dev/null; then
+      kill -9 -- "-$vpid" 2>/dev/null || true
+      timed_out="true"
+      echo "orphaned command tree killed after exit" > "$dir/.verify.timeout"
+    fi
+  fi
   tail4k=$(tail -c 4000 "$dir/.verify.out")
+  # Redact known secret values from the recorded tail (hygiene, not a boundary:
+  # the command itself runs with full env). Names are matched, values replaced —
+  # names never appear in output. Empty and short (<8 char) values skipped: an
+  # empty pattern would match everywhere, short ones collide with prose. Values
+  # with glob characters may over-redact; that errs toward hiding, never leaking.
+  # The full .verify.out keeps raw output for operator debugging; only the
+  # recorded tail is filtered. compgen enumerates names (multiline-safe).
+  # (Suffixes already cover GH_TOKEN-style names; only non-matching stragglers
+  # are listed exactly.)
+  while IFS= read -r _sv; do
+    case "$_sv" in
+      *_TOKEN|*_SECRET|*_KEY|*_PASSWORD|*_PASSPHRASE|TOKEN|SECRET|KEY|PASSWORD|AWS_ACCESS_KEY_ID|SSH_AUTH_SOCK|SSH_AGENT_PID)
+        _vv="${!_sv}"
+        if [[ -n "$_vv" && "${#_vv}" -ge 8 ]]; then tail4k=${tail4k//"$_vv"/'***REDACTED***'}; fi;;
+    esac
+  done < <(compgen -A variable)
+  unset _sv _vv
   echo "» exit=$vcode timed_out=$timed_out"
   jq --argjson exit "$vcode" --argjson to "$timed_out" --arg now "$now" --arg tail "$tail4k" \
     '. + {verifyExit:$exit, verifiedAt:$now, timedOut:$to, verifiedTail:$tail}' \
@@ -1415,7 +1454,7 @@ if [[ "$cmd" == "verify" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --argjson e "$vcode" \
       --argjson to "$timed_out" --arg tail "$tail4k" --arg d "$dir" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
-        next:(if $e == 0 then "proof holds — revalidator may VERIFY" else "proof failed — fix, do not claim" end),
+        next:(if $e == 0 and $to == false then "proof holds — revalidator may VERIFY" else "proof failed — fix, do not claim" end),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{exit:$e,timedOut:$to,outputTail:$tail,patch:$d},error:null}' >&9
   fi
   exit 0
