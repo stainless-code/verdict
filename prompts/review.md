@@ -7,6 +7,10 @@
 1. **Task list** as first action.
 2. **Checkout / context.** Run `./scripts/review.sh fetch owner/repo N`
    (writes `.review/N/PR.json`, `.review/N/full.diff`, `.review/N/toc.txt`).
+   Then run `./scripts/review.sh ready owner/repo N` — on `review`, review;
+   on `nudge-author`, post a short nudge naming the blockers instead of reviewing;
+   on `wait` (draft/closed/merged — nothing actionable), hold: do not review
+   and do not nudge.
    Non-GitHub host: add `--provider gitlab|gitcafe|forgejo|bitbucket|azure`
    (same bundle shape, `PR.json` normalized; `record`, `report` and `triage`
    work on provider bundles — only `post` and `calibrate` refuse them for now).
@@ -74,6 +78,26 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
    `pointed`, say so.
 7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); `post` validates anchors, merges the findings store, and submits. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
    Track coverage yourself against the TOC — no tool checks it; an unread range is how findings get missed.
+8. **Cost record.** With every `review.json`, write `.review/N/cost.json`
+   (local: `.review/local-<name>/cost.json`) — your self-reported spend for
+   this run. `report --cost` rolls it up; a missing record never fails anything,
+   so an honest partial beats a polished nothing. One entry per model that
+   generated tokens — you first, then each lens. `est_usd` is your own math
+   from your price sheet, `null` when you don't know prices — never guess them
+   (the script never prices).
+   ```json
+   {
+     "schema_version": "1",
+     "models": [
+       {"name": "<synthesizer model id>", "input_tokens": 0, "output_tokens": 0},
+       {"name": "<lens model id>", "input_tokens": 0, "output_tokens": 0}
+     ],
+     "wall_seconds": 0,
+     "diff_bytes": 0,
+     "lenses": ["<hypothesis-label>"],
+     "est_usd": null
+   }
+   ```
 
 ## Review body format (Default format — at most two parts, in order)
 

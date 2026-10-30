@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree [opts]
+usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready [opts]
   fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
   fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]
@@ -31,9 +31,10 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
         --rationale "..." [--force] [--dry-run]
     mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.
   report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]
-        [--output <path>] [--sarif <path>] [--json]
+        [--output <path>] [--sarif <path>] [--cost] [--json]
     pure read over the store: ranked findings + verdict + counts. No network.
     --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.
+    --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails).
   next <owner/repo> <pr> [--status open] [--json]
     top-ranked actionable finding + the command to act on it. Pure read.
   show <owner/repo> <pr> --sig <sig> [--json]
@@ -51,7 +52,11 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   calibrate <owner/repo> <pr> [--json]
     join findings against live ground truth (thread states + files changed since the
     review head). Read-only; reports outcomes + tier precision, never auto-tunes.
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree: stdout is exactly one JSON envelope (schema_version 1);
+  ready <owner/repo> <pr> [--json]
+    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,
+    description completeness. Prints blockers with actions + recommendation
+    (review/wait/nudge-author). PR bundles only; local bundles refused.
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree/ready: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -1173,12 +1178,13 @@ fi
 
 # --------------------------------------------------------------- report ---
 if [[ "$cmd" == "report" ]]; then
-  status_f="all"; kind_f="all"; output=""; sarif=""
+  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"
   while [[ $# -gt 0 ]]; do case "$1" in
     --status) status_f="${2:-all}"; shift 2;;
     --kind) kind_f="${2:-all}"; shift 2;;
     --output) output="${2:-}"; shift 2;;
     --sarif) sarif="${2:-}"; shift 2;;
+    --cost) cost="true"; shift;;
     --json) json_mode="true"; shift;;
     *) echo "unknown flag $1" >&2; exit 2;;
   esac; done
@@ -1221,6 +1227,28 @@ if [[ "$cmd" == "report" ]]; then
     anchored: ([.[] | select(.kind == "inline" and .anchored == true)] | length),
     unanchored: ([.[] | select(.kind == "inline" and .anchored != true)] | length)}' "$dir/findings.json")
   n_all_open=$(jq '[.[] | select(.status == "open")] | length' "$dir/findings.json")
+  # Cost rollup (--cost only): the agent self-reports spend into cost.json (one
+  # record per run; an array when a bundle was reviewed more than once). The
+  # script only sums — no price table lives here, it would rot. Absent or
+  # unreadable records contribute nothing and never fail the run.
+  cost_json="null"
+  if [[ "$cost" == "true" ]]; then
+    cost_zeros=$(jq -n '{runs:0,runs_with_cost:0,input_tokens:0,output_tokens:0,total_tokens:0,est_usd:null}')
+    if [[ -f "$dir/cost.json" ]]; then
+      cost_json=$(jq '
+        (if type == "array" then . else [.] end) as $runs
+        | ([$runs[] | .models // [] | .[]]) as $models
+        | {runs: ($runs | length),
+           runs_with_cost: ([$runs[] | select((.models // []) | length > 0)] | length),
+           input_tokens: ([$models[] | .input_tokens | numbers] | add // 0),
+           output_tokens: ([$models[] | .output_tokens | numbers] | add // 0),
+           est_usd: ([$runs[] | .est_usd | numbers] | if length == 0 then null else add end)}
+        | .total_tokens = (.input_tokens + .output_tokens)' "$dir/cost.json" 2>/dev/null) \
+        || { warn "cost.json unreadable — spend unrecorded for this rollup"; cost_json="$cost_zeros"; }
+    else
+      cost_json="$cost_zeros"
+    fi
+  fi
   if [[ -n "$output" ]]; then
     { echo "# Review report — $repo#$pr"; echo
       echo "<!-- report-machine:start -->"
@@ -1252,16 +1280,25 @@ if [[ "$cmd" == "report" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg d "$dir" \
       --arg hs "$head_sha" --arg bs "$base_sha" --argjson items "$ranked" --argjson counts "$counts" \
       --argjson panel "$panel_json" --arg psrc "$panel_src" --argjson patch "$patch_json" \
+      --argjson cost "$cost_json" \
       --arg o "$output" --arg sf "$status_f" --arg kf "$kind_f" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:(if $o == "" then (if ([$items[] | select(.status=="open")] | length) > 0 then "address open threads" else "none open — nothing to address" end) else "wrote \($o)" end),
-        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{generated_at:$t,dir:$d,head:{fetched:$hs,base:$bs,live:null,stale:false},
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({generated_at:$t,dir:$d,head:{fetched:$hs,base:$bs,live:null,stale:false},
         verdict:{open:([$items[] | select(.status=="open")] | length),deferred:([$items[] | select(.status=="deferred")] | length),addressed:([$items[] | select(.status=="addressed")] | length),terminal:([$items[] | select(.status=="wont-fix" or .status=="false-positive")] | length)},
         counts:$counts,panel:{source:(if $psrc=="" then null else $psrc end),members:($panel // [])},
-        patch:$patch,output:(if $o=="" then null else $o end),filters:{status:$sf,kind:$kf},items:$items},error:null}' >&9
+        patch:$patch,output:(if $o=="" then null else $o end),filters:{status:$sf,kind:$kf},items:$items}
+        + (if $cost == null then {} else {cost:$cost} end)),error:null}' >&9
   else
     echo "report: $dir ($(jq 'length' <<<"$ranked") shown) open=$n_open head=${head_sha:0:7}"
     jq -r '.[] | "\(.rank). [\(.status)] \(.locator) (\(.sig[0:8]))"' <<<"$ranked"
+    if [[ "$cost" == "true" ]]; then
+      if [[ "$(jq -r '.runs' <<<"$cost_json")" == "0" ]]; then
+        echo "cost: unrecorded (no usable $dir/cost.json — the agent writes one per prompts/review.md)"
+      else
+        echo "cost: $(jq -r '"\(.runs) run(s), \(.runs_with_cost) with records — in=\(.input_tokens) out=\(.output_tokens) total=\(.total_tokens) est_usd=\(.est_usd // "n/a")"' <<<"$cost_json")"
+      fi
+    fi
     if [[ -n "$output" ]]; then echo "wrote $output"; else
       if (( n_open > 0 )); then echo "next: address open threads"; else echo "next: none open — nothing to address"; fi
     fi
@@ -1591,6 +1628,131 @@ if [[ "$cmd" == "calibrate" ]]; then
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{review_id:($rid | tonumber? // $rid),head:{reviewed:$h0,live:$lh},
         pr:{state:$st,merged_at:(if $ma == "" then null else $ma end)},
         outcomes:$oc,precision:$pc},error:null}' >&9
+  fi
+  exit 0
+fi
+
+# ----------------------------------------------------------------- ready ---
+# Readiness advisory: is this PR worth a review right now? Read-only (one live
+# PR read, one checks read, one thread read). Exit 0 always — advice, never a
+# gate. PR bundles only; local bundles have no live checks to advise on.
+if [[ "$cmd" == "ready" ]]; then
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag $1" >&2; exit 2;;
+  esac; done
+  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  resolve_bundle_dir "$pr"
+  [[ "$dir" == .review/local-* ]] && fail "no-pr-target" "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on"
+  prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
+  if [[ "$prov" != "github" ]]; then fail "provider-unimplemented" "ready on $prov is not implemented yet (no live gh reads for it)"; fi
+  [[ -f "$dir/PR.json" ]] || fail "missing-bundle" "missing $dir/PR.json (run fetch $repo $pr first)"
+  now=$(now_utc)
+  # Staleness context from the bundle: advice reads live, the bundle only says
+  # whether fetch is behind.
+  fetched_sha=$(pr_field "$dir" head_sha)
+  live=$(gh pr view "$pr" --repo "$repo" --json isDraft,mergeable,mergeStateStatus,body,state,headRefOid 2>"$dir/.ready.err") \
+    || fail "pr-read-failed" "could not read live PR state for $repo#$pr: $(head -c 200 "$dir/.ready.err" | tr '\n' ' ')"
+  live_head=$(jq -r '.headRefOid // empty' <<<"$live")
+  if [[ -n "$fetched_sha" && -n "$live_head" && "$fetched_sha" != "$live_head" ]]; then
+    warn "bundle stale (fetched ${fetched_sha:0:7}, live ${live_head:0:7}) — re-fetch before review, advice reads live"
+  fi
+  # CI state (live). Unreadable checks are unknown, never blocking — post's
+  # preflight stays the fail-closed backstop, not this advisory.
+  checks=$(gh pr checks "$pr" --repo "$repo" --json bucket,name,state 2>/dev/null || echo "[]")
+  ci_total=$(jq '[.[]] | length' <<<"$checks" 2>/dev/null || echo 0)
+  ci_fail=$(jq '[.[] | select(.bucket == "fail")] | length' <<<"$checks" 2>/dev/null || echo 0)
+  ci_fail_names=$(jq -r '[.[] | select(.bucket == "fail") | .name] | join(", ")' <<<"$checks" 2>/dev/null || true)
+  # Open threads (live GraphQL, same read as calibrate): the bundle's
+  # reviews.json/inline.json carry no resolution flags, so counting them would
+  # mark green PRs unready — resolution state only exists live.
+  owner="${repo%%/*}"; name="${repo##*/}"
+  threads_json=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
+    query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+      repository(owner:$owner, name:$name) {
+        pullRequest(number:$pr) {
+          reviewThreads(first:100, after:$endCursor) {
+            nodes { isResolved }
+          }
+        }
+      }
+    }' 2>/dev/null | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]') \
+    || fail "threads-failed" "could not read live review threads for $repo#$pr"
+  threads_open=$(jq '[.[] | select(.isResolved == false)] | length' <<<"$threads_json" 2>/dev/null || echo 0)
+  is_draft=$(jq -r '.isDraft // false' <<<"$live")
+  mergeable=$(jq -r '.mergeable // "UNKNOWN"' <<<"$live")
+  mss=$(jq -r '.mergeStateStatus // "UNKNOWN"' <<<"$live")
+  state=$(jq -r '.state // "UNKNOWN"' <<<"$live")
+  # Description completeness: strip HTML-comment boilerplate (templates,
+  # bot summaries), squeeze whitespace, count what the author actually wrote.
+  # The awk removes <!-- --> spans (including multiline) but keeps text outside
+  # them — a range-delete would drop whole lines carrying inline comments.
+  body_len=$(jq -r '.body // ""' <<<"$live" | awk 'BEGIN{in_c=0} {line=""; rest=$0; while (length(rest)>0) { if (in_c) {e=index(rest,"-->"); if (e) {rest=substr(rest,e+3); in_c=0} else {rest=""}} else {s=index(rest,"<!--"); if (s) {line=line substr(rest,1,s-1); rest=substr(rest,s+4); in_c=1} else {line=line rest; rest=""}}} print line}' | tr -s '[:space:]' ' ' | wc -c | tr -d ' ')
+  [[ "$ci_total" =~ ^[0-9]+$ ]] || ci_total=0
+  [[ "$ci_fail" =~ ^[0-9]+$ ]] || ci_fail=0
+  [[ "$threads_open" =~ ^[0-9]+$ ]] || threads_open=0
+  [[ "$body_len" =~ ^[0-9]+$ ]] || body_len=0
+  blockers="[]"
+  if (( ci_fail > 0 )); then
+    blockers=$(jq --arg d "$ci_fail failing check(s): $ci_fail_names" --arg a "fix CI, then re-run ready" \
+      '. + [{kind:"ci-failing", detail:$d, action:$a}]' <<<"$blockers")
+  fi
+  if (( threads_open > 0 )); then
+    blockers=$(jq --arg d "$threads_open unresolved thread(s)" --arg a "address or resolve open threads, then re-run ready" \
+      '. + [{kind:"threads-open", detail:$d, action:$a}]' <<<"$blockers")
+  fi
+  if [[ "$is_draft" == "true" ]]; then
+    blockers=$(jq '. + [{kind:"draft", detail:"PR is still a draft", action:"mark ready for review when done, then re-run ready"}]' <<<"$blockers")
+  fi
+  if [[ "$mergeable" == "CONFLICTING" || "$mss" == "DIRTY" ]]; then
+    blockers=$(jq --arg d "mergeable=$mergeable mergeStateStatus=$mss" \
+      '. + [{kind:"conflict", detail:$d, action:"rebase onto base and resolve conflicts, then re-run ready"}]' <<<"$blockers")
+  fi
+  if (( body_len < 50 )); then
+    blockers=$(jq --arg d "description ~${body_len} chars (<50)" \
+      '. + [{kind:"description-thin", detail:$d, action:"expand the description (what/why/testing), then re-run ready"}]' <<<"$blockers")
+  fi
+  if [[ "$mergeable" == "UNKNOWN" && "$mss" == "UNKNOWN" ]]; then
+    warn "mergeability UNKNOWN (GitHub still computing?) — conflict treated as absent, re-run ready if this persists"
+  fi
+  n_block=$(jq 'length' <<<"$blockers")
+  ready="true"; rec="review"
+  if [[ "$state" != "OPEN" ]]; then
+    ready="false"; rec="wait"
+  elif (( n_block > 0 )); then
+    ready="false"
+    if [[ "$is_draft" == "true" ]]; then rec="wait"; else rec="nudge-author"; fi
+  fi
+  if [[ "$ready" == "true" ]]; then
+    echo "ready: yes — $repo#$pr looks reviewable (CI $ci_total checks, 0 failing; $threads_open open threads; mergeable $mergeable; body ${body_len} chars)"
+    echo "recommendation: review — fetch + review"
+  else
+    if [[ "$state" != "OPEN" ]]; then
+      echo "ready: no — $repo#$pr is $state, nothing to review"
+    else
+      echo "ready: no — $repo#$pr has $n_block blocker(s):"
+      jq -r '.[] | "- [\(.kind)] \(.detail) — action: \(.action)"' <<<"$blockers" | sed 's/^/  /'
+    fi
+    case "$rec" in
+      wait) echo "recommendation: wait — hold the review, re-run ready later";;
+      *) echo "recommendation: nudge-author — nudge the author instead of reviewing";;
+    esac
+  fi
+  if [[ "$json_mode" == "true" ]]; then
+    jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" \
+      --argjson ready "$ready" --arg rec "$rec" --argjson blockers "$blockers" \
+      --arg st "$state" --argjson draft "$is_draft" --arg m "$mergeable" --arg mss "$mss" \
+      --argjson ci_fail "$ci_fail" --argjson ci_total "$ci_total" \
+      --argjson threads_open "$threads_open" --argjson body_len "$body_len" \
+      '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
+        next:(if $rec == "review" then "fetch + review"
+              elif $rec == "wait" then "hold the review — re-run ready later"
+              else "nudge the author instead of reviewing" end),
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),
+        data:{ready:$ready,recommendation:$rec,blockers:$blockers,state:$st,draft:$draft,
+          mergeable:$m,mergeStateStatus:$mss,
+          ci:{failing:$ci_fail,total:$ci_total},threads_open:$threads_open,description_chars:$body_len},
+        error:null}' >&9
   fi
   exit 0
 fi
