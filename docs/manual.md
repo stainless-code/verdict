@@ -162,6 +162,27 @@ Compose it around the expensive step: gate `fetch`+review on `--check`
 (pre), keep `post`'s preflight as the fail-closed backstop (post) — the gate
 saves tokens, never merges.
 
+`report --check <tier>` is the missing half of machine gates: `ready --check`
+gates on CI state, this gates on findings. Same output either way; machine
+exits mirror the ready gate — 0 no open findings at-or-above tier, 1 findings
+at-or-above tier, 2 usage, 3 tool error (missing/corrupt store). The tier is a
+severity name (`critical`/`important`/`informational`; untagged findings never
+meet a tier) and only `open` findings count — dispositioned states stay human.
+
+```bash
+./scripts/review.sh report owner/repo 123 --check important
+case $? in
+  0) echo "no open important+ findings — proceed to merge";;
+  1) echo "open important+ findings — triage before merging";;
+  2) echo "usage error — check the invocation";;
+  *) echo "report itself failed (missing/corrupt store?) — inspect, then retry";;
+esac
+```
+
+Compose it after the expensive step: gate the merge on `--check critical`,
+keep `post`'s preflight as the fail-closed backstop — the gate advises,
+the human still merges.
+
 Sigs follow the Sig contract under Findings store.
 
 ## Model wiring
@@ -178,6 +199,25 @@ For arena-style parallel runs, pin the panel outside the skill: `REVIEW_PANEL` e
 used exactly in order, never substituted. Same panel every run keeps verdicts comparable
 and costs capped; no panel means the operator picks per run. Slugs live in your config
 because they rot; the skill stays name-free.
+
+### Cost control (budget, estimate, consent)
+
+Cost accounting (`report --cost`, per-run `cost.json` with effort tiers) grows teeth
+only when the operator sets a spend budget: `REVIEW_BUDGET_USD` env (wins) or a
+`.review/budget` file holding one plain USD number (`#` comments and blanks skipped).
+Unset disables the whole plane — no estimate line, no gate, no receipts.
+
+With a budget set, `fetch`/`fetch-local` print a pre-run `» estimate` line before any
+network: the most-run effort tier across comparable past runs (every
+`.review/*/cost.json` record, same tier rules as the rollup; ties break toward the
+deeper tier) and its mean `est_usd`. No history, or no priced run in the projected
+tier, reads as `unknown` — never invented, never blocking. A numeric projection over
+budget refuses with typed `budget-exceeded` unless the run carries
+`--consent-over-budget`; consented runs append one receipt to the bundle's
+`budget.json`, which `report --cost` surfaces as a `receipts:` line (and a `receipts`
+key in the JSON cost object). Threshold is the budget itself: projected above budget
+needs consent, at-or-under proceeds. Estimates cover the review run about to start,
+not the fetch reads; unknown estimates never refuse.
 
 ## Local review (no PR)
 
@@ -264,6 +304,21 @@ Read-only join (threads + one compare + PR state), keep-biased:
   Never auto-tunes thresholds — humans read the report, the script only joins.
 - Enabler: `post` records `.review/N/post.json` (`review` id, `head`, `posted_at`)
   on every real post. `calibrate` refuses without it.
+
+## Trend (portfolio outcomes over time)
+
+`trend <owner/repo>` rolls up every reviewed bundle (`.review/*/findings.json`)
+into one time series: findings opened/addressed/closed per review date, broken
+down by severity tier and status, plus per-bundle rows (review time, models and
+effort from `cost.json` when the agent wrote one). Pure read — no network,
+nothing written, recomputed every run so hand-edited stores stay truthful;
+missing or unreadable stores warn and skip, and no reviewed bundles reads as
+zeros, never an error. `closed` means no longer actionable
+(`wont-fix`/`false-positive`/`deferred`); null severity reads `untagged`,
+mirroring `report --check`; counts are per store, so adopted findings appear in
+both the local and the PR bundle. Feed for the calibration narrative: per-bundle
+models plus per-tier outcomes is the raw material for per-model tier precision
+over time — run `calibrate` on recent bundles to settle what the trend only counts.
 
 ## Out of scope by design
 

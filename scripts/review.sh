@@ -6,15 +6,20 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready [opts]
-  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]
+usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready|trend [opts]
+  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
+    With REVIEW_BUDGET_USD (or .review/budget) set, fetch prints a pre-run
+    cost estimate from comparable past runs and refuses projected-over-budget
+    runs unless --consent-over-budget is given (consent lands in budget.json,
+    surfaced by report --cost). Unset: estimate off, fetch as today.
   fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]
-        [--stash [n]] [-- paths...] [--json]
+        [--stash [n]] [--consent-over-budget] [-- paths...] [--json]
     local review bundle from git (no GitHub, no PR): writes
     .review/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.
     Same diff cap as fetch (512000 bytes); untracked/binary exclusions warn, never fail.
+    Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.
     downstream verbs address it as local-<name>; post/calibrate refuse it.
   record <owner/repo> <local-slug> [--json]
     validate + merge a local review.json into findings.json + record.json. No GitHub, no post.
@@ -33,10 +38,17 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
         --rationale "..." [--force] [--dry-run]
     mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.
   report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]
-        [--output <path>] [--sarif <path>] [--cost] [--json]
+        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--json]
     pure read over the store: ranked findings + verdict + counts. No network.
     --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.
     --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; stratified by effort tier).
+    Consented over-budget receipts from .review/<pr>/budget.json surface here when present.
+    --check <tier> opts into gating (same output, machine exits): 0 no open
+    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool
+    error (missing/corrupt store). Untagged findings never meet a tier; the
+    gate counts open findings only, whatever --status/--kind show. Without
+    --check the run stays advisory: exit 0 with findings listed (typed
+    errors exit 1, usage exits 2).
   next <owner/repo> <pr> [--status open] [--json]
     top-ranked actionable finding + the command to act on it. Pure read.
   show <owner/repo> <pr> --sig <sig> [--json]
@@ -49,8 +61,10 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     are redacted from the recorded tail.
     Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.
   doctor [--json]
-    preflight the harness: gh auth + scopes, jq, hash tooling, git, API reachability.
-    Exit 0 only when everything the skill needs is present. No repo/PR args, no network writes.
+    preflight the harness: gh auth, jq, shasum hard-fail the run; scopes, git,
+    ps, API reachability warn only (never fail); .review storage writability
+    hard-fails. Exit 0 unless a hard check fails. No repo/PR args, no writes,
+    no network beyond the existing gh reads.
   calibrate <owner/repo> <pr> [--json]
     join findings against live ground truth (thread states + files changed since the
     review head). Read-only; reports outcomes + tier precision, never auto-tunes.
@@ -61,7 +75,14 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     --check opts into gating (same output, machine exits): 0 ready, 1 blockers
     or wait, 2 usage, 3 tool error. Without --check the run stays advisory:
     exit 0 with blockers listed (typed errors exit 1, usage exits 2).
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree/ready: stdout is exactly one JSON envelope (schema_version 1);
+  trend <owner/repo> [--json]
+    portfolio rollup over existing bundle stores (no network, writes nothing):
+    findings opened/addressed/closed over time, broken down by severity tier
+    and status, with per-bundle models/effort for the calibration join.
+    Recomputed every run (manual edits stay truthful); missing/unreadable
+    stores warn and skip, never fail. `closed` means no longer actionable
+    (wont-fix/false-positive/deferred); null severity reads untagged.
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree/ready/trend: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -70,18 +91,24 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then usage; exit 0; fi
 if [[ "${1:-}" == "--version" ]]; then jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown"; exit 0; fi
 cmd="${1:-}"; shift $(( $# > 0 ? 1 : 0 ))
 repo=""; pr=""
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" ]]; then
   repo="${1:-}"; pr="${2:-}"; shift $(( $# >= 2 ? 2 : $# ))
+fi
+if [[ "$cmd" == "trend" ]]; then
+  repo="${1:-}"; shift $(( $# >= 1 ? 1 : $# ))
 fi
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need gh; need jq; need shasum
 warn() { echo "warn: $*" >&2; WARNINGS_JSON=$(jq --arg w "$*" '. + [$w]' <<<"$WARNINGS_JSON"); }
 WARNINGS_JSON="[]"; export WARNINGS_JSON
+# Machine-actionable narrower-scope candidates for the next refusal (fail()
+# carries them in the JSON envelope; additive-only — absent reads null).
+CANDIDATES_JSON="null"
 json_mode="false"
-# Gate switch for ready --check only: fail() exits 3 (tool broke) so hooks can
-# tell it apart from not-ready (exit 1). Stays false everywhere else, so every
-# other verb keeps its fail-contract exits untouched.
+# Gate switch for ready --check and report --check only: fail() exits 3 (tool
+# broke) so hooks can tell it apart from a failed gate (exit 1). Stays false
+# everywhere else, so every other verb keeps its fail-contract exits untouched.
 check_gate="false"
 
 # Fetch diff cap (bytes): fetched diffs above this refuse with a split-or-narrow
@@ -105,10 +132,12 @@ fail() {
     post-failed) hint="try: narrow anchor drift or body size (see above), then re-run";;
     diff-too-large) hint="try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch";;
     missing-*|not-a-repo|not-local|no-pr-target|no-threads|no-verify-cmd|report-failed) hint="try: run the fetch/record step named above first, then re-run";;
+    corrupt-store) hint="try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run";;
     bad-timeout) hint="try: pass --timeout <positive-seconds> (default 300)";;
     bad-approve) hint="try: pass --approve=true|false";;
     bad-review-schema) hint="try: set \"schema_version\": \"1\" in review.json";;
     approve-blocked) hint="try: triage the findings or re-run with --force";;
+    budget-exceeded) hint="try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/.review/budget";;
     duplicate-payload) hint="try: re-run with --force to repost the identical payload";;
     degenerate-body) hint="try: open with a verdict marker (see prompts/review.md), then re-run";;
     pr-not-open) hint="try: re-fetch the PR (bundle may be stale)";;
@@ -121,8 +150,11 @@ fail() {
   if [[ -n "$hint" ]]; then msg="$msg
 $hint"; fi
   if [[ "$json_mode" == "true" ]]; then
+    # Candidates ride along on the refusal that sets them (oversize fetch);
+    # every other error keeps its byte-identical envelope (additive-only).
     jq -n --arg c "$code" --arg m "$msg" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"",warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:null,error:{code:$c,message:$m}}' >&9
+      --argjson cand "${CANDIDATES_JSON:-null}" \
+      '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"",warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:null,error:{code:$c,message:$m} + (if $cand == null then {} else {candidates:$cand} end)}' >&9
   else
     echo "error: $msg" >&2
   fi
@@ -654,6 +686,113 @@ emit_context() { # $1 = dir
   fi
 }
 
+# Cost control plane: operator spend budget + pre-run estimate + consent gate.
+# Env-first like REVIEW_PANEL: REVIEW_BUDGET_USD wins, else the first usable
+# line of .review/budget (plain USD number, # comments and blanks skipped).
+# Unset (neither present) disables the whole plane — no estimate line, no
+# gate, no receipts — so default runs stay byte-identical to today.
+# Estimate: mean est_usd of the most-run effort tier across comparable past
+# runs (every .review/*/cost.json record, same tier rules as report --cost);
+# ties break toward the deeper (costlier) tier. No history, or no priced run
+# in the projected tier, reads as unknown — never invented, never blocking.
+# A numeric projection over budget refuses (typed budget-exceeded) unless the
+# run carries --consent-over-budget; consented runs append one receipt to the
+# bundle's budget.json, which report --cost surfaces.
+resolve_budget() { # sets budget_usd ("" when unset), budget_src
+  budget_usd=""; budget_src=""
+  if [[ -n "${REVIEW_BUDGET_USD:-}" ]]; then
+    budget_usd=$(printf '%s' "$REVIEW_BUDGET_USD" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    budget_src="REVIEW_BUDGET_USD"
+  elif [[ -f .review/budget ]]; then
+    budget_usd=$(grep -v '^[[:space:]]*#' .review/budget | grep -v '^[[:space:]]*$' | head -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^\$//' || true)
+    [[ -n "$budget_usd" ]] && budget_src=".review/budget"
+  fi
+  [[ -z "$budget_usd" ]] && return 0
+  [[ "$budget_usd" =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail "bad-budget" "budget '$budget_usd' from $budget_src is not a plain USD number (want e.g. REVIEW_BUDGET_USD=0.50 or a .review/budget file holding 0.50)"
+}
+
+cost_estimate() { # prints the » estimate line; sets est_tier/est_usd ("null" when unknown)/est_runs
+  est_tier=""; est_usd="null"; est_runs=0
+  recs=""; bad=""
+  for f in .review/*/cost.json; do
+    [[ -f "$f" ]] || continue
+    if r=$(jq -c '(if type == "array" then .[] else . end)
+      | {tier: ((.effort // "standard" | tostring | ascii_downcase)
+        | if . == "cheap" or . == "standard" or . == "deep" then . else "standard" end),
+        usd: (if (.est_usd | type) == "number" then .est_usd else null end)}' "$f" 2>/dev/null); then
+      recs="$recs$r
+"
+    else
+      bad="$bad$f "
+    fi
+  done
+  [[ -n "$bad" ]] && warn "cost history unreadable — skipped from estimate: $bad"
+  summary=$(printf '%s' "$recs" | jq -s '
+    map(select(.tier == "cheap" or .tier == "standard" or .tier == "deep")) as $r
+    | {runs: ($r | length),
+       pick: (["deep","standard","cheap"] | map(. as $t | {tier: $t,
+         runs: ([$r[] | select(.tier == $t)] | length),
+         mean: ([($r[] | select(.tier == $t and (.usd | type) == "number") | .usd)]
+           | if length == 0 then null else ((add / length * 10000 | round) / 10000) end)})
+         | max_by([.runs, (.mean // -1)]))}')
+  est_runs=$(jq -r '.runs // 0' <<<"$summary")
+  case "$est_runs" in ''|*[!0-9]*) est_runs=0;; esac
+  if (( est_runs == 0 )); then
+    echo "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)"
+    return 0
+  fi
+  est_tier=$(jq -r '.pick.tier' <<<"$summary")
+  tier_runs=$(jq -r '.pick.runs' <<<"$summary")
+  mean=$(jq -r '.pick.mean' <<<"$summary")
+  if [[ "$mean" == "null" ]]; then
+    echo "» estimate: tier $est_tier from $tier_runs comparable run(s) — projected cost unknown (none reported est_usd); budget \$$budget_usd ($budget_src) unenforced on unknown"
+    return 0
+  fi
+  est_usd="$mean"
+  if awk -v p="$est_usd" -v b="$budget_usd" 'BEGIN{exit !(p > b)}'; then
+    echo "» estimate: tier $est_tier ~\$$est_usd/run from $est_runs comparable run(s) — OVER budget \$$budget_usd ($budget_src)"
+  else
+    echo "» estimate: tier $est_tier ~\$$est_usd/run from $est_runs comparable run(s) — within budget \$$budget_usd ($budget_src)"
+  fi
+}
+
+budget_gate() { # $1 = "true" when --consent-over-budget passed; refuses over-budget runs without consent
+  estimate_json="null"; budget_json="null"; budget_receipt_pending="false"
+  resolve_budget
+  [[ -z "$budget_usd" ]] && return 0
+  cost_estimate
+  budget_json=$(jq -n --argjson b "$budget_usd" --arg s "$budget_src" --argjson c "$1" \
+    '{usd: $b, source: $s, consented: $c}')
+  estimate_json=$(jq -n --arg t "$est_tier" --argjson u "$est_usd" --argjson n "$est_runs" \
+    '{tier: (if $t == "" then null else $t end), projected_usd: $u, comparable_runs: $n}')
+  [[ "$est_usd" == "null" ]] && return 0
+  if awk -v p="$est_usd" -v b="$budget_usd" 'BEGIN{exit !(p > b)}'; then
+    if [[ "$1" == "true" ]]; then
+      budget_receipt_pending="true"
+    else
+      fail "budget-exceeded" "projected $est_tier run ~\$$est_usd exceeds budget \$$budget_usd ($budget_src) from $est_runs comparable run(s) — consent required before this run starts"
+    fi
+  fi
+}
+
+write_budget_receipt() { # $1 = bundle dir; no-op unless a consented over-budget gate passed
+  [[ "${budget_receipt_pending:-false}" == "true" ]] || return 0
+  rc=$(jq -n --arg t "$(now_utc)" --argjson b "$budget_usd" --arg s "$budget_src" \
+    --arg tier "$est_tier" --argjson p "$est_usd" --argjson n "$est_runs" \
+    '{at: $t, budget_usd: $b, budget_src: $s, projected_tier: $tier, projected_usd: $p, comparable_runs: $n, consent: "--consent-over-budget"}')
+  if [[ -f "$1/budget.json" ]]; then
+    if merged=$(jq --argjson r "$rc" 'if type == "array" then . + [$r] else [$r] end' "$1/budget.json" 2>/dev/null); then
+      printf '%s\n' "$merged" > "$1/budget.json"
+    else
+      warn "budget.json unreadable — starting a fresh receipt ledger"
+      printf '%s\n' "[$rc]" > "$1/budget.json"
+    fi
+  else
+    printf '%s\n' "[$rc]" > "$1/budget.json"
+  fi
+  echo "» receipt: consented over-budget run recorded in $1/budget.json (projected \$$est_usd $est_tier vs budget \$$budget_usd)"
+}
+
 # Sensitive-path tripwire (advisory only — never blocks, never redacts evidence).
 # Scans $dir/full.diff plus a newline-separated metadata path list for
 # secret-adjacent bundle paths and lists hits in $dir/sensitive.txt, one
@@ -773,7 +912,10 @@ write_sensitive_manifest() { # $1 = dir, $2 = newline-separated extra paths (may
 if [[ -z "$cmd" ]]; then
   usage >&2; exit 2
 fi
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" ]] && [[ -z "$repo" || -z "$pr" ]]; then
+if [[ "$cmd" == "trend" ]] && [[ -z "$repo" ]]; then
+  usage >&2; exit 2
+fi
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" ]] && [[ -z "$repo" || -z "$pr" ]]; then
   usage >&2; exit 2
 fi
 
@@ -782,11 +924,59 @@ fi
 # an empty diff); diffs over FETCH_MAX_BYTES refuse — an unreviewable slice
 # would burn review tokens. The refusal names size, cap, and the split-or-
 # narrow escape (range/base slices or a paths filter).
+# Oversize-fetch candidates: split $1 (full.diff) on ^diff --git headers,
+# size each file slice in bytes, and propose narrower scopes with estimates —
+# the largest file alone, everything-but-largest, and a range half-split.
+# Prints a JSON array of {kind,files,estimated_bytes,suggestion}. Advisory
+# data only: the refusal still fails, the operator picks, nothing auto-narrows.
+# Empty array when the diff has no parseable file slices.
+suggest_splits() { # $1 = full.diff path, $2 = total bytes
+  local f="$1" total="$2" table top_bytes top_path rest_bytes rest_list rest_n half_bytes
+  case "$total" in ''|*[!0-9]*) total=0;; esac
+  table=$(LC_ALL=C awk '
+    /^diff --git / { if (cur != "") print size "\t" cur; cur=$0; sub(/.* b\//, "", cur); size=length($0)+1; next }
+    { size += length($0)+1 }
+    END { if (cur != "") print size "\t" cur }' "$f" 2>/dev/null | LC_ALL=C sort -t "$(printf '\t')" -k1,1rn || true)
+  [[ -z "$table" ]] && { echo "[]"; return 0; }
+  top_bytes=$(head -n 1 <<<"$table" | cut -f1)
+  top_path=$(head -n 1 <<<"$table" | cut -f2-)
+  case "$top_bytes" in ''|*[!0-9]*) echo "[]"; return 0;; esac
+  rest_bytes=$(( total - top_bytes ))
+  if (( rest_bytes < 0 )); then rest_bytes=0; fi
+  rest_list=$(tail -n +2 <<<"$table" | cut -f2-)
+  rest_n=$(grep -c . <<<"$rest_list" || true)
+  case "$rest_n" in ''|*[!0-9]*) rest_n=0;; esac
+  half_bytes=$(( (total + 1) / 2 ))
+  jq -n --arg tp "$top_path" --argjson tb "$top_bytes" \
+    --arg rl "$rest_list" --argjson rb "$rest_bytes" --argjson rn "$rest_n" \
+    --argjson hb "$half_bytes" '
+    ($rl | split("\n") | map(select(length > 0))) as $rest
+    | [{kind:"paths", files:[$tp], estimated_bytes:$tb,
+        suggestion:"re-fetch narrowed to \($tp) (~\($tb) bytes)"},
+       (if ($rest | length) == 0 then empty
+        else {kind:"paths", files:($rest[:10]), estimated_bytes:$rb,
+          suggestion:(if $rn > 10
+            then "re-fetch excluding \($tp): first 10 of \($rn) remaining files (~\($rb) bytes total)"
+            else "re-fetch excluding \($tp) (~\($rb) bytes across \($rn) file(s))" end)} end),
+       {kind:"range", files:[], estimated_bytes:$hb,
+        suggestion:"split the range in half (~\($hb) bytes each): fetch-local --range/--base, fetch --base-sha/--since"}]'
+}
+
 check_diff_size() { # $1 = full.diff path
   local f="$1" bytes
   bytes=$(wc -c < "$f" | tr -d ' ')
   case "$bytes" in ''|*[!0-9]*) bytes="0";; esac
   if (( bytes > FETCH_MAX_BYTES )); then
+    CANDIDATES_JSON=$(suggest_splits "$f" "$bytes")
+    CANDIDATES_JSON=$(jq -c '.' <<<"$CANDIDATES_JSON" 2>/dev/null || echo "null")
+    if [[ "$CANDIDATES_JSON" != "null" && "$CANDIDATES_JSON" != "[]" ]]; then
+      {
+        echo "candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):"
+        jq -r '.[] | "- [\(.kind)] \(.suggestion)"' <<<"$CANDIDATES_JSON" 2>/dev/null || true
+      } >&2
+    else
+      CANDIDATES_JSON="null"
+    fi
     fail "diff-too-large" "diff $bytes bytes exceeds cap $FETCH_MAX_BYTES bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch"
   fi
   if (( bytes == 0 )); then
@@ -839,28 +1029,34 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --argjson omitted "$(to_json_array "$omitted")" \
         --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
         --arg inc "$inc_base" --arg sens "$sens_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
+        --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
           hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
           artifacts:{"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)},
-          incremental_base:(if $inc=="null" then null else $inc end)},error:null}' >&9
+          incremental_base:(if $inc=="null" then null else $inc end)}
+          + (if $estimate == null then {} else {estimate:$estimate} end)
+          + (if $budget == null then {} else {budget:$budget} end),error:null}' >&9
     fi
   exit 0
 }
 
 if [[ "$cmd" == "fetch" ]]; then
-  base_sha=""; provider="github"
+  base_sha=""; provider="github"; budget_consent="false"
   while [[ $# -gt 0 ]]; do case "$1" in
     --base-sha|--since) base_sha="${2:-}"; shift 2;;
     --provider) provider="${2:-github}"; shift 2;;
+    --consent-over-budget) budget_consent="true"; shift;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --json)" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
   case "$provider" in github|gitlab|gitcafe|forgejo|bitbucket|azure) ;;
     *) fail "bad-provider" "unknown --provider '$provider' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)";; esac
+  budget_gate "$budget_consent"
   dir=".review/$pr"; mkdir -p "$dir"
+  write_budget_receipt "$dir"
   if [[ "$provider" != "github" ]]; then
     [[ -n "$base_sha" ]] && fail "bad-flags" "--base-sha/--since is GitHub-only for now (providers have no incremental re-review yet)"
     fetch_provider_bundle
@@ -907,19 +1103,20 @@ fi
 # ---------------------------------------------------------- fetch-local ---
 # Local review bundle from the worktree (no GitHub I/O, no PR needed).
 # fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]
-#             [--stash [n]] [-- paths...] [--json]
+#             [--stash [n]] [--consent-over-budget] [-- paths...] [--json]
 # Modes: worktree-vs-HEAD (default) | staged | range | branch-vs-base | stash.
 # Writes .review/local-<name>/ (source.json, full.diff, toc.txt, roles.txt).
 if [[ "$cmd" == "fetch-local" ]]; then
-  staged="false"; range=""; base_ref=""; stash_n=""; json_mode="false"; paths=()
+  staged="false"; range=""; base_ref=""; stash_n=""; json_mode="false"; budget_consent="false"; paths=()
   while [[ $# -gt 0 ]]; do case "$1" in
     --staged) staged="true"; shift;;
     --range) range="${2:-}"; shift 2;;
     --base) base_ref="${2:-}"; shift 2;;
     --stash) if [[ -n "${2:-}" && "${2:-}" != -* ]]; then stash_n="$2"; shift 2; else stash_n="0"; shift; fi;;
+    --consent-over-budget) budget_consent="true"; shift;;
     --json) json_mode="true"; shift;;
     --) shift; while [[ $# -gt 0 ]]; do paths+=("$1"); shift; done;;
-    -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], -- <paths>, --json)" >&2; exit 2;;
+    -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --consent-over-budget, -- <paths>, --json)" >&2; exit 2;;
     *) paths+=("$1"); shift;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
@@ -976,7 +1173,9 @@ if [[ "$cmd" == "fetch-local" ]]; then
     diff_cmd=(git diff HEAD)
   fi
   if (( ${#paths[@]} > 0 )); then diff_cmd+=("${paths[@]}"); fi
+  budget_gate "$budget_consent"
   mkdir -p "$dir"
+  write_budget_receipt "$dir"
   "${diff_cmd[@]}" > "$dir/full.diff" 2>"$dir/.diff.err" || fail "diff-failed" "git diff failed: $(head -c 200 "$dir/.diff.err")"
   check_diff_size "$dir/full.diff"
   if [[ -s "$dir/full.diff" ]] && ! grep -q '^@@' "$dir/full.diff" 2>/dev/null; then
@@ -1070,12 +1269,15 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
       --arg sens "$sens_file" \
       --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
+      --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:("feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
         files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
         panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
-        artifacts:{"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)}},error:null}' >&9
+        artifacts:{"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)}}
+        + (if $estimate == null then {} else {estimate:$estimate} end)
+        + (if $budget == null then {} else {budget:$budget} end),error:null}' >&9
   fi
   exit 0
 fi
@@ -1433,23 +1635,22 @@ fi
 
 # --------------------------------------------------------------- report ---
 if [[ "$cmd" == "report" ]]; then
-  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"
+  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"; check_sev=""
   while [[ $# -gt 0 ]]; do case "$1" in
-    --status) status_f="${2:-all}"; shift 2;;
-    --kind) kind_f="${2:-all}"; shift 2;;
+    --status) status_f="${2:-all}"; case "$status_f" in all|open|addressed|deferred|wont-fix|false-positive) ;; *) echo "unknown --status '$status_f' for report (want all|open|addressed|deferred|wont-fix|false-positive)" >&2; exit 2;; esac; shift 2;;
+    --kind) kind_f="${2:-all}"; case "$kind_f" in all|inline|section) ;; *) echo "unknown --kind '$kind_f' for report (want all|inline|section)" >&2; exit 2;; esac; shift 2;;
     --output) output="${2:-}"; shift 2;;
     --sarif) sarif="${2:-}"; shift 2;;
     --cost) cost="true"; shift;;
+    --check) check_sev="${2:-}"; case "$check_sev" in critical|important|informational) ;; *) echo "unknown --check tier '$check_sev' for report (want critical|important|informational)" >&2; exit 2;; esac; check_gate="true"; shift 2;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --check, --json)" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
-  case "$status_f" in all|open|addressed|deferred|wont-fix|false-positive) ;;
-    *) fail "bad-status" "unknown --status '$status_f' (want all|open|addressed|deferred|wont-fix|false-positive)";; esac
-  case "$kind_f" in all|inline|section) ;;
-    *) fail "bad-kind" "unknown --kind '$kind_f' (want all|inline|section)";; esac
   resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
+  jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
   now=$(now_utc)
   head_sha=""; base_sha=""
   if [[ -f "$dir/PR.json" ]]; then
@@ -1514,6 +1715,18 @@ if [[ "$cmd" == "report" ]]; then
     else
       cost_json="$cost_zeros"
     fi
+    # Receipts for consented over-budget runs (budget.json, written by the
+    # fetch-time consent gate). Shown only when the file exists and parses, so
+    # rolls without a control plane stay byte-identical.
+    receipts_json="null"
+    if [[ -f "$dir/budget.json" ]]; then
+      if receipts_json=$(jq 'if type == "array" then . else [.] end' "$dir/budget.json" 2>/dev/null); then
+        cost_json=$(jq --argjson rc "$receipts_json" '. + {receipts: $rc}' <<<"$cost_json")
+      else
+        warn "budget.json unreadable — receipts unlisted for this rollup"
+        receipts_json="null"
+      fi
+    fi
   fi
   if [[ -n "$output" ]]; then
     { echo "# Review report — $repo#$pr"; echo
@@ -1565,10 +1778,37 @@ if [[ "$cmd" == "report" ]]; then
         echo "cost: $(jq -r '"\(.runs) run(s), \(.runs_with_cost) with records — in=\(.input_tokens) out=\(.output_tokens) total=\(.total_tokens) est_usd=\(.est_usd // "n/a")"' <<<"$cost_json")"
         echo "tiers: $(jq -r '"cheap=\(.by_tier.cheap.runs // 0) standard=\(.by_tier.standard.runs // 0) deep=\(.by_tier.deep.runs // 0)"' <<<"$cost_json")"
       fi
+      if [[ "$receipts_json" != "null" ]]; then
+        n_rc=$(jq 'length' <<<"$receipts_json")
+        lp=$(jq -r '.[-1].projected_usd // "?"' <<<"$receipts_json")
+        lt=$(jq -r '.[-1].projected_tier // "?"' <<<"$receipts_json")
+        lb=$(jq -r '.[-1].budget_usd // "?"' <<<"$receipts_json")
+        la=$(jq -r '.[-1].at // "?"' <<<"$receipts_json")
+        echo "receipts: $n_rc consented over-budget run(s) (latest projected \$$lp $lt vs budget \$$lb @ $la)"
+      fi
     fi
     if [[ -n "$output" ]]; then echo "wrote $output"; else
       if (( n_open > 0 )); then echo "next: address open threads"; else echo "next: none open — nothing to address"; fi
     fi
+  fi
+  # Gate tail: --check turns the ranked read into a machine gate over OPEN
+  # findings at-or-above the tier (critical outranks important outranks
+  # informational; untagged findings never meet a tier; display filters do
+  # not narrow the gate). Output is identical with or without --check — only
+  # the exit differs, mirroring ready --check. The store parsed above, so a
+  # non-numeric count here is a tool error, never a pass.
+  if [[ "$check_gate" == "true" ]]; then
+    n_hit=$(jq --arg t "$check_sev" '
+      ({"critical":0,"important":1,"informational":2}[$t]) as $th
+      | [ .[] | select(.status == "open")
+        | ({"critical":0,"important":1,"informational":2}[.severity // ""] // 3) as $r
+        | select($r <= $th) ] | length' "$dir/findings.json")
+    case "$n_hit" in ''|*[!0-9]*) fail "report-failed" "could not evaluate --check gate over $dir/findings.json";; esac
+    if (( n_hit > 0 )); then
+      echo "check: $n_hit open finding(s) at-or-above $check_sev — gate fails" >&2
+      exit 1
+    fi
+    echo "check: no open findings at-or-above $check_sev — gate passes" >&2
   fi
   exit 0
 fi
@@ -1775,8 +2015,10 @@ if [[ "$cmd" == "verify" ]]; then
 fi
 
 # ----------------------------------------------------------------- doctor ---
-# Preflight the harness: gh auth + scopes, jq, hash tooling, git, API reachability.
-# Exit 0 only when everything the skill needs is present. No repo/PR args.
+# Preflight the harness. Hard checks fail the run; warn-severity misses print
+# WARN, land in warnings, and never fail the run. Storage covers the dirs the
+# tool writes (.review/ bundles). No network beyond the two pre-existing gh
+# reads (scopes header, rate limit); never phones home. No repo/PR args.
 if [[ "$cmd" == "doctor" ]]; then
   while [[ $# -gt 0 ]]; do case "$1" in
     --json) json_mode="true"; shift;;
@@ -1785,31 +2027,42 @@ if [[ "$cmd" == "doctor" ]]; then
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
   now=$(now_utc)
   results="[]"
-  add() { # name, true/false, detail
-    results=$(jq --arg n "$1" --argjson ok "$2" --arg d "$3" '. + [{name:$n, ok:$ok, detail:$d}]' <<<"$results")
-    if [[ "$2" == "true" ]]; then echo "ok   $1 — $3"; else echo "FAIL $1 — $3"; fi
+  add() { # $1 = name, $2 = fail|warn, $3 = true|false, $4 = detail
+    results=$(jq --arg n "$1" --arg s "$2" --argjson ok "$3" --arg d "$4" '. + [{name:$n, severity:$s, ok:$ok, detail:$d}]' <<<"$results")
+    if [[ "$3" == "true" ]]; then echo "ok   $1 — $4";
+    elif [[ "$2" == "warn" ]]; then
+      echo "WARN $1 — $4"
+      WARNINGS_JSON=$(jq --arg w "$1: $4" '. + [$w]' <<<"$WARNINGS_JSON")
+    else echo "FAIL $1 — $4"; fi
   }
-  if command -v gh >/dev/null 2>&1; then add "gh-cli" true "$(gh --version 2>/dev/null | head -n 1)"; else add "gh-cli" false "missing — install github.com/cli/cli"; fi
-  if gh auth status >/dev/null 2>&1; then add "gh-auth" true "authenticated"; else add "gh-auth" false "run gh auth login"; fi
+  if command -v gh >/dev/null 2>&1; then add "gh-cli" "fail" "true" "$(gh --version 2>/dev/null | head -n 1)"; else add "gh-cli" "fail" "false" "missing — install github.com/cli/cli"; fi
+  if gh auth status >/dev/null 2>&1; then add "gh-auth" "fail" "true" "authenticated"; else add "gh-auth" "fail" "false" "run gh auth login"; fi
   scopes=$(gh api user --include 2>/dev/null | grep -i '^x-oauth-scopes:' | head -n 1 || true)
-  if [[ "$scopes" =~ repo ]]; then add "token-scopes" true "$scopes";
-  elif [[ -z "$scopes" ]]; then add "token-scopes" true "no scopes header — fine-grained token, scopes proven at post time";
-  else add "token-scopes" false "needs repo (private) or public_repo scope — ${scopes:-unreadable}"; fi
-  if command -v jq >/dev/null 2>&1; then add "jq" true "$(jq --version 2>/dev/null)"; else add "jq" false "missing — install jq"; fi
-  if command -v shasum >/dev/null 2>&1; then add "shasum" true "sig hashing available"; else add "shasum" false "sig hashing hard-requires shasum (startup gate)"; fi
-  if command -v ps >/dev/null 2>&1; then add "ps" true "verify timeout enforced"; else add "ps" false "verify runs without timeout enforcement"; fi
-  if command -v git >/dev/null 2>&1; then add "git" true "check-tree/verify available"; else add "git" false "check-tree and verify degraded without git"; fi
+  if [[ "$scopes" =~ repo ]]; then add "token-scopes" "warn" "true" "$scopes";
+  elif [[ -z "$scopes" ]]; then add "token-scopes" "warn" "true" "no scopes header — fine-grained token, scopes proven at post time";
+  else add "token-scopes" "warn" "false" "needs repo (private) or public_repo scope — ${scopes:-unreadable}"; fi
+  if command -v jq >/dev/null 2>&1; then add "jq" "fail" "true" "$(jq --version 2>/dev/null)"; else add "jq" "fail" "false" "missing — install jq"; fi
+  if command -v shasum >/dev/null 2>&1; then add "shasum" "fail" "true" "sig hashing available"; else add "shasum" "fail" "false" "sig hashing hard-requires shasum (startup gate)"; fi
+  if command -v ps >/dev/null 2>&1; then add "ps" "warn" "true" "verify timeout enforced"; else add "ps" "warn" "false" "verify runs without timeout enforcement"; fi
+  if command -v git >/dev/null 2>&1; then add "git" "warn" "true" "check-tree/verify available"; else add "git" "warn" "false" "check-tree and verify degraded without git"; fi
   remaining=$(gh api rate_limit --jq '.resources.core.remaining' 2>/dev/null || true)
-  if [[ -n "$remaining" ]]; then add "api-reachable" true "core quota remaining: $remaining"; else add "api-reachable" false "cannot reach api.github.com with this token"; fi
-  healthy=$(jq -e 'map(select(.ok == false)) | length == 0' <<<"$results" >/dev/null 2>&1 && echo "true" || echo "false")
+  if [[ -n "$remaining" ]]; then add "api-reachable" "warn" "true" "core quota remaining: $remaining"; else add "api-reachable" "warn" "false" "cannot reach api.github.com with this token"; fi
+  # Storage the tool writes is .review/ bundles (fetch/record/post receipts).
+  # Permission metadata only — no probe files, no writes, no network.
+  if [[ -d .review ]]; then
+    if [[ -w .review ]]; then add "storage-writable" "fail" "true" ".review/ writable";
+    else add "storage-writable" "fail" "false" ".review/ not writable — fetch/record cannot write bundles here"; fi
+  elif [[ -w . ]]; then add "storage-writable" "fail" "true" "cwd writable — .review/ created on first fetch";
+  else add "storage-writable" "fail" "false" "cwd not writable — fetch/record cannot create .review/ here"; fi
+  healthy=$(jq -e 'map(select(.severity == "fail" and .ok == false)) | length == 0' <<<"$results" >/dev/null 2>&1 && echo "true" || echo "false")
   if [[ "$json_mode" == "true" ]]; then
     jq -n --arg v "$cmd" --arg t "$now" --argjson h "$healthy" --argjson c "$results" \
       '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,
-        next:(if $h then "harness healthy" else "fix FAIL lines above, then re-run" end),
+        next:(if $h then "harness healthy" else "fix FAIL lines above (WARN lines are advisory), then re-run" end),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{healthy:$h,checks:$c},error:null}' >&9
   fi
-  [[ "$healthy" == "true" ]]
-  exit 0
+  if [[ "$healthy" == "true" ]]; then exit 0; fi
+  exit 1
 fi
 
 # ------------------------------------------------------------ calibrate ---
@@ -2030,4 +2283,105 @@ if [[ "$cmd" == "ready" ]]; then
   exit 0
 fi
 
-echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready)" >&2; exit 2
+# ------------------------------------------------------------------ trend ---
+# Portfolio rollup: findings opened/addressed/closed over time across every
+# reviewed bundle (.review/*/findings.json). Pure read, writes nothing, no
+# network — rescan semantics, so hand-edited stores stay truthful. Each bundle
+# is one point in time (post.json posted_at, else record.json recorded_at);
+# bundles without either land in an undated bucket, so series sums still match
+# totals. Severity is the tier (critical/important/informational; null reads
+# untagged, mirroring report --check); closed means no longer actionable
+# (wont-fix/false-positive/deferred). Per-bundle models/effort come from
+# cost.json when the agent wrote one — the calibration join key. Counts are
+# per store: adopted findings appear in both the local and the PR bundle.
+if [[ "$cmd" == "trend" ]]; then
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag '$1' for trend (want --json)" >&2; exit 2;;
+  esac; done
+  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  now=$(now_utc)
+  rows="[]"
+  if [[ -d .review ]]; then
+    for b in .review/*/; do
+      [[ -d "$b" ]] || continue
+      [[ -f "${b}findings.json" ]] || continue
+      name=${b#.review/}; name=${name%/}
+      fjson=$(cat "${b}findings.json" 2>/dev/null || true)
+      if ! jq -e 'type == "array"' <<<"$fjson" >/dev/null 2>&1; then
+        warn "trend skips $b (findings.json unreadable or not a findings array)"
+        continue
+      fi
+      at=""
+      if [[ -f "${b}post.json" ]]; then at=$(jq -r '.posted_at // empty' "${b}post.json" 2>/dev/null || true); fi
+      if [[ -z "$at" && -f "${b}record.json" ]]; then at=$(jq -r '.recorded_at // empty' "${b}record.json" 2>/dev/null || true); fi
+      models="[]"; efforts="[]"
+      if [[ -f "${b}cost.json" ]]; then
+        models=$(jq '[if type == "array" then .[] else . end | (.models // [])[] | .name // empty] | unique' "${b}cost.json" 2>/dev/null || echo "[]")
+        efforts=$(jq '[(if type == "array" then .[] else . end) | ((.effort // "standard" | tostring | ascii_downcase) | if . == "cheap" or . == "standard" or . == "deep" then . else "standard" end)] | unique' "${b}cost.json" 2>/dev/null || echo "[]")
+      fi
+      row=$(jq -n --argjson f "$fjson" --arg b "$name" --arg at "$at" --argjson models "$models" --argjson efforts "$efforts" '
+        {bundle: $b, at: (if $at == "" then null else $at end), models: $models, efforts: $efforts,
+         findings: ($f | length),
+         open: ([$f[] | select(.status == "open")] | length),
+         addressed: ([$f[] | select(.status == "addressed")] | length),
+         closed: ([$f[] | select(.status == "wont-fix" or .status == "false-positive" or .status == "deferred")] | length),
+         by_status: {open: ([$f[] | select(.status == "open")] | length),
+           addressed: ([$f[] | select(.status == "addressed")] | length),
+           "wont-fix": ([$f[] | select(.status == "wont-fix")] | length),
+           "false-positive": ([$f[] | select(.status == "false-positive")] | length),
+           deferred: ([$f[] | select(.status == "deferred")] | length)},
+         by_tier: {critical: ([$f[] | select(.severity == "critical")] | length),
+           important: ([$f[] | select(.severity == "important")] | length),
+           informational: ([$f[] | select(.severity == "informational")] | length),
+           untagged: ([$f[] | select(.severity != "critical" and .severity != "important" and .severity != "informational")] | length)}}')
+      rows=$(jq --argjson r "$row" '. + [$r]' <<<"$rows")
+    done
+  fi
+  rollup=$(jq -n --argjson rows "$rows" '
+    {bundles: ($rows | length),
+     findings: ([$rows[].findings] | add // 0),
+     open: ([$rows[].open] | add // 0),
+     addressed: ([$rows[].addressed] | add // 0),
+     closed: ([$rows[].closed] | add // 0),
+     by_status: {open: ([$rows[].by_status.open] | add // 0),
+       addressed: ([$rows[].by_status.addressed] | add // 0),
+       "wont-fix": ([$rows[].by_status."wont-fix"] | add // 0),
+       "false-positive": ([$rows[].by_status."false-positive"] | add // 0),
+       deferred: ([$rows[].by_status.deferred] | add // 0)},
+     by_tier: {critical: ([$rows[].by_tier.critical] | add // 0),
+       important: ([$rows[].by_tier.important] | add // 0),
+       informational: ([$rows[].by_tier.informational] | add // 0),
+       untagged: ([$rows[].by_tier.untagged] | add // 0)},
+     periods: ([$rows[] | . + {period: (if .at == null then null else .at[0:10] end)}]
+       | group_by(.period)
+       | map({period: .[0].period, bundles: length,
+           findings: ([.[].findings] | add // 0),
+           open: ([.[].open] | add // 0),
+           addressed: ([.[].addressed] | add // 0),
+           closed: ([.[].closed] | add // 0),
+           by_tier: {critical: ([.[].by_tier.critical] | add // 0),
+             important: ([.[].by_tier.important] | add // 0),
+             informational: ([.[].by_tier.informational] | add // 0),
+             untagged: ([.[].by_tier.untagged] | add // 0)}})
+       | sort_by(if .period == null then "~" else .period end))}')
+  n_bundles=$(jq -r '.bundles' <<<"$rollup")
+  if [[ "$json_mode" == "true" ]]; then
+    jq -n --arg v "$cmd" --arg r "$repo" --arg t "$now" --argjson roll "$rollup" --argjson rows "$rows" \
+      '{schema_version:"1",verb:$v,repo:$r,pr:null,at:$t,
+        next:(if $roll.bundles > 0 then "calibrate recent bundles for per-model tier precision" else "no reviewed bundles yet — fetch + post/record first" end),
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({generated_at:$t} + $roll + {per_bundle:$rows}),error:null}' >&9
+  else
+    if (( n_bundles == 0 )); then
+      echo "trend: $repo — no reviewed bundles (no .review/*/findings.json yet)"
+    else
+      echo "trend: $repo — $n_bundles bundle(s), $(jq -r '.findings' <<<"$rollup") findings (open=$(jq -r '.open' <<<"$rollup") addressed=$(jq -r '.addressed' <<<"$rollup") closed=$(jq -r '.closed' <<<"$rollup"))"
+      jq -r '.periods[] | "\(.period // "undated")  bundles=\(.bundles) findings=\(.findings) open=\(.open) addressed=\(.addressed) closed=\(.closed) tiers critical=\(.by_tier.critical) important=\(.by_tier.important) informational=\(.by_tier.informational) untagged=\(.by_tier.untagged)"' <<<"$rollup"
+      echo "tiers: $(jq -r '"critical=\(.by_tier.critical) important=\(.by_tier.important) informational=\(.by_tier.informational) untagged=\(.by_tier.untagged)"' <<<"$rollup")"
+      echo "status: $(jq -r '"open=\(.by_status.open) addressed=\(.by_status.addressed) wont-fix=\(.by_status."wont-fix") false-positive=\(.by_status."false-positive") deferred=\(.by_status.deferred)"' <<<"$rollup")"
+    fi
+  fi
+  exit 0
+fi
+
+echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend)" >&2; exit 2
