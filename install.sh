@@ -121,9 +121,12 @@ is_live() { # $1 = dir; true if a skills setup already exists there
 }
 
 if [ "$DETECT" = 1 ]; then
-  SCOPE="agents"
+  [ -n "$SCOPE" ] || SCOPE="agents"
   for _a in claude cursor opencode copilot gemini goose qwen windsurf; do
-    if is_live "$(agent_dir "$_a")"; then SCOPE="$SCOPE $_a"; fi
+    case " $SCOPE " in
+      *" $_a "*) ;;
+      *) if is_live "$(agent_dir "$_a")"; then SCOPE="$SCOPE $_a"; fi ;;
+    esac
   done
 fi
 
