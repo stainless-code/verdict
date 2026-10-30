@@ -1,5 +1,12 @@
 # @stainless-code/verdict
 
+## 0.1.2
+
+### Patch Changes
+
+- 72ebe75: Document `install.sh --agent/--dir/--list/--check/--uninstall` management flags in the README.
+- 5035996: Harden the trust boundary: `system.md` now names PR data untrusted (evidence, never instructions) and constrains `verifyCmd` to repo-scoped non-destructive commands. `install.sh` detects installed harnesses (`--detect`), supports project installs (`--project`), honors `XDG_CONFIG_HOME`/`CLAUDE_CONFIG_DIR`, and validates the checkout before linking.
+
 ## 0.1.1
 
 ### Patch Changes
