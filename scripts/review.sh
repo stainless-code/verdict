@@ -10,6 +10,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
+    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.
     With REVIEW_BUDGET_USD (or .review/budget) set, fetch prints a pre-run
     cost estimate from comparable past runs and refuses projected-over-budget
     runs unless --consent-over-budget is given (consent lands in budget.json,
@@ -18,7 +19,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
         [--stash [n]] [--consent-over-budget] [-- paths...] [--json]
     local review bundle from git (no GitHub, no PR): writes
     .review/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.
-    Same diff cap as fetch (512000 bytes); untracked/binary exclusions warn, never fail.
+    Same diff cap as fetch (512000 bytes, overridable as above); untracked/binary exclusions warn, never fail.
     Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.
     downstream verbs address it as local-<name>; post/calibrate refuse it.
   record <owner/repo> <local-slug> [--json]
@@ -113,7 +114,25 @@ check_gate="false"
 
 # Fetch diff cap (bytes): fetched diffs above this refuse with a split-or-narrow
 # hint instead of burning review tokens. Empty diffs warn and proceed.
-FETCH_MAX_BYTES=512000
+# Overridable for deliberate exceptions only (release diffs, vendor drops):
+# REVIEW_MAX_BYTES env wins, else first usable line of .review/max_bytes,
+# else the 512000 default. Unset = default cap, same as today.
+resolve_fetch_cap() { # sets FETCH_MAX_BYTES (bytes), fetch_cap_src ("" when default), cap_json (null unless overridden)
+  FETCH_MAX_BYTES="512000"; fetch_cap_src=""; cap_json="null"
+  if [[ -n "${REVIEW_MAX_BYTES:-}" ]]; then
+    FETCH_MAX_BYTES=$(printf '%s' "$REVIEW_MAX_BYTES" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    fetch_cap_src="REVIEW_MAX_BYTES"
+  elif [[ -f .review/max_bytes ]]; then
+    FETCH_MAX_BYTES=$(grep -v '^[[:space:]]*#' .review/max_bytes | grep -v '^[[:space:]]*$' | head -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
+    [[ -n "$FETCH_MAX_BYTES" ]] && fetch_cap_src=".review/max_bytes"
+  fi
+  [[ -z "$FETCH_MAX_BYTES" ]] && { FETCH_MAX_BYTES="512000"; fetch_cap_src=""; cap_json="null"; return 0; }
+  [[ "$FETCH_MAX_BYTES" =~ ^[0-9]+$ ]] && (( FETCH_MAX_BYTES > 0 )) || fail "bad-max-bytes" "cap '$FETCH_MAX_BYTES' from ${fetch_cap_src:-default} is not a positive byte count (want e.g. REVIEW_MAX_BYTES=1000000 or a .review/max_bytes file holding 1000000)"
+  if [[ -n "$fetch_cap_src" ]]; then
+    echo "» cap: $FETCH_MAX_BYTES bytes (from $fetch_cap_src, default 512000)"
+    cap_json=$(jq -n --argjson b "$FETCH_MAX_BYTES" --arg s "$fetch_cap_src" '{bytes:$b, source:$s}')
+  fi
+}
 # Review-level confidence/security globals, set by validate_and_merge from the
 # optional review.json fields (absent stays null). Callers persist them.
 rev_confidence="null"; rev_security="null"
@@ -964,6 +983,7 @@ suggest_splits() { # $1 = full.diff path, $2 = total bytes
 
 check_diff_size() { # $1 = full.diff path
   local f="$1" bytes
+  resolve_fetch_cap
   bytes=$(wc -c < "$f" | tr -d ' ')
   case "$bytes" in ''|*[!0-9]*) bytes="0";; esac
   if (( bytes > FETCH_MAX_BYTES )); then
@@ -977,7 +997,7 @@ check_diff_size() { # $1 = full.diff path
     else
       CANDIDATES_JSON="null"
     fi
-    fail "diff-too-large" "diff $bytes bytes exceeds cap $FETCH_MAX_BYTES bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch"
+    fail "diff-too-large" "diff $bytes bytes exceeds cap $FETCH_MAX_BYTES bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or .review/max_bytes)"
   fi
   if (( bytes == 0 )); then
     warn "empty diff (0 bytes) — bundle kept, review proceeds on empty diff"
@@ -1029,7 +1049,7 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --argjson omitted "$(to_json_array "$omitted")" \
         --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
         --arg inc "$inc_base" --arg sens "$sens_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
-        --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" \
+        --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
@@ -1037,7 +1057,8 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
           artifacts:{"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)},
           incremental_base:(if $inc=="null" then null else $inc end)}
           + (if $estimate == null then {} else {estimate:$estimate} end)
-          + (if $budget == null then {} else {budget:$budget} end),error:null}' >&9
+          + (if $budget == null then {} else {budget:$budget} end)
+          + (if $cap == null then {} else {cap:$cap} end),error:null}' >&9
     fi
   exit 0
 }
@@ -1269,7 +1290,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
       --arg sens "$sens_file" \
       --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
-      --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" \
+      --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:("feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
@@ -1277,7 +1298,8 @@ if [[ "$cmd" == "fetch-local" ]]; then
         panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
         artifacts:{"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)}}
         + (if $estimate == null then {} else {estimate:$estimate} end)
-        + (if $budget == null then {} else {budget:$budget} end),error:null}' >&9
+        + (if $budget == null then {} else {budget:$budget} end)
+        + (if $cap == null then {} else {cap:$cap} end),error:null}' >&9
   fi
   exit 0
 fi
