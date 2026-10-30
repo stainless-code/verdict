@@ -31,15 +31,19 @@ cd verdict
 ./install.sh
 ```
 
-`install.sh` runs `doctor` first and links into the skill dirs of the major
-harnesses (`~/.agents`, `~/.claude`, `~/.cursor`, `~/.config/opencode`,
-`~/.copilot`, `~/.gemini`, `~/.config/goose`, `~/.qwen`, `~/.codeium/windsurf`;
-skips occupied slots, never overwrites without `--force`, never touches a
-foreign `core.hooksPath`). Scoped management without reinstalling everything:
+`install.sh` runs `doctor` first. Bare run links `~/.agents/skills` (the shared
+standard dir); `--detect` adds every harness with an existing skills setup,
+`--all` links all nine known harnesses (`~/.agents`, `~/.claude`, `~/.cursor`,
+`~/.config/opencode`, `~/.copilot`, `~/.gemini`, `~/.config/goose`, `~/.qwen`,
+`~/.codeium/windsurf`; XDG/`CLAUDE_CONFIG_DIR`-aware). Skips occupied slots,
+never overwrites without `--force`, never touches a foreign `core.hooksPath`,
+and never re-links a harness you removed — explicit removals stick:
 
 ```bash
 ./install.sh --agent cursor            # link one harness
 ./install.sh --dir ~/.foo/skills       # link any other agent's skills dir
+./install.sh --project ~/work/repo     # link into a repo's .agents/skills
+./install.sh --detect                  # standard dir + installed harnesses
 ./install.sh --list                    # link status, no changes
 ./install.sh --check                   # doctor + verify links
 ./install.sh --uninstall               # remove our links (foreign files untouched)
@@ -49,6 +53,19 @@ foreign `core.hooksPath`). Scoped management without reinstalling everything:
 Anything else on the
 [agent list](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)
 is one `npx skills add -a <agent>` away.
+
+## Security
+
+Trust boundary: the skill runs with your privileges. `verify` executes the
+agent-written `verifyCmd` via `bash -c` (300s watchdog, output tailed into the
+patch record) — reviewing a hostile PR? Run in a sandbox. Fetched diffs and
+comments are untrusted input; the prompts treat them as evidence, never as
+instructions.
+
+Secrets stay local: `GH_TOKEN` never leaves your machine; provider tokens go
+only to their configured hosts. Azure fetch stages Basic auth in a `0700` temp
+dir, trap-cleaned on exit (residual risk: crash between write and cleanup).
+Nothing phones home: no servers, no telemetry, no auto-updater.
 
 Requirements: [`gh`](https://cli.github.com) (authed, `repo` scope), `jq`, `shasum`, `git`.
 Run `./scripts/review.sh doctor` to preflight.
