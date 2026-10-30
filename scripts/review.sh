@@ -486,6 +486,11 @@ $move_section"
         vexit=$(jq -r '.verifyExit // empty' "$dir/patch.json" 2>/dev/null || true)
         if [[ -n "$vexit" && "$vexit" != "0" && "$vexit" != "null" ]]; then
           warn "VERIFIED claim for ${vfull:0:8} contradicts machine verify exit=$vexit — flip stands, contradiction recorded"
+        else
+          vto=$(jq -r '.timedOut // empty' "$dir/patch.json" 2>/dev/null || true)
+          if [[ "$vto" == "true" ]]; then
+            warn "VERIFIED claim for ${vfull:0:8} contradicts machine verify timedOut=true (exit=$vexit) — flip stands, contradiction recorded"
+          fi
         fi
       elif [[ "$verdict" == "NOT VERIFIED" ]]; then
         entries=$(jq --arg s "$vfull" --arg now "$now" --arg sha "$hs" --arg cmd "$vcmd" \
@@ -1431,20 +1436,25 @@ if [[ "$cmd" == "verify" ]]; then
   # Redact known secret values from the recorded tail (hygiene, not a boundary:
   # the command itself runs with full env). Names are matched, values replaced —
   # names never appear in output. Empty and short (<8 char) values skipped: an
-  # empty pattern would match everywhere, short ones collide with prose. Values
-  # with glob characters may over-redact; that errs toward hiding, never leaking.
+  # empty pattern would match everywhere, short ones collide with prose. The value
+  # is quoted, so it matches literally — glob characters in secrets are inert.
   # The full .verify.out keeps raw output for operator debugging; only the
   # recorded tail is filtered. compgen enumerates names (multiline-safe).
-  # (Suffixes already cover GH_TOKEN-style names; only non-matching stragglers
-  # are listed exactly.)
+  # Suffixes already cover GH_TOKEN-style names; only non-matching stragglers
+  # are listed exactly. Names match case-insensitively with trailing rotation
+  # digits stripped, so lower/numbered variants are covered too.
+  shopt -s nocasematch
   while IFS= read -r _sv; do
-    case "$_sv" in
-      *_TOKEN|*_SECRET|*_KEY|*_PASSWORD|*_PASSPHRASE|TOKEN|SECRET|KEY|PASSWORD|AWS_ACCESS_KEY_ID|SSH_AUTH_SOCK|SSH_AGENT_PID)
+    _norm="$_sv"
+    while [[ "$_norm" == *[0-9] || "$_norm" == *_ ]]; do _norm=${_norm%?}; done
+    case "$_norm" in
+      *_TOKEN|*_SECRET|*_KEY|*_PASSWORD|*_PASSPHRASE|*_PAT|*_AUTH|*_CREDENTIAL|*_CREDENTIALS|*_PASS|*_PWD|TOKEN|SECRET|KEY|PASSWORD|AWS_ACCESS_KEY_ID|SSH_AUTH_SOCK|SSH_AGENT_PID)
         _vv="${!_sv}"
         if [[ -n "$_vv" && "${#_vv}" -ge 8 ]]; then tail4k=${tail4k//"$_vv"/'***REDACTED***'}; fi;;
     esac
   done < <(compgen -A variable)
-  unset _sv _vv
+  shopt -u nocasematch
+  unset _sv _vv _norm
   echo "» exit=$vcode timed_out=$timed_out"
   jq --argjson exit "$vcode" --argjson to "$timed_out" --arg now "$now" --arg tail "$tail4k" \
     '. + {verifyExit:$exit, verifiedAt:$now, timedOut:$to, verifiedTail:$tail}' \
