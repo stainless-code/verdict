@@ -44,8 +44,10 @@ and never re-links a harness you removed — explicit removals stick:
 ./install.sh --dir ~/.foo/skills       # link any other agent's skills dir
 ./install.sh --project ~/work/repo     # link into a repo's .agents/skills
 ./install.sh --detect                  # standard dir + installed harnesses
+./install.sh --all                     # every known harness
 ./install.sh --list                    # link status, no changes
 ./install.sh --check                   # doctor + verify links
+./install.sh --force --agent cursor    # replace an occupied slot
 ./install.sh --uninstall               # remove our links (foreign files untouched)
 ./install.sh --uninstall --agent cursor
 ```
@@ -112,8 +114,12 @@ No auto-updater, by design (no network surprises from a review tool):
 
 ## Versioning
 
-Semver tags (`vX.Y.Z`); additive store changes only within a major. See the changelog
-at the bottom of [`docs/manual.md`](docs/manual.md).
+Changesets: add a `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing
+notes) with your change. Merging to main opens a `chore: version packages` PR;
+merging that publishes to npm (OIDC trusted publishing, no tokens) and cuts the
+GitHub Release carrying your notes. Tags (`vX.Y.Z`) follow the releases.
+Additive store changes only within a major — see the changelog at the bottom of
+[`docs/manual.md`](docs/manual.md).
 
 ## Formatting
 
