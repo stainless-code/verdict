@@ -1,5 +1,11 @@
 # @stainless-code/verdict
 
+## 0.1.1
+
+### Patch Changes
+
+- a879767: Read tool version from `package.json` instead of the `VERSION` file (same output, single source of truth) and ship `CHANGELOG.md` in the tarball.
+
 ## 0.1.0
 
 Initial npm release. Local, on-demand PR review for any coding agent — the agent reviews, `gh` does GitHub I/O. No servers, no external services, no daemons.
