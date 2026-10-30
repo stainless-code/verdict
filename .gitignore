@@ -6,5 +6,6 @@ node_modules/
 dist/
 .blume/
 .blume-verify/
+pack.log
 # Local-only working notes (strategy, scratch). Never commit.
 .agents/local/
