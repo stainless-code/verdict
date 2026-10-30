@@ -48,6 +48,32 @@ jobs:
       - name: Lint shell entry points
         run: shellcheck -S warning scripts/review.sh install.sh hooks/pre-commit
 
+  installer:
+    name: 🔌 Installer smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Doctor-free installer paths against a fake HOME
+        shell: bash
+        run: |
+          # Hermetic by construction: --help/--list/error paths never touch the
+          # network, never run doctor, and HOME points at a temp dir.
+          export HOME="$RUNNER_TEMP/fakehome"
+          mkdir -p "$HOME"
+          ./install.sh --help >/dev/null
+          ./install.sh --list | grep -q '^absent:   agents'
+          ./install.sh --list --agent qwen | grep -q '^absent:   qwen'
+          ./install.sh --agent nope >/dev/null 2>&1 && exit 1 || true
+          ./install.sh --dir relative/path >/dev/null 2>&1 && exit 1 || true
+          XDG_CONFIG_HOME="$HOME/.xdg" ./install.sh --list --agent opencode | grep -q "$HOME/.xdg/opencode/skills"
+          CLAUDE_CONFIG_DIR="$HOME/claude" ./install.sh --list --agent claude | grep -q "$HOME/claude/skills"
+          ./install.sh --list --detect | grep -q '^absent:   agents'
+          echo "installer smoke ok"
+
   docs:
     name: 📖 Docs site
     runs-on: ubuntu-latest
