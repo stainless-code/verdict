@@ -61,7 +61,7 @@ jobs:
       # directory, so server-dir stays ./ — the account behind FTP_HOST
       # must be rooted at /verdict/, not the domain root.
       - name: Upload to /verdict via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        uses: SamKirkland/FTP-Deploy-Action@3a9c65ae0fc12ac924ccef8afc26941cc43aad0b # v4.4.0
         with:
           server: ${{ secrets.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}

@@ -37,7 +37,7 @@ jobs:
       # npm trusted publishing (OIDC) needs npm >= 11.5.1, which ships with
       # Node 24. No install step: the package ships raw files, zero deps.
       - name: Setup Node + npm for trusted publishing
-        uses: actions/setup-node@949feb2413d6458794dcd249b2ab7e3e # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -70,7 +70,13 @@ jobs:
 
       - name: Publish to npm (OIDC trusted publishing + provenance)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run != true }}
-        run: npm publish --provenance --access public
+        run: |
+          pkg_ver=$(node -p "require('./package.json').version")
+          if npm view "@stainless-code/verdict@$pkg_ver" version 2>/dev/null | grep -q "^$pkg_ver$"; then
+            echo "Version $pkg_ver already on npm — skipping publish (backfill tag)"
+          else
+            npm publish --provenance --access public
+          fi
 
       - name: Create GitHub Release
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run != true }}
