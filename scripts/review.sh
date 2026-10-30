@@ -55,7 +55,7 @@ EOF
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then usage; exit 0; fi
-if [[ "${1:-}" == "--version" ]]; then cat "$(dirname "${BASH_SOURCE[0]:-$0}")/../VERSION" 2>/dev/null || echo "0.0.0-unknown"; exit 0; fi
+if [[ "${1:-}" == "--version" ]]; then jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown"; exit 0; fi
 cmd="${1:-}"; shift $(( $# > 0 ? 1 : 0 ))
 repo=""; pr=""
 if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" ]]; then
@@ -799,7 +799,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
   printf '%s\n' "$file_list" | roles_for_paths > "$dir/roles.txt"
   emit_context "$dir"
   ensure_store "$dir"
-  tool_version=$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/../VERSION" 2>/dev/null || echo "0.0.0-unknown")
+  tool_version=$(jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown")
   now=$(now_utc)
   jq -n --arg v "1" --arg kind "$kind" --arg r "$repo" --arg slug "$slug" \
     --arg bref "$base_ref" --arg href "$head_ref" --arg bs "$base_sha" --arg hs "$head_sha" \

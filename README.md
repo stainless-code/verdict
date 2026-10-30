@@ -66,7 +66,7 @@ export GH_TOKEN=...   # or gh auth login
 verdict/
   SKILL.md            # skill entry point (feed to any agent)
   install.sh          # doctor-gated symlink installer (re-run to update)
-  VERSION             # semver; scripts/review.sh --version prints it
+  CHANGELOG.md        # release notes (changesets); scripts/review.sh --version reads package.json
   docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
   apps/docs/          # Blume docs site (index + manual mirror) — deploys to /verdict/
   docs/vision.md      # what it is, strategy; narrative lives on the site

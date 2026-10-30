@@ -17,8 +17,17 @@
     "SKILL.md",
     "README.md",
     "LICENSE",
-    "VERSION",
+    "CHANGELOG.md",
     "scripts/",
     "prompts/"
-  ]
+  ],
+  "scripts": {
+    "changeset": "changeset",
+    "version": "changeset version && bun fmt CHANGELOG.md",
+    "release": "changeset publish",
+    "prepack": "npm pack --dry-run 2>&1 | tee pack.log && (! grep -iE '\\.env|secret|token|key\\.json|\\.pem$' pack.log)"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3"
+  }
 }

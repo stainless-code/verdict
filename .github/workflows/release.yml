@@ -1,91 +1,60 @@
+# [Changesets](https://github.com/changesets/changesets): open a "Version packages" PR when
+# `.changeset/*.md` files land on `main`, then publish to npm when that PR merges via npm
+# trusted publishing (GitHub OIDC — no NPM_TOKEN; provenance auto-generated).
 name: Release
 
-# Tag-driven publish: `git tag -a vX.Y.Z -m "notes" && git push origin vX.Y.Z`.
-# The tag annotation becomes the GitHub Release notes (falls back to generated
-# notes when empty). No changesets: single package, single maintainer — the only
-# things to enforce are version sync, a secret-free tarball, and provenance.
 on:
   push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      dry-run:
-        description: "Run checks and pack without publishing"
-        type: boolean
-        default: true
+    branches:
+      - main
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: write
+  pull-requests: write
   id-token: write
 
 jobs:
   release:
-    name: Publish @stainless-code/verdict + GitHub Release
+    name: Release
     runs-on: ubuntu-latest
     environment: release
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
-      # npm trusted publishing (OIDC) needs npm >= 11.5.1, which ships with
-      # Node 24. No install step: the package ships raw files, zero deps.
+      # npm trusted publishing (OIDC) needs npm >= 11.5.1 (docs.npmjs.com/trusted-publishers).
+      #
+      # This step MUST run after `Setup Bun and install`: that composite runs
+      # its own setup-node (Node 22, npm 10.x), which puts npm 10 back on PATH.
+      # Whatever runs last owns PATH at publish time, and npm 10 cannot detect
+      # OIDC, so `npm publish` goes out anonymous and the registry answers
+      # every PUT with E404. Node 24 ships npm 11.x, which auto-authenticates
+      # via OIDC (no token). This repo keeps zero native dependencies,
+      # so switching Node after install has no ABI consequences.
+      - name: Setup Bun and install
+        uses: ./.github/actions/setup
+
       - name: Setup Node + npm for trusted publishing
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Verify version sync (VERSION == package.json == tag)
-        shell: bash
-        run: |
-          file_ver=$(cat VERSION)
-          pkg_ver=$(node -p "require('./package.json').version")
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            tag_ver="${GITHUB_REF_NAME#v}"
-          else
-            # workflow_dispatch dry-run: check the two files agree.
-            tag_ver="$pkg_ver"
-          fi
-          echo "VERSION=$file_ver package.json=$pkg_ver tag=$tag_ver"
-          if [[ "$file_ver" != "$pkg_ver" || "$pkg_ver" != "$tag_ver" ]]; then
-            echo "::error::version mismatch: bump VERSION, package.json, and the tag together"
-            exit 1
-          fi
-
-      - name: Pack and assert no secrets in the tarball
-        shell: bash
-        run: |
-          npm pack --dry-run 2>&1 | tee pack.log
-          if grep -iE '\.env|secret|token|key\.json|\.pem$' pack.log; then
-            echo "::error::tarball file list looks secret-bearing — check package.json files[]"
-            exit 1
-          fi
-
-      - name: Publish to npm (OIDC trusted publishing + provenance)
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run != true }}
-        run: |
-          pkg_ver=$(node -p "require('./package.json').version")
-          if npm view "@stainless-code/verdict@$pkg_ver" version 2>/dev/null | grep -q "^$pkg_ver$"; then
-            echo "Version $pkg_ver already on npm — skipping publish (backfill tag)"
-          else
-            npm publish --provenance --access public
-          fi
-
-      - name: Create GitHub Release
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run != true }}
+      # Opens/updates the Version PR when `.changeset/*.md` exist. When there are none, the action
+      # can still run `publish` so a just-merged Version PR can ship.
+      # `prepack` (package.json) asserts no secrets in the tarball on every publish.
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          version-script: bun run version
+          publish-script: bun run release
+          pr-title: "chore: version packages"
+          commit-message: "chore: version packages"
+          create-github-releases: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          notes="$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME")"
-          if [[ -z "${notes// /}" ]]; then
-            gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
-          else
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "$notes"
-          fi
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
