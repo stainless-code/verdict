@@ -302,6 +302,31 @@ history event and re-resolves anchors against the PR hunks (unmatched paths land
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
+### Fix loops (bounded, verify-gated)
+
+`fix owner/repo local-<name> [--sig <s>] [--json]` runs one bounded pass over a
+local bundle: it picks the top open inline sig (severity `critical` above
+`important` above `informational`, then path) or the `--sig` prefix (must be open
+and inline; non-open, section, and unknown sigs refuse), prints the finding plus
+the full `kb.txt` context when present with patch → verify → land → re-run instructions, and records
+the pass in `.review/local-<name>/fix.json`. The agent patches the anchor file,
+runs the verify command itself, writes `verification.json`, lands via `record`,
+and re-runs `fix`; the loop ends when no open inline sigs remain (completion
+summary with fixed/open/stopped counts plus the ledger path). A ceiling-exhausted
+top sig keeps getting picked — pass `--sig` for another sig or triage the stuck
+one. Ceilings are
+hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
+`fix-ceiling`), and touching any worktree file outside the anchor stops the loop
+(`scope-escape`) — an effective files ceiling of 1. Pre-existing worktree dirt is
+grandfathered (only files changed since the first pass can trip the audit).
+`fix` never flips status or
+writes `findings.json` (credit still flows through the normal `record` flips);
+PR/provider bundles refuse with `not-local`. Cost note: every pass is another
+agent run over the bundle — loops multiply agent spend, so set
+`REVIEW_BUDGET_USD` (or `.review/budget`) before looping a large backlog. Ceilings
+constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
+counts) — the ledger is an audit trail, not a lock.
+
 ## Providers (non-GitHub hosts)
 
 `fetch --provider gitlab|gitcafe|forgejo|bitbucket|azure` builds the same bundle

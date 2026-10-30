@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # review.sh — local PR fetch/post/triage/report using gh CLI only.
 # Verbs: fetch (network+files), post (validates, merges store, posts once),
-#        triage (local store mutation, no network), report (pure read, no network).
+#        triage (local store mutation, no network), report (pure read, no network),
+#        fix (bounded verify-gated pass over local bundles, no network).
 set -euo pipefail
 
 usage() {
@@ -26,6 +27,11 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     validate + merge a local review.json into findings.json + record.json. No GitHub, no post.
   adopt <owner/repo> <pr> --from <local-slug> [--json]
     carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).
+  fix <owner/repo> <local-slug> [--sig <s>] [--json]
+    one bounded pass over a local bundle: picks the top open inline sig
+    (or --sig), prints finding + kb.txt context with verify/land/re-run
+    instructions. Max 3 passes per sig (ledger .review/<bundle>/fix.json);
+    touching files outside the anchor stops the loop (scope-escape).
   post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]
         [--review-file .review/<pr>/review.json] [--dry-run] [--json]
     validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,
@@ -95,7 +101,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   learn --restore <id> --reason <text> [--json]
     restore a retired rule to active (tombstone history kept);
     reason needs 30+ chars.
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree/ready/trend/learn: stdout is exactly one JSON envelope (schema_version 1);
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -173,6 +179,10 @@ fail() {
     degenerate-body) hint="try: open with a verdict marker (see prompts/review.md), then re-run";;
     pr-not-open) hint="try: re-fetch the PR (bundle may be stale)";;
     unknown-sig|ambiguous-sig) hint="try: copy the full sig prefix from report output";;
+    bad-sig) hint="try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix";;
+    conflicted-tree) hint="try: resolve the conflicts (or abort the merge), then re-run";;
+    fix-ceiling) hint="try: triage the sig or split the fix — the 3-pass ceiling is hard-coded";;
+    scope-escape) hint="try: revert or stash files outside the anchor path, then re-run fix";;
     rationale-required) hint="try: add --rationale with 30+ chars, or --force";;
     already-adopted|provider-unimplemented) hint="try: use the verb named above for this bundle kind";;
     bad-*) hint="try: re-run with one of the valid values named above";;
@@ -2936,4 +2946,229 @@ if [[ "$cmd" == "learn" ]]; then
   exit 0
 fi
 
-echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn)" >&2; exit 2
+# -------------------------------------------------------------------- fix ---
+# fix_worktree_files — sorted unique worktree-changed paths (one per line).
+# NUL-parsed (porcelain -z) so spaces/non-ASCII never quote-split; renames
+# contribute both sides (either side outside the anchor is escape-worthy).
+# Empty when clean or (defensively) unreadable.
+fix_worktree_files() {
+  local rec="" st="" p=""
+  while IFS= read -r -d '' rec; do
+    [[ -z "$rec" ]] && continue
+    st="${rec:0:2}"; p="${rec:3}"
+    case "$st" in
+      R*|C*) printf '%s\n' "$p"; IFS= read -r -d '' rec && printf '%s\n' "$rec";;
+      *) printf '%s\n' "$p";;
+    esac
+  done < <(git status --porcelain -z 2>/dev/null || true) | LC_ALL=C sort -u
+}
+
+# Bounded verify-gated fix loop over a LOCAL bundle, one pass per invocation.
+# fix <owner/repo> <local-slug> [--sig <s>] [--json]
+# Picks the top open inline sig (severity critical>important>informational,
+# then path asc) unless --sig names one (must be open + inline). Prints the
+# finding locator/body/severity/anchors plus the full kb.txt context when
+# present, with patch -> verification.json -> record/post -> re-run fix
+# instructions. The agent runs the verify command itself; this script never
+# executes it (no new exec surface — the resultHead==HEAD match in the
+# existing record/post verification gate is the freshness proof). Ceilings are
+# hard-coded: MAX 3 passes per sig (ledger $dir/fix.json); touching any
+# worktree file outside the finding's anchor path stops the loop
+# (scope-escape, an effective files ceiling of 1). Local bundles only in v1.
+if [[ "$cmd" == "fix" ]]; then
+  fix_sig=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --sig) fix_sig="${2:-}"; shift 2;;
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag '$1' for fix (want --sig <sig>, --json)" >&2; exit 2;;
+  esac; done
+  rentry_cmd="./scripts/review.sh fix $repo $pr"
+  [[ -n "$fix_sig" ]] && rentry_cmd="$rentry_cmd --sig $fix_sig"
+  if [[ "$json_mode" == "true" ]]; then rentry_cmd="$rentry_cmd --json"; exec 9>&1; exec 1>&2; fi
+  resolve_bundle_dir "$pr"
+  case "$dir" in .review/local-*) ;; *) fail "not-local" "fix works on local bundles; fetch-local first";; esac
+  # Start gates, refused before any work. Local bundles carry source.json, not
+  # PR.json, so the PR-state gate skips when no PR.json rides along; a bundle
+  # that does carry one and reads closed/merged refuses like post.
+  if [[ -f "$dir/PR.json" ]]; then
+    fix_state=$(pr_field "$dir" state)
+    case "$fix_state" in closed|merged) fail "pr-not-open" "bundle PR is $fix_state — refusing fix (re-fetch if this bundle is stale)";; esac
+  fi
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [[ -n "$(git ls-files -u 2>/dev/null)" ]]; then
+      fail "conflicted-tree" "worktree holds unresolved merge conflicts (git ls-files -u non-empty) — resolve or abort the merge, then re-run fix"
+    fi
+  else
+    fail "not-a-repo" "fix runs inside a git worktree (it audits worktree files against the anchor)"
+  fi
+  [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run record first, then fix)"
+  jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run record to rebuild, or restore the file)"
+  now=$(now_utc)
+  # Readiness summary from STORED bundle data only (no network): PR state when
+  # a PR.json rides along, stored thread counts when present, open counts.
+  # Advisory — never gates beyond the start gates above.
+  fix_open=$(jq '[.[] | select(.status == "open")] | length' "$dir/findings.json")
+  fix_open_inline=$(jq '[.[] | select(.status == "open" and .kind == "inline")] | length' "$dir/findings.json")
+  fix_nr="0"; fix_ni="0"
+  if [[ -f "$dir/reviews.json" ]]; then fix_nr=$(jq 'if type == "array" then length else 0 end' "$dir/reviews.json" 2>/dev/null || echo 0); fi
+  if [[ -f "$dir/inline.json" ]]; then fix_ni=$(jq 'if type == "array" then length else 0 end' "$dir/inline.json" 2>/dev/null || echo 0); fi
+  case "$fix_nr" in ''|*[!0-9]*) fix_nr=0;; esac
+  case "$fix_ni" in ''|*[!0-9]*) fix_ni=0;; esac
+  fix_threads="none stored"
+  if [[ -f "$dir/reviews.json" || -f "$dir/inline.json" ]]; then fix_threads="reviews.json=$fix_nr inline.json=$fix_ni"; fi
+  fix_prinfo="n/a (local bundle, PR check skipped)"
+  if [[ -f "$dir/PR.json" ]]; then
+    fix_prinfo="state $(pr_field "$dir" state)"
+    if [[ "$(jq -r '.draft // false' "$dir/PR.json" 2>/dev/null || echo false)" == "true" ]]; then fix_prinfo="$fix_prinfo draft"; fi
+  fi
+  echo "» readiness: $dir — findings $fix_open open ($fix_open_inline inline open); threads (stored): $fix_threads; PR $fix_prinfo"
+  # Ledger: .review/<bundle>/fix.json {sigs: {<sig>: {passes, last_at, baseline, stopped}}}.
+  # baseline = worktree files present at pass 1 (pre-existing dirt is
+  # grandfathered; only NEW dirt can trip the escape audit). Fix writes only
+  # this file (plus terminal output) — never findings.json.
+  fix_ledger="$dir/fix.json"
+  fix_store='{"sigs":{}}'
+  if [[ -f "$fix_ledger" ]]; then
+    fix_read=$(jq -c '{sigs: (.sigs // {})}' "$fix_ledger" 2>/dev/null || true)
+    if [[ -n "$fix_read" ]]; then fix_store="$fix_read";
+    else warn "fix ledger $fix_ledger unreadable — starting fresh (prior pass counts lost)"; fi
+  else
+    printf '%s\n' "$fix_store" > "$fix_ledger.tmp.$$" && mv "$fix_ledger.tmp.$$" "$fix_ledger"
+  fi
+  # Explicit sig: must name an open inline finding (closed/section/unknown refuse).
+  fix_full=""
+  if [[ -n "$fix_sig" ]]; then
+    fix_full=$(resolve_sig "$(cat "$dir/findings.json")" "$fix_sig")
+    case "$fix_full" in
+      NONE) fail "bad-sig" "fix: sig prefix '${fix_sig:0:12}' not in store (list open inline sigs with report --status open --kind inline)";;
+      MANY) fail "ambiguous-sig" "fix: sig prefix '${fix_sig:0:12}' is ambiguous (copy the full prefix from report output)";;
+    esac
+    fix_rec=$(jq -c --arg s "$fix_full" '[.[] | select(.sig == $s)][0]' "$dir/findings.json")
+    fix_kind=$(jq -r '.kind' <<<"$fix_rec")
+    fix_status=$(jq -r '.status' <<<"$fix_rec")
+    if [[ "$fix_kind" != "inline" ]]; then fail "bad-sig" "fix: sig ${fix_full:0:8} is a $fix_kind finding (fix picks inline only)"; fi
+    if [[ "$fix_status" != "open" ]]; then fail "bad-sig" "fix: sig ${fix_full:0:8} is $fix_status (fix iterates open sigs only)"; fi
+  fi
+  if [[ -z "$fix_full" ]]; then
+    # Terminal completion: no open inline sigs remain — fixed/open/stopped plus
+    # the ledger path, then exit 0 (nothing left to iterate).
+    if (( fix_open_inline == 0 )); then
+      fix_fixed=$(jq '[.[] | select(.status == "addressed")] | length' "$dir/findings.json")
+      fix_stopped=$(jq -r '[(.sigs // {})[] | select(.stopped != null)] | length' <<<"$fix_store")
+      case "$fix_stopped" in ''|*[!0-9]*) fix_stopped=0;; esac
+      echo "fix complete: $dir — fixed=$fix_fixed open=$fix_open stopped=$fix_stopped (ledger $fix_ledger)"
+      if (( fix_open > 0 )); then
+        echo "next: $fix_open open finding(s) left are non-inline or dispositioned — triage or record to settle them"
+      else
+        echo "next: done — no open findings"
+      fi
+      if [[ "$json_mode" == "true" ]]; then
+        jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg d "$dir" \
+          --arg ledger "$fix_ledger" --argjson fixed "$fix_fixed" --argjson open "$fix_open" \
+          --argjson stopped "$fix_stopped" \
+          '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
+            next:(if $open == 0 then "done — no open findings" else "triage or record to settle the remaining open findings" end),
+            warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),
+            data:{dir:$d,ledger:$ledger,sig:null,locator:null,severity:null,body:null,anchors:null,pass:null,max_passes:3,kb:null,open_inline:0,fixed:$fixed,open:$open,stopped:$stopped,complete:true},error:null}' >&9
+      fi
+      exit 0
+    fi
+    fix_full=$(jq -r '[.[] | select(.status == "open" and .kind == "inline")] | sort_by([({"critical":0,"important":1,"informational":2}[.severity // ""] // 3), (.path // ""), (.line // 0), .sig]) | .[0].sig // empty' "$dir/findings.json")
+    [[ -z "$fix_full" ]] && fail "report-failed" "fix: open-inline count disagrees with the store (re-run record to rebuild $dir/findings.json)"
+    fix_rec=$(jq -c --arg s "$fix_full" '[.[] | select(.sig == $s)][0]' "$dir/findings.json")
+  fi
+  fix_passes=$(jq -r --arg s "$fix_full" '(.sigs[$s].passes // 0)' <<<"$fix_store")
+  case "$fix_passes" in ''|*[!0-9]*) fix_passes=0;; esac
+  # Ceiling: MAX 3 passes per sig. Tombstone once (first stop wins); passes
+  # never advance on a refusal.
+  if (( fix_passes >= 3 )); then
+    fix_store=$(jq -c --arg s "$fix_full" --arg t "$now" '.sigs[$s] = ((.sigs[$s] // {}) | {passes: (.passes // 3), last_at: $t, stopped: (.stopped // "ceiling")})' <<<"$fix_store")
+    printf '%s\n' "$fix_store" > "$fix_ledger.tmp.$$" && mv "$fix_ledger.tmp.$$" "$fix_ledger"
+    fix_fixed=$(jq '[.[] | select(.status == "addressed")] | length' "$dir/findings.json")
+    fix_stopped=$(jq -r '[(.sigs // {})[] | select(.stopped != null)] | length' <<<"$fix_store")
+    case "$fix_stopped" in ''|*[!0-9]*) fix_stopped=0;; esac
+    echo "fix complete: $dir — fixed=$fix_fixed open=$fix_open stopped=$fix_stopped (ledger $fix_ledger)"
+    echo "next: sig ${fix_full:0:8} hit the 3-pass ceiling — triage it or split the fix"
+    fail "fix-ceiling" "fix: sig ${fix_full:0:8} already used $fix_passes/3 passes — ceiling reached (stopped: ceiling)"
+  fi
+  fix_anchor=$(jq -r '.path // empty' <<<"$fix_rec")
+  [[ -z "$fix_anchor" ]] && fail "bad-sig" "fix: sig ${fix_full:0:8} carries no anchor path (cannot scope the pass)"
+  # Scope-escape audit: past the first pass, any worktree file outside the
+  # anchor stops the loop (effective files ceiling of 1). The first pass only
+  # records its baseline (pre-existing dirt is grandfathered); the audit flags
+  # only files that appeared since. Own .review/ scratch never counts.
+  if (( fix_passes >= 1 )); then
+    fix_base=$(jq -r --arg s "$fix_full" '(.sigs[$s].baseline // [])[]' <<<"$fix_store" 2>/dev/null || true)
+    fix_first=""; fix_n=0
+    while IFS= read -r fix_f; do
+      [[ -z "$fix_f" ]] && continue
+      case "$fix_f" in .review/*) continue;; esac
+      [[ "$fix_f" == "$fix_anchor" ]] && continue
+      if [[ -z "$fix_first" ]]; then fix_first="$fix_f"; fi
+      fix_n=$(( fix_n + 1 ))
+    done < <(comm -23 <(fix_worktree_files) <(printf '%s\n' "$fix_base" | grep -v '^$' | LC_ALL=C sort -u))
+    if (( fix_n > 0 )); then
+      fix_store=$(jq -c --arg s "$fix_full" --arg t "$now" '.sigs[$s] = ((.sigs[$s] // {}) | {passes: (.passes // 1), last_at: $t, stopped: (.stopped // "scope-escape")})' <<<"$fix_store")
+      printf '%s\n' "$fix_store" > "$fix_ledger.tmp.$$" && mv "$fix_ledger.tmp.$$" "$fix_ledger"
+      fix_fixed=$(jq '[.[] | select(.status == "addressed")] | length' "$dir/findings.json")
+      fix_stopped=$(jq -r '[(.sigs // {})[] | select(.stopped != null)] | length' <<<"$fix_store")
+      case "$fix_stopped" in ''|*[!0-9]*) fix_stopped=0;; esac
+      echo "fix complete: $dir — fixed=$fix_fixed open=$fix_open stopped=$fix_stopped (ledger $fix_ledger)"
+      echo "next: worktree escaped the anchor — revert or stash files outside '$fix_anchor', then re-run fix"
+      if (( fix_n > 1 )); then
+        fail "scope-escape" "fix: worktree touches '$fix_first' and $(( fix_n - 1 )) more outside anchor '$fix_anchor' — revert or stash them, then re-run fix"
+      else
+        fail "scope-escape" "fix: worktree touches '$fix_first' outside anchor '$fix_anchor' — revert or stash it, then re-run fix"
+      fi
+    fi
+  fi
+  fix_pass=$(( fix_passes + 1 ))
+  fix_base_now=$(fix_worktree_files | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
+  # Successful pass clears a prior stopped flag (recovery is real); the first
+  # pass also snapshots the baseline for later escape audits.
+  fix_store=$(jq -c --arg s "$fix_full" --arg t "$now" --argjson p "$fix_pass" --argjson base "$fix_base_now" \
+    '.sigs[$s] = ((.sigs[$s] // {}) | {passes: $p, last_at: $t, baseline: (.baseline // $base)})' <<<"$fix_store")
+  printf '%s\n' "$fix_store" > "$fix_ledger.tmp.$$" && mv "$fix_ledger.tmp.$$" "$fix_ledger"
+  echo "» ledger: $fix_ledger — sig ${fix_full:0:8} pass $fix_pass/3"
+  fix_locator=$(jq -r 'if .path then "\(.path)\(if .line then ":\(.line)" else "" end)" else (.heading // "?") end' <<<"$fix_rec")
+  fix_sev=$(jq -r '.severity // "untagged"' <<<"$fix_rec")
+  fix_body=$(jq -r '.body // ""' <<<"$fix_rec")
+  fix_side=$(jq -r '.side // "RIGHT"' <<<"$fix_rec")
+  fix_ln=$(jq -r '.line // empty' <<<"$fix_rec")
+  fix_sl=$(jq -r '.start_line // empty' <<<"$fix_rec")
+  fix_an=$(jq -r '.anchored // empty' <<<"$fix_rec")
+  [[ -z "$fix_ln" ]] && fix_ln="?"
+  [[ -z "$fix_sl" ]] && fix_sl="$fix_ln"
+  printf '%s\n' "fix: ${fix_full:0:8} [$fix_sev] $fix_locator (pass $fix_pass/3, ledger $fix_ledger)"
+  printf '%s\n' "finding: $fix_body"
+  printf '%s\n' "anchors: $fix_anchor:$fix_sl-$fix_ln side=$fix_side anchored=$fix_an"
+  fix_kb="null"
+  if [[ -f "$dir/kb.txt" ]]; then
+    printf '%s\n' "--- kb.txt ($dir/kb.txt, full context) ---"
+    cat "$dir/kb.txt"
+    printf '%s\n' "--- end kb.txt ---"
+    fix_kb=$(jq -n --arg f "$dir/kb.txt" --arg c "$(cat "$dir/kb.txt")" '{file:$f, content:$c}')
+  fi
+  printf '%s\n' "instructions: patch the anchor file ($fix_anchor), then run its verify command yourself and write $dir/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record $repo $pr; re-run fix $repo $pr for the next pass"
+  printf '%s\n' "loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or .review/budget (see docs/manual.md)"
+  printf '%s\n' "next: patch $fix_anchor, write verification.json, run record to land it, then re-run fix"
+  if [[ "$json_mode" == "true" ]]; then
+    fix_anchors=$(jq -n --arg p "$fix_anchor" --arg ln "$fix_ln" --arg sl "$fix_sl" --arg side "$fix_side" --arg an "$fix_an" '{path:$p,line:$ln,start_line:$sl,side:$side,anchored:$an}')
+    fix_stopped_now=$(jq -r '[(.sigs // {})[] | select(.stopped != null)] | length' <<<"$fix_store")
+    case "$fix_stopped_now" in ''|*[!0-9]*) fix_stopped_now=0;; esac
+    fix_fixed_now=$(jq '[.[] | select(.status == "addressed")] | length' "$dir/findings.json")
+    jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg d "$dir" \
+      --arg ledger "$fix_ledger" --arg s "$fix_full" --arg loc "$fix_locator" --arg sev "$fix_sev" \
+      --arg body "$fix_body" --argjson anchors "$fix_anchors" --argjson pass "$fix_pass" \
+      --argjson kb "$fix_kb" --argjson oi "$fix_open_inline" --argjson fixed "$fix_fixed_now" \
+      --argjson open "$fix_open" --argjson stopped "$fix_stopped_now" \
+      '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
+        next:"patch the anchor file, write verification.json, run record to land it, then re-run fix",
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),
+        data:{dir:$d,ledger:$ledger,sig:$s,locator:$loc,severity:$sev,body:$body,anchors:$anchors,pass:$pass,max_passes:3,kb:$kb,open_inline:$oi,fixed:$fixed,open:$open,stopped:$stopped,complete:false},error:null}' >&9
+  fi
+  exit 0
+fi
+
+echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn)" >&2; exit 2
