@@ -142,7 +142,27 @@ optional `--sarif` for scanners/CI). Distinct from `prompts/ci.md`'s agent-writt
 markers, the agent's does not. Severity is stored at write time (unknown → null,
 prose emoji never parsed) — rank uses status, then severity, then rigor, then
 anchored/inBounds, then path/line/sig. `doctor` preflights the harness; `calibrate`
-joins findings against live ground truth, read-only. Sigs follow the Sig contract under Findings store.
+joins findings against live ground truth, read-only.
+
+`ready` stays advisory by default (exit 0, blockers listed); `ready --check`
+opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait,
+2 usage, 3 tool error — so callers branch without parsing JSON:
+
+```bash
+./scripts/review.sh ready owner/repo 123 --check
+case $? in
+  0) ./scripts/review.sh fetch owner/repo 123;;  # reviewable — review
+  1) echo "not ready — nudge the author instead of reviewing";;
+  2) echo "usage error — check the invocation";;
+  *) echo "ready itself failed — check auth/bundle, then retry";;
+esac
+```
+
+Compose it around the expensive step: gate `fetch`+review on `--check`
+(pre), keep `post`'s preflight as the fail-closed backstop (post) — the gate
+saves tokens, never merges.
+
+Sigs follow the Sig contract under Findings store.
 
 ## Model wiring
 
@@ -259,6 +279,8 @@ Schema evolution only — verbs and features ship in the release changelog.
 - Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.
 - Added: `rigor`, `inBounds`, retained `suggestion`, `rationale`/`triagedAt`/`triagedBy`, history `actor`/`sha`; statuses `wont-fix/false-positive/deferred`; `verification.json` evidence gate; `patch.json` gains `verifyCmd/verifyOutput/baseHead/resultHead`.
 - Added: `post.json` capture `{review, head, posted_at}` (calibration enabler).
+- Added: review-level `confidence` (1–5) + `security_summary` on `record.json`/`post.json`
+  (optional, absent → null; out-of-range confidence warns and drops, never fails).
 - Added: local bundles — `source.json` standing in for `PR.json` under `.review/local-<name>/`.
 - Added: store versioning — per-bundle `store.json` marker, `sig_version: "1"` on
   findings entries (backfilled on merge), `schema_version: "1"` on `review.json`

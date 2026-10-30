@@ -24,7 +24,9 @@
    so lenses fan out to source, not snapshots. Read `.review/learnings.md` headings when `fetch`
    reports the file — prior runs' conventions and gotchas, challenged when stale. Pull context to render a confident grounded
    review: read related files, grep callers of changed symbols, check tests on touched paths,
-   fetch related GitHub state.
+   fetch related GitHub state. Read `.review/N/sensitive.txt` when `fetch` reports it —
+   flagged paths stay readable evidence, but never quote flagged values into posted bodies
+   (name the path, not the secret).
    **You are the synthesizer — never delegate understanding to subagents.**
    Apply the scope gate in `prompts/system.md` — it alone decides skip vs full scrutiny.
 4. **Specialist decision.** After the full diff read, name questions you still cannot answer
@@ -76,7 +78,7 @@
 details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
-7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); `post` validates anchors, merges the findings store, and submits. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
+7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent, out-of-range confidence is dropped. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
    Track coverage yourself against the TOC — no tool checks it; an unread range is how findings get missed.
 8. **Cost record.** With every `review.json`, write `.review/N/cost.json`
    (local: `.review/local-<name>/cost.json`) — your self-reported spend for
@@ -84,10 +86,14 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
    so an honest partial beats a polished nothing. One entry per model that
    generated tokens — you first, then each lens. `est_usd` is your own math
    from your price sheet, `null` when you don't know prices — never guess them
-   (the script never prices).
+   (the script never prices). `effort` names this run's tier — `cheap` (delta
+   re-review, skim lenses), `standard` (full review, the default), or `deep`
+   (adversarial or multi-pass). State what you ran; a missing or unknown value
+   rolls up as `standard`, so legacy records keep working.
    ```json
    {
      "schema_version": "1",
+     "effort": "standard",
      "models": [
        {"name": "<synthesizer model id>", "input_tokens": 0, "output_tokens": 0},
        {"name": "<lens model id>", "input_tokens": 0, "output_tokens": 0}
