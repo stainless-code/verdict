@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready|trend [opts]
+usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready|trend|learn [opts]
   fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
@@ -83,7 +83,19 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     Recomputed every run (manual edits stay truthful); missing/unreadable
     stores warn and skip, never fail. `closed` means no longer actionable
     (wont-fix/false-positive/deferred); null severity reads untagged.
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree/ready/trend: stdout is exactly one JSON envelope (schema_version 1);
+  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]
+    append one rule to .review/kb.jsonl (zeros + status active; provenance
+    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate
+    rule text and taken ids.
+  learn --status [--json]
+    list rules with counters + precision. No kb.jsonl reads as no rules.
+  learn --retire <id> --reason <text> [--json]
+    retire a rule (tombstone kept, counters untouched, history-logged);
+    reason needs 30+ chars.
+  learn --restore <id> --reason <text> [--json]
+    restore a retired rule to active (tombstone history kept);
+    reason needs 30+ chars.
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/check-tree/ready/trend/learn: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -92,7 +104,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then usage; exit 0; fi
 if [[ "${1:-}" == "--version" ]]; then jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown"; exit 0; fi
 cmd="${1:-}"; shift $(( $# > 0 ? 1 : 0 ))
 repo=""; pr=""
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" ]]; then
   repo="${1:-}"; pr="${2:-}"; shift $(( $# >= 2 ? 2 : $# ))
 fi
 if [[ "$cmd" == "trend" ]]; then
@@ -164,6 +176,10 @@ fail() {
     rationale-required) hint="try: add --rationale with 30+ chars, or --force";;
     already-adopted|provider-unimplemented) hint="try: use the verb named above for this bundle kind";;
     bad-*) hint="try: re-run with one of the valid values named above";;
+    already-learned) hint="try: cite the existing rule id instead of learning it twice";;
+    id-taken) hint="try: pass a different --id";;
+    unknown-rule) hint="try: list rules with learn --status, then re-run";;
+    already-retired|not-retired) hint="try: check the rule status with learn --status, then re-run";;
     *) hint="try: address the cause above, then re-run the same command";;
   esac
   if [[ -n "$hint" ]]; then msg="$msg
@@ -453,6 +469,13 @@ now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok), $4 = now, $5 = findings file
   local review_file="$1" dir="$2" head_full="$3" now="$4" findings_file="$5"
+  kb_resolve_policy
+  KB_BROKEN="false"
+  KB_STAGED="[]"
+  if [[ -f "$KB_FILE" ]] && ! jq empty "$KB_FILE" >/dev/null 2>&1; then
+    warn "kb store $KB_FILE unreadable — citations ignored for this run (fix the bad line)"
+    KB_BROKEN="true"
+  fi
   # review.json schema: agents stamp schema_version; unknown versions refuse
   # (uninterpretable), missing versions warn-and-proceed (grandfathered agents).
   rv=$(jq -r '.schema_version // empty' "$review_file")
@@ -528,6 +551,7 @@ $move_section"
   new_entries=$(jq -c -n --argjson comments "$all_comments" --arg body "$body" --argjson secs "$(jq '.sections // []' "$review_file")" '
     [($comments[] | {kind:"inline", path, side:(.side // "RIGHT"), line,
         anchored:(.dropReason == null), body:(.body // ""), suggestion:(.suggestion // null),
+        kb:(.kb // null),
         inBounds:(if (.["in-bounds"] == null) then true else .["in-bounds"] end),
         rigor:(.rigor as $r | if (["said","pointed","walked","ran","reproduced"] | index($r)) then $r else "pointed" end),
         severity:(.severity as $s | if (["critical","important","informational"] | index($s)) then $s else null end)}),
@@ -541,8 +565,10 @@ $move_section"
   while IFS= read -r e; do
     [[ -z "$e" ]] && continue
     key=$(jq -r '.sigKey' <<<"$e"); sig=$(sig_of "$key")
+    kb_normalize_entry "$e"; kb_list="$KB_NORM_JSON"
     entries=$(jq --argjson e "$e" --arg sig "$sig" --arg now "$now" --arg sha "$hs" \
-      '. + [$e + {sig:$sig, sig_version:"1", firstSeen:$sha, lastSeen:$sha, status:"open", rationale:"", history:[{at:$now, event:"reported"}]} | del(.sigKey)]' <<<"$entries")
+      --argjson kb "$kb_list" \
+      '. + [$e + {sig:$sig, sig_version:"1", firstSeen:$sha, lastSeen:$sha, status:"open", rationale:"", kb:$kb, history:[{at:$now, event:"reported"}]} | del(.sigKey)]' <<<"$entries")
   done <<<"$new_entries"
   if [[ -f "$dir/findings.json" ]]; then old="$dir/findings.json"; else old="/dev/null"; fi
   if [[ "$old" != "/dev/null" ]]; then
@@ -555,7 +581,8 @@ $move_section"
                     path:($n.path // $prev.path), line:($n.line // $prev.line),
                     body:$n.body, anchored:$n.anchored,
                     rigor:($n.rigor // $prev.rigor), severity:($n.severity // $prev.severity), suggestion:($n.suggestion // $prev.suggestion),
-                    inBounds:(if ($n.inBounds == null) then ($prev.inBounds // true) else $n.inBounds end)})
+                    inBounds:(if ($n.inBounds == null) then ($prev.inBounds // true) else $n.inBounds end),
+                    kb:($n.kb // $prev.kb // [])})
              end])
          + [.[] | . as $n | select([$o[] | select(.sig == $n.sig)] | length == 0)])' <<<"$entries")
   fi
@@ -605,6 +632,13 @@ $move_section"
       if [[ "$verdict" == "VERIFIED" && "$sha_ok" == "true" && -n "$vcmd" ]]; then
         entries=$(jq --arg s "$vfull" --arg now "$now" --arg sha "$hs" --arg cmd "$vcmd" \
           'map(if .sig == $s and .status != "addressed" then . + {status:"addressed", history:(.history + [{at:$now, event:"addressed", actor:"revalidator", note:$cmd, sha:$sha}])} else . end)' <<<"$entries")
+        if [[ "$findings_file" != *.dryrun.json ]]; then
+          kb_apply_credit "$vfull" "addressed" "revalidator" "$cmd" "$now" "$entries"
+          if [[ "$KB_CREDITED_JSON" != "[]" ]]; then
+            entries=$(jq --arg s "$vfull" --argjson kb "$KB_CREDITED_JSON" \
+              'map(if .sig == $s then .history[-1] += {kb_credit:$kb} else . end)' <<<"$entries")
+          fi
+        fi
         vexit=$(jq -r '.verifyExit // empty' "$dir/patch.json" 2>/dev/null || true)
         if [[ -n "$vexit" && "$vexit" != "0" && "$vexit" != "null" ]]; then
           warn "VERIFIED claim for ${vfull:0:8} contradicts machine verify exit=$vexit — flip stands, contradiction recorded"
@@ -639,8 +673,19 @@ $move_section"
     if (( ${#trat} < 30 )); then warn "triage claim without rationale, kept prior status: ${tsig:0:8}"; continue; fi
     entries=$(jq --arg s "$tfull" --arg st "$tst" --arg rat "$trat" --arg now "$now" --arg sha "$hs" \
       'map(if .sig == $s then . + {status:$st, rationale:$rat, triagedAt:$now, triagedBy:"agent", history:(.history + [{at:$now, event:"triaged", actor:"agent", note:$rat, sha:$sha}])} else . end)' <<<"$entries")
+    case "$tst" in
+      addressed|false-positive)
+        if [[ "$findings_file" != *.dryrun.json ]]; then
+          kb_apply_credit "$tfull" "$tst" "agent" "$cmd" "$now" "$entries"
+          if [[ "$KB_CREDITED_JSON" != "[]" ]]; then
+            entries=$(jq --arg s "$tfull" --argjson kb "$KB_CREDITED_JSON" \
+              'map(if .sig == $s then .history[-1] += {kb_credit:$kb} else . end)' <<<"$entries")
+          fi
+        fi;;
+    esac
   done < <(jq -c '.triage // [] | .[]' "$review_file")
   echo "$entries" | jq '.' > "$findings_file"
+  kb_commit_staged "$findings_file" "$now"
   echo "» findings: $(jq 'length' <<<"$entries") sigs -> $findings_file"
   jq -r '.[] | "\(.sig[0:8])  \(.status)  \(.anchored)  \(.path // .heading // "?")"' <<<"$entries" | sed 's/^/  /'
   n_open=$(jq '[.[] | select(.status == "open")] | length' <<<"$entries")
@@ -928,13 +973,326 @@ write_sensitive_manifest() { # $1 = dir, $2 = newline-separated extra paths (may
   return 0
 }
 
+# Structured local knowledge base (operator-owned, repo-local).
+# Store: .review/kb.jsonl, one JSON object per line:
+# {id, rule, scope, provenance, rigor, hits, false_hits, judged, status}
+# (retired rows keep the line and gain retiredAt/retireReason tombstones plus
+# a history log). Audit: every credit appends one .review/kb-joins.jsonl row
+# {at, sig, rule, outcome, actor, verb}. Recall (write_kb_recall) mirrors the
+# sensitive manifest: advisory context file .review/<bundle>/kb.txt only when
+# active rules match, never a gate, never redacting evidence.
+KB_FILE=".review/kb.jsonl"
+KB_JOINS=".review/kb-joins.jsonl"
+KB_POLICY=".review/kb-policy"
+# Corrupt-store short-circuit for a run (warned once); recall/credit then
+# skip instead of warning per element.
+KB_BROKEN="false"
+# Staged (rule, sig, outcome) credit ops for this run; kb_commit_staged
+# applies them after the findings file carrying their flips persists.
+KB_STAGED="[]"
+
+# slugify rule text -> candidate id (lowercase, non-alnum runs to one dash,
+# trimmed, capped at 65 chars so the id regex always holds).
+kb_slugify() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-\+//; s/-\+$//' | cut -c1-65
+}
+
+# Retirement thresholds: env wins, else .review/kb-policy key=value lines
+# (MIN_JUDGED / MAX_FP_RATE, REVIEW_KB_-prefixed aliases accepted), else
+# defaults (5 judged, 0.5 false-hit rate). An explicitly-set-but-invalid
+# value warns and falls through to the next source (file, then default) —
+# never fails the flip. With no kb.jsonl and nothing explicitly set, resolve
+# silently to defaults (no warnings on a default path). Sets
+# KB_MIN_JUDGED / KB_MAX_FP_RATE.
+kb_resolve_policy() {
+  local raw="" min_from_env="false" rate_from_env="false"
+  KB_MIN_JUDGED="5"; KB_MAX_FP_RATE="0.5"
+  if [[ ! -f "$KB_FILE" && -z "${REVIEW_KB_MIN_JUDGED:-}" && -z "${REVIEW_KB_MAX_FP_RATE:-}" ]]; then return 0; fi
+  if [[ -n "${REVIEW_KB_MIN_JUDGED:-}" ]]; then
+    raw=$(printf '%s' "$REVIEW_KB_MIN_JUDGED" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [[ "$raw" =~ ^[0-9]+$ ]] && (( 10#$raw > 0 )); then KB_MIN_JUDGED="$raw"; min_from_env="true";
+    else warn "ignoring invalid REVIEW_KB_MIN_JUDGED '$REVIEW_KB_MIN_JUDGED' (want a positive integer) — trying file, then default"; fi
+  fi
+  if [[ "$min_from_env" == "false" && -f "$KB_POLICY" ]]; then
+    raw=$(grep -E '^(REVIEW_KB_MIN_JUDGED|MIN_JUDGED)=' "$KB_POLICY" 2>/dev/null | tail -n 1 | cut -d= -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
+    if [[ -n "$raw" ]]; then
+      if [[ "$raw" =~ ^[0-9]+$ ]] && (( 10#$raw > 0 )); then KB_MIN_JUDGED="$raw";
+      else warn "ignoring invalid MIN_JUDGED '$raw' in $KB_POLICY (want a positive integer) — default 5"; fi
+    fi
+  fi
+  if [[ -n "${REVIEW_KB_MAX_FP_RATE:-}" ]]; then
+    raw=$(printf '%s' "$REVIEW_KB_MAX_FP_RATE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [[ "$raw" =~ ^[0-9]*\.?[0-9]+$ ]] && awk -v m="$raw" 'BEGIN{exit !(m >= 0 && m <= 1)}'; then KB_MAX_FP_RATE="$raw"; rate_from_env="true";
+    else warn "ignoring invalid REVIEW_KB_MAX_FP_RATE '$REVIEW_KB_MAX_FP_RATE' (want 0..1) — trying file, then default"; fi
+  fi
+  if [[ "$rate_from_env" == "false" && -f "$KB_POLICY" ]]; then
+    raw=$(grep -E '^(REVIEW_KB_MAX_FP_RATE|MAX_FP_RATE)=' "$KB_POLICY" 2>/dev/null | tail -n 1 | cut -d= -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
+    if [[ -n "$raw" ]]; then
+      if [[ "$raw" =~ ^[0-9]*\.?[0-9]+$ ]] && awk -v m="$raw" 'BEGIN{exit !(m >= 0 && m <= 1)}'; then KB_MAX_FP_RATE="$raw";
+      else warn "ignoring invalid MAX_FP_RATE '$raw' in $KB_POLICY (want 0..1) — default 0.5"; fi
+    fi
+  fi
+}
+
+# kb_normalize_entry <entry-json> — set KB_NORM_JSON to the normalized kb id
+# list (JSON array, max 5): absent/null reads [], malformed/unknown/retired
+# ids warn-and-drop per element (mirrors the confidence warn-and-drop
+# precedent). Same-process by design: callers need the warns in the envelope
+# (warns inside $() are lost to the parent).
+kb_normalize_entry() {
+  local e="$1" t="" out="[]" n=0 j="" cid="" st="" trunc="false"
+  KB_NORM_JSON="[]"
+  [[ "$KB_BROKEN" == "true" ]] && return 0
+  t=$(jq -c '.kb // []' <<<"$e" 2>/dev/null || echo "BROKEN")
+  if [[ "$t" == "BROKEN" ]] || ! jq -e 'type == "array"' <<<"$t" >/dev/null 2>&1; then
+    if jq -e 'has("kb") and (.kb != null)' <<<"$e" >/dev/null 2>&1; then
+      warn "ignoring malformed kb (want an array of rule ids)"
+    fi
+    return 0
+  fi
+  while IFS= read -r j; do
+    [[ -z "$j" ]] && continue
+    cid=$(jq -r 'if type == "string" then . else empty end' <<<"$j" 2>/dev/null || true)
+    if [[ -z "$cid" ]]; then
+      warn "ignoring malformed kb id (want a rule id string)"; continue
+    fi
+    if [[ ! "$cid" =~ ^[a-z0-9][a-z0-9-]{0,64}$ ]]; then
+      warn "ignoring malformed kb id '$cid' (want ^[a-z0-9][a-z0-9-]{0,64}\$)"; continue
+    fi
+    if [[ ! -f "$KB_FILE" ]]; then
+      warn "ignoring unknown kb rule '$cid' (no $KB_FILE yet)"; continue
+    fi
+    st=$(jq -s --arg id "$cid" -r '[.[] | select(.id == $id)][0] | if . == null then "MISSING" else .status end' "$KB_FILE" 2>/dev/null || echo "UNREADABLE")
+    case "$st" in
+      active) ;;
+      retired) warn "ignoring retired kb rule '$cid' (restore it before citing)"; continue;;
+      MISSING) warn "ignoring unknown kb rule '$cid'"; continue;;
+      *) warn "kb store unreadable — ignoring cited rule '$cid'"; continue;;
+    esac
+    if jq -e --arg id "$cid" 'index($id) != null' <<<"$out" >/dev/null 2>&1; then continue; fi
+    if (( n >= 5 )); then
+      if [[ "$trunc" == "false" ]]; then warn "kb list truncated to 5 ids (extras dropped)"; trunc="true"; fi
+      continue
+    fi
+    out=$(jq -c --arg id "$cid" '. + [$id]' <<<"$out"); n=$((n + 1))
+  done < <(jq -c '.[]' <<<"$t" 2>/dev/null || true)
+  KB_NORM_JSON="$out"
+}
+
+# kb_apply_credit <sig> <outcome> <actor> <verb> <now> <entries-json> —
+# STAGE a credit for every cited rule not already credited for this finding.
+# Staging is memory-only (appends ops to KB_STAGED); the caller stamps
+# KB_CREDITED_JSON ([{rule, to}] objects) into the flipping history event
+# in-memory, and kb_commit_staged applies everything after the findings file
+# persists — so a crash between staging and persistence never mints phantom
+# credit. Idempotency key is (rule, sig, outcome): the join log covers
+# adopted twins across bundles, the history stamp covers same-run retries.
+# Sets KB_CREDITED_JSON (rules actually staged). Never fails the flip.
+kb_apply_credit() {
+  local sig="$1" outcome="$2" actor="$3" verb="$4" now="$5" entries="$6"
+  local cited="" rid="" dup=""
+  KB_CREDITED_JSON="[]"
+  [[ "$KB_BROKEN" == "true" ]] && return 0
+  [[ -f "$KB_FILE" ]] || return 0
+  case "$outcome" in addressed|false-positive) ;; *) return 0;; esac
+  if [[ -f "$KB_JOINS" ]] && ! jq -s empty "$KB_JOINS" >/dev/null 2>&1; then
+    warn "kb joins $KB_JOINS unreadable — credit skipped for this flip (fix or remove the file)"
+    return 0
+  fi
+  cited=$(jq -r --arg s "$sig" '.[] | select(.sig == $s) | ((.kb // [])[])' <<<"$entries" 2>/dev/null || true)
+  [[ -z "$cited" ]] && return 0
+  while IFS= read -r rid; do
+    [[ -z "$rid" ]] && continue
+    dup="false"
+    if [[ -f "$KB_JOINS" ]]; then
+      dup=$(jq -s --arg s "$sig" --arg r "$rid" --arg o "$outcome" -e 'map(select(.sig == $s and .rule == $r and .outcome == $o)) | length > 0' "$KB_JOINS" >/dev/null 2>&1 && echo "true" || echo "false")
+    fi
+    if [[ "$dup" == "false" ]]; then
+      dup=$(jq --arg s "$sig" --arg r "$rid" --arg o "$outcome" -e '[.[] | select(.sig == $s) | (.history // [])[] | select(.kb_credit != null) | (.kb_credit[]? | select(type == "object" and .rule == $r and .to == $o))] | length > 0' <<<"$entries" >/dev/null 2>&1 && echo "true" || echo "false")
+    fi
+    if [[ "$dup" == "true" ]]; then continue; fi
+    if ! jq -s --arg id "$rid" -e '[.[] | select(.id == $id)][0] | .status == "active"' "$KB_FILE" >/dev/null 2>&1; then
+      warn "kb credit skipped: rule '$rid' not active in $KB_FILE"; continue
+    fi
+    KB_STAGED=$(jq -c --arg s "$sig" --arg r "$rid" --arg o "$outcome" --arg a "$actor" --arg v "$verb" --arg t "$now" \
+      '. + [{sig:$s, rule:$r, outcome:$o, actor:$a, verb:$v, at:$t}]' <<<"$KB_STAGED")
+    KB_CREDITED_JSON=$(jq -c --arg r "$rid" --arg o "$outcome" '. + [{rule:$r, to:$o}]' <<<"$KB_CREDITED_JSON")
+  done <<<"$cited"
+}
+
+# kb_strip_stamps <findings-file> — remove staged kb_credit stamps so a later
+# re-flip can retry dropped credit. Best-effort recovery path only (commit
+# failure already warned loudly). Never fails.
+kb_strip_stamps() {
+  local findings_file="$1" tmp=""
+  [[ "$KB_STAGED" == "[]" ]] && return 0
+  [[ -f "$findings_file" ]] || return 0
+  tmp="$findings_file.tmp.$$"
+  if jq --argjson ops "$KB_STAGED" '
+      ($ops | map(.sig) | unique) as $sigs
+      | ($ops | map({key: (.rule + "" + .outcome), value: true}) | from_entries) as $drop
+      | map(. as $e
+        | if ([$sigs[] | select(. == $e.sig)] | length) == 0 then .
+          else .history |= map(
+            if .kb_credit == null then .
+            else (.kb_credit |= [ .[] | select(type != "object" or (($drop[(.rule // "") + "" + (.to // "")] // false) | not)) ])
+                 | if (.kb_credit | length) == 0 then del(.kb_credit) else . end
+            end)
+          end)' \
+      "$findings_file" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$findings_file"
+  else
+    rm -f "$tmp"; warn "kb recovery skipped: could not rewrite $findings_file (staged stamps kept — credit for these flips is spent)"
+  fi
+}
+
+# kb_commit_staged <findings-file> <now> — apply staged KB ops AFTER the
+# findings file carrying their flips has persisted. One kb.jsonl rewrite
+# (counters + retirements), then join rows, then retirement lines. Join rows
+# are re-checked per op (crash-retry safety: a retried flip finds either its
+# join row or its history stamp and skips). On failure warns loudly and
+# strips the staged stamps so a later re-flip can retry. Never fails the flip.
+kb_commit_staged() {
+  local findings_file="$1" now="$2" tmp="" live="" op="" rid="" sig="" outcome=""
+  [[ "$KB_STAGED" == "[]" ]] && return 0
+  [[ "$KB_BROKEN" == "true" ]] && { KB_STAGED="[]"; return 0; }
+  if [[ ! -f "$KB_FILE" ]] || ! jq -s empty "$KB_FILE" >/dev/null 2>&1; then
+    warn "kb store $KB_FILE unreadable at commit — staged credit dropped (flips stand); re-run the flip to retry"
+    kb_strip_stamps "$findings_file"; KB_STAGED="[]"; return 0
+  fi
+  live="[]"
+  while IFS= read -r op; do
+    [[ -z "$op" ]] && continue
+    rid=$(jq -r '.rule' <<<"$op"); sig=$(jq -r '.sig' <<<"$op"); outcome=$(jq -r '.outcome' <<<"$op")
+    if [[ -f "$KB_JOINS" ]] && jq -s --arg s "$sig" --arg r "$rid" --arg o "$outcome" -e 'map(select(.sig == $s and .rule == $r and .outcome == $o)) | length > 0' "$KB_JOINS" >/dev/null 2>&1; then
+      continue
+    fi
+    live=$(jq -c --argjson op "$op" '. + [$op]' <<<"$live")
+  done < <(jq -c '.[]' <<<"$KB_STAGED" 2>/dev/null || true)
+  if [[ "$live" == "[]" ]]; then KB_STAGED="[]"; return 0; fi
+  tmp="$KB_FILE.tmp.$$"
+  if ! jq -c -s --argjson ops "$live" '
+      (($ops | map(select(.outcome == "addressed")) | sort_by(.rule) | group_by(.rule) | map({key:.[0].rule, value:length}) | from_entries) // {}) as $hits
+      | (($ops | map(select(.outcome == "false-positive")) | sort_by(.rule) | group_by(.rule) | map({key:.[0].rule, value:length}) | from_entries) // {}) as $fps
+      | map(. as $row
+        | (($hits[$row.id] // 0) as $h | ($fps[$row.id] // 0) as $f
+        | if ($h + $f) > 0
+          then . + {hits: ((.hits // 0) + $h), false_hits: ((.false_hits // 0) + $f), judged: ((.judged // 0) + $h + $f)}
+          else . end)) | .[]' \
+      "$KB_FILE" > "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    warn "kb commit failed: could not rewrite $KB_FILE (flips stand, staged credit dropped) — re-run the flip to retry"
+    kb_strip_stamps "$findings_file"; KB_STAGED="[]"; return 0
+  fi
+  mv "$tmp" "$KB_FILE"
+  while IFS= read -r op; do
+    [[ -z "$op" ]] && continue
+    rid=$(jq -r '.rule' <<<"$op"); sig=$(jq -r '.sig' <<<"$op"); outcome=$(jq -r '.outcome' <<<"$op")
+    jq -n -c --arg t "$now" --arg s "$sig" --arg r "$rid" --arg o "$outcome" --arg a "$(jq -r '.actor' <<<"$op")" --arg v "$(jq -r '.verb' <<<"$op")" \
+      '{at:$t, sig:$s, rule:$r, outcome:$o, actor:$a, verb:$v}' >> "$KB_JOINS" 2>/dev/null \
+      || warn "kb audit row for '$rid' not written ($KB_JOINS)"
+  done < <(jq -c '.[]' <<<"$live" 2>/dev/null || true)
+  while IFS= read -r rid; do
+    [[ -z "$rid" ]] && continue
+    kb_maybe_retire "$rid" "$now"
+  done < <(jq -r '.[] | .rule' <<<"$live" 2>/dev/null | LC_ALL=C sort -u || true)
+  KB_STAGED="[]"
+}
+
+# kb_maybe_retire <rule-id> <now> — tombstone an active rule whose false-hit
+# rate exceeds the explicit threshold. Warns (never fails). Single rule.
+kb_maybe_retire() {
+  local rid="$1" now="$2" tmp="" new_fp="" new_judged="" st="" reason="" rate=""
+  new_fp=$(jq -s --arg id "$rid" -r '[.[] | select(.id == $id)][0] | .false_hits' "$KB_FILE" 2>/dev/null || echo "x")
+  new_judged=$(jq -s --arg id "$rid" -r '[.[] | select(.id == $id)][0] | .judged' "$KB_FILE" 2>/dev/null || echo "x")
+  st=$(jq -s --arg id "$rid" -r '[.[] | select(.id == $id)][0] | .status' "$KB_FILE" 2>/dev/null || echo "x")
+  [[ "$st" == "active" && "$new_fp" =~ ^[0-9]+$ && "$new_judged" =~ ^[0-9]+$ ]] || return 0
+  if (( 10#$new_judged >= 10#$KB_MIN_JUDGED )) \
+    && awk -v f="$new_fp" -v j="$new_judged" -v m="$KB_MAX_FP_RATE" 'BEGIN{exit !(j > 0 && f / j > m)}'; then
+    rate=$(awk -v f="$new_fp" -v j="$new_judged" 'BEGIN{printf "%.2f", f / j}')
+    reason="auto-retired: false-hit rate $new_fp/$new_judged ($rate) exceeds $KB_MAX_FP_RATE at judged >= $KB_MIN_JUDGED"
+    tmp="$KB_FILE.tmp.$$"
+    if jq -c -s --arg id "$rid" --arg t "$now" --arg r "$reason" \
+        'map(if .id == $id then . + {status:"retired", retiredAt:$t, retireReason:$r, history:((.history // []) + [{at:$t, event:"auto-retired", actor:"script", note:$r}])} else . end) | .[]' \
+        "$KB_FILE" > "$tmp" 2>/dev/null; then
+      mv "$tmp" "$KB_FILE"
+      echo "» kb: rule '$rid' auto-retired ($reason)" >&2
+      warn "kb rule '$rid' auto-retired ($reason)"
+    else
+      rm -f "$tmp"; warn "kb auto-retire skipped: could not rewrite $KB_FILE for '$rid'"
+    fi
+  fi
+}
+
+# Recall scoped rules onto a bundle as context (never orders): scope-glob
+# gate over the diff file list, score (unjudged reads 0.5) desc, tiebreak
+# judged desc then id asc, top 3. Writes $dir/kb.txt only on a match (clean
+# trees leave no file — mirrors sensitive.txt); retired rules never recall.
+# Never fails.
+write_kb_recall() { # $1 = dir, $2 = newline-separated extra paths (may be empty)
+  local dir="$1" extra="${2:-}" mf="$1/kb.txt"
+  local files="" rules="" cands="[]" row="" rid="" scope="" hit="" g="" f=""
+  local h="" hdr="" rest="" new="" total="" shown="" ids="" top=""
+  [[ -f "$KB_FILE" ]] || { rm -f "$mf"; return 0; }
+  files=$(
+    if [[ -n "$extra" ]]; then printf '%s\n' "$extra"; fi
+    if [[ -f "$dir/full.diff" ]]; then
+      grep '^diff --git ' "$dir/full.diff" 2>/dev/null | sed -e 's/^diff --git //' | while IFS= read -r h; do
+        hdr="$h"; new=""
+        if [[ "$hdr" == '"'* ]]; then
+          rest=${hdr#*\" }; rest=${rest#\"}; new=${rest%%\"*}; new=${new#b/}
+        else
+          rest=${hdr#* }; new=${rest#b/}
+        fi
+        [[ -n "$new" && "$new" != "/dev/null" ]] && printf '%s\n' "$new"
+      done
+    fi
+    :
+  )
+  files=$(printf '%s\n' "$files" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | grep -v '^/dev/null$' | LC_ALL=C sort -u || true)
+  [[ -z "$files" ]] && { rm -f "$mf"; return 0; }
+  if ! rules=$(jq -c -s '[.[] | select(.status == "active")]' "$KB_FILE" 2>/dev/null); then
+    warn "kb recall skipped: $KB_FILE unreadable"; rm -f "$mf"; return 0
+  fi
+  if [[ "$rules" == "[]" ]]; then rm -f "$mf"; return 0; fi
+  while IFS= read -r row; do
+    [[ -z "$row" ]] && continue
+    rid=$(jq -r '.id' <<<"$row"); scope=$(jq -r '.scope' <<<"$row")
+    hit="false"
+    while IFS= read -r g; do
+      g=$(printf '%s' "$g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      [[ -z "$g" ]] && continue
+      while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        # shellcheck disable=SC2254 # unquoted $g is the point: scope globs match as globs
+        case "$f" in $g) hit="true"; break 2;; esac
+      done <<<"$files"
+    done < <(printf '%s\n' "$scope" | tr ',' '\n')
+    if [[ "$hit" == "true" ]]; then
+      cands=$(jq -c --argjson r "$row" '. + [{id:$r.id, scope:$r.scope, rule:$r.rule, hits:($r.hits // 0), judged:($r.judged // 0)}]' <<<"$cands")
+    fi
+  done < <(jq -c '.[]' <<<"$rules" 2>/dev/null || true)
+  total=$(jq 'length' <<<"$cands")
+  if [[ "$total" == "0" ]]; then rm -f "$mf"; return 0; fi
+  top=$(jq -r 'sort_by([-(if .judged == 0 then 0.5 else .hits / .judged end), -.judged, .id]) | .[:3] | .[] | "# \(.id) — \(.scope) — precision \(.hits)/\(.judged)\n\(.rule | gsub("\n"; " "))"' <<<"$cands")
+  {
+    echo "# kb recall — context, never orders. Cited rules inform the review; evidence still decides."
+    printf '%s\n' "$top"
+  } > "$mf.tmp" && mv "$mf.tmp" "$mf"
+  shown=$(jq -r '.[:3] | length' <<<"$cands")
+  ids=$(jq -r 'sort_by([-(if .judged == 0 then 0.5 else .hits / .judged end), -.judged, .id]) | .[:3] | map(.id) | join(", ")' <<<"$cands")
+  echo "» kb: $shown rule(s) -> $mf ($ids)"
+  return 0
+}
+
 if [[ -z "$cmd" ]]; then
   usage >&2; exit 2
 fi
 if [[ "$cmd" == "trend" ]] && [[ -z "$repo" ]]; then
   usage >&2; exit 2
 fi
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" ]] && [[ -z "$repo" || -z "$pr" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" ]] && [[ -z "$repo" || -z "$pr" ]]; then
   usage >&2; exit 2
 fi
 
@@ -1033,9 +1391,10 @@ write_toc_roles() { # $1 = dir, $2 = toc title line
 
 # Shared fetch tail: counts, done/next hints, --json envelope. $1 = incremental base ("null" or sha).
 fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode panel_src panel_list omitted)
-  local inc_base="$1" files sens_file db
+  local inc_base="$1" files sens_file kb_file db
   files=$(jq '.files | length' "$dir/PR.json" 2>/dev/null || echo "?")
   sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
+  kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
   db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
   case "$db" in ''|*[!0-9]*) db="0";; esac
   echo "done: $dir/PR.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($files files)"
@@ -1048,13 +1407,13 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --argjson db "$db" \
         --argjson omitted "$(to_json_array "$omitted")" \
         --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
-        --arg inc "$inc_base" --arg sens "$sens_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
+        --arg inc "$inc_base" --arg sens "$sens_file" --arg kb "$kb_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
         --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
           hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
-          artifacts:{"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)},
+          artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end)),
           incremental_base:(if $inc=="null" then null else $inc end)}
           + (if $estimate == null then {} else {estimate:$estimate} end)
           + (if $budget == null then {} else {budget:$budget} end)
@@ -1086,6 +1445,7 @@ if [[ "$cmd" == "fetch" ]]; then
     emit_context "$dir"
     ensure_store "$dir"
     write_sensitive_manifest "$dir" "$(jq -r '.files[] | .path, (.previous_filename // empty)' "$dir/PR.json" 2>/dev/null || true)"
+    write_kb_recall "$dir" "$(jq -r '.files[] | .path, (.previous_filename // empty)' "$dir/PR.json" 2>/dev/null || true)"
     fetch_tail "null"
   fi
   echo "» gh pr view $repo#$pr"
@@ -1103,6 +1463,7 @@ if [[ "$cmd" == "fetch" ]]; then
   emit_context "$dir"
   ensure_store "$dir"
   write_sensitive_manifest "$dir" "$(jq -r '.files[] | .path, (.previous_filename // empty)' "$dir/PR.json" 2>/dev/null || true)"
+  write_kb_recall "$dir" "$(jq -r '.files[] | .path, (.previous_filename // empty)' "$dir/PR.json" 2>/dev/null || true)"
   echo "» reviews + inline comments"
   gh api "repos/$repo/pulls/$pr/reviews" --paginate > "$dir/reviews.json" 2>/dev/null || echo "[]" > "$dir/reviews.json"
   gh api "repos/$repo/pulls/$pr/comments" --paginate > "$dir/inline.json" 2>/dev/null || echo "[]" > "$dir/inline.json"
@@ -1263,6 +1624,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
   emit_context "$dir"
   ensure_store "$dir"
   write_sensitive_manifest "$dir" "$file_list"
+  write_kb_recall "$dir" "$file_list"
   tool_version=$(jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown")
   now=$(now_utc)
   jq -n --arg v "1" --arg kind "$kind" --arg r "$repo" --arg slug "$slug" \
@@ -1280,6 +1642,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
   echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + $dir/source.json + full.diff to any agent; ask it to write $dir/review.json"
   if [[ "$json_mode" == "true" ]]; then
     sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
+    kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
     db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
     case "$db" in ''|*[!0-9]*) db="0";; esac
     jq -n --arg d "$dir" --arg hs "$head_sha" --arg bs "$base_sha" --argjson files "$total" \
@@ -1288,7 +1651,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --argjson db "$db" \
       --argjson omitted "$(to_json_array "$omitted")" \
       --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
-      --arg sens "$sens_file" \
+      --arg sens "$sens_file" --arg kb "$kb_file" \
       --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
       --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
@@ -1296,7 +1659,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
         files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
         panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
-        artifacts:{"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)}}
+        artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end))}
         + (if $estimate == null then {} else {estimate:$estimate} end)
         + (if $budget == null then {} else {budget:$budget} end)
         + (if $cap == null then {} else {cap:$cap} end),error:null}' >&9
@@ -1641,9 +2004,24 @@ if [[ "$cmd" == "triage" ]]; then
     exit 0
   fi
  rat_out="$trat"; [[ -z "$rat_out" && "$tforce" == "true" ]] && rat_out="forced without rationale"
+  kb_resolve_policy
+  KB_BROKEN="false"
+  KB_STAGED="[]"
+  if [[ -f "$KB_FILE" ]] && ! jq empty "$KB_FILE" >/dev/null 2>&1; then
+    warn "kb store $KB_FILE unreadable — no credit for this flip (fix the bad line)"
+    KB_BROKEN="true"
+  fi
+  credited="[]"
+  case "$tstatus" in
+    addressed|false-positive)
+      kb_apply_credit "$tfull" "$tstatus" "human" "$cmd" "$now" "$(cat "$dir/findings.json")"
+      credited="$KB_CREDITED_JSON";;
+  esac
   jq --arg s "$tfull" --arg st "$tstatus" --arg rat "$rat_out" --arg now "$now" \
-    'map(if .sig == $s then . + {status:$st, rationale:$rat, triagedAt:$now, triagedBy:"human", history:(.history + [{at:$now, event:"triaged", actor:"human", note:$rat}])} else . end)' \
+    --argjson kb "$credited" \
+    'map(if .sig == $s then . + {status:$st, rationale:$rat, triagedAt:$now, triagedBy:"human", history:(.history + [{at:$now, event:"triaged", actor:"human", note:$rat} + (if $kb | length > 0 then {kb_credit:$kb} else {} end)])} else . end)' \
     "$dir/findings.json" > "$dir/findings.json.tmp" && mv "$dir/findings.json.tmp" "$dir/findings.json"
+  kb_commit_staged "$dir/findings.json" "$now"
   echo "triaged ${tsig:0:8} -> $tstatus"
   if [[ "$json_mode" == "true" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg s "$tfull" --arg st "$tstatus" \
@@ -2145,7 +2523,8 @@ if [[ "$cmd" == "calibrate" ]]; then
                 else {outcome:"resolved-unfixed", detail:"thread resolved but cited file unchanged since review head"} end
          else {outcome:"unknown", detail:"body section — not a thread comment"} end) as $o
       | {sig:$f.sig, status:$f.status, severity:($f.severity // "untagged"), locator:$loc,
-         outcome:$o.outcome, detail:$o.detail}]' "$dir/findings.json")
+         outcome:$o.outcome, detail:$o.detail}
+        + (if (($f.kb // []) | length) > 0 then {kb: $f.kb} else {} end)]' "$dir/findings.json")
   precision=$(jq '{fixed: ([.[] | select(.outcome == "fixed")] | length),
       resolved_unfixed: ([.[] | select(.outcome == "resolved-unfixed")] | length),
       open: ([.[] | select(.outcome == "open")] | length),
@@ -2159,7 +2538,7 @@ if [[ "$cmd" == "calibrate" ]]; then
   n_o=$(jq '.open' <<<"$precision"); n_u=$(jq '.unknown' <<<"$precision")
   stale="current"; [[ "$head0" != "$live_head" ]] && stale="stale — ${head0:0:7} → ${live_head:0:7}"
   echo "calibrate: $repo#$pr — review $review_id @ ${head0:0:7} ($stale), PR $pr_state${merged_at:+, merged $merged_at}"
-  jq -r '.[] | "\(.sig[0:8]) [\(.outcome)] \(.locator) — \(.detail)"' <<<"$outcomes"
+  jq -r '.[] | "\(.sig[0:8]) [\(.outcome)] \(.locator) — \(.detail)\(if (.kb // []) | length > 0 then " kb:" + ((.kb // []) | join(",")) else "" end)"' <<<"$outcomes"
   echo "precision: fixed=$(jq -r '.fixed' <<<"$precision") resolved-unfixed=$(jq -r '.resolved_unfixed' <<<"$precision") open=$n_o unknown=$n_u (judged $(jq -r '.judged' <<<"$precision"))"
   if [[ "$json_mode" == "true" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg rid "$review_id" \
@@ -2406,4 +2785,155 @@ if [[ "$cmd" == "trend" ]]; then
   exit 0
 fi
 
-echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend)" >&2; exit 2
+# ------------------------------------------------------------------ learn ---
+# Structured local knowledge base: append scoped rules, list them with
+# counters, retire/restore by human veto. Store is .review/kb.jsonl (one JSON
+# object per line); no repo/PR args, no network.
+if [[ "$cmd" == "learn" ]]; then
+  lrule=""; lscope=""; lid=""; lprov="manual"; lrigor="pointed"; lreason=""
+  lretire=""; lrestore=""; lstatus="false"
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --rule) lrule="${2:-}"; shift 2;;
+    --scope) lscope="${2:-}"; shift 2;;
+    --id) lid="${2:-}"; shift 2;;
+    --provenance) lprov="${2:-}"; shift 2;;
+    --rigor) lrigor="${2:-}"; shift 2;;
+    --status) lstatus="true"; shift;;
+    --retire) lretire="${2:-}"; shift 2;;
+    --restore) lrestore="${2:-}"; shift 2;;
+    --reason) lreason="${2:-}"; shift 2;;
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag '$1' for learn (want --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json)" >&2; exit 2;;
+  esac; done
+  rentry_cmd="./scripts/review.sh learn"
+  [[ -n "$lrule" ]] && rentry_cmd="$rentry_cmd --rule ..."
+  [[ -n "$lscope" ]] && rentry_cmd="$rentry_cmd --scope ..."
+  [[ "$lstatus" == "true" ]] && rentry_cmd="$rentry_cmd --status"
+  [[ -n "$lretire" ]] && rentry_cmd="$rentry_cmd --retire ..."
+  [[ -n "$lrestore" ]] && rentry_cmd="$rentry_cmd --restore ..."
+  [[ "$json_mode" == "true" ]] && rentry_cmd="$rentry_cmd --json"
+  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  now=$(now_utc)
+  modes=0
+  [[ -n "$lrule" ]] && modes=$((modes + 1))
+  [[ "$lstatus" == "true" ]] && modes=$((modes + 1))
+  [[ -n "$lretire" ]] && modes=$((modes + 1))
+  [[ -n "$lrestore" ]] && modes=$((modes + 1))
+  if (( modes != 1 )); then fail "bad-flags" "learn needs exactly one of --rule <text>, --status, --retire <id>, --restore <id>"; fi
+  if [[ -z "$lrule" && -n "$lscope" ]]; then fail "bad-flags" "learn: --scope belongs to --rule (append mode)"; fi
+  if [[ -z "$lretire" && -z "$lrestore" && -n "$lreason" ]]; then fail "bad-flags" "learn: --reason belongs to --retire/--restore"; fi
+  if [[ "$lstatus" == "true" ]]; then
+    rows="[]"
+    if [[ -f "$KB_FILE" ]]; then
+      jq empty "$KB_FILE" 2>/dev/null || fail "corrupt-store" "kb store $KB_FILE is unreadable (restore from backup or fix the bad line)"
+      rows=$(jq -s -c '[.[] | . + {precision: (if ((.judged // 0) == 0) then "n/a" else "\(.hits // 0)/\(.judged)" end)}]' "$KB_FILE")
+    fi
+    if [[ "$json_mode" == "true" ]]; then
+      jq -n --arg v "$cmd" --arg t "$now" --argjson rules "$rows" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,
+          next:"learn --rule ... to append; learn --retire/--restore to veto",
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{rules:$rules},error:null}' >&9
+    else
+      n=$(jq 'length' <<<"$rows")
+      if [[ "$n" == "0" ]]; then echo "learn: no rules yet (pass --rule to append the first)";
+      else jq -r '.[] | "\(.id) [\(.status)] \(.rigor) hits=\(.hits // 0) false_hits=\(.false_hits // 0) judged=\(.judged // 0) precision=\(.precision)"' <<<"$rows"; fi
+    fi
+    exit 0
+  fi
+  if [[ -n "$lrule" ]]; then
+    lrule_t=$(printf '%s' "$lrule" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [[ -z "$lrule_t" ]] && fail "bad-rule" "refusing learn: --rule is empty (pass the one-line rule text)"
+    lscope_t=$(printf '%s' "$lscope" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [[ -z "$lscope_t" ]] && fail "bad-scope" "refusing learn: --scope is empty (pass a comma-separated glob list, e.g. 'src/*.ts')"
+    empty_elem="false"
+    while IFS= read -r _e; do
+      _et=$(printf '%s' "$_e" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      if [[ -z "$_et" ]]; then empty_elem="true"; break; fi
+    done < <(printf '%s\n' "$lscope_t" | tr ',' '\n')
+    [[ "$empty_elem" == "true" ]] && fail "bad-scope" "refusing learn: --scope holds an empty element (comma-separated globs, no blanks)"
+    case "$lrigor" in said|pointed|walked|ran|reproduced) ;;
+      *) fail "bad-rigor" "refusing learn: unknown rigor '$lrigor' (want said|pointed|walked|ran|reproduced)";; esac
+    [[ -z "$lprov" ]] && lprov="manual"
+    if [[ -z "$lid" ]]; then lid=$(kb_slugify "$lrule_t"); fi
+    [[ "$lid" =~ ^[a-z0-9][a-z0-9-]{0,64}$ ]] || fail "bad-id" "refusing learn: id '$lid' is not ^[a-z0-9][a-z0-9-]{0,64}$ (pass --id explicitly)"
+    mkdir -p .review
+    if [[ -f "$KB_FILE" ]]; then
+      jq empty "$KB_FILE" 2>/dev/null || fail "corrupt-store" "kb store $KB_FILE is unreadable (restore from backup or fix the bad line)"
+      if jq -s -e --arg r "$lrule_t" '[.[] | select(.rule == $r)] | length > 0' "$KB_FILE" >/dev/null 2>&1; then
+        fail "already-learned" "rule text already learned (cite the existing rule id instead of learning it twice)"
+      fi
+      if jq -s -e --arg id "$lid" '[.[] | select(.id == $id)] | length > 0' "$KB_FILE" >/dev/null 2>&1; then
+        fail "id-taken" "id '$lid' is taken (pass a different --id)"
+      fi
+    fi
+    row=$(jq -n -c --arg id "$lid" --arg r "$lrule_t" --arg s "$lscope_t" --arg p "$lprov" --arg g "$lrigor" \
+      '{id:$id, rule:$r, scope:$s, provenance:$p, rigor:$g, hits:0, false_hits:0, judged:0, status:"active"}')
+    tmp="$KB_FILE.tmp.$$"
+    if [[ -f "$KB_FILE" ]]; then cat "$KB_FILE" > "$tmp"; else : > "$tmp"; fi
+    printf '%s\n' "$row" >> "$tmp" && mv "$tmp" "$KB_FILE"
+    if [[ "$json_mode" == "true" ]]; then
+      jq -n --arg v "$cmd" --arg t "$now" --argjson rule "$row" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,
+          next:"cite the rule id in review.json kb lists",
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{rule:$rule},error:null}' >&9
+    else
+      echo "learned $lid -> $KB_FILE (scope $lscope_t, rigor $lrigor)"
+    fi
+    exit 0
+  fi
+  if [[ -n "$lretire" ]]; then
+    [[ "$lretire" =~ ^[a-z0-9][a-z0-9-]{0,64}$ ]] || fail "bad-id" "refusing learn: id '$lretire' is not ^[a-z0-9][a-z0-9-]{0,64}$"
+    [[ -f "$KB_FILE" ]] || fail "unknown-rule" "learn: no rule '$lretire' (no $KB_FILE yet — see learn --status)"
+    jq empty "$KB_FILE" 2>/dev/null || fail "corrupt-store" "kb store $KB_FILE is unreadable (restore from backup or fix the bad line)"
+    cur=$(jq -s --arg id "$lretire" '[.[] | select(.id == $id)][0] // null' "$KB_FILE")
+    [[ "$cur" == "null" ]] && fail "unknown-rule" "learn: no rule '$lretire' (see learn --status)"
+    [[ "$(jq -r '.status' <<<"$cur")" == "retired" ]] && fail "already-retired" "learn: rule '$lretire' is already retired"
+    if (( ${#lreason} < 30 )); then fail "bad-reason" "learn --retire needs --reason with 30+ chars (human veto, on the record)"; fi
+    tmp="$KB_FILE.tmp.$$"
+    if jq -c -s --arg id "$lretire" --arg t "$now" --arg r "$lreason" \
+        'map(if .id == $id then . + {status:"retired", retiredAt:$t, retireReason:$r, history:((.history // []) + [{at:$t, event:"retired", actor:"human", note:$r}])} else . end) | .[]' \
+        "$KB_FILE" > "$tmp" 2>/dev/null; then
+      mv "$tmp" "$KB_FILE"
+    else
+      rm -f "$tmp"; fail "corrupt-store" "kb store $KB_FILE unreadable mid-retire (restore from backup)"
+    fi
+    updated=$(jq -s -c --arg id "$lretire" '[.[] | select(.id == $id)][0]' "$KB_FILE")
+    if [[ "$json_mode" == "true" ]]; then
+      jq -n --arg v "$cmd" --arg t "$now" --argjson rule "$updated" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:"retired rules never recall; restore with learn --restore",
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{rule:$rule},error:null}' >&9
+    else
+      echo "retired $lretire (tombstone kept, counters untouched)"
+    fi
+    exit 0
+  fi
+  if [[ -n "$lrestore" ]]; then
+    [[ "$lrestore" =~ ^[a-z0-9][a-z0-9-]{0,64}$ ]] || fail "bad-id" "refusing learn: id '$lrestore' is not ^[a-z0-9][a-z0-9-]{0,64}$"
+    [[ -f "$KB_FILE" ]] || fail "unknown-rule" "learn: no rule '$lrestore' (no $KB_FILE yet — see learn --status)"
+    jq empty "$KB_FILE" 2>/dev/null || fail "corrupt-store" "kb store $KB_FILE is unreadable (restore from backup or fix the bad line)"
+    cur=$(jq -s --arg id "$lrestore" '[.[] | select(.id == $id)][0] // null' "$KB_FILE")
+    [[ "$cur" == "null" ]] && fail "unknown-rule" "learn: no rule '$lrestore' (see learn --status)"
+    [[ "$(jq -r '.status' <<<"$cur")" == "active" ]] && fail "not-retired" "learn: rule '$lrestore' is already active"
+    if (( ${#lreason} < 30 )); then fail "bad-reason" "learn --restore needs --reason with 30+ chars (human veto, on the record)"; fi
+    tmp="$KB_FILE.tmp.$$"
+    if jq -c -s --arg id "$lrestore" --arg t "$now" --arg r "$lreason" \
+        'map(if .id == $id then . + {status:"active", history:((.history // []) + [{at:$t, event:"restored", actor:"human", note:$r}])} else . end) | .[]' \
+        "$KB_FILE" > "$tmp" 2>/dev/null; then
+      mv "$tmp" "$KB_FILE"
+    else
+      rm -f "$tmp"; fail "corrupt-store" "kb store $KB_FILE unreadable mid-restore (restore from backup)"
+    fi
+    updated=$(jq -s -c --arg id "$lrestore" '[.[] | select(.id == $id)][0]' "$KB_FILE")
+    if [[ "$json_mode" == "true" ]]; then
+      jq -n --arg v "$cmd" --arg t "$now" --argjson rule "$updated" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:"active rules recall again on scope match",
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{rule:$rule},error:null}' >&9
+    else
+      echo "restored $lrestore (status active, tombstone history kept)"
+    fi
+    exit 0
+  fi
+  exit 0
+fi
+
+echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn)" >&2; exit 2

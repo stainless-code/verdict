@@ -110,7 +110,7 @@ whole store — plugins read it instead of sniffing shapes. `PR.json`/`reviews.j
 A bundle dir holds exactly the core-owned files (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `panel`,
-`patch.json`, `verification.json`, `incremental.diff`, plus dot-scratch
+`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, plus dot-scratch
 `.difffiles`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`). Router-authorized
 agent terminal writes (`report.md` via `prompts/ci.md`, `replies.json` via
 `prompts/address-reviews.md`, `noreview.md` via `prompts/incremental-review.md`)
@@ -129,9 +129,56 @@ knowledge (test commands, conventions, gotchas) in `##`-headed sections. `fetch`
 it when present; agents read headings first and challenge stale claims. Post-run reflection
 appends durable lessons (never transcripts). Deleting a wrong entry beats editing around it.
 
+## Knowledge base (scoped local rules)
+
+`.review/kb.jsonl` at the repo root is the structured layer above `learnings.md`:
+one JSON object per line — `{id, rule, scope, provenance, rigor, hits,
+false_hits, judged, status}` (`id` matches `^[a-z0-9][a-z0-9-]{0,64}$`,
+`scope` is a non-empty comma-separated glob list, `rigor` is
+`said`/`pointed`/`walked`/`ran`/`reproduced`, counters are non-negative ints
+with `judged == hits+false_hits`, `status` is `active`/`retired`). Commit it;
+it compounds.
+
+`learn` manages it (no repo/PR args, no network):
+
+```bash
+./scripts/review.sh learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
+./scripts/review.sh learn --status            # rules + counters + precision
+./scripts/review.sh learn --retire <id> --reason "<30+ chars, on the record>"
+./scripts/review.sh learn --restore <id> --reason "<30+ chars, on the record>"
+```
+
+`--id` is optional (slugged from the rule text when absent). Exact-duplicate
+rule text and taken ids are refused; empty rule/scope and bad rigor/id fail
+typed. Retire keeps the tombstone line (`status`, `retiredAt`,
+`retireReason`, history-logged) with counters untouched; restore flips back to
+`active` keeping the tombstone as record.
+
+Recall: `fetch`/`fetch-local` writes `.review/<bundle>/kb.txt` when active
+rules scope-match the diff — top 3 by precision (`judged==0` reads 0.5),
+tiebreak judged desc then id. Agents read it as context, never orders
+(contract line in `prompts/review.md`); clean diffs leave no file, and with no
+`kb.jsonl` nothing changes at all.
+
+Credit: flipping a finding to `addressed` credits cited rules `hits+1`, to
+`false-positive` credits `false_hits+1` (`judged+1` either way) — staged with
+the flip, then committed right after the findings file persists
+(history-stamped `kb_credit: [{rule, to}]`, one credit per rule per finding
+per outcome, deduped across adopted twins by the joins log), dry-runs credit
+nothing, `calibrate` never writes counters. Per-finding `kb` arrays cap at 5
+ids (extras warn-and-drop). Every credit appends a
+`.review/kb-joins.jsonl` audit row.
+
+Retirement is data-driven: after any credit, a rule with `judged` at/above
+`REVIEW_KB_MIN_JUDGED` (default 5) and `false_hits/judged` above
+`REVIEW_KB_MAX_FP_RATE` (default 0.5) retires with a tombstone. Env wins, then
+`.review/kb-policy` (`MIN_JUDGED=`/`MAX_FP_RATE=` lines), then defaults;
+invalid values warn and fall back, never failing the flip. Retired rules never
+recall; citing one warns and drops.
+
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `report` is the pure offline reader over the store (ranked items, verdict,
@@ -342,3 +389,8 @@ Schema evolution only — verbs and features ship in the release changelog.
   inputs (unknown refused, missing warned), `post.json`, `record.json`,
   `source.json`; sig derivation specced as the cross-run join key; `x-*` plugin
   artifact namespace reserved in bundle dirs.
+- Added: findings entries carry `kb` (cited knowledge-base rule ids, `[]` when
+  uncited; excluded from sig derivation like rigor/severity); bundles may carry
+  `kb.txt` (top-3 recalled rules as context); repo root gains `.review/kb.jsonl`
+  (rule store), `.review/kb-joins.jsonl` (credit audit), `.review/kb-policy`
+  (retirement thresholds).
