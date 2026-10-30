@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# verdict installer: doctor-gated symlink into harness skill dirs.
-# Mini `npx skills` for this repo: link, list, check, uninstall — one skill, no
+# verdict installer: doctor-gated symlink into agent skill dirs.
+# Mini `npx skills` for this repo: link, list, check, uninstall. One skill, no
 # registry. Bare run links the shared standard dir only; add --detect for every
-# harness with an existing skills setup, --all for everything, or --agent/--dir
+# agent with an existing skills setup, --all for everything, or --agent/--dir
 # for exact scope. Explicit removals stick: nothing re-links unasked. No
-# auto-updater by design — `git pull` keeps symlinked installs current.
+# auto-updater by design. `git pull` keeps symlinked installs current.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -15,13 +15,13 @@ usage() {
 usage: install.sh [--agent NAME]... [--dir PATH]... [--project [DIR]] [--detect] [--all] [--force] [--uninstall] [--list] [--check] [--help]
 
   (no flags)     link ~/.agents/skills, the shared standard dir
-  --agent NAME   only this harness (repeatable): agents claude cursor opencode
+  --agent NAME   only this agent (repeatable): agents claude cursor opencode
                  copilot gemini goose qwen windsurf
-  --dir PATH     extra skills dir (repeatable, absolute path) — any agent,
+  --dir PATH     extra skills dir (repeatable, absolute path). Any agent,
                  present or future, that keeps skills in a directory
   --project [D]  link into DIR/.agents/skills (default: current directory)
-  --detect       ~/.agents/skills plus every harness with an existing setup
-  --all          every known harness
+  --detect       ~/.agents/skills plus every agent with an existing setup
+  --all          every known agent
   --force        replace occupied non-directory slots; override foreign hooksPath
   --uninstall    remove our links in scope (never touches foreign files)
   --list         show link status in scope; no changes, no doctor
@@ -152,7 +152,7 @@ if [ "$MODE" = "list" ]; then
     if [ -L "$d/verdict" ] && [ "$(readlink "$d/verdict")" = "$SRC" ]; then
       echo "linked:   $label ($d)"
     elif [ -e "$d/verdict" ] || [ -L "$d/verdict" ]; then
-      echo "occupied: $label ($d/verdict — not our link)"
+      echo "occupied: $label ($d/verdict. Not our link)"
     else
       echo "absent:   $label ($d)"
     fi
@@ -213,11 +213,11 @@ link_into() { # $1 = label, $2 = dir
       linked=$((linked + 1))
       return 0
     fi
-    echo "SKIP: $1 occupied ($dest) — move it aside or use --force"
+    echo "SKIP: $1 occupied ($dest). Move it aside or use --force"
     skipped=$((skipped + 1))
     return 0
   fi
-  ln -s "$SRC" "$dest" || die "symlink failed ($dest) — try --dir to a writable location"
+  ln -s "$SRC" "$dest" || die "symlink failed ($dest). Try --dir to a writable location"
   echo "linked: $1 ($dest -> $SRC)"
   linked=$((linked + 1))
 }
@@ -232,7 +232,7 @@ wire_hooks() {
   elif [ "$FORCE" = 1 ]; then
     git -C "$SRC" config core.hooksPath "$SRC/hooks" && echo "hooks: overridden (was $cur)"
   else
-    echo "hooks: SKIP foreign hooksPath ($cur) — use --force to override"
+    echo "hooks: SKIP foreign hooksPath ($cur). Use --force to override"
   fi
 }
 
