@@ -86,9 +86,18 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     ps, API reachability warn only (never fail); .review storage writability
     hard-fails. Exit 0 unless a hard check fails. No repo/PR args, no writes,
     no network beyond the existing gh reads.
-  calibrate <owner/repo> <pr> [--json]
+  calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]
     join findings against live ground truth (thread states + files changed since the
     review head). Read-only; reports outcomes + tier precision, never auto-tunes.
+    --probe grades closed findings offline against recorded triage dispositions
+    (addressed = real, false-positive = false, else unknown — never forced)
+    into additive .review/<bundle>/kb-grades.jsonl rows; writes nothing else,
+    needs no post record, touches no network. Baseline columns
+    (verdict/rule/helpful) regenerate from findings.json every run; agent
+    judgments arrive via --judge/--judge-file, are validated against known
+    sigs (unknown sigs refuse typed), and merge as agent_verdict/agent_helpful/
+    agreement columns that may diverge from the baseline — the agreement rate
+    over judged rows is the M4 evidence number.
   ready <owner/repo> <pr> [--json] [--check]
     advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,
     description completeness. Prints blockers with actions + recommendation
@@ -230,7 +239,7 @@ fail() {
     already-posted) hint="try: re-run with --force to override, or fetch the new HEAD and review the delta instead";;
     degenerate-body) hint="try: open with a verdict marker (see prompts/review.md), then re-run";;
     pr-not-open) hint="try: re-fetch the PR (bundle may be stale)";;
-    unknown-sig|ambiguous-sig) hint="try: copy the full sig prefix from report output";;
+    unknown-sig|ambiguous-sig|unknown-judgment) hint="try: copy the full sig prefix from report output";;
     bad-sig) hint="try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix";;
     conflicted-tree) hint="try: resolve the conflicts (or abort the merge), then re-run";;
     fix-ceiling) hint="try: triage the sig or split the fix — the 3-pass ceiling is hard-coded";;
@@ -2967,12 +2976,148 @@ fi
 # review head. Read-only (3 reads: threads, PR state, one compare). Reports outcomes
 # + tier precision; never auto-tunes. Terminal findings are skipped, not judged.
 if [[ "$cmd" == "calibrate" ]]; then
+  probe="false"
+  judge_file=""
+  judge_specs=""
   while [[ $# -gt 0 ]]; do case "$1" in
+    --probe) probe="true"; shift;;
+    --judge)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "missing value for --judge (want SIG:VERDICT[:HELPFUL], verdict real|false|unknown, helpful true|false|null)" >&2; exit 2; }
+      judge_specs+="$2"$'\n'; shift 2;;
+    --judge=*)
+      [[ -n "${1#--judge=}" ]] || { echo "empty value for --judge (want SIG:VERDICT[:HELPFUL])" >&2; exit 2; }
+      judge_specs+="${1#--judge=}"$'\n'; shift;;
+    --judge-file)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "missing value for --judge-file (want PATH to a JSON/JSONL judgments fragment)" >&2; exit 2; }
+      [[ -z "$judge_file" ]] || { echo "duplicate --judge-file (pass one fragment)" >&2; exit 2; }
+      judge_file="$2"; shift 2;;
+    --judge-file=*)
+      [[ -n "${1#--judge-file=}" ]] || { echo "empty value for --judge-file (want PATH)" >&2; exit 2; }
+      [[ -z "$judge_file" ]] || { echo "duplicate --judge-file (pass one fragment)" >&2; exit 2; }
+      judge_file="${1#--judge-file=}"; shift;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for calibrate (want --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for calibrate (want --probe, --judge, --judge-file, --json)" >&2; exit 2;;
   esac; done
+  if [[ "$probe" != "true" ]]; then
+    if [[ -n "$judge_specs" || -n "$judge_file" ]]; then
+      echo "--judge and --judge-file need --probe (judgments only merge on a probe run)" >&2; exit 2
+    fi
+  fi
   json_redirect
   resolve_bundle_dir "$pr"
+  if [[ "$probe" == "true" ]]; then
+    # Self-grading probe (X3): offline baseline of recorded findings against
+    # the recorded triage dispositions, plus an agent judgment loop that CAN
+    # diverge from the baseline. Baseline columns (verdict/rule/helpful) are
+    # regenerated from findings.json every run — agents never hand-edit them;
+    # direct edits to kb-grades.jsonl are overwritten on the next probe run.
+    # Agent judgments arrive machine-readably via repeatable
+    # --judge SIG:VERDICT[:HELPFUL] or --judge-file PATH (a JSON array or
+    # JSONL of {"sig", "agent_verdict", "agent_helpful"} objects); every sig
+    # is validated against the findings store and unknown sigs refuse typed.
+    # Judgments are sticky: re-runs keep prior agent columns for surviving
+    # sigs unless overlapped by new input. Writes only kb-grades.jsonl
+    # (deterministic apart from the timestamp, idempotent); findings.json,
+    # kb.jsonl, and kb-joins.jsonl stay byte-identical. No network, no post
+    # record needed — local bundles and post-less PR bundles grade alike. The
+    # M4-consumable number is the agreement rate over doubly-judged rows
+    # (baseline known AND agent judged real/false), with the sample size
+    # recorded alongside.
+    [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
+    jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
+      || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
+    now=$(now_utc)
+    bname=${dir#.review/}
+    known_sigs=$(jq -c '[.[].sig]' "$dir/findings.json")
+    new_judgments="[]"
+    if [[ -n "$judge_file" ]]; then
+      [[ -f "$judge_file" && -r "$judge_file" ]] \
+        || fail "bad-judgment" "judge file '$judge_file' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} object per line, or a JSON array of them)"
+      file_arr=$(jq -cs '.' "$judge_file" 2>/dev/null) \
+        || fail "bad-judgment" "judge file '$judge_file' is not valid JSON or JSONL (one {\"sig\": ..., \"agent_verdict\": ...} per line, or a JSON array)"
+      file_arr=$(jq -c 'if length == 1 and (.[0] | type) == "array" then .[0] else . end' <<<"$file_arr")
+      bad_entry=$(jq -r '[to_entries[] | (.value) as $v
+        | if ($v | type) != "object" then "entry \(.key): not an object (want {\"sig\", \"agent_verdict\"})"
+          elif ($v.sig | type) != "string" or ($v.sig | length) == 0 then "entry \(.key): sig must be a non-empty string"
+          elif (["real","false","unknown"] | index($v.agent_verdict) | not) then "entry \(.key) (\($v.sig)): agent_verdict must be real|false|unknown"
+          elif (($v.agent_helpful // null) as $h | $h != true and $h != false and $h != null) then "entry \(.key) (\($v.sig)): agent_helpful must be true|false|null"
+          else empty end] | .[0] // empty' <<<"$file_arr")
+      [[ -z "$bad_entry" ]] \
+        || fail "bad-judgment" "judge file '$judge_file' $bad_entry"
+      unknown_fsig=$(jq -r --argjson known "$known_sigs" \
+        '$known as $k | [.[].sig] | map(select(. as $s | $k | index($s) | not)) | .[0] // empty' <<<"$file_arr")
+      [[ -z "$unknown_fsig" ]] \
+        || fail "unknown-judgment" "judge file '$judge_file' sig '$unknown_fsig' matches no finding in $dir/findings.json (copy the full sig from report output)"
+      new_judgments=$(jq -c --argjson f "$file_arr" \
+        '. + [$f[] | {sig: .sig, agent_verdict: .agent_verdict, agent_helpful: (.agent_helpful // null)}]' <<<"$new_judgments")
+    fi
+    if [[ -n "$judge_specs" ]]; then
+      while IFS= read -r jg_spec; do
+        [[ -z "$jg_spec" ]] && continue
+        jg_sig="${jg_spec%%:*}"; jg_rest="${jg_spec#*:}"
+        [[ "$jg_spec" != "$jg_sig" && -n "$jg_sig" ]] \
+          || fail "bad-judgment" "malformed --judge '$jg_spec' (want SIG:VERDICT[:HELPFUL], e.g. --judge abc123:real:true)"
+        jg_verdict="${jg_rest%%:*}"
+        if [[ "$jg_rest" == *:* ]]; then jg_helpful="${jg_rest#*:}"; else jg_helpful="null"; fi
+        [[ -z "$jg_helpful" ]] && jg_helpful="null"
+        case "$jg_verdict" in real|false|unknown) ;; *) fail "bad-judgment" "malformed --judge '$jg_spec': verdict '$jg_verdict' (want real|false|unknown)";; esac
+        case "$jg_helpful" in true|false|null) ;; *) fail "bad-judgment" "malformed --judge '$jg_spec': helpful '$jg_helpful' (want true|false|null)";; esac
+        jq -e --arg s "$jg_sig" 'index($s) != null' <<<"$known_sigs" >/dev/null \
+          || fail "unknown-judgment" "judgment sig '$jg_sig' matches no finding in $dir/findings.json (copy the full sig from report output)"
+        new_judgments=$(jq -c --arg s "$jg_sig" --arg v "$jg_verdict" --argjson h "$jg_helpful" \
+          '. + [{sig: $s, agent_verdict: $v, agent_helpful: $h}]' <<<"$new_judgments")
+      done <<<"$judge_specs"
+    fi
+    prior_judgments="[]"
+    if [[ -f "$dir/kb-grades.jsonl" ]]; then
+      prior_judgments=$(jq -cs '[.[] | select(type == "object" and (.sig | type) == "string") | (.agent_verdict) as $av | select(($av | type) == "string" and (["real","false","unknown"] | index($av))) | {sig: .sig, agent_verdict: $av, agent_helpful: (.agent_helpful // null)}]' "$dir/kb-grades.jsonl" 2>/dev/null || echo "[]")
+    fi
+    merged_judgments=$(jq -c -n --argjson p "$prior_judgments" --argjson n "$new_judgments" \
+      '$p + $n | reduce .[] as $j ({}; .[$j.sig] = $j)')
+    grades=$(jq -c --arg b "$bname" --arg t "$now" --argjson m "$merged_judgments" '
+      [.[] | ((.kb // []) | map(select(type == "string"))) as $cited
+        | (if .status == "addressed" then "real"
+           elif .status == "false-positive" then "false"
+           else "unknown" end) as $d
+        | ($m[.sig] // {}) as $j
+        | {at: $t, bundle: $b, sig: .sig,
+           verdict: $d,
+           rule: ($cited[0] // null),
+           helpful: (if ($cited | length) == 0 then null
+                     elif .status == "addressed" then true
+                     elif .status == "false-positive" then false
+                     else null end),
+           agent_verdict: ($j.agent_verdict // null),
+           agent_helpful: ($j.agent_helpful // null),
+           agreement: (if ($j.agent_verdict == "real" or $j.agent_verdict == "false") and ($d == "real" or $d == "false")
+                       then ($j.agent_verdict == $d) else null end),
+           grader: "calibrate-probe"}]' "$dir/findings.json")
+    jq -c '.[]' <<<"$grades" > "$dir/kb-grades.jsonl"
+    n_r=$(jq '[.[] | select(.verdict == "real")] | length' <<<"$grades")
+    n_f=$(jq '[.[] | select(.verdict == "false")] | length' <<<"$grades")
+    n_u=$(jq '[.[] | select(.verdict == "unknown")] | length' <<<"$grades")
+    n_g=$(jq 'length' <<<"$grades")
+    n_sampled=$(jq '[.[] | select(.agent_verdict == "real" or .agent_verdict == "false")] | length' <<<"$grades")
+    n_judged=$(jq '[.[] | select((.agent_verdict == "real" or .agent_verdict == "false") and (.verdict == "real" or .verdict == "false"))] | length' <<<"$grades")
+    n_agree=$(jq '[.[] | select(.agreement == true)] | length' <<<"$grades")
+    n_dis=$(jq '[.[] | select(.agreement == false)] | length' <<<"$grades")
+    agree_rate=$(jq -n --argjson a "$n_agree" --argjson j "$n_judged" 'if $j == 0 then null else ($a / $j) end')
+    rate_txt="n/a"; [[ "$n_judged" != "0" ]] && rate_txt="$agree_rate"
+    judge_txt=""; [[ "$n_sampled" != "0" ]] && judge_txt=" judgments: sampled=$n_sampled judged=$n_judged agreed=$n_agree disagreed=$n_dis rate=$rate_txt"
+    echo "probe: $repo#$bname — $n_g finding(s): real=$n_r false=$n_f unknown=$n_u$judge_txt (grades: $dir/kb-grades.jsonl)"
+    jq -r '.[] | "\(.sig[0:8]) [\(.verdict)]\(if .rule == null then " uncited" else " rule " + .rule + " helpful=" + (.helpful | tostring) end)\(if .agent_verdict == null then "" elif .agreement == true then " agent=\(.agent_verdict) agree" elif .agreement == false then " agent=\(.agent_verdict) DISAGREE" else " agent=\(.agent_verdict) (no baseline)" end)"' <<<"$grades"
+    if [[ "$json_mode" == "true" ]]; then
+      jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg b "$bname" --arg t "$now" --argjson g "$grades" \
+        --argjson nr "$n_r" --argjson nf "$n_f" --argjson nu "$n_u" \
+        --argjson ns "$n_sampled" --argjson nj "$n_judged" --argjson na "$n_agree" --argjson nd "$n_dis" --argjson rate "$agree_rate" \
+        '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
+          next:(if $nr > 0 then "adopted-pair signal present — feed X3 into the H2 evidence gate" else "no real findings graded — nothing to weigh" end),
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),
+          data:{bundle:$b,grades:$g,counts:{findings:($g | length),real:$nr,false:$nf,unknown:$nu},
+            judgment:{sampled:$ns,judged:$nj,agreed:$na,disagreed:$nd,agreement_rate:$rate}},error:null}' >&9
+    fi
+    exit 0
+  fi
   [[ "$dir" == .review/local-* ]] && fail "no-threads" "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)"
   prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
   if [[ "$prov" != "github" ]]; then fail "provider-unimplemented" "calibrate on $prov is not implemented yet (no live thread join for it)"; fi

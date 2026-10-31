@@ -515,6 +515,26 @@ Read-only join (threads + one compare + PR state), keep-biased:
 - Enabler: `post` records `.review/N/post.json` (`review` id, `head`, `posted_at`)
   on every real post. `calibrate` refuses without it.
 
+The offline counterpart is the self-grading probe (X3): `calibrate
+<owner/repo> <pr> --probe` writes one row per finding to
+`.review/<bundle>/kb-grades.jsonl`, each row carrying two separable parts. The
+script-owned baseline grades every finding against its triage disposition
+(`addressed` = real, `false-positive` = false, anything else = `unknown`,
+never forced) with the first cited rule and its helpfulness (`true` on real,
+`false` on false alarms, `null` otherwise) — regenerated from `findings.json`
+on every run. The agent judgment loop records sampled re-reads of closed
+findings against the code in `agent_verdict` / `agent_helpful` columns that
+MAY diverge from the baseline, merged machine-readably via `--judge
+SIG:VERDICT[:HELPFUL]` or `--judge-file PATH` (every sig validated against
+the findings store; unknown sigs refuse typed), with `agreement` computed per
+row. The M4-consumable number is the agreement rate over doubly-judged rows
+with the sample size recorded alongside. The run is additive-only (that one
+file; findings, joins, and calibration outputs stay byte-identical),
+deterministic and idempotent, and needs no post record and no network — local
+bundles grade too. The agent side lives in `prompts/grade.md`: sample closed
+findings, re-read the code, write judgments — advisory prose supplements the
+record, it is not the record.
+
 ## Trend (portfolio outcomes over time)
 
 `trend <owner/repo>` rolls up every reviewed bundle (`.review/*/findings.json`)

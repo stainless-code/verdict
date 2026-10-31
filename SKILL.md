@@ -38,16 +38,17 @@ then load `prompts/incremental-review.md` instead of `prompts/review.md`.
 
 ## Mode router
 
-| Ask                                   | Load                                       | Terminal write                         |
-| ------------------------------------- | ------------------------------------------ | -------------------------------------- |
-| Review a PR                           | `prompts/review.md`                        | one review                             |
-| Review local changes (no PR)          | `prompts/review.md` + `source.json` bundle | `record`, then `report` — never `post` |
-| New commits landed                    | `prompts/incremental-review.md`            | one review OR no-review note           |
-| Address review threads                | `prompts/address-reviews.md`               | commit/push + one reply per thread     |
-| Fix failing CI                        | `prompts/fix-ci.md`                        | commit/push + summary                  |
-| Implement / build                     | `prompts/build.md`                         | commit/push + PR link                  |
-| Draft a review report without posting | `prompts/ci.md`                            | report markdown file, no post          |
-| Anything else                         | `prompts/system.md` + task text            | summary stdout                         |
+| Ask                                        | Load                                       | Terminal write                                           |
+| ------------------------------------------ | ------------------------------------------ | -------------------------------------------------------- |
+| Review a PR                                | `prompts/review.md`                        | one review                                               |
+| Review local changes (no PR)               | `prompts/review.md` + `source.json` bundle | `record`, then `report` — never `post`                   |
+| New commits landed                         | `prompts/incremental-review.md`            | one review OR no-review note                             |
+| Address review threads                     | `prompts/address-reviews.md`               | commit/push + one reply per thread                       |
+| Fix failing CI                             | `prompts/fix-ci.md`                        | commit/push + summary                                    |
+| Implement / build                          | `prompts/build.md`                         | commit/push + PR link                                    |
+| Draft a review report without posting      | `prompts/ci.md`                            | report markdown file, no post                            |
+| Grade closed findings (self-grading probe) | `prompts/grade.md`                         | grade rows + agent judgments (additive) + agreement rate |
+| Anything else                              | `prompts/system.md` + task text            | summary stdout                                           |
 
 `prompts/system.md` loads on every run. `prompts/reviewer-subagent.md` is the
 contract for lens subagents the Review modes dispatch — the orchestrator reads it
