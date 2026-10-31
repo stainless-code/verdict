@@ -359,9 +359,9 @@ eval_write_review "$PR" <<'EOF'
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from the findings store (0 0 0 0 0 0 0)" "$EVAL_ERR" \
+  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from this review's comments (0 0 0 0 0 0 0)" "$EVAL_ERR" \
   && [ "$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null | head -c 3)" = "---" ]; then
-  good "wrong basis exits 0, warns with store counts, keeps the footer"
+  good "wrong basis exits 0, warns with review counts, keeps the footer"
 else
   bad "mismatch path gave exit $EVAL_STATUS"
 fi
@@ -375,6 +375,41 @@ if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis" "$EVAL_ERR"; then
   good "right basis stays silent"
 else
   bad "right basis warned (exit $EVAL_STATUS)"
+fi
+
+# --- B3: re-review with carried-over findings never warns on its own counts ---
+# Store holds 2 open pointed findings from a prior run; the current review
+# carries 1 pointed comment (rigor omitted, default pointed) with a matching
+# Basis line. The validator compares against the review's own comments, so the
+# carried-over pair stays silent. The control miscounts its own comment and warns.
+PR=4515
+eval_mk_bundle "$PR"
+eval_write_findings "$PR" <<'EOF'
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Carried-over one.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"Carried-over two.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+EOF
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis line counts" "$EVAL_ERR"; then
+  good "re-review matching its own comment stays silent despite carried-over store"
+else
+  bad "re-review warned (exit $EVAL_STATUS)"
+fi
+PR=4516
+eval_mk_bundle "$PR"
+eval_write_findings "$PR" <<'EOF'
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Carried-over one.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"Carried-over two.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+EOF
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && grep -q "basis line counts (0 0 0 2 0 0 0) differ from this review's comments (0 0 0 1 0 0 0)" "$EVAL_ERR"; then
+  good "re-review miscounting its own comment warns with review counts"
+else
+  bad "re-review control gave exit $EVAL_STATUS"
 fi
 
 # --- F7: hand-written footer (legacy + v2) warns and keeps, never stacks ---
@@ -411,6 +446,25 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   good "hand-written legacy footer warns and keeps, payload unstacked"
 else
   bad "legacy hand-written path gave exit $EVAL_STATUS"
+fi
+
+# --- B4: this-run flips (triage addressed + cited rule) count exactly ---
+# Store holds 1 open pointed finding; the review cites a kb rule and flips it
+# addressed via triage in the same run. Silence proves the ver branch (this-run
+# addressed history at now) and the distinct-cites path — not just the rigor row.
+PR=4517
+eval_mk_bundle "$PR"
+eval_write_findings "$PR" <<'EOF'
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Fresh finding to flip.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+EOF
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 1 rules cited · 1 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}],"triage":[{"sig":"cccccccccccccccccccccccccccccccccccccccc","status":"addressed","rationale":"verified the fix path end to end with evidence"}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis line counts" "$EVAL_ERR"; then
+  good "triage-addressed + cited rule count exactly, no warn"
+else
+  bad "B4 flip-count gave exit $EVAL_STATUS"
 fi
 
 # --- M1: manual carries the one-sentence metric definition ---

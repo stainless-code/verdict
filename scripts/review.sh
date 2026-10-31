@@ -1253,8 +1253,9 @@ basis_line() { # $1 = findings.json path; echoes the exact confidence-lead basis
 }
 
 # Agent-path basis check: the review.json body may carry a "> Basis:" counts
-# line; the findings store decides. Mismatch or unparseable warns and keeps
-# the body — garnish never fails the run. $1 = store counts, $2 = body.
+# line; the review's own comments decide (not the merged store, so carried-over
+# findings never warn). Mismatch or unparseable warns and keeps
+# the body — garnish never fails the run. $1 = review counts, $2 = body.
 validate_basis_line() {
   local line="" nums="" want_n=""
   line=$(printf '%s' "$2" | grep -E '^[[:space:]]*> Basis:' | head -n 1 || true)
@@ -1269,8 +1270,26 @@ validate_basis_line() {
     return 0
   fi
   if [[ "$nums" != "$1" ]]; then
-    warn "basis line counts ($nums) differ from the findings store ($1) — keeping body as-is (garnish never fails the run)"
+    warn "basis line counts ($nums) differ from this review's comments ($1) — keeping body as-is (garnish never fails the run)"
   fi
+}
+
+# Review-path basis counts: expected Basis numbers from the review's own
+# comments (exactly computable from review.json at validate time), not the
+# merged store — so re-reviews with carried-over open findings stop warning.
+# Rigor defaults to pointed (same as the store), cites are distinct raw kb ids,
+# verified is 0 on a fresh review (only this run's addressed flips via triage
+# or verification.json count, scoped to this review's claims).
+review_basis_counts() { # $1 = review.json path, $2 = merged entries JSON, $3 = now; echoes "a b c d e f g"
+  local rf="$1" ent="$2" now_ts="$3" rc="" ver=""
+  rc=$(jq -r '
+    def norm: if . == "reproduced" or . == "ran" or . == "walked" or . == "pointed" or . == "said" then . else "pointed" end;
+    def cnt(x): ([(.comments // [])[] | ((.rigor // "pointed") | norm) | select(. == x)] | length);
+    "\(cnt("reproduced")) \(cnt("ran")) \(cnt("walked")) \(cnt("pointed")) \(cnt("said")) \([((.comments // [])[] | (.kb // []) | if type == "array" then .[] else empty end)] | unique | length)"
+  ' "$rf" 2>/dev/null || echo "0 0 0 0 0 0")
+  ver=$(jq -r --arg now "$now_ts" '[.[] | select(.status == "addressed" and ((.history // []) | map(select(.at == $now and (.event == "addressed" or .event == "triaged"))) | length > 0))] | length' <<<"$ent" 2>/dev/null || echo "0")
+  case "$ver" in ''|*[!0-9]*) ver="0";; esac
+  printf '%s %s\n' "$rc" "$ver"
 }
 
 # Permalink evidence links (P2). GitHub findings reference
@@ -2055,9 +2074,10 @@ $move_section"
     esac
   done < <(jq -c '.triage // [] | .[]' "$review_file")
   # Basis-line validation (P1 garnish): the agent-authored body may carry a
-  # "> Basis:" counts line under the confidence lead; the store decides.
+  # "> Basis:" counts line under the confidence lead; the review's own comments
+  # decide (not the merged store, so carried-over findings never warn).
   # Mismatch or unparseable warns and keeps the body — never fails the run.
-  validate_basis_line "$(printf '%s' "$entries" | basis_counts)" "$body"
+  validate_basis_line "$(review_basis_counts "$review_file" "$entries" "$now")" "$body"
   # Permalink garnish (P2): blob SHAs must name the reviewed commit and long
   # quotes stay inside collapsed details. Warn-and-keep, like the basis line.
   validate_evidence_links "$body" "$head_full" "$(evidence_linkable "$dir" "$head_full")"

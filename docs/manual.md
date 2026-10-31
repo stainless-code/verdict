@@ -238,7 +238,7 @@ most seven bundle files (plus an overflow pointer to `toc.txt`). Under the
 lead, `--output` renders a `> Basis: …` line computed exactly from the
 findings store (rigor rung counts in evidence order, distinct cited kb rule
 ids, addressed findings as verified fixes — covering the whole store
-regardless of display filters). Every `--output` file and every posted body
+regardless of display filters; the agent-authored `> Basis:` line in `review.json` validates against the review's own comments instead, so carried-over findings never warn). Every `--output` file and every posted body
 ends with one merged footer block (tier, cost or unrecorded, files
 reviewed, review link when known, plus a leveled attribution line with
 logo) — see
@@ -500,7 +500,10 @@ Confidence is the agent's "would I merge on this review" judgment, informed by e
 The scale stays 1-5 across
 runs so past verdicts stay comparable (no rescaling; a computed score stays
 deferred until machine-verifiable inputs exist, with kb-measure X2/X3
-outputs as the named trigger).
+outputs as the named trigger). `report --output` renders the store-wide Basis
+line; the agent's posted line covers its own review — on a re-review with carried-over
+findings the two legitimately differ, and validation compares the posted line
+against the review's own comments.
 
 ## Permalink evidence links
 
