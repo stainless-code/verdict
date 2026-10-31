@@ -9,6 +9,9 @@ Run PR reviews **locally, on-demand, with your own models**. The agent reviews;
 chmod +x scripts/review.sh
 export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-requests:write, issues:write
 
+# 0. onboard once per repo (optional, offline): scaffold .review/ controls
+./scripts/review.sh init --preset standard --yes
+
 # 1. fetch
 ./scripts/review.sh fetch owner/repo 123
 
@@ -208,7 +211,7 @@ recall; citing one warns and drops.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn`/`init` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `report` is the pure offline reader over the store (ranked items, verdict,
@@ -328,6 +331,71 @@ budget refuses with typed `budget-exceeded` unless the run carries
 key in the JSON cost object). Threshold is the budget itself: projected above budget
 needs consent, at-or-under proceeds. Estimates cover the review run about to start,
 not the fetch reads; unknown estimates never refuse.
+
+## Onboarding (scaffolder + prefs file)
+
+New operators onboard in one offline command — no network, ever:
+
+```bash
+./scripts/review.sh init --preset standard --yes   # chill|standard|strict, default standard
+```
+
+`init` writes the standard local control files, then runs check-tree
+validation (same filter: own `.review/` scratch ignored). Existing files
+print a preview and need `--yes`/`--force` (or an interactive confirm when
+stdin is a tty) before overwrite — the same preview-then-confirm idiom the
+installer uses. Re-running with the same preset reads as `keep` (idempotent).
+
+Style presets map to panel strictness plus KB retirement thresholds (the KB
+starter is identical across presets):
+
+| preset     | `.review/budget` | `.review/panel` members    | `.review/kb-policy`                                      |
+| ---------- | ---------------- | -------------------------- | -------------------------------------------------------- |
+| `chill`    | `2.00` (lenient) | none (comments only)       | `MIN_JUDGED=10` `MAX_FP_RATE=0.7` (retires rarely)       |
+| `standard` | `0.50` (default) | `main` (one synthesizer)   | `MIN_JUDGED=5` `MAX_FP_RATE=0.5` (matches code defaults) |
+| `strict`   | `0.10` (tight)   | `lead`, `lens-1`, `lens-2` | `MIN_JUDGED=3` `MAX_FP_RATE=0.3` (retires aggressively)  |
+
+`.review/kb.jsonl` starts with two starter rules (`check-error-paths`,
+`verify-before-claim`, both `status: active`, counters zeroed) ready for
+`learn --status`. The `verify-before-claim` starter uses scope `*`, so it
+recalls on every bundle until you narrow it — tune scopes early, then replace
+the panel placeholders with real slugs — same
+panel every run keeps verdicts comparable and costs capped.
+
+The prefs file ends env sprawl without forcing migration. Path:
+`${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json` (`$XDG_CONFIG_HOME`
+respected, `$schema` key carries a schema hint that is never fetched).
+Presentation keys only — CLI survey: the only presentation surfaces are the
+machine envelope (`--json`), file outputs (`--output`/`--sarif`), and the
+prompt-dump destination, so the file exposes exactly three namespaces:
+
+```json
+{
+  "$schema": "https://github.com/stainless-code/verdict/blob/main/schemas/settings.schema.json",
+  "output": { "format": "text" },
+  "layout": { "compact": false },
+  "color": { "mode": "auto" }
+}
+```
+
+- `output.format` (`text`|`json`) is the `--json` default.
+- `layout.compact` (bool) suppresses advisory progress lines (the `panel:
+none pinned` and `learnings` notes); pinned-panel and warning lines stay.
+- `color.mode` (`auto`|`always`|`never`) controls ANSI on human progress
+  (warnings/errors); the tool emits no ANSI today, so `auto`/`never` read
+  plain and only `always` adds codes. Machine envelopes never carry codes.
+
+Precedence is flags > file > env (`REVIEW_OUTPUT_FORMAT`,
+`REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`) > defaults; global flags
+`--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb
+(`--json` itself stays per-verb and already wins over a text default).
+`NO_COLOR` applies only when color is otherwise unset. Any other top-level
+key (including server-shaped or `org.*` namespaces) refuses with typed
+`bad-settings`; any credential-shaped key at any depth (`token`/`key`/`auth`/
+`secret`/`password`/`pat`/`credential`/`bearer` and compounds) refuses with
+typed `bad-settings-credentials` — credentials never live in the file.
+Absent file (or a file holding only defaults) keeps every invocation
+byte-identical to today; no forced migration, no env removed.
 
 ## Local review (no PR)
 

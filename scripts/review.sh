@@ -7,7 +7,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready|trend|learn [opts]
+usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init [opts]
   fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--show-prompts] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
@@ -115,7 +115,22 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   learn --restore <id> --reason <text> [--json]
     restore a retired rule to active (tombstone history kept);
     reason needs 30+ chars.
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn: stdout is exactly one JSON envelope (schema_version 1);
+  init [--preset chill|standard|strict] [--yes] [--force] [--json]
+    guided offline scaffolder: writes the standard local control files
+    (.review/budget, .review/panel, .review/kb-policy, .review/kb.jsonl
+    starter) with style presets, then runs check-tree validation.
+    Presets map to panel strictness + KB retirement thresholds:
+    chill (no pinned panel, MIN_JUDGED=10 MAX_FP_RATE=0.7),
+    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).
+    Never touches network. Existing files print a preview and need
+    --yes/--force (or an interactive confirm) before overwrite.
+  Global presentation flags (any verb; stripped before verb parsing):
+  --color <auto|always|never>, --compact / --no-compact, --no-json.
+  Flags win over the settings file, which wins over env
+  (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE), which
+  wins over defaults. The settings file is presentation-only
+  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -124,7 +139,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then usage; exit 0; fi
 if [[ "${1:-}" == "--version" ]]; then jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown"; exit 0; fi
 cmd="${1:-}"; shift $(( $# > 0 ? 1 : 0 ))
 repo=""; pr=""
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" ]]; then
   repo="${1:-}"; pr="${2:-}"; shift $(( $# >= 2 ? 2 : $# ))
 fi
 if [[ "$cmd" == "trend" ]]; then
@@ -133,7 +148,11 @@ fi
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need gh; need jq; need shasum
-warn() { echo "warn: $*" >&2; WARNINGS_JSON=$(jq --arg w "$*" '. + [$w]' <<<"$WARNINGS_JSON"); }
+warn() {
+  if [[ "${EFFECTIVE_COLOR:-auto}" == "always" ]]; then printf '\033[33mwarn: %s\033[0m\n' "$*" >&2;
+  else echo "warn: $*" >&2; fi
+  WARNINGS_JSON=$(jq --arg w "$*" '. + [$w]' <<<"$WARNINGS_JSON");
+}
 WARNINGS_JSON="[]"; export WARNINGS_JSON
 # Machine-actionable narrower-scope candidates for the next refusal (fail()
 # carries them in the JSON envelope; additive-only — absent reads null).
@@ -200,6 +219,9 @@ fail() {
     scope-escape) hint="try: revert or stash files outside the anchor path, then re-run fix";;
     rationale-required) hint="try: add --rationale with 30+ chars, or --force";;
     already-adopted|provider-unimplemented) hint="try: use the verb named above for this bundle kind";;
+    needs-confirm) hint="try: re-run with --yes after reviewing the preview, then re-run";;
+    bad-settings-credentials) hint="try: remove the credential key from the settings file (credentials never live there), then re-run";;
+    bad-settings) hint="try: keep only output/layout/color keys (see docs/manual.md), then re-run";;
     bad-*) hint="try: re-run with one of the valid values named above";;
     already-learned) hint="try: cite the existing rule id instead of learning it twice";;
     id-taken) hint="try: pass a different --id";;
@@ -216,7 +238,8 @@ $hint"; fi
       --argjson cand "${CANDIDATES_JSON:-null}" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"",warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:null,error:{code:$c,message:$m} + (if $cand == null then {} else {candidates:$cand} end)}' >&9
   else
-    echo "error: $msg" >&2
+    if [[ "${EFFECTIVE_COLOR:-auto}" == "always" ]]; then printf '\033[31merror: %s\033[0m\n' "$msg" >&2;
+    else echo "error: $msg" >&2; fi
   fi
   if [[ -n "$rentry_cmd" ]]; then echo "re-enter: $rentry_cmd" >&2; fi
   # Ready --check turns typed errors into exit 3 so hooks can tell "tool
@@ -225,6 +248,196 @@ $hint"; fi
   if [[ "$check_gate" == "true" ]]; then exit 3; fi
   exit 1
 }
+
+# ---- prefs (minimal presentation-only settings file) ----
+# CLI survey (this file): the only presentation surfaces are the machine
+# envelope (--json), file outputs (report --output/--sarif), and the
+# prompt-dump destination (--show-prompts stdout vs envelope). No color,
+# layout, theme, pager, or verbosity knobs exist. The settings file therefore
+# exposes exactly three presentation namespaces — output (format, the --json
+# default), layout (compact, advisory progress verbosity), color (mode;
+# the tool emits no ANSI today, so auto/never read plain and only always
+# adds codes). Top-level keys are limited to $schema, output, layout,
+# color; anything else (including server-shaped or org.* namespaces)
+# refuses with bad-settings. Any credential-shaped key at any depth
+# refuses with bad-settings-credentials. Precedence: flags > file > env
+# (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE) >
+# defaults. Absent file keeps today's behavior byte-identically.
+# XDG home: ${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json.
+PREF_SETTINGS_FILE=""; EFFECTIVE_OUTPUT="text"; EFFECTIVE_COMPACT="false"; EFFECTIVE_COLOR="auto"
+FLAG_OUTPUT_FORCE=""; FLAG_COMPACT_FORCE=""; FLAG_COLOR_FORCE=""
+PREF_COLOR_SET="false"
+# Envelope redirect, run once: the original stdout moves to fd 9 for the JSON
+# envelope, human progress moves to stderr. Verbs call this after flag
+# parsing; prefs calls it early on a --json peek so typed prefs errors land
+# in the envelope too. Guarded — a second call is a no-op (re-execing would
+# repoint fd 9 at stderr and lose the envelope).
+json_redirect() {
+  [[ "$json_mode" == "true" && "${_FD9_READY:-false}" != "true" ]] || return 0
+  exec 9>&1; exec 1>&2; _FD9_READY="true"
+}
+resolve_prefs() {
+  local base="${HOME:-$PWD}/.config"
+  local v="" t="" top="" k="" ok="" cred_n=""
+  if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then base="$XDG_CONFIG_HOME"; fi
+  PREF_SETTINGS_FILE="$base/verdict/settings.json"
+  case "${REVIEW_OUTPUT_FORMAT:-}" in
+    "") ;;
+    text|json) EFFECTIVE_OUTPUT="${REVIEW_OUTPUT_FORMAT}";;
+    *) warn "ignoring invalid REVIEW_OUTPUT_FORMAT '${REVIEW_OUTPUT_FORMAT}' (want text|json)";;
+  esac
+  case "${REVIEW_LAYOUT_COMPACT:-}" in
+    "") ;;
+    true|false) EFFECTIVE_COMPACT="${REVIEW_LAYOUT_COMPACT}";;
+    *) warn "ignoring invalid REVIEW_LAYOUT_COMPACT '${REVIEW_LAYOUT_COMPACT}' (want true|false)";;
+  esac
+  case "${REVIEW_COLOR_MODE:-}" in
+    "") ;;
+    auto|always|never) EFFECTIVE_COLOR="${REVIEW_COLOR_MODE}";;
+    *) warn "ignoring invalid REVIEW_COLOR_MODE '${REVIEW_COLOR_MODE}' (want auto|always|never)";;
+  esac
+  # Sync the envelope default early (env layer): a bad settings file under an
+  # env json default must still fail typed in the envelope. The file layer
+  # re-syncs below when it sets output.format; --no-json/--json flags apply
+  # after (flags win), and verbs re-assert --json, so a peek is never lost.
+  if [[ "$EFFECTIVE_OUTPUT" == "json" ]]; then json_mode="true"; fi
+  json_redirect
+  [[ -f "$PREF_SETTINGS_FILE" ]] || return 0
+  jq empty "$PREF_SETTINGS_FILE" >/dev/null 2>&1 \
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE is not valid JSON (fix it or delete it)"
+  [[ "$(jq -r 'type' "$PREF_SETTINGS_FILE")" == "object" ]] \
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE must hold a JSON object (want only \$schema, output, layout, color)"
+  cred_n=$(jq -r '[.. | objects | keys[] | ascii_downcase] | map(select(test("token|secret|passwd|password|pwd|auth|bearer|credential|pat|key"))) | length' "$PREF_SETTINGS_FILE" 2>/dev/null) \
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE is unreadable (fix it or delete it)"
+  [[ "$cred_n" == "0" ]] \
+    || fail "bad-settings-credentials" "settings file $PREF_SETTINGS_FILE names a credential key (token/key/auth/secret/password/pat/credential/bearer) — credentials never live in the settings file (export them as env instead)"
+  top=$(jq -r 'keys[]' "$PREF_SETTINGS_FILE") \
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE is unreadable (fix it or delete it)"
+  while IFS= read -r k; do
+    [[ -z "$k" ]] && continue
+    case "$k" in '$schema'|output|layout|color) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE carries unknown top-level key '$k' (want only \$schema, output, layout, color; no server-shaped or org.* namespaces)";;
+    esac
+  done <<<"$top"
+  if [[ -n "$top" ]] && jq -e 'has("$schema")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    [[ "$(jq -r '."$schema" | type' "$PREF_SETTINGS_FILE")" == "string" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: \$schema must be a string (schema hint only, never fetched)"
+  fi
+  if jq -e 'has("output")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    [[ "$(jq -r '.output | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: output must be an object (want {\"format\": \"text\"|\"json\"})"
+    ok=$(jq -r '.output | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
+    while IFS= read -r k; do
+      [[ -z "$k" ]] && continue
+      case "$k" in format) ;;
+        *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown output key '$k' (want only format)";;
+      esac
+    done <<<"$ok"
+    if jq -e '.output | has("format")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+      v=$(jq -r '.output.format' "$PREF_SETTINGS_FILE")
+      case "$v" in
+        text|json) EFFECTIVE_OUTPUT="$v";;
+        *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: output.format '$v' unknown (want text|json)";;
+      esac
+      # A peeked --json flag survives the file sync (flags win over the file);
+      # verbs re-assert it afterwards, so the peek is never lost either way.
+      if [[ "$EFFECTIVE_OUTPUT" == "json" || "${_JSON_PEEKED:-false}" == "true" ]]; then json_mode="true"; else json_mode="false"; fi
+      json_redirect
+    fi
+  fi
+  if jq -e 'has("layout")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    [[ "$(jq -r '.layout | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: layout must be an object (want {\"compact\": true|false})"
+    ok=$(jq -r '.layout | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
+    while IFS= read -r k; do
+      [[ -z "$k" ]] && continue
+      case "$k" in compact) ;;
+        *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown layout key '$k' (want only compact)";;
+      esac
+    done <<<"$ok"
+    if jq -e '.layout | has("compact")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+      t=$(jq -r '.layout.compact | type' "$PREF_SETTINGS_FILE")
+      [[ "$t" == "boolean" ]] \
+        || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: layout.compact must be a boolean (want true|false)"
+      EFFECTIVE_COMPACT=$(jq -r '.layout.compact' "$PREF_SETTINGS_FILE")
+    fi
+  fi
+  if jq -e 'has("color")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    [[ "$(jq -r '.color | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: color must be an object (want {\"mode\": \"auto\"|\"always\"|\"never\"})"
+    ok=$(jq -r '.color | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
+    while IFS= read -r k; do
+      [[ -z "$k" ]] && continue
+      case "$k" in mode) ;;
+        *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown color key '$k' (want only mode)";;
+      esac
+    done <<<"$ok"
+    if jq -e '.color | has("mode")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+      v=$(jq -r '.color.mode' "$PREF_SETTINGS_FILE")
+      case "$v" in
+        auto|always|never) EFFECTIVE_COLOR="$v"; PREF_COLOR_SET="true";;
+        *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: color.mode '$v' unknown (want auto|always|never)";;
+      esac
+    fi
+  fi
+}
+_FD9_READY="false"
+# Peek --json early (stopping at a `--` paths separator) so typed prefs
+# errors land in the envelope when the caller asked for JSON. _JSON_PEEKED
+# remembers the flag so the file/env sync below never clobbers an explicit
+# flag (flags win over file over env); verbs re-assert --json afterwards.
+_JSON_PEEKED="false"
+if (( $# > 0 )); then
+  for _a in "$@"; do
+    [[ "$_a" == "--" ]] && break
+    if [[ "$_a" == "--json" ]]; then json_mode="true"; _JSON_PEEKED="true"; fi
+  done
+  unset _a
+fi
+json_redirect
+resolve_prefs
+# Global presentation flags (flags win over file over env). Stripped here so
+# every verb parser stays untouched; --json itself stays per-verb (it forces
+# json and therefore already wins over a text file/env default).
+_stripped=(); _seen_dd="false"
+while [[ $# -gt 0 ]]; do
+  if [[ "$_seen_dd" == "true" ]]; then _stripped+=("$1"); shift; continue; fi
+  case "$1" in
+    --) _seen_dd="true"; _stripped+=("$1"); shift;;
+    --color)
+      [[ -n "${2:-}" ]] || { echo "unknown flag '$1' for $cmd (want --color <auto|always|never>)" >&2; exit 2; }
+      case "${2:-}" in
+        auto|always|never) FLAG_COLOR_FORCE="${2:-}";;
+        *) fail "bad-color" "unknown --color '${2:-}' (want auto|always|never)";;
+      esac
+      shift 2;;
+    --color=*)
+      _cvm="${1#--color=}"
+      case "$_cvm" in
+        auto|always|never) FLAG_COLOR_FORCE="$_cvm";;
+        *) fail "bad-color" "unknown --color '$_cvm' (want auto|always|never)";;
+      esac
+      shift;;
+    --compact) FLAG_COMPACT_FORCE="true"; shift;;
+    --no-compact) FLAG_COMPACT_FORCE="false"; shift;;
+    --no-json) FLAG_OUTPUT_FORCE="text"; shift;;
+    *) _stripped+=("$1"); shift;;
+  esac
+done
+if (( ${#_stripped[@]} > 0 )); then set -- "${_stripped[@]}"; else set --; fi
+unset _stripped _seen_dd _cvm
+[[ -n "$FLAG_OUTPUT_FORCE" ]] && EFFECTIVE_OUTPUT="$FLAG_OUTPUT_FORCE"
+[[ -n "$FLAG_COMPACT_FORCE" ]] && EFFECTIVE_COMPACT="$FLAG_COMPACT_FORCE"
+[[ -n "$FLAG_COLOR_FORCE" ]] && EFFECTIVE_COLOR="$FLAG_COLOR_FORCE"
+# NO_COLOR applies only when color is otherwise unset, so the documented
+# flag > file > env > defaults order holds (an explicit setting anywhere
+# beats the convention; an explicit --color=always flag beats NO_COLOR).
+if [[ -n "${NO_COLOR:-}" && "$FLAG_COLOR_FORCE" != "always" && -z "${REVIEW_COLOR_MODE:-}" && "$PREF_COLOR_SET" != "true" ]]; then
+  EFFECTIVE_COLOR="never"
+fi
+if [[ "$FLAG_OUTPUT_FORCE" == "text" ]]; then json_mode="false";
+elif [[ "$EFFECTIVE_OUTPUT" == "json" ]]; then json_mode="true"; fi
+json_redirect
 
 # stable signature: case-sensitive, whitespace-squashed, line-number-free (caller excludes lines).
 sig_of() { printf '%s' "$1" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
@@ -785,10 +998,10 @@ emit_context() { # $1 = dir
   if [[ -n "$panel_list" ]]; then
     printf '%s\n' "$panel_list" > "$dir/panel"
     echo "» panel ($(printf '%s\n' "$panel_list" | wc -l | tr -d ' ') from $panel_src)"
-  else
+  elif [[ "${EFFECTIVE_COMPACT:-false}" != "true" ]]; then
     echo "» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)"
   fi
-  if [[ -f .review/learnings.md ]]; then
+  if [[ -f .review/learnings.md && "${EFFECTIVE_COMPACT:-false}" != "true" ]]; then
     echo "» learnings: .review/learnings.md ($(wc -l < .review/learnings.md | tr -d ' ') lines — read headings first, not the full file)"
   fi
 }
@@ -1366,7 +1579,7 @@ fi
 if [[ "$cmd" == "trend" ]] && [[ -z "$repo" ]]; then
   usage >&2; exit 2
 fi
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" ]] && [[ -z "$repo" || -z "$pr" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" ]] && [[ -z "$repo" || -z "$pr" ]]; then
   usage >&2; exit 2
 fi
 
@@ -1519,7 +1732,7 @@ if [[ "$cmd" == "fetch" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --show-prompts, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   # Prompt dump rides the normal fetch: progress moves to stderr so the dump
   # owns stdout. Stores, network, and exits are untouched by the flag itself.
   if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then exec 8>&1; exec 1>&2; fi
@@ -1582,7 +1795,8 @@ fi
 # Modes: worktree-vs-HEAD (default) | staged | range | branch-vs-base | stash.
 # Writes .review/local-<name>/ (source.json, full.diff, toc.txt, roles.txt).
 if [[ "$cmd" == "fetch-local" ]]; then
-  staged="false"; range=""; base_ref=""; stash_n=""; json_mode="false"; budget_consent="false"; show_prompts="false"; paths=()
+  staged="false"; range=""; base_ref=""; stash_n=""; budget_consent="false"; show_prompts="false"; paths=()
+  # json_mode keeps the prefs default (output.format json); --json below forces it.
   while [[ $# -gt 0 ]]; do case "$1" in
     --staged) staged="true"; shift;;
     --range) range="${2:-}"; shift 2;;
@@ -1595,7 +1809,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
     -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --consent-over-budget, --show-prompts, -- <paths>, --json)" >&2; exit 2;;
     *) paths+=("$1"); shift;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then exec 8>&1; exec 1>&2; fi
   slug=$(printf '%s' "$pr" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/-\+/-/g; s/^-\|-$//g' | cut -c1-48)
   [[ -z "$slug" || "$slug" == "local" ]] && fail "bad-slug" "name '$pr' sanitizes to nothing — pass a usable bundle name"
@@ -1798,7 +2012,7 @@ if [[ "$cmd" == "post" ]]; then
   [[ "$dry_run" == "true" ]] && rentry_cmd="$rentry_cmd --dry-run"
   [[ "$json_mode" == "true" ]] && rentry_cmd="$rentry_cmd --json"
   trap 'echo "re-enter: $rentry_cmd" >&2; exit 130' INT TERM
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   case "$approve" in true|false) ;;
     *) fail "bad-approve" "--approve takes true|false, got '$approve'";; esac
   dir=".review/$pr"
@@ -2017,7 +2231,7 @@ if [[ "$cmd" == "record" ]]; then
   esac; done
   rentry_cmd="./scripts/review.sh record $repo $pr"
   [[ "$json_mode" == "true" ]] && rentry_cmd="$rentry_cmd --json"
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   case "$dir" in .review/local-*) prov="local";;
     *)
@@ -2082,7 +2296,7 @@ if [[ "$cmd" == "adopt" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for adopt (want --from <local-slug>, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   [[ "$pr" == local-* ]] && fail "bad-target" "adopt targets a PR bundle, not another local one"
   [[ -z "$from" ]] && fail "bad-from" "adopt needs --from <local-slug> (a .review/local-* dir with findings.json)"
   case "$from" in local-*) from_dir=".review/$from";; *) from_dir=".review/local-$from";; esac
@@ -2140,7 +2354,7 @@ if [[ "$cmd" == "triage" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for triage (want --sig, --status, --rationale, --force, --dry-run, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   case "$tstatus" in open|addressed|wont-fix|false-positive|deferred) ;;
@@ -2207,7 +2421,7 @@ if [[ "$cmd" == "report" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --check, --completeness, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
@@ -2468,7 +2682,7 @@ if [[ "$cmd" == "next" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for next (want --status, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   now=$(now_utc)
   rep_out=$(bash "${BASH_SOURCE[0]:-$0}" report "$repo" "$pr" --status "$status_f" --json 2>/dev/null) || true
   if [[ -z "$rep_out" ]] || jq -e '.error != null' <<<"$rep_out" >/dev/null 2>&1; then
@@ -2506,7 +2720,7 @@ if [[ "$cmd" == "show" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for show (want --sig, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   [[ -z "$ssig" ]] && fail "missing-sig" "show needs --sig <sig> (short prefix ok)"
@@ -2571,7 +2785,7 @@ if [[ "$cmd" == "verify" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for verify (want --timeout <secs>, --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   [[ -f "$dir/patch.json" ]] || fail "missing-patch" "missing $dir/patch.json (nothing claimed to verify)"
   now=$(now_utc)
@@ -2670,7 +2884,7 @@ if [[ "$cmd" == "doctor" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for doctor (want --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   now=$(now_utc)
   results="[]"
   add() { # $1 = name, $2 = fail|warn, $3 = true|false, $4 = detail
@@ -2720,7 +2934,7 @@ if [[ "$cmd" == "calibrate" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for calibrate (want --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   [[ "$dir" == .review/local-* ]] && fail "no-threads" "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)"
   prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
@@ -2811,7 +3025,7 @@ if [[ "$cmd" == "ready" ]]; then
     --check) check_gate="true"; shift;;
     *) echo "unknown flag '$1' for ready (want --json, --check)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   resolve_bundle_dir "$pr"
   [[ "$dir" == .review/local-* ]] && fail "no-pr-target" "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on"
   prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
@@ -2946,7 +3160,7 @@ if [[ "$cmd" == "trend" ]]; then
     --json) json_mode="true"; shift;;
     *) echo "unknown flag '$1' for trend (want --json)" >&2; exit 2;;
   esac; done
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   now=$(now_utc)
   rows="[]"
   if [[ -d .review ]]; then
@@ -3058,7 +3272,7 @@ if [[ "$cmd" == "learn" ]]; then
   [[ -n "$lretire" ]] && rentry_cmd="$rentry_cmd --retire ..."
   [[ -n "$lrestore" ]] && rentry_cmd="$rentry_cmd --restore ..."
   [[ "$json_mode" == "true" ]] && rentry_cmd="$rentry_cmd --json"
-  if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  json_redirect
   now=$(now_utc)
   modes=0
   [[ -n "$lrule" ]] && modes=$((modes + 1))
@@ -3220,7 +3434,7 @@ if [[ "$cmd" == "fix" ]]; then
   esac; done
   rentry_cmd="./scripts/review.sh fix $repo $pr"
   [[ -n "$fix_sig" ]] && rentry_cmd="$rentry_cmd --sig $fix_sig"
-  if [[ "$json_mode" == "true" ]]; then rentry_cmd="$rentry_cmd --json"; exec 9>&1; exec 1>&2; fi
+  if [[ "$json_mode" == "true" ]]; then rentry_cmd="$rentry_cmd --json"; json_redirect; fi
   resolve_bundle_dir "$pr"
   case "$dir" in .review/local-*) ;; *) fail "not-local" "fix works on local bundles; fetch-local first";; esac
   # Start gates, refused before any work. Local bundles carry source.json, not
@@ -3407,4 +3621,137 @@ if [[ "$cmd" == "fix" ]]; then
   exit 0
 fi
 
-echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn)" >&2; exit 2
+# ------------------------------------------------------------------- init ---
+# Guided offline scaffolder (new `init` verb — chosen over `fetch --init`
+# because fetch owns a network/fetch contract and init must never touch the
+# network; one discoverable verb keeps that contract untouched). Writes the
+# standard local control files (.review/budget, .review/panel,
+# .review/kb-policy, .review/kb.jsonl starter) with style presets, then runs
+# check-tree validation (same filter: own .review/ scratch ignored).
+# Existing files print a preview and need --yes/--force (or an interactive
+# confirm) before overwrite — the same preview-then-confirm idiom the
+# installer uses, so operators learn it once.
+if [[ "$cmd" == "init" ]]; then
+  preset="standard"; assume_yes="false"
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --preset) preset="${2:-}"; shift 2;;
+    --preset=*) preset="${1#--preset=}"; shift;;
+    --yes|-y|--force) assume_yes="true"; shift;;
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag '$1' for init (want --preset <chill|standard|strict>, --yes, --force, --json)" >&2; exit 2;;
+  esac; done
+  json_redirect
+  rentry_cmd="./scripts/review.sh init --preset $preset"
+  [[ "$assume_yes" == "true" ]] && rentry_cmd="$rentry_cmd --yes"
+  [[ "$json_mode" == "true" ]] && rentry_cmd="$rentry_cmd --json"
+  case "$preset" in
+    chill|standard|strict) ;;
+    *) fail "bad-preset" "unknown --preset '$preset' (want chill|standard|strict)";;
+  esac
+  # Preset mapping (documented in usage + docs/manual.md): panel strictness
+  # grows chill -> strict (no pinning -> one synthesizer -> lead + 2 lenses);
+  # KB retirement thresholds tighten the same way (rarely -> defaults ->
+  # aggressively); the spend budget tightens too (lenient -> default -> tight).
+  case "$preset" in
+    chill) budget_val="2.00"; kb_min="10"; kb_rate="0.7"; panel_body="";;
+    standard) budget_val="0.50"; kb_min="5"; kb_rate="0.5"; panel_body="main";;
+    strict) budget_val="0.10"; kb_min="3"; kb_rate="0.3"; panel_body=$'lead\nlens-1\nlens-2';;
+  esac
+  budget_new=$(printf '# Verdict spend budget (USD) — written by `review.sh init --preset %s`.\n# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.\n%s\n' "$preset" "$budget_val")
+  if [[ -z "$panel_body" ]]; then
+    panel_new=$(printf '# Verdict panel — written by `review.sh init --preset %s` (chill: no pinning).\n# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.\n# Replace these comments with real slugs to pin a formation; empty (all comments)\n# means the operator picks per run.\n' "$preset")
+  else
+    panel_new=$(printf '# Verdict panel — written by `review.sh init --preset %s`.\n# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.\n# Replace these placeholders with real slugs; same panel every run keeps verdicts comparable.\n%s\n' "$preset" "$panel_body")
+  fi
+  kbpolicy_new=$(printf '# Verdict KB retirement policy — written by `review.sh init --preset %s`.\n# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.\nMIN_JUDGED=%s\nMAX_FP_RATE=%s\n' "$preset" "$kb_min" "$kb_rate")
+  kb_new=$(printf '%s\n' \
+    '{"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}' \
+    '{"id":"verify-before-claim","rule":"Verify every addressed claim with the repo'"'"'s own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}')
+  mkdir -p .review
+  targets=("budget" "panel" "kb-policy" "kb.jsonl")
+  t_status=()
+  need_overwrite="false"
+  for t in "${targets[@]}"; do
+    f=".review/$t"; cur=""; st="create"
+    if [[ -f "$f" ]]; then
+      case "$t" in
+        budget) want="$budget_new";; panel) want="$panel_new";; kb-policy) want="$kbpolicy_new";; kb.jsonl) want="$kb_new";;
+      esac
+      cur=$(cat "$f" 2>/dev/null || true)
+      if [[ "$cur" == "$want" ]]; then st="keep";
+      else st="overwrite"; need_overwrite="true"; fi
+    fi
+    t_status+=("$t:$st")
+  done
+  echo "init: preset $preset (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)"
+  for t in "${targets[@]}"; do
+    case "$t" in
+      budget) want="$budget_new";; panel) want="$panel_new";; kb-policy) want="$kbpolicy_new";; kb.jsonl) want="$kb_new";;
+    esac
+    st="create"
+    if [[ -f ".review/$t" ]]; then
+      if [[ "$(cat ".review/$t" 2>/dev/null || true)" == "$want" ]]; then st="keep"; else st="overwrite"; fi
+    fi
+    echo "--- .review/$t ($st) ---"
+    printf '%s\n' "$want"
+  done
+  if [[ "$need_overwrite" == "true" && "$assume_yes" != "true" ]]; then
+    if [[ -t 0 ]]; then
+      printf 'Proceed? [y/N] ' >&2; read -r ans || ans=""
+      case "$ans" in y|Y|yes|YES) ;;
+        *) echo "init: aborted (re-run with --yes to overwrite after reviewing the preview)" >&2; exit 1;;
+      esac
+    else
+      fail "needs-confirm" "init refuses to overwrite existing control files without confirm (re-run with --yes after reviewing the preview above)"
+    fi
+  fi
+  for t in "${targets[@]}"; do
+    case "$t" in
+      budget) want="$budget_new";; panel) want="$panel_new";; kb-policy) want="$kbpolicy_new";; kb.jsonl) want="$kb_new";;
+    esac
+    if [[ -f ".review/$t" ]] && [[ "$(cat ".review/$t" 2>/dev/null || true)" == "$want" ]]; then
+      echo "keep: .review/$t (already up to date)"
+    else
+      printf '%s\n' "$want" > ".review/$t"
+      if [[ -f ".review/$t" ]]; then echo "wrote: .review/$t";
+      else fail "init-failed" "init could not write .review/$t (storage writable?)"; fi
+    fi
+  done
+  # Validate what was written (file-first, not env-first: env wins at runtime
+  # but the scaffolded files must parse on their own).
+  budget_line=$(grep -v '^[[:space:]]*#' .review/budget | grep -v '^[[:space:]]*$' | head -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^\$//' || true)
+  [[ "$budget_line" =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail "bad-budget" "scaffolded .review/budget '$budget_line' is not a plain USD number"
+  [[ -f .review/panel ]] || fail "init-failed" "scaffolded .review/panel missing after write"
+  [[ -f .review/kb-policy ]] || fail "init-failed" "scaffolded .review/kb-policy missing after write"
+  jq empty .review/kb.jsonl >/dev/null 2>&1 || fail "bad-settings" "scaffolded .review/kb.jsonl is not valid JSONL"
+  [[ "$(jq -s 'map(select(type == "object")) | length' .review/kb.jsonl 2>/dev/null || echo 0)" -gt 0 ]] \
+    || fail "bad-settings" "scaffolded .review/kb.jsonl carries no rule rows"
+  # Check-tree validation (same filter as the verb: own .review/ scratch ignored).
+  tree_out=""; tree_clean="true"
+  if porcelain=$(git status --porcelain 2>/dev/null); then
+    own=$(grep -c '^.. \.review/' <<<"$porcelain" || true)
+    rest=$(grep -v '^.. \.review/' <<<"$porcelain" || true)
+    if [[ -z "$rest" ]]; then tree_out="check-tree: clean ($own .review/ scratch line(s) ignored)"; tree_clean="true";
+    else tree_out="check-tree: dirty worktree — commit or stash first:"; tree_clean="false"; fi
+  else
+    tree_out="check-tree: not a git repo"; tree_clean="false"
+  fi
+  echo "$tree_out"
+  if [[ "$tree_clean" == "false" && -n "${rest:-}" ]]; then printf '%s\n' "$rest"; fi
+  if [[ "$tree_clean" == "false" ]]; then warn "init wrote the control files but the worktree carries non-.review dirt (see check-tree above)"; fi
+  echo "next: replace panel placeholders with real slugs, tune .review/budget, then fetch"
+  if [[ "$json_mode" == "true" ]]; then
+    files_json=$(jq -n --arg p "$preset" --arg b "$budget_val" --arg m "$kb_min" --arg r "$kb_rate" \
+      --argjson st "$(printf '%s\n' "${t_status[@]}" | jq -R . | jq -s .)" \
+      --argjson clean "$tree_clean" \
+      '{preset:$p,budget_usd:$b,kb_min_judged:($m|tonumber),kb_max_fp_rate:($r|tonumber),files:$st,check_tree_clean:$clean}')
+    now=$(now_utc)
+    jq -n --arg v "$cmd" --arg t "$now" --argjson f "$files_json" \
+      '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,
+        next:"replace panel placeholders with real slugs, tune .review/budget, then fetch",
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:$f,error:null}' >&9
+  fi
+  exit 0
+fi
+
+echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn|init)" >&2; exit 2
