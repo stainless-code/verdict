@@ -17,7 +17,7 @@ usage() {
 usage: evals/run.sh [--keep] [--help]
 
 Run the offline contract evals (terminal-write discipline, --bind
-downgrade, --json envelope shape). No network: bundles are crafted fixtures
+downgrade, --json envelope shape, HEAD-reviewed gate). No network: bundles are crafted fixtures
 in a temp sandbox and a stub gh fails every network attempt.
 
   --keep   leave the sandbox in place and print its path (debugging)

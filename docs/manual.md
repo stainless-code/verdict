@@ -234,6 +234,24 @@ Compose it after the expensive step: gate the merge on `--check critical`,
 keep `post`'s preflight as the fail-closed backstop — the gate advises,
 the human still merges.
 
+`report --completeness` answers a second question from the same read — "is
+HEAD reviewed?" — by comparing the bundle's fetched HEAD against the local
+completed-post record (`post.json`, written only by a real `post`):
+a match passes; a missing, unparsable, head-less, or mismatched record
+fails with a typed `missing-post`/`corrupt-post`/`stale-head` check line
+naming the re-fetch command. Alone it gates on HEAD-reviewed only;
+combined (`--check critical --completeness`) it fails when tier-hits OR
+stale/missing post do. Pure local reads, no network; without the flag
+output and exits are exactly today's.
+
+Hook recipe (merge gate — findings AND freshness in one call):
+
+```bash
+./scripts/review.sh report owner/repo 123 --check critical --completeness || exit 1
+# exit 0 only when no open critical+ findings stand AND the fetched HEAD
+# is the posted HEAD; exit 1 names which dimension failed on stderr.
+```
+
 Sigs follow the Sig contract under Findings store.
 
 ## Model wiring

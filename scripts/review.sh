@@ -45,7 +45,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
         --rationale "..." [--force] [--dry-run]
     mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.
   report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]
-        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--json]
+        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] [--json]
     pure read over the store: ranked findings + verdict + counts. No network.
     --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.
     --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; stratified by effort tier).
@@ -56,6 +56,15 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     gate counts open findings only, whatever --status/--kind show. Without
     --check the run stays advisory: exit 0 with findings listed (typed
     errors exit 1, usage exits 2).
+    --completeness opts into a second gate dimension answering "is HEAD
+    reviewed?" from the local completed-post record (pure local reads, no
+    network): pass iff post.json exists, parses, and carries a non-empty
+    head equal to the bundle's fetched HEAD (PR.json head SHA, else
+    source.json head_sha for local bundles). Alone it gates on HEAD-reviewed
+    only; combined with --check the run fails if tier-hits OR stale/missing
+    post. Gate failure exits 1 with a check: line naming the re-fetch
+    command; tool errors keep exit 3. Without it output and exits are
+    byte-identical to today.
   next <owner/repo> <pr> [--status open] [--json]
     top-ranked actionable finding + the command to act on it. Pure read.
   show <owner/repo> <pr> --sig <sig> [--json]
@@ -1859,6 +1868,9 @@ $body"
   touch "$marker_file"
   # Calibration enabler: record what GitHub accepted, so a future calibrate verb can
   # join our findings against ground truth (thread states, merge outcome) by review id.
+  # Sole post.json writer in this script (dry runs write findings.dryrun.json only and
+  # never touch post.json) — so a present matching head proves a completed post,
+  # never an attempt, dry run, or failure.
   jq -n --argjson rv "$posted" --arg c "$commit_id" --arg t "$now" \
     --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
     '{schema_version:"1",review:$rv,head:$c,posted_at:$t,confidence:$conf,security_summary:$sec}' > "$dir/post.json"
@@ -2068,7 +2080,7 @@ fi
 
 # --------------------------------------------------------------- report ---
 if [[ "$cmd" == "report" ]]; then
-  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"; check_sev=""
+  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"; check_sev=""; completeness="false"
   while [[ $# -gt 0 ]]; do case "$1" in
     --status) status_f="${2:-all}"; case "$status_f" in all|open|addressed|deferred|wont-fix|false-positive) ;; *) echo "unknown --status '$status_f' for report (want all|open|addressed|deferred|wont-fix|false-positive)" >&2; exit 2;; esac; shift 2;;
     --kind) kind_f="${2:-all}"; case "$kind_f" in all|inline|section) ;; *) echo "unknown --kind '$kind_f' for report (want all|inline|section)" >&2; exit 2;; esac; shift 2;;
@@ -2076,8 +2088,9 @@ if [[ "$cmd" == "report" ]]; then
     --sarif) sarif="${2:-}"; shift 2;;
     --cost) cost="true"; shift;;
     --check) check_sev="${2:-}"; case "$check_sev" in critical|important|informational) ;; *) echo "unknown --check tier '$check_sev' for report (want critical|important|informational)" >&2; exit 2;; esac; check_gate="true"; shift 2;;
+    --completeness) completeness="true"; check_gate="true"; shift;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --check, --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --check, --completeness, --json)" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
   resolve_bundle_dir "$pr"
@@ -2097,6 +2110,30 @@ if [[ "$cmd" == "report" ]]; then
   fi
   patch_json="null"
   if [[ -f "$dir/patch.json" ]]; then patch_json=$(cat "$dir/patch.json"); fi
+  # Completeness dimension (opt-in HEAD-reviewed gate, --completeness only):
+  # pass iff a completed-post record exists, parses, and carries the fetched
+  # HEAD. Only the real-post path writes post.json (dry runs write
+  # findings.dryrun.json, attempts/failures write nothing), so a present
+  # matching head proves a completed post. Pure local reads, no network.
+  # Stays null without the flag, so default output is byte-identical.
+  completeness_json="null"; comp_reviewed="false"; comp_posted=""; comp_refetch=""
+  if [[ "$completeness" == "true" ]]; then
+    if [[ "$dir" == .review/local-* ]]; then
+      comp_refetch="./scripts/review.sh fetch-local $repo ${pr#local-}"
+    else
+      comp_refetch="./scripts/review.sh fetch $repo $pr"
+    fi
+    if [[ -f "$dir/post.json" ]] && comp_posted=$(jq -r '.head // empty' "$dir/post.json" 2>/dev/null) && [[ -n "$comp_posted" ]]; then
+      : # present + parsed + non-empty head — compared below
+    else
+      comp_posted=""
+    fi
+    if [[ -n "$head_sha" && -n "$comp_posted" && "$head_sha" == "$comp_posted" ]]; then
+      comp_reviewed="true"
+    fi
+    completeness_json=$(jq -n --argjson reviewed "$comp_reviewed" --arg f "$head_sha" --arg p "$comp_posted" \
+      '{reviewed:$reviewed,fetched_head:(if $f == "" then null else $f end),posted_head:(if $p == "" then null else $p end)}')
+  fi
   # Rank: open first (deferred second), severity, rigor desc, anchored/inBounds first, path/line/sig.
   ranked=$(jq --arg sf "$status_f" --arg kf "$kind_f" '
     def rw: {"reproduced":4,"ran":3,"walked":2,"pointed":1,"said":0};
@@ -2192,7 +2229,7 @@ if [[ "$cmd" == "report" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg d "$dir" \
       --arg hs "$head_sha" --arg bs "$base_sha" --argjson items "$ranked" --argjson counts "$counts" \
       --argjson panel "$panel_json" --arg psrc "$panel_src" --argjson patch "$patch_json" \
-      --argjson cost "$cost_json" \
+      --argjson cost "$cost_json" --argjson comp "$completeness_json" \
       --arg o "$output" --arg sf "$status_f" --arg kf "$kind_f" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:(if $o == "" then (if ([$items[] | select(.status=="open")] | length) > 0 then "address open threads" else "none open — nothing to address" end) else "wrote \($o)" end),
@@ -2200,7 +2237,8 @@ if [[ "$cmd" == "report" ]]; then
         verdict:{open:([$items[] | select(.status=="open")] | length),deferred:([$items[] | select(.status=="deferred")] | length),addressed:([$items[] | select(.status=="addressed")] | length),terminal:([$items[] | select(.status=="wont-fix" or .status=="false-positive")] | length)},
         counts:$counts,panel:{source:(if $psrc=="" then null else $psrc end),members:($panel // [])},
         patch:$patch,output:(if $o=="" then null else $o end),filters:{status:$sf,kind:$kf},items:$items}
-        + (if $cost == null then {} else {cost:$cost} end)),error:null}' >&9
+        + (if $cost == null then {} else {cost:$cost} end)
+        + (if $comp == null then {} else {completeness:$comp} end)),error:null}' >&9
   else
     echo "report: $dir ($(jq 'length' <<<"$ranked") shown) open=$n_open head=${head_sha:0:7}"
     jq -r '.[] | "\(.rank). [\(.status)] \(.locator) (\(.sig[0:8]))"' <<<"$ranked"
@@ -2227,21 +2265,44 @@ if [[ "$cmd" == "report" ]]; then
   # Gate tail: --check turns the ranked read into a machine gate over OPEN
   # findings at-or-above the tier (critical outranks important outranks
   # informational; untagged findings never meet a tier; display filters do
-  # not narrow the gate). Output is identical with or without --check — only
-  # the exit differs, mirroring ready --check. The store parsed above, so a
-  # non-numeric count here is a tool error, never a pass.
+  # not narrow the gate). --completeness adds a HEAD-reviewed dimension from
+  # the local post record (match passes; missing/unparsable/empty/mismatch
+  # fails with a typed check: line naming the re-fetch command). Output is
+  # identical with or without either flag — only the exit differs, mirroring
+  # ready --check. The store parsed above, so a non-numeric count here is a
+  # tool error, never a pass. Either dimension failing exits 1; tool errors
+  # exit 3 via fail().
   if [[ "$check_gate" == "true" ]]; then
-    n_hit=$(jq --arg t "$check_sev" '
-      ({"critical":0,"important":1,"informational":2}[$t]) as $th
-      | [ .[] | select(.status == "open")
-        | ({"critical":0,"important":1,"informational":2}[.severity // ""] // 3) as $r
-        | select($r <= $th) ] | length' "$dir/findings.json")
-    case "$n_hit" in ''|*[!0-9]*) fail "report-failed" "could not evaluate --check gate over $dir/findings.json";; esac
-    if (( n_hit > 0 )); then
-      echo "check: $n_hit open finding(s) at-or-above $check_sev — gate fails" >&2
-      exit 1
+    gate_fail="false"
+    if [[ -n "$check_sev" ]]; then
+      n_hit=$(jq --arg t "$check_sev" '
+        ({"critical":0,"important":1,"informational":2}[$t]) as $th
+        | [ .[] | select(.status == "open")
+          | ({"critical":0,"important":1,"informational":2}[.severity // ""] // 3) as $r
+          | select($r <= $th) ] | length' "$dir/findings.json")
+      case "$n_hit" in ''|*[!0-9]*) fail "report-failed" "could not evaluate --check gate over $dir/findings.json";; esac
+      if (( n_hit > 0 )); then
+        echo "check: $n_hit open finding(s) at-or-above $check_sev — gate fails" >&2
+        gate_fail="true"
+      else
+        echo "check: no open findings at-or-above $check_sev — gate passes" >&2
+      fi
     fi
-    echo "check: no open findings at-or-above $check_sev — gate passes" >&2
+    if [[ "$completeness" == "true" ]]; then
+      if [[ "$comp_reviewed" == "true" ]]; then
+        echo "check: HEAD ${head_sha:0:7} reviewed (post matches fetch) — completeness passes" >&2
+      else
+        gate_fail="true"
+        if [[ ! -f "$dir/post.json" ]]; then
+          echo "check: incomplete — no completed post for HEAD ${head_sha:0:7} (missing-post: run $comp_refetch, then review + post, then re-check)" >&2
+        elif [[ -z "$comp_posted" ]]; then
+          echo "check: incomplete — post record carries no head SHA (corrupt-post: re-run $comp_refetch, then review + post, then re-check)" >&2
+        else
+          echo "check: incomplete — HEAD ${head_sha:0:7} != posted ${comp_posted:0:7} (stale-head: re-run $comp_refetch, then review + post, then re-check)" >&2
+        fi
+      fi
+    fi
+    if [[ "$gate_fail" == "true" ]]; then exit 1; fi
   fi
   exit 0
 fi
