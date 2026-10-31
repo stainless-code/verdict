@@ -324,6 +324,13 @@ if [ "$(jq -s -r '.[] | select(.id == "rec-rule") | "\(.hits)/\(.false_hits)/\(.
 else
   bad "record-path counters: $(jq -s -r '.[] | select(.id == "rec-rule") | "\(.hits)/\(.false_hits)/\(.judged)"' "$EVAL_SANDBOX/.review/kb.jsonl")"
 fi
+k6rows="$(jq -s -c --arg a "$sigA" --arg b "$sigB" '[.[] | select(.sig == $a or .sig == $b)]' "$EVAL_SANDBOX/.review/kb-joins.jsonl" 2>/dev/null || echo "[]")"
+if [ "$(jq -r 'length' <<<"$k6rows")" = "2" ] \
+  && [ "$(jq -r '[.[] | select(.bundle != "local-k6" or .review_id != null)] | length' <<<"$k6rows")" = "0" ]; then
+  good "verification + agent-triage joins rows carry bundle + null review_id"
+else
+  bad "K6 joins rows: $k6rows"
+fi
 
 # --- K7: kb stays out of the sig ---
 eval_write_review 4251 <<'EOF'
@@ -411,6 +418,115 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   good "restore with reason reactivates and logs the note"
 else
   bad "restore with reason gave exit $EVAL_STATUS"
+fi
+
+# --- K11: uncite semantics — absent kb keeps the prior cite, explicit []
+# clears it (record path shares validate_and_merge with post) ---
+run_review learn --rule "Uncite probe rule" --scope "notes.txt" --id uncite-r --json >/dev/null
+mkdir -p "$EVAL_SANDBOX/.review/local-uncite"
+cat > "$EVAL_SANDBOX/.review/local-uncite/source.json" <<'EOF'
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
+EOF
+cat > "$EVAL_SANDBOX/.review/local-uncite/full.diff" <<'EOF'
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+EOF
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
+EOF
+run_review record acme/local-uncite local-uncite --json
+usig="$(jq -r '.[0].sig' "$EVAL_SANDBOX/.review/local-uncite/findings.json")"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.[0].kb | join(",")' "$EVAL_SANDBOX/.review/local-uncite/findings.json")" = "uncite-r" ]; then
+  good "cited record stores the rule id"
+else
+  bad "cited record exit $EVAL_STATUS kb: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.review/local-uncite/findings.json" 2>/dev/null)"
+fi
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important"}]}
+EOF
+run_review record acme/local-uncite local-uncite --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.[0].kb | join(",")' "$EVAL_SANDBOX/.review/local-uncite/findings.json")" = "uncite-r" ]; then
+  good "absent kb re-post keeps the prior cite"
+else
+  bad "absent kb cleared the cite: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.review/local-uncite/findings.json" 2>/dev/null)"
+fi
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":null}]}
+EOF
+run_review record acme/local-uncite local-uncite --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.[0].kb | join(",")' "$EVAL_SANDBOX/.review/local-uncite/findings.json")" = "uncite-r" ]; then
+  good "null kb re-post keeps the prior cite"
+else
+  bad "null kb cleared the cite: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.review/local-uncite/findings.json" 2>/dev/null)"
+fi
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":[]}]}
+EOF
+run_review record acme/local-uncite local-uncite --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.[0].kb | join(",")' "$EVAL_SANDBOX/.review/local-uncite/findings.json")" = "" ]; then
+  good "explicit [] re-post clears the cite"
+else
+  bad "explicit [] kept the cite: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.review/local-uncite/findings.json" 2>/dev/null)"
+fi
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
+EOF
+run_review record acme/local-uncite local-uncite --json >/dev/null
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["nope-missing"]}]}
+EOF
+run_review record acme/local-uncite local-uncite --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.[0].kb | join(",")' "$EVAL_SANDBOX/.review/local-uncite/findings.json")" = "" ] \
+  && grep -q "ignoring unknown kb rule 'nope-missing'" "$EVAL_ERR"; then
+  good "malformed re-post warns, drops to [], and clears (pinned)"
+else
+  bad "malformed re-post: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.review/local-uncite/findings.json" 2>/dev/null)"
+fi
+
+# --- K12: joins rows carry bundle + review_id (all three credit paths share
+# the same commit function; human triage shown on both bundle kinds) ---
+cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
+EOF
+run_review record acme/local-uncite local-uncite --json >/dev/null
+run_review triage acme/local-uncite local-uncite --sig "$usig" --status addressed --rationale "human confirms the uncite probe rule fired correctly here" --json
+urow="$(jq -s -c --arg s "$usig" '[.[] | select(.sig == $s and .rule == "uncite-r")][-1]' "$EVAL_SANDBOX/.review/kb-joins.jsonl" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.bundle' <<<"$urow")" = "local-uncite" ] \
+  && [ "$(jq -r '.review_id' <<<"$urow")" = "null" ]; then
+  good "local joins row carries bundle + null review_id"
+else
+  bad "local joins row: $urow"
+fi
+PR=4271
+eval_mk_bundle "$PR"
+jsig="a23456789abcdef0123456789abcdef012345678"
+eval_write_findings "$PR" <<EOF
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Joins scope finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["uncite-r"],"sig":"$jsig","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+EOF
+cat > "$EVAL_SANDBOX/.review/$PR/post.json" <<'EOF'
+{"schema_version":"1","review":{"id":424242,"state":"COMMENTED"},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"2026-10-31T00:00:00Z","confidence":null,"security_summary":null}
+EOF
+run_review triage acme/app "$PR" --sig "$jsig" --status addressed --rationale "human confirms the joins scope row lands correctly here" --json >/dev/null
+jrow="$(jq -s -c --arg s "$jsig" '[.[] | select(.sig == $s)][-1]' "$EVAL_SANDBOX/.review/kb-joins.jsonl" 2>/dev/null || true)"
+if [ "$(jq -r '.bundle' <<<"$jrow")" = "4271" ] \
+  && [ "$(jq -r '.review_id' <<<"$jrow")" = "424242" ] \
+  && jq -e 'has("at") and has("sig") and has("rule") and has("outcome") and has("actor") and has("verb")' <<<"$jrow" >/dev/null 2>&1; then
+  good "PR joins row carries bundle + review_id, old keys untouched"
+else
+  bad "PR joins row: $jrow"
 fi
 
 if [ "$fails" -ne 0 ]; then echo "case kb: FAIL ($fails)"; exit 1; fi

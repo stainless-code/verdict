@@ -166,8 +166,12 @@ the flip, then committed right after the findings file persists
 (history-stamped `kb_credit: [{rule, to}]`, one credit per rule per finding
 per outcome, deduped across adopted twins by the joins log), dry-runs credit
 nothing, `calibrate` never writes counters. Per-finding `kb` arrays cap at 5
-ids (extras warn-and-drop). Every credit appends a
-`.review/kb-joins.jsonl` audit row.
+ids (extras warn-and-drop). Re-posting a finding without a `kb` key keeps its
+prior cite; `"kb": []` clears it (uncite); a malformed `kb` warns, drops to
+`[]`, and likewise clears. Every credit appends a
+`.review/kb-joins.jsonl` audit row carrying `bundle` (the bundle dir name)
+and `review_id` (the posted review id, null when no post.json exists yet —
+local bundles and unposted PRs).
 
 Retirement is data-driven: after any credit, a rule with `judged` at/above
 `REVIEW_KB_MIN_JUDGED` (default 5) and `false_hits/judged` above
