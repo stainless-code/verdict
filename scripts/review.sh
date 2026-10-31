@@ -560,7 +560,7 @@ validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok),
   echo "» anchors: $n_kept inline, $n_moved moved to body"
   if (( n_moved > 0 )); then
     jq -r '.[] | "- `\(.path):\(.start_line // .line)-\(.line)` (\(.dropReason)): \(.body // "" | .[0:200])"' <<<"$moved" | sed 's/^/  /' >&2
-    move_section=$(jq -r '"### ℹ️ Unanchored observations\n\nThe following points fell outside the diff hunks for the reviewed SHA, so they post here instead of inline:\n" + ([.[] | "- `\(.path):\(.start_line // .line)-\(.line)` — \(.body // "")"] | join("\n"))' <<<"$moved")
+    move_section=$(jq -r '"### ℹ️ Unanchored observations\n\nThe following points fell outside the diff hunks for the reviewed SHA, so they post here instead of inline:\n" + ([.[] | "- `\(.path):\(.start_line // .line)-\(.line)` — \(.body // "") (\(.dropReason // "outside reviewed hunks"))"] | join("\n"))' <<<"$moved")
     body="$body
 
 $move_section"
@@ -735,6 +735,18 @@ build_hunks_tsv() { # $1 = full.diff, $2 = out
       if (oc > 0) printf "%s\tOLD\t%d\t%d\n", file, os, os+oc-1;
       if (nc > 0) printf "%s\tNEW\t%d\t%d\n", file, ns, ns+nc-1;
     }' "$1" > "$2"
+}
+
+# Hunk index file: the fetch-time commentable snapshot. fetch/fetch-local
+# pin it from the fetched diff (per-file, side-aware ranges); post/record
+# validate against the pinned file — live HEAD movement is drift context
+# only, never the validation target. Rebuilds only when the snapshot is
+# missing (pre-snapshot bundles, hand-crafted fixtures): warns loudly that
+# validation is best-effort, then rebuilds from the current full.diff.
+ensure_hunks_snapshot() { # $1 = dir
+  if [[ -f "$1/hunks.tsv" ]]; then return 0; fi
+  warn "no fetch-time hunk snapshot ($1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+  build_hunks_tsv "$1/full.diff" "$1/hunks.tsv"
 }
 
 # Roles for a newline-separated path list on stdin (grouped, triage order).
@@ -1483,6 +1495,7 @@ if [[ "$cmd" == "fetch" ]]; then
     [[ -n "$base_sha" ]] && fail "bad-flags" "--base-sha/--since is GitHub-only for now (providers have no incremental re-review yet)"
     fetch_provider_bundle
     check_diff_size "$dir/full.diff"
+    build_hunks_tsv "$dir/full.diff" "$dir/hunks.tsv"
     write_toc_roles "$dir" "# TOC for $provider #$pr ($repo) — read ranges as coverage checklist"
     emit_context "$dir"
     ensure_store "$dir"
@@ -1501,6 +1514,7 @@ if [[ "$cmd" == "fetch" ]]; then
       || fail "fetch-failed" "could not fetch diff for $repo#$pr via CLI or API"
   }
   check_diff_size "$dir/full.diff"
+  build_hunks_tsv "$dir/full.diff" "$dir/hunks.tsv"
   write_toc_roles "$dir" "# TOC for PR #$pr ($repo) — read ranges as coverage checklist"
   emit_context "$dir"
   ensure_store "$dir"
@@ -1602,6 +1616,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
   write_budget_receipt "$dir"
   "${diff_cmd[@]}" > "$dir/full.diff" 2>"$dir/.diff.err" || fail "diff-failed" "git diff failed: $(head -c 200 "$dir/.diff.err")"
   check_diff_size "$dir/full.diff"
+  build_hunks_tsv "$dir/full.diff" "$dir/hunks.tsv"
   if [[ -s "$dir/full.diff" ]] && ! grep -q '^@@' "$dir/full.diff" 2>/dev/null; then
     warn "no @@ hunks — binary/mode-only changes; bundle kept, anchors unchecked, everything kept"
   fi
@@ -1757,9 +1772,10 @@ if [[ "$cmd" == "post" ]]; then
       fail "degenerate-body" "refusing placeholder-looking short body."
     fi
   fi
-  # Stale-SHA guard: anchors validate against the FETCHED hunks — if HEAD moved since
-  # fetch, say so in the body and treat anchors as potentially stale. Lookup failure
-  # degrades to a warning, never a refusal.
+  # Stale-SHA guard: anchors validate against the fetch-time snapshot
+  # (hunks.tsv pinned at fetch) — if HEAD moved since fetch, say so in the
+  # body as drift context and treat anchors as potentially stale. Lookup
+  # failure degrades to a warning, never a refusal.
   fetched_sha=$(pr_field "$dir" head_sha)
   live_sha=$(gh api "repos/$repo/pulls/$pr" --jq '.head.sha' 2>/dev/null || true)
   if [[ -n "$live_sha" && -n "$fetched_sha" && "$live_sha" != "$fetched_sha" ]]; then
@@ -1770,7 +1786,7 @@ $body"
   elif [[ -z "$live_sha" ]]; then
     warn "live SHA lookup failed — proceeding on fetched hunks"
   fi
-  build_hunks_tsv "$dir/full.diff" "$dir/hunks.tsv"
+  ensure_hunks_snapshot "$dir"
   # approved flag: CLI flag wins, else review.json approved. Binding decided at the gate below.
   json_approved=$(jq -r '.approved // false' "$review_file")
   if [[ "$approve" == "false" && "$json_approved" == "true" ]]; then approve="true"; fi
@@ -1958,7 +1974,7 @@ if [[ "$cmd" == "record" ]]; then
     [[ -z "$head_sha" ]] && head_sha="unknown"
   fi
   now=$(now_utc)
-  build_hunks_tsv "$dir/full.diff" "$dir/hunks.tsv"
+  ensure_hunks_snapshot "$dir"
   body=$(jq -r '.body // ""' "$review_file")
   # Degenerate-body guard (same bar as post: no verdict, no post).
   if ! printf '%s' "$body" | grep -qE '^> ✅|^> ℹ️|^> \[!IMPORTANT\]|^> \[!CAUTION\]'; then
@@ -2012,7 +2028,7 @@ if [[ "$cmd" == "adopt" ]]; then
   [[ -f "$dir/findings.json" ]] && fail "already-adopted" "$dir/findings.json exists — adopt merges once into a fresh fetch (re-fetch or post first)"
   commit_id=$(pr_field "$dir" head_sha)
   now=$(now_utc)
-  build_hunks_tsv "$dir/full.diff" "$dir/hunks.tsv"
+  ensure_hunks_snapshot "$dir"
   # Copy findings verbatim, stamp the handoff, re-resolve anchors against PR hunks.
   entries=$(jq --arg now "$now" --arg sha "${commit_id:0:7}" --arg from "$from" \
     '[.[] | . + {lastSeen:$sha, history:(.history + [{at:$now, event:"adopted", actor:"script", note:("from " + $from)}])}]' "$from_dir/findings.json")

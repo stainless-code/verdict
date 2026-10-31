@@ -67,6 +67,17 @@ the fetched hunks: provably-outside anchors move into the body under Unanchored 
 Suggestions render as fenced blocks in `body` (raw keys never hit the API).
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
 
+The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
+`.review/<bundle>/hunks.tsv` (per-file, side-aware `NEW`/`OLD` ranges from
+the fetched diff) and `post`/`record` validate anchors against that pinned
+snapshot. A push that lands after fetch only adds drift context (the
+stale-`HEAD` note) — it never moves the validation target. Anchors outside
+the snapshot move into the body under `### ℹ️ Unanchored observations`,
+each named with its path/line and reason (e.g. `anchor 50-50 (RIGHT)
+outside reviewed hunks`); drops never fail the run. If the snapshot is
+missing (pre-snapshot bundles), the run rebuilds it from `full.diff` with a
+best-effort warning — re-fetch to pin it.
+
 ## Findings store + triage authority
 
 `post` writes `.review/N/findings.json`: one record per inline comment and body `###`
