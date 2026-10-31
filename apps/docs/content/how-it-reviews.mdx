@@ -23,10 +23,20 @@ from prose. Severity maps to the author's next action, and machine rules gate th
 strong moves. Binding verdicts need `--bind`. Approval is refused with open findings.
 Self-verdicts downgrade. The review never blocks what it cannot justify.
 
+## Stated confidence
+
+Confidence 1–5 is the agent's "would I merge on this review" judgment,
+informed by evidence depth, coverage, and rule support. The scale never
+rescales, so past verdicts stay comparable. Every report `--output` and posted body
+carries a `Basis` line computed from the store — rigor rung counts, distinct
+cited rules, addressed findings as verified fixes — never from prose.
+
 ## Keep-biased machinery
 
 Anchor validation is partitioned: ambiguity keeps a finding, only provably-outside
-anchors move to the body. Stale-SHA and double-post guards make re-runs safe.
+anchors move to the body. Fetch-snapshot validation, stale-SHA and double-post
+guards, an APPROVE-path live-thread recheck, and a SHA-keyed single-review
+finalizer make re-runs safe.
 Suggestions render as real GitHub suggestion blocks, or the post refuses to fake them.
 One bad anchor never fails a post. The machinery is biased the way a good reviewer
 is: skeptical of its own doubts, strict about its claims.
@@ -38,7 +48,11 @@ rebase never orphans them. Signatures are versioned (`sig_version`, specced in t
 manual) — the cross-run join key for deltas, calibration, and external policy tools.
 Incremental re-reviews dedupe by signature: recorded findings are not re-reported unless the delta changes them. Threads retire by rule
 (reformat is not addressed, human threads untouched). Deferred work is explicit,
-never silent.
+never silent. Scoped rules compound the same way: fetch recalls matching rules
+into the bundle as context, never orders, and each addressed/false-positive flip credits the cited rule
+— `addressed` a hit, `false-positive` a false hit. Retirement is data-driven:
+once a rule has enough judgments, a high false-hit rate retires it to a
+tombstone, never a deletion.
 
 ## Measured, not asserted
 

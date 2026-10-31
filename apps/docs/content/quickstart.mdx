@@ -30,6 +30,14 @@ Order matters, so follow the steps.
       </Tab>
     </Tabs>
   </Step>
+  <Step title="Scaffold local defaults (optional)">
+    ```bash
+    ./scripts/review.sh init --preset standard
+    ```
+    Writes starter `.review/` control files (budget, panel, KB policy and rules)
+    then runs check-tree validation. Pure-local and skippable: fetch works
+    without it.
+  </Step>
   <Step title="Fetch the bundle">
     ```bash
     ./scripts/review.sh fetch owner/repo 123
