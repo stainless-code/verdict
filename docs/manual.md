@@ -247,12 +247,13 @@ joins findings against live ground truth, read-only.
 
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
 the script renders the assembled agent reading list — `SKILL.md`,
-`prompts/system.md`, `prompts/review.md`, the bundle meta (`PR.json` or
-`source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus `kb.txt`,
-`sensitive.txt`, and `panel` when present, concatenated in that order — to
-stdout (human mode; progress moves to stderr) or `data.prompt_dump`
-(`--json`). No agent runs, no network beyond the fetch itself, no store
-writes beyond the bundle: without the flag both verbs are byte-identical.
+`prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
+meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
+`kb.txt`, `sensitive.txt`, and `panel` when present, concatenated in that
+order — to stdout (human mode; progress moves to stderr) or
+`data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
+itself, no store writes beyond the bundle: without the flag both verbs are
+byte-identical.
 
 `ready` stays advisory by default (exit 0, blockers listed); `ready --check`
 opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait,
@@ -395,7 +396,12 @@ prompt-dump destination, so the file exposes exactly three namespaces:
     "attribution": "product",
     "copyright": "",
     "logo": true,
-    "logo_url": "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg"
+    "logo_url": "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg",
+    "diagrams": {
+      "structural": true,
+      "behavioral": false,
+      "expanded": false
+    }
   }
 }
 ```
@@ -508,8 +514,39 @@ and edges derive from the owned bundle stores — file list and deltas from
 no tokens are spent and nothing is hallucinated. Knobs: `publish.overview`
 (bool, default `true`) gates the feature and `REVIEW_PUBLISH_OVERVIEW` env
 does the same; `--overview` forces it on and `--no-overview` forces it off
-(flags win over file over env). Posted agent bodies never carry the block —
-`report --output` is its only home, so one truth never forks into two.
+(flags win over file over env). With the block on,
+`publish.diagrams.structural` (bool, default `true`) gates the topology half
+— `false` renders the table alone. Posted agent bodies never carry the block
+— `report --output` is its only home, so one truth never forks into two.
+
+## Behavioral diagrams (agent-drawn, opt-in)
+
+Complex logic can ship an agent-drawn mermaid diagram in the posted body —
+at most one, collapsed, labeled generated, placed after the metadata
+comment. The agent contract lives in `prompts/diagrams.md`: a 7-type
+selection map (structure→`flowchart`/`mindmap`, call order→
+`sequenceDiagram`, lifecycles→`stateDiagram`, version chains→`gitGraph`,
+option matrices→`quadrantChart`, data shapes→`classDiagram`/`erDiagram`,
+schedules→`gantt`), a nodes-from-diff-only honesty rule (illustrative content
+labeled `illustrative`), copy-exact skeletons pinned to GitHub's rendered
+subset (no beta types), a one-diagram cap, and tables-stay-tables. The script
+side is grammar-level only: fenced block, keyword in the allowlist,
+balanced fences, non-empty. Unknown/beta keywords, unbalanced or empty
+fences, and cap extras warn and drop with a one-line `> Diagram omitted: …`
+note — a review never fails over a diagram. Mid-body blocks carry their own
+marker pair (`<!-- verdict-diagram:start -->` /
+`<!-- verdict-diagram:end -->`): the same strip-replace idiom as the footer
+divider, bounded because the footer marker cuts to end-of-body and a mid-body
+diagram is not terminal. Knobs live under `publish.diagrams`:
+`publish.diagrams.behavioral` (bool, default `false` — the block renders
+only when opted in), `publish.diagrams.structural` (bool, default `true` —
+the P3 topology half above), `publish.diagrams.expanded` (bool, default
+`false` — renders the kept block open instead of collapsed). Flags
+`--diagram-behavioral` / `--no-diagram-behavioral` (plus
+the matching `-structural` / `-expanded` pairs) win over the file; the file
+wins over `REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL` / `_STRUCTURAL` / `_EXPANDED`
+env; env wins over defaults. With no diagram in the body the script path is
+byte-identical whether the knobs are set or not.
 
 ## Local review (no PR)
 

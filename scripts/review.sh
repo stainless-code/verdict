@@ -24,7 +24,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.
     downstream verbs address it as local-<name>; post/calibrate refuse it.
     --show-prompts (fetch and fetch-local) renders the assembled agent prompt —
-    SKILL.md + prompts/system.md + prompts/review.md + bundle meta + toc.txt + roles.txt +
+    SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + bundle meta + toc.txt + roles.txt +
     full.diff + kb.txt/sensitive.txt/panel when present, concatenated in that order —
     to stdout (human; progress moves to stderr) or data.prompt_dump (--json).
     No agent runs, no network beyond the fetch, no store writes beyond the bundle.
@@ -156,15 +156,20 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   Global publish flags (any verb; stripped before verb parsing):
   --footer / --no-footer, --attribution [off|product|full] / --no-attribution,
   --attribution-text <text>, --copyright <text>, --logo / --no-logo,
-  --logo-url <url>, --overview / --no-overview.
+  --logo-url <url>, --overview / --no-overview,
+  --diagram-behavioral / --no-diagram-behavioral,
+  --diagram-structural / --no-diagram-structural,
+  --diagram-expanded / --no-diagram-expanded.
   Flags win over the settings file, which wins over env
   (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE,
   REVIEW_PUBLISH_FOOTER, REVIEW_PUBLISH_ATTRIBUTION,
   REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT,
-  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL, REVIEW_PUBLISH_OVERVIEW),
+  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL, REVIEW_PUBLISH_OVERVIEW,
+  REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL, REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL,
+  REVIEW_PUBLISH_DIAGRAMS_EXPANDED),
   which wins over defaults. The settings file holds presentation (output,
   layout, color) plus publish (footer receipt + leveled attribution + logo +
-  overview) namespaces
+  overview + diagrams) namespaces
   (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).
   --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
@@ -317,11 +322,15 @@ EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="product"
 EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
 EFFECTIVE_PUBLISH_LOGO="true"; EFFECTIVE_PUBLISH_LOGO_URL="$DEFAULT_LOGO_URL"
 EFFECTIVE_PUBLISH_OVERVIEW="true"
+EFFECTIVE_PUBLISH_DIAGRAMS_STRUCTURAL="true"; EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL="false"
+EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED="false"
 FLAG_PUBLISH_FOOTER_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_FORCE=""
 FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="false"
 FLAG_PUBLISH_COPYRIGHT_FORCE=""; FLAG_PUBLISH_COPYRIGHT_SET="false"
 FLAG_PUBLISH_LOGO_FORCE=""; FLAG_PUBLISH_LOGO_URL_FORCE=""; FLAG_PUBLISH_LOGO_URL_SET="false"
 FLAG_PUBLISH_OVERVIEW_FORCE=""
+FLAG_PUBLISH_DIAGRAMS_STRUCTURAL_FORCE=""; FLAG_PUBLISH_DIAGRAMS_BEHAVIORAL_FORCE=""
+FLAG_PUBLISH_DIAGRAMS_EXPANDED_FORCE=""
 PREF_COLOR_SET="false"
 # Envelope redirect, run once: the original stdout moves to fd 9 for the JSON
 # envelope, human progress moves to stderr. Verbs call this after flag
@@ -448,7 +457,14 @@ resolve_prefs() {
 # logo_url (string, default the tracked docs asset; empty reads text-only,
 # never a broken image), overview (bool, default true — gates the P3 collapsed
 # file-table + topology block; the size threshold still decides each run
-# unless a global --overview/--no-overview flag forces it). Precedence flags > file > env (REVIEW_PUBLISH_*
+# unless a global --overview/--no-overview flag forces it), diagrams (object,
+# default all-off-safe: {structural, behavioral, expanded} — structural (bool,
+# default true) gates the topology half of the overview block (ANDed with
+# publish.overview plus the P3 threshold); behavioral (bool, default false)
+# gates the agent-drawn P4 block (renders only when opted in); expanded (bool,
+# default false) renders the kept block open instead of collapsed. Global
+# --diagram-<key>/--no-diagram-<key> flags force each one (flags win)).
+# Precedence flags > file > env (REVIEW_PUBLISH_*
 # below) > defaults. Unknown keys refuse bad-settings; the credential scan
 # in resolve_prefs already covers this depth. Called from resolve_prefs so
 # the env layer applies even with no file.
@@ -475,6 +491,23 @@ resolve_publish() {
   EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
   EFFECTIVE_PUBLISH_LOGO="true"; EFFECTIVE_PUBLISH_LOGO_URL="$DEFAULT_LOGO_URL"
   EFFECTIVE_PUBLISH_OVERVIEW="true"
+  EFFECTIVE_PUBLISH_DIAGRAMS_STRUCTURAL="true"; EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL="false"
+  EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED="false"
+  case "${REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_DIAGRAMS_STRUCTURAL="${REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL '${REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL}' (want true|false)";;
+  esac
+  case "${REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL="${REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL '${REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL}' (want true|false)";;
+  esac
+  case "${REVIEW_PUBLISH_DIAGRAMS_EXPANDED:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED="${REVIEW_PUBLISH_DIAGRAMS_EXPANDED}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_DIAGRAMS_EXPANDED '${REVIEW_PUBLISH_DIAGRAMS_EXPANDED}' (want true|false)";;
+  esac
   case "${REVIEW_PUBLISH_FOOTER:-}" in
     "") ;;
     true|false) EFFECTIVE_PUBLISH_FOOTER="${REVIEW_PUBLISH_FOOTER}";;
@@ -503,12 +536,12 @@ resolve_publish() {
   [[ -f "$PREF_SETTINGS_FILE" ]] || { validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"; return 0; }
   jq -e 'has("publish")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || { validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"; return 0; }
   [[ "$(jq -r '.publish | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
-    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright, logo, logo_url, overview})"
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright, logo, logo_url, overview, diagrams})"
   ok=$(jq -r '.publish | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
   while IFS= read -r k; do
     [[ -z "$k" ]] && continue
-    case "$k" in footer|attribution|attribution_text|copyright|logo|logo_url|overview) ;;
-      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright, logo, logo_url, overview)";;
+    case "$k" in footer|attribution|attribution_text|copyright|logo|logo_url|overview|diagrams) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright, logo, logo_url, overview, diagrams)";;
     esac
   done <<<"$ok"
   if jq -e '.publish | has("footer")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
@@ -560,7 +593,48 @@ resolve_publish() {
       || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.overview must be a boolean (want true|false)"
     EFFECTIVE_PUBLISH_OVERVIEW=$(jq -r '.publish.overview' "$PREF_SETTINGS_FILE")
   fi
+  resolve_publish_diagrams
   validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "settings file $PREF_SETTINGS_FILE: publish.attribution_text"
+}
+# Diagrams namespace (P4): publish.diagrams holds exactly {structural,
+# behavioral, expanded}, all booleans. structural (default true) gates the
+# P3 topology half of the overview block; behavioral (default false) gates
+# the agent-drawn diagram (renders only when opted in); expanded (default
+# false) renders the kept block open instead of collapsed. Absent file (or
+# no diagrams key) keeps the P3 bytes: topology on, behavioral off,
+# collapsed. Unknown sub-keys and non-boolean values refuse bad-settings.
+resolve_publish_diagrams() { # no args; reads PREF_SETTINGS_FILE, sets EFFECTIVE_PUBLISH_DIAGRAMS_*
+  local t="" ok="" k=""
+  [[ -f "$PREF_SETTINGS_FILE" ]] || return 0
+  jq -e 'has("publish")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || return 0
+  jq -e '.publish | has("diagrams")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || return 0
+  [[ "$(jq -r '.publish.diagrams | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.diagrams must be an object (want {structural, behavioral, expanded})"
+  ok=$(jq -r '.publish.diagrams | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
+  while IFS= read -r k; do
+    [[ -z "$k" ]] && continue
+    case "$k" in structural|behavioral|expanded) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish.diagrams key '$k' (want only structural, behavioral, expanded)";;
+    esac
+  done <<<"$ok"
+  if jq -e '.publish.diagrams | has("structural")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.diagrams.structural | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.diagrams.structural must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_DIAGRAMS_STRUCTURAL=$(jq -r '.publish.diagrams.structural' "$PREF_SETTINGS_FILE")
+  fi
+  if jq -e '.publish.diagrams | has("behavioral")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.diagrams.behavioral | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.diagrams.behavioral must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL=$(jq -r '.publish.diagrams.behavioral' "$PREF_SETTINGS_FILE")
+  fi
+  if jq -e '.publish.diagrams | has("expanded")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.diagrams.expanded | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.diagrams.expanded must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED=$(jq -r '.publish.diagrams.expanded' "$PREF_SETTINGS_FILE")
+  fi
 }
 _FD9_READY="false"
 # Peek --json early (stopping at a `--` paths separator) so typed prefs
@@ -606,6 +680,12 @@ while [[ $# -gt 0 ]]; do
     --no-footer) FLAG_PUBLISH_FOOTER_FORCE="false"; shift;;
     --overview) FLAG_PUBLISH_OVERVIEW_FORCE="true"; shift;;
     --no-overview) FLAG_PUBLISH_OVERVIEW_FORCE="false"; shift;;
+    --diagram-behavioral) FLAG_PUBLISH_DIAGRAMS_BEHAVIORAL_FORCE="true"; shift;;
+    --no-diagram-behavioral) FLAG_PUBLISH_DIAGRAMS_BEHAVIORAL_FORCE="false"; shift;;
+    --diagram-structural) FLAG_PUBLISH_DIAGRAMS_STRUCTURAL_FORCE="true"; shift;;
+    --no-diagram-structural) FLAG_PUBLISH_DIAGRAMS_STRUCTURAL_FORCE="false"; shift;;
+    --diagram-expanded) FLAG_PUBLISH_DIAGRAMS_EXPANDED_FORCE="true"; shift;;
+    --no-diagram-expanded) FLAG_PUBLISH_DIAGRAMS_EXPANDED_FORCE="false"; shift;;
     --attribution)
       case "${2:-}" in
         off|product|full) FLAG_PUBLISH_ATTRIBUTION_FORCE="$2"; shift 2;;
@@ -651,6 +731,9 @@ unset _stripped _seen_dd _cvm _av
 [[ -n "$FLAG_PUBLISH_LOGO_FORCE" ]] && EFFECTIVE_PUBLISH_LOGO="$FLAG_PUBLISH_LOGO_FORCE"
 [[ "$FLAG_PUBLISH_LOGO_URL_SET" == "true" ]] && EFFECTIVE_PUBLISH_LOGO_URL="$FLAG_PUBLISH_LOGO_URL_FORCE"
 [[ -n "$FLAG_PUBLISH_OVERVIEW_FORCE" ]] && EFFECTIVE_PUBLISH_OVERVIEW="$FLAG_PUBLISH_OVERVIEW_FORCE"
+[[ -n "$FLAG_PUBLISH_DIAGRAMS_STRUCTURAL_FORCE" ]] && EFFECTIVE_PUBLISH_DIAGRAMS_STRUCTURAL="$FLAG_PUBLISH_DIAGRAMS_STRUCTURAL_FORCE"
+[[ -n "$FLAG_PUBLISH_DIAGRAMS_BEHAVIORAL_FORCE" ]] && EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL="$FLAG_PUBLISH_DIAGRAMS_BEHAVIORAL_FORCE"
+[[ -n "$FLAG_PUBLISH_DIAGRAMS_EXPANDED_FORCE" ]] && EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED="$FLAG_PUBLISH_DIAGRAMS_EXPANDED_FORCE"
 # Flags land after the file/env layers, so validate the winning text here —
 # a bad flag value fails typed instead of rendering literally.
 validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"
@@ -895,13 +978,14 @@ END {
   print "| # | File | +/- | Hunks | Role |"; print "|---|---|---|---|---|";
   for (i = 1; i <= n; i++) printf "| %s | `%s` | +%d/-%d | %s | %s |\n", fid[i], san(fp[i]), fa[i], fd[i], fh[i], fr[i];
   print ""; print "</details>"; print "";
+  if (topology) {
   print "<details>"; print "<summary>Change topology</summary>"; print "";
   print "```mermaid"; print "flowchart TD";
   printf "    PR[\"%s +%d/-%d\"]\n", san(prname), ta, td;
   for (i = 1; i <= n; i++) printf "    PR --> %s[\"%s %s\"]\n", fid[i], fid[i], san(fb[i]);
   for (i = 1; i <= n; i++) for (j = 1; j <= n; j++) { key = i SUBSEP j;
     if (key in edge) printf "    %s -->|\"%s\"| %s\n", fid[i], san(edge[key]), fid[j] }
-  print "```"; print ""; print "</details>" }
+  print "```"; print ""; print "</details>" } }
 AWK
   : > "$tmp/paths.tsv"
   if [[ -f "$dir/PR.json" ]] && jq -e '(.files // []) | length > 0' "$dir/PR.json" >/dev/null 2>&1; then
@@ -933,7 +1017,11 @@ AWK
   fi
   case "$slug" in ''|*[!0-9]*) prname="review $slug";; *) prname="PR #$slug";; esac
   [[ "$prname" == "review " ]] && prname="review"
-  awk -v prname="$prname" -f "$tmp/gen.awk" "$tmp/files.tsv" "$tmp/added.tsv" 2>/dev/null || true
+  # P4 structural split: publish.diagrams.structural (default true) gates the
+  # topology half; the table above always renders when the overview shows.
+  ov_topology="1"
+  [[ "${EFFECTIVE_PUBLISH_DIAGRAMS_STRUCTURAL:-true}" == "true" ]] || ov_topology="0"
+  awk -v prname="$prname" -v topology="$ov_topology" -f "$tmp/gen.awk" "$tmp/files.tsv" "$tmp/added.tsv" 2>/dev/null || true
   rm -rf "$tmp"
 }
 
@@ -1282,6 +1370,236 @@ fetch_provider_bundle() { # uses globals: provider repo pr dir
   esac
 }
 
+# Behavioral diagram (P4): agent-drawn mermaid under the ported contract.
+# Prompt side: prompts/diagrams.md (7-type selection map, honesty rule,
+# copy-exact skeletons, marked wrapper, one-diagram cap, tables-stay-tables).
+# Script side: grammar-level only — fenced block present, keyword in the
+# GitHub-rendered allowlist, fences balanced, fence non-empty. Unknown/beta
+# keywords, unbalanced or empty fences, and cap extras never fail the run:
+# they warn and drop with a one-line note. Gating: publish.diagrams.behavioral
+# (default false) — the block renders only when opted in; when off, every
+# candidate is stripped from the posted body (stderr warn only, no body
+# note). publish.diagrams.expanded (default false) normalizes the kept
+# wrapper to <details open>; otherwise <details>. Scope: the contract wrapper
+# carries an open+close marker pair because a mid-body block cannot reuse the
+# footer's cut-to-end divider — same HTML-comment-marker + awk strip-replace
+# idiom, bounded variant (not a second mechanism: identical markers,
+# identical strip-then-render flow). Markers are agent-written per the
+# fragment (copy-exact); unmarked fences are still validated and kept with an
+# advisory warn (keep-biased: chrome is not grammar). Idempotent: the source
+# (review.json) is immutable per run, and our own drop-note lines are
+# signature-stripped before analysis, so re-runs and pasted-output inputs
+# never stack. Runs inside validate_and_merge after the store derivation (the
+# record keeps everything the agent wrote; only the posted body is curated).
+# Sets DIAGRAM_* globals for the dry-run envelope; mutates $body.
+DIAGRAM_START="<!-- verdict-diagram:start -->"
+DIAGRAM_END="<!-- verdict-diagram:end -->"
+DIAGRAM_ALLOWLIST="flowchart graph mindmap sequenceDiagram stateDiagram gitGraph quadrantChart classDiagram erDiagram gantt"
+DIAGRAM_NOTE_PREFIX="> Diagram omitted: "
+DIAGRAM_STATUS="absent"; DIAGRAM_DETAIL="no diagram candidates"; DIAGRAM_KEYWORD=""
+DIAGRAM_WRAPPED="false"; DIAGRAM_COLLAPSED="true"; DIAGRAM_BLOCKS="0"; DIAGRAM_NOTE=""
+validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* globals
+  local tmp="" r="" cl="" kind="" o="" c="" rg="" kw="" dl="" cand=""
+  local del="" dline="0" dopen="0" n="0" kept="false" wrapped_note="" marked_note=""
+  local first_reason="" closed="" rcounts=""
+  DIAGRAM_STATUS="absent"; DIAGRAM_DETAIL="no diagram candidates"; DIAGRAM_KEYWORD=""
+  DIAGRAM_WRAPPED="false"; DIAGRAM_COLLAPSED="true"; DIAGRAM_BLOCKS="0"; DIAGRAM_NOTE=""
+  # Pasted-output idempotency: our own one-line drop notes never stack —
+  # strip them before analysis (a no-op on fresh review.json input).
+  body=$(printf '%s\n' "$body" | grep -v '^> Diagram omitted: ' || true)
+  if ! printf '%s\n' "$body" | grep -qE '^```mermaid([[:space:]].*)?$' \
+    && ! printf '%s' "$body" | grep -qF "$DIAGRAM_START"; then
+    return 0
+  fi
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/verdict-diagram.XXXXXX") || return 0
+  printf '%s\n' "$body" > "$tmp/body.txt"
+  awk -v ms="$DIAGRAM_START" -v me="$DIAGRAM_END" '
+    BEGIN { last_details = 0 }
+    {
+      line = $0
+      t = line; sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
+      if (!in_fence && t == ms) { in_region = 1; region_n++; rstart[region_n] = NR; next }
+      if (in_region && !in_fence && t == me) {
+        print "REGION " region_n " " rstart[region_n] " " NR; in_region = 0; next }
+      if (!in_fence && line ~ /^[ \t]*<details([ \t>]|$)/) { last_details = NR; next }
+      if (!in_fence && line ~ /^[ \t]*<\/details[ \t]*>/) { last_details = 0; next }
+      if (!in_fence && line ~ /^```mermaid([ \t].*)?$/) {
+        in_fence = 1; fopen = NR
+        fregion = (in_region ? region_n : 0)
+        fdetails = last_details; kw = ""; next }
+      if (in_fence) {
+        if (line ~ /^```[ \t]*$/) {
+          if (kw == "") kw = "EMPTY"
+          print "FENCE " fopen " " NR " " fregion " " kw " " fdetails
+          in_fence = 0; next }
+        if (kw == "" && line !~ /^[ \t]*$/ && line !~ /^[ \t]*%%/ && line !~ /^[ \t]*---[ \t]*$/) kw = $1
+        next }
+    }
+    END {
+      if (in_fence) {
+        if (kw == "") kw = "EMPTY"
+        print "FENCE " fopen " 0 " fregion " " kw " " fdetails }
+      if (in_region) print "REGION " region_n " " rstart[region_n] " 0"
+    }' "$tmp/body.txt" > "$tmp/report.txt" || true
+  # Candidates in document order: fences by open line, fenceless regions by
+  # start line. Internal EXTRA_* lines sort with the fence span sort below.
+  cand=""
+  while IFS= read -r r; do
+    [[ -z "$r" ]] && continue
+    # shellcheck disable=SC2086
+    set -- $r
+    case "$1" in
+      FENCE) cand="$cand$2 F $2 $3 $4 $5 $6
+";;
+      REGION)
+        if ! grep -q "^FENCE [0-9]* [0-9]* $2 " "$tmp/report.txt"; then
+          cand="$cand$3 R $3 $4
+"
+        fi;;
+    esac
+  done < "$tmp/report.txt"
+  if [[ -z "$cand" ]]; then rm -rf "$tmp"; return 0; fi
+  cand=$(printf '%s' "$cand" | sort -n -k1,1)
+  : > "$tmp/notes.txt"
+  # Fence count per region (for surgical vs whole-block drops): "idx:count ".
+  rcounts=$(awk '$1=="FENCE"{c[$4]++} END{for (k in c) print k":"c[k]}' "$tmp/report.txt" | tr '\n' ' ' || true)
+  span_for() { # $1=kind(F/R) $2=o $3=c $4=rg → echoes start:end to delete
+    local k="$1" s="$2" e="$3" g="$4" oc="" rs=""
+    [[ "$e" == "0" ]] && e="1000000000"
+    if [[ "$k" == "F" && -n "$g" && "$g" != "0" ]]; then
+      oc=$(printf '%s' "$rcounts" | tr ' ' '\n' | grep "^$g:" | cut -d: -f2 || true)
+      if [[ "$oc" == "1" ]]; then
+        rs=$(grep "^REGION $g " "$tmp/report.txt" || true)
+        if [[ -n "$rs" ]]; then
+          # shellcheck disable=SC2086
+          set -- $rs
+          s="$3"; e="$4"; [[ "$e" == "0" ]] && e="1000000000"
+        fi
+      fi
+    fi
+    printf '%s:%s' "$s" "$e"
+  }
+  add_note() { # $1 = reason; appends the fixed-shape note line, records the first
+    printf '%s%s — see prompts/diagrams.md.\n' "$DIAGRAM_NOTE_PREFIX" "$1" >> "$tmp/notes.txt"
+    if [[ -z "$first_reason" ]]; then first_reason="$1"; fi
+    if [[ -z "$DIAGRAM_NOTE" ]]; then DIAGRAM_NOTE="$DIAGRAM_NOTE_PREFIX$1 — see prompts/diagrams.md."; fi
+  }
+  if [[ "${EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL:-false}" != "true" ]]; then
+    # Opt-in off: strip every candidate (marked blocks whole, bare fences bare).
+    while IFS= read -r cl; do
+      [[ -z "$cl" ]] && continue
+      # shellcheck disable=SC2086
+      set -- $cl
+      kind="$2"; o="$3"; c="$4"; rg="${5:-}"
+      del="$del$(span_for "$kind" "$o" "$c" "$rg") "
+      n=$(( n + 1 ))
+    done <<<"$cand"
+    warn "stripped $n behavioral diagram block(s) — publish.diagrams.behavioral is off (opt-in knob, renders only when set)"
+    DIAGRAM_STATUS="stripped"; DIAGRAM_BLOCKS="$n"
+    DIAGRAM_DETAIL="stripped $n block(s): publish.diagrams.behavioral is off"
+  else
+    # Opt-in on: validate each candidate in order; the first valid block is
+    # kept in place, everything else drops with a note.
+    first_reason=""
+    while IFS= read -r cl; do
+      [[ -z "$cl" ]] && continue
+      # shellcheck disable=SC2086
+      set -- $cl
+      kind="$2"; o="$3"; c="$4"; rg="${5:-}"; kw="${6:-}"; dl="${7:-}"
+      n=$(( n + 1 ))
+      if [[ "$kind" == "R" ]]; then
+        del="$del$(span_for "$kind" "$o" "$c" "") "
+        add_note "marked block carries no mermaid fence"
+        warn "dropping behavioral diagram block: marked block carries no mermaid fence — kept a note"
+        continue
+      fi
+      closed="true"; [[ "$c" == "0" ]] && closed="false"
+      if [[ "$closed" == "false" ]]; then
+        reason="unbalanced fence (no closing fence)"
+        del="$del$(span_for F "$o" "$c" "$rg") "
+        add_note "$reason"
+        warn "dropping behavioral diagram: unbalanced fence (missing closing fence) — kept a note"
+        continue
+      fi
+      if [[ "$kw" == "EMPTY" ]]; then
+        reason="empty fence (no diagram lines)"
+        del="$del$(span_for F "$o" "$c" "$rg") "
+        add_note "$reason"
+        warn "dropping behavioral diagram: empty fence (no diagram lines) — kept a note"
+        continue
+      fi
+      case " $DIAGRAM_ALLOWLIST " in
+        *" $kw "*) ;;
+        *)
+          reason="unknown keyword '$kw' (want one of: $DIAGRAM_ALLOWLIST)"
+          del="$del$(span_for F "$o" "$c" "$rg") "
+          add_note "$reason"
+          warn "dropping behavioral diagram: unknown keyword '$kw' (not in the GitHub-rendered subset) — kept a note"
+          continue;;
+      esac
+      if [[ "$kept" == "true" ]]; then
+        reason="one-diagram cap: kept the first block"
+        del="$del$(span_for F "$o" "$c" "$rg") "
+        add_note "$reason"
+        warn "dropping extra behavioral diagram (one-diagram cap, kept the first) — kept a note"
+        continue
+      fi
+      kept="true"; DIAGRAM_KEYWORD="$kw"
+      wrapped_note=""; marked_note=""
+      if [[ "$dl" != "0" ]]; then
+        DIAGRAM_WRAPPED="true"; dline="$dl"
+        if [[ "${EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED:-false}" == "true" ]]; then
+          dopen="2"; DIAGRAM_COLLAPSED="false"
+        else
+          dopen="1"; DIAGRAM_COLLAPSED="true"
+        fi
+      else
+        warn "behavioral diagram not wrapped in collapsed <details> — keeping as-is (wrap it per prompts/diagrams.md)"
+        wrapped_note=", unwrapped"
+      fi
+      if [[ "$rg" == "0" ]]; then
+        warn "behavioral diagram outside the marked wrapper — keeping as-is (wrap it per prompts/diagrams.md)"
+        marked_note=", unmarked"
+      fi
+      if [[ "$DIAGRAM_COLLAPSED" == "true" ]]; then
+        DIAGRAM_DETAIL="kept $kw (collapsed$wrapped_note$marked_note)"
+      else
+        DIAGRAM_DETAIL="kept $kw (open$wrapped_note$marked_note)"
+      fi
+    done <<<"$cand"
+    DIAGRAM_BLOCKS="$n"
+    if [[ "$kept" == "true" ]]; then
+      DIAGRAM_STATUS="kept"
+    else
+      DIAGRAM_STATUS="dropped"; DIAGRAM_DETAIL="dropped: $first_reason"
+    fi
+  fi
+  body=$(awk -v ranges="$del" -v dline="$dline" -v dopen="$dopen" -v notef="$tmp/notes.txt" '
+    BEGIN {
+      nr = 0
+      if (ranges != "") {
+        n = split(ranges, rs, " ")
+        for (i = 1; i <= n; i++) {
+          c = index(rs[i], ":")
+          if (c > 0) { nr++; ds[nr] = substr(rs[i], 1, c-1)+0; de[nr] = substr(rs[i], c+1)+0 }
+        }
+      }
+    }
+    {
+      skip = 0
+      for (i = 1; i <= nr; i++) if (NR >= ds[i] && NR <= de[i]) { skip = 1; break }
+      if (skip) next
+      if (dline > 0 && NR == dline) {
+        if (dopen == 2) print "<details open>"
+        else print "<details>"
+        next
+      }
+      print
+    }
+    END { while ((getline l < notef) > 0) print l }' "$tmp/body.txt")
+  rm -rf "$tmp"
+}
+
 # Validate anchors (partitioned, keep-biased) + merge findings + claims.
 # Shared by post (PR bundles) and record (local bundles): identical behavior,
 # no GitHub I/O. Reads $dir/{incremental.diff,verification.json,findings.json}
@@ -1518,6 +1836,12 @@ $move_section"
   # Permalink garnish (P2): blob SHAs must name the reviewed commit and long
   # quotes stay inside collapsed details. Warn-and-keep, like the basis line.
   validate_evidence_links "$body" "$head_full" "$(evidence_linkable "$dir" "$head_full")"
+  # Behavioral diagram (P4): grammar-level validation + opt-in gating of the
+  # agent-drawn mermaid block. Warn-and-drop with a note, never a failure —
+  # like the basis/evidence garnish above. Runs after the store derivation so
+  # the record keeps everything the agent wrote; only the posted body is
+  # curated here. Sets DIAGRAM_* for the dry-run envelope.
+  validate_behavioral_diagram
   # Footer receipt (P1) with leveled attribution (P1b): one merged block at
   # the body end, computed from the owned stores (version, tier, cost,
   # files, link when known) plus the attribution line. Knob-off emits
@@ -1618,14 +1942,15 @@ emit_context() { # $1 = dir
 }
 
 # Prompt dump (--show-prompts): render the assembled agent reading list to
-# stdout in documented order (SKILL.md, system, mode, bundle meta, coverage
+# stdout in documented order (SKILL.md, system, mode, diagrams fragment,
+# bundle meta, coverage
 # manifest, roles, diff, recall, advisories, panel). Pure-local reads only:
 # no agent runs, no network, no store writes. Missing/optional files are
 # skipped silently, so the dump is exactly the concatenation of what exists.
 render_prompt_dump() { # $1 = bundle dir
   local dir="$1" meta="$1/PR.json" f
   [[ -f "$1/source.json" ]] && meta="$1/source.json"
-  for f in SKILL.md prompts/system.md prompts/review.md "$meta" "$dir/toc.txt" "$dir/roles.txt" "$dir/full.diff" "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
+  for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md "$meta" "$dir/toc.txt" "$dir/roles.txt" "$dir/full.diff" "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
     [[ -f "$f" ]] || continue
     cat -- "$f"
   done
@@ -2320,7 +2645,7 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
     pdump_json=$(render_prompt_dump "$dir" | jq -Rs '.')
   fi
   echo "done: $dir/PR.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($files files)"
-    echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + $dir/PR.json + $dir/full.diff (+ $dir/roles.txt) to any agent; ask it to write $dir/review.json"
+    echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + $dir/PR.json + $dir/full.diff (+ $dir/roles.txt) to any agent; ask it to write $dir/review.json"
     if [[ "$json_mode" == "true" ]]; then
       jq -n --arg d "$dir" --arg hs "$(pr_field "$dir" head_sha)" \
         --arg bs "$(pr_field "$dir" base_sha)" --argjson files "$(jq '.files | length' "$dir/PR.json")" \
@@ -2333,7 +2658,7 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
         --argjson pdump "$pdump_json" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
-          next:"feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
+          next:"feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
           hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
           artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end)),
@@ -2578,7 +2903,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       files:$files,additions:$adds,deletions:$dels,tool_version:$tv,
       model:(if $model=="" then null else $model end),created_at:$t}' > "$dir/source.json"
   echo "done: $dir/source.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($total files)"
-  echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + $dir/source.json + full.diff to any agent; ask it to write $dir/review.json"
+  echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + $dir/source.json + full.diff to any agent; ask it to write $dir/review.json"
   if [[ "$json_mode" == "true" ]]; then
     sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
     kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
@@ -2600,7 +2925,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
       --argjson pdump "$pdump_json" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
-        next:("feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
+        next:("feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
         files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
         panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
@@ -2768,6 +3093,17 @@ $body"
     else
       dry_footer_json="null"
     fi
+    # Diagram disposition for the dry run: what validate_behavioral_diagram
+    # did with the agent block (null when the body carried no candidates).
+    # Additive-only inside data.body — absent reads null, like the footer.
+    case "${DIAGRAM_BLOCKS:-0}" in ''|*[!0-9]*) DIAGRAM_BLOCKS="0";; esac
+    if [[ "${DIAGRAM_STATUS:-absent}" == "absent" ]]; then
+      diagram_json="null"
+    else
+      diagram_json=$(jq -n --arg s "$DIAGRAM_STATUS" --arg d "$DIAGRAM_DETAIL" --arg k "$DIAGRAM_KEYWORD" \
+        --argjson b "$DIAGRAM_BLOCKS" --arg w "$DIAGRAM_WRAPPED" --arg c "$DIAGRAM_COLLAPSED" --arg n "$DIAGRAM_NOTE" \
+        '{status:$s,blocks:$b,keyword:(if $k=="" then null else $k end),wrapped:($w=="true"),collapsed:($c=="true"),detail:$d,note:(if $n=="" then null else $n end)}')
+    fi
     if [[ "$json_mode" == "true" ]]; then
       phash=$(printf '%s' "$payload" | shasum -a 1 | cut -d' ' -f1)
       jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg e "$event" --arg c "$commit_id" \
@@ -2775,14 +3111,19 @@ $body"
         --argjson items "$(jq '[.[] | {sig, status, anchored, locator: (if .path then "\(.path)\(if .line then ":\(.line)" else "" end)" else (.heading // "?") end)}]' <<<"$entries")" \
         --arg h "$phash" --argjson emb "$embedded" --arg mk "$marker" --arg f "$findings_file" \
         --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
-        --argjson footer "$dry_footer_json" \
+        --argjson footer "$dry_footer_json" --argjson diagram "$diagram_json" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"payload NOT posted (dry-run)",
-          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dry_run:true,event:$e,commit_id:$c,body:{marker:$mk,footer:$footer},anchors:{kept:$k,moved:$m},
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dry_run:true,event:$e,commit_id:$c,body:{marker:$mk,footer:$footer,diagram:$diagram},anchors:{kept:$k,moved:$m},
           suggestions:{embedded:$emb},findings:{open:$o,deferred:$d,addressed:$a,file:$f},confidence:$conf,security_summary:$sec,
           items:$items,payload_hash:$h},error:null}' >&9
     else
       echo "dry-run: payload NOT posted. body chars: $(printf '%s' "$body" | wc -c | tr -d ' '), payload comment keys: $(jq -r '.[0] // {} | keys_unsorted | join(",")' <<<"$post_comments")"
       if [[ -n "$dry_footer_text" ]]; then printf 'footer preview:\n%s\n' "$dry_footer_text"; fi
+      # Diagram line only when the body carried a diagram (absent keeps the
+      # human dry-run bytes identical for diagram-less reviews).
+      if [[ "${DIAGRAM_STATUS:-absent}" != "absent" ]]; then
+        echo "diagram: $DIAGRAM_STATUS — $DIAGRAM_DETAIL"
+      fi
     fi
     exit 0
   fi

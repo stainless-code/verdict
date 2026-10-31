@@ -197,6 +197,19 @@ definitions collected in one block after the last finding:
   or long visible quotes, keeping the body — pin SHAs honestly and never
   reshape findings to fit the check.
 
+### Behavioral diagram (optional, opt-in)
+
+At most one behavioral diagram per review, and only when the change's flow
+needs it (multi-step logic prose can't carry). The full contract lives in
+`prompts/diagrams.md` — read it before drawing: 7-type selection map,
+honesty rule (every node from the diff, fictional content labeled),
+copy-exact skeletons pinned to GitHub's rendered subset, one-diagram cap,
+tables-stay-tables, collapsed wrapper with the generated label and markers,
+placed after the metadata comment. The script strips behavioral diagrams
+unless the operator opts in (`publish.diagrams.behavioral`), and drops
+malformed or beta-keyword blocks with a note — never a failure. Never
+hand-draw the change-topology diagram (report renders it from bundle data).
+
 ## Confidence-led opening (all reviews)
 
 The verdict callout stays the first line — it carries the marker the tool
