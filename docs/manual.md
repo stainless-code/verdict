@@ -227,7 +227,14 @@ optional `--sarif` for scanners/CI). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
 `unrecorded`/`not assessed` when the run recorded neither) and, on clean
 reports (no open findings), closes with a `## What we checked` list of at
-most seven bundle files (plus an overflow pointer to `toc.txt`). Item bodies
+most seven bundle files (plus an overflow pointer to `toc.txt`). Under the
+lead, `--output` renders a `> Basis: …` line computed exactly from the
+findings store (rigor rung counts in evidence order, distinct cited kb rule
+ids, addressed findings as verified fixes — covering the whole store
+regardless of display filters). Every `--output` file and every posted body
+ends with one merged footer block (version, tier, cost or unrecorded, files
+reviewed, review link when known, one factual attribution sentence) — see
+Publish footer + attribution knobs. Item bodies
 stay 200-char summaries; full reasoning lives in the `--json` envelope only.
 Distinct from `prompts/ci.md`'s agent-written
 `.review/N/report.md` (no-post CI loop, `SKILL.md` router row) — never point
@@ -381,7 +388,13 @@ prompt-dump destination, so the file exposes exactly three namespaces:
   "$schema": "https://github.com/stainless-code/verdict/blob/main/schemas/settings.schema.json",
   "output": { "format": "text" },
   "layout": { "compact": false },
-  "color": { "mode": "auto" }
+  "color": { "mode": "auto" },
+  "publish": {
+    "footer": true,
+    "attribution": true,
+    "attribution_text": "Reviewed with verdict {version}",
+    "copyright": ""
+  }
 }
 ```
 
@@ -393,7 +406,9 @@ none pinned` and `learnings` notes); pinned-panel and warning lines stay.
   plain and only `always` adds codes. Machine envelopes never carry codes.
 
 Precedence is flags > file > env (`REVIEW_OUTPUT_FORMAT`,
-`REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`) > defaults; global flags
+`REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`, plus `REVIEW_PUBLISH_FOOTER`,
+`REVIEW_PUBLISH_ATTRIBUTION`, `REVIEW_PUBLISH_ATTRIBUTION_TEXT`,
+`REVIEW_PUBLISH_COPYRIGHT` for the footer below) > defaults; global flags
 `--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb
 (`--json` itself stays per-verb and already wins over a text default).
 `NO_COLOR` applies only when color is otherwise unset. Any other top-level
@@ -401,8 +416,49 @@ key (including server-shaped or `org.*` namespaces) refuses with typed
 `bad-settings`; any credential-shaped key at any depth (`token`/`key`/`auth`/
 `secret`/`password`/`pat`/`credential`/`bearer` and compounds) refuses with
 typed `bad-settings-credentials` — credentials never live in the file.
-Absent file (or a file holding only defaults) keeps every invocation
-byte-identical to today; no forced migration, no env removed.
+Absent file (or a file holding only defaults) keeps every gate
+byte-identical to today (marker-first, degenerate-body bar unchanged); only
+the rendered bytes gain the default footer block below — no forced
+migration, no env removed.
+
+## Publish footer + attribution knobs
+
+Every posted body and every `report --output` file ends with one merged
+block at the end:
+
+```markdown
+---
+
+> verdict `0.2.0` · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
+> Reviewed with verdict 0.2.0.
+```
+
+Fields degrade factually, never blank, never failing the run: an unreadable
+version reads `unknown`, unpriced spend reads `cost unrecorded`, uncountable
+files read `files unrecorded`, and the review link renders only when a
+completed post record carries it (never invented pre-post). Attribution is
+one factual sentence with no logo and no link; an operator `copyright`
+string appends as its own sentence when set.
+
+Knobs live under one `publish` namespace in the settings file (see Onboarding
+for the path and shape): `publish.footer` (bool, default `true`) kills the
+whole block; `publish.attribution` (bool, default `true`) kills just the
+branding sentence; `publish.attribution_text` (string, default
+`Reviewed with verdict {version}`, `{version}` substituted) rewords it;
+`publish.copyright` (string, default empty = off) appends the operator
+notice. There are no per-field footer knobs. Flags `--footer/--no-footer`,
+`--attribution/--no-attribution`, `--attribution-text <text>`,
+`--copyright <text>` win over the file; the file wins over
+`REVIEW_PUBLISH_FOOTER`, `REVIEW_PUBLISH_ATTRIBUTION`,
+`REVIEW_PUBLISH_ATTRIBUTION_TEXT`, `REVIEW_PUBLISH_COPYRIGHT` env; env wins
+over defaults. Unknown `publish.*` keys refuse typed `bad-settings`, and any
+credential-shaped key at any depth refuses `bad-settings-credentials`.
+
+Confidence is the agent's "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.
+The scale stays 1-5 across
+runs so past verdicts stay comparable (no rescaling; a computed score stays
+deferred until machine-verifiable inputs exist, with kb-measure X2/X3
+outputs as the named trigger).
 
 ## Local review (no PR)
 

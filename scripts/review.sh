@@ -153,9 +153,15 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     wide-coverage sibling (nine agents, --detect/--all).
   Global presentation flags (any verb; stripped before verb parsing):
   --color <auto|always|never>, --compact / --no-compact, --no-json.
+  Global publish flags (any verb; stripped before verb parsing):
+  --footer / --no-footer, --attribution / --no-attribution,
+  --attribution-text <text>, --copyright <text>.
   Flags win over the settings file, which wins over env
-  (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE), which
-  wins over defaults. The settings file is presentation-only
+  (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE,
+  REVIEW_PUBLISH_FOOTER, REVIEW_PUBLISH_ATTRIBUTION,
+  REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT), which wins
+  over defaults. The settings file holds presentation (output, layout,
+  color) plus publish (footer receipt + attribution) namespaces
   (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).
   --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
@@ -248,7 +254,7 @@ fail() {
     already-adopted|provider-unimplemented) hint="try: use the verb named above for this bundle kind";;
     needs-confirm) hint="try: re-run with --yes after reviewing the preview, then re-run";;
     bad-settings-credentials) hint="try: remove the credential key from the settings file (credentials never live there), then re-run";;
-    bad-settings) hint="try: keep only output/layout/color keys (see docs/manual.md), then re-run";;
+    bad-settings) hint="try: keep only output/layout/color/publish keys (see docs/manual.md), then re-run";;
     bad-*) hint="try: re-run with one of the valid values named above";;
     already-learned) hint="try: cite the existing rule id instead of learning it twice";;
     id-taken) hint="try: pass a different --id";;
@@ -276,7 +282,7 @@ $hint"; fi
   exit 1
 }
 
-# ---- prefs (minimal presentation-only settings file) ----
+# ---- prefs (presentation + publish settings file) ----
 # CLI survey (this file): the only presentation surfaces are the machine
 # envelope (--json), file outputs (report --output/--sarif), and the
 # prompt-dump destination (--show-prompts stdout vs envelope). No color,
@@ -289,10 +295,16 @@ $hint"; fi
 # refuses with bad-settings. Any credential-shaped key at any depth
 # refuses with bad-settings-credentials. Precedence: flags > file > env
 # (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE) >
-# defaults. Absent file keeps today's behavior byte-identically.
+# defaults. Absent file keeps the default surface (footer on): parity means
+# the gates stay byte-identical (marker-first, degenerate-body), not the bytes.
 # XDG home: ${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json.
 PREF_SETTINGS_FILE=""; EFFECTIVE_OUTPUT="text"; EFFECTIVE_COMPACT="false"; EFFECTIVE_COLOR="auto"
 FLAG_OUTPUT_FORCE=""; FLAG_COMPACT_FORCE=""; FLAG_COLOR_FORCE=""
+EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="true"
+EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
+FLAG_PUBLISH_FOOTER_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_FORCE=""
+FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="false"
+FLAG_PUBLISH_COPYRIGHT_FORCE=""; FLAG_PUBLISH_COPYRIGHT_SET="false"
 PREF_COLOR_SET="false"
 # Envelope redirect, run once: the original stdout moves to fd 9 for the JSON
 # envelope, human progress moves to stderr. Verbs call this after flag
@@ -329,11 +341,12 @@ resolve_prefs() {
   # after (flags win), and verbs re-assert --json, so a peek is never lost.
   if [[ "$EFFECTIVE_OUTPUT" == "json" ]]; then json_mode="true"; fi
   json_redirect
+  resolve_publish
   [[ -f "$PREF_SETTINGS_FILE" ]] || return 0
   jq empty "$PREF_SETTINGS_FILE" >/dev/null 2>&1 \
     || fail "bad-settings" "settings file $PREF_SETTINGS_FILE is not valid JSON (fix it or delete it)"
   [[ "$(jq -r 'type' "$PREF_SETTINGS_FILE")" == "object" ]] \
-    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE must hold a JSON object (want only \$schema, output, layout, color)"
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE must hold a JSON object (want only \$schema, output, layout, color, publish)"
   cred_n=$(jq -r '[.. | objects | keys[] | ascii_downcase] | map(select(test("token|secret|passwd|password|pwd|auth|bearer|credential|pat|key"))) | length' "$PREF_SETTINGS_FILE" 2>/dev/null) \
     || fail "bad-settings" "settings file $PREF_SETTINGS_FILE is unreadable (fix it or delete it)"
   [[ "$cred_n" == "0" ]] \
@@ -342,8 +355,8 @@ resolve_prefs() {
     || fail "bad-settings" "settings file $PREF_SETTINGS_FILE is unreadable (fix it or delete it)"
   while IFS= read -r k; do
     [[ -z "$k" ]] && continue
-    case "$k" in '$schema'|output|layout|color) ;;
-      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE carries unknown top-level key '$k' (want only \$schema, output, layout, color; no server-shaped or org.* namespaces)";;
+    case "$k" in '$schema'|output|layout|color|publish) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE carries unknown top-level key '$k' (want only \$schema, output, layout, color, publish; no server-shaped or org.* namespaces)";;
     esac
   done <<<"$top"
   if [[ -n "$top" ]] && jq -e 'has("$schema")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
@@ -408,6 +421,65 @@ resolve_prefs() {
     fi
   fi
 }
+# Publish knobs (P1 footer receipt + attribution). One `publish` namespace:
+# footer (bool, default true), attribution (bool, default true),
+# attribution_text (string, default factual, empty reads default),
+# copyright (string, default empty = off). Precedence flags > file > env
+# (REVIEW_PUBLISH_* below) > defaults. Unknown keys refuse bad-settings;
+# the credential scan in resolve_prefs already covers this depth. Called
+# from resolve_prefs so the env layer applies even with no file.
+resolve_publish() {
+  local t="" ok="" k=""
+  EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="true"
+  EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
+  case "${REVIEW_PUBLISH_FOOTER:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_FOOTER="${REVIEW_PUBLISH_FOOTER}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_FOOTER '${REVIEW_PUBLISH_FOOTER}' (want true|false)";;
+  esac
+  case "${REVIEW_PUBLISH_ATTRIBUTION:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_ATTRIBUTION="${REVIEW_PUBLISH_ATTRIBUTION}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_ATTRIBUTION '${REVIEW_PUBLISH_ATTRIBUTION}' (want true|false)";;
+  esac
+  [[ -n "${REVIEW_PUBLISH_ATTRIBUTION_TEXT:-}" ]] && EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT="${REVIEW_PUBLISH_ATTRIBUTION_TEXT}"
+  [[ -n "${REVIEW_PUBLISH_COPYRIGHT:-}" ]] && EFFECTIVE_PUBLISH_COPYRIGHT="${REVIEW_PUBLISH_COPYRIGHT}"
+  [[ -f "$PREF_SETTINGS_FILE" ]] || return 0
+  jq -e 'has("publish")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || return 0
+  [[ "$(jq -r '.publish | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright})"
+  ok=$(jq -r '.publish | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
+  while IFS= read -r k; do
+    [[ -z "$k" ]] && continue
+    case "$k" in footer|attribution|attribution_text|copyright) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright)";;
+    esac
+  done <<<"$ok"
+  if jq -e '.publish | has("footer")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.footer | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.footer must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_FOOTER=$(jq -r '.publish.footer' "$PREF_SETTINGS_FILE")
+  fi
+  if jq -e '.publish | has("attribution")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.attribution | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.attribution must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_ATTRIBUTION=$(jq -r '.publish.attribution' "$PREF_SETTINGS_FILE")
+  fi
+  if jq -e '.publish | has("attribution_text")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.attribution_text | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "string" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.attribution_text must be a string"
+    EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=$(jq -r '.publish.attribution_text' "$PREF_SETTINGS_FILE")
+  fi
+  if jq -e '.publish | has("copyright")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.copyright | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "string" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.copyright must be a string"
+    EFFECTIVE_PUBLISH_COPYRIGHT=$(jq -r '.publish.copyright' "$PREF_SETTINGS_FILE")
+  fi
+}
 _FD9_READY="false"
 # Peek --json early (stopping at a `--` paths separator) so typed prefs
 # errors land in the envelope when the caller asked for JSON. _JSON_PEEKED
@@ -448,6 +520,20 @@ while [[ $# -gt 0 ]]; do
     --compact) FLAG_COMPACT_FORCE="true"; shift;;
     --no-compact) FLAG_COMPACT_FORCE="false"; shift;;
     --no-json) FLAG_OUTPUT_FORCE="text"; shift;;
+    --footer) FLAG_PUBLISH_FOOTER_FORCE="true"; shift;;
+    --no-footer) FLAG_PUBLISH_FOOTER_FORCE="false"; shift;;
+    --attribution) FLAG_PUBLISH_ATTRIBUTION_FORCE="true"; shift;;
+    --no-attribution) FLAG_PUBLISH_ATTRIBUTION_FORCE="false"; shift;;
+    --attribution-text)
+      [[ $# -ge 2 ]] || { echo "unknown flag '$1' for $cmd (want --attribution-text <text>)" >&2; exit 2; }
+      FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE="$2"; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="true"; shift 2;;
+    --attribution-text=*)
+      FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE="${1#--attribution-text=}"; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="true"; shift;;
+    --copyright)
+      [[ $# -ge 2 ]] || { echo "unknown flag '$1' for $cmd (want --copyright <text>)" >&2; exit 2; }
+      FLAG_PUBLISH_COPYRIGHT_FORCE="$2"; FLAG_PUBLISH_COPYRIGHT_SET="true"; shift 2;;
+    --copyright=*)
+      FLAG_PUBLISH_COPYRIGHT_FORCE="${1#--copyright=}"; FLAG_PUBLISH_COPYRIGHT_SET="true"; shift;;
     *) _stripped+=("$1"); shift;;
   esac
 done
@@ -456,6 +542,10 @@ unset _stripped _seen_dd _cvm
 [[ -n "$FLAG_OUTPUT_FORCE" ]] && EFFECTIVE_OUTPUT="$FLAG_OUTPUT_FORCE"
 [[ -n "$FLAG_COMPACT_FORCE" ]] && EFFECTIVE_COMPACT="$FLAG_COMPACT_FORCE"
 [[ -n "$FLAG_COLOR_FORCE" ]] && EFFECTIVE_COLOR="$FLAG_COLOR_FORCE"
+[[ -n "$FLAG_PUBLISH_FOOTER_FORCE" ]] && EFFECTIVE_PUBLISH_FOOTER="$FLAG_PUBLISH_FOOTER_FORCE"
+[[ -n "$FLAG_PUBLISH_ATTRIBUTION_FORCE" ]] && EFFECTIVE_PUBLISH_ATTRIBUTION="$FLAG_PUBLISH_ATTRIBUTION_FORCE"
+[[ "$FLAG_PUBLISH_ATTRIBUTION_TEXT_SET" == "true" ]] && EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT="$FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE"
+[[ "$FLAG_PUBLISH_COPYRIGHT_SET" == "true" ]] && EFFECTIVE_PUBLISH_COPYRIGHT="$FLAG_PUBLISH_COPYRIGHT_FORCE"
 # NO_COLOR applies only when color is otherwise unset, so the documented
 # flag > file > env > defaults order holds (an explicit setting anywhere
 # beats the convention; an explicit --color=always flag beats NO_COLOR).
@@ -479,6 +569,116 @@ resolve_sig() {
 # newline-separated input -> JSON string array ([] when empty).
 to_json_array() {
   if [[ -z "${1:-}" ]]; then echo "[]"; else printf '%s' "$1" | jq -R . | jq -s .; fi
+}
+
+# Publish footer + confidence basis (P1). One merged receipt block at the
+# body end, computed from owned store data only — never blank, never fails
+# on absent data. Degraded reads stay factual: unknown version reads
+# "unknown", unknown spend reads "unrecorded", unknown files read
+# "files unrecorded", and the review link renders only when a completed
+# post record carries it (never invented pre-post).
+tool_version() {
+  local v=""
+  v=$(jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || true)
+  [[ -z "$v" || "$v" == "null" ]] && v="unknown"
+  printf '%s' "$v"
+}
+
+# Spend rollup for the footer. Sets PUBLISH_TIER (latest cost record effort,
+# normalized, default standard) and PUBLISH_COST ("$n" summed est_usd, or
+# "unrecorded" when no record prices the run). Absent/unreadable cost.json
+# degrades silently — the footer is garnish, the rollup stays in report --cost.
+publish_spend() { # $1 = dir
+  local rec="" tier="" sum=""
+  PUBLISH_TIER="standard"; PUBLISH_COST="unrecorded"
+  [[ -f "$1/cost.json" ]] || return 0
+  rec=$(jq -c 'if type == "array" then (.[-1] // {}) else . end' "$1/cost.json" 2>/dev/null || true)
+  [[ -z "$rec" ]] && return 0
+  tier=$(jq -r '((.effort // "standard" | tostring | ascii_downcase))' <<<"$rec" 2>/dev/null || true)
+  case "$tier" in cheap|standard|deep) PUBLISH_TIER="$tier";; esac
+  sum=$(jq -r '[(if type == "array" then .[] else . end) | .est_usd | numbers] | if length == 0 then empty else ((add * 10000 | round) / 10000 | tostring) end' "$1/cost.json" 2>/dev/null || true)
+  [[ -n "$sum" ]] && PUBLISH_COST="\$$sum"
+}
+
+publish_file_count() { # $1 = dir; echoes "N file(s)" or "files unrecorded" — never blank
+  local n=""
+  if [[ -f "$1/PR.json" ]]; then
+    n=$(jq -r '(.files // null) | if type == "array" then (length | tostring) else empty end' "$1/PR.json" 2>/dev/null || true)
+  fi
+  if [[ -z "$n" && -f "$1/full.diff" ]]; then
+    n=$(grep -c '^diff --git ' "$1/full.diff" 2>/dev/null || true)
+  fi
+  case "$n" in
+    ''|*[!0-9]*) printf 'files unrecorded';;
+    1) printf '1 file';;
+    *) printf '%s files' "$n";;
+  esac
+}
+
+publish_review_link() { # $1 = dir; echoes "" (unknown) or a factual review ref — never invented
+  local id="" url=""
+  [[ -f "$1/post.json" ]] || return 0
+  id=$(jq -r '.review.id // empty' "$1/post.json" 2>/dev/null || true)
+  url=$(jq -r '.review.html_url // empty' "$1/post.json" 2>/dev/null || true)
+  [[ -z "$id" && -z "$url" ]] && return 0
+  [[ -z "$id" ]] && id="posted"
+  if [[ -n "$url" ]]; then printf '[review `%s`](%s)' "$id" "$url"; else printf 'review `%s`' "$id"; fi
+}
+
+render_footer() { # $1 = dir; echoes the merged footer block, or nothing when publish.footer is off
+  local ver="" receipt="" attr="" link=""
+  [[ "${EFFECTIVE_PUBLISH_FOOTER:-true}" == "true" ]] || return 0
+  ver=$(tool_version)
+  publish_spend "$1"
+  receipt="verdict \`$ver\` · $PUBLISH_TIER tier · cost $PUBLISH_COST · $(publish_file_count "$1")"
+  link=$(publish_review_link "$1")
+  [[ -n "$link" ]] && receipt="$receipt · $link"
+  attr="${EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT:-}"
+  [[ -z "$attr" ]] && attr="Reviewed with verdict {version}"
+  attr=${attr//\{version\}/$ver}
+  echo "---"
+  echo ""
+  echo "> $receipt"
+  if [[ "${EFFECTIVE_PUBLISH_ATTRIBUTION:-true}" == "true" ]]; then
+    echo "> $attr"
+  fi
+  if [[ -n "${EFFECTIVE_PUBLISH_COPYRIGHT:-}" ]]; then
+    echo "> ${EFFECTIVE_PUBLISH_COPYRIGHT}"
+  fi
+}
+
+# Basis counts from a findings array on stdin: rigor rung counts in evidence
+# order, distinct cited kb rule ids, addressed (verified-fixed) findings.
+basis_counts() {
+  jq -r 'def cnt(x): ([.[] | select((.rigor // "pointed") == x)] | length);
+    "\(cnt("reproduced")) \(cnt("ran")) \(cnt("walked")) \(cnt("pointed")) \(cnt("said")) \([.[] | (.kb // []) | if type == "array" then .[] else empty end] | unique | length) \([.[] | select(.status == "addressed")] | length)"' 2>/dev/null || echo "0 0 0 0 0 0 0"
+}
+
+basis_line() { # $1 = findings.json path; echoes the exact confidence-lead basis line
+  local rep="" ran="" walked="" pointed="" said="" cited="" ver=""
+  read -r rep ran walked pointed said cited ver <<<"$(basis_counts < "$1")"
+  printf '> Basis: %s reproduced · %s ran · %s walked · %s pointed · %s said · %s rules cited · %s verified fixes\n' "$rep" "$ran" "$walked" "$pointed" "$said" "$cited" "$ver"
+}
+
+# Agent-path basis check: the review.json body may carry a "> Basis:" counts
+# line; the findings store decides. Mismatch or unparseable warns and keeps
+# the body — garnish never fails the run. $1 = store counts, $2 = body.
+validate_basis_line() {
+  local line="" nums="" want_n=""
+  line=$(printf '%s' "$2" | grep -E '^[[:space:]]*> Basis:' | head -n 1 || true)
+  if [[ -z "$line" ]]; then
+    warn "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+    return 0
+  fi
+  nums=$(printf '%s' "$line" | grep -o '[0-9][0-9]*' | tr '\n' ' ' | sed 's/ *$//' || true)
+  want_n=$(printf '%s' "$nums" | wc -w | tr -d ' ')
+  if [[ "$want_n" != "7" ]]; then
+    warn "basis line carries $want_n counts, want 7 (reproduced ran walked pointed said cited verified) — keeping body as-is"
+    return 0
+  fi
+  if [[ "$nums" != "$1" ]]; then
+    warn "basis line counts ($nums) differ from the findings store ($1) — keeping body as-is (garnish never fails the run)"
+  fi
 }
 
 # Store-schema marker: one version for the whole bundle (findings/review/post/
@@ -955,6 +1155,24 @@ $move_section"
         fi;;
     esac
   done < <(jq -c '.triage // [] | .[]' "$review_file")
+  # Basis-line validation (P1 garnish): the agent-authored body may carry a
+  # "> Basis:" counts line under the confidence lead; the store decides.
+  # Mismatch or unparseable warns and keeps the body — never fails the run.
+  validate_basis_line "$(printf '%s' "$entries" | basis_counts)" "$body"
+  # Footer receipt (P1): one merged block at the body end, computed from the
+  # owned stores (version, tier, cost, files, link when known) plus the
+  # attribution sentence. Knob-off emits nothing. Pre-post the review link
+  # is unknown, so it stays omitted — never invented, never blank.
+  footer_block=$(render_footer "$dir")
+  if [[ -n "$footer_block" ]]; then
+    if printf '%s' "$body" | grep -qE '^[[:space:]]*> verdict `'; then
+      warn "body already carries a footer receipt — keeping the agent block, script footer skipped"
+    else
+      body="$body
+
+$footer_block"
+    fi
+  fi
   echo "$entries" | jq '.' > "$findings_file"
   kb_commit_staged "$findings_file" "$now"
   echo "» findings: $(jq 'length' <<<"$entries") sigs -> $findings_file"
@@ -2175,6 +2393,15 @@ $body"
     '{body:$body, event:$event, commit_id:(if $commit=="" then null else $commit end), comments:$comments} | with_entries(select(.value!=null))')
   echo "» event=$event inline=$(jq 'length' <<<"$kept") embedded=$embedded resolved_count=$(jq -r '.resolved // [] | length' "$review_file")"
   if [[ "$dry_run" == "true" ]]; then
+    # Footer preview for the dry run: the exact block validate_and_merge
+    # appended to the payload body above (null when publish.footer is off).
+    # Additive-only inside data.body — the posted body already carries it.
+    dry_footer_text=$(render_footer "$dir")
+    if [[ -n "$dry_footer_text" ]]; then
+      dry_footer_json=$(jq -n --arg f "$dry_footer_text" '$f')
+    else
+      dry_footer_json="null"
+    fi
     if [[ "$json_mode" == "true" ]]; then
       phash=$(printf '%s' "$payload" | shasum -a 1 | cut -d' ' -f1)
       jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg e "$event" --arg c "$commit_id" \
@@ -2182,12 +2409,14 @@ $body"
         --argjson items "$(jq '[.[] | {sig, status, anchored, locator: (if .path then "\(.path)\(if .line then ":\(.line)" else "" end)" else (.heading // "?") end)}]' <<<"$entries")" \
         --arg h "$phash" --argjson emb "$embedded" --arg mk "$marker" --arg f "$findings_file" \
         --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
+        --argjson footer "$dry_footer_json" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"payload NOT posted (dry-run)",
-          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dry_run:true,event:$e,commit_id:$c,body:{marker:$mk},anchors:{kept:$k,moved:$m},
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dry_run:true,event:$e,commit_id:$c,body:{marker:$mk,footer:$footer},anchors:{kept:$k,moved:$m},
           suggestions:{embedded:$emb},findings:{open:$o,deferred:$d,addressed:$a,file:$f},confidence:$conf,security_summary:$sec,
           items:$items,payload_hash:$h},error:null}' >&9
     else
       echo "dry-run: payload NOT posted. body chars: $(printf '%s' "$body" | wc -c | tr -d ' '), payload comment keys: $(jq -r '.[0] // {} | keys_unsorted | join(",")' <<<"$post_comments")"
+      if [[ -n "$dry_footer_text" ]]; then printf 'footer preview:\n%s\n' "$dry_footer_text"; fi
     fi
     exit 0
   fi
@@ -2612,9 +2841,12 @@ if [[ "$cmd" == "report" ]]; then
     { echo "# Review report — $repo#$pr"; echo
       echo "<!-- report-machine:start -->"
       echo "> Confidence: $rep_conf · Safety: $rep_sec"
+      basis_line "$dir/findings.json"
       echo "## Counts — open $n_all_open · head ${head_sha:0:7}"
       jq -r '.[] | "\(.rank). [\(.status)] \(.locator) (\(.sig[0:8]), \(.rigor // "?")) — \((.body // "" | gsub("\n"; " ") | .[0:200]))"' <<<"$ranked"
       if [[ -n "$rep_checked" ]]; then echo "## What we checked"; printf '%s\n' "$rep_checked"; fi
+      rep_footer=$(render_footer "$dir")
+      if [[ -n "$rep_footer" ]]; then printf '%s\n' "$rep_footer"; fi
       echo "<!-- report-machine:end -->"
     } > "$output"
   fi

@@ -186,8 +186,23 @@ gates on. The next lines lead with confidence plus safety assessment:
 
 `Confidence` mirrors top-level `confidence` (1–5) in `review.json`;
 `Safety` is the one-line read from `security_summary` (or `not assessed`
-when you did not assess it). Full reasoning stays in the inline comments
-and the findings store (the machine envelope) — the posted body stays tight.
+when you did not assess it). Confidence is the agent's "would I merge on
+this review" judgment, informed by evidence depth, coverage, and rule
+support — the scale stays 1-5 across runs so past verdicts stay comparable
+(no rescaling, no formula; a computed score stays deferred until
+machine-verifiable inputs exist, with kb-measure X2/X3 outputs as the named
+trigger). Full reasoning stays in the inline comments and the findings store
+(the machine envelope) — the posted body stays tight.
+
+The third lead line is deterministic from your `review.json`:
+
+> Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 1 rules cited · 0 verified fixes
+
+Count rigor across your comments (every comment carries one rung, default
+`pointed`), distinct `kb` rule ids cited, and verified fixes (findings you
+would mark addressed on verification evidence — 0 on an initial review). The
+script validates this line against the findings store and keeps your body on
+mismatch, so count honestly and never reshape findings to fit the line.
 
 Clean reviews (nothing actionable) close the summary with a bounded
 **What we checked** list — at most seven bullets drawn from `toc.txt`
@@ -198,6 +213,11 @@ coverage and `roles.txt` (no new data collection; a `**`-lead-in, never a
 
 - `src/api.ts` — request validation (source)
 - `src/api.test.ts` — new cases for the changed paths (test)
+
+Do not hand-write the footer: the script appends one merged block at the
+body end (tool version, tier, cost or unrecorded, files reviewed, review
+link when known) with one factual attribution sentence. Pre-post the review
+link is unknown — never invent a review id or URL.
 
 ## Opening callout ladder (pick by author's next action)
 
