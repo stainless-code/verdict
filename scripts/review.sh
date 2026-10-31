@@ -1621,7 +1621,7 @@ validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* g
   # Pasted-output idempotency: our own one-line drop notes never stack —
   # strip them before analysis (a no-op on fresh review.json input).
   body=$(printf '%s\n' "$body" | grep -v '^> Diagram omitted: ' || true)
-  if ! printf '%s\n' "$body" | grep -qE '^```mermaid([[:space:]].*)?$' \
+  if ! printf '%s\n' "$body" | grep -qE '^[ \t]{0,3}```mermaid([ \t].*)?$' \
     && ! printf '%s' "$body" | grep -qF "$DIAGRAM_START"; then
     return 0
   fi
@@ -1637,12 +1637,17 @@ validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* g
         print "REGION " region_n " " rstart[region_n] " " NR; in_region = 0; next }
       if (!in_fence && line ~ /^[ \t]*<details([ \t>]|$)/) { last_details = NR; next }
       if (!in_fence && line ~ /^[ \t]*<\/details[ \t]*>/) { last_details = 0; next }
-      if (!in_fence && line ~ /^```mermaid([ \t].*)?$/) {
+      if (!in_fence && line ~ /^[ \t]{0,3}```mermaid([ \t].*)?$/) {
+        # Single-line fence (open+close on one line) is not a GitHub block:
+        # CommonMark forbids backticks in the info string, so it never renders.
+        # Skipping it here keeps it from opening a swallow to end of body.
+        rest = line; sub(/^[ \t]{0,3}```/, "", rest);
+        if (rest ~ /```[ \t]*$/) next;
         in_fence = 1; fopen = NR
         fregion = (in_region ? region_n : 0)
         fdetails = last_details; kw = ""; next }
       if (in_fence) {
-        if (line ~ /^```[ \t]*$/) {
+        if (line ~ /^[ \t]{0,3}```[ \t]*$/) {
           if (kw == "") kw = "EMPTY"
           print "FENCE " fopen " " NR " " fregion " " kw " " fdetails
           in_fence = 0; next }
@@ -1788,9 +1793,10 @@ validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* g
       DIAGRAM_STATUS="dropped"; DIAGRAM_DETAIL="dropped: $first_reason"
     fi
   fi
-  body=$(awk -v ranges="$del" -v dline="$dline" -v dopen="$dopen" -v notef="$tmp/notes.txt" '
+  body=$(awk -v ranges="$del" -v dline="$dline" -v dopen="$dopen" -v notef="$tmp/notes.txt" -v marker="$FOOTER_DIVIDER" '
     BEGIN {
-      nr = 0
+      nr = 0; nn = 0; noted = 0
+      while ((getline l < notef) > 0) { nn++; nlines[nn] = l }
       if (ranges != "") {
         n = split(ranges, rs, " ")
         for (i = 1; i <= n; i++) {
@@ -1803,6 +1809,11 @@ validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* g
       skip = 0
       for (i = 1; i <= nr; i++) if (NR >= ds[i] && NR <= de[i]) { skip = 1; break }
       if (skip) next
+      # Drop-notes land BEFORE a carried footer block: strip-replace cuts
+      # from the divider to end-of-body on re-render, so end-appended notes
+      # would be deleted with the stale footer. No divider present (fresh
+      # run) falls through to the END block below.
+      if (!noted && $0 == marker) { for (i = 1; i <= nn; i++) print nlines[i]; noted = 1 }
       if (dline > 0 && NR == dline) {
         if (dopen == 2) print "<details open>"
         else print "<details>"
@@ -1810,7 +1821,7 @@ validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* g
       }
       print
     }
-    END { while ((getline l < notef) > 0) print l }' "$tmp/body.txt")
+    END { if (!noted) for (i = 1; i <= nn; i++) print nlines[i] }' "$tmp/body.txt")
   rm -rf "$tmp"
 }
 

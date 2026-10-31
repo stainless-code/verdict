@@ -235,6 +235,70 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
+# --- D8: indented fences parse; single-line fences never swallow; notes precede the divider ---
+# The doc wrapper is 2-space indented: fences must parse inside 3 columns.
+PR=4712
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n  ```mermaid\n  sequenceDiagram\n  C->>S: hi\n  ```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
+EOF
+run_review post acme/app "$PR" --dry-run --json --diagram-behavioral
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(diagram_status)" = "kept" ] \
+  && [ "$(diagram_field keyword)" = "sequenceDiagram" ]; then
+  good "indented multi-line fence validates and keeps"
+else
+  bad "indented fence gave exit $EVAL_STATUS status '$(diagram_status)'"
+fi
+run_review post acme/app "$PR" --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$(diagram_status)" = "stripped" ]; then
+  good "indented block is detected by the opt-in gate when off"
+else
+  bad "indented block evaded the gate (exit $EVAL_STATUS status '$(diagram_status)')"
+fi
+# A non-indented single-line fence is not a GitHub block: it must not open a
+# swallow, and the valid block after it must still keep.
+PR=4713
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>First (single-line, invalid)</summary>\n\n```mermaid sequenceDiagram C->>S: hi ```\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Second (valid)</summary>\n\n```mermaid\nsequenceDiagram\nC->>S: hi\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
+EOF
+run_review post acme/app "$PR" --dry-run --json --diagram-behavioral
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(diagram_status)" = "kept" ] \
+  && [ "$(diagram_field blocks)" = "2" ] \
+  && ! grep -q "unbalanced fence" "$EVAL_ERR"; then
+  good "single-line fence never opens a swallow; later valid block keeps"
+else
+  bad "single-line fence path gave exit $EVAL_STATUS status '$(diagram_status)'"
+fi
+# Notes-before-divider idempotency: a pasted-output body (footer + note)
+# re-renders byte-identically to the fresh run — the note survives strip-replace.
+PR=4714
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\nno fence here\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
+EOF
+run_review post acme/app "$PR" --dry-run
+if [ "$EVAL_STATUS" -eq 0 ]; then
+  fresh_chars="$(body_chars)"
+else
+  fresh_chars="FAIL($EVAL_STATUS)"
+fi
+PR=4715
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\nno fence here\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-footer -->\n> stale footer\n\n> Diagram omitted: stale reason","approved":true,"comments":[]}
+EOF
+run_review post acme/app "$PR" --dry-run
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && grep -q "replacing it with the canonical block" "$EVAL_ERR" \
+  && [ "$(body_chars)" = "$fresh_chars" ]; then
+  good "pasted footer+note re-renders byte-identically (note survives strip-replace)"
+else
+  bad "re-render parity gave exit $EVAL_STATUS chars '$(body_chars)' vs fresh '$fresh_chars'"
+fi
+
 # --- D4: structural split (topology half, table stays) ---
 PR=4708
 eval_mk_bundle "$PR"

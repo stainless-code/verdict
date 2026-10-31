@@ -465,14 +465,16 @@ renders the linked name with no maker, `"full"` appends
 `by [Stainless Code](https://stainless-code.com)` after the sentence;
 `publish.attribution_text` (string, default
 `Reviewed with [**Verdict {version}**](https://stainless-code.com/verdict)`,
-`{version}`/`{tier}`/`{product_url}` substituted) rewords the sentence —
-any other `{placeholder}` refuses typed `bad-settings`;
+`{version}`/`{tier}`/`{product_url}`/`{cost}`/`{model}`/`{files_reviewed}`/`{head_sha_short}`/`{attribution}`
+substituted — the shared v1 inventory, documented under Section overrides)
+rewords the sentence — any other `{placeholder}` refuses typed `bad-settings`;
 `publish.logo` (bool, default `true`) drops the image;
 `publish.logo_url` (string, default the tracked `apps/docs/public/logo.svg`
 raw asset) repoints it — empty reads text-only, never a broken image;
 `publish.copyright` (string, default empty = off) appends the operator
-notice as its own line. There are no per-field footer knobs. Flags
-`--footer/--no-footer`, `--attribution [off|product|full]`/`--no-attribution`,
+notice as its own line. Receipt fields render in `footer-order.md`
+sequence (subset, never new fields) — there is no knob beyond that ordering.
+Flags `--footer/--no-footer`, `--attribution [off|product|full]`/`--no-attribution`,
 `--attribution-text <text>`, `--copyright <text>`, `--logo/--no-logo`,
 `--logo-url <url>` win over the file; the file wins over
 `REVIEW_PUBLISH_FOOTER`, `REVIEW_PUBLISH_ATTRIBUTION`,
