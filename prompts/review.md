@@ -158,9 +158,10 @@ if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY 
 <details>
   <summary>Technical details</summary>
 
-  ````markdown # {title} ## Affected sites - {file:line} — {what's wrong} ##
-  Required outcome - {what the fix needs to achieve, not how to achieve it} ##
-  Suggested approach (optional) ## Open questions for human (optional)
+  ````markdown # {title} ## Affected sites - [{file:line}][ev-N] — {what's
+  wrong} ## Required outcome - {what the fix needs to achieve, not how to
+  achieve it} ## Suggested approach (optional) ## Open questions for human
+  (optional)
 </details>
 `````
 
@@ -175,6 +176,26 @@ if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY 
 
 4-backtick fence keeps inner 3-backtick fences copyable. Skip optional sections when empty.
 Backtick-wrap identifiers — each `###` IS the issue.
+
+### Evidence links (permalink-first)
+
+Affected-site references are links first, quotes second. Every finding names
+its sites as reference-style links pinned to the reviewed commit, with the
+definitions collected in one block after the last finding:
+
+- `[src/api.ts:42][ev-1]` with `[ev-1]: https://github.com/<owner>/<repo>/blob/<full-reviewed-SHA>/src/api.ts#L42`
+  (line range `#L42-L44` for multi-line anchors; one ref per site).
+- The SHA is the reviewed commit (`headRefOid` in `PR.json`, `head_sha` in
+  `source.json`) — never whatever HEAD happens to be when you write this.
+- Visible body stays link-first: code quotes (fenced blocks) live only
+  inside `<details>` blocks, at most 3 lines each; anything longer moves
+  inside the details or is cut — the link already points at the lines.
+- Non-GitHub and local bundles: plain `` `path:line` `` text, never
+  `github.com/.../blob/...` URLs (they would 404 — `post` is GitHub-only,
+  so links are moot there and `record`/`report` degrade gracefully).
+- The script checks blob SHAs against the reviewed commit and warns on drift
+  or long visible quotes, keeping the body — pin SHAs honestly and never
+  reshape findings to fit the check.
 
 ## Confidence-led opening (all reviews)
 

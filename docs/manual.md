@@ -460,6 +460,10 @@ runs so past verdicts stay comparable (no rescaling; a computed score stays
 deferred until machine-verifiable inputs exist, with kb-measure X2/X3
 outputs as the named trigger).
 
+## Permalink evidence links
+
+Findings link to code instead of pasting it: bodies reference each site as a reference-style `blob/<reviewed-SHA>/<path>#Lx` link (line ranges as `#Lx-Ly`), pinned to the reviewed commit — never live HEAD — so links survive later pushes; code quotes stay at most 3 lines and live only inside collapsed `<details>` blocks, with the visible body link-first. Non-GitHub and local bundles render plain `` `path:line` `` text instead (a blob URL there would 404), and the same degradation applies to `record`/`report` outputs. Link shape is garnish like the basis line: `post`/`record` warn on a wrong-SHA link or a long visible quote and keep the body — reviews never fail over it.
+
 ## Local review (no PR)
 
 Same review machinery, no GitHub object. `fetch-local owner/repo <name>` builds a

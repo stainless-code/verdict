@@ -681,6 +681,72 @@ validate_basis_line() {
   fi
 }
 
+# Permalink evidence links (P2). GitHub findings reference
+# `blob/<reviewed-SHA>/<path>#Lx` links in reference style; non-GitHub and
+# local bundles render plain `path:line` text (post is GitHub-only, so a
+# blob URL anywhere else would 404). The SHA is the reviewed commit
+# (commit_id at post, the fetched HEAD) — never live HEAD — so links are
+# staleness-proof by construction. Quotes stay capped (at most 3 lines) and
+# live only inside collapsed `<details>`; the visible body stays link-first.
+# Garnish only, like the basis line: every mismatch warns and keeps the
+# body — a review never fails over link shape.
+evidence_base_url() { # $1 = dir, $2 = repo (owner/name); echoes the blob base or nothing
+  local prov="" url=""
+  [[ -f "$1/PR.json" ]] || return 0
+  prov=$(jq -r '.provider // empty' "$1/PR.json" 2>/dev/null || true)
+  [[ -z "$prov" || "$prov" == "github" ]] || return 0
+  url=$(jq -r '.url // empty' "$1/PR.json" 2>/dev/null || true)
+  if [[ -n "$url" ]]; then
+    printf '%s' "${url%%/pull/*}"
+  elif [[ -n "${2:-}" ]]; then
+    printf 'https://github.com/%s' "$2"
+  fi
+}
+
+# Linkable iff this bundle posts to GitHub with a known reviewed SHA:
+# a PR.json with no (or github) provider plus a non-empty head SHA. Local
+# and provider bundles always read false — plain `path:line` text there.
+evidence_linkable() { # $1 = dir, $2 = head sha; echoes "true"/"false"
+  local prov=""
+  [[ -n "${2:-}" ]] || { echo "false"; return 0; }
+  [[ -f "$1/PR.json" ]] || { echo "false"; return 0; }
+  prov=$(jq -r '.provider // empty' "$1/PR.json" 2>/dev/null || true)
+  if [[ -z "$prov" || "$prov" == "github" ]]; then echo "true"; else echo "false"; fi
+}
+
+# Agent-path check: blob SHAs in the body must name the reviewed commit, and
+# code fences stay inside collapsed details. Warn-and-keep throughout.
+# $1 = body, $2 = reviewed head sha ("" ok), $3 = "true" when linkable.
+validate_evidence_links() {
+  local body="$1" sha="$2" linkable="$3" blob_shas="" s=""
+  blob_shas=$(printf '%s' "$body" | grep -o 'blob/[0-9a-fA-F]\{7,40\}/' 2>/dev/null | sed 's|^blob/||;s|/$||' | LC_ALL=C sort -u || true)
+  if [[ -n "$blob_shas" ]]; then
+    if [[ "$linkable" != "true" ]]; then
+      warn "body carries GitHub blob link(s) on a non-GitHub bundle — keeping body as-is (plain path:line degrades gracefully, blob URLs would 404)"
+    elif [[ -z "$sha" ]]; then
+      warn "body carries blob link(s) but the reviewed SHA is unknown — keeping body as-is"
+    else
+      while IFS= read -r s; do
+        [[ -z "$s" ]] && continue
+        case "$sha" in "$s"*) ;; *) warn "evidence link SHA '$s' differs from the reviewed SHA '${sha:0:7}' — keeping body as-is (links stay pinned to the reviewed commit, never live HEAD)";; esac
+      done <<<"$blob_shas"
+    fi
+  fi
+  if printf '%s' "$body" | awk '
+    BEGIN { detail = 0; fence = 0; n = 0; bad = 0 }
+    index($0, "<details") > 0 { detail++; next }
+    index($0, "</details>") > 0 { if (detail > 0) detail--; next }
+    ($0 == "```" || $0 ~ /^```[^`]/) {
+      if (fence) { if (detail == 0 && n > 3) bad = 1; fence = 0; n = 0 } else { fence = 1; n = 0 }
+      next
+    }
+    { if (fence && detail == 0) n++ }
+    END { if (fence && detail == 0 && n > 3) bad = 1; exit bad }'; then
+    :
+  else
+    warn "code quote longer than 3 lines outside collapsed details — keeping body as-is (link-first: quote inside <details> or cut it, the link already points at the lines)"
+  fi
+}
 # Store-schema marker: one version for the whole bundle (findings/review/post/
 # record/source shapes evolve together — they're all written by this script).
 # Backfills bundles fetched before the marker existed; never fails.
@@ -1159,6 +1225,9 @@ $move_section"
   # "> Basis:" counts line under the confidence lead; the store decides.
   # Mismatch or unparseable warns and keeps the body — never fails the run.
   validate_basis_line "$(printf '%s' "$entries" | basis_counts)" "$body"
+  # Permalink garnish (P2): blob SHAs must name the reviewed commit and long
+  # quotes stay inside collapsed details. Warn-and-keep, like the basis line.
+  validate_evidence_links "$body" "$head_full" "$(evidence_linkable "$dir" "$head_full")"
   # Footer receipt (P1): one merged block at the body end, computed from the
   # owned stores (version, tier, cost, files, link when known) plus the
   # attribution sentence. Knob-off emits nothing. Pre-post the review link
@@ -2838,12 +2907,27 @@ if [[ "$cmd" == "report" ]]; then
         fi
       fi
     fi
+    # Permalink locators (P2): GitHub bundles render each anchored finding
+    # as a reference-style `[path:line][ev-N]` link pinned to the reviewed
+    # SHA, with the definitions collected below the list (invisible when
+    # rendered, clickable everywhere). Non-GitHub and local bundles keep
+    # plain `path:line` text — a blob URL there would 404.
+    rep_linkable=$(evidence_linkable "$dir" "$head_sha")
+    rep_base=""
+    if [[ "$rep_linkable" == "true" ]]; then rep_base=$(evidence_base_url "$dir" "$repo"); fi
+    [[ -n "$rep_base" ]] || rep_linkable="false"
+    rep_defs=""
+    if [[ "$rep_linkable" == "true" ]]; then
+      rep_defs=$(jq -r --arg base "$rep_base" --arg sha "$head_sha" \
+        '.[] | select(.path != null and .line != null) | "[ev-\(.rank)]: \($base)/blob/\($sha)/\(.path)#L\(.line)"' <<<"$ranked" 2>/dev/null || true)
+    fi
     { echo "# Review report — $repo#$pr"; echo
       echo "<!-- report-machine:start -->"
       echo "> Confidence: $rep_conf · Safety: $rep_sec"
       basis_line "$dir/findings.json"
       echo "## Counts — open $n_all_open · head ${head_sha:0:7}"
-      jq -r '.[] | "\(.rank). [\(.status)] \(.locator) (\(.sig[0:8]), \(.rigor // "?")) — \((.body // "" | gsub("\n"; " ") | .[0:200]))"' <<<"$ranked"
+      jq -r --arg linkable "$rep_linkable" '.[] | "\(.rank). [\(.status)] " + (if $linkable == "true" and .path != null and .line != null then "[\(.locator)][ev-\(.rank)]" else .locator end) + " (\(.sig[0:8]), \(.rigor // "?")) — \((.body // "" | gsub("\n"; " ") | .[0:200]))"' <<<"$ranked"
+      if [[ -n "$rep_defs" ]]; then printf '%s\n' "$rep_defs"; fi
       if [[ -n "$rep_checked" ]]; then echo "## What we checked"; printf '%s\n' "$rep_checked"; fi
       rep_footer=$(render_footer "$dir")
       if [[ -n "$rep_footer" ]]; then printf '%s\n' "$rep_footer"; fi
