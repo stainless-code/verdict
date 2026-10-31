@@ -1261,8 +1261,9 @@ write_sensitive_manifest() { # $1 = dir, $2 = newline-separated extra paths (may
 # (retired rows keep the line and gain retiredAt/retireReason tombstones plus
 # a history log). Audit: every credit appends one .review/kb-joins.jsonl row
 # {at, sig, rule, outcome, actor, verb, bundle, review_id}. Recall (write_kb_recall) mirrors the
-# sensitive manifest: advisory context file .review/<bundle>/kb.txt only when
-# active rules match, never a gate, never redacting evidence.
+# sensitive manifest: advisory context files .review/<bundle>/kb.txt (human note)
+# plus .review/<bundle>/kb-recall.json (machine manifest, rank-ordered ids with
+# scores) only when active rules match, never a gate, never redacting evidence.
 KB_FILE=".review/kb.jsonl"
 KB_JOINS=".review/kb-joins.jsonl"
 KB_POLICY=".review/kb-policy"
@@ -1526,14 +1527,15 @@ kb_maybe_retire() {
 
 # Recall scoped rules onto a bundle as context (never orders): scope-glob
 # gate over the diff file list, score (unjudged reads 0.5) desc, tiebreak
-# judged desc then id asc, top 3. Writes $dir/kb.txt only on a match (clean
-# trees leave no file — mirrors sensitive.txt); retired rules never recall.
-# Never fails.
+# judged desc then id asc, top 3. Writes $dir/kb.txt (human note) plus
+# $dir/kb-recall.json (machine manifest: rank-ordered ids with scores) only
+# on a match (clean trees leave neither file — mirrors sensitive.txt);
+# retired rules never recall. Never fails.
 write_kb_recall() { # $1 = dir, $2 = newline-separated extra paths (may be empty)
-  local dir="$1" extra="${2:-}" mf="$1/kb.txt"
+  local dir="$1" extra="${2:-}" mf="$1/kb.txt" mfj="$1/kb-recall.json"
   local files="" rules="" cands="[]" row="" rid="" scope="" hit="" g="" f=""
-  local h="" hdr="" rest="" new="" total="" shown="" ids="" top=""
-  [[ -f "$KB_FILE" ]] || { rm -f "$mf"; return 0; }
+  local h="" hdr="" rest="" new="" total="" shown="" ids="" top="" ranked=""
+  [[ -f "$KB_FILE" ]] || { rm -f "$mf" "$mfj"; return 0; }
   files=$(
     if [[ -n "$extra" ]]; then printf '%s\n' "$extra"; fi
     if [[ -f "$dir/full.diff" ]]; then
@@ -1550,11 +1552,11 @@ write_kb_recall() { # $1 = dir, $2 = newline-separated extra paths (may be empty
     :
   )
   files=$(printf '%s\n' "$files" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | grep -v '^/dev/null$' | LC_ALL=C sort -u || true)
-  [[ -z "$files" ]] && { rm -f "$mf"; return 0; }
+  [[ -z "$files" ]] && { rm -f "$mf" "$mfj"; return 0; }
   if ! rules=$(jq -c -s '[.[] | select(.status == "active")]' "$KB_FILE" 2>/dev/null); then
-    warn "kb recall skipped: $KB_FILE unreadable"; rm -f "$mf"; return 0
+    warn "kb recall skipped: $KB_FILE unreadable"; rm -f "$mf" "$mfj"; return 0
   fi
-  if [[ "$rules" == "[]" ]]; then rm -f "$mf"; return 0; fi
+  if [[ "$rules" == "[]" ]]; then rm -f "$mf" "$mfj"; return 0; fi
   while IFS= read -r row; do
     [[ -z "$row" ]] && continue
     rid=$(jq -r '.id' <<<"$row"); scope=$(jq -r '.scope' <<<"$row")
@@ -1573,14 +1575,29 @@ write_kb_recall() { # $1 = dir, $2 = newline-separated extra paths (may be empty
     fi
   done < <(jq -c '.[]' <<<"$rules" 2>/dev/null || true)
   total=$(jq 'length' <<<"$cands")
-  if [[ "$total" == "0" ]]; then rm -f "$mf"; return 0; fi
-  top=$(jq -r 'sort_by([-(if .judged == 0 then 0.5 else .hits / .judged end), -.judged, .id]) | .[:3] | .[] | "# \(.id) — \(.scope) — precision \(.hits)/\(.judged)\n\(.rule | gsub("\n"; " "))"' <<<"$cands")
+  if [[ "$total" == "0" ]]; then rm -f "$mf" "$mfj"; return 0; fi
+  # Single sort, two renderings: ranked holds the top-3 in rank order and both
+  # the human note and the machine manifest render from it, so ids+order agree
+  # by construction. Sort expression is the prior kb.txt ranking verbatim:
+  # score desc, judged desc, id asc.
+  ranked=$(jq -c 'sort_by([-(if .judged == 0 then 0.5 else .hits / .judged end), -.judged, .id]) | .[:3]' <<<"$cands" 2>/dev/null || echo "[]")
+  if [[ -z "$ranked" || "$ranked" == "[]" ]]; then rm -f "$mf" "$mfj"; return 0; fi
+  top=$(jq -r '.[] | "# \(.id) — \(.scope) — precision \(.hits)/\(.judged)\n\(.rule | gsub("\n"; " "))"' <<<"$ranked")
   {
     echo "# kb recall — context, never orders. Cited rules inform the review; evidence still decides."
     printf '%s\n' "$top"
   } > "$mf.tmp" && mv "$mf.tmp" "$mf"
-  shown=$(jq -r '.[:3] | length' <<<"$cands")
-  ids=$(jq -r 'sort_by([-(if .judged == 0 then 0.5 else .hits / .judged end), -.judged, .id]) | .[:3] | map(.id) | join(", ")' <<<"$cands")
+  # Machine manifest beside the human note: rank-ordered ids with the ranker's
+  # scores (unjudged reads 0.5). Additive-only: writers never touch agent-owned
+  # content, readers tolerate a missing file (old bundles keep working).
+  if ! jq -c '[.[] | {id:.id, score:(if .judged == 0 then 0.5 else .hits / .judged end), hits:.hits, judged:.judged}]' <<<"$ranked" > "$mfj.tmp" 2>/dev/null; then
+    rm -f "$mfj.tmp" "$mfj"
+    warn "kb recall manifest skipped: could not write $mfj (kb.txt kept)"
+  else
+    mv "$mfj.tmp" "$mfj"
+  fi
+  shown=$(jq 'length' <<<"$ranked")
+  ids=$(jq -r 'map(.id) | join(", ")' <<<"$ranked")
   echo "» kb: $shown rule(s) -> $mf ($ids)"
   return 0
 }
@@ -1690,10 +1707,11 @@ write_toc_roles() { # $1 = dir, $2 = toc title line
 
 # Shared fetch tail: counts, done/next hints, --json envelope. $1 = incremental base ("null" or sha).
 fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode panel_src panel_list omitted)
-  local inc_base="$1" files sens_file kb_file db pdump_json
+  local inc_base="$1" files sens_file kb_file kbr_file db pdump_json
   files=$(jq '.files | length' "$dir/PR.json" 2>/dev/null || echo "?")
   sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
   kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
+  kbr_file="null"; [[ -f "$dir/kb-recall.json" ]] && kbr_file="$dir/kb-recall.json"
   db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
   case "$db" in ''|*[!0-9]*) db="0";; esac
   # Prompt dump payload for --json (human mode streams it to the saved stdout
@@ -1712,14 +1730,14 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --argjson db "$db" \
         --argjson omitted "$(to_json_array "$omitted")" \
         --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
-        --arg inc "$inc_base" --arg sens "$sens_file" --arg kb "$kb_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
+        --arg inc "$inc_base" --arg sens "$sens_file" --arg kb "$kb_file" --arg kbr "$kbr_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
         --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
         --argjson pdump "$pdump_json" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
           hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
-          artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end)),
+          artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end)),
           incremental_base:(if $inc=="null" then null else $inc end)}
           + (if $estimate == null then {} else {estimate:$estimate} end)
           + (if $budget == null then {} else {budget:$budget} end)
@@ -1965,6 +1983,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
   if [[ "$json_mode" == "true" ]]; then
     sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
     kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
+    kbr_file="null"; [[ -f "$dir/kb-recall.json" ]] && kbr_file="$dir/kb-recall.json"
     db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
     case "$db" in ''|*[!0-9]*) db="0";; esac
     pdump_json="null"
@@ -1977,7 +1996,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --argjson db "$db" \
       --argjson omitted "$(to_json_array "$omitted")" \
       --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
-      --arg sens "$sens_file" --arg kb "$kb_file" \
+      --arg sens "$sens_file" --arg kb "$kb_file" --arg kbr "$kbr_file" \
       --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
       --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
       --argjson pdump "$pdump_json" \
@@ -1986,7 +2005,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
         files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
         panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
-        artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end))}
+        artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end))}
         + (if $estimate == null then {} else {estimate:$estimate} end)
         + (if $budget == null then {} else {budget:$budget} end)
         + (if $cap == null then {} else {cap:$cap} end)

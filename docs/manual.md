@@ -189,6 +189,13 @@ tiebreak judged desc then id. Agents read it as context, never orders
 (contract line in `prompts/review.md`); clean diffs leave no file, and with no
 `kb.jsonl` nothing changes at all.
 
+The recall manifest `.review/<bundle>/kb-recall.json` mirrors the note
+machine-readably: a JSON array in rank order, each entry
+`{id, score, hits, judged}` where `score` is the ranker's `0.5` for unjudged
+rules else `hits/judged`. It is written together with `kb.txt` (clean trees
+leave neither file) and never changes `kb.txt` bytes; readers tolerate its
+absence, so bundles fetched before the manifest still read fine.
+
 Credit: flipping a finding to `addressed` credits cited rules `hits+1`, to
 `false-positive` credits `false_hits+1` (`judged+1` either way) — staged with
 the flip, then committed right after the findings file persists
