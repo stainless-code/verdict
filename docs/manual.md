@@ -211,7 +211,7 @@ recall; citing one warns and drops.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn`/`init` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `report` is the pure offline reader over the store (ranked items, verdict,
@@ -332,7 +332,7 @@ key in the JSON cost object). Threshold is the budget itself: projected above bu
 needs consent, at-or-under proceeds. Estimates cover the review run about to start,
 not the fetch reads; unknown estimates never refuse.
 
-## Onboarding (scaffolder + prefs file)
+## Onboarding (scaffolder + prefs file + skill installer)
 
 New operators onboard in one offline command — no network, ever:
 

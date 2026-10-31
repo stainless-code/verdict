@@ -7,7 +7,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init [opts]
+usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install [opts]
   fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--show-prompts] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
@@ -124,13 +124,25 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).
     Never touches network. Existing files print a preview and need
     --yes/--force (or an interactive confirm) before overwrite.
+  install [--yes] [--force] [--json]
+    copy-based skill installer (offline): detects the de-facto agent skill
+    dirs (.agents/skills, .claude/skills, .codex/skills at the repo root
+    and $HOME), previews the copy plan for the tool-owned verdict/
+    payload (SKILL.md + prompts/), applies only on explicit confirm.
+    Only installer-owned verdict/ dirs (carrying a .verdict-managed
+    receipt) are ever written; foreign skills and unowned verdict/ dirs
+    are left untouched. An up-to-date re-run reads keep (idempotent); a
+    receipt/tool version skew warns, never fails. Same preview-then-confirm
+    idiom as init: writes need --yes/--force (or an interactive confirm
+    when stdin is a tty). The install.sh symlink route stays the
+    wide-coverage sibling (nine agents, --detect/--all).
   Global presentation flags (any verb; stripped before verb parsing):
   --color <auto|always|never>, --compact / --no-compact, --no-json.
   Flags win over the settings file, which wins over env
   (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE), which
   wins over defaults. The settings file is presentation-only
   (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).
-  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init: stdout is exactly one JSON envelope (schema_version 1);
+  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
 EOF
 }
@@ -139,7 +151,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then usage; exit 0; fi
 if [[ "${1:-}" == "--version" ]]; then jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || echo "0.0.0-unknown"; exit 0; fi
 cmd="${1:-}"; shift $(( $# > 0 ? 1 : 0 ))
 repo=""; pr=""
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" && "$cmd" != "install" ]]; then
   repo="${1:-}"; pr="${2:-}"; shift $(( $# >= 2 ? 2 : $# ))
 fi
 if [[ "$cmd" == "trend" ]]; then
@@ -1579,7 +1591,7 @@ fi
 if [[ "$cmd" == "trend" ]] && [[ -z "$repo" ]]; then
   usage >&2; exit 2
 fi
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" ]] && [[ -z "$repo" || -z "$pr" ]]; then
+if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" && "$cmd" != "install" ]] && [[ -z "$repo" || -z "$pr" ]]; then
   usage >&2; exit 2
 fi
 
@@ -3754,4 +3766,177 @@ if [[ "$cmd" == "init" ]]; then
   exit 0
 fi
 
-echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn|init)" >&2; exit 2
+# -------------------------------------------------------------- install ---
+# Copy-based skill installer (the `install.sh` symlink route stays the
+# wide-coverage sibling: nine agents, --detect/--all, doctor-gated). This verb
+# is the minimal offline copy route for the three de-facto agent skill dirs
+# the comp-study documents (greptile 3.8.0 ships .agents/skills +
+# .claude/skills + .codex/skills; coderabbit 0.9.1 names no paths), each at
+# the repo root (project-local) and $HOME (global): six candidate roots.
+# Only the tool-owned `verdict/` namespace is ever written, receipted by
+# `.verdict-managed`; foreign skills and unowned `verdict/` dirs are never
+# modified or removed. Preview-then-confirm reuses the init idiom exactly
+# (--yes/--force or an interactive confirm; non-tty refuses needs-confirm).
+if [[ "$cmd" == "install" ]]; then
+  assume_yes="false"
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --yes|-y|--force) assume_yes="true"; shift;;
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag '$1' for install (want --yes, --force, --json)" >&2; exit 2;;
+  esac; done
+  json_redirect
+  rentry_cmd="./scripts/review.sh install"
+  [[ "$assume_yes" == "true" ]] && rentry_cmd="$rentry_cmd --yes"
+  [[ "$json_mode" == "true" ]] && rentry_cmd="$rentry_cmd --json"
+  tool_root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+  [[ -f "$tool_root/SKILL.md" ]] || fail "install-failed" "tool payload missing: $tool_root/SKILL.md not found (not a verdict checkout?)"
+  [[ -d "$tool_root/prompts" ]] || fail "install-failed" "tool payload missing: $tool_root/prompts not found (not a verdict checkout?)"
+  tool_version=$(jq -r .version "$tool_root/package.json" 2>/dev/null || echo "0.0.0-unknown")
+  payload_files=("SKILL.md")
+  for pf in "$tool_root"/prompts/*.md; do
+    [[ -f "$pf" ]] || continue
+    payload_files+=("prompts/$(basename "$pf")")
+  done
+  (( ${#payload_files[@]} > 1 )) || fail "install-failed" "tool payload missing: no prompts found in $tool_root/prompts (not a verdict checkout?)"
+  # Candidate roots: the three de-facto skill dirs at repo root + $HOME.
+  # A root is detected when its skills dir or its agent parent exists;
+  # anything else reads skip — the verb never invents agent homes.
+  cand_roots=("$PWD/.agents/skills" "$PWD/.claude/skills" "$PWD/.codex/skills")
+  cand_scopes=("repo" "repo" "repo")
+  if [[ -n "${HOME:-}" ]]; then
+    cand_roots+=("$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills")
+    cand_scopes+=("home" "home" "home")
+  fi
+  roots=(); scopes=()
+  for i in "${!cand_roots[@]}"; do
+    cr="${cand_roots[$i]}"; dup="false"
+    if (( ${#roots[@]} > 0 )); then
+      for r in "${roots[@]}"; do [[ "$r" == "$cr" ]] && dup="true"; done
+    fi
+    [[ "$dup" == "true" ]] && continue
+    roots+=("$cr"); scopes+=("${cand_scopes[$i]}")
+  done
+  # Phase 1: classify every root, print the preview plan (no writes).
+  t_status=(); t_skew=(); t_diffs=()
+  need_write="false"
+  echo "install: tool v$tool_version, payload ${#payload_files[@]} files (SKILL.md + $(( ${#payload_files[@]} - 1 )) prompts) -> ${#roots[@]} candidate root(s)"
+  for i in "${!roots[@]}"; do
+    root="${roots[$i]}"; scope="${scopes[$i]}"; target="$root/verdict"; receipt="$target/.verdict-managed"
+    st=""; rec_v=""; diffs=""; skew="false"
+    if [[ ! -d "$root" && ! -d "$(dirname "$root")" ]]; then
+      st="skip"
+    elif [[ -e "$target" || -L "$target" ]]; then
+      if [[ -f "$receipt" ]] && jq -e '.tool == "verdict"' "$receipt" >/dev/null 2>&1; then
+        rec_v=$(jq -r '.version // empty' "$receipt" 2>/dev/null || true)
+        [[ "$rec_v" != "$tool_version" ]] && skew="true"
+        for rel in "${payload_files[@]}"; do
+          if [[ -f "$target/$rel" ]] && cmp -s "$tool_root/$rel" "$target/$rel"; then continue; fi
+          diffs="$diffs$rel
+"
+        done
+        if [[ -z "$diffs" ]]; then st="keep"; else st="update"; need_write="true"; fi
+      else
+        st="blocked"
+      fi
+    else
+      st="create"; need_write="true"
+      for rel in "${payload_files[@]}"; do diffs="$diffs$rel
+"; done
+    fi
+    t_status+=("$st"); t_skew+=("$skew"); t_diffs+=("$diffs")
+    case "$st" in
+      create)
+        echo "--- $target [$scope] (create) ---"
+        while IFS= read -r rel; do
+          [[ -z "$rel" ]] && continue
+          echo "  + $rel ($(wc -c < "$tool_root/$rel" | tr -d '[:space:]') bytes)"
+        done <<<"$diffs";;
+      update)
+        echo "--- $target [$scope] (update, installed v${rec_v:-unknown}) ---"
+        while IFS= read -r rel; do
+          [[ -z "$rel" ]] && continue
+          if [[ -f "$target/$rel" ]]; then
+            echo "  ~ $rel (differs: installed $(wc -c < "$target/$rel" | tr -d '[:space:]') -> payload $(wc -c < "$tool_root/$rel" | tr -d '[:space:]') bytes)"
+          else
+            echo "  + $rel (new, $(wc -c < "$tool_root/$rel" | tr -d '[:space:]') bytes)"
+          fi
+        done <<<"$diffs"
+        echo "  = $(( ${#payload_files[@]} - $(printf '%s' "$diffs" | grep -c .) )) file(s) unchanged";;
+      keep)
+        echo "--- $target [$scope] (keep, already up to date) ---"
+        [[ "$skew" == "true" ]] && warn "version skew at $target: receipt v$rec_v vs tool v$tool_version (nudge only — re-run with --yes to refresh the receipt)";;
+      blocked)
+        echo "--- $target [$scope] (blocked: no installer receipt — foreign-owned, left untouched) ---"
+        warn "leaving foreign-owned $target untouched (no .verdict-managed receipt — remove it by hand to let the installer own this slot, nothing was written)";;
+      skip)
+        echo "--- $root [$scope] (skip: no agent dir) ---";;
+    esac
+  done
+  if [[ "$need_write" == "true" && "$assume_yes" != "true" ]]; then
+    if [[ -t 0 ]]; then
+      printf 'Proceed? [y/N] ' >&2; read -r ans || ans=""
+      case "$ans" in y|Y|yes|YES) ;;
+        *) echo "install: aborted (re-run with --yes to apply after reviewing the preview)" >&2; exit 1;;
+      esac
+    else
+      fail "needs-confirm" "install refuses to write skill files without confirm (re-run with --yes after reviewing the preview above)"
+    fi
+  fi
+  # Phase 2: apply. Only owned namespaces are written; unknown extra files
+  # inside verdict/ are left alone (never deleted), foreign slots untouched.
+  wrote="0"
+  for i in "${!roots[@]}"; do
+    root="${roots[$i]}"; target="$root/verdict"; receipt="$target/.verdict-managed"
+    st="${t_status[$i]}"; diffs="${t_diffs[$i]}"
+    case "$st" in
+      create|update)
+        mkdir -p "$target/prompts" || fail "install-failed" "install could not create $target/prompts (storage writable?)"
+        n="0"
+        while IFS= read -r rel; do
+          [[ -z "$rel" ]] && continue
+          cp -- "$tool_root/$rel" "$target/$rel" || fail "install-failed" "install could not write $target/$rel (storage writable?)"
+          n=$(( n + 1 ))
+        done <<<"$diffs"
+        jq -n --arg v "$tool_version" --arg t "$(now_utc)" \
+          '{tool:"verdict", version:$v, installed_at:$t}' > "$receipt.tmp" \
+          && mv "$receipt.tmp" "$receipt" \
+          || fail "install-failed" "install could not write $receipt (storage writable?)"
+        echo "wrote: $target ($n file(s), receipt v$tool_version)"
+        wrote=$(( wrote + 1 ));;
+      keep)
+        echo "keep: $target (already up to date)"
+        if [[ "${t_skew[$i]}" == "true" && "$assume_yes" == "true" ]]; then
+          jq -n --arg v "$tool_version" --arg t "$(now_utc)" \
+            '{tool:"verdict", version:$v, installed_at:$t}' > "$receipt.tmp" \
+            && mv "$receipt.tmp" "$receipt" \
+            || fail "install-failed" "install could not refresh $receipt (storage writable?)"
+          echo "receipt: $target refreshed to v$tool_version"
+        fi;;
+      blocked) echo "skip: $target (foreign-owned, left untouched)";;
+      skip) echo "skip: $root (no agent dir)";;
+    esac
+  done
+  if (( wrote > 0 )); then next_str="reload skills in the agent so it picks up verdict/";
+  else next_str="already up to date (foreign dirs untouched)"; fi
+  echo "install: $wrote target(s) written"
+  echo "next: $next_str"
+  if [[ "$json_mode" == "true" ]]; then
+    targets_json="[]"
+    for i in "${!roots[@]}"; do
+      fw="0"; [[ "${t_status[$i]}" == "create" || "${t_status[$i]}" == "update" ]] && fw=$(printf '%s' "${t_diffs[$i]}" | grep -c .)
+      targets_json=$(jq -n --argjson t "$targets_json" --arg r "${roots[$i]}" --arg s "${scopes[$i]}" \
+        --arg st "${t_status[$i]}" --argjson fw "$fw" --argjson sk "${t_skew[$i]}" \
+        '$t + [{root:$r, scope:$s, status:$st, files_written:$fw, version_skew:$sk}]')
+    done
+    data_json=$(jq -n --arg v "$tool_version" --argjson n "${#payload_files[@]}" --argjson t "$targets_json" \
+      '{tool_version:$v, payload_files:$n, targets:$t}')
+    now=$(now_utc)
+    jq -n --arg v "$cmd" --arg t "$now" --arg nx "$next_str" --argjson f "$data_json" \
+      '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,
+        next:$nx,
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:$f,error:null}' >&9
+  fi
+  exit 0
+fi
+
+echo "unknown cmd '$cmd' (want fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|check-tree|verify|doctor|calibrate|ready|trend|learn|init|install)" >&2; exit 2
