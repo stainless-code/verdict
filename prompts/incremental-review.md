@@ -54,6 +54,6 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    - No new issues + substantive delta (new behavior/fixes) → review, `approved:true` when prior
      feedback is addressed, body `> ✅ No new issues found.` + summary.
 
-Every review branch above ends the same way: Write exactly one `.review/N/review.json` with `{body, approved, comments[]}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits. Top-level `confidence` (1–5) and `security_summary` are optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
+Every review branch above ends the same way: Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits. Top-level `confidence` (1–5) and `security_summary` are optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
 
 Coverage is yours to track against the TOC — no tool checks it; read every range the delta touches.

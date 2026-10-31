@@ -72,7 +72,7 @@ to write dispatches, lenses run under it.
 5. **Match the callout to the author's next action.** The severity ladder lives in
    `prompts/review.md` — pick the tier the author should act on, never louder. Binding
    verdicts need `--bind` (else `post` downgrades to `COMMENT`); `APPROVE` is refused while
-   findings stand open (`--force` overrides).
+   `open` + `deferred` findings stand (`--force` overrides).
 6. **Line-count is not signal.** One-line auth/money/SQL/comparison/redirect/config-default
    changes earn full scrutiny; docs/whitespace/lockfile/generated/mechanical-rename diffs skip it.
 7. **Batch aggressively.** Emit every independent read/grep in a single turn — turn count

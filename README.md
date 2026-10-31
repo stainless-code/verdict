@@ -60,6 +60,13 @@ Anything else on the
 [agent list](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)
 is one `npx skills add -a <agent>` away.
 
+Operator verbs (offline, same preview-then-confirm idiom): scaffold repo controls
+with `./scripts/review.sh init --preset standard --yes`, and copy the skill payload
+(`SKILL.md` + `prompts/`) with `./scripts/review.sh install --yes` (detects
+`.agents/skills`, `.claude/skills`, `.codex/skills`; only writes installer-owned
+`verdict/` dirs). The `install.sh` symlink route above stays the wide-coverage
+sibling (nine agents, `--detect`/`--all`).
+
 ## Security
 
 Trust boundary: the skill runs with your privileges. `verify` executes the
@@ -102,8 +109,8 @@ verdict/
   docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
   apps/docs/          # Blume docs site (index + manual mirror, deploys to /verdict/)
   docs/vision.md      # what it is, strategy; narrative lives on the site
-  prompts/            # system, review, incremental, address, fix-ci, build, ci, subagent
-  scripts/review.sh   # fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt
+  prompts/            # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
+  scripts/review.sh   # fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/install
 ```
 
 ## Updating
@@ -129,8 +136,9 @@ blocks stay tidy, and prompt examples are never reflowed. We commit no formatter
 (Bun is already the house runtime); we leave prose line length unmanaged
 (renderers and agents don't care).
 Contributors: run `bun fmt --check .` before pushing; fix only what it flags outside
-`prompts/` examples. `install.sh` wires `hooks/pre-commit` (check-only, never rewrites),
-so the gate runs automatically on every commit.
+`prompts/` examples. `install.sh` wires `hooks/pre-commit` (formatting plus
+`shellcheck -S warning` over staged shell files; check-only, never rewrites),
+so the gates run automatically on every commit.
 
 ## License
 
