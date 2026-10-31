@@ -235,7 +235,7 @@ The third lead line is deterministic from your `review.json`:
 Count rigor across your comments (every comment carries one rung, default
 `pointed`), distinct `kb` rule ids cited, and verified fixes (findings you
 would mark addressed on verification evidence — 0 on an initial review). The
-script validates this line against the findings store and keeps your body on
+script validates this line against the review's own comments and keeps your body on
 mismatch, so count honestly and never reshape findings to fit the line.
 
 Clean reviews (nothing actionable) close the summary with a bounded
