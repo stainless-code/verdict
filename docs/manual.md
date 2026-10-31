@@ -76,7 +76,13 @@ section with a stable line-number-free signature, `status` (`open`/`addressed`/`
 Incremental runs dedup by sig — recorded findings are not re-reported unless the delta changes them. Before posting, `post`
 prints a fail-closed preflight block (body verdict, anchor counts, finding counts, hunk index).
 Binding verdicts need `--bind` (else downgraded to `COMMENT`); `APPROVE` is refused while
-`open` + `deferred` findings stand (`--force` overrides).
+`open` + `deferred` findings stand (`--force` overrides). On the binding `APPROVE`
+path only, `post` re-lists live unresolved threads before resolving the verdict
+and refuses `APPROVE` when more threads are open live than the store holds open
+(`approve-blocked`, naming the counts — fetch + triage the unknowns, or re-run
+with `--force`). An unreachable recheck downgrades to `COMMENT` with the reason
+in the body and warnings — never a silent `APPROVE`, never a hard failure.
+`COMMENT`, `REQUEST_CHANGES`, dry runs, and local bundles never pay this lookup.
 
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
@@ -111,7 +117,7 @@ A bundle dir holds exactly the core-owned files (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `panel`,
 `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, plus dot-scratch
-`.difffiles`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`). Router-authorized
+`.difffiles`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`). Router-authorized
 agent terminal writes (`report.md` via `prompts/ci.md`, `replies.json` via
 `prompts/address-reviews.md`, `noreview.md` via `prompts/incremental-review.md`)
 are core-tolerated scratch: core verbs never read them. Anything else a

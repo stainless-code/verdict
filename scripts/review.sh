@@ -1807,6 +1807,38 @@ $body"
       fi
     fi
   fi
+  # Live open-thread recheck (APPROVE path only): re-list live unresolved
+  # threads with the ready verb's query and compare against local opens.
+  # COMMENT, REQUEST_CHANGES, dry runs, and local bundles never pay this call
+  # (record lives on another verb entirely). Unreachable degrades to COMMENT
+  # (warn-and-proceed, stale-SHA idiom — never a silent APPROVE, never a hard
+  # failure). More live opens than local opens refuses APPROVE (approve-blocked
+  # naming the counts plus the triage-or-override path).
+  if [[ "$event" == "APPROVE" && "$dry_run" != "true" ]]; then
+    owner="${repo%%/*}"; name="${repo##*/}"
+    if live_threads=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              nodes { isResolved }
+            }
+          }
+        }
+      }' 2>"$dir/.recheck.err" | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]'); then
+      live_open=$(jq '[.[] | select(.isResolved == false)] | length' <<<"$live_threads" 2>/dev/null || echo 0)
+      case "$live_open" in ''|*[!0-9]*) live_open=0;; esac
+      if (( live_open > n_open )) && [[ "$force" != "true" ]]; then
+        fail "approve-blocked" "refusing APPROVE: $live_open live open thread(s) vs $n_open local open finding(s) — $(( live_open - n_open )) thread(s) the store does not know about (fetch + triage them, or re-run with --force)"
+      fi
+    else
+      warn "live thread recheck unreachable — downgrading to COMMENT (posting on local findings only)"
+      body="> ⚠️ Note: live thread recheck unreachable ($(head -c 120 "$dir/.recheck.err" | tr '\n' ' ')); posting as COMMENT instead of APPROVE.
+
+$body"
+      event="COMMENT"
+    fi
+  fi
   echo "preflight: body=$marker ($(printf '%s' "$body" | wc -c | tr -d ' ') chars) | anchors: $n_kept inline, $n_moved moved | findings: $n_open open, $n_def deferred, $n_addr addressed, $n_term terminal | hunks indexed: $hunk_n | event=$event sha=${commit_id:0:7}"
   if (( n_open > 0 )) && [[ -n "${commit_id:0:7}" ]]; then echo "next: address open threads, then fetch --base-sha ${commit_id:0:7} for the delta"; elif (( n_open > 0 )); then echo "next: address open threads"; else echo "next: none open — nothing to address"; fi
   # Payload carries only GitHub-known comment keys — agent-side triage fields stay in
