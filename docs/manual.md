@@ -548,6 +548,51 @@ wins over `REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL` / `_STRUCTURAL` / `_EXPANDED`
 env; env wins over defaults. With no diagram in the body the script path is
 byte-identical whether the knobs are set or not.
 
+## Section overrides (per-block template fragments)
+
+House style lives in four operator-owned fragments under `.review/overrides/`
+(bundle-adjacent and repo-local like `.review/panel`, `.review/budget` and
+`.review/kb.jsonl` — committable per-repo and check-tree-ignored; not the skill
+install tree, not XDG-global settings). One fragment per overridable block:
+
+| Fragment                   | Overridable block                                                                   | Default (absent reads this)                            |
+| -------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `preamble.md`              | clean-review preamble prose (the `## What we checked` heading in `report --output`) | `## What we checked`                                   |
+| `footer-order.md`          | receipt field order, one field per line (subset, never new)                         | `tier`, `cost`, `files`, `link` in that order          |
+| `walkthrough-threshold.md` | overview show thresholds (`files: N` / `bytes: N`, `=` works too)                   | `files: 8`, `bytes: 24576`                             |
+| `attribution.md`           | attribution sentence (one line; empty omits the sentence)                           | `Reviewed with [**Verdict {version}**]({product_url})` |
+
+Open rules (`footer-order-subset`): receipt order lists a non-empty unique subset of
+`tier|cost|files|link` (new fields refuse); attribution stays one line
+(`attribution-single-line`);
+threshold values stay non-negative integers; `#` comments and blanks are
+skipped in the two structured files. The sentence and copyright lines stay
+pinned around the receipt so the machine block keeps a stable shape.
+
+Locked invariants (refuse typed `bad-override` naming the invariant): the
+verdict marker stays the body first line (`marker-first-line`); body `###`
+sections stay agent-owned (`findings-structure`); thresholds stay satisfiable
+non-negative integers (`degenerate-guard`); machine metadata comments stay
+script-owned (`metadata-presence`); the `verdict-footer`/`verdict-diagram`
+dividers stay byte-exact (`divider-shape`). Unknown placeholders refuse typed
+`bad-settings`.
+
+Placeholder inventory v1 (fragments and the P1b attribution text share one
+validator): `{version}` (tool version), `{tier}` (spend tier),
+`{product_url}` (stable product URL), `{files_reviewed}` (`N files` or
+`files unrecorded`), `{head_sha_short}` (7-char head, `dirty`, or `unknown`),
+`{model}` (first cost-model name, `REVIEW_MODEL`, or `unrecorded`),
+`{cost}` (`$n` or `unrecorded`), `{attribution}` (the default sentence, so it
+never recurses). Values degrade factually, never blank.
+
+Precedence is flags > fragments > settings file > env > defaults (a
+`--attribution-text` flag still beats the fragment; `publish.footer=false`
+still kills the block). Validation runs at `check-tree` (authoring-time) and
+is revalidated cheaply at `post`/`record`/`report` time with no re-render —
+every violation refuses loudly with the broken invariant named (fail-closed;
+warn-and-keep never applies to explicit operator intent). With no
+`.review/overrides/` dir the script path is byte-identical to today.
+
 ## Local review (no PR)
 
 Same review machinery, no GitHub object. `fetch-local owner/repo <name>` builds a

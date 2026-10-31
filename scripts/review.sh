@@ -74,7 +74,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     top-ranked actionable finding + the command to act on it. Pure read.
   show <owner/repo> <pr> --sig <sig> [--json]
     one full finding record. Pure read.
-  check-tree [--expect <prefix,...>]
+  check-tree [--expect <prefix,...>] [--json]
     refuse on unexpected dirt (own .review/ scratch ignored). No network. Machine clean-tree gate for mutating modes.
   verify <owner/repo> <pr> [--timeout <secs, default 300>] [--json]
     execute patch.json verifyCmd with a watchdog, record exit + tail into the patch record.
@@ -468,9 +468,11 @@ resolve_prefs() {
 # below) > defaults. Unknown keys refuse bad-settings; the credential scan
 # in resolve_prefs already covers this depth. Called from resolve_prefs so
 # the env layer applies even with no file.
-# Attribution placeholder inventory (P1b; P5 grows it for overrides):
-# {version}, {tier}, {product_url}. Anything else refuses typed
-# bad-settings so typos surface instead of rendering literally.
+# Attribution placeholder inventory v1 (P1b; P5 grows it for overrides):
+# {version}, {tier}, {product_url}, {files_reviewed}, {head_sha_short}, {model},
+# {cost}, {attribution}. Anything else refuses typed bad-settings so typos
+# surface instead of rendering literally. The settings/flag attribution text and
+# the P5 fragments share this one validator (single mechanism, extended inventory).
 # Overview knob (P3): publish.overview (bool, default true) gates the
 # collapsed file-table + topology block in report --output; the size
 # threshold (render_overview) still decides each run unless a global
@@ -480,8 +482,8 @@ validate_attribution_placeholders() { # $1 = text, $2 = source description
   found=$(printf '%s' "$1" | grep -o '{[A-Za-z_][A-Za-z0-9_]*}' 2>/dev/null || true)
   while IFS= read -r ph; do
     [[ -z "$ph" ]] && continue
-    case "$ph" in "{version}"|"{tier}"|"{product_url}") ;;
-      *) fail "bad-settings" "$2 carries unknown placeholder '$ph' (want only {version}, {tier}, {product_url})";;
+    case "$ph" in "{version}"|"{tier}"|"{product_url}"|"{files_reviewed}"|"{head_sha_short}"|"{model}"|"{cost}"|"{attribution}") ;;
+      *) fail "bad-settings" "$2 carries unknown placeholder '$ph' (want one of {version}, {tier}, {product_url}, {files_reviewed}, {head_sha_short}, {model}, {cost}, {attribution})";;
     esac
   done <<<"$found"
 }
@@ -635,6 +637,198 @@ resolve_publish_diagrams() { # no args; reads PREF_SETTINGS_FILE, sets EFFECTIVE
       || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.diagrams.expanded must be a boolean (want true|false)"
     EFFECTIVE_PUBLISH_DIAGRAMS_EXPANDED=$(jq -r '.publish.diagrams.expanded' "$PREF_SETTINGS_FILE")
   fi
+}
+
+# Section overrides (P5): operator-owned per-block template fragments.
+# Path choice (one line): .review/overrides/ — bundle-adjacent and operator-owned
+# like .review/panel, .review/budget and .review/kb.jsonl (repo-local, committable,
+# check-tree-ignored), NOT the skill install tree (prompts/ and skill dirs stay
+# tool-owned) nor XDG-global settings (machine-scoped, not per-repo style).
+# One fragment per overridable block, stable names: preamble.md (report clean-review
+# preamble prose), footer-order.md (receipt field order, subset), walkthrough-
+# threshold.md (overview show thresholds), attribution.md (attribution sentence).
+# Locked (refuse typed bad-override naming the invariant): marker-first-line,
+# findings-structure, degenerate-guard, metadata-presence, divider-shape — plus the
+# open-block rules footer-order-subset and attribution-single-line. Unknown
+# placeholders refuse typed bad-settings via the extended P1b validator above
+# (single mechanism). Asymmetry vs garnish is intentional: basis/evidence/diagram
+# mismatches warn-and-keep (agent prose, keep-biased), but overrides are explicit
+# operator intent — a stale fragment failing silent into defaults would surprise,
+# so every override violation refuses loudly instead.
+OVERRIDES_DIR=".review/overrides"
+OVERRIDE_PREAMBLE="$OVERRIDES_DIR/preamble.md"
+OVERRIDE_FOOTER_ORDER="$OVERRIDES_DIR/footer-order.md"
+OVERRIDE_THRESHOLD="$OVERRIDES_DIR/walkthrough-threshold.md"
+OVERRIDE_ATTRIBUTION="$OVERRIDES_DIR/attribution.md"
+
+# Locked-invariant scan over one fragment's raw text. Fails closed bad-override
+# naming the invariant — never warn-and-keep (see the asymmetry note above).
+override_check_locked() { # $1 = path, $2 = raw text
+  local path="$1" text="$2"
+  if grep -qE '^> ✅|^> ℹ️|^> \[!IMPORTANT\]|^> \[!CAUTION\]' <<<"$text"; then
+    fail "bad-override" "override $path violates locked invariant 'marker-first-line' (the verdict marker stays the body first line — fragments never carry it)"
+  fi
+  if grep -qE '^### ' <<<"$text"; then
+    fail "bad-override" "override $path violates locked invariant 'findings-structure' (body ### sections stay agent-owned — fragments never add them)"
+  fi
+  if grep -qE '<!--[[:space:]]*report-machine' <<<"$text"; then
+    fail "bad-override" "override $path violates locked invariant 'metadata-presence' (machine metadata comments stay script-owned — fragments never carry them)"
+  fi
+  # Bare-substring by design: the Review metadata comment wraps its keyword
+  # onto its own line, so anchoring on '<!--' would miss the real block and
+  # fail open. A loud refusal of edge-case prose is the safe direction.
+  if grep -qF 'Review metadata' <<<"$text"; then
+    fail "bad-override" "override $path violates locked invariant 'metadata-presence' (machine metadata comments stay script-owned — fragments never name them)"
+  fi
+  if grep -qE '<!--[[:space:]]*verdict-' <<<"$text"; then
+    fail "bad-override" "override $path violates locked invariant 'divider-shape' (machine dividers stay byte-exact — fragments never carry them)"
+  fi
+}
+
+# Footer receipt order (subset, never new): one field per line from
+# tier|cost|files|link, unique, non-empty; # comments and blanks skipped.
+# Sets OV_FOOTER_ORDER (space-separated). Fails closed bad-override.
+override_footer_order() { # no args; sets OV_FOOTER_ORDER
+  local line="" seen=""
+  OV_FOOTER_ORDER="tier cost files link"
+  [[ -f "$OVERRIDE_FOOTER_ORDER" ]] || return 0
+  OV_FOOTER_ORDER=""
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=$(printf '%s' "$line" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [[ -z "$line" ]] && continue
+    case "$line" in \#*) continue;; esac
+    case "$line" in tier|cost|files|link) ;;
+      *) fail "bad-override" "override $OVERRIDE_FOOTER_ORDER violates 'footer-order-subset' (unknown field '$line' — want only tier, cost, files, link)";;
+    esac
+    case " $seen " in *" $line "*) fail "bad-override" "override $OVERRIDE_FOOTER_ORDER violates 'footer-order-subset' (duplicate field '$line' — list each field once)";; esac
+    seen="$seen $line"
+    OV_FOOTER_ORDER="${OV_FOOTER_ORDER:+$OV_FOOTER_ORDER }$line"
+  done < "$OVERRIDE_FOOTER_ORDER"
+  [[ -n "$OV_FOOTER_ORDER" ]] \
+    || fail "bad-override" "override $OVERRIDE_FOOTER_ORDER violates 'footer-order-subset' (no fields listed — want a non-empty subset of tier, cost, files, link)"
+}
+
+# Walkthrough (overview show) thresholds. Lines `files: N` / `bytes: N` (`=` works
+# too), # comments and blanks skipped; absent keys read defaults (8 files, 24576
+# bytes). Values must be non-negative integers or the show/hide guard cannot be
+# satisfied deterministically. Sets OV_THRESH_FILES / OV_THRESH_BYTES.
+# Fails closed bad-override naming the degenerate-guard invariant.
+override_thresholds() { # no args; sets OV_THRESH_FILES / OV_THRESH_BYTES
+  local line="" flat="" key="" val="" seen_files="false" seen_bytes="false"
+  OV_THRESH_FILES="8"; OV_THRESH_BYTES="24576"
+  [[ -f "$OVERRIDE_THRESHOLD" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=$(printf '%s' "$line" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [[ -z "$line" ]] && continue
+    case "$line" in \#*) continue;; esac
+    flat=$(printf '%s' "$line" | tr -d '[:space:]' | tr ':' '=')
+    case "$flat" in
+      files=*) key="files"; val="${flat#files=}";;
+      bytes=*) key="bytes"; val="${flat#bytes=}";;
+      *) fail "bad-override" "override $OVERRIDE_THRESHOLD violates locked invariant 'degenerate-guard' (unknown key in '$line' — want only 'files: N' and 'bytes: N')";;
+    esac
+    case "$val" in ''|*[!0-9]*) fail "bad-override" "override $OVERRIDE_THRESHOLD violates locked invariant 'degenerate-guard' (value '$val' for '$key' is not a non-negative integer — thresholds must stay satisfiable)";; esac
+    # 15 digits max: bash-3.2 arithmetic wraps past 64-bit, silently inverting
+    # huge-means-never-show into always-show. Fail closed, same invariant.
+    if (( ${#val} > 15 )); then fail "bad-override" "override $OVERRIDE_THRESHOLD violates locked invariant 'degenerate-guard' (value '$val' for '$key' exceeds 15 digits — thresholds must fit 64-bit arithmetic)"; fi
+    if [[ "$key" == "files" ]]; then
+      [[ "$seen_files" == "true" ]] && fail "bad-override" "override $OVERRIDE_THRESHOLD violates locked invariant 'degenerate-guard' (duplicate '$key' — list each key once)"
+      seen_files="true"; OV_THRESH_FILES="$val"
+    else
+      [[ "$seen_bytes" == "true" ]] && fail "bad-override" "override $OVERRIDE_THRESHOLD violates locked invariant 'degenerate-guard' (duplicate '$key' — list each key once)"
+      seen_bytes="true"; OV_THRESH_BYTES="$val"
+    fi
+  done < "$OVERRIDE_THRESHOLD"
+}
+
+# Attribution sentence fragment. Single line (the footer receipt line stays one
+# line); empty reads omit-the-sentence (receipt kept). Placeholders come from the
+# v1 inventory. Echoes the raw text (substitution happens at render time with
+# bundle values so check-tree validation needs no bundle).
+override_attribution_text() { # no args; echoes raw fragment text or nothing
+  local text=""
+  [[ -f "$OVERRIDE_ATTRIBUTION" ]] || return 0
+  text=$(tr -d '\r' < "$OVERRIDE_ATTRIBUTION")
+  if [[ "$(printf '%s' "$text" | wc -l | tr -d ' ')" != "0" ]]; then
+    fail "bad-override" "override $OVERRIDE_ATTRIBUTION violates 'attribution-single-line' (want one sentence on one line)"
+  fi
+  printf '%s' "$text"
+}
+
+# Preamble prose fragment. Multi-line prose allowed (it replaces the clean-review
+# preamble heading); empty reads omit-the-heading (bullets kept). Echoes raw text.
+override_preamble_text() { # no args; echoes raw fragment text or nothing
+  [[ -f "$OVERRIDE_PREAMBLE" ]] || return 0
+  tr -d '\r' < "$OVERRIDE_PREAMBLE"
+}
+
+# Authoring-time (check-tree) plus post-time (post/record/report) override gate.
+# Cheap: locked-block integrity plus guard satisfiability plus placeholder inventory
+# over the raw fragment text — no re-render. Absent dir or absent fragments pass
+# silently (parity: no overrides reads today's bytes). Every violation refuses
+# loudly typed (bad-override, or bad-settings for unknown placeholders).
+validate_overrides() { # no args; fails closed on any violation
+  local f="" text=""
+  for f in "$OVERRIDE_PREAMBLE" "$OVERRIDE_FOOTER_ORDER" "$OVERRIDE_THRESHOLD" "$OVERRIDE_ATTRIBUTION"; do
+    [[ -f "$f" ]] || continue
+    [[ -r "$f" ]] || fail "bad-override" "override $f is unreadable (fix permissions or remove it)"
+    text=$(tr -d '\r' < "$f")
+    override_check_locked "$f" "$text"
+    if [[ "$f" == "$OVERRIDE_PREAMBLE" || "$f" == "$OVERRIDE_ATTRIBUTION" ]]; then
+      validate_attribution_placeholders "$text" "override $f"
+    fi
+  done
+  override_footer_order
+  override_thresholds
+  if [[ -f "$OVERRIDE_ATTRIBUTION" ]]; then override_attribution_text >/dev/null; fi
+}
+
+# Bundle values for the v1 inventory. Never blank: unknown reads unrecorded/dirty.
+override_head_short() { # $1 = bundle dir; echoes 7-char head, dirty, or unknown
+  local hs="" dirty=""
+  if [[ -f "$1/PR.json" ]]; then hs=$(pr_field "$1" head_sha)
+  elif [[ -f "$1/source.json" ]]; then
+    hs=$(jq -r '.head_sha // empty' "$1/source.json" 2>/dev/null || true)
+    dirty=$(jq -r '.dirty // false' "$1/source.json" 2>/dev/null || true)
+  fi
+  if [[ -z "$hs" ]]; then
+    if [[ "$dirty" == "true" ]]; then printf 'dirty'; else printf 'unknown'; fi
+  else printf '%s' "${hs:0:7}"; fi
+}
+
+override_model() { # $1 = bundle dir; echoes first cost model name, REVIEW_MODEL, or unrecorded
+  local m=""
+  if [[ -f "$1/cost.json" ]]; then
+    m=$(jq -r 'if type == "array" then (.[0].models[0].name // empty) else (.models[0].name // empty) end' "$1/cost.json" 2>/dev/null || true)
+  fi
+  [[ -z "$m" && -n "${REVIEW_MODEL:-}" ]] && m="$REVIEW_MODEL"
+  [[ -z "$m" ]] && m="unrecorded"
+  printf '%s' "$m"
+}
+
+# Placeholder substitution for fragments (and the P1b attribution text — same
+# mechanism, extended inventory). $1 = raw text, $2 = bundle dir. {attribution}
+# always means the default sentence (with version/url resolved), so a fragment
+# naming it can never recurse into itself.
+substitute_override_placeholders() { # $1 = text, $2 = dir; echoes substituted text
+  local text="$1" dir="$2" ver="" files="" head="" model="" base_attr=""
+  ver=$(tool_version)
+  publish_spend "$dir"
+  base_attr="Reviewed with [**Verdict {version}**](${PRODUCT_URL})"
+  base_attr=${base_attr//\{version\}/${ver}}
+  base_attr=${base_attr//\{product_url\}/${PRODUCT_URL}}
+  text=${text//\{attribution\}/${base_attr}}
+  text=${text//\{version\}/${ver}}
+  text=${text//\{tier\}/${PUBLISH_TIER}}
+  text=${text//\{product_url\}/${PRODUCT_URL}}
+  text=${text//\{cost\}/${PUBLISH_COST}}
+  files=$(publish_file_count "$dir")
+  text=${text//\{files_reviewed\}/${files}}
+  head=$(override_head_short "$dir")
+  text=${text//\{head_sha_short\}/${head}}
+  model=$(override_model "$dir")
+  text=${text//\{model\}/${model}}
+  printf '%s' "$text"
 }
 _FD9_READY="false"
 # Peek --json early (stopping at a `--` paths separator) so typed prefs
@@ -817,9 +1011,8 @@ publish_review_link() { # $1 = dir; echoes "" (unknown) or a factual review ref 
 }
 
 render_footer() { # $1 = dir; echoes the merged footer block, or nothing when publish.footer is off
-  local ver="" receipt="" attr="" link="" logo="" maker=""
+  local receipt="" attr="" logo="" maker="" seg="" segtext=""
   [[ "${EFFECTIVE_PUBLISH_FOOTER:-true}" == "true" ]] || return 0
-  ver=$(tool_version)
   publish_spend "$1"
   # NOTE (P1b): the version stays inline and space-separated
   # (Verdict 0.2.0) — never wrapped in brackets or parens. Brackets would
@@ -827,16 +1020,35 @@ render_footer() { # $1 = dir; echoes the merged footer block, or nothing when pu
   # aside. Keep it that way.
   attr="${EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT:-}"
   [[ -z "$attr" ]] && attr="Reviewed with [**Verdict {version}**](${PRODUCT_URL})"
-  attr=${attr//\{product_url\}/${PRODUCT_URL}}
-  attr=${attr//\{version\}/${ver}}
-  attr=${attr//\{tier\}/${PUBLISH_TIER}}
-  receipt="$PUBLISH_TIER tier · cost $PUBLISH_COST · $(publish_file_count "$1")"
-  link=$(publish_review_link "$1")
-  [[ -n "$link" ]] && receipt="$receipt · $link"
+  # P5: the attribution fragment wins over the settings file/env/default above,
+  # but a per-run --attribution-text flag still wins over the fragment.
+  if [[ -f "$OVERRIDE_ATTRIBUTION" && "$FLAG_PUBLISH_ATTRIBUTION_TEXT_SET" != "true" ]]; then
+    attr=$(override_attribution_text)
+  fi
+  attr=$(substitute_override_placeholders "$attr" "$1")
+  # P5: receipt segments join in fragment order (default today's order); unknown
+  # links and dropped fields are skipped, never blank — an all-dropped order
+  # degrades to unrecorded. The sentence and copyright lines stay pinned so the
+  # machine block keeps a stable shape the divider strip-replace can round-trip.
+  override_footer_order
+  receipt=""
+  # shellcheck disable=SC2086 # OV_FOOTER_ORDER is a validated space-separated field list
+  for seg in $OV_FOOTER_ORDER; do
+    segtext=""
+    case "$seg" in
+      tier) segtext="$PUBLISH_TIER tier";;
+      cost) segtext="cost $PUBLISH_COST";;
+      files) segtext=$(publish_file_count "$1");;
+      link) segtext=$(publish_review_link "$1");;
+    esac
+    [[ -n "$segtext" ]] && receipt="${receipt:+$receipt · }$segtext"
+  done
+  [[ -z "$receipt" ]] && receipt="unrecorded"
   echo "---"
   echo ""
   echo "$FOOTER_DIVIDER"
-  if [[ "${EFFECTIVE_PUBLISH_ATTRIBUTION:-product}" != "off" ]]; then
+  # P5: an empty attribution fragment omits the sentence (receipt kept, same as off).
+  if [[ "${EFFECTIVE_PUBLISH_ATTRIBUTION:-product}" != "off" && -n "$attr" ]]; then
     logo=""
     if [[ "${EFFECTIVE_PUBLISH_LOGO:-true}" == "true" && -n "${EFFECTIVE_PUBLISH_LOGO_URL:-}" ]]; then
       logo="<a href=\"${PRODUCT_URL}\"><img src=\"${EFFECTIVE_PUBLISH_LOGO_URL}\" alt=\"Verdict\" width=\"18\" height=\"18\"></a> "
@@ -911,6 +1123,8 @@ render_overview() { # $1 = dir, $2 = slug; echoes the collapsed overview, or not
   if [[ "$force" != "true" ]]; then
     [[ "${EFFECTIVE_PUBLISH_OVERVIEW:-true}" == "true" ]] || return 0
     # Pinned P3 thresholds: more than 8 files, or a diff over 24576 bytes (24KB).
+    # P5: the walkthrough-threshold fragment overrides both numbers (validated).
+    override_thresholds
     if [[ -f "$dir/PR.json" ]]; then
       ov_files=$(jq -r '(.files // []) | length' "$dir/PR.json" 2>/dev/null || echo "0")
     fi
@@ -923,7 +1137,7 @@ render_overview() { # $1 = dir, $2 = slug; echoes the collapsed overview, or not
       ov_bytes=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || echo "0")
     fi
     case "$ov_bytes" in ''|*[!0-9]*) ov_bytes="0";; esac
-    if (( ov_files <= 8 )) && (( ov_bytes <= 24576 )); then return 0; fi
+    if (( 10#$ov_files <= 10#$OV_THRESH_FILES )) && (( 10#$ov_bytes <= 10#$OV_THRESH_BYTES )); then return 0; fi
   fi
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/verdict-overview.XXXXXX") || return 0
   # One shared diff scanner (POSIX awk): header parse mirrors the fetch-time
@@ -1849,6 +2063,10 @@ $move_section"
   # never invented, never blank. Re-render is strip-and-replace on the
   # machine divider, so a body that already carries a rendered block comes
   # out byte-identical (no stacking).
+  # Section overrides (P5): cheap post-time revalidation of the operator
+  # fragments (locked-block integrity plus guard satisfiability — no re-render).
+  # A stale edit fails closed here with the broken invariant named.
+  validate_overrides
   footer_block=$(render_footer "$dir")
   if [[ -n "$footer_block" ]]; then
     if printf '%s' "$body" | grep -qF "$FOOTER_DIVIDER"; then
@@ -3408,6 +3626,9 @@ if [[ "$cmd" == "report" ]]; then
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
     || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
+  # Section overrides (P5): fail-closed render gate — invalid fragments refuse
+  # here before any fragment-derived bytes are emitted (report-time half of check+post).
+  validate_overrides
   now=$(now_utc)
   head_sha=""; base_sha=""
   if [[ -f "$dir/PR.json" ]]; then
@@ -3568,7 +3789,17 @@ if [[ "$cmd" == "report" ]]; then
       if [[ -n "$rep_defs" ]]; then printf '%s\n' "$rep_defs"; fi
       rep_overview=$(render_overview "$dir" "$pr")
       if [[ -n "$rep_overview" ]]; then printf '%s\n' "$rep_overview"; fi
-      if [[ -n "$rep_checked" ]]; then echo "## What we checked"; printf '%s\n' "$rep_checked"; fi
+      if [[ -n "$rep_checked" ]]; then
+        # P5: the preamble fragment rewords this clean-review preamble heading
+        # (prose style, v1 placeholders); absent reads today's heading (parity).
+        if [[ -f "$OVERRIDE_PREAMBLE" ]]; then
+          rep_heading=$(substitute_override_placeholders "$(override_preamble_text)" "$dir")
+          [[ -n "$rep_heading" ]] && printf '%s\n' "$rep_heading"
+        else
+          echo "## What we checked"
+        fi
+        printf '%s\n' "$rep_checked"
+      fi
       rep_footer=$(render_footer "$dir")
       if [[ -n "$rep_footer" ]]; then printf '%s\n' "$rep_footer"; fi
       echo "<!-- report-machine:end -->"
@@ -3746,20 +3977,55 @@ fi
 # ------------------------------------------------------------- check-tree ---
 # Machine clean-tree gate for address/fix-ci/build prompts. No network.
 # Refuses on unexpected dirt (lists files); --expect takes comma-separated path prefixes.
+# Also the authoring-time half of override validation (P5): a stale fragment fails
+# closed here with the broken invariant named, before any post/report render.
 if [[ "$cmd" == "check-tree" ]]; then
   expect=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --expect) expect="${2:-}"; shift 2;;
-    *) echo "unknown flag '$1' for check-tree (want --expect <prefix,...>)" >&2; exit 2;;
+    --json) json_mode="true"; shift;;
+    *) echo "unknown flag '$1' for check-tree (want --expect <prefix,...>, --json)" >&2; exit 2;;
   esac; done
-  porcelain=$(git status --porcelain 2>/dev/null) || { echo "check-tree: not a git repo" >&2; exit 1; }
+  json_redirect
+  validate_overrides
+  porcelain=$(git status --porcelain 2>/dev/null) || {
+    echo "check-tree: not a git repo" >&2
+    if [[ "$json_mode" == "true" ]]; then
+      now=$(now_utc)
+      jq -n --arg v "$cmd" --arg t "$now" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:"run inside a git repository",
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{clean:false,files:[]},
+          error:{code:"not-a-repo",message:"check-tree needs a git repository (git status failed)"}}' >&9
+    fi
+    exit 1
+  }
   # The skill's own .review/ scratch never trips the gate (fetch writes it by design).
   own=$(grep -c '^.. \.review/' <<<"$porcelain" || true)
+  case "$own" in ''|*[!0-9]*) own="0";; esac
   porcelain=$(grep -v '^.. \.review/' <<<"$porcelain" || true)
   scratch=""; (( own > 0 )) && scratch=" ($own .review/ scratch line(s) ignored)" || true
-  if [[ -z "$porcelain" ]]; then echo "check-tree: clean$scratch"; exit 0; fi
+  if [[ -z "$porcelain" ]]; then
+    msg="check-tree: clean$scratch"
+    echo "$msg"
+    if [[ "$json_mode" == "true" ]]; then
+      now=$(now_utc)
+      jq -n --arg v "$cmd" --arg t "$now" --arg m "$msg" --argjson ign "$own" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:$m,
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{clean:true,ignored_review_lines:$ign},error:null}' >&9
+    fi
+    exit 0
+  fi
   if [[ -z "$expect" ]]; then
-    echo "check-tree: dirty worktree — commit or stash first:"; echo "$porcelain"; exit 1
+    msg="check-tree: dirty worktree — commit or stash first:"
+    echo "$msg"; echo "$porcelain"
+    if [[ "$json_mode" == "true" ]]; then
+      now=$(now_utc)
+      files_json=$(printf '%s\n' "$porcelain" | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
+      jq -n --arg v "$cmd" --arg t "$now" --arg m "$msg" --argjson f "$files_json" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:$m,
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{clean:false,files:$f},error:null}' >&9
+    fi
+    exit 1
   fi
   stray=""
   while IFS= read -r line; do
@@ -3771,8 +4037,26 @@ if [[ "$cmd" == "check-tree" ]]; then
     if [[ -z "$ok" ]]; then stray="$stray$line
 "; fi
   done <<<"$porcelain"
-  if [[ -n "$stray" ]]; then echo "check-tree: unexpected dirt:"; printf '%s' "$stray"; exit 1; fi
-  echo "check-tree: only expected files dirty"
+  if [[ -n "$stray" ]]; then
+    msg="check-tree: unexpected dirt:"
+    echo "$msg"; printf '%s' "$stray"
+    if [[ "$json_mode" == "true" ]]; then
+      now=$(now_utc)
+      stray_json=$(printf '%s\n' "$stray" | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
+      jq -n --arg v "$cmd" --arg t "$now" --arg m "$msg" --argjson s "$stray_json" \
+        '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:$m,
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{clean:false,unexpected:$s},error:null}' >&9
+    fi
+    exit 1
+  fi
+  msg="check-tree: only expected files dirty"
+  echo "$msg"
+  if [[ "$json_mode" == "true" ]]; then
+    now=$(now_utc)
+    jq -n --arg v "$cmd" --arg t "$now" --arg m "$msg" \
+      '{schema_version:"1",verb:$v,repo:"",pr:null,at:$t,next:$m,
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{clean:true,expected_only:true},error:null}' >&9
+  fi
   exit 0
 fi
 
