@@ -530,6 +530,20 @@ both the local and the PR bundle. Feed for the calibration narrative: per-bundle
 models plus per-tier outcomes is the raw material for per-model tier precision
 over time — run `calibrate` on recent bundles to settle what the trend only counts.
 
+`trend --overlap` adds the KB overlap audit to the same rollup: an offline join
+of `kb-recall.json` manifests, findings `kb` cites, and `.review/kb-joins.jsonl`
+into the three arena-binding numbers — recall precision (recalled rules actually
+cited), recall coverage of cites (cited rules that came from recall rather than
+invention), and the cited-finding outcome split (`addressed` vs `false-positive`,
+with `open`/`deferred` pending) — plus per-bundle rows carrying each bundle's
+own precision/coverage/split. Missing or unreadable manifests read as unmeasured
+(never zero) and stay out of the precision/coverage denominators; the outcome
+split still counts cited findings from unmeasured bundles. Joins rows corroborate
+credited flips, and per-bundle `calibrate_eligible` marks bundles carrying a
+posted review id + head that `calibrate` could settle against live threads — the
+audit reads those shapes only, never recomputes them and never touches the
+network. Without the flag both outputs are byte-identical to today.
+
 ## Out of scope by design
 
 Hosted settings, metered proxies, token mints, server-seeded comments and checks,

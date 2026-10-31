@@ -96,13 +96,19 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     --check opts into gating (same output, machine exits): 0 ready, 1 blockers
     or wait, 2 usage, 3 tool error. Without --check the run stays advisory:
     exit 0 with blockers listed (typed errors exit 1, usage exits 2).
-  trend <owner/repo> [--json]
+  trend <owner/repo> [--overlap] [--json]
     portfolio rollup over existing bundle stores (no network, writes nothing):
     findings opened/addressed/closed over time, broken down by severity tier
     and status, with per-bundle models/effort for the calibration join.
     Recomputed every run (manual edits stay truthful); missing/unreadable
     stores warn and skip, never fail. `closed` means no longer actionable
     (wont-fix/false-positive/deferred); null severity reads untagged.
+    --overlap adds the KB overlap audit: an offline join of kb-recall.json
+    manifests, findings kb cites, and kb-joins.jsonl into recall precision,
+    recall coverage of cites, and the cited-finding outcome split
+    (addressed vs false-positive); missing manifests read unmeasured (never
+    zero) and stay out of both denominators. Default output is byte-identical
+    without the flag.
   learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]
     append one rule to .review/kb.jsonl (zeros + status active; provenance
     defaults to manual, rigor defaults to pointed). Refuses exact-duplicate
@@ -3187,9 +3193,11 @@ fi
 # cost.json when the agent wrote one — the calibration join key. Counts are
 # per store: adopted findings appear in both the local and the PR bundle.
 if [[ "$cmd" == "trend" ]]; then
+  overlap="false"
   while [[ $# -gt 0 ]]; do case "$1" in
+    --overlap) overlap="true"; shift;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for trend (want --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for trend (want --overlap, --json)" >&2; exit 2;;
   esac; done
   json_redirect
   now=$(now_utc)
@@ -3258,11 +3266,103 @@ if [[ "$cmd" == "trend" ]]; then
              untagged: ([.[].by_tier.untagged] | add // 0)}})
        | sort_by(if .period == null then "~" else .period end))}')
   n_bundles=$(jq -r '.bundles' <<<"$rollup")
+  # Overlap audit (--overlap only): offline join of recalled x cited x
+  # outcomes into the three arena-binding numbers. Recall precision =
+  # |recalled n cited| / |recalled|; coverage = |recalled n cited| /
+  # |cited|; outcome split = addressed vs false-positive over cited
+  # findings. The cited set comes from findings.json kb arrays with the same
+  # (.kb // []) extraction credit uses (normalized at merge time, so
+  # unknown/retired ids never count); review.json is transient agent input
+  # and may be absent, so the store is the auditable cite set. Missing or
+  # unreadable manifests read unmeasured (never zero) and stay out of both
+  # denominators; the outcome split still counts cited findings from
+  # unmeasured bundles. Joins rows corroborate credited flips;
+  # calibrate_eligible marks bundles carrying a posted review id + head that
+  # calibrate could settle against live threads (no recomputation, no
+  # network). Pure read: writes nothing.
+  overlap_json="null"
+  if [[ "$overlap" == "true" ]]; then
+    orows="[]"
+    joins_all="[]"
+    if [[ -f "$KB_JOINS" ]]; then
+      if ! joins_all=$(jq -c -s '[.[] | select(type == "object")]' "$KB_JOINS" 2>/dev/null); then
+        warn "kb joins $KB_JOINS unreadable — joins counts off for this rollup (fix or remove the file)"
+        joins_all="[]"
+      fi
+    fi
+    if [[ -d .review ]]; then
+      for b in .review/*/; do
+        [[ -d "$b" ]] || continue
+        [[ -f "${b}findings.json" ]] || continue
+        name=${b#.review/}; name=${name%/}
+        fjson=$(cat "${b}findings.json" 2>/dev/null || true)
+        if ! jq -e 'type == "array"' <<<"$fjson" >/dev/null 2>&1; then
+          continue
+        fi
+        measured_json="false"; recalled="[]"
+        if [[ -f "${b}kb-recall.json" ]]; then
+          if jq -e 'type == "array"' "${b}kb-recall.json" >/dev/null 2>&1; then
+            measured_json="true"
+            recalled=$(jq -c '[.[] | select(type == "object") | .id | select(type == "string")]' "${b}kb-recall.json" 2>/dev/null || echo "[]")
+          else
+            warn "trend skips ${b}kb-recall.json (unreadable or not a manifest array)"
+          fi
+        fi
+        cel="false"
+        case "$b" in
+          .review/local-*) ;;
+          *)
+            if [[ -f "${b}post.json" ]] \
+              && [[ -n "$(jq -r '.review.id // empty' "${b}post.json" 2>/dev/null || true)" ]] \
+              && [[ -n "$(jq -r '.head // empty' "${b}post.json" 2>/dev/null || true)" ]]; then
+              cel="true"
+            fi;;
+        esac
+        orow=$(jq -n --arg b "$name" --argjson m "$measured_json" --argjson rec "$recalled" \
+          --argjson f "$fjson" --argjson j "$joins_all" --argjson cel "$cel" '
+          ([$f[] | ((.kb // [])[]?) | select(type == "string")] | unique) as $cited
+          | (($rec - ($rec - $cited))) as $inter
+          | ([$f[] | select(((.kb // []) | length) > 0)]) as $cf
+          | {bundle: $b, measured: $m, recalled: $rec, cited: $cited, overlap: $inter,
+             precision: (if $m and ($rec | length) > 0 then ($inter | length) / ($rec | length) else null end),
+             coverage: (if $m and ($cited | length) > 0 then ($inter | length) / ($cited | length) else null end),
+             cited_findings: ($cf | length),
+             addressed: ([$cf[] | select(.status == "addressed")] | length),
+             false_positive: ([$cf[] | select(.status == "false-positive")] | length),
+             pending: ([$cf[] | select(.status == "open" or .status == "deferred")] | length),
+             wont_fix: ([$cf[] | select(.status == "wont-fix")] | length),
+             joins_rows: ([$j[] | select(.bundle == $b)] | length),
+             calibrate_eligible: $cel}')
+        orows=$(jq --argjson r "$orow" '. + [$r]' <<<"$orows")
+      done
+    fi
+    overlap_json=$(jq -n --argjson rows "$orows" --argjson j "$joins_all" '
+      ([$rows[] | select(.measured) | .recalled[]] | unique) as $rec
+      | ([$rows[] | select(.measured) | .cited[]] | unique) as $cit
+      | (($rec - ($rec - $cit))) as $inter
+      | {measured_bundles: ([$rows[] | select(.measured)] | length),
+         unmeasured_bundles: ([$rows[] | select(.measured | not)] | length),
+         unmeasured: ([$rows[] | select(.measured | not) | .bundle]),
+         bundles: ($rows | length),
+         recalled_rules: $rec, cited_rules: $cit, overlap_rules: $inter,
+         precision: (if ($rec | length) > 0 then ($inter | length) / ($rec | length) else null end),
+         coverage: (if ($cit | length) > 0 then ($inter | length) / ($cit | length) else null end),
+         cited_findings: ([$rows[].cited_findings] | add // 0),
+         addressed: ([$rows[].addressed] | add // 0),
+         false_positive: ([$rows[].false_positive] | add // 0),
+         pending: ([$rows[].pending] | add // 0),
+         wont_fix: ([$rows[].wont_fix] | add // 0),
+         joins: {rows: ($j | length),
+           addressed: ([$j[] | select(.outcome == "addressed")] | length),
+           false_positive: ([$j[] | select(.outcome == "false-positive")] | length)},
+         calibrate_eligible_bundles: ([$rows[] | select(.calibrate_eligible)] | length),
+         per_bundle: $rows}')
+  fi
   if [[ "$json_mode" == "true" ]]; then
-    jq -n --arg v "$cmd" --arg r "$repo" --arg t "$now" --argjson roll "$rollup" --argjson rows "$rows" \
+    jq -n --arg v "$cmd" --arg r "$repo" --arg t "$now" --argjson roll "$rollup" --argjson rows "$rows" --argjson ov "$overlap_json" \
       '{schema_version:"1",verb:$v,repo:$r,pr:null,at:$t,
         next:(if $roll.bundles > 0 then "calibrate recent bundles for per-model tier precision" else "no reviewed bundles yet — fetch + post/record first" end),
-        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({generated_at:$t} + $roll + {per_bundle:$rows}),error:null}' >&9
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({generated_at:$t} + $roll + {per_bundle:$rows} + (if $ov == null then {} else {overlap:$ov} end)),error:null}' >&9
   else
     if (( n_bundles == 0 )); then
       echo "trend: $repo — no reviewed bundles (no .review/*/findings.json yet)"
@@ -3271,6 +3371,11 @@ if [[ "$cmd" == "trend" ]]; then
       jq -r '.periods[] | "\(.period // "undated")  bundles=\(.bundles) findings=\(.findings) open=\(.open) addressed=\(.addressed) closed=\(.closed) tiers critical=\(.by_tier.critical) important=\(.by_tier.important) informational=\(.by_tier.informational) untagged=\(.by_tier.untagged)"' <<<"$rollup"
       echo "tiers: $(jq -r '"critical=\(.by_tier.critical) important=\(.by_tier.important) informational=\(.by_tier.informational) untagged=\(.by_tier.untagged)"' <<<"$rollup")"
       echo "status: $(jq -r '"open=\(.by_status.open) addressed=\(.by_status.addressed) wont-fix=\(.by_status."wont-fix") false-positive=\(.by_status."false-positive") deferred=\(.by_status.deferred)"' <<<"$rollup")"
+    fi
+    if [[ "$overlap" == "true" ]]; then
+      jq -r '"overlap: \(.measured_bundles) measured, \(.unmeasured_bundles) unmeasured — precision=\(.precision // "n/a") coverage=\(.coverage // "n/a") (recalled=\(.recalled_rules | length) cited=\(.cited_rules | length) overlap=\(.overlap_rules | length))",
+        "cited outcomes: \(.cited_findings) cited findings — addressed=\(.addressed) false-positive=\(.false_positive) pending=\(.pending) wont-fix=\(.wont_fix); joins rows=\(.joins.rows) (addressed=\(.joins.addressed) false-positive=\(.joins.false_positive))",
+        (.per_bundle[] | "  \(.bundle): measured=\(.measured) precision=\(.precision // "n/a") coverage=\(.coverage // "n/a") (recalled=\(.recalled | length) cited=\(.cited | length) overlap=\(.overlap | length)) outcomes addressed=\(.addressed) false-positive=\(.false_positive) pending=\(.pending)")' <<<"$overlap_json"
     fi
   fi
   exit 0
