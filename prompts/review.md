@@ -235,9 +235,12 @@ coverage and `roles.txt` (no new data collection; a `**`-lead-in, never a
 - `src/api.ts` — request validation (source)
 - `src/api.test.ts` — new cases for the changed paths (test)
 
-Do not hand-write the footer: the script appends one merged block at the
-body end (tool version, tier, cost or unrecorded, files reviewed, review
-link when known) with one factual attribution sentence. Pre-post the review
+Do not hand-write the footer (and never emit the `<!-- verdict-footer -->`
+marker — it is machine-owned, and a body carrying it gets its rendered block
+replaced): the script appends one merged block at the body end — a
+product-linked logo plus linked bold product name (level-knobbed, version
+inline) with receipt fields (tier, cost or unrecorded, files reviewed,
+review link when known). Pre-post the review
 link is unknown — never invent a review id or URL.
 
 ## Opening callout ladder (pick by author's next action)

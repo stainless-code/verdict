@@ -232,8 +232,9 @@ lead, `--output` renders a `> Basis: …` line computed exactly from the
 findings store (rigor rung counts in evidence order, distinct cited kb rule
 ids, addressed findings as verified fixes — covering the whole store
 regardless of display filters). Every `--output` file and every posted body
-ends with one merged footer block (version, tier, cost or unrecorded, files
-reviewed, review link when known, one factual attribution sentence) — see
+ends with one merged footer block (tier, cost or unrecorded, files
+reviewed, review link when known, plus a leveled attribution line with
+logo) — see
 Publish footer + attribution knobs. Item bodies
 stay 200-char summaries; full reasoning lives in the `--json` envelope only.
 Distinct from `prompts/ci.md`'s agent-written
@@ -391,9 +392,10 @@ prompt-dump destination, so the file exposes exactly three namespaces:
   "color": { "mode": "auto" },
   "publish": {
     "footer": true,
-    "attribution": true,
-    "attribution_text": "Reviewed with verdict {version}",
-    "copyright": ""
+    "attribution": "product",
+    "copyright": "",
+    "logo": true,
+    "logo_url": "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg"
   }
 }
 ```
@@ -407,8 +409,9 @@ none pinned` and `learnings` notes); pinned-panel and warning lines stay.
 
 Precedence is flags > file > env (`REVIEW_OUTPUT_FORMAT`,
 `REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`, plus `REVIEW_PUBLISH_FOOTER`,
-`REVIEW_PUBLISH_ATTRIBUTION`, `REVIEW_PUBLISH_ATTRIBUTION_TEXT`,
-`REVIEW_PUBLISH_COPYRIGHT` for the footer below) > defaults; global flags
+`REVIEW_PUBLISH_ATTRIBUTION` (`off`|`product`|`full`), `REVIEW_PUBLISH_ATTRIBUTION_TEXT`,
+`REVIEW_PUBLISH_COPYRIGHT`, `REVIEW_PUBLISH_LOGO`, `REVIEW_PUBLISH_LOGO_URL`
+for the footer below) > defaults; global flags
 `--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb
 (`--json` itself stays per-verb and already wins over a text default).
 `NO_COLOR` applies only when color is otherwise unset. Any other top-level
@@ -429,30 +432,54 @@ block at the end:
 ```markdown
 ---
 
-> verdict `0.2.0` · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
-> Reviewed with verdict 0.2.0.
+<!-- verdict-footer -->
+
+> <a href="https://stainless-code.com/verdict"><img src="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 0.2.0**](https://stainless-code.com/verdict) · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
 ```
 
 Fields degrade factually, never blank, never failing the run: an unreadable
 version reads `unknown`, unpriced spend reads `cost unrecorded`, uncountable
 files read `files unrecorded`, and the review link renders only when a
-completed post record carries it (never invented pre-post). Attribution is
-one factual sentence with no logo and no link; an operator `copyright`
-string appends as its own sentence when set.
+completed post record carries it (never invented pre-post). The attribution
+line carries a product-linked logo and a linked bold product name with the
+version inline and space-separated — never in brackets (they would collide
+with the link text) or parens.
+
+The `<!-- verdict-footer -->` comment is a machine divider between content
+and footer. Re-rendering a body that already carries a rendered block strips
+the old block at the divider and appends a fresh one, so the result is
+byte-identical (no stacking). Never hand-write the marker — bodies carrying
+it get their rendered block replaced.
 
 Knobs live under one `publish` namespace in the settings file (see Onboarding
 for the path and shape): `publish.footer` (bool, default `true`) kills the
-whole block; `publish.attribution` (bool, default `true`) kills just the
-branding sentence; `publish.attribution_text` (string, default
-`Reviewed with verdict {version}`, `{version}` substituted) rewords it;
+whole block; `publish.attribution` (enum, default `"product"`) levels the
+line — `"off"` keeps the receipt without the sentence or logo, `"product"`
+renders the linked name with no maker, `"full"` appends
+`by [Stainless Code](https://stainless-code.com)` after the sentence;
+`publish.attribution_text` (string, default
+`Reviewed with [**Verdict {version}**](https://stainless-code.com/verdict)`,
+`{version}`/`{tier}`/`{product_url}` substituted) rewords the sentence —
+any other `{placeholder}` refuses typed `bad-settings`;
+`publish.logo` (bool, default `true`) drops the image;
+`publish.logo_url` (string, default the tracked `apps/docs/public/logo.svg`
+raw asset) repoints it — empty reads text-only, never a broken image;
 `publish.copyright` (string, default empty = off) appends the operator
-notice. There are no per-field footer knobs. Flags `--footer/--no-footer`,
-`--attribution/--no-attribution`, `--attribution-text <text>`,
-`--copyright <text>` win over the file; the file wins over
+notice as its own line. There are no per-field footer knobs. Flags
+`--footer/--no-footer`, `--attribution [off|product|full]`/`--no-attribution`,
+`--attribution-text <text>`, `--copyright <text>`, `--logo/--no-logo`,
+`--logo-url <url>` win over the file; the file wins over
 `REVIEW_PUBLISH_FOOTER`, `REVIEW_PUBLISH_ATTRIBUTION`,
-`REVIEW_PUBLISH_ATTRIBUTION_TEXT`, `REVIEW_PUBLISH_COPYRIGHT` env; env wins
+`REVIEW_PUBLISH_ATTRIBUTION_TEXT`, `REVIEW_PUBLISH_COPYRIGHT`,
+`REVIEW_PUBLISH_LOGO`, `REVIEW_PUBLISH_LOGO_URL` env; env wins
 over defaults. Unknown `publish.*` keys refuse typed `bad-settings`, and any
 credential-shaped key at any depth refuses `bad-settings-credentials`.
+
+Migration note (P1b breaks the day-old P1 default): `publish.attribution`
+was a bool in 0.2.0 and is now `off`/`product`/`full` — a file carrying
+`true`/`false` refuses with the mapping named (`"off"` for `false`,
+`"product"` for `true`). `--attribution`/`--no-attribution` keep working
+(product/off); `--attribution full` reaches the maker level.
 
 Confidence is the agent's "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.
 The scale stays 1-5 across

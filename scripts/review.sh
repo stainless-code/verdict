@@ -154,14 +154,16 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   Global presentation flags (any verb; stripped before verb parsing):
   --color <auto|always|never>, --compact / --no-compact, --no-json.
   Global publish flags (any verb; stripped before verb parsing):
-  --footer / --no-footer, --attribution / --no-attribution,
-  --attribution-text <text>, --copyright <text>.
+  --footer / --no-footer, --attribution [off|product|full] / --no-attribution,
+  --attribution-text <text>, --copyright <text>, --logo / --no-logo,
+  --logo-url <url>.
   Flags win over the settings file, which wins over env
   (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE,
   REVIEW_PUBLISH_FOOTER, REVIEW_PUBLISH_ATTRIBUTION,
-  REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT), which wins
+  REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT,
+  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL), which wins
   over defaults. The settings file holds presentation (output, layout,
-  color) plus publish (footer receipt + attribution) namespaces
+  color) plus publish (footer receipt + leveled attribution + logo) namespaces
   (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).
   --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
@@ -298,13 +300,25 @@ $hint"; fi
 # defaults. Absent file keeps the default surface (footer on): parity means
 # the gates stay byte-identical (marker-first, degenerate-body), not the bytes.
 # XDG home: ${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json.
+# Attribution identity (P1b): single source of truth for the footer line,
+# the default logo asset, and the P5 {product_url} placeholder value.
+# The default logo URL names the tracked in-repo asset
+# apps/docs/public/logo.svg (git-tracked, scheme-independent, so no
+# dark/light pair is needed).
+PRODUCT_URL="https://stainless-code.com/verdict"
+MAKER_URL="https://stainless-code.com"
+MAKER_NAME="Stainless Code"
+DEFAULT_LOGO_URL="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg"
+FOOTER_DIVIDER="<!-- verdict-footer -->"
 PREF_SETTINGS_FILE=""; EFFECTIVE_OUTPUT="text"; EFFECTIVE_COMPACT="false"; EFFECTIVE_COLOR="auto"
 FLAG_OUTPUT_FORCE=""; FLAG_COMPACT_FORCE=""; FLAG_COLOR_FORCE=""
-EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="true"
+EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="product"
 EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
+EFFECTIVE_PUBLISH_LOGO="true"; EFFECTIVE_PUBLISH_LOGO_URL="$DEFAULT_LOGO_URL"
 FLAG_PUBLISH_FOOTER_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_FORCE=""
 FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="false"
 FLAG_PUBLISH_COPYRIGHT_FORCE=""; FLAG_PUBLISH_COPYRIGHT_SET="false"
+FLAG_PUBLISH_LOGO_FORCE=""; FLAG_PUBLISH_LOGO_URL_FORCE=""; FLAG_PUBLISH_LOGO_URL_SET="false"
 PREF_COLOR_SET="false"
 # Envelope redirect, run once: the original stdout moves to fd 9 for the JSON
 # envelope, human progress moves to stderr. Verbs call this after flag
@@ -421,17 +435,36 @@ resolve_prefs() {
     fi
   fi
 }
-# Publish knobs (P1 footer receipt + attribution). One `publish` namespace:
-# footer (bool, default true), attribution (bool, default true),
-# attribution_text (string, default factual, empty reads default),
-# copyright (string, default empty = off). Precedence flags > file > env
-# (REVIEW_PUBLISH_* below) > defaults. Unknown keys refuse bad-settings;
-# the credential scan in resolve_prefs already covers this depth. Called
-# from resolve_prefs so the env layer applies even with no file.
+# Publish knobs (P1 footer receipt + P1b leveled attribution + logo). One
+# `publish` namespace: footer (bool, default true), attribution (enum
+# off|product|full, default product — P1b migration: the day-old P1 bool is
+# refused in the file, use "off" for false and "product" for true),
+# attribution_text (string, default factual, empty reads default;
+# {version}, {tier} and {product_url} substituted, anything else refused),
+# copyright (string, default empty = off), logo (bool, default true),
+# logo_url (string, default the tracked docs asset; empty reads text-only,
+# never a broken image). Precedence flags > file > env (REVIEW_PUBLISH_*
+# below) > defaults. Unknown keys refuse bad-settings; the credential scan
+# in resolve_prefs already covers this depth. Called from resolve_prefs so
+# the env layer applies even with no file.
+# Attribution placeholder inventory (P1b; P5 grows it for overrides):
+# {version}, {tier}, {product_url}. Anything else refuses typed
+# bad-settings so typos surface instead of rendering literally.
+validate_attribution_placeholders() { # $1 = text, $2 = source description
+  local found="" ph=""
+  found=$(printf '%s' "$1" | grep -o '{[A-Za-z_][A-Za-z0-9_]*}' 2>/dev/null || true)
+  while IFS= read -r ph; do
+    [[ -z "$ph" ]] && continue
+    case "$ph" in "{version}"|"{tier}"|"{product_url}") ;;
+      *) fail "bad-settings" "$2 carries unknown placeholder '$ph' (want only {version}, {tier}, {product_url})";;
+    esac
+  done <<<"$found"
+}
 resolve_publish() {
-  local t="" ok="" k=""
-  EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="true"
+  local t="" ok="" k="" v=""
+  EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="product"
   EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
+  EFFECTIVE_PUBLISH_LOGO="true"; EFFECTIVE_PUBLISH_LOGO_URL="$DEFAULT_LOGO_URL"
   case "${REVIEW_PUBLISH_FOOTER:-}" in
     "") ;;
     true|false) EFFECTIVE_PUBLISH_FOOTER="${REVIEW_PUBLISH_FOOTER}";;
@@ -439,20 +472,28 @@ resolve_publish() {
   esac
   case "${REVIEW_PUBLISH_ATTRIBUTION:-}" in
     "") ;;
-    true|false) EFFECTIVE_PUBLISH_ATTRIBUTION="${REVIEW_PUBLISH_ATTRIBUTION}";;
-    *) warn "ignoring invalid REVIEW_PUBLISH_ATTRIBUTION '${REVIEW_PUBLISH_ATTRIBUTION}' (want true|false)";;
+    off|product|full) EFFECTIVE_PUBLISH_ATTRIBUTION="${REVIEW_PUBLISH_ATTRIBUTION}";;
+    true) warn "REVIEW_PUBLISH_ATTRIBUTION 'true' is deprecated (P1 bool migrated to off|product|full) — treating as product"; EFFECTIVE_PUBLISH_ATTRIBUTION="product";;
+    false) warn "REVIEW_PUBLISH_ATTRIBUTION 'false' is deprecated (P1 bool migrated to off|product|full) — treating as off"; EFFECTIVE_PUBLISH_ATTRIBUTION="off";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_ATTRIBUTION '${REVIEW_PUBLISH_ATTRIBUTION}' (want off|product|full)";;
   esac
   [[ -n "${REVIEW_PUBLISH_ATTRIBUTION_TEXT:-}" ]] && EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT="${REVIEW_PUBLISH_ATTRIBUTION_TEXT}"
   [[ -n "${REVIEW_PUBLISH_COPYRIGHT:-}" ]] && EFFECTIVE_PUBLISH_COPYRIGHT="${REVIEW_PUBLISH_COPYRIGHT}"
-  [[ -f "$PREF_SETTINGS_FILE" ]] || return 0
-  jq -e 'has("publish")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || return 0
+  case "${REVIEW_PUBLISH_LOGO:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_LOGO="${REVIEW_PUBLISH_LOGO}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_LOGO '${REVIEW_PUBLISH_LOGO}' (want true|false)";;
+  esac
+  [[ -n "${REVIEW_PUBLISH_LOGO_URL:-}" ]] && EFFECTIVE_PUBLISH_LOGO_URL="${REVIEW_PUBLISH_LOGO_URL}"
+  [[ -f "$PREF_SETTINGS_FILE" ]] || { validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"; return 0; }
+  jq -e 'has("publish")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || { validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"; return 0; }
   [[ "$(jq -r '.publish | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
-    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright})"
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright, logo, logo_url})"
   ok=$(jq -r '.publish | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
   while IFS= read -r k; do
     [[ -z "$k" ]] && continue
-    case "$k" in footer|attribution|attribution_text|copyright) ;;
-      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright)";;
+    case "$k" in footer|attribution|attribution_text|copyright|logo|logo_url) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright, logo, logo_url)";;
     esac
   done <<<"$ok"
   if jq -e '.publish | has("footer")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
@@ -463,9 +504,16 @@ resolve_publish() {
   fi
   if jq -e '.publish | has("attribution")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
     t=$(jq -r '.publish.attribution | type' "$PREF_SETTINGS_FILE")
-    [[ "$t" == "boolean" ]] \
-      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.attribution must be a boolean (want true|false)"
-    EFFECTIVE_PUBLISH_ATTRIBUTION=$(jq -r '.publish.attribution' "$PREF_SETTINGS_FILE")
+    if [[ "$t" == "boolean" ]]; then
+      fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.attribution is now off|product|full (P1b migration from the day-old P1 bool — use \"off\" for false, \"product\" for true)"
+    fi
+    [[ "$t" == "string" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.attribution must be a string (want off|product|full)"
+    v=$(jq -r '.publish.attribution' "$PREF_SETTINGS_FILE")
+    case "$v" in
+      off|product|full) EFFECTIVE_PUBLISH_ATTRIBUTION="$v";;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.attribution '$v' unknown (want off|product|full)";;
+    esac
   fi
   if jq -e '.publish | has("attribution_text")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
     t=$(jq -r '.publish.attribution_text | type' "$PREF_SETTINGS_FILE")
@@ -479,6 +527,19 @@ resolve_publish() {
       || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.copyright must be a string"
     EFFECTIVE_PUBLISH_COPYRIGHT=$(jq -r '.publish.copyright' "$PREF_SETTINGS_FILE")
   fi
+  if jq -e '.publish | has("logo")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.logo | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.logo must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_LOGO=$(jq -r '.publish.logo' "$PREF_SETTINGS_FILE")
+  fi
+  if jq -e '.publish | has("logo_url")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.logo_url | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "string" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.logo_url must be a string (empty reads text-only)"
+    EFFECTIVE_PUBLISH_LOGO_URL=$(jq -r '.publish.logo_url' "$PREF_SETTINGS_FILE")
+  fi
+  validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "settings file $PREF_SETTINGS_FILE: publish.attribution_text"
 }
 _FD9_READY="false"
 # Peek --json early (stopping at a `--` paths separator) so typed prefs
@@ -522,8 +583,26 @@ while [[ $# -gt 0 ]]; do
     --no-json) FLAG_OUTPUT_FORCE="text"; shift;;
     --footer) FLAG_PUBLISH_FOOTER_FORCE="true"; shift;;
     --no-footer) FLAG_PUBLISH_FOOTER_FORCE="false"; shift;;
-    --attribution) FLAG_PUBLISH_ATTRIBUTION_FORCE="true"; shift;;
-    --no-attribution) FLAG_PUBLISH_ATTRIBUTION_FORCE="false"; shift;;
+    --attribution)
+      case "${2:-}" in
+        off|product|full) FLAG_PUBLISH_ATTRIBUTION_FORCE="$2"; shift 2;;
+        *) FLAG_PUBLISH_ATTRIBUTION_FORCE="product"; shift;;
+      esac;;
+    --attribution=*)
+      _av="${1#--attribution=}"
+      case "$_av" in
+        off|product|full) FLAG_PUBLISH_ATTRIBUTION_FORCE="$_av";;
+        *) fail "bad-attribution" "unknown --attribution '$_av' (want off|product|full)";;
+      esac
+      shift;;
+    --no-attribution) FLAG_PUBLISH_ATTRIBUTION_FORCE="off"; shift;;
+    --logo) FLAG_PUBLISH_LOGO_FORCE="true"; shift;;
+    --no-logo) FLAG_PUBLISH_LOGO_FORCE="false"; shift;;
+    --logo-url)
+      [[ $# -ge 2 ]] || { echo "unknown flag '$1' for $cmd (want --logo-url <url>)" >&2; exit 2; }
+      FLAG_PUBLISH_LOGO_URL_FORCE="$2"; FLAG_PUBLISH_LOGO_URL_SET="true"; shift 2;;
+    --logo-url=*)
+      FLAG_PUBLISH_LOGO_URL_FORCE="${1#--logo-url=}"; FLAG_PUBLISH_LOGO_URL_SET="true"; shift;;
     --attribution-text)
       [[ $# -ge 2 ]] || { echo "unknown flag '$1' for $cmd (want --attribution-text <text>)" >&2; exit 2; }
       FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE="$2"; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="true"; shift 2;;
@@ -538,7 +617,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if (( ${#_stripped[@]} > 0 )); then set -- "${_stripped[@]}"; else set --; fi
-unset _stripped _seen_dd _cvm
+unset _stripped _seen_dd _cvm _av
 [[ -n "$FLAG_OUTPUT_FORCE" ]] && EFFECTIVE_OUTPUT="$FLAG_OUTPUT_FORCE"
 [[ -n "$FLAG_COMPACT_FORCE" ]] && EFFECTIVE_COMPACT="$FLAG_COMPACT_FORCE"
 [[ -n "$FLAG_COLOR_FORCE" ]] && EFFECTIVE_COLOR="$FLAG_COLOR_FORCE"
@@ -546,6 +625,11 @@ unset _stripped _seen_dd _cvm
 [[ -n "$FLAG_PUBLISH_ATTRIBUTION_FORCE" ]] && EFFECTIVE_PUBLISH_ATTRIBUTION="$FLAG_PUBLISH_ATTRIBUTION_FORCE"
 [[ "$FLAG_PUBLISH_ATTRIBUTION_TEXT_SET" == "true" ]] && EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT="$FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE"
 [[ "$FLAG_PUBLISH_COPYRIGHT_SET" == "true" ]] && EFFECTIVE_PUBLISH_COPYRIGHT="$FLAG_PUBLISH_COPYRIGHT_FORCE"
+[[ -n "$FLAG_PUBLISH_LOGO_FORCE" ]] && EFFECTIVE_PUBLISH_LOGO="$FLAG_PUBLISH_LOGO_FORCE"
+[[ "$FLAG_PUBLISH_LOGO_URL_SET" == "true" ]] && EFFECTIVE_PUBLISH_LOGO_URL="$FLAG_PUBLISH_LOGO_URL_FORCE"
+# Flags land after the file/env layers, so validate the winning text here —
+# a bad flag value fails typed instead of rendering literally.
+validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"
 # NO_COLOR applies only when color is otherwise unset, so the documented
 # flag > file > env > defaults order holds (an explicit setting anywhere
 # beats the convention; an explicit --color=always flag beats NO_COLOR).
@@ -571,12 +655,12 @@ to_json_array() {
   if [[ -z "${1:-}" ]]; then echo "[]"; else printf '%s' "$1" | jq -R . | jq -s .; fi
 }
 
-# Publish footer + confidence basis (P1). One merged receipt block at the
-# body end, computed from owned store data only — never blank, never fails
-# on absent data. Degraded reads stay factual: unknown version reads
-# "unknown", unknown spend reads "unrecorded", unknown files read
-# "files unrecorded", and the review link renders only when a completed
-# post record carries it (never invented pre-post).
+# Publish footer + confidence basis (P1) with leveled attribution (P1b).
+# One merged block at the body end, computed from owned store data only —
+# never blank, never fails on absent data. Degraded reads stay factual:
+# unknown version reads "unknown", unknown spend reads "unrecorded",
+# unknown files read "files unrecorded", and the review link renders only
+# when a completed post record carries it (never invented pre-post).
 tool_version() {
   local v=""
   v=$(jq -r .version "$(dirname "${BASH_SOURCE[0]:-$0}")/../package.json" 2>/dev/null || true)
@@ -626,25 +710,57 @@ publish_review_link() { # $1 = dir; echoes "" (unknown) or a factual review ref 
 }
 
 render_footer() { # $1 = dir; echoes the merged footer block, or nothing when publish.footer is off
-  local ver="" receipt="" attr="" link=""
+  local ver="" receipt="" attr="" link="" logo="" maker=""
   [[ "${EFFECTIVE_PUBLISH_FOOTER:-true}" == "true" ]] || return 0
   ver=$(tool_version)
   publish_spend "$1"
-  receipt="verdict \`$ver\` · $PUBLISH_TIER tier · cost $PUBLISH_COST · $(publish_file_count "$1")"
+  # NOTE (P1b): the version stays inline and space-separated
+  # (Verdict 0.2.0) — never wrapped in brackets or parens. Brackets would
+  # collide with the surrounding markdown link text; parens read as an
+  # aside. Keep it that way.
+  attr="${EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT:-}"
+  [[ -z "$attr" ]] && attr="Reviewed with [**Verdict {version}**](${PRODUCT_URL})"
+  attr=${attr//\{product_url\}/${PRODUCT_URL}}
+  attr=${attr//\{version\}/${ver}}
+  attr=${attr//\{tier\}/${PUBLISH_TIER}}
+  receipt="$PUBLISH_TIER tier · cost $PUBLISH_COST · $(publish_file_count "$1")"
   link=$(publish_review_link "$1")
   [[ -n "$link" ]] && receipt="$receipt · $link"
-  attr="${EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT:-}"
-  [[ -z "$attr" ]] && attr="Reviewed with verdict {version}"
-  attr=${attr//\{version\}/$ver}
   echo "---"
   echo ""
-  echo "> $receipt"
-  if [[ "${EFFECTIVE_PUBLISH_ATTRIBUTION:-true}" == "true" ]]; then
-    echo "> $attr"
+  echo "$FOOTER_DIVIDER"
+  if [[ "${EFFECTIVE_PUBLISH_ATTRIBUTION:-product}" != "off" ]]; then
+    logo=""
+    if [[ "${EFFECTIVE_PUBLISH_LOGO:-true}" == "true" && -n "${EFFECTIVE_PUBLISH_LOGO_URL:-}" ]]; then
+      logo="<a href=\"${PRODUCT_URL}\"><img src=\"${EFFECTIVE_PUBLISH_LOGO_URL}\" alt=\"Verdict\" width=\"18\" height=\"18\"></a> "
+    fi
+    maker=""
+    [[ "${EFFECTIVE_PUBLISH_ATTRIBUTION}" == "full" ]] && maker=" by [${MAKER_NAME}](${MAKER_URL})"
+    echo "> ${logo}${attr}${maker} · $receipt"
+  else
+    echo "> $receipt"
   fi
   if [[ -n "${EFFECTIVE_PUBLISH_COPYRIGHT:-}" ]]; then
     echo "> ${EFFECTIVE_PUBLISH_COPYRIGHT}"
   fi
+}
+
+# Strip a previously rendered machine footer (divider line through body end)
+# so re-rendering the same body is byte-identical. Only the machine marker
+# is stripped — agent prose, including hand-written legacy receipts, passes
+# through untouched. The separator render_footer emits with the block (one
+# trailing "---" plus surrounding blank lines) goes with it.
+strip_rendered_footer() { # stdin body -> stdout body without the machine footer
+  awk -v marker="$FOOTER_DIVIDER" '
+    $0 == marker { cut = 1; next }
+    cut { next }
+    { lines[++n] = $0 }
+    END {
+      while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+      if (n > 0 && lines[n] == "---") n--
+      while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+      for (i = 1; i <= n; i++) print lines[i]
+    }'
 }
 
 # Basis counts from a findings array on stdin: rigor rung counts in evidence
@@ -1228,13 +1344,20 @@ $move_section"
   # Permalink garnish (P2): blob SHAs must name the reviewed commit and long
   # quotes stay inside collapsed details. Warn-and-keep, like the basis line.
   validate_evidence_links "$body" "$head_full" "$(evidence_linkable "$dir" "$head_full")"
-  # Footer receipt (P1): one merged block at the body end, computed from the
-  # owned stores (version, tier, cost, files, link when known) plus the
-  # attribution sentence. Knob-off emits nothing. Pre-post the review link
-  # is unknown, so it stays omitted — never invented, never blank.
+  # Footer receipt (P1) with leveled attribution (P1b): one merged block at
+  # the body end, computed from the owned stores (version, tier, cost,
+  # files, link when known) plus the attribution line. Knob-off emits
+  # nothing. Pre-post the review link is unknown, so it stays omitted —
+  # never invented, never blank. Re-render is strip-and-replace on the
+  # machine divider, so a body that already carries a rendered block comes
+  # out byte-identical (no stacking).
   footer_block=$(render_footer "$dir")
   if [[ -n "$footer_block" ]]; then
-    if printf '%s' "$body" | grep -qE '^[[:space:]]*> verdict `'; then
+    if printf '%s' "$body" | grep -qF "$FOOTER_DIVIDER"; then
+      warn "body already carries a rendered footer — replacing it with the canonical block"
+      body=$(strip_rendered_footer <<<"$body")
+    fi
+    if printf '%s' "$body" | grep -qE '^[[:space:]]*> verdict `|^[[:space:]]*> .*Reviewed with \['; then
       warn "body already carries a footer receipt — keeping the agent block, script footer skipped"
     else
       body="$body
