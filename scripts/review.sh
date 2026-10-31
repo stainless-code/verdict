@@ -185,6 +185,7 @@ fail() {
     approve-blocked) hint="try: triage the findings or re-run with --force";;
     budget-exceeded) hint="try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/.review/budget";;
     duplicate-payload) hint="try: re-run with --force to repost the identical payload";;
+    already-posted) hint="try: re-run with --force to override, or fetch the new HEAD and review the delta instead";;
     degenerate-body) hint="try: open with a verdict marker (see prompts/review.md), then re-run";;
     pr-not-open) hint="try: re-fetch the PR (bundle may be stale)";;
     unknown-sig|ambiguous-sig) hint="try: copy the full sig prefix from report output";;
@@ -1893,6 +1894,24 @@ $body"
   if [[ -f "$marker_file" && "$force" != "true" ]]; then
     fail "duplicate-payload" "identical payload already posted — refusing duplicate (pass --force to repost)"
   fi
+  # Single-review finality (SHA-keyed, coarse guard): one completed post per
+  # reviewed SHA. post.json (written only by the real-post path below) carries
+  # the reviewed head — a repeat post on the same SHA refuses unless --force;
+  # any new SHA proceeds and refreshes the record on success. Dry runs exit
+  # above and failures below never reach the writer, so neither arms the key.
+  # Unlike the marker above (exact replays only), this also refuses same-SHA
+  # reposts with different content. Unreadable/head-less records warn and
+  # proceed (overwritten on success) — they never wedge the run.
+  if [[ -n "$commit_id" && "$force" != "true" && -f "$dir/post.json" ]]; then
+    if ! stored_head=$(jq -r '.head // empty' "$dir/post.json" 2>/dev/null); then
+      warn "post record unreadable — proceeding, will refresh it on success"
+    elif [[ -z "$stored_head" ]]; then
+      warn "post record carries no head — proceeding, will refresh it on success"
+    elif [[ "$stored_head" == "$commit_id" ]]; then
+      stored_at=$(jq -r '.posted_at // "unknown time"' "$dir/post.json" 2>/dev/null || echo "unknown time")
+      fail "already-posted" "refusing second post on reviewed SHA ${commit_id:0:7} (already posted at $stored_at — new commits re-arm automatically; pass --force to override)"
+    fi
+  fi
   # Bounded transient retry: only the exact GitHub "internal error" body retries (2x,
   # 1s/2s), comments untouched. Anything else fails fast with a narrowed message —
   # never drop comments chasing a server blip.
@@ -1918,7 +1937,8 @@ $body"
   # join our findings against ground truth (thread states, merge outcome) by review id.
   # Sole post.json writer in this script (dry runs write findings.dryrun.json only and
   # never touch post.json) — so a present matching head proves a completed post,
-  # never an attempt, dry run, or failure.
+  # never an attempt, dry run, or failure. The head doubles as the single-review
+  # finalizer key: the guard above refuses a repeat post on the same SHA.
   jq -n --argjson rv "$posted" --arg c "$commit_id" --arg t "$now" \
     --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
     '{schema_version:"1",review:$rv,head:$c,posted_at:$t,confidence:$conf,security_summary:$sec}' > "$dir/post.json"

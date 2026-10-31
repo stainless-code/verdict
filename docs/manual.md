@@ -95,6 +95,15 @@ with `--force`). An unreachable recheck downgrades to `COMMENT` with the reason
 in the body and warnings — never a silent `APPROVE`, never a hard failure.
 `COMMENT`, `REQUEST_CHANGES`, dry runs, and local bundles never pay this lookup.
 
+Two dedup layers keep "exactly one terminal write" mechanical: the fine guard
+refuses exact payload replays (same body+comments+SHA hash, dot-marker
+`.posted_<hash>` — legit re-reviews hash differently and pass), while the
+coarse single-review finalizer refuses any second completed post on the same
+reviewed SHA — even with different content — with typed `already-posted`
+(pass `--force` to override the wedged case). Any new commit SHA re-arms
+automatically (the next post refreshes the `post.json` head); attempts, dry
+runs, and failures never write the key, so only a real post arms it.
+
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
 `.review/N/verification.json` evidence (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
