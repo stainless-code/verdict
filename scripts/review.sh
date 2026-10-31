@@ -156,14 +156,15 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
   Global publish flags (any verb; stripped before verb parsing):
   --footer / --no-footer, --attribution [off|product|full] / --no-attribution,
   --attribution-text <text>, --copyright <text>, --logo / --no-logo,
-  --logo-url <url>.
+  --logo-url <url>, --overview / --no-overview.
   Flags win over the settings file, which wins over env
   (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE,
   REVIEW_PUBLISH_FOOTER, REVIEW_PUBLISH_ATTRIBUTION,
   REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT,
-  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL), which wins
-  over defaults. The settings file holds presentation (output, layout,
-  color) plus publish (footer receipt + leveled attribution + logo) namespaces
+  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL, REVIEW_PUBLISH_OVERVIEW),
+  which wins over defaults. The settings file holds presentation (output,
+  layout, color) plus publish (footer receipt + leveled attribution + logo +
+  overview) namespaces
   (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).
   --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: stdout is exactly one JSON envelope (schema_version 1);
   all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.
@@ -315,10 +316,12 @@ FLAG_OUTPUT_FORCE=""; FLAG_COMPACT_FORCE=""; FLAG_COLOR_FORCE=""
 EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="product"
 EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
 EFFECTIVE_PUBLISH_LOGO="true"; EFFECTIVE_PUBLISH_LOGO_URL="$DEFAULT_LOGO_URL"
+EFFECTIVE_PUBLISH_OVERVIEW="true"
 FLAG_PUBLISH_FOOTER_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_FORCE=""
 FLAG_PUBLISH_ATTRIBUTION_TEXT_FORCE=""; FLAG_PUBLISH_ATTRIBUTION_TEXT_SET="false"
 FLAG_PUBLISH_COPYRIGHT_FORCE=""; FLAG_PUBLISH_COPYRIGHT_SET="false"
 FLAG_PUBLISH_LOGO_FORCE=""; FLAG_PUBLISH_LOGO_URL_FORCE=""; FLAG_PUBLISH_LOGO_URL_SET="false"
+FLAG_PUBLISH_OVERVIEW_FORCE=""
 PREF_COLOR_SET="false"
 # Envelope redirect, run once: the original stdout moves to fd 9 for the JSON
 # envelope, human progress moves to stderr. Verbs call this after flag
@@ -443,13 +446,19 @@ resolve_prefs() {
 # {version}, {tier} and {product_url} substituted, anything else refused),
 # copyright (string, default empty = off), logo (bool, default true),
 # logo_url (string, default the tracked docs asset; empty reads text-only,
-# never a broken image). Precedence flags > file > env (REVIEW_PUBLISH_*
+# never a broken image), overview (bool, default true — gates the P3 collapsed
+# file-table + topology block; the size threshold still decides each run
+# unless a global --overview/--no-overview flag forces it). Precedence flags > file > env (REVIEW_PUBLISH_*
 # below) > defaults. Unknown keys refuse bad-settings; the credential scan
 # in resolve_prefs already covers this depth. Called from resolve_prefs so
 # the env layer applies even with no file.
 # Attribution placeholder inventory (P1b; P5 grows it for overrides):
 # {version}, {tier}, {product_url}. Anything else refuses typed
 # bad-settings so typos surface instead of rendering literally.
+# Overview knob (P3): publish.overview (bool, default true) gates the
+# collapsed file-table + topology block in report --output; the size
+# threshold (render_overview) still decides each run unless a global
+# --overview/--no-overview flag forces the outcome (flags win).
 validate_attribution_placeholders() { # $1 = text, $2 = source description
   local found="" ph=""
   found=$(printf '%s' "$1" | grep -o '{[A-Za-z_][A-Za-z0-9_]*}' 2>/dev/null || true)
@@ -465,6 +474,7 @@ resolve_publish() {
   EFFECTIVE_PUBLISH_FOOTER="true"; EFFECTIVE_PUBLISH_ATTRIBUTION="product"
   EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT=""; EFFECTIVE_PUBLISH_COPYRIGHT=""
   EFFECTIVE_PUBLISH_LOGO="true"; EFFECTIVE_PUBLISH_LOGO_URL="$DEFAULT_LOGO_URL"
+  EFFECTIVE_PUBLISH_OVERVIEW="true"
   case "${REVIEW_PUBLISH_FOOTER:-}" in
     "") ;;
     true|false) EFFECTIVE_PUBLISH_FOOTER="${REVIEW_PUBLISH_FOOTER}";;
@@ -485,15 +495,20 @@ resolve_publish() {
     *) warn "ignoring invalid REVIEW_PUBLISH_LOGO '${REVIEW_PUBLISH_LOGO}' (want true|false)";;
   esac
   [[ -n "${REVIEW_PUBLISH_LOGO_URL:-}" ]] && EFFECTIVE_PUBLISH_LOGO_URL="${REVIEW_PUBLISH_LOGO_URL}"
+  case "${REVIEW_PUBLISH_OVERVIEW:-}" in
+    "") ;;
+    true|false) EFFECTIVE_PUBLISH_OVERVIEW="${REVIEW_PUBLISH_OVERVIEW}";;
+    *) warn "ignoring invalid REVIEW_PUBLISH_OVERVIEW '${REVIEW_PUBLISH_OVERVIEW}' (want true|false)";;
+  esac
   [[ -f "$PREF_SETTINGS_FILE" ]] || { validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"; return 0; }
   jq -e 'has("publish")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1 || { validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"; return 0; }
   [[ "$(jq -r '.publish | type' "$PREF_SETTINGS_FILE")" == "object" ]] \
-    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright, logo, logo_url})"
+    || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish must be an object (want {footer, attribution, attribution_text, copyright, logo, logo_url, overview})"
   ok=$(jq -r '.publish | keys[]' "$PREF_SETTINGS_FILE" 2>/dev/null || true)
   while IFS= read -r k; do
     [[ -z "$k" ]] && continue
-    case "$k" in footer|attribution|attribution_text|copyright|logo|logo_url) ;;
-      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright, logo, logo_url)";;
+    case "$k" in footer|attribution|attribution_text|copyright|logo|logo_url|overview) ;;
+      *) fail "bad-settings" "settings file $PREF_SETTINGS_FILE: unknown publish key '$k' (want only footer, attribution, attribution_text, copyright, logo, logo_url, overview)";;
     esac
   done <<<"$ok"
   if jq -e '.publish | has("footer")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
@@ -539,6 +554,12 @@ resolve_publish() {
       || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.logo_url must be a string (empty reads text-only)"
     EFFECTIVE_PUBLISH_LOGO_URL=$(jq -r '.publish.logo_url' "$PREF_SETTINGS_FILE")
   fi
+  if jq -e '.publish | has("overview")' "$PREF_SETTINGS_FILE" >/dev/null 2>&1; then
+    t=$(jq -r '.publish.overview | type' "$PREF_SETTINGS_FILE")
+    [[ "$t" == "boolean" ]] \
+      || fail "bad-settings" "settings file $PREF_SETTINGS_FILE: publish.overview must be a boolean (want true|false)"
+    EFFECTIVE_PUBLISH_OVERVIEW=$(jq -r '.publish.overview' "$PREF_SETTINGS_FILE")
+  fi
   validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "settings file $PREF_SETTINGS_FILE: publish.attribution_text"
 }
 _FD9_READY="false"
@@ -583,6 +604,8 @@ while [[ $# -gt 0 ]]; do
     --no-json) FLAG_OUTPUT_FORCE="text"; shift;;
     --footer) FLAG_PUBLISH_FOOTER_FORCE="true"; shift;;
     --no-footer) FLAG_PUBLISH_FOOTER_FORCE="false"; shift;;
+    --overview) FLAG_PUBLISH_OVERVIEW_FORCE="true"; shift;;
+    --no-overview) FLAG_PUBLISH_OVERVIEW_FORCE="false"; shift;;
     --attribution)
       case "${2:-}" in
         off|product|full) FLAG_PUBLISH_ATTRIBUTION_FORCE="$2"; shift 2;;
@@ -627,6 +650,7 @@ unset _stripped _seen_dd _cvm _av
 [[ "$FLAG_PUBLISH_COPYRIGHT_SET" == "true" ]] && EFFECTIVE_PUBLISH_COPYRIGHT="$FLAG_PUBLISH_COPYRIGHT_FORCE"
 [[ -n "$FLAG_PUBLISH_LOGO_FORCE" ]] && EFFECTIVE_PUBLISH_LOGO="$FLAG_PUBLISH_LOGO_FORCE"
 [[ "$FLAG_PUBLISH_LOGO_URL_SET" == "true" ]] && EFFECTIVE_PUBLISH_LOGO_URL="$FLAG_PUBLISH_LOGO_URL_FORCE"
+[[ -n "$FLAG_PUBLISH_OVERVIEW_FORCE" ]] && EFFECTIVE_PUBLISH_OVERVIEW="$FLAG_PUBLISH_OVERVIEW_FORCE"
 # Flags land after the file/env layers, so validate the winning text here —
 # a bad flag value fails typed instead of rendering literally.
 validate_attribution_placeholders "$EFFECTIVE_PUBLISH_ATTRIBUTION_TEXT" "publish.attribution_text"
@@ -761,6 +785,156 @@ strip_rendered_footer() { # stdin body -> stdout body without the machine footer
       while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
       for (i = 1; i <= n; i++) print lines[i]
     }'
+}
+
+# Change overview (P3): script-computed collapsed file table + change-topology
+# flowchart for large diffs. Zero tokens, zero hallucination surface: every
+# cell and edge derives from owned bundle data only (file list + deltas from
+# PR.json/diff headers, hunk counts from hunks.tsv, roles from roles.txt;
+# edges only where an added diff line names another changed file — unknown
+# relations are omitted, never invented). Model one-liners are explicitly out.
+# Pinned thresholds: shown collapsed when files > 8 OR full.diff > 24576
+# bytes (24KB); omitted below. publish.overview (bool, default true) gates the
+# feature; --overview forces show and --no-overview forces hide (flags win
+# over file over env). Placement is report --output only, above the footer
+# inside the content: posted agent bodies stay untouched (agent-contract
+# changes are P5's domain; a second script-written copy would fork one truth
+# into two and need footer-style strip-replace to stay idempotent).
+overview_role() { # $1 = path, $2 = roles-map file (path<TAB>role); echoes the role, never blank
+  local p="$1" map="$2" r=""
+  if [[ -f "$map" ]]; then
+    r=$(awk -F'\t' -v f="$p" '$1 == f { print $2; exit }' "$map" 2>/dev/null || true)
+  fi
+  if [[ -z "$r" ]]; then
+    r=$(printf '%s\n' "$p" | roles_for_paths 2>/dev/null | awk '/^## /{ print $2; exit }' || true)
+  fi
+  [[ -n "$r" ]] && printf '%s' "$r" || printf 'source'
+}
+
+overview_hunks() { # $1 = path, $2 = dir, $3 = hunks-scan awk; echoes NEW-side hunk count
+  local p="$1" dir="$2" prog="$3" n=""
+  if [[ -f "$dir/hunks.tsv" ]]; then
+    n=$(awk -F'\t' -v f="$p" '$1 == f && $2 == "NEW" { c++ } END { print c + 0 }' "$dir/hunks.tsv" 2>/dev/null || true)
+  elif [[ -f "$dir/full.diff" ]]; then
+    n=$(awk -v mode=hunks -v f="$p" -f "$prog" "$dir/full.diff" 2>/dev/null | grep -xcF -- "$p" || true)
+  fi
+  case "$n" in ''|*[!0-9]*) printf '0';; *) printf '%s' "$n";; esac
+}
+
+render_overview() { # $1 = dir, $2 = slug; echoes the collapsed overview, or nothing when gated off
+  local dir="$1" slug="$2" force="${FLAG_PUBLISH_OVERVIEW_FORCE:-}"
+  local ov_files="0" ov_bytes="0" tmp="" prname=""
+  if [[ "$force" == "false" ]]; then return 0; fi
+  if [[ "$force" != "true" ]]; then
+    [[ "${EFFECTIVE_PUBLISH_OVERVIEW:-true}" == "true" ]] || return 0
+    # Pinned P3 thresholds: more than 8 files, or a diff over 24576 bytes (24KB).
+    if [[ -f "$dir/PR.json" ]]; then
+      ov_files=$(jq -r '(.files // []) | length' "$dir/PR.json" 2>/dev/null || echo "0")
+    fi
+    case "$ov_files" in ''|*[!0-9]*) ov_files="0";; esac
+    if [[ "$ov_files" == "0" && -f "$dir/full.diff" ]]; then
+      ov_files=$(grep -c '^diff --git ' "$dir/full.diff" 2>/dev/null || true)
+    fi
+    case "$ov_files" in ''|*[!0-9]*) ov_files="0";; esac
+    if [[ -f "$dir/full.diff" ]]; then
+      ov_bytes=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || echo "0")
+    fi
+    case "$ov_bytes" in ''|*[!0-9]*) ov_bytes="0";; esac
+    if (( ov_files <= 8 )) && (( ov_bytes <= 24576 )); then return 0; fi
+  fi
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/verdict-overview.XXXXXX") || return 0
+  # One shared diff scanner (POSIX awk): header parse mirrors the fetch-time
+  # hunk indexer (post-image path wins, quoted headers unquoted the same way);
+  # modes: files (ordered unique paths + added/removed line counts), added
+  # (path<TAB>added-line, +++ excluded), hunks (one path line per @@ header).
+  cat > "$tmp/scan.awk" <<'AWK'
+function setcur(hdr,   t, i1, t2, i2) {
+  cur = "";
+  if (substr(hdr, 1, 1) == "\"") {
+    t = substr(hdr, 2); i1 = index(t, "\""); t2 = substr(t, i1 + 1); i2 = index(t2, "\"");
+    cur = substr(t2, i2 + 1); sub(/"$/, "", cur); sub(/^b\//, "", cur);
+  } else {
+    i1 = index(hdr, " b/");
+    if (i1 > 0) cur = substr(hdr, i1 + 3);
+    else { i1 = index(hdr, " "); cur = substr(hdr, i1 + 1); sub(/^b\//, "", cur); }
+  }
+}
+/^diff --git / { hdr = $0; sub(/^diff --git /, "", hdr); setcur(hdr);
+  if (mode == "files" && cur != "" && !(cur in seen)) { seen[cur] = 1; order[++m] = cur }
+  next }
+mode == "added" && substr($0, 1, 1) == "+" && $0 !~ /^\+\+\+/ { if (cur != "") print cur "\t" substr($0, 2); next }
+mode == "files" && substr($0, 1, 1) == "+" && $0 !~ /^\+\+\+/ { if (cur != "") adds[cur]++; next }
+mode == "files" && substr($0, 1, 1) == "-" && $0 !~ /^---/ { if (cur != "") dels[cur]++; next }
+mode == "hunks" && /^@@ / { if (cur != "") print cur; next }
+END { if (mode == "files") for (i = 1; i <= m; i++) printf "%s\t%d\t%d\n", order[i], adds[order[i]] + 0, dels[order[i]] + 0 }
+AWK
+  # Markdown + mermaid generator (POSIX awk): table rows in file order with
+  # stable F1..Fn ids (reserved for future prose annotation — the table
+  # renders byte-identically with or without it); edges only for added-line
+  # mentions of another changed file (basename, or full path when basenames
+  # collide — ambiguous bare mentions are omitted, never guessed). A
+  # test/config mentioner reads as validates, any other mentioner as uses.
+  # Both relations render as labeled solid arrows: GitHub renders the core
+  # flowchart subset only, so the relation rides in the label text rather
+  # than in dotted-line syntax the renderer may drop.
+  cat > "$tmp/gen.awk" <<'AWK'
+function san(s) { gsub(/"/, "'", s); gsub(/\|/, ":", s); gsub(/`/, "'", s); return s }
+BEGIN { FS = "\t" }
+NR == FNR { n++; fid[n] = $1; fp[n] = $2; fa[n] = $3 + 0; fd[n] = $4 + 0; fh[n] = $5; fr[n] = $6;
+  fb[n] = $2; sub(/.*\//, "", fb[n]); freq[fb[n]]++; fidx[$2] = n; next }
+{ cur = fidx[$1]; if (cur == 0) next;
+  line = substr($0, length($1) + 2);
+  for (j = 1; j <= n; j++) { if (j == cur) continue; hit = 0;
+    if (freq[fb[j]] == 1 && index(line, fb[j]) > 0) hit = 1;
+    if (!hit && index(line, fp[j]) > 0) hit = 1;
+    if (hit) { key = cur SUBSEP j;
+      if (!(key in edge)) edge[key] = ((fr[cur] == "test" || fr[cur] == "config") ? "validates " : "uses ") (freq[fb[j]] > 1 ? fp[j] : fb[j]) } } }
+END {
+  ta = 0; td = 0; for (i = 1; i <= n; i++) { ta += fa[i]; td += fd[i] }
+  print "<details>"; print "<summary>Files changed (" n ")</summary>"; print "";
+  print "| # | File | +/- | Hunks | Role |"; print "|---|---|---|---|---|";
+  for (i = 1; i <= n; i++) printf "| %s | `%s` | +%d/-%d | %s | %s |\n", fid[i], san(fp[i]), fa[i], fd[i], fh[i], fr[i];
+  print ""; print "</details>"; print "";
+  print "<details>"; print "<summary>Change topology</summary>"; print "";
+  print "```mermaid"; print "flowchart TD";
+  printf "    PR[\"%s +%d/-%d\"]\n", san(prname), ta, td;
+  for (i = 1; i <= n; i++) printf "    PR --> %s[\"%s %s\"]\n", fid[i], fid[i], san(fb[i]);
+  for (i = 1; i <= n; i++) for (j = 1; j <= n; j++) { key = i SUBSEP j;
+    if (key in edge) printf "    %s -->|\"%s\"| %s\n", fid[i], san(edge[key]), fid[j] }
+  print "```"; print ""; print "</details>" }
+AWK
+  : > "$tmp/paths.tsv"
+  if [[ -f "$dir/PR.json" ]] && jq -e '(.files // []) | length > 0' "$dir/PR.json" >/dev/null 2>&1; then
+    jq -r '.files[] | "\(.path)\t\(.additions // 0)\t\(.deletions // 0)"' "$dir/PR.json" 2>/dev/null > "$tmp/paths.tsv" || : > "$tmp/paths.tsv"
+  elif [[ -f "$dir/full.diff" ]]; then
+    awk -v mode=files -f "$tmp/scan.awk" "$dir/full.diff" 2>/dev/null > "$tmp/paths.tsv" || : > "$tmp/paths.tsv"
+  fi
+  if [[ -f "$dir/roles.txt" ]]; then
+    awk '/^## /{ r = $2 } /^- /{ p = $0; sub(/^- /, "", p); print p "\t" r }' "$dir/roles.txt" 2>/dev/null > "$tmp/roles.map" || : > "$tmp/roles.map"
+  else
+    # Batch fallback: one roles_for_paths pass over every path in the same map
+    # shape, so the per-file fallback in overview_role stays a rare last resort
+    # instead of spawning a pipeline per file.
+    cut -f1 "$tmp/paths.tsv" 2>/dev/null | roles_for_paths 2>/dev/null | awk '/^## /{ r = $2 } /^- /{ p = $0; sub(/^- /, "", p); print p "\t" r }' > "$tmp/roles.map" || : > "$tmp/roles.map"
+  fi
+  : > "$tmp/files.tsv"
+  k="0"
+  while IFS="$(printf '\t')" read -r p a d; do
+    [[ -z "$p" ]] && continue
+    k=$(( k + 1 ))
+    case "$a" in ''|*[!0-9]*) a="0";; esac
+    case "$d" in ''|*[!0-9]*) d="0";; esac
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "F$k" "$p" "$a" "$d" \
+      "$(overview_hunks "$p" "$dir" "$tmp/scan.awk")" "$(overview_role "$p" "$tmp/roles.map")" >> "$tmp/files.tsv"
+  done < "$tmp/paths.tsv"
+  : > "$tmp/added.tsv"
+  if [[ -f "$dir/full.diff" ]]; then
+    awk -v mode=added -f "$tmp/scan.awk" "$dir/full.diff" 2>/dev/null > "$tmp/added.tsv" || : > "$tmp/added.tsv"
+  fi
+  case "$slug" in ''|*[!0-9]*) prname="review $slug";; *) prname="PR #$slug";; esac
+  [[ "$prname" == "review " ]] && prname="review"
+  awk -v prname="$prname" -f "$tmp/gen.awk" "$tmp/files.tsv" "$tmp/added.tsv" 2>/dev/null || true
+  rm -rf "$tmp"
 }
 
 # Basis counts from a findings array on stdin: rigor rung counts in evidence
@@ -3051,6 +3225,8 @@ if [[ "$cmd" == "report" ]]; then
       echo "## Counts — open $n_all_open · head ${head_sha:0:7}"
       jq -r --arg linkable "$rep_linkable" '.[] | "\(.rank). [\(.status)] " + (if $linkable == "true" and .path != null and .line != null then "[\(.locator)][ev-\(.rank)]" else .locator end) + " (\(.sig[0:8]), \(.rigor // "?")) — \((.body // "" | gsub("\n"; " ") | .[0:200]))"' <<<"$ranked"
       if [[ -n "$rep_defs" ]]; then printf '%s\n' "$rep_defs"; fi
+      rep_overview=$(render_overview "$dir" "$pr")
+      if [[ -n "$rep_overview" ]]; then printf '%s\n' "$rep_overview"; fi
       if [[ -n "$rep_checked" ]]; then echo "## What we checked"; printf '%s\n' "$rep_checked"; fi
       rep_footer=$(render_footer "$dir")
       if [[ -n "$rep_footer" ]]; then printf '%s\n' "$rep_footer"; fi

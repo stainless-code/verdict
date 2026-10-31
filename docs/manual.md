@@ -491,6 +491,26 @@ outputs as the named trigger).
 
 Findings link to code instead of pasting it: bodies reference each site as a reference-style `blob/<reviewed-SHA>/<path>#Lx` link (line ranges as `#Lx-Ly`), pinned to the reviewed commit — never live HEAD — so links survive later pushes; code quotes stay at most 3 lines and live only inside collapsed `<details>` blocks, with the visible body link-first. Non-GitHub and local bundles render plain `` `path:line` `` text instead (a blob URL there would 404), and the same degradation applies to `record`/`report` outputs. Link shape is garnish like the basis line: `post`/`record` warn on a wrong-SHA link or a long visible quote and keep the body — reviews never fail over it.
 
+## Change overview (file table + topology)
+
+Large diffs get a script-computed overview in `report --output`: a collapsed
+file table (`#`, file, `+/-`, hunks, role) plus a collapsed `flowchart TD`
+topology (`PR` node → file nodes, with `uses`/`validates` edges only where an
+added diff line names another changed file — unknown relations are omitted,
+never invented). Shown collapsed when the bundle holds more than 8 files or
+the diff exceeds 24KB (24576 bytes); smaller diffs render byte-identical
+output with no overview block. Every table row carries a stable `F1..Fn` id
+reserved for future prose annotation — prose would decorate, never replace,
+so the table renders identically with or without it. Model one-liners are
+explicitly out (a future slice with its own trigger decides those). All cells
+and edges derive from the owned bundle stores — file list and deltas from
+`PR.json`/diff headers, hunk counts from `hunks.tsv`, roles from `roles.txt`;
+no tokens are spent and nothing is hallucinated. Knobs: `publish.overview`
+(bool, default `true`) gates the feature and `REVIEW_PUBLISH_OVERVIEW` env
+does the same; `--overview` forces it on and `--no-overview` forces it off
+(flags win over file over env). Posted agent bodies never carry the block —
+`report --output` is its only home, so one truth never forks into two.
+
 ## Local review (no PR)
 
 Same review machinery, no GitHub object. `fetch-local owner/repo <name>` builds a
