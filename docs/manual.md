@@ -19,7 +19,7 @@ export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-request
 #    Read SKILL.md, prompts/system.md, prompts/review.md, .review/123/PR.json,
 #    .review/123/roles.txt. Read .review/123/full.diff fully via .review/123/toc.txt.
 #    Fan out 0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
-#    Write exactly one .review/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?}.
+#    Write exactly one .review/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
 ./scripts/review.sh post owner/repo 123
@@ -58,6 +58,12 @@ export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-request
       "status": "wont-fix",
       "rationale": "By design: … (≥30 chars)"
     }
+  ],
+  "sections": [
+    {
+      "heading": "### ⚠️ Rollout needs a migration window",
+      "severity": "important"
+    }
   ]
 }
 ```
@@ -69,6 +75,7 @@ the fetched hunks: provably-outside anchors move into the body under Unanchored 
 (one bad anchor never fails the run); ambiguous anchors are kept with a warning.
 Suggestions render as fenced blocks in `body` (raw keys never hit the API).
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
+`sections` carries severity tags `{heading, severity}` for `###` body sections — exact heading string, unmatched tags ignored.
 
 The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
 `.review/<bundle>/hunks.tsv` (per-file, side-aware `NEW`/`OLD` ranges from

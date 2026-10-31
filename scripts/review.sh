@@ -42,7 +42,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,
     guard stale-SHA + duplicates, post exactly one review.
     Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);
-    APPROVE is refused with open findings unless --force.
+    APPROVE is refused with open or deferred findings unless --force.
     Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on
     verification.json evidence (VERIFIED + resultHead matching HEAD).
     --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.
