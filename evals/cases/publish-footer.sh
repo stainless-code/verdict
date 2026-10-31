@@ -27,6 +27,9 @@
 #       the findings-store derivation (rigor/cited/verified).
 #   B2  agent-path mismatch warns and keeps: a wrong Basis in review.json
 #       exits 0 with a store-counts warning; a right one stays silent.
+#   R1  repost guard (07): post.json head == bundle HEAD omits the review link
+#       (the stored id belongs to the review being superseded); head differs
+#       keeps today's link; absent post.json keeps today's unlinked render.
 #   M1  the manual carries the one-sentence confidence metric definition.
 #   P0  absent-file parity: no settings file keeps the gates byte-identical
 #       (degenerate-body still refuses marker-less shorts, marker-first still
@@ -73,7 +76,10 @@ EOF
 cat > "$dir/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50}],"est_usd":0.05}
 EOF
-jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+# post.json head differs from the PR HEAD below (new-commit post: the stored
+# review belongs to an earlier commit), so the golden footer keeps today's link.
+# A same-head post.json would now omit it (R1 repost guard).
+jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
   '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
   > "$dir/post.json"
 # sections carry no rigor key, so the store default (pointed) counts them too
@@ -105,6 +111,81 @@ if [ "$(grep -c '^> Basis' "$EVAL_SANDBOX/out-4501.md")" = "1" ] \
   good "basis sits directly under the confidence lead"
 else
   bad "basis placement drifted"
+fi
+
+# --- R1: same-head repost omits the stale link, controls keep today's render ---
+# (a) post.json head == bundle HEAD: the stored id belongs to the review being
+# superseded, so the dry-run footer carries the receipt but no review link.
+PR=4524
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}
+EOF
+jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
+  > "$EVAL_SANDBOX/.review/$PR/post.json"
+run_review post acme/app "$PR" --dry-run --json
+repost_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ -n "$repost_footer" ] \
+  && ! grep -Fq '[review' <<<"$repost_footer" \
+  && grep -Fq 'standard tier' <<<"$repost_footer"; then
+  good "same-head repost omits the stale link, receipt kept"
+else
+  bad "repost guard gave exit $EVAL_STATUS"
+fi
+# (b) post.json head != bundle HEAD: new-commit post keeps today's link.
+PR=4525
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}
+EOF
+jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
+  '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
+  > "$EVAL_SANDBOX/.review/$PR/post.json"
+run_review post acme/app "$PR" --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && grep -Fq '[review `101`](https://example.invalid/r/101)' <<<"$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"; then
+  good "differing-head post keeps today's link"
+else
+  bad "head-differs control gave exit $EVAL_STATUS"
+fi
+# (c) absent post.json: fresh post keeps today's unlinked render.
+PR=4526
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+absent_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ -n "$absent_footer" ] \
+  && ! grep -Fq '[review' <<<"$absent_footer"; then
+  good "absent post.json keeps today's unlinked render"
+else
+  bad "absent-post control gave exit $EVAL_STATUS"
+fi
+if [ "$absent_footer" = "$repost_footer" ]; then
+  good "omit-branch footer byte-identical to fresh unlinked render"
+else
+  bad "omit-branch footer differs from fresh render"
+fi
+# (d) same-head post.json without html_url: the plain-text no-URL fallback is
+# swallowed too, not just the linked form.
+PR=4527
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}
+EOF
+jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  '{schema_version:"1",review:{id:101},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
+  > "$EVAL_SANDBOX/.review/$PR/post.json"
+run_review post acme/app "$PR" --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && ! grep -Fq 'review `' <<<"$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"; then
+  good "same-head omit swallows the plain-text no-URL fallback too"
+else
+  bad "no-URL fallback gave exit $EVAL_STATUS"
 fi
 
 # --- F2: degraded reads (no cost, no post, no file list, no diff) ---

@@ -1001,12 +1001,25 @@ publish_file_count() { # $1 = dir; echoes "N file(s)" or "files unrecorded" — 
 }
 
 publish_review_link() { # $1 = dir; echoes "" (unknown) or a factual review ref — never invented
-  local id="" url=""
+  local id="" url="" posted="" current=""
   [[ -f "$1/post.json" ]] || return 0
   id=$(jq -r '.review.id // empty' "$1/post.json" 2>/dev/null || true)
   url=$(jq -r '.review.html_url // empty' "$1/post.json" 2>/dev/null || true)
   [[ -z "$id" && -z "$url" ]] && return 0
   [[ -z "$id" ]] && id="posted"
+  # Same-head repost (07): a post.json head matching the bundle HEAD means the
+  # stored id belongs to the review being superseded (the imminent post mints a
+  # fresh one), so omit the link instead of rendering the stale id. A differing
+  # head keeps today's link; an unreadable head keeps it too (never wedge).
+  posted=$(jq -r '.head // empty' "$1/post.json" 2>/dev/null || true)
+  if [[ -n "$posted" ]]; then
+    if [[ -f "$1/PR.json" ]]; then current=$(pr_field "$1" head_sha)
+    # source.json branch is defensive-only: post refuses local bundles, so only
+    # the PR.json path resolves in practice. Kept so any future local-post path
+    # degrades the same way instead of linking a stale id.
+    elif [[ -f "$1/source.json" ]]; then current=$(jq -r '.head_sha // empty' "$1/source.json" 2>/dev/null || true); fi
+    [[ -n "$current" && "$posted" == "$current" ]] && return 0
+  fi
   if [[ -n "$url" ]]; then printf '[review `%s`](%s)' "$id" "$url"; else printf 'review `%s`' "$id"; fi
 }
 

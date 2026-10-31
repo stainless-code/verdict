@@ -61,7 +61,10 @@ index 1111111..2222222 100644
 EOF
   printf '[{"kind":"inline","path":"a.txt","side":"RIGHT","line":2,"anchored":true,"body":"Open probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"1111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]' > "$dir/findings.json"
   printf '{"schema_version":"1","effort":"standard","est_usd":0.05}' > "$dir/cost.json"
-  jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  # post.json head differs from the PR HEAD (new-commit post), so the footer
+  # keeps today's link — a same-head head would now omit it (07 repost guard)
+  # and break the V1 old-vs-new parity baseline below by design.
+  jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
     '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
     > "$dir/post.json"
   printf '{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}' > "$dir/review.json"

@@ -453,7 +453,9 @@ block at the end:
 Fields degrade factually, never blank, never failing the run: an unreadable
 version reads `unknown`, unpriced spend reads `cost unrecorded`, uncountable
 files read `files unrecorded`, and the review link renders only when a
-completed post record carries it (never invented pre-post). The attribution
+completed post record carries it (never invented pre-post). When the post
+record's head matches the bundle HEAD the link is omitted instead of pointing
+at the stale review (a same-commit repost supersedes the stored id). The attribution
 line carries a product-linked logo and a linked bold product name with the
 version inline and space-separated — never in brackets (they would collide
 with the link text) or parens.
