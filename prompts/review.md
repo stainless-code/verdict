@@ -96,8 +96,12 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
      "schema_version": "1",
      "effort": "standard",
      "models": [
-       {"name": "<synthesizer model id>", "input_tokens": 0, "output_tokens": 0},
-       {"name": "<lens model id>", "input_tokens": 0, "output_tokens": 0}
+       {
+         "name": "<synthesizer model id>",
+         "input_tokens": 0,
+         "output_tokens": 0
+       },
+       { "name": "<lens model id>", "input_tokens": 0, "output_tokens": 0 }
      ],
      "wall_seconds": 0,
      "diff_bytes": 0,
@@ -150,21 +154,15 @@ if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY 
 
 ### Technical details (every body `###` carries one; inline carries one when non-trivial)
 
-```html
-<details><summary>Technical details</summary>
+`````html
+<details>
+  <summary>Technical details</summary>
 
-````markdown
-# {title}
-
-## Affected sites
-- {file:line} — {what's wrong}
-
-## Required outcome
-- {what the fix needs to achieve, not how to achieve it}
-
-## Suggested approach (optional)
-## Open questions for human (optional)
-````
+  ````markdown # {title} ## Affected sites - {file:line} — {what's wrong} ##
+  Required outcome - {what the fix needs to achieve, not how to achieve it} ##
+  Suggested approach (optional) ## Open questions for human (optional)
+</details>
+`````
 
 </details>
 ```
@@ -177,6 +175,29 @@ if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY 
 
 4-backtick fence keeps inner 3-backtick fences copyable. Skip optional sections when empty.
 Backtick-wrap identifiers — each `###` IS the issue.
+
+## Confidence-led opening (all reviews)
+
+The verdict callout stays the first line — it carries the marker the tool
+gates on. The next lines lead with confidence plus safety assessment:
+
+> ✅ No new issues found.
+> Confidence: 4/5 · Safety: no new attack surface (auth paths untouched).
+
+`Confidence` mirrors top-level `confidence` (1–5) in `review.json`;
+`Safety` is the one-line read from `security_summary` (or `not assessed`
+when you did not assess it). Full reasoning stays in the inline comments
+and the findings store (the machine envelope) — the posted body stays tight.
+
+Clean reviews (nothing actionable) close the summary with a bounded
+**What we checked** list — at most seven bullets drawn from `toc.txt`
+coverage and `roles.txt` (no new data collection; a `**`-lead-in, never a
+`###` heading, so it never files as a section finding):
+
+**What we checked**
+
+- `src/api.ts` — request validation (source)
+- `src/api.test.ts` — new cases for the changed paths (test)
 
 ## Opening callout ladder (pick by author's next action)
 

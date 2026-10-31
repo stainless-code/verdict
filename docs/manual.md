@@ -213,13 +213,28 @@ recall; citing one warns and drops.
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `report` is the pure offline reader over the store (ranked items, verdict,
 counts, patch passthrough, optional `--output` markdown with machine-header markers,
-optional `--sarif` for scanners/CI). Distinct from `prompts/ci.md`'s agent-written
+optional `--sarif` for scanners/CI). `--output` markdown leads with
+`> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
+`unrecorded`/`not assessed` when the run recorded neither) and, on clean
+reports (no open findings), closes with a `## What we checked` list of at
+most seven bundle files (plus an overflow pointer to `toc.txt`). Item bodies
+stay 200-char summaries; full reasoning lives in the `--json` envelope only.
+Distinct from `prompts/ci.md`'s agent-written
 `.review/N/report.md` (no-post CI loop, `SKILL.md` router row) — never point
 `report --output` at that path; the verb's markdown carries `report-machine`
 markers, the agent's does not. Severity is stored at write time (unknown → null,
 prose emoji never parsed) — rank uses status, then severity, then rigor, then
 anchored/inBounds, then path/line/sig. `doctor` preflights the harness; `calibrate`
 joins findings against live ground truth, read-only.
+
+`fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
+the script renders the assembled agent reading list — `SKILL.md`,
+`prompts/system.md`, `prompts/review.md`, the bundle meta (`PR.json` or
+`source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus `kb.txt`,
+`sensitive.txt`, and `panel` when present, concatenated in that order — to
+stdout (human mode; progress moves to stderr) or `data.prompt_dump`
+(`--json`). No agent runs, no network beyond the fetch itself, no store
+writes beyond the bundle: without the flag both verbs are byte-identical.
 
 `ready` stays advisory by default (exit 0, blockers listed); `ready --check`
 opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait,

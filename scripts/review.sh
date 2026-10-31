@@ -8,7 +8,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|check-tree|ready|trend|learn [opts]
-  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--json]
+  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--show-prompts] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
     Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.
@@ -17,12 +17,17 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     runs unless --consent-over-budget is given (consent lands in budget.json,
     surfaced by report --cost). Unset: estimate off, fetch as today.
   fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]
-        [--stash [n]] [--consent-over-budget] [-- paths...] [--json]
+        [--stash [n]] [--consent-over-budget] [--show-prompts] [-- paths...] [--json]
     local review bundle from git (no GitHub, no PR): writes
     .review/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.
     Same diff cap as fetch (512000 bytes, overridable as above); untracked/binary exclusions warn, never fail.
     Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.
     downstream verbs address it as local-<name>; post/calibrate refuse it.
+    --show-prompts (fetch and fetch-local) renders the assembled agent prompt —
+    SKILL.md + prompts/system.md + prompts/review.md + bundle meta + toc.txt + roles.txt +
+    full.diff + kb.txt/sensitive.txt/panel when present, concatenated in that order —
+    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).
+    No agent runs, no network beyond the fetch, no store writes beyond the bundle.
   record <owner/repo> <local-slug> [--json]
     validate + merge a local review.json into findings.json + record.json. No GitHub, no post.
   adopt <owner/repo> <pr> --from <local-slug> [--json]
@@ -788,6 +793,20 @@ emit_context() { # $1 = dir
   fi
 }
 
+# Prompt dump (--show-prompts): render the assembled agent reading list to
+# stdout in documented order (SKILL.md, system, mode, bundle meta, coverage
+# manifest, roles, diff, recall, advisories, panel). Pure-local reads only:
+# no agent runs, no network, no store writes. Missing/optional files are
+# skipped silently, so the dump is exactly the concatenation of what exists.
+render_prompt_dump() { # $1 = bundle dir
+  local dir="$1" meta="$1/PR.json" f
+  [[ -f "$1/source.json" ]] && meta="$1/source.json"
+  for f in SKILL.md prompts/system.md prompts/review.md "$meta" "$dir/toc.txt" "$dir/roles.txt" "$dir/full.diff" "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
+    [[ -f "$f" ]] || continue
+    cat -- "$f"
+  done
+}
+
 # Cost control plane: operator spend budget + pre-run estimate + consent gate.
 # Env-first like REVIEW_PANEL: REVIEW_BUDGET_USD wins, else the first usable
 # line of .review/budget (plain USD number, # comments and blanks skipped).
@@ -1446,12 +1465,18 @@ write_toc_roles() { # $1 = dir, $2 = toc title line
 
 # Shared fetch tail: counts, done/next hints, --json envelope. $1 = incremental base ("null" or sha).
 fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode panel_src panel_list omitted)
-  local inc_base="$1" files sens_file kb_file db
+  local inc_base="$1" files sens_file kb_file db pdump_json
   files=$(jq '.files | length' "$dir/PR.json" 2>/dev/null || echo "?")
   sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
   kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
   db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
   case "$db" in ''|*[!0-9]*) db="0";; esac
+  # Prompt dump payload for --json (human mode streams it to the saved stdout
+  # below). Computed only under the flag, so default envelopes are untouched.
+  pdump_json="null"
+  if [[ "${show_prompts:-false}" == "true" && "$json_mode" == "true" ]]; then
+    pdump_json=$(render_prompt_dump "$dir" | jq -Rs '.')
+  fi
   echo "done: $dir/PR.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($files files)"
     echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + $dir/PR.json + $dir/full.diff (+ $dir/roles.txt) to any agent; ask it to write $dir/review.json"
     if [[ "$json_mode" == "true" ]]; then
@@ -1464,6 +1489,7 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
         --arg inc "$inc_base" --arg sens "$sens_file" --arg kb "$kb_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
         --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
+        --argjson pdump "$pdump_json" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
@@ -1472,21 +1498,31 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
           incremental_base:(if $inc=="null" then null else $inc end)}
           + (if $estimate == null then {} else {estimate:$estimate} end)
           + (if $budget == null then {} else {budget:$budget} end)
-          + (if $cap == null then {} else {cap:$cap} end),error:null}' >&9
+          + (if $cap == null then {} else {cap:$cap} end)
+          + (if $pdump == null then {} else {prompt_dump:$pdump} end),error:null}' >&9
     fi
+  # Human-mode dump: the assembled prompt owns the saved stdout; without the
+  # flag this block is dead code and output is byte-identical to today.
+  if [[ "${show_prompts:-false}" == "true" && "$json_mode" != "true" ]]; then
+    render_prompt_dump "$dir" >&8
+  fi
   exit 0
 }
 
 if [[ "$cmd" == "fetch" ]]; then
-  base_sha=""; provider="github"; budget_consent="false"
+  base_sha=""; provider="github"; budget_consent="false"; show_prompts="false"
   while [[ $# -gt 0 ]]; do case "$1" in
     --base-sha|--since) base_sha="${2:-}"; shift 2;;
     --provider) provider="${2:-github}"; shift 2;;
     --consent-over-budget) budget_consent="true"; shift;;
+    --show-prompts) show_prompts="true"; shift;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --show-prompts, --json)" >&2; exit 2;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  # Prompt dump rides the normal fetch: progress moves to stderr so the dump
+  # owns stdout. Stores, network, and exits are untouched by the flag itself.
+  if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then exec 8>&1; exec 1>&2; fi
   case "$provider" in github|gitlab|gitcafe|forgejo|bitbucket|azure) ;;
     *) fail "bad-provider" "unknown --provider '$provider' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)";; esac
   budget_gate "$budget_consent"
@@ -1546,19 +1582,21 @@ fi
 # Modes: worktree-vs-HEAD (default) | staged | range | branch-vs-base | stash.
 # Writes .review/local-<name>/ (source.json, full.diff, toc.txt, roles.txt).
 if [[ "$cmd" == "fetch-local" ]]; then
-  staged="false"; range=""; base_ref=""; stash_n=""; json_mode="false"; budget_consent="false"; paths=()
+  staged="false"; range=""; base_ref=""; stash_n=""; json_mode="false"; budget_consent="false"; show_prompts="false"; paths=()
   while [[ $# -gt 0 ]]; do case "$1" in
     --staged) staged="true"; shift;;
     --range) range="${2:-}"; shift 2;;
     --base) base_ref="${2:-}"; shift 2;;
     --stash) if [[ -n "${2:-}" && "${2:-}" != -* ]]; then stash_n="$2"; shift 2; else stash_n="0"; shift; fi;;
     --consent-over-budget) budget_consent="true"; shift;;
+    --show-prompts) show_prompts="true"; shift;;
     --json) json_mode="true"; shift;;
     --) shift; while [[ $# -gt 0 ]]; do paths+=("$1"); shift; done;;
-    -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --consent-over-budget, -- <paths>, --json)" >&2; exit 2;;
+    -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --consent-over-budget, --show-prompts, -- <paths>, --json)" >&2; exit 2;;
     *) paths+=("$1"); shift;;
   esac; done
   if [[ "$json_mode" == "true" ]]; then exec 9>&1; exec 1>&2; fi
+  if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then exec 8>&1; exec 1>&2; fi
   slug=$(printf '%s' "$pr" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/-\+/-/g; s/^-\|-$//g' | cut -c1-48)
   [[ -z "$slug" || "$slug" == "local" ]] && fail "bad-slug" "name '$pr' sanitizes to nothing — pass a usable bundle name"
   if [[ "$slug" =~ ^[0-9]+$ ]]; then fail "bad-slug" "'$slug' looks like a PR number — use fetch for PRs"; fi
@@ -1703,6 +1741,10 @@ if [[ "$cmd" == "fetch-local" ]]; then
     kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
     db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
     case "$db" in ''|*[!0-9]*) db="0";; esac
+    pdump_json="null"
+    if [[ "$show_prompts" == "true" ]]; then
+      pdump_json=$(render_prompt_dump "$dir" | jq -Rs '.')
+    fi
     jq -n --arg d "$dir" --arg hs "$head_sha" --arg bs "$base_sha" --argjson files "$total" \
       --argjson adds "$adds" --argjson dels "$dels" \
       --argjson hunks "$(grep -c '^@@' "$dir/full.diff" || true)" \
@@ -1712,6 +1754,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --arg sens "$sens_file" --arg kb "$kb_file" \
       --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
       --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
+      --argjson pdump "$pdump_json" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:("feed SKILL.md + prompts/system.md + prompts/review.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
@@ -1720,7 +1763,11 @@ if [[ "$cmd" == "fetch-local" ]]; then
         artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end))}
         + (if $estimate == null then {} else {estimate:$estimate} end)
         + (if $budget == null then {} else {budget:$budget} end)
-        + (if $cap == null then {} else {cap:$cap} end),error:null}' >&9
+        + (if $cap == null then {} else {cap:$cap} end)
+        + (if $pdump == null then {} else {prompt_dump:$pdump} end),error:null}' >&9
+  fi
+  if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then
+    render_prompt_dump "$dir" >&8
   fi
   exit 0
 fi
@@ -2267,10 +2314,47 @@ if [[ "$cmd" == "report" ]]; then
     fi
   fi
   if [[ -n "$output" ]]; then
+    # Confidence-led lead: review-level confidence + safety assessment from the
+    # already-stored completed-post/machine records (post.json for PR bundles,
+    # record.json for local ones). Reads only — absent/unparsable records read
+    # neutral, never fail.
+    rep_conf="unrecorded"; rep_sec="not assessed"
+    for rep_rec in "$dir/post.json" "$dir/record.json"; do
+      [[ -f "$rep_rec" ]] || continue
+      rep_c=$(jq -r '.confidence // empty' "$rep_rec" 2>/dev/null || true)
+      case "$rep_c" in 1|2|3|4|5) rep_conf="$rep_c/5";; esac
+      rep_s=$(jq -r '.security_summary // empty' "$rep_rec" 2>/dev/null || true)
+      [[ -n "$rep_s" ]] && rep_sec="$rep_s"
+      break
+    done
+    # Bounded coverage list on clean reports (no open findings): up to 7 files
+    # from the stored bundle (PR.json file list, else diff headers) — no new
+    # data collection. Full reasoning stays in the machine envelope (--json
+    # items); the file keeps 200-char summaries.
+    rep_checked=""
+    if (( n_all_open == 0 )); then
+      rep_files=""
+      if [[ -f "$dir/PR.json" ]]; then
+        rep_files=$(jq -r '.files[]? | "\(.path) (+\(.additions // 0)/-\(.deletions // 0))"' "$dir/PR.json" 2>/dev/null || true)
+      fi
+      if [[ -z "$rep_files" && -f "$dir/full.diff" ]]; then
+        rep_files=$(grep '^diff --git ' "$dir/full.diff" 2>/dev/null | sed -e 's/^diff --git //' -e 's/.* b\///' || true)
+      fi
+      if [[ -n "$rep_files" ]]; then
+        rep_n=$(printf '%s\n' "$rep_files" | grep -c . || true)
+        rep_checked=$(printf '%s\n' "$rep_files" | head -n 7 | sed 's/^/- /')
+        if (( rep_n > 7 )); then
+          rep_checked="$rep_checked
+(+$(( rep_n - 7 )) more — see toc.txt for the full coverage manifest)"
+        fi
+      fi
+    fi
     { echo "# Review report — $repo#$pr"; echo
       echo "<!-- report-machine:start -->"
+      echo "> Confidence: $rep_conf · Safety: $rep_sec"
       echo "## Counts — open $n_all_open · head ${head_sha:0:7}"
       jq -r '.[] | "\(.rank). [\(.status)] \(.locator) (\(.sig[0:8]), \(.rigor // "?")) — \((.body // "" | gsub("\n"; " ") | .[0:200]))"' <<<"$ranked"
+      if [[ -n "$rep_checked" ]]; then echo "## What we checked"; printf '%s\n' "$rep_checked"; fi
       echo "<!-- report-machine:end -->"
     } > "$output"
   fi
