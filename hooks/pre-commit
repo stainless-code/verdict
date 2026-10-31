@@ -12,16 +12,45 @@ while IFS= read -r f; do
 ";; esac
 done < <(git diff --cached --name-only --diff-filter=ACM)
 
-if [[ -z "$staged" ]]; then exit 0; fi
-if ! command -v bun >/dev/null 2>&1; then
-  echo "pre-commit: bun not found — formatting unchecked (see README ## Formatting)"
-  exit 0
+# Staged shell scripts, for the shellcheck gate below (same file list shape).
+sh_staged=""
+while IFS= read -r f; do
+  case "$f" in *.sh) sh_staged="$sh_staged$f
+";; esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+if [[ -z "$staged" && -z "$sh_staged" ]]; then exit 0; fi
+
+# Both gates always run so one pass reports every failure; the exit code is
+# accumulated. (Failing fast would hide the second gate's findings.)
+failed=0
+if [[ -n "$staged" ]]; then
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "pre-commit: bun not found — formatting unchecked (see README ## Formatting)"
+  else
+    printf '%s' "$staged" | xargs bun fmt --check -- || {
+      echo "pre-commit: formatting issues above."
+      echo "Fix only non-example hunks (never reflow prompts/ examples) or run:"
+      echo "  git diff --cached --name-only | grep -E '\\.(md|json|ts)$' | grep -v '^prompts/' | xargs bun fmt --check --"
+      echo "If the only diffs are protected prompt examples, commit with --no-verify and say why."
+      failed=1
+    }
+  fi
 fi
 
-printf '%s' "$staged" | xargs bun fmt --check -- || {
-  echo "pre-commit: formatting issues above."
-  echo "Fix only non-example hunks (never reflow prompts/ examples) or run:"
-  echo "  git diff --cached --name-only | grep -E '\\.(md|json|ts)$' | grep -v '^prompts/' | xargs bun fmt --check --"
-  echo "If the only diffs are protected prompt examples, commit with --no-verify and say why."
-  exit 1
-}
+# Shell gate (same -S warning bar CI enforces). Missing binary skips with a
+# notice — same degrade-gracefully idiom as bun above. Filenames with spaces
+# are not supported (this repo has none). Note: no xargs -r — it is GNU-only
+# and this hook runs on macOS bash 3.2; the non-empty guards above are the
+# portable equivalent.
+if [[ -n "$sh_staged" ]]; then
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    echo "pre-commit: shellcheck not found — shell lint unchecked (CI still gates on -S warning)"
+  else
+    printf '%s' "$sh_staged" | xargs shellcheck -S warning -- || {
+      echo "pre-commit: shellcheck issues above (CI gates on -S warning)."
+      failed=1
+    }
+  fi
+fi
+exit "$failed"

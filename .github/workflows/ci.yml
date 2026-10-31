@@ -45,8 +45,8 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
-      - name: Lint shell entry points
-        run: shellcheck -S warning scripts/review.sh install.sh hooks/pre-commit
+      - name: Lint shell
+        run: git ls-files '*.sh' hooks/pre-commit | xargs shellcheck -S warning
 
   installer:
     name: 🔌 Installer smoke
