@@ -580,6 +580,9 @@ $move_section"
       --argjson kb "$kb_list" \
       '. + [$e + {sig:$sig, sig_version:"1", firstSeen:$sha, lastSeen:$sha, status:"open", rationale:"", kb:$kb, history:[{at:$now, event:"reported"}]} | del(.sigKey)]' <<<"$entries")
   done <<<"$new_entries"
+  # Re-post merge: absent/null kb ($n.kb null) keeps the prior cite via //,
+  # explicit [] clears it ([] is a value to //); present arrays normalized
+  # above overwrite. Brand-new entries default to [] in the backfill below.
   if [[ -f "$dir/findings.json" ]]; then old="$dir/findings.json"; else old="/dev/null"; fi
   if [[ "$old" != "/dev/null" ]]; then
     entries=$(jq --slurpfile old "$old" --arg now "$now" --arg sha "$hs" '
@@ -598,7 +601,10 @@ $move_section"
   fi
   # sig_version backfill: entries that predate versioning (or arrive without one)
   # get "1" — never clobber a version a newer normalization stamped.
-  entries=$(jq 'map(if has("sig_version") then . else . + {sig_version:"1"} end)' <<<"$entries")
+  # kb default: brand-new entries whose comment carried no kb cite arrive as
+  # null (absent) — they read [] (re-posts merge before this line, so prior
+  # cites are already kept by the $n.kb // $prev.kb above).
+  entries=$(jq 'map(.kb //= [] | if has("sig_version") then . else . + {sig_version:"1"} end)' <<<"$entries")
   # Auto-reopen: on delta runs (incremental.diff present), addressed entries whose path
   # the delta touches and whose lastSeen predates this run go back to open.
   if [[ -f "$dir/incremental.diff" ]]; then
@@ -988,7 +994,7 @@ write_sensitive_manifest() { # $1 = dir, $2 = newline-separated extra paths (may
 # {id, rule, scope, provenance, rigor, hits, false_hits, judged, status}
 # (retired rows keep the line and gain retiredAt/retireReason tombstones plus
 # a history log). Audit: every credit appends one .review/kb-joins.jsonl row
-# {at, sig, rule, outcome, actor, verb}. Recall (write_kb_recall) mirrors the
+# {at, sig, rule, outcome, actor, verb, bundle, review_id}. Recall (write_kb_recall) mirrors the
 # sensitive manifest: advisory context file .review/<bundle>/kb.txt only when
 # active rules match, never a gate, never redacting evidence.
 KB_FILE=".review/kb.jsonl"
@@ -1046,13 +1052,19 @@ kb_resolve_policy() {
 }
 
 # kb_normalize_entry <entry-json> — set KB_NORM_JSON to the normalized kb id
-# list (JSON array, max 5): absent/null reads [], malformed/unknown/retired
-# ids warn-and-drop per element (mirrors the confidence warn-and-drop
+# list (JSON array, max 5): absent/null reads null (no re-cite — the merge
+# keeps the prior cite), explicit [] reads [] (uncite — the merge clears);
+# present non-empty arrays normalize per element with malformed/unknown/
+# retired ids warned-and-dropped (mirrors the confidence warn-and-drop
 # precedent). Same-process by design: callers need the warns in the envelope
 # (warns inside $() are lost to the parent).
 kb_normalize_entry() {
   local e="$1" t="" out="[]" n=0 j="" cid="" st="" trunc="false"
   KB_NORM_JSON="[]"
+  if ! jq -e 'has("kb") and (.kb != null)' <<<"$e" >/dev/null 2>&1; then
+    KB_NORM_JSON="null"
+    return 0
+  fi
   [[ "$KB_BROKEN" == "true" ]] && return 0
   t=$(jq -c '.kb // []' <<<"$e" 2>/dev/null || echo "BROKEN")
   if [[ "$t" == "BROKEN" ]] || ! jq -e 'type == "array"' <<<"$t" >/dev/null 2>&1; then
@@ -1165,6 +1177,7 @@ kb_strip_stamps() {
 # strips the staged stamps so a later re-flip can retry. Never fails the flip.
 kb_commit_staged() {
   local findings_file="$1" now="$2" tmp="" live="" op="" rid="" sig="" outcome=""
+  local bundle_dir="" bundle="" review_id_json="null"
   [[ "$KB_STAGED" == "[]" ]] && return 0
   [[ "$KB_BROKEN" == "true" ]] && { KB_STAGED="[]"; return 0; }
   if [[ ! -f "$KB_FILE" ]] || ! jq -s empty "$KB_FILE" >/dev/null 2>&1; then
@@ -1181,6 +1194,15 @@ kb_commit_staged() {
     live=$(jq -c --argjson op "$op" '. + [$op]' <<<"$live")
   done < <(jq -c '.[]' <<<"$KB_STAGED" 2>/dev/null || true)
   if [[ "$live" == "[]" ]]; then KB_STAGED="[]"; return 0; fi
+  # Audit scope (additive): every joins row carries the bundle dir basename
+  # plus post.json's review.id when that file exists (local bundles read
+  # null). Best-effort — resolution never fails the credit.
+  bundle_dir=$(dirname "$findings_file")
+  bundle=$(basename "$bundle_dir")
+  if [[ -f "$bundle_dir/post.json" ]]; then
+    review_id_json=$(jq -c '.review.id // null' "$bundle_dir/post.json" 2>/dev/null || echo "null")
+  fi
+  [[ -z "$review_id_json" ]] && review_id_json="null"
   tmp="$KB_FILE.tmp.$$"
   if ! jq -c -s --argjson ops "$live" '
       (($ops | map(select(.outcome == "addressed")) | sort_by(.rule) | group_by(.rule) | map({key:.[0].rule, value:length}) | from_entries) // {}) as $hits
@@ -1200,7 +1222,8 @@ kb_commit_staged() {
     [[ -z "$op" ]] && continue
     rid=$(jq -r '.rule' <<<"$op"); sig=$(jq -r '.sig' <<<"$op"); outcome=$(jq -r '.outcome' <<<"$op")
     jq -n -c --arg t "$now" --arg s "$sig" --arg r "$rid" --arg o "$outcome" --arg a "$(jq -r '.actor' <<<"$op")" --arg v "$(jq -r '.verb' <<<"$op")" \
-      '{at:$t, sig:$s, rule:$r, outcome:$o, actor:$a, verb:$v}' >> "$KB_JOINS" 2>/dev/null \
+      --arg b "$bundle" --argjson review_id "$review_id_json" \
+      '{at:$t, sig:$s, rule:$r, outcome:$o, actor:$a, verb:$v, bundle:$b, review_id:$review_id}' >> "$KB_JOINS" 2>/dev/null \
       || warn "kb audit row for '$rid' not written ($KB_JOINS)"
   done < <(jq -c '.[]' <<<"$live" 2>/dev/null || true)
   while IFS= read -r rid; do
