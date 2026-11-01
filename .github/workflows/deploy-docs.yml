@@ -95,7 +95,7 @@ jobs:
       - name: Upload to /verdict via FTP
         # Gate runs on workflow_run only; skipped (empty) elsewhere, so upload proceeds.
         if: steps.gate.outputs.release != 'false'
-        uses: SamKirkland/FTP-Deploy-Action@3a9c65ae0fc12ac924ccef8afc26941cc43aad0b # v4.4.0
+        uses: SamKirkland/FTP-Deploy-Action@3a9c65ae0fc12ac924ccef8afc26941cc43aad0b # post-v4.4.0 (checkout v6 support), keep
         with:
           server: ${{ secrets.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}
