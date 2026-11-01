@@ -124,8 +124,10 @@ body note, both naming `./scripts/review.sh fetch owner/repo 123
 --base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,
 then close the loop with `report --completeness` (stale-head on a bundle
 with a posted head names the `--base-sha` advance form; missing-post with
-no head names the plain `fetch`). A lookup that cannot reach the network
-warns and proceeds — the nudge never refuses.
+no head names the plain `fetch`). A binding `APPROVE` requested against a
+known stale fetch is downgraded to `COMMENT` with the reason (the review
+does not cover live HEAD — re-fetch the delta to bind). A lookup that
+cannot reach the network warns and proceeds — the nudge never refuses.
 
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires

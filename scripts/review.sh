@@ -3646,10 +3646,15 @@ if [[ "$cmd" == "post" ]]; then
   # Stale-SHA guard: anchors validate against the fetch-time snapshot
   # (hunks.tsv pinned at fetch) — if HEAD moved since fetch, say so in the
   # body as drift context and treat anchors as potentially stale. Lookup
-  # failure degrades to a warning, never a refusal.
+  # failure degrades to a warning, never a refusal. A binding APPROVE
+  # requested against known drift is downgraded to COMMENT at the gate
+  # below (the review does not cover live HEAD); unknown live SHA keeps
+  # the warn-and-proceed path.
+  drift_stale="false"
   fetched_sha=$(pr_field "$dir" head_sha)
   live_sha=$(gh api "repos/$repo/pulls/$pr" --jq '.head.sha' 2>/dev/null || true)
   if [[ -n "$live_sha" && -n "$fetched_sha" && "$live_sha" != "$fetched_sha" ]]; then
+    drift_stale="true"
     warn "HEAD moved since fetch (fetched ${fetched_sha:0:7}, live ${live_sha:0:7}) — anchors potentially stale; run ./scripts/review.sh fetch $repo $pr --base-sha ${fetched_sha:0:7} and review the delta"
     body="> ⚠️ Note: commits landed after this review's fetch (fetched \`${fetched_sha:0:7}\`, live \`${live_sha:0:7}\`); treat line anchors as potentially stale. Run \`./scripts/review.sh fetch $repo $pr --base-sha ${fetched_sha:0:7}\` and review the delta.
 
@@ -3667,7 +3672,9 @@ $body"
   findings_file="$dir/findings.json"; [[ "$dry_run" == "true" ]] && findings_file="$dir/findings.dryrun.json"
   validate_and_merge "$review_file" "$dir" "$commit_id" "$now" "$findings_file"
   # Binding gate: binding verdicts need --bind (else COMMENT); APPROVE needs zero
-  # open AND zero deferred findings unless --force. REQUEST_CHANGES with findings is normal.
+  # open AND zero deferred findings unless --force, plus a review that covers
+  # live HEAD (known drift downgrades to COMMENT — re-fetch the delta to bind).
+  # REQUEST_CHANGES with findings is normal.
   want_bind="false"
   if [[ "$approve" == "true" || "$request_changes" == "true" ]]; then want_bind="true"; fi
   if [[ "$want_bind" == "true" && "$bind" != "true" ]]; then
@@ -3680,7 +3687,14 @@ $body"
       if (( n_open + n_def > 0 )) && [[ "$force" != "true" ]]; then
         fail "approve-blocked" "refusing APPROVE with $n_open open + $n_def deferred findings (triage or pass --force)"
       fi
-      event="APPROVE"
+      if [[ "$drift_stale" == "true" ]]; then
+        warn "stale fetch — APPROVE downgraded to COMMENT (review covers fetched ${fetched_sha:0:7}, live HEAD is ${live_sha:0:7}; run ./scripts/review.sh fetch $repo $pr --base-sha ${fetched_sha:0:7} and review the delta to bind)"
+        body="> ⚠️ Note: posting as COMMENT instead of APPROVE — commits landed after this review's fetch, so the review does not cover live HEAD; run \`./scripts/review.sh fetch $repo $pr --base-sha ${fetched_sha:0:7}\` and review the delta.
+\n$body"
+        event="COMMENT"
+      else
+        event="APPROVE"
+      fi
     fi
     # Self-authored downgrade: GitHub rejects self-approvals — fail here, not there.
     if [[ "$event" != "COMMENT" ]]; then
@@ -4091,8 +4105,11 @@ if [[ "$cmd" == "report" ]]; then
     else
       comp_posted=""
     fi
+    comp_prov=$(jq -r '.provider // empty' "$dir/PR.json" 2>/dev/null || true)
     if [[ "$dir" == .review/local-* ]]; then
       comp_refetch="./scripts/review.sh fetch-local $repo ${pr#local-}"
+    elif [[ -n "$comp_prov" && "$comp_prov" != "github" ]]; then
+      comp_refetch="./scripts/review.sh fetch $repo $pr --provider $comp_prov"
     elif [[ -n "$comp_posted" ]]; then
       comp_refetch="./scripts/review.sh fetch $repo $pr --base-sha ${comp_posted:0:7}"
     else

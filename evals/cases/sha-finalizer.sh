@@ -19,12 +19,16 @@
 #       command alongside the --force override.
 #   F7  completeness advance-form: stale-head on a bundle WITH a posted head
 #       names the --base-sha advance form; missing-post (no head to advance
-#       from) keeps the plain fetch with no --base-sha.
+#       from) keeps the plain fetch with no --base-sha; provider bundles
+#       name the plain provider fetch (fetch --provider <name>, never
+#       --base-sha) on both the stale-head and missing-post paths.
 #   F8  mid-run-push nudge: a live HEAD newer than the fetch yields exit 0 +
 #       stderr warn + the > ⚠️ body note, both naming the exact
 #       fetch --base-sha <short-fetched-sha> advance command, on a COMMENT
-#       post; an unreachable live lookup warns and proceeds (exit 0, posted
-#       once — never a refusal).
+#       post; a binding APPROVE against known drift downgrades to COMMENT
+#       (exit 0, posted once, reason in stderr + body — never a silent
+#       APPROVE); an unreachable live lookup warns and proceeds (exit 0,
+#       posted once — never a refusal), including on the APPROVE path.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -256,6 +260,43 @@ else
   bad "missing-post stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
+# F7 provider: a stale-head on a provider bundle names the plain provider
+# fetch (no --base-sha — fetch refuses it for non-GitHub providers), and
+# missing-post does the same.
+PR=4307
+eval_mk_bundle "$PR"
+cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
+{"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$HEADB","head_sha":"$HEADA","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[],"additions":0,"deletions":0}
+EOF
+printf '[]' | eval_write_findings "$PR"
+jq -n --arg h "$HEADB" \
+  '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+  > "$EVAL_SANDBOX/.review/$PR/post.json"
+run_review report acme/app "$PR" --completeness
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && grep -q "stale-head" "$EVAL_ERR" \
+  && grep -q "fetch acme/app $PR --provider gitlab" "$EVAL_ERR" \
+  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
+  good "provider stale-head names the plain provider fetch, no --base-sha"
+else
+  bad "provider stale-head stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+PR=4308
+eval_mk_bundle "$PR"
+cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
+{"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$HEADB","head_sha":"$HEADA","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[],"additions":0,"deletions":0}
+EOF
+printf '[]' | eval_write_findings "$PR"
+run_review report acme/app "$PR" --completeness
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && grep -q "missing-post" "$EVAL_ERR" \
+  && grep -q "fetch acme/app $PR --provider gitlab" "$EVAL_ERR" \
+  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
+  good "provider missing-post names the plain provider fetch, no --base-sha"
+else
+  bad "provider missing-post stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+
 # --- F8: mid-run-push nudge names the advance command; gh-down warns and proceeds ---
 # Overlay a stub whose pulls endpoint reports a NEWER live head (a push
 # landed after the fetch) and which saves the reviews POST payload when
@@ -309,6 +350,38 @@ else
   bad "posted payload: $(head -c 300 "$EVAL_SANDBOX/posted-4300.json" 2>/dev/null)"
 fi
 
+# F8b: stale-fetch + binding APPROVE downgrades to COMMENT (exit 0, posted
+# once — never a silent APPROVE against the stale SHA).
+PR=4306
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}
+EOF
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4306.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+m="$(mark)"
+run_review post acme/app "$PR" --bind --approve=true --json
+unset EVAL_SAVE_PAYLOAD
+event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "COMMENT" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "stale binding APPROVE downgraded to COMMENT (exit 0, posted once)"
+else
+  bad "stale APPROVE gave exit $EVAL_STATUS event '$event', want 0/COMMENT"
+fi
+if grep -q "downgraded to COMMENT" "$EVAL_ERR" \
+  && grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" "$EVAL_ERR"; then
+  good "downgrade warn on stderr names the reason + advance command"
+else
+  bad "downgrade stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+if grep -q "posting as COMMENT instead of APPROVE" "$EVAL_SANDBOX/posted-4306.json" \
+  && [ "$(jq -r '.event // empty' "$EVAL_SANDBOX/posted-4306.json" 2>/dev/null)" = "COMMENT" ]; then
+  good "posted payload carries the downgrade note and no APPROVE event"
+else
+  bad "downgraded payload: $(head -c 300 "$EVAL_SANDBOX/posted-4306.json" 2>/dev/null)"
+fi
+
 # gh-down: the live lookup fails — warn-and-proceed, never a refusal.
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -338,6 +411,24 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   good "unreachable live lookup warns and proceeds (exit 0, posted once)"
 else
   bad "gh-down gave exit $EVAL_STATUS / stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+
+# gh-down + binding APPROVE still warns and proceeds (live SHA unknown, so
+# no known drift to refuse — never fail closed on network).
+PR=4293
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}
+EOF
+m="$(mark)"
+run_review post acme/app "$PR" --bind --json
+event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "APPROVE" ] \
+  && grep -q "live SHA lookup failed" "$EVAL_ERR" \
+  && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "gh-down binding APPROVE warns and proceeds (exit 0, APPROVE, posted once)"
+else
+  bad "gh-down APPROVE gave exit $EVAL_STATUS event '$event' / stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
 if [ "$fails" -ne 0 ]; then echo "case sha-finalizer: FAIL ($fails)"; exit 1; fi
