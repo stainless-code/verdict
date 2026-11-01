@@ -243,7 +243,7 @@ recall; citing one warns and drops.
 `fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 2/3 with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
+non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
 counts, patch passthrough, optional `--output` markdown with machine-header markers,
 optional `--sarif` for scanners/CI). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
