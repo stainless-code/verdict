@@ -1,5 +1,12 @@
 # @stainless-code/verdict
 
+## 0.3.1
+
+### Patch Changes
+
+- 045744b: Basis-line validation compares the agent's line against the review's own comments instead of the merged findings store, so re-reviews with carried-over findings no longer warn. Genuine miscounts still warn and keep the body.
+- 0c323cb: Same-head reposts omit the review link in the footer instead of pointing at the superseded review. Fresh posts keep the link; plain-text fallback unchanged.
+
 ## 0.3.0
 
 ### Minor Changes
