@@ -19,6 +19,12 @@
    exist, so skip thread-context reads entirely. Absence of threads is not signal.
    Read the **complete raw diff end-to-end**, using TOC file line ranges as coverage checklist.
    Done when every TOC range has been read — an unread range is how findings get missed.
+   Chunked bundle: when `<dir>/chunks/manifest.json` exists, the diff arrived
+   sliced — read the manifest first (ordered chunk map, coverage obligation),
+   then read each `chunks/chunk-NN.diff` end-to-end against its own
+   `chunks/chunk-NN.toc.txt` checklist. Done only when every chunk's ranges
+   are read — an unread chunk is as visible as an unread TOC range. Keep
+   `full.diff` for anchor pinning and drift detection; review from the chunks.
 3. **Triage.** Orient: what kind of thing is this (domain, seams crossed, external contracts,
    user surfaces)? Read `.review/N/roles.txt` first — it maps test/generated/docs/config/source
    so lenses fan out to source, not snapshots. Read `.review/learnings.md` headings when `fetch`
@@ -44,6 +50,9 @@
    Each dispatch carries:
    - the absolute diff path(s), verbatim (e.g. `full.diff: /path/.review/N/full.diff`);
      the lens reads those files and must NOT re-derive the diff;
+     chunked bundles name chunk diff paths the same way
+     (e.g. `chunk-01.diff: /path/.review/N/chunks/chunk-01.diff`) — the lens
+     contract is unchanged;
    - exactly one falsifiable question with scope boundaries (evidence for/against,
      never "review X, Y, Z");
    - a short hypothesis label (`webhook-replay`, `billing-rounding`) for log separation;
@@ -58,6 +67,10 @@
      other lenses. Retry a failed lens once; if still failing, resolve yourself; if
      disposition-changing and unresolved, surface the limitation and do not approve.
 6. **Aggregate & draft.** Merge, de-dup overlaps (two lenses catching same = higher confidence — record per finding which lenses independently found it).
+   Chunked bundles: draft per-chunk findings with NEW line numbers from the
+   chunk diffs, then merge, de-dupe by signature, re-tier severity, and emit
+   exactly one review document across all chunks — same body format, callout
+   ladder, and evidence-rung tags as a small-PR review (rungs unchanged).
    Trace each finding yourself. Drop praise, style prefs, speculative/unverified, pre-existing
    code unrelated to the PR (heuristic: root cause in lines this PR added/modified = in scope,
    else drop unless PR introduced/amplified the regression), anything not actionable.
@@ -79,13 +92,14 @@
 details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
-7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent, out-of-range confidence is dropped. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
+7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent, out-of-range confidence is dropped. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
    Track coverage yourself against the TOC — no tool checks it; an unread range is how findings get missed.
 8. **Cost record.** With every `review.json`, write `.review/N/cost.json`
    (local: `.review/local-<name>/cost.json`) — your self-reported spend for
    this run. `report --cost` rolls it up; a missing record never fails anything,
    so an honest partial beats a polished nothing. One entry per model that
-   generated tokens — you first, then each lens. `est_usd` is your own math
+   generated tokens — you first, then each lens. On chunked bundles write one
+   `cost.json` total, rolling up every model that generated tokens across the run. `est_usd` is your own math
    from your price sheet, `null` when you don't know prices — never guess them
    (the script never prices). `effort` names this run's tier — `cheap` (delta
    re-review, skim lenses), `standard` (full review, the default), or `deep`
@@ -234,8 +248,9 @@ The third lead line is deterministic from your `review.json`:
 
 Count rigor across your comments (every comment carries one rung, default
 `pointed`), distinct `kb` rule ids cited, and verified fixes (findings you
-would mark addressed on verification evidence — 0 on an initial review). The
-script validates this line against the review's own comments and keeps your body on
+would mark addressed on verification evidence — 0 on an initial review). On
+chunked bundles sum every rung count across all chunks into the single Basis
+line. The script validates this line against the review's own comments and keeps your body on
 mismatch, so count honestly and never reshape findings to fit the line.
 
 Clean reviews (nothing actionable) close the summary with a bounded

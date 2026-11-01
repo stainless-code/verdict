@@ -668,6 +668,63 @@ agent run over the bundle — loops multiply agent spend, so set
 constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
 counts) — the ledger is an audit trail, not a lock.
 
+## Over-cap diffs (chunked fetch + manual recipe)
+
+Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
+the size, the cap, and the split-or-narrow escape, and carries advisory split
+candidates (largest file alone, everything-but-largest, range half-split) —
+nothing auto-narrows. Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
+or a `.review/max_bytes` file holding one plain byte count (env wins, then
+the file, then the 512000 default; either override disables chunking outright
+and the fetch prints its source).
+
+Chunked fetch is the opted-in over-cap path: pass `--chunk` on `fetch` or
+`fetch-local`, or hold `true` (`on`/`1`/`yes` — first usable line wins) in a
+`.review/chunk` file. The flag wins over the file; absent reads off, and an
+absent knob refuses byte-identically to today. Under-cap fetches succeed with
+identical bytes whether the knob is set or not (the knob is never consulted
+under the cap).
+
+An opted-in over-cap fetch is machine-sliced on file boundaries (greedy
+next-fit in diff order, deterministic — re-fetch reproduces the map):
+`<dir>/chunks/` holds `chunk-NN.diff` (each at or under the cap, concatenating
+byte-identically to `full.diff`), `chunk-NN.toc.txt` (per-chunk coverage
+checklist), and `chunk-NN.roles.txt`, plus `chunks/manifest.json` (`schema_version
+"1"`, fetched HEAD/base SHAs, cap bytes + source, total bytes, and the ordered
+chunk list with member files, sizes, and diff/toc/roles refs). The top-level
+bundle keeps `full.diff` for anchor pinning and drift detection; the `--json`
+envelope gains additive `data.chunk` (`count`/`manifest`/`total_bytes`);
+`--show-prompts` concatenates the chunk diffs in manifest order.
+
+Review from the chunks: read the manifest first, then each chunk diff
+end-to-end against its own checklist — an unread chunk is as visible as an
+unread TOC range (agent contract in `prompts/review.md`; delta re-reviews
+scope to the affected chunks per `prompts/incremental-review.md`). Synthesize
+exactly one `review.json` across all chunks — same body format, callout
+ladder, and evidence-rung tags as a small-PR review, rungs summed across
+chunks into the one Basis line — and stamp top-level `"chunks": [...]` naming
+every manifest chunk covered. `post`/`record` refuse attested-but-partial
+coverage (`missing-chunk-coverage`) or unreadable snapshots
+(`missing-chunk-snapshot`), each naming the `fetch ... --chunk` re-fetch, so
+exactly one review posts, exactly once. Reviews without the claim validate as
+today (delta re-reviews, single-anchor probes) with a loud warning naming the
+manifest — the never-posts-partial guarantee holds only for attested
+reviews, so every full synthesis must stamp the claim. Cost is one `cost.json` total
+rolling up every model in the run; `report --cost` additionally folds in
+per-chunk `chunks/<name>.cost.json` records when present.
+
+One file larger than the cap cannot be file-sliced: that degenerate input
+keeps the advisory refusal with no chunks written. The manual hand-slice
+recipe stays valid for opted-out and degenerate inputs alike — hand-slice
+it (split the range and re-fetch each slice, or narrow with a paths filter),
+then review each slice and stitch the verdict yourself:
+
+```bash
+./scripts/review.sh fetch-local owner/repo slice-a --range <base>..<mid>   # or --base <R>
+./scripts/review.sh fetch owner/repo 123 --base-sha <sha>                  # or --since <sha>
+./scripts/review.sh fetch-local owner/repo slice-b -- <paths...>           # narrow to a file subset
+```
+
 ## Providers (non-GitHub hosts)
 
 `fetch --provider gitlab|gitcafe|forgejo|bitbucket|azure` builds the same bundle

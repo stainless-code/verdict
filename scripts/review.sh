@@ -8,16 +8,17 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install [opts]
-  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--show-prompts] [--json]
+  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--show-prompts] [--chunk] [--json]
     write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)
     diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).
     Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.
+    Chunking opt-in only: --chunk (or .review/chunk holding true) marks over-cap fetches for chunked slicing (override chain wins; absent reads today's refusal).
     With REVIEW_BUDGET_USD (or .review/budget) set, fetch prints a pre-run
     cost estimate from comparable past runs and refuses projected-over-budget
     runs unless --consent-over-budget is given (consent lands in budget.json,
     surfaced by report --cost). Unset: estimate off, fetch as today.
   fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]
-        [--stash [n]] [--consent-over-budget] [--show-prompts] [-- paths...] [--json]
+        [--stash [n]] [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...] [--json]
     local review bundle from git (no GitHub, no PR): writes
     .review/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.
     Same diff cap as fetch (512000 bytes, overridable as above); untracked/binary exclusions warn, never fail.
@@ -225,6 +226,28 @@ resolve_fetch_cap() { # sets FETCH_MAX_BYTES (bytes), fetch_cap_src ("" when def
     cap_json=$(jq -n --argjson b "$FETCH_MAX_BYTES" --arg s "$fetch_cap_src" '{bytes:$b, source:$s}')
   fi
 }
+# Chunking opt-in predicate (settled here; the slicing itself lands in a later
+# slice): explicit --chunk wins, else first usable line of .review/chunk, else
+# off. Knob files hold sizes + flags only, never credentials. The existing
+# cap-override chain keeps precedence: any overridden cap (env or file)
+# disables chunking outright, so deliberate exceptions stay deliberate. Silent
+# when absent/off, and never consulted on the under-cap path — so absent-knob
+# runs read today's bytes exactly.
+# Sets CHUNK_OPT_IN ("true"/"false") and chunk_src ("--chunk"/".review/chunk"/"").
+resolve_chunk_opt_in() { # no args; reads chunk_flag + fetch_cap_src; sets CHUNK_OPT_IN, chunk_src
+  local knob=""
+  CHUNK_OPT_IN="false"; chunk_src=""
+  if [[ -n "$fetch_cap_src" ]]; then return 0; fi
+  if [[ "${chunk_flag:-false}" == "true" ]]; then CHUNK_OPT_IN="true"; chunk_src="--chunk"; return 0; fi
+  if [[ -f .review/chunk ]]; then
+    knob=$(grep -v '^[[:space:]]*#' .review/chunk | grep -v '^[[:space:]]*$' | head -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]' || true)
+    case "$knob" in
+      ""|false|off|0|no) return 0;;
+      true|on|1|yes) CHUNK_OPT_IN="true"; chunk_src=".review/chunk"; return 0;;
+      *) fail "bad-chunk-knob" "chunk knob '$knob' from .review/chunk is not an opt-in flag (want true|false, on|off, 1|0, yes|no — first usable line wins, absent reads off)";;
+    esac
+  fi
+}
 # Review-level confidence/security globals, set by validate_and_merge from the
 # optional review.json fields (absent stays null). Callers persist them.
 rev_confidence="null"; rev_security="null"
@@ -242,6 +265,7 @@ fail() {
     fetch-failed|pr-read-failed|threads-failed) hint="try: run 'gh auth status', confirm the repo/PR spelling, then re-run";;
     post-failed) hint="try: narrow anchor drift or body size (see above), then re-run";;
     diff-too-large) hint="try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch";;
+    missing-chunk-coverage|missing-chunk-snapshot) hint="try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run";;
     missing-*|not-a-repo|not-local|no-pr-target|no-threads|no-verify-cmd|report-failed) hint="try: run the fetch/record step named above first, then re-run";;
     corrupt-store) hint="try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run";;
     bad-timeout) hint="try: pass --timeout <positive-seconds> (default 300)";;
@@ -1863,6 +1887,115 @@ validate_behavioral_diagram() { # no args; reads/mutates $body, sets DIAGRAM_* g
 # when present. Sets globals kept/moved/body/entries/n_* /marker/hunk_n.
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# Cross-chunk merge validation for chunked bundles (manifest present). No-op
+# when the manifest is absent — non-chunked bundles validate exactly as today.
+# Two new typed states, both fail-closed (existing exits untouched):
+#   missing-chunk-snapshot — the manifest is unreadable, carries an unknown
+#     schema, lists no chunks, or a pinned chunk diff is missing/empty. Never
+#     post partial results off a broken bundle.
+#   missing-chunk-coverage — the review attests chunk coverage (top-level
+#     "chunks": [...] naming every manifest chunk synthesized) but omits a
+#     manifest chunk. Attested-but-partial coverage can never post as
+#     complete; unattested chunked reviews warn loudly instead (exit 0).
+# Attestation is opt-in and additive: reviews without a "chunks" claim (delta
+# re-reviews, single-anchor probes, pre-chunk agents) validate exactly as
+# today — keep-biased anchors plus the sig-dedupe merge. Anchors validate
+# against the pinned per-chunk snapshots (one hunks file per chunk diff,
+# combined here in manifest order); when the chunk snapshots no longer
+# concatenate to full.diff (commits landed mid-review) that drift warns loudly
+# and validation stays pinned — drift surfaces, never silent mis-anchors.
+# Sets the anchor_hunks global (per-chunk pinned hunks on the chunked path,
+# else $dir/hunks.tsv).
+validate_chunk_merge() { # $1 = review.json, $2 = dir; sets anchor_hunks
+  local review_file="$1" dir="$2" man="$2/chunks/manifest.json"
+  local schema="" names="" entry="" name="" diffref="" chunkdiff="" diffs=""
+  local refetch="" missing="" claimed="" extra_claims="" files="" n_all="" n_miss=""
+  anchor_hunks="$dir/hunks.tsv"
+  [[ -f "$man" ]] || return 0
+  if [[ "$cmd" == "record" ]]; then
+    case "$pr" in local-*) refetch="./scripts/review.sh fetch-local $repo ${pr#local-} --chunk -- <paths>";;
+      *) refetch="./scripts/review.sh fetch $repo $pr --chunk";; esac
+  else
+    refetch="./scripts/review.sh fetch $repo $pr --chunk"
+  fi
+  schema=$(jq -r '.schema_version // empty' "$man" 2>/dev/null || true)
+  if [[ "$schema" != "1" ]]; then
+    fail "missing-chunk-snapshot" "refusing $cmd: chunk manifest $man is unreadable or schema '${schema:-missing}' unknown (want schema_version 1) — re-fetch with '$refetch' to restore the pinned snapshots, then re-run"
+  fi
+  names=$(jq -r '.chunks | sort_by(.index) | .[].name // empty' "$man" 2>/dev/null || true)
+  if [[ -z "$names" ]]; then
+    fail "missing-chunk-snapshot" "refusing $cmd: chunk manifest $man lists no chunks — re-fetch with '$refetch' to restore the pinned snapshots, then re-run"
+  fi
+  rm -f "$dir/.chunk-hunks.tsv" "$dir/.chunk-hunks.tsv.part"
+  : > "$dir/.chunk-hunks.tsv"
+  missing=""; diffs=""
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    name=$(jq -r '.name // empty' <<<"$entry" 2>/dev/null || true)
+    diffref=$(jq -r '.diff // empty' <<<"$entry" 2>/dev/null || true)
+    chunkdiff=""
+    if [[ -n "$diffref" && -s "$diffref" ]]; then chunkdiff="$diffref";
+    elif [[ -n "$name" && -s "$dir/chunks/$name.diff" ]]; then chunkdiff="$dir/chunks/$name.diff"; fi
+    if [[ -z "$chunkdiff" ]]; then missing="${missing:+$missing }$name"; continue; fi
+    diffs="$diffs$chunkdiff
+"
+    build_hunks_tsv "$chunkdiff" "$dir/.chunk-hunks.tsv.part"
+    cat "$dir/.chunk-hunks.tsv.part" >> "$dir/.chunk-hunks.tsv"
+  done < <(jq -c '.chunks | sort_by(.index) | .[]' "$man" 2>/dev/null || true)
+  rm -f "$dir/.chunk-hunks.tsv.part"
+  if [[ -n "$missing" ]]; then
+    rm -f "$dir/.chunk-hunks.tsv"
+    fail "missing-chunk-snapshot" "refusing $cmd: chunk snapshot(s) missing: $missing (pinned chunk diff unreadable) — re-fetch with '$refetch' to restore the chunk snapshots, then re-run (partial results never post)"
+  fi
+  if ! while IFS= read -r chunkdiff; do
+         [[ -n "$chunkdiff" ]] || continue
+         cat -- "$chunkdiff"
+       done <<<"$diffs" | cmp -s - "$dir/full.diff"; then
+    warn "chunk snapshots drifted from $dir/full.diff (commits landed mid-review?) — validating anchors against the pinned chunk snapshots; re-fetch with --chunk to re-pin"
+  fi
+  # Coverage obligation: only an attested synthesis is gated. The agent stamps
+  # top-level "chunks" (see prompts/review.md) naming every manifest chunk the
+  # synthesis covers; the gate refuses when a manifest chunk is missing from
+  # that claim. Malformed claims warn and validate as unattested (keep-biased:
+  # garnish never fails the run). A chunked bundle with no usable claim at
+  # all (absent or null) warns loudly naming the manifest — silent partial
+  # synthesis is impossible — while still exiting 0 for delta/single-anchor
+  # compatibility.
+  if jq -e 'has("chunks") and (.chunks != null)' "$review_file" >/dev/null 2>&1; then
+    if ! jq -e '.chunks | type == "array"' "$review_file" >/dev/null 2>&1; then
+      warn "ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested"
+    else
+      claimed=$(jq -r '.chunks[] | if type == "string" then . else empty end' "$review_file" 2>/dev/null || true)
+      missing=""
+      while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        if ! grep -Fxq -- "$name" <<<"$claimed"; then
+          files=$(jq -r --arg n "$name" '.chunks[] | select(.name == $n) | (.files // [] | join(", "))' "$man" 2>/dev/null || true)
+          if [[ -n "$files" ]]; then missing="${missing:+$missing, }${name} (${files})";
+          else missing="${missing:+$missing, }${name}"; fi
+        fi
+      done <<<"$names"
+      extra_claims=$(printf '%s\n' "$claimed" | grep -v '^$' || true)
+      while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        if ! grep -Fxq -- "$name" <<<"$names"; then
+          warn "ignoring unknown chunk '$name' in the chunks attestation (not in $man)"
+        fi
+      done <<<"$extra_claims"
+      if [[ -n "$missing" ]]; then
+        n_all=$(printf '%s\n' "$names" | grep -c . || true)
+        n_miss=$(printf '%s\n' "$names" | while IFS= read -r nm; do grep -Fxq -- "$nm" <<<"$claimed" || printf 'x\n'; done | grep -c . || true)
+        rm -f "$dir/.chunk-hunks.tsv"
+        fail "missing-chunk-coverage" "refusing $cmd: synthesized review covers $(( n_all - n_miss )) of $n_all manifest chunk(s) — missing $missing — re-fetch with '$refetch', re-synthesize across all chunks, then re-run (partial coverage never posts as complete)"
+      fi
+    fi
+  else
+    n_all=$(printf '%s\n' "$names" | grep -c . || true)
+    warn "chunked bundle $man lists $n_all chunk(s) but the review carries no chunks attestation — validating as unattested (exit 0); an unattested partial synthesis posts as complete, so re-synthesize across all chunks and stamp every manifest chunk name in top-level \"chunks\""
+  fi
+  anchor_hunks="$dir/.chunk-hunks.tsv"
+}
+
 validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok), $4 = now, $5 = findings file
   local review_file="$1" dir="$2" head_full="$3" now="$4" findings_file="$5"
   kb_resolve_policy
@@ -1876,6 +2009,11 @@ validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok),
   # (uninterpretable), missing versions warn-and-proceed (grandfathered agents).
   rv=$(jq -r '.schema_version // empty' "$review_file")
   case "$rv" in "") warn "review.json carries no schema_version — assuming 1 (agents: write \"schema_version\":\"1\")";; 1) ;; *) fail "bad-review-schema" "review.json schema_version '$rv' unknown (script knows 1)";; esac
+  # Cross-chunk merge validation (chunked bundles only; absent manifest reads
+  # today's behavior). Refuses unreadable snapshots and attested-but-partial
+  # coverage; pins anchors to the per-chunk snapshots. Sets anchor_hunks.
+  anchor_hunks="$dir/hunks.tsv"
+  validate_chunk_merge "$review_file" "$dir"
   # Review-level confidence + security summary (optional, for later calibration
   # scoring): absent stays absent (null); out-of-range confidence warns and
   # drops, never fails. Non-string security summaries warn and drop too.
@@ -1907,7 +2045,7 @@ validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok),
     side=$(jq -r '.side // "RIGHT"' <<<"$c" | tr '[:lower:]' '[:upper:]')
     key="$p"; [[ "$key" == a/* || "$key" == b/* ]] && key="${key:2}"
     keep() { kept=$(jq --argjson c "$c" '. + [$c]' <<<"$kept"); }
-    if ! awk -F'\t' -v f="$key" '$1==f{found=1; exit} END{exit !found}' "$dir/hunks.tsv"; then
+    if ! awk -F'\t' -v f="$key" '$1==f{found=1; exit} END{exit !found}' "$anchor_hunks"; then
       warn "kept despite unknown path (not in diff index, ambiguity keeps): $p"; keep; continue
     fi
     [[ -z "$start" ]] && start="$line"
@@ -1917,7 +2055,7 @@ validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok),
     if (( start > line )); then t="$start"; start="$line"; line="$t"; fi
     want="NEW"; [[ "$side" == "LEFT" ]] && want="OLD"
     if awk -F'\t' -v f="$key" -v w="$want" -v a="$start" -v b="$line" \
-        '$1==f && $2==w && $3<=a && b<=$4 {found=1; exit} END{exit !found}' "$dir/hunks.tsv"; then
+        '$1==f && $2==w && $3<=a && b<=$4 {found=1; exit} END{exit !found}' "$anchor_hunks"; then
       keep
     else
       moved=$(jq --argjson c "$c" --arg reason "anchor $start-$line ($side) outside reviewed hunks" \
@@ -2135,8 +2273,11 @@ $footer_block"
   n_term=$(jq '[.[] | select(.status == "wont-fix" or .status == "false-positive")] | length' <<<"$entries")
   marker="plain"
   if printf '%s' "$body" | grep -qE '^> ✅|^> ℹ️|^> \[!IMPORTANT\]|^> \[!CAUTION\]'; then marker="verdict"; fi
-  hunk_n=$(wc -l < "$dir/hunks.tsv" | tr -d ' ')
+  hunk_n=$(wc -l < "$anchor_hunks" | tr -d ' ')
   if (( hunk_n == 0 )); then warn "no hunks indexed — anchors unchecked, everything kept"; fi
+  # The per-chunk pinned hunks are a derived snapshot for this run only; the
+  # fetch-time artifacts (chunk diffs, manifest, hunks.tsv) stay authoritative.
+  if [[ "$anchor_hunks" != "$dir/hunks.tsv" ]]; then rm -f "$anchor_hunks"; fi
 }
 
 # Hunk index: file, side (NEW = posted file, OLD = base file), start, end — all 1-based inclusive.
@@ -2208,11 +2349,43 @@ emit_context() { # $1 = dir
 # bundle meta, coverage
 # manifest, roles, diff, recall, advisories, panel). Pure-local reads only:
 # no agent runs, no network, no store writes. Missing/optional files are
-# skipped silently, so the dump is exactly the concatenation of what exists.
+# skipped silently, so the dump is exactly the concatenation of what exists —
+# except a chunked bundle with an unreadable snapshot, which warns loudly
+# before falling back to full.diff.
+render_chunk_diffs() { # $1 = bundle dir; cats chunk diffs in manifest order; nonzero when not chunked
+  local dir="$1" man="$1/chunks/manifest.json" d=""
+  [[ -f "$man" ]] || return 1
+  d=$(jq -r '.chunks | sort_by(.index) | .[].diff // empty' "$man" 2>/dev/null) || return 1
+  [[ -n "$d" ]] || return 1
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || return 1
+  done <<<"$d"
+  while IFS= read -r f; do
+    cat -- "$f"
+  done <<<"$d"
+}
+
 render_prompt_dump() { # $1 = bundle dir
-  local dir="$1" meta="$1/PR.json" f
+  local dir="$1" meta="$1/PR.json" f miss
   [[ -f "$1/source.json" ]] && meta="$1/source.json"
-  for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md "$meta" "$dir/toc.txt" "$dir/roles.txt" "$dir/full.diff" "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
+  for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md "$meta" "$dir/toc.txt" "$dir/roles.txt"; do
+    [[ -f "$f" ]] || continue
+    cat -- "$f"
+  done
+  # Diff section: a chunked bundle concatenates the chunk diffs in manifest
+  # order (one ordered document, byte-equal to full.diff); anything else
+  # reads full.diff exactly as today, so non-chunked dumps stay byte-identical.
+  if ! render_chunk_diffs "$dir"; then
+    if [[ -f "$dir/chunks/manifest.json" ]]; then
+      miss=""
+      while IFS= read -r f; do
+        if [[ -z "$f" || ! -f "$f" ]]; then miss="${f:-(no readable chunk diff ref)}"; break; fi
+      done < <(jq -r '.chunks | sort_by(.index) | .[].diff // empty' "$dir/chunks/manifest.json" 2>/dev/null || true)
+      warn "chunk snapshot '$miss' unreadable — prompt dump falls back to $dir/full.diff (post/record still refuse the broken bundle; re-fetch with --chunk to restore the pinned snapshots)"
+    fi
+    [[ -f "$dir/full.diff" ]] && cat -- "$dir/full.diff"
+  fi
+  for f in "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
     [[ -f "$f" ]] || continue
     cat -- "$f"
   done
@@ -2841,12 +3014,153 @@ suggest_splits() { # $1 = full.diff path, $2 = total bytes
         suggestion:"split the range in half (~\($hb) bytes each): fetch-local --range/--base, fetch --base-sha/--since"}]'
 }
 
+# Chunked fetch (opt-in over-cap slicing). Reuses the per-file byte-sizing
+# pass that feeds the advisory split candidates (chunk_file_table), then
+# greedy-packs files in diff order into contiguous chunks each at or under
+# the resolved cap (next-fit: seal the chunk when the next file would not
+# fit). Deterministic: same diff bytes always yield the same chunk map, so
+# re-fetch reproduces it. A single file larger than the cap cannot be sliced
+# on file boundaries — that degenerate input keeps today's advisory refusal
+# (chunk_plan_ok fails, no chunks written, no half-write).
+# Layout (additive beside the existing bundle artifacts): <dir>/chunks/ holds
+# chunk-NN.diff (byte-exact diff slices concatenating to full.diff),
+# chunk-NN.toc.txt (per-chunk coverage checklist), chunk-NN.roles.txt
+# (per-chunk file roles), and manifest.json (versioned coverage obligation).
+# The top-level bundle keeps the full diff for anchor pinning and drift
+# detection; each chunk mirrors the small-fetch artifact shape
+# (diff slice, coverage checklist, file roles).
+CHUNK_SCHEMA_VERSION="1"
+
+chunk_file_table() { # $1 = full.diff path; prints "bytes\tpath" in diff order
+  LC_ALL=C awk '
+    /^diff --git / { if (cur != "") print size "\t" cur; cur=$0; sub(/.* b\//, "", cur); size=length($0)+1; next }
+    { size += length($0)+1 }
+    END { if (cur != "") print size "\t" cur }' "$1" 2>/dev/null || true
+}
+
+chunk_plan_ok() { # $1 = full.diff path; succeeds when every file slice fits the resolved cap
+  local table="" max=""
+  table=$(chunk_file_table "$1")
+  [[ -z "$table" ]] && return 1
+  max=$(awk -F'\t' 'NR==1||$1+0>m{m=$1} END{print m+0}' <<<"$table")
+  case "$max" in ''|*[!0-9]*) return 1;; esac
+  (( max <= FETCH_MAX_BYTES ))
+}
+
+maybe_write_chunks() { # $1 = bundle dir; writes chunks/ + manifest when the gate armed chunking; sets chunk_json
+  local dir="$1" f="" total="" table="" cdir="" plan="" chunks_json=""
+  local n="" cur="" line="" size="" path="" i="" members="" mbytes="" cbytes="" name=""
+  local head_sha="" base_sha="" cap_src_json="" part=""
+  chunk_json="null"
+  [[ "${CHUNK_ACTIVE:-false}" == "true" ]] || return 0
+  f="$dir/full.diff"
+  [[ -f "$f" ]] || return 0
+  total=$(wc -c < "$f" | tr -d ' ')
+  case "$total" in ''|*[!0-9]*) total="0";; esac
+  table=$(chunk_file_table "$f")
+  [[ -z "$table" ]] && return 0
+  cdir="$dir/chunks"
+  rm -rf "$cdir"
+  mkdir -p "$cdir" || return 0
+  # Greedy next-fit pack in diff order; every file fits (the gate verified),
+  # so every chunk lands at or under the cap.
+  plan="$cdir/.plan.tsv"
+  : > "$plan"
+  n=1; cur=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    size=${line%%$'\t'*}; path=${line#*$'\t'}
+    case "$size" in ''|*[!0-9]*) continue;; esac
+    if (( cur > 0 && cur + size > FETCH_MAX_BYTES )); then n=$((n + 1)); cur=0; fi
+    printf '%d\t%s\t%s\n' "$n" "$size" "$path" >> "$plan"
+    cur=$((cur + size))
+  done <<<"$table"
+  [[ -s "$plan" ]] || { rm -rf "$cdir"; return 0; }
+  # Slice full.diff into per-chunk diffs. Chunks are contiguous file runs in
+  # diff order, so each chunk file opens once and closes on the switch.
+  awk -v plan="$plan" -v outdir="$cdir" '
+    function cfile(c) { return outdir "/chunk-" sprintf("%02d", c) ".diff" }
+    BEGIN { chunk=1; n=0;
+      while ((getline line < plan) > 0) {
+        i=index(line, "\t"); c=substr(line, 1, i-1)+0; rest=substr(line, i+1);
+        j=index(rest, "\t"); p=substr(rest, j+1); map[p]=c; if (c > n) n=c
+      } }
+    /^diff --git / { cur=$0; sub(/.* b\//, "", cur);
+      if ((cur in map) && map[cur]+0 != chunk+0) { close(cfile(chunk)); chunk=map[cur]+0 } }
+    { print > cfile(chunk+0) }
+    END { close(cfile(chunk+0)) }' "$f"
+  # Per-chunk checklist + roles + manifest entries.
+  i=1
+  while (( i <= n )); do
+    name=$(printf 'chunk-%02d' "$i")
+    [[ -f "$cdir/$name.diff" ]] || fail "chunk-write-failed" "chunk $name missing after slicing $f (re-run the fetch)"
+    members=$(awk -v c="$i" 'BEGIN{FS="\t"} $1==c{sub(/^[^\t]*\t[^\t]*\t/, ""); print}' "$plan")
+    mbytes=$(awk -F'\t' -v c="$i" '$1==c{s+=$2} END{print s+0}' "$plan")
+    case "$mbytes" in ''|*[!0-9]*) mbytes="0";; esac
+    cbytes=$(wc -c < "$cdir/$name.diff" | tr -d ' ')
+    case "$cbytes" in ''|*[!0-9]*) cbytes="0";; esac
+    { echo "# Chunk $i/$n for $(basename "$dir") — read ranges as coverage checklist"; echo
+      grep -n "^diff --git" "$cdir/$name.diff" || echo "(no diff headers?)"; echo
+      echo "## files"
+      awk -v c="$i" 'BEGIN{FS="\t"} $1==c{print "- " $3 " (" $2 " bytes)"}' "$plan"
+    } > "$cdir/$name.toc.txt"
+    printf '%s\n' "$members" | roles_for_paths > "$cdir/$name.roles.txt"
+    part="$cdir/.part-$name.json"
+    jq -n --argjson index "$i" --arg name "$name" \
+      --argjson files "$(printf '%s\n' "$members" | jq -R . | jq -s .)" \
+      --argjson estimated_bytes "$mbytes" --argjson bytes "$cbytes" \
+      --arg diff "$dir/chunks/$name.diff" \
+      --arg toc "$dir/chunks/$name.toc.txt" \
+      --arg roles "$dir/chunks/$name.roles.txt" \
+      '{index:$index,name:$name,files:$files,estimated_bytes:$estimated_bytes,bytes:$bytes,diff:$diff,toc:$toc,roles:$roles}' > "$part"
+    i=$((i + 1))
+  done
+  chunks_json=$(jq -s '.' "$cdir"/.part-chunk-*.json)
+  rm -f "$cdir"/.part-chunk-*.json "$plan"
+  if [[ -f "$dir/PR.json" ]]; then
+    head_sha=$(pr_field "$dir" head_sha); base_sha=$(pr_field "$dir" base_sha)
+  elif [[ -f "$dir/source.json" ]]; then
+    head_sha=$(jq -r '.head_sha // empty' "$dir/source.json" 2>/dev/null || true)
+    base_sha=$(jq -r '.base_sha // empty' "$dir/source.json" 2>/dev/null || true)
+  fi
+  if [[ -n "${fetch_cap_src:-}" ]]; then cap_src_json=$(jq -n --arg s "$fetch_cap_src" '$s');
+  else cap_src_json="null"; fi
+  jq -n --arg v "$CHUNK_SCHEMA_VERSION" --arg b "$dir" \
+    --arg hs "$head_sha" --arg bs "$base_sha" \
+    --argjson cap "$FETCH_MAX_BYTES" --argjson csrc "$cap_src_json" \
+    --argjson total "$total" --argjson count "$n" --argjson chunks "$chunks_json" \
+    '{schema_version:$v,bundle:$b,
+      head_sha:(if $hs=="" then null else $hs end),
+      base_sha:(if $bs=="" then null else $bs end),
+      cap:{bytes:$cap,source:$csrc},
+      total_bytes:$total,chunk_count:$count,chunks:$chunks}' > "$cdir/manifest.json"
+  chunk_json=$(jq -n --argjson count "$n" --arg m "$dir/chunks/manifest.json" --argjson total "$total" \
+    '{count:$count,manifest:$m,total_bytes:$total}')
+  echo "» chunked: $n chunk(s) at or under $FETCH_MAX_BYTES bytes + $dir/chunks/manifest.json" >&2
+}
+
 check_diff_size() { # $1 = full.diff path
   local f="$1" bytes
   resolve_fetch_cap
   bytes=$(wc -c < "$f" | tr -d ' ')
   case "$bytes" in ''|*[!0-9]*) bytes="0";; esac
   if (( bytes > FETCH_MAX_BYTES )); then
+    # Chunked fetch (opt-in): an opted-in over-cap fetch is machine-sliced on
+    # file boundaries by maybe_write_chunks after the bundle lands — the gate
+    # just arms it here. A single over-cap file cannot be sliced, so that
+    # degenerate input keeps today's advisory refusal with no chunks written.
+    # Absent knob prints nothing here so the refusal below stays
+    # byte-identical; an overridden cap wins outright (the knob is never even
+    # consulted).
+    resolve_chunk_opt_in
+    if [[ "$CHUNK_OPT_IN" == "true" ]]; then
+      rm -rf "$(dirname "$f")/chunks"
+      if chunk_plan_ok "$f"; then
+        CHUNK_ACTIVE="true"
+        echo "» chunking opted in (from $chunk_src) — slicing over-cap diff ($bytes bytes, cap $FETCH_MAX_BYTES) into cap-sized chunks" >&2
+        return 0
+      fi
+      echo "» chunking opted in (from $chunk_src) — single file over cap, keeping today's advisory refusal (split the range or narrow, or override the cap deliberately)" >&2
+    fi
     CANDIDATES_JSON=$(suggest_splits "$f" "$bytes")
     CANDIDATES_JSON=$(jq -c '.' <<<"$CANDIDATES_JSON" 2>/dev/null || echo "null")
     if [[ "$CANDIDATES_JSON" != "null" && "$CANDIDATES_JSON" != "[]" ]]; then
@@ -2893,7 +3207,7 @@ write_toc_roles() { # $1 = dir, $2 = toc title line
 
 # Shared fetch tail: counts, done/next hints, --json envelope. $1 = incremental base ("null" or sha).
 fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode panel_src panel_list omitted)
-  local inc_base="$1" files sens_file kb_file kbr_file db pdump_json
+  local inc_base="$1" files sens_file kb_file kbr_file db pdump_tmp
   files=$(jq '.files | length' "$dir/PR.json" 2>/dev/null || echo "?")
   sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
   kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
@@ -2901,14 +3215,46 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
   db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
   case "$db" in ''|*[!0-9]*) db="0";; esac
   # Prompt dump payload for --json (human mode streams it to the saved stdout
-  # below). Computed only under the flag, so default envelopes are untouched.
-  pdump_json="null"
+  # below). Staged through a temp file, never argv: a chunked dump is
+  # over-cap by construction and any large dump exceeds ARG_MAX as one argv
+  # string (E2BIG), so the dump joins the envelope via --rawfile with
+  # prompt_dump last in data — the same key order as the inline shape.
+  # Staged only under the flag, so default envelopes are untouched.
+  pdump_tmp=""
   if [[ "${show_prompts:-false}" == "true" && "$json_mode" == "true" ]]; then
-    pdump_json=$(render_prompt_dump "$dir" | jq -Rs '.')
+    pdump_tmp=$(mktemp "${TMPDIR:-/tmp}/verdict-pdump.XXXXXX") || fail "prompt-dump-failed" "could not stage the prompt dump (check '${TMPDIR:-/tmp}' is writable)"
+    render_prompt_dump "$dir" > "$pdump_tmp"
   fi
   echo "done: $dir/PR.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($files files)"
     echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + $dir/PR.json + $dir/full.diff (+ $dir/roles.txt) to any agent; ask it to write $dir/review.json"
     if [[ "$json_mode" == "true" ]]; then
+      if [[ -n "$pdump_tmp" ]]; then
+        # Flag-on path: the dump rides a file (--rawfile), never argv, so
+        # over-cap chunked dumps survive ARG_MAX (E2BIG). prompt_dump lands
+        # last in data, the same key order as the inline shape below.
+        jq -n --arg d "$dir" --arg hs "$(pr_field "$dir" head_sha)" \
+          --arg bs "$(pr_field "$dir" base_sha)" --argjson files "$(jq '.files | length' "$dir/PR.json")" \
+          --argjson adds "$(jq '.additions // 0' "$dir/PR.json")" --argjson dels "$(jq '.deletions // 0' "$dir/PR.json")" \
+          --argjson hunks "$({ grep '^@@' "$dir/full.diff" || true; } | wc -l | tr -d ' ')" \
+          --argjson db "$db" \
+          --argjson omitted "$(to_json_array "$omitted")" \
+          --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
+          --arg inc "$inc_base" --arg sens "$sens_file" --arg kb "$kb_file" --arg kbr "$kbr_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
+          --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
+          --argjson chunk "${chunk_json:-null}" \
+          '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
+            next:"feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
+            warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
+            hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
+            artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end)),
+            incremental_base:(if $inc=="null" then null else $inc end)}
+            + (if $estimate == null then {} else {estimate:$estimate} end)
+            + (if $budget == null then {} else {budget:$budget} end)
+            + (if $cap == null then {} else {cap:$cap} end)
+            + (if $chunk == null then {} else {chunk:$chunk} end),error:null}' > "$pdump_tmp.env"
+        jq --rawfile pd "$pdump_tmp" '.data += {prompt_dump:$pd}' "$pdump_tmp.env" >&9
+        rm -f "$pdump_tmp" "$pdump_tmp.env"
+      else
       jq -n --arg d "$dir" --arg hs "$(pr_field "$dir" head_sha)" \
         --arg bs "$(pr_field "$dir" base_sha)" --argjson files "$(jq '.files | length' "$dir/PR.json")" \
         --argjson adds "$(jq '.additions // 0' "$dir/PR.json")" --argjson dels "$(jq '.deletions // 0' "$dir/PR.json")" \
@@ -2918,7 +3264,8 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
         --arg inc "$inc_base" --arg sens "$sens_file" --arg kb "$kb_file" --arg kbr "$kbr_file" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(now_utc)" \
         --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
-        --argjson pdump "$pdump_json" \
+        --argjson pdump null \
+        --argjson chunk "${chunk_json:-null}" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
@@ -2928,7 +3275,9 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
           + (if $estimate == null then {} else {estimate:$estimate} end)
           + (if $budget == null then {} else {budget:$budget} end)
           + (if $cap == null then {} else {cap:$cap} end)
+          + (if $chunk == null then {} else {chunk:$chunk} end)
           + (if $pdump == null then {} else {prompt_dump:$pdump} end),error:null}' >&9
+      fi
     fi
   # Human-mode dump: the assembled prompt owns the saved stdout; without the
   # flag this block is dead code and output is byte-identical to today.
@@ -2939,19 +3288,24 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
 }
 
 if [[ "$cmd" == "fetch" ]]; then
-  base_sha=""; provider="github"; budget_consent="false"; show_prompts="false"
+  base_sha=""; provider="github"; budget_consent="false"; show_prompts="false"; chunk_flag="false"
   while [[ $# -gt 0 ]]; do case "$1" in
     --base-sha|--since) base_sha="${2:-}"; shift 2;;
     --provider) provider="${2:-github}"; shift 2;;
     --consent-over-budget) budget_consent="true"; shift;;
     --show-prompts) show_prompts="true"; shift;;
+    --chunk) chunk_flag="true"; shift;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --show-prompts, --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --show-prompts, --chunk, --json)" >&2; exit 2;;
   esac; done
   json_redirect
   # Prompt dump rides the normal fetch: progress moves to stderr so the dump
   # owns stdout. Stores, network, and exits are untouched by the flag itself.
   if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then exec 8>&1; exec 1>&2; fi
+  # Chunk state for this fetch: armed by the size gate on the opted-in
+  # over-cap path, consumed by maybe_write_chunks before the tail. Absent or
+  # under-cap runs keep chunk_json null, so the envelope stays byte-identical.
+  CHUNK_ACTIVE="false"; chunk_json="null"
   case "$provider" in github|gitlab|gitcafe|forgejo|bitbucket|azure) ;;
     *) fail "bad-provider" "unknown --provider '$provider' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)";; esac
   budget_gate "$budget_consent"
@@ -2967,6 +3321,7 @@ if [[ "$cmd" == "fetch" ]]; then
     ensure_store "$dir"
     write_sensitive_manifest "$dir" "$(jq -r '.files[] | .path, (.previous_filename // empty)' "$dir/PR.json" 2>/dev/null || true)"
     write_kb_recall "$dir" "$(jq -r '.files[] | .path, (.previous_filename // empty)' "$dir/PR.json" 2>/dev/null || true)"
+    maybe_write_chunks "$dir"
     fetch_tail "null"
   fi
   echo "» gh pr view $repo#$pr"
@@ -2989,6 +3344,7 @@ if [[ "$cmd" == "fetch" ]]; then
   echo "» reviews + inline comments"
   gh api "repos/$repo/pulls/$pr/reviews" --paginate > "$dir/reviews.json" 2>/dev/null || echo "[]" > "$dir/reviews.json"
   gh api "repos/$repo/pulls/$pr/comments" --paginate > "$dir/inline.json" 2>/dev/null || echo "[]" > "$dir/inline.json"
+  maybe_write_chunks "$dir"
   inc_base="null"
   if [[ -n "$base_sha" ]]; then
     head_sha=$(jq -r .headRefOid "$dir/PR.json")
@@ -3011,7 +3367,7 @@ fi
 # Modes: worktree-vs-HEAD (default) | staged | range | branch-vs-base | stash.
 # Writes .review/local-<name>/ (source.json, full.diff, toc.txt, roles.txt).
 if [[ "$cmd" == "fetch-local" ]]; then
-  staged="false"; range=""; base_ref=""; stash_n=""; budget_consent="false"; show_prompts="false"; paths=()
+  staged="false"; range=""; base_ref=""; stash_n=""; budget_consent="false"; show_prompts="false"; chunk_flag="false"; paths=()
   # json_mode keeps the prefs default (output.format json); --json below forces it.
   while [[ $# -gt 0 ]]; do case "$1" in
     --staged) staged="true"; shift;;
@@ -3020,13 +3376,16 @@ if [[ "$cmd" == "fetch-local" ]]; then
     --stash) if [[ -n "${2:-}" && "${2:-}" != -* ]]; then stash_n="$2"; shift 2; else stash_n="0"; shift; fi;;
     --consent-over-budget) budget_consent="true"; shift;;
     --show-prompts) show_prompts="true"; shift;;
+    --chunk) chunk_flag="true"; shift;;
     --json) json_mode="true"; shift;;
     --) shift; while [[ $# -gt 0 ]]; do paths+=("$1"); shift; done;;
-    -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --consent-over-budget, --show-prompts, -- <paths>, --json)" >&2; exit 2;;
+    -*) echo "unknown flag '$1' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --consent-over-budget, --show-prompts, --chunk, -- <paths>, --json)" >&2; exit 2;;
     *) paths+=("$1"); shift;;
   esac; done
   json_redirect
   if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then exec 8>&1; exec 1>&2; fi
+  # Chunk state for this fetch (same gate/writer contract as fetch above).
+  CHUNK_ACTIVE="false"; chunk_json="null"
   slug=$(printf '%s' "$pr" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/-\+/-/g; s/^-\|-$//g' | cut -c1-48)
   [[ -z "$slug" || "$slug" == "local" ]] && fail "bad-slug" "name '$pr' sanitizes to nothing — pass a usable bundle name"
   if [[ "$slug" =~ ^[0-9]+$ ]]; then fail "bad-slug" "'$slug' looks like a PR number — use fetch for PRs"; fi
@@ -3166,16 +3525,46 @@ if [[ "$cmd" == "fetch-local" ]]; then
       model:(if $model=="" then null else $model end),created_at:$t}' > "$dir/source.json"
   echo "done: $dir/source.json $dir/full.diff $dir/toc.txt $dir/roles.txt ($total files)"
   echo "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + $dir/source.json + full.diff to any agent; ask it to write $dir/review.json"
+  maybe_write_chunks "$dir"
   if [[ "$json_mode" == "true" ]]; then
     sens_file="null"; [[ -f "$dir/sensitive.txt" ]] && sens_file="$dir/sensitive.txt"
     kb_file="null"; [[ -f "$dir/kb.txt" ]] && kb_file="$dir/kb.txt"
     kbr_file="null"; [[ -f "$dir/kb-recall.json" ]] && kbr_file="$dir/kb-recall.json"
     db=$(wc -c < "$dir/full.diff" 2>/dev/null | tr -d ' ' || true)
     case "$db" in ''|*[!0-9]*) db="0";; esac
-    pdump_json="null"
+    # Prompt dump payload staged through a temp file, never argv (see
+    # fetch_tail): a chunked dump is over-cap by construction and any large
+    # dump exceeds ARG_MAX as one argv string (E2BIG). Staged only under the
+    # flag, so default envelopes are untouched.
+    pdump_tmp=""
     if [[ "$show_prompts" == "true" ]]; then
-      pdump_json=$(render_prompt_dump "$dir" | jq -Rs '.')
+      pdump_tmp=$(mktemp "${TMPDIR:-/tmp}/verdict-pdump.XXXXXX") || fail "prompt-dump-failed" "could not stage the prompt dump (check '${TMPDIR:-/tmp}' is writable)"
+      render_prompt_dump "$dir" > "$pdump_tmp"
     fi
+    if [[ -n "$pdump_tmp" ]]; then
+      jq -n --arg d "$dir" --arg hs "$head_sha" --arg bs "$base_sha" --argjson files "$total" \
+        --argjson adds "$adds" --argjson dels "$dels" \
+        --argjson hunks "$(grep -c '^@@' "$dir/full.diff" || true)" \
+        --argjson db "$db" \
+        --argjson omitted "$(to_json_array "$omitted")" \
+        --arg psrc "$panel_src" --argjson members "$(to_json_array "$panel_list")" \
+        --arg sens "$sens_file" --arg kb "$kb_file" --arg kbr "$kbr_file" \
+        --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
+        --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
+        --argjson chunk "${chunk_json:-null}" \
+        '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
+          next:("feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
+          files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
+          panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
+          artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end))}
+          + (if $estimate == null then {} else {estimate:$estimate} end)
+          + (if $budget == null then {} else {budget:$budget} end)
+          + (if $cap == null then {} else {cap:$cap} end)
+          + (if $chunk == null then {} else {chunk:$chunk} end),error:null}' > "$pdump_tmp.env"
+      jq --rawfile pd "$pdump_tmp" '.data += {prompt_dump:$pd}' "$pdump_tmp.env" >&9
+      rm -f "$pdump_tmp" "$pdump_tmp.env"
+    else
     jq -n --arg d "$dir" --arg hs "$head_sha" --arg bs "$base_sha" --argjson files "$total" \
       --argjson adds "$adds" --argjson dels "$dels" \
       --argjson hunks "$(grep -c '^@@' "$dir/full.diff" || true)" \
@@ -3185,7 +3574,8 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --arg sens "$sens_file" --arg kb "$kb_file" --arg kbr "$kbr_file" \
       --arg v "$cmd" --arg r "$repo" --arg p "$slug" --arg t "$now" --arg kind "$kind" \
       --argjson estimate "${estimate_json:-null}" --argjson budget "${budget_json:-null}" --argjson cap "${cap_json:-null}" \
-      --argjson pdump "$pdump_json" \
+      --argjson pdump null \
+      --argjson chunk "${chunk_json:-null}" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:("feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
@@ -3195,7 +3585,9 @@ if [[ "$cmd" == "fetch-local" ]]; then
         + (if $estimate == null then {} else {estimate:$estimate} end)
         + (if $budget == null then {} else {budget:$budget} end)
         + (if $cap == null then {} else {cap:$cap} end)
+        + (if $chunk == null then {} else {chunk:$chunk} end)
         + (if $pdump == null then {} else {prompt_dump:$pdump} end),error:null}' >&9
+    fi
   fi
   if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then
     render_prompt_dump "$dir" >&8
@@ -3739,8 +4131,10 @@ if [[ "$cmd" == "report" ]]; then
   if [[ "$cost" == "true" ]]; then
     cost_zeros=$(jq -n '{runs:0,runs_with_cost:0,input_tokens:0,output_tokens:0,total_tokens:0,est_usd:null,
       by_tier:(["cheap","standard","deep"] | map({key:.,value:{runs:0,input_tokens:0,output_tokens:0,total_tokens:0}}) | from_entries)}')
-    if [[ -f "$dir/cost.json" ]]; then
-      cost_json=$(jq '
+    # Shared rollup filter: one cost record per agent run (an object), or an
+    # array when a bundle was reviewed more than once. Kept in a variable so
+    # the top-level rollup and the per-chunk rollup below stay one filter.
+    cost_rollup_jq='
         def tier: (if type == "object" then (.effort // "standard" | tostring | ascii_downcase) else "standard" end
           | if . == "cheap" or . == "standard" or . == "deep" then . else "standard" end);
         (if type == "array" then . else [.] end) as $runs
@@ -3756,10 +4150,55 @@ if [[ "$cmd" == "report" ]]; then
                 input_tokens: ([$r[] | (.models // [])[] | .input_tokens | numbers] | add // 0),
                 output_tokens: ([$r[] | (.models // [])[] | .output_tokens | numbers] | add // 0)}
              | .total_tokens = (.input_tokens + .output_tokens))}) | from_entries)}
-        | .total_tokens = (.input_tokens + .output_tokens)' "$dir/cost.json" 2>/dev/null) \
+        | .total_tokens = (.input_tokens + .output_tokens)'
+    if [[ -f "$dir/cost.json" ]]; then
+      cost_json=$(jq "$cost_rollup_jq" "$dir/cost.json" 2>/dev/null) \
         || { warn "cost.json unreadable — spend unrecorded for this rollup"; cost_json="$cost_zeros"; }
     else
       cost_json="$cost_zeros"
+    fi
+    # Chunk cost rollup (additive read-path only): per-chunk cost records live
+    # beside their chunk diffs as <dir>/chunks/<name>.cost.json — same shape
+    # as cost.json (one record or an array), keyed by the manifest chunk
+    # name. The manifest names the chunks; an unreadable manifest falls back
+    # to the on-disk glob. Absent per-chunk records contribute zeros;
+    # unreadable ones warn and contribute zeros — neither ever fails the run.
+    # Bundles without per-chunk records keep the rollup above byte-identical
+    # (this branch runs only when at least one per-chunk file exists).
+    cc_files=""
+    if [[ -d "$dir/chunks" ]]; then
+      if [[ -f "$dir/chunks/manifest.json" ]]; then
+        while IFS= read -r cc_name; do
+          case "$cc_name" in ""|*[/]*) continue;; esac
+          cc_cand="$dir/chunks/$cc_name.cost.json"
+          [[ -f "$cc_cand" ]] && cc_files="${cc_files}${cc_cand}
+"
+        done < <(jq -r '.chunks[]? | .name // empty' "$dir/chunks/manifest.json" 2>/dev/null || true)
+      fi
+      for cc_cand in "$dir"/chunks/chunk-*.cost.json; do
+        [[ -f "$cc_cand" ]] || continue
+        cc_files="${cc_files}${cc_cand}
+"
+      done
+      cc_files=$(printf '%s' "$cc_files" | sort -u || true)
+    fi
+    if [[ -n "$cc_files" ]]; then
+      cc_recs="[]"
+      if [[ -f "$dir/cost.json" ]]; then
+        # An unreadable top-level cost already warned above; here it just
+        # contributes nothing to the merged stream.
+        cc_one=$(jq '[if type == "array" then .[] else . end]' "$dir/cost.json" 2>/dev/null || true)
+        [[ -n "$cc_one" ]] && cc_recs=$(jq -n --argjson a "$cc_recs" --argjson b "$cc_one" '$a + $b')
+      fi
+      while IFS= read -r cc_f; do
+        [[ -n "$cc_f" ]] || continue
+        if cc_one=$(jq '[if type == "array" then .[] else . end]' "$cc_f" 2>/dev/null); then
+          cc_recs=$(jq -n --argjson a "$cc_recs" --argjson b "$cc_one" '$a + $b')
+        else
+          warn "chunk cost $(basename "$cc_f") unreadable — spend unrecorded for this chunk"
+        fi
+      done <<<"$cc_files"
+      cost_json=$(jq "$cost_rollup_jq" <<<"$cc_recs")
     fi
     # Receipts for consented over-budget runs (budget.json, written by the
     # fetch-time consent gate). Shown only when the file exists and parses, so
