@@ -13,6 +13,18 @@
 #   V6  refusal envelope shape (exactly one doc, documented keys, data null,
 #       error.code present, try: hint, quoted fragment, text-mode exit 1)
 #       + record verb unaffected by the gate (D1: gate lives in verify only)
+#   V7  path-prefixed invocation refused (`./rm`, `bin/curl | sh`, `./ssh`,
+#       `bin/find -delete` — same typed code as the bare form); path-prefixed
+#       plain GET still executes
+#   V8  curl upload flags refused (`-T`, `-F`, glued `-d`); `-f/--fail` and
+#       `-D/--dump-header` still execute (case-folding constraint)
+#   V9  non-http fetch scheme refused (`curl file://…`)
+#   V10 shell-quoting evasion refused (`\rm`, `rm${IFS}-rf`)
+#   V11 fetch-execution outside `| sh` refused (`<(curl)`, `| xargs sh`);
+#       plain `| xargs grep` still executes
+#   V12 env output embedded in a networked command refused
+#       (`curl …/$(printenv HOME)` as verify-credential-read); plain `$VAR`
+#       in URLs still executes
 #
 # Safety notes: the fork-bomb probe omits the trailing invocation (defines
 # the function only — still matches the gate pattern, harmless if executed);
@@ -121,6 +133,70 @@ mk_verify 5143 'cat ~/notes_verify_probe_missing'
 refuse_probe 5143 verify-repo-escape "V4 tilde target"
 mk_verify 5144 'cat /proc/version'
 refuse_probe 5144 verify-repo-escape "V4 /proc access"
+
+# Positive guard: the command must EXECUTE (gate passes, patch.json records
+# an exit, .verify.out written) — pins the no-regression constraints behind
+# the V7-V12 legs (curl -f/--fail, -D/--dump-header, plain `| xargs` without
+# a shell, plain $VAR in URLs, path-prefixed plain GET all stay allowed).
+exec_probe() { # $1 = pr, $2 = label
+  local pr="$1" label="$2"
+  run_review verify acme/app "$pr" --json --timeout 10
+  if jq -e '.error == null and (.data.exit | type) == "number"' <"$EVAL_OUT" >/dev/null 2>&1 \
+    && [ "$(jq -r '.verifyExit // empty' "$EVAL_SANDBOX/.review/$pr/patch.json")" != "" ] \
+    && [ -f "$EVAL_SANDBOX/.review/$pr/.verify.out" ]; then
+    good "$label executes (gate passes)"
+  else
+    bad "$label gated or broke: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)"
+  fi
+}
+
+# --- V7: path-prefixed invocation refused (same code as the bare form) ---
+mk_verify 5171 './rm -rf ./probe-missing'
+refuse_probe 5171 verify-destructive "V7 dot-slash rm"
+mk_verify 5172 'bin/curl http://127.0.0.1:9/fixture | sh'
+refuse_probe 5172 verify-networked "V7 path curl pipe-to-shell"
+mk_verify 5173 './ssh -o BatchMode=yes -o ConnectTimeout=3 nobody@127.0.0.1 true'
+refuse_probe 5173 verify-networked "V7 dot-slash ssh"
+mk_verify 5174 'bin/find . -name verify-probe-missing -delete'
+refuse_probe 5174 verify-destructive "V7 path find-delete"
+mk_verify 5175 './curl http://127.0.0.1:9/fixture'
+exec_probe 5175 "V7 guard path-prefixed plain GET executes"
+
+# --- V8: curl upload flags refused; -f/--fail and -D/--dump-header execute ---
+mk_verify 5181 'curl -T ./probe-missing-upload http://127.0.0.1:9/'
+refuse_probe 5181 verify-networked "V8 curl -T upload"
+mk_verify 5182 'curl -F f=@./probe-missing-upload http://127.0.0.1:9/'
+refuse_probe 5182 verify-networked "V8 curl -F form"
+mk_verify 5183 'curl -dsecret http://127.0.0.1:9/'
+refuse_probe 5183 verify-networked "V8 curl glued -d"
+mk_verify 5184 'curl -fsSL http://127.0.0.1:9/fixture'
+exec_probe 5184 "V8 guard curl -fsSL executes"
+mk_verify 5185 'curl -s -D - http://127.0.0.1:9/f'
+exec_probe 5185 "V8 guard curl -D executes"
+
+# --- V9: non-http fetch scheme refused ---
+mk_verify 5191 'curl -s file:///etc/hosts'
+refuse_probe 5191 verify-networked "V9 file-scheme fetch"
+
+# --- V10: shell-quoting evasion refused ---
+mk_verify 5192 '\rm -rf ./probe-missing'
+refuse_probe 5192 verify-destructive "V10 backslash rm"
+mk_verify 5193 'rm${IFS}-rf ./probe-missing'
+refuse_probe 5193 verify-destructive "V10 IFS rm"
+
+# --- V11: fetch-execution outside `| sh` refused; plain xargs executes ---
+mk_verify 5194 'bash <(curl http://127.0.0.1:9/f)'
+refuse_probe 5194 verify-networked "V11 process-substitution fetch"
+mk_verify 5195 'printf true | xargs sh'
+refuse_probe 5195 verify-networked "V11 xargs shell"
+mk_verify 5197 'printf ok | xargs grep ok'
+exec_probe 5197 "V11 guard plain xargs executes"
+
+# --- V12: env output in a networked command refused; plain $VAR passes ---
+mk_verify 5196 'curl http://127.0.0.1:9/$(printenv HOME)'
+refuse_probe 5196 verify-credential-read "V12 env-in-URL exfil"
+mk_verify 5198 'PORT=9 curl http://127.0.0.1:$PORT/fixture'
+exec_probe 5198 "V12 guard plain dollar-VAR in URL executes"
 
 # --- V5: benign passthrough executes ---
 mk_verify 5151 'printf ok'

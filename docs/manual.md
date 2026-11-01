@@ -756,12 +756,18 @@ bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
   --tmpfs ~/.config/gh --unshare-net -- ./scripts/review.sh verify owner/repo 123
 ```
 
-No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the same shape:
+No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network
+half of the shape only — network-only isolation, not the same shape:
 
 ```bash
 sudo systemd-nspawn --directory=/ --bind="$(pwd):$(pwd)" --private-network \
   -- ./scripts/review.sh verify owner/repo 123
 ```
+
+`--directory=/` runs the container on the host rootfs, so this is
+network-only isolation: `--private-network` removes the route out, but the
+command still sees the host filesystem and credential paths. Prefer the
+`bwrap` variant above whenever filesystem or credential hiding matters.
 
 This is a recipe, not enforcement: nothing in the harness checks or mandates
 the sandbox — per K5, full namespace isolation stays opt-in, never default.
