@@ -4646,26 +4646,44 @@ fi
 # obvious. Word boundaries cover path prefixes (`./rm`, `bin/curl | sh` match
 # the same rules as bare words — diffs carry +x bits, so a bare-word-only
 # gate is a bypass); backslash quoting and ${IFS}/$IFS splitting are folded
-# to spaces before matching. Upload/exfil flags match case-sensitively on
+# to spaces before matching, and mid-word quotes are deleted (not spaced) after
+# unwrapping `$'..'`/`$".."` — the shell concatenates `cu''rl` to one word, so
+# the scan must too. Upload/exfil flags match case-sensitively on
 # un-lowercased text (`-T/--upload-file`, `-F/--form/--form-string` bare
-# uppercase only, `-d` glued or not, `--data*`) so `curl -f/--fail` and
-# `-D/--dump-header` keep passing. Non-http(s) fetch schemes (`file://` and
-# equivalents) refuse — `://` slashes are never word-adjacent, so the
-# absolute-path rule is blind to them. Process substitution over a fetch
-# (`<(curl …)`), `| xargs <shell>`, and env output embedded in a networked
-# command (`curl …/$(printenv HOME)`) refuse as fetch-execution/exfil shapes.
+# uppercase only, `-WGET -O` download-to-file uppercase only, `-d` glued or
+# not, `--data*`) so `curl -f/--fail`, `-D/--dump-header`, and `wget -o`
+# (log file) keep passing. Non-http(s) fetch schemes (`file://` and
+# equivalents, plus `rsync://`) refuse — `://` slashes are never word-adjacent,
+# so the absolute-path rule is blind to them. Process substitution over a fetch
+# (`<(curl …)`), `| xargs <shell>`, pipe-to-shell through grouping/wrapper hops
+# (`| { sh; }`, `| (sh)`, `| command/env/exec sh`, `| tee >(sh)`), bare `coproc`,
+# `parallel` driving a shell or fetch tool, and env output embedded in a
+# networked command (`curl …/$(printenv HOME)`) refuse as fetch-execution/exfil
+# shapes. Env-prefix loader hooks (`LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`,
+# `BASH_ENV`, `PERL5OPT`, `RUBYOPT`, `NODE_OPTIONS --require/-r`) refuse as
+# one-command RCE; `git -c` hook/transport keys (`core.fsmonitor`,
+# `core.sshcommand`, `core.askpass`, `credential.helper=!…`,
+# `protocol.ext.allow`, `ext::`, non-`cat`-family `core.pager`) refuse likewise;
+# GNU tar exec options, `find -exec <path/>rm`, `wget -O`, `ftp`/`tftp`/`lftp`,
+# and `rsync -e/--rsh`/remote-push refuse in their classes.
 # Deliberate carve-outs, all documented here: /tmp writes stay
 # allowed (test scratch) — only fetched-payload execution via /tmp (curl -o
 # … && chmod +x) refuses through the networked rule; /dev/null stays allowed
 # (the discard sink) while every other /dev|/proc|/sys access refuses; plain
 # `curl|wget <url>` GET stays allowed (out of scope in v1 — the gate cannot
 # tell a local-fixture GET from any other GET; the recipe says to prefer no
-# network in verifyCmd). Recursive chmod/chown refuses regardless of target
+# network in verifyCmd). Also allowed: ordinary `FOO=1 cmd` prefixes
+# (only loader keys refuse), `RUSTFLAGS=`/`ENV=`/`PYTHONPATH` (app/build vars),
+# `NODE_OPTIONS` without preload arms, `core.pager=cat|less|more`,
+# `git -c core.quotepath=…`, local-only `rsync src/ dst/`, `tar` without exec
+# options, `… | xargs grep` / `… | parallel pytest|grep` (no shell, no fetch).
+# Recursive chmod/chown refuses regardless of target
 # (the story says "outside repo", but target parsing is unreliable — fail
 # closed) and `git rm -r` counts as rm for the same reason. Static text
-# analysis only: variable indirection (X=POST curl -X $X) is out of scope.
+# analysis only: variable indirection (X=POST curl -X $X), base64/hex-built
+# commands, and short `-I` tar stay recipe-layer residuals.
 verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 when clean
-  local raw flat lc scan bare csbare barepaths frag seg cands c lroot bt
+  local raw flat lc scan bare csbare barepaths frag seg cands c lroot bt pseg pgval
   raw="$1"; bt='`'
   flat=$(printf '%s' "$raw" | tr '\n\t\r' ' ' | tr -s ' ' | sed 's/^ //; s/ $//')
   lc=$(printf '%s' "$flat" | tr '[:upper:]' '[:lower:]')
@@ -4675,24 +4693,31 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
   # Backslash quoting (`\rm`) and ${IFS}/$IFS splitting (`rm${IFS}-rf`) are
   # textbook obfuscations of the exact lists below: strip backslashes and fold
   # the IFS variable (post-lc `${ifs}`/`$ifs`, tight boundary) to a space so
-  # the rules below see the effective words. Residual, documented: $'..'
-  # ANSI-C quoting, hex/base64 dynamic construction, and unicode are
-  # statically undecidable in a text scan and stay recipe-layer residual.
+  # the rules below see the effective words. Residual, documented: $'..' with
+  # backslash escapes inside (e.g. $'\x63url') unwraps without interpreting
+  # them, so hex/octal dynamic construction, variable indirection, and unicode
+  # stay statically undecidable in a text scan (recipe-layer residual).
   scan=$(printf '%s' "$scan" | sed -E -e 's/\\//g' -e 's/\$\{ifs\}/ /g' -e 's/\$ifs([^a-z0-9_]|$)/ \1/g')
-  # Quotes/backticks become spaces so quoted commands stay visible without
-  # quote-aware boundaries below.
-  bare=$(printf '%s' "$scan" | sed "s/[\`\"']/ /g" | tr -s ' ')
+  # Mid-word quotes concatenate in the shell (`cu''rl` is one word `curl`),
+  # so folding them to spaces blinds every tool-word rule while the shell
+  # still executes. Normalize like the shell instead: unwrap `$'..'`/`$".."`
+  # locale strings to their content first, then DELETE remaining quote chars
+  # (deletion only completes words that are contiguous modulo quotes -- exactly
+  # one shell word, so `"rm"` still refuses and prose like `curl's` becomes
+  # `curls`, i.e. fewer matches). Backticks stay space-folded: they are
+  # command-substitution boundaries, not quotes.
+  bare=$(printf '%s' "$scan" | sed -E -e "s/\\$'([^']*)'/\\1/g" -e "s/\\$\"([^\"]*)\"/\\1/g" -e "s/['\"]//g" -e 's/`/ /g' | tr -s ' ')
   # Case-preserved twin of $bare for the upload-flag check below. The gate
   # lowercases before matching, so case-folding conflates curl -f/--fail with
   # -F/--form and -D/--dump-header with -d/--data. Upload shapes match here,
   # on un-lowercased text, so legit -f/--fail and -D/--dump-header keep passing.
-  csbare=$(printf '%s' "$flat" | sed -E -e 's/\\//g' -e 's/\$\{IFS\}/ /g' -e 's/\$IFS([^a-zA-Z0-9_]|$)/ \1/g' | sed "s/[\`\"']/ /g" | tr -s ' ')
+  csbare=$(printf '%s' "$flat" | sed -E -e 's/\\//g' -e 's/\$\{IFS\}/ /g' -e 's/\$IFS([^a-zA-Z0-9_]|$)/ \1/g' -e "s/\\$'([^']*)'/\\1/g" -e "s/\\$\"([^\"]*)\"/\\1/g" -e "s/['\"]//g" -e 's/`/ /g' | tr -s ' ')
   # --- destructive (verify-destructive) ---
   frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])rm[[:space:]]+(-[a-z]*r[a-z]*|--recursive)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (rm with a recursive flag destroys without recovery)"; fi
   frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])find[[:space:]]+[^;|&]*-delete([^a-z]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (find -delete destroys without recovery — treat as rm)"; fi
-  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])find[[:space:]]+[^;|&]*-exec(dir)?[[:space:]]+rm([[:space:];|&]|$)' <<<"$bare" || true)
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])find[[:space:]]+[^;|&]*-exec(dir)?[[:space:]]+([^[:space:];|&]*/)?rm([[:space:];|&]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (find -exec rm destroys without recovery — treat as rm)"; fi
   frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])mkfs[a-z0-9._-]*' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (mkfs destroys filesystems)"; fi
@@ -4716,6 +4741,58 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
   if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (eval with non-literal args refuses — fail closed)"; fi
   frag=$(grep -E -m1 -o -e 'exec[[:space:]]*\(' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (exec( with non-literal args refuses — fail closed)"; fi
+  # Environment-prefix code injection (`BASH_ENV=… bash -c …`, `LD_PRELOAD=…`,
+  # `DYLD_INSERT_LIBRARIES=…`, `PERL5OPT=…`, `RUBYOPT=…`): with /tmp writable a
+  # loader/env hook plus a payload file is one-command RCE through `verify`.
+  # Any `KEY=` assignment in the text is already the injection, so one bare
+  # `KEY=` match covers `KEY=… cmd`, `export KEY=…`, and `env … KEY=…` shapes.
+  # `NODE_OPTIONS` is surgical — only preload/loader arms refuse, so
+  # `NODE_OPTIONS=--max-old-space-size=…` keeps passing. Deliberate carve-outs
+  # (documented): `ENV=` (common app var; dash/sh read it interactive-only),
+  # `PYTHONPATH` (src-layout pytest), `PYTHONSTARTUP` (interactive-only),
+  # `RUSTFLAGS=` — all stay allowed; loud-refusal trades taken for ASan
+  # `LD_PRELOAD=$(…libasan…)` and `PERL5OPT=-MDevel::Cover` runs.
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])(ld_preload|dyld_insert_libraries|bash_env|perl5opt|rubyopt)[[:space:]]*=' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (env-prefix loader hook executes code at startup — do not set loader variables in verifyCmd)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])node_options[^;|&]*--(require|import|experimental-loader|loader)([^a-z-]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (NODE_OPTIONS preload hook executes code at startup — use plain flags instead)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,:/-])node_options[^;|&]*-r([^a-z0-9-]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (NODE_OPTIONS -r preload hook executes code at startup — use plain flags instead)"; fi
+  # `git -c` hook/transport keys execute commands (`core.fsmonitor` runs on
+  # status refresh; `protocol.ext.allow=always` + `ext::` runs the remote
+  # command locally; `core.sshcommand`/`core.askpass` likewise). Unlike alias
+  # indirection (accepted residual), these are literal, enumerable keys, so
+  # fail-closed refuses them. `core.pager` is narrowed to known-safe pagers
+  # so the `core.pager=cat` CI shape keeps passing. Guards: plain `git
+  # status` and `git -c core.quotepath=false …` keep passing.
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])core\.fsmonitor[[:space:]]*=' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (git fsmonitor hook executes commands — set it in repo config, not -c)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])core\.sshcommand[[:space:]]*=' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (git sshcommand hook executes commands — fetch fixtures first, run offline)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])core\.askpass[[:space:]]*=' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (git askpass hook executes commands — fetch fixtures first, run offline)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])credential\.helper[[:space:]]*=[[:space:]]*!' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (git credential-helper shellout executes commands — use store/cache)"; fi
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])protocol\.ext\.allow' <<<"$bare" \
+    || { grep -E -q -e '(^|[[:space:];|&(){}"=,/])git([[:space:];|&]|$)' <<<"$bare" && grep -E -q -e 'ext::' <<<"$bare"; }; then
+    frag=$(grep -E -m1 -o -e 'protocol\.ext\.allow|ext::[^[:space:];|&]*' <<<"$bare" || true)
+    if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (git ext transport executes a local command — fetch fixtures first, run offline)"; fi
+  fi
+  # `core.pager` runs a command too, but `git -c core.pager=cat …` is a live
+  # CI shape — narrow to known-safe pagers (basename) instead of refusing.
+  if grep -E -q -e 'core\.pager[[:space:]]*=' <<<"$bare"; then
+    pgval=$(grep -E -m1 -o -e 'core\.pager[[:space:]]*=[[:space:]]*[^[:space:];|&]*' <<<"$bare" | sed -E -e 's/^core\.pager[[:space:]]*=[[:space:]]*//')
+    case "${pgval##*/}" in cat|less|more|true|fold|'') ;; *) fail "verify-destructive" "refusing verifyCmd: matched 'core.pager=$pgval' (git pager executes commands — use core.pager=cat)";; esac
+  fi
+  # GNU tar command-execution options (`--checkpoint-action=exec=…`,
+  # `--use-compress-program=…`, `--to-command=…`) run attacker text during
+  # archiving. bsdtar rejects these (macOS probes: gate-pass + tar error,
+  # i.e. ran, not reproduced), but Linux CI runs GNU tar — fail-closed
+  # refuses regardless of host. Plain `tar -tzf/-xzf` keeps passing.
+  # Residual, documented: short `-I` (= --use-compress-program; legit
+  # `tar -I pigz`/`-I zstd` use makes refusal too loud).
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])(g?tar)[[:space:]]+[^;|&]*--(checkpoint-action|use-compress-program|to-command)([^a-z-]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (tar executes the named command — archive without exec options)"; fi
   # --- credential reads (verify-credential-read; before networked so env-exfil
   # shapes land here, where the story lists them) ---
   frag=$(grep -E -m1 -o -e '/\.(ssh|aws|gnupg|pki)|\.config/gh|/\.netrc|\.docker/config\.json' <<<"$bare" || true)
@@ -4727,7 +4804,7 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
   # Env output embedded in a networked command (`curl …/$(printenv HOME)`)
   # exfils through the allowed plain-GET shape; the pipe form above is blind
   # to it. Embedding env output in a networked command is inherently exfil.
-  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])(curl|wget|ncat|netcat|socat|ssh|scp)([[:space:];|&]|$)' <<<"$bare"; then
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])(curl|wget|ftp|tftp|lftp|ncat|netcat|socat|ssh|scp)([[:space:];|&]|$)' <<<"$bare"; then
     frag=$(grep -E -m1 -o -e '\$\((env|printenv)([[:space:];|&)]|$)' <<<"$bare" || true)
     if [[ -n "$frag" ]]; then fail "verify-credential-read" "refusing verifyCmd: matched '$frag' (env output embedded in a networked command exfils credentials)"; fi
     # Backtick form runs against $scan (bare already strips backticks away).
@@ -4735,9 +4812,25 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
     if [[ -n "$frag" ]]; then fail "verify-credential-read" "refusing verifyCmd: matched '$frag' (env output embedded in a networked command exfils credentials)"; fi
   fi
   # --- networked (verify-networked) ---
-  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])(curl|wget|ncat|netcat|socat|ssh|scp)([[:space:];|&]|$)' <<<"$bare"; then
-    frag=$(grep -E -m1 -o -e '\|[[:space:]]*(sudo[[:space:]]+)?([^[:space:];|&]*/)?(sh|bash|zsh|fish|dash)([[:space:];|&]|$)' <<<"$bare" || true)
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])(curl|wget|ftp|tftp|lftp|ncat|netcat|socat|ssh|scp)([[:space:];|&]|$)' <<<"$bare"; then
+    frag=$(grep -E -m1 -o -e '\|[[:space:]]*(\{|\()?([[:space:]]*)(sudo[[:space:]]+)?((command|env|nice|nohup|stdbuf|timeout|exec)([[:space:]]+[^[:space:];|&(){}]+)*[[:space:]]+)?([^[:space:];|&]*/)?(sh|bash|zsh|fish|dash)([[:space:];|&)}]|$)' <<<"$bare" || true)
     if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (pipe-to-shell executes a network fetch)"; fi
+    frag=$(grep -E -m1 -o -e '>\([[:space:]]*(sudo[[:space:]]+)?((command|env|nice|nohup|stdbuf|timeout|exec)([[:space:]]+[^[:space:];|&(){}]+)*[[:space:]]+)?([^[:space:];|&]*/)?(sh|bash|zsh|fish|dash)([[:space:];|&)}]|$)' <<<"$bare" || true)
+    if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (output process substitution into a shell executes a network fetch)"; fi
+  fi
+  # `coproc` spawns a background shell the fetch side can feed (`coproc SH;
+  # curl … >&p) — never legit in a verifyCmd, refused outright.
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])coproc([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (coproc spawns a background shell — fetch-execution shape)"; fi
+  # `parallel` driving a shell (`… | parallel sh`) or a fetch tool is the same
+  # execution shape with one hop; plain `… | parallel pytest|grep` (no shell,
+  # no fetch tool) keeps passing.
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])parallel([[:space:];|&]|$)' <<<"$bare"; then
+    pseg=$(grep -E -m1 -o -e 'parallel[^;|&]*' <<<"$bare" || true)
+    if grep -E -q -e '(^|[[:space:];|&(){}"=,/])(curl|wget)([[:space:];|&]|$)' <<<"$bare" \
+      || grep -E -q -e '(^|[[:space:];|&(){}"=,/])(sh|bash|zsh|fish|dash)([[:space:];|&]|$)' <<<"$pseg"; then
+      fail "verify-networked" "refusing verifyCmd: matched '$pseg' (parallel driving a shell or a fetch tool executes remote content)";
+    fi
   fi
   frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])curl[[:space:]]+([^;|&]*[[:space:]])?(-X[[:space:]]*(post|put)|--output|-o[[:space:]]|-O([[:space:];|&]|$))' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (curl exfil/download-to-file shape — fetch fixtures first, run offline)"; fi
@@ -4751,23 +4844,44 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
   # Non-http(s) fetch schemes (`file://` and equivalents) refuse: `://`
   # slashes are never word-adjacent, so the absolute-path rule below is blind
   # to them, while `curl file:///etc/hosts` reads local files into the output.
-  frag=$(grep -E -m1 -o -e '(file|ftp|ftps|dict|gopher|tftp|ldap|ldaps|sftp|scp)://' <<<"$bare" || true)
+  frag=$(grep -E -m1 -o -e '(file|ftp|ftps|dict|gopher|tftp|ldap|ldaps|sftp|scp|rsync)://' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (non-http fetch scheme — fetch fixtures first, run offline)"; fi
-  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])wget[[:space:]]+[^;|&]*(-O([^a-z0-9-]|$)|--output-document|--post-data|--post-file)' <<<"$bare" || true)
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])wget[[:space:]]+[^;|&]*--(output-document|post-data|post-file)([^a-z-]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (wget download/post shape — fetch fixtures first, run offline)"; fi
+  # `-O` (download-to-file) is case-sensitive: it matches on $csbare so the
+  # lowercase log-file `-o` keeps passing and `-O-` (stdout) keeps passing.
+  # (The old arm matched uppercase `-O` against lowercased text — dead code
+  # that let the canonical `wget -O` shape sail through with zero suite legs.)
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])wget[[:space:]]+[^;|&]*-O([^a-z0-9-]|$)' <<<"$csbare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (wget -O download-to-file shape — fetch fixtures first, run offline)"; fi
+  # The classic interactive transfer clients (`ftp`, `tftp`, `lftp`) are fetch/
+  # exfil tools with no legit verifyCmd use — refused outright. (`sftp`/`scp`
+  # already refuse via the ssh rule below.)
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])(ftp|tftp|lftp)([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (interactive file-transfer client — fetch fixtures first, run offline)"; fi
   frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])(nc|ncat|netcat|socat)([[:space:];|&]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (netcat connect/listen shape)"; fi
   frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])(ssh|scp|sftp)([[:space:];|&]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (ssh outbound shape)"; fi
-  frag=$(grep -E -m1 -o -e '\$[(]([^[:space:];|&()]*\/)?(curl|wget|ncat|netcat|socat|ssh|scp|nc)([[:space:];|&]|$)' <<<"$bare" || true)
+  # `rsync -e/--rsh` runs the remote-shell command LOCALLY (no remote needed);
+  # `rsync … user@host:…` / `host:path` / `host::module` pushes to (or pulls
+  # from) a remote. Local-only `rsync -av src/ dst/` (plain fixture copy)
+  # keeps passing — hence surgical arms, not a word rule.
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,/])rsync([[:space:];|&]|$)' <<<"$bare"; then
+    frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])rsync[[:space:]]+[^;|&]*[[:space:]](-[a-z]*e|--rsh)([^a-z0-9-]|$)' <<<"$bare" || true)
+    if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (rsync -e/--rsh runs the command locally — copy fixtures without -e/--rsh)"; fi
+    frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])rsync[[:space:]]+[^;|&]*([a-z0-9_.-]+@|::|[[:space:]][a-z0-9_.-]+:[^[:space:];|&])' <<<"$bare" || true)
+    if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (rsync to/from a remote host — copy fixtures locally)"; fi
+  fi
+  frag=$(grep -E -m1 -o -e '\$[(]([^[:space:];|&()]*\/)?(curl|wget|ftp|tftp|lftp|ncat|netcat|socat|ssh|scp|nc)([[:space:];|&]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (command substitution over a network fetch)"; fi
   # Backtick form runs against $scan (bare already strips backticks away).
-  frag=$(grep -E -m1 -o -e "${bt}([^[:space:];|&]*\/)?(curl|wget|ncat|netcat|socat|ssh|scp|nc)([[:space:];|&]|$)" <<<"$scan" || true)
+  frag=$(grep -E -m1 -o -e "${bt}([^[:space:];|&]*\/)?(curl|wget|ftp|tftp|lftp|ncat|netcat|socat|ssh|scp|nc)([[:space:];|&]|$)" <<<"$scan" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (command substitution over a network fetch)"; fi
   # Process substitution over a fetch (`bash <(curl …)`) executes the fetch
   # exactly like `| sh` does; the pipe-to-shell rule above is blind to it.
   # Never legit in verifyCmds.
-  frag=$(grep -E -m1 -o -e '<\([[:space:]]*([^[:space:];|&()]*\/)?(curl|wget|ncat|netcat|socat|ssh|scp|nc)([[:space:];|&)]|$)' <<<"$bare" || true)
+  frag=$(grep -E -m1 -o -e '<\([[:space:]]*([^[:space:];|&()]*\/)?(curl|wget|ftp|tftp|lftp|ncat|netcat|socat|ssh|scp|nc)([[:space:];|&)]|$)' <<<"$bare" || true)
   if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (process substitution over a network fetch executes it — fetch fixtures first, run offline)"; fi
   # A fetch piped through xargs into a shell (`curl … | xargs sh`) is the same
   # pipe-to-shell shape with one hop in between. Plain `… | xargs grep` (no

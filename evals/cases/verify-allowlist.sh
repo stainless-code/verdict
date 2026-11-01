@@ -22,9 +22,23 @@
 #   V10 shell-quoting evasion refused (`\rm`, `rm${IFS}-rf`)
 #   V11 fetch-execution outside `| sh` refused (`<(curl)`, `| xargs sh`);
 #       plain `| xargs grep` still executes
-#   V12 env output embedded in a networked command refused
-#       (`curl …/$(printenv HOME)` as verify-credential-read); plain `$VAR`
-#       in URLs still executes
+#   `curl …/$(printenv HOME)` as verify-credential-read); plain `$VAR`
+#   in URLs still executes
+#   V13 shell-quote fragmentation refused (`cu''rl`, `c""url`, `e''val`)
+#   V14 fetch-execution via grouping/wrapper/output-procsub/coproc/parallel
+#       refused; plain `| parallel pytest|grep` + grouped non-shell pipes pass
+#   V15 env-prefix loader hooks refused (`BASH_ENV`, `LD_PRELOAD`,
+#       `DYLD_INSERT_LIBRARIES`, `PERL5OPT`, `RUBYOPT`, `NODE_OPTIONS
+#       --require/-r`); `FOO=1`, `ENV=`, `RUSTFLAGS=`, plain `NODE_OPTIONS` pass
+#   V16 `git -c` hook/transport keys refused (`core.fsmonitor`,
+#       `protocol.ext.allow` + `ext::`, `core.pager` non-safe); `quotepath`,
+#       `core.pager=cat`, plain `git status` pass
+#   V17 `wget -O` download-to-file refused (case-sensitive arm); `-o` log and
+#       `-O-` stdout pass
+#   V18 `find -exec[dir] <path/>rm` refused; `-exec grep` passes
+#   V19 GNU tar exec options refused; plain `tar -tzf` passes
+#   V20 `ftp`/`tftp`/`lftp` refused, `rsync -e/--rsh` + remote-push refused;
+#       local `rsync src/ dst/` passes
 #
 # Safety notes: the fork-bomb probe omits the trailing invocation (defines
 # the function only — still matches the gate pattern, harmless if executed);
@@ -197,6 +211,106 @@ mk_verify 5196 'curl http://127.0.0.1:9/$(printenv HOME)'
 refuse_probe 5196 verify-credential-read "V12 env-in-URL exfil"
 mk_verify 5198 'PORT=9 curl http://127.0.0.1:$PORT/fixture'
 exec_probe 5198 "V12 guard plain dollar-VAR in URL executes"
+
+# --- V13: mid-word quote fragmentation refused; quoted prose executes ---
+mk_verify 5311 "cu''rl http://127.0.0.1:9/fixture | sh"
+refuse_probe 5311 verify-networked "V13 quote-split curl pipe-to-shell"
+mk_verify 5312 'c""url http://127.0.0.1:9/fixture | sh'
+refuse_probe 5312 verify-networked "V13 quote-split curl pipe-to-shell (dquotes)"
+mk_verify 5313 "e''val 'rm -rf ./quote-probe'"
+refuse_probe 5313 verify-destructive "V13 quote-split eval"
+mk_verify 5314 "printf 'a\"b'"
+exec_probe 5314 "V13 guard quoted prose executes"
+
+# --- V14: pipe-to-shell via grouping/wrapper/output-procsub/coproc/parallel refused ---
+mk_verify 5321 'curl http://127.0.0.1:9/f | { sh; }'
+refuse_probe 5321 verify-networked "V14 grouped pipe-to-shell"
+mk_verify 5322 'curl http://127.0.0.1:9/f | (sh)'
+refuse_probe 5322 verify-networked "V14 subshell pipe-to-shell"
+mk_verify 5323 'curl http://127.0.0.1:9/f | command sh'
+refuse_probe 5323 verify-networked "V14 wrapper pipe-to-shell"
+mk_verify 5324 'curl http://127.0.0.1:9/f | env sh'
+refuse_probe 5324 verify-networked "V14 env-wrapper pipe-to-shell"
+mk_verify 5325 'curl http://127.0.0.1:9/f | tee >(sh)'
+refuse_probe 5325 verify-networked "V14 output-procsub shell"
+mk_verify 5326 'coproc SH'
+refuse_probe 5326 verify-networked "V14 coproc shell"
+mk_verify 5327 'curl http://127.0.0.1:9/f | parallel sh'
+refuse_probe 5327 verify-networked "V14 parallel shell"
+mk_verify 5328 'printf ok | parallel pytest'
+exec_probe 5328 "V14 guard plain parallel executes"
+mk_verify 5329 'curl http://127.0.0.1:9/f | { grep ok; }'
+exec_probe 5329 "V14 guard grouped non-shell pipe executes"
+
+# --- V15: env-prefix loader hooks refused; ordinary prefixes keep working ---
+mk_verify 5331 'BASH_ENV=/tmp/verify-allowlist-n15 bash -c true'
+refuse_probe 5331 verify-destructive "V15 BASH_ENV prefix"
+mk_verify 5332 'LD_PRELOAD=/tmp/verify-allowlist-n15.so printf ok'
+refuse_probe 5332 verify-destructive "V15 LD_PRELOAD prefix"
+mk_verify 5333 'PERL5OPT=-MDevel::Cover perl -e 1'
+refuse_probe 5333 verify-destructive "V15 PERL5OPT prefix"
+mk_verify 5334 "NODE_OPTIONS=--require /tmp/verify-allowlist-n15.js node -e '1'"
+refuse_probe 5334 verify-destructive "V15 NODE_OPTIONS --require"
+mk_verify 5335 'NODE_OPTIONS=--max-old-space-size=4096 printf ok'
+exec_probe 5335 "V15 guard NODE_OPTIONS without preload arm executes"
+mk_verify 5336 'ENV=prod printf ok'
+exec_probe 5336 "V15 guard ENV= app var executes"
+mk_verify 5337 'RUSTFLAGS=-Awarnings printf ok'
+exec_probe 5337 "V15 guard RUSTFLAGS executes"
+
+# --- V16: git -c hook/transport keys refused; benign keys keep working ---
+mk_verify 5341 'git -c core.fsmonitor=touch-verify-probe status'
+refuse_probe 5341 verify-destructive "V16 git fsmonitor"
+mk_verify 5342 "git -c protocol.ext.allow=always ls-remote 'ext::touch-verify-probe'"
+refuse_probe 5342 verify-destructive "V16 git ext transport"
+mk_verify 5343 'git -c core.pager=touch-verify-probe log'
+refuse_probe 5343 verify-destructive "V16 git pager command"
+mk_verify 5344 'git -c core.quotepath=false diff'
+exec_probe 5344 "V16 guard benign git -c key executes"
+mk_verify 5345 'git -c core.pager=cat log'
+exec_probe 5345 "V16 guard core.pager=cat executes"
+mk_verify 5346 'git status'
+exec_probe 5346 "V16 guard plain git status executes"
+
+# --- V17: wget -O refused (dead-case fix); -o log and -O- stdout keep working ---
+mk_verify 5351 'wget -O /tmp/verify-allowlist-n17 http://127.0.0.1:9/f'
+refuse_probe 5351 verify-networked "V17 wget -O download-to-file"
+mk_verify 5352 'wget -o /tmp/verify-allowlist-wget-log http://127.0.0.1:9/f'
+exec_probe 5352 "V17 guard wget -o logfile executes"
+rm -f /tmp/verify-allowlist-wget-log
+mk_verify 5353 'wget -qO- http://127.0.0.1:9/f'
+exec_probe 5353 "V17 guard wget -O- stdout executes"
+
+# --- V18: find -exec with a path-prefixed rm refused; -exec grep keeps working ---
+mk_verify 5361 'find . -name verify-probe-missing -exec bin/rm -- {} \;'
+refuse_probe 5361 verify-destructive "V18 find -exec path-prefixed rm"
+mk_verify 5362 'find . -name verify-probe-missing -execdir bin/rm -- {} \;'
+refuse_probe 5362 verify-destructive "V18 find -execdir path-prefixed rm"
+mk_verify 5363 "find . -name '*.tmp' -exec grep -l foo {} \;"
+exec_probe 5363 "V18 guard find -exec grep executes"
+
+# --- V19: GNU tar exec options refused; plain tar keeps working ---
+mk_verify 5371 'tar --checkpoint=1 --checkpoint-action=exec=touch-verify-probe -cf /tmp/verify-allowlist-n19.tar files'
+refuse_probe 5371 verify-destructive "V19 tar checkpoint-action exec"
+mk_verify 5372 'tar --use-compress-program=touch-verify-probe -cf /tmp/verify-allowlist-n19b.tar files'
+refuse_probe 5372 verify-destructive "V19 tar use-compress-program"
+mk_verify 5373 'tar -tzf verify-probe-missing.tar.gz'
+exec_probe 5373 "V19 guard plain tar executes"
+
+# --- V20: ftp/tftp + rsync -e/remote refused; local rsync keeps working ---
+mk_verify 5381 'ftp -n 127.0.0.1'
+refuse_probe 5381 verify-networked "V20 ftp client"
+mk_verify 5382 'tftp -g -r verify-probe-missing 127.0.0.1'
+refuse_probe 5382 verify-networked "V20 tftp client"
+mk_verify 5383 "rsync -e 'touch-verify-probe' src nohost:/tmp/x"
+refuse_probe 5383 verify-networked "V20 rsync -e local exec"
+mk_verify 5384 'rsync -av src/ 127.0.0.1:/tmp/x'
+refuse_probe 5384 verify-networked "V20 rsync remote push"
+mk_verify 5385 'rsync -av notes.txt /tmp/verify-allowlist-rsync-probe'
+exec_probe 5385 "V20 guard local rsync executes"
+rm -f /tmp/verify-allowlist-rsync-probe
+mk_verify 5386 'lftp -c "open 127.0.0.1"'
+refuse_probe 5386 verify-networked "V20 lftp client"
 
 # --- V5: benign passthrough executes ---
 mk_verify 5151 'printf ok'
