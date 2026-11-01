@@ -328,6 +328,20 @@ combined (`--check critical --completeness`) it fails when tier-hits OR
 stale/missing post do. Pure local reads, no network; without the flag
 output and exits are exactly today's.
 
+A third dimension runs last on every gate invocation (`--check`,
+`--completeness`, or both): the script re-lists live unresolved threads
+and fails the gate when more are open live than the store holds open
+(`check: N live open thread(s) vs M local open finding(s) — gate fails
+(fetch + triage them, then re-check)` — fetch the PR, triage the new
+threads, re-run `report --check`. An unreachable lookup warns (`live
+thread recheck unreachable`) and leaves the dimension neutral: the gate
+reflects local dimensions only, and the run never exits 3 over the
+network. Local bundles and non-GitHub providers skip the lookup with a
+warn (`live recheck skipped: ...`), paying zero network; plain `report`
+without a gate flag never calls the network. There is no `--force` on
+report: fetch + triage + re-check is the recovery, and advisory `report`
+without `--check` is the escape hatch.
+
 Hook recipe (merge gate — findings AND freshness in one call):
 
 ```bash

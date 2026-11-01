@@ -52,7 +52,8 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.
   report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]
         [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] [--json]
-    pure read over the store: ranked findings + verdict + counts. No network.
+    pure read over the store: ranked findings + verdict + counts. Advisory runs
+    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.
     --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.
     --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; stratified by effort tier).
     Consented over-budget receipts from .review/<pr>/budget.json surface here when present.
@@ -63,14 +64,17 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     --check the run stays advisory: exit 0 with findings listed (typed
     errors exit 1, usage exits 2).
     --completeness opts into a second gate dimension answering "is HEAD
-    reviewed?" from the local completed-post record (pure local reads, no
-    network): pass iff post.json exists, parses, and carries a non-empty
+    reviewed?" from the local completed-post record (local post-record
+    read): pass iff post.json exists, parses, and carries a non-empty
     head equal to the bundle's fetched HEAD (PR.json head SHA, else
     source.json head_sha for local bundles). Alone it gates on HEAD-reviewed
     only; combined with --check the run fails if tier-hits OR stale/missing
-    post. Gate failure exits 1 with a check: line naming the re-fetch
-    command; tool errors keep exit 3. Without it output and exits are
-    byte-identical to today.
+    post. Every gate run (--check and/or --completeness) ends with a third,
+    network-backed live-thread dimension: more live opens than local opens
+    fails the gate (unreachable lookups warn and stay neutral; local and
+    non-GitHub bundles warn-skip with zero network). Gate failure exits 1
+    with a check: line naming the re-fetch command; tool errors keep exit 3.
+    Without a gate flag output and exits are byte-identical to today.
   next <owner/repo> <pr> [--status open] [--json]
     top-ranked actionable finding + the command to act on it. Pure read.
   show <owner/repo> <pr> --sig <sig> [--json]
@@ -3595,6 +3599,31 @@ if [[ "$cmd" == "fetch-local" ]]; then
   exit 0
 fi
 
+# Live open-thread read (single home for the post APPROVE recheck GraphQL).
+# Prints the live unresolved-thread count on stdout; exits nonzero on lookup
+# failure. No store writes, no posting — pure read. Callers own the
+# refuse/downgrade/skip semantics and messages around it.
+live_open_thread_count() { # $1 = owner/repo, $2 = pr
+  local _lotc_repo="$1" _lotc_pr="$2"
+  local _lotc_owner="${_lotc_repo%%/*}" _lotc_name="${_lotc_repo##*/}"
+  local _lotc_threads _lotc_open
+  if ! _lotc_threads=$(gh api graphql --paginate -F owner="$_lotc_owner" -F name="$_lotc_name" -F pr="$_lotc_pr" -f query='
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              nodes { isResolved }
+            }
+          }
+        }
+      }' | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]'); then
+    return 1
+  fi
+  _lotc_open=$(jq '[.[] | select(.isResolved == false)] | length' <<<"$_lotc_threads" 2>/dev/null || echo 0)
+  case "$_lotc_open" in ''|*[!0-9]*) _lotc_open=0;; esac
+  printf '%s\n' "$_lotc_open"
+}
+
 # ----------------------------------------------------------------- post ---
 if [[ "$cmd" == "post" ]]; then
   approve="false"; request_changes="false"; bind="false"; force="false"
@@ -3716,18 +3745,7 @@ $body"
   # failure). More live opens than local opens refuses APPROVE (approve-blocked
   # naming the counts plus the triage-or-override path).
   if [[ "$event" == "APPROVE" && "$dry_run" != "true" ]]; then
-    owner="${repo%%/*}"; name="${repo##*/}"
-    if live_threads=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
-      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
-        repository(owner:$owner, name:$name) {
-          pullRequest(number:$pr) {
-            reviewThreads(first:100, after:$endCursor) {
-              nodes { isResolved }
-            }
-          }
-        }
-      }' 2>"$dir/.recheck.err" | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]'); then
-      live_open=$(jq '[.[] | select(.isResolved == false)] | length' <<<"$live_threads" 2>/dev/null || echo 0)
+    if live_open=$(live_open_thread_count "$repo" "$pr" 2>"$dir/.recheck.err"); then
       case "$live_open" in ''|*[!0-9]*) live_open=0;; esac
       if (( live_open > n_open )) && [[ "$force" != "true" ]]; then
         fail "approve-blocked" "refusing APPROVE: $live_open live open thread(s) vs $n_open local open finding(s) — $(( live_open - n_open )) thread(s) the store does not know about (fetch + triage them, or re-run with --force)"
@@ -4232,6 +4250,36 @@ if [[ "$cmd" == "report" ]]; then
       fi
     fi
   fi
+  # Live-thread probe (network, first half of the gate's third dimension):
+  # runs ahead of rendering so its warn lands in the --json envelope
+  # warnings[] as well as stderr (the envelope emits below, the verdict
+  # prints in the gate tail). live_status: pass|fail|skip|unknown;
+  # live_open carries the count on pass/fail. Skips and unreachable lookups
+  # warn and stay neutral here — never fail(), never exit 3 on network
+  # trouble. Advisory runs (no gate flag) skip this entirely: zero network,
+  # byte-identical output.
+  live_status="unset"; live_open="0"
+  if [[ "$check_gate" == "true" ]]; then
+    if [[ "$dir" == .review/local-* ]]; then
+      warn "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
+      live_status="skip"
+    else
+      live_prov=$(jq -r '.provider // empty' "$dir/PR.json" 2>/dev/null || true)
+      if [[ -n "$live_prov" && "$live_prov" != "github" ]]; then
+        warn "live recheck skipped: $live_prov threads unreadable here (gating on local dimensions only)"
+        live_status="skip"
+      elif live_open=$(live_open_thread_count "$repo" "$pr" 2>"$dir/.recheck.err"); then
+        case "$live_open" in ''|*[!0-9]*) live_open=0;; esac
+        if (( live_open > n_all_open )); then live_status="fail"; else live_status="pass"; fi
+        rm -f "$dir/.recheck.err"
+      else
+        live_err=$(head -c 120 "$dir/.recheck.err" 2>/dev/null | tr '\n' ' ')
+        warn "live thread recheck unreachable (${live_err:-lookup failed} — gating on local dimensions only)"
+        rm -f "$dir/.recheck.err"
+        live_status="unknown"
+      fi
+    fi
+  fi
   if [[ -n "$output" ]]; then
     # Confidence-led lead: review-level confidence + safety assessment from the
     # already-stored completed-post/machine records (post.json for PR bundles,
@@ -4368,11 +4416,20 @@ if [[ "$cmd" == "report" ]]; then
   # informational; untagged findings never meet a tier; display filters do
   # not narrow the gate). --completeness adds a HEAD-reviewed dimension from
   # the local post record (match passes; missing/unparsable/empty/mismatch
-  # fails with a typed check: line naming the re-fetch command). Output is
-  # identical with or without either flag — only the exit differs, mirroring
-  # ready --check. The store parsed above, so a non-numeric count here is a
-  # tool error, never a pass. Either dimension failing exits 1; tool errors
-  # exit 3 via fail().
+  # fails with a typed check: line naming the re-fetch command). A third,
+  # network-backed live-thread dimension verdicts last: more live opens than
+  # local opens (whole-store n_all_open — display filters never narrow a
+  # gate, same rule as the tier dimension) fails the gate with a check: line
+  # naming both counts plus the fetch-and-triage path; unreachable lookups
+  # warn and stay neutral, and local/non-GitHub bundles skip with a warn —
+  # zero network either way. The lookup runs in the probe ahead of rendering
+  # so the warn lands in the --json envelope warnings[] too. Output is
+  # identical with or without any flag — only the exit differs, mirroring
+  # ready --check. The store parsed above,
+  # so a non-numeric count here is a tool error, never a pass. Any dimension
+  # failing exits 1; tool errors exit 3 via fail(). There is no --force on
+  # report: fetch + triage + re-check is the recovery, advisory report
+  # without a gate flag is the escape hatch.
   if [[ "$check_gate" == "true" ]]; then
     gate_fail="false"
     if [[ -n "$check_sev" ]]; then
@@ -4402,6 +4459,16 @@ if [[ "$cmd" == "report" ]]; then
           echo "check: incomplete — HEAD ${head_sha:0:7} != posted ${comp_posted:0:7} (stale-head: re-run $comp_refetch, then review + post, then re-check)" >&2
         fi
       fi
+    fi
+    # Live-thread verdict (second half of the third dimension): the probe
+    # above already warned and stayed neutral on skips/unreachable; here the
+    # fail/pass just prints its check: line. fail accumulates into the single
+    # exit 1 below, keeping the tier → completeness → live order.
+    if [[ "$live_status" == "fail" ]]; then
+      echo "check: $live_open live open thread(s) vs $n_all_open local open finding(s) — gate fails (fetch + triage them, then re-check)" >&2
+      gate_fail="true"
+    elif [[ "$live_status" == "pass" ]]; then
+      echo "check: $live_open live open thread(s) vs $n_all_open local open finding(s) — live recheck passes" >&2
     fi
     if [[ "$gate_fail" == "true" ]]; then exit 1; fi
   fi
