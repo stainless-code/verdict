@@ -243,7 +243,7 @@ recall; citing one warns and drops.
 `fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. `report` is the pure offline reader over the store (ranked items, verdict,
+non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 2/3 with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
 counts, patch passthrough, optional `--output` markdown with machine-header markers,
 optional `--sarif` for scanners/CI). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
@@ -349,6 +349,30 @@ Hook recipe (merge gate — findings AND freshness in one call):
 # exit 0 only when no open critical+ findings stand AND the fetched HEAD
 # is the posted HEAD; exit 1 names which dimension failed on stderr.
 ```
+
+### Pre-push probe (local gate before CI burns)
+
+Drop the combined gate into `.git/hooks/pre-push` (executable) so a stale HEAD
+or an open critical fails locally instead of burning CI:
+
+```bash
+#!/bin/sh
+./scripts/review.sh report owner/repo 123 --check critical --completeness || exit 1
+# exit 0 only when no open critical+ findings stand AND the fetched HEAD
+# is the posted HEAD; exit 1 names which dimension failed on stderr.
+```
+
+Recovery lives where fetch behavior lives: the `stale-head`/`missing-post`
+check line names the re-fetch command — the `--base-sha <short-posted-head>`
+advance form when `post.json` carries a head, the plain `fetch` when there is
+nothing to advance from (see the `report --completeness` paragraph above and
+the Finalizer loop under Findings store + triage authority). Local bundles
+keep the `fetch-local` form.
+
+Offline-safe by construction: every gate run ends with the live-thread recheck
+that warns (`live thread recheck unreachable`) and proceeds on the local
+dimensions when the network is unreachable — the hook stays fast and never
+exits 3 over the network.
 
 Sigs follow the Sig contract under Findings store.
 
