@@ -293,6 +293,10 @@ fail() {
     bad-settings) hint="try: keep only output/layout/color/publish keys (see docs/manual.md), then re-run";;
     bad-*) hint="try: re-run with one of the valid values named above";;
     already-learned) hint="try: cite the existing rule id instead of learning it twice";;
+    verify-destructive) hint="try: rewrite verifyCmd to stay in-repo and non-destructive (run the test runner, not rm/mkfs/dd), then re-run";;
+    verify-networked) hint="try: rewrite verifyCmd without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run";;
+    verify-credential-read) hint="try: rewrite verifyCmd without reading credential paths or piping env into the network, then re-run";;
+    verify-repo-escape) hint="try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run";;
     id-taken) hint="try: pass a different --id";;
     unknown-rule) hint="try: list rules with learn --status, then re-run";;
     already-retired|not-retired) hint="try: check the rule status with learn --status, then re-run";;
@@ -4629,6 +4633,121 @@ if [[ "$cmd" == "check-tree" ]]; then
   exit 0
 fi
 
+# ---- verify allowlist gate (verify-harden slice 01; spec D2/D3) ----
+# Pre-exec text scan over the raw verifyCmd, refusing four classes with typed
+# errors before the `bash -c` spawn in the verify verb below. The gate binds
+# the `verify` verb only (NOT `record` — D1: damage happens at execution, so
+# the check lives at execution), and it binds the command surface, not the
+# operator: the human shell is unaffected (documented bypass honesty; no
+# --force flag in v1, D5).
+#
+# Matching is case-insensitive on whitespace-collapsed text and fail-closed:
+# doubt refuses; the refusal quotes the matched fragment so narrowing is
+# obvious. Deliberate carve-outs, all documented here: /tmp writes stay
+# allowed (test scratch) — only fetched-payload execution via /tmp (curl -o
+# … && chmod +x) refuses through the networked rule; /dev/null stays allowed
+# (the discard sink) while every other /dev|/proc|/sys access refuses; plain
+# `curl|wget <url>` GET stays allowed (out of scope in v1 — the gate cannot
+# tell a local-fixture GET from any other GET; the recipe says to prefer no
+# network in verifyCmd). Recursive chmod/chown refuses regardless of target
+# (the story says "outside repo", but target parsing is unreliable — fail
+# closed) and `git rm -r` counts as rm for the same reason. Static text
+# analysis only: variable indirection (X=POST curl -X $X) is out of scope.
+verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 when clean
+  local raw flat lc scan bare barepaths frag seg cands c lroot bt
+  raw="$1"; bt='`'
+  flat=$(printf '%s' "$raw" | tr '\n\t\r' ' ' | tr -s ' ' | sed 's/^ //; s/ $//')
+  lc=$(printf '%s' "$flat" | tr '[:upper:]' '[:lower:]')
+  # @@null@@ keeps the discard sink out of the /dev rule; =op keeps the bash
+  # [[ =~ ]] regex operator out of the tilde rule.
+  scan=$(printf '%s' "$lc" | sed -e 's|/dev/null|@@null@@|g' -e 's/=~[[:space:]][[:space:]]*/=op /g')
+  # Quotes/backticks become spaces so quoted commands stay visible without
+  # quote-aware boundaries below.
+  bare=$(printf '%s' "$scan" | sed "s/[\`\"']/ /g" | tr -s ' ')
+  # --- destructive (verify-destructive) ---
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])rm[[:space:]]+(-[a-z]*r[a-z]*|--recursive)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (rm with a recursive flag destroys without recovery)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])find[[:space:]]+[^;|&]*-delete([^a-z]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (find -delete destroys without recovery — treat as rm)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])find[[:space:]]+[^;|&]*-exec(dir)?[[:space:]]+rm([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (find -exec rm destroys without recovery — treat as rm)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])mkfs[a-z0-9._-]*' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (mkfs destroys filesystems)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])dd[[:space:]]+[^;|&]*[[:space:]]of=/dev/' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (dd writing a device destroys without recovery)"; fi
+  frag=$(grep -E -m1 -o -e ':[[:space:]]*\(\)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (fork-bomb shape)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])ch(mod|own)[[:space:]]+(-[a-z]*r[a-z]*|--recursive)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (recursive chmod/chown refuses regardless of target — fail closed)"; fi
+  seg=$(grep -E -m1 -o -e 'git[[:space:]]+clean[^;|&]*' <<<"$bare" || true)
+  if [[ -n "$seg" ]]; then
+    if [[ "$seg" == *"-f"* ]] && grep -E -q -e '~|\$home| /' <<<"$seg"; then
+      fail "verify-destructive" "refusing verifyCmd: matched '$seg' (git clean -f with a / or ~ pathspec destroys outside the repo)"
+    fi
+  fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])(sudo|doas|runuser)([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (privilege change refuses regardless of payload)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])su([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (privilege change refuses regardless of payload)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])eval([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (eval with non-literal args refuses — fail closed)"; fi
+  frag=$(grep -E -m1 -o -e 'exec[[:space:]]*\(' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-destructive" "refusing verifyCmd: matched '$frag' (exec( with non-literal args refuses — fail closed)"; fi
+  # --- credential reads (verify-credential-read; before networked so env-exfil
+  # shapes land here, where the story lists them) ---
+  frag=$(grep -E -m1 -o -e '/\.(ssh|aws|gnupg|pki)|\.config/gh|/\.netrc|\.docker/config\.json' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-credential-read" "refusing verifyCmd: matched '$frag' (credential-path read)"; fi
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,])(env|printenv)([[:space:];|&]|$)' <<<"$bare"; then
+    frag=$(grep -E -m1 -o -e '\|[[:space:]]*(curl|wget|ncat|netcat|socat|ssh|nc)([[:space:];|&]|$)' <<<"$bare" || true)
+    if [[ -n "$frag" ]]; then fail "verify-credential-read" "refusing verifyCmd: matched '$frag' (env piped into the network exfils credentials)"; fi
+  fi
+  # --- networked (verify-networked) ---
+  if grep -E -q -e '(^|[[:space:];|&(){}"=,])(curl|wget|ncat|netcat|socat|ssh|scp)([[:space:];|&]|$)' <<<"$bare"; then
+    frag=$(grep -E -m1 -o -e '\|[[:space:]]*(sudo[[:space:]]+)?([^[:space:];|&]*/)?(sh|bash|zsh|fish|dash)([[:space:];|&]|$)' <<<"$bare" || true)
+    if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (pipe-to-shell executes a network fetch)"; fi
+  fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])curl[[:space:]]+[^;|&]*(-X[[:space:]]*(post|put)|--data|-d([^a-z0-9]|$)|--output|-o[[:space:]]|-O([[:space:];|&]|$))' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (curl exfil/download-to-file shape — fetch fixtures first, run offline)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])wget[[:space:]]+[^;|&]*(-O([^a-z0-9-]|$)|--output-document|--post-data|--post-file)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (wget download/post shape — fetch fixtures first, run offline)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])(nc|ncat|netcat|socat)([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (netcat connect/listen shape)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,])(ssh|scp|sftp)([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (ssh outbound shape)"; fi
+  frag=$(grep -E -m1 -o -e '\$[(](curl|wget|ncat|netcat|socat|ssh|nc)([[:space:];|&]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (command substitution over a network fetch)"; fi
+  # Backtick form runs against $scan (bare already strips backticks away).
+  frag=$(grep -E -m1 -o -e "${bt}(curl|wget|ncat|netcat|socat|ssh|nc)([[:space:];|&]|$)" <<<"$scan" || true)
+  if [[ -n "$frag" ]]; then fail "verify-networked" "refusing verifyCmd: matched '$frag' (command substitution over a network fetch)"; fi
+  # --- repo escape (verify-repo-escape) ---
+  frag=$(grep -E -m1 -o -e '/(dev|proc|sys)([^a-z0-9_]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-repo-escape" "refusing verifyCmd: matched '$frag' (/dev|/proc|/sys access escapes the repo)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,/])\.\.([[:space:];|&(){}"=,/]|$)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-repo-escape" "refusing verifyCmd: matched '$frag' (.. traversal escapes the repo)"; fi
+  frag=$(grep -E -m1 -o -e '(^|[[:space:];|&(){}"=,:/])~([[:space:];|&(){}"=,:/]|$|[a-z0-9_.-]+/)' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-repo-escape" "refusing verifyCmd: matched '$frag' (home-directory target escapes the repo)"; fi
+  frag=$(grep -E -m1 -o -e '\$home([^a-z0-9_]|$)|\$\{home\}' <<<"$bare" || true)
+  if [[ -n "$frag" ]]; then fail "verify-repo-escape" "refusing verifyCmd: matched '$frag' (home-directory target escapes the repo)"; fi
+  # Absolute paths outside the repo (and outside /tmp scratch) refuse. Known
+  # path-list plumbing (PATH=… and friends) is stripped first — it names
+  # lookup dirs, it does not access them.
+  barepaths=$(printf ' %s' "$bare" | sed -E 's/ (path|pythonpath|node_path|ld_library_path)=[^[:space:];|&]*/ varpath/g')
+  cands=$(grep -E -o -e "(^|[[:space:];|&(){}=,<>])/[^[:space:];|&(){}]*" <<<"$barepaths" || true)
+  if [[ -n "$cands" ]]; then
+    lroot=$(pwd); lroot=$(printf '%s' "$lroot" | tr '[:upper:]' '[:lower:]')
+    while IFS= read -r c; do
+      [[ -z "$c" ]] && continue
+      case "$c" in (/*) ;; (*) c="${c#?}";; esac
+      case "$c" in ("/tmp"|"/tmp/"*) continue;; esac
+      if [[ -n "$lroot" && "$lroot" != "/" ]]; then
+        case "$c" in ("$lroot"|"$lroot"/*) continue;; esac
+      fi
+      fail "verify-repo-escape" "refusing verifyCmd: matched '$c' (absolute path escapes the repo — use repo-relative paths, /tmp for scratch)"
+    done <<<"$cands"
+  fi
+  return 0
+}
+
 # ----------------------------------------------------------------- verify ---
 # Execute patch.json's verifyCmd under a watchdog and record the outcome into the
 # patch record. The command comes from the agent; the exit code becomes machine fact.
@@ -4647,6 +4766,10 @@ if [[ "$cmd" == "verify" ]]; then
   vcmd=$(jq -r '.verifyCmd // empty' "$dir/patch.json")
   [[ -z "$vcmd" ]] && fail "no-verify-cmd" "patch.json carries no verifyCmd to execute"
   if ! [[ "$timeout_s" =~ ^[0-9]+$ ]] || (( timeout_s <= 0 )); then fail "bad-timeout" "timeout must be a positive number of seconds, got '$timeout_s'"; fi
+  # Allowlist gate (D1/D5): refuse destructive/networked/credential/escape
+  # shapes BEFORE any write (.verify.out) or mutation (patch.json). Refusal
+  # exits here via fail(); clean commands fall through to the spawn below.
+  verify_gate_check "$vcmd"
   echo "» verify: $vcmd (timeout ${timeout_s}s)"
   : > "$dir/.verify.out"; : > "$dir/.verify.timeout"
   # Own process group so the timeout kill stops the whole tree: a backgrounded
@@ -4756,6 +4879,26 @@ if [[ "$cmd" == "doctor" ]]; then
   if [[ "$scopes" =~ repo ]]; then add "token-scopes" "warn" "true" "$scopes";
   elif [[ -z "$scopes" ]]; then add "token-scopes" "warn" "true" "no scopes header — fine-grained token, scopes proven at post time";
   else add "token-scopes" "warn" "false" "needs repo (private) or public_repo scope — ${scopes:-unreadable}"; fi
+  # Token-scope excess audit (verify-harden slice 02; spec D4): compare the
+  # granted scopes from the single header read above against what runs need
+  # — no new network calls, this parses $scopes only. Baseline is the repo
+  # family plus read:* (public-only reads accept public_repo); anything
+  # beyond it (delete_repo, admin:*, workflow, gist, …) gets a WARN-only
+  # token-scopes-excess row naming the excess scopes with a least-privilege
+  # try: hint. Warn-only by construction: ok false at warn severity lands in
+  # warnings without touching healthy, so the exit stays 0. Minimal grants
+  # emit no row; the insufficient-scope and fine-grained rows above stay as-is.
+  if [[ -n "$scopes" ]]; then
+    granted=$(printf '%s' "$scopes" | sed -e 's/^[Xx]-[Oo][Aa][Uu][Tt][Hh]-[Ss][Cc][Oo][Pp][Ee][Ss]:[[:space:]]*//' | tr ',' '\n' | tr -d ' \t\r' | tr '[:upper:]' '[:lower:]')
+    excess=""
+    while IFS= read -r scope; do
+      case "$scope" in ""|repo|public_repo|read:*) continue;; esac
+      if [[ -z "$excess" ]]; then excess="$scope"; else excess="$excess, $scope"; fi
+    done <<<"$granted"
+    if [[ -n "$excess" ]]; then
+      add "token-scopes-excess" "warn" "false" "token grants more than runs need: $excess — try: re-mint with only the repo scope (least privilege) and re-run"
+    fi
+  fi
   if command -v jq >/dev/null 2>&1; then add "jq" "fail" "true" "$(jq --version 2>/dev/null)"; else add "jq" "fail" "false" "missing — install jq"; fi
   if command -v shasum >/dev/null 2>&1; then add "shasum" "fail" "true" "sig hashing available"; else add "shasum" "fail" "false" "sig hashing hard-requires shasum (startup gate)"; fi
   if command -v ps >/dev/null 2>&1; then add "ps" "warn" "true" "verify timeout enforced"; else add "ps" "warn" "false" "verify runs without timeout enforcement"; fi
@@ -5691,6 +5834,7 @@ if [[ "$cmd" == "fix" ]]; then
     fix_kb=$(jq -n --arg f "$dir/kb.txt" --arg c "$(cat "$dir/kb.txt")" '{file:$f, content:$c}')
   fi
   printf '%s\n' "instructions: patch the anchor file ($fix_anchor), then run its verify command yourself and write $dir/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record $repo $pr; re-run fix $repo $pr for the next pass"
+  printf '%s\n' "gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell instead"
   printf '%s\n' "loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or .review/budget (see docs/manual.md)"
   printf '%s\n' "next: patch $fix_anchor, write verification.json, run record to land it, then re-run fix"
   if [[ "$json_mode" == "true" ]]; then

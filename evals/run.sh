@@ -46,8 +46,26 @@ mkdir -p "$STUBBIN"
 : > "$STUBLOG"
 cat > "$STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# Network-dead gh stub for the offline contract evals: log and fail every call.
+# Network-dead gh stub for the offline contract evals: log and fail every call,
+# except the narrow opt-in affordances below (unset = fail, today's behavior).
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+# doctor-scope-audit (verify-harden slice 02): shape the doctor verb's
+# pre-existing reads via GH_STUB_DOCTOR. Unset → fail like every other call.
+# Otherwise: `api user --include` emits the value as the x-oauth-scopes
+# header line (__NO_HEADER__ = 200 with no header: fine-grained token);
+# auth/rate_limit answer healthy so scope assertions own the exit code.
+if [[ -n "${GH_STUB_DOCTOR+x}" ]]; then
+  case "$*" in
+    "api user --include")
+      if [[ "$GH_STUB_DOCTOR" != "__NO_HEADER__" ]]; then
+        echo "x-oauth-scopes: $GH_STUB_DOCTOR"
+      fi
+      echo '{"login":"evals-stub"}'
+      exit 0;;
+    "auth status") exit 0;;
+    "api rate_limit"*) echo "999"; exit 0;;
+  esac
+fi
 echo "evals-stub-gh: network disabled ($*)" >&2
 exit 1
 EOF

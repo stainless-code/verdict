@@ -723,6 +723,51 @@ agent run over the bundle — loops multiply agent spend, so set
 constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
 counts) — the ledger is an audit trail, not a lock.
 
+## Hostile-PR sandbox recipe (opt-in, not enforced)
+
+When the diff is untrusted (unknown author, drive-by PR, patch claims
+arriving via `fix-ci`) and the `verifyCmd` wants the network, run the verify
+step — not the whole review — inside a throwaway sandbox so a malicious
+command finds no credentials and no route out. The `verify` verb already
+refuses hostile shapes before spawning anything — destructive
+(`verify-destructive`), networked (`verify-networked`), credential-reading
+(`verify-credential-read`), repo-escaping (`verify-repo-escape`) — each
+typed refusal quoting the matched fragment with a `try:` rewrite hint, and
+the refusal leaves `patch.json` and `.verify.out` untouched. The sandbox
+below is the second layer for what the static gate cannot see (a plain
+`curl` GET stays allowed; `/tmp` scratch writes stay allowed) — not a
+replacement.
+
+`bwrap` one-liner, from the repo root (`verify` runs the same `verifyCmd`;
+only the filesystem and network it sees change):
+
+```bash
+bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
+  --tmpfs ~/.config/gh -- ./scripts/review.sh verify owner/repo 123
+```
+
+`--ro-bind / /` makes the host read-only, `--bind` remounts the repo
+writable over it, and each `--tmpfs` hides a credential dir behind an empty
+mount. Add `--unshare-net` when the verify step needs no network at all —
+full network isolation for the command under test:
+
+```bash
+bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
+  --tmpfs ~/.config/gh --unshare-net -- ./scripts/review.sh verify owner/repo 123
+```
+
+No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the same shape:
+
+```bash
+sudo systemd-nspawn --directory=/ --bind="$(pwd):$(pwd)" --private-network \
+  -- ./scripts/review.sh verify owner/repo 123
+```
+
+This is a recipe, not enforcement: nothing in the harness checks or mandates
+the sandbox — per K5, full namespace isolation stays opt-in, never default.
+The gate constrains what `verify` will execute; your own shell is unaffected
+either way.
+
 ## Over-cap diffs (chunked fetch + manual recipe)
 
 Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
