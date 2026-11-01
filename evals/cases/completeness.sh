@@ -7,9 +7,11 @@
 #       data.completeness {reviewed true, matching heads} with the envelope
 #       keys otherwise untouched.
 #   C2  mismatch-fail: post head != fetched HEAD -> exit 1, stderr names
-#       stale-head plus the re-fetch command; --json still reports
+#       stale-head plus the --base-sha advance command; --json still reports
 #       reviewed false with both heads.
-#   C3  missing-post-fail: no post.json -> exit 1, stderr names missing-post.
+#   C3  missing-post-fail: no post.json -> exit 1, stderr names missing-post
+#       plus the plain re-fetch command (no --base-sha: nothing to advance
+#       from).
 #   C4  corrupt/empty-post-fail: unparsable post.json and head-less post.json
 #       both exit 1 (a gate failure, never a tool exit 3).
 #   C5  combined: --check <tier> --completeness fails when EITHER dimension
@@ -93,8 +95,8 @@ if [ "$EVAL_STATUS" -eq 1 ]; then
 else
   bad "mismatch exits $EVAL_STATUS, want 1"
 fi
-if grep -q "stale-head" "$EVAL_ERR" && grep -q "fetch acme/app 4262" "$EVAL_ERR" && grep -q "^check:" "$EVAL_ERR"; then
-  good "mismatch names stale-head plus the re-fetch command"
+if grep -q "stale-head" "$EVAL_ERR" && grep -q "fetch acme/app 4262 --base-sha ccccccc" "$EVAL_ERR" && grep -q "^check:" "$EVAL_ERR"; then
+  good "mismatch names stale-head plus the --base-sha advance command"
 else
   bad "mismatch stderr: $(head -c 300 "$EVAL_ERR")"
 fi
@@ -118,8 +120,8 @@ if [ "$EVAL_STATUS" -eq 1 ]; then
 else
   bad "missing post exits $EVAL_STATUS, want 1"
 fi
-if grep -q "missing-post" "$EVAL_ERR" && grep -q "fetch acme/app 4263" "$EVAL_ERR"; then
-  good "missing post names missing-post plus the re-fetch command"
+if grep -q "missing-post" "$EVAL_ERR" && grep -q "fetch acme/app 4263" "$EVAL_ERR" && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
+  good "missing post names missing-post plus the plain re-fetch command"
 else
   bad "missing-post stderr: $(head -c 300 "$EVAL_ERR")"
 fi

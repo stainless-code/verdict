@@ -141,7 +141,12 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "rebuilt no-drop run exits $EVAL_STATUS"
 fi
-if cmp -s "$EVAL_SANDBOX/posted-4282.json" "$EVAL_SANDBOX/posted-4283.json"; then
+# The drift nudge names the per-PR advance command (fetch <repo> <pr>
+# --base-sha <short>), so mask the PR number before comparing: pinning must
+# change nothing else on the kept path.
+sed 's/acme\/app 428[23]/acme\/app PR/' "$EVAL_SANDBOX/posted-4282.json" > "$EVAL_SANDBOX/norm-4282.json"
+sed 's/acme\/app 428[23]/acme\/app PR/' "$EVAL_SANDBOX/posted-4283.json" > "$EVAL_SANDBOX/norm-4283.json"
+if cmp -s "$EVAL_SANDBOX/norm-4282.json" "$EVAL_SANDBOX/norm-4283.json"; then
   good "no-drop payload is byte-identical with a pinned or rebuilt index"
 else
   bad "payloads differ between pinned and rebuilt runs"

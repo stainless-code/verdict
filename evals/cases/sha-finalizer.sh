@@ -14,6 +14,17 @@
 #       stay advisory (never refused, record untouched) after a completed post.
 #   F5  failed post never arms: a POST failure writes no post.json, and the
 #       retry on the same SHA proceeds (nothing was armed to refuse it).
+#   F6  refusal names both exits: the already-posted stderr AND the --json
+#       error.message name the exact fetch --base-sha <short-head> advance
+#       command alongside the --force override.
+#   F7  completeness advance-form: stale-head on a bundle WITH a posted head
+#       names the --base-sha advance form; missing-post (no head to advance
+#       from) keeps the plain fetch with no --base-sha.
+#   F8  mid-run-push nudge: a live HEAD newer than the fetch yields exit 0 +
+#       stderr warn + the > ⚠️ body note, both naming the exact
+#       fetch --base-sha <short-fetched-sha> advance command, on a COMMENT
+#       post; an unreachable live lookup warns and proceeds (exit 0, posted
+#       once — never a refusal).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -125,6 +136,25 @@ else
   bad "refused repost posted or rewrote the record"
 fi
 
+# --- F6: refusal names the advance command + force override, both surfaces ---
+run_review post acme/app "$PR" --json
+msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && printf '%s' "$msg" | grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" \
+  && printf '%s' "$msg" | grep -q -- "--force"; then
+  good "--json error.message names the exact advance command + --force"
+else
+  bad "--json error.message: $(head -c 300 "$EVAL_OUT")"
+fi
+run_review post acme/app "$PR"
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" "$EVAL_ERR" \
+  && grep -q -- "--force" "$EVAL_ERR"; then
+  good "text refusal names the exact advance command + --force"
+else
+  bad "text refusal stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+
 # --- F4b: dry run after a completed post stays advisory ---
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -196,6 +226,118 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   good "retry after failure proceeds (nothing was armed to refuse it)"
 else
   bad "retry after failure exits $EVAL_STATUS, want 0"
+fi
+
+# --- F7: completeness advance-form iff a posted head exists ---
+PR=4298
+eval_mk_bundle "$PR"
+printf '[]' | eval_write_findings "$PR"
+jq -n --arg h "$HEADB" \
+  '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+  > "$EVAL_SANDBOX/.review/$PR/post.json"
+run_review report acme/app "$PR" --completeness
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && grep -q "stale-head" "$EVAL_ERR" \
+  && grep -q "fetch acme/app $PR --base-sha ${HEADB:0:7}" "$EVAL_ERR"; then
+  good "stale-head with a posted head names the --base-sha advance form"
+else
+  bad "stale-head stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+PR=4299
+eval_mk_bundle "$PR"
+printf '[]' | eval_write_findings "$PR"
+run_review report acme/app "$PR" --completeness
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && grep -q "missing-post" "$EVAL_ERR" \
+  && grep -q "fetch acme/app $PR" "$EVAL_ERR" \
+  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
+  good "missing-post (no head) keeps the plain fetch with no --base-sha"
+else
+  bad "missing-post stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+
+# --- F8: mid-run-push nudge names the advance command; gh-down warns and proceeds ---
+# Overlay a stub whose pulls endpoint reports a NEWER live head (a push
+# landed after the fetch) and which saves the reviews POST payload when
+# asked (same EVAL_SAVE_PAYLOAD idiom as hunk-snapshot.sh). graphql stays
+# clear, user stays foreign.
+cat > "$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
+fi
+case "$*" in
+  *reviews*)
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
+    printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
+    exit 0;;
+  *pulls*)
+    printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'; exit 0;;
+  *user*)
+    printf 'someone-else'; exit 0;;
+esac
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+
+PR=4300
+mk_comment "$PR"
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4300.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+m="$(mark)"
+run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
+event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "COMMENT" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "mid-run push posts once as COMMENT (exit 0, warn-and-keep, no refusal)"
+else
+  bad "mid-run push gave exit $EVAL_STATUS event '$event', want 0/COMMENT"
+fi
+if grep -q "HEAD moved since fetch" "$EVAL_ERR" \
+  && grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" "$EVAL_ERR"; then
+  good "drift warn on stderr names the exact fetch --base-sha advance command"
+else
+  bad "drift warn stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+if grep -q "⚠️" "$EVAL_SANDBOX/posted-4300.json" \
+  && grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" "$EVAL_SANDBOX/posted-4300.json"; then
+  good "posted body carries the drift note naming the advance command"
+else
+  bad "posted payload: $(head -c 300 "$EVAL_SANDBOX/posted-4300.json" 2>/dev/null)"
+fi
+
+# gh-down: the live lookup fails — warn-and-proceed, never a refusal.
+cat > "$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
+fi
+case "$*" in
+  *reviews*)
+    printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
+    exit 0;;
+  *user*)
+    printf 'someone-else'; exit 0;;
+esac
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+
+PR=4294
+mk_comment "$PR"
+m="$(mark)"
+run_review post acme/app "$PR" --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && grep -q "live SHA lookup failed" "$EVAL_ERR" \
+  && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "unreachable live lookup warns and proceeds (exit 0, posted once)"
+else
+  bad "gh-down gave exit $EVAL_STATUS / stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
 if [ "$fails" -ne 0 ]; then echo "case sha-finalizer: FAIL ($fails)"; exit 1; fi

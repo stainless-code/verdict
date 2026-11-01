@@ -114,6 +114,19 @@ reviewed SHA — even with different content — with typed `already-posted`
 automatically (the next post refreshes the `post.json` head); attempts, dry
 runs, and failures never write the key, so only a real post arms it.
 
+Finalizer loop (one shape end to end — refuse → advance → delta review →
+post → gate): the `already-posted` refusal names both exits — `--force` to
+override, or the forward path `./scripts/review.sh fetch owner/repo 123
+--base-sha <short-posted-head>` (the 7-char reviewed SHA) and review the
+delta per `prompts/incremental-review.md` step 2. A push that lands after
+fetch never fails the run: `post` warns on stderr and appends the `> ⚠️`
+body note, both naming `./scripts/review.sh fetch owner/repo 123
+--base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,
+then close the loop with `report --completeness` (stale-head on a bundle
+with a posted head names the `--base-sha` advance form; missing-post with
+no head names the plain `fetch`). A lookup that cannot reach the network
+warns and proceeds — the nudge never refuses.
+
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
 `.review/N/verification.json` evidence (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
@@ -306,7 +319,9 @@ HEAD reviewed?" — by comparing the bundle's fetched HEAD against the local
 completed-post record (`post.json`, written only by a real `post`):
 a match passes; a missing, unparsable, head-less, or mismatched record
 fails with a typed `missing-post`/`corrupt-post`/`stale-head` check line
-naming the re-fetch command. Alone it gates on HEAD-reviewed only;
+naming the re-fetch command — the `--base-sha <short-posted-head>` advance
+form when `post.json` carries a head, the plain `fetch` when there is
+nothing to advance from (local bundles keep the `fetch-local` form). Alone it gates on HEAD-reviewed only;
 combined (`--check critical --completeness`) it fails when tier-hits OR
 stale/missing post do. Pure local reads, no network; without the flag
 output and exits are exactly today's.

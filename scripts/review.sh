@@ -274,7 +274,7 @@ fail() {
     approve-blocked) hint="try: triage the findings or re-run with --force";;
     budget-exceeded) hint="try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/.review/budget";;
     duplicate-payload) hint="try: re-run with --force to repost the identical payload";;
-    already-posted) hint="try: re-run with --force to override, or fetch the new HEAD and review the delta instead";;
+    already-posted) hint="try: re-run with --force to override, or fetch --base-sha <posted-head> for the delta and review it instead";;
     degenerate-body) hint="try: open with a verdict marker (see prompts/review.md), then re-run";;
     pr-not-open) hint="try: re-fetch the PR (bundle may be stale)";;
     unknown-sig|ambiguous-sig|unknown-judgment) hint="try: copy the full sig prefix from report output";;
@@ -3650,8 +3650,8 @@ if [[ "$cmd" == "post" ]]; then
   fetched_sha=$(pr_field "$dir" head_sha)
   live_sha=$(gh api "repos/$repo/pulls/$pr" --jq '.head.sha' 2>/dev/null || true)
   if [[ -n "$live_sha" && -n "$fetched_sha" && "$live_sha" != "$fetched_sha" ]]; then
-    warn "HEAD moved since fetch (fetched ${fetched_sha:0:7}, live ${live_sha:0:7}) — anchors potentially stale"
-    body="> ⚠️ Note: commits landed after this review's fetch (fetched \`${fetched_sha:0:7}\`, live \`${live_sha:0:7}\`); treat line anchors as potentially stale.
+    warn "HEAD moved since fetch (fetched ${fetched_sha:0:7}, live ${live_sha:0:7}) — anchors potentially stale; run ./scripts/review.sh fetch $repo $pr --base-sha ${fetched_sha:0:7} and review the delta"
+    body="> ⚠️ Note: commits landed after this review's fetch (fetched \`${fetched_sha:0:7}\`, live \`${live_sha:0:7}\`); treat line anchors as potentially stale. Run \`./scripts/review.sh fetch $repo $pr --base-sha ${fetched_sha:0:7}\` and review the delta.
 
 $body"
   elif [[ -z "$live_sha" ]]; then
@@ -3806,7 +3806,7 @@ $body"
       warn "post record carries no head — proceeding, will refresh it on success"
     elif [[ "$stored_head" == "$commit_id" ]]; then
       stored_at=$(jq -r '.posted_at // "unknown time"' "$dir/post.json" 2>/dev/null || echo "unknown time")
-      fail "already-posted" "refusing second post on reviewed SHA ${commit_id:0:7} (already posted at $stored_at — new commits re-arm automatically; pass --force to override)"
+      fail "already-posted" "refusing second post on reviewed SHA ${commit_id:0:7} (already posted at $stored_at — new commits re-arm automatically; pass --force to override, or run ./scripts/review.sh fetch $repo $pr --base-sha ${stored_head:0:7} and review the delta)"
     fi
   fi
   # Bounded transient retry: only the exact GitHub "internal error" body retries (2x,
@@ -4086,15 +4086,17 @@ if [[ "$cmd" == "report" ]]; then
   # Stays null without the flag, so default output is byte-identical.
   completeness_json="null"; comp_reviewed="false"; comp_posted=""; comp_refetch=""
   if [[ "$completeness" == "true" ]]; then
-    if [[ "$dir" == .review/local-* ]]; then
-      comp_refetch="./scripts/review.sh fetch-local $repo ${pr#local-}"
-    else
-      comp_refetch="./scripts/review.sh fetch $repo $pr"
-    fi
     if [[ -f "$dir/post.json" ]] && comp_posted=$(jq -r '.head // empty' "$dir/post.json" 2>/dev/null) && [[ -n "$comp_posted" ]]; then
       : # present + parsed + non-empty head — compared below
     else
       comp_posted=""
+    fi
+    if [[ "$dir" == .review/local-* ]]; then
+      comp_refetch="./scripts/review.sh fetch-local $repo ${pr#local-}"
+    elif [[ -n "$comp_posted" ]]; then
+      comp_refetch="./scripts/review.sh fetch $repo $pr --base-sha ${comp_posted:0:7}"
+    else
+      comp_refetch="./scripts/review.sh fetch $repo $pr"
     fi
     if [[ -n "$head_sha" && -n "$comp_posted" && "$head_sha" == "$comp_posted" ]]; then
       comp_reviewed="true"
