@@ -457,6 +457,15 @@ key in the JSON cost object). Threshold is the budget itself: projected above bu
 needs consent, at-or-under proceeds. Estimates cover the review run about to start,
 not the fetch reads; unknown estimates never refuse.
 
+When the agent's provider reports prompt caching, per-model `cost.json` entries
+may carry `cache_read_input_tokens` (served from cache) and
+`cache_creation_input_tokens` (spent writing the cache) — both subsets of the
+sibling `input_tokens`, never additions; absent or `null` reads as unknown, never
+zero. `report --cost` rolls the split into a top-level `cached_input_tokens`
+scalar (shown as `cached=N` on the human line) while totals stay
+`input + output` exactly; the script never prices cached tokens (`est_usd`
+remains the agent's own math, as today).
+
 ## Onboarding (scaffolder + prefs file + skill installer)
 
 New operators onboard in one offline command — no network, ever:
@@ -1034,6 +1043,11 @@ verbs and features ship in the release changelog.
   `manifest.json` with `schema_version: "1"`, per-chunk `<name>.cost.json`) —
   `post`/`record` gate attested top-level `"chunks"` coverage against the
   manifest.
+- Added: per-model cache-token split on `cost.json` (`cache_read_input_tokens`,
+  `cache_creation_input_tokens` — optional subsets of `input_tokens`, absent
+  or `null` reads unknown, never zero); `report --cost` rolls them into a
+  top-level `cached_input_tokens` scalar while `total_tokens` stays
+  `input_tokens + output_tokens` exactly.
 
 ### Published schemas + drift rule
 

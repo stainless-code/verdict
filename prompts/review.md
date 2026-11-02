@@ -113,7 +113,9 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
        {
          "name": "<synthesizer model id>",
          "input_tokens": 0,
-         "output_tokens": 0
+         "output_tokens": 0,
+         "cache_read_input_tokens": null,
+         "cache_creation_input_tokens": null
        },
        { "name": "<lens model id>", "input_tokens": 0, "output_tokens": 0 }
      ],
@@ -123,6 +125,11 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
      "est_usd": null
    }
    ```
+   When your provider reports a prompt-caching split, record it in the
+   optional per-model `cache_read_input_tokens` (input served from cache)
+   and `cache_creation_input_tokens` (input spent writing the cache) — both
+   are subsets of the sibling `input_tokens`, never additions. Absent or
+   `null` reads as unknown, never zero.
 
 ## Review body format (Default format — at most two parts, in order)
 

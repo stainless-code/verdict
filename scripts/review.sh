@@ -4178,10 +4178,13 @@ if [[ "$cmd" == "report" ]]; then
   # script only sums — no price table lives here, it would rot. Absent or
   # unreadable records contribute nothing and never fail the run. Each record
   # carries an effort tier (cheap/standard/deep); missing or unknown values
-  # read as standard, so legacy records keep working.
+  # read as standard, so legacy records keep working. Per-model cache splits
+  # (cache_read_input_tokens, cache_creation_input_tokens — subsets of
+  # input_tokens, absent/null reads unknown) roll up into one top-level
+  # cached_input_tokens scalar; totals stay input + output exactly.
   cost_json="null"
   if [[ "$cost" == "true" ]]; then
-    cost_zeros=$(jq -n '{runs:0,runs_with_cost:0,input_tokens:0,output_tokens:0,total_tokens:0,est_usd:null,
+    cost_zeros=$(jq -n '{runs:0,runs_with_cost:0,input_tokens:0,output_tokens:0,total_tokens:0,cached_input_tokens:0,est_usd:null,
       by_tier:(["cheap","standard","deep"] | map({key:.,value:{runs:0,input_tokens:0,output_tokens:0,total_tokens:0}}) | from_entries)}')
     # Shared rollup filter: one cost record per agent run (an object), or an
     # array when a bundle was reviewed more than once. Kept in a variable so
@@ -4195,6 +4198,7 @@ if [[ "$cmd" == "report" ]]; then
            runs_with_cost: ([$runs[] | select((.models // []) | length > 0)] | length),
            input_tokens: ([$models[] | .input_tokens | numbers] | add // 0),
            output_tokens: ([$models[] | .output_tokens | numbers] | add // 0),
+           cached_input_tokens: ([$models[] | (.cache_read_input_tokens, .cache_creation_input_tokens) | numbers] | add // 0),
            est_usd: ([$runs[] | .est_usd | numbers] | if length == 0 then null else (add * 10000 | round / 10000) end),
            by_tier: (["cheap","standard","deep"] | map(. as $t | {key: $t, value: (
              [$runs[] | select(tier == $t)] as $r
@@ -4422,7 +4426,7 @@ if [[ "$cmd" == "report" ]]; then
       if [[ "$(jq -r '.runs' <<<"$cost_json")" == "0" ]]; then
         echo "cost: unrecorded (no usable $dir/cost.json — the agent writes one per prompts/review.md)"
       else
-        echo "cost: $(jq -r '"\(.runs) run(s), \(.runs_with_cost) with records — in=\(.input_tokens) out=\(.output_tokens) total=\(.total_tokens) est_usd=\(.est_usd // "n/a")"' <<<"$cost_json")"
+        echo "cost: $(jq -r '"\(.runs) run(s), \(.runs_with_cost) with records — in=\(.input_tokens) out=\(.output_tokens) total=\(.total_tokens) est_usd=\(.est_usd // "n/a") cached=\(.cached_input_tokens // 0)"' <<<"$cost_json")"
         echo "tiers: $(jq -r '"cheap=\(.by_tier.cheap.runs // 0) standard=\(.by_tier.standard.runs // 0) deep=\(.by_tier.deep.runs // 0)"' <<<"$cost_json")"
       fi
       if [[ "$receipts_json" != "null" ]]; then
