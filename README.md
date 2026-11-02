@@ -204,7 +204,7 @@ Nothing phones home: no servers, no telemetry, no auto-updater.
 export GH_TOKEN=...   # or gh auth login
 
 verdict fetch owner/repo 123          # bundle: diff + metadata + threads
-# feed SKILL.md + prompts/system.md + prompts/review.md + the bundle to any agent
+# the installed skill is the prompt; point your agent at .review/123/
 verdict post owner/repo 123 --dry-run # validate anchors, merge store, post nothing
 verdict post owner/repo 123           # exactly one review
 verdict triage owner/repo 123 --sig <sig8> --status wont-fix --rationale "..."
@@ -213,7 +213,7 @@ verdict calibrate owner/repo 123      # predictions vs ground truth
 
 # no PR? same review against the worktree (never posts)
 verdict fetch-local owner/repo work   # bundle: git diff, no GitHub
-# feed SKILL.md + prompts/system.md + prompts/review.md + the bundle to any agent
+# the installed skill is the prompt; point your agent at .review/local-work/
 verdict record owner/repo local-work  # validate anchors, merge store
 ```
 

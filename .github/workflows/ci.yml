@@ -269,7 +269,8 @@ jobs:
   docs:
     name: 📖 Docs site
     runs-on: ubuntu-latest
-    # Private repo: the changelog source reads releases via GITHUB_TOKEN.
+    # Public repo: the changelog source still reads releases through
+    # GITHUB_TOKEN to avoid unauthenticated GitHub API rate limits.
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:

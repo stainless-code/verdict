@@ -15,10 +15,11 @@ verdict init --preset standard --yes
 # 1. fetch
 verdict fetch owner/repo 123
 
-# 2. review with ANY agent:
-#    Read SKILL.md, prompts/system.md, prompts/review.md, .review/123/PR.json,
-#    .review/123/roles.txt. Read .review/123/full.diff fully via .review/123/toc.txt.
-#    Fan out 0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
+# 2. review with ANY agent (the installed skill is the prompt; add it with
+#    `verdict skill install --agent <name>` if it is missing):
+#    Point the agent at .review/123/. It reads .review/123/full.diff fully via
+#    .review/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
+#    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
 #    Write exactly one .review/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)

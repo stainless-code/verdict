@@ -58,10 +58,12 @@ Order matters, so follow the steps.
     and `roles.txt`.
   </Step>
   <Step title="Review with any agent">
-    Hand your agent three things: `SKILL.md`, `prompts/system.md`, `prompts/review.md`,
-    plus the bundle from step 2. The agent reads the whole diff first, fans out
-    read-only lens subagents with one falsifiable question each, and writes exactly
-    one `.review/123/review.json`.
+    The skill you installed in step 1 is the prompt: the agent discovers
+    `SKILL.md` in its skills directory and loads the mode file it names. A global
+    binary install can add it with `verdict skill install --agent <name>`. Point
+    the agent at `.review/123/` (the bundle from step 2); it reads the whole diff
+    first, fans out read-only lens subagents with one falsifiable question each,
+    and writes exactly one `.review/123/review.json`.
   </Step>
   <Step title="Post">
     ```bash
