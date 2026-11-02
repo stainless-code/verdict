@@ -82,6 +82,7 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -123,6 +124,7 @@ jobs:
   go-windows:
     name: 🐹 Go Windows build
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -160,6 +162,7 @@ jobs:
         os: [macos-latest, ubuntu-latest]
         impl: [bash, go]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -183,9 +186,9 @@ jobs:
         run: |
           # run.sh fails on a missing dep, but assert up front so the log
           # names the side: a go leg without Go must never silently grade
-          # bash (only `record` dispatches today, the rest stays shell, so
+          # bash (dispatched verbs run Go, the rest stays shell, so
           # the leg grows automatically as verbs join VERDICT_GO_VERBS).
-          # shellcheck is graded by precommit-hook (H1 fails without it),
+          # precommit-hook grades shellcheck (H1 fails without it),
           # so its absence fails here instead of deep in the suite.
           command -v bash jq git go shellcheck
           jq --version
