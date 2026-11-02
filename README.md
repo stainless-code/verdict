@@ -64,6 +64,33 @@ sh install.sh --uninstall --remove-path
 ./install.ps1 -Uninstall -RemovePath
 ```
 
+### CI: setup-verdict action
+
+One `uses:` line installs a pinned, verified `verdict` on Ubuntu, macOS,
+and Windows runners. It runs the same `install.sh`/`install.ps1` verifier
+as above (checksum plus cosign, fail-closed), never touches shell rc files,
+and exposes the binary path:
+
+```yaml
+- uses: stainless-code/verdict/setup-verdict@v1 # keep the tag pinned
+  with:
+    version: v1.2.3 # `latest` also works, but a pin is recommended
+- run: ${{ steps.verdict.outputs.path }} --version # or just `verdict`
+```
+
+Inputs: `version` (default `latest`; `X.Y.Z` or `vX.Y.Z`) and
+`require-signature` (default `'true'`; `'false'` falls back to a
+checksum-only install with a warning). Outputs: `path` (absolute path to
+the installed binary) and `version` (installed version, leading `v`
+stripped). The binary is cached by version + OS + arch (pinned versions
+only; `latest` always re-resolves) and a second call with the same version
+reuses it without downloading. Set an id on the step
+(`id: verdict`) to read `steps.verdict.outputs.path`.
+
+The action lives in-repo at `setup-verdict/` so it versions with the
+installers it calls; a dedicated `stainless-code/setup-verdict` repo stays
+an option if other projects ever need it standalone.
+
 ### Other routes
 
 Pick one route per machine (two copies = double-loaded skill):
