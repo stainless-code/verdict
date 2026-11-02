@@ -49,7 +49,7 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 	if err := os.Chmod(tmpName, mode); err != nil {
 		return sealed(opWrite+path, err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := replaceFile(tmpName, path); err != nil {
 		return sealed(opWrite+path, err)
 	}
 	fsyncDir(dir)

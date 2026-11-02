@@ -30,9 +30,7 @@ func TestWriteFileRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o644 {
-		t.Errorf("mode = %o; want 644", fi.Mode().Perm())
-	}
+	checkStoreMode(t, fi)
 	leftovers, err := filepath.Glob(filepath.Join(dir, ".tmp-*"))
 	if err != nil {
 		t.Fatal(err)
@@ -65,12 +63,9 @@ func TestWriteFileOverwrite(t *testing.T) {
 // TestWriteFileFailureKeepsOriginal checks a failed write leaves the original
 // intact and reports an error.
 func TestWriteFileFailureKeepsOriginal(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("permission gate does not fail for root")
-	}
-	_, path := seedReadOnly(t)
+	path := seedWriteFailure(t)
 	if err := atomic.WriteFile(path, []byte("replacement\n")); err == nil {
-		t.Fatal("want error writing into a read-only dir, got nil")
+		t.Fatal("want a failed write, got nil")
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -79,25 +74,6 @@ func TestWriteFileFailureKeepsOriginal(t *testing.T) {
 	if string(raw) != "original\n" {
 		t.Errorf("after failed write = %q; want original bytes intact", raw)
 	}
-}
-
-// seedReadOnly creates a file inside a read-only dir, restoring perms after.
-func seedReadOnly(t *testing.T) (dir, path string) {
-	t.Helper()
-	dir = t.TempDir()
-	path = filepath.Join(dir, "store.json")
-	if err := atomic.WriteFile(path, []byte("original\n")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chmod(dir, 0o755); err != nil {
-			t.Errorf("restore perms: %v", err)
-		}
-	})
-	return dir, path
 }
 
 // TestWriteFileMissingDir checks a write below a missing directory errors.
