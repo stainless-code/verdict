@@ -998,7 +998,7 @@ elif [[ "$EFFECTIVE_OUTPUT" == "json" ]]; then json_mode="true"; fi
 json_redirect
 
 # stable signature: case-sensitive, whitespace-squashed, line-number-free (caller excludes lines).
-sig_of() { printf '%s' "$1" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
+sig_of() { printf '%s' "$1" | LC_ALL=C tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
 
 # resolve a sig prefix (agents copy short ids from the printed table) to a unique
 # full sig. Echoes the full sig, or the sentinel NONE/MANY — pure function, no warn
