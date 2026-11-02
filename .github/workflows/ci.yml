@@ -74,8 +74,8 @@ jobs:
           ./install.sh --list --detect | grep -q '^absent:   agents'
           echo "installer smoke ok"
 
-  evals:
-    name: 🧪 Evals (${{ matrix.os }})
+  go:
+    name: 🐹 Go (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +87,102 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run offline contract evals
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Harness deps (bash/jq/git feed the parity tests)
+        shell: bash
+        run: |
+          # The internal/record parity harness shells scripts/review.sh, so a
+          # runner without bash/jq would fail loudly here instead of silently
+          # skipping coverage further down.
+          command -v bash jq git
+          jq --version
+
+      - name: Go gate (gofmt, vet, mod verify, race tests, vuln)
+        shell: bash
+        run: make ci-go
+
+      - name: golangci-lint (repo config, pinned v2.15.x)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          args: --timeout=10m
+
+      - name: Prove the parity harness ran (no silent skip)
+        shell: bash
+        run: |
+          # Re-run one parity test verbosely: the step passes only on an
+          # observed `--- PASS`, so a harness that never executes (or errors
+          # before running) fails the build instead of looking green.
+          go test -count=1 -v -run '^TestParityMatrix$' ./internal/record/ 2>&1 | tee "$RUNNER_TEMP/parity-guard.log" | grep -q '^--- PASS: TestParityMatrix'
+
+  go-windows:
+    name: 🐹 Go Windows build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # Compile-level contract only: `go test` does not run on Windows yet.
+      # internal/atomic renames over an existing store file, which Windows
+      # refuses (genuine port gap, go-port FOLLOWUPS F12), and the parity
+      # harness shells the bash suite (Git Bash semantics unverified).
+      - name: gofmt check
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+
+      - name: go build
+        shell: bash
+        run: go build ./...
+
+      - name: go vet + mod verify
+        shell: bash
+        run: |
+          go vet ./...
+          go mod verify
+
+  evals:
+    name: 🧪 Evals (${{ matrix.impl }}, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        impl: [bash, go]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go (go leg builds bin/verdict)
+        if: matrix.impl == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Harness deps (bash/jq/git; go for the go leg)
+        shell: bash
+        run: |
+          # run.sh fails on a missing dep, but assert up front so the log
+          # names the side: a go leg without Go must never silently grade
+          # bash (only `record` dispatches today, the rest stays shell, so
+          # the leg grows automatically as verbs join VERDICT_GO_VERBS).
+          command -v bash jq git
+          if [ "${{ matrix.impl }}" = "go" ]; then command -v go; fi
+
+      - name: Run offline contract evals (bash)
+        if: matrix.impl == 'bash'
         shell: bash
         run: ./evals/run.sh
         # Hermeticity lives in evals/run.sh itself (stub gh first on PATH,
@@ -95,6 +190,14 @@ jobs:
         # locally and here. jq/git/shasum ship on both hosted images, so no
         # install step. macOS runners shell out with bash 3.2, which doubles
         # as the old-shell leg of the suite's 3.2-compat bar.
+
+      - name: Run offline contract evals (Go implementation)
+        if: matrix.impl == 'go'
+        shell: bash
+        run: make evals-go
+        # Builds bin/verdict, asserts it is executable (the leg fails here
+        # rather than silently testing bash), then runs the same suite with
+        # VERDICT_IMPL=go. Same hermeticity as the bash leg.
 
   docs:
     name: 📖 Docs site
@@ -177,7 +280,7 @@ jobs:
 
   ci-complete:
     name: CI complete
-    needs: [format, lint, installer, evals, docs, audit]
+    needs: [format, lint, installer, go, go-windows, evals, docs, audit]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -186,6 +289,8 @@ jobs:
           needs.format.result != 'success' ||
             needs.lint.result != 'success' ||
             needs.installer.result != 'success' ||
+            needs.go.result != 'success' ||
+            needs.go-windows.result != 'success' ||
             needs.evals.result != 'success' ||
             needs.docs.result != 'success' ||
             needs.audit.result != 'success'

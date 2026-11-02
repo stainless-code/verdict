@@ -18,6 +18,26 @@ New cases go in `evals/cases/*.sh` (sourced helper: `evals/lib/common.sh`);
 `evals/results/summary.json`, which is gitignored (`evals/.gitignore`) —
 the harness asserts the run, the repo keeps no trace of it.
 
+## Implementations (bash + Go)
+
+`record` runs in both the shell and the compiled Go binary (`make build`
+writes `bin/verdict`); every other verb is shell-only for now. Run either leg:
+
+```sh
+./evals/run.sh   # bash (default)
+make evals-go    # Go: builds bin/verdict, asserts it is executable (never a
+                 # silent bash fallback), then runs the same suite with
+                 # VERDICT_IMPL=go — record through Go, the rest through bash
+```
+
+CI runs both legs on macOS and Ubuntu (matrix `impl: [bash, go]`), plus a Go
+gate (`make ci-go`: gofmt, vet, mod verify, `go test -race`, govulncheck,
+golangci-lint with the repo config) and a Windows compile check (`go build` +
+`go vet`; `go test` stays Unix-only until the atomic rename-over-existing
+path ports — see the go-port follow-ups). Either eval leg failing fails the
+build, so shell/binary drift is loud. The go leg grows automatically as verbs
+join `VERDICT_GO_VERBS` in `scripts/review.sh`.
+
 ## Cases
 
 | Case                    | Contract                                                                                              | How it grades (all offline)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
