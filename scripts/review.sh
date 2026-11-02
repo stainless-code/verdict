@@ -289,6 +289,7 @@ fail() {
     post-failed) hint="try: narrow anchor drift or body size (see above), then re-run";;
     diff-too-large) hint="try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch";;
     missing-chunk-coverage|missing-chunk-snapshot) hint="try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run";;
+    bad-review-input) hint="try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run";;
     missing-*|not-a-repo|not-local|no-pr-target|no-threads|no-verify-cmd|report-failed) hint="try: run the fetch/record step named above first, then re-run";;
     corrupt-store) hint="try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run";;
     bad-timeout) hint="try: pass --timeout <positive-seconds> (default 300)";;
@@ -2069,6 +2070,68 @@ validate_chunk_merge() { # $1 = review.json, $2 = dir; sets anchor_hunks
   anchor_hunks="$dir/.chunk-hunks.tsv"
 }
 
+# Typed agent-input gate for validate_and_merge (record + post share it):
+# shapes jq would crash on downstream (exit 5, no envelope) refuse here as
+# bad-review-input instead. Scalars jq -r already renders safely (numbers in
+# .line, any .side) keep their coercion; fields concatenated as strings
+# downstream (path, body, suggestion) must be strings when present —
+# absent/null read as absent (jq // absorbs false too, so false stays legal).
+validate_review_input() { # $1 = review.json, $2 = dir
+  local review_file="$1" dir="$2"
+  if ! jq -e '(.comments // []) | type == "array"' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries malformed comments (want an array of {path, line, body, ...})"
+  fi
+  if jq -e '[(.comments // [])[] | select(type != "object")] | length > 0' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries a non-object comments[] entry (want {path, line, body, ...})"
+  fi
+  if jq -e '[(.comments // [])[] | [.path, .body, .suggestion][] | select(. != null and . != false and type != "string")] | length > 0' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries a non-string path, body, or suggestion in a comments[] entry (want strings)"
+  fi
+  if ! jq -e '(.resolved // []) | type == "array"' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries malformed resolved (want an array of sig strings)"
+  fi
+  if jq -e '[(.resolved // [])[] | select(type != "string")] | length > 0' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries a non-string resolved[] entry (want sig strings)"
+  fi
+  if ! jq -e '(.triage // []) | type == "array"' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries malformed triage (want an array of {sig, status, rationale})"
+  fi
+  if jq -e '[(.triage // [])[] | select(type != "object")] | length > 0' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries a non-object triage[] entry (want {sig, status, rationale})"
+  fi
+  if ! jq -e '(.sections // []) | type == "array"' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries malformed sections (want an array of {heading, severity})"
+  fi
+  if jq -e '[(.sections // [])[] | select(type != "object")] | length > 0' "$review_file" >/dev/null 2>&1; then
+    fail "bad-review-input" "review.json carries a non-object sections[] entry (want {heading, severity})"
+  fi
+  # verification.json is optional: absent files (and files that do not parse
+  # at all) read as no claims, matching the loop below; a present file must
+  # hold an array of claim objects.
+  if [[ -f "$dir/verification.json" ]] && jq empty "$dir/verification.json" >/dev/null 2>&1; then
+    if ! jq -e 'type == "array"' "$dir/verification.json" >/dev/null 2>&1; then
+      fail "bad-review-input" "verification.json carries malformed claims (want an array of {sig, verdict, verifyCmd, resultHead})"
+    fi
+    if jq -e '[.[] | select(type != "object")] | length > 0' "$dir/verification.json" >/dev/null 2>&1; then
+      fail "bad-review-input" "verification.json carries a non-object claim (want {sig, verdict, verifyCmd, resultHead})"
+    fi
+  fi
+}
+
+# Corrupt-store gate: a present findings.json must hold null, false, or a
+# JSON list (empty files slurp as no docs — the merge treats those, like
+# absent files, as no prior). Anything else refuses as corrupt-store: the
+# run never starts fresh, since that would silently lose history.
+validate_prior_findings() { # $1 = dir
+  local f="$1/findings.json"
+  [[ -f "$f" ]] || return 0
+  if jq -e 'if . == null or . == false then true elif type == "array" then true else error("notalist") end' "$f" >/dev/null 2>&1; then
+    return 0
+  fi
+  [[ -s "$f" ]] || return 0
+  fail "corrupt-store" "$f is corrupt or not a JSON list (refusing to start fresh — restore it from backup, then re-run)"
+}
+
 validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok), $4 = now, $5 = findings file
   local review_file="$1" dir="$2" head_full="$3" now="$4" findings_file="$5"
   kb_resolve_policy
@@ -2080,8 +2143,16 @@ validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok),
   fi
   # review.json schema: agents stamp schema_version; unknown versions refuse
   # (uninterpretable), missing versions warn-and-proceed (grandfathered agents).
+  # Unparsable files and non-object documents refuse typed here — every
+  # downstream jq read would crash without an envelope otherwise.
+  jq empty "$review_file" >/dev/null 2>&1 || fail "bad-review-input" "review.json is not valid JSON (agent must write {body, approved, comments[]})"
+  if [[ "$(jq -r 'type' "$review_file")" != "object" ]]; then
+    fail "bad-review-schema" "review.json must hold a JSON object (agent must write {body, approved, comments[]})"
+  fi
   rv=$(jq -r '.schema_version // empty' "$review_file")
   case "$rv" in "") warn "review.json carries no schema_version — assuming 1 (agents: write \"schema_version\":\"1\")";; 1) ;; *) fail "bad-review-schema" "review.json schema_version '$rv' unknown (script knows 1)";; esac
+  validate_review_input "$review_file" "$dir"
+  validate_prior_findings "$dir"
   # Cross-chunk merge validation (chunked bundles only; absent manifest reads
   # today's behavior). Refuses unreadable snapshots and attested-but-partial
   # coverage; pins anchors to the per-chunk snapshots. Sets anchor_hunks.
@@ -3799,6 +3870,10 @@ if [[ "$cmd" == "post" ]]; then
   pr_state=$(pr_field "$dir" state)
   case "$pr_state" in "" ) warn "PR state unknown (re-fetch to record it) — proceeding";; open) ;;
     *) fail "pr-not-open" "PR is $pr_state — refusing post (re-fetch if this bundle is stale)";; esac
+  jq empty "$review_file" >/dev/null 2>&1 || fail "bad-review-input" "review.json is not valid JSON (agent must write {body, approved, comments[]})"
+  if [[ "$(jq -r 'type' "$review_file")" != "object" ]]; then
+    fail "bad-review-schema" "review.json must hold a JSON object (agent must write {body, approved, comments[]})"
+  fi
   body=$(jq -r '.body // ""' "$review_file")
   # Degenerate-body guard: verdict marker or >=20 chars, no placeholder shorts
   if ! printf '%s' "$body" | grep -qE '^> ✅|^> ℹ️|^> \[!IMPORTANT\]|^> \[!CAUTION\]'; then
@@ -4059,14 +4134,18 @@ if [[ "$cmd" == "record" ]]; then
   fi
   ensure_store "$dir"
   if [[ "$prov" == "local" ]]; then
-    head_sha=$(jq -r '.head_sha // empty' "$dir/source.json")
-    if [[ -z "$head_sha" ]]; then head_ref=$(jq -r '.head_ref // "worktree"' "$dir/source.json"); head_sha="dirty"; fi
+    head_sha=$(jq -r '.head_sha // empty' "$dir/source.json" 2>/dev/null || true)
+    if [[ -z "$head_sha" ]]; then head_ref=$(jq -r '.head_ref // "worktree"' "$dir/source.json" 2>/dev/null || echo "worktree"); head_sha="dirty"; fi
   else
     head_sha=$(pr_field "$dir" head_sha)
     [[ -z "$head_sha" ]] && head_sha="unknown"
   fi
   now=$(now_utc)
   ensure_hunks_snapshot "$dir"
+  jq empty "$review_file" >/dev/null 2>&1 || fail "bad-review-input" "review.json is not valid JSON (agent must write {body, approved, comments[]})"
+  if [[ "$(jq -r 'type' "$review_file")" != "object" ]]; then
+    fail "bad-review-schema" "review.json must hold a JSON object (agent must write {body, approved, comments[]})"
+  fi
   body=$(jq -r '.body // ""' "$review_file")
   # Degenerate-body guard (same bar as post: no verdict, no post).
   if ! printf '%s' "$body" | grep -qE '^> ✅|^> ℹ️|^> \[!IMPORTANT\]|^> \[!CAUTION\]'; then

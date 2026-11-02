@@ -139,6 +139,17 @@ unknown sig refused/ignored; short rationale keeps prior status). The operator m
 store directly between runs with `./scripts/review.sh triage … --sig … --status … --rationale …`
 (human supremacy, every override history-logged).
 
+Malformed agent input refuses typed (exit 1, machine envelope with `error.code`,
+nothing written — no `findings.json`/`record.json`, no KB credit): an unparsable
+`review.json` or a non-object document (`bad-review-input` / `bad-review-schema`),
+misshapen `comments[]`/`resolved[]`/`triage[]`/`sections[]` (non-object entries,
+non-string `path`/`body`/`suggestion`, non-string `resolved[]` items), and
+misshapen `verification.json` claims all fail closed as `bad-review-input`;
+a present-but-corrupt (or non-list) `findings.json` refuses as `corrupt-store` —
+the run never starts fresh, since that would silently lose history (restore from
+backup, then re-run). An unreadable `source.json` head degrades to the dirty-head
+path instead (`record.json` head reads `"dirty"`).
+
 ### Sig contract (sig_version 1)
 
 The sig is the cross-run join key — findings, deltas, calibration, and any external
