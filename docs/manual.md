@@ -337,13 +337,33 @@ and fails the gate when more are open live than the store holds open
 (`check: N live open thread(s) vs M local open finding(s) — gate fails
 (fetch + triage them, then re-check)` — fetch the PR, triage the new
 threads, re-run `report --check`. An unreachable lookup warns (`live
-thread recheck unreachable`) and leaves the dimension neutral: the gate
-reflects local dimensions only, and the run never exits 3 over the
-network. Local bundles and non-GitHub providers skip the lookup with a
-warn (`live recheck skipped: ...`), paying zero network; plain `report`
+thread recheck unreachable`) and, under the default `--live auto` posture,
+leaves the dimension neutral: the gate reflects local dimensions only, and
+the run never exits 3 over the network. Local bundles and non-GitHub
+providers skip the lookup with a warn (`live recheck skipped: ...`),
+paying zero network; plain `report`
 without a gate flag never calls the network. There is no `--force` on
 report: fetch + triage + re-check is the recovery, and advisory `report`
 without `--check` is the escape hatch.
+
+Offline posture (`--live auto|strict|skip`, gate runs only) is always an
+explicit operator choice — automation never inherits it silently. `auto`
+(the default) keeps the fail-open behavior above: a dead network reads as
+"unknown", not "clean", and the warn plus the envelope `warnings[]` entry
+say so. `strict` fails the gate closed on an unreachable lookup (`check:
+live thread recheck unreachable ... — gate fails: offline posture is
+strict; restore the network or re-run with --live skip, then re-check`,
+exit 1, still never 3 — the network is a gate condition, not a corrupt
+store). `skip` pays zero network and gates on the local dimensions only,
+saying so loudly: a `live recheck skipped (--live skip ...)` warn (also in
+`--json` `warnings[]`) plus a neutral skipped `check:` line in the gate
+tail. Structural skips stay neutral in every posture — a local bundle has
+no live threads to verify and a non-GitHub provider's threads are outside
+the GitHub-only read, so there is no live dimension to pass or fail. Pick
+`strict` for merge gates that must never report ready while threads stand
+open live; pick `skip` for air-gapped runs where the operator accepts the
+local-dimensions-only verdict on the record. `--live` without a gate flag
+is inert: advisory runs never touch the network regardless.
 
 Hook recipe (merge gate — findings AND freshness in one call):
 
@@ -370,12 +390,21 @@ check line names the re-fetch command — the `--base-sha <short-posted-head>`
 advance form when `post.json` carries a head, the plain `fetch` when there is
 nothing to advance from (see the `report --completeness` paragraph above and
 the Finalizer loop under Findings store + triage authority). Local bundles
-keep the `fetch-local` form.
+keep the `fetch-local` form. The fail-open default is deliberate: the local
+dimensions (tier hits, HEAD-reviewed) are ground truth the operator already
+paid to collect, while a failed lookup proves nothing about live threads —
+conflating "network dead" with "threads open" would turn every outage into
+a red gate and teach operators to bypass it. `strict` exists for the
+opposite bet: a merge gate that must refuse rather than pass blind, at the
+cost of going red whenever the network does.
 
-Offline-safe by construction: every gate run ends with the live-thread recheck
+Offline-safe by construction: every gate run under the default `--live auto`
+posture ends with the live-thread recheck
 that warns (`live thread recheck unreachable`) and proceeds on the local
 dimensions when the network is unreachable — the hook stays fast and never
-exits 3 over the network.
+exits 3 over the network. Operators who need the closed posture opt in
+with `--live strict` (or accept the loudly-skipped local verdict with
+`--live skip`).
 
 ### Doctor preflight
 

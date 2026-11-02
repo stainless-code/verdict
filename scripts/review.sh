@@ -51,7 +51,7 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
         --rationale "..." [--force] [--dry-run]
     mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.
   report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]
-        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] [--json]
+        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] [--live auto|strict|skip] [--json]
     pure read over the store: ranked findings + verdict + counts. Advisory runs
     touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.
     --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.
@@ -72,9 +72,14 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     post. Every gate run (--check and/or --completeness) ends with a third,
     network-backed live-thread dimension: more live opens than local opens
     fails the gate (unreachable lookups warn and stay neutral; local and
-    non-GitHub bundles warn-skip with zero network). Gate failure exits 1
+    non-GitHub bundles warn-skip with zero network). --live selects the
+    offline posture for that dimension: auto (default) keeps today's
+    fail-open behavior; strict fails the gate when the lookup is
+    unreachable; skip pays zero network and gates on local dimensions
+    only, saying so loudly. Gate failure exits 1
     with a check: line naming the re-fetch command; tool errors keep exit 3.
-    Without a gate flag output and exits are byte-identical to today.
+    Without a gate flag output and exits are byte-identical to today
+    (--live is only consulted on gate runs).
   next <owner/repo> <pr> [--status open] [--json]
     top-ranked actionable finding + the command to act on it. Pure read.
   show <owner/repo> <pr> --sig <sig> [--json]
@@ -4086,7 +4091,7 @@ fi
 
 # --------------------------------------------------------------- report ---
 if [[ "$cmd" == "report" ]]; then
-  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"; check_sev=""; completeness="false"
+  status_f="all"; kind_f="all"; output=""; sarif=""; cost="false"; check_sev=""; completeness="false"; live_mode="auto"
   while [[ $# -gt 0 ]]; do case "$1" in
     --status) status_f="${2:-all}"; case "$status_f" in all|open|addressed|deferred|wont-fix|false-positive) ;; *) echo "unknown --status '$status_f' for report (want all|open|addressed|deferred|wont-fix|false-positive)" >&2; exit 2;; esac; shift 2;;
     --kind) kind_f="${2:-all}"; case "$kind_f" in all|inline|section) ;; *) echo "unknown --kind '$kind_f' for report (want all|inline|section)" >&2; exit 2;; esac; shift 2;;
@@ -4095,8 +4100,9 @@ if [[ "$cmd" == "report" ]]; then
     --cost) cost="true"; shift;;
     --check) check_sev="${2:-}"; case "$check_sev" in critical|important|informational) ;; *) echo "unknown --check tier '$check_sev' for report (want critical|important|informational)" >&2; exit 2;; esac; check_gate="true"; shift 2;;
     --completeness) completeness="true"; check_gate="true"; shift;;
+    --live) live_mode="${2:-}"; case "$live_mode" in auto|strict|skip) ;; *) echo "unknown --live posture '$live_mode' for report (want auto|strict|skip)" >&2; exit 2;; esac; shift 2;;
     --json) json_mode="true"; shift;;
-    *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --check, --completeness, --json)" >&2; exit 2;;
+    *) echo "unknown flag '$1' for report (want --status, --kind, --output, --sarif, --cost, --check, --completeness, --live, --json)" >&2; exit 2;;
   esac; done
   json_redirect
   resolve_bundle_dir "$pr"
@@ -4262,14 +4268,21 @@ if [[ "$cmd" == "report" ]]; then
   # Live-thread probe (network, first half of the gate's third dimension):
   # runs ahead of rendering so its warn lands in the --json envelope
   # warnings[] as well as stderr (the envelope emits below, the verdict
-  # prints in the gate tail). live_status: pass|fail|skip|unknown;
-  # live_open carries the count on pass/fail. Skips and unreachable lookups
-  # warn and stay neutral here — never fail(), never exit 3 on network
-  # trouble. Advisory runs (no gate flag) skip this entirely: zero network,
-  # byte-identical output.
-  live_status="unset"; live_open="0"
+  # prints in the gate tail). live_status: pass|fail|skip|skip-explicit|
+  # unknown|unknown-strict; live_open carries the count on pass/fail.
+  # Structural skips (local bundles, non-GitHub providers) and unreachable
+  # lookups under the default auto posture warn and stay neutral here —
+  # never fail(), never exit 3 on network trouble. --live strict turns only
+  # the unreachable lookup fail-closed (there is no live GitHub state to
+  # verify on a structural skip, so those stay neutral in every posture);
+  # --live skip never reaches the network at all. Advisory runs (no gate
+  # flag) skip this entirely: zero network, byte-identical output.
+  live_status="unset"; live_open="0"; live_err=""
   if [[ "$check_gate" == "true" ]]; then
-    if [[ "$dir" == .review/local-* ]]; then
+    if [[ "$live_mode" == "skip" ]]; then
+      warn "live recheck skipped (--live skip requested — gating on local dimensions only)"
+      live_status="skip-explicit"
+    elif [[ "$dir" == .review/local-* ]]; then
       warn "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
       live_status="skip"
     else
@@ -4281,6 +4294,11 @@ if [[ "$cmd" == "report" ]]; then
         case "$live_open" in ''|*[!0-9]*) live_open=0;; esac
         if (( live_open > n_all_open )); then live_status="fail"; else live_status="pass"; fi
         rm -f "$dir/.recheck.err"
+      elif [[ "$live_mode" == "strict" ]]; then
+        live_err=$(head -c 120 "$dir/.recheck.err" 2>/dev/null | tr '\n' ' ')
+        warn "live thread recheck unreachable (${live_err:-lookup failed} — offline posture is strict, failing closed)"
+        rm -f "$dir/.recheck.err"
+        live_status="unknown-strict"
       else
         live_err=$(head -c 120 "$dir/.recheck.err" 2>/dev/null | tr '\n' ' ')
         warn "live thread recheck unreachable (${live_err:-lookup failed} — gating on local dimensions only)"
@@ -4430,7 +4448,9 @@ if [[ "$cmd" == "report" ]]; then
   # local opens (whole-store n_all_open — display filters never narrow a
   # gate, same rule as the tier dimension) fails the gate with a check: line
   # naming both counts plus the fetch-and-triage path; unreachable lookups
-  # warn and stay neutral, and local/non-GitHub bundles skip with a warn —
+  # warn and stay neutral under the default --live auto posture, fail the
+  # gate under --live strict, and never run at all under --live skip;
+  # local/non-GitHub bundles skip with a warn —
   # zero network either way. The lookup runs in the probe ahead of rendering
   # so the warn lands in the --json envelope warnings[] too. Output is
   # identical with or without any flag — only the exit differs, mirroring
@@ -4470,14 +4490,24 @@ if [[ "$cmd" == "report" ]]; then
       fi
     fi
     # Live-thread verdict (second half of the third dimension): the probe
-    # above already warned and stayed neutral on skips/unreachable; here the
-    # fail/pass just prints its check: line. fail accumulates into the single
-    # exit 1 below, keeping the tier → completeness → live order.
+    # above already warned and stayed neutral on structural skips and (under
+    # the default auto posture) unreachable lookups; here the fail/pass
+    # just prints its check: line. --live strict turns an unreachable lookup
+    # into a gate failure with a typed check: line (still exit 1, never a
+    # tool error — the network is a gate condition, not a corrupt store);
+    # --live skip prints a neutral skipped line so the loud skip shows in
+    # the gate tail as well as the warnings. fail accumulates into the
+    # single exit 1 below, keeping the tier → completeness → live order.
     if [[ "$live_status" == "fail" ]]; then
       echo "check: $live_open live open thread(s) vs $n_all_open local open finding(s) — gate fails (fetch + triage them, then re-check)" >&2
       gate_fail="true"
     elif [[ "$live_status" == "pass" ]]; then
       echo "check: $live_open live open thread(s) vs $n_all_open local open finding(s) — live recheck passes" >&2
+    elif [[ "$live_status" == "unknown-strict" ]]; then
+      echo "check: live thread recheck unreachable (${live_err:-lookup failed} — gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)" >&2
+      gate_fail="true"
+    elif [[ "$live_status" == "skip-explicit" ]]; then
+      echo "check: live recheck skipped (--live skip) — gating on local dimensions only" >&2
     fi
     if [[ "$gate_fail" == "true" ]]; then exit 1; fi
   fi
