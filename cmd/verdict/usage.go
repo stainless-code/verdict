@@ -125,7 +125,7 @@ func usageText() string {
 		"    judgments arrive via --judge/--judge-file, are validated against known\n" +
 		"    sigs (unknown sigs refuse typed), and merge as agent_verdict/agent_helpful/\n" +
 		"    agreement columns that may diverge from the baseline — the agreement rate\n" +
-		"    over judged rows is the M4 evidence number.\n" +
+		"    over judged rows is the evidence number.\n" +
 		"  ready <owner/repo> <pr> [--json] [--check]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
@@ -233,7 +233,8 @@ func usageText() string {
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
 		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install/skill/upgrade/uninstall: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
-		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n"
+		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
+		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"
 }
 
 // bareVerbs lists the verbs that take no repo/pr positionals.

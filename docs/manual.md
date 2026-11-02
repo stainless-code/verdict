@@ -23,7 +23,13 @@ verdict fetch owner/repo 123
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
 verdict post owner/repo 123
+
+# 4. read the report (offline)
+verdict report owner/repo 123
 ```
+
+New to the vocabulary? The [glossary](glossary.md) defines lenses, panel,
+evidence rungs, keep-biased, and its sibling doctrines.
 
 `review.json` schema:
 
@@ -1220,7 +1226,7 @@ findings against the code in `agent_verdict` / `agent_helpful` columns that
 MAY diverge from the baseline, merged machine-readably via `--judge
 SIG:VERDICT[:HELPFUL]` or `--judge-file PATH` (every sig validated against
 the findings store; unknown sigs refuse typed), with `agreement` computed per
-row. The M4-consumable number is the agreement rate over doubly-judged rows
+row. The evidence number is the agreement rate over doubly-judged rows
 with the sample size recorded alongside. The run is additive-only (that one
 file; findings, joins, and calibration outputs stay byte-identical),
 deterministic and idempotent, and needs no post record and no network — local

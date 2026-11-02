@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: "First Verdict review in five minutes: install, fetch, review, post."
+description: "First Verdict review in five minutes: install, fetch, review, post, read the report."
 search:
   tags: ["quickstart", "getting-started", "install"]
 ---
@@ -43,7 +43,7 @@ Order matters, so follow the steps.
   </Step>
   <Step title="Scaffold local defaults (optional)">
     ```bash
-    ./scripts/review.sh init --preset standard
+    verdict init --preset standard
     ```
     Writes starter `.review/` control files (budget, panel, KB policy and rules)
     then runs check-tree validation. Pure-local and skippable: fetch works
@@ -51,7 +51,7 @@ Order matters, so follow the steps.
   </Step>
   <Step title="Fetch the bundle">
     ```bash
-    ./scripts/review.sh fetch owner/repo 123
+    verdict fetch owner/repo 123
     ```
     One command pulls the diff, metadata, threads, and file roles into `.review/123/`.
     No clone needed. Done when the directory holds `PR.json`, `full.diff`, `toc.txt`,
@@ -65,23 +65,32 @@ Order matters, so follow the steps.
   </Step>
   <Step title="Post">
     ```bash
-    ./scripts/review.sh post owner/repo 123 --approve=false
+    verdict post owner/repo 123 --approve=false
     ```
     Anchors are machine-checked against the diff hunks, suggestions go in as real
     GitHub suggestion blocks, and exactly one review lands. Done when one review
     exists: one `review.json`, one post call.
   </Step>
+  <Step title="Read the report">
+    ```bash
+    verdict report owner/repo 123
+    ```
+    One offline read of the store: ranked open findings, the verdict, and counts.
+    `verdict next` names the top actionable finding and the command to act on it;
+    `report --json` is the same data for a script. Done when you have a ranked
+    list you can act on.
+  </Step>
   <Step title="Re-review new commits">
     ```bash
-    ./scripts/review.sh fetch owner/repo 123 --base-sha <prior-reviewed-sha>
+    verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>
     ```
     Then review with `prompts/incremental-review.md` instead of `prompts/review.md`.
     Recorded findings are never re-reported. Threads retire by rule.
   </Step>
   <Step title="No PR? Review the worktree">
     ```bash
-    ./scripts/review.sh fetch-local owner/repo work
-    ./scripts/review.sh record owner/repo local-work
+    verdict fetch-local owner/repo work
+    verdict record owner/repo local-work
     ```
     Same review, no GitHub object: bundle the worktree (`--staged`, `--range`,
     `--base`, and `--stash` variants exist), review it the same way, and `record`
@@ -96,12 +105,15 @@ A grounded first pass on the PR in minutes, with every claim carrying an evidenc
 rung and every comment anchored to a real hunk. Humans spend their attention on the
 hard parts.
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card
     title="Manual"
     href="https://github.com/stainless-code/verdict/blob/main/docs/manual.md"
   >
     Every verb, the store schema, and the doctrines.
+  </Card>
+  <Card title="Glossary" href="/glossary">
+    Lenses, panel, evidence rungs, keep-biased, and its sibling doctrines.
   </Card>
   <Card title="Why Verdict" href="/why-verdict">
     The pains this solves and what it refuses to be.

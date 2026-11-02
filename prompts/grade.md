@@ -43,7 +43,7 @@ in the grades file, so that agreement is measured, not assumed.
    `agent_helpful` / `agreement` columns. Judgments are sticky: re-runs keep
    prior agent columns for surviving sigs, so the sample survives triage
    refreshes of the baseline.
-6. **Report the number.** The M4-consumable result is the agreement rate over
+6. **Report the number.** The evidence number is the agreement rate over
    doubly-judged rows (baseline known AND agent judged `real`/`false`), with
    the sample size: `judgments: sampled=S judged=J agreed=A disagreed=D
 rate=R` (also `data.judgment` in the `--json` envelope). Name each dissent
