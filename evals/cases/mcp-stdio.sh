@@ -15,6 +15,8 @@
 #       unknown tool and missing required args are -32602, not refusals.
 #   M6  --read-only filters the list and rejects a writing tool.
 #   M7  stdout is protocol frames only and stdin close exits 0.
+#   M8  the post tool dry-runs behind a smart gh stub: the envelope data comes
+#       back with no reviews POST and a bad approve is a typed refusal.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -77,12 +79,12 @@ if jq -e 'select(.id == 1).result | (.protocolVersion == "2025-06-18") and (.ser
 else
   bad "initialize result is missing the revision/experimental marker"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 17' <"$MCP_OUT" >/dev/null; then
-  good "tools/list carries 17 core tools"
+if jq -e 'select(.id == 2).result.tools | length == 18' <"$MCP_OUT" >/dev/null; then
+  good "tools/list carries 18 core tools"
 else
   bad "tools/list count is not 17"
 fi
-if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("install") == null)' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("install") == null)' <"$MCP_OUT" >/dev/null; then
   good "tool names follow the core surface (install is never a tool)"
 else
   bad "tool names drifted"
@@ -168,6 +170,63 @@ if jq -e 'select(.id == 4).error.code == -32602' <"$MCP_OUT" >/dev/null; then
   good "--read-only rejects record as unknown tool"
 else
   bad "--read-only did not reject record"
+fi
+
+# --- M8: post dry run (smart gh stub; the reviews POST must never fire) ---
+STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
+cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
+restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
+trap restore_stub EXIT
+cat >"$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
+fi
+case "$*" in
+  *reviews*) echo "unexpected reviews POST" >&2; exit 1;;
+  *pulls*) printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
+  *user*) printf 'someone-else'; exit 0;;
+esac
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+
+PR=6201
+eval_mk_bundle "$PR"
+printf '[]' | eval_write_findings "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}
+EOF
+cat >"$FRAMES" <<EOF
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"false","reviewFile":".review/$PR/review.json","dryRun":true}}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"yes","dryRun":true}}}}
+EOF
+mark="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
+run_mcp_input "$FRAMES"
+if [ "$EVAL_STATUS" -eq 0 ]; then good "post dry-run session exits 0"; else bad "post dry-run exit $EVAL_STATUS"; fi
+check_stdout_frames
+if jq -e 'select(.id == 1).result | (.isError == false) and ((.content[0].text | fromjson) == .structuredContent) and (.structuredContent.dry_run == true) and (.structuredContent.event == "COMMENT") and (.structuredContent.payload_hash | type == "string")' <"$MCP_OUT" >/dev/null; then
+  good "post dry-run returns the envelope data without posting"
+else
+  bad "post dry-run result drifted: $(cat "$MCP_OUT")"
+fi
+if [ -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+  good "post dry-run stages findings.dryrun.json and writes no post.json"
+else
+  bad "post dry-run wrote the wrong artifacts"
+fi
+if [ "$(tail -n +"$(( mark + 1 ))" "$EVAL_STUBLOG" | grep -c "reviews" || true)" -eq 0 ]; then
+  good "post dry-run never called the reviews POST"
+else
+  bad "post dry-run reached the reviews POST"
+fi
+if jq -e 'select(.id == 2).result | (.isError == true) and (.structuredContent.code == "bad-approve")' <"$MCP_OUT" >/dev/null; then
+  good "post bad approve is a typed refusal"
+else
+  bad "post bad approve did not refuse typed"
 fi
 
 if [ "$fails" -ne 0 ]; then

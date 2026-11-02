@@ -379,7 +379,7 @@ func (s *Server) commander(t *tool) core.Commander {
 		return c
 	}
 	switch t.name {
-	case "fetch", "fetch-local", "fix", "init":
+	case "fetch", "fetch-local", "fix", "init", "post":
 		return coreexec.SplitCommander{}
 	case "verify":
 		return coreexec.OSCommander{}
@@ -541,13 +541,18 @@ func (s *Server) writeError(id json.RawMessage, code int, message string) {
 }
 
 // writeFrame serializes one frame under the write lock. A failed write is
-// remembered and returned from Serve.
+// remembered and returned from Serve. HTML escaping stays off so the text
+// block and structuredContent keep the same bytes (post bodies carry `>` and
+// markdown; encoding/json would otherwise escape it in one place only).
 func (s *Server) writeFrame(resp rpcResponse) {
-	raw, err := json.Marshal(resp)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(resp); err != nil {
 		s.logf("marshal response: %v", err)
 		return
 	}
+	raw := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 	raw = append(raw, '\n')
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

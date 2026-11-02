@@ -425,11 +425,12 @@ bytes stay frozen) but `verdict mcp --help` documents it.
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
-`learn`, `next`, `ready`, `record`, `report`, `show`, `trend`, `triage`,
-`verify` (and `post` once ticket 17b extracts `internal/core/post`). `install`,
-`upgrade`, and `skill` are distribution surfaces, never tools. Input schemas are
-generated from the Go request structs, so they cannot drift from the core
-contract; `repo`/`pr` plus verb fields are the arguments.
+`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `trend`, `triage`,
+`verify`. `install`, `upgrade`, and `skill` are distribution surfaces, never
+tools. Input schemas are generated from the Go request structs, so they cannot
+drift from the core contract; `repo`/`pr` plus verb fields are the arguments.
+`post` writes a review and calls GitHub, so it is not exposed under
+`--read-only`.
 
 `--read-only` exposes only the non-writing tools (`report`, `next`, `show`,
 `trend`, `ready`, `doctor`, `check-tree`); every verb is exposed by default
@@ -440,14 +441,44 @@ because the host already authorizes the binary and its credentials. Each
 `-32602` error, not a refusal. Human progress and warnings go to stderr (or MCP
 notifications), never stdout: stdout is the protocol channel.
 
-Claude/Cursor-style config:
+#### Host config
+
+`verdict mcp config --agent <claude|cursor|codex>` prints the exact entry (the
+default is print-only, like `--dry-run`). Add `--write` to merge it into the
+host's documented config, or `--json` for one envelope with the path, format,
+snippet, and merge status. It never prompts and never starts the server.
+
+| Agent    | Config file                                            | Format |
+| -------- | ------------------------------------------------------ | ------ |
+| `claude` | project `.mcp.json`                                    | JSON   |
+| `cursor` | project `.cursor/mcp.json`                             | JSON   |
+| `codex`  | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` | TOML   |
 
 ```json
 { "mcpServers": { "verdict": { "command": "verdict", "args": ["mcp"] } } }
 ```
 
-Use `--read-only` in review-only hosts: `{"command":"verdict","args":["mcp",
-"--read-only"]}`. Codex uses the same command/argv in its MCP server config.
+```toml
+[mcp_servers.verdict]
+command = "verdict"
+args = ["mcp"]
+```
+
+`--write` is idempotent: an existing matching entry is `keep` and nothing is
+written; an absent one is `create`/`update`. The previous file is copied to
+`<path>.verdict.bak` before the first changing write. Unknown keys and other
+servers are preserved. A file that does not parse, or a `verdict` entry whose
+command/argv differs (including a `--read-only` argv), refuses typed instead of
+being rewritten; for TOML only a plain `[mcp_servers.verdict]` table is
+merged — inline/dotted spellings refuse rather than guess. Fix or remove the
+entry by hand and re-run.
+
+Use `--read-only` in review-only hosts by editing the entry to
+`{"command":"verdict","args":["mcp","--read-only"]}` (or the TOML
+`args = ["mcp", "--read-only"]`). `mcp config --write` refuses that entry on a
+later run because its argv differs; that is intentional, since silently
+rewriting it would widen the host's permissions.
+
 The server is experimental until 1.0: tool shapes may still move, while the
 envelope keeps its `schema_version` contract.
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -104,13 +105,13 @@ func decodeFrames(t *testing.T, raw []byte) map[string]frame {
 func TestToolSchemas(t *testing.T) {
 	t.Parallel()
 	tools := allTools(false)
-	if len(tools) != 17 {
-		t.Fatalf("tools = %d, want 17", len(tools))
+	if len(tools) != 18 {
+		t.Fatalf("tools = %d, want 18", len(tools))
 	}
 	wantNames := []string{
 		"adopt", "calibrate", "check-tree", "doctor", "fetch", "fetch-local", "fix",
-		"init", "learn", "next", "ready", "record", "report", "show", "trend",
-		"triage", "verify",
+		"init", "learn", "next", "post", "ready", "record", "report", "show",
+		"trend", "triage", "verify",
 	}
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -223,6 +224,119 @@ func TestDataToolCall(t *testing.T) {
 	}
 }
 
+// postCommander scripts post's reads (live SHA, authorship, empty threads)
+// and fails the test on any reviews POST.
+type postCommander struct {
+	t     *testing.T
+	calls []string
+}
+
+// Run replays one canned read; dry-run must never reach the reviews POST.
+func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+	joined := strings.Join(cmd.Argv, " ")
+	c.calls = append(c.calls, joined)
+	switch {
+	case strings.Contains(joined, "/reviews"):
+		c.t.Errorf("post dry-run reached the reviews POST: %q", cmd.Argv)
+		return core.Result{}, errors.New("unexpected reviews POST")
+	case strings.Contains(joined, "graphql"):
+		return core.Result{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`}, nil
+	case strings.Contains(joined, "pulls/7"):
+		return core.Result{Stdout: strings.Repeat("a", 40) + "\n"}, nil
+	case strings.Contains(joined, "api user"):
+		return core.Result{Stdout: "someone-else\n"}, nil
+	default:
+		c.t.Errorf("unexpected post argv: %q", cmd.Argv)
+		return core.Result{}, errors.New("unexpected argv")
+	}
+}
+
+// postFixture writes the bundle post's dry run needs.
+func postFixture(t *testing.T) {
+	t.Helper()
+	writeFile(t, ".review/7/PR.json",
+		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"author":{"login":"someone-else"}}`)
+	writeFile(t, ".review/7/full.diff",
+		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
+			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
+	writeFile(t, ".review/7/review.json",
+		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	writeFile(t, ".review/7/findings.json", `[]`)
+}
+
+// TestPostTool proves the post tool is registered from core.PostRequest, a
+// scripted dry run returns the envelope data without posting, and a typed
+// refusal keeps isError/code.
+//
+//nolint:revive,cyclop,gocognit // the success/refusal/artifact matrix reads as one assertion block
+func TestPostTool(t *testing.T) {
+	t.Chdir(t.TempDir())
+	postFixture(t)
+	cmdr := &postCommander{t: t}
+	cfg := testConfig()
+	cfg.Commanders = map[string]core.Commander{"post": cmdr}
+	lines := []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"7","flags":{"approve":"false","reviewFile":".review/7/review.json","dryRun":true}}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"7","flags":{"approve":"yes","dryRun":true}}}}`,
+	}
+	frames := serve(t, &cfg, lines...)
+	var list toolsListResult
+	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	post := false
+	for _, tool := range list.Tools {
+		if tool.Name == "post" {
+			post = true
+			if ro, ok := tool.Annotations[annotationReadOnly].(bool); !ok || ro {
+				t.Error("post readOnlyHint is not false")
+			}
+		}
+	}
+	if !post {
+		t.Error("tools/list misses post")
+	}
+	var ok callToolResult
+	if err := json.Unmarshal(frames["2"].Result, &ok); err != nil {
+		t.Fatalf("post result: %v", err)
+	}
+	if ok.IsError {
+		t.Fatalf("post dry-run refused: %s", ok.Content[0].Text)
+	}
+	if string(ok.StructuredContent) != ok.Content[0].Text {
+		t.Error("post text and structuredContent diverged")
+	}
+	var data map[string]any
+	if err := json.Unmarshal(ok.StructuredContent, &data); err != nil {
+		t.Fatalf("post structuredContent: %v", err)
+	}
+	if data["dry_run"] != true || data["event"] != "COMMENT" || data["payload_hash"] == "" {
+		t.Errorf("post dry-run data = %v", data)
+	}
+	if _, err := os.Stat(".review/7/post.json"); !os.IsNotExist(err) {
+		t.Error("post dry-run wrote post.json")
+	}
+	if _, err := os.Stat(".review/7/findings.dryrun.json"); err != nil {
+		t.Errorf("post dry-run did not stage findings.dryrun.json: %v", err)
+	}
+	var refused callToolResult
+	if err := json.Unmarshal(frames["3"].Result, &refused); err != nil {
+		t.Fatalf("post refusal result: %v", err)
+	}
+	if !refused.IsError {
+		t.Error("bad approve did not set isError")
+	}
+	var refusal map[string]string
+	if err := json.Unmarshal(refused.StructuredContent, &refusal); err != nil {
+		t.Fatalf("post refusal structuredContent: %v", err)
+	}
+	if refusal["code"] != "bad-approve" {
+		t.Errorf("post refusal code = %q", refusal["code"])
+	}
+}
+
 // TestReadOnlyPolicy proves --read-only filters the tool list and makes a
 // write tool an invalid-params error.
 //
@@ -250,7 +364,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tool := range list.Tools {
-		if tool.Name == "record" {
+		if tool.Name == "record" || tool.Name == "post" {
 			t.Errorf("read-only list exposed %q", tool.Name)
 		}
 		readOnly, ok := tool.Annotations[annotationReadOnly].(bool)
@@ -296,7 +410,7 @@ func TestServeLifecycle(t *testing.T) {
 	if err := json.Unmarshal(frames["2"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 17 {
+	if len(list.Tools) != 18 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
 	// Success.

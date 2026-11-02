@@ -17,6 +17,7 @@ import (
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	postcore "github.com/stainless-code/verdict/internal/core/post"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
@@ -55,9 +56,8 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	invoke      func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
-// allTools returns the registered tool set. post is absent until ticket 17b
-// extracts internal/core/post; install/upgrade/skill are distribution
-// surfaces, never review tools.
+// allTools returns the registered tool set. install/upgrade/skill are
+// distribution surfaces, never review tools.
 func allTools(readOnly bool) []*tool {
 	tools := []*tool{
 		dataTool("adopt", "Copy findings from a local bundle into the target PR bundle and re-anchor them.",
@@ -92,6 +92,8 @@ func allTools(readOnly bool) []*tool {
 			description: "Return the top actionable finding for the bundle.",
 			required:    requiredRepoPr, readOnly: true, invoke: invokeNext,
 		},
+		dataTool("post", "Post exactly one review to GitHub (or preview with dryRun); writes and calls GitHub.",
+			reflect.TypeFor[core.PostRequest](), nil, requiredRepoPr, false, postcore.Run),
 		dataTool("ready", "Report merge readiness (checks, threads, draft/conflict) or gate on it.",
 			reflect.TypeFor[readycore.Request](), nil, requiredRepoPr, true, readycore.Run),
 		dataTool("record", "Validate and merge a local review.json into the findings and record stores.",

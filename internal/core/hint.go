@@ -66,6 +66,10 @@ var hintRules = []HintRule{
 	{isCode("id-taken"), "try: pass a different --id"},
 	{isCode("unknown-rule"), "try: list rules with learn --status, then re-run"},
 	{isCode("already-retired", "not-retired"), "try: check the rule status with learn --status, then re-run"},
+	{isCode("mcp-config-unparseable"), "try: fix the JSON/TOML syntax (or move the file aside), then re-run"},
+	{isCode("mcp-config-foreign", "mcp-config-unmergeable"), "try: remove the existing MCP entry by hand, then re-run"},
+	{isCode("mcp-config-no-home"), "try: set HOME (or CODEX_HOME), then re-run"},
+	{hasPrefixCode("mcp-config-"), "try: check the config path and permissions named above, then re-run"},
 }
 
 // isCode matches one of the exact codes.
