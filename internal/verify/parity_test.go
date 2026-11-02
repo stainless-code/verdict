@@ -361,7 +361,10 @@ func gitRun(dir string, args ...string) (string, error) {
 // every refuse keeps the typed code with an identical message, every exec
 // records the proof identically. The want field documents the eval-graded
 // expectation (codes are graded by the eval suite in both legs); the
-// harness proves the two implementations agree byte for byte.
+// harness proves the two implementations agree byte for byte. Executing
+// legs never run real toolchains: the harness PATH serves deterministic
+// stubs (cargo, npm, pip, curl, ...) that record argv and exit 0, so even
+// installer-shaped commands stay hermetic under a sandboxed HOME.
 //
 // npm writes timestamped debug logs under its cache on failure, which can
 // never byte-match across runs (not even bash-vs-bash), so the cache

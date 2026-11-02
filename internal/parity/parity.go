@@ -50,8 +50,10 @@ type Harness struct {
 
 // Build creates the harness binary and stub tooling once per test
 // package. It mirrors the eval-harness preamble: a temp root holding the
-// freshly built binary plus provenance inputs, and a network-dead gh
-// stub. The caller runs Teardown when done.
+// freshly built binary plus provenance inputs, a network-dead gh stub,
+// and deterministic toolchain stubs (cargo, npm, pip, ...) first on PATH
+// so executing legs never run real installers. The caller runs Teardown
+// when done.
 func Build() (*Harness, error) {
 	repoRoot, err := findRepoRoot()
 	if err != nil {
@@ -139,7 +141,41 @@ func copyProvenanceDir(repoRoot, tmp, dir string) error {
 const stubScript = "#!/usr/bin/env bash\necho \"stub-gh $*\" >> \"${EVAL_STUBLOG:-/dev/null}\"\n" +
 	"echo \"evals-stub-gh: network disabled ($*)\" >&2\nexit 1\n"
 
-// writeStub creates the network-dead gh stub directory.
+// toolStubNames are toolchain and network-client binaries replaced by
+// deterministic stubs first on the harness PATH. With HOME sandboxed to
+// the case dir, the real cargo/rustup proxy (and pip, npm, ...) would
+// otherwise materialize toolchains into the snapshot — network-dependent
+// and racy across the parallel legs. curl/wget hit only the discard port
+// and docker is absent on runners, but stubbing them keeps every executing
+// leg hermetic by construction instead of by runner luck.
+var toolStubNames = []string{
+	"bun", "bunx", "cargo", "docker", "go", "npm", "npx",
+	"parallel", "pip", "pip3", "pnpm", "rustc", "rustup", "yarn",
+}
+
+// toolStubScript records the invocation on stdout and exits 0: the gate
+// decision (execute) and the recorded proof stay graded byte-identical on
+// both sides without running real toolchains. All current probes pass
+// these tools static argv, so the record is deterministic by construction.
+const toolStubScript = "#!/usr/bin/env bash\necho \"stub-${0##*/} $*\"\nexit 0\n"
+
+// fetchStubNames are the loopback fetch clients with their own stub shape:
+// one probe embeds $(date +%s) in the URL, so echoing argv would leak the
+// wall clock into the proof (the real clients never echo it: curl prints a
+// fixed connection-failed diagnostic, wget -q a one-line failure). The
+// stubs mimic that connection-refused record deterministically, with the
+// real exit codes (7/4).
+var fetchStubNames = []string{"curl", "wget"}
+
+// fetchStubScripts maps each fetch client to its connection-refused record:
+// fixed text (no argv echo), real exit code.
+var fetchStubScripts = map[string]string{
+	"curl": "#!/usr/bin/env bash\necho \"curl: (7) Failed to connect to 127.0.0.1 port 9 after 0 ms: Connection refused\" >&2\nexit 7\n",
+	"wget": "#!/usr/bin/env bash\necho \"Connecting to 127.0.0.1:9... failed: Connection refused.\" >&2\nexit 4\n",
+}
+
+// writeStub creates the network-dead gh stub directory plus the
+// deterministic toolchain stubs.
 func writeStub() (string, error) {
 	stubBin, err := os.MkdirTemp("", "verdict-parity-stub")
 	if err != nil {
@@ -151,7 +187,41 @@ func writeStub() (string, error) {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return "", fmt.Errorf("write gh stub: %v", err)
 	}
+	for _, s := range allStubs() {
+		if err := writeStubFile(stubBin, s.name, s.script); err != nil {
+			os.RemoveAll(stubBin)
+			return "", err
+		}
+	}
 	return stubBin, nil
+}
+
+// stubDef pairs a stubbed binary name with its script.
+type stubDef struct {
+	name   string
+	script string
+}
+
+// allStubs lists every harness stub: the argv-recording toolchain stubs
+// plus the connection-refused fetch-client records.
+func allStubs() []stubDef {
+	var out []stubDef
+	for _, name := range toolStubNames {
+		out = append(out, stubDef{name: name, script: toolStubScript})
+	}
+	for _, name := range fetchStubNames {
+		out = append(out, stubDef{name: name, script: fetchStubScripts[name]})
+	}
+	return out
+}
+
+// writeStubFile plants one executable stub script in the stub directory.
+func writeStubFile(stubBin, name, script string) error {
+	if err := os.WriteFile(filepath.Join(stubBin, name), []byte(script), stubPerm); err != nil {
+		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
+		return fmt.Errorf("write %s stub: %v", name, err)
+	}
+	return nil
 }
 
 // Teardown removes the harness temp roots.
