@@ -980,7 +980,9 @@ quality — the prompts do.
 
 ## Store changelog (additive within schema_version "1" — renames never happen, only additions)
 
-Schema evolution only — verbs and features ship in the release changelog.
+Release versioning (changesets → Version PR → npm + GitHub Release) lives in
+`README ## Versioning`. This section tracks store-schema evolution only —
+verbs and features ship in the release changelog.
 
 - Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.
 - Added: `rigor`, `inBounds`, retained `suggestion`, `rationale`/`triagedAt`/`triagedBy`, history `actor`/`sha`; statuses `wont-fix/false-positive/deferred`; `verification.json` evidence gate; `patch.json` gains `verifyCmd/verifyOutput/baseHead/resultHead`.

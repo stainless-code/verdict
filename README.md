@@ -126,7 +126,9 @@ No auto-updater, by design (no network surprises from a review tool):
 ## Versioning
 
 Changesets: add a `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing
-notes) with your change. Merging to main opens a `chore: version packages` PR;
+notes) with your change — `patch` by default, `minor` for new verbs or flags,
+`major` for envelope/store breaks. Docs-only, eval-only, and comment-only
+merges ship none (no backfill of shipped work). Merging to main opens a `chore: version packages` PR;
 merging that publishes to npm (OIDC trusted publishing, no tokens) and cuts the
 GitHub Release carrying your notes. Tags (`vX.Y.Z`) follow the releases.
 Additive store changes only within a major. See the changelog at the bottom of
