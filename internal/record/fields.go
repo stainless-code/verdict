@@ -40,9 +40,20 @@ const (
 	// Provider codes.
 	providerLocal = "local"
 	localPrefix   = "local-"
+	// approveTrue and approveFalse are the only --approve values.
+	approveTrue  = "true"
+	approveFalse = "false"
+	// eventComment is the non-binding review event.
+	eventComment = "COMMENT"
+	// statusOpen is the open finding status.
+	statusOpen = "open"
+	// unknownTime renders a missing posted_at (jq empty-coalescing).
+	unknownTime = "unknown time"
 	// Refusal codes.
 	codeRecordFailed      = "record-failed"
+	codePostFailed        = "post-failed"
 	codeMissingReviewFile = "missing-review-file"
+	codeMissingDiff       = "missing-diff"
 	codeBadReviewSchema   = "bad-review-schema"
 	codeBadReviewInput    = "bad-review-input"
 	codeCorruptStore      = "corrupt-store"

@@ -205,5 +205,54 @@ else
   bad "bad --approve gave exit $EVAL_STATUS code '$code'"
 fi
 
+# --- P6: malformed live threads downgrade to COMMENT (never a silent APPROVE) ---
+# The probe err file carries jq's own stderr text (version-dependent), so
+# this grades the behavior only: exit 0, COMMENT, reason in warnings and in
+# the posted body, posted exactly once.
+PR=4316
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}
+EOF
+cat > "$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' 'not json{{{'; exit 0
+fi
+case "$*" in
+  *reviews*)
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
+    printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
+    exit 0;;
+  *pulls*)
+    printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
+  *user*)
+    printf 'someone-else'; exit 0;;
+esac
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4316.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+m="$(mark)"
+run_review post acme/app "$PR" --bind --json
+unset EVAL_SAVE_PAYLOAD
+event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "COMMENT" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "malformed live threads downgrade to COMMENT (exit 0, posted once)"
+else
+  bad "malformed threads gave exit $EVAL_STATUS event '$event', want 0/COMMENT"
+fi
+if grep -q "downgrading to COMMENT" "$EVAL_ERR" \
+  && grep -q "recheck unreachable" "$EVAL_ERR" \
+  && grep -q "recheck unreachable" "$EVAL_SANDBOX/posted-4316.json"; then
+  good "downgrade warns with the recheck reason in stderr and posted body"
+else
+  bad "downgrade stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+
 if [ "$fails" -ne 0 ]; then echo "case post-refusals: FAIL ($fails)"; exit 1; fi
 echo "case post-refusals: PASS"

@@ -88,23 +88,70 @@ var (
 	receiptLineRe2 = regexp.MustCompile(`(?m)^\s*> .*Reviewed with \[`)
 )
 
-// stripFooterGarnish ports the footer receipt checks: a carried rendered
-// footer warns and is replaced; a hand-written receipt warns and is kept.
-func stripFooterGarnish(r *cli.Runner, body string) string {
+// applyFooter ports the footer receipt tail: a carried rendered footer warns
+// and is replaced with the canonical block; a hand-written receipt warns and
+// keeps the agent block (script footer skipped). It returns the curated body.
+func (st *state) applyFooter(body string) string {
+	r := st.runner
+	block, err := provenance.RenderFooter(st.footerOpts())
+	if err != nil || block == "" {
+		return body
+	}
 	if strings.Contains(body, cli.FooterDivider) {
 		r.Warn("body already carries a rendered footer — replacing it with the canonical block")
 		body = provenance.StripFooter(body)
 	}
 	if receiptLineRe.MatchString(body) || receiptLineRe2.MatchString(body) {
 		r.Warn("body already carries a footer receipt — keeping the agent block, script footer skipped")
+		return body
 	}
-	return body
+	return body + "\n\n" + block
+}
+
+// footerOpts builds the footer inputs from the runner prefs and bundle. The
+// review model is empty on the record/post path (review.json carries none;
+// cost-record model or unrecorded decides, like the shell).
+func (st *state) footerOpts() *provenance.FooterOpts {
+	return footerOptions(st.runner, Request{Env: st.env, Root: st.root, Forces: st.forces}, st.dir)
+}
+
+// footerOptions builds the footer inputs shared by the merge and the post
+// trim hook (which must reserve the same block it later appends).
+func footerOptions(r *cli.Runner, req Request, dir string) *provenance.FooterOpts {
+	return &provenance.FooterOpts{
+		Dir:                    dir,
+		PublishFooter:          r.Effective.PublishFooter,
+		PublishAttribution:     r.Effective.PublishAttribution,
+		PublishAttributionText: r.Effective.PublishAttributionText,
+		PublishCopyright:       r.Effective.PublishCopyright,
+		PublishLogo:            r.Effective.PublishLogo,
+		PublishLogoURL:         r.Effective.PublishLogoURL,
+		Root:                   req.Root,
+		ReviewModel:            "",
+		AttributionTextSet:     req.Forces != nil && req.Forces.PublishAttributionTextSet,
+	}
+}
+
+// setMarker ports the verdict-marker tail: a verdict lead marks the review,
+// anything else reads plain. It runs on the curated body (footer included,
+// like the shell — the receipt never flips the marker).
+func (st *state) setMarker(body string) {
+	st.marker = "plain"
+	if markerRe.MatchString(body) {
+		st.marker = "verdict"
+	}
+}
+
+// countHunks ports `hunk_n=$(wc -l < anchor_hunks)`: newline count, read
+// before the derived per-chunk snapshot is removed.
+func (st *state) countHunks() {
+	st.hunkN = hunkLines(st.anchorHunks)
 }
 
 // writeFindings persists the merged store, mirroring `jq '.' > findings.json`
-// with the shell's insertion order.
+// with the shell's insertion order. The caller sets st.findingsFile before
+// the merge (the post verb writes findings.dryrun.json on dry runs).
 func writeFindings(st *state) error {
-	st.findingsFile = st.dir + "/findings.json"
 	if err := atomic.WriteFile(st.findingsFile, []byte(jq.PrettyOrdered(st.entries))); err != nil {
 		return &cli.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", st.findingsFile, err)}
 	}
@@ -115,7 +162,7 @@ func writeFindings(st *state) error {
 // human summary, and the machine envelope.
 func finalizeRecord(st *state) (int, error) {
 	r := st.runner
-	st.nOpen = countStatus(st.entries, "open")
+	st.nOpen = countStatus(st.entries, statusOpen)
 	st.nDeferred = countStatus(st.entries, "deferred")
 	st.nAddressed = countStatus(st.entries, "addressed")
 	diffSHA := sha256File(st.dir + "/full.diff")
@@ -145,7 +192,7 @@ func recordDoc(st *state, diffSHA, toolVersion, promptsHash, model string) *jq.O
 		"diff_sha256", diffSHA,
 		"recorded_at", st.now,
 		"findings", len(st.entries),
-		"open", st.nOpen,
+		statusOpen, st.nOpen,
 		"confidence", st.confidence,
 		"security_summary", st.security,
 		"tool_version", toolVersion,
@@ -215,7 +262,7 @@ func envelopeDoc(st *state, items []any) *jq.Obj {
 				"moved", st.nMoved,
 			),
 			"findings", jq.NewObj(
-				"open", st.nOpen,
+				statusOpen, st.nOpen,
 				"deferred", st.nDeferred,
 				"addressed", st.nAddressed,
 				"file", st.findingsFile,

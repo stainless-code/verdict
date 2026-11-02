@@ -129,7 +129,7 @@ func dispatch(
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces})
 	}
-	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, env, rest); ok {
+	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, env, forces, rest); ok {
 		return code
 	}
 	fmt.Fprintf(stderr, "unknown cmd '%s' (want %s)\n", cmd, verbsHint)
@@ -139,11 +139,13 @@ func dispatch(
 // dispatchMutating runs a store-writing verb; ok is false for unknown verbs.
 func dispatchMutating(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
-	env map[string]string, rest []string,
+	env map[string]string, forces *cli.GlobalForces, rest []string,
 ) (code int, ok bool) {
 	switch cmd {
 	case "record":
-		return record.Run(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
+		return record.Run(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}), true
+	case "post":
+		return record.RunPost(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}), true
 	case "triage":
 		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	case "adopt":
@@ -321,8 +323,8 @@ func versionOf(root string, readFile func(string) ([]byte, error)) string {
 
 // usage prints the verb summary.
 func usage() string {
-	return "usage: verdict triage|adopt|fix|learn|init|install|verify|record " +
-		"<owner/repo> <slug> [flags]\n\nverbs ported to Go: record, triage, " +
+	return "usage: verdict triage|adopt|fix|learn|init|install|verify|record|post " +
+		"<owner/repo> <slug> [flags]\n\nverbs ported to Go: record, post, triage, " +
 		"adopt, fix, learn, init, install, verify " +
 		"(the shell entry point dispatches; see scripts/review.sh)"
 }

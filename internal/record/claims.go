@@ -111,9 +111,12 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 		)))
 	}
 	// The joins verb is the record verb itself ($cmd in the shell), never the
-	// verify command (C5).
-	st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.runner.Cmd, st.now, exists(kb.File))
-	stampCredit(st, target)
+	// verify command (C5). Dry runs stage nothing (the shell's kb_apply_credit
+	// calls sit behind the dryrun-filename guard), so flips stay credit-free.
+	if !st.dryRun {
+		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.runner.Cmd, st.now, exists(kb.File))
+		stampCredit(st, target)
+	}
 	st.checkVerifyContradiction(full)
 }
 
@@ -121,7 +124,7 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 func (st *state) applyNotVerified(target *jq.Obj, vcmd string) {
 	event := "revalidation"
 	if stt, _ := target.Get(fieldStatus); stt == outcomeAddressed {
-		target.Set(fieldStatus, "open")
+		target.Set(fieldStatus, statusOpen)
 		event = "reopened"
 	}
 	target.Set(fieldHistory, appendHistory(target, jq.NewObj(
@@ -232,7 +235,7 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 // isTriageStatus reports whether s is a known triage status.
 func isTriageStatus(s string) bool {
 	switch s {
-	case "open", outcomeAddressed, "wont-fix", "false-positive", "deferred":
+	case statusOpen, outcomeAddressed, "wont-fix", "false-positive", "deferred":
 		return true
 	default:
 		return false
@@ -240,6 +243,8 @@ func isTriageStatus(s string) bool {
 }
 
 // applyTriageFlip flips one resolved triage claim and credits addressed ones.
+// applyTriageFlip flips one resolved triage claim and credits addressed ones.
+// Dry runs stage nothing, mirroring the shell's dryrun-filename guard.
 func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim) {
 	target.Set(fieldStatus, claim.status)
 	target.Set("rationale", claim.reason)
@@ -251,6 +256,9 @@ func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim)
 	)))
 	switch claim.status {
 	case outcomeAddressed, "false-positive":
+		if st.dryRun {
+			return
+		}
 		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.runner.Cmd, st.now, exists(kb.File))
 		stampCredit(st, target)
 	}

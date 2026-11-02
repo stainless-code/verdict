@@ -75,7 +75,12 @@ func Validate(body string, behavioral, expanded bool, marker string) Result {
 	}
 	chk := &checker{cands: cands, regions: sc.regions, fenceInRegion: fenceInRegion, behavioral: behavioral, expanded: expanded, st: &st}
 	chk.run()
-	return Result{Body: renderBody(bodyLines, marker, chk.dels, chk.notes, chk.dline, chk.dopen), Status: st, Warns: chk.warns}
+	// The shell captures the awk render in $(...) which strips trailing
+	// newlines; bodies with no candidates return untouched above.
+	rendered := renderBody(bodyLines, marker, chk.dels, chk.notes, chk.dline, chk.dopen)
+	// The shell captures the awk render in $(...) which strips trailing
+	// newlines; bodies with no candidates return untouched above.
+	return Result{Body: strings.TrimRight(rendered, newline), Status: st, Warns: chk.warns}
 }
 
 // stripOwnNotes drops our own one-line drop notes (pasted-output

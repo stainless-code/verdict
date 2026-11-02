@@ -57,6 +57,15 @@ func Of(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// Sum renders the raw SHA-1 hex of data with no squashing, mirroring the
+// shell's `printf '%s' "$payload" | shasum -a 1` for the post verb's
+// payload hash and double-post marker. It lives in this wire-compat package
+// (not a security boundary) so the depguard exception stays confined here.
+func Sum(data []byte) string {
+	sum := sha1.Sum(data) //nolint:gosec // wire-compat identifiers, see package doc.
+	return hex.EncodeToString(sum[:])
+}
+
 // trimSpaces strips leading/trailing ASCII spaces only, like the shell's
 // sed -e 's/^ //' -e 's/ $//'. The squash step already reduced every
 // whitespace run (tabs, newlines) to a space, so only spaces can sit at the

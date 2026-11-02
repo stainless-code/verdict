@@ -59,10 +59,25 @@ type GhResult struct {
 // callers map failures to the verb's warn-or-refuse posture. Callers needing
 // the stub-log comparison pass the same argv the shell passes (O5).
 func Gh(ctx context.Context, args ...string) (GhResult, error) {
+	return ghRun(ctx, "", args...)
+}
+
+// GhStdin runs gh with exactly the given argv and stdin body, capturing
+// both streams. The post verb's reviews POST pipes the payload the way the
+// shell's `echo "$payload" | gh ... --input -` does (payload plus one
+// newline); the stub-log comparison covers those bytes on both sides.
+func GhStdin(ctx context.Context, stdin string, args ...string) (GhResult, error) {
+	return ghRun(ctx, stdin, args...)
+}
+
+// ghRun is the shared gh spawn: stdin carries the POST payload (payload
+// plus one newline, exactly what the shell's echo pipes); reads pass "".
+func ghRun(ctx context.Context, stdin string, args ...string) (GhResult, error) {
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.Stdin = strings.NewReader(stdin)
 	res := GhResult{}
 	if err := cmd.Run(); err != nil {
 		res.Stdout = stdout.String()

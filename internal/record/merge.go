@@ -23,27 +23,32 @@ type state struct {
 	confidence   any
 	security     any
 	review       *jq.Obj
-	runner       *cli.Runner
 	kb           *kb.Ctx
+	forces       *cli.GlobalForces
+	preFooter    func(string) string
+	runner       *cli.Runner
 	env          map[string]string
+	now          string
+	findingsFile string
+	marker       string
 	dir          string
 	reviewFile   string
 	root         string
-	now          string
+	anchorHunks  string
 	headShort    string
 	prov         string
 	headFull     string
-	findingsFile string
-	anchorHunks  string
-	entries      []any
 	kept         []any
-	moved        []any
 	anchorRows   []hunkRow
+	moved        []any
+	entries      []any
+	hunkN        int
 	nKept        int
 	nMoved       int
 	nOpen        int
 	nDeferred    int
 	nAddressed   int
+	dryRun       bool
 }
 
 // hunkRow is one parsed anchor-hunks row.
@@ -54,9 +59,12 @@ type hunkRow struct {
 	end   int
 }
 
-// validateAndMerge ports validate_and_merge end to end, returning a typed
-// refusal for any fail-closed gate or nil on success.
-func (st *state) validateAndMerge(body string) error {
+// validateAndMerge ports validate_and_merge end to end, returning the
+// curated body (move section, diagram strips, and the rendered footer
+// appended) plus the diagram disposition for the dry-run envelope, or a
+// typed refusal for any fail-closed gate. The record verb discards the body
+// and keeps the warnings; the post verb posts the curated body.
+func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	r := st.runner
 	st.kb = kb.New(r.Warn)
 	st.kb.ResolvePolicy(st.env, exists(kb.File))
@@ -64,18 +72,18 @@ func (st *state) validateAndMerge(body string) error {
 	st.loadKB()
 	st.kb.Staged = []map[string]any{}
 	if err := checkReviewSchema(r, st.review); err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
 	if err := st.validateInputs(); err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
 	anchorHunks, err := st.validateChunkMerge()
 	if err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
 	st.anchorHunks = anchorHunks
 	if err := st.parseConfidence(); err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
 	body = st.validateAnchors(body)
 	body = st.demoteFences(body)
@@ -83,9 +91,19 @@ func (st *state) validateAndMerge(body string) error {
 	st.reportMoves()
 	st.buildEntries(body)
 	if err := st.mergeEntries(); err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
-	return st.applyClaims(body)
+	curated, dstat, err := st.applyClaims(body)
+	if err != nil {
+		return "", diagram.Status{}, err
+	}
+	// The verdict marker and hunk count read the curated body, like the
+	// shell's validate_and_merge tail; the derived per-chunk snapshot is
+	// removed here too, so refusals below never leave it behind.
+	st.setMarker(curated)
+	st.countHunks()
+	removeDerivedSnapshot(st)
+	return curated, dstat, nil
 }
 
 // mergeEntries ports the re-post merge tail: prior overlay, backfill, and
@@ -100,16 +118,16 @@ func (st *state) mergeEntries() error {
 }
 
 // applyClaims ports the authority and garnish tail: bare resolved proposals,
-// verification-gated flips, triage claims, then the garnish checks.
-func (st *state) applyClaims(body string) error {
-	if err := st.applyResolved(); err != nil {
-		return err
-	}
+// verification-gated flips, triage claims, then the garnish checks. It
+// returns the curated body (the record verb discards it; the post verb
+// posts it) with the diagram disposition.
+func (st *state) applyClaims(body string) (string, diagram.Status, error) {
+	st.applyResolved()
 	if err := st.applyVerification(); err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
 	if err := st.applyTriage(); err != nil {
-		return err
+		return "", diagram.Status{}, err
 	}
 	return st.garnishChecks(body)
 }
@@ -150,8 +168,12 @@ func (st *state) reportMoves() {
 }
 
 // garnishChecks runs the post-merge validators: basis counts, evidence
-// links, diagrams, and override fragments.
-func (st *state) garnishChecks(body string) error {
+// links, diagrams, the footer receipt, and the override fragments. It
+// returns the curated body: the record verb discards it (persisting only
+// findings, the record artifact, and the KB stores), while the post verb
+// carries it into the payload. The footer receipt is appended exactly once,
+// like the shell's strip-and-replace render.
+func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	r := st.runner
 	for _, w := range provenance.ValidateBasisLine(
 		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body) {
@@ -161,19 +183,25 @@ func (st *state) garnishChecks(body string) error {
 		body, st.headFull, provenance.EvidenceLinkable(st.dir, st.headFull)) {
 		r.Warn(w)
 	}
-	body = st.applyDiagram(body)
-	if ref := validateOverrides(); ref != nil {
-		return ref
+	dr := st.applyDiagram(body)
+	body = dr.Body
+	// The post hosting-limit guard trims here: after the diagram strips
+	// (entries already derive from the full body) and before the footer
+	// receipt, so the appended block always survives intact.
+	if st.preFooter != nil {
+		body = st.preFooter(body)
 	}
-	// The stripped body is discarded by design (record persists findings,
-	// not prose); the call stays for its footer/receipt collision warnings.
-	_ = stripFooterGarnish(r, body)
-	return nil
+	if ref := validateOverrides(); ref != nil {
+		return "", dr.Status, ref
+	}
+	body = st.applyFooter(body)
+	st.setMarker(body)
+	return body, dr.Status, nil
 }
 
 // applyDiagram validates behavioral diagrams, surfaces its warnings, and
-// returns the validated body.
-func (st *state) applyDiagram(body string) string {
+// returns the validated body with its disposition for the dry-run envelope.
+func (st *state) applyDiagram(body string) diagram.Result {
 	r := st.runner
 	dr := diagram.Validate(body,
 		r.Effective.DiagramsBehavioral == cli.FlagOn,
@@ -182,7 +210,7 @@ func (st *state) applyDiagram(body string) string {
 	for _, w := range dr.Warns {
 		r.Warn(w)
 	}
-	return dr.Body
+	return dr
 }
 
 // anchorLoc renders the stderr table's path locator.
@@ -647,7 +675,7 @@ func stampEntry(st *state, e *jq.Obj, kbExists bool) *jq.Obj {
 	e.Set(fieldSigVersion, sigVersion1)
 	e.Set("firstSeen", st.headShort)
 	e.Set(fieldLastSeen, st.headShort)
-	e.Set(fieldStatus, "open")
+	e.Set(fieldStatus, statusOpen)
 	e.Set("rationale", "")
 	if isSection {
 		e.Set(fieldKB, norm)
@@ -898,7 +926,7 @@ func (st *state) maybeReopen(m *jq.Obj, files map[string]bool) {
 	if ls, _ := m.Get(fieldLastSeen); ls == st.headShort {
 		return
 	}
-	m.Set(fieldStatus, "open")
+	m.Set(fieldStatus, statusOpen)
 	m.Set(fieldHistory, appendHistory(m, jq.NewObj(
 		fieldAt, st.now, fieldEvent, "reopened", fieldActor, "script",
 		"note", "delta touched path", fieldSHA, st.headShort,
@@ -918,21 +946,28 @@ func appendHistory(m *jq.Obj, ev *jq.Obj) []any {
 // applyResolved ports the authority step: bare resolved[] sigs are proposals
 // (history only, never a flip). Shapes are validated upfront; non-strings
 // here are unreachable and skipped.
-func (st *state) applyResolved() error {
+func (st *state) applyResolved() {
+	for _, s := range resolvedItems(st.review) {
+		st.recordResolvedClaim(s)
+	}
+}
+
+// resolvedItems reads the bare resolved sig proposals. Shapes are validated
+// upfront, so non-arrays and non-strings here are unreachable and skipped.
+func resolvedItems(review *jq.Obj) []string {
 	var items []any
-	if rv, ok := st.review.Get("resolved"); ok {
+	if rv, ok := review.Get("resolved"); ok {
 		if arr, isArr := rv.([]any); isArr {
 			items = arr
 		}
 	}
+	var out []string
 	for _, item := range items {
-		s, ok := item.(string)
-		if !ok || s == "" {
-			continue
+		if s, ok := item.(string); ok && s != "" {
+			out = append(out, s)
 		}
-		st.recordResolvedClaim(s)
 	}
-	return nil
+	return out
 }
 
 // recordResolvedClaim records one bare resolved sig as a history-only claim.

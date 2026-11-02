@@ -923,7 +923,7 @@ check_arity() {
 # exit code carry over via exec. This runs before any redirection or prefs
 # work, so the binary owns every observable byte of the run (no duplicate
 # warns, no stolen stdout).
-VERDICT_GO_VERBS="record triage adopt fix learn init install verify report next show ready trend calibrate doctor check-tree"
+VERDICT_GO_VERBS="record triage adopt fix learn init install verify post report next show ready trend calibrate doctor check-tree"
 verdict_impl="${VERDICT_IMPL:-bash}"
 case "$verdict_impl" in
   bash|"") ;;

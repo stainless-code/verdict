@@ -207,7 +207,11 @@ func checkClaimItems(items []any) error {
 
 // checkPriorShape validates the prior findings store: absent, empty, null,
 // false, or a JSON list read as (no) prior; anything else refuses as
-// corrupt-store — the run never starts fresh over history.
+// corrupt-store — the run never starts fresh over history. Every present
+// element must be an object passing the store shape (entries_guard): exotic
+// elements crashed the merge jq with exit 5 and no envelope, so they refuse
+// typed here instead (R1). Null reads as no prior for the read verbs, but
+// the merge indexes elements by sig, so the write path refuses null too.
 func checkPriorShape(dir string) error {
 	path := dir + "/findings.json"
 	raw, ok := readOptional(path)
@@ -224,8 +228,62 @@ func checkPriorShape(dir string) error {
 	if doc == nil || doc == false {
 		return nil
 	}
-	if _, ok := doc.([]any); ok {
-		return nil
+	items, ok := doc.([]any)
+	if !ok {
+		return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 	}
-	return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+	return checkPriorElements(path, items)
+}
+
+// checkPriorElements validates every prior element against the store shape.
+func checkPriorElements(path string, items []any) error {
+	for _, item := range items {
+		if !priorElementOK(item) {
+			return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		}
+	}
+	return nil
+}
+
+// priorElementOK reports whether one prior element passes the store shape:
+// a non-null object whose string-indexed fields read null-or-string and
+// whose indexed-map fields never read object-or-array (entries_guard).
+func priorElementOK(item any) bool {
+	m, ok := item.(*jq.Obj)
+	if !ok || m == nil {
+		return false
+	}
+	return priorScalarsOK(m) && priorMapsOK(m)
+}
+
+// priorScalarsOK validates the string-indexed fields.
+func priorScalarsOK(m *jq.Obj) bool {
+	for _, key := range []string{fieldSig, fieldBody, fieldHeading, "kind", fieldSuggestion} {
+		if v, has := m.Get(key); has && v != nil && v != false {
+			if _, ok := v.(string); !ok {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// priorMapsOK validates the indexed-map fields.
+func priorMapsOK(m *jq.Obj) bool {
+	for _, key := range []string{fieldSeverity, fieldRigor} {
+		if v, has := m.Get(key); has && isContainer(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// isContainer reports whether v decodes as a JSON object or array.
+func isContainer(v any) bool {
+	switch v.(type) {
+	case *jq.Obj, map[string]any, []any:
+		return true
+	default:
+		return false
+	}
 }

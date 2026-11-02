@@ -33,10 +33,11 @@ import (
 
 // Request carries the resolved record invocation.
 type Request struct {
-	Env  map[string]string
-	Repo string
-	Pr   string
-	Root string
+	Env    map[string]string
+	Forces *cli.GlobalForces
+	Repo   string
+	Pr     string
+	Root   string
 }
 
 // Run executes `record <owner/repo> <local-slug> [--json]`, returning the
@@ -117,7 +118,8 @@ func runRecord(r *cli.Runner, req Request) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if ref := st.validateAndMerge(reviewBody(st)); ref != nil {
+	st.findingsFile = dir + "/findings.json"
+	if _, _, ref := st.validateAndMerge(reviewBody(st)); ref != nil {
 		return 0, ref
 	}
 	if err := writeFindings(st); err != nil {
@@ -130,7 +132,7 @@ func runRecord(r *cli.Runner, req Request) (int, error) {
 func finishMerge(r *cli.Runner, st *state, now string) (int, error) {
 	st.kb.CommitStaged(st.findingsFile, now)
 	reportFindings(r, st)
-	if hunkLines(st.anchorHunks) == 0 {
+	if st.hunkN == 0 {
 		r.Warn("no hunks indexed — anchors unchecked, everything kept")
 	}
 	return finalizeClean(st)
@@ -159,7 +161,7 @@ func checkBundleFiles(dir, prov string) error {
 		hint string
 	}{
 		{dir + "/review.json", codeMissingReviewFile, "agent must write {body, approved, comments[]}"},
-		{dir + "/full.diff", "missing-diff", "run fetch-local / fetch --provider first"},
+		{dir + "/full.diff", codeMissingDiff, "run fetch-local / fetch --provider first"},
 	}
 	for _, f := range files {
 		if !exists(f.path) {
@@ -218,7 +220,7 @@ func loadReview(r *cli.Runner, req Request, dir, prov, headFull, now string) (*s
 	return &state{
 		runner: r, dir: dir, prov: prov, headFull: headFull,
 		headShort: shortSHA(headFull), now: now, review: review,
-		reviewFile: reviewFile, root: req.Root, env: req.Env,
+		reviewFile: reviewFile, root: req.Root, env: req.Env, forces: req.Forces,
 	}, nil
 }
 
@@ -253,12 +255,20 @@ func reportFindings(r *cli.Runner, st *state) {
 
 // finalizeClean removes the derived chunk snapshot and writes the artifacts.
 func finalizeClean(st *state) (int, error) {
+	removeDerivedSnapshot(st)
+	return finalizeRecord(st)
+}
+
+// removeDerivedSnapshot deletes the per-chunk pinned hunks: a derived
+// snapshot for one run only, while the fetch-time artifacts stay
+// authoritative. The post verb calls this right after the merge (like the
+// shell's validate_and_merge tail), so refusals never leave it behind.
+func removeDerivedSnapshot(st *state) {
 	// The per-chunk pinned hunks are a derived snapshot for this run only;
 	// the fetch-time artifacts stay authoritative.
 	if st.anchorHunks != st.dir+"/hunks.tsv" {
 		removeBestEffort(st.anchorHunks)
 	}
-	return finalizeRecord(st)
 }
 
 // removeBestEffort deletes a derived snapshot, ignoring failures: the file
