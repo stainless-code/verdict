@@ -75,9 +75,7 @@
           "description": "Defaults to RIGHT; case-insensitive, LEFT for deleted lines.",
           "type": "string"
         },
-        "body": {
-          "type": "string"
-        },
+        "body": { "type": "string" },
         "suggestion": {
           "description": "Fenced suggestions demote to the body (a fence inside would break rendering).",
           "type": ["string", "null"]
@@ -125,9 +123,7 @@
       "type": "object",
       "properties": {
         "heading": { "type": "string" },
-        "severity": {
-          "enum": ["critical", "important", "informational", null]
-        }
+        "severity": { "enum": ["critical", "important", "informational", null] }
       },
       "required": ["heading"],
       "additionalProperties": true

@@ -33,7 +33,7 @@ vuln:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: ci-go
-ci-go: gofmt-check vet test-race vuln
+ci-go: gofmt-check schemas-check vet test-race vuln
 
 .PHONY: evals-go
 evals-go: build
@@ -47,3 +47,7 @@ clean:
 .PHONY: schemas
 schemas:
 	$(GO) run ./cmd/schemagen -write
+
+.PHONY: schemas-check
+schemas-check:
+	$(GO) run ./cmd/schemagen

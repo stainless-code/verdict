@@ -5,9 +5,7 @@
   "description": "Written only by the real-post path in scripts/review.sh (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
   "type": "object",
   "properties": {
-    "schema_version": {
-      "const": "1"
-    },
+    "schema_version": { "const": "1" },
     "review": {
       "description": "Raw GitHub review object: id, html_url and whatever the API returned.",
       "type": "object",
@@ -22,14 +20,8 @@
       "type": "string",
       "format": "date-time"
     },
-    "confidence": {
-      "type": ["integer", "null"],
-      "minimum": 1,
-      "maximum": 5
-    },
-    "security_summary": {
-      "type": ["string", "null"]
-    },
+    "confidence": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+    "security_summary": { "type": ["string", "null"] },
     "tool_version": {
       "description": "Tool version that wrote this record (from package.json).",
       "type": "string"

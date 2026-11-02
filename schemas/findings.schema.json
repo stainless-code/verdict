@@ -17,9 +17,7 @@
           "description": "Normalization generation; backfilled onto older entries, never clobbered.",
           "const": "1"
         },
-        "kind": {
-          "enum": ["inline", "section"]
-        },
+        "kind": { "enum": ["inline", "section"] },
         "path": {
           "description": "Inline findings only.",
           "type": ["string", "null"]
@@ -28,22 +26,14 @@
           "description": "Section findings only: the exact ### body heading.",
           "type": ["string", "null"]
         },
-        "line": {
-          "type": ["integer", "null"]
-        },
-        "side": {
-          "type": ["string", "null"]
-        },
+        "line": { "type": ["integer", "null"] },
+        "side": { "type": ["string", "null"] },
         "anchored": {
           "description": "Inline: true when the anchor sits inside one reviewed hunk. Section: the string \"body\".",
           "type": ["boolean", "string", "null"]
         },
-        "body": {
-          "type": "string"
-        },
-        "suggestion": {
-          "type": ["string", "null"]
-        },
+        "body": { "type": "string" },
+        "suggestion": { "type": ["string", "null"] },
         "kb": {
           "description": "Cited knowledge-base rule ids; [] when uncited.",
           "type": ["array", "null"],
@@ -69,21 +59,11 @@
             "deferred"
           ]
         },
-        "firstSeen": {
-          "type": "string"
-        },
-        "lastSeen": {
-          "type": "string"
-        },
-        "rationale": {
-          "type": "string"
-        },
-        "triagedAt": {
-          "type": "string"
-        },
-        "triagedBy": {
-          "type": "string"
-        },
+        "firstSeen": { "type": "string" },
+        "lastSeen": { "type": "string" },
+        "rationale": { "type": "string" },
+        "triagedAt": { "type": "string" },
+        "triagedBy": { "type": "string" },
         "history": {
           "description": "Append-only: reported, claim, reopened, revalidation, addressed, triaged.",
           "type": "array",

@@ -5,37 +5,21 @@
   "description": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in scripts/review.sh. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly) — the remaining verbs keep the generic object shape until their data stabilizes.",
   "type": "object",
   "properties": {
-    "schema_version": {
-      "const": "1"
-    },
-    "verb": {
-      "type": "string"
-    },
-    "repo": {
-      "type": "string"
-    },
+    "schema_version": { "const": "1" },
+    "verb": { "type": "string" },
+    "repo": { "type": "string" },
     "pr": {
       "description": "Numeric PR, else null (local slugs never coerce).",
       "type": ["integer", "null"]
     },
-    "at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "next": {
-      "type": "string"
-    },
+    "at": { "type": "string", "format": "date-time" },
+    "next": { "type": "string" },
     "warnings": {
       "type": "array",
       "items": { "type": "string" }
     },
-    "data": {
-      "type": ["object", "null"],
-      "additionalProperties": true
-    },
-    "error": {
-      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/error" }]
-    }
+    "data": { "type": ["object", "null"], "additionalProperties": true },
+    "error": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/error" }] }
   },
   "required": [
     "schema_version",
@@ -106,9 +90,7 @@
             "deferred"
           ]
         },
-        "anchored": {
-          "type": ["boolean", "string", "null"]
-        },
+        "anchored": { "type": ["boolean", "string", "null"] },
         "locator": { "type": "string" }
       },
       "required": ["sig", "status"],

@@ -14,9 +14,7 @@
     "record": {
       "type": "object",
       "properties": {
-        "schema_version": {
-          "const": "1"
-        },
+        "schema_version": { "const": "1" },
         "effort": {
           "description": "Run tier; missing or unknown values roll up as standard.",
           "type": "string"
@@ -30,12 +28,8 @@
           "description": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
           "type": ["number", "null"]
         },
-        "wall_seconds": {
-          "type": ["number", "null"]
-        },
-        "diff_bytes": {
-          "type": ["number", "null"]
-        },
+        "wall_seconds": { "type": ["number", "null"] },
+        "diff_bytes": { "type": ["number", "null"] },
         "lenses": {
           "type": "array",
           "items": { "type": "string" }

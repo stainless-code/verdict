@@ -5,9 +5,7 @@
   "description": "Written by the record verb in scripts/review.sh for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
   "type": "object",
   "properties": {
-    "schema_version": {
-      "const": "1"
-    },
+    "schema_version": { "const": "1" },
     "status": {
       "description": "Bundle provider that was recorded (e.g. local).",
       "type": "string"
@@ -35,14 +33,8 @@
       "type": "integer",
       "minimum": 0
     },
-    "confidence": {
-      "type": ["integer", "null"],
-      "minimum": 1,
-      "maximum": 5
-    },
-    "security_summary": {
-      "type": ["string", "null"]
-    },
+    "confidence": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+    "security_summary": { "type": ["string", "null"] },
     "tool_version": {
       "description": "Tool version that wrote this record (from package.json).",
       "type": "string"
