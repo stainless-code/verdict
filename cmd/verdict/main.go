@@ -56,6 +56,8 @@ func main() {
 
 // run executes the CLI with injected I/O and environment for testability,
 // returning the process exit code.
+//
+//nolint:revive // the hidden transport dispatch adds one branch to the front door
 func run(args []string, stdout, stderr *os.File, getenv func(string) string, readFile func(string) ([]byte, error)) int {
 	// The Windows replacement helper is a hidden dispatch: it must run
 	// before usage/arity/prefs and never appears in the usage block.
@@ -65,6 +67,11 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	// Installed binaries ship no package.json: the linked release version
 	// (if any) owns the footer before any flag handling runs.
 	provenance.SetBuildVersion(strings.TrimPrefix(version, "v"))
+	// `mcp` is the hidden stdio transport: dispatched before usage/arity so
+	// the review usage block (and its byte contract) never grows a line.
+	if len(args) > 0 && args[0] == "mcp" {
+		return runMCP(args[1:], stdout, stderr, getenv, readFile)
+	}
 	if done := handleMetaFlags(args, stdout, readFile); done {
 		return cli.ExitOK
 	}

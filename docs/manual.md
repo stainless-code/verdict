@@ -415,6 +415,42 @@ verdict report owner/repo 123 --check critical --completeness || exit 1
 # is the posted HEAD; exit 1 names which dimension failed on stderr.
 ```
 
+### MCP server (stdio, experimental until 1.0)
+
+`verdict mcp` serves the review verbs as MCP tools over stdio: newline-delimited
+JSON-RPC 2.0 on stdin/stdout, one frame per line. There is no daemon, listener,
+HTTP/SSE mode, or remote auth: the process shares the host's credentials and
+exits when stdin closes. It is hidden from the review usage block (the usage
+bytes stay frozen) but `verdict mcp --help` documents it.
+
+Tools are named after the verbs and take the core request shape: `adopt`,
+`calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
+`learn`, `next`, `ready`, `record`, `report`, `show`, `trend`, `triage`,
+`verify` (and `post` once ticket 17b extracts `internal/core/post`). `install`,
+`upgrade`, and `skill` are distribution surfaces, never tools. Input schemas are
+generated from the Go request structs, so they cannot drift from the core
+contract; `repo`/`pr` plus verb fields are the arguments.
+
+`--read-only` exposes only the non-writing tools (`report`, `next`, `show`,
+`trend`, `ready`, `doctor`, `check-tree`); every verb is exposed by default
+because the host already authorizes the binary and its credentials. Each
+`tools/call` returns the CLI `--json` envelope's `data` as one text block plus
+`structuredContent`; a typed refusal sets `isError: true` with
+`{code, message, hint}` in both places. A malformed call is a JSON-RPC
+`-32602` error, not a refusal. Human progress and warnings go to stderr (or MCP
+notifications), never stdout: stdout is the protocol channel.
+
+Claude/Cursor-style config:
+
+```json
+{ "mcpServers": { "verdict": { "command": "verdict", "args": ["mcp"] } } }
+```
+
+Use `--read-only` in review-only hosts: `{"command":"verdict","args":["mcp",
+"--read-only"]}`. Codex uses the same command/argv in its MCP server config.
+The server is experimental until 1.0: tool shapes may still move, while the
+envelope keeps its `schema_version` contract.
+
 ### Pre-push probe (local gate before CI burns)
 
 Drop the combined gate into `.git/hooks/pre-push` (executable) so a stale HEAD
