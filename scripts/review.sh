@@ -2216,14 +2216,27 @@ validate_review_input() { # $1 = review.json, $2 = dir
 # JSON list (empty files slurp as no docs — the merge treats those, like
 # absent files, as no prior). Anything else refuses as corrupt-store: the
 # run never starts fresh, since that would silently lose history.
+# Every present element must be null-or-shape too (entries_guard): exotic
+# elements crash the merge jq below with exit 5 and no envelope, so they
+# refuse typed here instead (R1).
 validate_prior_findings() { # $1 = dir
   local f="$1/findings.json"
   [[ -f "$f" ]] || return 0
-  if jq -e 'if . == null or . == false then true elif type == "array" then true else error("notalist") end' "$f" >/dev/null 2>&1; then
-    return 0
-  fi
   [[ -s "$f" ]] || return 0
-  fail "corrupt-store" "$f is corrupt or not a JSON list (refusing to start fresh — restore it from backup, then re-run)"
+  if ! jq -e 'if . == null or . == false then true elif type == "array" then true else error("notalist") end' "$f" >/dev/null 2>&1; then
+    fail "corrupt-store" "$f is corrupt or not a JSON list (refusing to start fresh — restore it from backup, then re-run)"
+  fi
+  # Only arrays carry elements to check: null/false read as no prior above.
+  # Every element must be an object passing the store shape (entries_guard):
+  # exotic elements crash the merge jq below with exit 5 and no envelope, so
+  # they refuse typed here instead (R1). Null reads as no prior for the read
+  # verbs, but the merge indexes elements by sig ($byNew[null] crashes), so
+  # the write path refuses null too rather than silently starting fresh.
+  if jq -e 'type == "array"' "$f" >/dev/null 2>&1; then
+    if ! entries_guard "$f" || jq -e '[.[] | select(. == null)] | length > 0' "$f" >/dev/null 2>&1; then
+      fail "corrupt-store" "$f is corrupt or not a JSON list (refusing to start fresh — restore it from backup, then re-run)"
+    fi
+  fi
 }
 
 validate_and_merge() { # $1 = review.json, $2 = dir, $3 = head full sha ("" ok), $4 = now, $5 = findings file
@@ -4167,6 +4180,12 @@ $body"
     break
   done
   if [[ -z "$posted" ]]; then
+    fail "post-failed" "post failed: $(head -c 300 "$dir/.post.err" | tr '\n' ' ') — narrow the cause (anchor drift? body size?) — do not drop comments blindly."
+  fi
+  # R1: a successful POST that did not return a review object refuses typed —
+  # decoding it below would crash jq with no envelope and leave a wedged empty
+  # post.json behind the touched marker.
+  if ! jq -e 'type == "object"' <<<"$posted" >/dev/null 2>&1; then
     fail "post-failed" "post failed: $(head -c 300 "$dir/.post.err" | tr '\n' ' ') — narrow the cause (anchor drift? body size?) — do not drop comments blindly."
   fi
   touch "$marker_file"
