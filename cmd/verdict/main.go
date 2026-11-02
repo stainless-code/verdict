@@ -103,6 +103,21 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 	return false
 }
 
+// readHandler is the shared signature of the read-only verbs.
+type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
+
+// readVerbs maps each read-only verb to its handler.
+var readVerbs = map[string]readHandler{
+	"report":     report.Run,
+	"next":       report.RunNext,
+	"show":       report.RunShow,
+	"ready":      ready.Run,
+	"trend":      trend.Run,
+	"calibrate":  calibrate.Run,
+	"doctor":     doctor.Run,
+	"check-tree": checktree.Run,
+}
+
 // dispatch runs the verb or reports it unknown.
 func dispatch(
 	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
@@ -111,53 +126,40 @@ func dispatch(
 	routeHuman(r)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer stop()
-	req := readcommon.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}
+	if h, ok := readVerbs[cmd]; ok {
+		return h(ctx, r, rest, readcommon.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces})
+	}
+	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, env, rest); ok {
+		return code
+	}
+	fmt.Fprintf(stderr, "unknown cmd '%s' (want %s)\n", cmd, verbsHint)
+	return cli.ExitUsage
+}
+
+// dispatchMutating runs a store-writing verb; ok is false for unknown verbs.
+func dispatchMutating(
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
+	env map[string]string, rest []string,
+) (code int, ok bool) {
 	switch cmd {
 	case "record":
-		return record.Run(ctx, r, rest, record.Request{
-			Repo: repo, Pr: pr, Root: root, Env: env,
-		})
+		return record.Run(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	case "triage":
-		return triage.Run(ctx, r, rest, triage.Request{
-			Repo: repo, Pr: pr, Root: root, Env: env,
-		})
+		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	case "adopt":
-		return adopt.Run(ctx, r, rest, adopt.Request{
-			Repo: repo, Pr: pr, Root: root, Env: env,
-		})
+		return adopt.Run(ctx, r, rest, adopt.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	case "fix":
-		return fix.Run(ctx, r, rest, fix.Request{
-			Repo: repo, Pr: pr, Root: root, Env: env,
-		})
+		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	case "learn":
-		return learn.Run(ctx, r, rest, env)
+		return learn.Run(ctx, r, rest, env), true
 	case "init":
-		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env})
+		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env}), true
 	case "install":
-		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root})
+		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root}), true
 	case "verify":
-		return verify.Run(ctx, r, rest, verify.Request{
-			Repo: repo, Pr: pr, Root: root, Env: env,
-		})
-	case "report":
-		return report.Run(ctx, r, rest, req)
-	case "next":
-		return report.RunNext(ctx, r, rest, req)
-	case "show":
-		return report.RunShow(ctx, r, rest, req)
-	case "ready":
-		return ready.Run(ctx, r, rest, req)
-	case "trend":
-		return trend.Run(ctx, r, rest, req)
-	case "calibrate":
-		return calibrate.Run(ctx, r, rest, req)
-	case "doctor":
-		return doctor.Run(ctx, r, rest, req)
-	case "check-tree":
-		return checktree.Run(ctx, r, rest, req)
+		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	default:
-		fmt.Fprintf(stderr, "unknown cmd '%s' (want %s)\n", cmd, verbsHint)
-		return cli.ExitUsage
+		return 0, false
 	}
 }
 
