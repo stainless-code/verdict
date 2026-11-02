@@ -5546,45 +5546,53 @@ if [[ "$cmd" == "verify" ]]; then
   # Own process group so the timeout kill stops the whole tree: a backgrounded
   # child would otherwise survive and its exit 0 get recorded as proof.
   # Monitor mode assigns the background job its own pgid on Linux and macOS
-  # (no setsid(1) on macOS); restored immediately after spawn.
+  # (no setsid(1) on macOS). The spawn, poll, kill, and reap all run inside a
+  # stderr-silenced subshell reporting code and flag on stdout: when the
+  # timed-out child dies by signal, bash 5 prints a "Killed" job-status notice
+  # to the waiting shell's stderr (macOS bash 3.2 stays silent), which would
+  # leak runtime noise to the user and break byte parity. Subshell-locals take
+  # an sv_ prefix so no outer variable is touched from inside (SC2030/31).
+  command -v ps >/dev/null 2>&1 || warn "no ps(1) — timeout unenforced for this run"
+  vex=$({
   set -m
-  bash -c "$vcmd" >"$dir/.verify.out" 2>&1 & vpid=$!
+  bash -c "$vcmd" >"$dir/.verify.out" 2>&1 & sv_pid=$!
   set +m
   # Polling watchdog (portable, orphan-free): no background sleeper exists to outlive
   # us holding pipes open. Needs ps(1) to spot zombies (finished-but-unreaped reads
-  # alive under kill -0); without ps the timeout cannot be enforced — say so loudly.
-  timed_out="false"
+  # alive under kill -0); without ps the timeout cannot be enforced — said loudly above.
+  sv_timed_out="false"
   if command -v ps >/dev/null 2>&1; then
-    elapsed=0
+    sv_elapsed=0
     while true; do
-      alive="1"
-      kill -0 "$vpid" 2>/dev/null || alive=""
-      if [[ -n "$alive" ]] && ps -p "$vpid" -o stat= 2>/dev/null | grep -q 'Z'; then alive=""; fi
-      if [[ -z "$alive" ]] || (( elapsed >= timeout_s )); then break; fi
-      sleep 1; elapsed=$(( elapsed + 1 ))
+      sv_alive="1"
+      kill -0 "$sv_pid" 2>/dev/null || sv_alive=""
+      if [[ -n "$sv_alive" ]] && ps -p "$sv_pid" -o stat= 2>/dev/null | grep -q 'Z'; then sv_alive=""; fi
+      if [[ -z "$sv_alive" ]] || (( sv_elapsed >= timeout_s )); then break; fi
+      sleep 1; sv_elapsed=$(( sv_elapsed + 1 ))
     done
-    if [[ -n "$alive" ]]; then
-      kill -9 -- "-$vpid" 2>/dev/null || true
-      timed_out="true"; echo "timeout after ${timeout_s}s" > "$dir/.verify.timeout"
+    if [[ -n "$sv_alive" ]]; then
+      kill -9 -- "-$sv_pid" 2>/dev/null || true
+      sv_timed_out="true"; echo "timeout after ${timeout_s}s" > "$dir/.verify.timeout"
     fi
-  else
-    warn "no ps(1) — timeout unenforced for this run"
   fi
-  vcode=0; wait "$vpid" || vcode=$?
+  sv_code=0; wait "$sv_pid" || sv_code=$?
   # Post-reap sweep: a parent that exits fast can leave the tree running
   # (decoy exit), which the poll loop never sees. If the group outlives the
   # parent, stop it and refuse the proof — an unverified tree is not a verified
   # one. Grace period lets legitimate stragglers (log flushers) finish instead
   # of tripping the mark. Deliberate setsid(1) escapers leave the group and stay
   # out of reach; containment beyond this is documented as out of scope.
-  if kill -0 -- "-$vpid" 2>/dev/null; then
+  if kill -0 -- "-$sv_pid" 2>/dev/null; then
     sleep 2
-    if kill -0 -- "-$vpid" 2>/dev/null; then
-      kill -9 -- "-$vpid" 2>/dev/null || true
-      timed_out="true"
+    if kill -0 -- "-$sv_pid" 2>/dev/null; then
+      kill -9 -- "-$sv_pid" 2>/dev/null || true
+      sv_timed_out="true"
       echo "orphaned command tree killed after exit" > "$dir/.verify.timeout"
     fi
   fi
+  printf '%s %s' "$sv_code" "$sv_timed_out"
+  } 2>/dev/null)
+  vcode=${vex% *}; timed_out=${vex#* }
   tail4k=$(tail -c 4000 "$dir/.verify.out")
   # Redact known secret values from the recorded tail (hygiene, not a boundary:
   # the command itself runs with full env). Names are matched, values replaced —
