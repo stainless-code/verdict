@@ -22,6 +22,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $RepoBase = 'https://github.com/stainless-code/verdict/releases/download'
+$LatestUrl = 'https://github.com/stainless-code/verdict/releases/latest'
 $ChecksumsName = 'checksums.txt'
 $BundleName = 'checksums.txt.sigstore.json'
 $IdentityRegexp = '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+.*$'
@@ -62,7 +63,9 @@ function Save-Url {
 
 function Resolve-Latest {
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
-  $request = [System.Net.HttpWebRequest]::Create("$DownloadUrl/latest")
+  $latest = $LatestUrl
+  if ($DownloadUrl -ne $RepoBase) { $latest = "$DownloadUrl/latest" }
+  $request = [System.Net.HttpWebRequest]::Create($latest)
   $request.AllowAutoRedirect = $false
   $request.Method = 'GET'
   $request.Timeout = 30000
@@ -75,7 +78,7 @@ function Resolve-Latest {
   }
   try {
     $location = $response.Headers['Location']
-    if (-not $location) { throw "latest did not redirect (GET $DownloadUrl/latest)" }
+    if (-not $location) { throw "latest did not redirect (GET $latest)" }
     if ($location -match '/v([0-9]+\.[0-9]+\.[0-9]+[^/]*)/?$') { return $Matches[1] }
     throw "could not parse a version from $location"
   } finally {

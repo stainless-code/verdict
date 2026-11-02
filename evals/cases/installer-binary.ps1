@@ -141,7 +141,8 @@ try {
   $expectedArchive = $row.file.Replace('{version}', '1.2.3')
   $source = [System.IO.File]::ReadAllText($Installer)
   if ($source.Contains($contract.checksums) -and $source.Contains($contract.signatureBundle) `
-      -and $source.Contains($contract.cosign.issuer) -and $source.Contains('refs/tags/v')) {
+      -and $source.Contains($contract.cosign.issuer) -and $source.Contains('refs/tags/v') `
+      -and $source.Contains('https://github.com/stainless-code/verdict/releases/latest')) {
     Good 'install.ps1 names the contract checksums, bundle, and cosign issuer'
   } else {
     Bad 'install.ps1 drifted from release/contract.json'

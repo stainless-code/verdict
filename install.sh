@@ -10,6 +10,7 @@
 set -eu
 
 REPO_BASE='https://github.com/stainless-code/verdict/releases/download'
+LATEST_URL='https://github.com/stainless-code/verdict/releases/latest'
 CHECKSUMS='checksums.txt'
 BUNDLE='checksums.txt.sigstore.json'
 COSIGN_IDENTITY='https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/tags/v*'
@@ -138,8 +139,9 @@ else
   base="${VERDICT_DOWNLOAD_URL:-$REPO_BASE}"; base="${base%/}"
   VERSION="${VERDICT_VERSION:-latest}"
   if [ "$VERSION" = latest ]; then
-    effective="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$base/latest")" \
-      || die "could not resolve the latest release via $base/latest"
+    latest="$LATEST_URL"; [ "$base" = "$REPO_BASE" ] || latest="$base/latest"
+    effective="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$latest")" \
+      || die "could not resolve the latest release via $latest"
     case "$effective" in
       */v*) VERSION="${effective##*/v}" ;;
       *) die "could not parse a version from the latest release redirect: $effective" ;;

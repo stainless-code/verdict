@@ -99,6 +99,7 @@ contract="$EVAL_ROOT/release/contract.json"
 if grep -Fq "CHECKSUMS='$(jq -r .checksums "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "BUNDLE='$(jq -r .signatureBundle "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_ISSUER='$(jq -r .cosign.issuer "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq 'https://github.com/stainless-code/verdict/releases/latest' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'verdict_${VERSION}_${os}_${arch}.tar.gz' "$EVAL_ROOT/install.sh"; then
   good "install.sh names the contract checksums, bundle, archive shape, and issuer"
 else
@@ -249,6 +250,7 @@ PIN=latest; EFFECTIVE_URL="file://$REL/v9.9.9"
 run_install
 if [ "$EVAL_STATUS" -eq 0 ] && grep -Fq '"version":"9.9.9"' "$INSTALL_DIR/.verdict-installer" \
   && grep -Fq "file://$REL/v9.9.9/" "$CURL_LOG" \
+  && grep -Fq "file://$REL/latest" "$CURL_LOG" \
   && ! grep -q 'api.github.com' "$CURL_LOG"; then
   good "latest resolves through the Releases redirect, never the API"
 else
