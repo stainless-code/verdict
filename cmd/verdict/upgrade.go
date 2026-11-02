@@ -47,7 +47,7 @@ func parseUpgradeFlags(r *cli.Runner, verb string, args []string, uninstall bool
 		switch arg := args[i]; {
 		case arg == "--dry-run":
 			f.dryRun = true
-		case arg == "--json":
+		case arg == flagJSON:
 		case !uninstall && arg == "--version":
 			if i+1 >= len(args) {
 				return f, r.ReportUsage(&cli.UsageError{Message: "--version needs a value"}), true
@@ -77,10 +77,10 @@ func finishUpgrade(ctx context.Context, r *cli.Runner, env map[string]string, f 
 		r.Rentry += " --version " + f.version
 	}
 	if f.dryRun {
-		r.Rentry += " --dry-run"
+		r.Rentry += entryDryRun
 	}
 	if r.JSONMode {
-		r.Rentry += " --json"
+		r.Rentry += entryJSON
 	}
 	req := upgrade.Request{
 		Runtime:    &core.Runtime{Env: env, Now: r.Now, Progress: runnerProgress{r}},
@@ -115,13 +115,13 @@ func finishUninstall(ctx context.Context, r *cli.Runner, env map[string]string, 
 	r.Repo, r.Pr = "", ""
 	r.Rentry = "verdict uninstall"
 	if f.dryRun {
-		r.Rentry += " --dry-run"
+		r.Rentry += entryDryRun
 	}
 	if f.removePath {
 		r.Rentry += " --remove-path"
 	}
 	if r.JSONMode {
-		r.Rentry += " --json"
+		r.Rentry += entryJSON
 	}
 	req := upgrade.Request{
 		Runtime:    &core.Runtime{Env: env, Now: r.Now, Progress: runnerProgress{r}},

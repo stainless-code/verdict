@@ -1,0 +1,101 @@
+#!/bin/sh
+# verdict skill shim. A skill copy only carries the skill; this shim resolves
+# the binary and never downloads during a review.
+#
+# Resolution order:
+#   1. VERDICT_BIN (set but not executable is a hard, typed error)
+#   2. <skill>/bin/verdict (written by `bootstrap`)
+#   3. verdict on PATH (the global install: curl / npm / brew)
+# With none of those it exits typed `missing-go-binary` and names the one
+# explicit install step: `./scripts/verdict bootstrap`. That bootstrap fetches
+# the pinned release's install.sh once and lets the ticket-10 installer verify
+# (sigstore bundle when cosign is present, SHA-256 always) and atomically place
+# <skill>/bin/verdict. It is idempotent, offline afterwards, and never runs on
+# a review path.
+set -eu
+
+case "$0" in
+  */*) SHIM_DIR=${0%/*} ;;
+  *) SHIM_DIR=. ;;
+esac
+CDPATH=''
+export CDPATH
+SKILL_DIR=$(cd -- "$SHIM_DIR/.." && pwd -P) || exit 1
+SELF="$SKILL_DIR/scripts/verdict"
+BUNDLED="$SKILL_DIR/bin/verdict"
+RECEIPT="$SKILL_DIR/.verdict-managed"
+REPO_BASE='https://github.com/stainless-code/verdict/releases/download'
+LATEST_INSTALL='https://github.com/stainless-code/verdict/releases/latest/download/install.sh'
+
+die() {
+  printf 'verdict: %s\n' "$*" >&2
+  exit 1
+}
+
+# receipt_version prints the skill copy's pinned version (empty when absent).
+receipt_version() {
+  [ -f "$RECEIPT" ] || return 0
+  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECEIPT" | head -n 1
+}
+
+# resolve execs the first available binary.
+resolve() {
+  if [ -n "${VERDICT_BIN:-}" ]; then
+    [ -f "$VERDICT_BIN" ] && [ -x "$VERDICT_BIN" ] \
+      || die "bad-verdict-bin: VERDICT_BIN=$VERDICT_BIN is not an executable file"
+    exec "$VERDICT_BIN" "$@"
+  fi
+  if [ -f "$BUNDLED" ] && [ -x "$BUNDLED" ]; then
+    exec "$BUNDLED" "$@"
+  fi
+  found=$(command -v verdict 2>/dev/null || true)
+  if [ -n "$found" ]; then
+    # Never re-exec this shim when its own scripts/ dir is on PATH.
+    [ "$found" = "$SELF" ] || exec "$found" "$@"
+  fi
+  die "missing-go-binary: no verdict binary found; install the global binary or run: $SKILL_DIR/scripts/verdict bootstrap (one time, verified)"
+}
+
+# bootstrap fetches and verifies the pinned binary once, through install.sh.
+bootstrap() {
+  if [ -f "$BUNDLED" ] && [ -x "$BUNDLED" ]; then
+    printf 'verdict: already bootstrapped at %s\n' "$BUNDLED"
+    return 0
+  fi
+  command -v curl >/dev/null 2>&1 \
+    || die "bootstrap-failed: bootstrap needs curl (or install the global binary)"
+  version="${VERDICT_VERSION:-$(receipt_version)}"
+  version=${version#v}
+  base="${VERDICT_DOWNLOAD_URL:-$REPO_BASE}"
+  base=${base%/}
+  if [ -n "$version" ]; then
+    case "$version" in
+      *[!0-9A-Za-z.+-]*) die "bootstrap-failed: bad version: $version" ;;
+    esac
+    url="$base/v$version/install.sh"
+  elif [ -z "${VERDICT_DOWNLOAD_URL:-}" ]; then
+    url="$LATEST_INSTALL"
+  else
+    url="$base/latest/download/install.sh"
+  fi
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/verdict-bootstrap.XXXXXX") \
+    || die "bootstrap-failed: cannot create a temp dir"
+  trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+  printf 'verdict: bootstrapping %s from %s (one-time; verified by install.sh)\n' \
+    "${version:-latest}" "$url" >&2
+  curl -fsSL "$url" -o "$tmp/install.sh" || die "bootstrap-failed: could not fetch $url"
+  VERDICT_INSTALL="$SKILL_DIR/bin" VERDICT_NO_MODIFY_PATH=1 VERDICT_VERSION="${version:-}" \
+    sh "$tmp/install.sh" \
+    || die "bootstrap-failed: the verified installer refused; nothing was installed"
+  [ -f "$BUNDLED" ] && [ -x "$BUNDLED" ] \
+    || die "bootstrap-failed: installer finished but $BUNDLED is missing"
+  printf 'verdict: bootstrapped %s\n' "$BUNDLED"
+}
+
+if [ "${1:-}" = bootstrap ]; then
+  shift
+  [ "$#" -eq 0 ] || die "usage: scripts/verdict bootstrap (pins VERDICT_VERSION or the receipt)"
+  bootstrap
+else
+  resolve "$@"
+fi

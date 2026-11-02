@@ -24,6 +24,12 @@ func WriteFile(path string, data []byte) error {
 	return writeFile(path, data, storeFileMode)
 }
 
+// WriteFileMode writes data to path atomically with an explicit mode, for
+// payload files that must land executable (the skill shim, schema validator).
+func WriteFileMode(path string, data []byte, mode os.FileMode) error {
+	return writeFile(path, data, mode)
+}
+
 // writeFile is the shared temp+fsync+rename+dir-fsync path.
 func writeFile(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)

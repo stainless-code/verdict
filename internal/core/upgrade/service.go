@@ -342,7 +342,7 @@ func applySafety(req *Request, det *detection) (*detection, *core.RefusalError) 
 		det.Code = codeSkillCopy
 		det.Command = "npx skills update"
 		det.Reason = fmt.Sprintf("skill copy at %s: update the skill with `npx skills update`, "+
-			"or bootstrap the binary with `./scripts/review.sh bootstrap`", det.exe)
+			"or bootstrap the binary with `./scripts/verdict bootstrap`", det.exe)
 		if root != "" {
 			det.Reason += " (skill dir: " + root + ")"
 		}

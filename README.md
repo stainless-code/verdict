@@ -123,14 +123,16 @@ an option if other projects ever need it standalone.
 Pick one route per machine (two copies = double-loaded skill):
 
 ```bash
-# registry route (no git checkout needed): the skill copy carries the CLI.
-# install.sh is NOT shipped in the npm tarball and never runs here —
-# invoke the bundled binary from the repo under review instead.
+# registry route (npx skills is scoped to the skills dir): install the GLOBAL
+# binary once (curl/npm/brew above) and the skill resolves `verdict` on PATH.
+# install.sh is NOT shipped in the npm tarball and never runs here.
 npx skills add stainless-code/verdict -g
-<skillsdir>/verdict/bin/verdict fetch owner/repo 123
-# refresh registry copies any time (filters match skill names, not owner/repo)
 npx skills check    # report outdated, change nothing
 npx skills update   # update everything in scope (add -g for global)
+
+# no global binary yet? one explicit, verified bootstrap (never at review
+# time) writes <skillsdir>/verdict/bin/verdict; pin it with VERDICT_VERSION.
+sh <skillsdir>/verdict/scripts/verdict bootstrap
 
 # source route (symlink into a git checkout; `git pull` updates, no updater
 # daemon by design). install-skill.sh runs only from a checkout — it refuses
@@ -168,12 +170,15 @@ Anything else on the
 is one `npx skills add -a <agent>` away.
 
 Operator verbs (offline, same preview-then-confirm idiom): scaffold repo
-controls with `verdict init --preset standard --yes`, and copy the skill
-payload (`SKILL.md` + `prompts/` + `scripts/`) with `verdict install --yes`
+controls with `verdict init --preset standard --yes`, copy the skill payload
+(`SKILL.md` + `prompts/` + `scripts/`) with `verdict install --yes`
 (detects `.agents/skills`, `.claude/skills`, `.codex/skills`; only writes
-installer-owned `verdict/` dirs). The `install-skill.sh` symlink route is the
-wide-coverage sibling for git checkouts only (nine agents,
-`--detect`/`--all`).
+installer-owned `verdict/` dirs), or write the binary's own embedded skill
+atomically with `verdict skill install --agent claude` (or `--dir
+<skills-dir>`; previews create/update/keep/blocked, refuses a foreign target
+unless `--force`, never prompts, supports `--dry-run`/`--json`). The
+`install-skill.sh` symlink route is the wide-coverage sibling for git
+checkouts only (nine agents, `--detect`/`--all`).
 
 ## Security
 
@@ -223,8 +228,9 @@ verdict/
   apps/docs/          # Blume docs site (index + manual mirror, deploys to /verdict/)
   docs/vision.md      # what it is, strategy; narrative lives on the site
   prompts/            # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
+  scripts/verdict     # POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
   scripts/verdict-complete.sh  # bash/zsh completion for verdict
-  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/install
+  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/install/skill
 ```
 
 ## Updating
@@ -234,7 +240,8 @@ No auto-updater, by design (no network surprises from a review tool):
 - binary install → re-run the installer (or `verdict upgrade` when it ships),
 - symlink install → `git pull` (links stay current; re-run `install-skill.sh`
   after renames),
-- registry install → re-run `npx skills add stainless-code/verdict`.
+- registry install → `npx skills update` (or re-run `npx skills add stainless-code/verdict`),
+- embedded skill copy (`verdict skill install`) → re-run it after upgrading the binary.
 
 ## Versioning
 

@@ -20,7 +20,7 @@ func TestArityMatrix(t *testing.T) {
 		"triage", "report", "next", "show", "verify", "calibrate",
 		"ready",
 	})
-	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "install", "upgrade", "uninstall"})
+	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "install", "skill", "upgrade", "uninstall"})
 	checkTrendArity(t)
 	checkUnknownArity(t)
 }

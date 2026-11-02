@@ -11,10 +11,25 @@ the model is whatever agent you invoke.
 ## Where commands run
 
 Run the CLI from the repo under review: `.review/` is created in the
-current directory, never beside the tool. The CLI is the `verdict` binary
-— `bin/verdict` in a checkout (`make build`), carried beside the
-installed `verdict/` skill dir for registry and copy installs. Below,
-`verdict` means that binary.
+current directory, never beside the tool. The primary path is the GLOBAL
+`verdict` binary installed once (`curl -fsSL
+https://github.com/stainless-code/verdict/releases/latest/download/install.sh
+| sh`, `npm i -g @stainless-code/verdict`, or `brew install
+stainless-code/tap/verdict`); the installed `verdict/` skill dir is only the
+skill. A skill copy resolves the binary through `scripts/verdict`:
+`VERDICT_BIN`, then `<skill>/bin/verdict`, then `verdict` on `PATH`. When none
+exists, install the global binary (primary) or run the one-time verified
+`scripts/verdict bootstrap` (it fetches and verifies once, then works
+offline; a review never downloads). `npx skills` manages the skill copy only:
+`npx skills update` refreshes it. Below, `verdict` means the resolved binary.
+
+## Install or refresh this skill
+
+The binary carries its own skill, so a copy can never skew from the CLI:
+`verdict skill` prints this file, `verdict skill files` lists the payload, and
+`verdict skill install [--agent claude|codex|cursor|...]` (or `--dir
+<skills-dir>`) writes it atomically with a `.verdict-managed` receipt. Re-run
+it after upgrading the binary; `npx skills update` covers registry copies.
 
 ## Workflow
 

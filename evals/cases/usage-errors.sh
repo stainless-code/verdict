@@ -74,7 +74,7 @@ for verb in fetch fetch-local record adopt fix post triage report next show veri
   usage_gate "U2 $verb (repo only)" -- "$verb" acme/app
 done
 usage_gate "U2 trend (no repo)" -- trend
-for verb in check-tree doctor learn init install; do
+for verb in check-tree doctor learn init install skill; do
   set +e
   ( cd "$EVAL_SANDBOX" && XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty" "$EVAL_CLI" "$verb" </dev/null >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
   st=$?

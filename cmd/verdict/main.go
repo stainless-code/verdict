@@ -47,7 +47,7 @@ const envHome = "HOME"
 
 // verbsHint lists the verbs the CLI owns, in the frozen unknown-cmd order.
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install|upgrade|uninstall"
+	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install|skill|upgrade|uninstall"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -96,7 +96,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 
 // handleMetaFlags handles -h/--help and --version.
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
-	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+	if len(args) > 0 && (args[0] == flagShortHelp || args[0] == flagHelp) {
 		fmt.Fprint(stdout, usageText())
 		return true
 	}
@@ -143,7 +143,7 @@ const cmdTrend = "trend"
 var readVerbs = map[string]readHandler{
 	"report":     report.Run,
 	"next":       report.RunNext,
-	"show":       report.RunShow,
+	cmdShow:      report.RunShow,
 	"ready":      ready.Run,
 	cmdTrend:     trend.Run,
 	"calibrate":  calibrate.Run,
@@ -197,8 +197,10 @@ func dispatchMutating(
 		return learn.Run(ctx, r, rest, env), true
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env}), true
-	case "install":
+	case cmdInstallVerb:
 		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root}), true
+	case "skill":
+		return runSkill(ctx, r, rest, env, root), true
 	case "upgrade":
 		return runUpgrade(ctx, r, rest, env), true
 	case "uninstall":
@@ -368,6 +370,7 @@ func envMap(getenv func(string) string) map[string]string {
 		"VERDICT_MANAGED", "VERDICT_DOWNLOAD_URL", "VERDICT_COSIGN",
 		"VERDICT_REQUIRE_SIGNATURE", "SHELL", "ZDOTDIR", "PATH",
 		"APPDATA", "LOCALAPPDATA", "PNPM_HOME", "BUN_INSTALL",
+		"CLAUDE_CONFIG_DIR", "CODEX_HOME",
 		"NPM_CONFIG_PREFIX", "HOMEBREW_PREFIX",
 	}
 	env := make(map[string]string, len(keys))

@@ -259,7 +259,7 @@ recall; citing one warns and drops.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`install`/`skill` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
@@ -660,11 +660,17 @@ you stand).
   npm/pnpm/bun/yarn/Homebrew/project-local/skill copies refuse typed with the
   owning removal command (`npm uninstall -g …`, `brew uninstall …`,
   `rm -rf <skill dir>`, …). `--dry-run` and `--json` are supported.
-- **Registry** (`npx skills add stainless-code/verdict`): the skill copy
-  carries the CLI — no further install step. `install.sh` is not shipped in
-  the npm tarball and never runs here; invoke the bundled
-  `<skillsdir>/verdict/bin/verdict` from the repo under review.
-  Refresh with `npx skills update`.
+- **Registry** (`npx skills add stainless-code/verdict`): the primary path is
+  the GLOBAL binary (curl/npm/brew above), which the skill copy resolves on
+  PATH through `scripts/verdict` (`VERDICT_BIN`, then `<skill>/bin/verdict`,
+  then `verdict`). `npx skills` is scoped to the skills dir and never
+  installs the binary; `install.sh` is not shipped in the npm tarball and
+  never runs here. With no global binary, run the one-time verified
+  `sh <skillsdir>/verdict/scripts/verdict bootstrap`: it fetches the pinned
+  release's `install.sh` once, that installer verifies the sigstore bundle
+  (when cosign is present) and the SHA-256, and the binary lands at
+  `<skillsdir>/verdict/bin/verdict`. It is idempotent and offline afterwards;
+  no review ever downloads. Refresh the skill with `npx skills update`.
 - **Source checkout** (`git clone` + `make build` + `./install-skill.sh`):
   symlinks the checkout into the agent skill dirs (nine agents,
   `--detect`/`--all`, doctor-gated). Updates via `git pull`;
@@ -678,6 +684,20 @@ you stand).
   installer-owned `verdict/` dirs are ever written; foreign skills and
   unowned `verdict/` dirs stay untouched. The installed copy is a runnable
   tool root — re-running its own `install` reads keep.
+- **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
+  `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
+  never skew from the binary. `verdict skill` prints `SKILL.md` (default
+  `--format md`); `--format json` is one standard envelope with
+  `name`/`version`/`files`; `verdict skill files` lists every embedded path.
+  `verdict skill install` (flags: `--dir <skills-dir>` or `--agent <name>`,
+  `--force`, `--dry-run`, `--json`) writes the payload plus a
+  `.verdict-managed` receipt (file-atomic, receipt last), previews
+  create/update/keep/blocked, refuses
+  a target without a verdict receipt unless `--force`, never removes foreign
+  files, never prompts, and makes no network call. `--agent` accepts
+  `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
+  `goose`, `qwen`, and `windsurf`; no flag targets the shared
+  `~/.agents/skills/verdict` slot.
 
 ## Publish footer + attribution knobs
 

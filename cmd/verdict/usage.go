@@ -13,7 +13,7 @@ package main
 // (exit 2).
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install|upgrade|uninstall [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install|skill|upgrade|uninstall [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -186,6 +186,18 @@ func usageText() string {
 		"    registry and copy installs (both ship `scripts/`). The install-skill.sh\n" +
 		"    symlink route stays the wide-coverage sibling for git checkouts only\n" +
 		"    (nine agents, --detect/--all).\n" +
+		"  skill [show|files|install] [--format md|json] [--dir <skills-dir>|--agent <name>]\n" +
+		"        [--force] [--dry-run] [--json]\n" +
+		"    serve or install the skill embedded in this binary (never a skew):\n" +
+		"    show prints SKILL.md (default --format md), --format json emits one\n" +
+		"    envelope with name/version/files, files lists every embedded path.\n" +
+		"    install atomically writes SKILL.md, prompts/, schemas/, and\n" +
+		"    scripts/verdict plus a .verdict-managed receipt; it previews\n" +
+		"    create/update/keep/blocked, never prompts, and refuses a foreign\n" +
+		"    target unless --force (foreign files are never touched).\n" +
+		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
+		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
+		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
 		"  upgrade [--version <v>] [--dry-run] [--json]\n" +
 		"    explicit, channel-aware self-update. Installer-managed installs verify the\n" +
 		"    release (cosign bundle when present, SHA-256 always), smoke-test, and\n" +
@@ -219,20 +231,21 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install/upgrade/uninstall: " +
+		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install/skill/upgrade/uninstall: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n"
 }
 
 // bareVerbs lists the verbs that take no repo/pr positionals.
 var bareVerbs = map[string]bool{
-	"check-tree": true,
-	"doctor":     true,
-	"learn":      true,
-	"init":       true,
-	"install":    true,
-	"upgrade":    true,
-	"uninstall":  true,
+	"check-tree":   true,
+	"doctor":       true,
+	"learn":        true,
+	"init":         true,
+	cmdInstallVerb: true,
+	"skill":        true,
+	"upgrade":      true,
+	"uninstall":    true,
 }
 
 // arityUsage reports whether the invocation fails the positional-arity
