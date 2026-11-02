@@ -43,3 +43,7 @@ evals-go: build
 .PHONY: clean
 clean:
 	rm -f $(BIN)
+
+.PHONY: schemas
+schemas:
+	$(GO) run ./cmd/schemagen -write

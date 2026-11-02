@@ -1,0 +1,90 @@
+{
+  "cost": {
+    "descriptions": {
+      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them.",
+      "/$defs/record/properties/effort": "Run tier; missing or unknown values roll up as standard.",
+      "/$defs/record/properties/models": "One entry per model that generated tokens: the synthesizer first, then each lens.",
+      "/$defs/record/properties/est_usd": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
+      "/$defs/modelSpend/properties/cache_read_input_tokens": "Input tokens served from cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero.",
+      "/$defs/modelSpend/properties/cache_creation_input_tokens": "Input tokens spent writing the cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero."
+    }
+  },
+  "envelope": {
+    "descriptions": {
+      "": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in scripts/review.sh. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly) — the remaining verbs keep the generic object shape until their data stabilizes.",
+      "/properties/pr": "Numeric PR, else null (local slugs never coerce).",
+      "/$defs/error": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
+      "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
+      "/$defs/provenance": "Review provenance triple: the tooling behind a run, so mixed-version histories never read as one series. The writer always emits all three keys; model is null when no cost record names one.",
+      "/$defs/reportData": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, receipt keys only when budget.json parses.",
+      "/$defs/reportCost": "Summed rollup from cost.json plus per-chunk records; by_tier always carries all three tiers.",
+      "/$defs/reportCost/properties/cached_input_tokens": "Summed per-model cache_read_input_tokens plus cache_creation_input_tokens; totals stay input + output exactly.",
+      "/$defs/postData": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
+      "/$defs/postData/properties/review": "Real-post only: the accepted GitHub review object.",
+      "/$defs/recordData": "record --json data: the local-bundle merge (post stays refused, no PR target)."
+    }
+  },
+  "findings": {
+    "descriptions": {
+      "": "What post/record write per bundle. Derived from validate_and_merge in scripts/review.sh: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
+      "/$defs/entry/properties/sig": "Stable cross-run join key: SHA-1 of path + heading + body, whitespace-squashed.",
+      "/$defs/entry/properties/sig_version": "Normalization generation; backfilled onto older entries, never clobbered.",
+      "/$defs/entry/properties/path": "Inline findings only.",
+      "/$defs/entry/properties/heading": "Section findings only: the exact ### body heading.",
+      "/$defs/entry/properties/anchored": "Inline: true when the anchor sits inside one reviewed hunk. Section: the string \"body\".",
+      "/$defs/entry/properties/kb": "Cited knowledge-base rule ids; [] when uncited.",
+      "/$defs/entry/properties/inBounds": "CamelCase in the store (hyphenated in review.json input); absent reads true.",
+      "/$defs/entry/properties/rigor": "Evidence rung on inline findings; the re-post merge stamps an explicit null onto section entries.",
+      "/$defs/entry/properties/history": "Append-only: reported, claim, reopened, revalidation, addressed, triaged."
+    }
+  },
+  "post": {
+    "descriptions": {
+      "": "Written only by the real-post path in scripts/review.sh (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
+      "/properties/review": "Raw GitHub review object: id, html_url and whatever the API returned.",
+      "/properties/head": "Reviewed commit SHA; doubles as the single-review finalizer key.",
+      "/properties/posted_at": "UTC timestamp of the completed post.",
+      "/properties/tool_version": "Tool version that wrote this record (from package.json).",
+      "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
+      "/properties/model": "First model of the latest cost record, else null when no cost record names one."
+    }
+  },
+  "record": {
+    "descriptions": {
+      "": "Written by the record verb in scripts/review.sh for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
+      "/properties/status": "Bundle provider that was recorded (e.g. local).",
+      "/properties/head": "Reviewed SHA (real head_sha, or \"dirty\"/\"unknown\" when the bundle has none).",
+      "/properties/diff_sha256": "SHA-256 of full.diff at record time.",
+      "/properties/recorded_at": "UTC timestamp of the record run.",
+      "/properties/findings": "Total merged findings.",
+      "/properties/open": "Open findings after the merge.",
+      "/properties/tool_version": "Tool version that wrote this record (from package.json).",
+      "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
+      "/properties/model": "First model of the latest cost record, else null when no cost record names one."
+    }
+  },
+  "review": {
+    "descriptions": {
+      "": "What the agent writes and post/record validate. Derived from validate_and_merge in scripts/review.sh and the review.json block in docs/manual.md: unknown schema_version refuses, missing warns; out-of-range confidence and non-string security_summary warn-and-drop; unknown anchor paths and non-numeric anchors are kept with a warning, provably-outside anchors move to the body; unknown rigor/severity values fall back (pointed/null). Unknown top-level keys are ignored by the script, so this schema allows them.",
+      "/properties/schema_version": "Agents stamp \"1\"; post/record refuse anything else.",
+      "/properties/body": "Full review text, verdict marker first line.",
+      "/properties/approved": "Binding ask; the CLI --bind/--request-changes flags win over this.",
+      "/properties/comments": "Inline findings; one per anchor.",
+      "/properties/resolved": "Finding sigs (full or unambiguous prefix) the run addresses. Bare claims only record history; addressed needs verification.json evidence.",
+      "/properties/triage": "Status claims with rationale. Unknown status refuses the run; unknown sig warns; rationale under 30 chars keeps the prior status.",
+      "/properties/sections": "Severity tags for ### body sections; exact heading string, unmatched tags ignored.",
+      "/properties/confidence": "Review-level certainty, integer 1-5; out-of-range warns and drops.",
+      "/properties/security_summary": "One-paragraph security read; non-string warns and drops.",
+      "/properties/chunks": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Attested-but-partial coverage is refused.",
+      "/$defs/comment/properties/path": "Diff-relative path; unknown paths are kept with a warning, never refused.",
+      "/$defs/comment/properties/line": "NEW-side line; numeric strings anchor like integers, non-numeric anchors are kept with a warning.",
+      "/$defs/comment/properties/start_line": "Multi-line range start; same tolerance as line.",
+      "/$defs/comment/properties/side": "Defaults to RIGHT; case-insensitive, LEFT for deleted lines.",
+      "/$defs/comment/properties/suggestion": "Fenced suggestions demote to the body (a fence inside would break rendering).",
+      "/$defs/comment/properties/rigor": "Evidence rung; unknown values read as pointed.",
+      "/$defs/comment/properties/severity": "Stored at write time; unknown values read as null.",
+      "/$defs/comment/properties/in-bounds": "Hyphenated in agent input; absent reads true.",
+      "/$defs/comment/properties/kb": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop."
+    }
+  }
+}
