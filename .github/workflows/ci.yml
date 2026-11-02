@@ -74,6 +74,28 @@ jobs:
           ./install.sh --list --detect | grep -q '^absent:   agents'
           echo "installer smoke ok"
 
+  evals:
+    name: 🧪 Evals (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run offline contract evals
+        shell: bash
+        run: ./evals/run.sh
+        # Hermeticity lives in evals/run.sh itself (stub gh first on PATH,
+        # fixtures in a temp sandbox, tree-clean assertion) — identical
+        # locally and here. jq/git/shasum ship on both hosted images, so no
+        # install step. macOS runners shell out with bash 3.2, which doubles
+        # as the old-shell leg of the suite's 3.2-compat bar.
+
   docs:
     name: 📖 Docs site
     runs-on: ubuntu-latest
@@ -155,7 +177,7 @@ jobs:
 
   ci-complete:
     name: CI complete
-    needs: [format, lint, docs, audit]
+    needs: [format, lint, installer, evals, docs, audit]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -163,6 +185,8 @@ jobs:
         if: |
           needs.format.result != 'success' ||
             needs.lint.result != 'success' ||
+            needs.installer.result != 'success' ||
+            needs.evals.result != 'success' ||
             needs.docs.result != 'success' ||
             needs.audit.result != 'success'
         run: exit 1
