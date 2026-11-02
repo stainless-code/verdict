@@ -1,8 +1,7 @@
 // Package record is the record/post family's CLI adapter: argv parsing
-// (same usage text and exit 2), one call into the recordcore service or the
-// shared merge, envelope/human rendering, and refusal-vs-cancel exit
-// mapping. Domain logic lives in internal/core/record; the post verb shares
-// the core merge and keeps its payload/submit path here.
+// (same usage text and exit 2), one call into the recordcore or postcore
+// service, envelope/human rendering, and refusal-vs-cancel exit mapping.
+// Domain logic lives in internal/core/record and internal/core/post.
 package record
 
 import (

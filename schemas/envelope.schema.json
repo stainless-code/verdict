@@ -304,12 +304,12 @@
         },
         "security_summary": { "type": ["string", "null"] },
         "payload_hash": { "type": "string" },
-        "provenance": { "$ref": "#/$defs/provenance" },
         "review": {
           "description": "Real-post only: the accepted GitHub review object.",
           "type": "object",
           "additionalProperties": true
-        }
+        },
+        "provenance": { "$ref": "#/$defs/provenance" }
       },
       "required": [
         "dry_run",

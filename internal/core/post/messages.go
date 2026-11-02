@@ -1,4 +1,9 @@
-package record
+// Package postcore is the post verb's domain service: drift, binding,
+// recheck, payload guards, dry-run, and submit behind (ctx, *core.Request)
+// → (*core.Response, *core.RefusalError) with the Commander seam. The CLI
+// adapter parses, calls, renders, and maps exits; nothing here touches argv,
+// stdio, or exit codes.
+package postcore
 
 // Post refusal/warning formats. The rendered bytes are byte-identical to the
 // shell's; only the source layout is split for the line-length gate.
@@ -36,3 +41,33 @@ const (
 
 	msgPostFailed = "post failed: %s — narrow the cause (anchor drift? body size?) — do not drop comments blindly."
 )
+
+// Frozen store keys and codes the post path reads. The merge owns the
+// canonical copies in internal/core/record; these mirrors keep the post
+// service compiling without widening the core API (every value is pinned by
+// the parity goldens).
+const (
+	fieldPath       = "path"
+	fieldLine       = "line"
+	fieldStartLine  = "start_line"
+	fieldBody       = "body"
+	fieldSuggestion = "suggestion"
+	statusOpen      = "open"
+	localPrefix     = "local-"
+	newline         = "\n"
+	unknownTime     = "unknown time"
+	prSuffix        = "/PR.json"
+	codePostFailed  = "post-failed"
+	codeMissingDiff = "missing-diff"
+	eventComment    = "COMMENT"
+	approveTrue     = "true"
+	approveFalse    = "false"
+)
+
+// msgReviewMissing mirrors the shared loader's missing-file message (the
+// checkBundle existence gate must refuse before the full.diff gate, exactly
+// like record).
+const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
+
+// codeMissingReviewFile mirrors the shared loader's missing-file code.
+const codeMissingReviewFile = "missing-review-file"

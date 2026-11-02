@@ -112,41 +112,16 @@ type CostTier = core.CostTier
 type ReportCompleteness = core.ReportCompleteness
 
 // PostData is the post verb's --json data profile (dry-run and real post).
-type PostData struct { //nolint:govet // field order is the published property order
-	DryRun          bool           `json:"dry_run"`
-	Event           string         `json:"event"`
-	CommitID        string         `json:"commit_id"`
-	Body            PostBody       `inline:"true"           json:"body"`
-	Anchors         AnchorsSummary `json:"anchors"`
-	Suggestions     Suggestions    `inline:"true"           json:"suggestions"`
-	Findings        PostFindings   `inline:"true"           json:"findings"`
-	Items           []FindingItem  `json:"items"`
-	Confidence      *int           `json:"confidence"       max:"5"            min:"1"`
-	SecuritySummary *string        `json:"security_summary"`
-	PayloadHash     string         `json:"payload_hash"`
-	Provenance      Provenance     `json:"provenance"       optional:"true"`
-	Review          map[string]any `json:"review,omitempty"`
-}
+type PostData = core.PostData
 
 // PostBody is the rendered post body summary.
-type PostBody struct { //nolint:govet // field order is the published property order
-	Marker  string `json:"marker"`
-	Footer  any    `json:"footer,omitempty"`
-	Diagram any    `json:"diagram,omitempty"`
-}
+type PostBody = core.PostBody
 
 // Suggestions counts embedded review suggestions.
-type Suggestions struct {
-	Embedded int `json:"embedded" min:"0"`
-}
+type Suggestions = core.Suggestions
 
 // PostFindings counts the findings a post reports.
-type PostFindings struct { //nolint:govet // field order is the published property order
-	Open      int    `json:"open"           min:"0"`
-	Deferred  int    `json:"deferred"       min:"0"`
-	Addressed int    `json:"addressed"      min:"0"`
-	File      string `json:"file,omitempty"`
-}
+type PostFindings = core.PostFindings
 
 // RecordData is core's record --json data profile.
 type RecordData = core.RecordData
@@ -155,17 +130,7 @@ type RecordData = core.RecordData
 type RecordFindings = core.RecordFindings
 
 // Post is schemas/post.schema.json: the completed-post record.
-type Post struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string         `const:"1"                         json:"schema_version"`
-	Review          map[string]any `json:"review"`
-	Head            string         `json:"head"`
-	PostedAt        string         `format:"date-time"                json:"posted_at"`
-	Confidence      *int           `json:"confidence,omitempty"       max:"5"               min:"1"`
-	SecuritySummary *string        `json:"security_summary,omitempty"`
-	ToolVersion     string         `json:"tool_version,omitempty"`
-	PromptsHash     string         `json:"prompts_hash,omitempty"`
-	Model           *string        `json:"model,omitempty"`
-}
+type Post = core.Post
 
 // Record is core's completed-record artifact.
 type Record = core.Record

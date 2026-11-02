@@ -16,8 +16,8 @@ import (
 // adapter or another transport.
 var coreSubpackages = []string{
 	"./adopt", "./calibrate", "./checktree", "./doctor", "./exec", "./fetch", "./fix", "./init",
-	"./learn", "./ready", "./record", "./report", "./skill", "./trend", "./triage", "./upgrade",
-	"./verify",
+	"./learn", "./post", "./ready", "./record", "./report", "./skill", "./trend", "./triage",
+	"./upgrade", "./verify",
 }
 
 // TestCoreSubpackageImportDirection proves every subpackage under
