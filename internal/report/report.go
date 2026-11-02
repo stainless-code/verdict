@@ -478,13 +478,14 @@ func bundlePanel(dir string) ([]any, string) {
 // bundlePatch reads the patch record; the caller checks isRegular first, so
 // a missing store never reaches here. R1: an unreadable patch store refuses
 // typed corrupt-store instead of dying in the envelope jq (the shell gained
-// the same guard with this port).
+// the same guard with this port). The record decodes ordered: the envelope
+// re-emits it in file key order like the shell's --argjson passthrough (R2).
 func bundlePatch(dir string) (any, *cli.RefusalError) {
 	raw, err := readFile(dir + patchSuffix)
 	if err != nil {
 		return nil, corruptPatch(dir)
 	}
-	doc, err := jq.Decode(raw)
+	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
 		return nil, corruptPatch(dir)
 	}

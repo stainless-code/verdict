@@ -18,7 +18,9 @@ func renderSarif(st *state) error {
 		return nil
 	}
 	doc := sarifDoc(st)
-	if err := os.WriteFile(st.flags.Sarif, []byte(jq.PrettyOrdered(doc)+newline), reportFilePerm); err != nil {
+	// PrettyOrdered carries the trailing newline like the shell's jq
+	// redirect, so no extra line break is appended.
+	if err := os.WriteFile(st.flags.Sarif, []byte(jq.PrettyOrdered(doc)), reportFilePerm); err != nil {
 		return &cli.RefusalError{
 			Code:    codeReportFailed,
 			Message: fmt.Sprintf("could not write %s: %v", st.flags.Sarif, err),

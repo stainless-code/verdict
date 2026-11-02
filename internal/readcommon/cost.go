@@ -309,16 +309,20 @@ func rollupRecords(records []any) *jq.Obj {
 			keyTotalTokens, a.input+a.output,
 		))
 	}
-	return jq.NewObj(
+	// The shell appends total_tokens after by_tier (`.total_tokens = ...`
+	// past the object construction), so the key lands last: insertion
+	// order is the wire order (R2).
+	obj := jq.NewObj(
 		keyRuns, sum.runs,
 		"runs_with_cost", sum.withCost,
 		keyInputTokens, sum.input,
 		keyOutputTokens, sum.output,
-		keyTotalTokens, sum.input+sum.output,
 		"cached_input_tokens", sum.cached,
 		keyEstUSD, estUSD,
 		"by_tier", byTier,
 	)
+	obj.Set(keyTotalTokens, sum.input+sum.output)
+	return obj
 }
 
 // foldRecord folds one cost record into the tier accumulators and running
@@ -476,7 +480,8 @@ func costZeros() *jq.Obj {
 
 // attachReceipts ports the budget.json receipts join: an array (or a
 // single record wrapped in one) attaches as receipts; an unreadable file
-// warns and leaves receipts null.
+// warns and leaves receipts null. Receipts decode ordered: the envelope
+// re-emits them in file key order like the shell's passthrough (R2).
 func attachReceipts(dir string, res *CostResult) {
 	path := filepath.Join(dir, "budget.json")
 	if !isRegular(path) {
@@ -486,7 +491,7 @@ func attachReceipts(dir string, res *CostResult) {
 	if err != nil {
 		return
 	}
-	doc, err := jq.Decode(raw)
+	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
 		res.Warns = append(res.Warns, warnBudgetUnreadable)
 		return

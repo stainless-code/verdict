@@ -128,10 +128,17 @@ func (d *doctor) add(name, severity string, ok bool, detail string) {
 		fmt.Fprintf(d.runner.Human, "ok   %s — %s\n", name, detail)
 	case severity == severityWarn:
 		fmt.Fprintf(d.runner.Human, "WARN %s — %s\n", name, detail)
-		d.runner.Warn(name + ": " + detail)
+		d.warnAccum(name + ": " + detail)
 	default:
 		fmt.Fprintf(d.runner.Human, "FAIL %s — %s\n", name, detail)
 	}
+}
+
+// warnAccum ports the WARNINGS_JSON accumulation: WARN rows ride the
+// envelope warnings without a `warn: ` diagnostic line (the shell's add
+// never calls warn(), it only echoes the row and accumulates).
+func (d *doctor) warnAccum(msg string) {
+	d.runner.Warnings = append(d.runner.Warnings, msg)
 }
 
 // checkGhCLI ports the gh-cli row.

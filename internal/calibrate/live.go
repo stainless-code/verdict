@@ -154,19 +154,22 @@ func liveHead(live map[string]any) string {
 }
 
 // liveChanged ports the changed-file evidence: the compare file list, or
-// empty with a warning when the compare is unavailable.
+// empty with a warning when the compare is unavailable. A failed call
+// warns once (the evidence-off line); an unparseable payload warns twice
+// (the parse line, then the evidence-off line), mirroring the shell.
 func liveChanged(ctx context.Context, r *cli.Runner, req Request, head0, liveHead string) []any {
 	if head0 == liveHead {
 		return []any{}
 	}
 	res, err := readcommon.Gh(ctx, "api", "repos/"+req.Repo+"/compare/"+head0+"..."+liveHead, "--jq", "[.files[].filename]")
 	if err != nil {
-		r.Warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
+		r.Warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
 		return []any{}
 	}
 	doc, derr := jq.Decode([]byte(res.Stdout))
 	if derr != nil {
 		r.Warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
+		r.Warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
 		return []any{}
 	}
 	list, ok := doc.([]any)
@@ -208,7 +211,7 @@ func joinOutcomes(entries, threads, changed []any) []outcome {
 func joinOne(entry any, threads, changed []any) outcome {
 	out := outcome{
 		entry:   entry,
-		sig:     sigString(entry),
+		sig:     sigHuman(entry),
 		status:  readcommon.StatusOf(entry),
 		sev:     severityOf(entry),
 		locator: locatorFor(entry),
@@ -474,8 +477,8 @@ func emitLiveHuman(r *cli.Runner, req Request, reviewID, head0 string, live map[
 	for i := range outcomes {
 		o := &outcomes[i]
 		kbText := ""
-		if list, ok := o.kb.([]any); ok && len(list) > 0 {
-			kbText = " kb:" + kbJoin(list)
+		if showKbSuffix(o.kb) {
+			kbText = kbRowText(o)
 		}
 		fmt.Fprintf(r.Human, "%s [%s] %s — %s%s\n", o.sig, o.result, o.locator, o.detail, kbText)
 	}
@@ -485,13 +488,47 @@ func emitLiveHuman(r *cli.Runner, req Request, reviewID, head0 string, live map[
 		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model"))
 }
 
-// kbJoin renders the cited rule ids, one tostring per element.
-func kbJoin(list []any) string {
-	parts := make([]string, 0, len(list))
-	for _, id := range list {
-		parts = append(parts, readcommon.Tostring(id))
+// sigHuman renders the human sig cell: the 8-codepoint prefix of a string
+// sig, "null" for the missing/null sig (jq -r renders null), mirroring
+// \(.sig[0:8]). Sigs are hex, so bytes and codepoints agree.
+func sigHuman(entry any) string {
+	m, ok := entry.(*jq.Obj)
+	if !ok || m == nil {
+		return "null"
 	}
-	return strings.Join(parts, ",")
+	sig, _ := m.Get("sig")
+	if s, ok := sig.(string); ok {
+		return readcommon.Prefix(s)
+	}
+	return "null"
+}
+
+// showKbSuffix mirrors the shell's suffix gate: ((.kb // []) | type) ==
+// "array" — the trailing `length > 0` reads the row's own key count, so
+// missing, null, and (even empty) array cites all render the suffix while
+// scalar or object cites hide it.
+func showKbSuffix(kb any) bool {
+	if kb == nil {
+		return true
+	}
+	_, ok := kb.([]any)
+	return ok
+}
+
+// kbRowText ports the cited-row suffix: the shell maps tostring over the
+// whole outcome row (not just the cites), so the suffix joins every row
+// value in shell key order with the cites rendered compact. Rows without
+// a kb key join six values; the seventh lands only with the key.
+func kbRowText(o *outcome) string {
+	vals := []any{outcomeSig(o), o.status, o.sev, o.locator, o.result, o.detail}
+	if o.hasKb {
+		vals = append(vals, o.kb)
+	}
+	parts := make([]string, 0, len(vals))
+	for _, v := range vals {
+		parts = append(parts, readcommon.Tostring(v))
+	}
+	return " kb:" + strings.Join(parts, ",")
 }
 
 // provOrUnmarked reads one provenance field with the unmarked fallback.

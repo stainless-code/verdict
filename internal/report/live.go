@@ -362,11 +362,13 @@ func emitEnvelope(st *state) {
 			"live", nil,
 			"stale", false,
 		),
+		// The verdict tallies the displayed (filtered) ranking like the
+		// shell's $items counts, not the whole store.
 		"verdict", jq.NewObj(
-			"open", countStatus(st.entries, "open"),
-			"deferred", countStatus(st.entries, "deferred"),
-			"addressed", countStatus(st.entries, "addressed"),
-			"terminal", countTerminal(st.entries),
+			"open", countStatus(rankedEntries(st), "open"),
+			"deferred", countStatus(rankedEntries(st), "deferred"),
+			"addressed", countStatus(rankedEntries(st), "addressed"),
+			"terminal", countTerminal(rankedEntries(st)),
 		),
 		"counts", st.counts,
 		"panel", panelValue(st),
@@ -455,7 +457,16 @@ func envelopeItem(item readcommon.Ranked) any {
 	)
 }
 
-// countStatus counts whole-store entries with the given status.
+// rankedEntries flattens the displayed ranking for the verdict tallies.
+func rankedEntries(st *state) []any {
+	entries := make([]any, 0, len(st.ranked))
+	for _, item := range st.ranked {
+		entries = append(entries, item.Entry)
+	}
+	return entries
+}
+
+// countStatus counts entries with the given status.
 func countStatus(entries []any, status string) int {
 	n := 0
 	for _, e := range entries {
@@ -466,8 +477,8 @@ func countStatus(entries []any, status string) int {
 	return n
 }
 
-// countTerminal counts whole-store terminal findings (wont-fix and
-// false-positive, mirroring the verdict.terminal key).
+// countTerminal counts terminal findings (wont-fix and false-positive,
+// mirroring the verdict.terminal key).
 func countTerminal(entries []any) int {
 	n := 0
 	for _, e := range entries {

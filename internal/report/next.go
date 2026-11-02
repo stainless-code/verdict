@@ -24,6 +24,17 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if err := ctx.Err(); err != nil {
 		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before next completed"}, cli.ExitBroke)
 	}
+	// The sub-report validates --status like report does: a missing value
+	// reads open (the shell's ${2:-open}), and an invalid value fails the
+	// replay — bash's sub-invocation usage-errors, so the replay reads
+	// empty and the parent reports the store unreadable (exit 1), never
+	// an empty ranking.
+	if statusF == "" {
+		statusF = statusOpen
+	}
+	if !validStatus(statusF) {
+		return nextStoreError(r, "")
+	}
 	repOut := replayReport(ctx, r, req, statusF)
 	top, ok := firstItem(repOut)
 	if !ok {

@@ -358,6 +358,8 @@ func buildGrade(entry any, bname, now string, merged map[string]judge) *jq.Obj {
 }
 
 // gradeAgent folds the merged judgment and baseline agreement for one sig.
+// agent_helpful mirrors the shell's `// null` default: false reads null
+// (jq's // replaces false as well as null), true passes through.
 func gradeAgent(merged map[string]judge, sigKey, baseline string) (agentVerdict, agentHelpful, agreement any) {
 	j, judged := merged[sigKey]
 	if !judged {
@@ -365,6 +367,9 @@ func gradeAgent(merged map[string]judge, sigKey, baseline string) (agentVerdict,
 	}
 	agentVerdict = j.verdict
 	agentHelpful = j.helpful
+	if agentHelpful == false {
+		agentHelpful = nil
+	}
 	if (j.verdict == verdictReal || j.verdict == verdictFalse) && (baseline == verdictReal || baseline == verdictFalse) {
 		agreement = j.verdict == baseline
 	}
