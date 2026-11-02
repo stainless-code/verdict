@@ -16,12 +16,13 @@ type Progress interface {
 }
 
 // Runtime is the injected per-invocation state every service receives: the
-// environment snapshot, the clock, and the progress observer. Core never
-// reads the process environment or stdio directly.
+// environment snapshot, the clock, the progress observer, and the command
+// runner. Core never reads the process environment or stdio directly.
 type Runtime struct {
-	Env      map[string]string
-	Now      func() time.Time
-	Progress Progress
+	Env       map[string]string
+	Now       func() time.Time
+	Progress  Progress
+	Commander Commander
 }
 
 // TimeUTC formats the injected clock like the shell's

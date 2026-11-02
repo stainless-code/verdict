@@ -1,16 +1,16 @@
-package verify
+package verifycore
 
 import (
 	"regexp"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // checkDestructiveGit ports the git-config/hook arms: -c keys, env config
 // vectors, HOME overrides with git, ext transports, clone vectors, and the
 // core.pager narrowing.
-func checkDestructiveGit(g *gateText) *cli.RefusalError {
+func checkDestructiveGit(g *gateText) *core.RefusalError {
 	if ref := checkGitHookKeys(g); ref != nil {
 		return ref
 	}
@@ -30,7 +30,7 @@ func checkDestructiveGit(g *gateText) *cli.RefusalError {
 }
 
 // checkGitHomeOverride ports the HOME/XDG_CONFIG_HOME-with-git arm.
-func checkGitHomeOverride(g *gateText) *cli.RefusalError {
+func checkGitHomeOverride(g *gateText) *core.RefusalError {
 	if !reGitWord.MatchString(g.bare) {
 		return nil
 	}
@@ -42,7 +42,7 @@ func checkGitHomeOverride(g *gateText) *cli.RefusalError {
 }
 
 // checkGitExtTransport ports the protocol.ext.allow / ext:: transport arm.
-func checkGitExtTransport(g *gateText) *cli.RefusalError {
+func checkGitExtTransport(g *gateText) *core.RefusalError {
 	if !reProtoExtAllow.MatchString(g.bare) &&
 		(!reGitWord.MatchString(g.bare) || !strings.Contains(g.bare, "ext::")) {
 		return nil
@@ -54,7 +54,7 @@ func checkGitExtTransport(g *gateText) *cli.RefusalError {
 }
 
 // checkGitCloneVectors ports the --upload-pack / --config-env arms.
-func checkGitCloneVectors(g *gateText) *cli.RefusalError {
+func checkGitCloneVectors(g *gateText) *core.RefusalError {
 	if !reGitWord.MatchString(g.bare) {
 		return nil
 	}
@@ -69,7 +69,7 @@ func checkGitCloneVectors(g *gateText) *cli.RefusalError {
 
 // checkGitPager ports the core.pager narrowing: known-safe pagers pass,
 // anything else refuses.
-func checkGitPager(g *gateText) *cli.RefusalError {
+func checkGitPager(g *gateText) *core.RefusalError {
 	if !reCorePagerSet.MatchString(g.bare) {
 		return nil
 	}
@@ -84,7 +84,7 @@ func checkGitPager(g *gateText) *cli.RefusalError {
 }
 
 // checkGitHookKeys ports the -c/space-form hook key arms.
-func checkGitHookKeys(g *gateText) *cli.RefusalError {
+func checkGitHookKeys(g *gateText) *core.RefusalError {
 	if frag := grepO(reGitFsmonitor, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "git fsmonitor hook executes commands — set it in repo config, not -c")
 	}
@@ -101,7 +101,7 @@ func checkGitHookKeys(g *gateText) *cli.RefusalError {
 }
 
 // checkGitEnvConfig ports the GIT_* env config arms (refused outright).
-func checkGitEnvConfig(g *gateText) *cli.RefusalError {
+func checkGitEnvConfig(g *gateText) *core.RefusalError {
 	if frag := grepO(reGitConfigCount, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
 			"GIT_CONFIG_COUNT sets git config from the environment — fetch fixtures first, run offline")

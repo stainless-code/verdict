@@ -1,4 +1,4 @@
-package verify_test
+package verifycore_test
 
 import (
 	"flag"
@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/verify"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
 // extractGate writes the verbatim gate function plus a fail shim to a temp
@@ -200,7 +200,7 @@ type corpusRow struct {
 // readCorpus reads the standing adversarial corpus TSV.
 func readCorpus(t *testing.T) []corpusRow {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "evals", "fixtures", "verify-fuzz-corpus.tsv"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "evals", "fixtures", "verify-fuzz-corpus.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestGateGolden(t *testing.T) {
 	battery := gateBattery(t)
 	got := make([]string, 0, len(battery))
 	for _, b := range battery {
-		ref := verify.Check(b.cmd)
+		ref := verifycore.Check(b.cmd)
 		got = append(got, b.id+"\t"+gateVerdict(ref))
 		checkStrictRow(t, b, ref)
 	}

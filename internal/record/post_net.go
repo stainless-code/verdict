@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/cli"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -357,7 +358,7 @@ const postMaxRetries = 3
 // headReason ports `$(head -c 300 "$dir/.post.err" | tr '\n' ' ')`: the last
 // attempt's head with newlines flattened.
 func headReason(dir string) string {
-	raw, _ := readOptional(dir + "/.post.err")
+	raw, _ := recordcore.ReadOptional(dir + "/.post.err")
 	if len(raw) > postErrHeadBytes {
 		raw = raw[:postErrHeadBytes]
 	}
@@ -377,8 +378,8 @@ func writePostReceipt(p *postRun, obj *jq.Obj) error {
 		"review", obj,
 		"head", p.commitID,
 		"posted_at", p.now,
-		"confidence", p.state.confidence,
-		"security_summary", p.state.security,
+		"confidence", p.merged.Confidence,
+		"security_summary", p.merged.Security,
 	)
 	prov, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(p.req.Root, p.dir)))
 	if err != nil {
@@ -414,7 +415,8 @@ func (p *postRun) trimmedBody(body string) string {
 	if len(body) <= hostingBodyLimit {
 		return body
 	}
-	block, ferr := provenance.RenderFooter(footerOptions(p.runner, p.req, p.dir))
+	block, ferr := provenance.RenderFooter(recordcore.FooterOpts(
+		&p.runner.Effective, p.req.Forces, p.req.Root, p.dir))
 	if ferr != nil {
 		block = ""
 	}
@@ -505,6 +507,15 @@ func postDiagramValue(dstat *diagram.Status) any {
 	)
 }
 
+// stringSlice converts warnings to JSON string values.
+func stringSlice(in []string) []any {
+	out := make([]any, 0, len(in))
+	for _, s := range in {
+		out = append(out, s)
+	}
+	return out
+}
+
 // postCommentKeys ports the dry-run comment-keys summary: the first
 // comment's unsorted keys joined by commas ("" when no comments posted).
 func postCommentKeys(comments []any) string {
@@ -522,7 +533,7 @@ func postCommentKeys(comments []any) string {
 // missing, unreadable, or undecodable PR.json reads github (only the
 // explicit provider marker routes elsewhere).
 func postProvider(dir string) string {
-	raw, ok := readOptional(dir + prSuffix)
+	raw, ok := recordcore.ReadOptional(dir + prSuffix)
 	if !ok {
 		return providerGitHub
 	}
@@ -586,7 +597,7 @@ func prAuthorLogin(m *jq.Obj) string {
 // prDoc decodes the bundle PR record, or nil when it is missing or
 // undecodable (callers degrade to defaults, like the shell's `|| true`).
 func prDoc(dir string) *jq.Obj {
-	raw, ok := readOptional(dir + prSuffix)
+	raw, ok := recordcore.ReadOptional(dir + prSuffix)
 	if !ok {
 		return nil
 	}
@@ -614,7 +625,7 @@ func prScalar(v any) string {
 // head, with readable reporting whether the record decoded at all (missing,
 // unreadable, empty, and non-object records never arm the finalizer).
 func postHead(path string) (string, bool) {
-	raw, ok := readOptional(path)
+	raw, ok := recordcore.ReadOptional(path)
 	if !ok {
 		return "", false
 	}
@@ -636,7 +647,7 @@ func postHead(path string) (string, bool) {
 // postTime ports `jq -r '.posted_at // "unknown time"' post.json` for the
 // already-posted refusal.
 func postTime(path string) string {
-	raw, ok := readOptional(path)
+	raw, ok := recordcore.ReadOptional(path)
 	if !ok {
 		return unknownTime
 	}
@@ -662,8 +673,10 @@ func decodeProvenance(root, dir string) any {
 }
 
 // postCounts tallies the merged findings for preflight and envelopes.
-func postCounts(st *state) (open, deferred, addressed int) {
-	return countStatus(st.entries, statusOpen), countStatus(st.entries, "deferred"), countStatus(st.entries, "addressed")
+func postCounts(entries []any) (open, deferred, addressed int) {
+	return recordcore.CountStatus(entries, statusOpen),
+		recordcore.CountStatus(entries, "deferred"),
+		recordcore.CountStatus(entries, "addressed")
 }
 
 // dryRunReport ports the dry-run exit: the payload preview on the human
@@ -671,8 +684,8 @@ func postCounts(st *state) (open, deferred, addressed int) {
 // disposition included) in --json mode. Nothing posts, nothing arms.
 func (p *postRun) dryRunReport() (int, error) {
 	r := p.runner
-	st := p.state
-	footerText, ferr := provenance.RenderFooter(st.footerOpts())
+	footerText, ferr := provenance.RenderFooter(recordcore.FooterOpts(
+		&p.runner.Effective, p.req.Forces, p.req.Root, p.dir))
 	if ferr != nil {
 		footerText = ""
 	}
@@ -682,7 +695,7 @@ func (p *postRun) dryRunReport() (int, error) {
 	}
 	if r.JSONMode {
 		p.phash = sig.Sum([]byte(p.payload))
-		nOpen, nDeferred, nAddressed := postCounts(st)
+		nOpen, nDeferred, nAddressed := postCounts(p.merged.Entries)
 		env := jq.NewObj(
 			"schema_version", "1",
 			"verb", "post",
@@ -696,16 +709,16 @@ func (p *postRun) dryRunReport() (int, error) {
 				"event", p.event,
 				"commit_id", p.commitID,
 				"body", jq.NewObj(
-					"marker", st.marker,
+					"marker", p.merged.Marker,
 					"footer", footerVal,
 					"diagram", postDiagramValue(&p.diagram),
 				),
-				"anchors", jq.NewObj("kept", st.nKept, "moved", st.nMoved),
+				"anchors", jq.NewObj("kept", p.merged.NKept, "moved", p.merged.NMoved),
 				"suggestions", jq.NewObj("embedded", p.embedded),
 				"findings", jq.NewObj(statusOpen, nOpen, "deferred", nDeferred, "addressed", nAddressed, "file", p.findingsFile),
-				"confidence", st.confidence,
-				"security_summary", st.security,
-				"items", envelopeItems(st.entries),
+				"confidence", p.merged.Confidence,
+				"security_summary", p.merged.Security,
+				"items", recordcore.EnvelopeItems(p.merged.Entries),
 				"payload_hash", p.phash,
 				"provenance", decodeProvenance(p.req.Root, p.dir),
 			),
@@ -729,9 +742,8 @@ func (p *postRun) dryRunReport() (int, error) {
 // stream, or the post envelope in --json mode.
 func (p *postRun) successReport(obj *jq.Obj, posted string) (int, error) {
 	r := p.runner
-	st := p.state
 	if r.JSONMode {
-		nOpen, nDeferred, nAddressed := postCounts(st)
+		nOpen, nDeferred, nAddressed := postCounts(p.merged.Entries)
 		var next string
 		if nOpen > 0 {
 			next = "address open threads"
@@ -750,13 +762,13 @@ func (p *postRun) successReport(obj *jq.Obj, posted string) (int, error) {
 				"dry_run", false,
 				"event", p.event,
 				"commit_id", p.commitID,
-				"body", jq.NewObj("marker", st.marker),
-				"anchors", jq.NewObj("kept", st.nKept, "moved", st.nMoved),
+				"body", jq.NewObj("marker", p.merged.Marker),
+				"anchors", jq.NewObj("kept", p.merged.NKept, "moved", p.merged.NMoved),
 				"suggestions", jq.NewObj("embedded", p.embedded),
 				"findings", jq.NewObj(statusOpen, nOpen, "deferred", nDeferred, "addressed", nAddressed),
-				"items", envelopeItems(st.entries),
-				"confidence", st.confidence,
-				"security_summary", st.security,
+				"items", recordcore.EnvelopeItems(p.merged.Entries),
+				"confidence", p.merged.Confidence,
+				"security_summary", p.merged.Security,
 				"payload_hash", p.phash,
 				"review", obj,
 				"provenance", decodeProvenance(p.req.Root, p.dir),

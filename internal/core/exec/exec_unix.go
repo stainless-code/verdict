@@ -1,11 +1,11 @@
 //go:build linux || darwin || freebsd || netbsd || openbsd || dragonfly
 
-package verify
+package exec
 
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	osexec "os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -14,13 +14,13 @@ import (
 // setGroup puts the verify child in its own process group so the timeout
 // kill stops the whole tree (a backgrounded child would otherwise survive
 // and its exit 0 get recorded as proof).
-func setGroup(cmd *exec.Cmd) {
+func setGroup(cmd *osexec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
 // killGroup SIGKILLs the child's process group (GO-EXEC-05: kill the group,
 // not the pid).
-func killGroup(cmd *exec.Cmd) error {
+func killGroup(cmd *osexec.Cmd) error {
 	if cmd.Process == nil {
 		return errNoProcess
 	}
@@ -34,7 +34,7 @@ func killGroup(cmd *exec.Cmd) error {
 // processAlive ports the poll liveness check: kill -0 succeeds and ps does
 // not report a zombie (a reaped-but-unwaited child reads alive under
 // kill -0; without the ps arm a fast exit could false-fire the timeout).
-func processAlive(ctx context.Context, cmd *exec.Cmd) bool {
+func processAlive(ctx context.Context, cmd *osexec.Cmd) bool {
 	if cmd.Process == nil {
 		return false
 	}
@@ -42,7 +42,7 @@ func processAlive(ctx context.Context, cmd *exec.Cmd) bool {
 		return false
 	}
 	//nolint:gosec // G204: the pid is our own verify child, not external input.
-	out, err := exec.CommandContext(ctx, "ps", "-p", itoa(cmd.Process.Pid), "-o", "stat=").Output()
+	out, err := osexec.CommandContext(ctx, "ps", "-p", itoa(cmd.Process.Pid), "-o", "stat=").Output()
 	if err != nil {
 		return true
 	}
@@ -53,7 +53,7 @@ func processAlive(ctx context.Context, cmd *exec.Cmd) bool {
 // the tree running (decoy exit), which the poll loop never sees. If the
 // group outlives the parent, a grace period lets legitimate stragglers
 // finish; survivors are killed and reported.
-func sweepOrphans(cmd *exec.Cmd) bool {
+func sweepOrphans(cmd *osexec.Cmd) bool {
 	if cmd.Process == nil {
 		return false
 	}
@@ -75,7 +75,7 @@ func sweepOrphans(cmd *exec.Cmd) bool {
 
 // waitStatusOf extracts the wait status from an exit error, reporting the
 // signal and status the way the shell `wait` builtin does.
-func waitStatusOf(exitErr *exec.ExitError) (waitStatus, bool) {
+func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	ws, ok := exitErr.Sys().(syscall.WaitStatus)
 	if !ok {
 		return waitStatus{}, false
@@ -88,18 +88,18 @@ func waitStatusOf(exitErr *exec.ExitError) (waitStatus, bool) {
 
 // havePS reports whether ps(1) exists for the zombie arm.
 func havePS() bool {
-	_, err := exec.LookPath("ps")
+	_, err := osexec.LookPath("ps")
 	return err == nil
 }
 
-// trimTail matches shell command substitution: strip trailing newlines.
-func trimTail(s string) string {
+// TrimTail matches shell command substitution: strip trailing newlines.
+func TrimTail(s string) string {
 	return strings.TrimRight(s, "\n")
 }
 
 // releaseTree drops the platform process-tree bookkeeping after a run.
 // POSIX has none: the process group dies with its leader.
-func releaseTree(_ *exec.Cmd) {
+func releaseTree(_ *osexec.Cmd) {
 }
 
 // timeoutExitCode reports the timeout exit code the platform's wait status

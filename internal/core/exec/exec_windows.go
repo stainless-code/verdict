@@ -1,11 +1,11 @@
 //go:build windows
 
-package verify
+package exec
 
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	osexec "os/exec"
 	"strings"
 	"sync"
 	"syscall"
@@ -108,7 +108,7 @@ var trees sync.Map
 
 // setGroup creates the job object before the child starts; the process is
 // assigned on the first watchdog tick (see attach).
-func setGroup(cmd *exec.Cmd) {
+func setGroup(cmd *osexec.Cmd) {
 	tr := &tree{}
 	handle, _, _ := procCreateJobObject.Call(0, 0)
 	if handle != 0 {
@@ -128,7 +128,7 @@ func setGroup(cmd *exec.Cmd) {
 }
 
 // treeFor returns the job object registered for cmd, or nil.
-func treeFor(cmd *exec.Cmd) *tree {
+func treeFor(cmd *osexec.Cmd) *tree {
 	v, _ := trees.Load(cmd)
 	tr, _ := v.(*tree)
 	return tr
@@ -136,7 +136,7 @@ func treeFor(cmd *exec.Cmd) *tree {
 
 // attach puts the started child into the job so descendants inherit it. It
 // is idempotent and reports whether the tree is covered.
-func (tr *tree) attach(cmd *exec.Cmd) bool {
+func (tr *tree) attach(cmd *osexec.Cmd) bool {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	if tr.closed || tr.handle == 0 {
@@ -186,7 +186,7 @@ func (tr *tree) active() bool {
 
 // killGroup terminates the child's whole tree: the job object when it could
 // be attached, else taskkill /T /F.
-func killGroup(cmd *exec.Cmd) error {
+func killGroup(cmd *osexec.Cmd) error {
 	if cmd.Process == nil {
 		return errNoProcess
 	}
@@ -199,7 +199,7 @@ func killGroup(cmd *exec.Cmd) error {
 // taskkillTree is the fallback tree kill when the job object could not be
 // used (creation or assignment failed).
 func taskkillTree(pid int) error {
-	kill := exec.Command("taskkill", "/T", "/F", "/PID", itoa(pid))
+	kill := osexec.Command("taskkill", "/T", "/F", "/PID", itoa(pid))
 	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := kill.CombinedOutput(); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
@@ -211,7 +211,7 @@ func taskkillTree(pid int) error {
 // processAlive polls the child's own exit code (not the job's population:
 // a surviving grandchild must not read as the parent still running). The
 // first tick also assigns the child to the job, before it can spawn.
-func processAlive(_ context.Context, cmd *exec.Cmd) bool {
+func processAlive(_ context.Context, cmd *osexec.Cmd) bool {
 	if cmd.Process == nil {
 		return false
 	}
@@ -231,7 +231,7 @@ func processAlive(_ context.Context, cmd *exec.Cmd) bool {
 // sweepOrphans ports the post-reap sweep: after the parent exits, a job
 // that still holds processes gets a grace period, then the survivors are
 // terminated and the decoy exit reported.
-func sweepOrphans(cmd *exec.Cmd) bool {
+func sweepOrphans(cmd *osexec.Cmd) bool {
 	tr := treeFor(cmd)
 	if tr == nil || !tr.active() {
 		return false
@@ -244,16 +244,16 @@ func sweepOrphans(cmd *exec.Cmd) bool {
 	return true
 }
 
-// trimTail matches shell command substitution under Git Bash: native
+// TrimTail matches shell command substitution under Git Bash: native
 // Windows commands write CRLF through the Go-opened output handle, and the
 // shell's recorded tail has both bytes stripped, so strip the pair here too.
-func trimTail(s string) string {
+func TrimTail(s string) string {
 	return strings.TrimRight(s, "\r\n")
 }
 
 // releaseTree closes the job after the run: the kill-on-close limit stops
 // any process the sweep did not already terminate.
-func releaseTree(cmd *exec.Cmd) {
+func releaseTree(cmd *osexec.Cmd) {
 	v, ok := trees.LoadAndDelete(cmd)
 	if !ok {
 		return
@@ -275,7 +275,7 @@ func releaseTree(cmd *exec.Cmd) {
 }
 
 // waitStatusOf extracts the wait status from an exit error.
-func waitStatusOf(exitErr *exec.ExitError) (waitStatus, bool) {
+func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	if exitErr.ProcessState == nil {
 		return waitStatus{}, false
 	}

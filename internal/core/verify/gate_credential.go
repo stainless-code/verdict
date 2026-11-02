@@ -1,15 +1,15 @@
-package verify
+package verifycore
 
 import (
 	"regexp"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // checkCredential ports the verify-credential-read arms: credential-path
 // reads, env piped into the network, identity/recon substitution in
 // networked commands, and DNS-query substitution.
-func checkCredential(g *gateText) *cli.RefusalError {
+func checkCredential(g *gateText) *core.RefusalError {
 	if ref := checkCredPath(g); ref != nil {
 		return ref
 	}
@@ -23,7 +23,7 @@ func checkCredential(g *gateText) *cli.RefusalError {
 }
 
 // checkCredPath ports the credential-path read arm.
-func checkCredPath(g *gateText) *cli.RefusalError {
+func checkCredPath(g *gateText) *core.RefusalError {
 	if frag := grepO(reCredPath, g.bare); frag != "" {
 		return refuse(codeCredential, frag, "credential-path read")
 	}
@@ -31,7 +31,7 @@ func checkCredPath(g *gateText) *cli.RefusalError {
 }
 
 // checkEnvPipe ports the env-piped-into-network arm.
-func checkEnvPipe(g *gateText) *cli.RefusalError {
+func checkEnvPipe(g *gateText) *core.RefusalError {
 	if !reEnvWord.MatchString(g.bare) {
 		return nil
 	}
@@ -43,7 +43,7 @@ func checkEnvPipe(g *gateText) *cli.RefusalError {
 
 // checkFetchSubst ports the env/recon/identity substitution arms inside
 // networked commands.
-func checkFetchSubst(g *gateText) *cli.RefusalError {
+func checkFetchSubst(g *gateText) *core.RefusalError {
 	if !reFetchWord.MatchString(g.bare) {
 		return nil
 	}
@@ -57,7 +57,7 @@ func checkFetchSubst(g *gateText) *cli.RefusalError {
 }
 
 // checkReconSubst ports the recon-identity substitution and variable arms.
-func checkReconSubst(g *gateText) *cli.RefusalError {
+func checkReconSubst(g *gateText) *core.RefusalError {
 	if frag := grepO(reReconSubst, g.bare); frag != "" {
 		return refuse(codeCredential, frag, "identity/recon output embedded in a networked command exfils credentials")
 	}
@@ -76,7 +76,7 @@ func checkReconSubst(g *gateText) *cli.RefusalError {
 }
 
 // checkDNSSubst ports the DNS-query substitution arms.
-func checkDNSSubst(g *gateText) *cli.RefusalError {
+func checkDNSSubst(g *gateText) *core.RefusalError {
 	if frag := grepO(reDNSSubst, g.bare); frag != "" {
 		return refuse(codeCredential, frag, "command substitution in a DNS query exfils through resolver labels")
 	}

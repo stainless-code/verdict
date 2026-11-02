@@ -2,7 +2,7 @@
 // probes, the standing fuzz corpus, and generated quoting/case/prefix
 // mutations, pinned against a checked-in golden of verify.Check outcomes
 // (go-port 08: the extracted-shell differential retired with the shell).
-package verify_test
+package verifycore_test
 
 // probeCase is one allowlist regression leg: the command plus whether the
 // gate must refuse (with the typed code) or execute.

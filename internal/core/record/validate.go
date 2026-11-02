@@ -1,55 +1,12 @@
-package record
+package recordcore
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"os"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
-
-// maxAgentBytes caps one agent-written input (review.json, verification.json,
-// chunk manifest) at 32 MiB. Go-only defense-in-depth (R3): the shell reads
-// whatever the agent wrote, but a bounded read keeps a hostile bundle from
-// exhausting memory. Unknown keys are never rejected — decoding stays open.
-const maxAgentBytes = 32 << 20
-
-// readAgentFile reads one agent-written input with the size cap applied.
-// Missing/unreadable files report the read error; over-cap files report a
-// typed refusal (callers distinguish with [errors.As]).
-func readAgentFile(path string) ([]byte, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		// Sealed at the layer boundary (GO-ERRORS-03, R4); callers only
-		// distinguish over-cap refusals via errors.As.
-		return nil, jq.Sealed("read agent file", err)
-	}
-	if len(raw) > maxAgentBytes {
-		return nil, &cli.RefusalError{Code: codeBadReviewInput, Message: path +
-			" exceeds the 32 MiB agent-input cap (shrink the review, then re-run)"}
-	}
-	return raw, nil
-}
-
-// readOptional reads an optional input file; ok is false when missing or
-// unreadable (absent inputs read as absent claims/priors, never failures).
-func readOptional(path string) ([]byte, bool) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-	return raw, true
-}
-
-// agentRefusal reports whether err is an over-cap refusal from readAgentFile.
-func agentRefusal(err error) error {
-	if ref, ok := errors.AsType[*cli.RefusalError](err); ok {
-		return ref
-	}
-	return nil
-}
 
 // validateInputs ports validate_review_input + validate_prior_findings: every
 // shape jq would crash on downstream refuses here as a typed refusal, before
@@ -91,12 +48,12 @@ func reviewList(review *jq.Obj, key string) ([]any, bool) {
 func checkCommentsShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "comments")
 	if !ok {
-		return &cli.RefusalError{Code: codeBadReviewInput, Message: msgMalformedComments}
+		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedComments}
 	}
 	for _, item := range items {
 		m, ok := item.(*jq.Obj)
 		if !ok || m == nil {
-			return &cli.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectComment}
+			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectComment}
 		}
 		if err := checkCommentScalars(m); err != nil {
 			return err
@@ -116,7 +73,7 @@ func checkCommentScalars(m *jq.Obj) error {
 			continue
 		}
 		if _, ok := v.(string); !ok {
-			return &cli.RefusalError{Code: codeBadReviewInput, Message: msgNonStringScalar}
+			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonStringScalar}
 		}
 	}
 	return nil
@@ -126,11 +83,11 @@ func checkCommentScalars(m *jq.Obj) error {
 func checkResolvedShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "resolved")
 	if !ok {
-		return &cli.RefusalError{Code: codeBadReviewInput, Message: msgMalformedResolved}
+		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedResolved}
 	}
 	for _, item := range items {
 		if _, ok := item.(string); !ok {
-			return &cli.RefusalError{Code: codeBadReviewInput, Message: msgNonStringResolved}
+			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonStringResolved}
 		}
 	}
 	return nil
@@ -140,11 +97,11 @@ func checkResolvedShape(review *jq.Obj) error {
 func checkTriageShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "triage")
 	if !ok {
-		return &cli.RefusalError{Code: codeBadReviewInput, Message: msgMalformedTriage}
+		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedTriage}
 	}
 	for _, item := range items {
 		if m, ok := item.(*jq.Obj); !ok || m == nil {
-			return &cli.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectTriage}
+			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectTriage}
 		}
 	}
 	return nil
@@ -154,11 +111,11 @@ func checkTriageShape(review *jq.Obj) error {
 func checkSectionsShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "sections")
 	if !ok {
-		return &cli.RefusalError{Code: codeBadReviewInput, Message: msgMalformedSections}
+		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedSections}
 	}
 	for _, item := range items {
 		if m, ok := item.(*jq.Obj); !ok || m == nil {
-			return &cli.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectSection}
+			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectSection}
 		}
 	}
 	return nil
@@ -173,7 +130,7 @@ func checkVerificationShape(dir string) error {
 		if ref := agentRefusal(err); ref != nil {
 			return ref
 		}
-		raw, _ = readOptional(dir + "/verification.json")
+		raw, _ = ReadOptional(dir + "/verification.json")
 	}
 	return checkVerificationClaims(raw)
 }
@@ -190,7 +147,7 @@ func checkVerificationClaims(raw []byte) error {
 	}
 	items, ok := doc.([]any)
 	if !ok {
-		return &cli.RefusalError{Code: codeBadReviewInput, Message: msgMalformedVerifyClaims}
+		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedVerifyClaims}
 	}
 	return checkClaimItems(items)
 }
@@ -199,7 +156,7 @@ func checkVerificationClaims(raw []byte) error {
 func checkClaimItems(items []any) error {
 	for _, item := range items {
 		if m, ok := item.(*jq.Obj); !ok || m == nil {
-			return &cli.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectVerifyClaim}
+			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectVerifyClaim}
 		}
 	}
 	return nil
@@ -214,7 +171,7 @@ func checkClaimItems(items []any) error {
 // the merge indexes elements by sig, so the write path refuses null too.
 func checkPriorShape(dir string) error {
 	path := dir + "/findings.json"
-	raw, ok := readOptional(path)
+	raw, ok := ReadOptional(path)
 	if !ok {
 		return nil
 	}
@@ -223,14 +180,14 @@ func checkPriorShape(dir string) error {
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 	}
 	if doc == nil || doc == false {
 		return nil
 	}
 	items, ok := doc.([]any)
 	if !ok {
-		return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 	}
 	return checkPriorElements(path, items)
 }
@@ -239,7 +196,7 @@ func checkPriorShape(dir string) error {
 func checkPriorElements(path string, items []any) error {
 	for _, item := range items {
 		if !priorElementOK(item) {
-			return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+			return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 		}
 	}
 	return nil

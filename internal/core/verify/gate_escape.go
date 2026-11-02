@@ -1,4 +1,4 @@
-package verify
+package verifycore
 
 import (
 	"os"
@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/bundle"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // checkRepoEscape ports the verify-repo-escape arms: device/proc/sys
 // access, dot-dot traversal, tilde/home targets, and absolute paths
 // outside the repo (and /tmp scratch).
-func checkRepoEscape(g *gateText) *cli.RefusalError {
+func checkRepoEscape(g *gateText) *core.RefusalError {
 	if ref := checkEscapeWords(g); ref != nil {
 		return ref
 	}
@@ -20,7 +20,7 @@ func checkRepoEscape(g *gateText) *cli.RefusalError {
 }
 
 // checkEscapeWords ports the device, traversal, and home-target arms.
-func checkEscapeWords(g *gateText) *cli.RefusalError {
+func checkEscapeWords(g *gateText) *core.RefusalError {
 	if frag := grepO(reDevProcSys, g.bare); frag != "" {
 		return refuse(codeRepoEscape, frag, "/dev|/proc|/sys access escapes the repo")
 	}
@@ -38,7 +38,7 @@ func checkEscapeWords(g *gateText) *cli.RefusalError {
 
 // checkAbsPaths ports the absolute-path arm: paths under /tmp or the
 // invocation root pass, the rest refuse.
-func checkAbsPaths(g *gateText) *cli.RefusalError {
+func checkAbsPaths(g *gateText) *core.RefusalError {
 	barepaths := rePathPlumb.ReplaceAllString(" "+g.bare, " varpath")
 	cands := reAbsPath.FindAllString(barepaths, -1)
 	if len(cands) == 0 {

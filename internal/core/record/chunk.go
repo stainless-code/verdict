@@ -1,4 +1,4 @@
-package record
+package recordcore
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -38,10 +38,10 @@ func (st *state) validateChunkMerge() (string, error) {
 	// The shell builds .chunk-hunks.tsv incrementally and leaves it behind
 	// on later failures; write it now so residues match through every gate.
 	if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
-		return "", &cli.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
+		return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
 	}
 	if !concatEquals(diffs, dir+"/full.diff") {
-		st.runner.Warn(fmt.Sprintf(msgChunkDrifted, dir))
+		st.warn(fmt.Sprintf(msgChunkDrifted, dir))
 	}
 	return checkChunkCoverage(st, manifest, chunks, names, refetch)
 }
@@ -49,10 +49,10 @@ func (st *state) validateChunkMerge() (string, error) {
 // chunkRefetch renders the re-fetch hint for chunk-gate refusals.
 func chunkRefetch(st *state) string {
 	if st.prov == providerLocal {
-		slug := strings.TrimPrefix(st.runner.Pr, localPrefix)
-		return fmt.Sprintf("verdict fetch-local %s %s --chunk -- <paths>", st.runner.Repo, slug)
+		slug := strings.TrimPrefix(st.pr, localPrefix)
+		return fmt.Sprintf("verdict fetch-local %s %s --chunk -- <paths>", st.repo, slug)
 	}
-	return fmt.Sprintf("verdict fetch %s %s --chunk", st.runner.Repo, st.runner.Pr)
+	return fmt.Sprintf("verdict fetch %s %s --chunk", st.repo, st.pr)
 }
 
 // chunk is one manifest chunk entry.
@@ -72,13 +72,13 @@ func readChunkManifest(st *state, manifest, refetch string) ([]chunk, []string, 
 		if schema == "" {
 			schema = "missing"
 		}
-		return nil, nil, &cli.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkUnreadable, manifest, schema, refetch)}
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkUnreadable, manifest, schema, refetch)}
 	}
 	chunks := parseChunks(jq.Elements(manMap["chunks"]))
 	slices.SortStableFunc(chunks, func(a, b chunk) int { return cmpLess(a.index, b.index) })
 	names := chunkNames(chunks)
 	if len(names) == 0 {
-		return nil, nil, &cli.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkNoChunks, manifest, refetch)}
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkNoChunks, manifest, refetch)}
 	}
 	return chunks, names, nil
 }
@@ -166,7 +166,7 @@ func resolveChunkDiffs(st *state, chunks []chunk, refetch string) ([]string, []h
 	}
 	if len(missing) > 0 {
 		removeBestEffort(chunkHunks)
-		return nil, nil, &cli.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
 			msgChunkSnapMissing, strings.Join(missing, " "), refetch)}
 	}
 	return diffs, allHunks, nil
@@ -202,17 +202,17 @@ func checkChunkCoverage(st *state, manifest string, chunks []chunk, names []stri
 	chunkHunks := st.dir + chunkHunksSuffix
 	reviewRaw, err := os.ReadFile(st.reviewFile)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.reviewFile)}
+		return "", &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.reviewFile)}
 	}
 	claimed, kind := chunkAttestation(reviewRaw)
 	switch kind {
 	case attestationPresent:
 		// Handled by the coverage tail below.
 	case attestationAbsent:
-		st.runner.Warn(fmt.Sprintf(msgUnattested, manifest, len(names)))
+		st.warn(fmt.Sprintf(msgUnattested, manifest, len(names)))
 		return chunkHunks, nil
 	case attestationMalformed:
-		st.runner.Warn("ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested")
+		st.warn("ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested")
 		return chunkHunks, nil
 	}
 	return checkChunkCoverageTail(st, manifest, coverageInput{chunks: chunks, names: names, claimed: claimed}, refetch)
@@ -238,14 +238,14 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 	missingDescs, nMiss := describeMissingChunks(chunks, claimedSet)
 	for _, c := range claimed {
 		if s, ok := c.(string); ok && s != "" && !manifestSet[s] {
-			st.runner.Warn(fmt.Sprintf("ignoring unknown chunk '%s' in the chunks attestation (not in %s)", s, manifest))
+			st.warn(fmt.Sprintf("ignoring unknown chunk '%s' in the chunks attestation (not in %s)", s, manifest))
 		}
 	}
 	if len(missingDescs) > 0 {
 		// The shell removes the derived snapshot before refusing partial
 		// coverage; a residue here would linger past the refusal (I3).
 		removeBestEffort(chunkHunks)
-		return "", &cli.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
 			msgChunkCoverage, len(names)-nMiss, len(names), strings.Join(missingDescs, ", "), refetch)}
 	}
 	return chunkHunks, nil

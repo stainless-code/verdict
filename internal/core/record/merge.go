@@ -1,4 +1,4 @@
-package record
+package recordcore
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -19,14 +19,21 @@ import (
 // state carries the validate_and_merge globals for one record run. Findings
 // entries are *jq.Obj in shell construction order: jq preserves insertion
 // order, so byte parity needs the same field sequence, not sorted keys.
-type state struct {
+// Fresh entries are built as [core.FindingEntry] values (field order is
+// wire order) and converted with Wire; merged priors stay ordered objects
+// so prior key order and unknown keys survive byte-identically.
+type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
 	confidence   any
 	security     any
 	review       *jq.Obj
 	kb           *kb.Ctx
-	forces       *cli.GlobalForces
+	forces       *core.GlobalForces
 	preFooter    func(string) string
-	runner       *cli.Runner
+	progress     core.Progress
+	effective    core.Effective
+	cmd          string
+	repo         string
+	pr           string
 	env          map[string]string
 	now          string
 	findingsFile string
@@ -45,10 +52,8 @@ type state struct {
 	hunkN        int
 	nKept        int
 	nMoved       int
-	nOpen        int
-	nDeferred    int
-	nAddressed   int
 	dryRun       bool
+	warnings     []string
 }
 
 // hunkRow is one parsed anchor-hunks row.
@@ -59,19 +64,33 @@ type hunkRow struct {
 	end   int
 }
 
+// warn records and streams one warning.
+func (st *state) warn(msg string) {
+	st.warnings = append(st.warnings, msg)
+	if st.progress != nil {
+		st.progress.Warn(msg)
+	}
+}
+
+// human streams one human output line.
+func (st *state) human(line string) {
+	if st.progress != nil {
+		st.progress.Human(line)
+	}
+}
+
 // validateAndMerge ports validate_and_merge end to end, returning the
 // curated body (move section, diagram strips, and the rendered footer
 // appended) plus the diagram disposition for the dry-run envelope, or a
 // typed refusal for any fail-closed gate. The record verb discards the body
 // and keeps the warnings; the post verb posts the curated body.
 func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
-	r := st.runner
-	st.kb = kb.New(r.Warn)
+	st.kb = kb.New(st.warn)
 	st.kb.ResolvePolicy(st.env, exists(kb.File))
 	st.kb.Broken = false
 	st.loadKB()
 	st.kb.Staged = []map[string]any{}
-	if err := checkReviewSchema(r, st.review); err != nil {
+	if err := checkReviewSchema(st.warn, st.review); err != nil {
 		return "", diagram.Status{}, err
 	}
 	if err := st.validateInputs(); err != nil {
@@ -140,7 +159,7 @@ func (st *state) loadKB() {
 	}
 	raw, err := os.ReadFile(kb.File)
 	if err != nil || !validJSON(raw) {
-		st.runner.Warn(fmt.Sprintf("kb store %s unreadable — citations ignored for this run (fix the bad line)", kb.File))
+		st.warn(fmt.Sprintf("kb store %s unreadable — citations ignored for this run (fix the bad line)", kb.File))
 		st.kb.Broken = true
 	}
 }
@@ -148,10 +167,9 @@ func (st *state) loadKB() {
 // reportMoves emits the human anchor table: kept/moved counts plus one line
 // per moved comment with its drop reason.
 func (st *state) reportMoves() {
-	r := st.runner
 	st.nKept = len(st.kept)
 	st.nMoved = len(st.moved)
-	fmt.Fprintf(r.Human, "» anchors: %d inline, %d moved to body\n", st.nKept, st.nMoved)
+	st.human(fmt.Sprintf("» anchors: %d inline, %d moved to body", st.nKept, st.nMoved))
 	if st.nMoved == 0 {
 		return
 	}
@@ -163,7 +181,7 @@ func (st *state) reportMoves() {
 		loc := anchorLoc(m)
 		body200 := runeSlice(entryBody(m), maxBodyRunes)
 		reason, _ := m.Get(fieldDropReason)
-		fmt.Fprintf(r.Human, "  - `%s` (%s): %s\n", loc, jq.Interp(jq.Alt(reason, "outside reviewed hunks")), body200)
+		st.human(fmt.Sprintf("  - `%s` (%s): %s", loc, jq.Interp(jq.Alt(reason, "outside reviewed hunks")), body200))
 	}
 }
 
@@ -174,14 +192,13 @@ func (st *state) reportMoves() {
 // carries it into the payload. The footer receipt is appended exactly once,
 // like the shell's strip-and-replace render.
 func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
-	r := st.runner
 	for _, w := range provenance.ValidateBasisLine(
 		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body) {
-		r.Warn(w)
+		st.warn(w)
 	}
 	for _, w := range provenance.ValidateEvidenceLinks(
 		body, st.headFull, provenance.EvidenceLinkable(st.dir, st.headFull)) {
-		r.Warn(w)
+		st.warn(w)
 	}
 	dr := st.applyDiagram(body)
 	body = dr.Body
@@ -202,13 +219,12 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 // applyDiagram validates behavioral diagrams, surfaces its warnings, and
 // returns the validated body with its disposition for the dry-run envelope.
 func (st *state) applyDiagram(body string) diagram.Result {
-	r := st.runner
 	dr := diagram.Validate(body,
-		r.Effective.DiagramsBehavioral == cli.FlagOn,
-		r.Effective.DiagramsExpanded == cli.FlagOn,
-		cli.FooterDivider)
+		st.effective.DiagramsBehavioral == core.FlagOn,
+		st.effective.DiagramsExpanded == core.FlagOn,
+		core.FooterDivider)
 	for _, w := range dr.Warns {
-		r.Warn(w)
+		st.warn(w)
 	}
 	return dr
 }
@@ -245,16 +261,16 @@ func validJSON(raw []byte) bool {
 
 // checkReviewSchema ports the schema_version gate: absent warns (grandfathered
 // agents), "1" passes, anything else refuses.
-func checkReviewSchema(r *cli.Runner, review *jq.Obj) error {
+func checkReviewSchema(warn func(string), review *jq.Obj) error {
 	rv, has := review.Get("schema_version")
 	if review == nil || !has || rv == nil || rv == false {
-		r.Warn("review.json carries no schema_version — assuming 1 (agents: write \"schema_version\":\"1\")")
+		warn("review.json carries no schema_version — assuming 1 (agents: write \"schema_version\":\"1\")")
 		return nil
 	}
 	if s := jq.R(rv); s == schemaVersion1 {
 		return nil
 	}
-	return &cli.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
+	return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
 }
 
 // parseConfidence ports the review-level confidence + security summary
@@ -275,7 +291,7 @@ func (st *state) parseConfidenceLevel() {
 	if s := jq.R(conf); isConfidenceLevel(s) {
 		st.confidence = conf
 	} else {
-		st.runner.Warn(fmt.Sprintf("ignoring confidence '%s' (want integer 1-5)", s))
+		st.warn(fmt.Sprintf("ignoring confidence '%s' (want integer 1-5)", s))
 	}
 }
 
@@ -297,7 +313,7 @@ func (st *state) parseSecuritySummary() error {
 	}
 	s, isStr := sec.(string)
 	if !isStr {
-		st.runner.Warn("ignoring non-string security_summary (want a short string)")
+		st.warn("ignoring non-string security_summary (want a short string)")
 		return nil
 	}
 	if s != "" {
@@ -329,18 +345,17 @@ func (st *state) validateAnchors(body string) string {
 
 // classifyComment keeps or moves one review comment by its diff anchoring.
 func (st *state) classifyComment(m *jq.Obj, rows []hunkRow) {
-	r := st.runner
 	p, _ := m.Get(fieldPath)
 	path := jq.Str(p)
 	key := stripDiffPrefix(path)
 	if !hunks.Indexed(rowsToHunks(rows), key) {
-		r.Warn("kept despite unknown path (not in diff index, ambiguity keeps): " + path)
+		st.warn("kept despite unknown path (not in diff index, ambiguity keeps): " + path)
 		st.kept = append(st.kept, m)
 		return
 	}
 	lo, hi, side := anchorRange(m)
 	if lo < 0 {
-		r.Warn(fmt.Sprintf("kept despite non-numeric anchor: %s %s", path, anchorSpan(m)))
+		st.warn(fmt.Sprintf("kept despite non-numeric anchor: %s %s", path, anchorSpan(m)))
 		st.kept = append(st.kept, m)
 		return
 	}
@@ -491,7 +506,7 @@ func (st *state) demoteFences(body string) string {
 		}
 	}
 	if len(fenced) > 0 {
-		st.runner.Warn(fmt.Sprintf("demoting %d suggestion(s) with fences to body", len(fenced)))
+		st.warn(fmt.Sprintf("demoting %d suggestion(s) with fences to body", len(fenced)))
 		st.moved = append(fenced, st.moved...)
 		st.kept = kept
 	}
@@ -560,25 +575,32 @@ func runeSlice(s string, n int) string {
 
 // buildEntries ports the new-entries construction plus the sig loop: sigs
 // are line-number-free (comments carry lines, findings do not), and every
-// comment cite normalizes through the KB policy. Field order mirrors the
-// shell's jq construction exactly.
+// comment cite normalizes through the KB policy. Fresh entries are built as
+// typed values (field order is wire order); the merge downstream keeps them
+// as ordered objects.
 func (st *state) buildEntries(body string) {
 	var secs []any
 	if s, ok := st.review.Get("sections"); ok {
 		secs = jq.Elements(s)
 	}
-	var fresh []*jq.Obj
+	var fresh []freshEntry
 	fresh = append(fresh, freshInline(st.kept, st.moved)...)
 	fresh = append(fresh, freshSections(body, secs)...)
 	kbExists := exists(kb.File)
-	for _, e := range fresh {
-		st.entries = append(st.entries, stampEntry(st, e, kbExists))
+	for _, fe := range fresh {
+		st.entries = append(st.entries, stampEntry(st, fe.entry, fe.kbRaw, kbExists).Wire())
 	}
 }
 
+// freshEntry is one fresh finding plus its raw kb cite for normalization.
+type freshEntry struct {
+	entry *core.FindingEntry
+	kbRaw any
+}
+
 // freshInline builds the inline entries from kept/moved comments.
-func freshInline(kept, moved []any) []*jq.Obj {
-	var fresh []*jq.Obj
+func freshInline(kept, moved []any) []freshEntry {
+	var fresh []freshEntry
 	comments := append(append([]any{}, kept...), moved...)
 	for _, c := range comments {
 		m, mok := c.(*jq.Obj)
@@ -591,19 +613,19 @@ func freshInline(kept, moved []any) []*jq.Obj {
 }
 
 // freshSections builds the section entries from body headings.
-func freshSections(body string, secs []any) []*jq.Obj {
-	var fresh []*jq.Obj
+func freshSections(body string, secs []any) []freshEntry {
+	var fresh []freshEntry
 	for h := range strings.SplitSeq(body, newline) {
 		if !strings.HasPrefix(h, "### ") {
 			continue
 		}
-		fresh = append(fresh, buildSection(h, sectionSeverity(secs, h)))
+		fresh = append(fresh, freshEntry{entry: buildSection(h, sectionSeverity(secs, h))})
 	}
 	return fresh
 }
 
 // buildInline ports the inline-entry construction for one kept/moved comment.
-func buildInline(m *jq.Obj) *jq.Obj {
+func buildInline(m *jq.Obj) freshEntry {
 	inBounds, ok := m.Get("in-bounds")
 	if !ok || inBounds == nil {
 		inBounds = true
@@ -617,19 +639,22 @@ func buildInline(m *jq.Obj) *jq.Obj {
 	kbc, _ := m.Get(fieldKB)
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
-	return jq.NewObj(
-		"kind", "inline",
-		fieldPath, path,
-		"side", jq.Alt(side, "RIGHT"),
-		fieldLine, line,
-		fieldAnchored, drop == nil,
-		fieldBody, jq.Alt(bd, ""),
-		fieldSuggestion, jq.Alt(sugg, nil),
-		fieldKB, jq.Alt(kbc, nil),
-		fieldInBounds, inBounds,
-		fieldRigor, pick(rigor, rigorAllow, "pointed"),
-		fieldSeverity, pick(sev, sevAllow, nil),
-	)
+	body := jq.StrOf(jq.Alt(bd, ""))
+	return freshEntry{
+		entry: &core.FindingEntry{
+			Kind:       "inline",
+			Path:       path,
+			Side:       jq.Alt(side, "RIGHT"),
+			Line:       line,
+			Anchored:   drop == nil,
+			Body:       body,
+			Suggestion: optString(jq.Alt(sugg, nil)),
+			InBounds:   inBounds,
+			Rigor:      pick(rigor, rigorAllow, "pointed"),
+			Severity:   pick(sev, sevAllow, nil),
+		},
+		kbRaw: jq.Alt(kbc, nil),
+	}
 }
 
 // sectionSeverity matches a body section heading to its review severity.
@@ -648,40 +673,60 @@ func sectionSeverity(secs []any, h string) any {
 }
 
 // buildSection ports the section-entry construction for one body heading.
-func buildSection(h string, sev any) *jq.Obj {
-	return jq.NewObj(
-		"kind", "section",
-		fieldHeading, h,
-		fieldAnchored, fieldBody,
-		fieldBody, h,
-		fieldSeverity, pick(sev, sevAllow, nil),
-	)
+func buildSection(h string, sev any) *core.FindingEntry {
+	return &core.FindingEntry{
+		Kind:     "section",
+		Heading:  h,
+		Anchored: fieldBody,
+		Body:     h,
+		Severity: pick(sev, sevAllow, nil),
+	}
+}
+
+// optString renders an optional string (nil reads null).
+func optString(v any) *string {
+	if v == nil {
+		return nil
+	}
+	if s, ok := v.(string); ok {
+		return &s
+	}
+	return nil
 }
 
 // stampEntry stamps one fresh entry with its sig, status, KB normalization,
-// and initial history. Set order mirrors the shell: inline entries keep kb
-// from construction, section entries append it after rationale.
-func stampEntry(st *state, e *jq.Obj, kbExists bool) *jq.Obj {
-	_, isSection := e.Get(fieldHeading)
-	path, _ := e.Get(fieldPath)
-	heading, _ := e.Get(fieldHeading)
-	bd, _ := e.Get(fieldBody)
-	key := sigKeyPart(path) + newline + sigKeyPart(heading) + newline + sigBody(bd)
-	norm := st.kb.NormalizeEntry(e, kbExists)
-	if !isSection {
-		e.Set(fieldKB, norm)
-	}
-	e.Set(fieldSig, sig.Of(key))
-	e.Set(fieldSigVersion, sigVersion1)
-	e.Set("firstSeen", st.headShort)
-	e.Set(fieldLastSeen, st.headShort)
-	e.Set(fieldStatus, statusOpen)
-	e.Set("rationale", "")
-	if isSection {
-		e.Set(fieldKB, norm)
-	}
-	e.Set(fieldHistory, []any{jq.NewObj(fieldAt, st.now, fieldEvent, "reported")})
+// and initial history.
+func stampEntry(st *state, e *core.FindingEntry, kbRaw any, kbExists bool) *core.FindingEntry {
+	key := sigKeyPart(e.Path) + newline + sigKeyPart(e.Heading) + newline + sigBody(e.Body)
+	norm := st.kb.NormalizeEntry(jq.NewObj(fieldKB, kbRaw), kbExists)
+	e.KB = kbStrings(norm)
+	e.Sig = sig.Of(key)
+	e.SigVersion = sigVersion1
+	e.FirstSeen = st.headShort
+	e.LastSeen = st.headShort
+	e.Status = statusOpen
+	e.Rationale = ""
+	e.History = []core.HistoryEvent{{At: st.now, Event: "reported"}}
 	return e
+}
+
+// kbStrings converts a normalized kb id list: absent reads nil (the
+// backfill turns it into []), present reads the id strings.
+func kbStrings(norm any) *[]string {
+	if norm == nil {
+		return nil
+	}
+	arr, ok := norm.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return &out
 }
 
 // sigKeyPart renders a sig-key path/heading segment: null/false/missing read
@@ -765,7 +810,7 @@ func appendFresh(merged, entries []any, oldSigs map[string]bool) []any {
 // entries; anything else refuses as corrupt-store (never start fresh).
 func loadPrior(dir string) ([]any, error) {
 	path := dir + "/findings.json"
-	raw, ok := readOptional(path)
+	raw, ok := ReadOptional(path)
 	if !ok {
 		return nil, nil
 	}
@@ -774,7 +819,7 @@ func loadPrior(dir string) ([]any, error) {
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 	}
 	if doc == nil || doc == false {
 		return nil, nil
@@ -782,7 +827,7 @@ func loadPrior(dir string) ([]any, error) {
 	if arr, ok := doc.([]any); ok {
 		return arr, nil
 	}
-	return nil, &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+	return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 }
 
 // indexBySig indexes entries by their string sig.
@@ -975,9 +1020,9 @@ func (st *state) recordResolvedClaim(s string) {
 	full, code := resolveSig(st.entries, s)
 	switch code {
 	case sigNone:
-		st.runner.Warn(fmt.Sprintf("resolved claim %s ignored (not in store)", prefix8(s)))
+		st.warn(fmt.Sprintf("resolved claim %s ignored (not in store)", prefix8(s)))
 	case sigMany:
-		st.runner.Warn(fmt.Sprintf("resolved claim %s ignored (ambiguous prefix)", prefix8(s)))
+		st.warn(fmt.Sprintf("resolved claim %s ignored (ambiguous prefix)", prefix8(s)))
 	default:
 		target := findEntry(st.entries, full)
 		target.Set(fieldHistory, appendHistory(target, jq.NewObj(

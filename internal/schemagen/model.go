@@ -19,87 +19,26 @@ import "github.com/stainless-code/verdict/internal/core"
 //   - map[string]any is an open object; any is an empty (accept-anything)
 //     schema; []any is an array without items.
 
-// Review is schemas/review.schema.json: the agent-written review input.
-type Review struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string        `const:"1"                         json:"schema_version,omitempty"`
-	Body            string        `json:"body"`
-	Approved        bool          `json:"approved,omitempty"`
-	Comments        []Comment     `json:"comments"`
-	Resolved        []string      `json:"resolved,omitempty"`
-	Triage          []TriageClaim `json:"triage,omitempty"`
-	Sections        []SectionTag  `json:"sections,omitempty"`
-	Confidence      *int          `json:"confidence,omitempty"       max:"5"                         min:"1"`
-	SecuritySummary *string       `json:"security_summary,omitempty"`
-	Chunks          []string      `json:"chunks,omitempty"`
-}
+// Review is core's agent-written review input.
+type Review = core.Review
 
-// Comment is one inline finding in review.json input.
-type Comment struct { //nolint:govet // field order is the published property order
-	Path       string    `json:"path"`
-	Line       any       `json:"line,omitempty"                          type:"integer|string|null"`
-	StartLine  any       `json:"start_line,omitempty"                    type:"integer|string|null"`
-	Side       string    `json:"side,omitempty"`
-	Body       string    `json:"body"`
-	Suggestion *string   `json:"suggestion,omitempty"`
-	Rigor      any       `enum:"said|pointed|walked|ran|reproduced|null" json:"rigor,omitempty"`
-	Severity   any       `enum:"critical|important|informational|null"   json:"severity,omitempty"`
-	InBounds   *bool     `json:"in-bounds,omitempty"`
-	KB         *[]string `json:"kb,omitempty"`
-}
+// Comment is core's inline review input.
+type Comment = core.Comment
 
-// TriageClaim is one status claim in review.json input.
-type TriageClaim struct {
-	Sig       string `json:"sig"`
-	Status    string `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
-	Rationale string `json:"rationale"`
-}
+// TriageClaim is core's review status claim.
+type TriageClaim = core.TriageClaim
 
-// SectionTag is one severity tag for a review body section.
-type SectionTag struct { //nolint:govet // field order is the published property order
-	Heading  string `json:"heading"`
-	Severity any    `enum:"critical|important|informational|null" json:"severity,omitempty"`
-}
+// SectionTag is core's review body section tag.
+type SectionTag = core.SectionTag
 
-// FindingEntry is one merged finding in findings.json.
-type FindingEntry struct {
-	Sig        string         `json:"sig"`
-	SigVersion string         `const:"1"                                              json:"sig_version"`
-	Kind       string         `enum:"inline|section"                                  json:"kind"`
-	Path       *string        `json:"path,omitempty"`
-	Heading    *string        `json:"heading,omitempty"`
-	Line       *int           `json:"line,omitempty"`
-	Side       *string        `json:"side,omitempty"`
-	Anchored   any            `json:"anchored,omitempty"                              type:"boolean|string|null"`
-	Body       string         `json:"body,omitempty"`
-	Suggestion *string        `json:"suggestion,omitempty"`
-	KB         *[]string      `json:"kb,omitempty"`
-	InBounds   *bool          `json:"inBounds,omitempty"`
-	Rigor      any            `enum:"said|pointed|walked|ran|reproduced|null"         json:"rigor,omitempty"`
-	Severity   any            `enum:"critical|important|informational|null"           json:"severity,omitempty"`
-	Status     string         `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
-	FirstSeen  string         `json:"firstSeen"`
-	LastSeen   string         `json:"lastSeen"`
-	Rationale  string         `json:"rationale,omitempty"`
-	TriagedAt  string         `json:"triagedAt,omitempty"`
-	TriagedBy  string         `json:"triagedBy,omitempty"`
-	History    []HistoryEvent `json:"history"`
-}
+// FindingEntry is core's merged finding.
+type FindingEntry = core.FindingEntry
 
-// HistoryEvent is one append-only findings history entry.
-type HistoryEvent struct {
-	At       string     `json:"at"`
-	Event    string     `enum:"reported|claim|reopened|revalidation|addressed|triaged" json:"event"`
-	Actor    string     `json:"actor,omitempty"`
-	Note     string     `json:"note,omitempty"`
-	SHA      string     `json:"sha,omitempty"`
-	KBCredit []KBCredit `json:"kb_credit,omitempty"`
-}
+// HistoryEvent is core's findings history entry.
+type HistoryEvent = core.HistoryEvent
 
-// KBCredit is one knowledge-base credit carried on a history event.
-type KBCredit struct {
-	Rule string `json:"rule"`
-	To   string `json:"to"`
-}
+// KBCredit is core's knowledge-base credit.
+type KBCredit = core.KBCredit
 
 // CostRecord is one agent self-reported spend record (or one element of the
 // array a re-reviewed bundle writes).
@@ -223,23 +162,11 @@ type PostFindings struct { //nolint:govet // field order is the published proper
 	File      string `json:"file,omitempty"`
 }
 
-// RecordData is the record verb's --json data profile.
-type RecordData struct { //nolint:govet // field order is the published property order
-	Dir             string         `json:"dir"`
-	Anchors         AnchorsSummary `json:"anchors"`
-	Findings        RecordFindings `inline:"true"           json:"findings"`
-	Confidence      *int           `json:"confidence"       max:"5"         min:"1"`
-	SecuritySummary *string        `json:"security_summary"`
-	Items           []FindingItem  `json:"items"`
-}
+// RecordData is core's record --json data profile.
+type RecordData = core.RecordData
 
-// RecordFindings counts the findings a record run merged.
-type RecordFindings struct { //nolint:govet // field order is the published property order
-	Open      int    `json:"open"      min:"0"`
-	Deferred  int    `json:"deferred"  min:"0"`
-	Addressed int    `json:"addressed" min:"0"`
-	File      string `json:"file"`
-}
+// RecordFindings is core's record finding tally.
+type RecordFindings = core.RecordFindings
 
 // Post is schemas/post.schema.json: the completed-post record.
 type Post struct { //nolint:govet // field order is the published property order
@@ -254,18 +181,5 @@ type Post struct { //nolint:govet // field order is the published property order
 	Model           *string        `json:"model,omitempty"`
 }
 
-// Record is schemas/record.schema.json: the completed-record artifact.
-type Record struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string  `const:"1"                         json:"schema_version"`
-	Status          string  `json:"status"`
-	Head            string  `json:"head"`
-	DiffSHA256      string  `json:"diff_sha256"`
-	RecordedAt      string  `format:"date-time"                json:"recorded_at"`
-	Findings        int     `json:"findings"                   min:"0"`
-	Open            int     `json:"open"                       min:"0"`
-	Confidence      *int    `json:"confidence,omitempty"       max:"5"               min:"1"`
-	SecuritySummary *string `json:"security_summary,omitempty"`
-	ToolVersion     string  `json:"tool_version,omitempty"`
-	PromptsHash     string  `json:"prompts_hash,omitempty"`
-	Model           *string `json:"model,omitempty"`
-}
+// Record is core's completed-record artifact.
+type Record = core.Record

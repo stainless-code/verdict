@@ -1,0 +1,226 @@
+// Package exec is core's production command runner: the [core.Commander]
+// that spawns argv in its own process group, captures combined output,
+// kills the whole tree when the context deadline fires, and sweeps orphans
+// that outlive the parent. No service body calls exec directly; tests
+// inject a scripted [core.Commander] instead.
+package exec
+
+import (
+	"context"
+	"errors"
+	osexec "os/exec"
+	"sync"
+	"time"
+
+	"github.com/stainless-code/verdict/internal/core"
+)
+
+// OSCommander runs commands on the host with the verify watchdog contract:
+// process-group kill on timeout, orphan sweep on clean exits, and the
+// shell `wait` exit code (128+signo for signaled processes).
+type OSCommander struct{}
+
+// Run starts cmd.Argv in its own process group with combined output
+// capture, returning the wait status. The context deadline is the watchdog
+// budget: expiry SIGKILLs the group. A nil Stdin or Env inherits the
+// caller's. Infra failures (spawn) come back as errors; completed
+// processes — any exit code — come back as results.
+func (OSCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+	if len(cmd.Argv) == 0 {
+		return core.Result{}, errEmptyArgv
+	}
+	secs, budgeted := watchdogBudget(ctx)
+	proc, waitDone, out, err := spawnWatched(ctx, cmd)
+	if err != nil {
+		return core.Result{}, err
+	}
+	defer releaseTree(proc)
+	timedOut := false
+	if havePS() && budgeted {
+		timedOut = pollTimeout(ctx, proc, secs)
+	}
+	exit := waitExit(waitDone, timedOut)
+	decoy := false
+	if !timedOut && sweepOrphans(proc) {
+		timedOut = true
+		decoy = true
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		timedOut = true
+	}
+	return core.Result{Stdout: out.String(), ExitCode: exit, TimedOut: timedOut, Decoy: decoy}, nil
+}
+
+// itoa renders a small non-negative int.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%decimalBase)
+		n /= decimalBase
+	}
+	return string(b[i:])
+}
+
+// decimalBase is the radix for small-int rendering.
+const decimalBase = 10
+
+// errEmptyArgv is the spawn error for an empty argv.
+var errEmptyArgv = watchdogError("empty argv")
+
+// WatchdogEnforced reports whether the watchdog can poll and kill a tree.
+// POSIX needs ps(1) for the zombie arm; the Windows job object covers it.
+// The service warns through its own progress observer when false.
+func WatchdogEnforced() bool {
+	return havePS()
+}
+
+// watchdogBudget reads the watchdog budget in whole seconds from the
+// context deadline the service installed. Absent reads unbudgeted.
+func watchdogBudget(ctx context.Context) (int, bool) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return 0, false
+	}
+	return int(time.Until(deadline).Seconds()), true
+}
+
+// spawnWatched starts argv in its own process group with combined output
+// captured to memory, returning the command, its wait channel, and the
+// locked output buffer (closed over by the caller after the wait).
+func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan error, *lockedBuffer, error) {
+	//nolint:gosec // G204: argv is the operator's own verify command (like the shell's bash -c), not external input.
+	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
+	// Inherit the binary's cwd (the shell spawns the same way, so relative
+	// verifyCmds resolve identically); nil stdin and env inherit too.
+	setGroup(proc)
+	proc.Cancel = func() error { return killGroup(proc) }
+	proc.WaitDelay = waitDelay
+	out := &lockedBuffer{}
+	proc.Stdout = out
+	proc.Stderr = out
+	proc.Env = cmd.Env
+	proc.Stdin = cmd.Stdin
+	if err := proc.Start(); err != nil {
+		releaseTree(proc)
+		return nil, nil, nil, watchdogError("start command: " + err.Error())
+	}
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- proc.Wait() }()
+	return proc, waitDone, out, nil
+}
+
+// lockedBuffer is a goroutine-safe combined capture: stdout and stderr
+// interleave at write granularity, like the shell's `>>file 2>&1`.
+type lockedBuffer struct {
+	buf []byte
+	mu  sync.Mutex
+}
+
+// Write appends p to the combined capture.
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+// String returns the combined capture.
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
+}
+
+// pollTimeout ports the polling watchdog: while the main pid reads alive
+// (kill -0 plus the ps zombie arm) and the budget holds, sleep one second;
+// on expiry SIGKILL the group and record the timeout. The wait result is
+// never consumed here: the channel is buffered so the waiter never blocks,
+// and waitExit takes the single receive (reaping before the orphan sweep).
+func pollTimeout(ctx context.Context, cmd *osexec.Cmd, timeoutSecs int) bool {
+	elapsed := 0
+	for {
+		if !processAlive(ctx, cmd) {
+			return false
+		}
+		if elapsed >= timeoutSecs {
+			break
+		}
+		if waitPollSecond(ctx) {
+			break
+		}
+		elapsed++
+	}
+	return stopTimedOut(cmd)
+}
+
+// stopTimedOut SIGKILLs the expired group. The kill is best effort: the
+// process may have exited between the last liveness check and the kill,
+// in which case there is nothing left to stop. Either way the timeout
+// stands.
+func stopTimedOut(cmd *osexec.Cmd) bool {
+	if err := killGroup(cmd); err != nil {
+		return true
+	}
+	return true
+}
+
+// waitPollSecond sleeps one watchdog tick, reporting whether the
+// deadline context fired during the sleep.
+func waitPollSecond(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	case <-time.After(time.Second):
+	}
+	return ctx.Err() != nil
+}
+
+// waitExit drains the wait result and maps it to the shell `wait` code:
+// 128+signo for signaled processes, the exit status otherwise. A
+// timeout-killed tree reads 137 (SIGKILL), matching the shell.
+func waitExit(waitDone chan error, timedOut bool) int {
+	err := <-waitDone
+	if err == nil {
+		return 0
+	}
+	if exitErr, ok := errors.AsType[*osexec.ExitError](err); ok {
+		return waitStatusCode(exitErr, timedOut)
+	}
+	if timedOut {
+		return sigkillExit
+	}
+	return 1
+}
+
+// waitStatusCode maps a decoded wait status to the shell `wait` code:
+// 128+signo for signaled processes, the exit status otherwise. An
+// undecodable status reads 1, or 137 on a timed-out tree.
+func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
+	if timedOut {
+		if code, ok := timeoutExitCode(); ok {
+			return code
+		}
+	}
+	ws, ok := waitStatusOf(exitErr)
+	if !ok {
+		if timedOut {
+			return sigkillExit
+		}
+		return 1
+	}
+	if ws.signaled {
+		return sigOffset + ws.signal
+	}
+	return ws.status
+}
+
+// sigkillExit is the shell `wait` code for a SIGKILLed command.
+const sigkillExit = 137
+
+// sigOffset maps a fatal signal to the shell `wait` code (128+signo).
+const sigOffset = 128

@@ -1,14 +1,15 @@
-// Package verify ports the `verify` verb: execute patch.json's verifyCmd
-// under a watchdog and record the outcome into the patch record. The gate
-// (gate*.go) runs first and refuses hostile shapes typed before anything
-// spawns; refusals leave stored state untouched. The execution model stays
-// `bash -c` (the documented contract): the process runs in its own process
-// group, a timeout kills the whole tree, the exit plus a redacted tail are
-// recorded, and NO_COLOR is inherited per the never-prompts doctrine.
-package verify
+// Package verifycore is the verify domain service: `verify` as a typed
+// (ctx, request) → (response, refusal) call. It owns the allowlist gate,
+// the watchdog spawn through the injected [core.Commander], and the patch
+// outcome write; internal/verify owns argv parsing, stream writes, and exit
+// mapping. The execution model stays `bash -c` (the documented contract):
+// the process runs in its own process group, a timeout kills the whole
+// tree, the exit plus a redacted tail are recorded, and NO_COLOR is
+// inherited per the never-prompts doctrine.
+package verifycore
 
 import (
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // Check runs the pre-exec allowlist gate over the raw verifyCmd, returning
@@ -17,7 +18,7 @@ import (
 // substitution, glob/brace fragmentation, then destructive, credential, and
 // networked classes, then repo escape. The normalized texts are built once
 // and shared by every section.
-func Check(raw string) *cli.RefusalError {
+func Check(raw string) *core.RefusalError {
 	g := normalize(raw)
 	if ref := checkSentinel(g); ref != nil {
 		return ref
@@ -59,6 +60,6 @@ const codeCredential = "verify-credential-read"
 // refuse builds the typed gate refusal: the message quotes the matched
 // fragment exactly as grep -o printed it (byte-identical), and the try:
 // hint rides the shared hint table.
-func refuse(code, frag, detail string) *cli.RefusalError {
-	return &cli.RefusalError{Code: code, Message: "refusing verifyCmd: matched '" + frag + "' (" + detail + ")"}
+func refuse(code, frag, detail string) *core.RefusalError {
+	return &core.RefusalError{Code: code, Message: "refusing verifyCmd: matched '" + frag + "' (" + detail + ")"}
 }

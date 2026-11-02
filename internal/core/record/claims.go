@@ -1,11 +1,11 @@
-package record
+package recordcore
 
 import (
 	"fmt"
 	"os"
 	"unicode/utf8"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 )
@@ -71,10 +71,10 @@ func (st *state) applyVerificationClaim(v *jq.Obj) {
 	full, code := resolveSig(st.entries, vsig)
 	switch code {
 	case sigNone:
-		st.runner.Warn(fmt.Sprintf("verification claim %s ignored (not in store)", prefix8(vsig)))
+		st.warn(fmt.Sprintf("verification claim %s ignored (not in store)", prefix8(vsig)))
 		return
 	case sigMany:
-		st.runner.Warn(fmt.Sprintf("verification claim %s ignored (ambiguous prefix)", prefix8(vsig)))
+		st.warn(fmt.Sprintf("verification claim %s ignored (ambiguous prefix)", prefix8(vsig)))
 		return
 	}
 	st.applyVerdict(findEntry(st.entries, full), full, claim)
@@ -114,7 +114,7 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 	// verify command (C5). Dry runs stage nothing (the shell's kb_apply_credit
 	// calls sit behind the dryrun-filename guard), so flips stay credit-free.
 	if !st.dryRun {
-		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.runner.Cmd, st.now, exists(kb.File))
+		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.cmd, st.now, exists(kb.File))
 		stampCredit(st, target)
 	}
 	st.checkVerifyContradiction(full)
@@ -151,11 +151,11 @@ func (st *state) recordRevalidation(target *jq.Obj, claim verifyClaim) {
 func (st *state) checkVerifyContradiction(full string) {
 	vexit := jq.R(jq.Alt(patchField(st.dir, "verifyExit"), ""))
 	if vexit != "" && vexit != "0" && vexit != "null" {
-		st.runner.Warn(fmt.Sprintf(msgContradictExit, prefix8(full), vexit))
+		st.warn(fmt.Sprintf(msgContradictExit, prefix8(full), vexit))
 		return
 	}
-	if jq.R(jq.Alt(patchField(st.dir, "timedOut"), "")) == cli.FlagOn {
-		st.runner.Warn(fmt.Sprintf(msgContradictTimeout, prefix8(full), vexit))
+	if jq.R(jq.Alt(patchField(st.dir, "timedOut"), "")) == core.FlagOn {
+		st.warn(fmt.Sprintf(msgContradictTimeout, prefix8(full), vexit))
 	}
 }
 
@@ -213,19 +213,19 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 		return nil
 	}
 	if !isTriageStatus(claim.status) {
-		return &cli.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
+		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
 	}
 	full, code := resolveSig(st.entries, claim.sig)
 	switch code {
 	case sigNone:
-		st.runner.Warn(fmt.Sprintf("triage claim %s ignored (not in store)", prefix8(claim.sig)))
+		st.warn(fmt.Sprintf("triage claim %s ignored (not in store)", prefix8(claim.sig)))
 		return nil
 	case sigMany:
-		st.runner.Warn("triage claim " + prefix8(claim.sig) + " ignored (ambiguous prefix)")
+		st.warn("triage claim " + prefix8(claim.sig) + " ignored (ambiguous prefix)")
 		return nil
 	}
 	if utf8.RuneCountInString(claim.reason) < minRationaleRunes {
-		st.runner.Warn("triage claim without rationale, kept prior status: " + prefix8(claim.sig))
+		st.warn("triage claim without rationale, kept prior status: " + prefix8(claim.sig))
 		return nil
 	}
 	st.applyTriageFlip(findEntry(st.entries, full), full, claim)
@@ -259,7 +259,7 @@ func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim)
 		if st.dryRun {
 			return
 		}
-		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.runner.Cmd, st.now, exists(kb.File))
+		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.cmd, st.now, exists(kb.File))
 		stampCredit(st, target)
 	}
 }

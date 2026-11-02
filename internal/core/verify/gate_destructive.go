@@ -1,10 +1,10 @@
-package verify
+package verifycore
 
 import (
 	"regexp"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // cmdPosBuilds prefixes the command-position refusal details.
@@ -15,7 +15,7 @@ const segWordIdx = 4
 
 // checkSentinel ports the mid-word substitution arm: a sentinel glued to a
 // word character means the shell concatenates it into a hidden tool word.
-func checkSentinel(g *gateText) *cli.RefusalError {
+func checkSentinel(g *gateText) *core.RefusalError {
 	if !reSentinel.MatchString(g.adj) {
 		return nil
 	}
@@ -29,7 +29,7 @@ func checkSentinel(g *gateText) *cli.RefusalError {
 // checkCommandPosition ports the command-position substitution arms: a
 // $(…)/${…}/backtick span at segment start executes with the body's tool
 // word as argv[0].
-func checkCommandPosition(g *gateText) *cli.RefusalError {
+func checkCommandPosition(g *gateText) *core.RefusalError {
 	if frag := grepO(reCmdPosDest, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
 			cmdPosBuilds+
@@ -56,7 +56,7 @@ func checkCommandPosition(g *gateText) *cli.RefusalError {
 // checkGlobFragment ports the glob/brace fragmentation arm: the first word
 // of each ;-separated segment (past time/command prefixes and VAR=
 // assignments) refuses when it carries ? * [ {.
-func checkGlobFragment(g *gateText) *cli.RefusalError {
+func checkGlobFragment(g *gateText) *core.RefusalError {
 	segw := segWords(g.bare)
 	if !hasGlobWord(segw) {
 		return nil
@@ -127,7 +127,7 @@ func segWords(bare string) []string {
 }
 
 // checkDestructive runs the destructive-class arms in shell order.
-func checkDestructive(g *gateText) *cli.RefusalError {
+func checkDestructive(g *gateText) *core.RefusalError {
 	if ref := checkDestructiveWords(g); ref != nil {
 		return ref
 	}
@@ -142,7 +142,7 @@ func checkDestructive(g *gateText) *cli.RefusalError {
 
 // checkDestructiveWords ports the rm/find/mkfs/shred/dd/forkbomb/chmod
 // arms plus the git-clean shape.
-func checkDestructiveWords(g *gateText) *cli.RefusalError {
+func checkDestructiveWords(g *gateText) *core.RefusalError {
 	if ref := checkRmFind(g); ref != nil {
 		return ref
 	}
@@ -156,7 +156,7 @@ func checkDestructiveWords(g *gateText) *cli.RefusalError {
 }
 
 // checkRmFind ports the rm/find destructive arms.
-func checkRmFind(g *gateText) *cli.RefusalError {
+func checkRmFind(g *gateText) *core.RefusalError {
 	if frag := grepO(reRmRecursive, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "rm with a recursive flag destroys without recovery")
 	}
@@ -170,7 +170,7 @@ func checkRmFind(g *gateText) *cli.RefusalError {
 }
 
 // checkDeviceWipe ports the mkfs/shred/dd/forkbomb arms.
-func checkDeviceWipe(g *gateText) *cli.RefusalError {
+func checkDeviceWipe(g *gateText) *core.RefusalError {
 	if frag := grepO(reMkfs, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "mkfs destroys filesystems")
 	}
@@ -187,7 +187,7 @@ func checkDeviceWipe(g *gateText) *cli.RefusalError {
 }
 
 // checkChmodClean ports the chmod/chown and git-clean arms.
-func checkChmodClean(g *gateText) *cli.RefusalError {
+func checkChmodClean(g *gateText) *core.RefusalError {
 	if frag := grepO(reChmodRecursive, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "recursive chmod/chown refuses regardless of target — fail closed")
 	}
@@ -207,7 +207,7 @@ func gitCleanDestructive(seg string) bool {
 }
 
 // checkDestructiveExec ports the privilege/eval/exec arms.
-func checkDestructiveExec(g *gateText) *cli.RefusalError {
+func checkDestructiveExec(g *gateText) *core.RefusalError {
 	if frag := grepO(reSudo, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "privilege change refuses regardless of payload")
 	}
@@ -227,7 +227,7 @@ func checkDestructiveExec(g *gateText) *cli.RefusalError {
 }
 
 // checkDestructiveEnv ports the loader-hook and NODE_OPTIONS arms.
-func checkDestructiveEnv(g *gateText) *cli.RefusalError {
+func checkDestructiveEnv(g *gateText) *core.RefusalError {
 	if frag := grepO(reLoaderHook, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
 			"env-prefix loader hook executes code at startup — do not set loader variables in verifyCmd")

@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
 )
 
@@ -123,11 +127,47 @@ func postRentry(repo, pr string, f postFlags, jsonMode bool) string {
 	return sb.String()
 }
 
+// Frozen store keys and codes the post path reads. The merge owns the
+// canonical copies in internal/core/record; these mirrors keep the post
+// adapter compiling without widening the core API (every value is pinned by
+// the parity goldens).
+const (
+	fieldPath       = "path"
+	fieldLine       = "line"
+	fieldStartLine  = "start_line"
+	fieldBody       = "body"
+	fieldSuggestion = "suggestion"
+	statusOpen      = "open"
+	localPrefix     = "local-"
+	newline         = "\n"
+	unknownTime     = "unknown time"
+	prSuffix        = "/PR.json"
+	codePostFailed  = "post-failed"
+	codeMissingDiff = "missing-diff"
+	eventComment    = "COMMENT"
+	approveTrue     = "true"
+	approveFalse    = "false"
+)
+
+// msgReviewMissing mirrors the shared loader's missing-file message (the
+// checkBundle existence gate must refuse before the full.diff gate, exactly
+// like record).
+const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
+
+// codeMissingReviewFile mirrors the shared loader's missing-file code.
+const codeMissingReviewFile = "missing-review-file"
+
+// exists reports whether path exists.
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // postRun carries the post invocation across its phases.
 type postRun struct {
 	runner       *cli.Runner
 	review       *jq.Obj
-	state        *state
+	merged       recordcore.MergeResult
 	req          Request
 	event        string
 	liveSHA      string
@@ -165,6 +205,11 @@ func runPost(ctx context.Context, r *cli.Runner, req Request, dir string, f post
 	return p.publish(ctx)
 }
 
+// passCore returns a core merge error unchanged: refusal context lives in
+// Code/Message (rendered at the edge via [errors.As]), so the wrapcheck
+// add-context rule is waived here by design.
+func passCore(err error) error { return err }
+
 // prepare runs the bundle gates, review load, drift, hunks, and the shared
 // merge.
 func (p *postRun) prepare(ctx context.Context) error {
@@ -175,11 +220,11 @@ func (p *postRun) prepare(ctx context.Context) error {
 		return ref
 	}
 	p.checkDrift(ctx)
-	if err := ensureHunksSnapshot(p.runner, p.dir); err != nil {
-		return err
+	if err := recordcore.EnsureHunksSnapshot(p.mergeRuntime(), p.dir); err != nil {
+		return passCore(err)
 	}
 	p.applyApprovedFlag()
-	p.commitID = provHead(p.dir)
+	p.commitID = recordcore.ProvHead(p.dir)
 	p.now = cli.NowUTC(p.runner.Now())
 	p.findingsFile = p.dir + "/findings.json"
 	if p.flags.dryRun {
@@ -221,8 +266,8 @@ func (p *postRun) checkBundle() error {
 	if prov := postProvider(p.dir); prov != providerGitHub {
 		return &cli.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
 	}
-	if err := ensureStore(p.dir); err != nil {
-		return err
+	if err := recordcore.EnsureStore(p.dir); err != nil {
+		return passCore(err)
 	}
 	if !exists(p.flags.reviewFile) {
 		return &cli.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, p.flags.reviewFile)}
@@ -240,31 +285,16 @@ func (p *postRun) checkBundle() error {
 	return nil
 }
 
-// loadReview reads and gates the review.json, like the record loader but
-// without the local-bundle provider checks (a GitHub target is already
-// established). The degenerate-body bar matches post exactly.
+// loadReview reads and gates the review.json through the shared loader (a
+// GitHub target is already established, so no local-bundle provider checks).
+// The degenerate-body bar matches post exactly.
 func (p *postRun) loadReview() error {
-	reviewRaw, err := readAgentFile(p.flags.reviewFile)
+	review, err := recordcore.LoadReview(p.flags.reviewFile)
 	if err != nil {
-		if ref := agentRefusal(err); ref != nil {
-			return ref
-		}
-		return &cli.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, p.flags.reviewFile)}
-	}
-	reviewDoc, err := jq.DecodeOrdered(reviewRaw)
-	if err != nil {
-		return &cli.RefusalError{Code: codeBadReviewInput, Message: msgBadReviewJSON}
-	}
-	review, ok := reviewDoc.(*jq.Obj)
-	if !ok {
-		return &cli.RefusalError{Code: codeBadReviewSchema, Message: msgReviewNotObject}
+		return passCore(err)
 	}
 	bodyRaw, _ := review.Get("body")
-	body := jq.R(jq.Alt(bodyRaw, ""))
-	if err := checkDegenerate(body); err != nil {
-		return err
-	}
-	p.review, p.body = review, body
+	p.review, p.body = review, jq.R(jq.Alt(bodyRaw, ""))
 	return nil
 }
 
@@ -274,7 +304,7 @@ func (p *postRun) loadReview() error {
 // to a warning, never a refusal.
 func (p *postRun) checkDrift(ctx context.Context) {
 	r := p.runner
-	p.fetchedSHA = provHead(p.dir)
+	p.fetchedSHA = recordcore.ProvHead(p.dir)
 	live, err := ghLiveSHA(ctx, p.req.Repo, p.req.Pr)
 	if err != nil {
 		live = ""
@@ -282,9 +312,10 @@ func (p *postRun) checkDrift(ctx context.Context) {
 	p.liveSHA = live
 	if live != "" && p.fetchedSHA != "" && live != p.fetchedSHA {
 		p.driftStale = true
-		r.Warn(fmt.Sprintf(msgDriftMoved, shortSHA(p.fetchedSHA), shortSHA(live), p.req.Repo, p.req.Pr, shortSHA(p.fetchedSHA)))
-		p.body = fmt.Sprintf(msgDriftNote, shortSHA(p.fetchedSHA), shortSHA(live),
-			p.req.Repo, p.req.Pr, shortSHA(p.fetchedSHA)) + "\n\n" + p.body
+		fetched, liveShort := readcommon.ShortSHA(p.fetchedSHA), readcommon.ShortSHA(live)
+		r.Warn(fmt.Sprintf(msgDriftMoved, fetched, liveShort, p.req.Repo, p.req.Pr, fetched))
+		p.body = fmt.Sprintf(msgDriftNote, fetched, liveShort,
+			p.req.Repo, p.req.Pr, fetched) + "\n\n" + p.body
 	} else if live == "" {
 		r.Warn("live SHA lookup failed — proceeding on fetched hunks")
 	}
@@ -302,28 +333,27 @@ func (p *postRun) applyApprovedFlag() {
 // merge runs the shared validate_and_merge core over the drift-annotated
 // body, persisting the findings file and staging KB credit like the shell.
 func (p *postRun) merge() error {
-	st := &state{
-		runner: p.runner, dir: p.dir, prov: providerGitHub,
-		headFull: p.commitID, headShort: shortSHA(p.commitID), now: p.now,
-		review: p.review, reviewFile: p.flags.reviewFile,
-		root: p.req.Root, env: p.req.Env, forces: p.req.Forces,
-		dryRun: p.flags.dryRun, findingsFile: p.findingsFile,
-		preFooter: p.trimmedBody,
+	rt := p.mergeRuntime()
+	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
+		Dir: p.dir, Prov: providerGitHub,
+		HeadFull: p.commitID,
+		Review:   p.review, ReviewFile: p.flags.reviewFile,
+		Root: p.req.Root, Body: p.body,
+		DryRun: p.flags.dryRun, FindingsFile: p.findingsFile,
+		PreFooter: p.trimmedBody,
+		Effective: p.runner.Effective, Forces: p.req.Forces,
+		Repo: p.req.Repo, Pr: p.req.Pr, Cmd: "post",
+	})
+	if err != nil {
+		return passCore(err)
 	}
-	curated, dstat, ref := st.validateAndMerge(p.body)
-	if ref != nil {
-		return ref
-	}
-	if err := writeFindings(st); err != nil {
-		return err
-	}
-	st.kb.CommitStaged(st.findingsFile, st.now)
-	reportFindings(p.runner, st)
-	if st.hunkN == 0 {
-		p.runner.Warn("no hunks indexed — anchors unchecked, everything kept")
-	}
-	p.state, p.body, p.diagram = st, curated, dstat
+	p.merged, p.body, p.diagram = res, res.Body, res.Diagram
 	return nil
+}
+
+// mergeRuntime builds the injected runtime for the shared merge.
+func (p *postRun) mergeRuntime() core.Runtime {
+	return core.Runtime{Env: p.req.Env, Now: p.runner.Now, Progress: runnerProgress{p.runner}}
 }
 
 // bindGate ports the binding gate: binding verdicts need --bind (else
@@ -363,9 +393,8 @@ func (p *postRun) unbound() bool {
 // unless --force, and a review that covers live HEAD (known drift downgrades
 // to COMMENT — re-fetch the delta to bind, never a silent APPROVE).
 func (p *postRun) approveGate() error {
-	st := p.state
-	nOpen := countStatus(st.entries, statusOpen)
-	nDeferred := countStatus(st.entries, "deferred")
+	nOpen := recordcore.CountStatus(p.merged.Entries, statusOpen)
+	nDeferred := recordcore.CountStatus(p.merged.Entries, "deferred")
 	if nOpen+nDeferred > 0 && !p.flags.force {
 		return &cli.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlocked, nOpen, nDeferred)}
 	}
@@ -373,12 +402,12 @@ func (p *postRun) approveGate() error {
 		p.event = "APPROVE"
 		return nil
 	}
-	p.runner.Warn(fmt.Sprintf(msgStaleDowngrade, shortSHA(p.fetchedSHA), shortSHA(p.liveSHA),
-		p.req.Repo, p.req.Pr, shortSHA(p.fetchedSHA)))
+	p.runner.Warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(p.fetchedSHA), readcommon.ShortSHA(p.liveSHA),
+		p.req.Repo, p.req.Pr, readcommon.ShortSHA(p.fetchedSHA)))
 	// The shell's downgrade note is a real newline plus a literal
 	// backslash-n (a two-line source string ending in `\n`), kept
 	// byte-identical here.
-	p.body = fmt.Sprintf(msgStaleNote, p.req.Repo, p.req.Pr, shortSHA(p.fetchedSHA)) + "\n\\n" + p.body
+	p.body = fmt.Sprintf(msgStaleNote, p.req.Repo, p.req.Pr, readcommon.ShortSHA(p.fetchedSHA)) + "\n\\n" + p.body
 	p.event = eventComment
 	return nil
 }
@@ -413,8 +442,8 @@ func (p *postRun) recheckGate(ctx context.Context) error {
 	if downgraded {
 		return nil
 	}
-	if liveOpen > countStatus(p.state.entries, statusOpen) && !p.flags.force {
-		nOpen := countStatus(p.state.entries, statusOpen)
+	if liveOpen > recordcore.CountStatus(p.merged.Entries, statusOpen) && !p.flags.force {
+		nOpen := recordcore.CountStatus(p.merged.Entries, statusOpen)
 		return &cli.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlockedLive, liveOpen, nOpen, liveOpen-nOpen)}
 	}
 	return nil
@@ -437,17 +466,18 @@ func (p *postRun) probeRecheck(ctx context.Context) (int, bool) {
 // preflight ports the fail-closed preflight block plus the next-step line.
 func (p *postRun) preflight() {
 	r := p.runner
-	st := p.state
-	nOpen := countStatus(st.entries, statusOpen)
-	nDeferred := countStatus(st.entries, "deferred")
-	nAddressed := countStatus(st.entries, "addressed")
-	nTerminal := countStatus(st.entries, "wont-fix") + countStatus(st.entries, "false-positive")
+	res := p.merged
+	nOpen := recordcore.CountStatus(res.Entries, statusOpen)
+	nDeferred := recordcore.CountStatus(res.Entries, "deferred")
+	nAddressed := recordcore.CountStatus(res.Entries, "addressed")
+	nTerminal := recordcore.CountStatus(res.Entries, "wont-fix") + recordcore.CountStatus(res.Entries, "false-positive")
+	commit := readcommon.ShortSHA(p.commitID)
 	fmt.Fprintf(r.Human, "preflight: body=%s (%d chars) | anchors: %d inline, %d moved | "+
 		"findings: %d open, %d deferred, %d addressed, %d terminal | hunks indexed: %d | event=%s sha=%s\n",
-		st.marker, len(p.body), st.nKept, st.nMoved, nOpen, nDeferred, nAddressed, nTerminal, st.hunkN, p.event, shortSHA(p.commitID))
+		res.Marker, len(p.body), res.NKept, res.NMoved, nOpen, nDeferred, nAddressed, nTerminal, res.HunkN, p.event, commit)
 	switch {
-	case nOpen > 0 && shortSHA(p.commitID) != "":
-		fmt.Fprintf(r.Human, "next: address open threads, then fetch --base-sha %s for the delta\n", shortSHA(p.commitID))
+	case nOpen > 0 && readcommon.ShortSHA(p.commitID) != "":
+		fmt.Fprintf(r.Human, "next: address open threads, then fetch --base-sha %s for the delta\n", readcommon.ShortSHA(p.commitID))
 	case nOpen > 0:
 		fmt.Fprintf(r.Human, "next: address open threads\n")
 	default:
@@ -459,8 +489,8 @@ func (p *postRun) preflight() {
 // keys ship (triage fields stay in findings.json), and suggestions render as
 // fenced blocks inside body.
 func (p *postRun) buildPayload() {
-	p.comments = buildPostComments(p.state.kept)
-	p.embedded = countEmbedded(p.state.kept)
+	p.comments = buildPostComments(p.merged.Kept)
+	p.embedded = countEmbedded(p.merged.Kept)
 	payload := jq.NewObj(
 		"body", p.body,
 		"event", p.event,
@@ -488,7 +518,7 @@ func (p *postRun) eventLine() {
 		resolved = len(jq.Elements(rv))
 	}
 	fmt.Fprintf(p.runner.Human, "» event=%s inline=%d embedded=%d resolved_count=%d\n",
-		p.event, p.state.nKept, p.embedded, resolved)
+		p.event, p.merged.NKept, p.embedded, resolved)
 }
 
 // duplicateGuard ports the double-post guard: exact payload replays refuse
@@ -522,7 +552,7 @@ func (p *postRun) finalizerGuard() error {
 	case storedHead == p.commitID:
 		storedAt := postTime(p.dir + "/post.json")
 		return &cli.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
-			shortSHA(p.commitID), storedAt, p.req.Repo, p.req.Pr, shortSHA(storedHead))}
+			readcommon.ShortSHA(p.commitID), storedAt, p.req.Repo, p.req.Pr, readcommon.ShortSHA(storedHead))}
 	default:
 		return nil
 	}
