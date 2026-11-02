@@ -50,7 +50,7 @@ jobs:
         run: git ls-files '*.sh' hooks/pre-commit | xargs shellcheck -S warning
 
   installer:
-    name: 🔌 Installer smoke
+    name: 🔌 Skill installer smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -65,15 +65,67 @@ jobs:
           # network, never run doctor, and HOME points at a temp dir.
           export HOME="$RUNNER_TEMP/fakehome"
           mkdir -p "$HOME"
-          ./install.sh --help >/dev/null
-          ./install.sh --list | grep -q '^absent:   agents'
-          ./install.sh --list --agent qwen | grep -q '^absent:   qwen'
-          ./install.sh --agent nope >/dev/null 2>&1 && exit 1 || true
-          ./install.sh --dir relative/path >/dev/null 2>&1 && exit 1 || true
-          XDG_CONFIG_HOME="$HOME/.xdg" ./install.sh --list --agent opencode | grep -q "$HOME/.xdg/opencode/skills"
-          CLAUDE_CONFIG_DIR="$HOME/claude" ./install.sh --list --agent claude | grep -q "$HOME/claude/skills"
-          ./install.sh --list --detect | grep -q '^absent:   agents'
-          echo "installer smoke ok"
+          ./install-skill.sh --help >/dev/null
+          ./install-skill.sh --list | grep -q '^absent:   agents'
+          ./install-skill.sh --list --agent qwen | grep -q '^absent:   qwen'
+          ./install-skill.sh --agent nope >/dev/null 2>&1 && exit 1 || true
+          ./install-skill.sh --dir relative/path >/dev/null 2>&1 && exit 1 || true
+          XDG_CONFIG_HOME="$HOME/.xdg" ./install-skill.sh --list --agent opencode | grep -q "$HOME/.xdg/opencode/skills"
+          CLAUDE_CONFIG_DIR="$HOME/claude" ./install-skill.sh --list --agent claude | grep -q "$HOME/claude/skills"
+          ./install-skill.sh --list --detect | grep -q '^absent:   agents'
+          echo "skill installer smoke ok"
+
+  installers:
+    name: 📥 Installers (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go (the eval runner expects a built binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install shellcheck (macOS does not preinstall it)
+        shell: bash
+        run: |
+          if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
+
+      - name: Shellcheck installers
+        shell: bash
+        run: |
+          shellcheck -s sh -S warning install.sh
+          shellcheck -S warning install-skill.sh evals/cases/installer-binary.sh
+
+      - name: Hermetic installer eval (fake release assets, file:// URLs)
+        shell: bash
+        run: make build && ./evals/one.sh installer-binary
+
+  installers-windows:
+    name: 📥 Installers (windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: install.ps1 tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./evals/cases/installer-binary.ps1
+
+      - name: install.ps1 tests (PowerShell 7)
+        shell: pwsh
+        run: ./evals/cases/installer-binary.ps1
 
   go:
     name: 🐹 Go (${{ matrix.os }})
@@ -332,6 +384,8 @@ jobs:
         format,
         lint,
         installer,
+        installers,
+        installers-windows,
         go,
         go-windows,
         evals,
@@ -347,6 +401,8 @@ jobs:
           needs.format.result != 'success' ||
             needs.lint.result != 'success' ||
             needs.installer.result != 'success' ||
+            needs.installers.result != 'success' ||
+            needs.installers-windows.result != 'success' ||
             needs.go.result != 'success' ||
             needs.go-windows.result != 'success' ||
             needs.evals.result != 'success' ||
