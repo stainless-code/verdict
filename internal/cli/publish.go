@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -283,15 +284,12 @@ func setDiagramBool(path string, d map[string]any, key string, dst *string) erro
 
 // ValidateAttributionPlaceholders ports validate_attribution_placeholders:
 // every {name} placeholder in text must come from the v1 inventory, scanned
-// in appearance order.
+// in appearance order. The inventory lives in core so the read path can gate
+// overrides without importing this package.
 func ValidateAttributionPlaceholders(text, source string) error {
-	for _, ph := range placeholderRe.FindAllString(text, -1) {
-		switch ph {
-		case "{version}", "{tier}", "{product_url}", "{files_reviewed}",
-			"{head_sha_short}", "{model}", "{cost}", "{attribution}":
-		default:
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPlaceholder, source, ph)}
-		}
+	if ref := core.ValidateAttributionPlaceholders(text, source); ref != nil {
+		//nolint:wrapcheck // core's typed refusal is the CLI contract; wrapping would hide its code
+		return ref
 	}
 	return nil
 }

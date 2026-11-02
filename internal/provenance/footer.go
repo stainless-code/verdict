@@ -3,7 +3,7 @@ package provenance
 import (
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/overrides"
 )
 
@@ -23,18 +23,18 @@ type FooterOpts struct {
 }
 
 // placeholderBase mirrors the P1b default sentence before substitution.
-const placeholderBase = "Reviewed with [**Verdict {version}**](" + cli.DefaultProductURL + ")"
+const placeholderBase = "Reviewed with [**Verdict {version}**](" + core.DefaultProductURL + ")"
 
 // baseAttribution renders the P1b default sentence before substitution.
 func baseAttribution(root string) string {
 	withVersion := strings.ReplaceAll(placeholderBase, "{version}", ToolVersion(root))
-	return strings.ReplaceAll(withVersion, "{product_url}", cli.DefaultProductURL)
+	return strings.ReplaceAll(withVersion, "{product_url}", core.DefaultProductURL)
 }
 
 // RenderFooter ports render_footer: one merged block at the body end, or ""
 // when publish.footer is off.
 func RenderFooter(o *FooterOpts) (string, error) {
-	if o.PublishFooter != cli.FlagOn {
+	if o.PublishFooter != core.FlagOn {
 		return "", nil
 	}
 	vals := footerValues(o)
@@ -46,7 +46,7 @@ func RenderFooter(o *FooterOpts) (string, error) {
 	receipt := footerReceipt(o, order, vals.Tier, vals.Cost)
 	var sb strings.Builder
 	sb.WriteString("---\n\n")
-	sb.WriteString(cli.FooterDivider + newline)
+	sb.WriteString(core.FooterDivider + newline)
 	sb.WriteString(attributionLine(o, attr, receipt) + newline)
 	if o.PublishCopyright != "" {
 		sb.WriteString("> " + o.PublishCopyright + newline)
@@ -61,7 +61,7 @@ func footerValues(o *FooterOpts) overrides.Values {
 	return overrides.Values{
 		Version:         ToolVersion(o.Root),
 		Tier:            tier,
-		ProductURL:      cli.DefaultProductURL,
+		ProductURL:      core.DefaultProductURL,
 		Cost:            cost,
 		FilesReviewed:   FileCount(o.Dir),
 		HeadShort:       HeadShort(o.Dir),
@@ -124,16 +124,16 @@ func receiptSegment(o *FooterOpts, seg, tier, cost string) string {
 
 // attributionLine renders the attribution blockquote line.
 func attributionLine(o *FooterOpts, attr, receipt string) string {
-	if o.PublishAttribution == cli.AttributionOff || attr == "" {
+	if o.PublishAttribution == core.AttributionOff || attr == "" {
 		return "> " + receipt
 	}
 	logo := ""
-	if o.PublishLogo == cli.FlagOn && o.PublishLogoURL != "" {
-		logo = `<a href="` + cli.DefaultProductURL + `"><img src="` + o.PublishLogoURL + `" alt="Verdict" width="18" height="18"></a> `
+	if o.PublishLogo == core.FlagOn && o.PublishLogoURL != "" {
+		logo = `<a href="` + core.DefaultProductURL + `"><img src="` + o.PublishLogoURL + `" alt="Verdict" width="18" height="18"></a> `
 	}
 	maker := ""
-	if o.PublishAttribution == cli.AttributionFull {
-		maker = " by [" + cli.DefaultMakerName + "](" + cli.DefaultMakerURL + ")"
+	if o.PublishAttribution == core.AttributionFull {
+		maker = " by [" + core.DefaultMakerName + "](" + core.DefaultMakerURL + ")"
 	}
 	return "> " + logo + attr + maker + " · " + receipt
 }
@@ -161,7 +161,7 @@ func stripRendered(lines []string) []string {
 	var kept []string
 	cut := false
 	for _, ln := range lines {
-		if ln == cli.FooterDivider {
+		if ln == core.FooterDivider {
 			cut = true
 			continue
 		}

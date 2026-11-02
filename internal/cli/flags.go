@@ -3,27 +3,13 @@ package cli
 import (
 	"fmt"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
-// GlobalForces carries the flag-layer overrides from the global strip.
-type GlobalForces struct {
-	PublishLogoURLForce       string
-	PublishOverviewForce      string
-	ColorForce                string
-	PublishFooterForce        string
-	PublishAttributionForce   string
-	PublishAttributionText    string
-	CompactForce              string
-	PublishCopyright          string
-	OutputForce               string
-	PublishLogoForce          string
-	DiagramsExpandedForce     string
-	DiagramsBehavioralForce   string
-	DiagramsStructuralForce   string
-	PublishLogoURLSet         bool
-	PublishCopyrightSet       bool
-	PublishAttributionTextSet bool
-}
+// GlobalForces is core's flag-layer override set (alias of
+// core.GlobalForces).
+type GlobalForces = core.GlobalForces
 
 // ApplyGlobalForces applies the flag layer over eff and derives the final
 // JSONMode, mirroring lines 973-997 of the shell.

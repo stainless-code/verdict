@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -26,7 +26,7 @@ const (
 func LoadFindings(dir string) ([]any, error) {
 	raw, err := os.ReadFile(dir + "/findings.json")
 	if err != nil {
-		return nil, &cli.RefusalError{Code: codeMissingFindings, Message: fmt.Sprintf(msgMissingFindings, dir)}
+		return nil, &core.RefusalError{Code: codeMissingFindings, Message: fmt.Sprintf(msgMissingFindings, dir)}
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -43,8 +43,8 @@ func LoadFindings(dir string) ([]any, error) {
 }
 
 // corruptStore builds the corrupt-store refusal for dir.
-func corruptStore(dir string) *cli.RefusalError {
-	return &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
+func corruptStore(dir string) *core.RefusalError {
+	return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
 }
 
 // validEntries enforces the R1 entry shape shared by the readers: every

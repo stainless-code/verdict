@@ -18,10 +18,7 @@ func SettingsPath(home, xdg string) string {
 	return filepath.Join(base, "verdict", "settings.json")
 }
 
-var (
-	credRe        = regexp.MustCompile(`token|secret|passwd|password|pwd|auth|bearer|credential|pat|key`)
-	placeholderRe = regexp.MustCompile(`\{[A-Za-z_][A-Za-z0-9_]*\}`)
-)
+var credRe = regexp.MustCompile(`token|secret|passwd|password|pwd|auth|bearer|credential|pat|key`)
 
 // PrefsResult carries the outcome of preference resolution.
 type PrefsResult struct {

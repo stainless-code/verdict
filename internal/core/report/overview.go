@@ -1,4 +1,4 @@
-package report
+package reportcore
 
 import (
 	"os"
@@ -38,7 +38,7 @@ func renderOverviewGate(st *state) bool {
 	if forces.PublishOverviewForce == strTrue {
 		return true
 	}
-	if st.runner.Effective.PublishOverview != strTrue {
+	if st.req.Effective.PublishOverview != strTrue {
 		return false
 	}
 	files, maxFiles, bytes, maxBytes := overviewSizes(st.dir)
@@ -87,7 +87,7 @@ func overviewTableRow(row fileRowShape) string {
 // overviewTopologyLines ports the change-topology block, or nil when the
 // structural-diagrams toggle is off.
 func overviewTopologyLines(st *state, rows []fileRowShape, edges []overviewEdge) []string {
-	if st.runner.Effective.DiagramsStructural != strTrue {
+	if st.req.Effective.DiagramsStructural != strTrue {
 		return nil
 	}
 	head := "    PR[\"" + sanitize(prName(st.req.Pr)) + " +" + strconv.Itoa(sumAdds(rows)) + "/-" +

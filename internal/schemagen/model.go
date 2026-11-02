@@ -1,5 +1,7 @@
 package schemagen
 
+import "github.com/stainless-code/verdict/internal/core"
+
 // This file is the single source of truth for the published JSON Schemas.
 // The structs below mirror the JSON objects the Go writers build with
 // internal/jq.Obj; struct tags carry the structural keywords and overlay.json
@@ -120,59 +122,26 @@ type ModelSpend struct { //nolint:govet // field order is the published property
 	CacheCreationInputTokens *float64 `json:"cache_creation_input_tokens,omitempty"`
 }
 
-// Envelope is the single JSON object every --json stdout emits.
-type Envelope struct { //nolint:govet // field order is the published property order
-	SchemaVersion string          `const:"1"          json:"schema_version"`
-	Verb          string          `json:"verb"`
-	Repo          string          `json:"repo"`
-	Pr            *int            `json:"pr"`
-	At            string          `format:"date-time" json:"at"`
-	Next          string          `json:"next"`
-	Warnings      []string        `json:"warnings"`
-	Data          *map[string]any `json:"data"`
-	Error         *SchemaError    `anyOf:"null"       json:"error"`
-}
+// Envelope is core's wire envelope.
+type Envelope = core.Envelope
 
-// SchemaError is a typed refusal inside the envelope.
-type SchemaError struct {
-	Code       string      `json:"code"`
-	Message    string      `json:"message"`
-	Candidates []Candidate `json:"candidates,omitempty"`
-}
+// SchemaError is core's typed envelope refusal.
+type SchemaError = core.SchemaError
 
-// Candidate is one refusal suggestion (oversize-fetch refusals only).
-type Candidate struct {
-	Kind       string `json:"kind"`
-	Suggestion string `json:"suggestion"`
-}
+// Candidate is core's refusal suggestion.
+type Candidate = core.Candidate
 
-// AnchorsSummary counts kept and moved anchors.
-type AnchorsSummary struct {
-	Kept  int `json:"kept"  min:"0"`
-	Moved int `json:"moved" min:"0"`
-}
+// AnchorsSummary is core's anchor tally.
+type AnchorsSummary = core.AnchorsSummary
 
-// FindingsCounts counts the finding states a post reports.
-type FindingsCounts struct {
-	Open      int `json:"open"      min:"0"`
-	Deferred  int `json:"deferred"  min:"0"`
-	Addressed int `json:"addressed" min:"0"`
-}
+// FindingsCounts is core's finding-state tally.
+type FindingsCounts = core.FindingsCounts
 
-// FindingItem is the ranked/merged finding locator shared by envelope data.
-type FindingItem struct {
-	Sig      string `json:"sig"`
-	Status   string `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
-	Anchored any    `json:"anchored,omitempty"                              type:"boolean|string|null"`
-	Locator  string `json:"locator,omitempty"`
-}
+// FindingItem is core's ranked/merged finding locator.
+type FindingItem = core.FindingItem
 
-// Provenance is the tool_version/prompts_hash/model triple on a run.
-type Provenance struct { //nolint:govet // field order is the published property order
-	ToolVersion string  `json:"tool_version"`
-	PromptsHash string  `json:"prompts_hash"`
-	Model       *string `json:"model"`
-}
+// Provenance is core's run provenance triple.
+type Provenance = core.Provenance
 
 // ReportData is the report verb's --json data profile.
 type ReportData struct { //nolint:govet // field order is the published property order
@@ -190,76 +159,32 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
 }
 
-// ReportHead is the fetched/base/live head triple.
-type ReportHead struct {
-	Fetched *string `json:"fetched"`
-	Base    *string `json:"base"`
-	Live    *string `json:"live"`
-	Stale   bool    `json:"stale"`
-}
+// ReportHead is core's fetched/base/live head triple.
+type ReportHead = core.ReportHead
 
-// ReportVerdict counts statuses across the store.
-type ReportVerdict struct {
-	Open      int `json:"open"      min:"0"`
-	Deferred  int `json:"deferred"  min:"0"`
-	Addressed int `json:"addressed" min:"0"`
-	Terminal  int `json:"terminal"  min:"0"`
-}
+// ReportVerdict is core's displayed-ranking tally.
+type ReportVerdict = core.ReportVerdict
 
-// ReportCounts counts finding kinds and anchoring.
-type ReportCounts struct {
-	Inline     int `json:"inline"     min:"0"`
-	Section    int `json:"section"    min:"0"`
-	Anchored   int `json:"anchored"   min:"0"`
-	Unanchored int `json:"unanchored" min:"0"`
-}
+// ReportCounts is core's finding-kind tally.
+type ReportCounts = core.ReportCounts
 
-// ReportPanel is the panel source plus its member list.
-type ReportPanel struct {
-	Source  *string `json:"source"`
-	Members []any   `json:"members"`
-}
+// ReportPanel is core's panel source and members.
+type ReportPanel = core.ReportPanel
 
-// ReportFilters echoes the active status/kind filters.
-type ReportFilters struct {
-	Status string `json:"status"`
-	Kind   string `json:"kind"`
-}
+// ReportFilters is core's active filter echo.
+type ReportFilters = core.ReportFilters
 
-// ReportCost is the summed cost rollup carried by report --cost.
-type ReportCost struct { //nolint:govet // field order is the published property order
-	Runs              int       `json:"runs"                          min:"0"`
-	RunsWithCost      int       `json:"runs_with_cost"                min:"0"`
-	InputTokens       int       `json:"input_tokens"                  min:"0"`
-	OutputTokens      int       `json:"output_tokens"                 min:"0"`
-	TotalTokens       int       `json:"total_tokens"                  min:"0"`
-	CachedInputTokens int       `json:"cached_input_tokens,omitempty" min:"0"`
-	EstUSD            *float64  `json:"est_usd"`
-	ByTier            CostTiers `json:"by_tier"`
-	Receipts          []any     `json:"receipts,omitempty"`
-}
+// ReportCost is core's cost rollup.
+type ReportCost = core.ReportCost
 
-// CostTiers carries the three named effort-tier rollups.
-type CostTiers struct {
-	Cheap    CostTier `json:"cheap"`
-	Standard CostTier `json:"standard"`
-	Deep     CostTier `json:"deep"`
-}
+// CostTiers is core's three tier rollups.
+type CostTiers = core.CostTiers
 
-// CostTier is one effort tier's token rollup.
-type CostTier struct {
-	Runs         int `json:"runs"          min:"0"`
-	InputTokens  int `json:"input_tokens"  min:"0"`
-	OutputTokens int `json:"output_tokens" min:"0"`
-	TotalTokens  int `json:"total_tokens"  min:"0"`
-}
+// CostTier is core's one-tier token rollup.
+type CostTier = core.CostTier
 
-// ReportCompleteness compares fetched, posted and reviewed heads.
-type ReportCompleteness struct { //nolint:govet // field order is the published property order
-	Reviewed    bool    `json:"reviewed"`
-	FetchedHead *string `json:"fetched_head"`
-	PostedHead  *string `json:"posted_head"`
-}
+// ReportCompleteness is core's head comparison.
+type ReportCompleteness = core.ReportCompleteness
 
 // PostData is the post verb's --json data profile (dry-run and real post).
 type PostData struct { //nolint:govet // field order is the published property order

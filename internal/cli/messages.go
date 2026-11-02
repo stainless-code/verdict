@@ -33,8 +33,6 @@ const (
 	msgDiagramsObj  = "settings file %s: publish.diagrams must be an object (want {structural, behavioral, expanded})"
 	msgDiagramsKey  = "settings file %s: unknown publish.diagrams key '%s' (want only structural, behavioral, expanded)"
 	msgDiagramsBool = "settings file %s: publish.diagrams.%s must be a boolean (want true|false)"
-	msgPlaceholder  = "%s carries unknown placeholder '%s' (want one of {version}, {tier}, " +
-		"{product_url}, {files_reviewed}, {head_sha_short}, {model}, {cost}, {attribution})"
 )
 
 const (

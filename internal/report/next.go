@@ -1,7 +1,6 @@
 package report
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,13 +8,15 @@ import (
 	"os"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // RunNext executes `next <owner/repo> <pr> [--status, --json]`: the
-// top-ranked actionable finding plus the command to act on it. It replays
-// report internally the way the shell re-invokes the script, so the store
-// reads and the failure posture match exactly.
+// top-ranked actionable finding plus the command to act on it. The service
+// is called directly; the small CLI-only replay below reproduces the shell's
+// duplicated prefs warnings on the internal report's refusal envelope.
 func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	statusF, code, done := parseNextFlags(r, args)
 	if done {
@@ -24,26 +25,38 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if err := ctx.Err(); err != nil {
 		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before next completed"}, cli.ExitBroke)
 	}
-	// The sub-report validates --status like report does: a missing value
-	// reads open (the shell's ${2:-open}), and an invalid value fails the
-	// replay — bash's sub-invocation usage-errors, so the replay reads
-	// empty and the parent reports the store unreadable (exit 1), never
-	// an empty ranking.
-	if statusF == "" {
-		statusF = statusOpen
+	sub, setupRef := replaySetup(r, req)
+	if setupRef != nil {
+		return nextStoreError(r, sub, setupRef)
 	}
-	if !validStatus(statusF) {
-		return nextStoreError(r, "")
+	resp, ref := reportcore.RunNext(ctx, &core.NextRequest{
+		ReadRequest:    readRequest(r, req),
+		Status:         statusF,
+		Effective:      r.Effective,
+		Warnings:       append([]string{}, r.Warnings...),
+		ReportWarnings: sub.Warnings,
+	})
+	if ref != nil {
+		r.Warnings = ref.Warnings
+		return r.Refuse(ref)
 	}
-	repOut := replayReport(ctx, r, req, statusF)
-	top, ok := firstItem(repOut)
-	if !ok {
-		return nextStoreError(r, repOut)
+	if resp.StoreUnreadable {
+		return nextStoreError(r, sub, resp.ReportRefusal)
 	}
-	if top == nil {
-		return nextEmpty(r, statusF)
+	fmt.Fprintln(r.Human, resp.Human)
+	if !r.JSONMode {
+		return cli.ExitOK
 	}
-	return nextTop(r, top)
+	next := "none — nothing to act on"
+	var item any
+	if resp.Item != nil {
+		next = "address via address-reviews mode, then post"
+		item = resp.Item.Wire()
+	}
+	env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, next,
+		resp.Warnings, jq.NewObj("item", item), nil)
+	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	return cli.ExitOK
 }
 
 // parseNextFlags parses the next flags: --status takes any value (report
@@ -72,18 +85,17 @@ func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
 	return statusF, 0, false
 }
 
-// replayReport runs report in-process with a discarded diagnostic stream,
-// mirroring the shell's `report ... 2>/dev/null` sub-invocation. The
-// sub-run re-resolves prefs from the same environment (duplicating prefs
-// warnings exactly like the subshell) and ignores global flag forces,
-// which the shell never forwards.
-func replayReport(_ context.Context, r *cli.Runner, req Request, statusF string) string {
-	var outBuf bytes.Buffer
+// replaySetup reproduces the shell's internal report re-invocation just far
+// enough to reproduce its warnings: prefs are re-resolved from the same
+// environment (duplicating prefs warnings exactly like the subshell) and the
+// empty global forces are applied. Any setup refusal is the sub-report's
+// envelope.
+func replaySetup(r *cli.Runner, req Request) (*cli.Runner, *cli.RefusalError) {
 	sub := &cli.Runner{
 		Cmd:          "report",
 		Repo:         req.Repo,
 		Pr:           req.Pr,
-		Out:          &outBuf,
+		Out:          io.Discard,
 		Diag:         io.Discard,
 		Human:        io.Discard,
 		Now:          r.Now,
@@ -96,20 +108,22 @@ func replayReport(_ context.Context, r *cli.Runner, req Request, statusF string)
 	prefs, ref := cli.ResolvePrefs(sub, req.Env, os.ReadFile)
 	if ref != nil {
 		sub.Effective = cli.Defaults()
-		return subRefusal(sub, ref)
+		return sub, asRefusal(ref)
 	}
 	sub.Effective = prefs.Effective
 	if ref := cli.ApplyGlobalForces(sub, &cli.GlobalForces{}, subNoColor(sub, req.Env)); ref != nil {
-		return subRefusal(sub, ref)
+		return sub, asRefusal(ref)
 	}
-	routeHuman(sub)
-	flags := Flags{StatusF: statusF, KindF: statusAll, LiveMode: liveAuto}
-	st, err := loadState(sub, req, &flags)
-	if err != nil {
-		return subRefusal(sub, err)
+	return sub, nil
+}
+
+// asRefusal recovers the typed refusal carried by a prefs error (usage
+// errors cannot arise on this path; the fallback keeps the message).
+func asRefusal(err error) *cli.RefusalError {
+	if ref, ok := errors.AsType[*cli.RefusalError](err); ok {
+		return ref
 	}
-	emitEnvelope(st)
-	return outBuf.String()
+	return &cli.RefusalError{Code: "internal", Message: err.Error()}
 }
 
 // subNoColor ports the NO_COLOR fallback for the sub-run: an explicitly
@@ -124,137 +138,22 @@ func subNoColor(sub *cli.Runner, env map[string]string) bool {
 	return false
 }
 
-// subRefusal renders the sub-report refusal into the replay buffer,
-// mirroring the sub-invocation's envelope (usage errors print nothing, so
-// the parent reports them as an unreadable store).
-func subRefusal(sub *cli.Runner, err error) string {
-	if _, ok := errors.AsType[*cli.UsageError](err); ok {
-		return ""
-	}
-	sub.Refuse(err)
-	if buf, ok := sub.Out.(*bytes.Buffer); ok {
-		return buf.String()
-	}
-	return ""
-}
-
-// firstItem parses the replayed envelope: empty output or a non-null
-// error reads as unreadable; otherwise the first item (possibly null when
-// the store holds no rows).
-func firstItem(repOut string) (any, bool) {
-	obj, ok := decodeEnvelope(repOut)
-	if !ok {
-		return nil, false
-	}
-	if hasEnvelopeError(obj) {
-		return nil, false
-	}
-	dataObj, ok := envelopeData(obj)
-	if !ok {
-		return nil, false
-	}
-	return firstDataItem(dataObj)
-}
-
-// decodeEnvelope parses the replayed envelope object.
-func decodeEnvelope(repOut string) (*jq.Obj, bool) {
-	if repOut == "" {
-		return nil, false
-	}
-	doc, err := jq.DecodeOrdered([]byte(repOut))
-	if err != nil {
-		return nil, false
-	}
-	obj, ok := doc.(*jq.Obj)
-	if !ok || obj == nil {
-		return nil, false
-	}
-	return obj, true
-}
-
-// hasEnvelopeError reports whether the envelope carries a non-null error.
-func hasEnvelopeError(obj *jq.Obj) bool {
-	errVal, _ := obj.Get("error")
-	return errVal != nil
-}
-
-// envelopeData extracts the envelope data object.
-func envelopeData(obj *jq.Obj) (*jq.Obj, bool) {
-	data, _ := obj.Get("data")
-	dataObj, ok := data.(*jq.Obj)
-	if !ok || dataObj == nil {
-		return nil, false
-	}
-	return dataObj, true
-}
-
-// firstDataItem selects the first envelope item (nil when empty).
-func firstDataItem(dataObj *jq.Obj) (any, bool) {
-	items, _ := dataObj.Get("items")
-	list, ok := items.([]any)
-	if !ok || len(list) == 0 {
-		return nil, true
-	}
-	return list[0], true
-}
-
-// nextStoreError ports the unreadable-store path: the sub-envelope replays
-// verbatim in machine mode, else the fixed human line.
-func nextStoreError(r *cli.Runner, repOut string) int {
-	if r.JSONMode {
-		if repOut != "" {
-			fmt.Fprint(r.Out, repOut)
-			return 1
-		}
-		return r.Refuse(&cli.RefusalError{Code: codeReportFailed, Message: "next: report produced no output"})
-	}
-	fmt.Fprintln(r.Diag, "next: cannot read store (run post or record first)")
-	return 1
-}
-
-// nextEmpty ports the no-findings path.
-func nextEmpty(r *cli.Runner, statusF string) int {
-	fmt.Fprintf(r.Human, "next: none %s — nothing to act on\n", statusF)
+// nextStoreError ports the unreadable-store path: in machine mode the
+// report envelope replays verbatim (nil ref means the invalid-status replay
+// produced no output), else the fixed human line.
+func nextStoreError(r *cli.Runner, sub *cli.Runner, ref *cli.RefusalError) int {
 	if !r.JSONMode {
-		return 0
+		fmt.Fprintln(r.Diag, "next: cannot read store (run post or record first)")
+		return cli.ExitRefused
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", keyNext,
-		"repo", r.Repo,
-		"pr", cli.PrJSON(r.Pr),
-		"at", cli.NowUTC(r.Now()),
-		keyNext, "none — nothing to act on",
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("item", nil),
-		"error", nil,
-	)
+	if ref == nil {
+		return r.Refuse(&cli.RefusalError{Code: "report-failed", Message: "next: report produced no output"})
+	}
+	env := core.RenderEnvelope("report", r.Repo, r.Pr, core.NowUTC(sub.Now()), "",
+		sub.Warnings, nil, &core.SchemaError{
+			Code:    ref.Code,
+			Message: ref.Message + "\n" + cli.HintFor(ref.Code),
+		})
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	return 0
-}
-
-// nextTop ports the top-finding path.
-func nextTop(r *cli.Runner, top any) int {
-	locator := fieldOf(top, "locator")
-	if locator == nil {
-		locator = "?"
-	}
-	fmt.Fprintf(r.Human, "next: %s [%s] %s — address via address-reviews mode, then post\n",
-		sigOutput(top), jq.Str(fieldOf(top, "status")), jq.Str(locator))
-	if !r.JSONMode {
-		return 0
-	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", keyNext,
-		"repo", r.Repo,
-		"pr", cli.PrJSON(r.Pr),
-		"at", cli.NowUTC(r.Now()),
-		keyNext, "address via address-reviews mode, then post",
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("item", top),
-		"error", nil,
-	)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	return 0
+	return cli.ExitRefused
 }

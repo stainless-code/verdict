@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/overrides"
 )
 
@@ -54,7 +54,7 @@ func validateFragment(f string) error {
 	}
 	raw, err := os.ReadFile(f)
 	if err != nil {
-		return &cli.RefusalError{Code: "bad-override", Message: fmt.Sprintf("override %s is unreadable (fix permissions or remove it)", f)}
+		return &core.RefusalError{Code: "bad-override", Message: fmt.Sprintf("override %s is unreadable (fix permissions or remove it)", f)}
 	}
 	text := strings.ReplaceAll(string(raw), "\r", "")
 	if err := overrides.CheckLocked(f, text); err != nil {
@@ -67,7 +67,7 @@ func validateFragment(f string) error {
 // which only the preamble and attribution fragments carry.
 func validatePlaceholders(f, text string) error {
 	if f == overrides.Preamble || f == overrides.Attribution {
-		if err := cli.ValidateAttributionPlaceholders(text, "override "+f); err != nil {
+		if err := core.ValidateAttributionPlaceholders(text, "override "+f); err != nil {
 			return passRefusal(err)
 		}
 	}

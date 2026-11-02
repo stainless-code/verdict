@@ -16,11 +16,11 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -57,52 +57,25 @@ type Runner struct {
 	NoColor      bool
 }
 
-// Effective holds the resolved presentation knobs as "true"/"false"/enum
-// strings, mirroring the shell's EFFECTIVE_* globals.
-type Effective struct {
-	Compact                string
-	Color                  string
-	PublishFooter          string
-	PublishAttribution     string
-	PublishAttributionText string
-	PublishCopyright       string
-	PublishLogo            string
-	PublishLogoURL         string
-	PublishOverview        string
-	DiagramsStructural     string
-	DiagramsBehavioral     string
-	DiagramsExpanded       string
-}
+// Effective is core's render configuration (alias of core.Effective).
+type Effective = core.Effective
 
 // Defaults mirrors the shell's global initializers.
 func Defaults() Effective {
-	return Effective{
-		Compact:                FlagOff,
-		Color:                  colorAuto,
-		PublishFooter:          FlagOn,
-		PublishAttribution:     AttributionProduct,
-		PublishAttributionText: "",
-		PublishCopyright:       "",
-		PublishLogo:            FlagOn,
-		PublishLogoURL:         "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg",
-		PublishOverview:        FlagOn,
-		DiagramsStructural:     FlagOn,
-		DiagramsBehavioral:     FlagOff,
-		DiagramsExpanded:       FlagOff,
-	}
+	return core.Defaults()
 }
 
 // DefaultProductURL and MakerURL mirror the shell constants.
 const (
-	DefaultProductURL = "https://stainless-code.com/verdict"
-	DefaultMakerURL   = "https://stainless-code.com"
-	DefaultMakerName  = "Stainless Code"
-	FooterDivider     = "<!-- verdict-footer -->"
+	DefaultProductURL = core.DefaultProductURL
+	DefaultMakerURL   = core.DefaultMakerURL
+	DefaultMakerName  = core.DefaultMakerName
+	FooterDivider     = core.FooterDivider
 )
 
 // NowUTC formats t like the shell's date -u +%Y-%m-%dT%H:%M:%SZ.
 func NowUTC(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05Z")
+	return core.NowUTC(t)
 }
 
 // Warn records a warning: `warn: ...` on the diagnostic stream plus the
@@ -119,15 +92,10 @@ func (r *Runner) Warn(msg string) {
 	r.Warnings = append(r.Warnings, msg)
 }
 
-// RefusalError is a typed CLI refusal: machine code plus human message. It is
-// the only error type the command layer renders; matching uses [errors.As].
-type RefusalError struct {
-	Code    string
-	Message string
-}
-
-// Error implements error.
-func (e *RefusalError) Error() string { return e.Code + ": " + e.Message }
+// RefusalError is core's typed refusal (alias of core.RefusalError): machine
+// code plus human message. It is the only error type the command layer
+// renders; matching uses [errors.As].
+type RefusalError = core.RefusalError
 
 // Refuse renders a refusal like the shell's fail() and returns exit 1
 // (check_gate stays false on the record path, so every refusal exits 1).
@@ -225,19 +193,7 @@ func cliStrings(in []string) []any {
 
 // PrJSON ports `($p|tonumber? // null)`: a valid JSON number literal reads
 // as a number, everything else reads null.
-func PrJSON(pr string) any {
-	if isJSONNumber(pr) {
-		return jq.Number(pr)
-	}
-	return nil
-}
-
-// isJSONNumber reports whether s is a valid JSON number literal.
-func isJSONNumber(s string) bool {
-	return numberRe.MatchString(s)
-}
-
-var numberRe = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+func PrJSON(pr string) any { return core.PrJSON(pr) }
 
 // hintRule pairs a matcher with its remediation hint. Rules evaluate in
 // order, mirroring the shell's case table (specific codes before the

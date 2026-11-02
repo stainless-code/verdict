@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/calibrate"
 	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/doctor"
 	"github.com/stainless-code/verdict/internal/fetch"
 	"github.com/stainless-code/verdict/internal/fix"
@@ -139,7 +140,10 @@ func dispatch(
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer stop()
 	if h, ok := readVerbs[cmd]; ok {
-		return h(ctx, r, rest, readcommon.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces})
+		return h(ctx, r, rest, readcommon.Request{
+			Runtime: &core.Runtime{Env: env, Now: r.Now},
+			Repo:    repo, Pr: pr, Forces: forces, Root: &root,
+		})
 	}
 	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, env, forces, rest); ok {
 		return code

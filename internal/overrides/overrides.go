@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // Dir and fragment paths, mirroring the shell's OVERRIDES_DIR globals.
@@ -51,7 +51,7 @@ func CheckLocked(path, text string) error {
 
 // cliRef builds the bad-override refusal for one invariant.
 func cliRef(path, invariant, why string) error {
-	return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
 		"override %s violates locked invariant '%s' (%s)", path, invariant, why)}
 }
 
@@ -73,7 +73,7 @@ func parseOrderOrDef(raw []byte) ([]string, error) {
 		return nil, ref
 	}
 	if len(order) == 0 {
-		return nil, &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' (no fields "+
+		return nil, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' (no fields "+
 			"listed — want a non-empty subset of tier, cost, files, link)", FooterOrderPath)}
 	}
 	return order, nil
@@ -105,11 +105,11 @@ func checkOrderField(line string, seen map[string]bool) error {
 	switch line {
 	case "tier", "cost", "files", "link":
 	default:
-		return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' "+
+		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' "+
 			"(unknown field '%s' — want only tier, cost, files, link)", FooterOrderPath, line)}
 	}
 	if seen[line] {
-		return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' "+
+		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' "+
 			"(duplicate field '%s' — list each field once)", FooterOrderPath, line)}
 	}
 	return nil
@@ -185,23 +185,23 @@ func parseThresholdEntry(ln string, seen map[string]bool) (key string, val int, 
 // overlong values, then duplicates — in shell order.
 func checkThreshold(line, key, val string, seen map[string]bool) error {
 	if key == "" {
-		return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant 'degenerate-guard' "+
+		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant 'degenerate-guard' "+
 			"(unknown key in '%s' — want only 'files: N' and 'bytes: N')", Threshold, line)}
 	}
 	if !isDigits(val) {
-		return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
 			"override %s violates locked invariant 'degenerate-guard' (value '%s'"+
 				" for '%s' is not a non-negative integer — thresholds must stay satisfiable)",
 			Threshold, val, key)}
 	}
 	if len(val) > maxThresholdDigits {
-		return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
 			"override %s violates locked invariant 'degenerate-guard' (value"+
 				" '%s' for '%s' exceeds 15 digits — thresholds must fit 64-bit arithmetic)",
 			Threshold, val, key)}
 	}
 	if seen[key] {
-		return &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant "+
+		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant "+
 			"'degenerate-guard' (duplicate '%s' — list each key once)", Threshold, key)}
 	}
 	return nil
@@ -267,7 +267,7 @@ func AttributionText() (string, error) {
 	}
 	text := strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), newline)
 	if strings.Count(text, newline) != 0 {
-		return "", &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates "+
+		return "", &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates "+
 			"'attribution-single-line' (want one sentence on one line)", Attribution)}
 	}
 	return text, nil

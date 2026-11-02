@@ -1,33 +1,21 @@
-package report
+package reportcore
 
 import (
-	"fmt"
-	"os"
 	"slices"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// renderSarif ports the --sarif block: the SARIF 2.1.0 finding export with
-// the sig as the partial fingerprint. No-op without the flag; a write
-// failure refuses typed.
-func renderSarif(st *state) error {
+// sarifArtifact builds the --sarif block: the SARIF 2.1.0 finding export
+// with the sig as the partial fingerprint. PrettyOrdered carries the
+// trailing newline like the shell's jq redirect.
+func sarifArtifact(st *state) *core.FileArtifact {
 	if st.flags.Sarif == "" {
 		return nil
 	}
-	doc := sarifDoc(st)
-	// PrettyOrdered carries the trailing newline like the shell's jq
-	// redirect, so no extra line break is appended.
-	if err := os.WriteFile(st.flags.Sarif, []byte(jq.PrettyOrdered(doc)), reportFilePerm); err != nil {
-		return &cli.RefusalError{
-			Code:    codeReportFailed,
-			Message: fmt.Sprintf("could not write %s: %v", st.flags.Sarif, err),
-		}
-	}
-	fmt.Fprintf(st.runner.Human, "wrote %s\n", st.flags.Sarif)
-	return nil
+	return &core.FileArtifact{Path: st.flags.Sarif, Content: []byte(jq.PrettyOrdered(sarifDoc(st)))}
 }
 
 // sarifDoc builds the SARIF document over the ranked findings.

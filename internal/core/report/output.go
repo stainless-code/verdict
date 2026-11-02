@@ -1,33 +1,25 @@
-package report
+package reportcore
 
 import (
-	"fmt"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// renderOutput ports the --output block: the confidence-led markdown
-// report. No-op without the flag; a write failure refuses typed.
-func renderOutput(st *state) error {
+// outputArtifact builds the --output block: the confidence-led markdown
+// report, ready for the adapter to write.
+func outputArtifact(st *state) *core.FileArtifact {
 	if st.flags.Output == "" {
 		return nil
 	}
-	doc := buildDocument(st)
-	if err := os.WriteFile(st.flags.Output, []byte(doc+newline), reportFilePerm); err != nil {
-		return &cli.RefusalError{
-			Code:    codeReportFailed,
-			Message: fmt.Sprintf("could not write %s: %v", st.flags.Output, err),
-		}
-	}
-	return nil
+	return &core.FileArtifact{Path: st.flags.Output, Content: []byte(buildDocument(st) + newline)}
 }
 
 // buildDocument assembles the report file lines.
@@ -405,31 +397,31 @@ func preambleHeading(st *state) (string, bool) {
 func substitutePlaceholders(text string, st *state) string {
 	tier, cost := provenance.Spend(st.dir)
 	vals := &overrides.Values{
-		Version:       provenance.ToolVersion(st.req.Root),
+		Version:       provenance.ToolVersion(st.req.RootPath()),
 		Tier:          tier,
-		ProductURL:    cli.DefaultProductURL,
+		ProductURL:    core.DefaultProductURL,
 		Cost:          cost,
 		FilesReviewed: provenance.FileCount(st.dir),
 		HeadShort:     provenance.HeadShort(st.dir),
 		Model:         provenance.OverrideModel(st.dir, st.req.ReviewModel()),
 	}
-	vals.BaseAttribution = "Reviewed with [**Verdict " + vals.Version + "**](" + cli.DefaultProductURL + ")"
+	vals.BaseAttribution = "Reviewed with [**Verdict " + vals.Version + "**](" + core.DefaultProductURL + ")"
 	return overrides.Substitute(text, vals)
 }
 
 // renderFooter ports the footer block for the report file.
 func renderFooter(st *state) string {
-	r := st.runner
+	eff := st.req.Effective
 	attrSet := st.req.ForcesOrEmpty().PublishAttributionTextSet
 	out, err := provenance.RenderFooter(&provenance.FooterOpts{
 		Dir:                    st.dir,
-		PublishFooter:          r.Effective.PublishFooter,
-		PublishAttribution:     r.Effective.PublishAttribution,
-		PublishAttributionText: r.Effective.PublishAttributionText,
-		PublishCopyright:       r.Effective.PublishCopyright,
-		PublishLogo:            r.Effective.PublishLogo,
-		PublishLogoURL:         r.Effective.PublishLogoURL,
-		Root:                   st.req.Root,
+		PublishFooter:          eff.PublishFooter,
+		PublishAttribution:     eff.PublishAttribution,
+		PublishAttributionText: eff.PublishAttributionText,
+		PublishCopyright:       eff.PublishCopyright,
+		PublishLogo:            eff.PublishLogo,
+		PublishLogoURL:         eff.PublishLogoURL,
+		Root:                   st.req.RootPath(),
 		ReviewModel:            st.req.ReviewModel(),
 		AttributionTextSet:     attrSet,
 	})

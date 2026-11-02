@@ -8,30 +8,9 @@
 package readcommon
 
 import (
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
-// Request carries the resolved read-verb invocation: positionals, the
-// checkout root for provenance reads, the process environment snapshot, and
-// the global flag forces for render gating.
-type Request struct {
-	Env    map[string]string
-	Forces *cli.GlobalForces
-	Repo   string
-	Pr     string
-	Root   string
-}
-
-// ForcesOrEmpty returns the global forces, defaulting to an empty set so
-// direct callers (next's sub-report, tests) need no main wiring.
-func (q Request) ForcesOrEmpty() *cli.GlobalForces {
-	if q.Forces == nil {
-		return &cli.GlobalForces{}
-	}
-	return q.Forces
-}
-
-// ReviewModel reads the REVIEW_MODEL knob for attribution substitution.
-func (q Request) ReviewModel() string {
-	return q.Env["REVIEW_MODEL"]
-}
+// Request is the typed read-verb request owned by core: positionals, the
+// injected runtime (env/clock/progress), and the global flag forces.
+type Request = core.ReadRequest

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -270,7 +270,7 @@ func EvidenceLinkable(dir, sha string) string {
 	if prov := jq.StrOf(m["provider"]); prov != "" && prov != providerGitHub {
 		return validationFalse
 	}
-	return cli.FlagOn
+	return core.FlagOn
 }
 
 var blobSHARe = regexp.MustCompile(`blob/[0-9a-fA-F]{7,40}/`)
@@ -296,7 +296,7 @@ func ValidateEvidenceLinks(body, sha, linkable string) []string {
 
 // mismatchedSHAs lists blob SHAs that do not prefix-match the reviewed SHA.
 func mismatchedSHAs(shas []string, sha, linkable string) []string {
-	if len(shas) == 0 || linkable != cli.FlagOn || sha == "" {
+	if len(shas) == 0 || linkable != core.FlagOn || sha == "" {
 		return nil
 	}
 	var out []string
@@ -314,7 +314,7 @@ func checkBlobSHAs(shas []string, sha, linkable string) string {
 		return ""
 	}
 	switch {
-	case linkable != cli.FlagOn:
+	case linkable != core.FlagOn:
 		return "body carries GitHub blob link(s) on a non-GitHub bundle — keeping " +
 			"body as-is (plain path:line degrades gracefully, blob URLs would 404)"
 	case sha == "":
