@@ -247,6 +247,38 @@ jobs:
         working-directory: apps/docs
         run: bun run audit
 
+  release-dry-run:
+    name: 📦 Release dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node (npm tree + pack checks)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+
+      - name: Install GoReleaser (pinned)
+        shell: bash
+        run: |
+          GOBIN="${{ runner.temp }}/grbin" go install "github.com/goreleaser/goreleaser/v2@v2.19.0"
+          echo "${{ runner.temp }}/grbin" >> "$GITHUB_PATH"
+
+      # Snapshot archives, the npm tree (fake npm records argv, publishes
+      # nothing), the tap formula, `npm pack` content checks, and the
+      # contract tests. Uploads nothing; needs no secrets.
+      - name: Snapshot the whole release train (publishes nothing)
+        shell: bash
+        run: make release-dry-run
+
   audit:
     name: 🛡 Audit
     runs-on: ubuntu-latest
@@ -295,7 +327,18 @@ jobs:
 
   ci-complete:
     name: CI complete
-    needs: [format, lint, installer, go, go-windows, evals, docs, audit]
+    needs:
+      [
+        format,
+        lint,
+        installer,
+        go,
+        go-windows,
+        evals,
+        docs,
+        audit,
+        release-dry-run,
+      ]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -308,7 +351,8 @@ jobs:
             needs.go-windows.result != 'success' ||
             needs.evals.result != 'success' ||
             needs.docs.result != 'success' ||
-            needs.audit.result != 'success'
+            needs.audit.result != 'success' ||
+            needs.release-dry-run.result != 'success'
         run: exit 1
 
       - name: OK
