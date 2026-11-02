@@ -3,12 +3,12 @@
 // env > defaults), warning accumulation, and typed refusals rendered either
 // as a machine envelope (--json) or human text with frozen exit codes.
 //
-// Byte parity with scripts/review.sh is the point: message strings, key
-// order, exit codes, and the flags-win-over-file-over-env precedence are all
-// ported literally. The one deliberate deviation is logging: GO-LOG-01 wants
-// slog, but the frozen CLI contract emits exactly `warn: ...` / `error: ...`
-// lines, so this package writes those bytes directly instead of a log
-// [record] with timestamps.
+// Byte stability of the CLI contract is the point: message strings, key
+// order, exit codes, and the flags-win-over-file-over-env precedence are
+// frozen since the shell cutover (go-port 08). The one deliberate deviation
+// is logging: GO-LOG-01 wants slog, but the frozen CLI contract emits
+// exactly `warn: ...` / `error: ...` lines, so this package writes those
+// bytes directly instead of a log [record] with timestamps.
 package cli
 
 import (

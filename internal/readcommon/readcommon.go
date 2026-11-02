@@ -2,8 +2,8 @@
 // port (report, next, show, ready, trend, calibrate, doctor, check-tree):
 // bundle resolution, the findings-store load with its R1 entry guard, the
 // gh subprocess runner with byte-exact argv, jq-faithful value helpers,
-// finding ranking, and the cost rollup. Every helper mirrors
-// scripts/review.sh line-for-line; divergences from bash crash corners are
+// finding ranking, and the cost rollup. Every helper preserves the frozen
+// CLI bytes; divergences from old bash crash corners are
 // documented at the call site.
 package readcommon
 

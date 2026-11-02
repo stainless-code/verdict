@@ -98,7 +98,7 @@ func setPostValue(f *postFlags, name, val string) {
 // invocation).
 func postRentry(repo, pr string, f postFlags, jsonMode bool) string {
 	var sb strings.Builder
-	sb.WriteString("./scripts/review.sh post " + repo + " " + pr)
+	sb.WriteString("verdict post " + repo + " " + pr)
 	if f.approve != approveFalse {
 		sb.WriteString(" --approve=" + f.approve)
 	}

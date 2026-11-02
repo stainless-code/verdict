@@ -186,15 +186,15 @@ func refetchCommand(dir string, req Request, posted string) string {
 		prov = jsonField(dir+"/PR.json", "provider")
 	}
 	if isLocalDir(dir) {
-		return fmt.Sprintf("./scripts/review.sh fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))
+		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))
 	}
 	if prov != "" && prov != "github" {
-		return fmt.Sprintf("./scripts/review.sh fetch %s %s --provider %s", req.Repo, req.Pr, prov)
+		return fmt.Sprintf("verdict fetch %s %s --provider %s", req.Repo, req.Pr, prov)
 	}
 	if posted != "" {
-		return fmt.Sprintf("./scripts/review.sh fetch %s %s --base-sha %s", req.Repo, req.Pr, readcommon.ShortSHA(posted))
+		return fmt.Sprintf("verdict fetch %s %s --base-sha %s", req.Repo, req.Pr, readcommon.ShortSHA(posted))
 	}
-	return fmt.Sprintf("./scripts/review.sh fetch %s %s", req.Repo, req.Pr)
+	return fmt.Sprintf("verdict fetch %s %s", req.Repo, req.Pr)
 }
 
 // emitReport prints the --json envelope or the human summary.

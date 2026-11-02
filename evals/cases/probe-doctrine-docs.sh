@@ -26,7 +26,7 @@ if grep -q "Machine modes never prompt" "$EVAL_ROOT/docs/manual.md" \
 else
   bad "doctrine line missing from docs/manual.md"
 fi
-if grep -q -- "--json" "$EVAL_ROOT/scripts/review.sh"; then
+if "$EVAL_CLI" --help 2>/dev/null | grep -q -- "--json"; then
   good "usage text still names --json"
 else
   bad "usage text misses --json"

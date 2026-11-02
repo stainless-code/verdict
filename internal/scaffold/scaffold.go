@@ -48,7 +48,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, _ Request) int {
 	if done {
 		return code
 	}
-	r.Rentry = "./scripts/review.sh init --preset " + flags.preset
+	r.Rentry = "verdict init --preset " + flags.preset
 	if flags.yes {
 		r.Rentry += " --yes"
 	}
@@ -328,10 +328,10 @@ func reportNext(r *cli.Runner, f flags, vals presetVals, statuses []string, tree
 // presetFiles renders the four control-file bodies (no trailing newline;
 // the write and preview append exactly one, matching `printf '%s\n'`).
 func presetFiles(preset string, vals presetVals) map[string]string {
-	budget := "# Verdict spend budget (USD) — written by `review.sh init --preset " + preset + "`.\n" +
+	budget := "# Verdict spend budget (USD) — written by `verdict init --preset " + preset + "`.\n" +
 		"# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.\n" + vals.budget
 	panel := presetPanel(preset, vals.panel)
-	kbpolicy := "# Verdict KB retirement policy — written by `review.sh init --preset " + preset + "`.\n" +
+	kbpolicy := "# Verdict KB retirement policy — written by `verdict init --preset " + preset + "`.\n" +
 		"# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.\n" +
 		"MIN_JUDGED=" + vals.kbMin + "\nMAX_FP_RATE=" + vals.kbRate
 	return map[string]string{
@@ -345,13 +345,13 @@ func presetFiles(preset string, vals presetVals) map[string]string {
 // presetPanel renders the panel body for a preset.
 func presetPanel(preset, body string) string {
 	if body == "" {
-		return "# Verdict panel — written by `review.sh init --preset " + preset + "`" +
+		return "# Verdict panel — written by `verdict init --preset " + preset + "`" +
 			" (chill: no pinning).\n" +
 			"# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.\n" +
 			"# Replace these comments with real slugs to pin a formation; empty (all comments)\n" +
 			"# means the operator picks per run."
 	}
-	return "# Verdict panel — written by `review.sh init --preset " + preset + "`.\n" +
+	return "# Verdict panel — written by `verdict init --preset " + preset + "`.\n" +
 		"# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.\n" +
 		"# Replace these placeholders with real slugs; same panel every run " +
 		"keeps verdicts comparable.\n" + body

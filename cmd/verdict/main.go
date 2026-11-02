@@ -1,8 +1,8 @@
-// Command verdict is the Go port of scripts/review.sh, grown verb by verb.
-// It exits via a single [os.Exit] call in main.
-// The shell entry point stays the front door and dispatches ported verbs
-// here; this ticket ports `record` only. main is thin: it parses, builds the
-// runner, delegates to run(), and exits once — only main calls [os.Exit].
+// Command verdict is the only front door: it owns every verb, every usage
+// error, and the arity matrix (go-port 08, F11). A missing verb or
+// positional fails with the full usage block on stderr and exit 2 before
+// any settings, store, or network read. main is thin: it parses, builds
+// the runner, delegates to run(), and exits once — only main calls [os.Exit].
 package main
 
 import (
@@ -36,7 +36,7 @@ import (
 // envHome is the HOME fallback key for hermetic test runs.
 const envHome = "HOME"
 
-// verbsHint lists the verbs the shell entry point dispatches.
+// verbsHint lists the verbs the CLI owns, in the frozen unknown-cmd order.
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install"
 
@@ -53,6 +53,13 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	}
 	root := exeRoot()
 	cmd, repo, pr, args := splitCommand(args)
+	// The arity gate runs before any settings, store, or network read:
+	// a missing verb or positional is a usage error (exit 2) even when
+	// the settings file is corrupt or the network is dead.
+	if arityUsage(cmd, repo, pr) {
+		fmt.Fprint(stderr, usageText())
+		return cli.ExitUsage
+	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	peekJSONMode(r, args)
 	env := envMap(getenv)
@@ -73,7 +80,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 // handleMetaFlags handles -h/--help and --version.
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Fprintln(stdout, usage())
+		fmt.Fprint(stdout, usageText())
 		return true
 	}
 	if len(args) > 0 && args[0] == "--version" {
@@ -133,7 +140,7 @@ func dispatch(
 	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, env, forces, rest); ok {
 		return code
 	}
-	fmt.Fprintf(stderr, "unknown cmd '%s' (want %s)\n", cmd, verbsHint)
+	fmt.Fprintf(stderr, "%s\n", unknownCmdMessage(cmd))
 	return cli.ExitUsage
 }
 
@@ -186,11 +193,23 @@ func dispatchFetch(
 }
 
 // splitCommand separates the verb and repo/pr positionals from flags.
+// Bare verbs (check-tree, doctor, learn, init, install) take no
+// positionals, so every arg after the verb is flags. trend takes only a
+// repo. Every other verb takes repo plus pr.
 func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	if len(args) == 0 {
 		return "", "", "", args
 	}
 	cmd, args = args[0], args[1:]
+	if bareVerbs[cmd] {
+		return cmd, "", "", args
+	}
+	if cmd == "trend" {
+		if len(args) > 0 {
+			repo, rest = args[0], args[1:]
+		}
+		return cmd, repo, "", rest
+	}
 	repo, pr, rest = splitPositionals(args)
 	return cmd, repo, pr, rest
 }
@@ -256,9 +275,9 @@ func routeHuman(r *cli.Runner) {
 	}
 }
 
-// exeRoot resolves the checkout root the way the shell resolves its script
+// exeRoot resolves the checkout root the way the shell resolved its script
 // directory: the directory holding this binary, walking up to the checkout
-// carrying scripts/review.sh so a conventional bin/verdict build (see the
+// carrying package.json so a conventional bin/verdict build (see the
 // Makefile) still finds package.json and prompts/ at the checkout root. A
 // relocated binary with no checkout above it keeps the binary directory, so
 // hermetic harnesses can plant the provenance inputs beside it.
@@ -277,11 +296,11 @@ func exeRoot() string {
 const checkoutDepth = 5
 
 // checkoutRoot walks up from dir to the checkout carrying
-// scripts/review.sh, falling back to dir when none is found.
+// package.json, falling back to dir when none is found.
 func checkoutRoot(dir string) string {
 	root := dir
 	for range checkoutDepth {
-		if st, err := os.Stat(filepath.Join(root, "scripts", "review.sh")); err == nil && !st.IsDir() {
+		if st, err := os.Stat(filepath.Join(root, "package.json")); err == nil && !st.IsDir() {
 			return root
 		}
 		parent := filepath.Dir(root)
@@ -343,13 +362,4 @@ func versionOf(root string, readFile func(string) ([]byte, error)) string {
 		return "0.0.0-unknown"
 	}
 	return doc.Version
-}
-
-// usage prints the verb summary.
-func usage() string {
-	return "usage: verdict fetch|fetch-local|record|post|triage|report|next|show|" +
-		"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install " +
-		"<owner/repo> <slug> [flags]\n\nverbs ported to Go: fetch, fetch-local, record, post, triage, " +
-		"adopt, fix, learn, init, install, verify " +
-		"(the shell entry point dispatches; see scripts/review.sh)"
 }

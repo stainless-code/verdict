@@ -58,7 +58,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // setupRunner records the invocation for envelopes and usage lines.
 func setupRunner(r *cli.Runner, req Request) {
 	r.Repo, r.Pr = req.Repo, req.Pr
-	r.Rentry = "./scripts/review.sh record " + req.Repo + " " + req.Pr
+	r.Rentry = "verdict record " + req.Repo + " " + req.Pr
 	if r.JSONMode {
 		r.Rentry += " --json"
 	}

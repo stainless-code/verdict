@@ -157,7 +157,7 @@ else
 fi
 run_review post acme/app "$PR"
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "post failed" "$EVAL_ERR" \
-  && grep -q "re-enter: ./scripts/review.sh post acme/app $PR" "$EVAL_ERR"; then
+  && grep -q "re-enter: verdict post acme/app $PR" "$EVAL_ERR"; then
   good "text refusal names post failed plus the re-enter command"
 else
   bad "garbage text stderr: $(head -c 300 "$EVAL_ERR")"

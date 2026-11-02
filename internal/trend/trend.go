@@ -29,7 +29,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before trend completed"}, cli.ExitBroke)
 	}
 	if req.Repo == "" {
-		return r.ReportUsage(&cli.UsageError{Message: "usage: review.sh trend <owner/repo> [--overlap] [--json]"})
+		return r.ReportUsage(&cli.UsageError{Message: "usage: verdict trend <owner/repo> [--overlap] [--json]"})
 	}
 	now := cli.NowUTC(r.Now())
 	rows := collectRows(r)

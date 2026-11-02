@@ -50,9 +50,9 @@ func (st *state) validateChunkMerge() (string, error) {
 func chunkRefetch(st *state) string {
 	if st.prov == providerLocal {
 		slug := strings.TrimPrefix(st.runner.Pr, localPrefix)
-		return fmt.Sprintf("./scripts/review.sh fetch-local %s %s --chunk -- <paths>", st.runner.Repo, slug)
+		return fmt.Sprintf("verdict fetch-local %s %s --chunk -- <paths>", st.runner.Repo, slug)
 	}
-	return fmt.Sprintf("./scripts/review.sh fetch %s %s --chunk", st.runner.Repo, st.runner.Pr)
+	return fmt.Sprintf("verdict fetch %s %s --chunk", st.runner.Repo, st.runner.Pr)
 }
 
 // chunk is one manifest chunk entry.

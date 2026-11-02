@@ -65,7 +65,7 @@ type Request struct {
 // Run executes `install [--yes] [--json]`, returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = "", ""
-	r.Rentry = "./scripts/review.sh install"
+	r.Rentry = "verdict install"
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code

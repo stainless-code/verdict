@@ -92,10 +92,10 @@ const (
 	msgBadApprove = "--approve takes true|false, got '%s'"
 
 	msgDriftMoved = "HEAD moved since fetch (fetched %s, live %s) — anchors potentially stale; " +
-		"run ./scripts/review.sh fetch %s %s --base-sha %s and review the delta"
+		"run verdict fetch %s %s --base-sha %s and review the delta"
 
 	msgDriftNote = "> ⚠️ Note: commits landed after this review's fetch (fetched `%s`, live `%s`); " +
-		"treat line anchors as potentially stale. Run `./scripts/review.sh fetch %s %s --base-sha %s` and review the delta."
+		"treat line anchors as potentially stale. Run `verdict fetch %s %s --base-sha %s` and review the delta."
 
 	msgApproveBlocked = "refusing APPROVE with %d open + %d deferred findings (triage or pass --force)"
 
@@ -103,14 +103,14 @@ const (
 		"%d thread(s) the store does not know about (fetch + triage them, or re-run with --force)"
 
 	msgStaleDowngrade = "stale fetch — APPROVE downgraded to COMMENT (review covers fetched %s, live HEAD is %s; " +
-		"run ./scripts/review.sh fetch %s %s --base-sha %s and review the delta to bind)"
+		"run verdict fetch %s %s --base-sha %s and review the delta to bind)"
 
 	msgStaleNote = "> ⚠️ Note: posting as COMMENT instead of APPROVE — commits landed after this review's fetch, " +
-		"so the review does not cover live HEAD; run `./scripts/review.sh fetch %s %s --base-sha %s` and review the delta."
+		"so the review does not cover live HEAD; run `verdict fetch %s %s --base-sha %s` and review the delta."
 
 	msgAlreadyPosted = "refusing second post on reviewed SHA %s (already posted at %s — " +
 		"new commits re-arm automatically; pass --force to override, " +
-		"or run ./scripts/review.sh fetch %s %s --base-sha %s and review the delta)"
+		"or run verdict fetch %s %s --base-sha %s and review the delta)"
 
 	msgPostFailed = "post failed: %s — narrow the cause (anchor drift? body size?) — do not drop comments blindly."
 )

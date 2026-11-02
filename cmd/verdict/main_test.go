@@ -16,7 +16,7 @@ func TestCheckoutRootFindsCheckout(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "scripts", "review.sh"), []byte("#!/usr/bin/env bash\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"version":"0.0.0"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := checkoutRoot(filepath.Join(root, "bin")); got != root {

@@ -3,6 +3,7 @@ package record
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,8 +11,12 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/parity"
 )
+
+// writeStubFile plants one executable stub script in the stub directory.
+func writeStubFile(stubDir, name, script string) error {
+	return os.WriteFile(filepath.Join(stubDir, name), []byte(script), 0o755)
+}
 
 // postTestRunner builds a runner capturing warnings for unit tests.
 func postTestRunner() (*cli.Runner, *strings.Builder) {
@@ -459,7 +464,7 @@ func TestPostRecheckMalformed(t *testing.T) {
 		"  esac\n" +
 		"fi\necho dead >&2; exit 1\n"
 	stubDir := t.TempDir()
-	if err := parity.WriteStubFile(stubDir, "gh", stub); err != nil {
+	if err := writeStubFile(stubDir, "gh", stub); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))

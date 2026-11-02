@@ -34,7 +34,7 @@ type Request struct {
 // returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
-	r.Rentry = "./scripts/review.sh fix " + req.Repo + " " + req.Pr
+	r.Rentry = "verdict fix " + req.Repo + " " + req.Pr
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code

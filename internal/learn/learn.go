@@ -27,7 +27,7 @@ import (
 // returning the process exit code. Learn takes no repo/pr positionals.
 func Run(ctx context.Context, r *cli.Runner, args []string, _ map[string]string) int {
 	r.Repo, r.Pr = "", ""
-	r.Rentry = "./scripts/review.sh learn"
+	r.Rentry = "verdict learn"
 	f, code, done := parseFlags(r, args)
 	if done {
 		return code

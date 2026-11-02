@@ -213,7 +213,7 @@ if grep -q "## Over-cap diffs" "$EVAL_ROOT/docs/manual.md" \
 else
   bad "operator manual misses the chunking/manual-recipe prose"
 fi
-if grep -q -- "--chunk" "$EVAL_ROOT/scripts/review.sh"; then
+if "$EVAL_CLI" --help 2>/dev/null | grep -q -- "--chunk"; then
   good "usage text names the --chunk opt-in"
 else
   bad "usage text misses --chunk"
