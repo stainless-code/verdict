@@ -8,6 +8,7 @@ package provenance
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -453,6 +454,12 @@ func bundleHead(dir string) string {
 func numVal(v any) (float64, bool) {
 	switch t := v.(type) {
 	case jq.Number:
+		f, err := strconv.ParseFloat(t.String(), floatBits)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case json.Number:
 		f, err := strconv.ParseFloat(t.String(), floatBits)
 		if err != nil {
 			return 0, false

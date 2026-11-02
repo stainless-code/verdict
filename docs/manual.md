@@ -821,22 +821,23 @@ record predictions locally, settle them after the upgrade below.
 
 ### Go implementation (experimental until 1.0)
 
-`record` can run from a compiled Go binary instead of the shell, with
+`record`, `report`, `next`, `show`, `ready`, `trend`, `calibrate`, `doctor`,
+and `check-tree` can run from a compiled Go binary instead of the shell, with
 byte-identical envelopes, hints, and exits. It is opt-in and experimental
 until 1.0: the default stays shell, so nothing changes unless asked for.
 
-| Setting                                         | Meaning                                                          |
-| ----------------------------------------------- | ---------------------------------------------------------------- |
-| `VERDICT_IMPL` unset or `bash` (default)        | shell implementation (today's behavior)                          |
-| `VERDICT_IMPL=go`                               | dispatch `record` to the Go binary (everything else stays shell) |
-| `VERDICT_BIN=<path>`                            | binary to dispatch to (wins over the default below)              |
-| `make build` (writes `bin/verdict`, gitignored) | the default binary when `VERDICT_BIN` is unset                   |
+| Setting                                         | Meaning                                                           |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| `VERDICT_IMPL` unset or `bash` (default)        | shell implementation (today's behavior)                           |
+| `VERDICT_IMPL=go`                               | dispatch the ported verbs to the Go binary (the rest stays shell) |
+| `VERDICT_BIN=<path>`                            | binary to dispatch to (wins over the default below)               |
+| `make build` (writes `bin/verdict`, gitignored) | the default binary when `VERDICT_BIN` is unset                    |
 
 `VERDICT_IMPL=go` with no binary at `VERDICT_BIN` (or `bin/verdict` by
 default) refuses typed `missing-go-binary` (exit 1) with a build hint —
 never a silent fallback to shell. Any other `VERDICT_IMPL` value is a usage
-error (exit 2). Only `record` dispatches for now; later verbs follow the same
-switch as they port.
+error (exit 2). Only the ported verbs dispatch; the rest stay shell as later
+verbs follow the same switch when they port.
 
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`

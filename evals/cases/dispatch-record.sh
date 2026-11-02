@@ -14,7 +14,7 @@
 #       envelope under --json, make-build hint) — never a silent bash fallback.
 #   G4  unknown VERDICT_IMPL values are a usage error (exit 2) on positional
 #       and non-positional verb paths alike.
-#   G5  non-record verbs stay bash under VERDICT_IMPL=go (byte-identical).
+#   G5  ported verbs dispatch under VERDICT_IMPL=go (byte-identical).
 #   G6  the existing record-exercising eval cases pass unchanged under
 #       VERDICT_IMPL=go (the strongest parity proof: the contract suite grades
 #       the Go implementation through the shell entry point).
@@ -284,7 +284,7 @@ else
   bad "G4 no-positional path exits $(cat "$EVAL_SANDBOX/g4c.status")"
 fi
 
-# --- G5: non-record verbs stay bash under VERDICT_IMPL=go ---
+# --- G5: ported verbs dispatch under VERDICT_IMPL=go ---
 printf '%s' "$VALID_REVIEW" | mk_bundle "local-disp-r"
 run_impl bash "$EVAL_SANDBOX/par-b" -- record acme/app local-disp-r --json >/dev/null 2>&1
 run_impl bash "$EVAL_SANDBOX/g5-b" -- report acme/app local-disp-r --json
@@ -294,7 +294,7 @@ gstatus="$EVAL_STATUS"
 if [ "$bstatus" = "$gstatus" ] \
   && cmp -s <(scrub "local-disp-r" "local-disp-r" <"$EVAL_SANDBOX/g5-b.out") <(scrub "local-disp-r" "local-disp-r" <"$EVAL_SANDBOX/g5-g.out") \
   && cmp -s "$EVAL_SANDBOX/g5-b.err" "$EVAL_SANDBOX/g5-g.err"; then
-  good "G5 report stays bash under VERDICT_IMPL=go (byte-identical)"
+  good "G5 report dispatches under VERDICT_IMPL=go (byte-identical)"
 else
   bad "G5 report differs under VERDICT_IMPL=go (status $bstatus vs $gstatus)"
 fi

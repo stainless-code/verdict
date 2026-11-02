@@ -15,12 +15,19 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
+	"github.com/stainless-code/verdict/internal/calibrate"
+	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/doctor"
 	"github.com/stainless-code/verdict/internal/fix"
 	"github.com/stainless-code/verdict/internal/install"
 	"github.com/stainless-code/verdict/internal/learn"
+	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/ready"
 	"github.com/stainless-code/verdict/internal/record"
+	"github.com/stainless-code/verdict/internal/report"
 	"github.com/stainless-code/verdict/internal/scaffold"
+	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
 	"github.com/stainless-code/verdict/internal/verify"
 )
@@ -59,7 +66,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		routeHuman(r)
 		return r.Refuse(err)
 	}
-	return dispatch(cmd, r, repo, pr, root, env, rest, stderr)
+	return dispatch(cmd, r, repo, pr, root, env, forces, rest, stderr)
 }
 
 // handleMetaFlags handles -h/--help and --version.
@@ -97,10 +104,11 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 }
 
 // dispatch runs the verb or reports it unknown.
-func dispatch(cmd string, r *cli.Runner, repo, pr, root string, env map[string]string, rest []string, stderr *os.File) int {
+func dispatch(cmd string, r *cli.Runner, repo, pr, root string, env map[string]string, forces *cli.GlobalForces, rest []string, stderr *os.File) int {
 	routeHuman(r)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer stop()
+	req := readcommon.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}
 	switch cmd {
 	case "record":
 		return record.Run(ctx, r, rest, record.Request{
@@ -128,6 +136,22 @@ func dispatch(cmd string, r *cli.Runner, repo, pr, root string, env map[string]s
 		return verify.Run(ctx, r, rest, verify.Request{
 			Repo: repo, Pr: pr, Root: root, Env: env,
 		})
+	case "report":
+		return report.Run(ctx, r, rest, req)
+	case "next":
+		return report.RunNext(ctx, r, rest, req)
+	case "show":
+		return report.RunShow(ctx, r, rest, req)
+	case "ready":
+		return ready.Run(ctx, r, rest, req)
+	case "trend":
+		return trend.Run(ctx, r, rest, req)
+	case "calibrate":
+		return calibrate.Run(ctx, r, rest, req)
+	case "doctor":
+		return doctor.Run(ctx, r, rest, req)
+	case "check-tree":
+		return checktree.Run(ctx, r, rest, req)
 	default:
 		fmt.Fprintf(stderr, "unknown cmd '%s' (want %s)\n", cmd, verbsHint)
 		return cli.ExitUsage

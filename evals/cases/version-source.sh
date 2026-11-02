@@ -94,7 +94,9 @@ EOF
 set +e
 (
   cd "$EVAL_SANDBOX" || exit 99
-  PATH="$EVAL_STUBBIN:$PATH" bash "$FAKE/scripts/review.sh" report acme/app "$PR" \
+  # V3 grades the BASH degrade path (the fake root holds the script back from
+  # package.json); pin the implementation so the go leg grades the same path.
+  PATH="$EVAL_STUBBIN:$PATH" VERDICT_IMPL=bash bash "$FAKE/scripts/review.sh" report acme/app "$PR" \
     --output "$EVAL_SANDBOX/out-4602.md" >"$EVAL_SANDBOX/fake-report.txt" 2>/dev/null
 )
 fake_status=$?

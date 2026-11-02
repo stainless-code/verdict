@@ -255,14 +255,16 @@ func atoi(s string) int {
 }
 
 // AttributionText ports override_attribution_text: the raw fragment, which
-// must fit on one line (no newline bytes).
+// must fit on one line. The shell's command substitution strips trailing
+// newlines before the line count, so interior newlines refuse but a single
+// trailing newline reads as the one line.
 func AttributionText() (string, error) {
 	raw, err := os.ReadFile(Attribution)
 	if err != nil {
 		//nolint:nilerr // an absent override file means "no override", not a failure
 		return "", nil
 	}
-	text := strings.ReplaceAll(string(raw), "\r", "")
+	text := strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), "\n")
 	if strings.Count(text, "\n") != 0 {
 		return "", &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates "+
 			"'attribution-single-line' (want one sentence on one line)", Attribution)}
