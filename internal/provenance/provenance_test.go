@@ -151,3 +151,21 @@ func TestFileCount(t *testing.T) {
 		t.Errorf("FileCount() = %q; want files unrecorded", got)
 	}
 }
+
+// TestLinkedVersionPreference checks the linked release version wins over
+// package.json (installed binaries ship no checkout), and clearing it
+// restores the file fallback.
+func TestLinkedVersionPreference(t *testing.T) {
+	dir := writeBundle(t, map[string]string{"package.json": `{"version":"0.3.1"}`})
+	if got := provenance.ToolVersion(dir); got != "0.3.1" {
+		t.Fatalf("ToolVersion(file) = %q; want 0.3.1", got)
+	}
+	provenance.SetBuildVersion("1.2.3")
+	defer provenance.SetBuildVersion("")
+	if got := provenance.ToolVersion(dir); got != "1.2.3" {
+		t.Errorf("ToolVersion(linked) = %q; want 1.2.3", got)
+	}
+	if got := provenance.ToolVersion(filepath.Join(dir, "missing")); got != "1.2.3" {
+		t.Errorf("ToolVersion(linked, no checkout) = %q; want 1.2.3", got)
+	}
+}

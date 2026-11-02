@@ -145,6 +145,31 @@ GitHub Release carrying your notes. Tags (`vX.Y.Z`) follow the releases.
 Additive store changes only within a major. See the changelog at the bottom of
 [`docs/manual.md`](docs/manual.md).
 
+## Release train
+
+One merged Version PR ships everything: `changeset git-tag` tags the bumped
+version, GoReleaser builds six static binaries (`darwin`/`linux`/`windows` ×
+`amd64`/`arm64`), signs `checksums.txt` (cosign keyless bundle), emits
+per-archive SPDX SBOMs, and owns the GitHub Release; then
+`scripts/publish-npm.mjs` publishes six `@stainless-code/verdict-<os>-<arch>`
+platform packages plus the wrapper (no postinstall — `--ignore-scripts`
+installs work), and the same run renders `dist/verdict.rb` for the
+`stainless-code/tap` Homebrew tap
+(`brew install stainless-code/tap/verdict`).
+
+Artifact names are frozen in [`release/contract.json`](release/contract.json);
+`.goreleaser.yml`, the npm scripts, and the formula generator must match it
+(the contract tests fail otherwise). `verdict --version` prints the tag in
+release binaries (ldflags `main.version`) and the `package.json` version for
+source builds.
+
+Dry-run (publishes nothing, pushes nothing, needs no secrets):
+`make release-dry-run` — snapshot archives, the npm tree (a fake `npm`
+records argv), the formula, `npm pack` content checks, and the contract
+tests. CI runs it on every PR. The real chain (`scripts/release.sh`) runs
+only from the Release workflow after a Version PR merges; the tap push stays
+off until tap auth lands (`TAP_PUSH=1` with `TAP_GITHUB_TOKEN`).
+
 ## Formatting
 
 Markdown is normalized with one-shot `bun fmt` runs and human review. Tables and JSON

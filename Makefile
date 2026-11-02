@@ -9,6 +9,12 @@
 GO := go
 BIN := bin/verdict
 GOVULNCHECK_VERSION ?= v1.9.0
+# Pinned GoReleaser for the release train (also pinned in
+# .github/workflows/release.yml and ci.yml). Install outside the repo when
+# missing: GOBIN=/tmp/grbin go install
+# github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION).
+GORELEASER ?= goreleaser
+GORELEASER_VERSION ?= v2.19.0
 
 .PHONY: build
 build:
@@ -55,3 +61,20 @@ schemas:
 .PHONY: schemas-check
 schemas-check:
 	$(GO) run ./cmd/schemagen
+
+# release-dry-run proves the whole release train without publishing
+# anything: snapshot archives, the npm tree, the tap formula, `npm pack`
+# content checks per package, and the contract tests (shim resolution
+# included). No tag, no cosign, no attestation, no registry, no tap push.
+.PHONY: release-dry-run
+release-dry-run:
+	$(GORELEASER) check
+	rm -rf dist
+	$(GORELEASER) release --snapshot --clean --skip=sign,sbom
+	mkdir -p dist/fakebin
+	cp scripts/fake-npm.sh dist/fakebin/npm
+	chmod +x dist/fakebin/npm
+	PATH="$(CURDIR)/dist/fakebin:$(PATH)" node scripts/publish-npm.mjs --dry-run
+	node scripts/generate-formula.mjs
+	for d in dist/npm/*/; do (cd "$$d" && npm pack --dry-run > /dev/null); done
+	$(GO) test -count=1 ./release/

@@ -22,9 +22,24 @@ import (
 // promptFiles lists the assembled agent prompt in hash order.
 var promptFiles = []string{"SKILL.md", "prompts/diagrams.md", "prompts/review.md", "prompts/system.md"}
 
+// buildVersion is the release version injected at link time (GoReleaser
+// -X main.version); empty for source builds, which read package.json.
+var buildVersion string
+
+// SetBuildVersion pins the release version for ToolVersion (and the footer
+// derived from it). Call once at startup; empty keeps the source-build
+// fallback. This is the test seam for the linked-version preference.
+func SetBuildVersion(v string) {
+	buildVersion = v
+}
+
 // ToolVersion reads the tool version beside the binary root, defaulting to
-// unknown when the checkout marker is absent.
+// unknown when the checkout marker is absent. A linked release version
+// (installed binaries ship no package.json) wins over the file read.
 func ToolVersion(root string) string {
+	if buildVersion != "" {
+		return buildVersion
+	}
 	raw, err := os.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
 		return unknown

@@ -309,8 +309,9 @@ func readToolVersion(toolRoot string) string {
 	return jq.R(v)
 }
 
-// payloadFiles ports the payload inventory: SKILL.md, prompts/*.md,
-// scripts/*.sh in glob order.
+// payloadFiles ports the payload inventory: SKILL.md, prompts/*.md, and
+// the scripts/ tree (release entry points ship beside the skill scripts,
+// so the installed copy mirrors the checkout like the registry tarball).
 func payloadFiles(toolRoot string) ([]string, error) {
 	payload := []string{skillFile}
 	var err error
@@ -344,24 +345,45 @@ func appendPrompts(toolRoot string, payload []string) ([]string, error) {
 	return payload, nil
 }
 
-// appendScripts appends sorted script payload files.
+// appendScripts appends the scripts/ tree in sorted order: every regular
+// file with its scripts/-relative path, so nested helpers (npm-shim/)
+// install with the same layout the registry tarball carries.
 func appendScripts(toolRoot string, payload []string) ([]string, error) {
-	scripts, err := filepath.Glob(filepath.Join(toolRoot, scriptsDir, "*.sh"))
+	rels, err := scriptRels(filepath.Join(toolRoot, scriptsDir))
 	if err != nil {
 		return nil, missingScripts(toolRoot)
 	}
-	slices.Sort(scripts)
 	before := len(payload)
-	for _, sf := range scripts {
-		if !isFile(sf) {
+	for _, rel := range rels {
+		if !isFile(filepath.Join(toolRoot, scriptsDir, filepath.FromSlash(rel))) {
 			continue
 		}
-		payload = append(payload, scriptsDir+"/"+filepath.Base(sf))
+		payload = append(payload, scriptsDir+"/"+rel)
 	}
 	if len(payload) <= before {
 		return nil, missingScripts(toolRoot)
 	}
 	return payload, nil
+}
+
+// scriptRels lists the regular files under root as root-relative slash
+// paths in sorted order. Any walk failure reads as a missing payload.
+func scriptRels(root string) ([]string, error) {
+	prefix := root + string(filepath.Separator)
+	var rels []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		rels = append(rels, filepath.ToSlash(strings.TrimPrefix(path, prefix)))
+		return nil
+	})
+	if err != nil {
+		//nolint:wrapcheck // fresh error created here; nothing to wrap
+		return nil, fmt.Errorf("walk %s (not a verdict checkout?)", root)
+	}
+	slices.Sort(rels)
+	return rels, nil
 }
 
 // missingPrompts builds the refusal for an empty prompts glob.
@@ -775,10 +797,23 @@ func applyTarget(toolRoot, tgt string, diffs []string) error {
 		if rel == "" {
 			continue
 		}
-		if err := copyFile(filepath.Join(toolRoot, rel), filepath.Join(tgt, rel)); err != nil {
-			//nolint:wrapcheck // fresh error created here; nothing to wrap
-			return fmt.Errorf("install could not write %s/%s (storage writable?)", tgt, rel)
+		if err := copyPayloadFile(toolRoot, tgt, rel); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// copyPayloadFile stages parent dirs, then copies one payload file.
+func copyPayloadFile(toolRoot, tgt, rel string) error {
+	dst := filepath.Join(tgt, rel)
+	if err := os.MkdirAll(filepath.Dir(dst), installDirPerm); err != nil {
+		//nolint:wrapcheck // fresh error created here; nothing to wrap
+		return fmt.Errorf("install could not create %s (storage writable?)", filepath.Dir(dst))
+	}
+	if err := copyFile(filepath.Join(toolRoot, rel), dst); err != nil {
+		//nolint:wrapcheck // fresh error created here; nothing to wrap
+		return fmt.Errorf("install could not write %s/%s (storage writable?)", tgt, rel)
 	}
 	return nil
 }

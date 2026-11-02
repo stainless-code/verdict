@@ -1,0 +1,93 @@
+{
+  "contract": 1,
+  "project": "verdict",
+  "repo": "stainless-code/verdict",
+  "tagPrefix": "v",
+  "binary": "verdict",
+  "archives": [
+    {
+      "goos": "darwin",
+      "goarch": "amd64",
+      "file": "verdict_{version}_darwin_amd64.tar.gz",
+      "npmPackage": "@stainless-code/verdict-darwin-x64",
+      "npmOS": "darwin",
+      "npmCPU": "x64",
+      "npmBin": "bin/verdict"
+    },
+    {
+      "goos": "darwin",
+      "goarch": "arm64",
+      "file": "verdict_{version}_darwin_arm64.tar.gz",
+      "npmPackage": "@stainless-code/verdict-darwin-arm64",
+      "npmOS": "darwin",
+      "npmCPU": "arm64",
+      "npmBin": "bin/verdict"
+    },
+    {
+      "goos": "linux",
+      "goarch": "amd64",
+      "file": "verdict_{version}_linux_amd64.tar.gz",
+      "npmPackage": "@stainless-code/verdict-linux-x64",
+      "npmOS": "linux",
+      "npmCPU": "x64",
+      "npmBin": "bin/verdict"
+    },
+    {
+      "goos": "linux",
+      "goarch": "arm64",
+      "file": "verdict_{version}_linux_arm64.tar.gz",
+      "npmPackage": "@stainless-code/verdict-linux-arm64",
+      "npmOS": "linux",
+      "npmCPU": "arm64",
+      "npmBin": "bin/verdict"
+    },
+    {
+      "goos": "windows",
+      "goarch": "amd64",
+      "file": "verdict_{version}_windows_amd64.zip",
+      "npmPackage": "@stainless-code/verdict-win32-x64",
+      "npmOS": "win32",
+      "npmCPU": "x64",
+      "npmBin": "bin/verdict.exe"
+    },
+    {
+      "goos": "windows",
+      "goarch": "arm64",
+      "file": "verdict_{version}_windows_arm64.zip",
+      "npmPackage": "@stainless-code/verdict-win32-arm64",
+      "npmOS": "win32",
+      "npmCPU": "arm64",
+      "npmBin": "bin/verdict.exe"
+    }
+  ],
+  "checksums": "checksums.txt",
+  "signatureBundle": "checksums.txt.sigstore.json",
+  "sbomSuffix": ".sbom.json",
+  "npm": {
+    "wrapper": "@stainless-code/verdict",
+    "bin": {
+      "verdict": "bin/verdict.js"
+    },
+    "wrapperFiles": ["bin/verdict.js"],
+    "publishArgs": ["--provenance", "--access", "public"]
+  },
+  "urls": {
+    "releaseBase": "https://github.com/stainless-code/verdict/releases/download/v{version}",
+    "archive": "https://github.com/stainless-code/verdict/releases/download/v{version}/verdict_{version}_{goos}_{goarch}.{ext}",
+    "checksums": "https://github.com/stainless-code/verdict/releases/download/v{version}/checksums.txt",
+    "signatureBundle": "https://github.com/stainless-code/verdict/releases/download/v{version}/checksums.txt.sigstore.json"
+  },
+  "formula": {
+    "tap": "stainless-code/tap",
+    "path": "verdict.rb",
+    "class": "Verdict",
+    "desc": "Local on-demand PR review for any coding agent",
+    "homepage": "https://github.com/stainless-code/verdict",
+    "license": "MIT",
+    "installBin": "verdict"
+  },
+  "cosign": {
+    "identity": "https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/tags/v*",
+    "issuer": "https://token.actions.githubusercontent.com"
+  }
+}

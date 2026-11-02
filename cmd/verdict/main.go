@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
@@ -24,6 +25,7 @@ import (
 	"github.com/stainless-code/verdict/internal/fix"
 	"github.com/stainless-code/verdict/internal/install"
 	"github.com/stainless-code/verdict/internal/learn"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/ready"
 	"github.com/stainless-code/verdict/internal/record"
@@ -33,6 +35,11 @@ import (
 	"github.com/stainless-code/verdict/internal/triage"
 	"github.com/stainless-code/verdict/internal/verify"
 )
+
+// version is the release version injected at link time by GoReleaser
+// (-X main.version={{.Version}}); empty for source builds, which read
+// package.json at runtime instead (see versionOf).
+var version string
 
 // envHome is the HOME fallback key for hermetic test runs.
 const envHome = "HOME"
@@ -49,6 +56,9 @@ func main() {
 // run executes the CLI with injected I/O and environment for testability,
 // returning the process exit code.
 func run(args []string, stdout, stderr *os.File, getenv func(string) string, readFile func(string) ([]byte, error)) int {
+	// Installed binaries ship no package.json: the linked release version
+	// (if any) owns the footer before any flag handling runs.
+	provenance.SetBuildVersion(strings.TrimPrefix(version, "v"))
 	if done := handleMetaFlags(args, stdout, readFile); done {
 		return cli.ExitOK
 	}
@@ -85,7 +95,11 @@ func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]by
 		return true
 	}
 	if len(args) > 0 && args[0] == "--version" {
-		// --version reads package.json at runtime (single source; see versionOf).
+		// --version prefers the linked release version over package.json at runtime (see versionOf).
+		if v := strings.TrimPrefix(version, "v"); v != "" {
+			fmt.Fprintln(stdout, v)
+			return true
+		}
 		fmt.Fprintln(stdout, versionOf(exeRoot(), readFile))
 		return true
 	}
