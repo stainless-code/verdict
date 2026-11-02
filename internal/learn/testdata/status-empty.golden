@@ -1,0 +1,6 @@
+exit: 0
+--- stdout ---
+learn: no rules yet (pass --rule to append the first)
+--- stderr ---
+
+--- files ---

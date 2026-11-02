@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+unknown flag '--bogus' for learn (want --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json)
+--- files ---

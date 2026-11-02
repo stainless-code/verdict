@@ -1,0 +1,35 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-sig",
+    "message": "fix: sig 21234567 is addressed (fix iterates open sigs only)\ntry: list open inline sigs with report --status open --kind inline, then re-run with the full prefix"
+  }
+}
+--- stderr ---
+» readiness: .review/local-bad — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-bad --sig 2123456789abcdef0123456789abcdef01234567 --json
+--- files ---
+--- file C/.review/local-bad/findings.json ---
+[{"kind":"inline","path":"notes.txt","heading":null,"side":"RIGHT","line":2,"anchored":true,"body":"Open nit here.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"1123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","heading":null,"side":"RIGHT","line":2,"anchored":true,"body":"Settled nit.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"2123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]}]
+--- file C/.review/local-bad/fix.json ---
+{"sigs":{}}
+--- file C/app.txt ---
+alpha
+beta
+gamma
+--- file C/notes.txt ---
+line1
+line2
+line3
+--- file C/other.txt ---
+other1
+other2

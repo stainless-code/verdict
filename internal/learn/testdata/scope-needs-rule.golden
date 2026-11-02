@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: learn needs exactly one of --rule <text>, --status, --retire <id>, --restore <id>
+try: re-run with one of the valid values named above
+re-enter: verdict learn --scope ...
+--- files ---

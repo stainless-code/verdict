@@ -1,0 +1,30 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "missing-findings",
+    "message": "missing .review/local-empty/findings.json (run record first, then fix)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+re-enter: verdict fix acme/app local-empty --json
+--- files ---
+--- file C/app.txt ---
+alpha
+beta
+gamma
+--- file C/notes.txt ---
+line1
+line2
+line3
+--- file C/other.txt ---
+other1
+other2
