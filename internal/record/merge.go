@@ -1,0 +1,1002 @@
+package record
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"slices"
+	"strings"
+
+	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/diagram"
+	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/sig"
+)
+
+// state carries the validate_and_merge globals for one record run. Findings
+// entries are *jq.Obj in shell construction order: jq preserves insertion
+// order, so byte parity needs the same field sequence, not sorted keys.
+type state struct {
+	confidence   any
+	security     any
+	review       *jq.Obj
+	runner       *cli.Runner
+	kb           *kb.Ctx
+	env          map[string]string
+	dir          string
+	reviewFile   string
+	root         string
+	now          string
+	headShort    string
+	prov         string
+	headFull     string
+	findingsFile string
+	anchorHunks  string
+	entries      []any
+	kept         []any
+	moved        []any
+	anchorRows   []hunkRow
+	nKept        int
+	nMoved       int
+	nOpen        int
+	nDeferred    int
+	nAddressed   int
+}
+
+// hunkRow is one parsed anchor-hunks row.
+type hunkRow struct {
+	file  string
+	side  string
+	start int
+	end   int
+}
+
+// validateAndMerge ports validate_and_merge end to end, returning a typed
+// refusal for any fail-closed gate or nil on success.
+func (st *state) validateAndMerge(body string) error {
+	r := st.runner
+	st.kb = kb.New(r.Warn)
+	st.kb.ResolvePolicy(st.env, exists(kb.File))
+	st.kb.Broken = false
+	st.loadKB()
+	st.kb.Staged = []map[string]any{}
+	if err := checkReviewSchema(r, st.review); err != nil {
+		return err
+	}
+	if err := st.validateInputs(); err != nil {
+		return err
+	}
+	anchorHunks, err := st.validateChunkMerge()
+	if err != nil {
+		return err
+	}
+	st.anchorHunks = anchorHunks
+	if err := st.parseConfidence(); err != nil {
+		return err
+	}
+	body = st.validateAnchors(body)
+	body = st.demoteFences(body)
+	body = appendMoveSection(body, st.moved)
+	st.reportMoves()
+	st.buildEntries(body)
+	if err := st.mergeEntries(); err != nil {
+		return err
+	}
+	return st.applyClaims(body)
+}
+
+// mergeEntries ports the re-post merge tail: prior overlay, backfill, and
+// delta-run auto-reopen.
+func (st *state) mergeEntries() error {
+	if err := st.mergePrior(); err != nil {
+		return err
+	}
+	st.backfill()
+	st.autoReopen()
+	return nil
+}
+
+// applyClaims ports the authority and garnish tail: bare resolved proposals,
+// verification-gated flips, triage claims, then the garnish checks.
+func (st *state) applyClaims(body string) error {
+	if err := st.applyResolved(); err != nil {
+		return err
+	}
+	if err := st.applyVerification(); err != nil {
+		return err
+	}
+	if err := st.applyTriage(); err != nil {
+		return err
+	}
+	return st.garnishChecks(body)
+}
+
+// loadKB reads the KB store, marking it broken (citations ignored) when the
+// file exists but does not parse.
+func (st *state) loadKB() {
+	if !exists(kb.File) {
+		return
+	}
+	raw, err := os.ReadFile(kb.File)
+	if err != nil || !validJSON(raw) {
+		st.runner.Warn(fmt.Sprintf("kb store %s unreadable — citations ignored for this run (fix the bad line)", kb.File))
+		st.kb.Broken = true
+	}
+}
+
+// reportMoves emits the human anchor table: kept/moved counts plus one line
+// per moved comment with its drop reason.
+func (st *state) reportMoves() {
+	r := st.runner
+	st.nKept = len(st.kept)
+	st.nMoved = len(st.moved)
+	fmt.Fprintf(r.Human, "» anchors: %d inline, %d moved to body\n", st.nKept, st.nMoved)
+	if st.nMoved == 0 {
+		return
+	}
+	for _, c := range st.moved {
+		m, ok := c.(*jq.Obj)
+		if !ok || m == nil {
+			continue
+		}
+		loc := anchorLoc(m)
+		body200 := runeSlice(entryBody(m), maxBodyRunes)
+		reason, _ := m.Get(fieldDropReason)
+		fmt.Fprintf(r.Human, "  - `%s` (%s): %s\n", loc, jq.Interp(jq.Alt(reason, "outside reviewed hunks")), body200)
+	}
+}
+
+// garnishChecks runs the post-merge validators: basis counts, evidence
+// links, diagrams, and override fragments.
+func (st *state) garnishChecks(body string) error {
+	r := st.runner
+	for _, w := range provenance.ValidateBasisLine(
+		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body) {
+		r.Warn(w)
+	}
+	for _, w := range provenance.ValidateEvidenceLinks(
+		body, st.headFull, provenance.EvidenceLinkable(st.dir, st.headFull)) {
+		r.Warn(w)
+	}
+	body = st.applyDiagram(body)
+	if ref := validateOverrides(); ref != nil {
+		return ref
+	}
+	// The stripped body is discarded by design (record persists findings,
+	// not prose); the call stays for its footer/receipt collision warnings.
+	_ = stripFooterGarnish(r, body)
+	return nil
+}
+
+// applyDiagram validates behavioral diagrams, surfaces its warnings, and
+// returns the validated body.
+func (st *state) applyDiagram(body string) string {
+	r := st.runner
+	dr := diagram.Validate(body,
+		r.Effective.DiagramsBehavioral == cli.FlagOn,
+		r.Effective.DiagramsExpanded == cli.FlagOn,
+		cli.FooterDivider)
+	for _, w := range dr.Warns {
+		r.Warn(w)
+	}
+	return dr.Body
+}
+
+// anchorLoc renders the stderr table's path locator.
+func anchorLoc(m *jq.Obj) string {
+	p, _ := m.Get(fieldPath)
+	line, _ := m.Get(fieldLine)
+	start, _ := m.Get(fieldStartLine)
+	return fmt.Sprintf("%s:%s-%s", jq.Interp(p), jq.Interp(jq.Alt(start, line)), jq.Interp(line))
+}
+
+// entryBody renders the table body: strings raw, everything else -r style.
+func entryBody(m *jq.Obj) string {
+	b, _ := m.Get(fieldBody)
+	if b == nil || b == false {
+		return ""
+	}
+	if s, ok := b.(string); ok {
+		return s
+	}
+	return jq.Str(b)
+}
+
+// validJSON reports whether raw holds complete JSON documents (an empty
+// file reads valid, mirroring `jq empty`, which consumes a whole sequence).
+func validJSON(raw []byte) bool {
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return true
+	}
+	_, err := jq.DecodeSlurp(bytes.NewReader(raw))
+	return err == nil
+}
+
+// checkReviewSchema ports the schema_version gate: absent warns (grandfathered
+// agents), "1" passes, anything else refuses.
+func checkReviewSchema(r *cli.Runner, review *jq.Obj) error {
+	rv, has := review.Get("schema_version")
+	if review == nil || !has || rv == nil || rv == false {
+		r.Warn("review.json carries no schema_version — assuming 1 (agents: write \"schema_version\":\"1\")")
+		return nil
+	}
+	if s := jq.R(rv); s == schemaVersion1 {
+		return nil
+	}
+	return &cli.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
+}
+
+// parseConfidence ports the review-level confidence + security summary
+// parsing: absent stays null, out-of-range warns and drops.
+func (st *state) parseConfidence() error {
+	st.confidence = nil
+	st.security = nil
+	st.parseConfidenceLevel()
+	return st.parseSecuritySummary()
+}
+
+// parseConfidenceLevel ports the confidence integer parsing.
+func (st *state) parseConfidenceLevel() {
+	conf, ok := st.review.Get("confidence")
+	if !ok || conf == nil || conf == false {
+		return
+	}
+	if s := jq.R(conf); isConfidenceLevel(s) {
+		st.confidence = conf
+	} else {
+		st.runner.Warn(fmt.Sprintf("ignoring confidence '%s' (want integer 1-5)", s))
+	}
+}
+
+// isConfidenceLevel reports whether s is a valid review confidence level.
+func isConfidenceLevel(s string) bool {
+	switch s {
+	case "1", "2", "3", "4", "5":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseSecuritySummary ports the security_summary string parsing.
+func (st *state) parseSecuritySummary() error {
+	sec, has := st.review.Get("security_summary")
+	if !has || sec == nil {
+		return nil
+	}
+	s, isStr := sec.(string)
+	if !isStr {
+		st.runner.Warn("ignoring non-string security_summary (want a short string)")
+		return nil
+	}
+	if s != "" {
+		st.security = sec
+	}
+	return nil
+}
+
+// validateAnchors ports the partitioned keep-biased anchor validation,
+// returning the unchanged body (anchors never rewrite prose).
+func (st *state) validateAnchors(body string) string {
+	st.kept = []any{}
+	st.moved = []any{}
+	var comments []any
+	if c, ok := st.review.Get("comments"); ok {
+		comments = jq.Elements(c)
+	}
+	rows := loadHunkRows(st.anchorHunks)
+	st.anchorRows = rows
+	for _, c := range comments {
+		m, ok := c.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		st.classifyComment(m, rows)
+	}
+	return body
+}
+
+// classifyComment keeps or moves one review comment by its diff anchoring.
+func (st *state) classifyComment(m *jq.Obj, rows []hunkRow) {
+	r := st.runner
+	p, _ := m.Get(fieldPath)
+	path := jq.Str(p)
+	key := stripDiffPrefix(path)
+	if !hunks.Indexed(rowsToHunks(rows), key) {
+		r.Warn("kept despite unknown path (not in diff index, ambiguity keeps): " + path)
+		st.kept = append(st.kept, m)
+		return
+	}
+	lo, hi, side := anchorRange(m)
+	if lo < 0 {
+		r.Warn(fmt.Sprintf("kept despite non-numeric anchor: %s %s", path, anchorSpan(m)))
+		st.kept = append(st.kept, m)
+		return
+	}
+	want := "NEW"
+	if side == "LEFT" {
+		want = "OLD"
+	}
+	if hunks.Contains(rowsToHunks(rows), key, want, lo, hi) {
+		st.kept = append(st.kept, m)
+		return
+	}
+	moved := m.Clone()
+	moved.Set(fieldDropReason, fmt.Sprintf("anchor %d-%d (%s) outside reviewed hunks", lo, hi, side))
+	st.moved = append(st.moved, moved)
+}
+
+// stripDiffPrefix drops the a//b/ diff-path prefix for index lookup.
+func stripDiffPrefix(path string) string {
+	if strings.HasPrefix(path, "a/") || strings.HasPrefix(path, "b/") {
+		return path[2:]
+	}
+	return path
+}
+
+// anchorRange reads the comment's line span and side, returning lo < 0 when
+// the anchors are non-numeric.
+func anchorRange(m *jq.Obj) (lo, hi int, side string) {
+	line, _ := m.Get(fieldLine)
+	start, _ := m.Get(fieldStartLine)
+	ls, ss := jqLine(line), jqLine(start)
+	if ss == "" {
+		ss = ls
+	}
+	if !isAnchorNum(ls) || !isAnchorNum(ss) {
+		return -1, -1, ""
+	}
+	lo, hi = atoi(ss), atoi(ls)
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	sv, _ := m.Get("side")
+	side = strings.ToUpper(jq.R(jq.Alt(sv, "RIGHT")))
+	return lo, hi, side
+}
+
+// anchorSpan renders the span for the non-numeric-anchor warning.
+func anchorSpan(m *jq.Obj) string {
+	line, _ := m.Get(fieldLine)
+	start, _ := m.Get(fieldStartLine)
+	ls, ss := jqLine(line), jqLine(start)
+	if ss == "" {
+		ss = ls
+	}
+	return ss + "-" + ls
+}
+
+// jqLine renders .line/.start_line the way `jq -r '.line // empty'` does:
+// null/false/missing read "", everything else renders raw (containers
+// pretty, via jq.R).
+func jqLine(v any) string {
+	if v == nil || v == false {
+		return ""
+	}
+	return jq.R(v)
+}
+
+// isAnchorNum mirrors `[[ ... =~ ^[0-9]+$ ]]`.
+func isAnchorNum(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// atoi parses a validated anchor number.
+func atoi(s string) int {
+	n := 0
+	for i := range len(s) {
+		n = n*decimalBase + int(s[i]-'0')
+	}
+	return n
+}
+
+// rowsToHunks adapts parsed rows to the hunks package.
+func rowsToHunks(rows []hunkRow) []hunks.Hunk {
+	out := make([]hunks.Hunk, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, hunks.Hunk{File: r.file, Side: r.side, Start: r.start, End: r.end})
+	}
+	return out
+}
+
+// loadHunkRows parses a hunks.tsv snapshot, tolerating malformed rows the
+// way awk's numeric coercion does.
+func loadHunkRows(path string) []hunkRow {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var out []hunkRow
+	for ln := range strings.SplitSeq(string(raw), newline) {
+		if ln == "" {
+			continue
+		}
+		f := strings.Split(ln, "\t")
+		if len(f) < hunkFieldCount {
+			continue
+		}
+		out = append(out, hunkRow{file: f[0], side: f[1], start: awkNum(f[hunkStartIdx]), end: awkNum(f[hunkEndIdx])})
+	}
+	return out
+}
+
+// awkNum coerces like awk's string-to-number: leading digits, else 0.
+func awkNum(s string) int {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return 0
+	}
+	return atoi(s[:i])
+}
+
+// demoteFences ports the suggestion-fence demotion: comments whose suggestion
+// contains a fence move to the body with a fixed dropReason.
+func (st *state) demoteFences(body string) string {
+	kept := st.kept[:0:0]
+	var fenced []any
+	for _, c := range st.kept {
+		m, ok := c.(*jq.Obj)
+		if !ok || m == nil {
+			kept = append(kept, c)
+			continue
+		}
+		if hasSuggestionFence(m) {
+			cp := m.Clone()
+			cp.Set(fieldDropReason, "suggestion contains a fence — posted as plain text instead")
+			fenced = append(fenced, cp)
+		} else {
+			kept = append(kept, c)
+		}
+	}
+	if len(fenced) > 0 {
+		st.runner.Warn(fmt.Sprintf("demoting %d suggestion(s) with fences to body", len(fenced)))
+		st.moved = append(fenced, st.moved...)
+		st.kept = kept
+	}
+	return body
+}
+
+// hasSuggestionFence reports whether the comment's suggestion carries a
+// fence. A non-string suggestion would fail the shell's `contains` and abort
+// the run under set -e; the Go port treats it as unfenced (documented
+// divergence: bash aborts, Go keeps).
+func hasSuggestionFence(m *jq.Obj) bool {
+	s, _ := m.Get(fieldSuggestion)
+	if s == nil || s == false {
+		return false
+	}
+	ss, ok := s.(string)
+	return ok && strings.Contains(ss, "```")
+}
+
+// appendMoveSection ports the unanchored-observations section appended when
+// comments moved to the body.
+func appendMoveSection(body string, moved []any) string {
+	if len(moved) == 0 {
+		return body
+	}
+	lines := make([]string, 0, len(moved))
+	for _, c := range moved {
+		m, ok := c.(*jq.Obj)
+		if !ok || m == nil {
+			continue
+		}
+		lines = append(lines, moveLine(m))
+	}
+	return body + "\n\n" + moveSection(lines)
+}
+
+// moveSection renders the unanchored-observations section header.
+func moveSection(lines []string) string {
+	return moveSectionHead + strings.Join(lines, newline)
+}
+
+// moveSectionHead is the unanchored-observations section header.
+const moveSectionHead = "### ℹ️ Unanchored observations\n\nThe following points fell outside " +
+	"the diff hunks for the reviewed SHA, so they post here instead of inline:\n"
+
+// moveLine renders one moved comment as a body bullet.
+func moveLine(m *jq.Obj) string {
+	p, _ := m.Get(fieldPath)
+	line, _ := m.Get(fieldLine)
+	start, _ := m.Get(fieldStartLine)
+	loc := fmt.Sprintf("%s:%s-%s", jq.Interp(p), jq.Interp(jq.Alt(start, line)), jq.Interp(line))
+	drop, _ := m.Get(fieldDropReason)
+	reason := jq.Interp(jq.Alt(drop, "outside reviewed hunks"))
+	return fmt.Sprintf("- `%s` — %s (%s)", loc, entryBody(m), reason)
+}
+
+// runeSlice renders `\(.body // "" | .[0:200])`: jq slices strings by
+// codepoint.
+func runeSlice(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) > n {
+		return string(runes[:n])
+	}
+	return s
+}
+
+// buildEntries ports the new-entries construction plus the sig loop: sigs
+// are line-number-free (comments carry lines, findings do not), and every
+// comment cite normalizes through the KB policy. Field order mirrors the
+// shell's jq construction exactly.
+func (st *state) buildEntries(body string) {
+	var secs []any
+	if s, ok := st.review.Get("sections"); ok {
+		secs = jq.Elements(s)
+	}
+	var fresh []*jq.Obj
+	fresh = append(fresh, freshInline(st.kept, st.moved)...)
+	fresh = append(fresh, freshSections(body, secs)...)
+	kbExists := exists(kb.File)
+	for _, e := range fresh {
+		st.entries = append(st.entries, stampEntry(st, e, kbExists))
+	}
+}
+
+// freshInline builds the inline entries from kept/moved comments.
+func freshInline(kept, moved []any) []*jq.Obj {
+	var fresh []*jq.Obj
+	comments := append(append([]any{}, kept...), moved...)
+	for _, c := range comments {
+		m, mok := c.(*jq.Obj)
+		if !mok || m == nil {
+			continue
+		}
+		fresh = append(fresh, buildInline(m))
+	}
+	return fresh
+}
+
+// freshSections builds the section entries from body headings.
+func freshSections(body string, secs []any) []*jq.Obj {
+	var fresh []*jq.Obj
+	for h := range strings.SplitSeq(body, newline) {
+		if !strings.HasPrefix(h, "### ") {
+			continue
+		}
+		fresh = append(fresh, buildSection(h, sectionSeverity(secs, h)))
+	}
+	return fresh
+}
+
+// buildInline ports the inline-entry construction for one kept/moved comment.
+func buildInline(m *jq.Obj) *jq.Obj {
+	inBounds, ok := m.Get("in-bounds")
+	if !ok || inBounds == nil {
+		inBounds = true
+	}
+	drop, _ := m.Get(fieldDropReason)
+	path, _ := m.Get(fieldPath)
+	side, _ := m.Get("side")
+	line, _ := m.Get(fieldLine)
+	bd, _ := m.Get(fieldBody)
+	sugg, _ := m.Get(fieldSuggestion)
+	kbc, _ := m.Get(fieldKB)
+	rigor, _ := m.Get(fieldRigor)
+	sev, _ := m.Get(fieldSeverity)
+	return jq.NewObj(
+		"kind", "inline",
+		fieldPath, path,
+		"side", jq.Alt(side, "RIGHT"),
+		fieldLine, line,
+		fieldAnchored, drop == nil,
+		fieldBody, jq.Alt(bd, ""),
+		fieldSuggestion, jq.Alt(sugg, nil),
+		fieldKB, jq.Alt(kbc, nil),
+		fieldInBounds, inBounds,
+		fieldRigor, pick(rigor, rigorAllow, "pointed"),
+		fieldSeverity, pick(sev, sevAllow, nil),
+	)
+}
+
+// sectionSeverity matches a body section heading to its review severity.
+func sectionSeverity(secs []any, h string) any {
+	for _, s := range secs {
+		sm, ok := s.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		if hd, _ := sm.Get(fieldHeading); hd == h {
+			sev, _ := sm.Get(fieldSeverity)
+			return sev
+		}
+	}
+	return nil
+}
+
+// buildSection ports the section-entry construction for one body heading.
+func buildSection(h string, sev any) *jq.Obj {
+	return jq.NewObj(
+		"kind", "section",
+		fieldHeading, h,
+		fieldAnchored, fieldBody,
+		fieldBody, h,
+		fieldSeverity, pick(sev, sevAllow, nil),
+	)
+}
+
+// stampEntry stamps one fresh entry with its sig, status, KB normalization,
+// and initial history. Set order mirrors the shell: inline entries keep kb
+// from construction, section entries append it after rationale.
+func stampEntry(st *state, e *jq.Obj, kbExists bool) *jq.Obj {
+	_, isSection := e.Get(fieldHeading)
+	path, _ := e.Get(fieldPath)
+	heading, _ := e.Get(fieldHeading)
+	bd, _ := e.Get(fieldBody)
+	key := sigKeyPart(path) + newline + sigKeyPart(heading) + newline + sigBody(bd)
+	norm := st.kb.NormalizeEntry(e, kbExists)
+	if !isSection {
+		e.Set(fieldKB, norm)
+	}
+	e.Set(fieldSig, sig.Of(key))
+	e.Set(fieldSigVersion, sigVersion1)
+	e.Set("firstSeen", st.headShort)
+	e.Set(fieldLastSeen, st.headShort)
+	e.Set(fieldStatus, "open")
+	e.Set("rationale", "")
+	if isSection {
+		e.Set(fieldKB, norm)
+	}
+	e.Set(fieldHistory, []any{jq.NewObj(fieldAt, st.now, fieldEvent, "reported")})
+	return e
+}
+
+// sigKeyPart renders a sig-key path/heading segment: null/false/missing read
+// "" (via //), everything else renders -r style. A non-string segment would
+// fail the shell's `+` and abort the run; the Go port coerces (documented).
+func sigKeyPart(v any) string {
+	if v == nil || v == false {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return jq.Str(v)
+}
+
+// sigBody renders the sig-key body segment the same way.
+func sigBody(v any) string {
+	return sigKeyPart(v)
+}
+
+var (
+	rigorAllow = []string{"said", "pointed", "walked", "ran", "reproduced"}
+	sevAllow   = []string{"critical", "important", "informational"}
+)
+
+// pick ports the jq allowlist pick: membership wins, else the default.
+func pick(v any, allowed []string, dflt any) any {
+	s, ok := v.(string)
+	if !ok {
+		return dflt
+	}
+	if slices.Contains(allowed, s) {
+		return s
+	}
+	return dflt
+}
+
+// mergePrior ports the re-post merge: explicit null kb keeps the prior cite,
+// explicit [] clears it, present arrays overwrite; everything else from the
+// new entry wins except status/history/identity fields.
+func (st *state) mergePrior() error {
+	old, err := loadPrior(st.dir)
+	if err != nil {
+		return err
+	}
+	if old == nil {
+		return nil
+	}
+	byNew := indexBySig(st.entries)
+	oldSigs := map[string]bool{}
+	merged := make([]any, 0, len(old)+len(st.entries))
+	for _, prev := range old {
+		pm, ok := prev.(*jq.Obj)
+		if !ok {
+			merged = append(merged, prev)
+			continue
+		}
+		if m, ok := mergeOne(st, byNew, oldSigs, pm); ok {
+			merged = append(merged, m)
+		} else {
+			merged = append(merged, prev)
+		}
+	}
+	merged = appendFresh(merged, st.entries, oldSigs)
+	st.entries = merged
+	return nil
+}
+
+// appendFresh appends fresh entries whose sigs are absent from the prior store.
+func appendFresh(merged, entries []any, oldSigs map[string]bool) []any {
+	for _, n := range entries {
+		if m, ok := n.(*jq.Obj); ok && isFreshSig(m, oldSigs) {
+			merged = append(merged, n)
+		}
+	}
+	return merged
+}
+
+// loadPrior reads the prior findings store: missing, empty, null, or false
+// read as no prior (matching the shell's slurp); a list reads as the prior
+// entries; anything else refuses as corrupt-store (never start fresh).
+func loadPrior(dir string) ([]any, error) {
+	path := dir + "/findings.json"
+	raw, ok := readOptional(path)
+	if !ok {
+		return nil, nil
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, nil
+	}
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return nil, &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+	}
+	if doc == nil || doc == false {
+		return nil, nil
+	}
+	if arr, ok := doc.([]any); ok {
+		return arr, nil
+	}
+	return nil, &cli.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+}
+
+// indexBySig indexes entries by their string sig.
+func indexBySig(entries []any) map[string]*jq.Obj {
+	bySig := map[string]*jq.Obj{}
+	for _, e := range entries {
+		m, ok := e.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		if ss, ok := sigString(m); ok {
+			bySig[ss] = m
+		}
+	}
+	return bySig
+}
+
+// sigString reads an entry's string sig.
+func sigString(m *jq.Obj) (string, bool) {
+	s, _ := m.Get(fieldSig)
+	if s == nil {
+		return "", false
+	}
+	ss, ok := s.(string)
+	return ss, ok
+}
+
+// isFreshSig reports whether m carries a sig absent from the prior store.
+func isFreshSig(m *jq.Obj, oldSigs map[string]bool) bool {
+	s, _ := m.Get(fieldSig)
+	if s == nil {
+		return false
+	}
+	ss, ok := s.(string)
+	return ok && !oldSigs[ss]
+}
+
+// mergeOne merges one prior entry against its fresh twin. It records the
+// prior sig and reports ok=false when the prior stands alone.
+func mergeOne(st *state, byNew map[string]*jq.Obj, oldSigs map[string]bool, pm *jq.Obj) (any, bool) {
+	psig, _ := pm.Get(fieldSig)
+	ps := jq.StrOf(psig)
+	oldSigs[ps] = true
+	n, ok := byNew[ps]
+	if !ok {
+		return nil, false
+	}
+	return mergeFields(st, pm, n), true
+}
+
+// mergeFields overlays the fresh entry's fields on a clone of the prior.
+func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
+	m := pm.Clone()
+	m.Set(fieldLastSeen, st.headShort)
+	overlayAlt(m, n, pm, fieldPath)
+	overlayAlt(m, n, pm, fieldLine)
+	nbody, _ := n.Get(fieldBody)
+	m.Set(fieldBody, nbody)
+	nanch, _ := n.Get(fieldAnchored)
+	m.Set(fieldAnchored, nanch)
+	overlayAlt(m, n, pm, fieldRigor)
+	overlayAlt(m, n, pm, fieldSeverity)
+	overlayAlt(m, n, pm, fieldSuggestion)
+	nib, _ := n.Get(fieldInBounds)
+	if nib == nil {
+		pib, _ := pm.Get(fieldInBounds)
+		m.Set(fieldInBounds, jq.Alt(pib, true))
+	} else {
+		m.Set(fieldInBounds, nib)
+	}
+	nkb, _ := n.Get(fieldKB)
+	pkb, _ := pm.Get(fieldKB)
+	m.Set(fieldKB, jq.Alt(jq.Alt(nkb, pkb), []any{}))
+	return m
+}
+
+// overlayAlt sets field from the fresh entry, falling back to the prior.
+func overlayAlt(m, n, pm *jq.Obj, field string) {
+	nv, _ := n.Get(field)
+	pv, _ := pm.Get(field)
+	m.Set(field, jq.Alt(nv, pv))
+}
+
+// backfill ports the sig_version/kb backfill: entries that predate versioning
+// get "1" (never clobbering), and null/false kb reads [].
+func (st *state) backfill() {
+	for _, e := range st.entries {
+		m, ok := e.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		if kbv, _ := m.Get(fieldKB); jq.Falsey(kbv) {
+			m.Set(fieldKB, []any{})
+		}
+		if !m.Has(fieldSigVersion) {
+			m.Set(fieldSigVersion, sigVersion1)
+		}
+	}
+}
+
+// autoReopen ports the delta-run auto-reopen: addressed entries on a path the
+// incremental diff touches go back to open.
+func (st *state) autoReopen() {
+	raw, err := os.ReadFile(st.dir + "/incremental.diff")
+	if err != nil {
+		return
+	}
+	files := touchedPaths(string(raw))
+	for _, e := range st.entries {
+		if m, ok := e.(*jq.Obj); ok {
+			st.maybeReopen(m, files)
+		}
+	}
+}
+
+// touchedPaths parses the incremental diff's touched file set.
+func touchedPaths(raw string) map[string]bool {
+	files := map[string]bool{}
+	for ln := range strings.SplitSeq(raw, newline) {
+		if !strings.HasPrefix(ln, "diff --git ") {
+			continue
+		}
+		rest := strings.TrimPrefix(ln, "diff --git ")
+		if _, after, ok := strings.CutLast(rest, gitBPrefix); ok {
+			rest = after
+		}
+		files[rest] = true
+	}
+	return files
+}
+
+// maybeReopen reopens one addressed entry whose path the delta touched.
+func (st *state) maybeReopen(m *jq.Obj, files map[string]bool) {
+	if stt, _ := m.Get(fieldStatus); stt != outcomeAddressed {
+		return
+	}
+	p, _ := m.Get(fieldPath)
+	if p == nil || !files[jq.StrOf(p)] {
+		return
+	}
+	if ls, _ := m.Get(fieldLastSeen); ls == st.headShort {
+		return
+	}
+	m.Set(fieldStatus, "open")
+	m.Set(fieldHistory, appendHistory(m, jq.NewObj(
+		fieldAt, st.now, fieldEvent, "reopened", fieldActor, "script",
+		"note", "delta touched path", fieldSHA, st.headShort,
+	)))
+}
+
+// appendHistory appends an event to an entry's history, returning the array.
+func appendHistory(m *jq.Obj, ev *jq.Obj) []any {
+	h, _ := m.Get(fieldHistory)
+	hist, ok := h.([]any)
+	if !ok {
+		hist = nil
+	}
+	return append(hist, ev)
+}
+
+// applyResolved ports the authority step: bare resolved[] sigs are proposals
+// (history only, never a flip). Shapes are validated upfront; non-strings
+// here are unreachable and skipped.
+func (st *state) applyResolved() error {
+	var items []any
+	if rv, ok := st.review.Get("resolved"); ok {
+		if arr, isArr := rv.([]any); isArr {
+			items = arr
+		}
+	}
+	for _, item := range items {
+		s, ok := item.(string)
+		if !ok || s == "" {
+			continue
+		}
+		st.recordResolvedClaim(s)
+	}
+	return nil
+}
+
+// recordResolvedClaim records one bare resolved sig as a history-only claim.
+func (st *state) recordResolvedClaim(s string) {
+	full, code := resolveSig(st.entries, s)
+	switch code {
+	case sigNone:
+		st.runner.Warn(fmt.Sprintf("resolved claim %s ignored (not in store)", prefix8(s)))
+	case sigMany:
+		st.runner.Warn(fmt.Sprintf("resolved claim %s ignored (ambiguous prefix)", prefix8(s)))
+	default:
+		target := findEntry(st.entries, full)
+		target.Set(fieldHistory, appendHistory(target, jq.NewObj(
+			fieldAt, st.now, fieldEvent, "claim", fieldActor, "agent",
+			"note", "claimed in review", fieldSHA, st.headShort,
+		)))
+	}
+}
+
+// prefix8 renders the ${sig:0:8} short form.
+func prefix8(s string) string {
+	if len(s) > sigPrefixLen {
+		return s[:sigPrefixLen]
+	}
+	return s
+}
+
+// resolveSig ports resolve_sig: a sig prefix resolves to the unique full
+// sig, or the NONE/MANY sentinels. Non-string sigs never match (the shell
+// aborts there; the Go port skips — documented divergence).
+func resolveSig(entries []any, prefix string) (string, string) {
+	var match string
+	n := 0
+	for _, e := range entries {
+		m, ok := e.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		sv, _ := m.Get(fieldSig)
+		s, ok := sv.(string)
+		if !ok || !strings.HasPrefix(s, prefix) {
+			continue
+		}
+		n++
+		match = s
+	}
+	switch n {
+	case 0:
+		return "", sigNone
+	case 1:
+		return match, "OK"
+	default:
+		return "", sigMany
+	}
+}
+
+// findEntry returns the entry with the full sig.
+func findEntry(entries []any, full string) *jq.Obj {
+	for _, e := range entries {
+		if m, ok := e.(*jq.Obj); ok {
+			if sv, _ := m.Get(fieldSig); sv == full {
+				return m
+			}
+		}
+	}
+	return nil
+}
