@@ -5072,7 +5072,7 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
   # empty-expanding prefixes `$@`/`$*`/`${@}`/`${*}`/`$N` are deleted (same
   # word-completing logic as quotes above) before the tool-word rules run.
   # (`$$` expands to digits, so it cannot hide a tool word — left alone.)
-  scan=$(printf '%s' "$scan" | sed -E -e 's/\\//g' -e 's/\$\{ifs\}/ /g' -e 's/\$ifs([^a-z0-9_]|$)/ \1/g' -e 's/\$@//g' -e 's/\$\*//g' -e 's/\${@}//g' -e 's/\${\*}//g' -e 's/\$[0-9]//g')
+  scan=$(printf '%s' "$scan" | sed -E -e 's/\\//g' -e 's/\$[{]ifs[}]/ /g' -e 's/\$ifs([^a-z0-9_]|$)/ \1/g' -e 's/\$@//g' -e 's/\$\*//g' -e 's/\$[{]@}//g' -e 's/\$[{][*]}//g' -e 's/\$[0-9]//g')
   # Mid-word quotes concatenate in the shell (`cu''rl` is one word `curl`),
   # so folding them to spaces blinds every tool-word rule while the shell
   # still executes. Normalize like the shell instead: unwrap `$'..'`/`$".."`
@@ -5086,7 +5086,7 @@ verify_gate_check() { # $1 = raw verifyCmd; fail()s typed on match, returns 0 wh
   # lowercases before matching, so case-folding conflates curl -f/--fail with
   # -F/--form and -D/--dump-header with -d/--data. Upload shapes match here,
   # on un-lowercased text, so legit -f/--fail and -D/--dump-header keep passing.
-  csbare=$(printf '%s' "$flat" | sed -E -e 's/\\//g' -e 's/\$\{IFS\}/ /g' -e 's/\$IFS([^a-zA-Z0-9_]|$)/ \1/g' -e 's/\$@//g' -e 's/\$\*//g' -e 's/\${@}//g' -e 's/\${\*}//g' -e 's/\$[0-9]//g' -e "s/\\$'([^']*)'/\\1/g" -e "s/\\$\"([^\"]*)\"/\\1/g" -e "s/['\"]//g" -e 's/`/ /g' | tr -s ' ')
+  csbare=$(printf '%s' "$flat" | sed -E -e 's/\\//g' -e 's/\$[{]IFS[}]/ /g' -e 's/\$IFS([^a-zA-Z0-9_]|$)/ \1/g' -e 's/\$@//g' -e 's/\$\*//g' -e 's/\$[{]@}//g' -e 's/\$[{][*]}//g' -e 's/\$[0-9]//g' -e "s/\\$'([^']*)'/\\1/g" -e "s/\\$\"([^\"]*)\"/\\1/g" -e "s/['\"]//g" -e 's/`/ /g' | tr -s ' ')
   # Mid-word command substitution concatenates in the shell (``c`echo ur`l``
   # is one word `curl`), so space-folding the substitution hides the join
   # from every tool-word rule while the shell still executes. Unwrap quotes
