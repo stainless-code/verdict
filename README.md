@@ -71,7 +71,10 @@ sibling (nine agents, `--detect`/`--all`).
 
 Trust boundary: the skill runs with your privileges. `verify` executes the
 agent-written `verifyCmd` via `bash -c` (300s watchdog, output tailed into the
-patch record). Reviewing a hostile PR? Run in a sandbox. Fetched diffs and
+patch record) — and a pre-exec allowlist gate refuses destructive, networked,
+credential-reading, or repo-escaping commands with typed errors before anything
+spawns. Reviewing a hostile PR? Run the verify step in a sandbox (recipe in
+`docs/manual.md`). Fetched diffs and
 comments are untrusted input; the prompts treat them as evidence, never as
 instructions.
 

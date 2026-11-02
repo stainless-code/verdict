@@ -126,7 +126,8 @@ then close the loop with `report --completeness` (stale-head on a bundle
 with a posted head names the `--base-sha` advance form; missing-post with
 no head names the plain `fetch`). A binding `APPROVE` requested against a
 known stale fetch is downgraded to `COMMENT` with the reason (the review
-does not cover live HEAD — re-fetch the delta to bind). A lookup that
+does not cover live HEAD — re-fetch the delta to bind; `--force` does not
+override this, only a fresh delta binds). A lookup that
 cannot reach the network warns and proceeds — the nudge never refuses.
 
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
@@ -161,8 +162,10 @@ whole store — plugins read it instead of sniffing shapes. `PR.json`/`reviews.j
 A bundle dir holds exactly the core-owned files (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `panel`,
-`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, plus dot-scratch
-`.difffiles`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`). Router-authorized
+`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, `chunks/`
+(`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
+with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
+`.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`). Router-authorized
 agent terminal writes (`report.md` via `prompts/ci.md`, `replies.json` via
 `prompts/address-reviews.md`, `noreview.md` via `prompts/incremental-review.md`)
 are core-tolerated scratch: core verbs never read them. Anything else a
@@ -240,7 +243,7 @@ recall; citing one warns and drops.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
@@ -373,6 +376,21 @@ Offline-safe by construction: every gate run ends with the live-thread recheck
 that warns (`live thread recheck unreachable`) and proceeds on the local
 dimensions when the network is unreachable — the hook stays fast and never
 exits 3 over the network.
+
+### Doctor preflight
+
+`doctor` preflights the harness with no repo/PR args and no writes: `gh-cli`,
+`gh-auth`, `jq`, `shasum`, and `storage-writable` hard-fail the run (exit 1);
+`token-scopes`, `ps`, `git`, and `api-reachable` warn only and never fail it.
+The scope rows reuse the single existing `gh api user` scopes-header read —
+no new network calls. Grants below the baseline (`repo`/`public_repo` for the
+reads the tool performs) warn on the `token-scopes` row; grants above it warn
+on a separate `token-scopes-excess` row naming the excess scopes (baseline is
+the repo family plus `read:*` — anything beyond, e.g. `delete_repo`,
+`admin:*`, `workflow`, `gist`) with a least-privilege re-mint hint. Minimal
+grants emit no excess row, fine-grained tokens keep today's advisory row, and
+the run still exits 0 — excess scope never fails a preflight. `--json`
+carries every row in `data.checks`.
 
 Sigs follow the Sig contract under Findings store.
 
@@ -721,7 +739,9 @@ PR/provider bundles refuse with `not-local`. Cost note: every pass is another
 agent run over the bundle — loops multiply agent spend, so set
 `REVIEW_BUDGET_USD` (or `.review/budget`) before looping a large backlog. Ceilings
 constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
-counts) — the ledger is an audit trail, not a lock.
+counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
+worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
+see everything — run the verify step under the Hostile-PR sandbox recipe below.
 
 ## Hostile-PR sandbox recipe (opt-in, not enforced)
 
@@ -806,7 +826,8 @@ and the fetch prints its source).
 
 Chunked fetch is the opted-in over-cap path: pass `--chunk` on `fetch` or
 `fetch-local`, or hold `true` (`on`/`1`/`yes` — first usable line wins) in a
-`.review/chunk` file. The flag wins over the file; absent reads off, and an
+`.review/chunk` file (`false`/`off`/`0`/`no` and absent read off; any other
+first line refuses typed `bad-chunk-knob`). The flag wins over the file; an
 absent knob refuses byte-identically to today. Under-cap fetches succeed with
 identical bytes whether the knob is set or not (the knob is never consulted
 under the cap).
@@ -977,3 +998,8 @@ Schema evolution only — verbs and features ship in the release changelog.
   `kb.txt` (top-3 recalled rules as context); repo root gains `.review/kb.jsonl`
   (rule store), `.review/kb-joins.jsonl` (credit audit), `.review/kb-policy`
   (retirement thresholds).
+- Added: over-cap chunked bundles carry `chunks/` (`chunk-NN.diff` slices each
+  at or under the cap, per-chunk `.toc.txt`/`.roles.txt`, versioned
+  `manifest.json` with `schema_version: "1"`, per-chunk `<name>.cost.json`) —
+  `post`/`record` gate attested top-level `"chunks"` coverage against the
+  manifest.

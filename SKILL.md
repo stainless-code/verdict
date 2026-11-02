@@ -14,6 +14,9 @@ the model is whatever agent you invoke.
 # 1. Fetch the PR bundle (diff + metadata, no clone needed)
 ./scripts/review.sh fetch owner/repo 123
 # Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt.
+# Over-cap diffs refuse: re-run fetch with --chunk (or hold true in
+# .review/chunk), read each chunk per chunks/manifest.json, and stamp
+# top-level "chunks" naming every manifest chunk in review.json.
 
 # 2. Review with any agent. Load prompts/system.md, then the one mode file
 #    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
@@ -31,7 +34,9 @@ to `findings.json` — read with `report`, never `post` (no PR target).
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
 Between runs the operator may run `./scripts/review.sh triage …` (status changes), `report`
-(ranked read), or `calibrate` (predictions vs ground truth); agents never call `triage` — they propose via `triage[]`.
+(ranked read), `calibrate` (predictions vs ground truth), or `fix` (one bounded
+verify-gated pass over a local bundle — prints the finding plus land instructions;
+agents never call `triage` — they propose via `triage[]`).
 
 Delta re-review: `./scripts/review.sh fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
 then load `prompts/incremental-review.md` instead of `prompts/review.md`.
@@ -72,7 +77,9 @@ to write dispatches, lenses run under it.
 5. **Match the callout to the author's next action.** The severity ladder lives in
    `prompts/review.md` — pick the tier the author should act on, never louder. Binding
    verdicts need `--bind` (else `post` downgrades to `COMMENT`); `APPROVE` is refused while
-   `open` + `deferred` findings stand (`--force` overrides).
+   `open` + `deferred` findings stand (`--force` overrides), and a binding `APPROVE`
+   requested on a stale fetch (commits landed after fetch) posts as `COMMENT`, never
+   `APPROVE` — `--force` does not override that; re-fetch the delta to bind.
 6. **Line-count is not signal.** One-line auth/money/SQL/comparison/redirect/config-default
    changes earn full scrutiny; docs/whitespace/lockfile/generated/mechanical-rename diffs skip it.
 7. **Batch aggressively.** Emit every independent read/grep in a single turn — turn count
