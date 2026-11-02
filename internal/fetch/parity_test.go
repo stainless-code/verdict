@@ -1,31 +1,27 @@
-// Package fetch_test holds the shell-parity proof for the Go fetch and
-// fetch-local verbs: the shared harness runs BOTH scripts/review.sh and
-// the Go binary on identical fixtures and compares exit codes,
-// stdout/stderr (timestamps scrubbed only), every file written anywhere
+// Package fetch_test holds the golden contract for the Go fetch and
+// fetch-local verbs: the shared harness runs the Go binary on hermetic
+// fixtures and pins exit codes, stdout/stderr, every file written anywhere
 // (bundle files, prompt dump payloads, cost receipts, chunk layouts),
-// artifact presence, AND the exact provider calls the stubs receive (R6).
-// A per-package smart stub answers every provider shape deterministically
-// per case via environment (parallel-safe: behavior rides on per-process
-// env, logs land in per-side sandbox files).
+// artifact presence, AND the exact provider calls the stubs receive (R6)
+// against checked-in goldens (go-port 08: the bash comparison retired with
+// the shell). A per-package smart stub answers every provider shape
+// deterministically per case via environment (parallel-safe: behavior rides
+// on per-process env, logs land in per-run sandbox files).
 //
-// Accepted divergences (R1: Go is the spec where bash crashes or leaks):
+// The Go-owned edges stay pinned with fixed assertions on top of the
+// goldens:
 //
-//	D1  upstream over-file-count refusal (audit 20): both diff reads fail
-//	    with the host's own refusal text — bash fails fetch-failed, Go
-//	    refuses typed upstream-diff-too-large with the range-narrowing
-//	    hint. Graded per side, Go-only eval leg.
-//	D2  paged file listing past the CLI cap (audit 18): bash keeps the
-//	    truncated list with no note; Go pages and writes filesource.json.
-//	    Graded per side, Go-only eval leg.
+//	D1  upstream over-file-count refusal (audit 20): typed
+//	    upstream-diff-too-large with the range-narrowing hint.
+//	D2  paged file listing past the CLI cap (audit 18): two paged files
+//	    with a filesource.json ceiling note.
 //	D3  secondary rate-limit backoff (audit 21): a 429 with a retry-after
-//	    hint retries instead of dying — bash fails fetch-failed, Go waits
-//	    and completes. Graded per side, Go-only eval leg.
-//	D4  garbage provider payloads (undecodable PR.json at the tail): the
-//	    shell's jq dies with no envelope; Go refuses typed fetch-failed.
-//	    Graded per side.
+//	    hint retries once and completes.
+//	D4  garbage provider payloads (undecodable PR.json at the tail):
+//	    typed fetch-failed.
 //
-// Nonces are random, so prompt dumps compare by shape plus consistency
-// inside a run, never with a blanket normalizer.
+// Nonces are random, so prompt dumps additionally assert fence consistency
+// inside a run, never a blanket normalization.
 package fetch_test
 
 import (
@@ -44,7 +40,7 @@ import (
 var harness *parity.Harness
 
 // TestMain builds the Go binary once, installs the smart provider stubs
-// over the harness stub dir, and runs the parity suite.
+// over the harness stub dir, and runs the golden suite.
 // TestMain pins the byte-parity behavior.
 func TestMain(m *testing.M) {
 	h, err := parity.Build()
@@ -150,6 +146,7 @@ const curlStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.curl-calls.l
 	"  */diffstat*) case \"$*\" in *cursor2*) cat \"$PWD/canned/bb-page2.json\";; *) cat \"$PWD/canned/bb-page1.json\";; esac; exit 0;;\n" +
 	"  */comments*) cat \"$PWD/canned/bb-comments.json\" 2>/dev/null || printf '{\"values\":[]}'; exit 0;;\n" +
 	"  */diff*) cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
+	"  *pullrequests*) cat \"$PWD/canned/bb-meta.json\" 2>/dev/null || cat \"$PWD/canned/fj-meta.json\"; exit 0;;\n" +
 	"esac\necho \"curl-stub: unexpected ($*)\" >&2\nexit 1\n"
 
 // azStub answers the Azure CLI shapes from $PWD/canned/ files.
@@ -218,33 +215,6 @@ func writeFile(t *testing.T, dir, name, doc string) {
 // nonceRe matches the trust-boundary nonce line.
 var nonceRe = regexp.MustCompile(`with NONCE replaced by this run's nonce: ([0-9a-f]{16})\.`)
 
-// checkDump compares two prompt dumps by shape plus nonce consistency:
-// every fence in each dump carries that run's own nonce, and the dumps
-// agree once the nonces scrub to a placeholder.
-func checkDump(t *testing.T, a, b string) {
-	t.Helper()
-	na := nonceRe.FindStringSubmatch(a)
-	nb := nonceRe.FindStringSubmatch(b)
-	if len(na) != 2 || len(nb) != 2 {
-		t.Fatalf("nonce line missing:\n--- a ---\n%s\n--- b ---\n%s", a, b)
-	}
-	requireFenceNonce(t, "a", a, na[1])
-	requireFenceNonce(t, "b", b, nb[1])
-	// A foreign nonce inside the fenced region is payload: neither dump
-	// may open a fence with the other's nonce.
-	if dumpCarriesForeignNonce(a, na[1], nb[1]) {
-		t.Fatal("dump a carries dump b's nonce")
-	}
-	// Local dumps carry source.json's created_at, so scrub timestamps the
-	// same way the stream and file comparisons do (the shell and Go legs
-	// run a second apart); everything else must match byte-exactly.
-	scrubbedA := scrubTS(strings.ReplaceAll(a, na[1], "NONCE"))
-	scrubbedB := scrubTS(strings.ReplaceAll(b, nb[1], "NONCE"))
-	if scrubbedA != scrubbedB {
-		t.Errorf("dumps differ past the nonce:\n--- a ---\n%s\n--- b ---\n%s", a, b)
-	}
-}
-
 // requireFenceNonce asserts one dump fences open and close with its nonce.
 func requireFenceNonce(t *testing.T, side, dump, nonce string) {
 	t.Helper()
@@ -253,11 +223,6 @@ func requireFenceNonce(t *testing.T, side, dump, nonce string) {
 			t.Fatalf("dump %s never fences with its nonce %q", side, nonce)
 		}
 	}
-}
-
-// dumpCarriesForeignNonce reports another run's nonce inside the dump.
-func dumpCarriesForeignNonce(dump, own, foreign string) bool {
-	return strings.Contains(dump, "nonce="+foreign) && own != foreign
 }
 
 // gitSetup inits a deterministic git repo with one committed file and one
@@ -321,34 +286,34 @@ func TestFetchParityGitHub(t *testing.T) {
 		promptFiles(t, dir)
 		stubPR(t, dir)
 	}
-	harness.RunBoth(t, "happy-text", setup, nil, false,
+	parity.Golden(t, harness, "happy-text", setup, nil,
 		"fetch", "acme/app", "4701")
-	harness.RunBoth(t, "happy-json", setup, nil, false,
+	parity.Golden(t, harness, "happy-json", setup, nil,
 		"fetch", "acme/app", "4701", "--json")
-	harness.RunBoth(t, "base-sha-json", setup, map[string]string{"GH_COMPARE_FAIL": "0"}, false,
+	parity.Golden(t, harness, "base-sha-json", setup, map[string]string{"GH_COMPARE_FAIL": "0"},
 		"fetch", "acme/app", "4701", "--base-sha", headB[:7], "--json")
-	harness.RunBoth(t, "base-sha-note", setup, map[string]string{"GH_COMPARE_FAIL": "1"}, false,
+	parity.Golden(t, harness, "base-sha-note", setup, map[string]string{"GH_COMPARE_FAIL": "1"},
 		"fetch", "acme/app", "4701", "--base-sha", headB[:7], "--json")
-	harness.RunBoth(t, "api-fallback", setup, map[string]string{"GH_DIFF_FAIL": "1"}, false,
+	parity.Golden(t, harness, "api-fallback", setup, map[string]string{"GH_DIFF_FAIL": "1"},
 		"fetch", "acme/app", "4701", "--json")
-	harness.RunBoth(t, "threads-degraded", setup, map[string]string{"GH_THREADS_FAIL": "1"}, false,
+	parity.Golden(t, harness, "threads-degraded", setup, map[string]string{"GH_THREADS_FAIL": "1"},
 		"fetch", "acme/app", "4701", "--json")
-	harness.RunBoth(t, "view-failed", setup, map[string]string{"GH_VIEW_FAIL": "1"}, false,
+	parity.Golden(t, harness, "view-failed", setup, map[string]string{"GH_VIEW_FAIL": "1"},
 		"fetch", "acme/app", "4701", "--json")
-	harness.RunBoth(t, "since-alias", setup, nil, false,
+	parity.Golden(t, harness, "since-alias", setup, nil,
 		"fetch", "acme/app", "4701", "--since", headB[:7], "--json")
-	harness.RunBoth(t, "unknown-flag", setup, nil, false,
+	parity.Golden(t, harness, "unknown-flag", setup, nil,
 		"fetch", "acme/app", "4701", "--bogus")
-	harness.RunBoth(t, "bad-provider", setup, nil, false,
+	parity.Golden(t, harness, "bad-provider", setup, nil,
 		"fetch", "acme/app", "4701", "--provider", "gitea")
-	harness.RunBoth(t, "provider-base-refused", setup, nil, false,
+	parity.Golden(t, harness, "provider-base-refused", setup, nil,
 		"fetch", "acme/app", "4701", "--provider", "gitlab", "--base-sha", headB[:7])
-	harness.RunBoth(t, "empty-diff", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "empty-diff", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
 		writeCanned(t, dir, "full.diff", "")
-	}, nil, false, "fetch", "acme/app", "4701", "--json")
+	}, nil, "fetch", "acme/app", "4701", "--json")
 }
 
 // TestFetchParityShowPrompts proves the prompt-dump parity by shape plus
@@ -379,194 +344,39 @@ type dumpCase struct {
 	json bool
 }
 
-// runDumpCase runs one --show-prompts leg pair: the dump compares
-// nonce-aware, stderr and files byte-exact past the scrub.
+// runDumpCase runs one --show-prompts leg: the dump is pinned by golden
+// (nonces scrubbed) and checked for nonce consistency (every fence opens
+// and closes with this run's own nonce).
 func runDumpCase(t *testing.T, setup func(t *testing.T, dir, home string), tc dumpCase) {
 	t.Helper()
-	dirA := t.TempDir()
-	homeA := filepath.Join(t.TempDir(), "home")
-	dirB := t.TempDir()
-	homeB := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(homeA, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(homeB, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	args := append(append([]string{}, tc.args...), "--show-prompts")
-	setup(t, dirA, homeA)
-	setup(t, dirB, homeB)
-	a := harness.Run(t, false, dirA, homeA, nil, args...)
-	b := harness.Run(t, true, dirB, homeB, nil, args...)
-	if a.Status != b.Status {
-		t.Fatalf("exit: bash=%d go=%d\n%s\n%s", a.Status, b.Status, a.Stderr, b.Stderr)
-	}
+	out := parity.Golden(t, harness, tc.name, setup, nil, args...)
+	var dump string
 	if tc.json {
-		// The envelope carries the dump: compare the dump by shape
-		// plus nonce consistency, the rest of the envelope past
-		// timestamps and nonces, stderr byte-exact past the scrub,
-		// and every file.
-		compareDumpJSON(t, a.Stdout, b.Stdout)
+		dump = dumpFromEnvelope(t, out.Stdout)
 	} else {
-		checkDump(t, a.Stdout, b.Stdout)
+		dump = out.Stdout
 	}
-	compareScrubbed(t, a.Stderr, b.Stderr)
-	compareFilesExact(t, a.Files, b.Files)
+	m := nonceRe.FindStringSubmatch(dump)
+	if len(m) != 2 {
+		t.Fatalf("dump carries no nonce line:\n%s", dump)
+	}
+	requireFenceNonce(t, "go", dump, m[1])
 }
 
-// compareDumpJSON compares two JSON envelopes by their prompt dumps
-// (nonce-aware) and their scrubbed remainder.
-func compareDumpJSON(t *testing.T, stdoutA, stdoutB string) {
+// dumpFromEnvelope extracts data.prompt_dump from a --json envelope.
+func dumpFromEnvelope(t *testing.T, stdout string) string {
 	t.Helper()
-	da := extractJSONField(t, stdoutA, "prompt_dump")
-	db := extractJSONField(t, stdoutB, "prompt_dump")
-	checkDump(t, da, db)
-	na, nb := dumpNonce(da), dumpNonce(db)
-	if maskDumpNonce(stdoutA, na, nb) != maskDumpNonce(stdoutB, na, nb) {
-		t.Errorf("envelope differs past the nonce:\n--- bash ---\n%s\n--- go ---\n%s", stdoutA, stdoutB)
+	doc := jsonDecode(t, stdout)
+	data, _ := doc["data"].(map[string]any)
+	dump, _ := data["prompt_dump"].(string)
+	if dump == "" {
+		t.Fatalf("envelope carries no prompt_dump:\n%s", stdout)
 	}
+	return dump
 }
 
-// dumpNonce extracts the fence nonce ("", never, on garbage).
-func dumpNonce(dump string) string {
-	if m := nonceRe.FindStringSubmatch(dump); len(m) == 2 {
-		return m[1]
-	}
-	return ""
-}
-
-// maskDumpNonce replaces both runs' nonces for envelope comparison.
-func maskDumpNonce(s, na, nb string) string {
-	if na != "" {
-		s = strings.ReplaceAll(s, na, "NONCE")
-	}
-	if nb != "" {
-		s = strings.ReplaceAll(s, nb, "NONCE")
-	}
-	return scrubTS(s)
-}
-
-// extractJSONField pulls one envelope string field (prompt dumps are large;
-// the comparison is shape-aware, never a blanket normalizer).
-func extractJSONField(t *testing.T, stdout, field string) string {
-	t.Helper()
-	var doc struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.NewDecoder(strings.NewReader(stdout)).Decode(&doc); err != nil {
-		t.Fatalf("envelope decodes: %v\n%s", err, stdout)
-	}
-	v, ok := doc.Data[field]
-	if !ok {
-		t.Fatalf("envelope lacks data.%s:\n%s", field, stdout)
-	}
-	s, ok := v.(string)
-	if !ok {
-		t.Fatalf("data.%s is not a string", field)
-	}
-	return s
-}
-
-// tsRe scrubs timestamps; everything else compares byte-exact (the only
-// sanctioned scrub, mirroring the shared harness).
-var tsRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
-
-// scrubTS normalizes timestamps and nothing else.
-func scrubTS(s string) string {
-	return tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
-}
-
-// compareScrubbed compares two streams past the timestamp scrub.
-func compareScrubbed(t *testing.T, a, b string) {
-	t.Helper()
-	if scrubTS(a) != scrubTS(b) {
-		t.Errorf("stream differs:\n--- a ---\n%s\n--- b ---\n%s", a, b)
-	}
-}
-
-// compareFilesExact compares every snapshot file by presence and scrubbed
-// bytes (prompt dumps never land on disk, so no nonce handling applies).
-func compareFilesExact(t *testing.T, fa, fb map[string]string) {
-	t.Helper()
-	for k, va := range fa {
-		compareFileExact(t, k, va, fb)
-	}
-	for k := range fb {
-		if _, ok := fa[k]; !ok {
-			t.Errorf("file presence differs: %s bash=absent go=present", k)
-		}
-	}
-}
-
-// compareFileExact compares one file present on the bash side.
-func compareFileExact(t *testing.T, k, va string, fb map[string]string) {
-	t.Helper()
-	vb, ok := fb[k]
-	if !ok {
-		t.Errorf("file presence differs: %s bash=present go=absent", k)
-		return
-	}
-	if scrubTS(va) != scrubTS(vb) {
-		t.Errorf("file differs: %s\n--- bash ---\n%s\n--- go ---\n%s", k, va, vb)
-	}
-}
-
-// runBothOrAcceptBashCrash runs both implementations, accepting the
-// explicit per-case R1 divergence where the shell crashes under set -u on
-// bash 3.2 (empty-array expansion) while succeeding on newer shells. On a
-// crash the Go leg is graded alone (exit 0 plus the bundle invariants the
-// strict legs pin elsewhere); otherwise both legs compare byte-exact.
-func runBothOrAcceptBashCrash(t *testing.T, name string, setup func(t *testing.T, dir, home string), extraEnv map[string]string, args ...string) {
-	t.Helper()
-	dirA, homeA, dirB, homeB := bothSides(t, setup)
-	a := harness.Run(t, false, dirA, homeA, extraEnv, args...)
-	b := harness.Run(t, true, dirB, homeB, extraEnv, args...)
-	if bashCrashed(a) {
-		acceptGoSpec(t, name, b)
-		return
-	}
-	if a.Status != b.Status {
-		t.Fatalf("exit: bash=%d go=%d\n%s\n%s", a.Status, b.Status, a.Stderr, b.Stderr)
-	}
-	compareScrubbed(t, a.Stdout, b.Stdout)
-	compareScrubbed(t, a.Stderr, b.Stderr)
-	compareFilesExact(t, a.Files, b.Files)
-}
-
-// bothSides builds the two scratch roots and runs the fixture setup in each.
-func bothSides(t *testing.T, setup func(t *testing.T, dir, home string)) (dirA, homeA, dirB, homeB string) {
-	t.Helper()
-	dirA, homeA = t.TempDir(), filepath.Join(t.TempDir(), "home")
-	dirB, homeB = t.TempDir(), filepath.Join(t.TempDir(), "home")
-	for _, home := range []string{homeA, homeB} {
-		if err := os.MkdirAll(home, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	setup(t, dirA, homeA)
-	setup(t, dirB, homeB)
-	return dirA, homeA, dirB, homeB
-}
-
-// bashCrashed reports the accepted bash 3.2 set -u empty-array crash.
-func bashCrashed(a parity.Outputs) bool {
-	return a.Status != 0 && strings.Contains(a.Stderr, "unbound variable")
-}
-
-// acceptGoSpec grades the Go leg alone after the accepted bash crash.
-func acceptGoSpec(t *testing.T, name string, b parity.Outputs) {
-	t.Helper()
-	t.Logf("accepted R1 divergence %s: bash 3.2 set -u crash, Go is the spec", name)
-	if b.Status != 0 {
-		t.Fatalf("go exit = %d, want 0\n%s", b.Status, b.Stderr)
-	}
-	doc := jsonDecode(t, b.Stdout)
-	if code(doc) != "" {
-		t.Fatalf("go envelope carries an error: %v", doc["error"])
-	}
-}
-
-// jsonDecode decodes one JSON document.
+// jsonDecode decodes a --json envelope stdout.
 func jsonDecode(t *testing.T, stdout string) map[string]any {
 	t.Helper()
 	var doc map[string]any
@@ -602,35 +412,35 @@ func TestFetchParityCapChunk(t *testing.T) {
 		writeCanned(t, dir, "full.diff", bigDiff(14))
 		writeCanned(t, dir, "stat.txt", "f00.txt (+1/-1)\n")
 	}
-	harness.RunBoth(t, "over-cap-refusal", overSetup, nil, false,
+	parity.Golden(t, harness, "over-cap-refusal", overSetup, nil,
 		"fetch", "acme/app", "4703", "--json")
-	harness.RunBoth(t, "over-cap-chunk", overSetup, nil, false,
+	parity.Golden(t, harness, "over-cap-chunk", overSetup, nil,
 		"fetch", "acme/app", "4703", "--chunk", "--json")
-	harness.RunBoth(t, "over-cap-chunk-text", overSetup, nil, false,
+	parity.Golden(t, harness, "over-cap-chunk-text", overSetup, nil,
 		"fetch", "acme/app", "4703", "--chunk")
-	harness.RunBoth(t, "over-cap-absent-text", overSetup, nil, false,
+	parity.Golden(t, harness, "over-cap-absent-text", overSetup, nil,
 		"fetch", "acme/app", "4703")
 	knobSetup := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		overSetup(t, dir, "")
 		writeFile(t, dir, ".review/chunk", "true\n")
 	}
-	harness.RunBoth(t, "over-cap-knob", knobSetup, nil, false,
+	parity.Golden(t, harness, "over-cap-knob", knobSetup, nil,
 		"fetch", "acme/app", "4703", "--json")
-	harness.RunBoth(t, "cap-override", overSetup,
-		map[string]string{"REVIEW_MAX_BYTES": "100000000"}, false,
+	parity.Golden(t, harness, "cap-override", overSetup,
+		map[string]string{"REVIEW_MAX_BYTES": "100000000"},
 		"fetch", "acme/app", "4703", "--json")
-	harness.RunBoth(t, "cap-override-beats-chunk", overSetup,
-		map[string]string{"REVIEW_MAX_BYTES": "100000000"}, false,
+	parity.Golden(t, harness, "cap-override-beats-chunk", overSetup,
+		map[string]string{"REVIEW_MAX_BYTES": "100000000"},
 		"fetch", "acme/app", "4703", "--chunk", "--json")
-	harness.RunBoth(t, "bad-max-bytes", overSetup,
-		map[string]string{"REVIEW_MAX_BYTES": "nope"}, false,
+	parity.Golden(t, harness, "bad-max-bytes", overSetup,
+		map[string]string{"REVIEW_MAX_BYTES": "nope"},
 		"fetch", "acme/app", "4703", "--json")
-	harness.RunBoth(t, "bad-chunk-knob", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "bad-chunk-knob", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		overSetup(t, dir, "")
 		writeFile(t, dir, ".review/chunk", "maybe\n")
-	}, nil, false, "fetch", "acme/app", "4703", "--json")
+	}, nil, "fetch", "acme/app", "4703", "--json")
 	singleSetup := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
@@ -644,7 +454,7 @@ func TestFetchParityCapChunk(t *testing.T) {
 		writeCanned(t, dir, "full.diff", sb.String())
 		writeCanned(t, dir, "stat.txt", "huge.txt (+1/-1)\n")
 	}
-	harness.RunBoth(t, "single-file-degenerate", singleSetup, nil, false,
+	parity.Golden(t, harness, "single-file-degenerate", singleSetup, nil,
 		"fetch", "acme/app", "4704", "--chunk", "--json")
 }
 
@@ -666,30 +476,30 @@ func TestFetchParityBudget(t *testing.T) {
 		writeFile(t, dir, ".review/1/cost.json",
 			`[{"effort":"standard","est_usd":2.00,"models":[]},{"effort":"standard","est_usd":4.00,"models":[]}]`)
 	}
-	harness.RunBoth(t, "budget-unset", setup, nil, false,
+	parity.Golden(t, harness, "budget-unset", setup, nil,
 		"fetch", "acme/app", "4705", "--json")
-	harness.RunBoth(t, "budget-within", costed,
-		map[string]string{"REVIEW_BUDGET_USD": "10"}, false,
+	parity.Golden(t, harness, "budget-within", costed,
+		map[string]string{"REVIEW_BUDGET_USD": "10"},
 		"fetch", "acme/app", "4705", "--json")
-	harness.RunBoth(t, "budget-over-refused", costed,
-		map[string]string{"REVIEW_BUDGET_USD": "0.50"}, false,
+	parity.Golden(t, harness, "budget-over-refused", costed,
+		map[string]string{"REVIEW_BUDGET_USD": "0.50"},
 		"fetch", "acme/app", "4705", "--json")
-	harness.RunBoth(t, "budget-over-consented", costed,
-		map[string]string{"REVIEW_BUDGET_USD": "0.50"}, false,
+	parity.Golden(t, harness, "budget-over-consented", costed,
+		map[string]string{"REVIEW_BUDGET_USD": "0.50"},
 		"fetch", "acme/app", "4705", "--consent-over-budget", "--json")
-	harness.RunBoth(t, "budget-unknown", setup,
-		map[string]string{"REVIEW_BUDGET_USD": "0.50"}, false,
+	parity.Golden(t, harness, "budget-unknown", setup,
+		map[string]string{"REVIEW_BUDGET_USD": "0.50"},
 		"fetch", "acme/app", "4705", "--json")
-	harness.RunBoth(t, "bad-budget", setup,
-		map[string]string{"REVIEW_BUDGET_USD": "free"}, false,
+	parity.Golden(t, harness, "bad-budget", setup,
+		map[string]string{"REVIEW_BUDGET_USD": "free"},
 		"fetch", "acme/app", "4705", "--json")
-	harness.RunBoth(t, "budget-unreadable", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "budget-unreadable", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
 		writeFile(t, dir, ".review/1/cost.json", `{"effort":"standard","est_usd":3.00}`)
 		writeFile(t, dir, ".review/2/cost.json", `not json`)
-	}, map[string]string{"REVIEW_BUDGET_USD": "10"}, false,
+	}, map[string]string{"REVIEW_BUDGET_USD": "10"},
 		"fetch", "acme/app", "4705", "--json")
 }
 
@@ -700,64 +510,64 @@ func TestFetchParityBudget(t *testing.T) {
 func TestFetchParityLocal(t *testing.T) {
 	t.Parallel()
 	base := gitSetup(map[string]string{"notes.txt": "top\nold line\nbottom\n"})
-	harness.RunBoth(t, "local-worktree", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "local-worktree", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--json")
-	harness.RunBoth(t, "local-worktree-text", func(t *testing.T, dir, _ string) {
+	}, nil, "fetch-local", "acme/app", "demo", "--json")
+	parity.Golden(t, harness, "local-worktree-text", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
-	}, nil, false, "fetch-local", "acme/app", "demo")
-	harness.RunBoth(t, "local-staged", func(t *testing.T, dir, _ string) {
+	}, nil, "fetch-local", "acme/app", "demo")
+	parity.Golden(t, harness, "local-staged", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
 		runGit(t, dir, "add", "notes.txt")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--staged", "--json")
-	harness.RunBoth(t, "local-range", func(t *testing.T, dir, _ string) {
+	}, nil, "fetch-local", "acme/app", "demo", "--staged", "--json")
+	parity.Golden(t, harness, "local-range", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
 		runGit(t, dir, "commit", "-qm", "second", "notes.txt")
-	}, nil, false,
+	}, nil,
 		"fetch-local", "acme/app", "demo", "--range", "HEAD~1..HEAD", "--json")
-	harness.RunBoth(t, "local-range3", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "local-range3", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
 		runGit(t, dir, "commit", "-qm", "second", "notes.txt")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--range", "HEAD~1...HEAD", "--json")
-	harness.RunBoth(t, "local-branch", func(t *testing.T, dir, _ string) {
+	}, nil, "fetch-local", "acme/app", "demo", "--range", "HEAD~1...HEAD", "--json")
+	parity.Golden(t, harness, "local-branch", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		gitSetup(map[string]string{"notes.txt": "top\nold line\nbottom\n"})(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nfeature line\nbottom\n")
 		runGit(t, dir, "commit", "-qm", "second", "notes.txt")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--base", "HEAD~1", "--json")
-	harness.RunBoth(t, "local-stash", func(t *testing.T, dir, _ string) {
+	}, nil, "fetch-local", "acme/app", "demo", "--base", "HEAD~1", "--json")
+	parity.Golden(t, harness, "local-stash", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nstashed line\nbottom\n")
 		runGit(t, dir, "stash", "-q")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--stash", "--json")
-	harness.RunBoth(t, "local-paths", func(t *testing.T, dir, _ string) {
+	}, nil, "fetch-local", "acme/app", "demo", "--stash", "--json")
+	parity.Golden(t, harness, "local-paths", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
 		writeFile(t, dir, "other.txt", "changed\n")
 		runGit(t, dir, "add", "other.txt")
 		runGit(t, dir, "commit", "-qm", "other")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--json", "--", "notes.txt")
-	harness.RunBoth(t, "local-paths-empty", base, nil, false,
+	}, nil, "fetch-local", "acme/app", "demo", "--json", "--", "notes.txt")
+	parity.Golden(t, harness, "local-paths-empty", base, nil,
 		"fetch-local", "acme/app", "demo", "--", "missing.txt", "--json")
-	harness.RunBoth(t, "local-untracked", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "local-untracked", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		base(t, dir, "")
 		writeFile(t, dir, "new1.txt", "untracked\n")
 		writeFile(t, dir, "notes.txt", "top\nnew line\nbottom\n")
-	}, nil, false, "fetch-local", "acme/app", "demo", "--json")
-	harness.RunBoth(t, "local-slug-number", base, nil, false,
+	}, nil, "fetch-local", "acme/app", "demo", "--json")
+	parity.Golden(t, harness, "local-slug-number", base, nil,
 		"fetch-local", "acme/app", "4351")
 	// local-slug-empty runs Go-only: `fetch-local acme/app --` sanitizes
 	// to nothing on GNU sed (bad-slug, like Go), but macOS BSD sed keeps
@@ -772,30 +582,30 @@ func TestFetchParityLocal(t *testing.T) {
 			t.Fatal(err)
 		}
 		base(t, dir, "")
-		b := harness.Run(t, true, dir, home, nil, "fetch-local", "acme/app", "--", "--json")
+		b := goldenRun(t, harness, "local-slug-empty", base, nil, "fetch-local", "acme/app", "--", "--json")
 		if b.Status != 1 {
-			t.Fatalf("go exit = %d, want 1", b.Status)
+			t.Fatalf("exit = %d, want 1", b.Status)
 		}
 		if code(jsonDecode(t, b.Stdout)) != "bad-slug" {
-			t.Fatalf("go code = %s", code(jsonDecode(t, b.Stdout)))
+			t.Fatalf("code = %s, want bad-slug", code(jsonDecode(t, b.Stdout)))
 		}
 	})
-	harness.RunBoth(t, "local-slug-prefix", base, nil, false,
+	parity.Golden(t, harness, "local-slug-prefix", base, nil,
 		"fetch-local", "acme/app", "local-demo")
-	harness.RunBoth(t, "local-modes-exclusive", base, nil, false,
+	parity.Golden(t, harness, "local-modes-exclusive", base, nil,
 		"fetch-local", "acme/app", "demo", "--staged", "--range", "a..b")
-	harness.RunBoth(t, "local-bad-range", base, nil, false,
+	parity.Golden(t, harness, "local-bad-range", base, nil,
 		"fetch-local", "acme/app", "demo", "--range", "nope..HEAD", "--json")
-	harness.RunBoth(t, "local-bad-base", base, nil, false,
+	parity.Golden(t, harness, "local-bad-base", base, nil,
 		"fetch-local", "acme/app", "demo", "--base", "nope", "--json")
-	harness.RunBoth(t, "local-bad-stash", base, nil, false,
+	parity.Golden(t, harness, "local-bad-stash", base, nil,
 		"fetch-local", "acme/app", "demo", "--stash", "9", "--json")
-	harness.RunBoth(t, "local-unknown-flag", base, nil, false,
+	parity.Golden(t, harness, "local-unknown-flag", base, nil,
 		"fetch-local", "acme/app", "demo", "--bogus")
-	harness.RunBoth(t, "local-not-a-repo", func(t *testing.T, dir, _ string) {
+	parity.Golden(t, harness, "local-not-a-repo", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
-	}, nil, false, "fetch-local", "acme/app", "demo", "--json")
+	}, nil, "fetch-local", "acme/app", "demo", "--json")
 }
 
 // TestFetchParityLocalShowPrompts proves fetch-local's human-mode prompt
@@ -861,11 +671,11 @@ func TestFetchParityProviders(t *testing.T) {
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
 		writeCanned(t, dir, "gl-notes.json", `[{"type":"DiffNote"},{"type":"Note"}]`)
 	}
-	harness.RunBoth(t, "gitlab-happy", gitlab, nil, false,
+	parity.Golden(t, harness, "gitlab-happy", gitlab, nil,
 		"fetch", "acme/app", "4706", "--provider", "gitlab", "--json")
-	harness.RunBoth(t, "gitlab-text", gitlab, nil, false,
+	parity.Golden(t, harness, "gitlab-text", gitlab, nil,
 		"fetch", "acme/app", "4706", "--provider", "gitlab")
-	harness.RunBoth(t, "gitlab-base-refused", gitlab, nil, false,
+	parity.Golden(t, harness, "gitlab-base-refused", gitlab, nil,
 		"fetch", "acme/app", "4706", "--provider", "gitlab", "--base-sha", headB[:7])
 
 	gitcafe := func(t *testing.T, dir, _ string) {
@@ -884,7 +694,11 @@ func TestFetchParityProviders(t *testing.T) {
 	// 4.4+ (Linux) carries it fine. Go carries the call on every shell.
 	// Accept the platform crash per case (R1: Go is the spec where bash
 	// crashes); on newer bash the legs compare byte-exact.
-	runBothOrAcceptBashCrash(t, "gitcafe-happy", gitcafe, nil,
+	// The gitcafe backend once crashed bash 3.2 (empty-array expansion
+	// under set -u); Go carries the call on every shell, and the golden
+	// pins the provider diff bytes verbatim (no added or stripped trailing
+	// newline — the old Linux differential could never be green there).
+	parity.Golden(t, harness, "gitcafe-happy", gitcafe, nil,
 		"fetch", "acme/app", "4707", "--provider", "gitcafe", "--json")
 
 	forgejo := func(t *testing.T, dir, _ string) {
@@ -897,16 +711,16 @@ func TestFetchParityProviders(t *testing.T) {
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
 		writeCanned(t, dir, "fj-files.json", `[{"filename":"a.txt","status":"modified","additions":1,"deletions":1}]`)
 	}
-	harness.RunBoth(t, "forgejo-happy", forgejo,
-		map[string]string{"FORGEJO_HOST": "https://example.invalid", "FORGEJO_TOKEN": "tok"}, false,
+	parity.Golden(t, harness, "forgejo-happy", forgejo,
+		map[string]string{"FORGEJO_HOST": "https://example.invalid", "FORGEJO_TOKEN": "tok"},
 		"fetch", "acme/app", "4708", "--provider", "forgejo", "--json")
-	harness.RunBoth(t, "forgejo-auth-missing", forgejo, nil, false,
+	parity.Golden(t, harness, "forgejo-auth-missing", forgejo, nil,
 		"fetch", "acme/app", "4708", "--provider", "forgejo", "--json")
 
 	bitbucket := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
-		writeCanned(t, dir, "fj-meta.json", `{"id":11,"title":"PR eleven","summary":{"raw":"body"},`+
+		writeCanned(t, dir, "bb-meta.json", `{"id":11,"title":"PR eleven","summary":{"raw":"body"},`+
 			`"destination":{"branch":{"name":"main"},"commit":{"hash":"`+headB+`"}},`+
 			`"source":{"branch":{"name":"feat"},"commit":{"hash":"`+headA+`"}},`+
 			`"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/11"}},`+
@@ -917,10 +731,10 @@ func TestFetchParityProviders(t *testing.T) {
 			`"status":"modified","lines_added":1,"lines_removed":1}],"next":null}`)
 		writeCanned(t, dir, "bb-comments.json", `{"values":[{"id":1},{"id":2,"inline":{"path":"a.txt"}}]}`)
 	}
-	harness.RunBoth(t, "bitbucket-happy", bitbucket,
-		map[string]string{"BITBUCKET_TOKEN": "tok"}, false,
+	parity.Golden(t, harness, "bitbucket-happy", bitbucket,
+		map[string]string{"BITBUCKET_TOKEN": "tok"},
 		"fetch", "acme/app", "4709", "--provider", "bitbucket", "--json")
-	harness.RunBoth(t, "bitbucket-auth-missing", bitbucket, nil, false,
+	parity.Golden(t, harness, "bitbucket-auth-missing", bitbucket, nil,
 		"fetch", "acme/app", "4709", "--provider", "bitbucket", "--json")
 
 	azure := func(t *testing.T, dir, _ string) {
@@ -934,21 +748,16 @@ func TestFetchParityProviders(t *testing.T) {
 		writeCanned(t, dir, "az-threads.json", `[{"id":1},{"id":2,"threadContext":{}}]`)
 		writeCanned(t, dir, "az-changes.json", `[]`)
 	}
-	harness.RunBoth(t, "azure-auth-missing", azure, nil, false,
+	parity.Golden(t, harness, "azure-auth-missing", azure, nil,
 		"fetch", "acme/app", "4710", "--provider", "azure", "--json")
 }
 
-// runSide runs one implementation in a fresh sandbox and returns its
-// outputs (setup writes identical fixtures per side).
-func runSide(t *testing.T, useGo bool, setup func(t *testing.T, dir, home string), extraEnv map[string]string, args ...string) parity.Outputs {
+// goldenRun runs the Go binary in a fresh sandbox, pins the scrubbed result
+// against the checked-in golden, and returns the outputs for extra
+// assertions (setup writes identical fixtures per run).
+func goldenRun(t *testing.T, h *parity.Harness, name string, setup func(t *testing.T, dir, home string), extraEnv map[string]string, args ...string) parity.Outputs {
 	t.Helper()
-	dir := t.TempDir()
-	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	setup(t, dir, home)
-	return harness.Run(t, useGo, dir, home, extraEnv, args...)
+	return parity.Golden(t, h, name, setup, extraEnv, args...)
 }
 
 // TestFetchParityDivergenceUpstream grades D1: both diff reads fail with
@@ -963,17 +772,13 @@ func TestFetchParityDivergenceUpstream(t *testing.T) {
 		stubPR(t, dir)
 	}
 	env := map[string]string{"GH_DIFF_FAIL": "1", "GH_FAIL_MATCH": "api repos", "GH_FAIL_TEXT": "HTTP 406: this diff is too large to be rendered"}
-	a := runSide(t, false, setup, env, "fetch", "acme/app", "4711", "--json")
-	b := runSide(t, true, setup, env, "fetch", "acme/app", "4711", "--json")
-	if a.Status != 1 || b.Status != 1 {
-		t.Fatalf("exit: bash=%d go=%d, want 1/1", a.Status, b.Status)
+	b := goldenRun(t, harness, "divergence-upstream", setup, env, "fetch", "acme/app", "4711", "--json")
+	if b.Status != 1 {
+		t.Fatalf("exit = %d, want 1", b.Status)
 	}
-	da, db := jsonDecode(t, a.Stdout), jsonDecode(t, b.Stdout)
-	if code(da) != "fetch-failed" {
-		t.Fatalf("bash code = %v", code(da))
-	}
+	db := jsonDecode(t, b.Stdout)
 	if code(db) != "upstream-diff-too-large" {
-		t.Fatalf("go code = %v", code(db))
+		t.Fatalf("code = %v, want upstream-diff-too-large", code(db))
 	}
 	if msg := message(db); !strings.Contains(msg, "300") || !strings.Contains(msg, "--base-sha") {
 		t.Fatalf("go message names no limit/hint: %q", msg)
@@ -981,16 +786,14 @@ func TestFetchParityDivergenceUpstream(t *testing.T) {
 	if hint(db) != "try: re-fetch narrowed to a range via --base-sha/--since, or narrow with a paths filter, then re-run" {
 		t.Fatalf("go hint = %q", hint(db))
 	}
-	// The full.diff truncation is shared: both sides leave it empty.
-	requireEmptyFullDiff(t, a, b)
+	// The truncated upstream leaves full.diff empty.
+	requireEmptyFullDiff(t, b)
 }
 
-// requireEmptyFullDiff asserts both legs left an empty full.diff.
-func requireEmptyFullDiff(t *testing.T, a, b parity.Outputs) {
+// requireEmptyFullDiff asserts the leg left an empty full.diff.
+func requireEmptyFullDiff(t *testing.T, outs parity.Outputs) {
 	t.Helper()
-	for side, outs := range map[string]parity.Outputs{"bash": a, "go": b} {
-		requireSideFullDiff(t, side, outs)
-	}
+	requireSideFullDiff(t, "go", outs)
 }
 
 // requireSideFullDiff asserts one leg left an empty full.diff.
@@ -1053,20 +856,15 @@ func TestFetchParityDivergencePaging(t *testing.T) {
 		items := `[{"filename":"f00.txt","additions":1,"deletions":1},{"filename":"f101.txt","additions":2,"deletions":0}]`
 		writeCanned(t, dir, "files-page-a.json", items)
 	}
-	a := runSide(t, false, setup, nil, "fetch", "acme/app", "4712", "--json")
-	b := runSide(t, true, setup, nil, "fetch", "acme/app", "4712", "--json")
-	if a.Status != 0 || b.Status != 0 {
-		t.Fatalf("exit: bash=%d go=%d, want 0/0\n%s\n%s", a.Status, b.Status, a.Stderr, b.Stderr)
+	b := goldenRun(t, harness, "divergence-paging", setup, nil, "fetch", "acme/app", "4712", "--json")
+	if b.Status != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", b.Status, b.Stderr)
 	}
-	da, db := jsonDecode(t, a.Stdout), jsonDecode(t, b.Stdout)
-	if n := dataFiles(da); n != float64(100) {
-		t.Fatalf("bash files = %v, want 100", n)
-	}
+	db := jsonDecode(t, b.Stdout)
 	if n := dataFiles(db); n != float64(2) {
-		t.Fatalf("go files = %v, want 2 (paged)", n)
+		t.Fatalf("files = %v, want 2 (paged)", n)
 	}
-	// Bash writes no filesource.json; Go notes the paged ceiling.
-	requireNoFilesource(t, a.Files)
+	// The Go side pages the listing and notes the paged ceiling.
 	requirePagedNote(t, b.Files)
 	// Paging speaks exactly one files call past the standard reads.
 	if calls := countFilesCalls(b.Files); calls != 1 {
@@ -1086,16 +884,6 @@ func pagingFiles() string {
 	}
 	files.WriteString("]")
 	return files.String()
-}
-
-// requireNoFilesource asserts the bash leg wrote no ceiling note.
-func requireNoFilesource(t *testing.T, files map[string]string) {
-	t.Helper()
-	for k := range files {
-		if strings.HasSuffix(k, "filesource.json") {
-			t.Fatalf("bash wrote %s", k)
-		}
-	}
 }
 
 // requirePagedNote asserts the Go leg noted the paged ceiling.
@@ -1173,16 +961,9 @@ func TestFetchParityDivergenceRateLimit(t *testing.T) {
 		setup(t, dir, "")
 		writeFile(t, dir, ".gh-429-budget", "1")
 	}
-	a := runSide(t, false, budgetSetup, env, "fetch", "acme/app", "4713", "--json")
-	if a.Status != 1 {
-		t.Fatalf("bash exit = %d, want 1", a.Status)
-	}
-	if code(jsonDecode(t, a.Stdout)) != "fetch-failed" {
-		t.Fatalf("bash code = %s", code(jsonDecode(t, a.Stdout)))
-	}
-	b := runSide(t, true, budgetSetup, env, "fetch", "acme/app", "4713", "--json")
+	b := goldenRun(t, harness, "divergence-ratelimit", budgetSetup, env, "fetch", "acme/app", "4713", "--json")
 	if b.Status != 0 {
-		t.Fatalf("go exit = %d, want 0\n%s", b.Status, b.Stderr)
+		t.Fatalf("exit = %d, want 0\n%s", b.Status, b.Stderr)
 	}
 	if !strings.Contains(b.Stderr, "transient GitHub error — retry 1/2, bundle untouched") {
 		t.Fatalf("go stderr names no retry:\n%s", b.Stderr)
@@ -1232,21 +1013,12 @@ func TestFetchParityDivergenceGarbage(t *testing.T) {
 		writeCanned(t, dir, "full.diff", "diff --git a/a b/b\n")
 		writeCanned(t, dir, "stat.txt", "")
 	}
-	a := runSide(t, false, setup, nil, "fetch", "acme/app", "4714", "--json")
-	b := runSide(t, true, setup, nil, "fetch", "acme/app", "4714", "--json")
+	b := goldenRun(t, harness, "divergence-garbage", setup, nil, "fetch", "acme/app", "4714", "--json")
 	if b.Status != 1 {
-		t.Fatalf("go exit = %d, want 1", b.Status)
+		t.Fatalf("exit = %d, want 1", b.Status)
 	}
 	if code(jsonDecode(t, b.Stdout)) != "fetch-failed" {
-		t.Fatalf("go code = %s", code(jsonDecode(t, b.Stdout)))
-	}
-	// The shell dies inside its own jq with no envelope and a bare
-	// non-zero exit; pin that shape without over-fitting the code.
-	if a.Status == 0 {
-		t.Fatalf("bash exit = 0, want nonzero\n%s", a.Stdout)
-	}
-	if strings.Contains(a.Stdout, `"schema_version"`) {
-		t.Fatalf("bash emitted an envelope on garbage:\n%s", a.Stdout)
+		t.Fatalf("code = %s, want fetch-failed", code(jsonDecode(t, b.Stdout)))
 	}
 }
 
@@ -1268,7 +1040,7 @@ func TestFetchParitySensitiveKB(t *testing.T) {
 		writeFile(t, dir, ".review/kb.jsonl",
 			"{\"id\":\"r1\",\"rule\":\"watch env\",\"scope\":\"*.env\",\"provenance\":\"op\",\"rigor\":\"walked\",\"hits\":2,\"false_hits\":0,\"judged\":4,\"status\":\"active\"}\n")
 	}
-	harness.RunBoth(t, "sensitive-kb", setup, nil, false,
+	parity.Golden(t, harness, "sensitive-kb", setup, nil,
 		"fetch", "acme/app", "4715", "--json")
 }
 
@@ -1309,7 +1081,7 @@ func TestFetchParityAzureHappy(t *testing.T) {
 		"AZURE_DEVOPS_ORG":     "https://example.invalid",
 		"AZURE_DEVOPS_EXT_PAT": "tok",
 	}
-	harness.RunBoth(t, "azure-happy", setup, env, false,
+	parity.Golden(t, harness, "azure-happy", setup, env,
 		"fetch", "acme/app", "4716", "--provider", "azure", "--json")
 }
 
@@ -1321,7 +1093,7 @@ func TestFetchParityBitbucketPaging(t *testing.T) {
 	setup := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
-		writeCanned(t, dir, "fj-meta.json", `{"id":17,"title":"PR seventeen","summary":{"raw":"body"},`+
+		writeCanned(t, dir, "bb-meta.json", `{"id":17,"title":"PR seventeen","summary":{"raw":"body"},`+
 			`"destination":{"branch":{"name":"main"},"commit":{"hash":"`+headB+`"}},`+
 			`"source":{"branch":{"name":"feat"},"commit":{"hash":"`+headA+`"}},`+
 			`"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/17"}},`+
@@ -1329,13 +1101,13 @@ func TestFetchParityBitbucketPaging(t *testing.T) {
 		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n"+
 			"diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-c\n+d\n")
 		writeCanned(t, dir, "bb-page1.json", `{"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},`+
-			`"status":"modified","lines_added":1,"lines_removed":1}],"next":"cursor2"}`)
+			`"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://example.invalid/diffstat?cursor=cursor2"}`)
 		// The stub serves page2 only when the URL carries cursor2.
 		writeCanned(t, dir, "bb-page2.json", `{"values":[{"new":{"path":"b.txt"},"old":{"path":"b.txt"},`+
 			`"status":"modified","lines_added":1,"lines_removed":0}],"next":null}`)
 		writeCanned(t, dir, "bb-comments.json", `{"values":[]}`)
 	}
-	harness.RunBoth(t, "bitbucket-paging", setup,
-		map[string]string{"BITBUCKET_TOKEN": "tok"}, false,
+	parity.Golden(t, harness, "bitbucket-paging", setup,
+		map[string]string{"BITBUCKET_TOKEN": "tok"},
 		"fetch", "acme/app", "4717", "--provider", "bitbucket", "--json")
 }

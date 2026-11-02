@@ -1,0 +1,26 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "check-tree",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "check-tree: dirty worktree — commit or stash first:",
+  "warnings": [],
+  "data": {
+    "clean": false,
+    "files": [
+      "?? scratch.txt"
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+check-tree: dirty worktree — commit or stash first:
+?? scratch.txt
+--- files ---
+--- file C/notes.txt ---
+line1
+--- file C/scratch.txt ---
+scratch

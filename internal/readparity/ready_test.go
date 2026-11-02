@@ -66,35 +66,35 @@ func TestReadyParity(t *testing.T) {
 		readyBundle(t, dir, "5101")
 	}
 
-	bash, goArgs := splitRepo("ready", "5101")
-	runReadBoth(t, "ready/refused-dead", dead, nil,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs := splitRepo("ready", "5101")
+	goldenRead(t, "ready/refused-dead", dead, nil,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
-	bash, goArgs = splitRepo("ready", "5101", "--json")
-	runReadBoth(t, "ready/refused-dead-json", dead, nil,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--json")
+	goldenRead(t, "ready/refused-dead-json", dead, nil,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
-	bash, goArgs = splitRepo("ready", "5101", "--check", "--json")
-	runReadBoth(t, "ready/refused-dead-check", dead, nil,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--check", "--json")
+	goldenRead(t, "ready/refused-dead-check", dead, nil,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
 	blocked := writeStub(t, readyStubScript, map[string]string{"READY_THREADS": "open"})
-	bash, goArgs = splitRepo("ready", "5101")
-	runReadBoth(t, "ready/blocked-human", dead, blocked,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs = splitRepo("ready", "5101")
+	goldenRead(t, "ready/blocked-human", dead, blocked,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
-	bash, goArgs = splitRepo("ready", "5101", "--json")
-	runReadBoth(t, "ready/blocked-json", dead, blocked,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--json")
+	goldenRead(t, "ready/blocked-json", dead, blocked,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
-	bash, goArgs = splitRepo("ready", "5101", "--check")
-	runReadBoth(t, "ready/blocked-check", dead, blocked,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--check")
+	goldenRead(t, "ready/blocked-check", dead, blocked,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
 	allClear := writeStub(t, readyStubScript, map[string]string{"READY_THREADS": "clear"})
-	bash, goArgs = splitRepo("ready", "5101", "--check", "--json")
-	runReadBoth(t, "ready/ready-check-json", dead, allClear,
-		allowKeys("C/.review/5101/.ready.err"), bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--check", "--json")
+	goldenRead(t, "ready/ready-check-json", dead, allClear,
+		allowKeys("C/.review/5101/.ready.err"), goArgs...)
 
 	local := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -103,8 +103,8 @@ func TestReadyParity(t *testing.T) {
 			".review/local-work/findings.json": mixedFindings(),
 		})
 	}
-	bash, goArgs = splitRepo("ready", "local-work", "--json")
-	runReadBoth(t, "ready/local-refused", local, nil, nil, bash, goArgs)
+	goArgs = splitRepo("ready", "local-work", "--json")
+	goldenRead(t, "ready/local-refused", local, nil, nil, goArgs...)
 
 	gitlab := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -115,13 +115,13 @@ func TestReadyParity(t *testing.T) {
 			".review/5101/findings.json": mixedFindings(),
 		})
 	}
-	bash, goArgs = splitRepo("ready", "5101", "--json")
-	runReadBoth(t, "ready/provider-refused", gitlab, nil, nil, bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--json")
+	goldenRead(t, "ready/provider-refused", gitlab, nil, nil, goArgs...)
 
 	missing := func(t *testing.T, _, _ string) {
 		t.Helper()
 		// No bundle at all: the missing-bundle refusal names the fetch.
 	}
-	bash, goArgs = splitRepo("ready", "5101", "--json")
-	runReadBoth(t, "ready/missing-bundle", missing, nil, nil, bash, goArgs)
+	goArgs = splitRepo("ready", "5101", "--json")
+	goldenRead(t, "ready/missing-bundle", missing, nil, nil, goArgs...)
 }

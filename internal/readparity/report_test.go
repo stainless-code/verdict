@@ -57,17 +57,17 @@ func TestReportParity(t *testing.T) {
 		})
 	}
 
-	bash, goArgs := splitRepo("report", "5101")
-	runReadBoth(t, "report/human", mixed, nil, nil, bash, goArgs)
+	goArgs := splitRepo("report", "5101")
+	goldenRead(t, "report/human", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "5101", "--json")
-	runReadBoth(t, "report/json", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--json")
+	goldenRead(t, "report/json", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "5101", "--status", "open")
-	runReadBoth(t, "report/status-open", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--status", "open")
+	goldenRead(t, "report/status-open", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "5101", "--kind", "section", "--json")
-	runReadBoth(t, "report/kind-section-json", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--kind", "section", "--json")
+	goldenRead(t, "report/kind-section-json", mixed, nil, nil, goArgs...)
 
 	cost := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -78,11 +78,11 @@ func TestReportParity(t *testing.T) {
 			".review/5101/budget.json":   budgetDoc(),
 		})
 	}
-	bash, goArgs = splitRepo("report", "5101", "--cost")
-	runReadBoth(t, "report/cost-human", cost, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--cost")
+	goldenRead(t, "report/cost-human", cost, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "5101", "--cost", "--json")
-	runReadBoth(t, "report/cost-json", cost, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--cost", "--json")
+	goldenRead(t, "report/cost-json", cost, nil, nil, goArgs...)
 
 	broken := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -92,18 +92,18 @@ func TestReportParity(t *testing.T) {
 			".review/5101/cost.json":     `{broken`,
 		})
 	}
-	bash, goArgs = splitRepo("report", "5101", "--cost", "--json")
-	runReadBoth(t, "report/cost-unreadable", broken, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--cost", "--json")
+	goldenRead(t, "report/cost-unreadable", broken, nil, nil, goArgs...)
 
 	chunked := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		kitchenSink(t, dir, "5101")
 	}
-	bash, goArgs = splitRepo("report", "5101",
+	goArgs = splitRepo("report", "5101",
 		"--cost", "--completeness", "--check", "important",
 		"--output", "out.md", "--sarif", "out.sarif", "--json")
-	runReadBoth(t, "report/kitchen-sink", chunked, nil,
-		allowKeys("C/out.md", "C/out.sarif"), bash, goArgs)
+	goldenRead(t, "report/kitchen-sink", chunked, nil,
+		allowKeys("C/out.md", "C/out.sarif"), goArgs...)
 
 	dirty := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -113,8 +113,8 @@ func TestReportParity(t *testing.T) {
 				finding(sigCrit, "open", "critical", "walked", "inline")),
 		})
 	}
-	bash, goArgs = splitRepo("report", "5101", "--check", "critical")
-	runReadBoth(t, "report/check-critical-dirty", dirty, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101", "--check", "critical")
+	goldenRead(t, "report/check-critical-dirty", dirty, nil, nil, goArgs...)
 
 	// A lone below-tier open finding still passes --check critical (the
 	// comparison key is the whole-store open count, and the tier gate is
@@ -128,9 +128,9 @@ func TestReportParity(t *testing.T) {
 			".review/5102/post.json": postDoc(headA, 7),
 		})
 	}
-	bash, goArgs = splitRepo("report", "5102",
+	goArgs = splitRepo("report", "5102",
 		"--check", "critical", "--completeness")
-	runReadBoth(t, "report/check-critical-pass", infoOnly, nil, nil, bash, goArgs)
+	goldenRead(t, "report/check-critical-pass", infoOnly, nil, nil, goArgs...)
 
 	stale := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -141,8 +141,8 @@ func TestReportParity(t *testing.T) {
 			".review/5102/post.json": postDoc(headC, 7),
 		})
 	}
-	bash, goArgs = splitRepo("report", "5102", "--completeness")
-	runReadBoth(t, "report/completeness-stale", stale, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5102", "--completeness")
+	goldenRead(t, "report/completeness-stale", stale, nil, nil, goArgs...)
 
 	noPost := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -152,22 +152,22 @@ func TestReportParity(t *testing.T) {
 				finding(sigInfo, "open", "informational", "said", "inline")),
 		})
 	}
-	bash, goArgs = splitRepo("report", "5102",
+	goArgs = splitRepo("report", "5102",
 		"--completeness", "--json")
-	runReadBoth(t, "report/completeness-missing", noPost, nil, nil, bash, goArgs)
+	goldenRead(t, "report/completeness-missing", noPost, nil, nil, goArgs...)
 
 	// Live-thread legs run against the network-dead harness stub: skip
 	// warns neutral, strict fails closed, auto stays neutral.
-	bash, goArgs = splitRepo("report", "5102",
+	goArgs = splitRepo("report", "5102",
 		"--check", "critical", "--live", "skip")
-	runReadBoth(t, "report/live-skip", infoOnly, nil, nil, bash, goArgs)
+	goldenRead(t, "report/live-skip", infoOnly, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "5102",
+	goArgs = splitRepo("report", "5102",
 		"--check", "critical", "--live", "strict")
-	runReadBoth(t, "report/live-strict-unreachable", infoOnly, nil, nil, bash, goArgs)
+	goldenRead(t, "report/live-strict-unreachable", infoOnly, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "5102", "--check", "critical")
-	runReadBoth(t, "report/live-auto-unreachable", infoOnly, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5102", "--check", "critical")
+	goldenRead(t, "report/live-auto-unreachable", infoOnly, nil, nil, goArgs...)
 
 	local := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -177,12 +177,12 @@ func TestReportParity(t *testing.T) {
 				finding(sigInfo, "open", "informational", "said", "inline")),
 		})
 	}
-	bash, goArgs = splitRepo("report", "local-work")
-	runReadBoth(t, "report/local-human", local, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "local-work")
+	goldenRead(t, "report/local-human", local, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("report", "local-work",
+	goArgs = splitRepo("report", "local-work",
 		"--check", "critical", "--json")
-	runReadBoth(t, "report/local-check-json", local, nil, nil, bash, goArgs)
+	goldenRead(t, "report/local-check-json", local, nil, nil, goArgs...)
 }
 
 // corruptDocs maps refusal-leg names to findings.json payloads (the empty
@@ -222,8 +222,8 @@ func TestReportRefusals(t *testing.T) {
 				})
 			}
 		}
-		bash, goArgs := splitRepo("report", "5101", "--json")
-		runReadBoth(t, "report/refuse-"+name, setup, nil, nil, bash, goArgs)
+		goArgs := splitRepo("report", "5101", "--json")
+		goldenRead(t, "report/refuse-"+name, setup, nil, nil, goArgs...)
 	}
 
 	patch := func(t *testing.T, dir, _ string) {
@@ -234,8 +234,8 @@ func TestReportRefusals(t *testing.T) {
 			".review/5101/patch.json":    `{broken`,
 		})
 	}
-	bash, goArgs := splitRepo("report", "5101", "--json")
-	runReadBoth(t, "report/refuse-patch", patch, nil, nil, bash, goArgs)
+	goArgs := splitRepo("report", "5101", "--json")
+	goldenRead(t, "report/refuse-patch", patch, nil, nil, goArgs...)
 
 	// The human refusal surface matches too, not just the envelope.
 	human := func(t *testing.T, dir, _ string) {
@@ -245,6 +245,6 @@ func TestReportRefusals(t *testing.T) {
 			".review/5101/findings.json": `[42]`,
 		})
 	}
-	bash, goArgs = splitRepo("report", "5101")
-	runReadBoth(t, "report/refuse-human", human, nil, nil, bash, goArgs)
+	goArgs = splitRepo("report", "5101")
+	goldenRead(t, "report/refuse-human", human, nil, nil, goArgs...)
 }

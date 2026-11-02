@@ -174,13 +174,18 @@ func mutateSecondPass(t *testing.T, dir string) {
 	})
 }
 
-func compareRuns(t *testing.T, dirA, dirB, slug string, args []string) {
+// compareRuns runs the Go binary on two identical fixtures, proves the
+// runs are byte-identical past timestamps (determinism), and pins one
+// side against the checked-in golden.
+func compareRuns(t *testing.T, name, dirA, dirB, slug string, args []string) {
 	t.Helper()
 	full := append([]string{"record", "acme/app", slug}, args...)
-	a := runOne(t, false, dirA, t.TempDir(), full...)
-	b := runOne(t, true, dirB, t.TempDir(), full...)
-	compareOutputs(t, a, b)
-	compareBundles(t, bundleFiles(t, dirA, slug), bundleFiles(t, dirB, slug))
+	a := runOne(t, dirA, t.TempDir(), full...)
+	b := runOne(t, dirB, t.TempDir(), full...)
+	if a.status != b.status || scrub(a.stdout) != scrub(b.stdout) || scrub(a.stderr) != scrub(b.stderr) {
+		t.Fatalf("same fixtures diverge:\n%s\n%s", a.stderr, b.stderr)
+	}
+	pinGolden(t, name, dirB, b)
 }
 
 // TestParityMatrix checks the N-comment matrix on both passes.
@@ -194,7 +199,7 @@ func TestParityMatrix(t *testing.T) {
 				dirB := t.TempDir()
 				matrixSetup(n)(t, dirA)
 				matrixSetup(n)(t, dirB)
-				compareRuns(t, dirA, dirB, "local-mx", []string{"--json"})
+				compareRuns(t, fmt.Sprintf("matrix/n%d/first", n), dirA, dirB, "local-mx", []string{"--json"})
 			})
 			t.Run("rereview", func(t *testing.T) {
 				t.Helper()
@@ -211,14 +216,14 @@ func matrixRereview(t *testing.T, n int) {
 	dirB := t.TempDir()
 	matrixSetup(n)(t, dirA)
 	matrixSetup(n)(t, dirB)
-	a := runOne(t, false, dirA, t.TempDir(), "record", "acme/app", "local-mx", "--json")
-	b := runOne(t, true, dirB, t.TempDir(), "record", "acme/app", "local-mx", "--json")
+	a := runOne(t, dirA, t.TempDir(), "record", "acme/app", "local-mx", "--json")
+	b := runOne(t, dirB, t.TempDir(), "record", "acme/app", "local-mx", "--json")
 	if a.status != 0 || b.status != 0 {
-		t.Fatalf("first pass failed: bash=%d go=%d", a.status, b.status)
+		t.Fatalf("first pass failed: go=%d go=%d", a.status, b.status)
 	}
 	mutateSecondPass(t, dirA)
 	mutateSecondPass(t, dirB)
-	compareRuns(t, dirA, dirB, "local-mx", []string{"--json"})
+	compareRuns(t, fmt.Sprintf("matrix/n%d/rereview", n), dirA, dirB, "local-mx", []string{"--json"})
 }
 
 // TestParityDegenerateInputs checks degenerate bodies refuse identically.
@@ -262,7 +267,7 @@ func TestParityDegenerateInputs(t *testing.T) {
 			".review/local-dg/full.diff":   diff,
 			".review/local-dg/review.json": tc.review,
 		}
-		runBoth(t, "degenerate/"+tc.name, "local-dg", func(t *testing.T, dir string) {
+		goldenBoth(t, "degenerate/"+tc.name, "local-dg", func(t *testing.T, dir string) {
 			t.Helper()
 			writeFiles(t, dir, files)
 		}, extraArgs...)
@@ -277,22 +282,22 @@ func TestParityMissingFiles(t *testing.T) {
 		".review/local-mf/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
 	}
 	for _, drop := range []string{"review.json", "full.diff", "source.json"} {
-		runBoth(t, "missing/"+drop, "local-mf", func(t *testing.T, dir string) {
+		goldenBoth(t, "missing/"+drop, "local-mf", func(t *testing.T, dir string) {
 			t.Helper()
 			files := maps.Clone(full)
 			delete(files, ".review/local-mf/"+drop)
 			writeFiles(t, dir, files)
 		})
 	}
-	runBoth(t, "missing/bundle", "local-nothing", func(_ *testing.T, _ string) {})
-	runBoth(t, "not-local/github", "4251", func(t *testing.T, dir string) {
+	goldenBoth(t, "missing/bundle", "local-nothing", func(_ *testing.T, _ string) {})
+	goldenBoth(t, "not-local/github", "4251", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
 			".review/4251/PR.json":   `{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
 			".review/4251/full.diff": genDiff(2),
 		})
 	})
-	runBoth(t, "provider/gitlab", "47", func(t *testing.T, dir string) {
+	goldenBoth(t, "provider/gitlab", "47", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
 			".review/47/PR.json":     `{"provider":"gitlab","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`,
@@ -323,34 +328,34 @@ func TestParityChunked(t *testing.T) {
 	c2 := chunkDiff("-old2\n+new2")
 	goodManifest := `{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".review/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".review/local-ch/chunks/b.diff","files":["c1.txt"]}]}`
 	goodReview := `{"schema_version":"1","chunks":["a","b"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"c1.txt","line":2,"side":"RIGHT","body":"Chunk comment.","rigor":"walked"}]}`
-	runBoth(t, "chunk/valid", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/valid", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, goodReview, c1, c2)
 	})
-	runBoth(t, "chunk/unattested", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/unattested", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`, c1, c2)
 	})
-	runBoth(t, "chunk/partial", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/partial", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, `{"schema_version":"1","chunks":["a"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`, c1, c2)
 	})
-	runBoth(t, "chunk/bad-schema", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/bad-schema", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, `{"schema_version":"2","chunks":[]}`, goodReview, c1, c2)
 	})
-	runBoth(t, "chunk/unknown-chunk-claim", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/unknown-chunk-claim", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, `{"schema_version":"1","chunks":["a","b","zzz"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`, c1, c2)
 	})
-	runBoth(t, "chunk/missing-snapshot", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/missing-snapshot", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, goodReview, c1, c2)
 		if err := os.Remove(filepath.Join(dir, ".review", "local-ch", "chunks", "b.diff")); err != nil {
 			t.Fatal(err)
 		}
 	})
-	runBoth(t, "chunk/malformed-attestation", "local-ch", func(t *testing.T, dir string) {
+	goldenBoth(t, "chunk/malformed-attestation", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, `{"schema_version":"1","chunks":"a","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`, c1, c2)
 	})

@@ -1,0 +1,33 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "calibrate",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "no-threads",
+    "message": "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---
+--- file C/.review/local-work/findings.json ---
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"important","sig":"b222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"d444444444444444444444444444444444444444","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"reproduced","severity":"critical","sig":"e555555555555555555555555555555555555555","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"deferred","rationale":"","history":[]},{"kind":"section","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"f666666666666666666666666666666666666666","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+--- file C/.review/local-work/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/local-work/source.json ---
+{"schema_version":"1","kind":"range","repo":"acme/app","slug":"work","head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","dirty":false}

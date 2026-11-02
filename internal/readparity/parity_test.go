@@ -123,99 +123,32 @@ func snapshotBoth(t *testing.T, dir, home string) map[string]string {
 	return mergeMaps(snapshotTree(t, "C", dir), snapshotTree(t, "H", home))
 }
 
-// runReadBoth runs bash and Go on identical fixtures and compares
-// everything: exit codes, streams, and every written file (R6), plus the
-// read-only proof that neither side wrote or changed any file outside
-// allowedWrites (requested artifacts that still compare byte-exact).
-// setup writes the bundle into dir (called once per side, so fixtures
-// must be deterministic). extraEnv overlays variables on both sides.
-// bashArgs are the script argv; goArgs are the binary argv (the binary
-// always receives cmd+repo+pr+flags, with empty positionals for
-// position-less verbs — see splitRepo/splitRepoOnly/splitBare).
-func runReadBoth(
+// goldenRead runs the Go binary on hermetic fixtures, pins exit codes,
+// streams, and every written file against the checked-in golden, and proves
+// the read-only contract: nothing outside allowedWrites changed.
+// setup writes the bundle into dir (fixtures must be deterministic).
+// extraEnv overlays variables.
+func goldenRead(
 	t *testing.T, name string,
 	setup func(t *testing.T, dir, home string),
 	extraEnv map[string]string, allowedWrites map[string]bool,
-	bashArgs, goArgs []string,
+	args ...string,
 ) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		t.Helper()
 		t.Parallel()
-		dirA := t.TempDir()
-		homeA := filepath.Join(t.TempDir(), "home")
-		dirB := t.TempDir()
-		homeB := filepath.Join(t.TempDir(), "home")
-		for _, h := range []string{homeA, homeB} {
-			if err := os.MkdirAll(h, 0o755); err != nil {
-				t.Fatal(err)
-			}
+		dir := t.TempDir()
+		home := filepath.Join(t.TempDir(), "home")
+		if err := os.MkdirAll(home, 0o755); err != nil {
+			t.Fatal(err)
 		}
-		setup(t, dirA, homeA)
-		setup(t, dirB, homeB)
-		beforeA := snapshotBoth(t, dirA, homeA)
-		beforeB := snapshotBoth(t, dirB, homeB)
-		roots := [4]string{dirA, homeA, dirB, homeB}
-		a := harness.Run(t, false, dirA, homeA, extraEnv, bashArgs...)
-		b := harness.Run(t, true, dirB, homeB, extraEnv, goArgs...)
-		compareReadOutputs(t, a, b, roots)
-		assertNoWrites(t, beforeA, a.Files, allowedWrites, "bash")
-		assertNoWrites(t, beforeB, b.Files, allowedWrites, "go")
+		setup(t, dir, home)
+		before := snapshotBoth(t, dir, home)
+		out := harness.Run(t, dir, home, extraEnv, args...)
+		parity.Check(t, name, parity.Render(out, []string{dir, home}))
+		assertNoWrites(t, before, out.Files, allowedWrites, "go")
 	})
-}
-
-// compareReadOutputs compares exit codes, captured streams, and every
-// written file of the two sides.
-func compareReadOutputs(t *testing.T, a, b parity.Outputs, roots [4]string) {
-	t.Helper()
-	compareReadStreams(t, a, b, roots)
-	compareReadFiles(t, a, b, roots)
-}
-
-// compareReadStreams compares exit codes and captured streams.
-func compareReadStreams(t *testing.T, a, b parity.Outputs, roots [4]string) {
-	t.Helper()
-	if a.Status != b.Status {
-		t.Errorf("exit: bash=%d go=%d\nbash stderr:\n%s\ngo stderr:\n%s",
-			a.Status, b.Status, scrubRoots(a.Stderr, roots), scrubRoots(b.Stderr, roots))
-	}
-	as, bs := scrub(scrubRoots(a.Stdout, roots)), scrub(scrubRoots(b.Stdout, roots))
-	if as != bs {
-		t.Errorf("stdout differs:\n--- bash ---\n%s\n--- go ---\n%s", a.Stdout, b.Stdout)
-	}
-	ae, be := scrub(scrubRoots(a.Stderr, roots)), scrub(scrubRoots(b.Stderr, roots))
-	if ae != be {
-		t.Errorf("stderr differs:\n--- bash ---\n%s\n--- go ---\n%s", a.Stderr, b.Stderr)
-	}
-}
-
-// compareReadFiles compares every written file byte for byte.
-func compareReadFiles(t *testing.T, a, b parity.Outputs, roots [4]string) {
-	t.Helper()
-	seen := map[string]bool{}
-	for k, va := range a.Files {
-		seen[k] = true
-		vb, ok := b.Files[k]
-		if !ok {
-			t.Errorf("file presence differs: %s bash=present go=absent", k)
-			continue
-		}
-		compareReadFile(t, k, va, vb, roots)
-	}
-	for k := range b.Files {
-		if !seen[k] {
-			t.Errorf("file presence differs: %s bash=absent go=present", k)
-		}
-	}
-}
-
-// compareReadFile compares one file present on both sides.
-func compareReadFile(t *testing.T, k, va, vb string, roots [4]string) {
-	t.Helper()
-	fa, fb := scrub(scrubRoots(va, roots)), scrub(scrubRoots(vb, roots))
-	if fa != fb {
-		t.Errorf("file differs: %s\n--- bash ---\n%s\n--- go ---\n%s", k, va, vb)
-	}
 }
 
 // assertNoWrites proves the read-only contract: every file present after
@@ -256,29 +189,21 @@ func checkKeptFile(t *testing.T, k, va string, before map[string]string, side st
 	}
 }
 
-// splitRepo builds argv for verbs taking repo+pr positionals: identical
-// on both sides. Every leg reviews acme/app; the helper hardcodes the
-// repo so the legs read as the dispatch they pin.
-func splitRepo(cmd, pr string, flags ...string) ([]string, []string) {
-	bash := append([]string{cmd, "acme/app", pr}, flags...)
-	goArgs := append([]string{cmd, "acme/app", pr}, flags...)
-	return bash, goArgs
+// splitRepo builds argv for verbs taking repo+pr positionals. Every leg
+// reviews acme/app; the helper hardcodes the repo so the legs read as the
+// invocation they pin.
+func splitRepo(cmd, pr string, flags ...string) []string {
+	return append([]string{cmd, "acme/app", pr}, flags...)
 }
 
-// splitRepoOnly builds argv for trend (repo but no pr): the binary
-// receives the empty pr positional the shell dispatch would pass.
-func splitRepoOnly(flags ...string) ([]string, []string) {
-	bash := append([]string{"trend", "acme/app"}, flags...)
-	goArgs := append([]string{"trend", "acme/app", ""}, flags...)
-	return bash, goArgs
+// splitRepoOnly builds argv for trend (repo but no pr).
+func splitRepoOnly(flags ...string) []string {
+	return append([]string{"trend", "acme/app"}, flags...)
 }
 
-// splitBare builds argv for position-less verbs (doctor, check-tree):
-// the binary receives the empty positionals the shell dispatch passes.
-func splitBare(cmd string, flags ...string) ([]string, []string) {
-	bash := append([]string{cmd}, flags...)
-	goArgs := append([]string{cmd, "", ""}, flags...)
-	return bash, goArgs
+// splitBare builds argv for position-less verbs (doctor, check-tree).
+func splitBare(cmd string, flags ...string) []string {
+	return append([]string{cmd}, flags...)
 }
 
 // allowKeys builds the allowed-writes set for requested artifacts.

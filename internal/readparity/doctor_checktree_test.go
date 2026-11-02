@@ -16,11 +16,11 @@ func TestDoctorParity(t *testing.T) {
 	empty := func(t *testing.T, _, _ string) {
 		t.Helper()
 	}
-	bash, goArgs := splitBare("doctor")
-	runReadBoth(t, "doctor/human", empty, nil, nil, bash, goArgs)
+	goArgs := splitBare("doctor")
+	goldenRead(t, "doctor/human", empty, nil, nil, goArgs...)
 
-	bash, goArgs = splitBare("doctor", "--json")
-	runReadBoth(t, "doctor/json", empty, nil, nil, bash, goArgs)
+	goArgs = splitBare("doctor", "--json")
+	goldenRead(t, "doctor/json", empty, nil, nil, goArgs...)
 }
 
 // gitRun runs git in dir.
@@ -61,11 +61,11 @@ func TestCheckTreeParity(t *testing.T) {
 		t.Helper()
 		gitRepo(t, dir)
 	}
-	bash, goArgs := splitBare("check-tree")
-	runReadBoth(t, "check-tree/clean-human", clean, nil, nil, bash, goArgs)
+	goArgs := splitBare("check-tree")
+	goldenRead(t, "check-tree/clean-human", clean, nil, nil, goArgs...)
 
-	bash, goArgs = splitBare("check-tree", "--json")
-	runReadBoth(t, "check-tree/clean-json", clean, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree", "--json")
+	goldenRead(t, "check-tree/clean-json", clean, nil, nil, goArgs...)
 
 	dirty := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -74,17 +74,17 @@ func TestCheckTreeParity(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bash, goArgs = splitBare("check-tree")
-	runReadBoth(t, "check-tree/dirty-human", dirty, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree")
+	goldenRead(t, "check-tree/dirty-human", dirty, nil, nil, goArgs...)
 
-	bash, goArgs = splitBare("check-tree", "--json")
-	runReadBoth(t, "check-tree/dirty-json", dirty, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree", "--json")
+	goldenRead(t, "check-tree/dirty-json", dirty, nil, nil, goArgs...)
 
-	bash, goArgs = splitBare("check-tree", "--expect", "scratch.txt", "--json")
-	runReadBoth(t, "check-tree/expect-covered", dirty, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree", "--expect", "scratch.txt", "--json")
+	goldenRead(t, "check-tree/expect-covered", dirty, nil, nil, goArgs...)
 
-	bash, goArgs = splitBare("check-tree", "--expect", "other.txt")
-	runReadBoth(t, "check-tree/expect-uncovered", dirty, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree", "--expect", "other.txt")
+	goldenRead(t, "check-tree/expect-uncovered", dirty, nil, nil, goArgs...)
 
 	// The .review/ scratch lines read ignored, never failing.
 	scratch := func(t *testing.T, dir, _ string) {
@@ -94,8 +94,8 @@ func TestCheckTreeParity(t *testing.T) {
 			".review/5101/findings.json": `[]`,
 		})
 	}
-	bash, goArgs = splitBare("check-tree")
-	runReadBoth(t, "check-tree/review-scratch", scratch, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree")
+	goldenRead(t, "check-tree/review-scratch", scratch, nil, nil, goArgs...)
 
 	norepo := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -106,6 +106,6 @@ func TestCheckTreeParity(t *testing.T) {
 			t.Fatal("fixture leaked a .git directory")
 		}
 	}
-	bash, goArgs = splitBare("check-tree", "--json")
-	runReadBoth(t, "check-tree/norepo-json", norepo, nil, nil, bash, goArgs)
+	goArgs = splitBare("check-tree", "--json")
+	goldenRead(t, "check-tree/norepo-json", norepo, nil, nil, goArgs...)
 }

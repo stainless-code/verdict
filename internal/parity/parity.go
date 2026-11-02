@@ -1,11 +1,11 @@
-// Package parity provides the shell-parity test harness shared by the
-// verb ports: it builds the Go binary once, runs BOTH scripts/review.sh
-// and the binary on identical fixtures, and compares everything observable
-// — exit codes, stdout/stderr (timestamps scrubbed only), and every file
+// Package parity provides the Go golden-test harness shared by the verb
+// ports: it builds the Go binary once, runs it on hermetic fixtures, and
+// pins everything observable — exit codes, stdout/stderr, and every file
 // written anywhere (bundle, .review/ stores, kb files, HOME skill trees),
-// plus artifact presence (R6). A normalizer that hides real diffs is a
-// defect, so the only scrub is the timestamp shape, and the only carve-out
-// is the documented shell-echo platform variance on one progress line.
+// plus artifact presence (R6) — against checked-in golden files (go-port
+// 08: the bash comparison retired with the shell). A normalizer that hides
+// real diffs is a defect, so the only scrubs are timestamps, the prompt
+// nonce, and curl's connection timing.
 package parity
 
 import (
@@ -238,18 +238,6 @@ func WriteStubFile(stubBin, name, script string) error {
 	return nil
 }
 
-// SkipBashOnWindows skips a bash-vs-Go parity run on Windows: Git Bash's
-// native jq narrows environment values through the ANSI code page, so
-// non-ASCII warning text reaches the JSON envelope as U+FFFD and the shell
-// implementation cannot produce its byte contract there. The shell is
-// deleted in go-port 08, so only the Go side needs Windows coverage.
-func SkipBashOnWindows(t *testing.T) {
-	t.Helper()
-	if runtime.GOOS == osWindows {
-		t.Skip("bash side not graded on Windows: Git Bash jq narrows env, corrupting non-ASCII; shell deleted in go-port 08")
-	}
-}
-
 // Teardown removes the harness temp roots.
 func (h *Harness) Teardown() {
 	os.RemoveAll(h.BinDir)
@@ -267,7 +255,7 @@ func findRepoRoot() (string, error) {
 	}
 	dir := filepath.Dir(file)
 	for range maxRootDepth {
-		if _, err := os.Stat(filepath.Join(dir, "scripts", "review.sh")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
 			return dir, nil
 		}
 		dir = filepath.Dir(dir)
@@ -303,27 +291,45 @@ var tsRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
 // the timedOut flag, and the timeout marker, which all still compare.
 // A verifyCmd's own stderr never reaches the script's stderr (it is
 // redirected into .verify.out), so no command output can match this.
-var killNoticeRe = regexp.MustCompile(`(?m)^.*Killed: 9.*\n?`)
-
-// npmLogRe scrubs npm's "complete log" trailer. On failure npm prints the
-// timestamped debug-log path into its own output, so the path differs by
-// construction between runs (not even bash-vs-bash is stable); the failure
-// itself stays byte-compared, only the log pointer is normalized.
-var npmLogRe = regexp.MustCompile(`A complete log of this run can be found in: [^ \n]*`)
-
-// curlMsRe scrubs curl's connection-failure timing (`after 0 ms` vs
-// `after 1 ms`). The millisecond value is scheduling noise that differs by
-// construction between any two runs (not even bash-vs-bash is stable);
-// the failure itself stays byte-compared, only the timing is normalized.
 var curlMsRe = regexp.MustCompile(`(Failed to connect to \S+ port \d+ after )\d+( ms)`)
 
-// scrub normalizes timestamps, npm log pointers, and nothing else (R6:
-// the sanctioned scrub, extended only for tool-runtime metadata that
-// differs by construction).
+// scrub normalizes timestamps, prompt nonces, and curl's connection timing
+// (R6: the sanctioned scrub, extended only for tool-runtime metadata that
+// differs by construction). Everything else compares byte-exact.
 func scrub(s string) string {
 	s = tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
-	s = npmLogRe.ReplaceAllString(s, "A complete log of this run can be found in: LOG")
+	s = scrubNonce(s)
 	return curlMsRe.ReplaceAllString(s, "${1}0${2}")
+}
+
+// nonceRe matches the trust-boundary nonce line; the same nonce fences
+// every untrusted region of a prompt dump.
+var nonceRe = regexp.MustCompile(`with NONCE replaced by this run's nonce: ([0-9a-f]{16})\.`)
+
+// scrubNonce replaces a run's prompt nonce with a placeholder. Dumps carry
+// no other random material; SHAs are 40 hex chars and never match the
+// 16-hex boundary pattern.
+func scrubNonce(s string) string {
+	m := nonceRe.FindStringSubmatch(s)
+	if len(m) != 2 {
+		return s
+	}
+	return strings.ReplaceAll(s, m[1], "NONCE")
+}
+
+// scrubRoots normalizes sandbox roots and homes to placeholders so golden
+// files stay machine-independent. Longer (home) paths sort first so nested
+// prefixes cannot shadow.
+func scrubRoots(s string, roots []string) string {
+	ordered := append([]string{}, roots...)
+	slices.SortFunc(ordered, func(a, b string) int { return len(b) - len(a) })
+	for _, r := range ordered {
+		if r == "" {
+			continue
+		}
+		s = strings.ReplaceAll(s, r, "ROOT")
+	}
+	return s
 }
 
 // Outputs captures one implementation run.
@@ -374,25 +380,16 @@ func keepEnv(kv string, extraEnv map[string]string) bool {
 	return true
 }
 
-// Run runs a single implementation in dir, capturing exit code, streams,
-// and the written tree. extraEnv overlays additional variables.
-func (h *Harness) Run(t *testing.T, useGo bool, dir, home string, extraEnv map[string]string, args ...string) Outputs {
+// Run runs the Go binary in dir, capturing exit code, streams, and the
+// written tree. extraEnv overlays additional variables.
+func (h *Harness) Run(t *testing.T, dir, home string, extraEnv map[string]string, args ...string) Outputs {
 	t.Helper()
-	if !useGo {
-		SkipBashOnWindows(t)
-	}
-	var cmd *exec.Cmd
 	//nolint:gosec // G204: the harness intentionally executes the CLI under test with fixture args.
-	if useGo {
-		bin := filepath.Join(h.BinDir, "verdict")
-		if runtime.GOOS == osWindows {
-			bin += ".exe"
-		}
-		cmd = exec.CommandContext(t.Context(), bin, args...)
-	} else {
-		script := filepath.Join(h.RepoRoot, "scripts", "review.sh")
-		cmd = exec.CommandContext(t.Context(), "bash", append([]string{script}, args...)...)
+	bin := filepath.Join(h.BinDir, "verdict")
+	if runtime.GOOS == osWindows {
+		bin += ".exe"
 	}
+	cmd := exec.CommandContext(t.Context(), bin, args...)
 	cmd.Dir = dir
 	cmd.Env = childEnv(home, extraEnv, h.StubBin)
 	var stdout, stderr strings.Builder
@@ -466,148 +463,4 @@ func isGitPath(p string) bool {
 func mergeMaps(a, b map[string]string) map[string]string {
 	maps.Copy(a, b)
 	return a
-}
-
-// RunBoth runs bash and Go on identical fixtures and compares everything.
-// setup writes the bundle into dir (called once per side with a fresh
-// sandbox and home, so fixtures must be deterministic). extraEnv overlays
-// variables on both sides. carveVerify Echo applies the documented
-// shell-echo carve-out to the `» verify: ` progress line when the command
-// carries a backslash.
-func (h *Harness) RunBoth(
-	t *testing.T, name string,
-	setup func(t *testing.T, dir, home string),
-	extraEnv map[string]string, carveVerifyEcho bool, args ...string,
-) {
-	t.Helper()
-	h.RunBothSplit(t, name, setup, extraEnv, carveVerifyEcho, args, args)
-}
-
-// RunBothSplit is RunBoth with per-side args. Position-less verbs (learn,
-// init, install) take no repo/pr positionals on the shell side, while the
-// dispatched binary always receives cmd+repo+pr+rest (empty positionals),
-// so those verbs pass bashArgs without and goArgs with the empty slots.
-func (h *Harness) RunBothSplit(
-	t *testing.T, name string,
-	setup func(t *testing.T, dir, home string),
-	extraEnv map[string]string, carveVerifyEcho bool, bashArgs, goArgs []string,
-) {
-	t.Helper()
-	t.Run(name, func(t *testing.T) {
-		t.Helper()
-		// Every leg owns fresh sandboxes and homes (separate temp dirs
-		// per side), so legs run in parallel: the shell side costs ~1 s
-		// per spawn while the Go side is sub-millisecond, and the serial
-		// battery is what trips the CI timeout on slow runners.
-		t.Parallel()
-		dirA := t.TempDir()
-		homeA := filepath.Join(t.TempDir(), "home")
-		dirB := t.TempDir()
-		homeB := filepath.Join(t.TempDir(), "home")
-		if err := os.MkdirAll(homeA, dirPerm); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(homeB, dirPerm); err != nil {
-			t.Fatal(err)
-		}
-		setup(t, dirA, homeA)
-		setup(t, dirB, homeB)
-		roots := [numRoots]string{dirA, homeA, dirB, homeB}
-		a := h.Run(t, false, dirA, homeA, extraEnv, bashArgs...)
-		b := h.Run(t, true, dirB, homeB, extraEnv, goArgs...)
-		compareOutputs(t, a, b, carveVerifyEcho, roots)
-	})
-}
-
-// compareOutputs compares exit codes, streams, and every written file of
-// the two sides. Timestamps scrub to a placeholder (the sanctioned scrub);
-// the two sandbox roots and homes scrub to placeholders too — they differ
-// by construction (separate temp dirs, like the eval suite's scrub_slug),
-// so only bytes beyond the roots can fail the comparison.
-func compareOutputs(t *testing.T, a, b Outputs, carveVerifyEcho bool, roots [numRoots]string) {
-	t.Helper()
-	compareStreams(t, a, b, carveVerifyEcho, roots)
-	compareFiles(t, a, b, roots)
-}
-
-// compareStreams compares exit codes and captured streams.
-func compareStreams(t *testing.T, a, b Outputs, carveVerifyEcho bool, roots [numRoots]string) {
-	t.Helper()
-	if a.Status != b.Status {
-		t.Errorf("exit: bash=%d go=%d\nbash stderr:\n%s\ngo stderr:\n%s",
-			a.Status, b.Status, scrubRoots(a.Stderr, roots), scrubRoots(b.Stderr, roots))
-	}
-	as, bs := scrub(scrubRoots(a.Stdout, roots)), scrub(scrubRoots(b.Stdout, roots))
-	if carveVerifyEcho {
-		as = carveVerifyLine(as)
-		bs = carveVerifyLine(bs)
-	}
-	if as != bs {
-		t.Errorf("stdout differs:\n--- bash ---\n%s\n--- go ---\n%s", a.Stdout, b.Stdout)
-	}
-	ae, be := scrub(scrubRoots(a.Stderr, roots)), scrub(scrubRoots(b.Stderr, roots))
-	ae, be = killNoticeRe.ReplaceAllString(ae, ""), killNoticeRe.ReplaceAllString(be, "")
-	if ae != be {
-		t.Errorf("stderr differs:\n--- bash ---\n%s\n--- go ---\n%s", a.Stderr, b.Stderr)
-	}
-}
-
-// compareFiles compares every written file byte for byte.
-func compareFiles(t *testing.T, a, b Outputs, roots [numRoots]string) {
-	t.Helper()
-	seen := map[string]bool{}
-	for k, va := range a.Files {
-		seen[k] = true
-		vb, ok := b.Files[k]
-		if !ok {
-			t.Errorf("file presence differs: %s bash=present go=absent", k)
-			continue
-		}
-		compareFile(t, k, va, vb, roots)
-	}
-	for k := range b.Files {
-		if !seen[k] {
-			t.Errorf("file presence differs: %s bash=absent go=present", k)
-		}
-	}
-}
-
-// compareFile compares one file present on the bash side.
-func compareFile(t *testing.T, k, va, vb string, roots [numRoots]string) {
-	t.Helper()
-	fa, fb := scrub(scrubRoots(va, roots)), scrub(scrubRoots(vb, roots))
-	if fa != fb {
-		t.Errorf("file differs: %s\n--- bash ---\n%s\n--- go ---\n%s", k, va, vb)
-	}
-}
-
-// scrubRoots normalizes the two sandbox roots and homes to placeholders.
-// The four roots are pairwise distinct temp dirs; replacement order puts
-// the longer (home) paths first so nested prefixes cannot shadow.
-func scrubRoots(s string, roots [numRoots]string) string {
-	ordered := append([]string{}, roots[:]...)
-	slices.SortFunc(ordered, func(a, b string) int { return len(b) - len(a) })
-	for _, r := range ordered {
-		if r == "" {
-			continue
-		}
-		s = strings.ReplaceAll(s, r, "ROOT")
-	}
-	return s
-}
-
-// carveVerifyLine drops the `» verify: ` progress line from a stream. The
-// shell prints the raw command through echo, whose backslash interpretation
-// differs across bash versions (macOS 3.2 literal vs GNU interpretation),
-// so the line is not part of the stable contract when the command carries
-// a backslash; the envelope, files, and exit still compare byte-exact.
-func carveVerifyLine(s string) string {
-	var out []string
-	for ln := range strings.SplitSeq(s, "\n") {
-		if strings.HasPrefix(ln, "» verify: ") && strings.Contains(ln, "\\") {
-			continue
-		}
-		out = append(out, ln)
-	}
-	return strings.Join(out, "\n")
 }

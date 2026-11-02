@@ -1,0 +1,14 @@
+exit: 1
+--- stdout ---
+ok   gh-cli — 
+FAIL gh-auth — run gh auth login
+ok   token-scopes — no scopes header — fine-grained token, scopes proven at post time
+ok   jq — jq-1.8.2
+ok   shasum — sig hashing available
+ok   ps — verify timeout enforced
+ok   git — check-tree/verify available
+WARN api-reachable — cannot reach api.github.com with this token
+ok   storage-writable — cwd writable — .review/ created on first fetch
+--- stderr ---
+
+--- files ---

@@ -1,0 +1,145 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4712,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4712/PR.json + full.diff to any agent; ask it to write .review/4712/review.json",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4712",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "files": 2,
+    "additions": 3,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [
+      "f101.txt"
+    ],
+    "diff_bytes": 77,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "artifacts": {
+      "PR.json": ".review/4712/PR.json",
+      "full.diff": ".review/4712/full.diff",
+      "toc.txt": ".review/4712/toc.txt",
+      "roles.txt": ".review/4712/roles.txt",
+      "reviews.json": ".review/4712/reviews.json",
+      "inline.json": ".review/4712/inline.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» gh pr view acme/app#4712
+» gh pr diff -> .review/4712/full.diff
+» file list paged past the CLI cap (2 files, provider ceiling 3000)
+» roles -> .review/4712/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+» reviews + inline comments
+done: .review/4712/PR.json .review/4712/full.diff .review/4712/toc.txt .review/4712/roles.txt (2 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4712/PR.json + .review/4712/full.diff (+ .review/4712/roles.txt) to any agent; ask it to write .review/4712/review.json
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4712 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4712 --repo acme/app
+CALL: api repos/acme/app/pulls/4712/files --paginate
+CALL: pr view 4712 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
+CALL: api repos/acme/app/pulls/4712/reviews --paginate
+CALL: api repos/acme/app/pulls/4712/comments --paginate
+--- file C/.review/4712/.difffiles ---
+f00.txt
+--- file C/.review/4712/PR.json ---
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "author": {
+    "login": "teammate"
+  },
+  "files": [
+    {
+      "path": "f00.txt",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "f101.txt",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "additions": 3,
+  "deletions": 1
+}
+--- file C/.review/4712/filesource.json ---
+{
+  "source": "paged",
+  "cli_cap": 100,
+  "provider_ceiling": 3000,
+  "count": 2,
+  "truncated": false
+}
+--- file C/.review/4712/full.diff ---
+diff --git a/f00.txt b/f00.txt
+--- a/f00.txt
++++ b/f00.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.review/4712/hunks.tsv ---
+f00.txt	OLD	1	1
+f00.txt	NEW	1	1
+--- file C/.review/4712/inline.json ---
+[]
+--- file C/.review/4712/reviews.json ---
+[]
+--- file C/.review/4712/roles.txt ---
+## docs
+- f00.txt
+- f101.txt
+--- file C/.review/4712/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4712/toc.txt ---
+# TOC for PR #4712 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/f00.txt b/f00.txt
+
+## stat
+f00.txt (+1/-1)
+
+## coverage manifest
+files in PR: 2 | files with diff hunks: 1
+omitted (no hunks — binary, renamed without changes, or mode-only):
+- f101.txt
+--- file C/SKILL.md ---
+# verdict skill (parity fixture)
+--- file C/canned/files-page-a.json ---
+[{"filename":"f00.txt","additions":1,"deletions":1},{"filename":"f101.txt","additions":2,"deletions":0}]
+--- file C/canned/full.diff ---
+diff --git a/f00.txt b/f00.txt
+--- a/f00.txt
++++ b/f00.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/canned/pr.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1},{"path":"f01.txt","additions":1,"deletions":1},{"path":"f02.txt","additions":1,"deletions":1},{"path":"f03.txt","additions":1,"deletions":1},{"path":"f04.txt","additions":1,"deletions":1},{"path":"f05.txt","additions":1,"deletions":1},{"path":"f06.txt","additions":1,"deletions":1},{"path":"f07.txt","additions":1,"deletions":1},{"path":"f08.txt","additions":1,"deletions":1},{"path":"f09.txt","additions":1,"deletions":1},{"path":"f10.txt","additions":1,"deletions":1},{"path":"f11.txt","additions":1,"deletions":1},{"path":"f12.txt","additions":1,"deletions":1},{"path":"f13.txt","additions":1,"deletions":1},{"path":"f14.txt","additions":1,"deletions":1},{"path":"f15.txt","additions":1,"deletions":1},{"path":"f16.txt","additions":1,"deletions":1},{"path":"f17.txt","additions":1,"deletions":1},{"path":"f18.txt","additions":1,"deletions":1},{"path":"f19.txt","additions":1,"deletions":1},{"path":"f20.txt","additions":1,"deletions":1},{"path":"f21.txt","additions":1,"deletions":1},{"path":"f22.txt","additions":1,"deletions":1},{"path":"f23.txt","additions":1,"deletions":1},{"path":"f24.txt","additions":1,"deletions":1},{"path":"f25.txt","additions":1,"deletions":1},{"path":"f26.txt","additions":1,"deletions":1},{"path":"f27.txt","additions":1,"deletions":1},{"path":"f28.txt","additions":1,"deletions":1},{"path":"f29.txt","additions":1,"deletions":1},{"path":"f30.txt","additions":1,"deletions":1},{"path":"f31.txt","additions":1,"deletions":1},{"path":"f32.txt","additions":1,"deletions":1},{"path":"f33.txt","additions":1,"deletions":1},{"path":"f34.txt","additions":1,"deletions":1},{"path":"f35.txt","additions":1,"deletions":1},{"path":"f36.txt","additions":1,"deletions":1},{"path":"f37.txt","additions":1,"deletions":1},{"path":"f38.txt","additions":1,"deletions":1},{"path":"f39.txt","additions":1,"deletions":1},{"path":"f40.txt","additions":1,"deletions":1},{"path":"f41.txt","additions":1,"deletions":1},{"path":"f42.txt","additions":1,"deletions":1},{"path":"f43.txt","additions":1,"deletions":1},{"path":"f44.txt","additions":1,"deletions":1},{"path":"f45.txt","additions":1,"deletions":1},{"path":"f46.txt","additions":1,"deletions":1},{"path":"f47.txt","additions":1,"deletions":1},{"path":"f48.txt","additions":1,"deletions":1},{"path":"f49.txt","additions":1,"deletions":1},{"path":"f50.txt","additions":1,"deletions":1},{"path":"f51.txt","additions":1,"deletions":1},{"path":"f52.txt","additions":1,"deletions":1},{"path":"f53.txt","additions":1,"deletions":1},{"path":"f54.txt","additions":1,"deletions":1},{"path":"f55.txt","additions":1,"deletions":1},{"path":"f56.txt","additions":1,"deletions":1},{"path":"f57.txt","additions":1,"deletions":1},{"path":"f58.txt","additions":1,"deletions":1},{"path":"f59.txt","additions":1,"deletions":1},{"path":"f60.txt","additions":1,"deletions":1},{"path":"f61.txt","additions":1,"deletions":1},{"path":"f62.txt","additions":1,"deletions":1},{"path":"f63.txt","additions":1,"deletions":1},{"path":"f64.txt","additions":1,"deletions":1},{"path":"f65.txt","additions":1,"deletions":1},{"path":"f66.txt","additions":1,"deletions":1},{"path":"f67.txt","additions":1,"deletions":1},{"path":"f68.txt","additions":1,"deletions":1},{"path":"f69.txt","additions":1,"deletions":1},{"path":"f70.txt","additions":1,"deletions":1},{"path":"f71.txt","additions":1,"deletions":1},{"path":"f72.txt","additions":1,"deletions":1},{"path":"f73.txt","additions":1,"deletions":1},{"path":"f74.txt","additions":1,"deletions":1},{"path":"f75.txt","additions":1,"deletions":1},{"path":"f76.txt","additions":1,"deletions":1},{"path":"f77.txt","additions":1,"deletions":1},{"path":"f78.txt","additions":1,"deletions":1},{"path":"f79.txt","additions":1,"deletions":1},{"path":"f80.txt","additions":1,"deletions":1},{"path":"f81.txt","additions":1,"deletions":1},{"path":"f82.txt","additions":1,"deletions":1},{"path":"f83.txt","additions":1,"deletions":1},{"path":"f84.txt","additions":1,"deletions":1},{"path":"f85.txt","additions":1,"deletions":1},{"path":"f86.txt","additions":1,"deletions":1},{"path":"f87.txt","additions":1,"deletions":1},{"path":"f88.txt","additions":1,"deletions":1},{"path":"f89.txt","additions":1,"deletions":1},{"path":"f90.txt","additions":1,"deletions":1},{"path":"f91.txt","additions":1,"deletions":1},{"path":"f92.txt","additions":1,"deletions":1},{"path":"f93.txt","additions":1,"deletions":1},{"path":"f94.txt","additions":1,"deletions":1},{"path":"f95.txt","additions":1,"deletions":1},{"path":"f96.txt","additions":1,"deletions":1},{"path":"f97.txt","additions":1,"deletions":1},{"path":"f98.txt","additions":1,"deletions":1},{"path":"f99.txt","additions":1,"deletions":1}],"additions":100,"deletions":100}
+--- file C/canned/stat.txt ---
+f00.txt (+1/-1)
+--- file C/prompts/diagrams.md ---
+# diagrams (parity fixture)
+--- file C/prompts/review.md ---
+# review (parity fixture)
+--- file C/prompts/system.md ---
+# system (parity fixture)

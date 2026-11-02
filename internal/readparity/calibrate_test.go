@@ -86,23 +86,23 @@ func TestCalibrateLiveParity(t *testing.T) {
 		calibrateLive(t, dir)
 	}
 	live := stub(map[string]string{"CAL_LIVE": headC})
-	bash, goArgs := splitRepo("calibrate", "5101")
-	runReadBoth(t, "calibrate/live-stale-human", stale, live, nil, bash, goArgs)
+	goArgs := splitRepo("calibrate", "5101")
+	goldenRead(t, "calibrate/live-stale-human", stale, live, nil, goArgs...)
 
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/live-stale-json", stale, live, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/live-stale-json", stale, live, nil, goArgs...)
 
 	liveCurrent := stub(map[string]string{"CAL_LIVE": headA})
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/live-current-json", stale, liveCurrent, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/live-current-json", stale, liveCurrent, nil, goArgs...)
 
 	downed := stub(map[string]string{"CAL_LIVE": headC, "CAL_COMPARE": "fail"})
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/live-compare-down", stale, downed, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/live-compare-down", stale, downed, nil, goArgs...)
 
 	garbage := stub(map[string]string{"CAL_LIVE": headC, "CAL_COMPARE": "garbage"})
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/live-compare-garbage", stale, garbage, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/live-compare-garbage", stale, garbage, nil, goArgs...)
 
 	noPost := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -111,8 +111,8 @@ func TestCalibrateLiveParity(t *testing.T) {
 			".review/5101/findings.json": mixedFindings(),
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/missing-post", noPost, nil, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/missing-post", noPost, nil, nil, goArgs...)
 
 	noID := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -122,13 +122,13 @@ func TestCalibrateLiveParity(t *testing.T) {
 				`"head":"` + headA + `","posted_at":"2026-10-31T00:00:00Z"}`,
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/no-review-id", noID, nil, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/no-review-id", noID, nil, nil, goArgs...)
 
 	// Dead threads read: the stub fails every gh call, so the join
 	// refuses threads-failed before touching PR state.
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/threads-failed", stale, nil, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/threads-failed", stale, nil, nil, goArgs...)
 
 	local := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -137,8 +137,8 @@ func TestCalibrateLiveParity(t *testing.T) {
 			".review/local-work/findings.json": mixedFindings(),
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "local-work", "--json")
-	runReadBoth(t, "calibrate/local-refused", local, nil, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "local-work", "--json")
+	goldenRead(t, "calibrate/local-refused", local, nil, nil, goArgs...)
 
 	gitlab := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -150,8 +150,8 @@ func TestCalibrateLiveParity(t *testing.T) {
 			".review/5101/post.json":     postDoc(headA, 99),
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/provider-refused", gitlab, nil, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/provider-refused", gitlab, nil, nil, goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -160,8 +160,8 @@ func TestCalibrateLiveParity(t *testing.T) {
 			".review/5101/findings.json": `[` + numericSigEntry() + `]`,
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "5101", "--json")
-	runReadBoth(t, "calibrate/corrupt-store", corrupt, nil, nil, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/corrupt-store", corrupt, nil, nil, goArgs...)
 }
 
 // probeFindings renders probe findings with kb cites for grading.
@@ -188,11 +188,11 @@ func TestCalibrateProbeParity(t *testing.T) {
 	}
 	grades := allowKeys("C/.review/5101/kb-grades.jsonl")
 
-	bash, goArgs := splitRepo("calibrate", "5101", "--probe")
-	runReadBoth(t, "calibrate/probe-human", probe, nil, grades, bash, goArgs)
+	goArgs := splitRepo("calibrate", "5101", "--probe")
+	goldenRead(t, "calibrate/probe-human", probe, nil, grades, goArgs...)
 
-	bash, goArgs = splitRepo("calibrate", "5101", "--probe", "--json")
-	runReadBoth(t, "calibrate/probe-json", probe, nil, grades, bash, goArgs)
+	goArgs = splitRepo("calibrate", "5101", "--probe", "--json")
+	goldenRead(t, "calibrate/probe-json", probe, nil, grades, goArgs...)
 
 	judged := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -206,9 +206,9 @@ func TestCalibrateProbeParity(t *testing.T) {
 				`"agreement":null,"grader":"calibrate-probe"}` + "\n",
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "5101",
+	goArgs = splitRepo("calibrate", "5101",
 		"--probe", "--judge", sigImp+":false:false", "--json")
-	runReadBoth(t, "calibrate/probe-judge", judged, nil, grades, bash, goArgs)
+	goldenRead(t, "calibrate/probe-judge", judged, nil, grades, goArgs...)
 
 	bad := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -217,11 +217,11 @@ func TestCalibrateProbeParity(t *testing.T) {
 			".review/5101/findings.json": probeFindings(),
 		})
 	}
-	bash, goArgs = splitRepo("calibrate", "5101",
+	goArgs = splitRepo("calibrate", "5101",
 		"--probe", "--judge", "bogus", "--json")
-	runReadBoth(t, "calibrate/probe-bad-judge", bad, nil, nil, bash, goArgs)
+	goldenRead(t, "calibrate/probe-bad-judge", bad, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("calibrate", "5101",
+	goArgs = splitRepo("calibrate", "5101",
 		"--judge", sigImp+":false:false")
-	runReadBoth(t, "calibrate/judge-needs-probe", bad, nil, nil, bash, goArgs)
+	goldenRead(t, "calibrate/judge-needs-probe", bad, nil, nil, goArgs...)
 }

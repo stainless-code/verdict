@@ -1,0 +1,33 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4710,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "auth-missing",
+    "message": "azure needs AZURE_DEVOPS_ORG=https://dev.azure.com/{org} (and az login or AZURE_DEVOPS_EXT_PAT)\ntry: export the credential named above, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---
+--- file C/SKILL.md ---
+# verdict skill (parity fixture)
+--- file C/canned/az-changes.json ---
+[]
+--- file C/canned/az-meta.json ---
+{"pullRequestId":13,"title":"PR thirteen","description":"body","targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat","lastMergeTargetCommit":{"commitId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"lastMergeSourceCommit":{"commitId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/13","status":"active","isDraft":false,"repository":{"remoteUrl":"https://example.invalid/r.git"}}
+--- file C/canned/az-threads.json ---
+[{"id":1},{"id":2,"threadContext":{}}]
+--- file C/prompts/diagrams.md ---
+# diagrams (parity fixture)
+--- file C/prompts/review.md ---
+# review (parity fixture)
+--- file C/prompts/system.md ---
+# system (parity fixture)

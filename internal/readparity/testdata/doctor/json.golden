@@ -1,0 +1,84 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "doctor",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "fix FAIL lines above (WARN lines are advisory), then re-run",
+  "warnings": [
+    "api-reachable: cannot reach api.github.com with this token"
+  ],
+  "data": {
+    "healthy": false,
+    "checks": [
+      {
+        "name": "gh-cli",
+        "severity": "fail",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "gh-auth",
+        "severity": "fail",
+        "ok": false,
+        "detail": "run gh auth login"
+      },
+      {
+        "name": "token-scopes",
+        "severity": "warn",
+        "ok": true,
+        "detail": "no scopes header — fine-grained token, scopes proven at post time"
+      },
+      {
+        "name": "jq",
+        "severity": "fail",
+        "ok": true,
+        "detail": "jq-1.8.2"
+      },
+      {
+        "name": "shasum",
+        "severity": "fail",
+        "ok": true,
+        "detail": "sig hashing available"
+      },
+      {
+        "name": "ps",
+        "severity": "warn",
+        "ok": true,
+        "detail": "verify timeout enforced"
+      },
+      {
+        "name": "git",
+        "severity": "warn",
+        "ok": true,
+        "detail": "check-tree/verify available"
+      },
+      {
+        "name": "api-reachable",
+        "severity": "warn",
+        "ok": false,
+        "detail": "cannot reach api.github.com with this token"
+      },
+      {
+        "name": "storage-writable",
+        "severity": "fail",
+        "ok": true,
+        "detail": "cwd writable — .review/ created on first fetch"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+ok   gh-cli — 
+FAIL gh-auth — run gh auth login
+ok   token-scopes — no scopes header — fine-grained token, scopes proven at post time
+ok   jq — jq-1.8.2
+ok   shasum — sig hashing available
+ok   ps — verify timeout enforced
+ok   git — check-tree/verify available
+WARN api-reachable — cannot reach api.github.com with this token
+ok   storage-writable — cwd writable — .review/ created on first fetch
+--- files ---

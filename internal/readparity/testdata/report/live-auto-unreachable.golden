@@ -1,0 +1,25 @@
+exit: 0
+--- stdout ---
+report: .review/5102 (1 shown) open=1 head=aaaaaaa
+1. [open] notes.txt:2 (a3333333)
+next: address open threads
+--- stderr ---
+warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)
+check: no open findings at-or-above critical — gate passes
+--- files ---
+--- file C/.review/5102/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
+--- file C/.review/5102/findings.json ---
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+--- file C/.review/5102/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/5102/post.json ---
+{"schema_version":"1","review":{"id":7},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"0000-00-00T00:00:00Z","confidence":null,"security_summary":null}

@@ -1,0 +1,59 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+error: refusing record: chunk manifest .review/local-ch/chunks/manifest.json is unreadable or schema '2' unknown (want schema_version 1) — re-fetch with 'verdict fetch-local acme/app ch --chunk -- <paths>' to restore the pinned snapshots, then re-run
+try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
+re-enter: verdict record acme/app local-ch
+--- files ---
+--- file C/.review/local-ch/chunks/a.diff ---
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old1
++new1
+--- file C/.review/local-ch/chunks/b.diff ---
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old2
++new2
+--- file C/.review/local-ch/chunks/manifest.json ---
+{"schema_version":"2","chunks":[]}
+--- file C/.review/local-ch/full.diff ---
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old1
++new1
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old2
++new2
+--- file C/.review/local-ch/hunks.tsv ---
+c1.txt	OLD	1	2
+c1.txt	NEW	1	2
+c1.txt	OLD	1	2
+c1.txt	NEW	1	2
+--- file C/.review/local-ch/review.json ---
+{"schema_version":"1","chunks":["a","b"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"c1.txt","line":2,"side":"RIGHT","body":"Chunk comment.","rigor":"walked"}]}
+--- file C/.review/local-ch/source.json ---
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+--- file C/.review/local-ch/store.json ---
+{
+  "schema_version": "1"
+}

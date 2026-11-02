@@ -1,0 +1,29 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: --base-sha/--since is GitHub-only for now (providers have no incremental re-review yet)
+try: re-run with one of the valid values named above
+--- files ---
+--- file C/SKILL.md ---
+# verdict skill (parity fixture)
+--- file C/canned/full.diff ---
+diff --git a/a.txt b/a.txt
+index 1111111..2222222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/canned/gl-changes.json ---
+{"changes":[{"old_path":"a.txt","new_path":"a.txt","new_file":false,"deleted_file":false,"renamed_file":false}]}
+--- file C/canned/gl-meta.json ---
+{"iid":5,"title":"MR five","description":"body","target_branch":"main","source_branch":"feat","diff_refs":{"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}
+--- file C/canned/gl-notes.json ---
+[{"type":"DiffNote"},{"type":"Note"}]
+--- file C/prompts/diagrams.md ---
+# diagrams (parity fixture)
+--- file C/prompts/review.md ---
+# review (parity fixture)
+--- file C/prompts/system.md ---
+# system (parity fixture)

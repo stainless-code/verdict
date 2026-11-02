@@ -31,7 +31,7 @@ func TestParityRefusals(t *testing.T) {
 	}
 	refuse := func(name, review string, extra map[string]string) {
 		t.Helper()
-		runBoth(t, "refuse/"+name, "local-rf", func(t *testing.T, dir string) {
+		goldenBoth(t, "refuse/"+name, "local-rf", func(t *testing.T, dir string) {
 			t.Helper()
 			refuseFixture(t, dir, review, extra)
 		}, "--json")
@@ -65,22 +65,22 @@ func TestParityRefusals(t *testing.T) {
 // TestParitySourceShapes checks corrupt/dirty source.json and corrupt PR.json.
 func TestParitySourceShapes(t *testing.T) {
 	// Corrupt source.json degrades to the dirty-head path on both sides.
-	runBoth(t, "source/corrupt", "local-rf", func(t *testing.T, dir string) {
+	goldenBoth(t, "source/corrupt", "local-rf", func(t *testing.T, dir string) {
 		t.Helper()
 		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{oops`})
 	}, "--json")
 	// A missing head_sha reads dirty too.
-	runBoth(t, "source/dirty-head", "local-rf", func(t *testing.T, dir string) {
+	goldenBoth(t, "source/dirty-head", "local-rf", func(t *testing.T, dir string) {
 		t.Helper()
 		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"head_ref":"work"}`})
 	}, "--json")
 	// A string "true" dirty flag is inert for record (both ignore it).
-	runBoth(t, "source/dirty-string", "local-rf", func(t *testing.T, dir string) {
+	goldenBoth(t, "source/dirty-string", "local-rf", func(t *testing.T, dir string) {
 		t.Helper()
 		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","dirty":"true"}`})
 	}, "--json")
 	// Corrupt PR.json on a provider bundle refuses not-local on both sides.
-	runBoth(t, "source/corrupt-pr", "4251", func(t *testing.T, dir string) {
+	goldenBoth(t, "source/corrupt-pr", "4251", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
 			".review/4251/PR.json":   `{oops`,
@@ -88,7 +88,7 @@ func TestParitySourceShapes(t *testing.T) {
 		})
 	})
 	// A garbage provider string records (only github is special-cased).
-	runBoth(t, "source/garbage-provider", "47", func(t *testing.T, dir string) {
+	goldenBoth(t, "source/garbage-provider", "47", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
 			".review/47/PR.json":   `{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,

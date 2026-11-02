@@ -59,7 +59,7 @@ func TestParityKBCitations(t *testing.T) {
 		{"duplicate", `["rec-rule","rec-rule"]`, []string{active}},
 	}
 	for _, tc := range cases {
-		runBoth(t, "kb/"+tc.name, sequencedSlug, func(t *testing.T, dir string) {
+		goldenBoth(t, "kb/"+tc.name, sequencedSlug, func(t *testing.T, dir string) {
 			t.Helper()
 			kbBundle(t, dir, kbReview(tc.cite), tc.kb)
 		})
@@ -80,14 +80,14 @@ func sequenced(t *testing.T, name string, setup, mutate func(t *testing.T, dir s
 		setup(t, dirA)
 		setup(t, dirB)
 		full := append([]string{"record", "acme/app", sequencedSlug}, args...)
-		a := runOne(t, false, dirA, t.TempDir(), full...)
-		b := runOne(t, true, dirB, t.TempDir(), full...)
+		a := runOne(t, dirA, t.TempDir(), full...)
+		b := runOne(t, dirB, t.TempDir(), full...)
 		if a.status != 0 || b.status != 0 {
-			t.Fatalf("phase 1 failed: bash=%d go=%d\n%s\n%s", a.status, b.status, a.stderr, b.stderr)
+			t.Fatalf("phase 1 failed: go=%d go=%d\n%s\n%s", a.status, b.status, a.stderr, b.stderr)
 		}
 		mutate(t, dirA)
 		mutate(t, dirB)
-		compareRuns(t, dirA, dirB, sequencedSlug, args)
+		compareRuns(t, name+"/rereview", dirA, dirB, sequencedSlug, args)
 	})
 }
 
@@ -264,32 +264,32 @@ func TestParityOverrides(t *testing.T) {
 		".review/local-ov/full.diff":   genDiff(2),
 		".review/local-ov/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
 	}
-	runBoth(t, "overrides/marker-fragment", "local-ov", func(t *testing.T, dir string) {
+	goldenBoth(t, "overrides/marker-fragment", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{".review/overrides/preamble.md": "> ✅ not allowed here\n"})
 	})
-	runBoth(t, "overrides/unknown-field", "local-ov", func(t *testing.T, dir string) {
+	goldenBoth(t, "overrides/unknown-field", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{".review/overrides/footer-order.md": "bogus\n"})
 	})
-	runBoth(t, "overrides/bad-threshold", "local-ov", func(t *testing.T, dir string) {
+	goldenBoth(t, "overrides/bad-threshold", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{".review/overrides/walkthrough-threshold.md": "frobnicate: 3\n"})
 	})
-	runBoth(t, "overrides/multiline-attribution", "local-ov", func(t *testing.T, dir string) {
+	goldenBoth(t, "overrides/multiline-attribution", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{".review/overrides/attribution.md": "line one\nline two\n"})
 	})
-	runBoth(t, "overrides/bad-placeholder", "local-ov", func(t *testing.T, dir string) {
+	goldenBoth(t, "overrides/bad-placeholder", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{".review/overrides/preamble.md": "See {frobnicate} for details.\n"})
 	})
-	runBoth(t, "overrides/valid", "local-ov", func(t *testing.T, dir string) {
+	goldenBoth(t, "overrides/valid", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{

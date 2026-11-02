@@ -1,0 +1,67 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "record",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [
+    "no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+  ],
+  "data": null,
+  "error": {
+    "code": "bad-review-input",
+    "message": "review.json carries a non-string path, body, or suggestion in a comments[] entry (want strings)\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"
+  }
+}
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+re-enter: verdict record acme/app local-rf --json
+--- files ---
+--- file C/.review/local-rf/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,7 +1,7 @@
+ ctx 1
+ ctx 2
+ ctx 3
+ ctx 4
+ ctx 5
+ ctx 6
+ ctx 7
+@@ -11,7 +11,7 @@
+ ctx 11
+ ctx 12
+ ctx 13
+ ctx 14
+ ctx 15
+ ctx 16
+ ctx 17
+diff --git a/other.txt b/other.txt
+index 3333333..4444444 100644
+--- a/other.txt
++++ b/other.txt
+@@ -1,3 +1,3 @@
+ top
+-old
++new
+ bottom
+--- file C/.review/local-rf/hunks.tsv ---
+notes.txt	OLD	1	7
+notes.txt	NEW	1	7
+notes.txt	OLD	11	17
+notes.txt	NEW	11	17
+other.txt	OLD	1	3
+other.txt	NEW	1	3
+--- file C/.review/local-rf/review.json ---
+{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":{"a":1},"line":2,"side":"RIGHT","body":"x body with enough substance.","suggestion":null}]}
+--- file C/.review/local-rf/source.json ---
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+--- file C/.review/local-rf/store.json ---
+{
+  "schema_version": "1"
+}

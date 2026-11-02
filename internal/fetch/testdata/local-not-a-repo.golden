@@ -1,0 +1,27 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch-local",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "not-a-repo",
+    "message": "fetch-local runs inside a git worktree\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---
+--- file C/SKILL.md ---
+# verdict skill (parity fixture)
+--- file C/prompts/diagrams.md ---
+# diagrams (parity fixture)
+--- file C/prompts/review.md ---
+# review (parity fixture)
+--- file C/prompts/system.md ---
+# system (parity fixture)

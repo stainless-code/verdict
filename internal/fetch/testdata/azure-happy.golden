@@ -1,0 +1,134 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4716,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4716/PR.json + full.diff to any agent; ask it to write .review/4716/review.json",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4716",
+    "head_sha": "e516722ce9ce0870538023ae1e062b7f1a11e504",
+    "base_sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 103,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "artifacts": {
+      "PR.json": ".review/4716/PR.json",
+      "full.diff": ".review/4716/full.diff",
+      "toc.txt": ".review/4716/toc.txt",
+      "roles.txt": ".review/4716/roles.txt",
+      "reviews.json": ".review/4716/reviews.json",
+      "inline.json": ".review/4716/inline.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» roles -> .review/4716/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+done: .review/4716/PR.json .review/4716/full.diff .review/4716/toc.txt .review/4716/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4716/PR.json + .review/4716/full.diff (+ .review/4716/roles.txt) to any agent; ask it to write .review/4716/review.json
+--- files ---
+--- file C/.az-calls.log ---
+CALL: repos pr show --id 4716 --org https://example.invalid --project acme --repository app -o json
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/threads?api-version=7.1 --query value -o json
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations?api-version=7.1 --query max_by(value, &id).id -o tsv
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations/3/changes?api-version=7.1 --query changeEntries -o json
+--- file C/.review/4716/.diff.err ---
+
+--- file C/.review/4716/.difffiles ---
+a.txt
+--- file C/.review/4716/.meta.err ---
+
+--- file C/.review/4716/PR.json ---
+{
+  "schema_version": "1",
+  "provider": "azure",
+  "number": 16,
+  "title": "PR sixteen",
+  "body": "body",
+  "base_ref": "main",
+  "head_ref": "feat",
+  "base_sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+  "head_sha": "e516722ce9ce0870538023ae1e062b7f1a11e504",
+  "author": "mate",
+  "url": "https://example.invalid/16",
+  "state": "open",
+  "draft": false,
+  "files": [
+    {
+      "path": "a.txt",
+      "status": "edit",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 1,
+  "deletions": 1
+}
+--- file C/.review/4716/full.diff ---
+diff --git a/a.txt b/a.txt
+index 5626abf..f719efd 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++two
+--- file C/.review/4716/hunks.tsv ---
+a.txt	OLD	1	1
+a.txt	NEW	1	1
+--- file C/.review/4716/inline.json ---
+[]
+--- file C/.review/4716/reviews.json ---
+[
+  {
+    "id": 1
+  }
+]
+--- file C/.review/4716/roles.txt ---
+## docs
+- a.txt
+--- file C/.review/4716/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4716/toc.txt ---
+# TOC for azure #4716 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+
+## stat
+a.txt (+1/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)
+--- file C/SKILL.md ---
+# verdict skill (parity fixture)
+--- file C/canned/az-changes.json ---
+[{"item":{"path":"/a.txt"},"changeType":"edit"}]
+--- file C/canned/az-meta.json ---
+{"pullRequestId":16,"title":"PR sixteen","description":"body","targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat","lastMergeTargetCommit":{"commitId":"c4d827b6a20aa8f3200cb15d134772e8471130da"},"lastMergeSourceCommit":{"commitId":"e516722ce9ce0870538023ae1e062b7f1a11e504"},"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/16","status":"active","isDraft":false,"repository":{"remoteUrl":"ROOT/remote"}}
+--- file C/canned/az-threads.json ---
+[{"id":1}]
+--- file C/prompts/diagrams.md ---
+# diagrams (parity fixture)
+--- file C/prompts/review.md ---
+# review (parity fixture)
+--- file C/prompts/system.md ---
+# system (parity fixture)
+--- file C/remote/a.txt ---
+two

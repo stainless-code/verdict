@@ -36,11 +36,11 @@ func TestNextParity(t *testing.T) {
 		})
 	}
 
-	bash, goArgs := splitRepo("next", "5101")
-	runReadBoth(t, "next/human", mixed, nil, nil, bash, goArgs)
+	goArgs := splitRepo("next", "5101")
+	goldenRead(t, "next/human", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("next", "5101", "--json")
-	runReadBoth(t, "next/json", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101", "--json")
+	goldenRead(t, "next/json", mixed, nil, nil, goArgs...)
 
 	empty := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -49,14 +49,14 @@ func TestNextParity(t *testing.T) {
 			".review/5101/findings.json": `[]`,
 		})
 	}
-	bash, goArgs = splitRepo("next", "5101", "--json")
-	runReadBoth(t, "next/empty-json", empty, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101", "--json")
+	goldenRead(t, "next/empty-json", empty, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("next", "5101")
-	runReadBoth(t, "next/empty-human", empty, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101")
+	goldenRead(t, "next/empty-human", empty, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("next", "5101", "--status", "addressed")
-	runReadBoth(t, "next/status-addressed", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101", "--status", "addressed")
+	goldenRead(t, "next/status-addressed", mixed, nil, nil, goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -65,20 +65,20 @@ func TestNextParity(t *testing.T) {
 			".review/5101/findings.json": `[42]`,
 		})
 	}
-	bash, goArgs = splitRepo("next", "5101", "--json")
-	runReadBoth(t, "next/corrupt-json", corrupt, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101", "--json")
+	goldenRead(t, "next/corrupt-json", corrupt, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("next", "5101")
-	runReadBoth(t, "next/corrupt-human", corrupt, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101")
+	goldenRead(t, "next/corrupt-human", corrupt, nil, nil, goArgs...)
 
 	// An invalid status never reaches the store: bash's sub-report
 	// validates --status and fails closed, so next reads the failed
 	// replay as unreadable (exit 1), never as an empty ranking.
-	bash, goArgs = splitRepo("next", "5101", "--status", "bogus")
-	runReadBoth(t, "next/bad-status-human", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101", "--status", "bogus")
+	goldenRead(t, "next/bad-status-human", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("next", "5101", "--status", "bogus", "--json")
-	runReadBoth(t, "next/bad-status-json", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepo("next", "5101", "--status", "bogus", "--json")
+	goldenRead(t, "next/bad-status-json", mixed, nil, nil, goArgs...)
 }
 
 // TestShowParity proves the show verb matches bash: the full record, the
@@ -92,20 +92,20 @@ func TestShowParity(t *testing.T) {
 		showBundle(t, dir, "5101")
 	}
 
-	bash, goArgs := splitRepo("show", "5101", "--sig", sigShowA[:8])
-	runReadBoth(t, "show/human", show, nil, nil, bash, goArgs)
+	goArgs := splitRepo("show", "5101", "--sig", sigShowA[:8])
+	goldenRead(t, "show/human", show, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("show", "5101", "--sig", sigShowA[:8], "--json")
-	runReadBoth(t, "show/json", show, nil, nil, bash, goArgs)
+	goArgs = splitRepo("show", "5101", "--sig", sigShowA[:8], "--json")
+	goldenRead(t, "show/json", show, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("show", "5101", "--sig", "deadbeef", "--json")
-	runReadBoth(t, "show/unknown-sig", show, nil, nil, bash, goArgs)
+	goArgs = splitRepo("show", "5101", "--sig", "deadbeef", "--json")
+	goldenRead(t, "show/unknown-sig", show, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("show", "5101", "--sig", "a1111111", "--json")
-	runReadBoth(t, "show/ambiguous-sig", show, nil, nil, bash, goArgs)
+	goArgs = splitRepo("show", "5101", "--sig", "a1111111", "--json")
+	goldenRead(t, "show/ambiguous-sig", show, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepo("show", "5101", "--json")
-	runReadBoth(t, "show/missing-sig", show, nil, nil, bash, goArgs)
+	goArgs = splitRepo("show", "5101", "--json")
+	goldenRead(t, "show/missing-sig", show, nil, nil, goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -114,6 +114,6 @@ func TestShowParity(t *testing.T) {
 			".review/5101/findings.json": `{"not":"a list"}`,
 		})
 	}
-	bash, goArgs = splitRepo("show", "5101", "--sig", "a1111111", "--json")
-	runReadBoth(t, "show/corrupt-store", corrupt, nil, nil, bash, goArgs)
+	goArgs = splitRepo("show", "5101", "--sig", "a1111111", "--json")
+	goldenRead(t, "show/corrupt-store", corrupt, nil, nil, goArgs...)
 }

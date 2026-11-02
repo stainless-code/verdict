@@ -69,37 +69,37 @@ func TestTrendParity(t *testing.T) {
 	empty := func(t *testing.T, _, _ string) {
 		t.Helper()
 	}
-	bash, goArgs := splitRepoOnly("--json")
-	runReadBoth(t, "trend/empty-json", empty, nil, nil, bash, goArgs)
+	goArgs := splitRepoOnly("--json")
+	goldenRead(t, "trend/empty-json", empty, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepoOnly()
-	runReadBoth(t, "trend/empty-human", empty, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly()
+	goldenRead(t, "trend/empty-human", empty, nil, nil, goArgs...)
 
 	mixed := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		trendMixed(t, dir)
 	}
-	bash, goArgs = splitRepoOnly("--json")
-	runReadBoth(t, "trend/mixed-json", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly("--json")
+	goldenRead(t, "trend/mixed-json", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepoOnly()
-	runReadBoth(t, "trend/mixed-human", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly()
+	goldenRead(t, "trend/mixed-human", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepoOnly("--overlap", "--json")
-	runReadBoth(t, "trend/overlap-json", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly("--overlap", "--json")
+	goldenRead(t, "trend/overlap-json", mixed, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepoOnly("--overlap")
-	runReadBoth(t, "trend/overlap-human", mixed, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly("--overlap")
+	goldenRead(t, "trend/overlap-human", mixed, nil, nil, goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		trendCorrupt(t, dir)
 	}
-	bash, goArgs = splitRepoOnly("--json")
-	runReadBoth(t, "trend/corrupt-skip-json", corrupt, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly("--json")
+	goldenRead(t, "trend/corrupt-skip-json", corrupt, nil, nil, goArgs...)
 
-	bash, goArgs = splitRepoOnly("--overlap")
-	runReadBoth(t, "trend/corrupt-skip-overlap", corrupt, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly("--overlap")
+	goldenRead(t, "trend/corrupt-skip-overlap", corrupt, nil, nil, goArgs...)
 
 	brokenJoins := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -108,6 +108,6 @@ func TestTrendParity(t *testing.T) {
 			".review/kb-joins.jsonl": `{broken`,
 		})
 	}
-	bash, goArgs = splitRepoOnly("--overlap", "--json")
-	runReadBoth(t, "trend/joins-unreadable", brokenJoins, nil, nil, bash, goArgs)
+	goArgs = splitRepoOnly("--overlap", "--json")
+	goldenRead(t, "trend/joins-unreadable", brokenJoins, nil, nil, goArgs...)
 }

@@ -1,0 +1,58 @@
+exit: 1
+--- stdout ---
+» anchors: 0 inline, 0 moved to body
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+error: override .review/overrides/walkthrough-threshold.md violates locked invariant 'degenerate-guard' (duplicate 'files' — list each key once)
+try: re-run with one of the valid values named above
+re-enter: verdict record acme/app local-ov
+--- files ---
+--- file C/.review/local-ov/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,7 +1,7 @@
+ ctx 1
+ ctx 2
+ ctx 3
+ ctx 4
+ ctx 5
+ ctx 6
+ ctx 7
+@@ -11,7 +11,7 @@
+ ctx 11
+ ctx 12
+ ctx 13
+ ctx 14
+ ctx 15
+ ctx 16
+ ctx 17
+diff --git a/other.txt b/other.txt
+index 3333333..4444444 100644
+--- a/other.txt
++++ b/other.txt
+@@ -1,3 +1,3 @@
+ top
+-old
++new
+ bottom
+--- file C/.review/local-ov/hunks.tsv ---
+notes.txt	OLD	1	7
+notes.txt	NEW	1	7
+notes.txt	OLD	11	17
+notes.txt	NEW	11	17
+other.txt	OLD	1	3
+other.txt	NEW	1	3
+--- file C/.review/local-ov/review.json ---
+{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+--- file C/.review/local-ov/source.json ---
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+--- file C/.review/local-ov/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/overrides/walkthrough-threshold.md ---
+files: 3
+files: 4

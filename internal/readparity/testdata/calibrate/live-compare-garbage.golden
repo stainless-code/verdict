@@ -1,0 +1,125 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "calibrate",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "address open threads",
+  "warnings": [
+    "compare unavailable (rewritten history?) — resolved reads as resolved-unfixed",
+    "compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed"
+  ],
+  "data": {
+    "review_id": 424242,
+    "head": {
+      "reviewed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "live": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "pr": {
+      "state": "OPEN",
+      "merged_at": null
+    },
+    "outcomes": [
+      {
+        "sig": "c111111111111111111111111111111111111111",
+        "status": "open",
+        "severity": "critical",
+        "locator": "notes.txt:2",
+        "outcome": "resolved-unfixed",
+        "detail": "thread resolved but cited file unchanged since review head",
+        "kb": [
+          "r-a1"
+        ]
+      },
+      {
+        "sig": "b222222222222222222222222222222222222222",
+        "status": "open",
+        "severity": "important",
+        "locator": "notes.txt:2",
+        "outcome": "open",
+        "detail": "thread still open"
+      },
+      {
+        "sig": "d444444444444444444444444444444444444444",
+        "status": "addressed",
+        "severity": "important",
+        "locator": "notes.txt:2",
+        "outcome": "unknown",
+        "detail": "comment not found live",
+        "kb": [
+          "r-a2"
+        ]
+      },
+      {
+        "sig": "f666666666666666666666666666666666666666",
+        "status": "open",
+        "severity": "informational",
+        "locator": "?",
+        "outcome": "unknown",
+        "detail": "body section — not a thread comment"
+      }
+    ],
+    "precision": {
+      "fixed": 0,
+      "resolved_unfixed": 1,
+      "open": 1,
+      "unknown": 2,
+      "judged": 2,
+      "by_tier": {
+        "critical": {
+          "fixed": 0,
+          "resolved_unfixed": 1,
+          "open": 0,
+          "unknown": 0
+        },
+        "important": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 1,
+          "unknown": 1
+        },
+        "informational": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 0,
+          "unknown": 1
+        }
+      }
+    },
+    "provenance": {
+      "tool_version": "0.0.1-test",
+      "prompts_hash": "abc123def456",
+      "model": "m"
+    }
+  },
+  "error": null
+}
+--- stderr ---
+warn: compare unavailable (rewritten history?) — resolved reads as resolved-unfixed
+warn: compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed
+calibrate: acme/app#5101 — review 424242 @ aaaaaaa (stale — aaaaaaa → ccccccc), PR OPEN
+c1111111 [resolved-unfixed] notes.txt:2 — thread resolved but cited file unchanged since review head kb:c111111111111111111111111111111111111111,open,critical,notes.txt:2,resolved-unfixed,thread resolved but cited file unchanged since review head,["r-a1"]
+b2222222 [open] notes.txt:2 — thread still open kb:b222222222222222222222222222222222222222,open,important,notes.txt:2,open,thread still open
+d4444444 [unknown] notes.txt:2 — comment not found live kb:d444444444444444444444444444444444444444,addressed,important,notes.txt:2,unknown,comment not found live,["r-a2"]
+f6666666 [unknown] ? — body section — not a thread comment kb:f666666666666666666666666666666666666666,open,informational,?,unknown,body section — not a thread comment
+precision: fixed=0 resolved-unfixed=1 open=1 unknown=2 (judged 2)
+provenance: tool v0.0.1-test prompts abc123def456 model m
+--- files ---
+--- file C/.review/5101/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
+--- file C/.review/5101/findings.json ---
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Fixed body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"kb":["r-a1"]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Open body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"b222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"kb":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Unseen body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"d444444444444444444444444444444444444444","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[],"kb":["r-a2"]},{"kind":"section","path":null,"side":null,"line":null,"anchored":false,"body":"Section body here with enough substance.","suggestion":null,"inBounds":false,"rigor":"pointed","severity":"informational","sig":"f666666666666666666666666666666666666666","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+--- file C/.review/5101/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/5101/post.json ---
+{"schema_version":"1","review":{"id":424242},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"0000-00-00T00:00:00Z","confidence":null,"security_summary":null,"tool_version":"0.0.1-test","prompts_hash":"abc123def456","model":"m"}

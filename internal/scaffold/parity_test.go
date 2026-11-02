@@ -1,8 +1,9 @@
-// Package scaffold_test holds the shell-parity proof for the Go init verb:
-// the shared harness runs BOTH scripts/review.sh init and the Go binary on
-// identical fixtures and compares exit codes, stdout/stderr (timestamps
-// scrubbed only), and every written file byte for byte, including the
-// preset matrix, the overwrite guard, and the check-tree validation.
+// Package scaffold_test holds the golden contract for the Go init verb:
+// the shared harness runs the Go binary on hermetic fixtures and pins
+// exit codes, stdout/stderr, and every written file against checked-in
+// goldens (go-port 08: the bash comparison retired with the shell),
+// including the preset matrix, the overwrite guard, and the check-tree
+// validation.
 package scaffold_test
 
 import (
@@ -35,7 +36,7 @@ func TestMain(m *testing.M) {
 func initBoth(t *testing.T, name string, setup func(t *testing.T, dir, home string), args ...string) {
 	t.Helper()
 	bashArgs := append([]string{args[0]}, args[3:]...)
-	harness.RunBothSplit(t, name, setup, nil, false, bashArgs, args)
+	parity.Golden(t, harness, name, setup, nil, bashArgs...)
 }
 
 // mkRepo initializes a clean git repo sandbox.

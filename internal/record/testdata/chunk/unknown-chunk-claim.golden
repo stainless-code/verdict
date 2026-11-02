@@ -1,0 +1,77 @@
+exit: 0
+--- stdout ---
+» anchors: 0 inline, 0 moved to body
+» findings: 0 sigs -> .review/local-ch/findings.json
+recorded: .review/local-ch/findings.json (0 open) + .review/local-ch/record.json — report/triage read it; post stays refused (no PR target)
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: ignoring unknown chunk 'zzz' in the chunks attestation (not in .review/local-ch/chunks/manifest.json)
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+--- files ---
+--- file C/.review/local-ch/chunks/a.diff ---
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old1
++new1
+--- file C/.review/local-ch/chunks/b.diff ---
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old2
++new2
+--- file C/.review/local-ch/chunks/manifest.json ---
+{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".review/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".review/local-ch/chunks/b.diff","files":["c1.txt"]}]}
+--- file C/.review/local-ch/findings.json ---
+[]
+--- file C/.review/local-ch/full.diff ---
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old1
++new1
+diff --git a/c1.txt b/c1.txt
+index 1111111..2222222 100644
+--- a/c1.txt
++++ b/c1.txt
+@@ -1,2 +1,2 @@
+ a
+-old2
++new2
+--- file C/.review/local-ch/hunks.tsv ---
+c1.txt	OLD	1	2
+c1.txt	NEW	1	2
+c1.txt	OLD	1	2
+c1.txt	NEW	1	2
+--- file C/.review/local-ch/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "c882e2ef91a0d2833e8d25cf0b03b201379101677b35bd78838609132fdd2a1f",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 0,
+  "open": 0,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "0.3.1",
+  "prompts_hash": "6e02aacfec1e3b4d9138a6202fd7ba6a69c04e10206731553ae8c0e7b2b0c543",
+  "model": null
+}
+--- file C/.review/local-ch/review.json ---
+{"schema_version":"1","chunks":["a","b","zzz"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}
+--- file C/.review/local-ch/source.json ---
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+--- file C/.review/local-ch/store.json ---
+{
+  "schema_version": "1"
+}

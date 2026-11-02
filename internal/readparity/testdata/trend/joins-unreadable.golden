@@ -1,0 +1,316 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "trend",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "calibrate recent bundles for per-model tier precision",
+  "warnings": [
+    "kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)"
+  ],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "bundles": 3,
+    "findings": 9,
+    "open": 6,
+    "addressed": 2,
+    "closed": 1,
+    "by_status": {
+      "open": 6,
+      "addressed": 2,
+      "wont-fix": 0,
+      "false-positive": 0,
+      "deferred": 1
+    },
+    "by_tier": {
+      "critical": 3,
+      "important": 3,
+      "informational": 3,
+      "untagged": 0
+    },
+    "provenance": {
+      "tools": [
+        null
+      ],
+      "models": [
+        null
+      ],
+      "prompts_hashes": [
+        null
+      ]
+    },
+    "periods": [
+      {
+        "period": "2026-01-01",
+        "bundles": 1,
+        "findings": 6,
+        "open": 4,
+        "addressed": 1,
+        "closed": 1,
+        "by_tier": {
+          "critical": 2,
+          "important": 2,
+          "informational": 2,
+          "untagged": 0
+        }
+      },
+      {
+        "period": "2026-02-01",
+        "bundles": 1,
+        "findings": 2,
+        "open": 1,
+        "addressed": 1,
+        "closed": 0,
+        "by_tier": {
+          "critical": 0,
+          "important": 1,
+          "informational": 1,
+          "untagged": 0
+        }
+      },
+      {
+        "period": "2026-03-01",
+        "bundles": 1,
+        "findings": 1,
+        "open": 1,
+        "addressed": 0,
+        "closed": 0,
+        "by_tier": {
+          "critical": 1,
+          "important": 0,
+          "informational": 0,
+          "untagged": 0
+        }
+      }
+    ],
+    "per_bundle": [
+      {
+        "bundle": "5101",
+        "at": "0000-00-00T00:00:00Z",
+        "models": [],
+        "efforts": [],
+        "provenance": {
+          "tool_version": null,
+          "prompts_hash": null,
+          "model": null
+        },
+        "findings": 6,
+        "open": 4,
+        "addressed": 1,
+        "closed": 1,
+        "by_status": {
+          "open": 4,
+          "addressed": 1,
+          "wont-fix": 0,
+          "false-positive": 0,
+          "deferred": 1
+        },
+        "by_tier": {
+          "critical": 2,
+          "important": 2,
+          "informational": 2,
+          "untagged": 0
+        }
+      },
+      {
+        "bundle": "5102",
+        "at": "0000-00-00T00:00:00Z",
+        "models": [
+          "m"
+        ],
+        "efforts": [
+          "deep"
+        ],
+        "provenance": {
+          "tool_version": null,
+          "prompts_hash": null,
+          "model": null
+        },
+        "findings": 2,
+        "open": 1,
+        "addressed": 1,
+        "closed": 0,
+        "by_status": {
+          "open": 1,
+          "addressed": 1,
+          "wont-fix": 0,
+          "false-positive": 0,
+          "deferred": 0
+        },
+        "by_tier": {
+          "critical": 0,
+          "important": 1,
+          "informational": 1,
+          "untagged": 0
+        }
+      },
+      {
+        "bundle": "local-x",
+        "at": "0000-00-00T00:00:00Z",
+        "models": [],
+        "efforts": [],
+        "provenance": {
+          "tool_version": null,
+          "prompts_hash": null,
+          "model": null
+        },
+        "findings": 1,
+        "open": 1,
+        "addressed": 0,
+        "closed": 0,
+        "by_status": {
+          "open": 1,
+          "addressed": 0,
+          "wont-fix": 0,
+          "false-positive": 0,
+          "deferred": 0
+        },
+        "by_tier": {
+          "critical": 1,
+          "important": 0,
+          "informational": 0,
+          "untagged": 0
+        }
+      }
+    ],
+    "overlap": {
+      "measured_bundles": 1,
+      "unmeasured_bundles": 2,
+      "unmeasured": [
+        "5101",
+        "local-x"
+      ],
+      "bundles": 3,
+      "recalled_rules": [
+        "r-a1"
+      ],
+      "cited_rules": [],
+      "overlap_rules": [],
+      "precision": 0,
+      "coverage": null,
+      "cited_findings": 0,
+      "addressed": 0,
+      "false_positive": 0,
+      "pending": 0,
+      "wont_fix": 0,
+      "joins": {
+        "rows": 0,
+        "addressed": 0,
+        "false_positive": 0
+      },
+      "calibrate_eligible_bundles": 1,
+      "per_bundle": [
+        {
+          "bundle": "5101",
+          "measured": false,
+          "recalled": [],
+          "cited": [],
+          "overlap": [],
+          "precision": null,
+          "coverage": null,
+          "cited_findings": 0,
+          "addressed": 0,
+          "false_positive": 0,
+          "pending": 0,
+          "wont_fix": 0,
+          "joins_rows": 0,
+          "calibrate_eligible": true
+        },
+        {
+          "bundle": "5102",
+          "measured": true,
+          "recalled": [
+            "r-a1"
+          ],
+          "cited": [],
+          "overlap": [],
+          "precision": 0,
+          "coverage": null,
+          "cited_findings": 0,
+          "addressed": 0,
+          "false_positive": 0,
+          "pending": 0,
+          "wont_fix": 0,
+          "joins_rows": 0,
+          "calibrate_eligible": false
+        },
+        {
+          "bundle": "local-x",
+          "measured": false,
+          "recalled": [],
+          "cited": [],
+          "overlap": [],
+          "precision": null,
+          "coverage": null,
+          "cited_findings": 0,
+          "addressed": 0,
+          "false_positive": 0,
+          "pending": 0,
+          "wont_fix": 0,
+          "joins_rows": 0,
+          "calibrate_eligible": false
+        }
+      ]
+    }
+  },
+  "error": null
+}
+--- stderr ---
+warn: kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)
+--- files ---
+--- file C/.review/5101/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
+--- file C/.review/5101/findings.json ---
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"important","sig":"b222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"d444444444444444444444444444444444444444","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"reproduced","severity":"critical","sig":"e555555555555555555555555555555555555555","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"deferred","rationale":"","history":[]},{"kind":"section","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"f666666666666666666666666666666666666666","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+--- file C/.review/5101/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/5101/post.json ---
+{"schema_version":"1","review":{"id":99},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"0000-00-00T00:00:00Z","confidence":null,"security_summary":null}
+--- file C/.review/5102/PR.json ---
+{"state":"OPEN","headRefOid":"cccccccccccccccccccccccccccccccccccccccc","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
+--- file C/.review/5102/cost.json ---
+{"schema_version":"1","effort":"deep","models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
+--- file C/.review/5102/findings.json ---
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"b222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+--- file C/.review/5102/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/5102/kb-recall.json ---
+[{"id":"r-a1","score":1,"hits":2,"judged":2}]
+--- file C/.review/5102/record.json ---
+{"recorded_at":"0000-00-00T00:00:00Z"}
+--- file C/.review/kb-joins.jsonl ---
+{broken
+--- file C/.review/local-x/findings.json ---
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+--- file C/.review/local-x/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/local-x/record.json ---
+{"recorded_at":"0000-00-00T00:00:00Z"}
+--- file C/.review/local-x/source.json ---
+{"schema_version":"1","kind":"range","repo":"acme/app","slug":"work","head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","dirty":false}

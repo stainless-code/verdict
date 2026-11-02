@@ -1,8 +1,8 @@
-// Package record_test holds the shell-parity proof for the Go record core:
-// a Go harness that runs BOTH scripts/review.sh record and the Go binary on
-// identical fixture bundles and compares exit codes, stdout envelopes
-// (normalizing only at/timestamps), findings.json, record.json, and every
-// other store side effect byte-for-byte where bash writes deterministically.
+// Package record_test holds the golden contract for the Go record core:
+// the harness runs the Go binary on hermetic fixture bundles and pins exit
+// codes, stdout envelopes, findings.json, record.json, and every other
+// store side effect against checked-in goldens (go-port 08: the bash
+// comparison retired with the shell).
 package record_test
 
 import (
@@ -122,7 +122,7 @@ func plantParityInputs(tmp string) error {
 }
 
 // findRepoRoot walks up from this source file to the checkout carrying
-// scripts/review.sh, so the harness runs from worktrees and MAIN alike.
+// package.json, so the harness runs from worktrees and MAIN alike.
 func findRepoRoot() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -130,7 +130,7 @@ func findRepoRoot() (string, error) {
 	}
 	dir := filepath.Dir(file)
 	for range 10 {
-		if _, err := os.Stat(filepath.Join(dir, "scripts", "review.sh")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
 			return dir, nil
 		}
 		dir = filepath.Dir(dir)
@@ -202,23 +202,20 @@ type outputs struct {
 	status int
 }
 
-// runOne runs a single implementation in dir, capturing exit code, streams,
-// and the top-level store files. Stream capture happens after Run so the
-// comparison is real (a pre-Run snapshot would compare empty builders).
-// extraEnv overlays additional variables (e.g. KB policy knobs) on the
-// hermetic child environment.
-func runOne(t *testing.T, useGo bool, dir, home string, args ...string) outputs {
+// runOne runs the Go binary in dir, capturing exit code, streams, and the
+// top-level store files. Stream capture happens after Run so the golden is
+// real (a pre-Run snapshot would compare empty builders). extraEnv overlays
+// additional variables (e.g. KB policy knobs) on the hermetic child
+// environment.
+func runOne(t *testing.T, dir, home string, args ...string) outputs {
 	t.Helper()
-	return runOneEnv(t, useGo, dir, home, nil, args...)
+	return runOneEnv(t, dir, home, nil, args...)
 }
 
 // runOneEnv is runOne with extra environment variables.
-func runOneEnv(t *testing.T, useGo bool, dir, home string, extraEnv map[string]string, args ...string) outputs {
+func runOneEnv(t *testing.T, dir, home string, extraEnv map[string]string, args ...string) outputs {
 	t.Helper()
-	if !useGo {
-		parity.SkipBashOnWindows(t)
-	}
-	cmd := sideCommand(t, useGo, args)
+	cmd := sideCommand(t, args)
 	cmd.Dir = dir
 	cmd.Env = childEnv(home, dir, extraEnv)
 	var stdout, stderr strings.Builder
@@ -241,18 +238,15 @@ func runOneEnv(t *testing.T, useGo bool, dir, home string, extraEnv map[string]s
 	return out
 }
 
-// sideCommand builds the bash or Go command for one parity side.
-func sideCommand(t *testing.T, useGo bool, args []string) *exec.Cmd {
+// sideCommand builds the Go command for one golden run.
+func sideCommand(t *testing.T, args []string) *exec.Cmd {
 	t.Helper()
-	if useGo {
-		bin := filepath.Join(binDir, "verdict")
-		if runtime.GOOS == "windows" {
-			bin += ".exe"
-		}
-		return exec.CommandContext(t.Context(), bin, args...)
+	bin := filepath.Join(binDir, "verdict")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
 	}
-	script := filepath.Join(repoRoot, "scripts", "review.sh")
-	return exec.CommandContext(t.Context(), "bash", append([]string{script}, args...)...)
+	//nolint:gosec // G204: the harness intentionally executes the CLI under test with fixture args.
+	return exec.CommandContext(t.Context(), bin, args...)
 }
 
 // runStatus maps a command error to its exit status, failing on start errors.
@@ -265,143 +259,52 @@ func runStatus(t *testing.T, err error, args []string) int {
 	return 0
 }
 
-// bundleFiles lists every file under dir/.review/<slug>.
-func bundleFiles(t *testing.T, dir, slug string) map[string]string {
+// goldenBoth runs the Go binary on hermetic fixtures and pins exit codes,
+// streams, and every written file against the checked-in golden. setup
+// writes the bundle into dir; fixtures must be deterministic.
+func goldenBoth(t *testing.T, name string, slug string, setup func(t *testing.T, dir string), args ...string) {
 	t.Helper()
-	out := map[string]string{}
-	root := filepath.Join(dir, ".review", slug)
-	if err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
-		if err != nil || fi.IsDir() {
-			//nolint:nilerr // WalkFunc nil means "skip this path", not success
-			return nil
-		}
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			//nolint:nilerr // unreadable fixture files are skipped, not fatal
-			return nil
-		}
-		rel, rerr := filepath.Rel(dir, p)
-		if rerr != nil {
-			//nolint:nilerr // unrelativizable paths are skipped, not fatal
-			return nil
-		}
-		out[rel] = string(raw)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	return out
+	goldenBothEnv(t, name, slug, setup, nil, args...)
 }
 
-// runBoth runs bash and Go on identical fixtures and compares everything the
-// ticket's parity proof covers. setup writes the bundle into dir (called
-// once per side, so fixtures must be deterministic).
-func runBoth(t *testing.T, name string, slug string, setup func(t *testing.T, dir string), args ...string) {
-	t.Helper()
-	runBothEnv(t, name, slug, setup, nil, args...)
-}
-
-// runBothEnv is runBoth with extra environment variables for both sides.
-func runBothEnv(t *testing.T, name string, slug string, setup func(t *testing.T, dir string), extraEnv map[string]string, args ...string) {
+// goldenBothEnv is goldenBoth with extra environment variables.
+func goldenBothEnv(t *testing.T, name string, slug string, setup func(t *testing.T, dir string), extraEnv map[string]string, args ...string) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		t.Helper()
-		dirA := t.TempDir()
-		dirB := t.TempDir()
-		setup(t, dirA)
-		setup(t, dirB)
+		dir := t.TempDir()
+		home := t.TempDir()
+		setup(t, dir)
 		full := append([]string{"record", "acme/app", slug}, args...)
-		a := runOneEnv(t, false, dirA, t.TempDir(), extraEnv, full...)
-		b := runOneEnv(t, true, dirB, t.TempDir(), extraEnv, full...)
-		compareOutputs(t, a, b)
-		compareBundles(t, bundleFiles(t, dirA, slug), bundleFiles(t, dirB, slug))
+		out := runOneEnv(t, dir, home, extraEnv, full...)
+		pinGolden(t, name, dir, out)
 	})
 }
 
-// compareOutputs compares exit codes, streams (timestamps scrubbed), and the
-// top-level store files of the two sides.
-func compareOutputs(t *testing.T, a, b outputs) {
+// pinGolden snapshots every file under dir and pins the scrubbed run
+// against testdata/<name>.golden.
+func pinGolden(t *testing.T, name, dir string, out outputs) {
 	t.Helper()
-	if a.status != b.status {
-		t.Errorf("exit: bash=%d go=%d\nbash stderr:\n%s\ngo stderr:\n%s", a.status, b.status, a.stderr, b.stderr)
-	}
-	if scrub(a.stdout) != scrub(b.stdout) {
-		t.Errorf("stdout differs:\n--- bash ---\n%s\n--- go ---\n%s", a.stdout, b.stdout)
-	}
-	if scrub(a.stderr) != scrub(b.stderr) {
-		t.Errorf("stderr differs:\n--- bash ---\n%s\n--- go ---\n%s", a.stderr, b.stderr)
-	}
-	compareFiles(t, a.files, b.files)
-}
-
-// compareFiles compares the top-level store files, scrubbing timestamps.
-func compareFiles(t *testing.T, fa, fb map[string]string) {
-	t.Helper()
-	seen := map[string]bool{}
-	for k, va := range fa {
-		seen[k] = true
-		vb, ok := fb[k]
-		compareFile(t, k, va, vb, ok)
-	}
-	for k := range fb {
-		if !seen[k] {
-			t.Errorf("store file presence differs: %s bash=absent go=present", k)
+	files := map[string]string{}
+	err := filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return err
 		}
-	}
-}
-
-// compareFile compares one store file present on the bash side.
-func compareFile(t *testing.T, k, va, vb string, ok bool) {
-	t.Helper()
-	if !ok {
-		t.Errorf("store file presence differs: %s bash=present go=absent", k)
-		return
-	}
-	if scrub(va) != scrub(vb) {
-		t.Errorf("store file differs: %s\n--- bash ---\n%s\n--- go ---\n%s", k, va, vb)
-	}
-}
-
-// compareBundles compares every bundle file of the two sides.
-func compareBundles(t *testing.T, fa, fb map[string]string) {
-	t.Helper()
-	compareMissing(t, fa, fb)
-	compareContents(t, fa, fb)
-}
-
-// compareMissing reports files present on one side only.
-func compareMissing(t *testing.T, fa, fb map[string]string) {
-	t.Helper()
-	for k := range fa {
-		if _, ok := fb[k]; !ok {
-			checkPresence(t, k, true, false)
+		raw, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return rerr
 		}
-	}
-	for k := range fb {
-		if _, ok := fa[k]; !ok {
-			checkPresence(t, k, false, true)
+		rel, lerr := filepath.Rel(dir, p)
+		if lerr != nil {
+			return lerr
 		}
+		files["C/"+rel] = string(raw)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-// checkPresence reports a one-sided bundle file. Derived snapshots are
-// compared like everything else now: both sides leave identical residues,
-// so a presence gap is a real diff (R6).
-func checkPresence(t *testing.T, k string, oka, okb bool) {
-	t.Helper()
-	t.Errorf("file presence differs: %s bash=%v go=%v", k, oka, okb)
-}
-
-// compareContents compares files present on both sides.
-func compareContents(t *testing.T, fa, fb map[string]string) {
-	t.Helper()
-	for k, va := range fa {
-		vb, ok := fb[k]
-		if !ok {
-			continue
-		}
-		if scrub(va) != scrub(vb) {
-			t.Errorf("file differs: %s\n--- bash ---\n%s\n--- go ---\n%s", k, va, vb)
-		}
-	}
+	parity.Check(t, name, parity.Render(parity.Outputs{
+		Status: out.status, Stdout: out.stdout, Stderr: out.stderr, Files: files,
+	}, []string{dir}))
 }

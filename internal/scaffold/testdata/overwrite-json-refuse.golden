@@ -1,0 +1,41 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "init",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "needs-confirm",
+    "message": "init refuses to overwrite existing control files without confirm (re-run with --yes after reviewing the preview above)\ntry: re-run with --yes after reviewing the preview, then re-run"
+  }
+}
+--- stderr ---
+init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
+--- .review/budget (overwrite) ---
+# Verdict spend budget (USD) — written by `verdict init --preset chill`.
+# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.
+2.00
+--- .review/panel (create) ---
+# Verdict panel — written by `verdict init --preset chill` (chill: no pinning).
+# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
+# Replace these comments with real slugs to pin a formation; empty (all comments)
+# means the operator picks per run.
+--- .review/kb-policy (create) ---
+# Verdict KB retirement policy — written by `verdict init --preset chill`.
+# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.
+MIN_JUDGED=10
+MAX_FP_RATE=0.7
+--- .review/kb.jsonl (create) ---
+{"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
+{"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
+re-enter: verdict init --preset chill --json
+--- files ---
+--- file C/.review/budget ---
+9.99
+--- file C/probe.txt ---
+probe

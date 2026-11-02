@@ -1,0 +1,24 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "check-tree",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "run inside a git repository",
+  "warnings": [],
+  "data": {
+    "clean": false,
+    "files": []
+  },
+  "error": {
+    "code": "not-a-repo",
+    "message": "check-tree needs a git repository (git status failed)"
+  }
+}
+--- stderr ---
+check-tree: not a git repo
+--- files ---
+--- file C/notes.txt ---
+line1

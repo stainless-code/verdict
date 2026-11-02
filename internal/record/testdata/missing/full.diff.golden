@@ -1,0 +1,12 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: missing .review/local-mf/full.diff (run fetch-local / fetch --provider first)
+try: run the fetch/record step named above first, then re-run
+re-enter: verdict record acme/app local-mf
+--- files ---
+--- file C/.review/local-mf/review.json ---
+{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}
+--- file C/.review/local-mf/source.json ---
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}

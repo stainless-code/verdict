@@ -1,0 +1,11 @@
+exit: 1
+--- stdout ---
+check-tree: dirty worktree — commit or stash first:
+?? scratch.txt
+--- stderr ---
+
+--- files ---
+--- file C/notes.txt ---
+line1
+--- file C/scratch.txt ---
+scratch

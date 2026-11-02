@@ -1,7 +1,7 @@
-// Package triage_test holds the shell-parity proof for the Go triage verb:
-// the shared harness runs BOTH scripts/review.sh triage and the Go binary
-// on identical fixtures and compares exit codes, stdout/stderr
-// (timestamps scrubbed only), and every written file byte for byte,
+// Package triage_test holds the golden contract for the Go triage verb:
+// the shared harness runs the Go binary on hermetic fixtures and pins
+// exit codes, stdout/stderr, and every written file against checked-in
+// goldens (go-port 08: the bash comparison retired with the shell),
 // including the kb credit joins.
 package triage_test
 
@@ -125,40 +125,40 @@ func TestTriageParity(t *testing.T) {
 // runTriageCreditCases covers successful flips, credit, and dry-run output.
 func runTriageCreditCases(t *testing.T, sig1, sig2 string) {
 	t.Helper()
-	harness.RunBoth(t, "addressed-credits", setupKB, nil, false,
+	parity.Golden(t, harness, "addressed-credits", setupKB, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	harness.RunBoth(t, "false-positive-credits", setupKB, nil, false,
+	parity.Golden(t, harness, "false-positive-credits", setupKB, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "false-positive", "--rationale", "re-read twice, this rule misfired completely here now okay", "--json")
-	harness.RunBoth(t, "dry-run-writes-nothing", setupKB, nil, false,
+	parity.Golden(t, harness, "dry-run-writes-nothing", setupKB, nil,
 		"triage", "acme/app", "4251", "--sig", sig2, "--status", "false-positive", "--rationale", "dry run should not touch any counters at all here", "--dry-run", "--json")
-	harness.RunBoth(t, "human-mode", setupKB, nil, false,
+	parity.Golden(t, harness, "human-mode", setupKB, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "deferred", "--rationale", "deferring this until the next pass for more evidence here")
-	harness.RunBoth(t, "force-short-rationale", setupKB, nil, false,
+	parity.Golden(t, harness, "force-short-rationale", setupKB, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "wont-fix", "--force", "--json")
 }
 
 // runTriageRefusalCases covers every typed refusal and the unknown flag.
 func runTriageRefusalCases(t *testing.T, sig1 string) {
 	t.Helper()
-	harness.RunBoth(t, "unknown-sig", setupPlain, nil, false,
+	parity.Golden(t, harness, "unknown-sig", setupPlain, nil,
 		"triage", "acme/app", "4251", "--sig", "deadbeef", "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	harness.RunBoth(t, "ambiguous-sig", setupPlain, nil, false,
+	parity.Golden(t, harness, "ambiguous-sig", setupPlain, nil,
 		"triage", "acme/app", "4251", "--sig", "1234", "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	harness.RunBoth(t, "bad-triage-status", setupPlain, nil, false,
+	parity.Golden(t, harness, "bad-triage-status", setupPlain, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "bogus", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	harness.RunBoth(t, "rationale-required", setupPlain, nil, false,
+	parity.Golden(t, harness, "rationale-required", setupPlain, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "addressed", "--rationale", "short", "--json")
-	harness.RunBoth(t, "missing-findings", setupMissing, nil, false,
+	parity.Golden(t, harness, "missing-findings", setupMissing, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	harness.RunBoth(t, "corrupt-store", setupCorrupt, nil, false,
+	parity.Golden(t, harness, "corrupt-store", setupCorrupt, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	harness.RunBoth(t, "unknown-flag", setupPlain, nil, false,
+	parity.Golden(t, harness, "unknown-flag", setupPlain, nil,
 		"triage", "acme/app", "4251", "--bogus", "--json")
 }
 
 // runTriageLocalCase covers the local-bundle flip with kb credit.
 func runTriageLocalCase(t *testing.T, sig1 string) {
 	t.Helper()
-	harness.RunBoth(t, "local-bundle", setupLocalBundle, nil, false,
+	parity.Golden(t, harness, "local-bundle", setupLocalBundle, nil,
 		"triage", "acme/app", "local-k6", "--sig", sig1, "--status", "addressed", "--rationale", "human confirms the finding on the local bundle here sure", "--json")
 }

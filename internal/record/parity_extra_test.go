@@ -246,7 +246,7 @@ func TestParityKBMatrix(t *testing.T) {
 		sequenced(t, leg.name, leg.setup, leg.mutate, "--json")
 	}
 	// Invalid policy file values warn and fall back on both sides.
-	runBoth(t, "kb/bad-policy-file", "local-kb", func(t *testing.T, dir string) {
+	goldenBoth(t, "kb/bad-policy-file", "local-kb", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
 		writeFiles(t, dir, map[string]string{
@@ -254,7 +254,7 @@ func TestParityKBMatrix(t *testing.T) {
 		})
 	}, "--json")
 	// Invalid policy env knobs warn and fall back on both sides.
-	runBothEnv(t, "kb/bad-policy-env", "local-kb", func(t *testing.T, dir string) {
+	goldenBothEnv(t, "kb/bad-policy-env", "local-kb", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
 	}, map[string]string{"REVIEW_KB_MIN_JUDGED": "abc", "REVIEW_KB_MAX_FP_RATE": "2"}, "--json")
