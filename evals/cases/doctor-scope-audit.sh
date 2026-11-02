@@ -25,7 +25,9 @@ good() { echo "  ok: $1"; }
 bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 
 snap_tree() { # sandbox tree minus harness-owned capture files (content changes, not the tree)
-  (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' | sort)
+  # A per-case sandbox starts empty, so grep -v can see zero lines; tolerate
+  # that instead of letting pipefail abort the case before it prints anything.
+  (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' | sort) || true
 }
 pre_tree="$(snap_tree)"
 

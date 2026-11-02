@@ -6,7 +6,7 @@
 #       (report --output and human post dry-run match the pre-P5 HEAD script).
 #   V2  valid default fragments render byte-identically (all four present with
 #       default content; report cmp identical; post dry-run exit 0; check-tree
-#       passes validation and fails only on the missing git repo).
+#       passes fragment validation and fails only on the repo/tree gate).
 #   E1  custom attribution fragment renders substituted (exit 0).
 #   E2  custom footer-order reorders/drops receipt fields (exact segments).
 #   E3  custom threshold shows the overview below the defaults (files=0).
@@ -161,11 +161,14 @@ else
   bad "valid post gave exit $EVAL_STATUS"
 fi
 run_review check-tree --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "valid fragments pass authoring-time validation (clean tree)"
-elif [ -z "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" ] \
-  && grep -q "check-tree:" "$EVAL_ERR"; then
-  good "valid fragments pass authoring-time validation (only the tree gate trips)"
+elif [ "$code" = "not-a-repo" ] \
+  || { [ -z "$code" ] && grep -q "check-tree:" "$EVAL_ERR"; }; then
+  # A fresh per-case sandbox has no git repo: check-tree validates the
+  # fragments first, then trips the repo (or tree) gate — never bad-override.
+  good "valid fragments pass authoring-time validation (only the repo/tree gate trips)"
 else
   bad "valid check-tree gave exit $EVAL_STATUS"
 fi

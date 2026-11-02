@@ -104,6 +104,14 @@ bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 
 WANT_KEYS="at data error next pr repo schema_version verb warnings"
 
+# /tmp scratch is part of the contract this case grades, but the paths below
+# are executed (not just quoted in refusals), and dispatch-record's G6 re-runs
+# this case nested under VERDICT_IMPL=go. A PID-suffixed namespace keeps the
+# two concurrent copies out of each other's files.
+WA_TMP="/tmp/verify-allowlist.$$"
+mkdir -p "$WA_TMP"
+trap 'rm -rf "$WA_TMP"' EXIT
+
 mk_verify() { # $1 = pr, $2 = verifyCmd
   local pr="$1" cmd="$2" dir="$EVAL_SANDBOX/.review/$1"
   mkdir -p "$dir"
@@ -324,9 +332,8 @@ exec_probe 5346 "V16 guard plain git status executes"
 # --- V17: wget -O refused (dead-case fix); -o log and -O- stdout keep working ---
 mk_verify 5351 'wget -O /tmp/verify-allowlist-n17 http://127.0.0.1:9/f'
 refuse_probe 5351 verify-networked "V17 wget -O download-to-file"
-mk_verify 5352 'wget -o /tmp/verify-allowlist-wget-log http://127.0.0.1:9/f'
+mk_verify 5352 "wget -o $WA_TMP/wget-log http://127.0.0.1:9/f"
 exec_probe 5352 "V17 guard wget -o logfile executes"
-rm -f /tmp/verify-allowlist-wget-log
 mk_verify 5353 'wget -qO- http://127.0.0.1:9/f'
 exec_probe 5353 "V17 guard wget -O- stdout executes"
 
@@ -355,9 +362,8 @@ mk_verify 5383 "rsync -e 'touch-verify-probe' src nohost:/tmp/x"
 refuse_probe 5383 verify-networked "V20 rsync -e local exec"
 mk_verify 5384 'rsync -av src/ 127.0.0.1:/tmp/x'
 refuse_probe 5384 verify-networked "V20 rsync remote push"
-mk_verify 5385 'rsync -av notes.txt /tmp/verify-allowlist-rsync-probe'
+mk_verify 5385 "rsync -av notes.txt $WA_TMP/rsync-probe"
 exec_probe 5385 "V20 guard local rsync executes"
-rm -f /tmp/verify-allowlist-rsync-probe
 mk_verify 5386 'lftp -c "open 127.0.0.1"'
 refuse_probe 5386 verify-networked "V20 lftp client"
 
@@ -378,9 +384,8 @@ mk_verify 5411 "rsync -e 'touch-verify-probe' src @nohost:/x"
 refuse_probe 5411 verify-networked "V22 first-position -e plus empty-user remote"
 mk_verify 5412 "rsync --rsh='touch-verify-probe' src/ dst/"
 refuse_probe 5412 verify-networked "V22 first-position --rsh"
-mk_verify 5413 'rsync --archive notes.txt /tmp/verify-allowlist-rsync-probe2'
+mk_verify 5413 "rsync --archive notes.txt $WA_TMP/rsync-probe2"
 exec_probe 5413 "V22 guard --archive local copy executes"
-rm -f /tmp/verify-allowlist-rsync-probe2
 
 # --- V23: non--c git hook/config vectors refused; HOME without git + key queries execute ---
 mk_verify 5421 "git config core.fsmonitor 'touch-verify-probe' && git status"
@@ -614,7 +619,7 @@ fi
 # module) — execution, not the exit, is the assertion.
 printf '%s\n' 'printf ok | grep ok' 'FOO=1 printf ok' 'cd . && printf ok' \
   'git diff --stat' 'GOPROXY=off go test ./...' 'curl http://127.0.0.1:9/fixture' \
-  'printf ok > /tmp/verify-allowlist-probe && cat /tmp/verify-allowlist-probe' > "$EVAL_SANDBOX/v5-battery.txt"
+  "printf ok > $WA_TMP/probe && cat $WA_TMP/probe" > "$EVAL_SANDBOX/v5-battery.txt"
 n=0
 while IFS= read -r cmd; do
   [ -z "$cmd" ] && continue
@@ -630,7 +635,6 @@ while IFS= read -r cmd; do
     bad "V5 battery refused or broke ($cmd): exit $EVAL_STATUS code $(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)"
   fi
 done < "$EVAL_SANDBOX/v5-battery.txt"
-rm -f /tmp/verify-allowlist-probe
 
 # --- V6: refusal envelope + text exit + record untouched ---
 mk_verify 5199 'rm -rf ./text-probe'

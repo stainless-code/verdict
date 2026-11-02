@@ -9,9 +9,23 @@ against live ground truth); these grade contracts against fixtures.
 ## Run
 
 ```sh
-./evals/run.sh            # all cases; exits non-zero on any failure
-./evals/run.sh --keep     # leave the temp sandbox in place for debugging
+./evals/run.sh              # all cases; exits non-zero on any failure
+./evals/run.sh --keep       # leave the temp sandbox in place for debugging
+EVAL_JOBS=1 ./evals/run.sh  # serial (the old behaviour)
+EVAL_JOBS=8 ./evals/run.sh  # cap the parallel batch at 8 cases
 ```
+
+Cases run concurrently by default, one job per CPU (`getconf
+_NPROCESSORS_ONLN`, then `sysctl -n hw.ncpu`, then 4); `EVAL_JOBS=N` overrides
+that limit. Every case gets its own sandbox, stub `gh` dir and stub log, so
+cases cannot see each other's fixtures or intercept counts. Case output is
+buffered and replayed in sorted case order, so a parallel run's report is
+deterministic; the final `evals: N passed, M failed` line and the
+repo-tree-unchanged check are unchanged.
+
+A case that genuinely cannot share the machine can opt out of the batch with
+a `# eval: serial` line in its header (first ten lines). Those cases run one
+at a time after the parallel batch, and still get their own sandbox.
 
 New cases go in `evals/cases/*.sh` (sourced helper: `evals/lib/common.sh`);
 `run.sh` picks up every file there, so no registration step. Results land in
@@ -72,12 +86,18 @@ join `VERDICT_GO_VERBS` in `scripts/review.sh`.
 ## Hermeticity (how "no network" is proved, not promised)
 
 - Fixtures are crafted files (`PR.json` state OPEN + one-hunk diff) written
-  into a `mktemp` sandbox that `run.sh` uses as the CLI cwd; the repo's own
-  `.review/` is never touched.
-- `run.sh` puts a network-dead `gh` stub first on `PATH`: every `gh` call the
-  CLI attempts (live-SHA lookup, authorship check) fails fast into the
-  script's existing warn-and-proceed path, and each interception is logged.
-  The tally line reports the intercept count — zero real calls by construction.
+  into a per-case `mktemp` sandbox that `run.sh` uses as the CLI cwd; the
+  repo's own `.review/` is never touched. Each case starts from a fresh,
+  empty sandbox (no fixture or repo state inherited from a sibling).
+- `run.sh` puts a network-dead `gh` stub first on `PATH` in every case: every
+  `gh` call the CLI attempts (live-SHA lookup, authorship check) fails fast
+  into the script's existing warn-and-proceed path, and each interception is
+  logged to that case's stub log. The tally line sums the per-case logs and
+  reports the intercept count — zero real calls by construction.
+- Cases that need scratch outside the sandbox give it a per-run name (for
+  example the verify family's `/tmp/...$$` probe dirs), so two concurrent
+  copies cannot clobber each other. A case that cannot be isolated that way
+  should carry the `# eval: serial` header instead.
 - After the cases, `run.sh` diffs `git status --short` before/after and fails
   the run if the tree moved; fixtures are deleted unless `--keep`.
 

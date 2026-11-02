@@ -24,8 +24,17 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-CORPUS="$HERE/../fixtures/verify-fuzz-corpus.tsv"
-if [ ! -f "$CORPUS" ]; then echo "corpus missing: $CORPUS" >&2; exit 1; fi
+CORPUS_SRC="$HERE/../fixtures/verify-fuzz-corpus.tsv"
+if [ ! -f "$CORPUS_SRC" ]; then echo "corpus missing: $CORPUS_SRC" >&2; exit 1; fi
+
+# The TSV stays language-neutral; the runtime copy only rewrites the shared
+# /tmp namespace to a private one. Executed rows use /tmp scratch, so without
+# this two copies of the suite (or a future nested run) would clobber the
+# same fixed files.
+FUZZ_TMP="$(mktemp -d /tmp/verify-fuzz.XXXXXX)"
+trap 'rm -rf "$FUZZ_TMP"' EXIT
+CORPUS="$EVAL_SANDBOX/verify-fuzz-corpus.tsv"
+sed "s#/tmp/verify-fuzz[.-]#$FUZZ_TMP/#g" "$CORPUS_SRC" >"$CORPUS"
 
 fails=0 strict_ok=0 pass_ok=0 xfail_ok=0
 refused_total=0 executed_total=0
@@ -35,12 +44,12 @@ WANT_KEYS="at data error next pr repo schema_version verb warnings"
 # Sandbox fixtures the executed rows need (executed = gate passed, command
 # really runs — keep every fixture inert and fast):
 printf 'line1\n' > "$EVAL_SANDBOX/fz-notes.txt"
-printf -- '-s\n' > /tmp/verify-fuzz-curlcfg
-printf 'http://127.0.0.1:9/f\n' > /tmp/verify-fuzz-wgeturls
-mkdir -p /tmp/verify-fuzz-gitexec
-printf 'true\n' > /tmp/verify-fuzz-src
-printf 'exit 0\n' > /tmp/verify-fuzz-fetched
-chmod +x /tmp/verify-fuzz-fetched 2>/dev/null || true
+printf -- '-s\n' > "$FUZZ_TMP/curlcfg"
+printf 'http://127.0.0.1:9/f\n' > "$FUZZ_TMP/wgeturls"
+mkdir -p "$FUZZ_TMP/gitexec"
+printf 'true\n' > "$FUZZ_TMP/src"
+printf 'exit 0\n' > "$FUZZ_TMP/fetched"
+chmod +x "$FUZZ_TMP/fetched" 2>/dev/null || true
 AWS_KEY="fuzzcanary"
 export AWS_KEY
 
@@ -145,11 +154,9 @@ while IFS="$TAB" read -r id expect mode command; do
   esac
 done < "$CORPUS"
 
-# Fixture cleanup: /tmp scratch this case owns (the sandbox dir goes with
-# run.sh; filenames are verify-fuzz-* namespaced against sibling cases).
-rm -f /tmp/verify-fuzz-curlcfg /tmp/verify-fuzz-wgeturls /tmp/verify-fuzz-src
-rm -f /tmp/verify-fuzz-fetched /tmp/verify-fuzz-tee /tmp/verify-fuzz.tar
-rm -rf /tmp/verify-fuzz-gitexec /tmp/verify-fuzz-nm
+# Fixture cleanup: the private /tmp dir goes with the EXIT trap; the sandbox
+# dir goes with run.sh.
+rm -rf "$FUZZ_TMP"
 rm -f "$EVAL_SANDBOX/fz-notes.txt" "$EVAL_SANDBOX/f" "$EVAL_SANDBOX/fz-out"
 
 echo "corpus: $strict_ok strict-refuse ok, $pass_ok pass ok, $xfail_ok xfail-known gaps ($refused_total refused, $executed_total executed)"
