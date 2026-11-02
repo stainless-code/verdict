@@ -1034,3 +1034,28 @@ verbs and features ship in the release changelog.
   `manifest.json` with `schema_version: "1"`, per-chunk `<name>.cost.json`) —
   `post`/`record` gate attested top-level `"chunks"` coverage against the
   manifest.
+
+### Published schemas + drift rule
+
+The shapes agents write and operators parse are pinned in `schemas/`
+(draft 2020-12, shipped in the npm tarball): `review.schema.json`
+(agent-written input), `findings.schema.json` (the merged findings store),
+`cost.schema.json` (the self-reported spend record), `post.schema.json` and
+`record.schema.json` (completed post/record captures), and
+`envelope.schema.json` (the `--json` envelope plus the stable per-verb
+`data` for `report`, `post`, and `record`). `schemas/validate.sh` is the
+offline checker (bash 3.2 + jq, no network — it implements only the keyword
+subset the schemas use, and fails loudly on anything outside it);
+`evals/cases/schema-contract.sh` asserts representative fixtures validate —
+a shape change that breaks agents or parsers fails the build instead of a
+review.
+
+Drift rule: additive within `schema_version`/`sig_version` `"1"`, matching
+the changelog above — new optional keys pass through the stores and the
+schemas alike; renames, tighter types, and newly required keys never happen
+without a version bump, and a bump ships only by operator decision. Who
+updates: the slice that changes what the script reads or writes updates the
+matching schema plus the schema-contract fixtures in the same commit, so the
+eval proves the new shape. The Go port inherits this contract and generates
+the schemas from its store types (go-port ticket 08); until then the shell
+read-paths are the source of truth.

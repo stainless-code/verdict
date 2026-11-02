@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/findings.schema.json",
+  "title": "findings.json — merged findings store",
+  "description": "What post/record write per bundle. Derived from validate_and_merge in scripts/review.sh: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/entry" },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "sig": {
+          "description": "Stable cross-run join key: SHA-1 of path + heading + body, whitespace-squashed.",
+          "type": "string"
+        },
+        "sig_version": {
+          "description": "Normalization generation; backfilled onto older entries, never clobbered.",
+          "const": "1"
+        },
+        "kind": {
+          "enum": ["inline", "section"]
+        },
+        "path": {
+          "description": "Inline findings only.",
+          "type": ["string", "null"]
+        },
+        "heading": {
+          "description": "Section findings only: the exact ### body heading.",
+          "type": ["string", "null"]
+        },
+        "line": {
+          "type": ["integer", "null"]
+        },
+        "side": {
+          "type": ["string", "null"]
+        },
+        "anchored": {
+          "description": "Inline: true when the anchor sits inside one reviewed hunk. Section: the string \"body\".",
+          "type": ["boolean", "string", "null"]
+        },
+        "body": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": ["string", "null"]
+        },
+        "kb": {
+          "description": "Cited knowledge-base rule ids; [] when uncited.",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "inBounds": {
+          "description": "CamelCase in the store (hyphenated in review.json input); absent reads true.",
+          "type": ["boolean", "null"]
+        },
+        "rigor": {
+          "description": "Evidence rung on inline findings; the re-post merge stamps an explicit null onto section entries.",
+          "enum": ["said", "pointed", "walked", "ran", "reproduced", null]
+        },
+        "severity": {
+          "enum": ["critical", "important", "informational", null]
+        },
+        "status": {
+          "enum": [
+            "open",
+            "addressed",
+            "wont-fix",
+            "false-positive",
+            "deferred"
+          ]
+        },
+        "firstSeen": {
+          "type": "string"
+        },
+        "lastSeen": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "triagedAt": {
+          "type": "string"
+        },
+        "triagedBy": {
+          "type": "string"
+        },
+        "history": {
+          "description": "Append-only: reported, claim, reopened, revalidation, addressed, triaged.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/historyEvent" }
+        }
+      },
+      "required": [
+        "sig",
+        "sig_version",
+        "kind",
+        "status",
+        "firstSeen",
+        "lastSeen",
+        "history"
+      ],
+      "additionalProperties": true
+    },
+    "historyEvent": {
+      "type": "object",
+      "properties": {
+        "at": { "type": "string" },
+        "event": {
+          "enum": [
+            "reported",
+            "claim",
+            "reopened",
+            "revalidation",
+            "addressed",
+            "triaged"
+          ]
+        },
+        "actor": { "type": "string" },
+        "note": { "type": "string" },
+        "sha": { "type": "string" },
+        "kb_credit": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/kbCredit" }
+        }
+      },
+      "required": ["at", "event"],
+      "additionalProperties": true
+    },
+    "kbCredit": {
+      "type": "object",
+      "properties": {
+        "rule": { "type": "string" },
+        "to": { "type": "string" }
+      },
+      "required": ["rule", "to"],
+      "additionalProperties": true
+    }
+  }
+}

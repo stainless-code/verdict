@@ -63,8 +63,9 @@ else
 fi
 
 # --- P2: required set ships ---
-# The entry script plus every prompt on disk, and the top-level docs the
-# skill and both installers promise (SKILL.md, README.md, LICENSE).
+# The entry script plus every prompt on disk, every published schema on disk,
+# and the top-level docs the skill and both installers promise
+# (SKILL.md, README.md, LICENSE).
 {
   echo "SKILL.md"
   echo "README.md"
@@ -72,6 +73,7 @@ fi
   echo "package.json"
   for f in "$EVAL_ROOT"/prompts/*.md; do echo "prompts/$(basename "$f")"; done
   for f in "$EVAL_ROOT"/scripts/*.sh; do echo "scripts/$(basename "$f")"; done
+  for f in "$EVAL_ROOT"/schemas/*.schema.json; do echo "schemas/$(basename "$f")"; done
 } | LC_ALL=C sort -u > "$REQUIRED"
 
 missing_from() { # $1 = packed-list file; prints required entries absent there
@@ -84,7 +86,7 @@ missing_from() { # $1 = packed-list file; prints required entries absent there
 }
 
 if gaps="$(missing_from "$PACKED")"; then
-  good "tarball holds the entry script, every prompt, SKILL.md, README.md, LICENSE ($(wc -l <"$REQUIRED" | tr -d ' ') files)"
+  good "tarball holds the entry script, every prompt, every schema, SKILL.md, README.md, LICENSE ($(wc -l <"$REQUIRED" | tr -d ' ') files)"
 else
   bad "tarball missing required file(s): $(printf '%s' "$gaps" | tr '\n' ' ')"
 fi

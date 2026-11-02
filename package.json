@@ -19,7 +19,8 @@
     "LICENSE",
     "CHANGELOG.md",
     "scripts/",
-    "prompts/"
+    "prompts/",
+    "schemas/"
   ],
   "scripts": {
     "changeset": "changeset",
