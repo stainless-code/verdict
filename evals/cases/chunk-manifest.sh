@@ -298,7 +298,7 @@ run_review_fake() {
   set +e
   (
     cd "$EVAL_SANDBOX" || exit 99
-    PATH="$CMAN_FAKEBIN:$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" "$@" \
+    PATH="$CMAN_FAKEBIN:$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" \
       >"$EVAL_OUT" 2>"$EVAL_ERR"
   )
   EVAL_STATUS=$?

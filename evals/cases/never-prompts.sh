@@ -51,7 +51,7 @@ WD_STATUS=0
 WD_TIMED_OUT="false"
 WD_DIR=""
 
-# watchdog_review <secs> <stdin> -- <review.sh args...>
+# watchdog_review <secs> <stdin> -- <verdict args...>: runs $EVAL_CLI directly.
 # <stdin> is "closed" (EBADF on read) or a path (/dev/null, fifo). Runs in
 # $WD_DIR (default: sandbox root) with the stub gh first on PATH, captures to
 # EVAL_OUT/EVAL_ERR, sets EVAL_STATUS/WD_STATUS/WD_TIMED_OUT. Always returns 0
@@ -66,9 +66,9 @@ watchdog_review() {
   WD_TIMED_OUT="false"
   set +e
   if [ "$src" = "closed" ]; then
-    ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" "$@" <&- >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+    ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" <&- >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
   else
-    ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" "$@" <"$src" >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+    ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" <"$src" >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
   fi
   while :; do
     alive="1"
@@ -253,7 +253,7 @@ else
   pty_avail="false"
 fi
 if [ "${pty_avail:-false}" = "true" ]; then
-  # watchdog_pty <secs> -- <review.sh args...>: like watchdog_review but the
+  # watchdog_pty <secs> -- <verdict args...>: like watchdog_review but the
   # child runs under script(1), so its stdin is a pty. Always returns 0 so
   # callers under `set -e` can grade hangs as well as exits.
   watchdog_pty() {
@@ -266,12 +266,12 @@ if [ "${pty_avail:-false}" = "true" ]; then
     WD_TIMED_OUT="false"
     set +e
     if [ "$(uname -s)" = "Darwin" ]; then
-      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -q /dev/null bash "$EVAL_ROOT/scripts/review.sh" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -q /dev/null "$EVAL_CLI" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
     else
       for one in "$@"; do
         q="$q '${one//\'/\'\\\'\'}'"
       done
-      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -qec "bash '$EVAL_ROOT/scripts/review.sh'$q" /dev/null </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -qec "'$EVAL_CLI'$q" /dev/null </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
     fi
     while :; do
       alive="1"

@@ -2,11 +2,13 @@
 # Case install-routes: every documented install route is coherent and true.
 #
 # Grades (all hermetic — real `npm pack` into the sandbox, fake HOME, stub gh):
-#   R1  registry copy carries a working CLI: the packed tarball unpacks to a
-#       skill dir whose scripts/review.sh runs `install --yes` into repo and
-#       home scopes (SKILL.md + prompts/ + scripts/ byte-identical,
-#       receipted), and the installed copy's own CLI re-runs to keep.
-#   R2  cwd owns .review: the unpacked CLI's `init` writes .review/ controls
+#   R1  registry copy carries the skill payload: the packed tarball unpacks
+#       to a skill dir holding SKILL.md + prompts/ + remaining scripts/ (no
+#       scripts/review.sh — the CLI is the `verdict` binary, which the
+#       skill install path ships again in ticket 12). The binary under test
+#       installs the payload into repo and home scopes (byte-identical,
+#       receipted), and a re-run reads keep.
+#   R2  cwd owns .review: the binary's `init` writes .review/ controls
 #       into the cwd target repo, never beside the tool.
 #   R3  README routes honestly: the registry block says install.sh is not
 #       shipped and never tells registry users to run ./install.sh (that
@@ -49,10 +51,11 @@ fi
 mkdir -p "$EVAL_SANDBOX/regunpack"
 tar -xzf "$TARBALL" -C "$EVAL_SANDBOX/regunpack"
 PKG="$EVAL_SANDBOX/regunpack/package"
-if [ -x "$PKG/scripts/review.sh" ] && [ -f "$PKG/SKILL.md" ]; then
-  good "registry copy carries the CLI (scripts/review.sh + SKILL.md)"
+if [ -f "$PKG/SKILL.md" ] && [ -f "$PKG/scripts/verdict-complete.sh" ] \
+  && [ ! -e "$PKG/scripts/review.sh" ]; then
+  good "registry copy carries the payload (SKILL.md + remaining scripts, no review.sh)"
 else
-  bad "unpacked registry copy lacks scripts/review.sh or SKILL.md"
+  bad "unpacked registry copy payload wrong (want SKILL.md + scripts, no review.sh)"
 fi
 
 OLD_HOME="$HOME"
@@ -60,16 +63,18 @@ export HOME="$EVAL_SANDBOX/fakehome-install"
 TARGET="$EVAL_SANDBOX/target"
 mkdir -p "$TARGET/.agents/skills" "$HOME/.agents/skills"
 set +e
-(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" bash "$PKG/scripts/review.sh" install --yes </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" install --yes </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
 install_status=$?
 set -e
 if [ "$install_status" -eq 0 ]; then
-  good "registry CLI installs its payload (exit 0)"
+  good "verdict install applies the payload (exit 0)"
 else
-  bad "registry CLI install exits $install_status"
+  bad "verdict install exits $install_status"
 fi
 copy_ok="true"
 for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
+  # The installed payload matches the packed registry copy (the unpacked
+  # tarball is the install source of record, not the checkout).
   cmp -s "$PKG/SKILL.md" "$root/verdict/SKILL.md" || copy_ok="false"
   diff -r -q "$PKG/prompts" "$root/verdict/prompts" >/dev/null 2>&1 || copy_ok="false"
   diff -r -q "$PKG/scripts" "$root/verdict/scripts" >/dev/null 2>&1 || copy_ok="false"
@@ -81,18 +86,18 @@ else
   bad "installed copy payload differs from the registry copy"
 fi
 set +e
-(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" bash "$TARGET/.agents/skills/verdict/scripts/review.sh" install </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" install </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
 rerun_status=$?
 set -e
 if [ "$rerun_status" -eq 0 ] && grep -q "already up to date" "$EVAL_OUT"; then
-  good "installed copy's own CLI re-runs to keep (carried CLI works)"
+  good "re-run without --yes reads keep (exit 0)"
 else
   bad "installed copy's CLI re-run exits $rerun_status"
 fi
 
 # --- R2: .review/ lands in cwd, never beside the tool ---
 set +e
-(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" bash "$PKG/scripts/review.sh" init --preset standard --yes </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset standard --yes </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
 init_status=$?
 set -e
 if [ "$init_status" -eq 0 ] && [ -f "$TARGET/.review/budget" ] && [ ! -e "$PKG/.review" ]; then

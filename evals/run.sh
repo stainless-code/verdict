@@ -5,10 +5,11 @@
 #
 # Builds a temp sandbox, crafts hermetic PR bundles inside it (no network —
 # a stub `gh` that fails every call sits first on PATH and logs each
-# interception), runs evals/cases/*.sh against scripts/review.sh, prints a
-# PASS/FAIL tally, writes evals/results/summary.json (gitignored), then
-# removes the sandbox (unless --keep). Exits 0 only when every case passes
-# and the repo tree is byte-identical before/after (fixtures never touch it).
+# interception), runs evals/cases/*.sh against the built verdict binary
+# ($EVAL_CLI, from `make evals`), prints a PASS/FAIL tally, writes
+# evals/results/summary.json (gitignored), then removes the sandbox
+# (unless --keep). Exits 0 only when every case passes and the repo tree
+# is byte-identical before/after (fixtures never touch it).
 #
 # Cases run concurrently (default: one job per CPU; EVAL_JOBS=N overrides,
 # EVAL_JOBS=1 is the old serial run). Every case gets its own sandbox, stub
@@ -108,6 +109,18 @@ CASES_DIR="$SANDBOX/cases"
 mkdir -p "$CASES_DIR"
 
 export EVAL_ROOT="$ROOT"
+
+# EVAL_CLI is the one CLI under test: the built verdict binary. make
+# evals builds it first; a direct ./evals/run.sh run needs a prior
+# `make build` (or `make evals`) and fails fast otherwise instead of
+# silently grading nothing.
+EVAL_CLI="${EVAL_CLI:-$ROOT/bin/verdict}"
+if [ ! -x "$EVAL_CLI" ]; then
+  echo "evals need a built binary at $EVAL_CLI (run make evals) instead of silently grading nothing" >&2
+  exit 2
+fi
+export EVAL_CLI
+echo "evals: CLI under test $EVAL_CLI"
 
 cleanup() {
   if [ "$KEEP" = "true" ]; then

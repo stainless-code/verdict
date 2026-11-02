@@ -94,13 +94,15 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Harness deps (bash/jq/git feed the parity tests)
+      - name: Harness deps (bash/jq/git used by Go tests and stubs)
         shell: bash
         run: |
-          # The internal/record parity harness shells scripts/review.sh, so a
-          # runner without bash/jq would fail loudly here instead of silently
-          # skipping coverage further down.
-          command -v bash jq git
+          # Go tests shell bash for provider stubs and the verify watchdog,
+          # and the CLI probes jq/git, so assert each tool separately:
+          # `command -v a b c` passes when only one is found.
+          command -v bash
+          command -v jq
+          command -v git
           jq --version
 
       - name: Go gate (gofmt, vet, mod verify, race tests, vuln)
@@ -113,16 +115,14 @@ jobs:
           version: v2.15.0
           args: --timeout=10m
 
-      - name: Prove the parity harness ran (no silent skip)
+      - name: Prove the golden tests ran (no silent skip)
         shell: bash
         run: |
-          # Re-run one parity test verbosely: the step passes only on an
-          # observed `--- PASS`, so a harness that never executes (or errors
+          # Re-run one golden test verbosely: the step passes only on an
+          # observed `--- PASS`, so a suite that never executes (or errors
           # before running) fails the build instead of looking green.
-          # grep reads the saved log: `tee | grep -q` broke the pipe on an early
-          # match and pipefail failed a green run.
-          go test -count=1 -v -run '^TestParityMatrix$' ./internal/record/ > "$RUNNER_TEMP/parity-guard.log" 2>&1
-          grep -q '^--- PASS: TestParityMatrix' "$RUNNER_TEMP/parity-guard.log"
+          go test -count=1 -v -run '^TestFetchContractGitcafe$' ./internal/fetch/ > "$RUNNER_TEMP/golden-guard.log" 2>&1
+          grep -q '^--- PASS: TestFetchContractGitcafe' "$RUNNER_TEMP/golden-guard.log"
 
   go-windows:
     name: 🐹 Go Windows
@@ -139,14 +139,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Harness deps (bash/jq/git feed the parity tests)
+      - name: Harness deps (bash/jq/git used by Go tests and stubs)
         shell: bash
         run: |
-          # Go-only tests still shell bash, and the Go CLI probes git/jq, so
-          # assert each tool separately: `command -v a b c` passes when only
-          # one is found. The bash parity leg itself is skipped on Windows
-          # (Git Bash's jq narrows env through ANSI; see
-          # parity.SkipBashOnWindows).
+          # Go tests shell bash for provider stubs and the verify watchdog,
+          # and the Go CLI probes git/jq, so assert each tool separately:
+          # `command -v a b c` passes when only one is found.
           command -v bash
           command -v jq
           command -v git
@@ -171,12 +169,11 @@ jobs:
         run: go test -count=1 -timeout=25m ./...
 
   evals:
-    name: 🧪 Evals (${{ matrix.impl }}, ${{ matrix.os }})
+    name: 🧪 Evals (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
-        impl: [bash, go]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -185,8 +182,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Go for both legs (go leg builds bin/verdict, bash leg
-          hermetically rebuilds it for dispatch-record)
+      - name: Setup Go (the suite runs the built binary)
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -197,37 +193,26 @@ jobs:
         run: |
           if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
 
-      - name: Harness deps (bash/jq/git/go/shellcheck on every leg)
+      - name: Harness deps (bash/jq/git/go/shellcheck)
         shell: bash
         run: |
           # run.sh fails on a missing dep, but assert up front so the log
-          # names the side: a go leg without Go must never silently grade
-          # bash (dispatched verbs run Go, the rest stays shell, so
-          # the leg grows automatically as verbs join VERDICT_GO_VERBS).
-          # precommit-hook grades shellcheck (H1 fails without it),
-          # so its absence fails here instead of deep in the suite.
+          # names the side. precommit-hook grades shellcheck (H1 fails
+          # without it), so its absence fails here instead of deep in the
+          # suite.
           command -v bash jq git go shellcheck
           jq --version
           go version
 
-      - name: Run offline contract evals (bash)
-        if: matrix.impl == 'bash'
+      - name: Run offline contract evals (built binary)
         shell: bash
-        run: ./evals/run.sh
-        # Hermeticity lives in evals/run.sh itself (stub gh first on PATH,
-        # fixtures in a temp sandbox, tree-clean assertion) — identical
-        # locally and here. jq/git/shasum ship on both hosted images; go and
-        # shellcheck are provisioned in the steps above. macOS runners shell
-        # out with bash 3.2, which doubles as the old-shell leg of the
-        # suite's 3.2-compat bar.
-
-      - name: Run offline contract evals (Go implementation)
-        if: matrix.impl == 'go'
-        shell: bash
-        run: make evals-go
-        # Builds bin/verdict, asserts it is executable (the leg fails here
-        # rather than silently testing bash), then runs the same suite with
-        # VERDICT_IMPL=go. Same hermeticity as the bash leg.
+        run: make evals
+        # Builds bin/verdict, asserts it is executable (the suite fails here
+        # rather than silently grading nothing), then runs every case
+        # against it via $EVAL_CLI. Same hermeticity locally and here
+        # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
+        # assertion). macOS runners shell out with bash 3.2, which doubles
+        # as the suite's 3.2-compat bar.
 
   docs:
     name: 📖 Docs site

@@ -13,9 +13,8 @@
 #       with a warn; fenceless markers drop — all exit 0, never a failure.
 #   D4  structural split: diagrams.structural=false hides the P3 topology
 #       half but keeps the table; the default keeps today's bytes.
-#   D5  no-diagram default byte-parity: the pre-P4 HEAD script renders
-#       identical report bytes and identical dry-run stdout on a
-#       diagram-less bundle.
+#   D5  no-diagram default: a diagram-less bundle renders with no diagram
+#       line (the pre-P4 shell parity lock retired with the shell).
 #   D6  precedence flags > file > env on the new knobs.
 #   D7  unknown diagrams keys and non-boolean values refuse typed bad-settings.
 #   M1  the manual carries the behavioral paragraph (knobs, flags, markers).
@@ -326,7 +325,7 @@ else
   bad "structural default gave exit $EVAL_STATUS"
 fi
 
-# --- D5: no-diagram default byte-parity vs pre-P4 HEAD ---
+# --- D5: no-diagram default (diagram-less bundle renders clean) ---
 PR=4710
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -335,43 +334,21 @@ EOF
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Parity probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"8888888888888888888888888888888888888888","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict" "$EVAL_SANDBOX/oldrun/scripts"
+mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
-git -C "$EVAL_ROOT" show HEAD:scripts/review.sh > "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-chmod +x "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-cp "$EVAL_ROOT/package.json" "$EVAL_SANDBOX/oldrun/package.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-new.md"
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "parity baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -s "$EVAL_SANDBOX/out-new.md" ]; then
+  good "report --output succeeds on a diagram-less bundle"
 else
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      report acme/app "$PR" --output "$EVAL_SANDBOX/out-old.md" \
-      >"$EVAL_SANDBOX/old-out.txt" 2>"$EVAL_SANDBOX/old-err.txt"
-  )
-  if cmp -s "$EVAL_SANDBOX/out-old.md" "$EVAL_SANDBOX/out-new.md"; then
-    good "report --output byte-identical to pre-P4 HEAD on a diagram-less bundle"
-  else
-    bad "report parity broke (old vs new differ)"
-  fi
+  bad "report baseline exits $EVAL_STATUS"
 fi
 run_review post acme/app "$PR" --dry-run
 if [ "$EVAL_STATUS" -ne 0 ]; then
   bad "dry-run baseline exits $EVAL_STATUS"
+elif ! grep -qi 'diagram' "$EVAL_OUT"; then
+  good "human dry-run stdout carries no diagram line"
 else
-  cp "$EVAL_OUT" "$EVAL_SANDBOX/new-dry.txt"
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      post acme/app "$PR" --dry-run >"$EVAL_SANDBOX/old-dry.txt" 2>/dev/null
-  )
-  if cmp -s "$EVAL_SANDBOX/old-dry.txt" "$EVAL_SANDBOX/new-dry.txt" \
-    && ! grep -qi 'diagram' "$EVAL_SANDBOX/new-dry.txt"; then
-    good "human dry-run stdout byte-identical with no diagram line"
-  else
-    bad "dry-run parity broke"
-  fi
+  bad "dry-run baseline exits $EVAL_STATUS or names a diagram"
 fi
 unset XDG_CONFIG_HOME || true
 
@@ -454,7 +431,7 @@ unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 rm -rf "$EVAL_SANDBOX/xdg-beh" "$EVAL_SANDBOX/xdg-d3" "$EVAL_SANDBOX/xdg-nostruct" \
-  "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/oldrun" "$EVAL_SANDBOX/xdg-doff" "$EVAL_SANDBOX/xdg-dbad"
+  "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-doff" "$EVAL_SANDBOX/xdg-dbad"
 
 if [ "$fails" -ne 0 ]; then echo "case publish-diagram: FAIL ($fails)"; exit 1; fi
 echo "case publish-diagram: PASS"

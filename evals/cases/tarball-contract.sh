@@ -6,13 +6,17 @@
 #   P1  offline pack: `npm pack --dry-run --json --offline` exits 0 and
 #       writes no tarball or pack.log into the repo (pack destination is the
 #       sandbox, so even a non-dry-run accident lands outside the tree).
-#   P2  required set ships: the entry script (every scripts/*.sh on disk),
-#       every prompts/*.md on disk, plus SKILL.md, README.md, LICENSE and
-#       package.json are all in the packed file list.
+#   P2  required set ships: every scripts/*.sh on disk (the completion
+#       script; no shell entry point), every prompts/*.md on disk, every
+#       published schema on disk, plus SKILL.md, README.md, LICENSE and
+#       package.json are all in the packed file list. The old
+#       scripts/review.sh must NOT ship (a stale manifest fails here).
 #   P3  no dangling references: every scripts/… or prompts/… path named in
 #       a SKILL.md code span exists on disk and ships in the tarball.
 #   P4  nothing forbidden ships: no .env, .review/, .scratch, evals/results,
-#       *.tgz, or node_modules/ entry in the packed list.
+#       *.tgz, or node_modules/ entry in the packed list — and never the
+#       deleted shell entry point scripts/review.sh (a stale manifest fails
+#       here).
 #   P5  drift fails the build: the same comparator run against a packed
 #       list with one required file removed reports the gap, so a newly
 #       referenced file left out of package.json `files` breaks the suite.
@@ -86,7 +90,7 @@ missing_from() { # $1 = packed-list file; prints required entries absent there
 }
 
 if gaps="$(missing_from "$PACKED")"; then
-  good "tarball holds the entry script, every prompt, every schema, SKILL.md, README.md, LICENSE ($(wc -l <"$REQUIRED" | tr -d ' ') files)"
+  good "tarball holds the completion script, every prompt, every schema, SKILL.md, README.md, LICENSE ($(wc -l <"$REQUIRED" | tr -d ' ') files)"
 else
   bad "tarball missing required file(s): $(printf '%s' "$gaps" | tr '\n' ' ')"
 fi
@@ -109,9 +113,9 @@ elif [ "$refs_seen" -eq 0 ]; then
 fi
 
 # --- P4: nothing forbidden ships ---
-if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.review/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' "$PACKED" || true)" \
+if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.review/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' -e '^scripts/review\.sh$' "$PACKED" || true)" \
   && [ -z "$offenders" ]; then
-  good "tarball holds no .env, .review, .scratch, evals results, tgz, or node_modules"
+  good "tarball holds no .env, .review, .scratch, evals results, tgz, node_modules, or review.sh"
 else
   bad "tarball ships forbidden file(s): $(printf '%s' "$offenders" | tr '\n' ' ')"
 fi

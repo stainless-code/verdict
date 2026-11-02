@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Case post-go-guards: Go-only post guards (audit 02 + audit 21, folded into
-# the port; graded on the Go leg only until ticket 08 deletes the shell).
+# Case post-go-guards: bounded post guards (audit 02 + audit 21).
 #
 # Grades (hermetic — crafted bundles, smart gh stub, no network):
 #   G1  secondary rate limit retries with bounded backoff: a 429 carrying a
@@ -11,18 +10,10 @@
 #   G3  oversized bodies trim with a notice: a body past the 65,536-char
 #       hosting limit posts once with the notice and an intact footer instead
 #       of submitting a doomed review.
-#
-# SKIP unless VERDICT_IMPL=go: the shell keeps today's behavior (fail fast on
-# 429, no body guard) until the port lands.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
-
-if [ "${VERDICT_IMPL:-bash}" != "go" ]; then
-  echo "case post-go-guards: SKIP (go-only until ticket 08)"
-  exit 0
-fi
 
 fails=0
 good() { echo "  ok: $1"; }

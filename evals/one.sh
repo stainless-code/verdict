@@ -33,5 +33,13 @@ EOF
 chmod +x "$STUBBIN/gh"
 export EVAL_ROOT="$ROOT" EVAL_SANDBOX="$SANDBOX"
 export EVAL_STUBBIN="$STUBBIN" EVAL_STUBLOG="$STUBLOG"
+# Single-case runs use the same built binary as the full suite (make evals
+# builds it; one.sh only defaults it and fails fast when it is missing).
+EVAL_CLI="${EVAL_CLI:-$ROOT/bin/verdict}"
+if [ ! -x "$EVAL_CLI" ]; then
+  echo "evals need a built binary at $EVAL_CLI (run make evals) instead of silently grading nothing" >&2
+  exit 2
+fi
+export EVAL_CLI
 trap 'rm -rf "$SANDBOX"' EXIT
 bash "$ROOT/evals/cases/$case_name.sh"

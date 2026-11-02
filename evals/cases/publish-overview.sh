@@ -11,8 +11,9 @@
 #       2-file/30KB shown via the byte trigger).
 #   O4  flag overrides both ways (small + --overview shown;
 #       large + --no-overview omitted).
-#   O5  byte-parity when omitted (pre-P3 script from git HEAD renders the
-#       same bytes as the current script on a below-threshold bundle).
+#   O5  omitted default: a below-threshold bundle renders with no
+#       <details> overview (the pre-P3 shell parity lock retired with the
+#       shell).
 #   O6  precedence flags > file > env (file/env false hide a large bundle;
 #       --overview wins over a false file).
 #   M1  the manual carries the threshold paragraph (numbers, flags, row-id
@@ -226,28 +227,14 @@ else
   bad "--no-overview force gave exit $EVAL_STATUS"
 fi
 
-# --- O5: byte-parity when omitted (pre-P3 script renders identical bytes) ---
-mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict" "$EVAL_SANDBOX/oldrun/scripts"
+# --- O5: omitted default (below threshold renders with no overview) ---
+mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
-git -C "$EVAL_ROOT" show HEAD:scripts/review.sh > "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-chmod +x "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-cp "$EVAL_ROOT/package.json" "$EVAL_SANDBOX/oldrun/package.json"
 run_review report acme/app 4601 --output "$EVAL_SANDBOX/out-new.md"
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "parity baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q '<details>' "$EVAL_SANDBOX/out-new.md"; then
+  good "below threshold the report renders with no <details> overview"
 else
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      report acme/app 4601 --output "$EVAL_SANDBOX/out-old.md" \
-      >"$EVAL_SANDBOX/old-out.txt" 2>"$EVAL_SANDBOX/old-err.txt"
-  )
-  if cmp -s "$EVAL_SANDBOX/out-old.md" "$EVAL_SANDBOX/out-new.md" \
-    && ! grep -q '<details>' "$EVAL_SANDBOX/out-new.md"; then
-    good "below threshold the current script is byte-identical to pre-P3 HEAD"
-  else
-    bad "parity broke (old vs new differ)"
-  fi
+  bad "omitted-default gave exit $EVAL_STATUS or renders a <details> block"
 fi
 unset XDG_CONFIG_HOME || true
 
@@ -341,7 +328,7 @@ fi
 # --- cleanup: no knob state leaks into later cases ---
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_OVERVIEW || true
-rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-ov" "$EVAL_SANDBOX/oldrun"
+rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-ov"
 
 if [ "$fails" -ne 0 ]; then echo "case publish-overview: FAIL ($fails)"; exit 1; fi
 echo "case publish-overview: PASS"

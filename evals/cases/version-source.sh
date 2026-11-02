@@ -2,11 +2,11 @@
 # Case version-source: package.json is the single version source.
 #
 # Grades (all hermetic — repo itself as fixture, stub gh, no network):
-#   V1  `review.sh --version` stdout equals `jq -r .version package.json`.
+#   V1  `verdict --version` stdout equals `jq -r .version package.json`.
 #   V2  the rendered footer resolves `{version}` to the same string on a
 #       healthy tree (report --output carries `Verdict <version>`, never
 #       `unknown`); no second version source exists (no VERSION file at
-#       the root, no hardcoded version literal in scripts/review.sh, every
+#       the root, the version is read from package.json at runtime, every
 #       `.version` read targets package.json).
 #   V3  degrade path: with package.json unreadable, `--version` reads
 #       `0.0.0-unknown` and the footer still renders `Verdict unknown`
@@ -54,28 +54,26 @@ if [ -e "$EVAL_ROOT/VERSION" ] || [ -e "$EVAL_ROOT/version.txt" ]; then
 else
   good "no second version source file at the repo root"
 fi
-if grep -Fq "$VER" "$EVAL_ROOT/scripts/review.sh"; then
-  bad "package version literal hardcoded in scripts/review.sh"
+if grep -rn -- "-version" "$EVAL_ROOT/cmd/verdict" | grep -v '_test\.go' | grep -q 'package\.json'; then
+  good "the CLI reads its version from package.json at runtime"
 else
-  good "no hardcoded version literal in scripts/review.sh"
+  bad "no package.json version read in cmd/verdict"
 fi
-if grep -n 'jq -r \.version' "$EVAL_ROOT/scripts/review.sh" | grep -v 'package\.json' | grep -q .; then
-  bad "a .version read targets something other than package.json"
+if grep -rn -- '"0\.0\.0-unknown"' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" --include='*.go' | grep -v '_test\.go' | grep -q . \
+  && ! grep -rn -- '"0\.[0-9][0-9]*\.[0-9][0-9]*' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" --include='*.go' | grep -v '_test\.go' | grep -v '0\.0\.0-unknown' | grep -q .; then
+  good "the only version literal in the Go sources is the 0.0.0-unknown degrade fallback"
 else
-  good "every .version read targets package.json"
+  bad "a release version literal lives in the Go sources"
 fi
 
 # --- V3: degrade path with package.json unreadable ---
-# A copied script with the repo root symlinked in but package.json held
-# back: tool_version() and --version must degrade, never fail.
+# A copied binary with no checkout above it: the version lookup and the
+# footer must degrade, never fail.
 FAKE="$EVAL_SANDBOX/fake-root"
-mkdir -p "$FAKE/scripts"
-cp "$EVAL_ROOT/scripts/review.sh" "$FAKE/scripts/review.sh"
-for f in prompts SKILL.md README.md LICENSE CHANGELOG.md NOTICE.md install.sh docs apps; do
-  ln -s "$EVAL_ROOT/$f" "$FAKE/$f"
-done
+mkdir -p "$FAKE/fakebin"
+cp "$EVAL_CLI" "$FAKE/fakebin/verdict"
 set +e
-bash "$FAKE/scripts/review.sh" --version >"$EVAL_SANDBOX/fake-version.txt" 2>/dev/null
+"$FAKE/fakebin/verdict" --version >"$EVAL_SANDBOX/fake-version.txt" 2>/dev/null
 fake_status=$?
 set -e
 if [ "$fake_status" -eq 0 ] && [ "$(tr -d '\n' <"$EVAL_SANDBOX/fake-version.txt")" = "0.0.0-unknown" ]; then
@@ -94,9 +92,9 @@ EOF
 set +e
 (
   cd "$EVAL_SANDBOX" || exit 99
-  # V3 grades the BASH degrade path (the fake root holds the script back from
-  # package.json); pin the implementation so the go leg grades the same path.
-  PATH="$EVAL_STUBBIN:$PATH" VERDICT_IMPL=bash bash "$FAKE/scripts/review.sh" report acme/app "$PR" \
+  # V3 grades the binary degrade path: the fake root holds no package.json
+  # above the copied binary, so the footer degrades without failing.
+  PATH="$EVAL_STUBBIN:$PATH" "$FAKE/fakebin/verdict" report acme/app "$PR" \
     --output "$EVAL_SANDBOX/out-4602.md" >"$EVAL_SANDBOX/fake-report.txt" 2>/dev/null
 )
 fake_status=$?

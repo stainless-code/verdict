@@ -258,7 +258,7 @@ fi
 
 # --- C5: a complete attested synthesis posts exactly once with sig dedupe ---
 mkcovbundle 4644
-# sig_of mirror (scripts/review.sh normalizes key whitespace, then sha1):
+# sig_of mirror (the CLI normalizes key whitespace, then sha1):
 # sigKey for an inline comment is path + "\n" + heading("") + "\n" + body.
 sig_for() { printf '%s\n%s\n%s' "$1" "" "$2" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
 ABODY="Prior note on file one still stands."

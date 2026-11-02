@@ -2,8 +2,10 @@
 # Case publish-overrides: operator-owned per-block template fragments (P5).
 #
 # Grades (all hermetic — crafted bundles, stub gh, no network):
-#   V1  absent-fragment parity: no .review/overrides reads today's bytes
-#       (report --output and human post dry-run match the pre-P5 HEAD script).
+#   V1  absent-fragment default: no .review/overrides reads the built-in
+#       bytes (report --output and human post dry-run succeed; V2 pins the
+#       default-fragment rendering, the pre-P5 shell parity lock retired
+#       with the shell).
 #   V2  valid default fragments render byte-identically (all four present with
 #       default content; report cmp identical; post dry-run exit 0; check-tree
 #       passes fragment validation and fails only on the repo/tree gate).
@@ -101,43 +103,20 @@ post_refuse() { # $1 = label, $2 = pr, $3 = want code, $4 = want invariant
 mk_full_bundle 4801
 mk_clean_bundle 4802
 
-# --- V1: absent-fragment parity vs pre-P5 HEAD (report bytes + dry-run stdout) ---
-mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict" "$EVAL_SANDBOX/oldrun/scripts"
+# --- V1: absent-fragment default (built-in bytes render) ---
+mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
-git -C "$EVAL_ROOT" show HEAD:scripts/review.sh > "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-chmod +x "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-cp "$EVAL_ROOT/package.json" "$EVAL_SANDBOX/oldrun/package.json"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-new.md"
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "parity baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -s "$EVAL_SANDBOX/out-new.md" ]; then
+  good "no overrides: report --output renders the built-ins"
 else
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      report acme/app 4802 --output "$EVAL_SANDBOX/out-old.md" \
-      >"$EVAL_SANDBOX/old-out.txt" 2>"$EVAL_SANDBOX/old-err.txt"
-  )
-  if cmp -s "$EVAL_SANDBOX/out-old.md" "$EVAL_SANDBOX/out-new.md"; then
-    good "no overrides: report --output byte-identical to pre-P5 HEAD"
-  else
-    bad "report parity broke (old vs new differ)"
-  fi
+  bad "report baseline exits $EVAL_STATUS"
 fi
 run_review post acme/app 4802 --dry-run
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "dry-run baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -s "$EVAL_OUT" ]; then
+  good "no overrides: human dry-run succeeds"
 else
-  cp "$EVAL_OUT" "$EVAL_SANDBOX/new-dry.txt"
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      post acme/app 4802 --dry-run >"$EVAL_SANDBOX/old-dry.txt" 2>/dev/null
-  )
-  if cmp -s "$EVAL_SANDBOX/old-dry.txt" "$EVAL_SANDBOX/new-dry.txt"; then
-    good "no overrides: human dry-run byte-identical to pre-P5 HEAD"
-  else
-    bad "dry-run parity broke"
-  fi
+  bad "dry-run baseline exits $EVAL_STATUS"
 fi
 cp "$EVAL_SANDBOX/out-new.md" "$EVAL_SANDBOX/out-base.md"
 unset XDG_CONFIG_HOME || true
@@ -395,7 +374,7 @@ unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_MODEL || true
-rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/oldrun" "$EVAL_SANDBOX/.review/overrides"
+rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/.review/overrides"
 
 if [ "$fails" -ne 0 ]; then echo "case publish-overrides: FAIL ($fails)"; exit 1; fi
 echo "case publish-overrides: PASS"

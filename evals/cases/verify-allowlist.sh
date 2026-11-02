@@ -105,9 +105,8 @@ bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 WANT_KEYS="at data error next pr repo schema_version verb warnings"
 
 # /tmp scratch is part of the contract this case grades, but the paths below
-# are executed (not just quoted in refusals), and dispatch-record's G6 re-runs
-# this case nested under VERDICT_IMPL=go. A PID-suffixed namespace keeps the
-# two concurrent copies out of each other's files.
+# are executed (not just quoted in refusals). A PID-suffixed namespace keeps
+# concurrent copies out of each other's files.
 WA_TMP="/tmp/verify-allowlist.$$"
 mkdir -p "$WA_TMP"
 trap 'rm -rf "$WA_TMP"' EXIT

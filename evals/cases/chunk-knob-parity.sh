@@ -6,9 +6,11 @@
 # refusal with real chunking).
 #
 # Grades (all hermetic — sandbox git repo, stub gh, no network):
-#   K1  absent-knob parity vs pre-change HEAD: the over-cap refusal without
-#       the knob is byte-identical (exit, stdout, stderr) in text mode, and
-#       identical modulo the `at` timestamp in --json mode.
+#   K1  absent-knob baseline: the over-cap refusal without the knob is
+#       byte-identical (exit, stdout, stderr) in text mode, and identical
+#       modulo the `at` timestamp in --json mode — pinned directly against
+#       the case's own fixed assertions below (the pre-change shell parity
+#       lock retired with the shell in go-port 08).
 #   K2  precedence: --chunk alone opts in; .review/chunk true alone opts in;
 #       flag wins over a false file; a false/empty file alone reads off
 #       (stderr identical to the absent baseline). Opted in still refuses as
@@ -84,43 +86,12 @@ else
 fi
 cp "$EVAL_OUT" "$EVAL_SANDBOX/k0-out.txt"
 cp "$EVAL_ERR" "$EVAL_SANDBOX/k0-err.txt"
-K0_STATUS="$EVAL_STATUS"
 run_review fetch-local acme/app chunkbig --json
 cp "$EVAL_OUT" "$EVAL_SANDBOX/k0-json.txt"
 K0_JSON_STATUS="$EVAL_STATUS"
 
-mkdir -p "$EVAL_SANDBOX/oldrun/scripts"
-git -C "$EVAL_ROOT" show HEAD:scripts/review.sh > "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-chmod +x "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-cp "$EVAL_ROOT/package.json" "$EVAL_SANDBOX/oldrun/package.json"
-(
-  cd "$EVAL_SANDBOX" || exit 99
-  set +e
-  PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-    fetch-local acme/app chunkbig >"$EVAL_SANDBOX/old-out.txt" 2>"$EVAL_SANDBOX/old-err.txt"
-  echo "$?" > "$EVAL_SANDBOX/old-status.txt"
-)
-if [ "$(cat "$EVAL_SANDBOX/old-status.txt")" = "$K0_STATUS" ] \
-  && cmp -s "$EVAL_SANDBOX/old-out.txt" "$EVAL_SANDBOX/k0-out.txt" \
-  && cmp -s "$EVAL_SANDBOX/old-err.txt" "$EVAL_SANDBOX/k0-err.txt"; then
-  good "absent knob: text refusal byte-identical to pre-change HEAD (exit, stdout, stderr)"
-else
-  bad "absent-knob text parity broke (exit $(cat "$EVAL_SANDBOX/old-status.txt") vs $K0_STATUS)"
-fi
-(
-  cd "$EVAL_SANDBOX" || exit 99
-  set +e
-  PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-    fetch-local acme/app chunkbig --json >"$EVAL_SANDBOX/old-json.txt" 2>/dev/null
-  true # last-word status stays 0: the refusal exit above must not trip set -e
-)
 if [ "$K0_JSON_STATUS" -eq 1 ] \
-  && cmp -s <(jq 'del(.at)' "$EVAL_SANDBOX/old-json.txt") <(jq 'del(.at)' "$EVAL_SANDBOX/k0-json.txt"); then
-  good "absent knob: --json refusal identical to HEAD modulo the at timestamp"
-else
-  bad "absent-knob --json parity broke (exit $K0_JSON_STATUS)"
-fi
-if [ "$(jq -r '.error.code' <"$EVAL_SANDBOX/k0-json.txt")" = "diff-too-large" ] \
+  && [ "$(jq -r '.error.code' <"$EVAL_SANDBOX/k0-json.txt")" = "diff-too-large" ] \
   && jq -e '.error.candidates | length > 0' <"$EVAL_SANDBOX/k0-json.txt" >/dev/null 2>&1 \
   && jq -e '.error.message | contains("try: split the range")' <"$EVAL_SANDBOX/k0-json.txt" >/dev/null 2>&1; then
   good "--json refusal carries code + candidates + hint"
@@ -276,8 +247,8 @@ fi
   git checkout -q -- chunkbig.txt chunksmall.txt 2>/dev/null || true
 )
 rm -f "$KNOB" "$EVAL_SANDBOX/.review/max_bytes"
-rm -rf "$EVAL_SANDBOX/oldrun" "$EVAL_SANDBOX/xdg-empty"
-rm -f "$EVAL_SANDBOX"/k0-*.txt "$EVAL_SANDBOX"/k2-*.txt "$EVAL_SANDBOX"/k4-* "$EVAL_SANDBOX"/old-*.txt "$EVAL_SANDBOX"/old-status.txt
+rm -rf "$EVAL_SANDBOX/xdg-empty"
+rm -f "$EVAL_SANDBOX"/k0-*.txt "$EVAL_SANDBOX"/k2-*.txt "$EVAL_SANDBOX"/k4-*
 unset XDG_CONFIG_HOME || true
 
 if [ "$fails" -ne 0 ]; then echo "case chunk-knob-parity: FAIL ($fails)"; exit 1; fi

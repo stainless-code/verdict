@@ -53,14 +53,16 @@ eval_write_findings() {
   cat > "$EVAL_SANDBOX/.review/$pr/findings.json"
 }
 
-# run_review <review.sh args...> — run the CLI with cwd=sandbox and the stub
-# gh first on PATH. Captures stdout/stderr; sets EVAL_STATUS (never aborts,
-# so callers under `set -e` can grade failures as well as passes).
+# run_review <verdict args...> — run the CLI (the built binary at
+# $EVAL_CLI, exported by evals/run.sh and evals/one.sh) with cwd=sandbox
+# and the stub gh first on PATH. Captures stdout/stderr; sets EVAL_STATUS
+# (never aborts, so callers under `set -e` can grade failures as well as
+# passes).
 run_review() {
   set +e
   (
     cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" "$@" \
+    PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" \
       >"$EVAL_OUT" 2>"$EVAL_ERR"
   )
   EVAL_STATUS=$?

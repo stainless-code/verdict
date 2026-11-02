@@ -1,11 +1,11 @@
-# Verdict Go builds. `make build` produces bin/verdict, the conventional
-# repo-local binary the shell dispatches to under VERDICT_IMPL=go (go-port 02).
-# Distribution stays undecided until ticket 08: this target is local-only.
+# Verdict Go builds. `make build` produces bin/verdict, the built binary
+# every eval case invokes via $EVAL_CLI (go-port 08: the binary is the only
+# front door; no bash/shell leg remains).
 #
 # `make ci-go` runs everything the CI go job gates on except golangci-lint
 # (CI runs the pinned official action so the repo config lints exactly as
-# merged). `make evals-go` builds bin/verdict and runs the full eval suite
-# against the Go implementation (CI runs both legs: default and evals-go).
+# merged). `make evals` builds bin/verdict and runs the full eval suite
+# against it (CI runs this on macOS and Ubuntu).
 GO := go
 BIN := bin/verdict
 GOVULNCHECK_VERSION ?= v1.9.0
@@ -35,10 +35,14 @@ vuln:
 .PHONY: ci-go
 ci-go: gofmt-check schemas-check vet test-race vuln
 
+.PHONY: evals
+evals: build
+	test -x "$(CURDIR)/$(BIN)" || { echo "evals: $(BIN) missing after build (not silently testing nothing)" >&2; exit 1; }
+	EVAL_CLI="$(CURDIR)/$(BIN)" ./evals/run.sh
+
+# evals-go stays as an alias for muscle memory; the suite is binary-only.
 .PHONY: evals-go
-evals-go: build
-	test -x "$(CURDIR)/$(BIN)" || { echo "evals-go: $(BIN) missing after build (not silently testing bash)" >&2; exit 1; }
-	VERDICT_IMPL=go VERDICT_BIN="$(CURDIR)/$(BIN)" ./evals/run.sh
+evals-go: evals
 
 .PHONY: clean
 clean:
