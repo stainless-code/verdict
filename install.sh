@@ -134,7 +134,7 @@ fi
 [ "$MODE" = "list" ] || [ -f "$SRC/SKILL.md" ] || die "not a verdict checkout (no SKILL.md in $SRC)"
 if [ "$MODE" != "list" ]; then
   git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-    || die "not a verdict git checkout ($SRC) — install.sh links checkouts only; registry copies already carry scripts/review.sh, nothing to link"
+    || die "not a verdict git checkout ($SRC) — install.sh links checkouts only; registry copies already carry the verdict CLI, nothing to link"
 fi
 
 scope_list() { # prints "label<TAB>dir" lines for names + raw dirs
@@ -166,7 +166,16 @@ if [ "$MODE" = "list" ]; then
 fi
 
 if [ "$MODE" = "install" ] || [ "$MODE" = "check" ]; then
-  "$SRC/scripts/review.sh" doctor || die "fix the FAIL lines above, then re-run"
+  # The doctor gate runs the checkout's binary: prefer a built bin/verdict,
+  # else build in place (bin/ is gitignored, so the gate never depends on
+  # a stale copy).
+  if [ -x "$SRC/bin/verdict" ]; then
+    "$SRC/bin/verdict" doctor || die "fix the FAIL lines above, then re-run"
+  elif command -v go >/dev/null 2>&1; then
+    (cd "$SRC" && go run ./cmd/verdict doctor) || die "fix the FAIL lines above, then re-run"
+  else
+    die "doctor gate needs $SRC/bin/verdict (make build) or Go to build it"
+  fi
 fi
 
 if [ "$MODE" = "uninstall" ]; then

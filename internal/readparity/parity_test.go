@@ -1,10 +1,10 @@
-// Package readparity_test holds the shell-parity proof for the Go read
+// Package readparity_test holds the golden contract for the Go read
 // verbs (report, next, show, ready, trend, calibrate, doctor, check-tree).
-// The shared harness runs BOTH scripts/review.sh and the Go binary on
-// identical fixtures and compares exit codes, stdout/stderr (timestamps
-// scrubbed only), and every written file byte for byte. Readers are
+// The shared harness runs the Go binary on hermetic fixtures and pins exit
+// codes, stdout/stderr, and every written file against checked-in goldens
+// (go-port 08: the bash comparison retired with the shell). Readers are
 // read-only by contract, so each leg additionally proves NO file is written
-// or changed on either side — except the explicitly requested artifacts
+// or changed — except the explicitly requested artifacts
 // (--output/--sarif targets, calibrate's kb-grades.jsonl, ready's probe
 // err file), which still compare byte-exact across the two sides. Gate
 // flags (--check tiers, freshness, live-thread skip/unreachable), --json

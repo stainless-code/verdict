@@ -246,7 +246,7 @@ func (h *Harness) Teardown() {
 }
 
 // findRepoRoot walks up from this source file to the checkout carrying
-// scripts/review.sh.
+// package.json.
 func findRepoRoot() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

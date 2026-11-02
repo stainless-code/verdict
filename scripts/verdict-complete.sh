@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Completion for scripts/review.sh — bash + zsh, offline-safe.
+# Completion for the verdict CLI — bash + zsh, offline-safe.
 # Static verb/flag/value lists only: sourcing or completing never runs gh,
 # git, jq, or the network, so this keeps working when offline.
 #
-# bash:  source scripts/review-complete.sh   (completes `review.sh` and `review`)
-# zsh:   source scripts/review-complete.sh   (registers via compdef; under
+# bash:  source scripts/verdict-complete.sh   (completes `verdict`)
+# zsh:   source scripts/verdict-complete.sh   (registers via compdef; under
 #        bashcompinit the bash completer below is reused instead)
 #
-# Lists mirror the unknown-flag lines in review.sh; update both together.
+# Lists mirror the unknown-flag lines in the CLI usage text; update both together.
 
 # Verbs, one per line (printf keeps this free of arrays and word-splitting
 # quirks, which differ between bash and zsh).
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready trend learn
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready trend learn init install
 }
 
 # Flags for a verb, one per line.
@@ -32,6 +32,8 @@ _verdict_flags() { # $1 = verb
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;
     ready) printf '%s\n' --json --check;;
+    init) printf '%s\n' --preset --yes --force --json;;
+    install) printf '%s\n' --yes --force --json;;
     *) return 0;;
   esac
 }
@@ -54,6 +56,7 @@ _verdict_values() { # $1 = verb, $2 = flag
         *) return 0;;
       esac;;
     --approve) printf '%s\n' true false;;
+    --preset) printf '%s\n' chill standard strict;;
     --status)
       case "$1" in
         triage) printf '%s\n' open addressed wont-fix false-positive deferred;;
@@ -138,7 +141,7 @@ _verdict_zsh_complete() {
 
 # Registration is additive and silent: unknown shells get nothing.
 if [[ -n "${BASH_VERSION:-}" ]]; then
-  complete -F _verdict_bash_complete review.sh review 2>/dev/null || true
+  complete -F _verdict_bash_complete verdict 2>/dev/null || true
 elif [[ -n "${ZSH_VERSION:-}" ]]; then
-  compdef _verdict_zsh_complete review.sh review 2>/dev/null || true
+  compdef _verdict_zsh_complete verdict 2>/dev/null || true
 fi
