@@ -548,6 +548,34 @@ byte-identical to today (marker-first, degenerate-body bar unchanged); only
 the rendered bytes gain the default footer block below — no forced
 migration, no env removed.
 
+## Install routes and where commands run
+
+One execution model across all three routes. Run the CLI from the repo
+under review: `.review/` is created in the current directory, never
+beside the tool. The CLI lives at `<tool>/scripts/review.sh` — the
+checkout for symlink installs, the installed `verdict/` skill dir for
+registry and copy installs (both ship `scripts/`). Caller tracing, test
+checks, and `verify` all run repo-scoped in that directory, so reviewing
+another repo means running from its checkout (or accepting that the bundle
+lands wherever you stand).
+
+- **Registry** (`npx skills add stainless-code/verdict`): the skill copy
+  carries the CLI — no further install step. `install.sh` is not shipped in
+  the npm tarball and never runs here; invoke the bundled
+  `<skillsdir>/verdict/scripts/review.sh` from the repo under review.
+  Refresh with `npx skills update`.
+- **Source checkout** (`git clone` + `./install.sh`): symlinks the checkout
+  into the agent skill dirs (nine agents, `--detect`/`--all`,
+  doctor-gated). Updates via `git pull`; `install.sh` refuses outside a git
+  checkout. `hooks/pre-commit` wiring applies to the checkout only.
+- **Copy** (`./scripts/review.sh install --yes` from any tool root):
+  copies the payload (`SKILL.md` + `prompts/` + `scripts/`) into the
+  de-facto skill dirs (`.agents/skills`, `.claude/skills`, `.codex/skills`,
+  repo-local and `$HOME`), receipted by `.verdict-managed`. Only
+  installer-owned `verdict/` dirs are ever written; foreign skills and
+  unowned `verdict/` dirs stay untouched. The installed copy is a runnable
+  tool root — re-running its own `install` reads keep.
+
 ## Publish footer + attribution knobs
 
 Every posted body and every `report --output` file ends with one merged

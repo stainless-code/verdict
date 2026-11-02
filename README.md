@@ -20,16 +20,27 @@ Run `./scripts/review.sh doctor` to preflight.
 
 ## Install
 
+One execution model everywhere. Run the CLI from the repo under review:
+`.review/` is created in the current directory, never beside the tool. The
+CLI lives at `<tool>/scripts/review.sh` — the checkout for symlink
+installs, the installed `verdict/` skill dir for registry and copy
+installs (both ship `scripts/`).
+
 Pick one route per machine (two copies = double-loaded skill):
 
 ```bash
-# registry (copies files; -g installs globally, omit for project-local)
+# registry route (no git checkout needed): the skill copy carries the CLI.
+# install.sh is NOT shipped in the npm tarball and never runs here —
+# invoke the bundled script from the repo under review instead.
 npx skills add stainless-code/verdict -g
+<skillsdir>/verdict/scripts/review.sh fetch owner/repo 123
 # refresh registry copies any time (filters match skill names, not owner/repo)
 npx skills check    # report outdated, change nothing
 npx skills update   # update everything in scope (add -g for global)
 
-# source install (symlink; `git pull` updates, no updater daemon by design)
+# source route (symlink into a git checkout; `git pull` updates, no updater
+# daemon by design). install.sh runs only from a checkout — it refuses
+# anywhere else.
 git clone https://github.com/stainless-code/verdict.git
 cd verdict
 ./install.sh
@@ -62,10 +73,10 @@ is one `npx skills add -a <agent>` away.
 
 Operator verbs (offline, same preview-then-confirm idiom): scaffold repo controls
 with `./scripts/review.sh init --preset standard --yes`, and copy the skill payload
-(`SKILL.md` + `prompts/`) with `./scripts/review.sh install --yes` (detects
+(`SKILL.md` + `prompts/` + `scripts/`) with `./scripts/review.sh install --yes` (detects
 `.agents/skills`, `.claude/skills`, `.codex/skills`; only writes installer-owned
-`verdict/` dirs). The `install.sh` symlink route above stays the wide-coverage
-sibling (nine agents, `--detect`/`--all`).
+`verdict/` dirs). The `install.sh` symlink route is the wide-coverage sibling
+for git checkouts only (nine agents, `--detect`/`--all`).
 
 ## Security
 

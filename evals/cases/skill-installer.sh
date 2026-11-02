@@ -77,10 +77,11 @@ payload_ok="true"
 for root in "$EVAL_SANDBOX/.agents/skills" "$HOME/.claude/skills"; do
   cmp -s "$EVAL_ROOT/SKILL.md" "$root/verdict/SKILL.md" || payload_ok="false"
   diff -r -q "$EVAL_ROOT/prompts" "$root/verdict/prompts" >/dev/null 2>&1 || payload_ok="false"
+  diff -r -q "$EVAL_ROOT/scripts" "$root/verdict/scripts" >/dev/null 2>&1 || payload_ok="false"
   [ "$(jq -r '.tool // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "verdict" ] || payload_ok="false"
 done
 if [ "$payload_ok" = "true" ]; then
-  good "owned verdict/ payload installed byte-identical with receipts (repo + home)"
+  good "owned verdict/ payload (SKILL.md + prompts/ + scripts/) installed byte-identical with receipts (repo + home)"
 else
   bad "installed payload differs from the tool checkout"
 fi

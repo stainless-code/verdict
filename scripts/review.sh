@@ -158,14 +158,20 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     copy-based skill installer (offline): detects the de-facto agent skill
     dirs (.agents/skills, .claude/skills, .codex/skills at the repo root
     and $HOME), previews the copy plan for the tool-owned verdict/
-    payload (SKILL.md + prompts/), applies only on explicit confirm.
-    Only installer-owned verdict/ dirs (carrying a .verdict-managed
-    receipt) are ever written; foreign skills and unowned verdict/ dirs
-    are left untouched. An up-to-date re-run reads keep (idempotent); a
-    receipt/tool version skew warns, never fails. Same preview-then-confirm
-    idiom as init: writes need --yes/--force (or an interactive confirm
-    when stdin is a tty). The install.sh symlink route stays the
-    wide-coverage sibling (nine agents, --detect/--all).
+    payload (SKILL.md + prompts/ + scripts/), applies only on explicit
+    confirm. The installed copy carries the CLI, so SKILL.md command paths
+    resolve inside it. Only installer-owned verdict/ dirs (carrying a
+    .verdict-managed receipt) are ever written; foreign skills and unowned
+    verdict/ dirs are left untouched. An up-to-date re-run reads keep
+    (idempotent); a receipt/tool version skew warns, never fails. Same
+    preview-then-confirm idiom as init: writes need --yes/--force (or an
+    interactive confirm when stdin is a tty). Run the CLI from the repo
+    under review: `.review/` is created in the current directory, never
+    beside the tool. The CLI lives at `<tool>/scripts/review.sh` — the
+    checkout for symlink installs, the installed `verdict/` skill dir for
+    registry and copy installs (both ship `scripts/`). The install.sh
+    symlink route stays the wide-coverage sibling for git checkouts only
+    (nine agents, --detect/--all).
   Global presentation flags (any verb; stripped before verb parsing):
   --color <auto|always|never>, --compact / --no-compact, --no-json.
   Global publish flags (any verb; stripped before verb parsing):
@@ -6510,11 +6516,14 @@ fi
 
 # -------------------------------------------------------------- install ---
 # Copy-based skill installer (the `install.sh` symlink route stays the
-# wide-coverage sibling: nine agents, --detect/--all, doctor-gated). This verb
-# is the minimal offline copy route for the three de-facto agent skill dirs
-# the comp-study documents (greptile 3.8.0 ships .agents/skills +
-# .claude/skills + .codex/skills; coderabbit 0.9.1 names no paths), each at
-# the repo root (project-local) and $HOME (global): six candidate roots.
+# wide-coverage sibling for git checkouts: nine agents, --detect/--all,
+# doctor-gated). This verb is the minimal offline copy route for the three
+# de-facto agent skill dirs the comp-study documents (greptile 3.8.0 ships
+# .agents/skills + .claude/skills + .codex/skills; coderabbit 0.9.1 names no
+# paths), each at the repo root (project-local) and $HOME (global): six
+# candidate roots. The payload carries the CLI (SKILL.md + prompts/ +
+# scripts/), so an installed copy is a runnable tool root: SKILL.md command
+# paths resolve inside it with no checkout beside it.
 # Only the tool-owned `verdict/` namespace is ever written, receipted by
 # `.verdict-managed`; foreign skills and unowned `verdict/` dirs are never
 # modified or removed. Preview-then-confirm reuses the init idiom exactly
@@ -6533,6 +6542,7 @@ if [[ "$cmd" == "install" ]]; then
   tool_root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
   [[ -f "$tool_root/SKILL.md" ]] || fail "install-failed" "tool payload missing: $tool_root/SKILL.md not found (not a verdict checkout?)"
   [[ -d "$tool_root/prompts" ]] || fail "install-failed" "tool payload missing: $tool_root/prompts not found (not a verdict checkout?)"
+  [[ -d "$tool_root/scripts" ]] || fail "install-failed" "tool payload missing: $tool_root/scripts not found (not a verdict checkout?)"
   tool_version=$(jq -r .version "$tool_root/package.json" 2>/dev/null || echo "0.0.0-unknown")
   payload_files=("SKILL.md")
   for pf in "$tool_root"/prompts/*.md; do
@@ -6540,6 +6550,11 @@ if [[ "$cmd" == "install" ]]; then
     payload_files+=("prompts/$(basename "$pf")")
   done
   (( ${#payload_files[@]} > 1 )) || fail "install-failed" "tool payload missing: no prompts found in $tool_root/prompts (not a verdict checkout?)"
+  for sf in "$tool_root"/scripts/*.sh; do
+    [[ -f "$sf" ]] || continue
+    payload_files+=("scripts/$(basename "$sf")")
+  done
+  (( ${#payload_files[@]} > 2 )) || fail "install-failed" "tool payload missing: no scripts found in $tool_root/scripts (not a verdict checkout?)"
   # Candidate roots: the three de-facto skill dirs at repo root + $HOME.
   # A root is detected when its skills dir or its agent parent exists;
   # anything else reads skip — the verb never invents agent homes.
@@ -6561,7 +6576,7 @@ if [[ "$cmd" == "install" ]]; then
   # Phase 1: classify every root, print the preview plan (no writes).
   t_status=(); t_skew=(); t_diffs=()
   need_write="false"
-  echo "install: tool v$tool_version, payload ${#payload_files[@]} files (SKILL.md + $(( ${#payload_files[@]} - 1 )) prompts) -> ${#roots[@]} candidate root(s)"
+  echo "install: tool v$tool_version, payload ${#payload_files[@]} files (SKILL.md + prompts/ + scripts/) -> ${#roots[@]} candidate root(s)"
   for i in "${!roots[@]}"; do
     root="${roots[$i]}"; scope="${scopes[$i]}"; target="$root/verdict"; receipt="$target/.verdict-managed"
     st=""; rec_v=""; diffs=""; skew="false"
@@ -6632,7 +6647,7 @@ if [[ "$cmd" == "install" ]]; then
     st="${t_status[$i]}"; diffs="${t_diffs[$i]}"
     case "$st" in
       create|update)
-        mkdir -p "$target/prompts" || fail "install-failed" "install could not create $target/prompts (storage writable?)"
+        mkdir -p "$target/prompts" "$target/scripts" || fail "install-failed" "install could not create $target/prompts (storage writable?)"
         n="0"
         while IFS= read -r rel; do
           [[ -z "$rel" ]] && continue

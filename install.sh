@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # verdict installer: doctor-gated symlink into agent skill dirs.
+# Runs from a git checkout only (registry copies already carry the CLI).
 # Mini `npx skills` for this repo: link, list, check, uninstall. One skill, no
 # registry. Bare run links the shared standard dir only; add --detect for every
 # agent with an existing skills setup, --all for everything, or --agent/--dir
@@ -131,6 +132,10 @@ if [ "$DETECT" = 1 ]; then
 fi
 
 [ "$MODE" = "list" ] || [ -f "$SRC/SKILL.md" ] || die "not a verdict checkout (no SKILL.md in $SRC)"
+if [ "$MODE" != "list" ]; then
+  git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || die "not a verdict git checkout ($SRC) — install.sh links checkouts only; registry copies already carry scripts/review.sh, nothing to link"
+fi
 
 scope_list() { # prints "label<TAB>dir" lines for names + raw dirs
   local a d

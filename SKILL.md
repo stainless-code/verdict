@@ -8,6 +8,14 @@ description: "Local on-demand PR review via gh CLI, any model. Triggers: review 
 The agent does the review; `gh` does GitHub I/O. You bring `GH_TOKEN`;
 the model is whatever agent you invoke.
 
+## Where commands run
+
+Run the CLI from the repo under review: `.review/` is created in the
+current directory, never beside the tool. The CLI lives at
+`<tool>/scripts/review.sh` — the checkout for symlink installs, the
+installed `verdict/` skill dir for registry and copy installs (both ship
+`scripts/`). Below, `./scripts/review.sh` means that script.
+
 ## Workflow
 
 ```bash
