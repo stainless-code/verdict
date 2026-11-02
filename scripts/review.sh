@@ -922,7 +922,7 @@ check_arity() {
 # exit code carry over via exec. This runs before any redirection or prefs
 # work, so the binary owns every observable byte of the run (no duplicate
 # warns, no stolen stdout).
-VERDICT_GO_VERBS="record"
+VERDICT_GO_VERBS="record triage adopt fix learn init install verify"
 verdict_impl="${VERDICT_IMPL:-bash}"
 case "$verdict_impl" in
   bash|"") ;;
@@ -4257,6 +4257,8 @@ if [[ "$cmd" == "adopt" ]]; then
   case "$from" in local-*) from_dir=".review/$from";; *) from_dir=".review/local-$from";; esac
   dir=".review/$pr"
   [[ -f "$from_dir/findings.json" ]] || fail "missing-findings" "missing $from_dir/findings.json (record the local review first)"
+  jq -e 'type == "array"' "$from_dir/findings.json" >/dev/null 2>&1 \
+    || fail "corrupt-store" "findings store $from_dir/findings.json is unreadable or not a findings array (re-run record to rebuild, or restore the file)"
   [[ -f "$dir/full.diff" ]] || fail "missing-diff" "missing $dir/full.diff (fetch the PR first)"
   ensure_store "$dir"
   prov=$(jq -r '.provider // "github"' "$dir/PR.json" 2>/dev/null || echo "github")
@@ -4312,6 +4314,8 @@ if [[ "$cmd" == "triage" ]]; then
   json_redirect
   resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
+  jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run record to rebuild, or restore the file)"
   case "$tstatus" in open|addressed|wont-fix|false-positive|deferred) ;;
     *) fail "bad-triage-status" "refusing triage: unknown status '$tstatus' (want open|addressed|wont-fix|false-positive|deferred)";; esac
   tfull=$(resolve_sig "$(cat "$dir/findings.json")" "$tsig")

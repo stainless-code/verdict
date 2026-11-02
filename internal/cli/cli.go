@@ -254,7 +254,7 @@ var hintRules = []hintRule{
 	{isCode("bad-approve"), "try: pass --approve=true|false"},
 	{isCode("bad-review-schema"), "try: set \"schema_version\": \"1\" in review.json"},
 	{isCode("approve-blocked"), "try: triage the findings or re-run with --force"},
-	{isCode("budget-exceeded"), "try: re-run with --consent-over-budget once the spend" +
+	{isCode("budget-exceeded"), "try: re-run with --consent-over-budget once the spend " +
 		"is approved, or raise REVIEW_BUDGET_USD/.review/budget"},
 	{isCode("duplicate-payload"), "try: re-run with --force to repost the identical payload"},
 	{isCode("already-posted"), "try: re-run with --force to override, or fetch --base-sha " +
@@ -276,9 +276,9 @@ var hintRules = []hintRule{
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
 	{hasPrefixCode("bad-"), "try: re-run with one of the valid values named above"},
 	{isCode("already-learned"), "try: cite the existing rule id instead of learning it twice"},
-	{isCode("verify-destructive"), "try: rewrite verifyCmd to stay in-repo and" +
+	{isCode("verify-destructive"), "try: rewrite verifyCmd to stay in-repo and " +
 		"non-destructive (run the test runner, not rm/mkfs/dd), then re-run"},
-	{isCode("verify-networked"), "try: rewrite verifyCmd without network fetches or" +
+	{isCode("verify-networked"), "try: rewrite verifyCmd without network fetches or " +
 		"pipe-to-shell (fetch fixtures first, run offline), then re-run"},
 	{isCode("verify-credential-read"), "try: rewrite verifyCmd without reading credential paths " +
 		"or piping env into the network, then re-run"},

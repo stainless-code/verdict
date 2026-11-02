@@ -116,7 +116,7 @@ linters:
             - github.com/stainless-code/verdict
           files:
             - $all
-            - '!**/sig/**.go'
+            - "!**/sig/**.go"
           deny:
             - pkg: io/ioutil
               desc: io/ioutil is frozen since Go 1.16; use io or os instead.

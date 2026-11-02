@@ -14,8 +14,15 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/adopt"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/fix"
+	"github.com/stainless-code/verdict/internal/install"
+	"github.com/stainless-code/verdict/internal/learn"
 	"github.com/stainless-code/verdict/internal/record"
+	"github.com/stainless-code/verdict/internal/scaffold"
+	"github.com/stainless-code/verdict/internal/triage"
+	"github.com/stainless-code/verdict/internal/verify"
 )
 
 // envHome is the HOME fallback key for hermetic test runs.
@@ -92,15 +99,39 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 // dispatch runs the verb or reports it unknown.
 func dispatch(cmd string, r *cli.Runner, repo, pr, root string, env map[string]string, rest []string, stderr *os.File) int {
 	routeHuman(r)
-	if cmd != "record" {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+	defer stop()
+	switch cmd {
+	case "record":
+		return record.Run(ctx, r, rest, record.Request{
+			Repo: repo, Pr: pr, Root: root, Env: env,
+		})
+	case "triage":
+		return triage.Run(ctx, r, rest, triage.Request{
+			Repo: repo, Pr: pr, Root: root, Env: env,
+		})
+	case "adopt":
+		return adopt.Run(ctx, r, rest, adopt.Request{
+			Repo: repo, Pr: pr, Root: root, Env: env,
+		})
+	case "fix":
+		return fix.Run(ctx, r, rest, fix.Request{
+			Repo: repo, Pr: pr, Root: root, Env: env,
+		})
+	case "learn":
+		return learn.Run(ctx, r, rest, env)
+	case "init":
+		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env})
+	case "install":
+		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root})
+	case "verify":
+		return verify.Run(ctx, r, rest, verify.Request{
+			Repo: repo, Pr: pr, Root: root, Env: env,
+		})
+	default:
 		fmt.Fprintf(stderr, "unknown cmd '%s' (want %s)\n", cmd, verbsHint)
 		return cli.ExitUsage
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
-	defer stop()
-	return record.Run(ctx, r, rest, record.Request{
-		Repo: repo, Pr: pr, Root: root, Env: env,
-	})
 }
 
 // splitCommand separates the verb and repo/pr positionals from flags.
@@ -261,6 +292,8 @@ func versionOf(root string, readFile func(string) ([]byte, error)) string {
 
 // usage prints the verb summary.
 func usage() string {
-	return "usage: verdict record <owner/repo> <local-slug> [--json]\n\nverbs ported to Go: record " +
+	return "usage: verdict triage|adopt|fix|learn|init|install|verify|record " +
+		"<owner/repo> <slug> [flags]\n\nverbs ported to Go: record, triage, " +
+		"adopt, fix, learn, init, install, verify " +
 		"(the shell entry point dispatches; see scripts/review.sh)"
 }

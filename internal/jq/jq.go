@@ -137,6 +137,42 @@ func CanonNumber(lit string) string {
 	return strconv.FormatFloat(f, 'g', -1, floatBits)
 }
 
+// IntOf reads a decoded JSON number as an int. Decoded stores hold
+// [json.Number] (the UseNumber decode form); constructed values hold
+// [Number]. Float64 and int pass through truncated; anything else reports
+// false. Shell arithmetic contexts only ever see validated digit strings,
+// so non-plain-integer literals read false here.
+func IntOf(v any) (int, bool) {
+	switch t := v.(type) {
+	case Number:
+		return atoiStrict(t.String())
+	case json.Number:
+		return atoiStrict(t.String())
+	case float64:
+		return int(t), true
+	case int:
+		return t, true
+	default:
+		return 0, false
+	}
+}
+
+// atoiStrict parses a validated digit string (the shell's
+// [[ =~ ^[0-9]+$ ]] gate).
+func atoiStrict(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	n := 0
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, false
+		}
+		n = n*decimalBase + int(s[i]-'0')
+	}
+	return n, true
+}
+
 // isPlainInt reports whether lit is already in jq's integer output form.
 func isPlainInt(lit string) bool {
 	if lit == "" {
