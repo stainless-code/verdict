@@ -86,11 +86,16 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     Runs in its own process group (timeout kills the tree); known secret values
     are redacted from the recorded tail.
     Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.
+    Destructive, networked, credential-reading, and repo-escaping commands
+    refuse before execution as verify-destructive, verify-networked,
+    verify-credential-read, and verify-repo-escape.
   doctor [--json]
     preflight the harness: gh auth, jq, shasum hard-fail the run; scopes, git,
     ps, API reachability warn only (never fail); .review storage writability
-    hard-fails. Exit 0 unless a hard check fails. No repo/PR args, no writes,
-    no network beyond the existing gh reads.
+    hard-fails. A token granting more than runs need warns on a
+    token-scopes-excess row naming the excess scopes. Exit 0 unless a hard
+    check fails. No repo/PR args, no writes, no network beyond the existing
+    gh reads.
   calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]
     join findings against live ground truth (thread states + files changed since the
     review head). Read-only; reports outcomes + tier precision, never auto-tunes.
