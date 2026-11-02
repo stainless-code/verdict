@@ -89,7 +89,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "98049a62473c62b8c7050f14214d8a4c193d653b2fb3e4da924e787eb23b084c",
+  "prompts_hash": "b808dfa015138773a18dec34705d865fadf84d999be227a748ebb969a58f7d20",
   "model": null
 }
 --- file C/.review/local-dg/review.json ---
