@@ -104,7 +104,10 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 }
 
 // dispatch runs the verb or reports it unknown.
-func dispatch(cmd string, r *cli.Runner, repo, pr, root string, env map[string]string, forces *cli.GlobalForces, rest []string, stderr *os.File) int {
+func dispatch(
+	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
+	forces *cli.GlobalForces, rest []string, stderr *os.File,
+) int {
 	routeHuman(r)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer stop()

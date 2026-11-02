@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,7 +22,7 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 		return code
 	}
 	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before next completed"}, cli.ExitBroke)
+		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before next completed"}, cli.ExitBroke)
 	}
 	repOut := replayReport(ctx, r, req, statusF)
 	top, ok := firstItem(repOut)
@@ -37,7 +38,7 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 // parseNextFlags parses the next flags: --status takes any value (report
 // validates it), --json flips machine mode.
 func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
-	statusF := "open"
+	statusF := statusOpen
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -49,7 +50,7 @@ func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
 		case "--status":
 			statusF = next
 			i += 2
-		case "--json":
+		case flagJSON:
 			r.JSONMode = true
 			routeHuman(r)
 			i++
@@ -65,7 +66,7 @@ func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
 // sub-run re-resolves prefs from the same environment (duplicating prefs
 // warnings exactly like the subshell) and ignores global flag forces,
 // which the shell never forwards.
-func replayReport(ctx context.Context, r *cli.Runner, req Request, statusF string) string {
+func replayReport(_ context.Context, r *cli.Runner, req Request, statusF string) string {
 	var outBuf bytes.Buffer
 	sub := &cli.Runner{
 		Cmd:          "report",
@@ -81,18 +82,18 @@ func replayReport(ctx context.Context, r *cli.Runner, req Request, statusF strin
 		PrefColorSet: r.PrefColorSet,
 		Warnings:     append([]string{}, r.Warnings...),
 	}
-	if prefs, ref := cli.ResolvePrefs(sub, req.Env, os.ReadFile); ref != nil {
+	prefs, ref := cli.ResolvePrefs(sub, req.Env, os.ReadFile)
+	if ref != nil {
 		sub.Effective = cli.Defaults()
 		return subRefusal(sub, ref)
-	} else {
-		sub.Effective = prefs.Effective
 	}
+	sub.Effective = prefs.Effective
 	if ref := cli.ApplyGlobalForces(sub, &cli.GlobalForces{}, subNoColor(sub, req.Env)); ref != nil {
 		return subRefusal(sub, ref)
 	}
 	routeHuman(sub)
-	flags := Flags{StatusF: statusF, KindF: "all", LiveMode: "auto"}
-	st, err := loadState(sub, req, flags)
+	flags := Flags{StatusF: statusF, KindF: statusAll, LiveMode: liveAuto}
+	st, err := loadState(sub, req, &flags)
 	if err != nil {
 		return subRefusal(sub, err)
 	}
@@ -116,7 +117,7 @@ func subNoColor(sub *cli.Runner, env map[string]string) bool {
 // mirroring the sub-invocation's envelope (usage errors print nothing, so
 // the parent reports them as an unreadable store).
 func subRefusal(sub *cli.Runner, err error) string {
-	if _, ok := err.(*cli.UsageError); ok {
+	if _, ok := errors.AsType[*cli.UsageError](err); ok {
 		return ""
 	}
 	sub.Refuse(err)
@@ -130,6 +131,22 @@ func subRefusal(sub *cli.Runner, err error) string {
 // error reads as unreadable; otherwise the first item (possibly null when
 // the store holds no rows).
 func firstItem(repOut string) (any, bool) {
+	obj, ok := decodeEnvelope(repOut)
+	if !ok {
+		return nil, false
+	}
+	if hasEnvelopeError(obj) {
+		return nil, false
+	}
+	dataObj, ok := envelopeData(obj)
+	if !ok {
+		return nil, false
+	}
+	return firstDataItem(dataObj)
+}
+
+// decodeEnvelope parses the replayed envelope object.
+func decodeEnvelope(repOut string) (*jq.Obj, bool) {
 	if repOut == "" {
 		return nil, false
 	}
@@ -141,14 +158,27 @@ func firstItem(repOut string) (any, bool) {
 	if !ok || obj == nil {
 		return nil, false
 	}
-	if errVal, _ := obj.Get("error"); errVal != nil {
-		return nil, false
-	}
+	return obj, true
+}
+
+// hasEnvelopeError reports whether the envelope carries a non-null error.
+func hasEnvelopeError(obj *jq.Obj) bool {
+	errVal, _ := obj.Get("error")
+	return errVal != nil
+}
+
+// envelopeData extracts the envelope data object.
+func envelopeData(obj *jq.Obj) (*jq.Obj, bool) {
 	data, _ := obj.Get("data")
 	dataObj, ok := data.(*jq.Obj)
 	if !ok || dataObj == nil {
 		return nil, false
 	}
+	return dataObj, true
+}
+
+// firstDataItem selects the first envelope item (nil when empty).
+func firstDataItem(dataObj *jq.Obj) (any, bool) {
 	items, _ := dataObj.Get("items")
 	list, ok := items.([]any)
 	if !ok || len(list) == 0 {
@@ -165,7 +195,7 @@ func nextStoreError(r *cli.Runner, repOut string) int {
 			fmt.Fprint(r.Out, repOut)
 			return 1
 		}
-		return r.Refuse(&cli.RefusalError{Code: "report-failed", Message: "next: report produced no output"})
+		return r.Refuse(&cli.RefusalError{Code: codeReportFailed, Message: "next: report produced no output"})
 	}
 	fmt.Fprintln(r.Diag, "next: cannot read store (run post or record first)")
 	return 1
@@ -179,11 +209,11 @@ func nextEmpty(r *cli.Runner, statusF string) int {
 	}
 	env := jq.NewObj(
 		"schema_version", "1",
-		"verb", "next",
+		"verb", keyNext,
 		"repo", r.Repo,
 		"pr", cli.PrJSON(r.Pr),
 		"at", cli.NowUTC(r.Now()),
-		"next", "none — nothing to act on",
+		keyNext, "none — nothing to act on",
 		"warnings", cliStrings(r.Warnings),
 		"data", jq.NewObj("item", nil),
 		"error", nil,
@@ -205,11 +235,11 @@ func nextTop(r *cli.Runner, top any) int {
 	}
 	env := jq.NewObj(
 		"schema_version", "1",
-		"verb", "next",
+		"verb", keyNext,
 		"repo", r.Repo,
 		"pr", cli.PrJSON(r.Pr),
 		"at", cli.NowUTC(r.Now()),
-		"next", "address via address-reviews mode, then post",
+		keyNext, "address via address-reviews mode, then post",
 		"warnings", cliStrings(r.Warnings),
 		"data", jq.NewObj("item", top),
 		"error", nil,

@@ -2,6 +2,7 @@ package calibrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -16,23 +17,9 @@ import (
 // runLive ports the live-ground-truth join: thread states plus files
 // changed since the review head, with tier precision.
 func runLive(ctx context.Context, r *cli.Runner, req Request, dir string) int {
-	if isLocalDir(dir) {
-		return r.Refuse(&cli.RefusalError{Code: "no-threads", Message: "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)"})
-	}
-	if prov := readcommon.ProviderOf(dir); prov != "" && prov != "github" {
-		return r.Refuse(&cli.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf("calibrate on %s is not implemented yet (no live thread join for it)", prov)})
-	}
-	if !isRegular(dir + "/post.json") {
-		return r.Refuse(&cli.RefusalError{Code: "missing-post", Message: fmt.Sprintf("missing %s/post.json (post for real first — calibration needs a posted review id)", dir)})
-	}
-	entries, err := readcommon.LoadFindings(dir)
-	if err != nil {
-		return r.Refuse(err)
-	}
-	reviewID := nestedReviewID(dir)
-	head0 := readcommon.JsonRaw(dir+"/post.json", "head")
-	if reviewID == "" || head0 == "" {
-		return r.Refuse(&cli.RefusalError{Code: "missing-post", Message: "post.json carries no review id/head"})
+	entries, reviewID, head0, refusal := liveBundle(dir)
+	if refusal != nil {
+		return r.Refuse(refusal)
 	}
 	threads, err := liveThreads(ctx, req)
 	if err != nil {
@@ -51,6 +38,45 @@ func runLive(ctx context.Context, r *cli.Runner, req Request, dir string) int {
 	return 0
 }
 
+// liveBundle ports the live-join bundle gate: local, provider, post,
+// findings, and id/head checks run before any gh call.
+func liveBundle(dir string) ([]any, string, string, *cli.RefusalError) {
+	if isLocalDir(dir) {
+		return nil, "", "", &cli.RefusalError{
+			Code: codeNoThreads,
+			Message: "calibrate joins live threads — nothing to settle on a local bundle " +
+				"(adopt + post first, then calibrate the PR)",
+		}
+	}
+	if prov := readcommon.ProviderOf(dir); prov != "" && prov != "github" {
+		return nil, "", "", &cli.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
+			"calibrate on %s is not implemented yet (no live thread join for it)", prov)}
+	}
+	if !isRegular(dir + postFileSuffix) {
+		return nil, "", "", &cli.RefusalError{Code: codeMissingPost, Message: fmt.Sprintf(
+			"missing %s/post.json (post for real first — calibration needs a posted review id)", dir)}
+	}
+	return liveFindings(dir)
+}
+
+// liveFindings loads the findings plus the review id/head after the bundle
+// gate.
+func liveFindings(dir string) ([]any, string, string, *cli.RefusalError) {
+	entries, err := readcommon.LoadFindings(dir)
+	if err != nil {
+		if refusal, ok := errors.AsType[*cli.RefusalError](err); ok {
+			return nil, "", "", refusal
+		}
+		return nil, "", "", &cli.RefusalError{Code: codeMissingPost, Message: "post.json carries no review id/head"}
+	}
+	reviewID := nestedReviewID(dir)
+	head0 := readcommon.JSONRaw(dir+postFileSuffix, "head")
+	if reviewID == "" || head0 == "" {
+		return nil, "", "", &cli.RefusalError{Code: codeMissingPost, Message: "post.json carries no review id/head"}
+	}
+	return entries, reviewID, head0, nil
+}
+
 // isLocalDir reports whether dir is a local bundle.
 func isLocalDir(dir string) bool {
 	return strings.HasPrefix(dir, ".review/local-")
@@ -59,12 +85,12 @@ func isLocalDir(dir string) bool {
 // nestedReviewID reads the nested review.id with `jq -r` rendering ("" when
 // absent, null, or false).
 func nestedReviewID(dir string) string {
-	raw, err := os.ReadFile(dir + "/post.json")
+	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return ""
 	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
 		return ""
 	}
 	m, ok := jq.AsMap(doc)
@@ -87,11 +113,11 @@ func liveThreads(ctx context.Context, req Request) ([]any, error) {
 	owner, name := readcommon.SplitOwner(req.Repo)
 	res, err := readcommon.Gh(ctx, readcommon.ThreadsArgv(owner, name, req.Pr, readcommon.QueryCalibrate)...)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: "threads-failed", Message: "could not read live review threads"}
+		return nil, &cli.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"}
 	}
 	nodes, err := readcommon.SlurpThreads(res.Stdout)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: "threads-failed", Message: "could not read live review threads"}
+		return nil, &cli.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"}
 	}
 	return nodes, nil
 }
@@ -100,17 +126,26 @@ func liveThreads(ctx context.Context, req Request) ([]any, error) {
 func livePR(ctx context.Context, req Request) (map[string]any, error) {
 	res, err := readcommon.Gh(ctx, "pr", "view", req.Pr, "--repo", req.Repo, "--json", "headRefOid,state,mergedAt")
 	if err != nil {
-		return nil, &cli.RefusalError{Code: "pr-read-failed", Message: "could not read live PR state"}
+		return nil, &cli.RefusalError{Code: codePRReadFailed, Message: "could not read live PR state"}
 	}
-	doc, err := jq.Decode([]byte(res.Stdout))
+	if m, ok := decodeLivePR(res.Stdout); ok {
+		return m, nil
+	}
+	return map[string]any{}, nil
+}
+
+// decodeLivePR decodes the live PR payload; unparseable payloads read as
+// an empty state like the shell's degrade.
+func decodeLivePR(stdout string) (map[string]any, bool) {
+	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {
-		return map[string]any{}, nil
+		return nil, false
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return map[string]any{}, nil
+		return nil, false
 	}
-	return m, nil
+	return m, true
 }
 
 // liveHead reads the live head SHA.
@@ -145,13 +180,13 @@ func liveChanged(ctx context.Context, r *cli.Runner, req Request, head0, liveHea
 // outcome is one joined finding outcome.
 type outcome struct {
 	entry   any
+	kb      any
 	sig     string
 	status  string
 	sev     string
 	locator string
 	result  string
 	detail  string
-	kb      any
 	hasKb   bool
 }
 
@@ -161,7 +196,7 @@ func joinOutcomes(entries, threads, changed []any) []outcome {
 	var out []outcome
 	for _, e := range entries {
 		status := readcommon.StatusOf(e)
-		if status != "open" && status != "addressed" && status != "deferred" {
+		if status != statusOpen && status != statusAddressed && status != statusDeferred {
 			continue
 		}
 		out = append(out, joinOne(e, threads, changed))
@@ -171,60 +206,60 @@ func joinOutcomes(entries, threads, changed []any) []outcome {
 
 // joinOne ports one outcome row.
 func joinOne(entry any, threads, changed []any) outcome {
-	locator := ""
-	m, _ := entry.(*jq.Obj)
-	if m != nil {
-		locator = readcommon.Locator(entry)
-	} else {
-		locator = locatorOf(entry)
-	}
 	out := outcome{
 		entry:   entry,
 		sig:     sigString(entry),
 		status:  readcommon.StatusOf(entry),
 		sev:     severityOf(entry),
-		locator: locator,
+		locator: locatorFor(entry),
 	}
-	kind, _ := fieldOf(entry, "kind").(string)
+	kind, ok := fieldOf(entry, "kind").(string)
+	if !ok {
+		kind = ""
+	}
 	if kind != "inline" {
-		out.result = "unknown"
+		out.result = outcomeUnknown
 		out.detail = "body section — not a thread comment"
-		return withKb(out, entry)
+		withKb(&out, entry)
+		return out
 	}
 	pb := postedBody(entry)
 	hit := findThread(threads, pb, fieldOf(entry, "path"))
 	if hit == nil {
-		out.result = "unknown"
+		out.result = outcomeUnknown
 		out.detail = "comment not found live"
-		return withKb(out, entry)
+		withKb(&out, entry)
+		return out
 	}
 	if !threadResolved(hit) {
-		out.result = "open"
+		out.result = statusOpen
 		out.detail = "thread still open"
-		return withKb(out, entry)
+		withKb(&out, entry)
+		return out
 	}
 	if pathChanged(changed, fieldOf(entry, "path")) {
-		out.result = "fixed"
+		out.result = outcomeFixed
 		out.detail = "thread resolved + cited file changed since review head"
-		return withKb(out, entry)
+		withKb(&out, entry)
+		return out
 	}
-	out.result = "resolved-unfixed"
+	out.result = outcomeResolvedUnfixed
 	out.detail = "thread resolved but cited file unchanged since review head"
-	return withKb(out, entry)
+	withKb(&out, entry)
+	return out
 }
 
 // withKb attaches the cited kb value when it reads non-empty (jq length
 // semantics with booleans reading 0, so the shell's length never errors).
-func withKb(out outcome, entry any) outcome {
+func withKb(out *outcome, entry any) {
 	kb := fieldOf(entry, "kb")
 	if kb == nil {
-		return out
+		return
 	}
 	if kbLen(kb) > 0 {
 		out.kb = kb
 		out.hasKb = true
 	}
-	return out
 }
 
 // kbLen ports the safe kb length: booleans read 0, everything else reads
@@ -254,9 +289,13 @@ func kbLen(kb any) float64 {
 	}
 }
 
-// locatorOf renders a fallback locator for non-object entries (unreachable
-// post-guard, kept for totality).
-func locatorOf(entry any) string {
+// locatorFor ports the outcome locator: the ranked locator on objects,
+// "?" otherwise (unreachable post-guard, kept for totality).
+func locatorFor(entry any) string {
+	m, ok := entry.(*jq.Obj)
+	if ok && m != nil {
+		return readcommon.Locator(entry)
+	}
 	return "?"
 }
 
@@ -264,7 +303,7 @@ func locatorOf(entry any) string {
 func severityOf(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
-		return "untagged"
+		return outcomeUntagged
 	}
 	sev, _ := m.Get("severity")
 	if s, ok := sev.(string); ok {
@@ -273,7 +312,7 @@ func severityOf(entry any) string {
 			return s
 		}
 	}
-	return "untagged"
+	return outcomeUntagged
 }
 
 // fieldOf reads one entry field (nil-safe for null entries).
@@ -290,8 +329,14 @@ func fieldOf(entry any, key string) any {
 // suggestion block. Bodies and suggestions read raw (the entry guard keeps
 // them null-or-string, so only a present non-empty string appends).
 func postedBody(entry any) string {
-	body, _ := fieldOf(entry, "body").(string)
-	suggestion, _ := fieldOf(entry, "suggestion").(string)
+	body, ok := fieldOf(entry, "body").(string)
+	if !ok {
+		body = ""
+	}
+	suggestion, ok := fieldOf(entry, "suggestion").(string)
+	if !ok {
+		suggestion = ""
+	}
 	if suggestion != "" {
 		return body + "\n\n```suggestion\n" + suggestion + "\n```"
 	}
@@ -301,22 +346,30 @@ func postedBody(entry any) string {
 // findThread finds the first thread with a matching comment.
 func findThread(threads []any, pb string, path any) any {
 	for _, t := range threads {
-		m, ok := t.(map[string]any)
-		if !ok {
-			continue
-		}
-		comments := commentNodes(m["comments"])
-		for _, c := range comments {
-			cm, ok := c.(map[string]any)
-			if !ok {
-				continue
-			}
-			if readcommon.Cmp(cm["body"], pb) == 0 && readcommon.Cmp(cm["path"], path) == 0 {
-				return t
-			}
+		if threadMatches(t, pb, path) {
+			return t
 		}
 	}
 	return nil
+}
+
+// threadMatches ports one thread's comment scan: any comment matching the
+// posted body and path resolves the thread.
+func threadMatches(t any, pb string, path any) bool {
+	m, ok := t.(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, c := range commentNodes(m["comments"]) {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		if readcommon.Cmp(cm["body"], pb) == 0 && readcommon.Cmp(cm["path"], path) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // commentNodes ports `.comments[]` over a thread: the nodes list for the
@@ -324,7 +377,10 @@ func findThread(threads []any, pb string, path any) any {
 func commentNodes(comments any) []any {
 	switch t := comments.(type) {
 	case map[string]any:
-		nodes, _ := t["nodes"].([]any)
+		nodes, ok := t["nodes"].([]any)
+		if !ok {
+			return nil
+		}
 		return nodes
 	case []any:
 		return t
@@ -333,25 +389,14 @@ func commentNodes(comments any) []any {
 	}
 }
 
-// commentStr renders a thread field for comparison.
-func commentStr(v any) string {
-	if v == nil {
-		return ""
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return jq.Str(v)
-}
-
 // threadResolved reports the thread's resolution flag.
 func threadResolved(thread any) bool {
 	m, ok := thread.(map[string]any)
 	if !ok {
 		return false
 	}
-	resolved, _ := m["isResolved"].(bool)
-	return resolved
+	resolved, ok := m["isResolved"].(bool)
+	return ok && resolved
 }
 
 // pathChanged reports whether the cited path changed since review head.
@@ -369,12 +414,12 @@ func pathChanged(changed []any, path any) bool {
 
 // precision is the outcome tallies plus the per-tier split.
 type precision struct {
+	byTier          map[string]map[string]int
 	fixed           int
 	resolvedUnfixed int
 	open            int
 	unknown         int
 	judged          int
-	byTier          map[string]map[string]int
 }
 
 // countPrecision tallies outcomes.
@@ -382,25 +427,28 @@ func countPrecision(outcomes []outcome) precision {
 	p := precision{byTier: map[string]map[string]int{}}
 	ensure := func(tier string) map[string]int {
 		if _, ok := p.byTier[tier]; !ok {
-			p.byTier[tier] = map[string]int{"fixed": 0, "resolved_unfixed": 0, "open": 0, "unknown": 0}
+			p.byTier[tier] = map[string]int{
+				outcomeFixed: 0, tierResolvedUnfixed: 0, statusOpen: 0, outcomeUnknown: 0,
+			}
 		}
 		return p.byTier[tier]
 	}
-	for _, o := range outcomes {
+	for i := range outcomes {
+		o := &outcomes[i]
 		tier := ensure(o.sev)
 		switch o.result {
-		case "fixed":
+		case outcomeFixed:
 			p.fixed++
-			tier["fixed"]++
-		case "resolved-unfixed":
+			tier[outcomeFixed]++
+		case outcomeResolvedUnfixed:
 			p.resolvedUnfixed++
-			tier["resolved_unfixed"]++
-		case "open":
+			tier[tierResolvedUnfixed]++
+		case statusOpen:
 			p.open++
-			tier["open"]++
+			tier[statusOpen]++
 		default:
 			p.unknown++
-			tier["unknown"]++
+			tier[outcomeUnknown]++
 		}
 	}
 	p.judged = p.fixed + p.resolvedUnfixed + p.open
@@ -423,7 +471,8 @@ func emitLiveHuman(r *cli.Runner, req Request, reviewID, head0 string, live map[
 	}
 	fmt.Fprintf(r.Human, "calibrate: %s#%s — review %s @ %s (%s), PR %s%s\n",
 		req.Repo, req.Pr, reviewID, readcommon.ShortSHA(head0), stale, prState, merged)
-	for _, o := range outcomes {
+	for i := range outcomes {
+		o := &outcomes[i]
 		kbText := ""
 		if list, ok := o.kb.([]any); ok && len(list) > 0 {
 			kbText = " kb:" + kbJoin(list)
@@ -447,21 +496,21 @@ func kbJoin(list []any) string {
 
 // provOrUnmarked reads one provenance field with the unmarked fallback.
 func provOrUnmarked(dir, key string) string {
-	raw, err := os.ReadFile(dir + "/post.json")
+	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
-		return "unmarked"
+		return unmarkedValue
 	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return "unmarked"
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
+		return unmarkedValue
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return "unmarked"
+		return unmarkedValue
 	}
 	v, ok := m[key]
 	if !ok || v == nil {
-		return "unmarked"
+		return unmarkedValue
 	}
 	return jq.Str(v)
 }
@@ -470,7 +519,7 @@ func provOrUnmarked(dir, key string) string {
 func provHashPrefix(dir string) string {
 	hash := provRaw(dir, "prompts_hash")
 	if hash == "" {
-		return "unmarked"
+		return unmarkedValue
 	}
 	runes := []rune(hash)
 	if len(runes) > provHashRunes {
@@ -484,12 +533,12 @@ const provHashRunes = 12
 
 // provRaw reads one raw provenance value as a string.
 func provRaw(dir, key string) string {
-	raw, err := os.ReadFile(dir + "/post.json")
+	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return ""
 	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
 		return ""
 	}
 	m, ok := jq.AsMap(doc)
@@ -510,17 +559,17 @@ func provRaw(dir, key string) string {
 func emitLiveEnvelope(r *cli.Runner, req Request, reviewID, head0 string, live map[string]any, outcomes []outcome, dir string) {
 	p := countPrecision(outcomes)
 	items := make([]any, 0, len(outcomes))
-	for _, o := range outcomes {
-		items = append(items, outcomeDoc(o))
+	for i := range outcomes {
+		items = append(items, outcomeDoc(&outcomes[i]))
 	}
 	byTier := jq.NewObj()
 	for _, tier := range sortedTierKeys(p.byTier) {
 		counts := p.byTier[tier]
 		byTier.Set(tier, jq.NewObj(
-			"fixed", counts["fixed"],
-			"resolved_unfixed", counts["resolved_unfixed"],
-			"open", counts["open"],
-			"unknown", counts["unknown"],
+			outcomeFixed, counts[outcomeFixed],
+			tierResolvedUnfixed, counts[tierResolvedUnfixed],
+			statusOpen, counts[statusOpen],
+			outcomeUnknown, counts[outcomeUnknown],
 		))
 	}
 	var mergedAt any
@@ -568,7 +617,7 @@ func emitLiveEnvelope(r *cli.Runner, req Request, reviewID, head0 string, live m
 
 // outcomeDoc renders one outcome row in shell key order: sig, status,
 // severity, locator, outcome, detail, plus kb when cited.
-func outcomeDoc(o outcome) *jq.Obj {
+func outcomeDoc(o *outcome) *jq.Obj {
 	doc := jq.NewObj(
 		"sig", outcomeSig(o),
 		"status", o.status,
@@ -584,7 +633,7 @@ func outcomeDoc(o outcome) *jq.Obj {
 }
 
 // outcomeSig renders the outcome sig raw.
-func outcomeSig(o outcome) any {
+func outcomeSig(o *outcome) any {
 	m, ok := o.entry.(*jq.Obj)
 	if !ok || m == nil {
 		return nil
@@ -603,10 +652,13 @@ func sortedTierKeys(byTier map[string]map[string]int) []string {
 	return keys
 }
 
+// idFloatBits is the float precision for numeric review ids.
+const idFloatBits = 64
+
 // reviewIDValue ports ($rid | tonumber? // $rid): numeric ids read as
 // numbers, everything else reads raw.
 func reviewIDValue(rid string) any {
-	if f, err := strconv.ParseFloat(rid, 64); err == nil {
+	if f, err := strconv.ParseFloat(rid, idFloatBits); err == nil {
 		return f
 	}
 	return rid
@@ -614,12 +666,12 @@ func reviewIDValue(rid string) any {
 
 // provValue reads one envelope provenance value (null when missing).
 func provValue(dir, key string) any {
-	raw, err := os.ReadFile(dir + "/post.json")
+	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return nil
 	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
 		return nil
 	}
 	m, ok := jq.AsMap(doc)

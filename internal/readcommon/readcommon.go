@@ -16,14 +16,14 @@ import (
 // the global flag forces for render gating.
 type Request struct {
 	Env    map[string]string
+	Forces *cli.GlobalForces
 	Repo   string
 	Pr     string
 	Root   string
-	Forces *cli.GlobalForces
 }
 
-// Forces returns the global forces, defaulting to an empty set so direct
-// callers (next's sub-report, tests) need no main wiring.
+// ForcesOrEmpty returns the global forces, defaulting to an empty set so
+// direct callers (next's sub-report, tests) need no main wiring.
 func (q Request) ForcesOrEmpty() *cli.GlobalForces {
 	if q.Forces == nil {
 		return &cli.GlobalForces{}

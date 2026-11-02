@@ -20,7 +20,7 @@ import (
 type Request = readcommon.Request
 
 // Run executes `doctor [--json]`, returning the exit code.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, _ Request) int {
 	if code, done := parseFlags(r, args); done {
 		return code
 	}
@@ -28,12 +28,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before doctor completed"}, cli.ExitBroke)
 	}
 	checks := examine(ctx, r)
-	healthy := true
-	for _, c := range checks {
-		if c.Severity == severityFail && !c.OK {
-			healthy = false
-		}
-	}
+	healthy := allHealthy(checks)
 	if r.JSONMode {
 		emitEnvelope(r, healthy, checks)
 	}
@@ -41,6 +36,16 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return 0
 	}
 	return 1
+}
+
+// allHealthy ports the fail-row scan: any failing check fails the run.
+func allHealthy(checks []check) bool {
+	for _, c := range checks {
+		if c.Severity == severityFail && !c.OK {
+			return false
+		}
+	}
+	return true
 }
 
 // check severities, mirroring the shell's fail|warn column.
@@ -76,32 +81,42 @@ func routeHuman(r *cli.Runner) {
 type check struct {
 	Name     string
 	Severity string
-	OK       bool
 	Detail   string
+	OK       bool
 }
+
+// newline splits output lines and trims command-substitution newlines.
+const newline = "\n"
+
+// checkStorageWritable names the storage row.
+const checkStorageWritable = "storage-writable"
+
+// anyWrite matches the shell's -w test where the process owns the file:
+// any write bit reads writable.
+const anyWrite = 0o222
 
 // examine ports the doctor check sequence, printing human lines as it goes.
 func examine(ctx context.Context, r *cli.Runner) []check {
-	d := &doctor{runner: r, ctx: ctx}
-	d.checkGhCLI()
-	d.checkGhAuth()
-	scopes := d.checkTokenScopes()
+	d := &doctor{runner: r}
+	d.checkGhCLI(ctx)
+	d.checkGhAuth(ctx)
+	scopes := d.checkTokenScopes(ctx)
 	if scopes != "" {
 		d.checkTokenExcess(scopes)
 	}
-	d.checkTool("jq", "jq --version", "missing — install jq")
-	d.checkTool("shasum", "", "sig hashing hard-requires shasum (startup gate)")
-	d.checkTool("ps", "", "verify runs without timeout enforcement")
-	d.checkTool("git", "", "check-tree and verify degraded without git")
-	d.checkAPIReachable()
+	d.checkTool(ctx, "jq", "jq --version", "missing — install jq")
+	d.checkTool(ctx, "shasum", "", "sig hashing hard-requires shasum (startup gate)")
+	d.checkTool(ctx, "ps", "", "verify runs without timeout enforcement")
+	d.checkTool(ctx, "git", "", "check-tree and verify degraded without git")
+	d.checkAPIReachable(ctx)
 	d.checkStorage()
 	return d.checks
 }
 
-// doctor carries the check accumulator.
+// doctor carries the check accumulator. The context threads through the
+// method arguments (never stored) per the contained-context discipline.
 type doctor struct {
 	runner *cli.Runner
-	ctx    context.Context
 	checks []check
 }
 
@@ -120,18 +135,21 @@ func (d *doctor) add(name, severity string, ok bool, detail string) {
 }
 
 // checkGhCLI ports the gh-cli row.
-func (d *doctor) checkGhCLI() {
+func (d *doctor) checkGhCLI(ctx context.Context) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		d.add("gh-cli", severityFail, false, "missing — install github.com/cli/cli")
 		return
 	}
-	res, _ := readcommon.Gh(d.ctx, "--version")
-	d.add("gh-cli", severityFail, true, firstLine(res.Stdout))
+	version := ""
+	if res, err := readcommon.Gh(ctx, "--version"); err == nil {
+		version = firstLine(res.Stdout)
+	}
+	d.add("gh-cli", severityFail, true, version)
 }
 
 // checkGhAuth ports the gh-auth row.
-func (d *doctor) checkGhAuth() {
-	_, err := readcommon.Gh(d.ctx, "auth", "status")
+func (d *doctor) checkGhAuth(ctx context.Context) {
+	_, err := readcommon.Gh(ctx, "auth", "status")
 	if err != nil {
 		d.add("gh-auth", severityFail, false, "run gh auth login")
 		return
@@ -141,8 +159,8 @@ func (d *doctor) checkGhAuth() {
 
 // checkTokenScopes ports the token-scopes row, returning the raw header
 // line ("" when the lookup fails, matching the shell's || true).
-func (d *doctor) checkTokenScopes() string {
-	res, err := readcommon.Gh(d.ctx, "api", "user", "--include")
+func (d *doctor) checkTokenScopes(ctx context.Context) string {
+	res, err := readcommon.Gh(ctx, "api", "user", "--include")
 	scopes := ""
 	if err == nil {
 		scopes = headerLine(res.Stdout)
@@ -166,7 +184,7 @@ func (d *doctor) checkTokenExcess(scopes string) {
 		value = value[i+1:]
 	}
 	var excess []string
-	for _, scope := range strings.Split(strings.ToLower(value), ",") {
+	for scope := range strings.SplitSeq(strings.ToLower(value), ",") {
 		scope = strings.Map(dropScopeSpace, scope)
 		switch {
 		case scope == "", scope == "repo", scope == "public_repo":
@@ -178,12 +196,13 @@ func (d *doctor) checkTokenExcess(scopes string) {
 	if len(excess) == 0 {
 		return
 	}
-	d.add("token-scopes-excess", severityWarn, false,
-		"token grants more than runs need: "+strings.Join(excess, ", ")+" — try: re-mint with only the repo scope (least privilege) and re-run")
+	excessMsg := "token grants more than runs need: " + strings.Join(excess, ", ") +
+		" — try: re-mint with only the repo scope (least privilege) and re-run"
+	d.add("token-scopes-excess", severityWarn, false, excessMsg)
 }
 
 // checkTool ports the jq/shasum/ps/git rows: presence gates the detail.
-func (d *doctor) checkTool(name, _ string, missing string) {
+func (d *doctor) checkTool(ctx context.Context, name, _ string, missing string) {
 	present := true
 	if _, err := exec.LookPath(name); err != nil {
 		present = false
@@ -197,7 +216,7 @@ func (d *doctor) checkTool(name, _ string, missing string) {
 	if present {
 		detail = okDetail[name]
 		if name == "jq" {
-			detail = jqVersionLine(d.ctx)
+			detail = jqVersionLine(ctx)
 		}
 	}
 	severity := severityFail
@@ -215,15 +234,15 @@ func jqVersionLine(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimRight(string(out), "\n")
+	return strings.TrimRight(string(out), newline)
 }
 
 // checkAPIReachable ports the api-reachable row.
-func (d *doctor) checkAPIReachable() {
-	res, err := readcommon.Gh(d.ctx, "api", "rate_limit", "--jq", ".resources.core.remaining")
+func (d *doctor) checkAPIReachable(ctx context.Context) {
+	res, err := readcommon.Gh(ctx, "api", "rate_limit", "--jq", ".resources.core.remaining")
 	remaining := ""
 	if err == nil {
-		remaining = strings.TrimRight(res.Stdout, "\n")
+		remaining = strings.TrimRight(res.Stdout, newline)
 	}
 	if remaining != "" {
 		d.add("api-reachable", severityWarn, true, "core quota remaining: "+remaining)
@@ -239,17 +258,18 @@ func (d *doctor) checkAPIReachable() {
 func (d *doctor) checkStorage() {
 	if stat, err := os.Stat(".review"); err == nil && stat.IsDir() {
 		if writable(".review") {
-			d.add("storage-writable", severityFail, true, ".review/ writable")
+			d.add(checkStorageWritable, severityFail, true, ".review/ writable")
 		} else {
-			d.add("storage-writable", severityFail, false, ".review/ not writable — fetch/record cannot write bundles here")
+			d.add(checkStorageWritable, severityFail, false,
+				".review/ not writable — fetch/record cannot write bundles here")
 		}
 		return
 	}
 	if writable(".") {
-		d.add("storage-writable", severityFail, true, "cwd writable — .review/ created on first fetch")
+		d.add(checkStorageWritable, severityFail, true, "cwd writable — .review/ created on first fetch")
 		return
 	}
-	d.add("storage-writable", severityFail, false, "cwd not writable — fetch/record cannot create .review/ here")
+	d.add(checkStorageWritable, severityFail, false, "cwd not writable — fetch/record cannot create .review/ here")
 }
 
 // writable reports whether any write bit is set.
@@ -258,13 +278,13 @@ func writable(path string) bool {
 	if err != nil {
 		return false
 	}
-	return fi.Mode().Perm()&0o222 != 0
+	return fi.Mode().Perm()&anyWrite != 0
 }
 
 // firstLine ports `head -n 1`: the first output line.
 func firstLine(s string) string {
-	if i := strings.Index(s, "\n"); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, newline); ok {
+		return before
 	}
 	return s
 }
@@ -280,7 +300,7 @@ func dropScopeSpace(r rune) rune {
 // headerLine ports the scopes header read: the first case-insensitive
 // x-oauth-scopes line, kept raw like the shell's grep|head pipeline.
 func headerLine(stdout string) string {
-	for _, line := range strings.Split(stdout, "\n") {
+	for line := range strings.SplitSeq(stdout, newline) {
 		if len(line) >= len("x-oauth-scopes:") && strings.EqualFold(line[:len("x-oauth-scopes:")], "x-oauth-scopes:") {
 			return line
 		}

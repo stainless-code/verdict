@@ -53,10 +53,17 @@ func knownSigs(entries []any) []any {
 			known = append(known, nil)
 			continue
 		}
-		sig, _ := m.Get("sig")
+		sig, _ := m.Get(keySig)
 		known = append(known, sig)
 	}
 	return known
+}
+
+// judgeUnreadable ports the missing-or-unreadable judge file refusal.
+func judgeUnreadable(path string) *cli.RefusalError {
+	return &cli.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
+		"judge file '%s' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} "+
+			"object per line, or a JSON array of them)", path)}
 }
 
 // readJudgeFile ports the --judge-file fragment: a JSON array or JSONL of
@@ -65,24 +72,9 @@ func readJudgeFile(path string, known []any, dir string) ([]judge, error) {
 	if path == "" {
 		return nil, nil
 	}
-	if !isRegular(path) || !readable(path) {
-		return nil, &cli.RefusalError{Code: "bad-judgment", Message: fmt.Sprintf(
-			"judge file '%s' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} object per line, or a JSON array of them)", path)}
-	}
-	raw, err := os.ReadFile(path)
+	docs, err := readJudgeDocs(path)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: "bad-judgment", Message: fmt.Sprintf(
-			"judge file '%s' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} object per line, or a JSON array of them)", path)}
-	}
-	docs, err := jq.DecodeSlurp(strings.NewReader(string(raw)))
-	if err != nil {
-		return nil, &cli.RefusalError{Code: "bad-judgment", Message: fmt.Sprintf(
-			"judge file '%s' is not valid JSON or JSONL (one {\"sig\": ..., \"agent_verdict\": ...} per line, or a JSON array)", path)}
-	}
-	if len(docs) == 1 {
-		if arr, ok := docs[0].([]any); ok {
-			docs = arr
-		}
+		return nil, err
 	}
 	var out []judge
 	for i, doc := range docs {
@@ -92,11 +84,44 @@ func readJudgeFile(path string, known []any, dir string) ([]judge, error) {
 		}
 		out = append(out, j)
 	}
+	return checkJudgeDocs(path, out, known, dir)
+}
+
+// readJudgeDocs ports the fragment file read and decode.
+func readJudgeDocs(path string) ([]any, error) {
+	if !isRegular(path) || !readable(path) {
+		return nil, judgeUnreadable(path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, judgeUnreadable(path)
+	}
+	return slurpJudgeDocs(path, raw)
+}
+
+// checkJudgeDocs validates the fragment entries against the known sigs.
+func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge, error) {
 	if unknown := firstUnknown(out, known); unknown != "" {
-		return nil, &cli.RefusalError{Code: "unknown-judgment", Message: fmt.Sprintf(
+		return nil, &cli.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
 			"judge file '%s' sig '%s' matches no finding in %s/findings.json (copy the full sig from report output)", path, unknown, dir)}
 	}
 	return out, nil
+}
+
+// slurpJudgeDocs ports the fragment decode: a single JSON array unwraps to
+// its elements, otherwise one judgment per JSONL row.
+func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
+	docs, err := jq.DecodeSlurp(strings.NewReader(string(raw)))
+	if err != nil {
+		return nil, &cli.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
+			"judge file '%s' is not valid JSON or JSONL (one {\"sig\": ..., \"agent_verdict\": ...} per line, or a JSON array)", path)}
+	}
+	if len(docs) == 1 {
+		if arr, ok := docs[0].([]any); ok {
+			docs = arr
+		}
+	}
+	return docs, nil
 }
 
 // readable reports whether path can be opened for reading.
@@ -112,27 +137,46 @@ func readable(path string) bool {
 // checkJudgeEntry validates one fragment entry.
 func checkJudgeEntry(path string, i int, doc any) (judge, error) {
 	fail := func(detail string) (judge, error) {
-		return judge{}, &cli.RefusalError{Code: "bad-judgment", Message: fmt.Sprintf("judge file '%s' entry %d: %s", path, i, detail)}
+		return judge{}, &cli.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf("judge file '%s' entry %d: %s", path, i, detail)}
 	}
 	m, ok := doc.(map[string]any)
 	if !ok {
 		return fail("not an object (want {\"sig\", \"agent_verdict\"})")
 	}
-	sig, ok := m["sig"].(string)
-	if !ok || sig == "" {
+	sig, ok := judgeSig(m)
+	if !ok {
 		return fail("sig must be a non-empty string")
 	}
-	verdict, ok := m["agent_verdict"].(string)
-	if !ok || (verdict != "real" && verdict != "false" && verdict != "unknown") {
+	verdict, ok := judgeVerdict(m)
+	if !ok {
 		return fail(fmt.Sprintf("(%s): agent_verdict must be real|false|unknown", sig))
 	}
-	helpful, ok := m["agent_helpful"]
-	if !ok || helpful == nil {
-		helpful = nil
-	} else if helpful != true && helpful != false {
+	helpful, ok := judgeHelpful(m)
+	if !ok {
 		return fail(fmt.Sprintf("(%s): agent_helpful must be true|false|null", sig))
 	}
 	return judge{sig: sig, verdict: verdict, helpful: helpful}, nil
+}
+
+// judgeSig ports the sig gate: a non-empty string.
+func judgeSig(m map[string]any) (string, bool) {
+	sig, ok := m[keySig].(string)
+	return sig, ok && sig != ""
+}
+
+// judgeVerdict ports the agent_verdict gate.
+func judgeVerdict(m map[string]any) (string, bool) {
+	verdict, ok := m[keyAgentVerdict].(string)
+	return verdict, ok && (verdict == verdictReal || verdict == verdictFalse || verdict == verdictUnknown)
+}
+
+// judgeHelpful ports the agent_helpful gate: missing reads null.
+func judgeHelpful(m map[string]any) (any, bool) {
+	helpful, ok := m[keyAgentHelpful]
+	if !ok || helpful == nil {
+		return nil, true
+	}
+	return helpful, helpful == true || helpful == false
 }
 
 // firstUnknown returns the first judgment sig outside the known set.
@@ -171,45 +215,46 @@ func parseJudgeSpecs(specs []string, known []any, dir string) ([]judge, error) {
 // checkJudgeSpec validates one --judge SIG:VERDICT[:HELPFUL] spec.
 func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 	bad := func(detail string) (judge, error) {
-		return judge{}, &cli.RefusalError{Code: "bad-judgment", Message: detail}
+		return judge{}, &cli.RefusalError{Code: codeBadJudgment, Message: detail}
 	}
-	colon := strings.Index(spec, ":")
-	sig := spec
-	rest := ""
-	if colon >= 0 {
-		sig = spec[:colon]
-		rest = spec[colon+1:]
-	}
-	if colon < 0 || sig == "" {
+	sig, rest, found := strings.Cut(spec, ":")
+	if !found || sig == "" {
 		return bad(fmt.Sprintf("malformed --judge '%s' (want SIG:VERDICT[:HELPFUL], e.g. --judge abc123:real:true)", spec))
 	}
-	verdict := rest
-	helpful := "null"
-	if i := strings.Index(rest, ":"); i >= 0 {
-		verdict = rest[:i]
-		helpful = rest[i+1:]
-	}
-	if helpful == "" {
-		helpful = "null"
-	}
-	if verdict != "real" && verdict != "false" && verdict != "unknown" {
+	verdict, helpful := splitVerdict(rest)
+	if verdict != verdictReal && verdict != verdictFalse && verdict != verdictUnknown {
 		return bad(fmt.Sprintf("malformed --judge '%s': verdict '%s' (want real|false|unknown)", spec, verdict))
 	}
-	if helpful != "true" && helpful != "false" && helpful != "null" {
+	if helpful != helpfulTrue && helpful != helpfulFalse && helpful != helpfulNull {
 		return bad(fmt.Sprintf("malformed --judge '%s': helpful '%s' (want true|false|null)", spec, helpful))
 	}
 	if !containsSig(known, sig) {
-		return judge{}, &cli.RefusalError{Code: "unknown-judgment", Message: fmt.Sprintf(
+		return judge{}, &cli.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
 			"judgment sig '%s' matches no finding in %s/findings.json (copy the full sig from report output)", sig, dir)}
 	}
+	return buildSpecJudge(sig, verdict, helpful), nil
+}
+
+// splitVerdict ports the VERDICT[:HELPFUL] split: a missing helpful reads
+// null.
+func splitVerdict(rest string) (string, string) {
+	verdict, helpful, _ := strings.Cut(rest, ":")
+	if helpful == "" {
+		helpful = helpfulNull
+	}
+	return verdict, helpful
+}
+
+// buildSpecJudge ports the validated spec assembly.
+func buildSpecJudge(sig, verdict, helpful string) judge {
 	var helpfulVal any
 	switch helpful {
-	case "true":
+	case helpfulTrue:
 		helpfulVal = true
-	case "false":
+	case helpfulFalse:
 		helpfulVal = false
 	}
-	return judge{sig: sig, verdict: verdict, helpful: helpfulVal}, nil
+	return judge{sig: sig, verdict: verdict, helpful: helpfulVal}
 }
 
 // priorJudgments ports the sticky prior judgments from kb-grades.jsonl:
@@ -226,42 +271,45 @@ func priorJudgments(dir string) []judge {
 	}
 	var out []judge
 	for _, doc := range docs {
-		m, ok := doc.(map[string]any)
-		if !ok {
-			continue
+		if j, ok := priorJudge(doc); ok {
+			out = append(out, j)
 		}
-		sig, ok := m["sig"].(string)
-		if !ok {
-			continue
-		}
-		verdict, ok := m["agent_verdict"].(string)
-		if !ok || (verdict != "real" && verdict != "false" && verdict != "unknown") {
-			continue
-		}
-		helpful, ok := m["agent_helpful"]
-		if !ok || helpful == nil {
-			helpful = nil
-		}
-		out = append(out, judge{sig: sig, verdict: verdict, helpful: helpful})
 	}
 	return out
 }
 
+// priorJudge ports one sticky prior: objects with a string sig and a valid
+// agent verdict; agent_helpful passes through unvalidated.
+func priorJudge(doc any) (judge, bool) {
+	m, ok := doc.(map[string]any)
+	if !ok {
+		return judge{}, false
+	}
+	sig, ok := m[keySig].(string)
+	if !ok {
+		return judge{}, false
+	}
+	verdict, ok := m[keyAgentVerdict].(string)
+	if !ok || (verdict != verdictReal && verdict != verdictFalse && verdict != verdictUnknown) {
+		return judge{}, false
+	}
+	helpful, ok := m[keyAgentHelpful]
+	if !ok || helpful == nil {
+		helpful = nil
+	}
+	return judge{sig: sig, verdict: verdict, helpful: helpful}, true
+}
+
 // mergeJudgments merges priors with new judgments: later wins per sig.
-func mergeJudgments(prior, new []judge) map[string]judge {
+func mergeJudgments(prior, latest []judge) map[string]judge {
 	merged := map[string]judge{}
 	for _, j := range prior {
 		merged[j.sig] = j
 	}
-	for _, j := range new {
+	for _, j := range latest {
 		merged[j.sig] = j
 	}
 	return merged
-}
-
-// grade is one kb-grades.jsonl row.
-type grade struct {
-	doc *jq.Obj
 }
 
 // buildGrades ports the grades computation over findings in store order.
@@ -285,36 +333,42 @@ func buildGrade(entry any, bname, now string, merged map[string]judge) *jq.Obj {
 	switch {
 	case len(cited) == 0:
 		helpful = nil
-	case readcommon.StatusOf(entry) == "addressed":
+	case readcommon.StatusOf(entry) == statusAddressed:
 		helpful = true
-	case readcommon.StatusOf(entry) == "false-positive":
+	case readcommon.StatusOf(entry) == statusFalsePositive:
 		helpful = false
 	}
 	sigKey := ""
 	if s, ok := entrySig(entry).(string); ok {
 		sigKey = s
 	}
-	j, judged := merged[sigKey]
-	var agentVerdict, agentHelpful, agreement any
-	if judged {
-		agentVerdict = j.verdict
-		agentHelpful = j.helpful
-		if (j.verdict == "real" || j.verdict == "false") && (baseline == "real" || baseline == "false") {
-			agreement = j.verdict == baseline
-		}
-	}
+	agentVerdict, agentHelpful, agreement := gradeAgent(merged, sigKey, baseline)
 	return jq.NewObj(
 		"at", now,
 		"bundle", bname,
-		"sig", entrySig(entry),
+		keySig, entrySig(entry),
 		"verdict", baseline,
 		"rule", rule,
 		"helpful", helpful,
-		"agent_verdict", agentVerdict,
+		keyAgentVerdict, agentVerdict,
 		"agent_helpful", agentHelpful,
 		"agreement", agreement,
 		"grader", "calibrate-probe",
 	)
+}
+
+// gradeAgent folds the merged judgment and baseline agreement for one sig.
+func gradeAgent(merged map[string]judge, sigKey, baseline string) (agentVerdict, agentHelpful, agreement any) {
+	j, judged := merged[sigKey]
+	if !judged {
+		return nil, nil, nil
+	}
+	agentVerdict = j.verdict
+	agentHelpful = j.helpful
+	if (j.verdict == verdictReal || j.verdict == verdictFalse) && (baseline == verdictReal || baseline == verdictFalse) {
+		agreement = j.verdict == baseline
+	}
+	return agentVerdict, agentHelpful, agreement
 }
 
 // entrySig reads one entry's raw sig (nil for non-objects).
@@ -323,7 +377,7 @@ func entrySig(entry any) any {
 	if !ok || m == nil {
 		return nil
 	}
-	sig, _ := m.Get("sig")
+	sig, _ := m.Get(keySig)
 	return sig
 }
 
@@ -352,14 +406,18 @@ func citedStrings(entry any) []string {
 // false-positive reads false, everything else reads unknown.
 func baselineVerdict(entry any) string {
 	switch readcommon.StatusOf(entry) {
-	case "addressed":
-		return "real"
-	case "false-positive":
-		return "false"
+	case statusAddressed:
+		return verdictReal
+	case statusFalsePositive:
+		return verdictFalse
 	default:
-		return "unknown"
+		return verdictUnknown
 	}
 }
+
+// gradesFilePerm stages the probe output readable by the owner: the rows
+// carry no secrets, but 0644 is never needed.
+const gradesFilePerm = 0o600
 
 // writeGrades rewrites kb-grades.jsonl deterministically: one compact row
 // per grade plus a trailing newline.
@@ -369,17 +427,17 @@ func writeGrades(dir string, grades []*jq.Obj) error {
 		sb.WriteString(g.MarshalCompact())
 		sb.WriteByte('\n')
 	}
-	if err := os.WriteFile(dir+"/kb-grades.jsonl", []byte(sb.String()), 0o644); err != nil {
-		return &cli.RefusalError{Code: "calibrate-failed", Message: fmt.Sprintf("could not write %s/kb-grades.jsonl: %v", dir, err)}
+	if err := os.WriteFile(dir+"/kb-grades.jsonl", []byte(sb.String()), gradesFilePerm); err != nil {
+		return &cli.RefusalError{Code: codeCalibrateFailed, Message: fmt.Sprintf("could not write %s/kb-grades.jsonl: %v", dir, err)}
 	}
 	return nil
 }
 
 // probeCounts carries the probe tallies.
 type probeCounts struct {
+	rate                                any
 	real, falseVerdicts, unknown, total int
 	sampled, judged, agreed, disagreed  int
-	rate                                any
 }
 
 // countGrades tallies the grades.
@@ -389,32 +447,50 @@ func countGrades(grades []*jq.Obj) probeCounts {
 	for _, g := range grades {
 		verdict, _ := g.Get("verdict")
 		switch verdict {
-		case "real":
+		case verdictReal:
 			c.real++
-		case "false":
+		case verdictFalse:
 			c.falseVerdicts++
 		default:
 			c.unknown++
 		}
-		agent, _ := g.Get("agent_verdict")
-		av, _ := agent.(string)
-		agreement, _ := g.Get("agreement")
-		if av == "real" || av == "false" {
-			c.sampled++
-		}
-		if (av == "real" || av == "false") && (verdict == "real" || verdict == "false") {
-			c.judged++
-			if agreement == true {
-				c.agreed++
-			} else {
-				c.disagreed++
-			}
-		}
+		tallyGradeAgent(&c, g, verdict)
 	}
 	if c.judged > 0 {
 		c.rate = float64(c.agreed) / float64(c.judged)
 	}
 	return c
+}
+
+// tallyGradeAgent folds one grade's agent verdict and agreement.
+func tallyGradeAgent(c *probeCounts, g *jq.Obj, verdict any) {
+	agent, _ := g.Get(keyAgentVerdict)
+	av, ok := agent.(string)
+	if !ok {
+		av = ""
+	}
+	if av == verdictReal || av == verdictFalse {
+		c.sampled++
+		tallyAgreement(c, av, verdict, agreementOf(g))
+	}
+}
+
+// agreementOf reads the agreement flag (nil when absent).
+func agreementOf(g *jq.Obj) any {
+	agreement, _ := g.Get("agreement")
+	return agreement
+}
+
+// tallyAgreement folds a sampled grade's agreement.
+func tallyAgreement(c *probeCounts, av string, verdict, agreement any) {
+	if (av == verdictReal || av == verdictFalse) && (verdict == verdictReal || verdict == verdictFalse) {
+		c.judged++
+		if agreement == true {
+			c.agreed++
+		} else {
+			c.disagreed++
+		}
+	}
 }
 
 // emitProbeHuman ports the probe human lines.
@@ -429,7 +505,7 @@ func emitProbeHuman(r *cli.Runner, req Request, dir, bname string, grades []*jq.
 			}
 		}
 		judgeText = fmt.Sprintf(" judgments: sampled=%d judged=%d agreed=%d disagreed=%d rate=%s",
-			c.sampled, c.judged, c.agreed, c.disagreed, rateText) //nolint:forcetypeassert // guarded by c.judged
+			c.sampled, c.judged, c.agreed, c.disagreed, rateText)
 	}
 	fmt.Fprintf(r.Human, "probe: %s#%s — %d finding(s): real=%d false=%d unknown=%d%s (grades: %s/kb-grades.jsonl)\n",
 		req.Repo, bname, c.total, c.real, c.falseVerdicts, c.unknown, judgeText, dir)
@@ -440,7 +516,7 @@ func emitProbeHuman(r *cli.Runner, req Request, dir, bname string, grades []*jq.
 
 // gradeLine ports one per-grade line.
 func gradeLine(g *jq.Obj) string {
-	sig, _ := g.Get("sig")
+	sig, _ := g.Get(keySig)
 	verdict, _ := g.Get("verdict")
 	line := readcommon.Prefix(sigString(sig)) + " [" + jq.Str(verdict) + "]"
 	rule, _ := g.Get("rule")
@@ -450,7 +526,7 @@ func gradeLine(g *jq.Obj) string {
 		helpful, _ := g.Get("helpful")
 		line += " rule " + jq.Str(rule) + " helpful=" + readcommon.Tostring(helpful)
 	}
-	agent, _ := g.Get("agent_verdict")
+	agent, _ := g.Get(keyAgentVerdict)
 	if agent == nil {
 		return line
 	}

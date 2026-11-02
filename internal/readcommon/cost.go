@@ -17,6 +17,23 @@ const (
 	warnBudgetUnreadable = "budget.json unreadable — receipts unlisted for this rollup"
 )
 
+// Effort tiers, matching the shell's allowlist and tier rollups.
+const (
+	tierCheap    = "cheap"
+	tierStandard = "standard"
+	tierDeep     = "deep"
+)
+
+// Cost object keys.
+const (
+	keyRuns         = "runs"
+	keyInputTokens  = "input_tokens"
+	keyOutputTokens = "output_tokens"
+	keyTotalTokens  = "total_tokens"
+	keyEstUSD       = "est_usd"
+	slash           = "/"
+)
+
 // CostResult carries the --cost rollup: the envelope-ready cost object (nil
 // when the flag is absent), the receipts array (nil unless a budget file
 // parsed), and warnings in shell order.
@@ -39,27 +56,14 @@ func CostRollup(dir string) CostResult {
 		attachReceipts(dir, &res)
 		return res
 	}
+	merged := append(append([]any{}, top...), mergeChunkRecords(chunkFiles, &res)...)
 	if topPresent {
-		if c, ok := rollupOne(top, topParsed); ok {
-			res.Cost = c
-		} else {
+		// The top-only assignment below never survives the merged
+		// overwrite, but its failure warning does: an unparseable
+		// top file warns even when the chunk merge succeeds.
+		if _, ok := rollupOne(top, topParsed); !ok {
 			res.Warns = append(res.Warns, warnCostUnreadable)
-			res.Cost = costZeros()
 		}
-	} else {
-		res.Cost = costZeros()
-	}
-	merged := append([]any{}, top...)
-	for _, f := range chunkFiles {
-		recs, present, parsed := readCostFile(f)
-		if !present {
-			continue
-		}
-		if !parsed {
-			res.Warns = append(res.Warns, chunkWarn(f))
-			continue
-		}
-		merged = append(merged, recs...)
 	}
 	if c := rollupRecords(merged); c != nil {
 		res.Cost = c
@@ -72,6 +76,24 @@ func CostRollup(dir string) CostResult {
 	}
 	attachReceipts(dir, &res)
 	return res
+}
+
+// mergeChunkRecords reads the present, parsed chunk files into one record
+// stream. Absent files skip silently; unparseable files warn and skip.
+func mergeChunkRecords(chunkFiles []string, res *CostResult) []any {
+	var merged []any
+	for _, f := range chunkFiles {
+		recs, present, parsed := readCostFile(f)
+		if !present {
+			continue
+		}
+		if !parsed {
+			res.Warns = append(res.Warns, chunkWarn(f))
+			continue
+		}
+		merged = append(merged, recs...)
+	}
+	return merged
 }
 
 // rollupTop rolls the top-level file when no chunk files exist.
@@ -101,8 +123,8 @@ func rollupOne(recs []any, parsed bool) (*jq.Obj, bool) {
 // chunkWarn renders the per-chunk unreadable warning.
 func chunkWarn(path string) string {
 	base := path
-	if i := strings.LastIndex(path, "/"); i >= 0 {
-		base = path[i+1:]
+	if _, after, ok := strings.CutLast(path, slash); ok {
+		base = after
 	}
 	return "chunk cost " + base + " unreadable — spend unrecorded for this chunk"
 }
@@ -141,9 +163,15 @@ func chunkCostFiles(dir string) []string {
 	for _, name := range manifestChunkNames(chunksDir + "/manifest.json") {
 		files = append(files, chunksDir+"/"+name+".cost.json")
 	}
+	return dedupeSorted(appendChunkGlob(chunksDir, files))
+}
+
+// appendChunkGlob appends the on-disk chunk-*.cost.json names, mirroring
+// the shell's glob (unreadable dirs read as manifest-only via || true).
+func appendChunkGlob(chunksDir string, files []string) []string {
 	entries, err := os.ReadDir(chunksDir)
 	if err != nil {
-		return dedupeSorted(files)
+		return files
 	}
 	for _, e := range entries {
 		if e.IsDir() {
@@ -155,44 +183,60 @@ func chunkCostFiles(dir string) []string {
 		}
 		files = append(files, chunksDir+"/"+name)
 	}
-	return dedupeSorted(files)
+	return files
 }
 
 // manifestChunkNames reads the manifest's chunk names ("" when the manifest
 // is absent or unreadable, mirroring `|| true`).
 func manifestChunkNames(path string) []string {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return nil
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return nil
-	}
-	list, ok := m["chunks"].([]any)
+	list, ok := manifestChunkList(path)
 	if !ok {
 		return nil
 	}
 	var names []string
 	for _, c := range list {
-		cm, ok := c.(map[string]any)
+		name, ok := manifestChunkName(c)
 		if !ok {
 			return nil
 		}
-		name, ok := chunkName(cm["name"])
-		if !ok {
-			return nil
-		}
-		if name == "" || strings.Contains(name, "/") {
+		if name == "" || strings.Contains(name, slash) {
 			continue
 		}
 		names = append(names, name)
 	}
 	return names
+}
+
+// manifestChunkList reads the manifest's chunk entry list.
+func manifestChunkList(path string) ([]any, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	doc, err := jq.Decode(raw)
+	if err != nil {
+		return nil, false
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return nil, false
+	}
+	list, ok := m["chunks"].([]any)
+	if !ok {
+		return nil, false
+	}
+	return list, true
+}
+
+// manifestChunkName validates one manifest chunk entry: non-objects and
+// non-scalar names invalidate the whole manifest like the shell's jq
+// error; null/false read empty and skip.
+func manifestChunkName(c any) (string, bool) {
+	cm, ok := c.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	return chunkName(cm["name"])
 }
 
 // chunkName renders a manifest chunk name: strings verbatim, numbers
@@ -224,75 +268,89 @@ func dedupeSorted(files []string) []string {
 	return slices.Compact(files)
 }
 
+// tierAcc accumulates one tier's runs and tokens.
+type tierAcc struct {
+	runs          int
+	input, output float64
+}
+
+// costSums carries the running rollup totals.
+type costSums struct {
+	runs, withCost, estN          int
+	input, output, cached, estSum float64
+}
+
 // rollupRecords applies the shared cost rollup filter to merged records.
 // Nil marks a shape failure (a non-object record or model, mirroring the
 // shell filter's jq error); callers warn and substitute zeros.
 func rollupRecords(records []any) *jq.Obj {
-	type tierAcc struct {
-		runs          int
-		input, output float64
-	}
-	tiers := []string{"cheap", "standard", "deep"}
+	tiers := []string{tierCheap, tierStandard, tierDeep}
 	acc := map[string]*tierAcc{}
 	for _, t := range tiers {
 		acc[t] = &tierAcc{}
 	}
-	runs, withCost := 0, 0
-	var input, output, cached, estSum float64
-	estN := 0
+	var sum costSums
 	for _, rec := range records {
-		runs++
-		rm, ok := costRecordMap(rec)
-		if !ok {
+		if !foldRecord(rec, acc, &sum) {
 			return nil
-		}
-		tier := recordTier(rm)
-		a := acc[tier]
-		a.runs++
-		models, ok := costModels(rm)
-		if !ok {
-			return nil
-		}
-		if len(models) > 0 {
-			withCost++
-		}
-		for _, mm := range models {
-			in, out := modelTokens(mm)
-			a.input += in
-			a.output += out
-			input += in
-			output += out
-			cached += modelCached(mm)
-		}
-		if est, ok := recordEstimate(rm); ok {
-			estSum += est
-			estN++
 		}
 	}
 	var estUSD any
-	if estN > 0 {
-		estUSD = round4(estSum)
+	if sum.estN > 0 {
+		estUSD = round4(sum.estSum)
 	}
 	byTier := jq.NewObj()
 	for _, t := range tiers {
 		a := acc[t]
 		byTier.Set(t, jq.NewObj(
-			"runs", a.runs,
-			"input_tokens", a.input,
-			"output_tokens", a.output,
-			"total_tokens", a.input+a.output,
+			keyRuns, a.runs,
+			keyInputTokens, a.input,
+			keyOutputTokens, a.output,
+			keyTotalTokens, a.input+a.output,
 		))
 	}
 	return jq.NewObj(
-		"runs", runs,
-		"runs_with_cost", withCost,
-		"input_tokens", input,
-		"output_tokens", output,
-		"total_tokens", input+output,
-		"cached_input_tokens", cached,
-		"est_usd", estUSD,
+		keyRuns, sum.runs,
+		"runs_with_cost", sum.withCost,
+		keyInputTokens, sum.input,
+		keyOutputTokens, sum.output,
+		keyTotalTokens, sum.input+sum.output,
+		"cached_input_tokens", sum.cached,
+		keyEstUSD, estUSD,
 		"by_tier", byTier,
 	)
+}
+
+// foldRecord folds one cost record into the tier accumulators and running
+// totals, reporting shape failure like the shell filter's jq error.
+func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
+	sum.runs++
+	rm, ok := costRecordMap(rec)
+	if !ok {
+		return false
+	}
+	a := acc[recordTier(rm)]
+	a.runs++
+	models, ok := costModels(rm)
+	if !ok {
+		return false
+	}
+	if len(models) > 0 {
+		sum.withCost++
+	}
+	for _, mm := range models {
+		in, out := modelTokens(mm)
+		a.input += in
+		a.output += out
+		sum.input += in
+		sum.output += out
+		sum.cached += modelCached(mm)
+	}
+	if est, ok := recordEstimate(rm); ok {
+		sum.estSum += est
+		sum.estN++
+	}
+	return true
 }
 
 // costRecordMap validates one cost record: null and objects read; anything
@@ -318,15 +376,24 @@ func costModels(rm map[string]any) ([]any, bool) {
 	if !ok {
 		return nil, false
 	}
+	if !allModelMaps(list) {
+		return nil, false
+	}
+	return list, true
+}
+
+// allModelMaps reports whether every non-null models element is an object,
+// mirroring the shell filter's shape gate.
+func allModelMaps(list []any) bool {
 	for _, mm := range list {
 		if mm == nil {
 			continue
 		}
 		if _, ok := mm.(map[string]any); !ok {
-			return nil, false
+			return false
 		}
 	}
-	return list, true
+	return true
 }
 
 // modelTokens sums one model's numeric input/output tokens.
@@ -335,10 +402,10 @@ func modelTokens(mm any) (in, out float64) {
 	if !ok {
 		return 0, 0
 	}
-	if f, ok := NumVal(m["input_tokens"]); ok {
+	if f, ok := NumVal(m[keyInputTokens]); ok {
 		in = f
 	}
-	if f, ok := NumVal(m["output_tokens"]); ok {
+	if f, ok := NumVal(m[keyOutputTokens]); ok {
 		out = f
 	}
 	return in, out
@@ -387,22 +454,22 @@ const roundScale = 10000
 // costZeros ports the zero rollup for absent or unreadable cost stores.
 func costZeros() *jq.Obj {
 	byTier := jq.NewObj()
-	for _, t := range []string{"cheap", "standard", "deep"} {
+	for _, t := range []string{tierCheap, tierStandard, tierDeep} {
 		byTier.Set(t, jq.NewObj(
-			"runs", 0,
-			"input_tokens", 0,
-			"output_tokens", 0,
-			"total_tokens", 0,
+			keyRuns, 0,
+			keyInputTokens, 0,
+			keyOutputTokens, 0,
+			keyTotalTokens, 0,
 		))
 	}
 	return jq.NewObj(
-		"runs", 0,
+		keyRuns, 0,
 		"runs_with_cost", 0,
-		"input_tokens", 0,
-		"output_tokens", 0,
-		"total_tokens", 0,
+		keyInputTokens, 0,
+		keyOutputTokens, 0,
+		keyTotalTokens, 0,
 		"cached_input_tokens", 0,
-		"est_usd", nil,
+		keyEstUSD, nil,
 		"by_tier", byTier,
 	)
 }

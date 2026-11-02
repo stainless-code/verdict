@@ -13,7 +13,11 @@ import (
 
 // readFile reads a whole file.
 func readFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, jq.Sealed("read "+path, err)
+	}
+	return raw, nil
 }
 
 // isRegular reports whether path is a regular file.
@@ -45,9 +49,9 @@ func jsonField(path, field string) string {
 // zero network; --live skip warns and stays neutral; structural skips
 // (local bundles, non-GitHub providers) warn neutral; unreachable lookups
 // warn neutral under auto and fail closed under strict.
-func runLiveProbe(ctx context.Context, st *state) error {
+func runLiveProbe(ctx context.Context, st *state) {
 	if !st.gate {
-		return nil
+		return
 	}
 	r := st.runner
 	switch {
@@ -62,11 +66,10 @@ func runLiveProbe(ctx context.Context, st *state) error {
 		if prov != "" && prov != "github" {
 			r.Warn(fmt.Sprintf("live recheck skipped: %s threads unreadable here (gating on local dimensions only)", prov))
 			st.live.status = liveSkip
-			return nil
+			return
 		}
 		probeLiveCount(ctx, st)
 	}
-	return nil
 }
 
 // isLocalDir reports whether dir is a local bundle.
@@ -82,7 +85,7 @@ func providerName(dir string) string {
 // probeLiveCount runs the live count lookup and maps the outcome.
 func probeLiveCount(ctx context.Context, st *state) {
 	n, res, err := readcommon.LiveOpenThreadCount(ctx, st.req.Repo, st.req.Pr)
-	writeErrFile(st.dir+"/.recheck.err", res.Stderr)
+	writeErrFile(st.runner, st.dir+"/.recheck.err", res.Stderr)
 	if err != nil {
 		probeUnreachable(st, res.Stderr)
 		return
@@ -129,10 +132,20 @@ func firstLine(s string) string {
 // errHeadBytes caps the probe error detail.
 const errHeadBytes = 120
 
+// recheckStagePerm stages probe stderr readable only by the owner: the
+// content can carry token-adjacent gh diagnostics.
+const recheckStagePerm = 0o600
+
 // writeErrFile stages probe stderr beside the bundle (removed after the
-// probe either way, so readers stay side-effect free).
-func writeErrFile(path, stderr string) {
-	_ = os.WriteFile(path, []byte(stderr), 0o644)
+// probe either way, so readers stay side-effect free). The write is
+// best-effort like the shell's 2> redirect, so a failure warns instead of
+// refusing: the file is a debug side channel and the run must not fail
+// over garnish.
+func writeErrFile(r *cli.Runner, path, stderr string) {
+	if err := os.WriteFile(path, []byte(stderr), recheckStagePerm); err != nil {
+		// Un-actionable beyond the notice: the live data already loaded.
+		fmt.Fprintf(r.Diag, "report: could not stage probe stderr in %s: %v\n", path, err)
+	}
 }
 
 // removeErrFile removes a staged probe file.
@@ -254,7 +267,10 @@ func emitCostHuman(st *state) {
 		jqStr(cost, "output_tokens"), jqStr(cost, "total_tokens"),
 		orNA(jqVal(cost, "est_usd")), jqStr(cost, "cached_input_tokens"))
 	byTier, _ := cost.Get("by_tier")
-	tierObj, _ := byTier.(*jq.Obj)
+	tierObj, ok := byTier.(*jq.Obj)
+	if !ok {
+		tierObj = nil
+	}
 	fmt.Fprintf(r.Human, "tiers: cheap=%s standard=%s deep=%s\n",
 		tierRuns(tierObj, "cheap"), tierRuns(tierObj, "standard"), tierRuns(tierObj, "deep"))
 	if st.receipts != nil {
@@ -290,7 +306,10 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 		return "0"
 	}
 	raw, _ := byTier.Get(tier)
-	obj, _ := raw.(*jq.Obj)
+	obj, ok := raw.(*jq.Obj)
+	if !ok {
+		obj = nil
+	}
 	if obj == nil {
 		return "0"
 	}
@@ -299,19 +318,29 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 
 // receiptField renders one receipt field jq-style ("?" when absent).
 func receiptField(latest any, key string) string {
-	m, ok := latest.(map[string]any)
-	if !ok {
-		if om, ok := latest.(*jq.Obj); ok {
-			v, _ := om.Get(key)
-			if v == nil || v == false {
-				return "?"
-			}
-			return jq.Str(v)
-		}
-		return "?"
+	if m, ok := latest.(map[string]any); ok {
+		return receiptFieldFromMap(m, key)
 	}
+	return receiptFieldFromObj(latest, key)
+}
+
+// receiptFieldFromMap renders one field from a decoded receipt map.
+func receiptFieldFromMap(m map[string]any, key string) string {
 	v, ok := m[key]
 	if !ok || v == nil || v == false {
+		return "?"
+	}
+	return jq.Str(v)
+}
+
+// receiptFieldFromObj renders one field from a receipt object.
+func receiptFieldFromObj(latest any, key string) string {
+	om, ok := latest.(*jq.Obj)
+	if !ok {
+		return "?"
+	}
+	v, _ := om.Get(key)
+	if v == nil || v == false {
 		return "?"
 	}
 	return jq.Str(v)
@@ -464,38 +493,56 @@ func gateTail(st *state) int {
 	if !st.gate {
 		return 0
 	}
-	fail := false
-	if st.flags.CheckSev != "" {
-		if n := tierHits(st.entries, st.flags.CheckSev); n > 0 {
-			fmt.Fprintf(st.runner.Diag, "check: %d open finding(s) at-or-above %s — gate fails\n", n, st.flags.CheckSev)
-			fail = true
-		} else {
-			fmt.Fprintf(st.runner.Diag, "check: no open findings at-or-above %s — gate passes\n", st.flags.CheckSev)
-		}
-	}
-	if st.flags.Completeness {
-		if completenessPass(st) {
-			fmt.Fprintf(st.runner.Diag, "check: HEAD %s reviewed (post matches fetch) — completeness passes\n", readcommon.ShortSHA(st.headSHA))
-		} else {
-			fail = true
-			emitCompletenessFail(st)
-		}
-	}
-	if liveFail := emitLiveVerdict(st); liveFail {
-		fail = true
-	}
-	if fail {
+	tierFail := gateTierCheck(st)
+	compFail := gateCompletenessCheck(st)
+	liveFail := gateLiveCheck(st)
+	if tierFail || compFail || liveFail {
 		return 1
 	}
 	return 0
 }
 
+// gateTierCheck prints the tier dimension check line, reporting whether
+// the dimension fails the gate.
+func gateTierCheck(st *state) bool {
+	if st.flags.CheckSev == "" {
+		return false
+	}
+	if n := tierHits(st.entries, st.flags.CheckSev); n > 0 {
+		fmt.Fprintf(st.runner.Diag, "check: %d open finding(s) at-or-above %s — gate fails\n", n, st.flags.CheckSev)
+		return true
+	}
+	fmt.Fprintf(st.runner.Diag, "check: no open findings at-or-above %s — gate passes\n", st.flags.CheckSev)
+	return false
+}
+
+// gateCompletenessCheck prints the completeness dimension check line,
+// reporting whether the dimension fails the gate.
+func gateCompletenessCheck(st *state) bool {
+	if !st.flags.Completeness {
+		return false
+	}
+	if completenessPass(st) {
+		short := readcommon.ShortSHA(st.headSHA)
+		fmt.Fprintf(st.runner.Diag, "check: HEAD %s reviewed (post matches fetch) — completeness passes\n", short)
+		return false
+	}
+	emitCompletenessFail(st)
+	return true
+}
+
+// gateLiveCheck prints the live-thread verdict line, reporting whether
+// the dimension fails the gate.
+func gateLiveCheck(st *state) bool {
+	return emitLiveVerdict(st)
+}
+
 // tierHits counts whole-store open findings at-or-above the tier.
 func tierHits(entries []any, tier string) int {
-	threshold := map[string]int{"critical": 0, "important": 1, "informational": 2}[tier]
+	threshold := map[string]int{tierCritical: 0, tierImportant: 1, tierInformational: 2}[tier]
 	n := 0
 	for _, e := range entries {
-		if readcommon.StatusOf(e) != "open" {
+		if readcommon.StatusOf(e) != statusOpen {
 			continue
 		}
 		if sevRankOf(e) <= threshold {
@@ -505,25 +552,29 @@ func tierHits(entries []any, tier string) int {
 	return n
 }
 
+// sevRankUntagged is the gate severity rank for untagged findings: it never
+// meets any tier.
+const sevRankUntagged = 3
+
 // sevRankOf ports the gate severity rank (untagged reads 3, never meeting
 // a tier).
 func sevRankOf(entry any) int {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
-		return 3
+		return sevRankUntagged
 	}
 	sev, _ := m.Get("severity")
 	if s, ok := sev.(string); ok {
 		switch s {
-		case "critical":
+		case tierCritical:
 			return 0
-		case "important":
+		case tierImportant:
 			return 1
-		case "informational":
+		case tierInformational:
 			return 2
 		}
 	}
-	return 3
+	return sevRankUntagged
 }
 
 // completenessPass reports whether the HEAD-reviewed dimension passes.
@@ -538,11 +589,14 @@ func emitCompletenessFail(st *state) {
 	short := readcommon.ShortSHA(st.headSHA)
 	switch {
 	case !isRegular(st.dir + "/post.json"):
-		fmt.Fprintf(r.Diag, "check: incomplete — no completed post for HEAD %s (missing-post: run %s, then review + post, then re-check)\n", short, refetch)
+		fmt.Fprintf(r.Diag, "check: incomplete — no completed post for HEAD %s "+
+			"(missing-post: run %s, then review + post, then re-check)\n", short, refetch)
 	case st.compPosted == "":
-		fmt.Fprintf(r.Diag, "check: incomplete — post record carries no head SHA (corrupt-post: re-run %s, then review + post, then re-check)\n", refetch)
+		fmt.Fprintf(r.Diag, "check: incomplete — post record carries no head SHA "+
+			"(corrupt-post: re-run %s, then review + post, then re-check)\n", refetch)
 	default:
-		fmt.Fprintf(r.Diag, "check: incomplete — HEAD %s != posted %s (stale-head: re-run %s, then review + post, then re-check)\n",
+		fmt.Fprintf(r.Diag, "check: incomplete — HEAD %s != posted %s "+
+			"(stale-head: re-run %s, then review + post, then re-check)\n",
 			short, readcommon.ShortSHA(st.compPosted), refetch)
 	}
 }
@@ -553,7 +607,8 @@ func emitLiveVerdict(st *state) bool {
 	r := st.runner
 	switch st.live.status {
 	case liveFail:
-		fmt.Fprintf(r.Diag, "check: %d live open thread(s) vs %d local open finding(s) — gate fails (fetch + triage them, then re-check)\n", st.live.open, st.nAllOpen)
+		fmt.Fprintf(r.Diag, "check: %d live open thread(s) vs %d local open finding(s) — gate fails "+
+			"(fetch + triage them, then re-check)\n", st.live.open, st.nAllOpen)
 		return true
 	case livePass:
 		fmt.Fprintf(r.Diag, "check: %d live open thread(s) vs %d local open finding(s) — live recheck passes\n", st.live.open, st.nAllOpen)
@@ -562,7 +617,8 @@ func emitLiveVerdict(st *state) bool {
 		if detail == "" {
 			detail = "lookup failed"
 		}
-		fmt.Fprintf(r.Diag, "check: live thread recheck unreachable (%s — gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)\n", detail)
+		fmt.Fprintf(r.Diag, "check: live thread recheck unreachable (%s — gate fails: offline posture is strict; "+
+			"restore the network or re-run with --live skip, then re-check)\n", detail)
 		return true
 	case liveSkipExplicit:
 		fmt.Fprintln(r.Diag, "check: live recheck skipped (--live skip) — gating on local dimensions only")

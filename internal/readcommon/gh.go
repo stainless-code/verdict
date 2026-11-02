@@ -55,9 +55,9 @@ type GhResult struct {
 }
 
 // Gh runs gh with exactly the given argv, capturing both streams. A missing
-// binary or a failing call returns the error with stderr attached; callers
-// map failures to the verb's warn-or-refuse posture. Callers needing the
-// stub-log comparison pass the same argv the shell passes (O5).
+// binary or a failing call returns the sealed error with stderr attached;
+// callers map failures to the verb's warn-or-refuse posture. Callers needing
+// the stub-log comparison pass the same argv the shell passes (O5).
 func Gh(ctx context.Context, args ...string) (GhResult, error) {
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	var stdout, stderr bytes.Buffer
@@ -67,7 +67,7 @@ func Gh(ctx context.Context, args ...string) (GhResult, error) {
 	if err := cmd.Run(); err != nil {
 		res.Stdout = stdout.String()
 		res.Stderr = stderr.String()
-		return res, err
+		return res, jq.Sealed("gh", err)
 	}
 	res.Stdout = stdout.String()
 	res.Stderr = stderr.String()
@@ -76,17 +76,19 @@ func Gh(ctx context.Context, args ...string) (GhResult, error) {
 
 // SplitOwner splits owner/repo into its two halves.
 func SplitOwner(repo string) (owner, name string) {
-	if i := strings.Index(repo, "/"); i >= 0 {
-		return repo[:i], repo[i+1:]
+	if before, after, ok := strings.Cut(repo, "/"); ok {
+		return before, after
 	}
 	return repo, ""
 }
 
 // ThreadsArgv builds the shared graphql thread-read argv for owner/name/pr.
 func ThreadsArgv(owner, name, pr, query string) []string {
-	return []string{"api", "graphql", "--paginate",
+	return []string{
+		"api", "graphql", "--paginate",
 		"-F", "owner=" + owner, "-F", "name=" + name, "-F", "pr=" + pr,
-		"-f", "query=" + query}
+		"-f", "query=" + query,
+	}
 }
 
 // SlurpThreads decodes the paginated thread payload: concatenated JSON docs
@@ -96,7 +98,7 @@ func ThreadsArgv(owner, name, pr, query string) []string {
 func SlurpThreads(stdout string) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(stdout))
 	if err != nil {
-		return nil, err
+		return nil, jq.Sealed("slurp threads", err)
 	}
 	var nodes []any
 	for _, doc := range docs {
@@ -111,23 +113,26 @@ func pageNodes(doc any) []any {
 	if !ok {
 		return nil
 	}
-	data, _ := m["data"].(map[string]any)
-	if data == nil {
+	data, ok := m["data"].(map[string]any)
+	if !ok {
 		return nil
 	}
-	repository, _ := data["repository"].(map[string]any)
-	if repository == nil {
+	repository, ok := data["repository"].(map[string]any)
+	if !ok {
 		return nil
 	}
-	pull, _ := repository["pullRequest"].(map[string]any)
-	if pull == nil {
+	pull, ok := repository["pullRequest"].(map[string]any)
+	if !ok {
 		return nil
 	}
-	threads, _ := pull["reviewThreads"].(map[string]any)
-	if threads == nil {
+	threads, ok := pull["reviewThreads"].(map[string]any)
+	if !ok {
 		return nil
 	}
-	list, _ := threads["nodes"].([]any)
+	list, ok := threads["nodes"].([]any)
+	if !ok {
+		return nil
+	}
 	return list
 }
 
@@ -144,15 +149,20 @@ func LiveOpenThreadCount(ctx context.Context, repo, pr string) (int, GhResult, e
 	if err != nil {
 		return 0, res, err
 	}
+	return countOpenNodes(nodes), res, nil
+}
+
+// countOpenNodes counts unresolved live threads, skipping exotic nodes.
+func countOpenNodes(nodes []any) int {
 	n := 0
 	for _, node := range nodes {
 		m, ok := node.(map[string]any)
 		if !ok {
 			continue
 		}
-		if resolved, _ := m["isResolved"].(bool); !resolved {
+		if resolved, ok := m["isResolved"].(bool); !ok || !resolved {
 			n++
 		}
 	}
-	return n, res, nil
+	return n
 }

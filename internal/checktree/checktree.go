@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
@@ -17,9 +18,32 @@ import (
 // Request wires a check-tree run.
 type Request = readcommon.Request
 
+// Porcelain layout constants: `git status --porcelain` v1 lines read two
+// XY status columns, one space, then the path.
+const (
+	porcelainSpaceAt = 2      // separator between the XY columns and the path
+	porcelainPathAt  = 3      // path starts after the XY columns and the space
+	porcelainMinLen  = 4      // XY columns + space + at least one path byte
+	renameSep        = " -> " // rename lines match on the post-arrow path
+	newline          = "\n"
+)
+
+// verbCheckTree names the verb in envelopes.
+const verbCheckTree = "check-tree"
+
+// keyClean names the envelope clean flag.
+const keyClean = "clean"
+
+// errGitStatus marks a failed `git status --porcelain` probe. The error is
+// control flow only (runCheck maps any probe error to the not-a-repo
+// refusal), sealed per the layer-boundary contract.
+func gitProbeFailed(err error) error {
+	return jq.Sealed("git status --porcelain", err)
+}
+
 // Run executes `check-tree [--expect <prefix,...>] [--json]`, returning the
 // exit code.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, _ Request) int {
 	expect, code, done := parseFlags(r, args)
 	if done {
 		return code
@@ -30,7 +54,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if err := readcommon.ValidateOverrides(); err != nil {
 		return r.Refuse(err)
 	}
-	return runCheck(r, expect)
+	return runCheck(ctx, r, expect)
 }
 
 // parseFlags parses the check-tree flags.
@@ -52,7 +76,8 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 			routeHuman(r)
 			i++
 		default:
-			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for check-tree (want --expect <prefix,...>, --json)", a)}), true
+			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				"unknown flag '%s' for check-tree (want --expect <prefix,...>, --json)", a)}), true
 		}
 	}
 	return expect, 0, false
@@ -68,8 +93,8 @@ func routeHuman(r *cli.Runner) {
 }
 
 // runCheck ports the check-tree gate over `git status --porcelain`.
-func runCheck(r *cli.Runner, expect string) int {
-	out, err := gitPorcelain(context.Background())
+func runCheck(ctx context.Context, r *cli.Runner, expect string) int {
+	out, err := gitPorcelain(ctx)
 	if err != nil {
 		return notARepo(r)
 	}
@@ -94,7 +119,7 @@ func gitPorcelain(ctx context.Context) (string, error) {
 	var stdout strings.Builder
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
-		return "", err
+		return "", gitProbeFailed(err)
 	}
 	return strings.TrimRight(stdout.String(), "\n"), nil
 }
@@ -107,20 +132,41 @@ func splitScratch(porcelain string) (int, string) {
 	}
 	own := 0
 	var kept []string
-	for _, line := range strings.Split(porcelain, "\n") {
+	for _, line := range porcelainLinesRaw(porcelain) {
 		if isScratchLine(line) {
 			own++
 			continue
 		}
 		kept = append(kept, line)
 	}
-	return own, strings.Join(kept, "\n")
+	return own, strings.Join(kept, newline)
+}
+
+// porcelainLinesRaw splits porcelain output into lines.
+func porcelainLinesRaw(porcelain string) []string {
+	return slices.Collect(strings.SplitSeq(porcelain, newline))
 }
 
 // isScratchLine ports ^.. \.review/: any two status columns, a space,
 // then .review/.
 func isScratchLine(line string) bool {
-	return len(line) >= 4 && line[2] == ' ' && strings.HasPrefix(line[3:], ".review/")
+	return len(line) >= porcelainMinLen && line[porcelainSpaceAt] == ' ' &&
+		strings.HasPrefix(line[porcelainPathAt:], ".review/")
+}
+
+// envelope ports the check-tree --json envelope shell.
+func envelope(r *cli.Runner, next string, data *jq.Obj, errObj any) *jq.Obj {
+	return jq.NewObj(
+		"schema_version", "1",
+		"verb", verbCheckTree,
+		"repo", "",
+		"pr", nil,
+		"at", cli.NowUTC(r.Now()),
+		"next", next,
+		"warnings", cliStrings(r.Warnings),
+		"data", data,
+		"error", errObj,
+	)
 }
 
 // notARepo ports the not-a-git-repo refusal.
@@ -129,17 +175,10 @@ func notARepo(r *cli.Runner) int {
 	if !r.JSONMode {
 		return 1
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "check-tree",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", "run inside a git repository",
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("clean", false, "files", []any{}),
-		"error", jq.NewObj("code", "not-a-repo", "message", "check-tree needs a git repository (git status failed)"),
-	)
+	errObj := jq.NewObj("code", "not-a-repo",
+		"message", "check-tree needs a git repository (git status failed)")
+	env := envelope(r, "run inside a git repository",
+		jq.NewObj(keyClean, false, "files", []any{}), errObj)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return 1
 }
@@ -151,17 +190,7 @@ func cleanTree(r *cli.Runner, scratch string, own int) int {
 	if !r.JSONMode {
 		return 0
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "check-tree",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", msg,
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("clean", true, "ignored_review_lines", own),
-		"error", nil,
-	)
+	env := envelope(r, msg, jq.NewObj(keyClean, true, "ignored_review_lines", own), nil)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return 0
 }
@@ -174,17 +203,7 @@ func dirtyTree(r *cli.Runner, porcelain string) int {
 	if !r.JSONMode {
 		return 1
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "check-tree",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", msg,
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("clean", false, "files", porcelainLines(porcelain)),
-		"error", nil,
-	)
+	env := envelope(r, msg, jq.NewObj(keyClean, false, "files", porcelainLines(porcelain)), nil)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return 1
 }
@@ -192,7 +211,7 @@ func dirtyTree(r *cli.Runner, porcelain string) int {
 // porcelainLines ports the files value: non-empty porcelain lines.
 func porcelainLines(porcelain string) []any {
 	var out []any
-	for _, line := range strings.Split(porcelain, "\n") {
+	for _, line := range porcelainLinesRaw(porcelain) {
 		if line == "" {
 			continue
 		}
@@ -207,21 +226,7 @@ func porcelainLines(porcelain string) []any {
 // expectGate ports the --expect allowlist: stray paths fail, covered dirt
 // passes.
 func expectGate(r *cli.Runner, porcelain, expect string) int {
-	prefixes := splitPrefixes(expect)
-	var stray []string
-	for _, line := range strings.Split(porcelain, "\n") {
-		file := ""
-		if len(line) >= 3 {
-			file = line[3:]
-		}
-		if i := strings.LastIndex(file, " -> "); i >= 0 {
-			file = file[i+4:]
-		}
-		if !matchesPrefix(file, prefixes) {
-			stray = append(stray, line)
-		}
-	}
-	if len(stray) > 0 {
+	if stray := unexpectedPaths(porcelain, splitPrefixes(expect)); len(stray) > 0 {
 		return unexpectedDirt(r, stray)
 	}
 	msg := "check-tree: only expected files dirty"
@@ -229,25 +234,43 @@ func expectGate(r *cli.Runner, porcelain, expect string) int {
 	if !r.JSONMode {
 		return 0
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "check-tree",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", msg,
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("clean", true, "expected_only", true),
-		"error", nil,
-	)
+	env := envelope(r, msg, jq.NewObj(keyClean, true, "expected_only", true), nil)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return 0
+}
+
+// unexpectedPaths ports the stray scan: rename lines match on the
+// post-arrow path.
+func unexpectedPaths(porcelain string, prefixes []string) []string {
+	var stray []string
+	for _, line := range porcelainLinesRaw(porcelain) {
+		if !matchesPrefix(renameTarget(stripStatus(line)), prefixes) {
+			stray = append(stray, line)
+		}
+	}
+	return stray
+}
+
+// stripStatus drops the XY status columns, reading "" on short lines.
+func stripStatus(line string) string {
+	if len(line) >= porcelainPathAt {
+		return line[porcelainPathAt:]
+	}
+	return ""
+}
+
+// renameTarget ports ${f##* -> }: the post-arrow path on renames.
+func renameTarget(file string) string {
+	if _, after, ok := strings.CutLast(file, renameSep); ok {
+		return after
+	}
+	return file
 }
 
 // splitPrefixes splits and trims the --expect prefix list.
 func splitPrefixes(expect string) []string {
 	var out []string
-	for _, p := range strings.Split(expect, ",") {
+	for p := range strings.SplitSeq(expect, ",") {
 		out = append(out, strings.Trim(p, " \t\r\n\v\f"))
 	}
 	return out
@@ -274,17 +297,7 @@ func unexpectedDirt(r *cli.Runner, stray []string) int {
 	if !r.JSONMode {
 		return 1
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "check-tree",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", msg,
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj("clean", false, "unexpected", strayLines(stray)),
-		"error", nil,
-	)
+	env := envelope(r, msg, jq.NewObj(keyClean, false, "unexpected", strayLines(stray)), nil)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return 1
 }

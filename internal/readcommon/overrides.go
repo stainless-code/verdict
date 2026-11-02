@@ -14,13 +14,8 @@ import (
 // silently; every violation fails closed typed (bad-override, or
 // bad-settings for unknown placeholders).
 func ValidateOverrides() error {
-	fragments := []string{
-		overrides.Preamble, overrides.FooterOrderPath, overrides.Threshold, overrides.Attribution,
-	}
-	for _, f := range fragments {
-		if ref := validateFragment(f); ref != nil {
-			return ref
-		}
+	if err := validateFragments(); err != nil {
+		return err
 	}
 	if _, err := overrides.FooterOrder(); err != nil {
 		return passRefusal(err)
@@ -36,11 +31,25 @@ func ValidateOverrides() error {
 	return nil
 }
 
+// validateFragments ports the per-file locked-shape gate over the four P5
+// fragments.
+func validateFragments() error {
+	fragments := []string{
+		overrides.Preamble, overrides.FooterOrderPath, overrides.Threshold, overrides.Attribution,
+	}
+	for _, f := range fragments {
+		if ref := validateFragment(f); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
 // validateFragment validates one override fragment file, if present. A
 // missing path — or a non-regular file such as a directory in the
 // fragment's place — reads as no fragment.
 func validateFragment(f string) error {
-	if fi, err := os.Stat(f); err != nil || !fi.Mode().IsRegular() {
+	if !exists(f) || !isRegular(f) {
 		return nil
 	}
 	raw, err := os.ReadFile(f)
@@ -51,6 +60,12 @@ func validateFragment(f string) error {
 	if err := overrides.CheckLocked(f, text); err != nil {
 		return passRefusal(err)
 	}
+	return validatePlaceholders(f, text)
+}
+
+// validatePlaceholders ports the attribution-fragment inventory check,
+// which only the preamble and attribution fragments carry.
+func validatePlaceholders(f, text string) error {
 	if f == overrides.Preamble || f == overrides.Attribution {
 		if err := cli.ValidateAttributionPlaceholders(text, "override "+f); err != nil {
 			return passRefusal(err)

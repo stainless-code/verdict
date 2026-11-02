@@ -58,18 +58,24 @@ func corruptStore(dir string) *cli.RefusalError {
 // anchored, inBounds, kb) stay unguarded: exotic shapes flow crash-free.
 func validEntries(entries []any) bool {
 	for _, e := range entries {
-		if e == nil {
-			continue
-		}
-		m, ok := e.(*jq.Obj)
-		if !ok {
-			return false
-		}
-		if !validEntryStrings(m) || !validEntryMaps(m) {
+		if !validEntry(e) {
 			return false
 		}
 	}
 	return true
+}
+
+// validEntry gates one entry: null reads clean, anything else must be a
+// well-shaped findings object.
+func validEntry(e any) bool {
+	if e == nil {
+		return true
+	}
+	m, ok := e.(*jq.Obj)
+	if !ok {
+		return false
+	}
+	return validEntryStrings(m) && validEntryMaps(m)
 }
 
 // validEntryStrings gates the string-indexed entry fields.
@@ -110,12 +116,7 @@ func ResolveSig(entries []any, prefix string) string {
 	var match string
 	n := 0
 	for _, e := range entries {
-		m, ok := e.(*jq.Obj)
-		if !ok || m == nil {
-			continue
-		}
-		sig, _ := m.Get("sig")
-		s, ok := sig.(string)
+		s, ok := entrySig(e)
 		if !ok {
 			continue
 		}
@@ -132,4 +133,19 @@ func ResolveSig(entries []any, prefix string) string {
 	default:
 		return "MANY"
 	}
+}
+
+// entrySig reads one entry's string sig (the entry guard keeps stores
+// clean, so anything else reads no-match).
+func entrySig(e any) (string, bool) {
+	m, ok := e.(*jq.Obj)
+	if !ok || m == nil {
+		return "", false
+	}
+	sig, _ := m.Get("sig")
+	s, ok := sig.(string)
+	if !ok {
+		return "", false
+	}
+	return s, true
 }

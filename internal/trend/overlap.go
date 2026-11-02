@@ -14,43 +14,43 @@ import (
 
 // overlapRow is one per-bundle overlap audit row.
 type overlapRow struct {
+	coverage       any
+	precision      any
 	bundle         string
-	measured       bool
-	recalled       []any
 	cited          []any
 	overlap        []any
-	precision      any
-	coverage       any
+	recalled       []any
 	citedFindings  int
 	addressed      int
 	falsePositive  int
 	pending        int
 	wontFix        int
 	joinsRows      int
+	measured       bool
 	calibrateReady bool
 }
 
 // overlapRollup is the portfolio overlap audit.
 type overlapRollup struct {
-	measuredBundles   int
-	unmeasuredBundles int
-	unmeasured        []any
-	bundles           int
-	recalledRules     []any
-	citedRules        []any
-	overlapRules      []any
 	precision         any
 	coverage          any
+	recalledRules     []any
+	unmeasured        []any
+	perBundle         []overlapRow
+	citedRules        []any
+	overlapRules      []any
+	falsePositive     int
+	unmeasuredBundles int
 	citedFindings     int
 	addressed         int
-	falsePositive     int
+	bundles           int
 	pending           int
 	wontFix           int
 	joinsRows         int
 	joinsAddressed    int
 	joinsFalse        int
 	calibrateReady    int
-	perBundle         []overlapRow
+	measuredBundles   int
 }
 
 // overlapAudit ports the --overlap audit: the offline join of recalled x
@@ -59,8 +59,8 @@ type overlapRollup struct {
 func overlapAudit(r *cli.Runner, rows []row) *overlapRollup {
 	joins := readJoins(r)
 	out := &overlapRollup{}
-	for _, row := range rows {
-		out.perBundle = append(out.perBundle, overlapRowFor(r, row, joins))
+	for i := range rows {
+		out.perBundle = append(out.perBundle, overlapRowFor(r, &rows[i], joins))
 	}
 	rollOverlapTotals(out, joins)
 	return out
@@ -89,7 +89,7 @@ func readJoins(r *cli.Runner) []any {
 }
 
 // overlapRowFor ports one per-bundle overlap row.
-func overlapRowFor(r *cli.Runner, row row, joins []any) overlapRow {
+func overlapRowFor(r *cli.Runner, row *row, joins []any) overlapRow {
 	recalled, measured := recallManifest(r, row.bundle)
 	cited := citedIDs(row.findings)
 	inter := arrayOverlap(recalled, cited)
@@ -112,19 +112,24 @@ func overlapRowFor(r *cli.Runner, row row, joins []any) overlapRow {
 		}
 	}
 	for _, e := range cf {
-		switch readcommon.StatusOf(e) {
-		case "addressed":
-			out.addressed++
-		case "false-positive":
-			out.falsePositive++
-		case "open", "deferred":
-			out.pending++
-		case "wont-fix":
-			out.wontFix++
-		}
+		tallyOutcome(&out, readcommon.StatusOf(e))
 	}
 	out.calibrateReady = calibrateEligible(row.bundle)
 	return out
+}
+
+// tallyOutcome ports one cited finding's outcome split.
+func tallyOutcome(out *overlapRow, status string) {
+	switch status {
+	case statusAddressed:
+		out.addressed++
+	case statusFalsePositive:
+		out.falsePositive++
+	case statusOpen, statusDeferred:
+		out.pending++
+	case statusWontFix:
+		out.wontFix++
+	}
 }
 
 // recallManifest ports the kb-recall.json manifest read: missing manifests
@@ -140,14 +145,24 @@ func recallManifest(r *cli.Runner, bundle string) ([]any, bool) {
 	}
 	doc, derr := jq.Decode(raw)
 	if derr != nil {
-		r.Warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
-		return []any{}, false
+		return warnManifest(r, bundle)
 	}
 	list, ok := doc.([]any)
 	if !ok {
-		r.Warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
-		return []any{}, false
+		return warnManifest(r, bundle)
 	}
+	return manifestIDs(list), true
+}
+
+// warnManifest ports the unreadable-manifest warn-and-unmeasured read.
+func warnManifest(r *cli.Runner, bundle string) ([]any, bool) {
+	r.Warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
+	return []any{}, false
+}
+
+// manifestIDs ports the manifest id extraction: non-object entries skip,
+// non-string ids skip.
+func manifestIDs(list []any) []any {
 	var ids []any
 	for _, e := range list {
 		m, ok := e.(map[string]any)
@@ -161,29 +176,35 @@ func recallManifest(r *cli.Runner, bundle string) ([]any, bool) {
 	if ids == nil {
 		ids = []any{}
 	}
-	return ids, true
+	return ids
 }
 
 // citedIDs ports the cited set: unique raw string kb ids.
 func citedIDs(findings []any) []any {
 	var ids []any
 	for _, e := range findings {
-		m, ok := e.(*jq.Obj)
-		if !ok || m == nil {
-			continue
-		}
-		kb, _ := m.Get("kb")
-		list, ok := kb.([]any)
-		if !ok {
-			continue
-		}
-		for _, id := range list {
-			if s, ok := id.(string); ok {
-				ids = append(ids, s)
-			}
-		}
+		ids = appendCitedIDs(ids, e)
 	}
 	return dedupeSorted(ids)
+}
+
+// appendCitedIDs folds one finding's string kb ids into the cited set.
+func appendCitedIDs(ids []any, e any) []any {
+	m, ok := e.(*jq.Obj)
+	if !ok || m == nil {
+		return ids
+	}
+	kb, _ := m.Get("kb")
+	list, ok := kb.([]any)
+	if !ok {
+		return ids
+	}
+	for _, id := range list {
+		if s, ok := id.(string); ok {
+			ids = append(ids, s)
+		}
+	}
+	return ids
 }
 
 // citedFindingSet ports the cited-finding set: findings whose kb reads
@@ -286,7 +307,7 @@ func countJoins(joins []any, bundle string) int {
 		if !ok {
 			continue
 		}
-		if name, _ := m["bundle"].(string); name == bundle {
+		if name, ok := m["bundle"].(string); ok && name == bundle {
 			n++
 		}
 	}
@@ -303,7 +324,7 @@ func calibrateEligible(bundle string) bool {
 	if !isRegular(dir + "/post.json") {
 		return false
 	}
-	if readcommon.JsonRaw(dir+"/post.json", "head") == "" {
+	if readcommon.JSONRaw(dir+"/post.json", "head") == "" {
 		return false
 	}
 	return joinIDPresent(dir)
@@ -342,26 +363,18 @@ func reviewIDPresent(dir string) bool {
 // rollOverlapTotals ports the portfolio-level overlap rollup.
 func rollOverlapTotals(out *overlapRollup, joins []any) {
 	var recAll, citAll []any
-	for _, row := range out.perBundle {
+	for i := range out.perBundle {
+		row := &out.perBundle[i]
 		out.bundles++
 		if row.measured {
 			out.measuredBundles++
 			recAll = append(recAll, row.recalled...)
+			citAll = append(citAll, row.cited...)
 		} else {
 			out.unmeasuredBundles++
 			out.unmeasured = append(out.unmeasured, row.bundle)
 		}
-		if row.measured {
-			citAll = append(citAll, row.cited...)
-		}
-		out.citedFindings += row.citedFindings
-		out.addressed += row.addressed
-		out.falsePositive += row.falsePositive
-		out.pending += row.pending
-		out.wontFix += row.wontFix
-		if row.calibrateReady {
-			out.calibrateReady++
-		}
+		accumulateRowCounts(out, row)
 	}
 	out.recalledRules = dedupeSorted(recAll)
 	out.citedRules = dedupeSorted(citAll)
@@ -373,21 +386,47 @@ func rollOverlapTotals(out *overlapRollup, joins []any) {
 	if len(out.citedRules) > 0 {
 		out.coverage = ratio(len(inter), len(out.citedRules))
 	}
-	out.joinsRows = len(joins)
-	for _, j := range joins {
-		m, ok := j.(map[string]any)
-		if !ok {
-			continue
-		}
-		switch outcome, _ := m["outcome"].(string); outcome {
-		case "addressed":
-			out.joinsAddressed++
-		case "false-positive":
-			out.joinsFalse++
-		}
-	}
+	tallyJoins(out, joins)
 	if out.unmeasured == nil {
 		out.unmeasured = []any{}
+	}
+}
+
+// accumulateRowCounts folds one per-bundle row's outcome counts.
+func accumulateRowCounts(out *overlapRollup, row *overlapRow) {
+	out.citedFindings += row.citedFindings
+	out.addressed += row.addressed
+	out.falsePositive += row.falsePositive
+	out.pending += row.pending
+	out.wontFix += row.wontFix
+	if row.calibrateReady {
+		out.calibrateReady++
+	}
+}
+
+// tallyJoins ports the joins outcome split.
+func tallyJoins(out *overlapRollup, joins []any) {
+	out.joinsRows = len(joins)
+	for _, j := range joins {
+		tallyJoin(out, j)
+	}
+}
+
+// tallyJoin folds one joins row into the outcome split.
+func tallyJoin(out *overlapRollup, j any) {
+	m, ok := j.(map[string]any)
+	if !ok {
+		return
+	}
+	outcome, ok := m["outcome"].(string)
+	if !ok {
+		return
+	}
+	switch outcome {
+	case statusAddressed:
+		out.joinsAddressed++
+	case statusFalsePositive:
+		out.joinsFalse++
 	}
 }
 
@@ -396,11 +435,14 @@ func emitOverlapHuman(r *cli.Runner, out *overlapRollup) {
 	fmt.Fprintf(r.Human, "overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)\n",
 		out.measuredBundles, out.unmeasuredBundles, numOrNA(out.precision), numOrNA(out.coverage),
 		len(out.recalledRules), len(out.citedRules), len(out.overlapRules))
-	fmt.Fprintf(r.Human, "cited outcomes: %d cited findings — addressed=%d false-positive=%d pending=%d wont-fix=%d; joins rows=%d (addressed=%d false-positive=%d)\n",
+	fmt.Fprintf(r.Human, "cited outcomes: %d cited findings — addressed=%d false-positive=%d pending=%d wont-fix=%d; "+
+		"joins rows=%d (addressed=%d false-positive=%d)\n",
 		out.citedFindings, out.addressed, out.falsePositive, out.pending, out.wontFix,
 		out.joinsRows, out.joinsAddressed, out.joinsFalse)
-	for _, row := range out.perBundle {
-		fmt.Fprintf(r.Human, "  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) outcomes addressed=%d false-positive=%d pending=%d\n",
+	for i := range out.perBundle {
+		row := &out.perBundle[i]
+		fmt.Fprintf(r.Human, "  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) "+
+			"outcomes addressed=%d false-positive=%d pending=%d\n",
 			row.bundle, boolStr(row.measured), numOrNA(row.precision), numOrNA(row.coverage),
 			len(row.recalled), len(row.cited), len(row.overlap), row.addressed, row.falsePositive, row.pending)
 	}
@@ -425,8 +467,8 @@ func boolStr(b bool) string {
 // overlapDoc renders the overlap envelope fragment in shell key order.
 func overlapDoc(out *overlapRollup) *jq.Obj {
 	perBundle := make([]any, 0, len(out.perBundle))
-	for _, row := range out.perBundle {
-		perBundle = append(perBundle, overlapRowDoc(row))
+	for i := range out.perBundle {
+		perBundle = append(perBundle, overlapRowDoc(&out.perBundle[i]))
 	}
 	return jq.NewObj(
 		"measured_bundles", out.measuredBundles,
@@ -454,7 +496,7 @@ func overlapDoc(out *overlapRollup) *jq.Obj {
 }
 
 // overlapRowDoc renders one per-bundle overlap row.
-func overlapRowDoc(row overlapRow) *jq.Obj {
+func overlapRowDoc(row *overlapRow) *jq.Obj {
 	return jq.NewObj(
 		"bundle", row.bundle,
 		"measured", row.measured,

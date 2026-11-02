@@ -26,43 +26,37 @@ func statusRank(status string) int {
 	}
 }
 
+// sevOrder is the severity tier rank order; unknown tiers sort last.
+var sevOrder = []string{"critical", "important", "informational"}
+
 // sevRank ports the sev rank: untagged severities read 3 and never meet a
 // tier gate.
 func sevRank(sev any) int {
 	if s, ok := sev.(string); ok {
-		switch s {
-		case "critical":
-			return 0
-		case "important":
-			return 1
-		case "informational":
-			return 2
+		if i := slices.Index(sevOrder, s); i >= 0 {
+			return i
 		}
 	}
-	return 3
+	return len(sevOrder)
 }
+
+// rigorOrder is the rigor rung rank order; unknown rungs sort first (null).
+var rigorOrder = []string{"reproduced", "ran", "walked", "pointed", "said"}
 
 // rigorKey ports (4 - rw[.rigor // "said"]): known rungs descend from
 // reproduced to said, unknown rungs read null and sort first.
 func rigorKey(rigor any) any {
-	r, _ := rigor.(string)
+	r, ok := rigor.(string)
+	if !ok {
+		r = ""
+	}
 	if rigor == nil || rigor == false {
 		r = "said"
 	}
-	switch r {
-	case "reproduced":
-		return 0
-	case "ran":
-		return 1
-	case "walked":
-		return 2
-	case "pointed":
-		return 3
-	case "said":
-		return 4
-	default:
-		return nil
+	if i := slices.Index(rigorOrder, r); i >= 0 {
+		return i
 	}
+	return nil
 }
 
 // boolRank ports (if .flag then 0 else 1 end): true first, everything else
@@ -111,6 +105,17 @@ type Ranked struct {
 // sort_by), then 1-based ranks. Null entries flow through like the shell's
 // (their filters read null and their keys sort first).
 func Rank(entries []any, statusF, kindF string) []Ranked {
+	filtered := filterEntries(entries, statusF, kindF)
+	slices.SortStableFunc(filtered, compareEntries)
+	out := make([]Ranked, 0, len(filtered))
+	for i, e := range filtered {
+		out = append(out, Ranked{Entry: e, Rank: i + 1})
+	}
+	return out
+}
+
+// filterEntries ports the status/kind display filters.
+func filterEntries(entries []any, statusF, kindF string) []any {
 	filtered := make([]any, 0, len(entries))
 	for _, e := range entries {
 		if statusF != StatusAll && StatusOf(e) != statusF {
@@ -121,12 +126,7 @@ func Rank(entries []any, statusF, kindF string) []Ranked {
 		}
 		filtered = append(filtered, e)
 	}
-	slices.SortStableFunc(filtered, compareEntries)
-	out := make([]Ranked, 0, len(filtered))
-	for i, e := range filtered {
-		out = append(out, Ranked{Entry: e, Rank: i + 1})
-	}
-	return out
+	return filtered
 }
 
 // compareEntries orders two entries by the ranked sort keys.
@@ -193,7 +193,10 @@ func SigPrefix(entry any) string {
 
 // sigOf reads an entry's sig string ("" unless it is one).
 func sigOf(entry any) string {
-	sig, _ := fieldOf(entry, "sig").(string)
+	sig, ok := fieldOf(entry, "sig").(string)
+	if !ok {
+		return ""
+	}
 	return sig
 }
 

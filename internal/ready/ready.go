@@ -35,8 +35,13 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		}
 		return r.Refuse(err)
 	}
+	return finishRun(st, check)
+}
+
+// finishRun ports the advisory emit plus the --check gate.
+func finishRun(st *state, check bool) int {
 	emitHuman(st)
-	if r.JSONMode {
+	if st.runner.JSONMode {
 		emitEnvelope(st)
 	}
 	if check && !st.ready {
@@ -56,7 +61,8 @@ func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
 		case "--check":
 			check = true
 		default:
-			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for ready (want --json, --check)", a)}), true
+			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				"unknown flag '%s' for ready (want --json, --check)", a)}), true
 		}
 	}
 	return check, 0, false
@@ -73,22 +79,37 @@ func routeHuman(r *cli.Runner) {
 
 // state carries the loaded ready run.
 type state struct {
-	runner      *cli.Runner
-	repo        string
-	pr          string
 	live        map[string]any
-	ready       bool
+	runner      *cli.Runner
+	pr          string
 	rec         string
-	blockers    []blocker
-	draft       bool
 	mergeable   string
 	mergeState  string
 	prState     string
-	ciFail      int
-	ciTotal     int
+	repo        string
+	blockers    []blocker
 	threadsOpen int
 	bodyLen     int
+	ciTotal     int
+	ciFail      int
+	ready       bool
+	draft       bool
 }
+
+// recWait holds the review instead of reviewing.
+const recWait = "wait"
+
+// mergeUnknown reads when GitHub has not computed mergeability yet.
+const mergeUnknown = "UNKNOWN"
+
+// newline splits description lines.
+const newline = "\n"
+
+// commentOpen and commentClose bracket HTML comment spans.
+const (
+	commentOpen  = "<!--"
+	commentClose = "-->"
+)
 
 // blocker is one readiness blocker with its recovery action.
 type blocker struct {
@@ -103,20 +124,27 @@ func loadState(ctx context.Context, r *cli.Runner, req Request) (*state, error) 
 	st := &state{runner: r, repo: req.Repo, pr: req.Pr}
 	dir := readcommon.ResolveBundleDir(req.Pr)
 	if isLocalDir(dir) {
-		return nil, &cli.RefusalError{Code: "no-pr-target", Message: "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on"}
+		return nil, &cli.RefusalError{
+			Code:    "no-pr-target",
+			Message: "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on",
+		}
 	}
 	if prov := readcommon.ProviderOf(dir); prov != "" && prov != "github" {
-		return nil, &cli.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf("ready on %s is not implemented yet (no live gh reads for it)", prov)}
+		return nil, &cli.RefusalError{
+			Code:    "provider-unimplemented",
+			Message: fmt.Sprintf("ready on %s is not implemented yet (no live gh reads for it)", prov),
+		}
 	}
 	if !isRegular(dir + "/PR.json") {
-		return nil, &cli.RefusalError{Code: "missing-bundle", Message: fmt.Sprintf("missing %s/PR.json (run fetch %s %s first)", dir, req.Repo, req.Pr)}
+		return nil, &cli.RefusalError{
+			Code:    "missing-bundle",
+			Message: fmt.Sprintf("missing %s/PR.json (run fetch %s %s first)", dir, req.Repo, req.Pr),
+		}
 	}
 	if err := loadLive(ctx, st, dir); err != nil {
 		return nil, err
 	}
-	if err := loadChecks(ctx, st); err != nil {
-		return nil, err
-	}
+	loadChecks(ctx, st)
 	if err := loadThreads(ctx, st); err != nil {
 		return nil, err
 	}
@@ -140,10 +168,12 @@ func isRegular(path string) bool {
 func loadLive(ctx context.Context, st *state, dir string) error {
 	res, err := readcommon.Gh(ctx, "pr", "view", st.pr, "--repo", st.repo,
 		"--json", "isDraft,mergeable,mergeStateStatus,body,state,headRefOid")
-	writeErrFile(dir+"/.ready.err", res.Stderr)
+	writeErrFile(st.runner, dir+"/.ready.err", res.Stderr)
 	if err != nil {
-		return &cli.RefusalError{Code: "pr-read-failed",
-			Message: fmt.Sprintf("could not read live PR state for %s#%s: %s", st.repo, st.pr, firstLine(res.Stderr))}
+		return &cli.RefusalError{
+			Code:    "pr-read-failed",
+			Message: fmt.Sprintf("could not read live PR state for %s#%s: %s", st.repo, st.pr, firstLine(res.Stderr)),
+		}
 	}
 	doc, derr := jq.Decode([]byte(res.Stdout))
 	if derr != nil {
@@ -160,19 +190,29 @@ func loadLive(ctx context.Context, st *state, dir string) error {
 			readcommon.ShortSHA(fetched), readcommon.ShortSHA(liveHead)))
 	}
 	st.draft = liveString(st.live, "isDraft") == "true"
-	st.mergeable = liveOr(st.live, "mergeable", "UNKNOWN")
-	st.mergeState = liveOr(st.live, "mergeStateStatus", "UNKNOWN")
-	st.prState = liveOr(st.live, "state", "UNKNOWN")
+	st.mergeable = liveOr(st.live, "mergeable", mergeUnknown)
+	st.mergeState = liveOr(st.live, "mergeStateStatus", mergeUnknown)
+	st.prState = liveOr(st.live, "state", mergeUnknown)
 	st.bodyLen = bodyLength(liveBody(st.live))
-	if st.mergeable == "UNKNOWN" && st.mergeState == "UNKNOWN" {
+	if st.mergeable == mergeUnknown && st.mergeState == mergeUnknown {
 		st.runner.Warn("mergeability UNKNOWN (GitHub still computing?) — conflict treated as absent, re-run ready if this persists")
 	}
 	return nil
 }
 
-// writeErrFile stages probe stderr beside the bundle.
-func writeErrFile(path, stderr string) {
-	_ = os.WriteFile(path, []byte(stderr), 0o644)
+// probeStagePerm stages probe stderr readable only by the owner: the
+// content can carry token-adjacent gh diagnostics.
+const probeStagePerm = 0o600
+
+// writeErrFile stages probe stderr beside the bundle. The write is
+// best-effort like the shell's 2> redirect, so a failure warns instead of
+// refusing: the file is a debug side channel and the run must not fail
+// over garnish.
+func writeErrFile(r *cli.Runner, path, stderr string) {
+	if err := os.WriteFile(path, []byte(stderr), probeStagePerm); err != nil {
+		// Un-actionable beyond the notice: the live data already loaded.
+		fmt.Fprintf(r.Diag, "ready: could not stage probe stderr in %s: %v\n", path, err)
+	}
 }
 
 // firstLine ports `head -c 200 | tr '\n' ' '`: the first 200 bytes with
@@ -181,7 +221,7 @@ func firstLine(s string) string {
 	if len(s) > errHeadBytes {
 		s = s[:errHeadBytes]
 	}
-	return strings.ReplaceAll(s, "\n", " ")
+	return strings.ReplaceAll(s, newline, " ")
 }
 
 // errHeadBytes caps the PR-view error detail.
@@ -219,7 +259,7 @@ func liveBody(live map[string]any) string {
 func bodyLength(body string) int {
 	var out strings.Builder
 	inComment := false
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, newline) {
 		out.WriteString(stripComments(line, &inComment))
 		out.WriteByte('\n')
 	}
@@ -233,24 +273,34 @@ func stripComments(line string, inComment *bool) string {
 	rest := line
 	for len(rest) > 0 {
 		if *inComment {
-			if i := strings.Index(rest, "-->"); i >= 0 {
-				rest = rest[i+3:]
-				*inComment = false
-			} else {
-				rest = ""
-			}
+			rest = skipCommentRest(rest, inComment)
 			continue
 		}
-		if i := strings.Index(rest, "<!--"); i >= 0 {
-			kept.WriteString(rest[:i])
-			rest = rest[i+4:]
-			*inComment = true
-			continue
-		}
-		kept.WriteString(rest)
-		rest = ""
+		rest = takePlainSegment(rest, inComment, &kept)
 	}
 	return kept.String()
+}
+
+// skipCommentRest drops through the closing --> (or the whole line when
+// the comment continues past it), reporting the remainder.
+func skipCommentRest(rest string, inComment *bool) string {
+	if _, after, ok := strings.Cut(rest, commentClose); ok {
+		*inComment = false
+		return after
+	}
+	return ""
+}
+
+// takePlainSegment copies through the next <!-- opener (or the whole line
+// when none opens), flipping into comment state past the opener.
+func takePlainSegment(rest string, inComment *bool, kept *strings.Builder) string {
+	if before, after, ok := strings.Cut(rest, commentOpen); ok {
+		kept.WriteString(before)
+		*inComment = true
+		return after
+	}
+	kept.WriteString(rest)
+	return ""
 }
 
 // squeezeSpace ports `tr -s '[:space:]' ' '`: whitespace runs collapse to
@@ -260,7 +310,7 @@ func squeezeSpace(s string) string {
 	var out strings.Builder
 	out.Grow(len(s))
 	inRun := false
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if isSpaceByte(s[i]) {
 			if !inRun {
 				out.WriteByte(' ')
@@ -286,7 +336,7 @@ func isSpaceByte(c byte) bool {
 
 // loadChecks reads the live CI state: unreadable checks read unknown,
 // never blocking.
-func loadChecks(ctx context.Context, st *state) error {
+func loadChecks(ctx context.Context, st *state) {
 	res, err := readcommon.Gh(ctx, "pr", "checks", st.pr, "--repo", st.repo, "--json", "bucket,name,state")
 	raw := "[]"
 	if err == nil {
@@ -301,16 +351,12 @@ func loadChecks(ctx context.Context, st *state) error {
 			anomaly = true
 			break
 		}
-		if bucket, _ := m["bucket"].(string); bucket != "fail" {
-			continue
-		}
-		st.ciFail++
-		failNames = append(failNames, checkName(m))
+		failNames = countFailBucket(st, m, failNames)
 	}
 	if anomaly {
 		st.ciFail = 0
 		st.ciTotal = 0
-		return nil
+		return
 	}
 	st.ciTotal = len(list)
 	if st.ciFail > 0 {
@@ -320,7 +366,17 @@ func loadChecks(ctx context.Context, st *state) error {
 			action: "fix CI, then re-run ready",
 		})
 	}
-	return nil
+}
+
+// countFailBucket ports one checks element: fail buckets bump the failing
+// count and name list, every other bucket reads skipped.
+func countFailBucket(st *state, m map[string]any, failNames []string) []string {
+	bucket, ok := m["bucket"].(string)
+	if !ok || bucket != "fail" {
+		return failNames
+	}
+	st.ciFail++
+	return append(failNames, checkName(m))
 }
 
 // checkElements ports `[.[]] | length` over the checks payload: arrays
@@ -362,13 +418,17 @@ func loadThreads(ctx context.Context, st *state) error {
 	owner, name := readcommon.SplitOwner(st.repo)
 	res, err := readcommon.Gh(ctx, readcommon.ThreadsArgv(owner, name, st.pr, readcommon.QueryReady)...)
 	if err != nil {
-		return &cli.RefusalError{Code: "threads-failed",
-			Message: fmt.Sprintf("could not read live review threads for %s#%s", st.repo, st.pr)}
+		return &cli.RefusalError{
+			Code:    "threads-failed",
+			Message: fmt.Sprintf("could not read live review threads for %s#%s", st.repo, st.pr),
+		}
 	}
 	nodes, err := readcommon.SlurpThreads(res.Stdout)
 	if err != nil {
-		return &cli.RefusalError{Code: "threads-failed",
-			Message: fmt.Sprintf("could not read live review threads for %s#%s", st.repo, st.pr)}
+		return &cli.RefusalError{
+			Code:    "threads-failed",
+			Message: fmt.Sprintf("could not read live review threads for %s#%s", st.repo, st.pr),
+		}
 	}
 	st.threadsOpen = countOpenThreads(nodes)
 	if st.threadsOpen > 0 {
@@ -387,23 +447,56 @@ func loadThreads(ctx context.Context, st *state) error {
 func countOpenThreads(nodes []any) int {
 	n := 0
 	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-		m, ok := node.(map[string]any)
-		if !ok {
+		add, stop := countThreadNode(node)
+		if stop {
 			return 0
 		}
-		if resolved, _ := m["isResolved"].(bool); !resolved {
-			n++
-		}
+		n += add
 	}
 	return n
+}
+
+// countThreadNode ports one thread node: nil reads skipped, non-objects
+// zero the whole read (stop), unresolved reads counted.
+func countThreadNode(node any) (add int, stop bool) {
+	if node == nil {
+		return 0, false
+	}
+	m, ok := node.(map[string]any)
+	if !ok {
+		return 0, true
+	}
+	if resolved, ok := m["isResolved"].(bool); !ok || !resolved {
+		return 1, false
+	}
+	return 0, false
 }
 
 // computeReadiness ports the ready/rec decision plus the draft, conflict,
 // and description-thin blockers.
 func computeReadiness(st *state) {
+	appendDraftBlocker(st)
+	appendConflictBlocker(st)
+	appendDescriptionBlocker(st)
+	st.ready = true
+	st.rec = "review"
+	if st.prState != "OPEN" {
+		st.ready = false
+		st.rec = recWait
+		return
+	}
+	if len(st.blockers) > 0 {
+		st.ready = false
+		if st.draft {
+			st.rec = recWait
+		} else {
+			st.rec = "nudge-author"
+		}
+	}
+}
+
+// appendDraftBlocker ports the draft blocker.
+func appendDraftBlocker(st *state) {
 	if st.draft {
 		st.blockers = append(st.blockers, blocker{
 			kind:   "draft",
@@ -411,6 +504,10 @@ func computeReadiness(st *state) {
 			action: "mark ready for review when done, then re-run ready",
 		})
 	}
+}
+
+// appendConflictBlocker ports the merge-conflict blocker.
+func appendConflictBlocker(st *state) {
 	if st.mergeable == "CONFLICTING" || st.mergeState == "DIRTY" {
 		st.blockers = append(st.blockers, blocker{
 			kind:   "conflict",
@@ -418,27 +515,16 @@ func computeReadiness(st *state) {
 			action: "rebase onto base and resolve conflicts, then re-run ready",
 		})
 	}
+}
+
+// appendDescriptionBlocker ports the description-thin blocker.
+func appendDescriptionBlocker(st *state) {
 	if st.bodyLen < descriptionThin {
 		st.blockers = append(st.blockers, blocker{
 			kind:   "description-thin",
 			detail: "description ~" + strconv.Itoa(st.bodyLen) + " chars (<50)",
 			action: "expand the description (what/why/testing), then re-run ready",
 		})
-	}
-	st.ready = true
-	st.rec = "review"
-	if st.prState != "OPEN" {
-		st.ready = false
-		st.rec = "wait"
-		return
-	}
-	if len(st.blockers) > 0 {
-		st.ready = false
-		if st.draft {
-			st.rec = "wait"
-		} else {
-			st.rec = "nudge-author"
-		}
 	}
 }
 
@@ -449,7 +535,8 @@ const descriptionThin = 50
 func emitHuman(st *state) {
 	r := st.runner
 	if st.ready {
-		fmt.Fprintf(r.Human, "ready: yes — %s#%s looks reviewable (CI %d checks, 0 failing; %d open threads; mergeable %s; body %d chars)\n",
+		fmt.Fprintf(r.Human, "ready: yes — %s#%s looks reviewable "+
+			"(CI %d checks, 0 failing; %d open threads; mergeable %s; body %d chars)\n",
 			st.repo, st.pr, st.ciTotal, st.threadsOpen, st.mergeable, st.bodyLen)
 		fmt.Fprintln(r.Human, "recommendation: review — fetch + review")
 		return
@@ -463,7 +550,7 @@ func emitHuman(st *state) {
 		}
 	}
 	switch st.rec {
-	case "wait":
+	case recWait:
 		fmt.Fprintln(r.Human, "recommendation: wait — hold the review, re-run ready later")
 	default:
 		fmt.Fprintln(r.Human, "recommendation: nudge-author — nudge the author instead of reviewing")
@@ -482,9 +569,10 @@ func emitEnvelope(st *state) {
 		))
 	}
 	next := "nudge the author instead of reviewing"
-	if st.rec == "review" {
+	switch st.rec {
+	case "review":
 		next = "fetch + review"
-	} else if st.rec == "wait" {
+	case recWait:
 		next = "hold the review — re-run ready later"
 	}
 	env := jq.NewObj(

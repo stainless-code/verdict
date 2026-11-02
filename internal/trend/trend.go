@@ -21,7 +21,7 @@ type Request = readcommon.Request
 // Run executes `trend <owner/repo> [--overlap, --json]`, returning the
 // exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	overlap, code, done := parseFlags(r, args)
+	doOverlap, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
@@ -34,15 +34,15 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	now := cli.NowUTC(r.Now())
 	rows := collectRows(r)
 	rollup := rollupRows(rows)
-	var overlapVal any
-	if overlap {
-		overlapVal = overlapAudit(r, rows)
+	var overlap *overlapRollup
+	if doOverlap {
+		overlap = overlapAudit(r, rows)
 	}
 	if r.JSONMode {
-		emitEnvelope(r, req, now, rollup, rows, overlapVal)
+		emitEnvelope(r, req, now, &rollup, rows, overlap)
 		return 0
 	}
-	emitHuman(r, req, rollup, overlapVal)
+	emitHuman(r, req, &rollup, overlap)
 	return 0
 }
 
@@ -57,7 +57,8 @@ func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
 			r.JSONMode = true
 			routeHuman(r)
 		default:
-			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for trend (want --overlap, --json)", a)}), true
+			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				"unknown flag '%s' for trend (want --overlap, --json)", a)}), true
 		}
 	}
 	return overlap, 0, false
@@ -74,15 +75,15 @@ func routeHuman(r *cli.Runner) {
 
 // row is one per-bundle rollup point.
 type row struct {
-	bundle   string
-	at       string
-	hasAt    bool
-	models   []any
-	efforts  []any
 	prov     *jq.Obj
-	findings []any
 	byStatus map[string]int
 	byTier   map[string]int
+	bundle   string
+	at       string
+	models   []any
+	efforts  []any
+	findings []any
+	hasAt    bool
 }
 
 // collectRows ports the per-bundle scan: every .review/*/ carrying a
@@ -95,29 +96,37 @@ func collectRows(r *cli.Runner) []row {
 	}
 	var rows []row
 	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+		if bundleRow, ok := readBundleRow(r, e); ok {
+			rows = append(rows, bundleRow)
 		}
-		name := e.Name()
-		bundle := ".review/" + name + "/"
-		raw, err := os.ReadFile(bundle + "findings.json")
-		if err != nil {
-			skipBundle(r, bundle)
-			continue
-		}
-		doc, err := jq.DecodeOrdered(raw)
-		if err != nil {
-			skipBundle(r, bundle)
-			continue
-		}
-		findings, ok := doc.([]any)
-		if !ok || !validTrendEntries(findings) {
-			skipBundle(r, bundle)
-			continue
-		}
-		rows = append(rows, buildRow(bundle, name, findings))
 	}
 	return rows
+}
+
+// readBundleRow ports one bundle's read: non-dirs and unreadable or
+// misshapen stores warn and skip.
+func readBundleRow(r *cli.Runner, e os.DirEntry) (row, bool) {
+	if !e.IsDir() {
+		return row{}, false
+	}
+	name := e.Name()
+	bundle := ".review/" + name + "/"
+	raw, err := os.ReadFile(bundle + "findings.json")
+	if err != nil {
+		skipBundle(r, bundle)
+		return row{}, false
+	}
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		skipBundle(r, bundle)
+		return row{}, false
+	}
+	findings, ok := doc.([]any)
+	if !ok || !validTrendEntries(findings) {
+		skipBundle(r, bundle)
+		return row{}, false
+	}
+	return buildRow(bundle, name, findings), true
 }
 
 // skipBundle warns the trend skip line for an unreadable bundle.
@@ -129,18 +138,23 @@ func skipBundle(r *cli.Runner, bundle string) {
 // the bundle instead of refusing.
 func validTrendEntries(findings []any) bool {
 	for _, e := range findings {
-		if e == nil {
-			continue
-		}
-		m, ok := e.(*jq.Obj)
-		if !ok {
-			return false
-		}
-		if !validTrendStrings(m) || !validTrendMaps(m) {
+		if !validTrendEntry(e) {
 			return false
 		}
 	}
 	return true
+}
+
+// validTrendEntry gates one entry like the read-verb entry guard.
+func validTrendEntry(e any) bool {
+	if e == nil {
+		return true
+	}
+	m, ok := e.(*jq.Obj)
+	if !ok {
+		return false
+	}
+	return validTrendStrings(m) && validTrendMaps(m)
 }
 
 // validTrendStrings gates the string-indexed entry fields.
@@ -193,12 +207,12 @@ func buildRow(bundle, name string, findings []any) row {
 // record.json recorded_at, else undated.
 func bundleTime(bundle string) (string, bool) {
 	if isRegular(bundle + "post.json") {
-		if at := readcommon.JsonRaw(bundle+"post.json", "posted_at"); at != "" {
+		if at := readcommon.JSONRaw(bundle+"post.json", "posted_at"); at != "" {
 			return at, true
 		}
 	}
 	if isRegular(bundle + "record.json") {
-		if at := readcommon.JsonRaw(bundle+"record.json", "recorded_at"); at != "" {
+		if at := readcommon.JSONRaw(bundle+"record.json", "recorded_at"); at != "" {
 			return at, true
 		}
 	}
@@ -217,22 +231,39 @@ func bundleModels(bundle string) []any {
 		if !ok {
 			return []any{}
 		}
-		for _, mm := range models {
-			m, ok := mm.(map[string]any)
-			if !ok {
-				if mm == nil {
-					continue
-				}
-				return []any{}
-			}
-			name, ok := m["name"]
-			if !ok || name == nil || name == false {
-				continue
-			}
-			names = append(names, name)
+		if names, ok = appendModelNames(names, models); !ok {
+			return []any{}
 		}
 	}
 	return dedupeSorted(names)
+}
+
+// appendModelNames folds one record's models into the name list: nameless
+// models skip, non-object models invalidate the bundle read.
+func appendModelNames(names, models []any) ([]any, bool) {
+	for _, mm := range models {
+		var ok bool
+		if names, ok = appendModelName(names, mm); !ok {
+			return nil, false
+		}
+	}
+	return names, true
+}
+
+// appendModelName folds one model into the name list.
+func appendModelName(names []any, mm any) ([]any, bool) {
+	m, ok := mm.(map[string]any)
+	if !ok {
+		if mm == nil {
+			return names, true
+		}
+		return nil, false
+	}
+	name, ok := m["name"]
+	if !ok || name == nil || name == false {
+		return names, true
+	}
+	return append(names, name), true
 }
 
 // bundleEfforts ports the per-bundle effort list (unique, invalid reads []).
@@ -299,6 +330,12 @@ func recordModels(rec any) ([]any, bool) {
 	if !ok || raw == nil {
 		return nil, true
 	}
+	return coerceModels(raw)
+}
+
+// coerceModels ports the models shape gate: arrays pass through, maps
+// contribute values in key order, anything else fails the bundle read.
+func coerceModels(raw any) ([]any, bool) {
 	switch t := raw.(type) {
 	case []any:
 		return t, true
@@ -356,7 +393,9 @@ func unmarkedProvenance() *jq.Obj {
 // statusCounts counts findings by status; unknown statuses count nowhere,
 // mirroring the fixed-key by_status object.
 func statusCounts(findings []any) map[string]int {
-	counts := map[string]int{"open": 0, "addressed": 0, "wont-fix": 0, "false-positive": 0, "deferred": 0}
+	counts := map[string]int{
+		statusOpen: 0, statusAddressed: 0, statusWontFix: 0, statusFalsePositive: 0, statusDeferred: 0,
+	}
 	for _, e := range findings {
 		if _, ok := counts[readcommon.StatusOf(e)]; ok {
 			counts[readcommon.StatusOf(e)]++
@@ -367,7 +406,9 @@ func statusCounts(findings []any) map[string]int {
 
 // tierCounts counts findings by tier (untagged for anything else).
 func tierCounts(findings []any) map[string]int {
-	counts := map[string]int{"critical": 0, "important": 0, "informational": 0, "untagged": 0}
+	counts := map[string]int{
+		tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
+	}
 	for _, e := range findings {
 		counts[tierOf(e)]++
 	}
@@ -378,16 +419,16 @@ func tierCounts(findings []any) map[string]int {
 func tierOf(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
-		return "untagged"
+		return tierUntagged
 	}
 	sev, _ := m.Get("severity")
 	if s, ok := sev.(string); ok {
 		switch s {
-		case "critical", "important", "informational":
+		case tierCritical, tierImportant, tierInformational:
 			return s
 		}
 	}
-	return "untagged"
+	return tierUntagged
 }
 
 // dedupeSorted dedupes values in jq order (unique).

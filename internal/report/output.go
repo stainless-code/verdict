@@ -21,9 +21,11 @@ func renderOutput(st *state) error {
 		return nil
 	}
 	doc := buildDocument(st)
-	if err := os.WriteFile(st.flags.Output, []byte(doc+"\n"), 0o644); err != nil {
-		return &cli.RefusalError{Code: "report-failed",
-			Message: fmt.Sprintf("could not write %s: %v", st.flags.Output, err)}
+	if err := os.WriteFile(st.flags.Output, []byte(doc+newline), reportFilePerm); err != nil {
+		return &cli.RefusalError{
+			Code:    codeReportFailed,
+			Message: fmt.Sprintf("could not write %s: %v", st.flags.Output, err),
+		}
 	}
 	return nil
 }
@@ -48,32 +50,46 @@ func buildDocument(st *state) string {
 		lines = append(lines, overviewLines(footer)...)
 	}
 	lines = append(lines, "<!-- report-machine:end -->")
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, newline)
 }
 
 // overviewLines splits a rendered block into lines.
 func overviewLines(block string) []string {
-	return strings.Split(block, "\n")
+	return strings.Split(block, newline)
 }
 
 // confidenceLead ports the confidence lead: review-level confidence and
 // safety from the first existing completed-post/machine record; absent or
 // unparsable records read neutral, never fail.
 func confidenceLead(st *state) string {
-	conf, sec := "unrecorded", "not assessed"
-	for _, rec := range []string{st.dir + "/post.json", st.dir + "/record.json"} {
-		if !isRegular(rec) {
-			continue
-		}
-		if c := jsonRaw(rec, "confidence"); c == "1" || c == "2" || c == "3" || c == "4" || c == "5" {
-			conf = c + "/5"
-		}
-		if s := jsonRaw(rec, "security_summary"); s != "" {
-			sec = s
-		}
-		break
+	rec, ok := firstLeadRecord(st.dir)
+	if !ok {
+		return "> Confidence: unrecorded · Safety: not assessed"
 	}
+	conf, sec := leadValues(rec)
 	return "> Confidence: " + conf + " · Safety: " + sec
+}
+
+// firstLeadRecord selects the first existing lead record.
+func firstLeadRecord(dir string) (string, bool) {
+	for _, rec := range []string{dir + "/post.json", dir + "/record.json"} {
+		if isRegular(rec) {
+			return rec, true
+		}
+	}
+	return "", false
+}
+
+// leadValues reads confidence and safety from one lead record.
+func leadValues(rec string) (string, string) {
+	conf, sec := "unrecorded", "not assessed"
+	if c := jsonRaw(rec, "confidence"); c == "1" || c == "2" || c == "3" || c == "4" || c == "5" {
+		conf = c + "/5"
+	}
+	if s := jsonRaw(rec, "security_summary"); s != "" {
+		sec = s
+	}
+	return conf, sec
 }
 
 // jsonRaw reads one field with `jq -r ... // empty` semantics: missing or
@@ -118,18 +134,16 @@ func basisCounts(entries []any) string {
 			verified++
 		}
 	}
-	parts := []string{
-		strconv.Itoa(counts["reproduced"]),
-		strconv.Itoa(counts["ran"]),
-		strconv.Itoa(counts["walked"]),
-		strconv.Itoa(counts["pointed"]),
-		strconv.Itoa(counts["said"]),
-		strconv.Itoa(len(dedupeValues(cited))),
-		strconv.Itoa(verified),
-	}
-	return parts[0] + " reproduced · " + parts[1] + " ran · " + parts[2] + " walked · " +
-		parts[3] + " pointed · " + parts[4] + " said · " + parts[5] + " rules cited · " +
-		parts[6] + " verified fixes"
+	reproduced := strconv.Itoa(counts["reproduced"])
+	ran := strconv.Itoa(counts["ran"])
+	walked := strconv.Itoa(counts["walked"])
+	pointed := strconv.Itoa(counts["pointed"])
+	said := strconv.Itoa(counts["said"])
+	rules := strconv.Itoa(len(dedupeValues(cited)))
+	fixes := strconv.Itoa(verified)
+	return reproduced + " reproduced · " + ran + " ran · " + walked + " walked · " +
+		pointed + " pointed · " + said + " said · " + rules + " rules cited · " +
+		fixes + " verified fixes"
 }
 
 // basisRigor normalizes one entry's rigor rung: null/false/missing reads
@@ -179,7 +193,7 @@ func dedupeValues(vals []any) []any {
 // rankedLines ports the ranked report lines, with permalink reference
 // links for linkable GitHub bundles.
 func rankedLines(st *state) []string {
-	linkable := provenance.EvidenceLinkable(st.dir, st.headSHA) == "true"
+	linkable := provenance.EvidenceLinkable(st.dir, st.headSHA) == strTrue
 	lines := make([]string, 0, len(st.ranked))
 	for _, item := range st.ranked {
 		lines = append(lines, rankedLine(st, item, linkable))
@@ -188,7 +202,7 @@ func rankedLines(st *state) []string {
 }
 
 // rankedLine renders one ranked line.
-func rankedLine(st *state, item readcommon.Ranked, linkable bool) string {
+func rankedLine(_ *state, item readcommon.Ranked, linkable bool) string {
 	locator := readcommon.Locator(item.Entry)
 	if linkable && fieldOf(item.Entry, "path") != nil && fieldOf(item.Entry, "line") != nil {
 		locator = "[" + locator + "][ev-" + strconv.Itoa(item.Rank) + "]"
@@ -216,8 +230,11 @@ func rigorOutput(entry any) string {
 
 // bodyOutput ports (.body // "" | gsub("\n"; " ") | .[0:200]).
 func bodyOutput(entry any) string {
-	body, _ := fieldOf(entry, "body").(string)
-	body = strings.ReplaceAll(body, "\n", " ")
+	body, ok := fieldOf(entry, "body").(string)
+	if !ok {
+		body = ""
+	}
+	body = strings.ReplaceAll(body, newline, " ")
 	return readcommon.PrefixN(body, bodyRunes)
 }
 
@@ -226,7 +243,7 @@ const bodyRunes = 200
 
 // linkDefs ports the permalink definition list for linkable bundles.
 func linkDefs(st *state) []string {
-	if provenance.EvidenceLinkable(st.dir, st.headSHA) != "true" {
+	if provenance.EvidenceLinkable(st.dir, st.headSHA) != strTrue {
 		return nil
 	}
 	base := provenance.EvidenceBaseURL(st.dir, st.req.Repo)
@@ -253,25 +270,10 @@ func checkedBlock(st *state) []string {
 	if files == "" {
 		return nil
 	}
-	rawLines := strings.Split(files, "\n")
-	n := 0
-	for _, ln := range rawLines {
-		if ln != "" {
-			n++
-		}
-	}
-	shown := rawLines
-	if len(shown) > checkedShown {
-		shown = shown[:checkedShown]
-	}
-	var lines []string
-	if frag, ok := preambleHeading(st); ok {
-		if frag != "" {
-			lines = append(lines, strings.Split(frag, "\n")...)
-		}
-	} else {
-		lines = append(lines, "## What we checked")
-	}
+	rawLines := strings.Split(files, newline)
+	n := countNonEmpty(rawLines)
+	shown := truncateLines(rawLines, checkedShown)
+	lines := checkedHeading(st)
 	for _, ln := range shown {
 		lines = append(lines, "- "+ln)
 	}
@@ -281,21 +283,54 @@ func checkedBlock(st *state) []string {
 	return lines
 }
 
+// countNonEmpty counts the non-empty lines.
+func countNonEmpty(lines []string) int {
+	n := 0
+	for _, ln := range lines {
+		if ln != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// truncateLines caps lines at maxShown entries.
+func truncateLines(lines []string, maxShown int) []string {
+	if len(lines) > maxShown {
+		return lines[:maxShown]
+	}
+	return lines
+}
+
+// checkedHeading ports the preamble-fragment heading: the substituted
+// fragment split into lines when pinned (nothing when the fragment is
+// empty, suppressing the heading but keeping the bullets), or the default
+// heading when no fragment exists.
+func checkedHeading(st *state) []string {
+	if frag, ok := preambleHeading(st); ok {
+		if frag == "" {
+			return nil
+		}
+		return strings.Split(frag, newline)
+	}
+	return []string{"## What we checked"}
+}
+
 // checkedShown caps the coverage list.
 const checkedShown = 7
 
 // checkedFiles ports the stored file list: PR.json files first, else diff
 // headers stripped to b-side paths.
 func checkedFiles(dir string) string {
-	if isRegular(dir + "/PR.json") {
-		raw, err := os.ReadFile(dir + "/PR.json")
+	if isRegular(dir + prJSONSuffix) {
+		raw, err := os.ReadFile(dir + prJSONSuffix)
 		if err == nil {
 			if lines := prFileLines(raw); lines != nil {
-				return strings.Join(lines, "\n")
+				return strings.Join(lines, newline)
 			}
 		}
 	}
-	raw, err := os.ReadFile(dir + "/full.diff")
+	raw, err := os.ReadFile(dir + fullDiffSuffix)
 	if err != nil {
 		return ""
 	}
@@ -340,13 +375,13 @@ func addStr(v any) string {
 // diffFileLines strips diff headers to b-side paths.
 func diffFileLines(diff string) string {
 	var lines []string
-	for _, ln := range strings.Split(diff, "\n") {
-		if !strings.HasPrefix(ln, "diff --git ") {
+	for ln := range strings.SplitSeq(diff, newline) {
+		if !strings.HasPrefix(ln, diffGitPrefix) {
 			continue
 		}
-		lines = append(lines, setCurrent(strings.TrimPrefix(ln, "diff --git ")))
+		lines = append(lines, setCurrent(strings.TrimPrefix(ln, diffGitPrefix)))
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, newline)
 }
 
 // preambleHeading ports the clean-review preamble heading: the substituted
@@ -362,7 +397,7 @@ func preambleHeading(st *state) (string, bool) {
 	}
 	// The shell captures the fragment through $(...) which strips trailing
 	// newlines, so trim them here too before the caller splits into lines.
-	return substitutePlaceholders(strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), "\n"), st), true
+	return substitutePlaceholders(strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), newline), st), true
 }
 
 // substitutePlaceholders ports substitute_override_placeholders for the

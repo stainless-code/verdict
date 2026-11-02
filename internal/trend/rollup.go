@@ -10,45 +10,63 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// Status and tier names, matching the shell's fixed-key rollup objects.
+const (
+	statusOpen          = "open"
+	statusAddressed     = "addressed"
+	statusWontFix       = "wont-fix"
+	statusFalsePositive = "false-positive"
+	statusDeferred      = "deferred"
+	tierCritical        = "critical"
+	tierImportant       = "important"
+	tierInformational   = "informational"
+	tierUntagged        = "untagged"
+)
+
 // rollup is the portfolio rollup over bundle rows.
 type rollup struct {
-	bundles   int
-	findings  int
-	open      int
-	addressed int
-	closed    int
 	byStatus  map[string]int
 	byTier    map[string]int
 	tools     []any
 	models    []any
 	hashes    []any
 	periods   []period
-}
-
-// period is one time-bucketed rollup point.
-type period struct {
-	name      string
-	hasName   bool
 	bundles   int
 	findings  int
 	open      int
 	addressed int
 	closed    int
+}
+
+// period is one time-bucketed rollup point.
+type period struct {
 	byTier    map[string]int
+	name      string
+	bundles   int
+	findings  int
+	open      int
+	addressed int
+	closed    int
+	hasName   bool
 }
 
 // rollupRows ports the rollup filter over bundle rows.
 func rollupRows(rows []row) rollup {
 	out := rollup{
-		byStatus: map[string]int{"open": 0, "addressed": 0, "wont-fix": 0, "false-positive": 0, "deferred": 0},
-		byTier:   map[string]int{"critical": 0, "important": 0, "informational": 0, "untagged": 0},
+		byStatus: map[string]int{
+			statusOpen: 0, statusAddressed: 0, statusWontFix: 0, statusFalsePositive: 0, statusDeferred: 0,
+		},
+		byTier: map[string]int{
+			tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
+		},
 	}
-	for _, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		out.bundles++
 		out.findings += len(r.findings)
-		out.open += r.byStatus["open"]
-		out.addressed += r.byStatus["addressed"]
-		out.closed += r.byStatus["wont-fix"] + r.byStatus["false-positive"] + r.byStatus["deferred"]
+		out.open += r.byStatus[statusOpen]
+		out.addressed += r.byStatus[statusAddressed]
+		out.closed += r.byStatus[statusWontFix] + r.byStatus[statusFalsePositive] + r.byStatus[statusDeferred]
 		for k, v := range r.byStatus {
 			out.byStatus[k] += v
 		}
@@ -80,22 +98,23 @@ func provField(prov *jq.Obj, key string) any {
 func periodize(rows []row) []period {
 	sorted := append([]row{}, rows...)
 	slices.SortStableFunc(sorted, func(a, b row) int {
-		return periodCmp(periodName(a), periodName(b))
+		return periodCmp(periodName(&a), periodName(&b))
 	})
 	var periods []period
-	for _, r := range sorted {
+	for i := range sorted {
+		r := &sorted[i]
 		name := periodName(r)
 		if len(periods) == 0 || periods[len(periods)-1].name != name || periods[len(periods)-1].hasName != r.hasAt {
 			periods = append(periods, period{name: name, hasName: r.hasAt, byTier: map[string]int{
-				"critical": 0, "important": 0, "informational": 0, "untagged": 0,
+				tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
 			}})
 		}
 		last := &periods[len(periods)-1]
 		last.bundles++
 		last.findings += len(r.findings)
-		last.open += r.byStatus["open"]
-		last.addressed += r.byStatus["addressed"]
-		last.closed += r.byStatus["wont-fix"] + r.byStatus["false-positive"] + r.byStatus["deferred"]
+		last.open += r.byStatus[statusOpen]
+		last.addressed += r.byStatus[statusAddressed]
+		last.closed += r.byStatus[statusWontFix] + r.byStatus[statusFalsePositive] + r.byStatus[statusDeferred]
 		for k, v := range r.byTier {
 			last.byTier[k] += v
 		}
@@ -104,7 +123,7 @@ func periodize(rows []row) []period {
 }
 
 // periodName ports `if .at == null then null else .at[0:10] end`.
-func periodName(r row) string {
+func periodName(r *row) string {
 	if !r.hasAt {
 		return ""
 	}
@@ -138,9 +157,10 @@ func periodCmp(a, b string) int {
 }
 
 // rollupDoc renders the rollup as the envelope fragment.
-func rollupDoc(out rollup) *jq.Obj {
+func rollupDoc(out *rollup) *jq.Obj {
 	periods := make([]any, 0, len(out.periods))
-	for _, p := range out.periods {
+	for i := range out.periods {
+		p := &out.periods[i]
 		var name any
 		if p.hasName {
 			name = p.name
@@ -162,11 +182,11 @@ func rollupDoc(out rollup) *jq.Obj {
 		"addressed", out.addressed,
 		"closed", out.closed,
 		"by_status", jq.NewObj(
-			"open", out.byStatus["open"],
-			"addressed", out.byStatus["addressed"],
-			"wont-fix", out.byStatus["wont-fix"],
-			"false-positive", out.byStatus["false-positive"],
-			"deferred", out.byStatus["deferred"],
+			statusOpen, out.byStatus[statusOpen],
+			statusAddressed, out.byStatus[statusAddressed],
+			statusWontFix, out.byStatus[statusWontFix],
+			statusFalsePositive, out.byStatus[statusFalsePositive],
+			statusDeferred, out.byStatus[statusDeferred],
 		),
 		"by_tier", tierDoc(out.byTier),
 		"provenance", jq.NewObj(
@@ -181,10 +201,10 @@ func rollupDoc(out rollup) *jq.Obj {
 // tierDoc renders a by_tier fragment in shell key order.
 func tierDoc(counts map[string]int) *jq.Obj {
 	return jq.NewObj(
-		"critical", counts["critical"],
-		"important", counts["important"],
-		"informational", counts["informational"],
-		"untagged", counts["untagged"],
+		tierCritical, counts[tierCritical],
+		tierImportant, counts[tierImportant],
+		tierInformational, counts[tierInformational],
+		tierUntagged, counts[tierUntagged],
 	)
 }
 
@@ -197,7 +217,7 @@ func anyList(vals []any) []any {
 }
 
 // rowDoc renders one per-bundle row in shell key order.
-func rowDoc(r row) *jq.Obj {
+func rowDoc(r *row) *jq.Obj {
 	var at any
 	if r.hasAt {
 		at = r.at
@@ -209,49 +229,52 @@ func rowDoc(r row) *jq.Obj {
 		"efforts", anyList(r.efforts),
 		"provenance", r.prov,
 		"findings", len(r.findings),
-		"open", r.byStatus["open"],
-		"addressed", r.byStatus["addressed"],
-		"closed", r.byStatus["wont-fix"]+r.byStatus["false-positive"]+r.byStatus["deferred"],
+		"open", r.byStatus[statusOpen],
+		"addressed", r.byStatus[statusAddressed],
+		"closed", r.byStatus[statusWontFix]+r.byStatus[statusFalsePositive]+r.byStatus[statusDeferred],
 		"by_status", jq.NewObj(
-			"open", r.byStatus["open"],
-			"addressed", r.byStatus["addressed"],
-			"wont-fix", r.byStatus["wont-fix"],
-			"false-positive", r.byStatus["false-positive"],
-			"deferred", r.byStatus["deferred"],
+			statusOpen, r.byStatus[statusOpen],
+			statusAddressed, r.byStatus[statusAddressed],
+			statusWontFix, r.byStatus[statusWontFix],
+			statusFalsePositive, r.byStatus[statusFalsePositive],
+			statusDeferred, r.byStatus[statusDeferred],
 		),
 		"by_tier", tierDoc(r.byTier),
 	)
 }
 
 // emitHuman ports the human rollup lines.
-func emitHuman(r *cli.Runner, req Request, out rollup, overlapVal any) {
+func emitHuman(r *cli.Runner, req Request, out *rollup, overlap *overlapRollup) {
 	if out.bundles == 0 {
 		fmt.Fprintf(r.Human, "trend: %s — no reviewed bundles (no .review/*/findings.json yet)\n", req.Repo)
 	} else {
 		fmt.Fprintf(r.Human, "trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)\n",
 			req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed)
-		for _, p := range out.periods {
+		for i := range out.periods {
+			p := &out.periods[i]
 			name := "undated"
 			if p.hasName {
 				name = p.name
 			}
-			fmt.Fprintf(r.Human, "%s  bundles=%d findings=%d open=%d addressed=%d closed=%d tiers critical=%d important=%d informational=%d untagged=%d\n",
+			fmt.Fprintf(r.Human, "%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
+				"tiers critical=%d important=%d informational=%d untagged=%d\n",
 				name, p.bundles, p.findings, p.open, p.addressed, p.closed,
-				p.byTier["critical"], p.byTier["important"], p.byTier["informational"], p.byTier["untagged"])
+				p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged])
 		}
 		fmt.Fprintf(r.Human, "tiers: critical=%d important=%d informational=%d untagged=%d\n",
-			out.byTier["critical"], out.byTier["important"], out.byTier["informational"], out.byTier["untagged"])
+			out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged])
 		fmt.Fprintf(r.Human, "status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d\n",
-			out.byStatus["open"], out.byStatus["addressed"], out.byStatus["wont-fix"], out.byStatus["false-positive"], out.byStatus["deferred"])
+			out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
+			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred])
 		fmt.Fprintf(r.Human, "provenance: %s\n", provenanceLine(out))
 	}
-	if overlapVal != nil {
-		emitOverlapHuman(r, overlapVal.(*overlapRollup))
+	if overlap != nil {
+		emitOverlapHuman(r, overlap)
 	}
 }
 
 // provenanceLine ports the provenance summary line.
-func provenanceLine(out rollup) string {
+func provenanceLine(out *rollup) string {
 	tools := unmarkedList(out.tools)
 	models := unmarkedList(out.models)
 	hashes := unmarkedList(out.hashes)
@@ -280,18 +303,27 @@ func provenanceLine(out rollup) string {
 
 // unmarkedList ports `[(.[] | (. // "unmarked"))] | unique | join(",")`.
 func unmarkedList(vals []any) []string {
-	var mapped []string
+	mapped := make([]string, 0, len(vals))
 	for _, v := range vals {
-		if v == nil || v == false {
-			mapped = append(mapped, "unmarked")
-			continue
-		}
-		mapped = append(mapped, jq.Str(v))
+		mapped = append(mapped, unmarkedValue(v))
 	}
 	slices.Sort(mapped)
-	out := mapped[:0]
-	for i, s := range mapped {
-		if i == 0 || mapped[i-1] != s {
+	return uniqueStrings(mapped)
+}
+
+// unmarkedValue ports `(. // "unmarked")`.
+func unmarkedValue(v any) string {
+	if v == nil || v == false {
+		return "unmarked"
+	}
+	return jq.Str(v)
+}
+
+// uniqueStrings ports `unique` over a sorted list.
+func uniqueStrings(sorted []string) []string {
+	var out []string
+	for i, s := range sorted {
+		if i == 0 || sorted[i-1] != s {
 			out = append(out, s)
 		}
 	}
@@ -300,10 +332,10 @@ func unmarkedList(vals []any) []string {
 
 // emitEnvelope ports the trend --json envelope: generated_at first, then
 // the rollup keys, per_bundle, and the optional overlap join.
-func emitEnvelope(r *cli.Runner, req Request, now string, out rollup, rows []row, overlapVal any) {
+func emitEnvelope(r *cli.Runner, req Request, now string, out *rollup, rows []row, overlap *overlapRollup) {
 	perBundle := make([]any, 0, len(rows))
-	for _, row := range rows {
-		perBundle = append(perBundle, rowDoc(row))
+	for i := range rows {
+		perBundle = append(perBundle, rowDoc(&rows[i]))
 	}
 	middle := rollupDoc(out)
 	data := jq.NewObj("generated_at", now)
@@ -312,8 +344,8 @@ func emitEnvelope(r *cli.Runner, req Request, now string, out rollup, rows []row
 		data.Set(k, v)
 	}
 	data.Set("per_bundle", perBundle)
-	if overlapVal != nil {
-		data.Set("overlap", overlapDoc(overlapVal.(*overlapRollup)))
+	if overlap != nil {
+		data.Set("overlap", overlapDoc(overlap))
 	}
 	next := "calibrate recent bundles for per-model tier precision"
 	if out.bundles == 0 {

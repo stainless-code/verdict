@@ -71,26 +71,38 @@ func parseNum(lit string) (float64, bool) {
 	return f, true
 }
 
-// TypeRank ports jq's total value order for sort_by keys: null < false <
-// true < numbers < strings < arrays < objects. Exotic containers tie-break
-// on their canonical bytes; finding stores only ever sort plain scalars.
+// Type ranks for jq's total value order: null < false < true < numbers <
+// strings < arrays < objects.
+const (
+	rankNull   = 0
+	rankFalse  = 1
+	rankTrue   = 2
+	rankNumber = 3
+	rankString = 4
+	rankArray  = 5
+	rankObject = 6
+)
+
+// TypeRank ports jq's total value order for sort_by keys. Exotic containers
+// tie-break on their canonical bytes; finding stores only ever sort plain
+// scalars.
 func TypeRank(v any) int {
 	switch v.(type) {
 	case nil:
-		return 0
+		return rankNull
 	case bool:
 		if v == false {
-			return 1
+			return rankFalse
 		}
-		return 2
+		return rankTrue
 	case float64, json.Number, jq.Number:
-		return 3
+		return rankNumber
 	case string:
-		return 4
+		return rankString
 	case []any:
-		return 5
+		return rankArray
 	default:
-		return 6
+		return rankObject
 	}
 }
 
@@ -103,13 +115,13 @@ func Cmp(a, b any) int {
 		return cmpInt(ra, rb)
 	}
 	switch ra {
-	case 1, 2:
+	case rankFalse, rankTrue:
 		return cmpBool(a == true, b == true)
-	case 3:
+	case rankNumber:
 		fa, _ := NumVal(a)
 		fb, _ := NumVal(b)
 		return cmpFloat(fa, fb)
-	case 4:
+	case rankString:
 		return strings.Compare(asString(a), asString(b))
 	default:
 		return strings.Compare(jq.Compact(a), jq.Compact(b))
@@ -166,20 +178,20 @@ func cmpFloat(a, b float64) int {
 // reads standard.
 func EffortTier(eff any) string {
 	if eff == nil || eff == false {
-		return "standard"
+		return tierStandard
 	}
-	switch AsciiLower(Tostring(eff)) {
-	case "cheap", "standard", "deep":
-		return AsciiLower(Tostring(eff))
+	switch ASCIILower(Tostring(eff)) {
+	case tierCheap, tierStandard, tierDeep:
+		return ASCIILower(Tostring(eff))
 	default:
-		return "standard"
+		return tierStandard
 	}
 }
 
-// JsonRaw reads one JSON field with `jq -r ... // empty` semantics:
+// JSONRaw reads one JSON field with `jq -r ... // empty` semantics:
 // missing or null reads "", scalars render jq-style, containers render
 // pretty. Unreadable files read "".
-func JsonRaw(path, field string) string {
+func JSONRaw(path, field string) string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -199,8 +211,8 @@ func JsonRaw(path, field string) string {
 	return jq.R(v)
 }
 
-// AsciiLower lowercases ASCII letters only, mirroring tr -d under C locale.
-func AsciiLower(s string) string {
+// ASCIILower lowercases ASCII letters only, mirroring tr -d under C locale.
+func ASCIILower(s string) string {
 	var sb strings.Builder
 	sb.Grow(len(s))
 	for i := range len(s) {

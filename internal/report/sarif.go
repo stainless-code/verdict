@@ -18,9 +18,11 @@ func renderSarif(st *state) error {
 		return nil
 	}
 	doc := sarifDoc(st)
-	if err := os.WriteFile(st.flags.Sarif, []byte(jq.PrettyOrdered(doc)+"\n"), 0o644); err != nil {
-		return &cli.RefusalError{Code: "report-failed",
-			Message: fmt.Sprintf("could not write %s: %v", st.flags.Sarif, err)}
+	if err := os.WriteFile(st.flags.Sarif, []byte(jq.PrettyOrdered(doc)+newline), reportFilePerm); err != nil {
+		return &cli.RefusalError{
+			Code:    codeReportFailed,
+			Message: fmt.Sprintf("could not write %s: %v", st.flags.Sarif, err),
+		}
 	}
 	fmt.Fprintf(st.runner.Human, "wrote %s\n", st.flags.Sarif)
 	return nil
@@ -31,11 +33,10 @@ func sarifDoc(st *state) *jq.Obj {
 	kinds := sarifKinds(st.ranked)
 	rules := make([]any, 0, len(kinds))
 	for _, kind := range kinds {
-		name := kind
 		rules = append(rules, jq.NewObj(
-			"id", "verdict/"+name,
-			"name", name,
-			"shortDescription", jq.NewObj("text", "verdict "+name+" finding"),
+			"id", "verdict/"+kind,
+			"name", kind,
+			"shortDescription", jq.NewObj("text", "verdict "+kind+" finding"),
 		))
 	}
 	results := make([]any, 0, len(st.ranked))
@@ -85,15 +86,7 @@ func sarifKind(entry any) string {
 // sarifResult ports one SARIF result: the tier level, heading-led message,
 // path/line location, and sig fingerprint.
 func sarifResult(entry any) *jq.Obj {
-	heading := fieldOf(entry, "heading")
-	message := ""
-	if heading != nil && heading != false {
-		if s, ok := heading.(string); ok {
-			message = "[" + s + "] "
-		}
-	}
-	body, _ := fieldOf(entry, "body").(string)
-	message += body
+	message := sarifMessage(entry)
 	region := jq.NewObj()
 	if line := fieldOf(entry, "line"); line != nil && line != false {
 		region.Set("startLine", line)
@@ -114,13 +107,29 @@ func sarifResult(entry any) *jq.Obj {
 	)
 }
 
+// sarifMessage ports the heading-led message: "[heading] body", with the
+// body reading "" when the entry carries none.
+func sarifMessage(entry any) string {
+	message := ""
+	if heading := fieldOf(entry, "heading"); heading != nil && heading != false {
+		if s, ok := heading.(string); ok {
+			message = "[" + s + "] "
+		}
+	}
+	body, ok := fieldOf(entry, "body").(string)
+	if !ok {
+		body = ""
+	}
+	return message + body
+}
+
 // sarifLevel ports the severity-to-level map: untagged severities read note.
 func sarifLevel(sev any) string {
 	if s, ok := sev.(string); ok {
 		switch s {
-		case "critical":
+		case tierCritical:
 			return "error"
-		case "important":
+		case tierImportant:
 			return "warning"
 		}
 	}

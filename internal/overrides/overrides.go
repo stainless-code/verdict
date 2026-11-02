@@ -28,6 +28,7 @@ var (
 	reportMeta    = regexp.MustCompile(`<!--[[:space:]]*report-machine`)
 	verdictDiv    = regexp.MustCompile(`<!--[[:space:]]*verdict-`)
 	reviewMetaLit = "Review metadata"
+	newline       = "\n"
 )
 
 // CheckLocked ports override_check_locked over one fragment's raw text.
@@ -82,7 +83,7 @@ func parseOrderOrDef(raw []byte) ([]string, error) {
 func parseOrderLines(raw string) ([]string, error) {
 	var order []string
 	seen := map[string]bool{}
-	for ln := range strings.SplitSeq(raw, "\n") {
+	for ln := range strings.SplitSeq(raw, newline) {
 		// The shell reads with `|| [[ -n "$line" ]]` so a final unterminated
 		// line still counts; Split keeps it as the last element. A trailing
 		// newline yields a final empty element that skips below.
@@ -141,7 +142,7 @@ func Thresholds() (files, bytes int, ref error) {
 	}
 	seen := map[string]bool{}
 	vals := map[string]int{}
-	for ln := range strings.SplitSeq(string(raw), "\n") {
+	for ln := range strings.SplitSeq(string(raw), newline) {
 		key, val, skip, ref := parseThresholdEntry(ln, seen)
 		if ref != nil {
 			return 0, 0, ref
@@ -264,8 +265,8 @@ func AttributionText() (string, error) {
 		//nolint:nilerr // an absent override file means "no override", not a failure
 		return "", nil
 	}
-	text := strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), "\n")
-	if strings.Count(text, "\n") != 0 {
+	text := strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), newline)
+	if strings.Count(text, newline) != 0 {
 		return "", &cli.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates "+
 			"'attribution-single-line' (want one sentence on one line)", Attribution)}
 	}

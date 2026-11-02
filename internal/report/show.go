@@ -17,7 +17,7 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 		return code
 	}
 	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before show completed"}, cli.ExitBroke)
+		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before show completed"}, cli.ExitBroke)
 	}
 	dir := readcommon.ResolveBundleDir(req.Pr)
 	entries, err := readcommon.LoadFindings(dir)
@@ -42,7 +42,7 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 			"repo", r.Repo,
 			"pr", cli.PrJSON(r.Pr),
 			"at", cli.NowUTC(r.Now()),
-			"next", "address via address-reviews mode, then post",
+			keyNext, "address via address-reviews mode, then post",
 			"warnings", cliStrings(r.Warnings),
 			"data", jq.NewObj("item", rec),
 			"error", nil,
@@ -68,7 +68,7 @@ func parseShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 		case "--sig":
 			sig = next
 			i += 2
-		case "--json":
+		case flagJSON:
 			r.JSONMode = true
 			routeHuman(r)
 			i++

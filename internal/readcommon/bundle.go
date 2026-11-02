@@ -13,6 +13,14 @@ const localPrefix = "local-"
 // prSuffix is the provider record filename.
 const prSuffix = "/PR.json"
 
+// PR field names shared by the GitHub and neutral readers.
+const (
+	fieldHeadSHA = "head_sha"
+	fieldBaseSHA = "base_sha"
+	fieldState   = "state"
+	fieldAuthor  = "author"
+)
+
 // ResolveBundleDir ports resolve_bundle_dir: local-* slugs and bare slugs
 // with a matching .review/local-* dir (and no PR bundle) resolve local.
 func ResolveBundleDir(pr string) string {
@@ -50,15 +58,15 @@ func PrField(dir, field string) string {
 // githubField reads the GitHub-shaped record field.
 func githubField(m map[string]any, field string) string {
 	switch field {
-	case "head_sha":
+	case fieldHeadSHA:
 		return jq.StrOf(m["headRefOid"])
-	case "base_sha":
+	case fieldBaseSHA:
 		return jq.StrOf(m["baseRefOid"])
-	case "state":
+	case fieldState:
 		return strings.ToLower(jq.StrOf(m["state"]))
-	case "author":
-		author, _ := m["author"].(map[string]any)
-		if author == nil {
+	case fieldAuthor:
+		author, ok := m["author"].(map[string]any)
+		if !ok {
 			return ""
 		}
 		return jq.StrOf(author["login"])
@@ -70,13 +78,13 @@ func githubField(m map[string]any, field string) string {
 // neutralField reads the normalized non-GitHub record field.
 func neutralField(m map[string]any, field string) string {
 	switch field {
-	case "head_sha":
+	case fieldHeadSHA:
 		return jq.StrOf(m["head_sha"])
-	case "base_sha":
+	case fieldBaseSHA:
 		return jq.StrOf(m["base_sha"])
-	case "state":
+	case fieldState:
 		return jq.StrOf(m["state"])
-	case "author":
+	case fieldAuthor:
 		return jq.StrOf(m["author"])
 	default:
 		return ""
