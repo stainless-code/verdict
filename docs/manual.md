@@ -985,7 +985,9 @@ record, it is not the record.
 `trend <owner/repo>` rolls up every reviewed bundle (`.review/*/findings.json`)
 into one time series: findings opened/addressed/closed per review date, broken
 down by severity tier and status, plus per-bundle rows (review time, models and
-effort from `cost.json` when the agent wrote one). Pure read — no network,
+effort from `cost.json` when the agent wrote one, provenance from the post
+receipt else the calibration record — `tool_version`, `prompts_hash`, `model`,
+missing reads unmarked). Pure read — no network,
 nothing written, recomputed every run so hand-edited stores stay truthful;
 missing or unreadable stores warn and skip, and no reviewed bundles reads as
 zeros, never an error. `closed` means no longer actionable
@@ -1048,6 +1050,14 @@ verbs and features ship in the release changelog.
   or `null` reads unknown, never zero); `report --cost` rolls them into a
   top-level `cached_input_tokens` scalar while `total_tokens` stays
   `input_tokens + output_tokens` exactly.
+- Added: review provenance on `post.json`/`record.json` (`tool_version`,
+  `prompts_hash`, `model` — model from the latest cost record when one names
+  it, else `null`); `calibrate`/`trend` surface it so mixed-version histories
+  read as mixed, never one series. `prompts_hash` is sha256 over the sorted
+  prompt-set file names plus contents — exactly `SKILL.md` plus
+  `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, each fed as
+  `== <path> ==` plus its bytes in sorted path order. Old receipts without
+  the fields read as unmarked, never fail.
 
 ### Published schemas + drift rule
 

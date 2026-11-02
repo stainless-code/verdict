@@ -1011,6 +1011,48 @@ tool_version() {
   printf '%s' "$v"
 }
 
+# Review provenance: deterministic hash of the prompt set behind a review.
+# Covers exactly SKILL.md + prompts/system.md + prompts/review.md +
+# prompts/diagrams.md (the assembled agent prompt) in sorted path order —
+# each entry feeds "== <path> ==" plus its bytes into sha256, so any prompt
+# edit changes the hash and any checkout of the same tree reproduces it.
+# Missing files contribute nothing; never fails, never empty (empty set
+# hashes as the sha256 of nothing).
+prompts_hash() {
+  local root="$1" f
+  {
+    for f in SKILL.md prompts/diagrams.md prompts/review.md prompts/system.md; do
+      [[ -f "$root/$f" ]] || continue
+      printf '== %s ==\n' "$f"
+      cat "$root/$f"
+      printf '\n'
+    done
+  } | shasum -a 256 | cut -d' ' -f1
+}
+
+# Model behind a bundle, from the agent's cost record when present: the first
+# model of the latest run (array) or the record (object). Absent/unreadable
+# cost.json, missing models, or a null name all read as "" (callers store
+# null) — never fail, never invent.
+cost_record_model() { # $1 = bundle dir
+  local m=""
+  [[ -f "$1/cost.json" ]] || return 0
+  m=$(jq -r 'if type == "array" then ((.[-1] // {}) | (.models // []) | .[0].name // empty) else ((.models // []) | .[0].name // empty) end' "$1/cost.json" 2>/dev/null || true)
+  printf '%s' "$m"
+}
+
+# One provenance triple for a bundle dir: tool version, prompt-set hash, and
+# cost-record model ("null" JSON, never ""). Emits a compact JSON object.
+bundle_provenance() { # $1 = bundle dir
+  local root="" tv="" ph="" cm=""
+  root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+  tv=$(tool_version)
+  ph=$(prompts_hash "$root")
+  cm=$(cost_record_model "$1")
+  jq -n --arg tv "$tv" --arg ph "$ph" --arg cm "$cm" \
+    '{tool_version:$tv,prompts_hash:$ph,model:(if $cm == "" then null else $cm end)}'
+}
+
 # Spend rollup for the footer. Sets PUBLISH_TIER (latest cost record effort,
 # normalized, default standard) and PUBLISH_COST ("$n" summed est_usd, or
 # "unrecorded" when no record prices the run). Absent/unreadable cost.json
@@ -3812,10 +3854,11 @@ $body"
         --arg h "$phash" --argjson emb "$embedded" --arg mk "$marker" --arg f "$findings_file" \
         --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
         --argjson footer "$dry_footer_json" --argjson diagram "$diagram_json" \
+        --argjson prov "$(bundle_provenance "$dir")" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"payload NOT posted (dry-run)",
           warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dry_run:true,event:$e,commit_id:$c,body:{marker:$mk,footer:$footer,diagram:$diagram},anchors:{kept:$k,moved:$m},
           suggestions:{embedded:$emb},findings:{open:$o,deferred:$d,addressed:$a,file:$f},confidence:$conf,security_summary:$sec,
-          items:$items,payload_hash:$h},error:null}' >&9
+          items:$items,payload_hash:$h,provenance:$prov},error:null}' >&9
     else
       echo "dry-run: payload NOT posted. body chars: $(printf '%s' "$body" | wc -c | tr -d ' '), payload comment keys: $(jq -r '.[0] // {} | keys_unsorted | join(",")' <<<"$post_comments")"
       if [[ -n "$dry_footer_text" ]]; then printf 'footer preview:\n%s\n' "$dry_footer_text"; fi
@@ -3882,9 +3925,14 @@ $body"
   # never touch post.json) — so a present matching head proves a completed post,
   # never an attempt, dry run, or failure. The head doubles as the single-review
   # finalizer key: the guard above refuses a repeat post on the same SHA.
+  # Provenance rides along (tool version, prompt-set hash, cost-record model) so
+  # calibrate/trend never silently mix runs from different tooling — additive
+  # within schema_version "1", model null when no cost record names one.
+  prov_json=$(bundle_provenance "$dir")
   jq -n --argjson rv "$posted" --arg c "$commit_id" --arg t "$now" \
     --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
-    '{schema_version:"1",review:$rv,head:$c,posted_at:$t,confidence:$conf,security_summary:$sec}' > "$dir/post.json"
+    --argjson prov "$prov_json" \
+    '{schema_version:"1",review:$rv,head:$c,posted_at:$t,confidence:$conf,security_summary:$sec} + $prov' > "$dir/post.json"
   if [[ "$json_mode" == "true" ]]; then
     posted_json="$posted"
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg e "$event" --arg c "$commit_id" \
@@ -3892,11 +3940,12 @@ $body"
       --argjson items "$(jq '[.[] | {sig, status, anchored, locator: (if .path then "\(.path)\(if .line then ":\(.line)" else "" end)" else (.heading // "?") end)}]' <<<"$entries")" \
       --arg h "$phash" --argjson emb "$embedded" --arg mk "$marker" --argjson rv "$posted_json" \
       --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
+      --argjson prov "$prov_json" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:(if $o > 0 then "address open threads" else "none open — nothing to address" end),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dry_run:false,event:$e,commit_id:$c,body:{marker:$mk},anchors:{kept:$k,moved:$m},
         suggestions:{embedded:$emb},findings:{open:$o,deferred:$d,addressed:$a},items:$items,confidence:$conf,security_summary:$sec,
-        payload_hash:$h,review:$rv},error:null}' >&9
+        payload_hash:$h,review:$rv,provenance:$prov},error:null}' >&9
   else
     echo "$posted"
   fi
@@ -3950,10 +3999,12 @@ if [[ "$cmd" == "record" ]]; then
   findings_file="$dir/findings.json"
   validate_and_merge "$review_file" "$dir" "$head_sha" "$now" "$findings_file"
   diff_sha=$(shasum -a 256 "$dir/full.diff" 2>/dev/null | cut -d" " -f1 || true)
+  prov_json=$(bundle_provenance "$dir")
   jq -n --arg st "$prov" --arg h "$head_sha" --arg dsha "$diff_sha" --arg t "$now" \
     --argjson f "$(jq 'length' <<<"$entries")" --argjson o "$n_open" \
     --argjson conf "$rev_confidence" --argjson sec "$rev_security" \
-    '{schema_version:"1",status:$st,head:$h,diff_sha256:$dsha,recorded_at:$t,findings:$f,open:$o,confidence:$conf,security_summary:$sec}' > "$dir/record.json"
+    --argjson prov "$prov_json" \
+    '{schema_version:"1",status:$st,head:$h,diff_sha256:$dsha,recorded_at:$t,findings:$f,open:$o,confidence:$conf,security_summary:$sec} + $prov' > "$dir/record.json"
   echo "recorded: $dir/findings.json ($n_open open) + $dir/record.json — report/triage read it; post stays refused (no PR target)"
   if [[ "$json_mode" == "true" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg d "$dir" \
@@ -5587,15 +5638,21 @@ if [[ "$cmd" == "calibrate" ]]; then
   echo "calibrate: $repo#$pr — review $review_id @ ${head0:0:7} ($stale), PR $pr_state${merged_at:+, merged $merged_at}"
   jq -r '.[] | "\(.sig[0:8]) [\(.outcome)] \(.locator) — \(.detail)\(if (.kb // []) | length > 0 then " kb:" + ((.kb // []) | join(",")) else "" end)"' <<<"$outcomes"
   echo "precision: fixed=$(jq -r '.fixed' <<<"$precision") resolved-unfixed=$(jq -r '.resolved_unfixed' <<<"$precision") open=$n_o unknown=$n_u (judged $(jq -r '.judged' <<<"$precision"))"
+  # Provenance: the post receipt names the tooling behind this run, so a
+  # mixed-version history never reads as one series. Old receipts without the
+  # fields report unmarked, never fail.
+  prov_json=$(jq '{tool_version:(.tool_version // null),prompts_hash:(.prompts_hash // null),model:(.model // null)}' "$dir/post.json" 2>/dev/null || echo '{"tool_version":null,"prompts_hash":null,"model":null}')
+  echo "provenance: tool v$(jq -r '.tool_version // "unmarked"' <<<"$prov_json") prompts $(jq -r '(.prompts_hash // "unmarked")[0:12]' <<<"$prov_json") model $(jq -r '.model // "unmarked"' <<<"$prov_json")"
   if [[ "$json_mode" == "true" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg rid "$review_id" \
       --arg h0 "$head0" --arg lh "$live_head" --arg st "$pr_state" --arg ma "$merged_at" \
       --argjson oc "$outcomes" --argjson pc "$precision" \
+      --argjson prov "$prov_json" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:(if $pc.open > 0 then "address open threads" elif $pc.unknown > 0 then "re-run after threads settle" else "calibration recorded" end),
         warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{review_id:($rid | tonumber? // $rid),head:{reviewed:$h0,live:$lh},
         pr:{state:$st,merged_at:(if $ma == "" then null else $ma end)},
-        outcomes:$oc,precision:$pc},error:null}' >&9
+        outcomes:$oc,precision:$pc,provenance:$prov},error:null}' >&9
   fi
   exit 0
 fi
@@ -5770,8 +5827,14 @@ if [[ "$cmd" == "trend" ]]; then
         models=$(jq '[if type == "array" then .[] else . end | (.models // [])[] | .name // empty] | unique' "${b}cost.json" 2>/dev/null || echo "[]")
         efforts=$(jq '[(if type == "array" then .[] else . end) | ((.effort // "standard" | tostring | ascii_downcase) | if . == "cheap" or . == "standard" or . == "deep" then . else "standard" end)] | unique' "${b}cost.json" 2>/dev/null || echo "[]")
       fi
-      row=$(jq -n --argjson f "$fjson" --arg b "$name" --arg at "$at" --argjson models "$models" --argjson efforts "$efforts" '
-        {bundle: $b, at: (if $at == "" then null else $at end), models: $models, efforts: $efforts,
+      # Provenance: the post receipt first, then the calibration record; old
+      # receipts without the fields read all-null (unmarked), never fail.
+      prov="null"
+      if [[ -f "${b}post.json" ]]; then prov=$(jq '{tool_version:(.tool_version // null),prompts_hash:(.prompts_hash // null),model:(.model // null)}' "${b}post.json" 2>/dev/null || echo "null"); fi
+      if [[ "$prov" == "null" && -f "${b}record.json" ]]; then prov=$(jq '{tool_version:(.tool_version // null),prompts_hash:(.prompts_hash // null),model:(.model // null)}' "${b}record.json" 2>/dev/null || echo "null"); fi
+      [[ "$prov" == "null" ]] && prov='{"tool_version":null,"prompts_hash":null,"model":null}'
+      row=$(jq -n --argjson f "$fjson" --arg b "$name" --arg at "$at" --argjson models "$models" --argjson efforts "$efforts" --argjson prov "$prov" '
+        {bundle: $b, at: (if $at == "" then null else $at end), models: $models, efforts: $efforts, provenance: $prov,
          findings: ($f | length),
          open: ([$f[] | select(.status == "open")] | length),
          addressed: ([$f[] | select(.status == "addressed")] | length),
@@ -5803,6 +5866,9 @@ if [[ "$cmd" == "trend" ]]; then
        important: ([$rows[].by_tier.important] | add // 0),
        informational: ([$rows[].by_tier.informational] | add // 0),
        untagged: ([$rows[].by_tier.untagged] | add // 0)},
+     provenance: {tools: ([$rows[] | .provenance.tool_version] | unique),
+       models: ([$rows[] | .provenance.model] | unique),
+       prompts_hashes: ([$rows[] | .provenance.prompts_hash] | unique)},
      periods: ([$rows[] | . + {period: (if .at == null then null else .at[0:10] end)}]
        | group_by(.period)
        | map({period: .[0].period, bundles: length,
@@ -5921,6 +5987,7 @@ if [[ "$cmd" == "trend" ]]; then
       jq -r '.periods[] | "\(.period // "undated")  bundles=\(.bundles) findings=\(.findings) open=\(.open) addressed=\(.addressed) closed=\(.closed) tiers critical=\(.by_tier.critical) important=\(.by_tier.important) informational=\(.by_tier.informational) untagged=\(.by_tier.untagged)"' <<<"$rollup"
       echo "tiers: $(jq -r '"critical=\(.by_tier.critical) important=\(.by_tier.important) informational=\(.by_tier.informational) untagged=\(.by_tier.untagged)"' <<<"$rollup")"
       echo "status: $(jq -r '"open=\(.by_status.open) addressed=\(.by_status.addressed) wont-fix=\(.by_status."wont-fix") false-positive=\(.by_status."false-positive") deferred=\(.by_status.deferred)"' <<<"$rollup")"
+      echo "provenance: $(jq -r '"tools=" + ([.provenance.tools[] | (. // "unmarked")] | unique | join(",")) + " models=" + ([.provenance.models[] | (. // "unmarked")] | unique | join(",")) + " prompts=" + ([.provenance.prompts_hashes[] | select(. != null)] | unique | length | tostring) + " unique" + (if ([.provenance.prompts_hashes[] | select(. == null)] | length) > 0 then " (+unmarked)" else "" end)' <<<"$rollup")"
     fi
     if [[ "$overlap" == "true" ]]; then
       jq -r '"overlap: \(.measured_bundles) measured, \(.unmeasured_bundles) unmeasured — precision=\(.precision // "n/a") coverage=\(.coverage // "n/a") (recalled=\(.recalled_rules | length) cited=\(.cited_rules | length) overlap=\(.overlap_rules | length))",
