@@ -147,7 +147,12 @@ non-string `path`/`body`/`suggestion`, non-string `resolved[]` items), and
 misshapen `verification.json` claims all fail closed as `bad-review-input`;
 a present-but-corrupt (or non-list) `findings.json` refuses as `corrupt-store` —
 the run never starts fresh, since that would silently lose history (restore from
-backup, then re-run). An unreadable `source.json` head degrades to the dirty-head
+backup, then re-run). The read verbs apply the same guard to every entry:
+`report`/`show`/`calibrate` refuse `corrupt-store` on non-object entries or
+non-string `sig`/`body`/`heading`/`kind`/`suggestion` (and `report` on an
+unreadable `patch.json`), instead of dying mid-render with no envelope;
+`trend` warns and skips corrupt bundles, rolling up the readable ones, so one
+bad bundle never fails the whole audit. An unreadable `source.json` head degrades to the dirty-head
 path instead (`record.json` head reads `"dirty"`).
 
 ### Sig contract (sig_version 1)

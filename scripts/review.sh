@@ -1075,8 +1075,30 @@ sig_of() { printf '%s' "$1" | LC_ALL=C tr -s '[:space:]' ' ' | sed -e 's/^ //' -
 # resolve a sig prefix (agents copy short ids from the printed table) to a unique
 # full sig. Echoes the full sig, or the sentinel NONE/MANY — pure function, no warn
 # (warns inside $() subshells are lost to the parent; callers warn same-process).
+# Null-safe: entries without a string sig never match (a null sig crashed
+# startswith with a jq exit-5 and no envelope; R1 fix, go-port 05).
 resolve_sig() {
-  jq -r --arg s "$2" '[.[] | select(.sig | startswith($s))] | if length == 1 then .[0].sig elif length == 0 then "NONE" else "MANY" end' <<<"$1"
+  jq -r --arg s "$2" '[.[] | select((.sig // "") | startswith($s))] | if length == 1 then .[0].sig elif length == 0 then "NONE" else "MANY" end' <<<"$1"
+}
+
+# Findings-store entry guard (R1, go-port 05): every entry reads null or an
+# object whose string-indexed fields (sig, body, heading, kind, suggestion)
+# read null-or-string and whose indexed-map fields (severity, rigor) never
+# read object-or-array. Anything else crashed the readers' rank, resolve,
+# display, or SARIF filters with a jq exit-5 and no envelope; callers now
+# refuse typed corrupt-store (report/show/calibrate) or warn-and-skip the
+# bundle (trend) instead.
+entries_guard_filter='[.[] | . == null or ((type == "object")
+  and ((.sig == null) or ((.sig | type) == "string"))
+  and ((.body == null) or ((.body | type) == "string"))
+  and ((.heading == null) or ((.heading | type) == "string"))
+  and ((.kind == null) or ((.kind | type) == "string"))
+  and ((.suggestion == null) or ((.suggestion | type) == "string"))
+  and ((.severity | type) != "object" and (.severity | type) != "array")
+  and ((.rigor | type) != "object" and (.rigor | type) != "array"))] | all'
+entries_guard() { # $1 = findings.json path, or - for stdin; returns 0 when the shape holds
+  if [[ "${1:-}" == "-" ]]; then jq -e "$entries_guard_filter" >/dev/null 2>&1;
+  else jq -e "$entries_guard_filter" "$1" >/dev/null 2>&1; fi
 }
 
 # newline-separated input -> JSON string array ([] when empty).
@@ -4387,6 +4409,8 @@ if [[ "$cmd" == "report" ]]; then
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
   jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
     || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
+  entries_guard "$dir/findings.json" \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
   # Section overrides (P5): fail-closed render gate — invalid fragments refuse
   # here before any fragment-derived bytes are emitted (report-time half of check+post).
   validate_overrides
@@ -4402,7 +4426,11 @@ if [[ "$cmd" == "report" ]]; then
     panel_json=$(jq -R . < "$dir/panel" | jq -s 'map(select(length > 0))'); panel_src="panel"
   fi
   patch_json="null"
-  if [[ -f "$dir/patch.json" ]]; then patch_json=$(cat "$dir/patch.json"); fi
+  if [[ -f "$dir/patch.json" ]]; then
+    patch_json=$(cat "$dir/patch.json")
+    jq -e . >/dev/null 2>&1 <<<"$patch_json" \
+      || fail "corrupt-store" "patch store $dir/patch.json is unreadable (re-run post to rebuild, or restore the file)"
+  fi
   # Completeness dimension (opt-in HEAD-reviewed gate, --completeness only):
   # pass iff a completed-post record exists, parses, and carries the fetched
   # HEAD. Only the real-post path writes post.json (dry runs write
@@ -4666,14 +4694,14 @@ if [[ "$cmd" == "report" ]]; then
   fi
   if [[ -n "$sarif" ]]; then
     jq -n --argjson items "$ranked" --arg r "$repo" --arg p "$pr" '
-      ([$items[] | .kind] | unique) as $kinds
+      ([$items[] | (.kind // "unknown")] | unique) as $kinds
       | {version:"2.1.0", "$schema":"https://json.schemastore.org/sarif-2.1.0.json",
          runs:[{tool:{driver:{name:"verdict", version:"1",
                   informationUri:"https://github.com",
                   rules:[$kinds[] | {id:("verdict/" + .), name:.,
                     shortDescription:{text:("verdict " + . + " finding")}}]}},
                 results:[$items[]
-                  | {ruleId:("verdict/" + .kind),
+                  | {ruleId:("verdict/" + (.kind // "unknown")),
                      level:({"critical":"error","important":"warning"}[.severity // ""] // "note"),
                      message:{text:((if .heading then ("[" + .heading + "] ") else "" end) + (.body // ""))},
                      locations:[{physicalLocation:{
@@ -4846,6 +4874,10 @@ if [[ "$cmd" == "show" ]]; then
   json_redirect
   resolve_bundle_dir "$pr"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
+  jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
+  entries_guard "$dir/findings.json" \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
   [[ -z "$ssig" ]] && fail "missing-sig" "show needs --sig <sig> (short prefix ok)"
   now=$(now_utc)
   sfull=$(resolve_sig "$(cat "$dir/findings.json")" "$ssig")
@@ -5720,6 +5752,8 @@ if [[ "$cmd" == "calibrate" ]]; then
     [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
     jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
       || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
+    entries_guard "$dir/findings.json" \
+      || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
     now=$(now_utc)
     bname=${dir#.review/}
     known_sigs=$(jq -c '[.[].sig]' "$dir/findings.json")
@@ -5769,11 +5803,11 @@ if [[ "$cmd" == "calibrate" ]]; then
     merged_judgments=$(jq -c -n --argjson p "$prior_judgments" --argjson n "$new_judgments" \
       '$p + $n | reduce .[] as $j ({}; .[$j.sig] = $j)')
     grades=$(jq -c --arg b "$bname" --arg t "$now" --argjson m "$merged_judgments" '
-      [.[] | ((.kb // []) | map(select(type == "string"))) as $cited
+      [.[] | ((.kb // []) | if type == "array" then map(select(type == "string")) else [] end) as $cited
         | (if .status == "addressed" then "real"
            elif .status == "false-positive" then "false"
            else "unknown" end) as $d
-        | ($m[.sig] // {}) as $j
+        | ($m[(.sig // "")] // {}) as $j
         | {at: $t, bundle: $b, sig: .sig,
            verdict: $d,
            rule: ($cited[0] // null),
@@ -5817,9 +5851,13 @@ if [[ "$cmd" == "calibrate" ]]; then
   if [[ "$prov" != "github" ]]; then fail "provider-unimplemented" "calibrate on $prov is not implemented yet (no live thread join for it)"; fi
   [[ -f "$dir/post.json" ]] || fail "missing-post" "missing $dir/post.json (post for real first — calibration needs a posted review id)"
   [[ -f "$dir/findings.json" ]] || fail "missing-findings" "missing $dir/findings.json (run post or record first)"
+  jq -e 'type == "array"' "$dir/findings.json" >/dev/null 2>&1 \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
+  entries_guard "$dir/findings.json" \
+    || fail "corrupt-store" "findings store $dir/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)"
   now=$(now_utc)
-  review_id=$(jq -r '.review.id // empty' "$dir/post.json")
-  head0=$(jq -r '.head // empty' "$dir/post.json")
+  review_id=$(jq -r '.review.id // empty' "$dir/post.json" 2>/dev/null || true)
+  head0=$(jq -r '.head // empty' "$dir/post.json" 2>/dev/null || true)
   [[ -z "$review_id" || -z "$head0" ]] && fail "missing-post" "post.json carries no review id/head"
   owner="${repo%%/*}"; name="${repo##*/}"
   threads_json=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
@@ -5840,6 +5878,10 @@ if [[ "$cmd" == "calibrate" ]]; then
   changed="[]"
   if [[ "$head0" != "$live_head" ]]; then
     changed=$(gh api "repos/$repo/compare/$head0...$live_head" --jq '[.files[].filename]' 2>/dev/null || echo "COMPARE_FAIL")
+    if [[ "$changed" != "COMPARE_FAIL" ]] && ! jq -e . >/dev/null 2>&1 <<<"$changed"; then
+      warn "compare unavailable (rewritten history?) — resolved reads as resolved-unfixed"
+      changed="COMPARE_FAIL"
+    fi
     if [[ "$changed" == "COMPARE_FAIL" ]]; then
       warn "compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed"
       changed="[]"
@@ -5850,7 +5892,7 @@ if [[ "$cmd" == "calibrate" ]]; then
     | [.[] | select(.status == "open" or .status == "addressed" or .status == "deferred") | . as $f
       | (if .path then "\(.path)\(if .line then ":\(.line)" else "" end)" else (.heading // "?") end) as $loc
       | (if $f.kind == "inline"
-         then ($f.body + (if $f.suggestion then "\n\n```suggestion\n" + $f.suggestion + "\n```" else "" end)) as $pb
+         then ((($f.body // "") + (if $f.suggestion then "\n\n```suggestion\n" + $f.suggestion + "\n```" else "" end))) as $pb
               | ([$threads[] | select(any(.comments[]; .body == $pb and .path == $f.path))][0]) as $hit
               | if $hit == null then {outcome:"unknown", detail:"comment not found live"}
                 elif ($hit.resolved | not) then {outcome:"open", detail:"thread still open"}
@@ -5860,7 +5902,7 @@ if [[ "$cmd" == "calibrate" ]]; then
          else {outcome:"unknown", detail:"body section — not a thread comment"} end) as $o
       | {sig:$f.sig, status:$f.status, severity:($f.severity // "untagged"), locator:$loc,
          outcome:$o.outcome, detail:$o.detail}
-        + (if (($f.kb // []) | length) > 0 then {kb: $f.kb} else {} end)]' "$dir/findings.json")
+        + (if ((($f.kb // []) | if type == "boolean" then [] else . end) | length) > 0 then {kb: $f.kb} else {} end)]' "$dir/findings.json")
   precision=$(jq '{fixed: ([.[] | select(.outcome == "fixed")] | length),
       resolved_unfixed: ([.[] | select(.outcome == "resolved-unfixed")] | length),
       open: ([.[] | select(.outcome == "open")] | length),
@@ -5874,13 +5916,13 @@ if [[ "$cmd" == "calibrate" ]]; then
   n_o=$(jq '.open' <<<"$precision"); n_u=$(jq '.unknown' <<<"$precision")
   stale="current"; [[ "$head0" != "$live_head" ]] && stale="stale — ${head0:0:7} → ${live_head:0:7}"
   echo "calibrate: $repo#$pr — review $review_id @ ${head0:0:7} ($stale), PR $pr_state${merged_at:+, merged $merged_at}"
-  jq -r '.[] | "\(.sig[0:8]) [\(.outcome)] \(.locator) — \(.detail)\(if (.kb // []) | length > 0 then " kb:" + ((.kb // []) | join(",")) else "" end)"' <<<"$outcomes"
+  jq -r '.[] | "\(.sig[0:8]) [\(.outcome)] \(.locator) — \(.detail)\(if ((.kb // []) | type) == "array" and length > 0 then " kb:" + (map(tostring) | join(",")) else "" end)"' <<<"$outcomes"
   echo "precision: fixed=$(jq -r '.fixed' <<<"$precision") resolved-unfixed=$(jq -r '.resolved_unfixed' <<<"$precision") open=$n_o unknown=$n_u (judged $(jq -r '.judged' <<<"$precision"))"
   # Provenance: the post receipt names the tooling behind this run, so a
   # mixed-version history never reads as one series. Old receipts without the
   # fields report unmarked, never fail.
   prov_json=$(jq '{tool_version:(.tool_version // null),prompts_hash:(.prompts_hash // null),model:(.model // null)}' "$dir/post.json" 2>/dev/null || echo '{"tool_version":null,"prompts_hash":null,"model":null}')
-  echo "provenance: tool v$(jq -r '.tool_version // "unmarked"' <<<"$prov_json") prompts $(jq -r '(.prompts_hash // "unmarked")[0:12]' <<<"$prov_json") model $(jq -r '.model // "unmarked"' <<<"$prov_json")"
+  echo "provenance: tool v$(jq -r '.tool_version // "unmarked"' <<<"$prov_json") prompts $(jq -r '((.prompts_hash // "unmarked") | tostring | .[0:12])' <<<"$prov_json") model $(jq -r '.model // "unmarked"' <<<"$prov_json")"
   if [[ "$json_mode" == "true" ]]; then
     jq -n --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$now" --arg rid "$review_id" \
       --arg h0 "$head0" --arg lh "$live_head" --arg st "$pr_state" --arg ma "$merged_at" \
@@ -5953,7 +5995,7 @@ if [[ "$cmd" == "ready" ]]; then
   # bot summaries), squeeze whitespace, count what the author actually wrote.
   # The awk removes <!-- --> spans (including multiline) but keeps text outside
   # them — a range-delete would drop whole lines carrying inline comments.
-  body_len=$(jq -r '.body // ""' <<<"$live" | awk 'BEGIN{in_c=0} {line=""; rest=$0; while (length(rest)>0) { if (in_c) {e=index(rest,"-->"); if (e) {rest=substr(rest,e+3); in_c=0} else {rest=""}} else {s=index(rest,"<!--"); if (s) {line=line substr(rest,1,s-1); rest=substr(rest,s+4); in_c=1} else {line=line rest; rest=""}}} print line}' | tr -s '[:space:]' ' ' | wc -c | tr -d ' ')
+  body_len=$(jq -r '.body // ""' <<<"$live" 2>/dev/null | awk 'BEGIN{in_c=0} {line=""; rest=$0; while (length(rest)>0) { if (in_c) {e=index(rest,"-->"); if (e) {rest=substr(rest,e+3); in_c=0} else {rest=""}} else {s=index(rest,"<!--"); if (s) {line=line substr(rest,1,s-1); rest=substr(rest,s+4); in_c=1} else {line=line rest; rest=""}}} print line}' | tr -s '[:space:]' ' ' | wc -c | tr -d ' ' || echo 0)
   [[ "$ci_total" =~ ^[0-9]+$ ]] || ci_total=0
   [[ "$ci_fail" =~ ^[0-9]+$ ]] || ci_fail=0
   [[ "$threads_open" =~ ^[0-9]+$ ]] || threads_open=0
@@ -6053,7 +6095,7 @@ if [[ "$cmd" == "trend" ]]; then
       [[ -f "${b}findings.json" ]] || continue
       name=${b#.review/}; name=${name%/}
       fjson=$(cat "${b}findings.json" 2>/dev/null || true)
-      if ! jq -e 'type == "array"' <<<"$fjson" >/dev/null 2>&1; then
+      if ! jq -e 'type == "array"' <<<"$fjson" >/dev/null 2>&1 || ! jq -e "$entries_guard_filter" <<<"$fjson" >/dev/null 2>&1; then
         warn "trend skips $b (findings.json unreadable or not a findings array)"
         continue
       fi
@@ -6150,7 +6192,7 @@ if [[ "$cmd" == "trend" ]]; then
         [[ -f "${b}findings.json" ]] || continue
         name=${b#.review/}; name=${name%/}
         fjson=$(cat "${b}findings.json" 2>/dev/null || true)
-        if ! jq -e 'type == "array"' <<<"$fjson" >/dev/null 2>&1; then
+        if ! jq -e 'type == "array"' <<<"$fjson" >/dev/null 2>&1 || ! jq -e "$entries_guard_filter" <<<"$fjson" >/dev/null 2>&1; then
           continue
         fi
         measured_json="false"; recalled="[]"
@@ -6176,7 +6218,7 @@ if [[ "$cmd" == "trend" ]]; then
           --argjson f "$fjson" --argjson j "$joins_all" --argjson cel "$cel" '
           ([$f[] | ((.kb // [])[]?) | select(type == "string")] | unique) as $cited
           | (($rec - ($rec - $cited))) as $inter
-          | ([$f[] | select(((.kb // []) | length) > 0)]) as $cf
+          | ([$f[] | select((((.kb // []) | if type == "boolean" then [] else . end) | length) > 0)]) as $cf
           | {bundle: $b, measured: $m, recalled: $rec, cited: $cited, overlap: $inter,
              precision: (if $m and ($rec | length) > 0 then ($inter | length) / ($rec | length) else null end),
              coverage: (if $m and ($cited | length) > 0 then ($inter | length) / ($cited | length) else null end),
