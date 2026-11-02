@@ -15,7 +15,7 @@ GitHub I/O. No servers, no external services, no daemons.
 
 Full manual: [`docs/manual.md`](docs/manual.md). Vision and strategy: [`docs/vision.md`](docs/vision.md).
 
-Requirements: [`gh`](https://cli.github.com) (authed, `repo` scope), `jq`, `shasum`, `git`.
+Requirements: [`gh`](https://cli.github.com) (authed, `repo` scope), `jq` (>= 1.7), `shasum`, `git`.
 Run `./scripts/review.sh doctor` to preflight.
 
 ## Install

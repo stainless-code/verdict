@@ -96,10 +96,11 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     refuse before execution as verify-destructive, verify-networked,
     verify-credential-read, and verify-repo-escape.
   doctor [--json]
-    preflight the harness: gh auth, jq, shasum hard-fail the run; scopes, git,
+    preflight the harness: gh auth, jq (>= 1.7), shasum hard-fail the run; scopes, git,
     ps, API reachability warn only (never fail); .review storage writability
     hard-fails. A token granting more than runs need warns on a
-    token-scopes-excess row naming the excess scopes. Exit 0 unless a hard
+    token-scopes-excess row naming the excess scopes. jq below 1.7 warns on a
+    jq-version row. Exit 0 unless a hard
     check fails. No repo/PR args, no writes, no network beyond the existing
     gh reads.
   calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]
@@ -334,7 +335,7 @@ $hint"; fi
     # every other error keeps its byte-identical envelope (additive-only).
     jq -n --arg c "$code" --arg m "$msg" --arg v "$cmd" --arg r "$repo" --arg p "$pr" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       --argjson cand "${CANDIDATES_JSON:-null}" \
-      '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"",warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:null,error:{code:$c,message:$m} + (if $cand == null then {} else {candidates:$cand} end)}' >&9
+      '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,next:"",warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:null,error:({code:$c,message:$m} + (if $cand == null then {} else {candidates:$cand} end))}' >&9
   else
     if [[ "${EFFECTIVE_COLOR:-auto}" == "always" ]]; then printf '\033[31merror: %s\033[0m\n' "$msg" >&2;
     else echo "error: $msg" >&2; fi
@@ -3518,14 +3519,14 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
           --argjson chunk "${chunk_json:-null}" \
           '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
             next:"feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
-            warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
+            warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
             hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
             artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end)),
             incremental_base:(if $inc=="null" then null else $inc end)}
             + (if $estimate == null then {} else {estimate:$estimate} end)
             + (if $budget == null then {} else {budget:$budget} end)
             + (if $cap == null then {} else {cap:$cap} end)
-            + (if $chunk == null then {} else {chunk:$chunk} end),error:null}' > "$pdump_tmp.env"
+            + (if $chunk == null then {} else {chunk:$chunk} end)),error:null}' > "$pdump_tmp.env"
         jq --rawfile pd "$pdump_tmp" '.data += {prompt_dump:$pd}' "$pdump_tmp.env" >&9
         rm -f "$pdump_tmp" "$pdump_tmp.env"
       else
@@ -3542,7 +3543,7 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
         --argjson chunk "${chunk_json:-null}" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:"feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/PR.json + full.diff to any agent; ask it to write \($d)/review.json",
-          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({dir:$d,head_sha:$hs,base_sha:$bs,files:$files,additions:$adds,deletions:$dels,
           hunks:$hunks,omitted:$omitted,diff_bytes:$db,panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
           artifacts:({"PR.json":"\($d)/PR.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","reviews.json":"\($d)/reviews.json","inline.json":"\($d)/inline.json","sensitive.txt":(if $sens=="null" then null else $sens end),"incremental.diff":(if $inc=="null" then null else "\($d)/incremental.diff" end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end)),
           incremental_base:(if $inc=="null" then null else $inc end)}
@@ -3550,7 +3551,7 @@ fetch_tail() { # $1 = inc_base; runs in fetch scope (dir repo pr cmd json_mode p
           + (if $budget == null then {} else {budget:$budget} end)
           + (if $cap == null then {} else {cap:$cap} end)
           + (if $chunk == null then {} else {chunk:$chunk} end)
-          + (if $pdump == null then {} else {prompt_dump:$pdump} end),error:null}' >&9
+          + (if $pdump == null then {} else {prompt_dump:$pdump} end)),error:null}' >&9
       fi
     fi
   # Human-mode dump: the assembled prompt owns the saved stdout; without the
@@ -3828,14 +3829,14 @@ if [[ "$cmd" == "fetch-local" ]]; then
         --argjson chunk "${chunk_json:-null}" \
         '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
           next:("feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
-          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
+          warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
           files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
           panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
           artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end))}
           + (if $estimate == null then {} else {estimate:$estimate} end)
           + (if $budget == null then {} else {budget:$budget} end)
           + (if $cap == null then {} else {cap:$cap} end)
-          + (if $chunk == null then {} else {chunk:$chunk} end),error:null}' > "$pdump_tmp.env"
+          + (if $chunk == null then {} else {chunk:$chunk} end)),error:null}' > "$pdump_tmp.env"
       jq --rawfile pd "$pdump_tmp" '.data += {prompt_dump:$pd}' "$pdump_tmp.env" >&9
       rm -f "$pdump_tmp" "$pdump_tmp.env"
     else
@@ -3852,7 +3853,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
       --argjson chunk "${chunk_json:-null}" \
       '{schema_version:"1",verb:$v,repo:$r,pr:($p|tonumber? // null),at:$t,
         next:("feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + \($d)/source.json + full.diff to any agent; ask it to write \($d)/review.json"),
-        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:{dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
+        warnings:(($ENV.WARNINGS_JSON // "[]") | fromjson),data:({dir:$d,kind:$kind,head_sha:$hs,base_sha:$bs,
         files:$files,additions:$adds,deletions:$dels,hunks:$hunks,omitted:$omitted,diff_bytes:$db,
         panel:{source:(if $psrc=="" then null else $psrc end),members:$members},
         artifacts:({"source.json":"\($d)/source.json","full.diff":"\($d)/full.diff","toc.txt":"\($d)/toc.txt","roles.txt":"\($d)/roles.txt","sensitive.txt":(if $sens=="null" then null else $sens end)} + (if $kb == "null" then {} else {"kb.txt":$kb} end) + (if $kbr == "null" then {} else {"kb-recall.json":$kbr} end))}
@@ -3860,7 +3861,7 @@ if [[ "$cmd" == "fetch-local" ]]; then
         + (if $budget == null then {} else {budget:$budget} end)
         + (if $cap == null then {} else {cap:$cap} end)
         + (if $chunk == null then {} else {chunk:$chunk} end)
-        + (if $pdump == null then {} else {prompt_dump:$pdump} end),error:null}' >&9
+        + (if $pdump == null then {} else {prompt_dump:$pdump} end)),error:null}' >&9
     fi
   fi
   if [[ "$show_prompts" == "true" && "$json_mode" != "true" ]]; then
@@ -5629,7 +5630,18 @@ if [[ "$cmd" == "doctor" ]]; then
       add "token-scopes-excess" "warn" "false" "token grants more than runs need: $excess — try: re-mint with only the repo scope (least privilege) and re-run"
     fi
   fi
-  if command -v jq >/dev/null 2>&1; then add "jq" "fail" "true" "$(jq --version 2>/dev/null)"; else add "jq" "fail" "false" "missing — install jq"; fi
+  if command -v jq >/dev/null 2>&1; then
+    jq_v="$(jq --version 2>/dev/null)"; add "jq" "fail" "true" "$jq_v"
+    # Refusal envelopes need jq >= 1.7 (object-value operators); older jq
+    # crashes on them, so warn here instead of failing mid-run.
+    jq_vn="${jq_v#jq-}"; jq_major="${jq_vn%%.*}"; jq_minor="${jq_vn#*.}"; jq_minor="${jq_minor%%.*}"
+    jq_old="false"
+    if [[ "$jq_major" == [0-9]* && "$jq_minor" == [0-9]* ]]; then
+      if [[ "$jq_major" -lt 1 ]]; then jq_old="true"; fi
+      if [[ "$jq_major" -eq 1 && "$jq_minor" -lt 7 ]]; then jq_old="true"; fi
+    fi
+    if [[ "$jq_old" == "true" ]]; then add "jq-version" "warn" "false" "$jq_v is below the 1.7 minimum — refusal envelopes may crash, try: upgrade jq"; fi
+  else add "jq" "fail" "false" "missing — install jq"; fi
   if command -v shasum >/dev/null 2>&1; then add "shasum" "fail" "true" "sig hashing available"; else add "shasum" "fail" "false" "sig hashing hard-requires shasum (startup gate)"; fi
   if command -v ps >/dev/null 2>&1; then add "ps" "warn" "true" "verify timeout enforced"; else add "ps" "warn" "false" "verify runs without timeout enforcement"; fi
   if command -v git >/dev/null 2>&1; then add "git" "warn" "true" "check-tree/verify available"; else add "git" "warn" "false" "check-tree and verify degraded without git"; fi

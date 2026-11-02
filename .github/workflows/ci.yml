@@ -180,6 +180,7 @@ jobs:
           # bash (only `record` dispatches today, the rest stays shell, so
           # the leg grows automatically as verbs join VERDICT_GO_VERBS).
           command -v bash jq git
+          jq --version
           if [ "${{ matrix.impl }}" = "go" ]; then command -v go; fi
 
       - name: Run offline contract evals (bash)
