@@ -42,6 +42,18 @@
     },
     "security_summary": {
       "type": ["string", "null"]
+    },
+    "tool_version": {
+      "description": "Tool version that wrote this record (from package.json).",
+      "type": "string"
+    },
+    "prompts_hash": {
+      "description": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
+      "type": "string"
+    },
+    "model": {
+      "description": "First model of the latest cost record, else null when no cost record names one.",
+      "type": ["string", "null"]
     }
   },
   "required": [

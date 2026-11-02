@@ -114,6 +114,17 @@
       "required": ["sig", "status"],
       "additionalProperties": true
     },
+    "provenance": {
+      "description": "Review provenance triple: the tooling behind a run, so mixed-version histories never read as one series. The writer always emits all three keys; model is null when no cost record names one.",
+      "type": "object",
+      "properties": {
+        "tool_version": { "type": "string" },
+        "prompts_hash": { "type": "string" },
+        "model": { "type": ["string", "null"] }
+      },
+      "required": ["tool_version", "prompts_hash", "model"],
+      "additionalProperties": true
+    },
     "reportData": {
       "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, receipt keys only when budget.json parses.",
       "type": "object",
@@ -210,6 +221,11 @@
         "input_tokens": { "type": "integer", "minimum": 0 },
         "output_tokens": { "type": "integer", "minimum": 0 },
         "total_tokens": { "type": "integer", "minimum": 0 },
+        "cached_input_tokens": {
+          "description": "Summed per-model cache_read_input_tokens plus cache_creation_input_tokens; totals stay input + output exactly.",
+          "type": "integer",
+          "minimum": 0
+        },
         "est_usd": { "type": ["number", "null"] },
         "by_tier": { "$ref": "#/$defs/costTiers" },
         "receipts": {
@@ -306,6 +322,7 @@
         },
         "security_summary": { "type": ["string", "null"] },
         "payload_hash": { "type": "string" },
+        "provenance": { "$ref": "#/$defs/provenance" },
         "review": {
           "description": "Real-post only: the accepted GitHub review object.",
           "type": "object",

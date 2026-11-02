@@ -49,7 +49,15 @@
       "properties": {
         "name": { "type": "string" },
         "input_tokens": { "type": "number" },
-        "output_tokens": { "type": "number" }
+        "output_tokens": { "type": "number" },
+        "cache_read_input_tokens": {
+          "description": "Input tokens served from cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero.",
+          "type": ["number", "null"]
+        },
+        "cache_creation_input_tokens": {
+          "description": "Input tokens spent writing the cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero.",
+          "type": ["number", "null"]
+        }
       },
       "required": ["name"],
       "additionalProperties": true
