@@ -48,21 +48,6 @@ func scrub(s string) string {
 	return tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 }
 
-// scrubRoots normalizes the two sandbox roots and homes to placeholders.
-// The four roots are pairwise distinct temp dirs; replacement order puts
-// the longer (home) paths first so nested prefixes cannot shadow.
-func scrubRoots(s string, roots [4]string) string {
-	ordered := append([]string{}, roots[:]...)
-	slices.SortFunc(ordered, func(a, b string) int { return len(b) - len(a) })
-	for _, r := range ordered {
-		if r == "" {
-			continue
-		}
-		s = strings.ReplaceAll(s, r, "ROOT")
-	}
-	return s
-}
-
 // isGitPath skips .git internals (hashes and timestamps, never graded;
 // the evals grade worktree files, not the object store).
 func isGitPath(p string) bool {

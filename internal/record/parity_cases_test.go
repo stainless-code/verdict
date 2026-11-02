@@ -219,7 +219,7 @@ func matrixRereview(t *testing.T, n int) {
 	a := runOne(t, dirA, t.TempDir(), "record", "acme/app", "local-mx", "--json")
 	b := runOne(t, dirB, t.TempDir(), "record", "acme/app", "local-mx", "--json")
 	if a.status != 0 || b.status != 0 {
-		t.Fatalf("first pass failed: go=%d go=%d", a.status, b.status)
+		t.Fatalf("first pass failed: go=%d/%d", a.status, b.status)
 	}
 	mutateSecondPass(t, dirA)
 	mutateSecondPass(t, dirB)

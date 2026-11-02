@@ -245,7 +245,6 @@ func sideCommand(t *testing.T, args []string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-	//nolint:gosec // G204: the harness intentionally executes the CLI under test with fixture args.
 	return exec.CommandContext(t.Context(), bin, args...)
 }
 
@@ -286,25 +285,30 @@ func goldenBothEnv(t *testing.T, name string, slug string, setup func(t *testing
 func pinGolden(t *testing.T, name, dir string, out outputs) {
 	t.Helper()
 	files := map[string]string{}
-	err := filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
-		if err != nil || fi.IsDir() {
-			return err
-		}
-		raw, rerr := os.ReadFile(p)
-		if rerr != nil {
-			return rerr
-		}
-		rel, lerr := filepath.Rel(dir, p)
-		if lerr != nil {
-			return lerr
-		}
-		files["C/"+rel] = string(raw)
-		return nil
-	})
-	if err != nil {
+	if err := filepath.Walk(dir, collectGoldenFile(dir, files)); err != nil {
 		t.Fatal(err)
 	}
 	parity.Check(t, name, parity.Render(parity.Outputs{
 		Status: out.status, Stdout: out.stdout, Stderr: out.stderr, Files: files,
 	}, []string{dir}))
+}
+
+// collectGoldenFile returns a Walk callback recording one file's bytes
+// under the C/ tag, relative to root.
+func collectGoldenFile(root string, files map[string]string) filepath.WalkFunc {
+	return func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return err
+		}
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		files["C/"+rel] = string(raw)
+		return nil
+	}
 }

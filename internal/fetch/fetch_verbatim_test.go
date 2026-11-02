@@ -7,6 +7,8 @@ package fetch
 // tooling), so this unit test pins the Go side directly.
 import "testing"
 
+// TestCafeFullDiffVerbatim pins the cafe full.diff join against the
+// provider's patch bytes exactly.
 func TestCafeFullDiffVerbatim(t *testing.T) {
 	t.Parallel()
 	two := []any{

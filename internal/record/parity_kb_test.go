@@ -83,7 +83,7 @@ func sequenced(t *testing.T, name string, setup, mutate func(t *testing.T, dir s
 		a := runOne(t, dirA, t.TempDir(), full...)
 		b := runOne(t, dirB, t.TempDir(), full...)
 		if a.status != 0 || b.status != 0 {
-			t.Fatalf("phase 1 failed: go=%d go=%d\n%s\n%s", a.status, b.status, a.stderr, b.stderr)
+			t.Fatalf("phase 1 failed: go=%d/%d\n%s\n%s", a.status, b.status, a.stderr, b.stderr)
 		}
 		mutate(t, dirA)
 		mutate(t, dirB)

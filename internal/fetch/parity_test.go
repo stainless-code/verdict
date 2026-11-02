@@ -368,9 +368,12 @@ func runDumpCase(t *testing.T, setup func(t *testing.T, dir, home string), tc du
 func dumpFromEnvelope(t *testing.T, stdout string) string {
 	t.Helper()
 	doc := jsonDecode(t, stdout)
-	data, _ := doc["data"].(map[string]any)
-	dump, _ := data["prompt_dump"].(string)
-	if dump == "" {
+	data, ok := doc["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope carries no data object:\n%s", stdout)
+	}
+	dump, ok := data["prompt_dump"].(string)
+	if !ok || dump == "" {
 		t.Fatalf("envelope carries no prompt_dump:\n%s", stdout)
 	}
 	return dump

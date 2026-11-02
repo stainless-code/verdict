@@ -11,7 +11,7 @@
   },
   "envelope": {
     "descriptions": {
-      "": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in scripts/review.sh. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly) — the remaining verbs keep the generic object shape until their data stabilizes.",
+      "": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly) — the remaining verbs keep the generic object shape until their data stabilizes.",
       "/properties/pr": "Numeric PR, else null (local slugs never coerce).",
       "/$defs/error": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
       "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
@@ -26,7 +26,7 @@
   },
   "findings": {
     "descriptions": {
-      "": "What post/record write per bundle. Derived from validate_and_merge in scripts/review.sh: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
+      "": "What post/record write per bundle. Derived from validate_and_merge in the verdict CLI: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
       "/$defs/entry/properties/sig": "Stable cross-run join key: SHA-1 of path + heading + body, whitespace-squashed.",
       "/$defs/entry/properties/sig_version": "Normalization generation; backfilled onto older entries, never clobbered.",
       "/$defs/entry/properties/path": "Inline findings only.",
@@ -40,7 +40,7 @@
   },
   "post": {
     "descriptions": {
-      "": "Written only by the real-post path in scripts/review.sh (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
+      "": "Written only by the real-post path in the verdict CLI (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
       "/properties/review": "Raw GitHub review object: id, html_url and whatever the API returned.",
       "/properties/head": "Reviewed commit SHA; doubles as the single-review finalizer key.",
       "/properties/posted_at": "UTC timestamp of the completed post.",
@@ -51,7 +51,7 @@
   },
   "record": {
     "descriptions": {
-      "": "Written by the record verb in scripts/review.sh for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
+      "": "Written by the record verb in the verdict CLI for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
       "/properties/status": "Bundle provider that was recorded (e.g. local).",
       "/properties/head": "Reviewed SHA (real head_sha, or \"dirty\"/\"unknown\" when the bundle has none).",
       "/properties/diff_sha256": "SHA-256 of full.diff at record time.",
@@ -65,7 +65,7 @@
   },
   "review": {
     "descriptions": {
-      "": "What the agent writes and post/record validate. Derived from validate_and_merge in scripts/review.sh and the review.json block in docs/manual.md: unknown schema_version refuses, missing warns; out-of-range confidence and non-string security_summary warn-and-drop; unknown anchor paths and non-numeric anchors are kept with a warning, provably-outside anchors move to the body; unknown rigor/severity values fall back (pointed/null). Unknown top-level keys are ignored by the script, so this schema allows them.",
+      "": "What the agent writes and post/record validate. Derived from validate_and_merge in the verdict CLI and the review.json block in docs/manual.md: unknown schema_version refuses, missing warns; out-of-range confidence and non-string security_summary warn-and-drop; unknown anchor paths and non-numeric anchors are kept with a warning, provably-outside anchors move to the body; unknown rigor/severity values fall back (pointed/null). Unknown top-level keys are ignored by the CLI, so this schema allows them.",
       "/properties/schema_version": "Agents stamp \"1\"; post/record refuse anything else.",
       "/properties/body": "Full review text, verdict marker first line.",
       "/properties/approved": "Binding ask; the CLI --bind/--request-changes flags win over this.",

@@ -12,12 +12,16 @@ package main
 // stdout by -h/--help (exit 0) and to stderr by the arity gate
 // (exit 2).
 func usageText() string {
-	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install [opts]\n" +
-		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
-		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} (PR.json normalized for non-github providers)\n" +
+	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
+		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install [opts]\n" +
+		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
+		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
+		"(PR.json normalized for non-github providers)\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.\n" +
-		"    Chunking opt-in only: --chunk (or .review/chunk holding true) marks over-cap fetches for chunked slicing (override chain wins; absent reads today's refusal).\n" +
+		"    Chunking opt-in only: --chunk (or .review/chunk holding true) marks over-cap fetches for " +
+		"chunked slicing (override chain wins; absent reads today's refusal).\n" +
 		"    With REVIEW_BUDGET_USD (or .review/budget) set, fetch prints a pre-run\n" +
 		"    cost estimate from comparable past runs and refuses projected-over-budget\n" +
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
@@ -57,11 +61,13 @@ func usageText() string {
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
 		"  report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]\n" +
-		"        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] [--live auto|strict|skip] [--json]\n" +
+		"        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] " +
+		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
 		"    --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.\n" +
-		"    --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; stratified by effort tier).\n" +
+		"    --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; " +
+		"stratified by effort tier).\n" +
 		"    Consented over-budget receipts from .review/<pr>/budget.json surface here when present.\n" +
 		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
 		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
@@ -200,7 +206,9 @@ func usageText() string {
 		"  layout, color) plus publish (footer receipt + leveled attribution + logo +\n" +
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
-		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: stdout is exactly one JSON envelope (schema_version 1);\n" +
+		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
+		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: " +
+		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n"
 }
 
@@ -223,7 +231,7 @@ func arityUsage(cmd, repo, pr string) bool {
 	if bareVerbs[cmd] {
 		return false
 	}
-	if cmd == "trend" {
+	if cmd == cmdTrend {
 		return repo == ""
 	}
 	return repo == "" || pr == ""

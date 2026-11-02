@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/verify"
 )
 
@@ -247,8 +248,8 @@ func gateBattery(t *testing.T) []batteryRow {
 type batteryRow struct {
 	id     string
 	cmd    string
-	strict bool
 	expect string
+	strict bool
 }
 
 // updateGateGolden regenerates the gate golden file instead of comparing.
@@ -264,34 +265,45 @@ func TestGateGolden(t *testing.T) {
 	got := make([]string, 0, len(battery))
 	for _, b := range battery {
 		ref := verify.Check(b.cmd)
-		code := "CLEAN"
+		got = append(got, b.id+"\t"+gateVerdict(ref))
+		checkStrictRow(t, b, ref)
+	}
+	assertGateGolden(t, got)
+}
+
+// gateVerdict renders one gate result as its refusal code or CLEAN.
+func gateVerdict(ref *cli.RefusalError) string {
+	if ref != nil {
+		return ref.Code
+	}
+	return "CLEAN"
+}
+
+// checkStrictRow asserts a strict row's corpus expectation.
+func checkStrictRow(t *testing.T, b batteryRow, ref *cli.RefusalError) {
+	t.Helper()
+	switch {
+	case !b.strict:
+		return
+	case b.expect == "PASS":
 		if ref != nil {
-			code = ref.Code
+			t.Errorf("%s %q: gate refuses %q, want PASS", b.id, b.cmd, ref.Code)
 		}
-		got = append(got, b.id+"\t"+code)
-		if b.strict {
-			if b.expect == "PASS" && ref != nil {
-				t.Errorf("%s %q: gate refuses %q, want PASS", b.id, b.cmd, ref.Code)
-			}
-			if b.expect != "PASS" && (ref == nil || ref.Code != b.expect) {
-				actual := "CLEAN"
-				if ref != nil {
-					actual = ref.Code
-				}
-				t.Errorf("%s %q: gate gives %q, want %q", b.id, b.cmd, actual, b.expect)
-			}
+	default:
+		if actual := gateVerdict(ref); actual != b.expect {
+			t.Errorf("%s %q: gate gives %q, want %q", b.id, b.cmd, actual, b.expect)
 		}
 	}
+}
+
+// assertGateGolden compares the rendered rows with the checked-in golden,
+// regenerating it under -update.
+func assertGateGolden(t *testing.T, got []string) {
+	t.Helper()
 	const path = "testdata/gate.golden"
 	rendered := strings.Join(got, "\n") + "\n"
 	if *updateGateGolden {
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("updated %s (%d rows)", path, len(got))
+		writeGateGolden(t, path, rendered, len(got))
 		return
 	}
 	want, err := os.ReadFile(path)
@@ -301,4 +313,16 @@ func TestGateGolden(t *testing.T) {
 	if string(want) != rendered {
 		t.Errorf("gate golden differs (%d rows): run with -update to regenerate, then review the diff", len(got))
 	}
+}
+
+// writeGateGolden regenerates the gate golden file.
+func writeGateGolden(t *testing.T, path, rendered string, rows int) {
+	t.Helper()
+	if err := os.MkdirAll("testdata", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("updated %s (%d rows)", path, rows)
 }

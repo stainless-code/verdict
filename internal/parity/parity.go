@@ -35,9 +35,6 @@ const (
 	filePerm = 0o600
 	// maxRootDepth bounds the walk-up search for the checkout root.
 	maxRootDepth = 10
-	// numRoots is the [sandbox, home] x [bash, go] root count scrubbed
-	// to placeholders before comparison.
-	numRoots = 4
 	// stubPerm marks the gh stub executable; the stub must run first on
 	// PATH for the network-dead hermetic runs.
 	stubPerm = 0o755
@@ -324,7 +321,7 @@ func repoRoot() string {
 		return "."
 	}
 	dir := filepath.Dir(file)
-	for range 10 {
+	for range maxRootDepth {
 		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
 			return dir
 		}
@@ -429,7 +426,6 @@ func keepEnv(kv string, extraEnv map[string]string) bool {
 // written tree. extraEnv overlays additional variables.
 func (h *Harness) Run(t *testing.T, dir, home string, extraEnv map[string]string, args ...string) Outputs {
 	t.Helper()
-	//nolint:gosec // G204: the harness intentionally executes the CLI under test with fixture args.
 	bin := filepath.Join(h.BinDir, "verdict")
 	if runtime.GOOS == osWindows {
 		bin += ".exe"

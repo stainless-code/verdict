@@ -115,13 +115,16 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 // readHandler is the shared signature of the read-only verbs.
 type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
 
+// cmdTrend names the trend verb (revive goconst: no repeated literals).
+const cmdTrend = "trend"
+
 // readVerbs maps each read-only verb to its handler.
 var readVerbs = map[string]readHandler{
 	"report":     report.Run,
 	"next":       report.RunNext,
 	"show":       report.RunShow,
 	"ready":      ready.Run,
-	"trend":      trend.Run,
+	cmdTrend:     trend.Run,
 	"calibrate":  calibrate.Run,
 	"doctor":     doctor.Run,
 	"check-tree": checktree.Run,
@@ -205,7 +208,7 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	if bareVerbs[cmd] {
 		return cmd, "", "", args
 	}
-	if cmd == "trend" {
+	if cmd == cmdTrend {
 		if len(args) > 0 {
 			repo, rest = args[0], args[1:]
 		}

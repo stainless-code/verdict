@@ -16,6 +16,15 @@ import (
 	"testing"
 )
 
+// Golden-file constants (revive add-constant: no literals in production
+// code).
+const (
+	// newline terminates every rendered golden line.
+	newline = "\n"
+	// goldenPerm keeps regenerated goldens owner read/write, per gosec G306.
+	goldenPerm = 0o600
+)
+
 // updateGolden regenerates testdata goldens instead of comparing.
 var updateGolden = flag.Bool("update", false, "regenerate testdata golden files")
 
@@ -32,7 +41,7 @@ func Golden(
 	t.Helper()
 	dir := t.TempDir()
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, 0o755); err != nil {
+	if err := os.MkdirAll(home, dirPerm); err != nil {
 		t.Fatal(err)
 	}
 	setup(t, dir, home)
@@ -49,13 +58,13 @@ func Render(out Outputs, roots []string) string {
 	sb.WriteString("exit: " + strconv.Itoa(out.Status) + "\n")
 	sb.WriteString("--- stdout ---\n")
 	sb.WriteString(scrub(scrubRoots(out.Stdout, roots)))
-	if !strings.HasSuffix(out.Stdout, "\n") {
-		sb.WriteString("\n")
+	if !strings.HasSuffix(out.Stdout, newline) {
+		sb.WriteString(newline)
 	}
 	sb.WriteString("--- stderr ---\n")
 	sb.WriteString(scrub(scrubRoots(out.Stderr, roots)))
-	if !strings.HasSuffix(out.Stderr, "\n") {
-		sb.WriteString("\n")
+	if !strings.HasSuffix(out.Stderr, newline) {
+		sb.WriteString(newline)
 	}
 	sb.WriteString("--- files ---\n")
 	keys := make([]string, 0, len(out.Files))
@@ -66,8 +75,8 @@ func Render(out Outputs, roots []string) string {
 	for _, k := range keys {
 		sb.WriteString("--- file " + filepath.ToSlash(k) + " ---\n")
 		sb.WriteString(scrub(scrubRoots(out.Files[k], roots)))
-		if !strings.HasSuffix(out.Files[k], "\n") {
-			sb.WriteString("\n")
+		if !strings.HasSuffix(out.Files[k], newline) {
+			sb.WriteString(newline)
 		}
 	}
 	return sb.String()
@@ -79,10 +88,10 @@ func Check(t *testing.T, name, got string) {
 	t.Helper()
 	path := filepath.Join("testdata", name+".golden")
 	if *updateGolden {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(got), goldenPerm); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("updated %s", path)

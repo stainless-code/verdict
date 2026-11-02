@@ -20,8 +20,8 @@ import (
 )
 
 // edgeRun executes verify.Run in dir with a private HOME, returning exit
-// code plus captured stdout/stderr. args are the post-positional flags.
-func edgeRun(t *testing.T, dir, home string, env map[string]string, jsonMode bool, args ...string) (int, string, string) {
+// code plus captured stdout. args are the post-positional flags.
+func edgeRun(t *testing.T, dir, home string, env map[string]string, jsonMode bool, args ...string) (int, string) {
 	t.Helper()
 	t.Chdir(dir)
 	t.Setenv("HOME", home)
@@ -44,7 +44,7 @@ func edgeRun(t *testing.T, dir, home string, env map[string]string, jsonMode boo
 	code := verify.Run(context.Background(), r, args, verify.Request{
 		Env: full, Repo: "acme/app", Pr: "5201", Root: dir,
 	})
-	return code, out.String(), derr.String()
+	return code, out.String()
 }
 
 // edgePatch writes patch.json carrying the verifyCmd.
@@ -54,7 +54,10 @@ func edgePatch(t *testing.T, dir, cmd string) {
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	doc, _ := json.Marshal(map[string]string{"verifyCmd": cmd})
+	doc, err := json.Marshal(map[string]string{"verifyCmd": cmd})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(bdir, "patch.json"), doc, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +83,7 @@ func edgeRecord(t *testing.T, dir string) map[string]any {
 func TestVerifyContractTimeoutTreeKill(t *testing.T) {
 	dir := t.TempDir()
 	edgePatch(t, dir, `trap '' TERM; (trap '' TERM; sleep 30) & sleep 30`)
-	code, _, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "2")
+	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "2")
 	rec := edgeRecord(t, dir)
 	if rec["timedOut"] != true {
 		t.Fatalf("timedOut = %v exit = %d, want true\n%v", rec["timedOut"], code, rec)
@@ -93,7 +96,7 @@ func TestVerifyContractTimeoutTreeKill(t *testing.T) {
 func TestVerifyContractOrphanSweep(t *testing.T) {
 	dir := t.TempDir()
 	edgePatch(t, dir, `(sleep 30 &)`)
-	code, _, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "3")
+	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "3")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (decoy exit)", code)
 	}
@@ -110,13 +113,13 @@ func TestVerifyContractRedaction(t *testing.T) {
 	dir := t.TempDir()
 	edgePatch(t, dir, `printf '%s' "$EVAL_PROBE_TOKEN"`)
 	env := map[string]string{"EVAL_PROBE_TOKEN": "supersecretvalue123"}
-	code, _, _ := edgeRun(t, dir, t.TempDir(), env, true, "--json", "--timeout", "10")
+	code, _ := edgeRun(t, dir, t.TempDir(), env, true, "--json", "--timeout", "10")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	rec := edgeRecord(t, dir)
-	tail, _ := rec["verifiedTail"].(string)
-	if tail == "" {
+	tail, ok := rec["verifiedTail"].(string)
+	if !ok || tail == "" {
 		t.Fatalf("recorded tail empty, want redacted output\n%v", rec)
 	}
 	if strings.Contains(tail, "supersecretvalue123") {
@@ -136,7 +139,7 @@ func TestVerifyContractRedaction(t *testing.T) {
 func TestVerifyContractNoColor(t *testing.T) {
 	dir := t.TempDir()
 	edgePatch(t, dir, `printf '%s' "$NO_COLOR"`)
-	code, _, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
+	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -151,7 +154,7 @@ func TestVerifyContractNoColor(t *testing.T) {
 func TestVerifyContractStdinClosed(t *testing.T) {
 	dir := t.TempDir()
 	edgePatch(t, dir, `read -r line || true`)
-	code, _, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
+	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -165,10 +168,31 @@ func TestVerifyContractStdinClosed(t *testing.T) {
 // no-write shape, plus the timeout flag and unknown-flag usage errors.
 func TestVerifyContractBundleGates(t *testing.T) {
 	dir := t.TempDir()
-	code, stdout, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
-	if code != 1 || edgeCode(stdout) != "missing-patch" {
-		t.Fatalf("missing patch exit = %d code = %q, want 1/missing-patch\n%s", code, edgeCode(stdout), stdout)
+	assertGateRefusal(t, dir, "missing-patch")
+	writeBarePatch(t, dir)
+	assertGateRefusal(t, dir, "no-verify-cmd")
+	edgePatch(t, dir, "")
+	assertGateRefusal(t, dir, "no-verify-cmd")
+	edgePatch(t, dir, `printf ok`)
+	assertBadTimeouts(t, dir)
+	code, _ := edgeRun(t, dir, t.TempDir(), nil, false, "--bogus")
+	if code != 2 {
+		t.Fatalf("unknown flag exit = %d, want 2", code)
 	}
+}
+
+// assertGateRefusal pins one bundle-gate refusal code.
+func assertGateRefusal(t *testing.T, dir, want string) {
+	t.Helper()
+	code, stdout := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
+	if code != 1 || edgeCode(stdout) != want {
+		t.Fatalf("exit = %d code = %q, want 1/%s\n%s", code, edgeCode(stdout), want, stdout)
+	}
+}
+
+// writeBarePatch writes an empty patch.json, exercising the missing-cmd gate.
+func writeBarePatch(t *testing.T, dir string) {
+	t.Helper()
 	bdir := filepath.Join(dir, ".review", "5201")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
@@ -176,25 +200,16 @@ func TestVerifyContractBundleGates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bdir, "patch.json"), []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, _ = edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
-	if code != 1 || edgeCode(stdout) != "no-verify-cmd" {
-		t.Fatalf("empty patch exit = %d code = %q, want 1/no-verify-cmd\n%s", code, edgeCode(stdout), stdout)
-	}
-	edgePatch(t, dir, "")
-	code, stdout, _ = edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
-	if code != 1 || edgeCode(stdout) != "no-verify-cmd" {
-		t.Fatalf("empty cmd exit = %d code = %q, want 1/no-verify-cmd\n%s", code, edgeCode(stdout), stdout)
-	}
-	edgePatch(t, dir, `printf ok`)
+}
+
+// assertBadTimeouts pins the timeout-flag refusals.
+func assertBadTimeouts(t *testing.T, dir string) {
+	t.Helper()
 	for _, timeout := range []string{"0", "abc", "-5"} {
-		code, stdout, _ = edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", timeout)
+		code, stdout := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", timeout)
 		if code != 1 || edgeCode(stdout) != "bad-timeout" {
 			t.Fatalf("timeout %q exit = %d code = %q, want 1/bad-timeout\n%s", timeout, code, edgeCode(stdout), stdout)
 		}
-	}
-	code, _, _ = edgeRun(t, dir, t.TempDir(), nil, false, "--bogus")
-	if code != 2 {
-		t.Fatalf("unknown flag exit = %d, want 2", code)
 	}
 }
 
@@ -204,7 +219,13 @@ func edgeCode(stdout string) string {
 	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 		return "undecodable: " + stdout
 	}
-	e, _ := doc["error"].(map[string]any)
-	c, _ := e["code"].(string)
+	e, ok := doc["error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	c, ok := e["code"].(string)
+	if !ok {
+		return ""
+	}
 	return c
 }
