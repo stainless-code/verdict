@@ -3899,8 +3899,13 @@ fi
 live_open_thread_count() { # $1 = owner/repo, $2 = pr
   local _lotc_repo="$1" _lotc_pr="$2"
   local _lotc_owner="${_lotc_repo%%/*}" _lotc_name="${_lotc_repo##*/}"
-  local _lotc_threads _lotc_open
-  if ! _lotc_threads=$(gh api graphql --paginate -F owner="$_lotc_owner" -F name="$_lotc_name" -F pr="$_lotc_pr" -f query='
+  local _lotc_raw _lotc_threads _lotc_open
+  # gh first, alone: a failing gh prints its error document to stdout, and
+  # piping that into jq would leak a downstream `jq: error ... Cannot
+  # iterate over null` into the caller's probe err file beside gh's own
+  # stderr. The Go port reads gh's stderr only, so jq never runs here on a
+  # gh failure (and its own stderr stays silenced below).
+  if ! _lotc_raw=$(gh api graphql --paginate -F owner="$_lotc_owner" -F name="$_lotc_name" -F pr="$_lotc_pr" -f query='
       query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
         repository(owner:$owner, name:$name) {
           pullRequest(number:$pr) {
@@ -3909,7 +3914,10 @@ live_open_thread_count() { # $1 = owner/repo, $2 = pr
             }
           }
         }
-      }' | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]'); then
+      }'); then
+    return 1
+  fi
+  if ! _lotc_threads=$(jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]' <<<"$_lotc_raw" 2>/dev/null); then
     return 1
   fi
   _lotc_open=$(jq '[.[] | select(.isResolved == false)] | length' <<<"$_lotc_threads" 2>/dev/null || echo 0)

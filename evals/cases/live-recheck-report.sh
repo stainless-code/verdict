@@ -328,5 +328,47 @@ else
   bad "dirty local exits $EVAL_STATUS with $(graphql_since "$m") call(s)"
 fi
 
+# --- G6: real-failing-gh warn parity (F15) ---
+# A real failing gh prints its error document to stdout (gh api prints the
+# response body there) while the human message goes to stderr. The warn line
+# must carry only gh's stderr — never a downstream `jq: error ... Cannot
+# iterate over null` from slurping that stdout (Go prints gh's stderr only;
+# R1: the bash crash noise is not contract, so the shell was fixed to match).
+PR=4291
+eval_mk_bundle "$PR"
+printf '[]' | eval_write_findings "$PR"
+live_mk_post "$PR" "$HEAD_A"
+cat > "$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' '{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest","status":"401"}'
+  echo "evals-stub-gh: Bad credentials (HTTP 401)" >&2
+  exit 1
+fi
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+run_review report acme/app "$PR" --check critical --completeness --json
+if [ "$EVAL_STATUS" -eq 0 ]; then
+  good "stdout-error gh on a clean bundle stays exit 0 (neutral)"
+else
+  bad "stdout-error gh exits $EVAL_STATUS, want 0"
+fi
+if grep -q "live thread recheck unreachable" "$EVAL_ERR" \
+  && grep -q "evals-stub-gh: Bad credentials (HTTP 401)" "$EVAL_ERR" \
+  && ! grep -q "jq: error" "$EVAL_ERR"; then
+  good "warn carries only gh's stderr (no downstream jq crash)"
+else
+  bad "stdout-error gh stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+if jq -e '.warnings | join(" ") | contains("evals-stub-gh: Bad credentials (HTTP 401)")' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && ! jq -e '.warnings | join(" ") | contains("jq: error")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "envelope warnings match the clean human warn"
+else
+  bad "stdout-error gh envelope warnings: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
+fi
+
 if [ "$fails" -ne 0 ]; then echo "case live-recheck-report: FAIL ($fails)"; exit 1; fi
 echo "case live-recheck-report: PASS"
