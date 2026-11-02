@@ -183,7 +183,7 @@ func usageText() string {
 		"    under review: `.review/` is created in the current directory, never\n" +
 		"    beside the tool. The CLI lives at `<tool>/scripts/verdict` — the\n" +
 		"    checkout for symlink installs, the installed `verdict/` skill dir for\n" +
-		"    registry and copy installs (both ship `scripts/`). The install.sh\n" +
+		"    registry and copy installs (both ship `scripts/`). The install-skill.sh\n" +
 		"    symlink route stays the wide-coverage sibling for git checkouts only\n" +
 		"    (nine agents, --detect/--all).\n" +
 		"  Global presentation flags (any verb; stripped before verb parsing):\n" +

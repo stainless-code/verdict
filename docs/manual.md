@@ -594,24 +594,50 @@ migration, no env removed.
 
 ## Install routes and where commands run
 
-One execution model across all three routes. Run the CLI from the repo
-under review: `.review/` is created in the current directory, never
-beside the tool. The CLI is the `verdict` binary — `bin/verdict` in a
-checkout (`make build`), carried beside the skill payload for registry and
-copy installs. Caller tracing, test
-checks, and `verify` all run repo-scoped in that directory, so reviewing
-another repo means running from its checkout (or accepting that the bundle
-lands wherever you stand).
+One execution model across every route. Run the CLI from the repo under
+review: `.review/` is created in the current directory, never beside the
+tool. The CLI is the `verdict` binary. Caller tracing, test checks, and
+`verify` all run repo-scoped in that directory, so reviewing another repo
+means running from its checkout (or accepting that the bundle lands wherever
+you stand).
 
+- **Binary** (`install.sh` / `install.ps1`, the default): the script fetches
+  one release archive, `checksums.txt`, and `checksums.txt.sigstore.json`,
+  verifies the cosign identity/issuer over the checksums and the archive
+  SHA-256, extracts only `verdict`, and atomically renames a staged file over
+  the target. `$VERDICT_INSTALL/verdict` is the binary (default
+  `~/.verdict/bin/verdict`); `$VERDICT_INSTALL/.verdict-installer` is the
+  installer receipt. No root is needed or requested. Any verification failure
+  leaves the old binary in place; the download is never executed before
+  verification. When cosign is present the sigstore bundle is mandatory.
+  Without cosign the installer warns loudly and verifies the checksum only;
+  `VERDICT_REQUIRE_SIGNATURE=1` (Windows: `-RequireSignature`) fails closed.
+  `VERDICT_VERSION` pins a release (`vX.Y.Z` accepted); the default `latest`
+  resolves through the Releases redirect, never the rate-limited API (Windows
+  `-Version`). `VERDICT_DOWNLOAD_URL` overrides the release base for mirrors.
+  PATH is touched only by appending one marked line (`# verdict installer`)
+  when the install dir is missing; `VERDICT_NO_MODIFY_PATH=1` or
+  `--no-modify-path` (Windows `-NoModifyPath`) opts out, and `install.ps1`
+  updates the user PATH only. Offline installs pass a local archive
+  (`install.sh ./verdict_1.2.3_linux_amd64.tar.gz`) with its sibling
+  `checksums.txt` and optional bundle, or point `VERDICT_DOWNLOAD_URL` at a
+  `file://` mirror; local-file installs make no network call.
+  `install.sh --uninstall [--remove-path]` and Windows
+  `install.ps1 -Uninstall [-RemovePath]` remove only installer-managed files
+  and their own PATH line;
+  a `verdict` without the receipt is refused as foreign. The scripts are
+  release assets, not npm tarball contents.
 - **Registry** (`npx skills add stainless-code/verdict`): the skill copy
   carries the CLI — no further install step. `install.sh` is not shipped in
   the npm tarball and never runs here; invoke the bundled
   `<skillsdir>/verdict/bin/verdict` from the repo under review.
   Refresh with `npx skills update`.
-- **Source checkout** (`git clone` + `./install.sh`): symlinks the checkout
-  into the agent skill dirs (nine agents, `--detect`/`--all`,
-  doctor-gated). Updates via `git pull`; `install.sh` refuses outside a git
-  checkout. `hooks/pre-commit` wiring applies to the checkout only.
+- **Source checkout** (`git clone` + `make build` + `./install-skill.sh`):
+  symlinks the checkout into the agent skill dirs (nine agents,
+  `--detect`/`--all`, doctor-gated). Updates via `git pull`;
+  `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
+  wiring applies to the checkout only. (Before 0.4 this script was named
+  `install.sh`; the name now belongs to the binary installer.)
 - **Copy** (`verdict install --yes` from any tool root):
   copies the payload (`SKILL.md` + `prompts/` + `scripts/`) into the
   de-facto skill dirs (`.agents/skills`, `.claude/skills`, `.codex/skills`,

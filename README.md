@@ -20,10 +20,51 @@ Run `verdict doctor` to preflight (`make build` writes `bin/verdict`).
 
 ## Install
 
-One execution model everywhere. Run the CLI from the repo under review:
-`.review/` is created in the current directory, never beside the tool. The
-CLI is the `verdict` binary — `bin/verdict` in a checkout (`make build`),
-carried beside the skill payload for registry and copy installs.
+The default install is one verified command. It puts `verdict` in
+`~/.verdict/bin`, checks the release before installing, and never needs root
+or a daemon.
+
+```bash
+# macOS / Linux (sh, bash, zsh, dash, ash)
+curl -fsSL https://github.com/stainless-code/verdict/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/stainless-code/verdict/releases/latest/download/install.ps1 | iex
+```
+
+Pin a version with `VERDICT_VERSION=vX.Y.Z` (Windows: `-Version vX.Y.Z`).
+`VERDICT_INSTALL` picks another directory (default `~/.verdict/bin`).
+The installer fetches the archive, `checksums.txt`, and the sigstore bundle,
+verifies the cosign identity/issuer and the archive SHA-256, extracts only
+`verdict`, fsyncs, and atomically renames a staged file over the target. Any
+failure leaves the old binary in place. Without cosign it warns loudly and
+verifies the checksum only; `VERDICT_REQUIRE_SIGNATURE=1` fails closed. It
+never executes the download before verification, and it never evals release
+metadata.
+
+PATH: the installer appends one marked line (`# verdict installer`) to your
+shell config only when the install dir is missing. `VERDICT_NO_MODIFY_PATH=1`
+or `--no-modify-path` skips that; `install.ps1` uses the user PATH and the
+same opt-outs (`-NoModifyPath`).
+
+Offline / air-gapped mirrors, and local archives with their sibling checksums:
+
+```bash
+VERDICT_DOWNLOAD_URL=file:///srv/verdict/releases sh install.sh
+sh install.sh ./verdict_1.2.3_linux_amd64.tar.gz
+```
+
+A local archive needs the sibling `checksums.txt` (and, when cosign is
+present, `checksums.txt.sigstore.json`). Uninstall removes only
+installer-managed files and, with `--remove-path`, its own PATH line:
+
+```bash
+sh install.sh --uninstall --remove-path
+# Windows
+./install.ps1 -Uninstall -RemovePath
+```
+
+### Other routes
 
 Pick one route per machine (two copies = double-loaded skill):
 
@@ -38,44 +79,47 @@ npx skills check    # report outdated, change nothing
 npx skills update   # update everything in scope (add -g for global)
 
 # source route (symlink into a git checkout; `git pull` updates, no updater
-# daemon by design). install.sh runs only from a checkout — it refuses
+# daemon by design). install-skill.sh runs only from a checkout — it refuses
 # anywhere else.
 git clone https://github.com/stainless-code/verdict.git
 cd verdict
-./install.sh
+make build
+./install-skill.sh
 ```
 
-`install.sh` runs `doctor` first. A bare run links `~/.agents/skills`, the shared
-standard dir. `--detect` adds every agent with an existing skills setup.
-`--all` links all nine known agents (`~/.agents`, `~/.claude`, `~/.cursor`,
-`~/.config/opencode`, `~/.copilot`, `~/.gemini`, `~/.config/goose`, `~/.qwen`,
-`~/.codeium/windsurf`; XDG and `CLAUDE_CONFIG_DIR` aware). Install.sh skips
-occupied slots, never overwrites without `--force`, and never touches a foreign
-`core.hooksPath`. It never re-links an agent you removed. Explicit removals stick:
+`install-skill.sh` runs `doctor` first. A bare run links `~/.agents/skills`,
+the shared standard dir. `--detect` adds every agent with an existing skills
+setup. `--all` links all nine known agents (`~/.agents`, `~/.claude`,
+`~/.cursor`, `~/.config/opencode`, `~/.copilot`, `~/.gemini`,
+`~/.config/goose`, `~/.qwen`, `~/.codeium/windsurf`; XDG and
+`CLAUDE_CONFIG_DIR` aware). It skips occupied slots, never overwrites without
+`--force`, and never touches a foreign `core.hooksPath`. It never re-links an
+agent you removed. Explicit removals stick:
 
 ```bash
-./install.sh --agent cursor            # link one agent
-./install.sh --dir ~/.foo/skills       # link any other agent's skills dir
-./install.sh --project ~/work/repo     # link into a repo's .agents/skills
-./install.sh --detect                  # standard dir plus installed agents
-./install.sh --all                     # every known agent
-./install.sh --list                    # link status, no changes
-./install.sh --check                   # doctor + verify links
-./install.sh --force --agent cursor    # replace an occupied slot
-./install.sh --uninstall               # remove our links (foreign files untouched)
-./install.sh --uninstall --agent cursor
+./install-skill.sh --agent cursor            # link one agent
+./install-skill.sh --dir ~/.foo/skills       # link any other agent's skills dir
+./install-skill.sh --project ~/work/repo     # link into a repo's .agents/skills
+./install-skill.sh --detect                  # standard dir plus installed agents
+./install-skill.sh --all                     # every known agent
+./install-skill.sh --list                    # link status, no changes
+./install-skill.sh --check                   # doctor + verify links
+./install-skill.sh --force --agent cursor    # replace an occupied slot
+./install-skill.sh --uninstall               # remove our links (foreign files untouched)
+./install-skill.sh --uninstall --agent cursor
 ```
 
 Anything else on the
 [agent list](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)
 is one `npx skills add -a <agent>` away.
 
-Operator verbs (offline, same preview-then-confirm idiom): scaffold repo controls
-with `verdict init --preset standard --yes`, and copy the skill payload
-(`SKILL.md` + `prompts/` + `scripts/`) with `verdict install --yes` (detects
-`.agents/skills`, `.claude/skills`, `.codex/skills`; only writes installer-owned
-`verdict/` dirs). The `install.sh` symlink route is the wide-coverage sibling
-for git checkouts only (nine agents, `--detect`/`--all`).
+Operator verbs (offline, same preview-then-confirm idiom): scaffold repo
+controls with `verdict init --preset standard --yes`, and copy the skill
+payload (`SKILL.md` + `prompts/` + `scripts/`) with `verdict install --yes`
+(detects `.agents/skills`, `.claude/skills`, `.codex/skills`; only writes
+installer-owned `verdict/` dirs). The `install-skill.sh` symlink route is the
+wide-coverage sibling for git checkouts only (nine agents,
+`--detect`/`--all`).
 
 ## Security
 
@@ -117,7 +161,9 @@ verdict record owner/repo local-work  # validate anchors, merge store
 ```
 verdict/
   SKILL.md            # skill entry point (feed to any agent)
-  install.sh          # doctor-gated symlink installer (re-run to update)
+  install.sh          # verified binary installer (macOS/Linux release asset)
+  install.ps1         # verified binary installer (Windows release asset)
+  install-skill.sh    # doctor-gated symlink installer for checkouts (re-run to update)
   CHANGELOG.md        # release notes (changesets); verdict --version reads package.json
   docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
   apps/docs/          # Blume docs site (index + manual mirror, deploys to /verdict/)
@@ -131,7 +177,9 @@ verdict/
 
 No auto-updater, by design (no network surprises from a review tool):
 
-- symlink install → `git pull` (links stay current; re-run `install.sh` after renames),
+- binary install → re-run the installer (or `verdict upgrade` when it ships),
+- symlink install → `git pull` (links stay current; re-run `install-skill.sh`
+  after renames),
 - registry install → re-run `npx skills add stainless-code/verdict`.
 
 ## Versioning
@@ -177,7 +225,7 @@ blocks stay tidy, and prompt examples are never reflowed. We commit no formatter
 (Bun is already the house runtime); we leave prose line length unmanaged
 (renderers and agents don't care).
 Contributors: run `bun fmt --check .` before pushing; fix only what it flags outside
-`prompts/` examples. `install.sh` wires `hooks/pre-commit` (formatting plus
+`prompts/` examples. `install-skill.sh` wires `hooks/pre-commit` (formatting plus
 `shellcheck -S warning` over staged shell files; check-only, never rewrites),
 so the gates run automatically on every commit.
 

@@ -12,12 +12,12 @@
 #       into the cwd target repo, never beside the tool.
 #   R3  README routes honestly: the registry block says install.sh is not
 #       shipped and never tells registry users to run ./install.sh (that
-#       command appears only in the source-checkout route).
+#       command appears only in the binary/source-checkout routes).
 #   R4  SKILL.md resolves from any install: the resolution rule is stated,
 #       and every scripts/… or prompts/… path it names exists inside the
 #       installed copy layout, not just the checkout.
-#   R5  install.sh is checkout-only: it refuses outside a git checkout with
-#       a typed hint, and --list still passes inside the checkout.
+#   R5  install-skill.sh is checkout-only: it refuses outside a git checkout
+#       with a typed hint, and --list still passes inside the checkout.
 #   R6  offline: zero stub-gh intercepts across every leg.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -137,32 +137,32 @@ if [ "$refs_ok" = "true" ]; then
   good "every SKILL.md script/prompt path resolves inside the installed copy"
 fi
 
-# --- R5: install.sh links checkouts only ---
+# --- R5: install-skill.sh links checkouts only ---
 # The fixture lives outside the shared sandbox: chunk-* cases git-init the
 # sandbox root itself, so anything under it counts as inside a work tree.
 NOGIT_BASE="$(mktemp -d "${TMPDIR:-/tmp}/verdict-nogit.XXXXXX")"
 NOGIT="$NOGIT_BASE/nogit"
 mkdir -p "$NOGIT"
-cp "$EVAL_ROOT/install.sh" "$EVAL_ROOT/SKILL.md" "$NOGIT/"
+cp "$EVAL_ROOT/install-skill.sh" "$EVAL_ROOT/SKILL.md" "$NOGIT/"
 mkdir -p "$NOGIT/scripts"
 cp "$EVAL_ROOT"/scripts/*.sh "$NOGIT/scripts/"
 set +e
-(cd "$NOGIT" && HOME="$HOME" bash ./install.sh --check </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+(cd "$NOGIT" && HOME="$HOME" bash ./install-skill.sh --check </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
 nogit_status=$?
 set -e
 if [ "$nogit_status" -ne 0 ] && grep -q "git checkout" "$EVAL_ERR"; then
-  good "install.sh refuses outside a git checkout with a typed hint"
+  good "install-skill.sh refuses outside a git checkout with a typed hint"
 else
-  bad "install.sh outside a checkout exits $nogit_status"
+  bad "install-skill.sh outside a checkout exits $nogit_status"
 fi
 set +e
-(cd "$EVAL_ROOT" && HOME="$HOME" bash ./install.sh --list >/dev/null 2>&1)
+(cd "$EVAL_ROOT" && HOME="$HOME" bash ./install-skill.sh --list >/dev/null 2>&1)
 list_status=$?
 set -e
 if [ "$list_status" -eq 0 ]; then
-  good "install.sh --list still passes inside the checkout"
+  good "install-skill.sh --list still passes inside the checkout"
 else
-  bad "install.sh --list exits $list_status in the checkout"
+  bad "install-skill.sh --list exits $list_status in the checkout"
 fi
 
 # --- R6: offline across every leg ---

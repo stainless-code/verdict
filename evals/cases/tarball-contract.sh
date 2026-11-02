@@ -135,15 +135,18 @@ else
 fi
 
 # --- P7: source-only files stay out of the tarball ---
-# install.sh links git checkouts (refuses elsewhere) and hooks/ wires the
-# checkout's pre-commit: neither is meaningful inside a registry copy, and
-# the README routes registry users to the bundled CLI instead. If a future
-# change ships them, the execution model must be re-settled, not drifted.
+# install.sh/install.ps1 are the release-asset binary installers and
+# install-skill.sh links git checkouts (refuses elsewhere); hooks/ wires the
+# checkout's pre-commit. None is meaningful inside a registry copy, and the
+# README routes registry users to the bundled CLI instead. If a future change
+# ships them, the execution model must be re-settled, not drifted.
 if ! grep -q -x -F "install.sh" "$PACKED" \
+  && ! grep -q -x -F "install.ps1" "$PACKED" \
+  && ! grep -q -x -F "install-skill.sh" "$PACKED" \
   && ! grep -q "^hooks/" "$PACKED"; then
-  good "install.sh and hooks/ stay out of the tarball (source-only by design)"
+  good "installers and hooks/ stay out of the tarball (source-only by design)"
 else
-  bad "tarball ships source-only file(s): $(grep -E -x -e 'install.sh' -e 'hooks/.*' "$PACKED" | tr '\n' ' ')"
+  bad "tarball ships source-only file(s): $(grep -E -x -e 'install(-skill)?\.(sh|ps1)' -e 'hooks/.*' "$PACKED" | tr '\n' ' ')"
 fi
 
 # --- P6: offline across every leg ---

@@ -13,8 +13,18 @@ Order matters, so follow the steps.
 </Callout>
 
 <Steps>
-  <Step title="Install the skill">
+  <Step title="Install">
     <Tabs>
+      <Tab title="Binary (verified)">
+        ```bash
+        curl -fsSL https://github.com/stainless-code/verdict/releases/latest/download/install.sh | sh
+        ```
+        macOS/Linux: installs `verdict` to `~/.verdict/bin` after verifying the
+        cosign bundle and SHA-256. Pin with `VERDICT_VERSION=vX.Y.Z`, skip the
+        PATH edit with `--no-modify-path`, and uninstall with
+        `install.sh --uninstall --remove-path`. Windows:
+        `irm https://github.com/stainless-code/verdict/releases/latest/download/install.ps1 | iex`.
+      </Tab>
       <Tab title="skills.sh">
         ```bash
         npx skills add stainless-code/verdict
@@ -23,10 +33,11 @@ Order matters, so follow the steps.
       <Tab title="Clone">
         ```bash
         git clone https://github.com/stainless-code/verdict.git
-        cd verdict && ./install.sh
+        cd verdict && make build && ./install-skill.sh
         ```
-        `install.sh` runs `doctor` first and symlinks the skill into your agent's
-        skills directory. `git pull` is the updater.
+        `install-skill.sh` runs `doctor` first and symlinks the skill into your
+        agent's skills directory. `git pull` is the updater. (This script was
+        called `install.sh` before 0.4; that name is now the binary installer.)
       </Tab>
     </Tabs>
   </Step>

@@ -37,10 +37,16 @@ archives:
       - LICENSE
       - README.md
 
-# The release carries archives, checksums, the signature bundle, and SBOMs
-# only; no source tarball.
+# The release carries archives, checksums, the signature bundle, SBOMs, and
+# the two installer scripts (stable `releases/latest/download/install.sh`
+# bootstrap URLs); no source tarball.
 source:
   enabled: false
+
+release:
+  extra_files:
+    - glob: install.sh
+    - glob: install.ps1
 
 checksum:
   name_template: checksums.txt
