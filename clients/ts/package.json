@@ -1,0 +1,13 @@
+{
+  "name": "@stainless-code/verdict-ts",
+  "private": true,
+  "description": "Official TypeScript client sources for @stainless-code/verdict (built into the wrapper package as ./client)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.types.json",
+    "gen": "node scripts/gen-ts-types.mjs",
+    "gen-check": "node scripts/gen-ts-types.mjs --check"
+  }
+}

@@ -78,3 +78,13 @@ release-dry-run:
 	node scripts/generate-formula.mjs
 	for d in dist/npm/*/; do (cd "$$d" && npm pack --dry-run > /dev/null); done
 	$(GO) test -count=1 ./release/
+
+# clients-ts builds, drift-gates, tests, and typechecks the official TS
+# client (clients/ts). The client ships as the ./client subpath export of
+# the npm wrapper; generate-npm.mjs bundles clients/ts/dist when present.
+.PHONY: clients-ts
+clients-ts:
+	node clients/ts/scripts/gen-ts-types.mjs --check
+	node_modules/.bin/tsc -p clients/ts/tsconfig.json
+	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/client.test.mjs
+	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json

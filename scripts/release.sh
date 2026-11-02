@@ -29,6 +29,10 @@ git push --follow-tags
 goreleaser release --clean
 
 # Six platform packages, then the wrapper, with npm provenance (OIDC).
+# The wrapper bundles the TS client (subpath export ./client): build it
+# first so generate-npm.mjs finds clients/ts/dist (it skips the client
+# when dist is absent, which must never happen in a real release).
+node_modules/.bin/tsc -p clients/ts/tsconfig.json
 node scripts/publish-npm.mjs
 
 # Render the formula; push it to the tap only when explicitly enabled.

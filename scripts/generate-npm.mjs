@@ -197,7 +197,30 @@ export function generateNpmTree(options) {
     deps[entry.npmPackage] = version;
   }
   const wrapperDir = join(out, shortName(contract.npm.wrapper));
-  writeJSON(join(wrapperDir, "package.json"), {
+  // TypeScript client (ticket 21): the wrapper ships the built client as a
+  // subpath export, so one install carries both the binary and the client.
+  // Best-effort by design: the Go contract tests invoke this generator
+  // without a built client, and snapshot runs without node_modules skip it.
+  // Real releases build it first (scripts/release.sh runs tsc).
+  const clientDist = join(REPO_ROOT, "clients", "ts", "dist");
+  const clientFiles = [];
+  if (
+    existsSync(join(clientDist, "index.js")) &&
+    existsSync(join(clientDist, "index.d.ts"))
+  ) {
+    const clientDir = join(wrapperDir, "client");
+    mkdirSync(clientDir, { recursive: true });
+    for (const entry of readdirSync(clientDist)) {
+      if (entry.endsWith(".js") || entry.endsWith(".d.ts")) {
+        cpSync(join(clientDist, entry), join(clientDir, entry));
+        clientFiles.push(`client/${entry}`);
+      }
+    }
+    // The wrapper root stays CommonJS (the shim requires it); the client
+    // subtree opts into ESM with its own package.json.
+    writeJSON(join(clientDir, "package.json"), { type: "module" });
+  }
+  const wrapperManifest = {
     name: contract.npm.wrapper,
     version,
     description: root.description,
@@ -205,9 +228,21 @@ export function generateNpmTree(options) {
     repository: root.repository,
     homepage: root.homepage,
     bin: contract.npm.bin,
-    files: contract.npm.wrapperFiles,
+    files: [
+      ...contract.npm.wrapperFiles,
+      ...(clientFiles.length > 0 ? ["client/"] : []),
+    ],
     optionalDependencies: deps,
-  });
+  };
+  if (clientFiles.length > 0) {
+    wrapperManifest.exports = {
+      "./client": {
+        types: "./client/index.d.ts",
+        default: "./client/index.js",
+      },
+    };
+  }
+  writeJSON(join(wrapperDir, "package.json"), wrapperManifest);
   const shimSrc = join(REPO_ROOT, "scripts", "npm-shim", "verdict.js");
   const shimDest = join(wrapperDir, contract.npm.bin.verdict);
   mkdirSync(dirname(shimDest), { recursive: true });
