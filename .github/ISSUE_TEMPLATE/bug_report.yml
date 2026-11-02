@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a broken verb, gate, or installer behavior
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Verdict version
+      description: Output of `verdict --version` (or the source commit)
+      placeholder: v0.3.1
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Install route
+      description: installer script, npm, Homebrew, skill copy, or source build
+      placeholder: install.sh on macOS
+    validations:
+      required: true
+  - type: dropdown
+    id: verb
+    attributes:
+      label: Verb
+      description: The verb you ran (`mcp` is the hidden stdio transport)
+      options:
+        - fetch
+        - post
+        - triage
+        - report
+        - next
+        - show
+        - verify
+        - doctor
+        - calibrate
+        - fetch-local
+        - record
+        - adopt
+        - fix
+        - check-tree
+        - ready
+        - trend
+        - learn
+        - init
+        - install
+        - skill
+        - upgrade
+        - uninstall
+        - mcp
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Exact command run (redact tokens and private repo data)
+      placeholder: verdict post owner/repo 123 --dry-run
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead; paste the `--json` envelope when relevant
+    validations:
+      required: true

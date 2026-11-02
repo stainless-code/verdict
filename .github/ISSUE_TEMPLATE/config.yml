@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/stainless-code/verdict/security/advisories/new
+    about: Suspected vulnerabilities go through private reporting (see SECURITY.md), never a public issue.
+  - name: Documentation
+    url: https://github.com/stainless-code/verdict/blob/main/docs/manual.md
+    about: Full manual — store schema, verbs, doctrines, and changelog.

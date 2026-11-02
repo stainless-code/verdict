@@ -1,0 +1,58 @@
+name: Feature request
+description: Propose a new verb, flag, gate, or surface
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: The verb or surface this touches (`mcp` is the hidden stdio transport)
+      options:
+        - fetch
+        - post
+        - triage
+        - report
+        - next
+        - show
+        - verify
+        - doctor
+        - calibrate
+        - fetch-local
+        - record
+        - adopt
+        - fix
+        - check-tree
+        - ready
+        - trend
+        - learn
+        - init
+        - install
+        - skill
+        - upgrade
+        - uninstall
+        - mcp
+        - TS client
+        - installer / upgrade channel
+        - docs site
+        - something else
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: The operator problem this solves, with a concrete example
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Proposed behavior, including envelope/store impact if any
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else you tried or considered
