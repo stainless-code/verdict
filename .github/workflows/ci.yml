@@ -119,7 +119,10 @@ jobs:
           # Re-run one parity test verbosely: the step passes only on an
           # observed `--- PASS`, so a harness that never executes (or errors
           # before running) fails the build instead of looking green.
-          go test -count=1 -v -run '^TestParityMatrix$' ./internal/record/ 2>&1 | tee "$RUNNER_TEMP/parity-guard.log" | grep -q '^--- PASS: TestParityMatrix'
+          # grep reads the saved log: `tee | grep -q` broke the pipe on an early
+          # match and pipefail failed a green run.
+          go test -count=1 -v -run '^TestParityMatrix$' ./internal/record/ > "$RUNNER_TEMP/parity-guard.log" 2>&1
+          grep -q '^--- PASS: TestParityMatrix' "$RUNNER_TEMP/parity-guard.log"
 
   go-windows:
     name: 🐹 Go Windows build
