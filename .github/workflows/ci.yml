@@ -166,22 +166,30 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Go (go leg builds bin/verdict)
-        if: matrix.impl == 'go'
+      - name: Setup Go for both legs (go leg builds bin/verdict, bash leg
+          hermetically rebuilds it for dispatch-record)
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
-      - name: Harness deps (bash/jq/git; go for the go leg)
+      - name: Install shellcheck (precommit-hook grades it, and the macOS
+          image does not preinstall it)
+        shell: bash
+        run: |
+          if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
+
+      - name: Harness deps (bash/jq/git/go/shellcheck on every leg)
         shell: bash
         run: |
           # run.sh fails on a missing dep, but assert up front so the log
           # names the side: a go leg without Go must never silently grade
           # bash (only `record` dispatches today, the rest stays shell, so
           # the leg grows automatically as verbs join VERDICT_GO_VERBS).
-          command -v bash jq git
+          # shellcheck is graded by precommit-hook (H1 fails without it),
+          # so its absence fails here instead of deep in the suite.
+          command -v bash jq git go shellcheck
           jq --version
-          if [ "${{ matrix.impl }}" = "go" ]; then command -v go; fi
+          go version
 
       - name: Run offline contract evals (bash)
         if: matrix.impl == 'bash'
@@ -189,9 +197,10 @@ jobs:
         run: ./evals/run.sh
         # Hermeticity lives in evals/run.sh itself (stub gh first on PATH,
         # fixtures in a temp sandbox, tree-clean assertion) — identical
-        # locally and here. jq/git/shasum ship on both hosted images, so no
-        # install step. macOS runners shell out with bash 3.2, which doubles
-        # as the old-shell leg of the suite's 3.2-compat bar.
+        # locally and here. jq/git/shasum ship on both hosted images; go and
+        # shellcheck are provisioned in the steps above. macOS runners shell
+        # out with bash 3.2, which doubles as the old-shell leg of the
+        # suite's 3.2-compat bar.
 
       - name: Run offline contract evals (Go implementation)
         if: matrix.impl == 'go'
