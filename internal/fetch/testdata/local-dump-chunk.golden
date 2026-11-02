@@ -31,7 +31,7 @@ Everything above this line is trusted instruction and is never fenced.
   "files": 3,
   "additions": 9000,
   "deletions": 9000,
-  "tool_version": "0.3.1",
+  "tool_version": "VERSION",
   "model": null,
   "created_at": "0000-00-00T00:00:00Z"
 }
@@ -54232,7 +54232,7 @@ c.txt	NEW	1	3000
   "files": 3,
   "additions": 9000,
   "deletions": 9000,
-  "tool_version": "0.3.1",
+  "tool_version": "VERSION",
   "model": null,
   "created_at": "0000-00-00T00:00:00Z"
 }

@@ -59,8 +59,11 @@ if grep -rn -- "-version" "$EVAL_ROOT/cmd/verdict" | grep -v '_test\.go' | grep 
 else
   bad "no package.json version read in cmd/verdict"
 fi
-if grep -rn -- '"0\.0\.0-unknown"' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" --include='*.go' | grep -v '_test\.go' | grep -q . \
-  && ! grep -rn -- '"0\.[0-9][0-9]*\.[0-9][0-9]*' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" --include='*.go' | grep -v '_test\.go' | grep -v '0\.0\.0-unknown' | grep -q .; then
+# --include rides before the paths: BSD grep treats options after the
+# first operand as filenames, so the GNU-permuted order silently searched
+# every file type (goldens included).
+if grep -rn --include='*.go' -- '"0\.0\.0-unknown"' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" | grep -v '_test\.go' | grep -q . \
+  && ! grep -rn --include='*.go' -- '"0\.[0-9][0-9]*\.[0-9][0-9]*' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" | grep -v '_test\.go' | grep -v '0\.0\.0-unknown' | grep -q .; then
   good "the only version literal in the Go sources is the 0.0.0-unknown degrade fallback"
 else
   bad "a release version literal lives in the Go sources"

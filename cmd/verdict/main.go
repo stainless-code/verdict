@@ -84,6 +84,7 @@ func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]by
 		return true
 	}
 	if len(args) > 0 && args[0] == "--version" {
+		// --version reads package.json at runtime (single source; see versionOf).
 		fmt.Fprintln(stdout, versionOf(exeRoot(), readFile))
 		return true
 	}

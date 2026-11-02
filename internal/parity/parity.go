@@ -10,6 +10,7 @@ package parity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -20,6 +21,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -293,12 +295,55 @@ var tsRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
 // redirected into .verify.out), so no command output can match this.
 var curlMsRe = regexp.MustCompile(`(Failed to connect to \S+ port \d+ after )\d+( ms)`)
 
-// scrub normalizes timestamps, prompt nonces, and curl's connection timing
+// versionScrub replaces the manifest version with a placeholder so goldens
+// stay version-independent (a release bump must not invalidate snapshots;
+// the version-source eval pins the real rendering through the binary).
+var versionScrub = sync.OnceValue(func() func(string) string {
+	version := ""
+	if raw, err := os.ReadFile(filepath.Join(repoRoot(), "package.json")); err == nil {
+		var doc struct {
+			Version string `json:"version"`
+		}
+		if jerr := json.Unmarshal(raw, &doc); jerr == nil {
+			version = doc.Version
+		}
+	}
+	return func(s string) string {
+		if version == "" {
+			return s
+		}
+		return strings.ReplaceAll(s, version, "VERSION")
+	}
+})
+
+// repoRoot walks up from this source file to the checkout carrying
+// package.json.
+func repoRoot() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "."
+	}
+	dir := filepath.Dir(file)
+	for range 10 {
+		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "."
+		}
+		dir = parent
+	}
+	return "."
+}
+
+// scrub normalizes timestamps, prompt nonces, the manifest version, and
 // (R6: the sanctioned scrub, extended only for tool-runtime metadata that
 // differs by construction). Everything else compares byte-exact.
 func scrub(s string) string {
 	s = tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 	s = scrubNonce(s)
+	s = versionScrub()(s)
 	return curlMsRe.ReplaceAllString(s, "${1}0${2}")
 }
 
