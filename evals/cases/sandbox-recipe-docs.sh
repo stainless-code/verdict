@@ -9,6 +9,8 @@
 #   R3  non-mandate line (recipe, not enforcement, K5) present.
 #   R4  system.md names the enforced gate (typed verify-* codes) while the
 #       untrusted-data preamble stays untouched.
+#   R5  recipe section pins the known-residuals subsection (string-scan
+#       ceiling + representative keywords).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -70,6 +72,16 @@ if grep -q "Untrusted data" "$SYSTEM" \
   good "system.md keeps the untrusted-data preamble untouched"
 else
   bad "system.md lost the untrusted-data preamble"
+fi
+
+# --- R5: known-residuals subsection pinned in the recipe section ---
+if awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "Known residuals (string-scan ceiling)" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "TOCTOU" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "PYTHONPATH" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "container/VM escape"; then
+  good "known-residuals subsection present (ceiling + TOCTOU/PYTHONPATH/container-escape)"
+else
+  bad "recipe misses the known-residuals subsection in docs/manual.md"
 fi
 
 if [ "$fails" -ne 0 ]; then echo "case sandbox-recipe-docs: FAIL ($fails)"; exit 1; fi

@@ -774,6 +774,26 @@ the sandbox — per K5, full namespace isolation stays opt-in, never default.
 The gate constrains what `verify` will execute; your own shell is unaffected
 either way.
 
+### Known residuals (string-scan ceiling)
+
+The gate stops every literal shape in its contract; the shapes below need
+the sandbox recipe above, not another string arm. Tripwire: a real incident
+through any of these reopens the mandate discussion.
+
+- file-content weapons (requirements URLs, setup.py/build.rs/extconf/postinstall/
+  Makefile/test-file code, registry configs, `@file` response files);
+- module-resolution paths (`PYTHONPATH`, `NODE_PATH`, `PERL5LIB`, `RUBYLIB`,
+  `GEM_HOME`, `CARGO_HOME`, …) including innocent-command hijack;
+- env-directed fetch destinations (index/registry envs; registry _names_ have no URL
+  to key on);
+- dynamic construction (`$'…'`-hex, base64, variable indirection, alias-`!`);
+- interpreter-mediated execution (`python|perl|ruby|node|php …`, `curl | python3`);
+- fetch-then-exec splits across the `/tmp` carve-out (I3);
+- TOCTOU/meaning-change (symlink swaps, concurrent-run shared state);
+- unlisted clients/wrappers (the next `gh` verb, the next pipe wrapper — report-and-arm
+  as found, never "complete");
+- container/VM escape (out of scope by recipe, not by gate).
+
 ## Over-cap diffs (chunked fetch + manual recipe)
 
 Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
