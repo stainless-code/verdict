@@ -46,11 +46,15 @@ type Runner struct {
 	Pr                 string
 	Repo               string
 	Warnings           []string
-	JSONMode           bool
-	JSONPeeked         bool
-	EnvNoColor         bool
-	PrefColorSet       bool
-	NoColor            bool
+	// Candidates carries the fetch oversize narrowing suggestions for the
+	// refusal envelope (nil on every other verb, so their envelopes stay
+	// byte-identical). The fetch diff-too-large refusal is the only writer.
+	Candidates   []any
+	JSONMode     bool
+	JSONPeeked   bool
+	EnvNoColor   bool
+	PrefColorSet bool
+	NoColor      bool
 }
 
 // Effective holds the resolved presentation knobs as "true"/"false"/enum
@@ -142,6 +146,12 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	msg := ref.Message + "\n" + HintFor(ref.Code)
 	if r.JSONMode {
+		errObj := jq.NewObj("code", ref.Code, "message", msg)
+		// The oversize-fetch refusal carries narrowing candidates
+		// (additive-only: absent reads null and the key stays dropped).
+		if r.Candidates != nil {
+			errObj.Set("candidates", r.Candidates)
+		}
 		env := jq.NewObj(
 			"schema_version", "1",
 			"verb", r.Cmd,
@@ -151,7 +161,7 @@ func (r *Runner) RefuseExit(err error, code int) int {
 			"next", "",
 			"warnings", cliStrings(r.Warnings),
 			"data", nil,
-			"error", jq.NewObj("code", ref.Code, "message", msg),
+			"error", errObj,
 		)
 		fmt.Fprintln(r.Out, env.MarshalPretty())
 	} else {
@@ -244,6 +254,8 @@ var hintRules = []hintRule{
 	{isCode("prompt-dump-failed"), "try: run from a checkout carrying SKILL.md/prompts, then re-run"},
 	{isCode("post-failed"), "try: narrow anchor drift or body size (see above), then re-run"},
 	{isCode("diff-too-large"), "try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch"},
+	{isCode("upstream-diff-too-large"), "try: re-fetch narrowed to a range via --base-sha/--since, " +
+		"or narrow with a paths filter, then re-run"},
 	{isCode("missing-chunk-coverage", "missing-chunk-snapshot"), "try: re-fetch the bundle with --chunk, " +
 		"then re-synthesize across all chunks and re-run"},
 	{hasPrefixCode("missing-"), "try: run the fetch/record step named above first, then re-run"},

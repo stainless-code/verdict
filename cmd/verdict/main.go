@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/doctor"
+	"github.com/stainless-code/verdict/internal/fetch"
 	"github.com/stainless-code/verdict/internal/fix"
 	"github.com/stainless-code/verdict/internal/install"
 	"github.com/stainless-code/verdict/internal/learn"
@@ -141,6 +142,9 @@ func dispatchMutating(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
 	env map[string]string, forces *cli.GlobalForces, rest []string,
 ) (code int, ok bool) {
+	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, env, rest); ok {
+		return code, true
+	}
 	switch cmd {
 	case "record":
 		return record.Run(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}), true
@@ -160,6 +164,22 @@ func dispatchMutating(
 		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root}), true
 	case "verify":
 		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
+	default:
+		return 0, false
+	}
+}
+
+// dispatchFetch runs the bundle-builder verbs; ok is false for other verbs.
+func dispatchFetch(
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
+	env map[string]string, rest []string,
+) (code int, ok bool) {
+	req := fetch.Request{Repo: repo, Pr: pr, Root: root, Env: env}
+	switch cmd {
+	case "fetch":
+		return fetch.Run(ctx, r, rest, req), true
+	case "fetch-local":
+		return fetch.RunLocal(ctx, r, rest, req), true
 	default:
 		return 0, false
 	}
@@ -286,6 +306,10 @@ func envMap(getenv func(string) string) map[string]string {
 		"REVIEW_PUBLISH_ATTRIBUTION", "REVIEW_PUBLISH_ATTRIBUTION_TEXT",
 		"REVIEW_PUBLISH_COPYRIGHT", "REVIEW_PUBLISH_LOGO", "REVIEW_PUBLISH_LOGO_URL",
 		"REVIEW_PUBLISH_OVERVIEW", "REVIEW_MODEL",
+		"REVIEW_MAX_BYTES", "REVIEW_BUDGET_USD", "REVIEW_PANEL",
+		"FORGEJO_HOST", "FORGEJO_TOKEN",
+		"BITBUCKET_TOKEN", "BITBUCKET_USERNAME", "BITBUCKET_PASSWORD",
+		"AZURE_DEVOPS_ORG", "AZURE_DEVOPS_EXT_PAT",
 		"REVIEW_KB_MIN_JUDGED", "REVIEW_KB_MAX_FP_RATE",
 	}
 	env := make(map[string]string, len(keys))
@@ -323,8 +347,9 @@ func versionOf(root string, readFile func(string) ([]byte, error)) string {
 
 // usage prints the verb summary.
 func usage() string {
-	return "usage: verdict triage|adopt|fix|learn|init|install|verify|record|post " +
-		"<owner/repo> <slug> [flags]\n\nverbs ported to Go: record, post, triage, " +
+	return "usage: verdict fetch|fetch-local|record|post|triage|report|next|show|" +
+		"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install " +
+		"<owner/repo> <slug> [flags]\n\nverbs ported to Go: fetch, fetch-local, record, post, triage, " +
 		"adopt, fix, learn, init, install, verify " +
 		"(the shell entry point dispatches; see scripts/review.sh)"
 }
