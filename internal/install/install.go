@@ -5,6 +5,9 @@
 // (SKILL.md + prompts/ + scripts/) with an installer receipt. Foreign
 // skills and unowned verdict/ dirs are never touched; the never-prompts
 // doctrine holds (machine mode never prompts, even on a TTY).
+//
+// This is distribution setup, not review domain: the verb stays CLI-only
+// and is deliberately absent from internal/core and pkg/verdict.
 package install
 
 import (
