@@ -13,3 +13,6 @@ pack.log
 # repo-local binary the shell dispatches to under VERDICT_IMPL=go.
 # Never commit binaries.
 bin/
+
+# Python bytecode from examples/python-client.
+__pycache__/

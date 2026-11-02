@@ -15,6 +15,8 @@ GitHub I/O. No servers, no external services, no daemons.
 
 Full manual: [`docs/manual.md`](docs/manual.md). Vision and strategy: [`docs/vision.md`](docs/vision.md).
 
+Building a client in another language? The [Build a client guide](https://stainless-code.com/verdict/build-a-client) documents the `--json` envelope, exit and refusal codes, codegen from `schemas/`, and a tested [Python example](examples/python-client/).
+
 Requirements: [`gh`](https://cli.github.com) (authed, `repo` scope), `jq` (>= 1.7), `shasum`, `git`, Go (to build).
 Run `verdict doctor` to preflight (`make build` writes `bin/verdict`).
 

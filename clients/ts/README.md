@@ -55,6 +55,8 @@ Typed data shapes exist for `report`, `post`, and `record` (generated from
 `schemas/*.schema.json`); every other verb returns `Envelope<unknown>`.
 `client.run("show", [...])` reaches any verb, including future ones.
 
+Building a client in another language? The [Build a client guide](https://stainless-code.com/verdict/build-a-client) explains the same contract and walks through Python codegen; this client is the reference implementation.
+
 ## Error handling
 
 | Outcome          | Class                 | Notes                                              |

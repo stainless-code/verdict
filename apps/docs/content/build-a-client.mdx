@@ -1,0 +1,446 @@
+---
+title: Build a client
+description: "The verdict protocol: spawn the binary, read one --json envelope, map exit and refusal codes, and generate typed models from the published schemas."
+search:
+  tags: ["protocol", "client", "python", "json", "schema", "api"]
+---
+
+There is no verdict wire protocol and no server. A client is a thin wrapper
+that spawns `verdict <verb> … --json`, reads exactly one JSON envelope from
+stdout, and maps the exit code. Go starts in milliseconds, so the process
+boundary is the transport.
+
+This page is the contract for building a client in any language. The official
+TypeScript client is the reference implementation; the
+[Python example](https://github.com/stainless-code/verdict/tree/main/examples/python-client)
+is the codegen recipe. Python has **no official package** — generate types
+from the schemas and keep the wrapper thin.
+
+## The protocol in one command
+
+```bash
+verdict report acme/app 123 --json
+```
+
+- `--json` may appear anywhere before `--`. It is a global flag, not a per-verb
+  one.
+- stdout carries **exactly one** envelope document. Nothing else.
+- stderr carries human progress, `warn:` lines, usage text, and `try:` hints in
+  human mode. Never parse stderr for data.
+- The process exits when the run finishes. There is no daemon, no listener, no
+  HTTP, and no background process.
+- Authentication is the existing story: `gh auth login`, `GH_TOKEN`, or the
+  provider token env named in the manual. The child inherits the caller's
+  environment and credential store; a client adds no auth layer.
+
+### The envelope
+
+Every successful `--json` run prints one object with these nine keys, in this
+order. The
+[envelope schema](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)
+is generated from the Go shape and is the machine-readable source of truth.
+
+| Key              | Type                      | Meaning                                                                 |
+| ---------------- | ------------------------- | ----------------------------------------------------------------------- |
+| `schema_version` | string, `"1"`             | Wire compatibility contract. Reject anything else.                      |
+| `verb`           | string                    | The verb that ran (`report`, `post`, `record`, …).                      |
+| `repo`           | string                    | `owner/repo`; empty for repo-less verbs.                                |
+| `pr`             | integer or null           | Numeric PR only; local slugs never coerce.                              |
+| `at`             | string, RFC 3339 UTC      | Run timestamp, second precision (`2026-11-02T12:00:00Z`).               |
+| `next`           | string                    | Suggested next step; empty when there is none.                          |
+| `warnings`       | array of strings          | Non-fatal warnings; the same text also reaches stderr as `warn:` lines. |
+| `data`           | object or null            | The verb's payload on success; null on a typed refusal.                 |
+| `error`          | null or `{code, message}` | null on success; the typed refusal otherwise.                           |
+
+The nine top-level keys are fixed: the envelope schema sets
+`additionalProperties: false`. New information is added **inside `data`**, never
+as a new top-level key. `data` objects allow additional properties, so a client
+must ignore keys it does not know. `error` also allows additive keys; today the
+only extra is `candidates` on the oversize-fetch refusal.
+
+### Exit codes
+
+Exit codes are frozen in
+[`internal/cli/cli.go`](https://github.com/stainless-code/verdict/blob/main/internal/cli/cli.go).
+
+| Code | Name    | What the client sees                                                                                                                    |
+| ---- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | success | One envelope, `error: null`, `data` object.                                                                                             |
+| `1`  | refused | One envelope. Usually a typed refusal: `data: null`, `error: {code, message}`. See the gate exception below.                            |
+| `2`  | usage   | No envelope. stdout is empty; stderr carries the usage/flag block. This is an argv bug, not a refusal.                                  |
+| `3`  | broke   | Cancellation (`canceled`) or a tool failure during a gated `report` run. May carry a typed refusal envelope; a crash or signal may not. |
+
+<Callout type="warning" title="Exit 1 is not always a refusal">
+  `report --check` and `report --completeness` exit `1` when the gate **fails**,
+  but keep the success-shaped envelope: `error: null` and the full `data`
+  object, including `items` and `verdict`. Do not assume every exit `1` has
+  `data: null`. Branch on the envelope: a typed refusal has `data: null` and
+  `error` set; a gate failure has data and `error: null`. The committed Python
+  client raises `VerdictGateError` for that case.
+</Callout>
+
+Gate runs also use exit `3` for a tool failure (for example, a missing bundle
+store while `--check` is active), so hooks can tell “tool broke” apart from
+“gate failed”. A plain `report` with a missing store is an ordinary exit `1`
+typed refusal.
+
+### Refusals and hints
+
+A refusal is one envelope:
+
+```json
+{
+  "schema_version": "1",
+  "verb": "report",
+  "repo": "acme/app",
+  "pr": 404,
+  "at": "2026-11-02T12:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "missing-findings",
+    "message": "missing .review/404/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+```
+
+`error.code` is stable and machine-readable. `error.message` is human text and
+ends with a `try:` line. The hint is **not** a separate key: split the trailing
+`\ntry: ` line if you want to display it separately, exactly as the TS client
+does. Codes are open-ended; treat unknown codes as refusals with a generic hint,
+not as crashes.
+
+Representative families, with the canonical table in
+[`internal/core/hint.go`](https://github.com/stainless-code/verdict/blob/main/internal/core/hint.go):
+
+| Code or family                              | Meaning                                                          |
+| ------------------------------------------- | ---------------------------------------------------------------- |
+| `auth-missing`                              | No `gh`/token credential the run needs.                          |
+| `missing-*` (`missing-findings`, …)         | A prerequisite bundle step or store is absent.                   |
+| `corrupt-store`                             | A store file is unreadable or the wrong shape.                   |
+| `bad-*` (`bad-sig`, `bad-timeout`, …)       | An invalid value reached a verb; flags are valid argv but bad.   |
+| `diff-too-large`, `upstream-diff-too-large` | The diff exceeded the cap; `candidates` suggests narrowing.      |
+| `needs-confirm`                             | A writing verb needs explicit confirmation (`--yes`, `--force`). |
+| `canceled`                                  | The run was interrupted; exit `3`.                               |
+| `internal`                                  | Defensive fallback for an unexpected failure.                    |
+
+Flag grammar errors are different: unknown flags, bad arity, and some verbs'
+invalid enum values are exit `2` with no envelope. Other verbs validate a
+value as a typed `bad-*` refusal at exit `1` (for example `verify --timeout`).
+Let the envelope decide: empty stdout means exit `2`, not a refusal.
+
+### Warnings
+
+`warnings[]` is non-fatal and additive. The same text is also written to stderr
+as `warn:` lines, so a client that pipes stderr can show progress without
+losing the machine copy. A warning never changes the exit code by itself.
+
+## Versioning
+
+`schema_version: "1"` is the compatibility contract, separate from the binary
+release version.
+
+- **Additive is allowed inside `data`.** New per-verb fields, chunk summaries,
+  cost, completeness, and similar ride inside `data`. A client ignores unknown
+  keys there.
+- **The top-level key set is fixed.** It is not the place to add fields.
+- **A major change needs a new `schema_version` and a migration note.** A
+  client must reject an unknown major instead of guessing. The schemas README
+  (`make schemas`) remains the source of truth:
+  [schemas/README.md](https://github.com/stainless-code/verdict/blob/main/schemas/README.md).
+- **Clients and MCP tool shapes are experimental until 1.0.** Their ergonomics
+  may change without a major schema bump; the envelope contract does not.
+
+Pin the binary, not just the client:
+
+```bash
+# Installer (macOS/Linux): pin the release tag.
+VERDICT_VERSION=v0.3.1 sh install.sh
+
+# npm wrapper: pin the package version.
+npm i -g @stainless-code/verdict@0.3.1
+
+# Assert at client startup (prints e.g. 0.3.1, no leading v).
+verdict --version
+```
+
+Use `verdict --version` and the release channel's own pinning for the binary.
+Use `schema_version` for the wire. They are different numbers and both matter.
+
+## Resolve the binary
+
+The reference order, shared by the skill shim and the TS client:
+
+1. **`VERDICT_BIN`** — explicit override. If set but not executable, fail
+   loudly; never silently fall through.
+2. **Bundled binary** — the platform package installed beside the wrapper
+   (`@stainless-code/verdict-<os>-<arch>/bin/verdict`).
+3. **`PATH`** — the first executable `verdict`.
+
+A Python client has no bundled step, so it does `VERDICT_BIN` → `PATH`.
+Whatever the language, never invoke a shell: pass an argv array and set
+`shell=False` (Python), `{ shell: false }` (Node), or the equivalent. Shell
+interpolation turns an `owner/repo` or a local slug into an injection surface.
+
+Other rules that belong in every wrapper:
+
+- **cwd is part of the call.** Relative bundle paths (`.review/<pr>/`) resolve
+  against the child's working directory. Default to the caller's cwd and make
+  it explicit in the client API.
+- **Bound the run.** A client-side timeout (the TS client uses 300 s) kills the
+  child; envelopes are kilobytes and a review should not hang forever. The
+  binary's `verify --timeout` bounds the agent-written verify command, not the
+  whole client call.
+- **Cap stdout.** The reference uses 8 MiB and kills the child past it. An
+  envelope is normally kilobytes.
+- **Never merge stderr into stdout.** stdout is the protocol channel. Inherit
+  stderr for a human-facing tool, or pipe it separately for a UI.
+- **Inherit the environment** (credentials, `REVIEW_*`, `HOME`) or merge only
+  the keys you mean to change.
+
+## Verb and data profiles
+
+`data` is pinned for three verbs and open for the rest. Pinned means the shape
+is a `$defs` entry in the envelope schema and the generated models are worth
+using. Open means it is the generic object until that verb's data stabilizes.
+
+| Verb                                                                                                                                                                                           | `data` profile        | Schema source                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `report`                                                                                                                                                                                       | pinned `reportData`   | [`envelope.schema.json#/$defs/reportData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json) |
+| `post`                                                                                                                                                                                         | pinned `postData`     | [`envelope.schema.json#/$defs/postData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)   |
+| `record`                                                                                                                                                                                       | pinned `recordData`   | [`envelope.schema.json#/$defs/recordData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json) |
+| `fetch`, `fetch-local`, `next`, `show`, `ready`, `trend`, `doctor`, `check-tree`, `calibrate`, `triage`, `adopt`, `fix`, `verify`, `learn`, `init`, `install`, `skill`, `upgrade`, `uninstall` | open object (generic) | envelope's `data` allows additional properties                                                                               |
+
+The schemas themselves are published under
+[`schemas/`](https://github.com/stainless-code/verdict/tree/main/schemas). The
+hosting question (raw repo URLs versus release assets) is still open; link the
+repo path until it settles. `verdict mcp` is a transport, not a CLI verb; it
+does not appear in this table.
+
+## When to use MCP instead of spawning
+
+`verdict mcp` serves the same verbs as MCP tools over stdio:
+newline-delimited JSON-RPC 2.0, one frame per line. It is the right transport
+when the host already speaks MCP (Claude, Cursor, Codex) and wants tool
+discovery and structured results for free.
+
+- Use **MCP** for an agent host that already has an MCP client, wants
+  `tools/list` schemas, or wants `--read-only` to hide writing verbs.
+- Use **spawning** for a library, a script, a CI step, or any program that
+  needs one call and no protocol session. A JSON client does not need MCP.
+- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `trend`,
+  `ready`, `doctor`, and `check-tree`.
+- Success results are the CLI envelope's `data`; typed refusals return
+  `isError: true` with `{code, message, hint}` intact. Malformed calls are
+  JSON-RPC `-32602`, not refusals. stdout is the protocol channel; progress and
+  warnings go to stderr or MCP notifications.
+- There is no HTTP/SSE mode, no daemon, and no remote auth. The process shares
+  the host's credentials and exits when stdin closes.
+
+See the [MCP section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10)
+for the config snippet and tool list.
+
+## Python walkthrough
+
+The complete example is in
+[`examples/python-client/`](https://github.com/stainless-code/verdict/tree/main/examples/python-client).
+It has no runtime dependencies: generated standard-library dataclasses plus
+`subprocess`.
+
+### 1. Generate models from the schemas
+
+Pin the generator. The committed models use
+`datamodel-code-generator==0.88.0`:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r examples/python-client/requirements-dev.txt
+
+datamodel-codegen \
+  --input schemas/envelope.schema.json \
+  --input-file-type jsonschema \
+  --output examples/python-client/models.py \
+  --output-model-type dataclasses.dataclass \
+  --target-python-version 3.10 \
+  --use-standard-collections \
+  --use-union-operator \
+  --formatters builtin \
+  --disable-timestamp
+```
+
+`envelope.schema.json` carries the envelope plus `$defs` for `reportData`,
+`postData`, and `recordData`, so one input file produces the envelope and all
+three pinned profiles. `examples/python-client/generate_models.sh` wraps the
+exact command and supports `--check` for a drift gate.
+
+`models.py` is committed so the example runs offline and reads without a
+codegen step. After a schema change, regenerate and commit it. The drift check
+is deliberately not a Go/CI gate: tests never pip install.
+
+### 2. The client
+
+This is
+[`verdict_client.py`](https://github.com/stainless-code/verdict/blob/main/examples/python-client/verdict_client.py)
+— spawn, validate the envelope, and map the frozen exit codes:
+
+```python
+"""Minimal Python client for the verdict `--json` protocol.
+
+One spawn returns exactly one envelope on stdout. Human progress and usage
+text stay on stderr; the exit code says which shape arrived.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+from typing import Any
+
+from models import VerdictJsonEnvelope
+
+SCHEMA_VERSION = "1"
+DEFAULT_TIMEOUT = 300.0
+MAX_STDOUT = 8 * 1024 * 1024
+KEYS = ("schema_version", "verb", "repo", "pr", "at", "next", "warnings",
+        "data", "error")
+
+
+class VerdictError(Exception):
+    """Exit 2/3, a signal, a timeout, or broken stdout."""
+
+    def __init__(self, message: str, exit_code: int | None = None) -> None:
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+class VerdictRefusal(VerdictError):
+    """Exit 1: `data` is null and `error` carries code and message."""
+
+    def __init__(self, code: str, message: str, warnings: list[str]) -> None:
+        marker = "\ntry: "
+        at = message.rfind(marker)
+        self.code = code
+        self.message = message[:at] if at >= 0 else message
+        self.hint = message[at + 1 :] if at >= 0 else ""
+        self.warnings = warnings
+        super().__init__(f"{code}: {self.message}", 1)
+
+
+class VerdictGateError(VerdictError):
+    """Exit 1 with a success-shaped envelope: a `report --check` gate failed."""
+
+    def __init__(self, envelope: VerdictJsonEnvelope) -> None:
+        self.envelope = envelope
+        super().__init__("gate failed", 1)
+
+
+def run(verb: str, args: list[str], *, cwd: str | None = None,
+        timeout: float = DEFAULT_TIMEOUT, binary: str | None = None,
+        ) -> VerdictJsonEnvelope:
+    """Spawn `verdict <verb> ... --json` and return the typed envelope."""
+    exe = binary or os.environ.get("VERDICT_BIN") or shutil.which("verdict")
+    if not exe:
+        raise VerdictError("no verdict binary: set VERDICT_BIN or install it")
+    try:
+        proc = subprocess.run(
+            [exe, verb, *args, "--json"], cwd=cwd,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=timeout, check=False, shell=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise VerdictError(f"verdict {verb} timed out after {timeout}s") from exc
+    if len(proc.stdout.encode()) > MAX_STDOUT:
+        raise VerdictError(f"stdout exceeded {MAX_STDOUT} bytes")
+    if proc.returncode == 2:
+        raise VerdictError(proc.stderr.strip(), 2)
+    if proc.returncode not in (0, 1):
+        raise VerdictError(f"verdict {verb}: exit {proc.returncode}\n{proc.stderr.strip()}")
+    try:
+        doc = json.loads(proc.stdout.strip())
+    except json.JSONDecodeError as exc:
+        raise VerdictError(f"stdout is not one envelope: {exc}") from exc
+    if not isinstance(doc, dict) or any(key not in doc for key in KEYS):
+        raise VerdictError("stdout is not the documented envelope")
+    if doc["schema_version"] != SCHEMA_VERSION:
+        raise VerdictError(f"unsupported schema_version {doc['schema_version']!r}")
+    if proc.returncode == 1:
+        error = doc["error"]
+        if error is None and doc["data"] is not None:
+            raise VerdictGateError(
+                VerdictJsonEnvelope(**{key: doc[key] for key in KEYS})
+            )
+        if doc["data"] is not None or not isinstance(error, dict):
+            raise VerdictError("refusal envelope has no typed error")
+        raise VerdictRefusal(error["code"], error["message"], doc["warnings"])
+    if doc["error"] is not None:
+        raise VerdictError("exit 0 envelope carries an error")
+    return VerdictJsonEnvelope(**{key: doc[key] for key in KEYS})
+```
+
+The example's `typed.py` adds the generated-dataclass bridge and a `report`
+convenience function:
+
+```python
+from models import ReportData
+from typed import report
+from verdict_client import VerdictRefusal
+
+try:
+    env, data = report("acme/app", "123", cwd="path/to/repo")
+    print(env.verb, data.verdict.open, "open findings")
+except VerdictRefusal as error:
+    print(error.code, error.hint)  # hint is "try: ..."
+```
+
+### 3. Prove it offline
+
+`smoke.sh` runs the example against the built binary with committed fixture
+bundles. It covers a success, a `missing-findings` refusal (exit `1`), and a
+usage error (exit `2`). It skips when `python3` is absent, installs nothing, and
+uses no network:
+
+```bash
+make build
+./examples/python-client/smoke.sh
+# ok: success, refusal, exit 2, demo
+```
+
+The test copies `examples/python-client/fixtures/bundle` into a temp
+`.review/`, so it never writes to the repository or the caller's store.
+
+## Build your own wrapper
+
+The recipe is language-agnostic. The
+[TS client](https://github.com/stainless-code/verdict/blob/main/clients/ts)
+is the reference for binary resolution, timeouts, output caps, and typed
+errors; copy its decisions, not its syntax.
+
+Checklist:
+
+1. Generate `Envelope` and the pinned `Report`/`Post`/`Record` data types from
+   `schemas/*.schema.json`. Do not hand-write the envelope shape.
+2. Resolve the binary with `VERDICT_BIN` → bundled → `PATH`, and fail loudly on
+   an explicit bad path.
+3. Spawn with an argv array and no shell. Put `--json` before the verb's
+   arguments or at the end; never after `--`.
+4. Read stdout as one JSON document. Reject a missing key, a non-`"1"`
+   `schema_version`, or a parse error instead of misreading it.
+5. Map exit `0` to success, `1` to refusal **or gate failure**, `2` to a usage
+   error with no envelope, and `3`/signals to a process error.
+6. Split the trailing `try:` line from `error.message` for display; keep
+   `error.code` for branching.
+7. Ignore unknown `data` keys. Do not reject additive data.
+8. Cap stdout, bound the run with a timeout, and never merge stderr into
+   stdout.
+9. Keep a one-shot `run(verb, args)` escape hatch for verbs and future fields
+   you have not typed yet.
+10. Test against a fixture `.review/` bundle offline: success, a typed refusal,
+    a usage error, and a timeout.
+
+The official TS client and its generated types live in
+[`clients/ts/`](https://github.com/stainless-code/verdict/tree/main/clients/ts);
+the MCP transport is optional and not required for a language client.

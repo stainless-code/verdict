@@ -95,6 +95,7 @@ export default defineConfig({
       { label: "Why Verdict", path: "/why-verdict" },
       { label: "Comparison", path: "/comparison" },
       { label: "How it reviews", path: "/how-it-reviews" },
+      { label: "Build a client", path: "/build-a-client" },
       { label: "Changelog", path: "/changelog" },
     ],
     sidebar: { display: "flat" },

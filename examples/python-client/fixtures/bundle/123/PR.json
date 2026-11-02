@@ -1,0 +1,6 @@
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "author": { "login": "teammate" }
+}
