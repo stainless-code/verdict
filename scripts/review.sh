@@ -164,8 +164,9 @@ usage: review.sh fetch|post|triage|report|next|show|verify|doctor|calibrate|fetc
     .verdict-managed receipt) are ever written; foreign skills and unowned
     verdict/ dirs are left untouched. An up-to-date re-run reads keep
     (idempotent); a receipt/tool version skew warns, never fails. Same
-    preview-then-confirm idiom as init: writes need --yes/--force (or an
-    interactive confirm when stdin is a tty). Run the CLI from the repo
+    preview-then-confirm idiom as init: writes need --yes/--force (or, in
+    human mode, an interactive confirm when stdin is a tty; --json never
+    prompts and refuses typed needs-confirm). Run the CLI from the repo
     under review: `.review/` is created in the current directory, never
     beside the tool. The CLI lives at `<tool>/scripts/review.sh` — the
     checkout for symlink installs, the installed `verdict/` skill dir for
@@ -387,6 +388,10 @@ PREF_COLOR_SET="false"
 # repoint fd 9 at stderr and lose the envelope).
 json_redirect() {
   [[ "$json_mode" == "true" && "${_FD9_READY:-false}" != "true" ]] || return 0
+  # Envelopes never carry color, even when fd 9 is a TTY (jq colorizes
+  # isatty stdout): default NO_COLOR on in machine mode. An explicitly set
+  # (even empty) NO_COLOR is respected, matching the --color surface.
+  if [[ -z "${NO_COLOR+x}" ]]; then export NO_COLOR="1"; fi
   exec 9>&1; exec 1>&2; _FD9_READY="true"
 }
 resolve_prefs() {
@@ -6388,9 +6393,9 @@ fi
 # standard local control files (.review/budget, .review/panel,
 # .review/kb-policy, .review/kb.jsonl starter) with style presets, then runs
 # check-tree validation (same filter: own .review/ scratch ignored).
-# Existing files print a preview and need --yes/--force (or an interactive
-# confirm) before overwrite — the same preview-then-confirm idiom the
-# installer uses, so operators learn it once.
+# Existing files print a preview and need --yes/--force (or, in human
+# mode, an interactive confirm) before overwrite — the same
+# preview-then-confirm idiom the installer uses, so operators learn it once.
 if [[ "$cmd" == "init" ]]; then
   preset="standard"; assume_yes="false"
   while [[ $# -gt 0 ]]; do case "$1" in
@@ -6456,7 +6461,8 @@ if [[ "$cmd" == "init" ]]; then
     printf '%s\n' "$want"
   done
   if [[ "$need_overwrite" == "true" && "$assume_yes" != "true" ]]; then
-    if [[ -t 0 ]]; then
+    # Machine mode never prompts, even on a TTY: --json refuses typed.
+    if [[ "$json_mode" != "true" && -t 0 ]]; then
       printf 'Proceed? [y/N] ' >&2; read -r ans || ans=""
       case "$ans" in y|Y|yes|YES) ;;
         *) echo "init: aborted (re-run with --yes to overwrite after reviewing the preview)" >&2; exit 1;;
@@ -6527,7 +6533,8 @@ fi
 # Only the tool-owned `verdict/` namespace is ever written, receipted by
 # `.verdict-managed`; foreign skills and unowned `verdict/` dirs are never
 # modified or removed. Preview-then-confirm reuses the init idiom exactly
-# (--yes/--force or an interactive confirm; non-tty refuses needs-confirm).
+# (--yes/--force or, in human mode, an interactive confirm; --json and
+# non-tty refuse needs-confirm).
 if [[ "$cmd" == "install" ]]; then
   assume_yes="false"
   while [[ $# -gt 0 ]]; do case "$1" in
@@ -6630,7 +6637,8 @@ if [[ "$cmd" == "install" ]]; then
     esac
   done
   if [[ "$need_write" == "true" && "$assume_yes" != "true" ]]; then
-    if [[ -t 0 ]]; then
+    # Machine mode never prompts, even on a TTY: --json refuses typed.
+    if [[ "$json_mode" != "true" && -t 0 ]]; then
       printf 'Proceed? [y/N] ' >&2; read -r ans || ans=""
       case "$ans" in y|Y|yes|YES) ;;
         *) echo "install: aborted (re-run with --yes to apply after reviewing the preview)" >&2; exit 1;;

@@ -476,9 +476,10 @@ New operators onboard in one offline command — no network, ever:
 
 `init` writes the standard local control files, then runs check-tree
 validation (same filter: own `.review/` scratch ignored). Existing files
-print a preview and need `--yes`/`--force` (or an interactive confirm when
-stdin is a tty) before overwrite — the same preview-then-confirm idiom the
-installer uses. Re-running with the same preset reads as `keep` (idempotent).
+print a preview and need `--yes`/`--force` (or, in human mode, an
+interactive confirm when stdin is a tty) before overwrite — under `--json`
+there is no prompt: the run refuses typed `needs-confirm` instead. The same
+preview-then-confirm idiom the installer uses. Re-running with the same preset reads as `keep` (idempotent).
 
 Style presets map to panel strictness plus KB retirement thresholds (the KB
 starter is identical across presets):

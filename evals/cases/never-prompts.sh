@@ -17,6 +17,12 @@
 #       read+write, never EOF, never data) still refuses promptly. A
 #       regressed bare `read` would block here, so the watchdog — never the
 #       suite — eats the timeout and the leg FAILs.
+#   H8  live pty: `install --json` and `init --json` with stdin a pseudo-TTY
+#       (via script(1), macOS/Linux forms detected, skip-with-notice where
+#       unavailable) still refuse typed `needs-confirm` at exit 1 with no
+#       `Proceed?` text on stdout or stderr, and write nothing. A regressed
+#       TTY-scoped prompt would block on the pty read, so the watchdog turns
+#       it into a leg FAIL instead of a suite hang.
 #   H7  offline: zero stub-gh intercepts across every leg.
 #
 # Watchdog: every CLI run below goes through watchdog_review, which backgrounds
@@ -230,6 +236,134 @@ else
   bad "piped-stdin leg exits $EVAL_STATUS"
 fi
 rm -f "$EVAL_SANDBOX/stdin-pipe"
+
+# --- H8: machine mode on a live pty never prompts ---
+# script(1) gives the child a pty stdin (-t 0 true) while our own stdin stays
+# /dev/null, so a regressed prompt would block on the pty read and the
+# watchdog — never the suite — eats the timeout. macOS and Linux spell the
+# invocation differently (script -q /dev/null cmd... vs script -qec "cmd"
+# /dev/null); anything else, or no script(1) at all, skips with a notice and
+# never fails.
+if command -v script >/dev/null 2>&1; then
+  case "$(uname -s 2>/dev/null || true)" in
+    Darwin|Linux) pty_avail="true";;
+    *) pty_avail="false";;
+  esac
+else
+  pty_avail="false"
+fi
+if [ "${pty_avail:-false}" = "true" ]; then
+  # watchdog_pty <secs> -- <review.sh args...>: like watchdog_review but the
+  # child runs under script(1), so its stdin is a pty. Always returns 0 so
+  # callers under `set -e` can grade hangs as well as exits.
+  watchdog_pty() {
+    local limit="$1"
+    shift
+    if [ "${1:-}" = "--" ]; then shift; fi
+    local dir="${WD_DIR:-$EVAL_SANDBOX}"
+    local pid="" elapsed=0 alive="" one="" q=""
+    WD_STATUS=0
+    WD_TIMED_OUT="false"
+    set +e
+    if [ "$(uname -s)" = "Darwin" ]; then
+      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -q /dev/null bash "$EVAL_ROOT/scripts/review.sh" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+    else
+      for one in "$@"; do
+        q="$q '${one//\'/\'\\\'\'}'"
+      done
+      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -qec "bash '$EVAL_ROOT/scripts/review.sh'$q" /dev/null </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+    fi
+    while :; do
+      alive="1"
+      kill -0 "$pid" 2>/dev/null || alive=""
+      if [ -n "$alive" ] && ps -p "$pid" -o stat= 2>/dev/null | grep -q 'Z'; then alive=""; fi
+      if [ -z "$alive" ]; then break; fi
+      if [ "$elapsed" -ge "$limit" ]; then
+        kill -9 "$pid" 2>/dev/null || true
+        wait "$pid" >/dev/null 2>&1
+        WD_STATUS=124
+        WD_TIMED_OUT="true"
+        EVAL_STATUS=124
+        set -e
+        return 0
+      fi
+      sleep 1
+      elapsed=$((elapsed + 1))
+    done
+    wait "$pid"
+    WD_STATUS=$?
+    EVAL_STATUS=$WD_STATUS
+    set -e
+    return 0
+  }
+
+  # pty_envelope: the pty merges the child's stdout+stderr into one stream,
+  # so the envelope cannot be read straight off EVAL_OUT. The fail() envelope
+  # is pretty-printed jq: it opens on a line that is exactly `{` and closes
+  # on a line that is exactly `}` (nested closings are indented; preview and
+  # re-enter lines never form a lone brace). Print from the last such opener
+  # through its closer, stripping pty CRs. Prints nothing when absent.
+  pty_envelope() {
+    awk '{ sub(/\r$/, "") } /^{$/ { buf=""; inenv=1 } inenv { buf=buf $0 "\n" } /^}$/ { if (inenv) { printf "%s", buf; inenv=0; buf="" } }' "$1"
+  }
+
+  # --- H8a: installer preview under --json on a pty ---
+  WD_DIR="$EVAL_SANDBOX"
+  watchdog_pty "$LIMIT" -- install --json
+  hung_ok "install --json on a pty"
+  pty_env="$(pty_envelope "$EVAL_OUT")"
+  if [ "$EVAL_STATUS" -eq 1 ] \
+    && [ "$(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null)" = "needs-confirm" ]; then
+    good "pty machine refusal is typed needs-confirm at exit 1"
+  else
+    bad "pty machine refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null || true)"
+  fi
+  if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
+    bad "prompt text leaked on a pty under --json"
+  else
+    good "no prompt text on stdout or stderr under --json on a pty"
+  fi
+  if jq -e '.data == null' <<<"$pty_env" >/dev/null 2>&1 \
+    && grep -q "try:" <<<"$pty_env"; then
+    good "pty refusal keeps the envelope shape (data null, try: hint)"
+  else
+    bad "pty refusal breaks the envelope shape"
+  fi
+  if (cd "$EVAL_SANDBOX" && shasum -c "$FOREIGN_SNAP" >/dev/null 2>&1) \
+    && [ ! -e "$EVAL_SANDBOX/.agents/skills/verdict" ] \
+    && [ ! -e "$HOME/.agents/skills/verdict" ]; then
+    good "pty refused run wrote nothing (foreign bytes intact, no verdict/ slot)"
+  else
+    bad "pty refused run wrote files"
+  fi
+
+  # --- H8b: scaffolder overwrite under --json on a pty ---
+  # np-repo still carries the standard seed (H3/H4 refused), so a chill
+  # preset wants overwrite and must take the confirm path.
+  WD_DIR="$EVAL_SANDBOX/np-repo"
+  watchdog_pty "$LIMIT" -- init --preset chill --json
+  hung_ok "init --json overwrite on a pty"
+  pty_env="$(pty_envelope "$EVAL_OUT")"
+  if [ "$EVAL_STATUS" -eq 1 ] \
+    && [ "$(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null)" = "needs-confirm" ] \
+    && grep -q "try:" <<<"$pty_env"; then
+    good "pty machine overwrite refusal is typed needs-confirm at exit 1 with a try: hint"
+  else
+    bad "pty machine overwrite refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null || true)"
+  fi
+  if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
+    bad "prompt text leaked on a pty under --json (init)"
+  else
+    good "no prompt text on stdout or stderr under --json on a pty (init)"
+  fi
+  if [ "$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)" = "$seed_sums" ]; then
+    good "pty refused overwrite left all four control files byte-identical"
+  else
+    bad "pty refused overwrite mutated the control files"
+  fi
+else
+  good "script(1) unavailable or unsupported OS — pty leg skipped (hermetic-only, non-failing)"
+fi
 
 # --- H7: offline across every leg ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
