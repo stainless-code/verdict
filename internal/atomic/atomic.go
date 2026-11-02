@@ -72,3 +72,9 @@ func fsyncDir(dir string) {
 	defer func() { _ = d.Close() }() // best-effort dir fsync; failure must not fail the write
 	_ = d.Sync()                     //nolint:errcheck // best-effort dir fsync; failure must not fail the write
 }
+
+// Replace renames from onto to with the platform's replace semantics. Unix
+// uses an atomic rename; Windows retries the transient sharing/access
+// denials an antivirus or indexer can hold on the destination, then gives
+// up. Callers stage on the destination filesystem first.
+func Replace(from, to string) error { return replaceFile(from, to) }

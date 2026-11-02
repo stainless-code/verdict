@@ -627,6 +627,39 @@ you stand).
   and their own PATH line;
   a `verdict` without the receipt is refused as foreign. The scripts are
   release assets, not npm tarball contents.
+- **Updating** (`verdict upgrade`): explicit only — no background check, no
+  nag, no daemon, and the review path never calls it. The command resolves
+  `os.Executable()` through symlinks and maps the result to one channel:
+  installer-managed (receipt in `~/.verdict/bin` / `VERDICT_INSTALL`) does a
+  verified self-replace (archive + `checksums.txt` + sigstore bundle; cosign
+  identity/issuer when cosign is present, loud checksum-only fallback, and
+  `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract only the
+  binary; `--version` smoke test; atomic replace with rollback). Global
+  npm/pnpm/bun/yarn installs run that manager's global update
+  (`npm i -g @stainless-code/verdict@latest`, `pnpm add -g …`,
+  `bun add -g …`, `yarn global add …`) after printing the exact command and
+  with no prompt; Homebrew runs
+  `brew upgrade stainless-code/tap/verdict` (the formula owns the version, so
+  `--version` refuses). Project-local `node_modules` (the manifest/lockfile
+  owns it), skill copies (`npx skills update` / the skill bootstrap),
+  sudo/admin, unwritable targets, and unidentifiable paths refuse typed with
+  the exact remediation command — never a silent privilege escalation and no
+  download in a refusal path. `--dry-run` prints the channel and planned
+  action and touches nothing; `--json` emits the standard envelope;
+  `VERDICT_INSTALL_METHOD` (`installer-managed`, `npm`, `pnpm`, `bun`,
+  `yarn`, `homebrew`, `project-local`, `skill`, `unknown`) overrides
+  detection for tests. On Windows the
+  running `.exe` is never overwritten: the verified new binary is copied to
+  `%TEMP%`, spawned as a helper that waits for the parent PID, renames the old
+  binary to `.old`, moves the new one in, smoke-tests, writes the receipt,
+  deletes `.old`, and restores the old binary on failure.
+- **Uninstalling** (`verdict uninstall`): installer-managed installs only.
+  Removes `verdict`, the `.verdict-installer` receipt, and (with
+  `--remove-path`) the marked `# verdict installer` shell-profile line
+  (`install.ps1`'s user PATH entry on Windows); other files are untouched.
+  npm/pnpm/bun/yarn/Homebrew/project-local/skill copies refuse typed with the
+  owning removal command (`npm uninstall -g …`, `brew uninstall …`,
+  `rm -rf <skill dir>`, …). `--dry-run` and `--json` are supported.
 - **Registry** (`npx skills add stainless-code/verdict`): the skill copy
   carries the CLI — no further install step. `install.sh` is not shipped in
   the npm tarball and never runs here; invoke the bundled

@@ -64,6 +64,33 @@ sh install.sh --uninstall --remove-path
 ./install.ps1 -Uninstall -RemovePath
 ```
 
+### Updating
+
+`verdict upgrade` is explicit and channel-aware: it never runs in the
+background, never checks at review time, and never prompts. Typing the command
+is the consent.
+
+```bash
+verdict upgrade --version v1.2.3   # pin (default: latest through the Releases redirect)
+verdict upgrade --dry-run          # print the detected channel + planned action, touch nothing
+verdict upgrade --json             # one machine envelope
+```
+
+| Detected install                                                           | `verdict upgrade` does                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Installer-managed (`~/.verdict/bin` or `VERDICT_INSTALL`, receipt present) | Verified self-replace: fetch archive + `checksums.txt` + sigstore bundle, verify cosign identity/issuer (or loudly checksum-only), SHA-256, extract only `verdict`, `--version` smoke, atomic replace, roll back on failure. Windows never overwrites the running `.exe`: a helper replaces it after exit. |
+| npm / pnpm / bun / yarn global                                             | Prints the exact manager command, then runs it (no prompt) and streams its output: `npm i -g @stainless-code/verdict@latest`, `pnpm add -g …`, `bun add -g …`, `yarn global add …`.                                                                                                                        |
+| Homebrew                                                                   | Prints and runs `brew upgrade stainless-code/tap/verdict` (the formula owns version selection).                                                                                                                                                                                                            |
+| Project-local `node_modules`                                               | Refuses typed: the upgrade belongs in the project manifest/lockfile (`npm install @stainless-code/verdict@latest`).                                                                                                                                                                                        |
+| Skill copy                                                                 | Refuses typed: `npx skills update` (or the skill's `bootstrap`).                                                                                                                                                                                                                                           |
+| sudo/admin, unwritable, or unidentifiable                                  | Refuses typed with the reason and the exact installer command; never escalates privileges.                                                                                                                                                                                                                 |
+
+`verdict uninstall` removes only installer-managed files (the binary plus its
+`.verdict-installer` receipt); `--remove-path` also removes the marked
+`# verdict installer` PATH line. It supports `--dry-run` / `--json` and
+refuses npm/brew/project-local/skill copies with the owning removal command.
+`VERDICT_INSTALL_METHOD` overrides channel detection for tests.
+
 ### CI: setup-verdict action
 
 One `uses:` line installs a pinned, verified `verdict` on Ubuntu, macOS,

@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/doctor"
 	"github.com/stainless-code/verdict/internal/fetch"
 	"github.com/stainless-code/verdict/internal/fix"
@@ -46,7 +47,7 @@ const envHome = "HOME"
 
 // verbsHint lists the verbs the CLI owns, in the frozen unknown-cmd order.
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install"
+	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install|upgrade|uninstall"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -56,6 +57,11 @@ func main() {
 // run executes the CLI with injected I/O and environment for testability,
 // returning the process exit code.
 func run(args []string, stdout, stderr *os.File, getenv func(string) string, readFile func(string) ([]byte, error)) int {
+	// The Windows replacement helper is a hidden dispatch: it must run
+	// before usage/arity/prefs and never appears in the usage block.
+	if len(args) > 0 && args[0] == upgrade.HelperCommand {
+		return upgrade.RunHelper(context.Background(), args[1:], stderr)
+	}
 	// Installed binaries ship no package.json: the linked release version
 	// (if any) owns the footer before any flag handling runs.
 	provenance.SetBuildVersion(strings.TrimPrefix(version, "v"))
@@ -167,6 +173,8 @@ func dispatch(
 }
 
 // dispatchMutating runs a store-writing verb; ok is false for unknown verbs.
+//
+//nolint:cyclop // the verb table grows one branch per verb by design
 func dispatchMutating(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
 	env map[string]string, forces *cli.GlobalForces, rest []string,
@@ -191,6 +199,10 @@ func dispatchMutating(
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env}), true
 	case "install":
 		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root}), true
+	case "upgrade":
+		return runUpgrade(ctx, r, rest, env), true
+	case "uninstall":
+		return runUninstall(ctx, r, rest, env), true
 	case "verify":
 		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
 	default:
@@ -352,6 +364,11 @@ func envMap(getenv func(string) string) map[string]string {
 		"BITBUCKET_TOKEN", "BITBUCKET_USERNAME", "BITBUCKET_PASSWORD",
 		"AZURE_DEVOPS_ORG", "AZURE_DEVOPS_EXT_PAT",
 		"REVIEW_KB_MIN_JUDGED", "REVIEW_KB_MAX_FP_RATE",
+		"VERDICT_INSTALL", "VERDICT_INSTALL_METHOD", "VERDICT_NPM_MANAGED",
+		"VERDICT_MANAGED", "VERDICT_DOWNLOAD_URL", "VERDICT_COSIGN",
+		"VERDICT_REQUIRE_SIGNATURE", "SHELL", "ZDOTDIR", "PATH",
+		"APPDATA", "LOCALAPPDATA", "PNPM_HOME", "BUN_INSTALL",
+		"NPM_CONFIG_PREFIX", "HOMEBREW_PREFIX",
 	}
 	env := make(map[string]string, len(keys))
 	for _, k := range keys {

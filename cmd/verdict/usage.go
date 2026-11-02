@@ -13,7 +13,7 @@ package main
 // (exit 2).
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install|upgrade|uninstall [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -186,6 +186,18 @@ func usageText() string {
 		"    registry and copy installs (both ship `scripts/`). The install-skill.sh\n" +
 		"    symlink route stays the wide-coverage sibling for git checkouts only\n" +
 		"    (nine agents, --detect/--all).\n" +
+		"  upgrade [--version <v>] [--dry-run] [--json]\n" +
+		"    explicit, channel-aware self-update. Installer-managed installs verify the\n" +
+		"    release (cosign bundle when present, SHA-256 always), smoke-test, and\n" +
+		"    atomically replace; npm/pnpm/bun/yarn/brew installs run the owning manager's\n" +
+		"    global update (printed first, output streamed, no prompt); project-local,\n" +
+		"    skill, sudo/admin, and unidentifiable installs refuse typed with the exact\n" +
+		"    command. --dry-run prints the channel and planned action and touches nothing.\n" +
+		"    Windows never overwrites the running exe: a helper replaces it after exit.\n" +
+		"  uninstall [--remove-path] [--dry-run] [--json]\n" +
+		"    remove an installer-managed verdict plus its receipt; only with --remove-path\n" +
+		"    also remove the marked PATH line. npm/brew/project-local/skill copies refuse\n" +
+		"    with the owning removal command.\n" +
 		"  Global presentation flags (any verb; stripped before verb parsing):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
 		"  Global publish flags (any verb; stripped before verb parsing):\n" +
@@ -207,7 +219,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install: " +
+		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install/upgrade/uninstall: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n"
 }
@@ -219,6 +231,8 @@ var bareVerbs = map[string]bool{
 	"learn":      true,
 	"init":       true,
 	"install":    true,
+	"upgrade":    true,
+	"uninstall":  true,
 }
 
 // arityUsage reports whether the invocation fails the positional-arity

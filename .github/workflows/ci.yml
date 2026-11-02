@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           shellcheck -s sh -S warning install.sh
-          shellcheck -S warning install-skill.sh evals/cases/installer-binary.sh
+          shellcheck -S warning install-skill.sh evals/cases/installer-binary.sh evals/cases/upgrade.sh
 
       - name: Hermetic installer eval (fake release assets, file:// URLs)
         shell: bash
