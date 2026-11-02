@@ -1,5 +1,17 @@
 # @stainless-code/verdict
 
+## 0.4.0
+
+### Minor Changes
+
+- 21ac180: SHA-finalizer and APPROVE-path correctness. A second `post` on the same reviewed SHA is refused naming the exact `fetch --base-sha` advance; post-time drift and the `report --check` gate name the same advance, and a binding APPROVE on a known-stale fetch downgrades to COMMENT. `report --check` gains a live-thread dimension: unknown-to-store open threads fail the gate, unreachable lookups warn and stay neutral.
+- 21ac180: Chunked split-range reviews. Over-cap diffs machine-slice on file boundaries (`--chunk` / `.review/chunk` opt-in) with a versioned manifest; the Review contract reads per-chunk and synthesizes one verdict with a summed Basis line; `post`/`record` refuse attested-but-partial coverage and warn loudly on unattested chunked reviews. Same flow on `fetch-local`.
+- 21ac180: Verify hardening. `verify` refuses destructive, networked, credential-reading, and repo-escaping commands with typed errors before execution (fail-closed, over 40 regression shapes); `doctor` warns on excess token scope; the manual gains an opt-in hostile-PR sandbox recipe and documents the string-scan ceiling residuals.
+
+### Patch Changes
+
+- 21ac180: Untrusted-data preamble in the fix flow, verified abort-if-not-introduced pin, machine-modes-never-prompt doctrine, and a combined `report --check --completeness` pre-push probe recipe in the manual.
+
 ## 0.3.1
 
 ### Patch Changes
