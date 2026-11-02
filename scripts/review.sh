@@ -2601,7 +2601,9 @@ emit_context() { # $1 = dir
 # incremental path — never as bundle files.
 prompt_nonce() { # per-run untrusted-fence nonce: 16 lowercase hex chars
   local n="" i
-  n=$(od -An -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' | head -c 16 || true)
+  # -N8 bounds the read: an unbounded od relied on SIGPIPE to stop, and it
+  # spun forever where SIGPIPE is ignored (hung a macOS CI runner for 2h).
+  n=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' || true)
   if [[ ! "$n" =~ ^[0-9a-f]{16}$ ]]; then
     n=""
     for i in 1 2 3 4; do n="$n$(printf '%04x' $(( RANDOM % 65536 )))"; done
