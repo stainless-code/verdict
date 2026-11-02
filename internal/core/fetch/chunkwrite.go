@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -63,7 +63,7 @@ func slicePlan(fullDiff, cdir string, plan []chunkEntry) error {
 	if serr := sliceChunks(fullDiff, cdir, plan); serr != nil {
 		cwe, _ := errors.AsType[*chunkWriteError](serr)
 		if cwe != nil {
-			return &cli.RefusalError{Code: "chunk-write-failed", Message: fmt.Sprintf(
+			return &core.RefusalError{Code: "chunk-write-failed", Message: fmt.Sprintf(
 				"chunk %s missing after slicing %s (re-run the fetch)", cwe.name, fullDiff)}
 		}
 		return serr

@@ -35,3 +35,15 @@ type Result struct {
 type Commander interface {
 	Run(ctx context.Context, cmd Command) (Result, error)
 }
+
+// MissingToolError marks a missing-tool exit: the adapter prints the
+// `missing: <tool>` line and exits 1 with no envelope, never a typed
+// refusal. Commanders return it when argv[0] does not resolve (production
+// maps the exec look-path failure; scripted commanders return it directly),
+// and services pass it through untouched.
+type MissingToolError struct {
+	Tool string
+}
+
+// Error implements error.
+func (e *MissingToolError) Error() string { return "missing tool: " + e.Tool }

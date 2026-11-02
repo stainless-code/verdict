@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -44,7 +44,7 @@ func resolveBudget(env map[string]string) (budgetState, error) {
 		return st, nil
 	}
 	if !isBudgetNumber(raw) {
-		return st, &cli.RefusalError{Code: "bad-budget", Message: fmt.Sprintf(
+		return st, &core.RefusalError{Code: "bad-budget", Message: fmt.Sprintf(
 			"budget '%s' from %s is not a plain USD number (want e.g. REVIEW_BUDGET_USD=0.50 "+
 				"or a .review/budget file holding 0.50)", raw, src)}
 	}
@@ -84,7 +84,7 @@ func allDigits(s string) bool {
 
 // budgetGate ports budget_gate: with a budget set, print the estimate line,
 // arm the envelope summaries, and refuse over-budget runs without consent.
-func budgetGate(r *cli.Runner, st *budgetState, consent bool) error {
+func budgetGate(r *session, st *budgetState, consent bool) error {
 	if !st.hasBudget {
 		return nil
 	}
@@ -103,7 +103,7 @@ func budgetGate(r *cli.Runner, st *budgetState, consent bool) error {
 			st.receiptNeeded = true
 			return nil
 		}
-		return &cli.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
+		return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
 			"projected %s run ~$%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
 			st.estTier, st.estUSD, st.budgetUSD, st.budgetSrc, st.estRuns)}
 	}
@@ -113,7 +113,7 @@ func budgetGate(r *cli.Runner, st *budgetState, consent bool) error {
 // costEstimate ports cost_estimate: the mean est_usd of the most-run effort
 // tier across every .review/*/cost.json record (ties break toward the
 // deeper tier). Unknown history reads unknown, never blocking.
-func costEstimate(r *cli.Runner, st *budgetState) {
+func costEstimate(r *session, st *budgetState) {
 	st.estUSD, st.estRuns, st.estTier, st.tierRuns = "", 0, "", 0
 	recs := estimateRecs(r)
 	if len(recs) == 0 {
@@ -262,7 +262,7 @@ func tierStats(recs []costRec, t string) (runs int, meanVal float64, mean string
 // estimateRecs ports the cost-history sweep: every readable record
 // accumulates, while unreadable files warn once (the shell accumulates
 // "$bad$f " per file, trailing space included).
-func estimateRecs(r *cli.Runner) []costRec {
+func estimateRecs(r *session) []costRec {
 	var recs []costRec
 	var bad []string
 	files, gerr := filepath.Glob(".review/*/cost.json")
@@ -323,7 +323,7 @@ func jsonFloat(lit string) any {
 
 // writeBudgetReceipt ports write_budget_receipt: a consented over-budget
 // run appends one receipt to the bundle's budget.json ledger.
-func writeBudgetReceipt(r *cli.Runner, st *budgetState, dir, now string) {
+func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 	if !st.receiptNeeded {
 		return
 	}
@@ -345,7 +345,7 @@ func writeBudgetReceipt(r *cli.Runner, st *budgetState, dir, now string) {
 // to the stored array (old receipts keep their stored key order, like
 // the shell's jq pass-through), or starts a fresh `[$rc]` ledger,
 // warning when the stored ledger is unreadable.
-func budgetLedger(r *cli.Runner, dir string, rc *jq.Obj) string {
+func budgetLedger(r *session, dir string, rc *jq.Obj) string {
 	merged := "[" + rc.MarshalPretty() + "]"
 	raw, err := os.ReadFile(dir + "/budget.json")
 	if err != nil {

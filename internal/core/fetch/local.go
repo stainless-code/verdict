@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"context"
@@ -9,68 +9,72 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 )
 
 // runLocal mirrors the fetch-local block: worktree/staged/range/branch/
 // stash diff modes sharing the cap/chunk/budget/prompt planes.
-func runLocal(ctx context.Context, ctx2 *fetchRunCtx, req Request, f *localFlags) (int, error) {
+// runLocalTail ports the fetch-local block: worktree/staged/range/branch/
+// stash diff modes sharing the cap/chunk/budget/prompt planes, returning
+// the envelope data and next step for the adapter to render.
+func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest) (*core.FetchData, string, error) {
 	r := ctx2.runner
+	f := &req.Flags
 	mode, dir, slug, ref := localSetup(ctx, ctx2, req, f)
 	if ref != nil {
-		return 0, ref
+		return nil, "", ref
 	}
-	budget, ref := localBudget(r, req, f, dir)
+	budget, ref := localBudget(r, f, dir)
 	if ref != nil {
-		return 0, ref
+		return nil, "", ref
 	}
-	if ref := localDiff(ctx, r, dir, &mode, f.paths); ref != nil {
-		return 0, ref
+	if ref := localDiff(ctx, r, dir, &mode, f.Paths); ref != nil {
+		return nil, "", ref
 	}
-	fc, chunkActive, ref := localCap(r, req, dir, f.chunkFlag)
+	fc, chunkActive, ref := localCap(r, dir, f.ChunkFlag)
 	if ref != nil {
-		return 0, ref
+		return nil, "", ref
 	}
-	listed, numstat, total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, &mode, f.paths)
+	listed, numstat, total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, &mode, f.Paths)
 	if serr != nil {
-		return 0, serr
+		return nil, "", serr
 	}
 	if ref := localStores(ctx2, r, dir, slug, listed, numstat); ref != nil {
-		return 0, ref
+		return nil, "", ref
 	}
 	return localFinish(ctx, ctx2, req, f, r, dir, &budget, fc, chunkActive, &mode, listed, total, adds, dels, diffSHA)
 }
 
 // localSlugGate ports the fetch-local name gate: empty, numeric, and
 // local-prefixed names refuse typed.
-func localSlugGate(pr, slug string) *cli.RefusalError {
+func localSlugGate(pr, slug string) *core.RefusalError {
 	if slug == "" || slug == "local" {
-		return &cli.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("name '%s' sanitizes to nothing — pass a usable bundle name", pr)}
+		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("name '%s' sanitizes to nothing — pass a usable bundle name", pr)}
 	}
 	if isDigits(slug) {
-		return &cli.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("'%s' looks like a PR number — use fetch for PRs", slug)}
+		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("'%s' looks like a PR number — use fetch for PRs", slug)}
 	}
 	if strings.HasPrefix(slug, "local-") {
-		return &cli.RefusalError{Code: codeBadSlug, Message: "no local- prefix needed — the store adds it"}
+		return &core.RefusalError{Code: codeBadSlug, Message: "no local- prefix needed — the store adds it"}
 	}
 	return nil
 }
 
 // localModeCount counts the selected diff modes for the exclusivity gate.
-func localModeCount(f *localFlags) int {
+func localModeCount(f *core.FetchLocalFlags) int {
 	modes := 0
-	if f.rangeSpec != "" {
+	if f.RangeSpec != "" {
 		modes++
 	}
-	if f.baseRef != "" {
+	if f.BaseRef != "" {
 		modes++
 	}
-	if f.staged {
+	if f.Staged {
 		modes++
 	}
-	if f.hasStash {
+	if f.HasStash {
 		modes++
 	}
 	return modes
@@ -78,22 +82,24 @@ func localModeCount(f *localFlags) int {
 
 // localSetup ports the fetch-local preamble: slug gate, worktree check,
 // mode resolution, and the bundle directory.
-func localSetup(ctx context.Context, ctx2 *fetchRunCtx, req Request, f *localFlags) (localMode, string, string, error) {
+func localSetup(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
+) (localMode, string, string, error) {
 	slug := localSlug(req.Pr)
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
 		return localMode{}, "", "", ref
 	}
 	dir := ".review/local-" + slug
 	ctx2.dir = dir
-	if res, err := runCmd(ctx, binGit, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
+	if res, err := ctx2.runner.run(ctx, binGit, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res
-		return localMode{}, "", "", &cli.RefusalError{Code: "not-a-repo", Message: "fetch-local runs inside a git worktree"}
+		return localMode{}, "", "", &core.RefusalError{Code: "not-a-repo", Message: "fetch-local runs inside a git worktree"}
 	}
-	branch := gitLineOrEmpty(ctx, modeBranch, "--show-current")
+	branch := ctx2.runner.gitLineOrEmpty(ctx, modeBranch, "--show-current")
 	if localModeCount(f) > 1 {
-		return localMode{}, "", "", &cli.RefusalError{Code: "bad-flags", Message: "--range/--base/--staged/--stash are mutually exclusive"}
+		return localMode{}, "", "", &core.RefusalError{Code: "bad-flags", Message: "--range/--base/--staged/--stash are mutually exclusive"}
 	}
-	mode, err := resolveLocalMode(ctx, f, branch)
+	mode, err := resolveLocalMode(ctx, ctx2.runner, f, branch)
 	if err != nil {
 		return localMode{}, "", "", err
 	}
@@ -102,34 +108,34 @@ func localSetup(ctx context.Context, ctx2 *fetchRunCtx, req Request, f *localFla
 
 // localBudget ports the fetch-local budget preamble: resolution, gate,
 // directory, and receipt.
-func localBudget(r *cli.Runner, req Request, f *localFlags, dir string) (budgetState, error) {
-	budget, err := resolveBudget(req.Env)
+func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, error) {
+	budget, err := resolveBudget(r.env)
 	if err != nil {
 		return budget, err
 	}
-	if err := budgetGate(r, &budget, f.budgetConsent); err != nil {
+	if err := budgetGate(r, &budget, f.BudgetConsent); err != nil {
 		return budget, err
 	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return budget, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
+		return budget, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
 	}
-	writeBudgetReceipt(r, &budget, dir, cli.NowUTC(r.Now()))
+	writeBudgetReceipt(r, &budget, dir, core.NowUTC(r.Now()))
 	return budget, nil
 }
 
 // localDiff ports the fetch-local diff read: the mode diff runs with its
 // stderr sidecar, and full.diff lands (empty on failure, like `>`).
-func localDiff(ctx context.Context, _ *cli.Runner, dir string, mode *localMode, paths []string) error {
+func localDiff(ctx context.Context, r *session, dir string, mode *localMode, paths []string) error {
 	diffArgs := append(mode.diffArgs(), paths...)
-	diffRes, err := runCmd(ctx, binGit, diffArgs...)
-	if werr := writeErrFile(dir+suffixDiffErr, diffRes.stderr); werr != nil {
+	diffRes, err := r.run(ctx, binGit, diffArgs...)
+	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
 	}
 	if err != nil {
-		return localDiffFail(dir, diffRes.stderr)
+		return localDiffFail(dir, diffRes.Stderr)
 	}
-	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.stdout)); werr != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -140,13 +146,13 @@ func localDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 		return ref
 	}
-	return &cli.RefusalError{Code: "diff-failed", Message: "git diff failed: " + headBytes(stderr, numExcerpt)}
+	return &core.RefusalError{Code: "diff-failed", Message: "git diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
 // localCap ports the fetch-local cap gate: resolution and the over-cap
 // fork (chunks armed or typed refusal with split candidates).
-func localCap(r *cli.Runner, req Request, dir string, chunkFlag bool) (fetchCap, bool, error) {
-	fc, ref := resolveFetchCap(r, req.Env)
+func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
+	fc, ref := resolveFetchCap(r)
 	if ref != nil {
 		return fc, false, ref
 	}
@@ -160,7 +166,7 @@ func localCap(r *cli.Runner, req Request, dir string, chunkFlag bool) (fetchCap,
 // localStats ports the fetch-local measurements: hunks, the binary/warn
 // lines, the file stats, and the counts.
 func localStats(
-	ctx context.Context, r *cli.Runner, dir string, mode *localMode, paths []string,
+	ctx context.Context, r *session, dir string, mode *localMode, paths []string,
 ) (listed, numstat string, total, adds, dels int, diffSHA string, err error) {
 	if herr := buildHunksTSV(dir+suffixFullDiff, dir+"/hunks.tsv"); herr != nil {
 		return "", "", 0, 0, 0, "", herr
@@ -170,7 +176,7 @@ func localStats(
 		r.Warn("no @@ hunks — binary/mode-only changes; bundle kept, anchors unchecked, everything kept")
 	}
 	diffSHA = sha256Hex(dir + suffixFullDiff)
-	listed, numstat = localFileStats(ctx, mode, paths)
+	listed, numstat = localFileStats(ctx, r, mode, paths)
 	total, adds, dels = localCounts(listed, numstat)
 	writeLocalUntrackedWarns(ctx, r, paths)
 	writeLocalBinaryWarns(r, numstat)
@@ -183,13 +189,13 @@ func localStats(
 
 // localStores ports the fetch-local bundle stores: TOC, roles, context,
 // claim store, sensitive manifest, and recall.
-func localStores(ctx2 *fetchRunCtx, r *cli.Runner, dir, slug, listed, numstat string) error {
+func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat string) error {
 	if err := writeLocalTOC(ctx2, slug, listed, numstat); err != nil {
 		return err
 	}
 	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", dir)
 	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(listed))); err != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", dir, err)}
 	}
 	if ref := emitContext(ctx2); ref != nil {
 		return ref
@@ -205,27 +211,27 @@ func localStores(ctx2 *fetchRunCtx, r *cli.Runner, dir, slug, listed, numstat st
 }
 
 // localFinish ports the fetch-local tail: source.json, the done/next
-// lines, the opt-in chunks, and the envelope.
+// lines, the opt-in chunks, and the typed data for the adapter's envelope.
 func localFinish(
-	_ context.Context, ctx2 *fetchRunCtx, req Request, f *localFlags, r *cli.Runner,
+	_ context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
 	dir string, budget *budgetState, fc fetchCap, chunkActive bool, mode *localMode,
 	listed string, total, adds, dels int, diffSHA string,
-) (int, error) {
+) (*core.FetchData, string, error) {
 	slug := localSlug(req.Pr)
-	toolVersion := provenance.ToolVersion(req.Root)
-	now := cli.NowUTC(r.Now())
-	model, _ := req.Env["REVIEW_MODEL"]
-	if err := writeSourceJSON(dir, req, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now); err != nil {
-		return 0, err
+	toolVersion := provenance.ToolVersion(ctx2.root)
+	now := core.NowUTC(r.Now())
+	model, _ := ctx2.env["REVIEW_MODEL"]
+	if err := writeSourceJSON(dir, req.Repo, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now); err != nil {
+		return nil, "", err
 	}
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", dir, dir, dir, dir, total)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/source.json + full.diff to any agent; ask it to write %s/review.json\n", dir, dir)
 	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, mode.headSHA, mode.baseSHA, fc.source)
 	if ref != nil {
-		return 0, ref
+		return nil, "", ref
 	}
-	return fetchTailLocal(ctx2, req, f, budget, &fc, chunkJSON, slug, mode, listed, total, adds, dels, model, now)
+	return fetchTailLocal(ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
 }
 
 // localSlug ports the fetch-local slug pipeline on bytes: ASCII-lowercase,
@@ -301,62 +307,62 @@ func (m *localMode) diffArgs() []string {
 }
 
 // resolveLocalMode ports the fetch-local mode resolution.
-func resolveLocalMode(ctx context.Context, f *localFlags, branch string) (localMode, error) {
+func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, branch string) (localMode, error) {
 	switch {
-	case f.hasStash:
-		return resolveStashMode(ctx, f)
-	case f.rangeSpec != "":
-		return resolveRangeMode(ctx, f.rangeSpec)
-	case f.baseRef != "":
-		return resolveBaseMode(ctx, f, branch)
-	case f.staged:
-		return resolveStagedMode(ctx)
+	case f.HasStash:
+		return resolveStashMode(ctx, s, f)
+	case f.RangeSpec != "":
+		return resolveRangeMode(ctx, s, f.RangeSpec)
+	case f.BaseRef != "":
+		return resolveBaseMode(ctx, s, f, branch)
+	case f.Staged:
+		return resolveStagedMode(ctx, s)
 	default:
-		return resolveWorktreeMode(ctx, branch), nil
+		return resolveWorktreeMode(ctx, s, branch), nil
 	}
 }
 
 // resolveStashMode ports the stash mode: the stash ref must verify, then
 // its commit and parent bound the diff.
-func resolveStashMode(ctx context.Context, f *localFlags) (localMode, error) {
-	if _, err := runCmd(ctx, binGit, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.stashN+"}"); err != nil {
-		return localMode{}, &cli.RefusalError{
+func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) (localMode, error) {
+	if _, err := s.run(ctx, binGit, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
+		return localMode{}, &core.RefusalError{
 			Code:    "bad-stash",
-			Message: fmt.Sprintf("no such stash: stash@{%s} (see git stash list)", f.stashN),
+			Message: fmt.Sprintf("no such stash: stash@{%s} (see git stash list)", f.StashN),
 		}
 	}
-	head := gitLineOrEmpty(ctx, gitCmdRevParse, stashRefPrefix+f.stashN+"}^{commit}")
-	base := gitLineOrEmpty(ctx, gitCmdRevParse, stashRefPrefix+f.stashN+"}^")
-	ref := "stash@{" + f.stashN + "}"
+	head := s.gitLineOrEmpty(ctx, gitCmdRevParse, stashRefPrefix+f.StashN+"}^{commit}")
+	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, stashRefPrefix+f.StashN+"}^")
+	ref := "stash@{" + f.StashN + "}"
 	return localMode{kind: modeStash, baseSHA: base, headSHA: head, headRef: ref, rangeVal: ref}, nil
 }
 
 // resolveBaseMode ports the base mode: the merge-base with HEAD bounds a
 // branch-style diff.
-func resolveBaseMode(ctx context.Context, f *localFlags, branch string) (localMode, error) {
-	mb, err := gitLine(ctx, "merge-base", f.baseRef, gitHeadRef)
+func resolveBaseMode(ctx context.Context, s *session, f *core.FetchLocalFlags, branch string) (localMode, error) {
+	mb, err := s.gitLine(ctx, "merge-base", f.BaseRef, gitHeadRef)
 	if err != nil {
-		return localMode{}, &cli.RefusalError{Code: "bad-base", Message: fmt.Sprintf("no merge-base with '%s'", f.baseRef)}
+		return localMode{}, &core.RefusalError{Code: "bad-base", Message: fmt.Sprintf("no merge-base with '%s'", f.BaseRef)}
 	}
-	head := gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
+	head := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
 	headRef := branch
 	if headRef == "" {
 		headRef = gitHeadRef
 	}
-	return localMode{kind: modeBranch, baseSHA: mb, headSHA: head, headRef: headRef, rangeVal: f.baseRef + "...HEAD"}, nil
+	return localMode{kind: modeBranch, baseSHA: mb, headSHA: head, headRef: headRef, rangeVal: f.BaseRef + "...HEAD"}, nil
 }
 
 // resolveStagedMode ports the staged mode: HEAD bounds the index diff.
-func resolveStagedMode(ctx context.Context) (localMode, error) {
-	base := gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
-	head := gitLineOrEmpty(ctx, "write-tree")
+func resolveStagedMode(ctx context.Context, s *session) (localMode, error) {
+	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
+	head := s.gitLineOrEmpty(ctx, "write-tree")
 	return localMode{kind: modeStaged, baseSHA: base, headSHA: head, headRef: keyIndex, rangeVal: "HEAD:index"}, nil
 }
 
 // resolveWorktreeMode ports the default worktree mode: uncommitted HEAD
 // changes with the branch (or worktree) as head ref.
-func resolveWorktreeMode(ctx context.Context, branch string) localMode {
-	base := gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
+func resolveWorktreeMode(ctx context.Context, s *session, branch string) localMode {
+	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
 	headRef := branch
 	if headRef == "" {
 		headRef = "worktree"
@@ -366,67 +372,67 @@ func resolveWorktreeMode(ctx context.Context, branch string) localMode {
 
 // resolveRangeMode ports the range split: three-dot wins when present,
 // merging at the merge-base; otherwise a straight two-sided diff.
-func resolveRangeMode(ctx context.Context, spec string) (localMode, error) {
+func resolveRangeMode(ctx context.Context, s *session, spec string) (localMode, error) {
 	if strings.Contains(spec, gitRange3) {
-		return resolveThreeDot(ctx, spec)
+		return resolveThreeDot(ctx, s, spec)
 	}
-	return resolveTwoDot(ctx, spec)
+	return resolveTwoDot(ctx, s, spec)
 }
 
 // resolveThreeDot ports the three-dot range: the merge-base bounds the
 // diff, with both ends resolving.
-func resolveThreeDot(ctx context.Context, spec string) (localMode, error) {
+func resolveThreeDot(ctx context.Context, s *session, spec string) (localMode, error) {
 	ra, _, _ := strings.Cut(spec, gitRange3)
 	_, rb, _ := strings.CutLast(spec, gitRange3)
-	base, err := gitLine(ctx, gitCmdRevParse, flagVerify, ra)
+	base, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, ra)
 	if err != nil {
-		return localMode{}, &cli.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
 	}
 	_ = base
-	mb, err := gitLine(ctx, "merge-base", ra, rb)
+	mb, err := s.gitLine(ctx, "merge-base", ra, rb)
 	if err != nil {
-		return localMode{}, &cli.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("no merge-base for '%s'", spec)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("no merge-base for '%s'", spec)}
 	}
-	head, err := gitLine(ctx, gitCmdRevParse, flagVerify, rb+"^{commit}")
+	head, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, rb+"^{commit}")
 	if err != nil {
-		return localMode{}, &cli.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range head '%s'", rb)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range head '%s'", rb)}
 	}
 	return localMode{kind: modeRange, baseSHA: mb, headSHA: head, headRef: rb, rangeVal: spec}, nil
 }
 
 // resolveTwoDot ports the two-dot range: a straight two-sided diff, with
 // both ends resolving.
-func resolveTwoDot(ctx context.Context, spec string) (localMode, error) {
+func resolveTwoDot(ctx context.Context, s *session, spec string) (localMode, error) {
 	ra, rb := spec, spec
 	if strings.Contains(spec, "..") {
 		ra, _, _ = strings.Cut(spec, "..")
 		_, rb, _ = strings.CutLast(spec, "..")
 	}
-	base, err := gitLine(ctx, gitCmdRevParse, flagVerify, ra+"^{commit}")
+	base, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, ra+"^{commit}")
 	if err != nil {
-		return localMode{}, &cli.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
 	}
-	head, err := gitLine(ctx, gitCmdRevParse, flagVerify, rb+"^{commit}")
+	head, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, rb+"^{commit}")
 	if err != nil {
-		return localMode{}, &cli.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range head '%s'", rb)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range head '%s'", rb)}
 	}
 	return localMode{kind: modeRange, baseSHA: base, headSHA: head, headRef: rb, rangeVal: spec}, nil
 }
 
 // gitLine runs git, returning stdout stripped of trailing newlines. Stderr
 // is discarded, like the shell's 2>/dev/null guards.
-func gitLine(ctx context.Context, args ...string) (string, error) {
-	res, err := runCmd(ctx, binGit, args...)
+func (s *session) gitLine(ctx context.Context, args ...string) (string, error) {
+	res, err := s.run(ctx, binGit, args...)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimRight(res.stdout, newline), nil
+	return strings.TrimRight(res.Stdout, newline), nil
 }
 
 // gitLineOrEmpty runs git, reading "" on failure (the shell's `|| true`
 // with captured output).
-func gitLineOrEmpty(ctx context.Context, args ...string) string {
-	line, err := gitLine(ctx, args...)
+func (s *session) gitLineOrEmpty(ctx context.Context, args ...string) string {
+	line, err := s.gitLine(ctx, args...)
 	if err != nil {
 		return ""
 	}
@@ -436,15 +442,15 @@ func gitLineOrEmpty(ctx context.Context, args ...string) string {
 // truncateEmpty ports the shell's `> file` truncation before a guarded
 // failure: the empty residue lands first so bundles match through every
 // gate. A write error itself refuses (unreachable on a writable bundle).
-func truncateEmpty(path string) *cli.RefusalError {
+func truncateEmpty(path string) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte{}); err != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", path, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", path, err)}
 	}
 	return nil
 }
 
 // localFileStats ports the file-list and numstat reads for the mode.
-func localFileStats(ctx context.Context, mode *localMode, paths []string) (string, string) {
+func localFileStats(ctx context.Context, s *session, mode *localMode, paths []string) (string, string) {
 	var listRef, statRef []string
 	switch mode.kind {
 	case modeStaged:
@@ -470,14 +476,14 @@ func localFileStats(ctx context.Context, mode *localMode, paths []string) (strin
 		statRef = append(statRef, paths...)
 	}
 	fileList := ""
-	if res, err := runCmd(ctx, binGit, append([]string{gitCmdDiff, "--no-renames", "--name-only"}, listRef...)...); err == nil {
-		fileList = strings.TrimRight(res.stdout, newline)
-	} else if res, err := runCmd(ctx, binGit, append([]string{gitCmdDiff, "--name-only"}, listRef...)...); err == nil {
-		fileList = strings.TrimRight(res.stdout, newline)
+	if res, err := s.run(ctx, binGit, append([]string{gitCmdDiff, "--no-renames", "--name-only"}, listRef...)...); err == nil {
+		fileList = strings.TrimRight(res.Stdout, newline)
+	} else if res, err := s.run(ctx, binGit, append([]string{gitCmdDiff, "--name-only"}, listRef...)...); err == nil {
+		fileList = strings.TrimRight(res.Stdout, newline)
 	}
 	numstat := ""
-	if res, err := runCmd(ctx, binGit, append([]string{gitCmdDiff, "--numstat"}, statRef...)...); err == nil {
-		numstat = strings.TrimRight(res.stdout, newline)
+	if res, err := s.run(ctx, binGit, append([]string{gitCmdDiff, "--numstat"}, statRef...)...); err == nil {
+		numstat = strings.TrimRight(res.Stdout, newline)
 	}
 	return fileList, numstat
 }
@@ -539,17 +545,17 @@ func hasNonEmptyLine(s string) bool {
 }
 
 // writeLocalUntrackedWarns ports the untracked-files advisory warning.
-func writeLocalUntrackedWarns(ctx context.Context, r *cli.Runner, paths []string) {
+func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 	args := []string{"ls-files", "--others", "--exclude-standard"}
 	if len(paths) > 0 {
 		args = append(args, "--")
 		args = append(args, paths...)
 	}
-	res, err := runCmd(ctx, binGit, args...)
+	res, err := r.run(ctx, binGit, args...)
 	if err != nil {
 		return
 	}
-	kept := untrackedKept(res.stdout)
+	kept := untrackedKept(res.Stdout)
 	if len(kept) == 0 {
 		return
 	}
@@ -589,7 +595,7 @@ func untrackedShown(kept []string) string {
 }
 
 // writeLocalBinaryWarns ports the binary-files advisory warning.
-func writeLocalBinaryWarns(r *cli.Runner, numstat string) {
+func writeLocalBinaryWarns(r *session, numstat string) {
 	kept := binaryKept(numstat)
 	if len(kept) == 0 {
 		return
@@ -680,7 +686,7 @@ func omittedLocal(listed string, withHunks []string) []string {
 
 // writeSourceJSON ports the source.json writer: the local bundle record.
 func writeSourceJSON(
-	dir string, req Request, mode *localMode, slug, diffSHA string,
+	dir, repo string, mode *localMode, slug, diffSHA string,
 	total, adds, dels int, toolVersion, model, now string,
 ) error {
 	nullStr := func(s string) any {
@@ -696,7 +702,7 @@ func writeSourceJSON(
 	doc := jq.NewObj(
 		keySchema, "1",
 		keyKind, mode.kind,
-		"repo", req.Repo,
+		"repo", repo,
 		"slug", slug,
 		keyBaseRef, nullStr(mode.baseRef()),
 		keyHeadRef, mode.headRef,
@@ -713,7 +719,7 @@ func writeSourceJSON(
 		"created_at", now,
 	)
 	if err := atomic.WriteFile(dir+"/source.json", []byte(jq.PrettyOrdered(doc))); err != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/source.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/source.json: %v", dir, err)}
 	}
 	return nil
 }

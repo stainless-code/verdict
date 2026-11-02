@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 // Verbatim provider-bytes contract (go-port 08): the cafe full.diff join
 // preserves patch bytes exactly — a trailing newline survives, a missing

@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"cmp"
@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -226,12 +226,12 @@ func dumpMeta(dir string) (meta, label string) {
 
 // dumpPrompts ports the trusted preamble: the prompt files concatenate,
 // failing typed without the system preamble.
-func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *cli.RefusalError {
+func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
 	for _, f := range []string{"SKILL.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"} {
 		raw, err := os.ReadFile(f)
 		if err != nil {
 			if f == "prompts/system.md" {
-				return &cli.RefusalError{
+				return &core.RefusalError{
 					Code: "prompt-dump-failed",
 					Message: "prompts/system.md is missing — prompt dump refused: the untrusted-data preamble " +
 						"lives there, so a dump without it is unsafe",

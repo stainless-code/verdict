@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"encoding/json"
@@ -7,49 +7,60 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// fetchTail ports fetch_tail: the human done/next lines plus the --json
-// envelope. incBase is nullStr or the incremental base SHA.
+// fetchTail ports fetch_tail: the human done/next lines plus the typed
+// data for the adapter's envelope. incBase is nullStr or the incremental
+// base SHA. The dump rides in Data.PromptDump for the adapter to own on
+// stdout (human mode) or in the envelope (JSON mode).
 func fetchTail(
-	ctx2 *fetchRunCtx, req Request, f fetchFlags, budget *budgetState,
+	ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
-) (int, error) {
-	r, dir := ctx2.runner, ctx2.dir
-	if r.JSONMode {
-		return 0, writeFetchTailJSON(ctx2, req, f, budget, fcap, chunkJSON, incBase)
+) (*core.FetchData, string, error) {
+	s, dir := ctx2.runner, ctx2.dir
+	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
+		dir + "/PR.json + full.diff to any agent; ask it to write " + dir + "/review.json"
+	if req.JSONMode {
+		return writeFetchTailJSON(ctx2, f, budget, fcap, chunkJSON, incBase, next)
 	}
 	stats, err := readFetchStats(dir)
 	if err != nil {
-		return 0, err
+		return nil, "", err
 	}
-	writeFetchDone(r, dir, stats.filesStr)
-	if f.showPrompts {
-		return 0, writePromptDump(ctx2)
+	writeFetchDone(s, dir, stats.filesStr)
+	data := fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, nil)
+	if f.ShowPrompts {
+		dump, err := renderPromptDump(ctx2)
+		if err != nil {
+			return nil, "", err
+		}
+		data.PromptDump = &dump
 	}
-	return 0, nil
+	return data, next, nil
 }
 
 // writeFetchTailJSON ports the --json tail: the staged dump, the progress
-// lines, and the single envelope.
+// lines, and the typed data for the adapter's envelope.
 func writeFetchTailJSON(
-	ctx2 *fetchRunCtx, req Request, f fetchFlags, budget *budgetState,
-	fcap *fetchCap, chunkJSON any, incBase string,
-) error {
-	dump, hasDump, err := stageDump(ctx2, f.showPrompts)
+	ctx2 *fetchRunCtx, f core.FetchFlags, budget *budgetState,
+	fcap *fetchCap, chunkJSON any, incBase, next string,
+) (*core.FetchData, string, error) {
+	dump, hasDump, err := stageDump(ctx2, f.ShowPrompts)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	stats, err := readFetchStats(ctx2.dir)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	writeFetchDone(ctx2.runner, ctx2.dir, stats.filesStr)
-	env := fetchEnvelope(ctx2, req, &stats, budget, fcap, chunkJSON, incBase, dump, hasDump)
-	fmt.Fprint(ctx2.runner.Out, jq.PrettyOrdered(env))
-	return nil
+	var dumpPtr *string
+	if hasDump {
+		dumpPtr = &dump
+	}
+	return fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, dumpPtr), next, nil
 }
 
 // stageDump renders the prompt dump before progress, so a dump refusal
@@ -65,18 +76,8 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 	return d, true, nil
 }
 
-// writePromptDump prints the plain-mode prompt dump to stdout.
-func writePromptDump(ctx2 *fetchRunCtx) error {
-	d, err := renderPromptDump(ctx2)
-	if err != nil {
-		return err
-	}
-	fmt.Fprint(ctx2.runner.Out, d)
-	return nil
-}
-
 // writeFetchDone ports the human done/next lines.
-func writeFetchDone(r *cli.Runner, dir, filesStr string) {
+func writeFetchDone(r *session, dir, filesStr string) {
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/PR.json + %s/full.diff (+ %s/roles.txt) to any agent; ask it to write %s/review.json\n", dir, dir, dir, dir)
@@ -100,26 +101,26 @@ func readFetchStats(dir string) (fetchStats, error) {
 	var st fetchStats
 	raw, err := os.ReadFile(dir + suffixPRJSON)
 	if err != nil {
-		return st, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir)}
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return st, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return st, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 	}
 	if err := statFiles(&st, dir, m); err != nil {
 		return st, err
 	}
 	adds, ok := envelopeNum(m[keyAdditions])
 	if !ok {
-		return st, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 	}
 	dels, ok := envelopeNum(m[keyDeletions])
 	if !ok {
-		return st, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 	}
 	st.adds, st.dels = adds, dels
 	st.hunks = countHunkLines(dir + suffixFullDiff)
@@ -177,17 +178,14 @@ func countHunkLines(fullDiff string) int {
 	return n
 }
 
-// panelObj ports the envelope's panel summary.
-func panelObj(ctx2 *fetchRunCtx) *jq.Obj {
-	source := any(nil)
+// panelVal ports the envelope's panel summary.
+func panelVal(ctx2 *fetchRunCtx) core.FetchPanel {
+	panel := core.FetchPanel{Members: append([]string{}, ctx2.panelList...)}
 	if ctx2.panelSrc != "" {
-		source = ctx2.panelSrc
+		source := ctx2.panelSrc
+		panel.Source = &source
 	}
-	members := make([]any, len(ctx2.panelList))
-	for i, p := range ctx2.panelList {
-		members[i] = p
-	}
-	return jq.NewObj(keySource, source, "members", members)
+	return panel
 }
 
 // sensitiveVal ports the sensitive.txt artifact (path or null).
@@ -198,11 +196,11 @@ func sensitiveVal(dir string) any {
 	return nil
 }
 
-// fetchEnvelope builds the fetch --json envelope with shell key order.
-func fetchEnvelope(
-	ctx2 *fetchRunCtx, req Request, st *fetchStats, budget *budgetState,
-	fcap *fetchCap, chunkJSON any, incBase, dump string, hasDump bool,
-) *jq.Obj {
+// fetchData builds the fetch --json data with shell key order.
+func fetchData(
+	ctx2 *fetchRunCtx, st *fetchStats, budget *budgetState,
+	fcap *fetchCap, chunkJSON any, incBase string, dump *string,
+) *core.FetchData {
 	artifacts := jq.NewObj(
 		"PR.json", ctx2.dir+suffixPRJSON,
 		"full.diff", ctx2.dir+suffixFullDiff,
@@ -219,36 +217,26 @@ func fetchEnvelope(
 	if _, err := os.Stat(ctx2.dir + suffixKBRecall); err == nil {
 		artifacts.Set("kb-recall.json", ctx2.dir+suffixKBRecall)
 	}
-	data := jq.NewObj(
-		"dir", ctx2.dir,
-		keyHeadSHA, prField(ctx2.dir, keyHeadSHA),
-		keyBaseSHA, prField(ctx2.dir, keyBaseSHA),
-		keyFiles, st.files,
-		keyAdditions, st.adds,
-		keyDeletions, st.dels,
-		"hunks", st.hunks,
-		"omitted", st.omitted,
-		"diff_bytes", st.diffSize,
-		"panel", panelObj(ctx2),
-		"artifacts", artifacts,
-		"incremental_base", incrementalBase(incBase),
-	)
-	addEnvelopeExtras(data, budget, fcap, chunkJSON)
-	if hasDump {
-		data.Set("prompt_dump", dump)
+	data := &core.FetchData{
+		Dir:        ctx2.dir,
+		HeadSHA:    prField(ctx2.dir, keyHeadSHA),
+		BaseSHA:    prField(ctx2.dir, keyBaseSHA),
+		Files:      st.files,
+		Additions:  st.adds,
+		Deletions:  st.dels,
+		Hunks:      st.hunks,
+		Omitted:    st.omitted,
+		DiffBytes:  st.diffSize,
+		Panel:      panelVal(ctx2),
+		Artifacts:  artifacts,
+		PromptDump: dump,
 	}
-	return jq.NewObj(
-		keySchema, schemaV1,
-		"verb", "fetch",
-		"repo", req.Repo,
-		keyPR, cli.PrJSON(req.Pr),
-		"at", cli.NowUTC(ctx2.runner.Now()),
-		"next", "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-			ctx2.dir+"/PR.json + full.diff to any agent; ask it to write "+ctx2.dir+"/review.json",
-		"warnings", cliStrings(ctx2.runner.Warnings),
-		keyData, data,
-		"error", nil,
-	)
+	if incBase != nullStr {
+		base := incBase
+		data.IncrementalBase = &base
+	}
+	addFetchExtras(data, budget, fcap, chunkJSON)
+	return data
 }
 
 // incrementalVal ports the incremental.diff artifact (path or null).
@@ -257,14 +245,6 @@ func incrementalVal(dir, incBase string) any {
 		return nil
 	}
 	return dir + "/incremental.diff"
-}
-
-// incrementalBase ports the incremental_base datum.
-func incrementalBase(incBase string) any {
-	if incBase == nullStr {
-		return nil
-	}
-	return incBase
 }
 
 // statFiles ports the file-count read: an array counts, a missing or
@@ -281,30 +261,21 @@ func statFiles(st *fetchStats, dir string, m map[string]any) error {
 		st.filesStr, st.files = "0", 0
 		return nil
 	}
-	return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 }
 
-// addEnvelopeExtras ports the conditional estimate/budget/cap/chunk keys.
-func addEnvelopeExtras(data *jq.Obj, budget *budgetState, fcap *fetchCap, chunkJSON any) {
+// addFetchExtras ports the conditional estimate/budget/cap/chunk keys.
+func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, chunkJSON any) {
 	if budget.hasBudget {
-		data.Set("estimate", budget.estimateJSON)
-		data.Set("budget", budget.budgetJSON)
+		data.Estimate = budget.estimateJSON
+		data.Budget = budget.budgetJSON
 	}
 	if fcap.json != nil {
-		data.Set("cap", fcap.json)
+		data.Cap = fcap.json
 	}
 	if chunkJSON != nil {
-		data.Set("chunk", chunkJSON)
+		data.Chunk = chunkJSON
 	}
-}
-
-// cliStrings converts warnings to JSON string values.
-func cliStrings(in []string) []any {
-	out := make([]any, 0, len(in))
-	for _, s := range in {
-		out = append(out, s)
-	}
-	return out
 }
 
 // readDiffHunks reads the coverage-manifest hunked set from .difffiles
@@ -320,8 +291,8 @@ func readDiffHunks(dir string) []string {
 	return out
 }
 
-// localEnvelopeData ports the local envelope's data block.
-func localEnvelopeData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, adds, dels int) *jq.Obj {
+// localFetchData ports the local envelope's data block.
+func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, adds, dels int, dump *string) *core.FetchData {
 	dir := ctx2.dir
 	withHunks := readDiffHunks(dir)
 	omitted := omittedLocal(listed, withHunks)
@@ -329,20 +300,22 @@ func localEnvelopeData(ctx2 *fetchRunCtx, mode *localMode, listed string, total,
 	if fi, err := os.Stat(dir + suffixFullDiff); err == nil {
 		diffSize = fi.Size()
 	}
-	return jq.NewObj(
-		"dir", dir,
-		keyKind, mode.kind,
-		keyHeadSHA, mode.headSHA,
-		keyBaseSHA, mode.baseSHA,
-		keyFiles, total,
-		keyAdditions, adds,
-		keyDeletions, dels,
-		"hunks", countHunkLines(dir+suffixFullDiff),
-		"omitted", toJSONArray(joinLines(omitted)),
-		"diff_bytes", diffSize,
-		"panel", panelObj(ctx2),
-		"artifacts", localArtifacts(dir),
-	)
+	return &core.FetchData{
+		Local:      true,
+		Dir:        dir,
+		Kind:       mode.kind,
+		HeadSHA:    mode.headSHA,
+		BaseSHA:    mode.baseSHA,
+		Files:      total,
+		Additions:  adds,
+		Deletions:  dels,
+		Hunks:      countHunkLines(dir + suffixFullDiff),
+		Omitted:    toJSONArray(joinLines(omitted)),
+		DiffBytes:  diffSize,
+		Panel:      panelVal(ctx2),
+		Artifacts:  localArtifacts(dir),
+		PromptDump: dump,
+	}
 }
 
 // localArtifacts ports the local artifact map, adding the recall stores
@@ -367,41 +340,45 @@ func addArtifactIfPresent(obj *jq.Obj, dir, key, suffix string) {
 	}
 }
 
-// fetchTailLocal ports the fetch-local tail: done/next lines print before
-// chunking, and the envelope carries kind instead of incremental_base.
+// fetchTailLocal ports the fetch-local tail: the typed data (carrying
+// kind instead of incremental_base) and the next step for the adapter to
+// render. Human lines already streamed from localFinish; the dump rides in
+// Data.PromptDump for the adapter to own on stdout (human mode) or in the
+// envelope (JSON mode).
 func fetchTailLocal(
-	ctx2 *fetchRunCtx, req Request, f *localFlags, budget *budgetState,
-	fcap *fetchCap, chunkJSON any, slug string, mode *localMode,
-	listed string, total, adds, dels int, _, now string,
-) (int, error) {
-	r := ctx2.runner
-	if !r.JSONMode {
-		if !f.showPrompts {
-			return 0, nil
-		}
-		return 0, writePromptDump(ctx2)
-	}
-	dump, hasDump, err := stageDump(ctx2, f.showPrompts)
+	ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, budget *budgetState,
+	fcap *fetchCap, chunkJSON any, mode *localMode,
+	listed string, total, adds, dels int,
+) (*core.FetchData, string, error) {
+	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
+		ctx2.dir + "/source.json + full.diff to any agent; ask it to write " + ctx2.dir + "/review.json"
+	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {
-		return 0, err
+		return nil, "", err
 	}
-	data := localEnvelopeData(ctx2, mode, listed, total, adds, dels)
-	addEnvelopeExtras(data, budget, fcap, chunkJSON)
+	var dumpPtr *string
 	if hasDump {
-		data.Set("prompt_dump", dump)
+		dumpPtr = &dump
 	}
-	env := jq.NewObj(
-		keySchema, schemaV1,
-		"verb", "fetch-local",
-		"repo", req.Repo,
-		keyPR, cli.PrJSON(slug),
-		"at", now,
-		"next", "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-			ctx2.dir+"/source.json + full.diff to any agent; ask it to write "+ctx2.dir+"/review.json",
-		"warnings", cliStrings(r.Warnings),
-		keyData, data,
-		"error", nil,
-	)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	return 0, nil
+	data := localFetchData(ctx2, mode, listed, total, adds, dels, dumpPtr)
+	addFetchExtras(data, budget, fcap, chunkJSON)
+	return data, next, nil
+}
+
+// localDumpPtr stages the prompt dump for the local tail: JSON mode stages
+// before progress, human mode renders only under --show-prompts.
+func localDumpPtr(
+	ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
+) (string, bool, error) {
+	if !req.JSONMode {
+		if !f.ShowPrompts {
+			return "", false, nil
+		}
+		dump, err := renderPromptDump(ctx2)
+		if err != nil {
+			return "", false, err
+		}
+		return dump, true, nil
+	}
+	return stageDump(ctx2, f.ShowPrompts)
 }

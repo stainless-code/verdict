@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -19,10 +19,10 @@ import (
 func buildHunksTSV(fullDiff, out string) error {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
 	}
 	if werr := atomic.WriteFile(out, []byte(hunks.Format(hunks.Parse(string(raw))))); werr != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", out, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", out, werr)}
 	}
 	return nil
 }
@@ -32,7 +32,7 @@ func buildHunksTSV(fullDiff, out string) error {
 func diffFiles(fullDiff, dir string) ([]string, error) {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
 	}
 	files := diffHunkFiles(string(raw))
 	slices.Sort(files)
@@ -43,7 +43,7 @@ func diffFiles(fullDiff, dir string) ([]string, error) {
 		sb.WriteString(f + newline)
 	}
 	if werr := atomic.WriteFile(dir+"/.difffiles", []byte(sb.String())); werr != nil {
-		return nil, &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/.difffiles: %v", dir, werr)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/.difffiles: %v", dir, werr)}
 	}
 	return files, nil
 }
@@ -133,12 +133,12 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 		sb.WriteString("omitted: (none)\n")
 	}
 	if werr := atomic.WriteFile(ctx.dir+"/toc.txt", []byte(sb.String())); werr != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx.dir, werr)}
 	}
 	fmt.Fprintf(ctx.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.dir)
 	paths := prFilePaths(ctx.dir + suffixPRJSON)
 	if werr := atomic.WriteFile(ctx.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx.dir, werr)}
 	}
 	return nil
 }
@@ -229,7 +229,7 @@ func joinLines(paths []string) string {
 // emitContext ports emit_context: REVIEW_PANEL wins, else .review/panel;
 // the member list lands in $dir/panel. Compact mode skips the advisory
 // notices. Sets panelSrc/panelList on the run context.
-func emitContext(ctx *fetchRunCtx) *cli.RefusalError {
+func emitContext(ctx *fetchRunCtx) *core.RefusalError {
 	panelList, panelSrc := resolvePanel(ctx.env)
 	ctx.panelSrc, ctx.panelList = panelSrc, panelList
 	if ref := emitPanel(ctx, panelList, panelSrc); ref != nil {
@@ -240,14 +240,14 @@ func emitContext(ctx *fetchRunCtx) *cli.RefusalError {
 
 // emitPanel ports the panel notice: the pinned list writes and prints,
 // else the none-pinned line prints outside compact mode.
-func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *cli.RefusalError {
+func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.RefusalError {
 	if len(panelList) > 0 {
 		var sb strings.Builder
 		for _, p := range panelList {
 			sb.WriteString(p + newline)
 		}
 		if werr := atomic.WriteFile(ctx.dir+"/panel", []byte(sb.String())); werr != nil {
-			return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/panel: %v", ctx.dir, werr)}
+			return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/panel: %v", ctx.dir, werr)}
 		}
 		fmt.Fprintf(ctx.runner.Human, "» panel (%d from %s)\n", len(panelList), panelSrc)
 	} else if ctx.runner.Effective.Compact != strTrue {
@@ -258,13 +258,13 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *cli.Refus
 
 // emitLearnings ports the learnings notice: the line count prints outside
 // compact mode when the file reads.
-func emitLearnings(ctx *fetchRunCtx) *cli.RefusalError {
+func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	if ctx.runner.Effective.Compact != strTrue {
 		if fi, err := os.Stat(".review/learnings.md"); err == nil && !fi.IsDir() {
 			// `wc -l` counts newline bytes, not lines.
 			raw, rerr := os.ReadFile(".review/learnings.md")
 			if rerr != nil {
-				return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not read .review/learnings.md: %v", rerr)}
+				return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read .review/learnings.md: %v", rerr)}
 			}
 			fmt.Fprintf(ctx.runner.Human, "» learnings: .review/learnings.md (%d lines — read headings first, not the full file)\n",
 				countNewlines(string(raw)))
@@ -468,7 +468,7 @@ func countNewlines(s string) int {
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.
 type fetchRunCtx struct {
-	runner    *cli.Runner
+	runner    *session
 	env       map[string]string
 	repo      string
 	pr        string

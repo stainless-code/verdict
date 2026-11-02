@@ -9,10 +9,15 @@ import (
 // the only error type the command layer renders; matching uses [errors.As].
 // Warnings carries the warnings accumulated before the refusal so the
 // adapter's envelope stays byte-identical to a success run's warning list.
+// Candidates carries the fetch diff-too-large narrowing suggestions the
+// refusal owns on the diagnostic stream (nil on every other verb, so the
+// envelope stays byte-identical); the adapter copies them onto the runner
+// before rendering.
 type RefusalError struct {
-	Code     string
-	Message  string
-	Warnings []string
+	Code       string
+	Message    string
+	Warnings   []string
+	Candidates []any
 }
 
 // Error implements error.

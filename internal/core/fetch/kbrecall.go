@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"cmp"
@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -21,7 +20,7 @@ const kbRecallFile = ".review/kb.jsonl"
 // as advisory context (kb.txt plus the kb-recall.json machine manifest,
 // rank-ordered top 3). No match, no store, or unreadable store: both files
 // removed, no failure.
-func writeKBRecall(r *cli.Runner, dir, extra string) {
+func writeKBRecall(r *session, dir, extra string) {
 	mf, mfj := dir+suffixKBTxt, dir+suffixKBRecall
 	ranked, ok := recallRanked(r, dir, extra)
 	if !ok || len(ranked) == 0 {
@@ -49,7 +48,7 @@ func clearKBRecall(mf, mfj string) {
 
 // recallRanked ports the recall pipeline: store read, file set, active
 // rules, scope matching, and the top-N rank.
-func recallRanked(r *cli.Runner, dir, extra string) ([]recallCand, bool) {
+func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
 	raw, err := os.ReadFile(kbRecallFile)
 	if err != nil {
 		return nil, false
@@ -83,7 +82,7 @@ func renderKBNote(ranked []recallCand) ([]string, string) {
 
 // writeKBManifest ports the kb-recall.json write, warning and dropping it on
 // failure while keeping kb.txt.
-func writeKBManifest(r *cli.Runner, mfj, mf string, ranked []recallCand) bool {
+func writeKBManifest(r *session, mfj, mf string, ranked []recallCand) bool {
 	parts := make([]string, len(ranked))
 	for i, c := range ranked {
 		parts[i] = jq.NewObj(keyID, c.id, "score", c.score, "hits", c.hits, "judged", c.judged).MarshalCompact()
@@ -167,7 +166,7 @@ type recallRule struct {
 
 // recallRules ports the active-row slurp: unreadable store warns and reads
 // absent (callers remove both files).
-func recallRules(r *cli.Runner, raw []byte) ([]recallRule, bool) {
+func recallRules(r *session, raw []byte) ([]recallRule, bool) {
 	docs, err := jq.DecodeJSONLOrdered(raw)
 	if err != nil {
 		r.Warn(fmt.Sprintf("kb recall skipped: %s unreadable", kbRecallFile))

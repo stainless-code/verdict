@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 // Shared literals for the fetch port: jq wire keys, bundle path suffixes,
 // provider argv tokens, refusal codes, and numeric gates. The shell repeats

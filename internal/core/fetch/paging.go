@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -39,13 +39,13 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 			"paging_error", headBytes(perr.Error(), numExcerptShort),
 		)
 		if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
-			return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
+			return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
 		}
 		return nil
 	}
 	replaceFiles(ordered, paged)
 	if err := atomic.WriteFile(dir+suffixPRJSON, []byte(jq.PrettyOrdered(ordered))); err != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/PR.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/PR.json: %v", dir, err)}
 	}
 	note := jq.NewObj(
 		keySource, "paged",
@@ -55,7 +55,7 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 		"truncated", truncated,
 	)
 	if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
 	}
 	fmt.Fprintf(ctx2.runner.Human, "» file list paged past the CLI cap (%d files, provider ceiling %d)\n", len(paged), providerFileCeiling)
 	return nil
@@ -86,12 +86,12 @@ func prFilesOrdered(prJSON string) ([]any, *jq.Obj, bool) {
 
 // fetchAllFiles pages the provider file listing to exhaustion or the
 // provider ceiling, mapping each entry onto the PR.json file shape.
-func fetchAllFiles(ctx context.Context, r *cli.Runner, repo, pr string) ([]any, bool, error) {
-	res, err := ghFetch(ctx, r, "api", "repos/"+repo+"/pulls/"+pr+"/files", flagPaginate)
+func fetchAllFiles(ctx context.Context, r *session, repo, pr string) ([]any, bool, error) {
+	res, err := r.ghFetch(ctx, "api", "repos/"+repo+"/pulls/"+pr+"/files", flagPaginate)
 	if err != nil {
 		return nil, false, err
 	}
-	docs, derr := jq.DecodeSlurp(strings.NewReader(res.stdout))
+	docs, derr := jq.DecodeSlurp(strings.NewReader(res.Stdout))
 	if derr != nil {
 		return nil, false, internalErrorf("provider file listing unreadable: %v", derr)
 	}

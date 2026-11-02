@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"os"

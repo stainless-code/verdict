@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // sensNameSet lists the exact secret-adjacent basenames.
@@ -203,7 +203,7 @@ func parseUnquotedHeader(hdr string) (oldPath, newPath string) {
 // writeSensitiveManifest ports write_sensitive_manifest: the advisory
 // flagged-path list with a stderr warning naming the first few. No hits:
 // no file, no warning.
-func writeSensitiveManifest(r *cli.Runner, dir, extra string) *cli.RefusalError {
+func writeSensitiveManifest(r *session, dir, extra string) *core.RefusalError {
 	// A missing or empty diff carries no sensitive paths; the manifest
 	// from a previous run (if any) is stale and goes.
 	raw := readOptional(dir + suffixFullDiff)
@@ -224,7 +224,7 @@ func writeSensitiveManifest(r *cli.Runner, dir, extra string) *cli.RefusalError 
 		sb.WriteString(f + newline)
 	}
 	if werr := atomic.WriteFile(dir+"/sensitive.txt", []byte(sb.String())); werr != nil {
-		return &cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("could not write %s/sensitive.txt: %v", dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/sensitive.txt: %v", dir, werr)}
 	}
 	warnSensitive(r, dir, flagged)
 	return nil
@@ -249,7 +249,7 @@ func sensAllHits(raw, extra string) []sensHit {
 }
 
 // warnSensitive ports the capped advisory line naming the flagged paths.
-func warnSensitive(r *cli.Runner, dir string, flagged []string) {
+func warnSensitive(r *session, dir string, flagged []string) {
 	shown := flagged
 	more := ""
 	if len(flagged) > numShownHits {

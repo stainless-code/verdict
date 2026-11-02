@@ -1,22 +1,8 @@
-// Package fetch ports the `fetch` and `fetch-local` bundle builders: the
-// remote PR fetch across every supported host (GitHub plus the --provider
-// backends) and the local worktree builder. Both write the same bundle
-// layout the shell writes (PR.json/source.json, full.diff, toc.txt,
-// roles.txt, hunks.tsv, stores, advisory manifests), enforce the same diff
-// cap and budget gates, slice the same opt-in chunks, and render the same
-// nonce-fenced prompt dump and machine envelopes.
-//
-// The Go fetch owns the large-PR edge set as structure (audit 18/20/21,
-// folded into the port): paged file listing past the hosting CLI cap with
-// the provider ceiling noted, the distinct upstream over-file-count refusal
-// with its recovery hint, and bounded secondary-rate-limit backoff. Those
-// paths engage only past the shell's edges, so default bundles stay
-// byte-identical.
-//
-// R5 exceptions: bundle paths come from the operator's own invocation
-// (fixed filenames under the cwd), not from agents — so this package reads
-// them without [os.Root], matching the record port (the G304 exclusion in
-// .golangci.yml covers those reads by design).
+// Package fetch is the fetch/fetch-local CLI adapter: argv parsing (same
+// usage text and exit 2), one call into the fetchcore service, envelope
+// rendering, and refusal-vs-cancel exit mapping. Domain logic — the bundle
+// builders, budget/cap/chunk gates, and the prompt dump — lives in
+// internal/core/fetch.
 package fetch
 
 import (
@@ -26,6 +12,10 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Request carries the resolved fetch invocation.
@@ -35,10 +25,6 @@ type Request struct {
 	Pr   string
 	Root string
 }
-
-// codeFetchFailed is the typed refusal for every fetch-internal failure:
-// the shell's `fail` paths that carry no narrower code.
-const codeFetchFailed = "fetch-failed"
 
 // Run executes `fetch <owner/repo> <pr> [--base-sha|--since <sha>]
 // [--provider <name>] [--consent-over-budget] [--show-prompts] [--chunk]
@@ -53,13 +39,16 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := checkCancelled(ctx, r); done {
 		return code
 	}
-	if f.showPrompts && !r.JSONMode {
+	if f.ShowPrompts && !r.JSONMode {
 		// The dump owns stdout; progress moves to stderr (exec 8>&1;
 		// exec 1>&2 in the shell).
 		r.Human = r.Diag
 	}
-	code, err := runFetch(ctx, &fetchRunCtx{runner: r, env: req.Env, repo: req.Repo, pr: req.Pr, root: req.Root}, req, f)
-	return finishRun(r, code, err)
+	resp, err := fetchcore.Run(ctx, fetchRequest(r, req, f))
+	if err != nil {
+		return refuseFetch(r, err)
+	}
+	return renderFetch(r, resp, "fetch")
 }
 
 // RunLocal executes `fetch-local <owner/repo> <name> [--staged]
@@ -75,58 +64,146 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 	if code, done := checkCancelled(ctx, r); done {
 		return code
 	}
-	if f.showPrompts && !r.JSONMode {
+	if f.ShowPrompts && !r.JSONMode {
 		// The dump owns stdout; progress moves to stderr, like fetch.
 		r.Human = r.Diag
 	}
-	code, err := runLocal(ctx, &fetchRunCtx{runner: r, env: req.Env, repo: req.Repo, pr: req.Pr, root: req.Root}, req, &f)
-	return finishRun(r, code, err)
+	resp, err := fetchcore.RunLocal(ctx, fetchLocalRequest(r, req, &f))
+	if err != nil {
+		return refuseFetch(r, err)
+	}
+	return renderFetch(r, resp, "fetch-local")
 }
 
-// fetchFlags carries the parsed fetch options.
-type fetchFlags struct {
-	baseSHA       string
-	provider      string
-	budgetConsent bool
-	showPrompts   bool
-	chunkFlag     bool
-	hasBase       bool
-	hasProvider   bool
+// fetchRequest builds the core fetch request from the runner and
+// invocation: the injected runtime (environment, clock, progress, and the
+// production split-stream commander), the render configuration, and the
+// adapter-routed streams.
+func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequest {
+	root := req.Root
+	read := core.ReadRequest{
+		Runtime: &core.Runtime{
+			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Commander: coreexec.SplitCommander{},
+		},
+		Repo: req.Repo, Pr: req.Pr, Root: &root,
+	}
+	return &core.FetchRequest{
+		ReadRequest: read,
+		Flags:       f,
+		Effective:   r.Effective,
+		JSONMode:    r.JSONMode,
+		Warnings:    append([]string{}, r.Warnings...),
+		Human:       r.Human,
+		Diag:        r.Diag,
+	}
 }
 
-// localFlags carries the parsed fetch-local options.
-type localFlags struct {
-	rangeSpec     string
-	baseRef       string
-	stashN        string
-	paths         []string
-	staged        bool
-	hasStash      bool
-	budgetConsent bool
-	showPrompts   bool
-	chunkFlag     bool
+// fetchLocalRequest builds the core fetch-local request.
+func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *core.FetchLocalRequest {
+	root := req.Root
+	read := core.ReadRequest{
+		Runtime: &core.Runtime{
+			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Commander: coreexec.SplitCommander{},
+		},
+		Repo: req.Repo, Pr: req.Pr, Root: &root,
+	}
+	return &core.FetchLocalRequest{
+		ReadRequest: read,
+		Flags:       *f,
+		Effective:   r.Effective,
+		JSONMode:    r.JSONMode,
+		Warnings:    append([]string{}, r.Warnings...),
+		Human:       r.Human,
+		Diag:        r.Diag,
+	}
 }
+
+// renderFetch renders a fetch success: warnings carry onto the runner, the
+// prompt dump owns stdout in human mode, and JSON mode prints exactly one
+// envelope to stdout.
+func renderFetch(r *cli.Runner, resp *core.FetchResponse, verb string) int {
+	r.Warnings = resp.Warnings
+	if r.JSONMode {
+		env := core.RenderEnvelope(verb, resp.Repo, resp.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire(), nil)
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		return cli.ExitOK
+	}
+	if resp.Data != nil && resp.Data.PromptDump != nil {
+		fmt.Fprint(r.Out, *resp.Data.PromptDump)
+	}
+	return cli.ExitOK
+}
+
+// refuseFetch renders a fetch failure: the missing-tool kind prints its
+// frozen line with no envelope, warnings carry onto the runner, a cancel
+// exits 3 (scripts treat it as broke), anything else exits 1.
+func refuseFetch(r *cli.Runner, err error) int {
+	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
+		fmt.Fprintf(r.Diag, "missing: %s\n", mt.Tool)
+		return cli.ExitRefused
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return refuseTyped(r, ref)
+	}
+	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
+}
+
+// refuseTyped renders a typed fetch refusal with its warnings and split
+// candidates riding along.
+func refuseTyped(r *cli.Runner, ref *core.RefusalError) int {
+	if ref.Candidates != nil {
+		r.Candidates = ref.Candidates
+	}
+	if ref.Warnings != nil {
+		r.Warnings = ref.Warnings
+	}
+	if ref.Code == codeCanceled {
+		return r.RefuseExit(ref, cli.ExitBroke)
+	}
+	return r.Refuse(ref)
+}
+
+// codeCanceled names the cancel refusal the adapter exits 3 on.
+const codeCanceled = "canceled"
+
+// runnerProgress routes core's progress observations onto the runner's
+// streams: human lines to Human, warnings and diagnostics to Diag.
+type runnerProgress struct {
+	r *cli.Runner
+}
+
+// Human writes one human output line.
+func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
+
+// Warn writes one warn: line and accumulates it like every CLI warning.
+func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
+
+// Diag writes one raw diagnostic line.
+func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A trailing
 // value flag reads "" (the shell dies on the shift instead — a documented
 // divergence shared with the record port).
-func parseFetchFlags(r *cli.Runner, args []string) (fetchFlags, int, bool) {
-	f := fetchFlags{provider: providerGitHub}
+func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) {
+	f := core.FetchFlags{Provider: providerGitHub}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch a {
 		case "--base-sha", "--since":
-			f.hasBase = true
-			f.baseSHA, i = flagValue(args, i)
+			f.HasBase = true
+			f.BaseSHA, i = flagValue(args, i)
 		case "--provider":
-			f.hasProvider = true
-			f.provider, i = flagValue(args, i)
+			f.HasProvider = true
+			f.Provider, i = flagValue(args, i)
 		case "--consent-over-budget":
-			f.budgetConsent = true
+			f.BudgetConsent = true
 		case "--show-prompts":
-			f.showPrompts = true
+			f.ShowPrompts = true
 		case flagChunk:
-			f.chunkFlag = true
+			f.ChunkFlag = true
 		case flagJSON:
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
@@ -140,8 +217,8 @@ func parseFetchFlags(r *cli.Runner, args []string) (fetchFlags, int, bool) {
 // parseLocalFlags strips fetch-local's flags, reporting unknown ones. A
 // trailing value flag reads "" and a bare --stash reads "0", mirroring the
 // shell's defaults.
-func parseLocalFlags(r *cli.Runner, args []string) (localFlags, int, bool) {
-	var f localFlags
+func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, bool) {
+	var f core.FetchLocalFlags
 	for i := 0; i < len(args); i++ {
 		next, code, done := parseLocalToken(r, &f, args, i)
 		if done {
@@ -154,23 +231,23 @@ func parseLocalFlags(r *cli.Runner, args []string) (localFlags, int, bool) {
 
 // parseLocalToken consumes one fetch-local argument, returning the next
 // index plus a usage refusal when the token is an unknown flag.
-func parseLocalToken(r *cli.Runner, f *localFlags, args []string, i int) (int, int, bool) {
+func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	if next, ok := parseLocalValueFlag(f, a, args, i); ok {
 		return next, 0, false
 	}
 	switch a {
 	case "--staged":
-		f.staged = true
+		f.Staged = true
 	case "--consent-over-budget":
-		f.budgetConsent = true
+		f.BudgetConsent = true
 	case "--show-prompts":
-		f.showPrompts = true
+		f.ShowPrompts = true
 	case flagChunk:
-		f.chunkFlag = true
+		f.ChunkFlag = true
 	case flagJSON:
 	case "--":
-		f.paths = append(f.paths, args[i+1:]...)
+		f.Paths = append(f.Paths, args[i+1:]...)
 		return len(args), 0, false
 	default:
 		if strings.HasPrefix(a, "-") {
@@ -179,22 +256,22 @@ func parseLocalToken(r *cli.Runner, f *localFlags, args []string, i int) (int, i
 				"--show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
-		f.paths = append(f.paths, a)
+		f.Paths = append(f.Paths, a)
 	}
 	return i, 0, false
 }
 
 // parseLocalValueFlag consumes fetch-local's value flags, returning the next
 // index and whether the flag matched.
-func parseLocalValueFlag(f *localFlags, a string, args []string, i int) (int, bool) {
+func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int) (int, bool) {
 	switch a {
 	case "--range":
-		f.rangeSpec, i = flagValue(args, i)
+		f.RangeSpec, i = flagValue(args, i)
 	case "--base":
-		f.baseRef, i = flagValue(args, i)
+		f.BaseRef, i = flagValue(args, i)
 	case "--stash":
-		f.hasStash = true
-		f.stashN, i = stashValue(args, i)
+		f.HasStash = true
+		f.StashN, i = stashValue(args, i)
 	default:
 		return i, false
 	}
@@ -223,24 +300,15 @@ func stashValue(args []string, i int) (string, int) {
 func checkCancelled(ctx context.Context, r *cli.Runner) (int, bool) {
 	if err := ctx.Err(); err != nil {
 		// GO-CLI-05: cancel kills the run with exit 3 and a JSON envelope.
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before fetch completed"}, cli.ExitBroke), true
+		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before fetch completed"}, cli.ExitBroke), true
 	}
 	return 0, false
 }
 
-// finishRun maps a run result to the process exit code.
-func finishRun(r *cli.Runner, code int, err error) int {
-	if err == nil {
-		return code
-	}
-	ne, _ := errors.AsType[*needError](err)
-	if ne != nil {
-		// `need`: the plain line is already on stderr; exit 1, no
-		// envelope, no re-enter line.
-		return cli.ExitRefused
-	}
-	if ref, _ := errors.AsType[*cli.RefusalError](err); ref != nil {
-		return r.Refuse(ref)
-	}
-	return r.Refuse(&cli.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
-}
+// providerGitHub, flagChunk, and flagJSON mirror the fetchcore spellings
+// the usage text names.
+const (
+	providerGitHub = "github"
+	flagChunk      = "--chunk"
+	flagJSON       = "--json"
+)

@@ -1,4 +1,4 @@
-package fetch
+package fetchcore
 
 import (
 	"cmp"
@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -28,7 +28,8 @@ type fetchCap struct {
 // resolveFetchCap ports resolve_fetch_cap: REVIEW_MAX_BYTES wins, else the
 // first usable line of .review/max_bytes, else the 512000 default. A set cap
 // prints the » cap line and arms the envelope summary; garbage refuses typed.
-func resolveFetchCap(r *cli.Runner, env map[string]string) (fetchCap, error) {
+func resolveFetchCap(r *session) (fetchCap, error) {
+	env := r.env
 	fc := fetchCap{maxBytes: defaultFetchCap}
 	raw, src := "", ""
 	if v, ok := env["REVIEW_MAX_BYTES"]; ok && v != "" {
@@ -41,7 +42,7 @@ func resolveFetchCap(r *cli.Runner, env map[string]string) (fetchCap, error) {
 	}
 	n, ok := parsePositiveInt(raw)
 	if !ok {
-		return fc, &cli.RefusalError{Code: "bad-max-bytes", Message: fmt.Sprintf(
+		return fc, &core.RefusalError{Code: "bad-max-bytes", Message: fmt.Sprintf(
 			"cap '%s' from %s is not a positive byte count (want e.g. REVIEW_MAX_BYTES=1000000 "+
 				"or a .review/max_bytes file holding 1000000)", raw, src)}
 	}
@@ -112,7 +113,7 @@ func resolveChunkOptIn(chunkFlag bool, capSource string) (chunkOptIn, error) {
 	case strTrue, "on", "1", "yes":
 		return chunkOptIn{active: true, source: ".review/chunk"}, nil
 	default:
-		return chunkOptIn{}, &cli.RefusalError{Code: "bad-chunk-knob", Message: fmt.Sprintf(
+		return chunkOptIn{}, &core.RefusalError{Code: "bad-chunk-knob", Message: fmt.Sprintf(
 			"chunk knob '%s' from .review/chunk is not an opt-in flag (want true|false, on|off, 1|0, yes|no — "+
 				"first usable line wins, absent reads off)", knob)}
 	}
@@ -123,7 +124,7 @@ func resolveChunkOptIn(chunkFlag bool, capSource string) (chunkOptIn, error) {
 // single-file degenerate), else refuse diff-too-large with the advisory
 // split candidates riding the envelope. The chunk knob is consulted only on
 // the over-cap path, so under-cap runs never see bad-chunk-knob.
-func checkDiffSize(r *cli.Runner, fullDiff string, lim fetchCap, chunkFlag bool) (chunkActive bool, err error) {
+func checkDiffSize(r *session, fullDiff string, lim fetchCap, chunkFlag bool) (chunkActive bool, err error) {
 	fi, statErr := os.Stat(fullDiff)
 	var total int64
 	if statErr == nil {
@@ -145,7 +146,7 @@ func checkDiffSize(r *cli.Runner, fullDiff string, lim fetchCap, chunkFlag bool)
 // overCap handles the over-cap fork: opted-in chunking slices on file
 // boundaries (the single-file degenerate keeps the advisory refusal with
 // no chunks written); otherwise the refusal carries split candidates.
-func overCap(r *cli.Runner, fullDiff string, total int64, lim fetchCap, chunkFlag bool) (bool, error) {
+func overCap(r *session, fullDiff string, total int64, lim fetchCap, chunkFlag bool) (bool, error) {
 	optIn, ref := resolveChunkOptIn(chunkFlag, lim.source)
 	if ref != nil {
 		return false, ref
@@ -162,17 +163,18 @@ func overCap(r *cli.Runner, fullDiff string, total int64, lim fetchCap, chunkFla
 			optIn.source)
 	}
 	cands := suggestSplits(fullDiff, total)
-	r.Candidates = cands
 	printSplitCandidates(r, cands)
-	return false, &cli.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
+	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"diff %d bytes exceeds cap %d bytes — split the range (fetch-local --range/--base, fetch --base-sha) "+
 			"or narrow with a paths filter, then re-fetch (override deliberate exceptions only: "+
 			"REVIEW_MAX_BYTES=<n> or .review/max_bytes)", total, lim.maxBytes)}
+	refusal.Candidates = cands
+	return false, refusal
 }
 
 // printSplitCandidates ports the candidates block: one dash line per
 // split scope on stderr (`>&2`), owned by the refusal.
-func printSplitCandidates(r *cli.Runner, cands []any) {
+func printSplitCandidates(r *session, cands []any) {
 	if len(cands) == 0 {
 		return
 	}

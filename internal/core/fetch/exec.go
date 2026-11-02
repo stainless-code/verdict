@@ -1,77 +1,14 @@
-package fetch
+package fetchcore
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/cli"
 )
-
-// execResult carries a subprocess's captured streams.
-type execResult struct {
-	stdout string
-	stderr string
-}
-
-// runCmd runs argv with an empty stdin, capturing both streams. A missing
-// binary or a failing call returns the sealed error with stderr attached;
-// callers map failures to the fetch warn-or-refuse posture.
-func runCmd(ctx context.Context, bin string, args ...string) (execResult, error) {
-	cmd := exec.CommandContext(ctx, bin, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	res := execResult{}
-	if err := cmd.Run(); err != nil {
-		res.stdout = stdout.String()
-		res.stderr = stderr.String()
-		return res, &cmdError{bin: bin, err: err}
-	}
-	res.stdout = stdout.String()
-	res.stderr = stderr.String()
-	return res, nil
-}
-
-// cmdError seals a subprocess failure; callers report the captured
-// streams, never this carrier.
-type cmdError struct {
-	err error
-	bin string
-}
-
-// Error implements error.
-func (e *cmdError) Error() string {
-	return e.bin + ": " + e.err.Error()
-}
-
-// Unwrap exposes the underlying process error.
-func (e *cmdError) Unwrap() error {
-	return e.err
-}
-
-// needBinary ports `need`: a missing tool refuses with exit 1 and the
-// `missing: <tool>` line on stderr (never a typed envelope).
-func needBinary(r *cli.Runner, bin string) error {
-	if _, err := exec.LookPath(bin); err != nil {
-		fmt.Fprintf(r.Diag, "missing: %s\n", bin)
-		return &needError{bin: bin}
-	}
-	return nil
-}
-
-// needError marks a missing-tool exit (exit 1 with the plain line above,
-// no envelope even in --json mode — finishRun maps it without a refusal).
-type needError struct{ bin string }
-
-// Error implements error.
-func (e *needError) Error() string { return "missing tool: " + e.bin }
 
 // writeErrFile plants an .err sidecar with the call's stderr, creating it
 // empty on success: the shell's `cmd 2>file` truncates the file either way.
@@ -247,47 +184,4 @@ func parseResetEpoch(stderr string) (int64, bool) {
 		return epoch, true
 	}
 	return 0, false
-}
-
-// ghFetch runs gh with exactly the given argv and a bounded secondary
-// rate-limit retry (audit 21): unhinted failures run up to 3 attempts with
-// the attempt-based sleep; only rate-limit signals retry, everything else
-// fails fast like the shell. The caller owns the error sidecars and the
-// warn-or-refuse posture.
-func ghFetch(ctx context.Context, r *cli.Runner, args ...string) (execResult, error) {
-	var res execResult
-	var err error
-	for attempt := range maxFetchRetries {
-		res, err = runCmd(ctx, "gh", args...)
-		if err == nil {
-			return res, nil
-		}
-		wait, retry := retryDelay(res.stderr, attempt)
-		if !retry || attempt >= maxFetchRetries-1 {
-			break
-		}
-		r.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
-		time.Sleep(wait)
-	}
-	return res, err
-}
-
-// curlFetch runs curl with exactly the given argv and the same bounded
-// secondary rate-limit retry as gh (providers share the backoff contract).
-func curlFetch(ctx context.Context, r *cli.Runner, args ...string) (execResult, error) {
-	var res execResult
-	var err error
-	for attempt := range maxFetchRetries {
-		res, err = runCmd(ctx, "curl", args...)
-		if err == nil {
-			return res, nil
-		}
-		wait, retry := retryDelay(res.stderr, attempt)
-		if !retry || attempt >= maxFetchRetries-1 {
-			break
-		}
-		r.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
-		time.Sleep(wait)
-	}
-	return res, err
 }
