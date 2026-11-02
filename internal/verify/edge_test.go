@@ -18,6 +18,7 @@ func edgeSetup(cmd string) func(t *testing.T, dir, home string) {
 // tree: a grandchild that ignores SIGTERM still dies with the group,
 // timed_out records true, and the timeout marker names the seconds.
 func TestVerifyTimeoutTreeKill(t *testing.T) {
+	t.Parallel()
 	harness.RunBoth(t, "timeout-tree-kill",
 		edgeSetup(`trap '' TERM; (trap '' TERM; sleep 30) & sleep 30`),
 		nil, false,
@@ -28,6 +29,7 @@ func TestVerifyTimeoutTreeKill(t *testing.T) {
 // while a child outlives it, so the recorded exit stays 0 with timedOut
 // true and the orphan marker.
 func TestVerifyOrphanSweep(t *testing.T) {
+	t.Parallel()
 	harness.RunBoth(t, "orphan-sweep",
 		edgeSetup(`(sleep 30 &)`),
 		nil, false,
@@ -37,6 +39,7 @@ func TestVerifyOrphanSweep(t *testing.T) {
 // TestVerifyRedaction proves known secret values are redacted from the
 // recorded tail (but the full .verify.out keeps raw output for debugging).
 func TestVerifyRedaction(t *testing.T) {
+	t.Parallel()
 	extra := map[string]string{"EVAL_PROBE_TOKEN": "supersecretvalue123"}
 	harness.RunBoth(t, "redaction",
 		edgeSetup(`printf '%s' "$EVAL_PROBE_TOKEN"`),
@@ -47,6 +50,7 @@ func TestVerifyRedaction(t *testing.T) {
 // TestVerifyNoColor proves the verify child inherits NO_COLOR=1 under
 // --json when the parent environment leaves it unset (F1).
 func TestVerifyNoColor(t *testing.T) {
+	t.Parallel()
 	harness.RunBoth(t, "no-color",
 		edgeSetup(`printf '%s' "$NO_COLOR"`),
 		nil, false,
@@ -56,6 +60,7 @@ func TestVerifyNoColor(t *testing.T) {
 // TestVerifyStdinClosed proves a stdin-consuming verifyCmd completes with
 // closed stdin (exit 0, timedOut false).
 func TestVerifyStdinClosed(t *testing.T) {
+	t.Parallel()
 	harness.RunBoth(t, "stdin-closed",
 		edgeSetup(`read -r line || true`),
 		nil, false,
@@ -65,6 +70,7 @@ func TestVerifyStdinClosed(t *testing.T) {
 // TestVerifyBundleGates proves the bundle-gate refusals and their
 // no-write shape.
 func TestVerifyBundleGates(t *testing.T) {
+	t.Parallel()
 	empty := func(*testing.T, string, string) {}
 	harness.RunBoth(t, "missing-patch", empty, nil, false,
 		"verify", "acme/app", "5201", "--json", "--timeout", "10")

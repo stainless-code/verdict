@@ -396,6 +396,11 @@ func (h *Harness) RunBothSplit(
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		t.Helper()
+		// Every leg owns fresh sandboxes and homes (separate temp dirs
+		// per side), so legs run in parallel: the shell side costs ~1 s
+		// per spawn while the Go side is sub-millisecond, and the serial
+		// battery is what trips the CI timeout on slow runners.
+		t.Parallel()
 		dirA := t.TempDir()
 		homeA := filepath.Join(t.TempDir(), "home")
 		dirB := t.TempDir()

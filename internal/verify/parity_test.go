@@ -367,15 +367,15 @@ func gitRun(dir string, args ...string) (string, error) {
 // never byte-match across runs (not even bash-vs-bash), so the cache
 // points at shared /tmp scratch outside both snapshots.
 func TestVerifyParity(t *testing.T) {
-	cachedir := filepath.Join(os.TempDir(), "verify-npm-cache")
-	if err := os.MkdirAll(cachedir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(cachedir) })
-	extra := map[string]string{"npm_config_cache": cachedir}
+	t.Parallel()
 	for i, p := range vProbes {
 		name := fmt.Sprintf("V%03d-%s", i, strings.ReplaceAll(p.want, "verify-", ""))
 		carve := strings.Contains(p.cmd, "\\")
+		// Each leg gets a private npm cache dir: parallel legs share no
+		// mutable state (the cache would be safe to share — cacache is
+		// concurrency-safe — but private dirs keep the independence
+		// structural instead of relying on it).
+		extra := map[string]string{"npm_config_cache": t.TempDir()}
 		harness.RunBoth(t, name, vSetup(p.cmd), extra, carve,
 			"verify", "acme/app", "5101", "--json", "--timeout", "10")
 	}

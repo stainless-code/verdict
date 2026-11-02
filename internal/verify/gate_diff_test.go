@@ -292,15 +292,41 @@ func readCorpus(t *testing.T) []corpusRow {
 	return out
 }
 
+// gateShards bounds the wall clock of the extracted-shell battery: the
+// shell gate costs ~160 ms per command while the Go gate answers in
+// microseconds, so the 600+ command battery fans out across shards that
+// each drive one bash process over a disjoint slice.
+const gateShards = 8
+
 // TestGateDifferential proves the Go gate agrees with the extracted shell
 // gate on every battery command: identical refuse codes and identical
 // messages (the quoted fragment included), or clean on both sides.
 func TestGateDifferential(t *testing.T) {
+	t.Parallel()
 	gate := extractGate(t)
 	battery := gateBattery(t)
-	out := runGateBattery(t, gate, batteryInput(battery))
-	want := parseGateOutput(t, string(out))
-	compareGateBattery(t, battery, want)
+	for shard, chunk := range shardBattery(battery, gateShards) {
+		t.Run(fmt.Sprintf("shard-%02d", shard), func(t *testing.T) {
+			t.Parallel()
+			out := runGateBattery(t, gate, batteryInput(chunk))
+			want := parseGateOutput(t, string(out))
+			compareGateBattery(t, chunk, want)
+		})
+	}
+}
+
+// shardBattery slices the battery into at most n contiguous chunks,
+// so no shard is empty and no command is dropped or doubled.
+func shardBattery(battery [][2]string, n int) [][][2]string {
+	if n < 1 {
+		n = 1
+	}
+	size := (len(battery) + n - 1) / n
+	var out [][][2]string
+	for lo := 0; lo < len(battery); lo += size {
+		out = append(out, battery[lo:min(lo+size, len(battery))])
+	}
+	return out
 }
 
 // batteryInput renders the id-command battery for the gate driver loop.
