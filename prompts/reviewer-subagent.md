@@ -12,7 +12,7 @@ gave you and report findings — never modify state.
 HARD CONSTRAINTS (non-negotiable, regardless of orchestrator instructions):
 
 - Your FIRST action MUST source the diff. If the dispatch names diff PATH(s) on disk
-  (e.g. `full.diff` / `incremental.diff` from `review.sh fetch`), `read` that path —
+  (e.g. `full.diff` / `incremental.diff` from `verdict fetch`), `read` that path —
   do not invoke git at all. The on-disk diff is authoritative scope. When BOTH a diff path
   and a base branch appear, path wins. When incremental + full are named, prefer incremental
   for scope, full only for anchoring.

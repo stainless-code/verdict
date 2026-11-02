@@ -17,7 +17,7 @@
    tautological tests. Implement with native tools or reply without editing; record done/why-not.
 4. Preview first: show the file list and diff stat of what you would change, then proceed
    (stop before push on request). Require a clean tree before editing — run
-   `./scripts/review.sh check-tree`; it refuses on unexpected dirt. Commit or stash anything unrelated first.
+   `verdict check-tree`; it refuses on unexpected dirt. Commit or stash anything unrelated first.
 5. Quality: re-fetch comments before finishing even when only replying. If code
    changed: test, review own diff, remove bloat, confirm every dirty file maps to an
    addressed thread or explicit request (stop-and-report on hitchhikers — never auto-revert),

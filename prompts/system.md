@@ -52,7 +52,7 @@ commands and run anything stronger yourself.
 ## Tools (local mapping)
 
 - **GitHub reads/writes:** `gh` CLI (`gh pr view/diff/checkout`, `gh api .../reviews`,
-  `gh run view --log-failed`). Never invent endpoints — use `scripts/review.sh` wrappers.
+  `gh run view --log-failed`). Never invent endpoints — use the `verdict` CLI verbs.
 - **Git:** local `git`. The fetched `full.diff` is authoritative for review scope —
   read it rather than re-deriving. To diff a branch vs base yourself:
   `git diff --merge-base origin/<base>` (never bare `origin/<base>` or two-dot `..HEAD`;

@@ -6,14 +6,14 @@ Run PR reviews **locally, on-demand, with your own models**. The agent reviews;
 ## Quickstart
 
 ```bash
-chmod +x scripts/review.sh
+make build   # writes bin/verdict; or use the installed copy
 export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-requests:write, issues:write
 
 # 0. onboard once per repo (optional, offline): scaffold .review/ controls
-./scripts/review.sh init --preset standard --yes
+verdict init --preset standard --yes
 
 # 1. fetch
-./scripts/review.sh fetch owner/repo 123
+verdict fetch owner/repo 123
 
 # 2. review with ANY agent:
 #    Read SKILL.md, prompts/system.md, prompts/review.md, .review/123/PR.json,
@@ -22,7 +22,7 @@ export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-request
 #    Write exactly one .review/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
-./scripts/review.sh post owner/repo 123
+verdict post owner/repo 123
 ```
 
 `review.json` schema:
@@ -116,11 +116,11 @@ runs, and failures never write the key, so only a real post arms it.
 
 Finalizer loop (one shape end to end — refuse → advance → delta review →
 post → gate): the `already-posted` refusal names both exits — `--force` to
-override, or the forward path `./scripts/review.sh fetch owner/repo 123
+override, or the forward path `verdict fetch owner/repo 123
 --base-sha <short-posted-head>` (the 7-char reviewed SHA) and review the
 delta per `prompts/incremental-review.md` step 2. A push that lands after
 fetch never fails the run: `post` warns on stderr and appends the `> ⚠️`
-body note, both naming `./scripts/review.sh fetch owner/repo 123
+body note, both naming `verdict fetch owner/repo 123
 --base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,
 then close the loop with `report --completeness` (stale-head on a bundle
 with a posted head names the `--base-sha` advance form; missing-post with
@@ -136,7 +136,7 @@ Bare `resolved[]` sigs record a claim but never flip status. `addressed` require
 with `resultHead` matching HEAD — the revalidator writes it); `NOT VERIFIED` reopens,
 `INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
 unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
-store directly between runs with `./scripts/review.sh triage … --sig … --status … --rationale …`
+store directly between runs with `verdict triage … --sig … --status … --rationale …`
 (human supremacy, every override history-logged).
 
 Malformed agent input refuses typed (exit 1, machine envelope with `error.code`,
@@ -212,10 +212,10 @@ it compounds.
 `learn` manages it (no repo/PR args, no network):
 
 ```bash
-./scripts/review.sh learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
-./scripts/review.sh learn --status            # rules + counters + precision
-./scripts/review.sh learn --retire <id> --reason "<30+ chars, on the record>"
-./scripts/review.sh learn --restore <id> --reason "<30+ chars, on the record>"
+verdict learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
+verdict learn --status            # rules + counters + precision
+verdict learn --retire <id> --reason "<30+ chars, on the record>"
+verdict learn --restore <id> --reason "<30+ chars, on the record>"
 ```
 
 `--id` is optional (slugged from the rule text when absent). Exact-duplicate
@@ -327,9 +327,9 @@ opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait
 2 usage, 3 tool error — so callers branch without parsing JSON:
 
 ```bash
-./scripts/review.sh ready owner/repo 123 --check
+verdict ready owner/repo 123 --check
 case $? in
-  0) ./scripts/review.sh fetch owner/repo 123;;  # reviewable — review
+  0) verdict fetch owner/repo 123;;  # reviewable — review
   1) echo "not ready — nudge the author instead of reviewing";;
   2) echo "usage error — check the invocation";;
   *) echo "ready itself failed — check auth/bundle, then retry";;
@@ -348,7 +348,7 @@ severity name (`critical`/`important`/`informational`; untagged findings never
 meet a tier) and only `open` findings count — dispositioned states stay human.
 
 ```bash
-./scripts/review.sh report owner/repo 123 --check important
+verdict report owner/repo 123 --check important
 case $? in
   0) echo "no open important+ findings — proceed to merge";;
   1) echo "open important+ findings — triage before merging";;
@@ -410,7 +410,7 @@ is inert: advisory runs never touch the network regardless.
 Hook recipe (merge gate — findings AND freshness in one call):
 
 ```bash
-./scripts/review.sh report owner/repo 123 --check critical --completeness || exit 1
+verdict report owner/repo 123 --check critical --completeness || exit 1
 # exit 0 only when no open critical+ findings stand AND the fetched HEAD
 # is the posted HEAD; exit 1 names which dimension failed on stderr.
 ```
@@ -422,7 +422,7 @@ or an open critical fails locally instead of burning CI:
 
 ```bash
 #!/bin/sh
-./scripts/review.sh report owner/repo 123 --check critical --completeness || exit 1
+verdict report owner/repo 123 --check critical --completeness || exit 1
 # exit 0 only when no open critical+ findings stand AND the fetched HEAD
 # is the posted HEAD; exit 1 names which dimension failed on stderr.
 ```
@@ -514,7 +514,7 @@ remains the agent's own math, as today).
 New operators onboard in one offline command — no network, ever:
 
 ```bash
-./scripts/review.sh init --preset standard --yes   # chill|standard|strict, default standard
+verdict init --preset standard --yes   # chill|standard|strict, default standard
 ```
 
 `init` writes the standard local control files, then runs check-tree
@@ -596,9 +596,9 @@ migration, no env removed.
 
 One execution model across all three routes. Run the CLI from the repo
 under review: `.review/` is created in the current directory, never
-beside the tool. The CLI lives at `<tool>/scripts/review.sh` — the
-checkout for symlink installs, the installed `verdict/` skill dir for
-registry and copy installs (both ship `scripts/`). Caller tracing, test
+beside the tool. The CLI is the `verdict` binary — `bin/verdict` in a
+checkout (`make build`), carried beside the skill payload for registry and
+copy installs. Caller tracing, test
 checks, and `verify` all run repo-scoped in that directory, so reviewing
 another repo means running from its checkout (or accepting that the bundle
 lands wherever you stand).
@@ -606,13 +606,13 @@ lands wherever you stand).
 - **Registry** (`npx skills add stainless-code/verdict`): the skill copy
   carries the CLI — no further install step. `install.sh` is not shipped in
   the npm tarball and never runs here; invoke the bundled
-  `<skillsdir>/verdict/scripts/review.sh` from the repo under review.
+  `<skillsdir>/verdict/bin/verdict` from the repo under review.
   Refresh with `npx skills update`.
 - **Source checkout** (`git clone` + `./install.sh`): symlinks the checkout
   into the agent skill dirs (nine agents, `--detect`/`--all`,
   doctor-gated). Updates via `git pull`; `install.sh` refuses outside a git
   checkout. `hooks/pre-commit` wiring applies to the checkout only.
-- **Copy** (`./scripts/review.sh install --yes` from any tool root):
+- **Copy** (`verdict install --yes` from any tool root):
   copies the payload (`SKILL.md` + `prompts/` + `scripts/`) into the
   de-facto skill dirs (`.agents/skills`, `.claude/skills`, `.codex/skills`,
   repo-local and `$HOME`), receipted by `.verdict-managed`. Only
@@ -902,7 +902,7 @@ only the filesystem and network it sees change):
 
 ```bash
 bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh -- ./scripts/review.sh verify owner/repo 123
+  --tmpfs ~/.config/gh -- verdict verify owner/repo 123
 ```
 
 `--ro-bind / /` makes the host read-only, `--bind` remounts the repo
@@ -912,7 +912,7 @@ full network isolation for the command under test:
 
 ```bash
 bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh --unshare-net -- ./scripts/review.sh verify owner/repo 123
+  --tmpfs ~/.config/gh --unshare-net -- verdict verify owner/repo 123
 ```
 
 No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network
@@ -920,7 +920,7 @@ half of the shape only — network-only isolation, not the same shape:
 
 ```bash
 sudo systemd-nspawn --directory=/ --bind="$(pwd):$(pwd)" --private-network \
-  -- ./scripts/review.sh verify owner/repo 123
+  -- verdict verify owner/repo 123
 ```
 
 `--directory=/` runs the container on the host rootfs, so this is
@@ -1007,9 +1007,9 @@ it (split the range and re-fetch each slice, or narrow with a paths filter),
 then review each slice and stitch the verdict yourself:
 
 ```bash
-./scripts/review.sh fetch-local owner/repo slice-a --range <base>..<mid>   # or --base <R>
-./scripts/review.sh fetch owner/repo 123 --base-sha <sha>                  # or --since <sha>
-./scripts/review.sh fetch-local owner/repo slice-b -- <paths...>           # narrow to a file subset
+verdict fetch-local owner/repo slice-a --range <base>..<mid>   # or --base <R>
+verdict fetch owner/repo 123 --base-sha <sha>                  # or --since <sha>
+verdict fetch-local owner/repo slice-b -- <paths...>           # narrow to a file subset
 ```
 
 ## Providers (non-GitHub hosts)

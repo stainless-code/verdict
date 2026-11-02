@@ -15,25 +15,24 @@ GitHub I/O. No servers, no external services, no daemons.
 
 Full manual: [`docs/manual.md`](docs/manual.md). Vision and strategy: [`docs/vision.md`](docs/vision.md).
 
-Requirements: [`gh`](https://cli.github.com) (authed, `repo` scope), `jq` (>= 1.7), `shasum`, `git`.
-Run `./scripts/review.sh doctor` to preflight.
+Requirements: [`gh`](https://cli.github.com) (authed, `repo` scope), `jq` (>= 1.7), `shasum`, `git`, Go (to build).
+Run `verdict doctor` to preflight (`make build` writes `bin/verdict`).
 
 ## Install
 
 One execution model everywhere. Run the CLI from the repo under review:
 `.review/` is created in the current directory, never beside the tool. The
-CLI lives at `<tool>/scripts/review.sh` — the checkout for symlink
-installs, the installed `verdict/` skill dir for registry and copy
-installs (both ship `scripts/`).
+CLI is the `verdict` binary — `bin/verdict` in a checkout (`make build`),
+carried beside the skill payload for registry and copy installs.
 
 Pick one route per machine (two copies = double-loaded skill):
 
 ```bash
 # registry route (no git checkout needed): the skill copy carries the CLI.
 # install.sh is NOT shipped in the npm tarball and never runs here —
-# invoke the bundled script from the repo under review instead.
+# invoke the bundled binary from the repo under review instead.
 npx skills add stainless-code/verdict -g
-<skillsdir>/verdict/scripts/review.sh fetch owner/repo 123
+<skillsdir>/verdict/bin/verdict fetch owner/repo 123
 # refresh registry copies any time (filters match skill names, not owner/repo)
 npx skills check    # report outdated, change nothing
 npx skills update   # update everything in scope (add -g for global)
@@ -72,8 +71,8 @@ Anything else on the
 is one `npx skills add -a <agent>` away.
 
 Operator verbs (offline, same preview-then-confirm idiom): scaffold repo controls
-with `./scripts/review.sh init --preset standard --yes`, and copy the skill payload
-(`SKILL.md` + `prompts/` + `scripts/`) with `./scripts/review.sh install --yes` (detects
+with `verdict init --preset standard --yes`, and copy the skill payload
+(`SKILL.md` + `prompts/` + `scripts/`) with `verdict install --yes` (detects
 `.agents/skills`, `.claude/skills`, `.codex/skills`; only writes installer-owned
 `verdict/` dirs). The `install.sh` symlink route is the wide-coverage sibling
 for git checkouts only (nine agents, `--detect`/`--all`).
@@ -99,18 +98,18 @@ Nothing phones home: no servers, no telemetry, no auto-updater.
 ```bash
 export GH_TOKEN=...   # or gh auth login
 
-./scripts/review.sh fetch owner/repo 123          # bundle: diff + metadata + threads
+verdict fetch owner/repo 123          # bundle: diff + metadata + threads
 # feed SKILL.md + prompts/system.md + prompts/review.md + the bundle to any agent
-./scripts/review.sh post owner/repo 123 --dry-run # validate anchors, merge store, post nothing
-./scripts/review.sh post owner/repo 123           # exactly one review
-./scripts/review.sh triage owner/repo 123 --sig <sig8> --status wont-fix --rationale "..."
-./scripts/review.sh report owner/repo 123         # ranked read, no network
-./scripts/review.sh calibrate owner/repo 123      # predictions vs ground truth
+verdict post owner/repo 123 --dry-run # validate anchors, merge store, post nothing
+verdict post owner/repo 123           # exactly one review
+verdict triage owner/repo 123 --sig <sig8> --status wont-fix --rationale "..."
+verdict report owner/repo 123         # ranked read, no network
+verdict calibrate owner/repo 123      # predictions vs ground truth
 
 # no PR? same review against the worktree (never posts)
-./scripts/review.sh fetch-local owner/repo work   # bundle: git diff, no GitHub
+verdict fetch-local owner/repo work   # bundle: git diff, no GitHub
 # feed SKILL.md + prompts/system.md + prompts/review.md + the bundle to any agent
-./scripts/review.sh record owner/repo local-work  # validate anchors, merge store
+verdict record owner/repo local-work  # validate anchors, merge store
 ```
 
 ## Layout
@@ -119,12 +118,13 @@ export GH_TOKEN=...   # or gh auth login
 verdict/
   SKILL.md            # skill entry point (feed to any agent)
   install.sh          # doctor-gated symlink installer (re-run to update)
-  CHANGELOG.md        # release notes (changesets); scripts/review.sh --version reads package.json
+  CHANGELOG.md        # release notes (changesets); verdict --version reads package.json
   docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
   apps/docs/          # Blume docs site (index + manual mirror, deploys to /verdict/)
   docs/vision.md      # what it is, strategy; narrative lives on the site
   prompts/            # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
-  scripts/review.sh   # fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/install
+  scripts/verdict-complete.sh  # bash/zsh completion for verdict
+  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/install
 ```
 
 ## Updating

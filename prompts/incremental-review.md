@@ -7,7 +7,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
 ## Checklist
 
 1. **Task list** first.
-2. **Checkout.** `./scripts/review.sh fetch owner/repo N --base-sha <prior-reviewed-sha>`
+2. **Checkout.** `verdict fetch owner/repo N --base-sha <prior-reviewed-sha>`
    (writes `full.diff` + `incremental.diff` when computable). If `incremental.diff` exists it is
    your coverage checklist: read it FIRST in full, then only the `full.diff` ranges the delta
    needs for context. If absent: full TOC, determine what changed since the last review yourself.

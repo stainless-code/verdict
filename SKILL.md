@@ -11,16 +11,16 @@ the model is whatever agent you invoke.
 ## Where commands run
 
 Run the CLI from the repo under review: `.review/` is created in the
-current directory, never beside the tool. The CLI lives at
-`<tool>/scripts/review.sh` — the checkout for symlink installs, the
-installed `verdict/` skill dir for registry and copy installs (both ship
-`scripts/`). Below, `./scripts/review.sh` means that script.
+current directory, never beside the tool. The CLI is the `verdict` binary
+— `bin/verdict` in a checkout (`make build`), carried beside the
+installed `verdict/` skill dir for registry and copy installs. Below,
+`verdict` means that binary.
 
 ## Workflow
 
 ```bash
 # 1. Fetch the PR bundle (diff + metadata, no clone needed)
-./scripts/review.sh fetch owner/repo 123
+verdict fetch owner/repo 123
 # Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt.
 # Over-cap diffs refuse: re-run fetch with --chunk (or hold true in
 # .review/chunk), read each chunk per chunks/manifest.json, and stamp
@@ -30,23 +30,23 @@ installed `verdict/` skill dir for registry and copy installs (both ship
 #    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
 
 # 3. Post. Done when exactly one review lands — one review.json, one post call.
-./scripts/review.sh post owner/repo 123 --approve=false
+verdict post owner/repo 123 --approve=false
 ```
 
-Local changes (no PR): `./scripts/review.sh fetch-local owner/repo work
+Local changes (no PR): `verdict fetch-local owner/repo work
 [--staged] [--range A..B] [--base R] [--stash [n]] [-- paths...]` writes
 `.review/local-work/` (source.json instead of PR.json), the bundle is reviewed
-the same way, and `./scripts/review.sh record owner/repo local-work` merges it
+the same way, and `verdict record owner/repo local-work` merges it
 to `findings.json` — read with `report`, never `post` (no PR target).
 `adopt owner/repo 123 --from local-work` carries a local review into a fresh
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
-Between runs the operator may run `./scripts/review.sh triage …` (status changes), `report`
+Between runs the operator may run `verdict triage …` (status changes), `report`
 (ranked read), `calibrate` (predictions vs ground truth), or `fix` (one bounded
 verify-gated pass over a local bundle — prints the finding plus land instructions;
 agents never call `triage` — they propose via `triage[]`).
 
-Delta re-review: `./scripts/review.sh fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
+Delta re-review: `verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
 then load `prompts/incremental-review.md` instead of `prompts/review.md`.
 
 ## Mode router
