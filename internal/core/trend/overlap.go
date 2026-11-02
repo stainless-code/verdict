@@ -1,4 +1,4 @@
-package trend
+package trendcore
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -56,18 +55,18 @@ type overlapRollup struct {
 // overlapAudit ports the --overlap audit: the offline join of recalled x
 // cited x outcomes. Missing manifests read unmeasured (never zero); the
 // outcome split still counts cited findings from unmeasured bundles.
-func overlapAudit(r *cli.Runner, rows []row) *overlapRollup {
-	joins := readJoins(r)
+func overlapAudit(st *state, rows []row) *overlapRollup {
+	joins := readJoins(st)
 	out := &overlapRollup{}
 	for i := range rows {
-		out.perBundle = append(out.perBundle, overlapRowFor(r, &rows[i], joins))
+		out.perBundle = append(out.perBundle, overlapRowFor(st, &rows[i], joins))
 	}
 	rollOverlapTotals(out, joins)
 	return out
 }
 
 // readJoins reads the KB joins manifest, warning when unreadable.
-func readJoins(r *cli.Runner) []any {
+func readJoins(st *state) []any {
 	raw, err := os.ReadFile(".review/kb-joins.jsonl")
 	if err != nil {
 		return []any{}
@@ -78,7 +77,7 @@ func readJoins(r *cli.Runner) []any {
 	for dec.More() {
 		var v any
 		if err := dec.Decode(&v); err != nil {
-			r.Warn("kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)")
+			st.warn("kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)")
 			return []any{}
 		}
 		if _, ok := v.(map[string]any); ok {
@@ -89,8 +88,8 @@ func readJoins(r *cli.Runner) []any {
 }
 
 // overlapRowFor ports one per-bundle overlap row.
-func overlapRowFor(r *cli.Runner, row *row, joins []any) overlapRow {
-	recalled, measured := recallManifest(r, row.bundle)
+func overlapRowFor(st *state, row *row, joins []any) overlapRow {
+	recalled, measured := recallManifest(st, row.bundle)
 	cited := citedIDs(row.findings)
 	inter := arrayOverlap(recalled, cited)
 	cf := citedFindingSet(row.findings)
@@ -134,7 +133,7 @@ func tallyOutcome(out *overlapRow, status string) {
 
 // recallManifest ports the kb-recall.json manifest read: missing manifests
 // read unmeasured, unreadable ones warn and read unmeasured.
-func recallManifest(r *cli.Runner, bundle string) ([]any, bool) {
+func recallManifest(st *state, bundle string) ([]any, bool) {
 	path := ".review/" + bundle + "/kb-recall.json"
 	if !isRegular(path) {
 		return []any{}, false
@@ -145,18 +144,18 @@ func recallManifest(r *cli.Runner, bundle string) ([]any, bool) {
 	}
 	doc, derr := jq.Decode(raw)
 	if derr != nil {
-		return warnManifest(r, bundle)
+		return warnManifest(st, bundle)
 	}
 	list, ok := doc.([]any)
 	if !ok {
-		return warnManifest(r, bundle)
+		return warnManifest(st, bundle)
 	}
 	return manifestIDs(list), true
 }
 
 // warnManifest ports the unreadable-manifest warn-and-unmeasured read.
-func warnManifest(r *cli.Runner, bundle string) ([]any, bool) {
-	r.Warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
+func warnManifest(st *state, bundle string) ([]any, bool) {
+	st.warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
 	return []any{}, false
 }
 
@@ -431,20 +430,20 @@ func tallyJoin(out *overlapRollup, j any) {
 }
 
 // emitOverlapHuman ports the overlap human lines.
-func emitOverlapHuman(r *cli.Runner, out *overlapRollup) {
-	fmt.Fprintf(r.Human, "overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)\n",
+func (st *state) emitOverlapHuman(out *overlapRollup) {
+	st.human(fmt.Sprintf("overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)",
 		out.measuredBundles, out.unmeasuredBundles, numOrNA(out.precision), numOrNA(out.coverage),
-		len(out.recalledRules), len(out.citedRules), len(out.overlapRules))
-	fmt.Fprintf(r.Human, "cited outcomes: %d cited findings — addressed=%d false-positive=%d pending=%d wont-fix=%d; "+
-		"joins rows=%d (addressed=%d false-positive=%d)\n",
+		len(out.recalledRules), len(out.citedRules), len(out.overlapRules)))
+	st.human(fmt.Sprintf("cited outcomes: %d cited findings — addressed=%d false-positive=%d pending=%d wont-fix=%d; "+
+		"joins rows=%d (addressed=%d false-positive=%d)",
 		out.citedFindings, out.addressed, out.falsePositive, out.pending, out.wontFix,
-		out.joinsRows, out.joinsAddressed, out.joinsFalse)
+		out.joinsRows, out.joinsAddressed, out.joinsFalse))
 	for i := range out.perBundle {
 		row := &out.perBundle[i]
-		fmt.Fprintf(r.Human, "  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) "+
-			"outcomes addressed=%d false-positive=%d pending=%d\n",
+		st.human(fmt.Sprintf("  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) "+
+			"outcomes addressed=%d false-positive=%d pending=%d",
 			row.bundle, boolStr(row.measured), numOrNA(row.precision), numOrNA(row.coverage),
-			len(row.recalled), len(row.cited), len(row.overlap), row.addressed, row.falsePositive, row.pending)
+			len(row.recalled), len(row.cited), len(row.overlap), row.addressed, row.falsePositive, row.pending))
 	}
 }
 

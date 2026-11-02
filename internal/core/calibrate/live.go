@@ -1,4 +1,4 @@
-package calibrate
+package calibratecore
 
 import (
 	"context"
@@ -9,70 +9,84 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // runLive ports the live-ground-truth join: thread states plus files
 // changed since the review head, with tier precision.
-func runLive(ctx context.Context, r *cli.Runner, req Request, dir string) int {
-	entries, reviewID, head0, refusal := liveBundle(dir)
+func (st *state) runLive(ctx context.Context, dir string) *core.RefusalError {
+	entries, reviewID, head0, refusal := st.liveBundle(dir)
 	if refusal != nil {
-		return r.Refuse(refusal)
+		return refusal
 	}
-	threads, err := liveThreads(ctx, req)
-	if err != nil {
-		return r.Refuse(err)
+	threads, ref := st.liveThreads(ctx)
+	if ref != nil {
+		return ref
 	}
-	live, err := livePR(ctx, req)
-	if err != nil {
-		return r.Refuse(err)
+	live, ref := st.livePR(ctx)
+	if ref != nil {
+		return ref
 	}
-	changed := liveChanged(ctx, r, req, head0, liveHead(live))
+	changed := st.liveChanged(ctx, head0, liveHead(live))
 	outcomes := joinOutcomes(entries, threads, changed)
-	emitLiveHuman(r, req, reviewID, head0, live, outcomes, dir)
-	if r.JSONMode {
-		emitLiveEnvelope(r, req, reviewID, head0, live, outcomes, dir)
+	st.emitLiveHuman(reviewID, head0, live, outcomes, dir)
+	st.live = &liveResult{
+		reviewID: reviewID,
+		head0:    head0,
+		live:     live,
+		outcomes: outcomes,
+		dir:      dir,
 	}
-	return 0
+	return nil
+}
+
+// liveResult carries the completed live join for the typed data profile.
+type liveResult struct { //nolint:govet // field grouping documents the loaded dimensions
+	reviewID string
+	head0    string
+	live     map[string]any
+	outcomes []outcome
+	dir      string
 }
 
 // liveBundle ports the live-join bundle gate: local, provider, post,
 // findings, and id/head checks run before any gh call.
-func liveBundle(dir string) ([]any, string, string, *cli.RefusalError) {
+func (st *state) liveBundle(dir string) ([]any, string, string, *core.RefusalError) {
 	if isLocalDir(dir) {
-		return nil, "", "", &cli.RefusalError{
+		return nil, "", "", st.withWarnings(&core.RefusalError{
 			Code: codeNoThreads,
 			Message: "calibrate joins live threads — nothing to settle on a local bundle " +
 				"(adopt + post first, then calibrate the PR)",
-		}
+		})
 	}
 	if prov := readcommon.ProviderOf(dir); prov != "" && prov != "github" {
-		return nil, "", "", &cli.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
-			"calibrate on %s is not implemented yet (no live thread join for it)", prov)}
+		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
+			"calibrate on %s is not implemented yet (no live thread join for it)", prov)})
 	}
 	if !isRegular(dir + postFileSuffix) {
-		return nil, "", "", &cli.RefusalError{Code: codeMissingPost, Message: fmt.Sprintf(
-			"missing %s/post.json (post for real first — calibration needs a posted review id)", dir)}
+		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeMissingPost, Message: fmt.Sprintf(
+			"missing %s/post.json (post for real first — calibration needs a posted review id)", dir)})
 	}
-	return liveFindings(dir)
+	return st.liveFindings(dir)
 }
 
 // liveFindings loads the findings plus the review id/head after the bundle
 // gate.
-func liveFindings(dir string) ([]any, string, string, *cli.RefusalError) {
+func (st *state) liveFindings(dir string) ([]any, string, string, *core.RefusalError) {
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		if refusal, ok := errors.AsType[*cli.RefusalError](err); ok {
-			return nil, "", "", refusal
+		if refusal, ok := errors.AsType[*core.RefusalError](err); ok {
+			return nil, "", "", st.withWarnings(refusal)
 		}
-		return nil, "", "", &cli.RefusalError{Code: codeMissingPost, Message: "post.json carries no review id/head"}
+		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeMissingPost, Message: "post.json carries no review id/head"})
 	}
 	reviewID := nestedReviewID(dir)
 	head0 := readcommon.JSONRaw(dir+postFileSuffix, "head")
 	if reviewID == "" || head0 == "" {
-		return nil, "", "", &cli.RefusalError{Code: codeMissingPost, Message: "post.json carries no review id/head"}
+		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeMissingPost, Message: "post.json carries no review id/head"})
 	}
 	return entries, reviewID, head0, nil
 }
@@ -109,26 +123,28 @@ func nestedReviewID(dir string) string {
 }
 
 // liveThreads reads the live review threads with comments.
-func liveThreads(ctx context.Context, req Request) ([]any, error) {
-	owner, name := readcommon.SplitOwner(req.Repo)
-	res, err := readcommon.Gh(ctx, readcommon.ThreadsArgv(owner, name, req.Pr, readcommon.QueryCalibrate)...)
-	if err != nil {
-		return nil, &cli.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"}
+func (st *state) liveThreads(ctx context.Context) ([]any, *core.RefusalError) {
+	owner, name := readcommon.SplitOwner(st.req.Repo)
+	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
+		readcommon.ThreadsArgv(owner, name, st.req.Pr, readcommon.QueryCalibrate)...)
+	if !ok {
+		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
 	}
-	nodes, err := readcommon.SlurpThreads(res.Stdout)
+	nodes, err := readcommon.SlurpThreads(stdout)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"}
+		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
 	}
 	return nodes, nil
 }
 
 // livePR reads the live PR state.
-func livePR(ctx context.Context, req Request) (map[string]any, error) {
-	res, err := readcommon.Gh(ctx, "pr", "view", req.Pr, "--repo", req.Repo, "--json", "headRefOid,state,mergedAt")
-	if err != nil {
-		return nil, &cli.RefusalError{Code: codePRReadFailed, Message: "could not read live PR state"}
+func (st *state) livePR(ctx context.Context) (map[string]any, *core.RefusalError) {
+	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
+		"pr", "view", st.req.Pr, "--repo", st.req.Repo, "--json", "headRefOid,state,mergedAt")
+	if !ok {
+		return nil, st.withWarnings(&core.RefusalError{Code: codePRReadFailed, Message: "could not read live PR state"})
 	}
-	if m, ok := decodeLivePR(res.Stdout); ok {
+	if m, ok := decodeLivePR(stdout); ok {
 		return m, nil
 	}
 	return map[string]any{}, nil
@@ -157,24 +173,25 @@ func liveHead(live map[string]any) string {
 // empty with a warning when the compare is unavailable. A failed call
 // warns once (the evidence-off line); an unparseable payload warns twice
 // (the parse line, then the evidence-off line), mirroring the shell.
-func liveChanged(ctx context.Context, r *cli.Runner, req Request, head0, liveHead string) []any {
+func (st *state) liveChanged(ctx context.Context, head0, liveHead string) []any {
 	if head0 == liveHead {
 		return []any{}
 	}
-	res, err := readcommon.Gh(ctx, "api", "repos/"+req.Repo+"/compare/"+head0+"..."+liveHead, "--jq", "[.files[].filename]")
-	if err != nil {
-		r.Warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
+	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
+		"api", "repos/"+st.req.Repo+"/compare/"+head0+"..."+liveHead, "--jq", "[.files[].filename]")
+	if !ok {
+		st.warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
 		return []any{}
 	}
-	doc, derr := jq.Decode([]byte(res.Stdout))
+	doc, derr := jq.Decode([]byte(stdout))
 	if derr != nil {
-		r.Warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
-		r.Warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
+		st.warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
+		st.warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
 		return []any{}
 	}
 	list, ok := doc.([]any)
 	if !ok {
-		r.Warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
+		st.warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
 		return []any{}
 	}
 	return list
@@ -459,33 +476,33 @@ func countPrecision(outcomes []outcome) precision {
 }
 
 // emitLiveHuman ports the live human lines plus the provenance tail.
-func emitLiveHuman(r *cli.Runner, req Request, reviewID, head0 string, live map[string]any, outcomes []outcome, dir string) {
+func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outcomes []outcome, dir string) {
 	p := countPrecision(outcomes)
-	liveHead := liveHead(live)
+	head := liveHead(live)
 	prState := jq.StrOf(live["state"])
 	mergedAt := jq.StrOf(live["mergedAt"])
 	stale := "current"
-	if head0 != liveHead {
-		stale = "stale — " + readcommon.ShortSHA(head0) + " → " + readcommon.ShortSHA(liveHead)
+	if head0 != head {
+		stale = "stale — " + readcommon.ShortSHA(head0) + " → " + readcommon.ShortSHA(head)
 	}
 	merged := ""
 	if mergedAt != "" {
 		merged = ", merged " + mergedAt
 	}
-	fmt.Fprintf(r.Human, "calibrate: %s#%s — review %s @ %s (%s), PR %s%s\n",
-		req.Repo, req.Pr, reviewID, readcommon.ShortSHA(head0), stale, prState, merged)
+	st.human(fmt.Sprintf("calibrate: %s#%s — review %s @ %s (%s), PR %s%s",
+		st.req.Repo, st.req.Pr, reviewID, readcommon.ShortSHA(head0), stale, prState, merged))
 	for i := range outcomes {
 		o := &outcomes[i]
 		kbText := ""
 		if showKbSuffix(o.kb) {
 			kbText = kbRowText(o)
 		}
-		fmt.Fprintf(r.Human, "%s [%s] %s — %s%s\n", o.sig, o.result, o.locator, o.detail, kbText)
+		st.human(fmt.Sprintf("%s [%s] %s — %s%s", o.sig, o.result, o.locator, o.detail, kbText))
 	}
-	fmt.Fprintf(r.Human, "precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)\n",
-		p.fixed, p.resolvedUnfixed, p.open, p.unknown, p.judged)
-	fmt.Fprintf(r.Human, "provenance: tool v%s prompts %s model %s\n",
-		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model"))
+	st.human(fmt.Sprintf("precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)",
+		p.fixed, p.resolvedUnfixed, p.open, p.unknown, p.judged))
+	st.human(fmt.Sprintf("provenance: tool v%s prompts %s model %s",
+		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model")))
 }
 
 // sigHuman renders the human sig cell: the 8-codepoint prefix of a string
@@ -592,12 +609,24 @@ func provRaw(dir, key string) string {
 	return readcommon.Tostring(v)
 }
 
-// emitLiveEnvelope ports the live --json envelope.
-func emitLiveEnvelope(r *cli.Runner, req Request, reviewID, head0 string, live map[string]any, outcomes []outcome, dir string) {
-	p := countPrecision(outcomes)
-	items := make([]any, 0, len(outcomes))
-	for i := range outcomes {
-		items = append(items, outcomeDoc(&outcomes[i]))
+// nextLive ports the live next step: open threads first, then unsettled
+// unknowns, else the recorded calibration.
+func nextLive(p precision) string {
+	next := "calibration recorded"
+	if p.open > 0 {
+		next = "address open threads"
+	} else if p.unknown > 0 {
+		next = "re-run after threads settle"
+	}
+	return next
+}
+
+// Wire renders the live join data in published wire order.
+func (r *liveResult) Wire() *jq.Obj {
+	p := countPrecision(r.outcomes)
+	items := make([]any, 0, len(r.outcomes))
+	for i := range r.outcomes {
+		items = append(items, outcomeDoc(&r.outcomes[i]))
 	}
 	byTier := jq.NewObj()
 	for _, tier := range sortedTierKeys(p.byTier) {
@@ -610,46 +639,28 @@ func emitLiveEnvelope(r *cli.Runner, req Request, reviewID, head0 string, live m
 		))
 	}
 	var mergedAt any
-	if merged := jq.StrOf(live["mergedAt"]); merged != "" {
+	if merged := jq.StrOf(r.live["mergedAt"]); merged != "" {
 		mergedAt = merged
 	}
-	prState := jq.StrOf(live["state"])
-	next := "calibration recorded"
-	if p.open > 0 {
-		next = "address open threads"
-	} else if p.unknown > 0 {
-		next = "re-run after threads settle"
-	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "calibrate",
-		"repo", req.Repo,
-		"pr", cli.PrJSON(req.Pr),
-		"at", cli.NowUTC(r.Now()),
-		"next", next,
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj(
-			"review_id", reviewIDValue(reviewID),
-			"head", jq.NewObj("reviewed", head0, "live", liveHead(live)),
-			"pr", jq.NewObj("state", prState, "merged_at", mergedAt),
-			"outcomes", items,
-			"precision", jq.NewObj(
-				"fixed", p.fixed,
-				"resolved_unfixed", p.resolvedUnfixed,
-				"open", p.open,
-				"unknown", p.unknown,
-				"judged", p.judged,
-				"by_tier", byTier,
-			),
-			"provenance", jq.NewObj(
-				"tool_version", provValue(dir, "tool_version"),
-				"prompts_hash", provValue(dir, "prompts_hash"),
-				"model", provValue(dir, "model"),
-			),
+	return jq.NewObj(
+		"review_id", reviewIDValue(r.reviewID),
+		"head", jq.NewObj("reviewed", r.head0, "live", liveHead(r.live)),
+		"pr", jq.NewObj("state", jq.StrOf(r.live["state"]), "merged_at", mergedAt),
+		"outcomes", items,
+		"precision", jq.NewObj(
+			"fixed", p.fixed,
+			"resolved_unfixed", p.resolvedUnfixed,
+			"open", p.open,
+			"unknown", p.unknown,
+			"judged", p.judged,
+			"by_tier", byTier,
 		),
-		"error", nil,
+		"provenance", jq.NewObj(
+			"tool_version", provValue(r.dir, "tool_version"),
+			"prompts_hash", provValue(r.dir, "prompts_hash"),
+			"model", provValue(r.dir, "model"),
+		),
 	)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 }
 
 // outcomeDoc renders one outcome row in shell key order: sig, status,

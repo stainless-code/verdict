@@ -1,12 +1,11 @@
-package calibrate
+package calibratecore
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -14,33 +13,37 @@ import (
 // runProbe ports the self-grading probe: baseline grades regenerated from
 // findings.json every run, agent judgments merged sticky, kb-grades.jsonl
 // rewritten deterministically.
-func runProbe(ctx context.Context, r *cli.Runner, req Request, dir string, specs []string, judgeFile string) int {
-	_ = ctx
+func (st *state) runProbe(dir string) *core.RefusalError {
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		return r.Refuse(err)
+		return st.loadRefusal(err)
 	}
-	now := cli.NowUTC(r.Now())
+	now := st.req.TimeUTC()
 	bname := strings.TrimPrefix(dir, ".review/")
 	known := knownSigs(entries)
-	fileJudgments, err := readJudgeFile(judgeFile, known, dir)
+	fileJudgments, err := readJudgeFile(st.req.JudgeFile, known, dir)
 	if err != nil {
-		return r.Refuse(err)
+		return st.loadRefusal(err)
 	}
-	specJudgments, err := parseJudgeSpecs(specs, known, dir)
+	specJudgments, err := parseJudgeSpecs(st.req.Specs, known, dir)
 	if err != nil {
-		return r.Refuse(err)
+		return st.loadRefusal(err)
 	}
 	merged := mergeJudgments(priorJudgments(dir), append(fileJudgments, specJudgments...))
 	grades := buildGrades(entries, bname, now, merged)
 	if err := writeGrades(dir, grades); err != nil {
-		return r.Refuse(err)
+		return st.loadRefusal(err)
 	}
-	emitProbeHuman(r, req, dir, bname, grades)
-	if r.JSONMode {
-		emitProbeEnvelope(r, req, bname, now, grades)
-	}
-	return 0
+	st.emitProbeHuman(dir, bname, grades)
+	st.probe = &probeResult{bundle: bname, grades: grades, counts: countGrades(grades)}
+	return nil
+}
+
+// judge is one agent judgment.
+type judge struct {
+	helpful any
+	sig     string
+	verdict string
 }
 
 // knownSigs ports the known-sigs array: every entry's raw sig (strings
@@ -60,8 +63,8 @@ func knownSigs(entries []any) []any {
 }
 
 // judgeUnreadable ports the missing-or-unreadable judge file refusal.
-func judgeUnreadable(path string) *cli.RefusalError {
-	return &cli.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
+func judgeUnreadable(path string) *core.RefusalError {
+	return &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
 		"judge file '%s' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} "+
 			"object per line, or a JSON array of them)", path)}
 }
@@ -102,7 +105,7 @@ func readJudgeDocs(path string) ([]any, error) {
 // checkJudgeDocs validates the fragment entries against the known sigs.
 func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge, error) {
 	if unknown := firstUnknown(out, known); unknown != "" {
-		return nil, &cli.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
 			"judge file '%s' sig '%s' matches no finding in %s/findings.json (copy the full sig from report output)", path, unknown, dir)}
 	}
 	return out, nil
@@ -113,7 +116,7 @@ func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge,
 func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(string(raw)))
 	if err != nil {
-		return nil, &cli.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
 			"judge file '%s' is not valid JSON or JSONL (one {\"sig\": ..., \"agent_verdict\": ...} per line, or a JSON array)", path)}
 	}
 	if len(docs) == 1 {
@@ -137,7 +140,7 @@ func readable(path string) bool {
 // checkJudgeEntry validates one fragment entry.
 func checkJudgeEntry(path string, i int, doc any) (judge, error) {
 	fail := func(detail string) (judge, error) {
-		return judge{}, &cli.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf("judge file '%s' entry %d: %s", path, i, detail)}
+		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf("judge file '%s' entry %d: %s", path, i, detail)}
 	}
 	m, ok := doc.(map[string]any)
 	if !ok {
@@ -215,7 +218,7 @@ func parseJudgeSpecs(specs []string, known []any, dir string) ([]judge, error) {
 // checkJudgeSpec validates one --judge SIG:VERDICT[:HELPFUL] spec.
 func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 	bad := func(detail string) (judge, error) {
-		return judge{}, &cli.RefusalError{Code: codeBadJudgment, Message: detail}
+		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: detail}
 	}
 	sig, rest, found := strings.Cut(spec, ":")
 	if !found || sig == "" {
@@ -229,7 +232,7 @@ func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 		return bad(fmt.Sprintf("malformed --judge '%s': helpful '%s' (want true|false|null)", spec, helpful))
 	}
 	if !containsSig(known, sig) {
-		return judge{}, &cli.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
+		return judge{}, &core.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
 			"judgment sig '%s' matches no finding in %s/findings.json (copy the full sig from report output)", sig, dir)}
 	}
 	return buildSpecJudge(sig, verdict, helpful), nil
@@ -433,7 +436,7 @@ func writeGrades(dir string, grades []*jq.Obj) error {
 		sb.WriteByte('\n')
 	}
 	if err := os.WriteFile(dir+"/kb-grades.jsonl", []byte(sb.String()), gradesFilePerm); err != nil {
-		return &cli.RefusalError{Code: codeCalibrateFailed, Message: fmt.Sprintf("could not write %s/kb-grades.jsonl: %v", dir, err)}
+		return &core.RefusalError{Code: codeCalibrateFailed, Message: fmt.Sprintf("could not write %s/kb-grades.jsonl: %v", dir, err)}
 	}
 	return nil
 }
@@ -498,8 +501,51 @@ func tallyAgreement(c *probeCounts, av string, verdict, agreement any) {
 	}
 }
 
+// probeResult carries the completed probe for the typed data profile.
+type probeResult struct {
+	bundle string
+	grades []*jq.Obj
+	counts probeCounts
+}
+
+// nextProbe ports the probe next step: scored pairs feed the evidence
+// gate, else nothing weighs.
+func nextProbe(c *probeCounts) string {
+	next := "no real findings graded — nothing to weigh"
+	if c.real > 0 {
+		next = "adopted-pair signal present — feed X3 into the H2 evidence gate"
+	}
+	return next
+}
+
+// Wire renders the probe data in published wire order.
+func (r *probeResult) Wire() *jq.Obj {
+	c := r.counts
+	items := make([]any, 0, len(r.grades))
+	for _, g := range r.grades {
+		items = append(items, g)
+	}
+	return jq.NewObj(
+		"bundle", r.bundle,
+		"grades", items,
+		"counts", jq.NewObj(
+			"findings", c.total,
+			"real", c.real,
+			"false", c.falseVerdicts,
+			"unknown", c.unknown,
+		),
+		"judgment", jq.NewObj(
+			"sampled", c.sampled,
+			"judged", c.judged,
+			"agreed", c.agreed,
+			"disagreed", c.disagreed,
+			"agreement_rate", c.rate,
+		),
+	)
+}
+
 // emitProbeHuman ports the probe human lines.
-func emitProbeHuman(r *cli.Runner, req Request, dir, bname string, grades []*jq.Obj) {
+func (st *state) emitProbeHuman(dir, bname string, grades []*jq.Obj) {
 	c := countGrades(grades)
 	judgeText := ""
 	if c.sampled != 0 {
@@ -512,10 +558,10 @@ func emitProbeHuman(r *cli.Runner, req Request, dir, bname string, grades []*jq.
 		judgeText = fmt.Sprintf(" judgments: sampled=%d judged=%d agreed=%d disagreed=%d rate=%s",
 			c.sampled, c.judged, c.agreed, c.disagreed, rateText)
 	}
-	fmt.Fprintf(r.Human, "probe: %s#%s — %d finding(s): real=%d false=%d unknown=%d%s (grades: %s/kb-grades.jsonl)\n",
-		req.Repo, bname, c.total, c.real, c.falseVerdicts, c.unknown, judgeText, dir)
+	st.human(fmt.Sprintf("probe: %s#%s — %d finding(s): real=%d false=%d unknown=%d%s (grades: %s/kb-grades.jsonl)",
+		st.req.Repo, bname, c.total, c.real, c.falseVerdicts, c.unknown, judgeText, dir))
 	for _, g := range grades {
-		fmt.Fprintln(r.Human, gradeLine(g))
+		st.human(gradeLine(g))
 	}
 }
 
@@ -555,58 +601,8 @@ func sigString(sig any) string {
 	return jq.Str(sig)
 }
 
-// emitProbeEnvelope ports the probe --json envelope.
-func emitProbeEnvelope(r *cli.Runner, req Request, bname, now string, grades []*jq.Obj) {
-	c := countGrades(grades)
-	items := make([]any, 0, len(grades))
-	for _, g := range grades {
-		items = append(items, g)
-	}
-	next := "no real findings graded — nothing to weigh"
-	if c.real > 0 {
-		next = "adopted-pair signal present — feed X3 into the H2 evidence gate"
-	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "calibrate",
-		"repo", req.Repo,
-		"pr", cli.PrJSON(req.Pr),
-		"at", now,
-		"next", next,
-		"warnings", cliStrings(r.Warnings),
-		"data", jq.NewObj(
-			"bundle", bname,
-			"grades", items,
-			"counts", jq.NewObj(
-				"findings", c.total,
-				"real", c.real,
-				"false", c.falseVerdicts,
-				"unknown", c.unknown,
-			),
-			"judgment", jq.NewObj(
-				"sampled", c.sampled,
-				"judged", c.judged,
-				"agreed", c.agreed,
-				"disagreed", c.disagreed,
-				"agreement_rate", c.rate,
-			),
-		),
-		"error", nil,
-	)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-}
-
 // isRegular reports whether path is a regular file.
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
-}
-
-// cliStrings converts warnings to JSON string values.
-func cliStrings(in []string) []any {
-	out := make([]any, 0, len(in))
-	for _, s := range in {
-		out = append(out, s)
-	}
-	return out
 }

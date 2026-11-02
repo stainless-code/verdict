@@ -1,7 +1,6 @@
-// Package calibrate ports the `calibrate` verb: the live-ground-truth
-// join (thread states plus files changed since the review head) and the
-// offline self-grading probe. Read-only except the probe's
-// kb-grades.jsonl; never auto-tunes.
+// Package calibrate is the calibrate verb's CLI adapter: argv parsing, one
+// call into the calibratecore service, warning routing, envelope
+// rendering, and exit mapping. Domain logic lives in internal/core/calibrate.
 package calibrate
 
 import (
@@ -10,50 +9,15 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Request wires a calibrate run.
 type Request = readcommon.Request
-
-// Refusal codes, outcome and status vocabularies, and store keys shared by
-// the live join and the probe, byte-identical to the shell.
-const (
-	codeNoThreads             = "no-threads"
-	codeProviderUnimplemented = "provider-unimplemented"
-	codeMissingPost           = "missing-post"
-	codeThreadsFailed         = "threads-failed"
-	codePRReadFailed          = "pr-read-failed"
-	codeBadJudgment           = "bad-judgment"
-	codeUnknownJudgment       = "unknown-judgment"
-	codeCalibrateFailed       = "calibrate-failed"
-
-	statusAddressed     = "addressed"
-	statusFalsePositive = "false-positive"
-	statusOpen          = "open"
-	statusDeferred      = "deferred"
-
-	outcomeFixed           = "fixed"
-	outcomeResolvedUnfixed = "resolved-unfixed"
-	outcomeUnknown         = "unknown"
-	outcomeUntagged        = "untagged"
-	tierResolvedUnfixed    = "resolved_unfixed"
-
-	verdictReal    = "real"
-	verdictFalse   = "false"
-	verdictUnknown = "unknown"
-
-	helpfulTrue  = "true"
-	helpfulFalse = "false"
-	helpfulNull  = "null"
-
-	keySig          = "sig"
-	keyAgentVerdict = "agent_verdict"
-	keyAgentHelpful = "agent_helpful"
-
-	unmarkedValue  = "unmarked"
-	postFileSuffix = "/post.json"
-)
 
 // Run executes `calibrate <owner/repo> <pr> [--probe ...] [--json]`,
 // returning the exit code.
@@ -68,25 +32,59 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if !st.probe && (len(st.specs) > 0 || st.judgeFile != "") {
 		return r.ReportUsage(&cli.UsageError{Message: "--judge and --judge-file need --probe (judgments only merge on a probe run)"})
 	}
-	dir := readcommon.ResolveBundleDir(req.Pr)
-	if st.probe {
-		return runProbe(ctx, r, req, dir, st.specs, st.judgeFile)
+	resp, ref := calibratecore.Run(ctx, calibrateRequest(r, req, st))
+	if ref != nil {
+		return r.Refuse(ref)
 	}
-	return runLive(ctx, r, req, dir)
+	r.Warnings = resp.Warnings
+	if r.JSONMode {
+		env := core.RenderEnvelope("calibrate", req.Repo, req.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire(), nil)
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	}
+	return 0
 }
+
+// calibrateRequest injects the runner's clock, progress observer, and
+// command runner into the typed service request.
+func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.Request {
+	read := req
+	if read.Runtime == nil {
+		read.Runtime = &core.Runtime{}
+	}
+	read.Now = r.Now
+	read.Progress = runnerProgress{r}
+	read.Commander = coreexec.SpawnCommander{}
+	return &calibratecore.Request{
+		ReadRequest: read,
+		Probe:       st.probe,
+		Specs:       st.specs,
+		JudgeFile:   st.judgeFile,
+		Warnings:    append([]string{}, r.Warnings...),
+	}
+}
+
+// runnerProgress routes core's progress observations onto the runner's
+// frozen streams: human lines and diagnostics keep their streams,
+// warnings keep the `warn: ` prefix and accumulate.
+type runnerProgress struct {
+	r *cli.Runner
+}
+
+// Human writes one rendered human line.
+func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
+
+// Warn records and streams one warning.
+func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
+
+// Diag writes one raw diagnostic line.
+func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // flagState carries the calibrate flag parse.
 type flagState struct {
 	judgeFile string
 	specs     []string
 	probe     bool
-}
-
-// judge is one agent judgment.
-type judge struct {
-	helpful any
-	sig     string
-	verdict string
 }
 
 // parseFlags parses the calibrate flags, in shell order: missing values

@@ -1,4 +1,4 @@
-package trend
+package trendcore
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -244,32 +243,32 @@ func rowDoc(r *row) *jq.Obj {
 }
 
 // emitHuman ports the human rollup lines.
-func emitHuman(r *cli.Runner, req Request, out *rollup, overlap *overlapRollup) {
+func (st *state) emitHuman(out *rollup, overlap *overlapRollup) {
 	if out.bundles == 0 {
-		fmt.Fprintf(r.Human, "trend: %s — no reviewed bundles (no .review/*/findings.json yet)\n", req.Repo)
+		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .review/*/findings.json yet)")
 	} else {
-		fmt.Fprintf(r.Human, "trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)\n",
-			req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed)
+		st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
+			st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
 		for i := range out.periods {
 			p := &out.periods[i]
 			name := "undated"
 			if p.hasName {
 				name = p.name
 			}
-			fmt.Fprintf(r.Human, "%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
-				"tiers critical=%d important=%d informational=%d untagged=%d\n",
+			st.human(fmt.Sprintf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
+				"tiers critical=%d important=%d informational=%d untagged=%d",
 				name, p.bundles, p.findings, p.open, p.addressed, p.closed,
-				p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged])
+				p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged]))
 		}
-		fmt.Fprintf(r.Human, "tiers: critical=%d important=%d informational=%d untagged=%d\n",
-			out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged])
-		fmt.Fprintf(r.Human, "status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d\n",
+		st.human(fmt.Sprintf("tiers: critical=%d important=%d informational=%d untagged=%d",
+			out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged]))
+		st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
 			out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
-			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred])
-		fmt.Fprintf(r.Human, "provenance: %s\n", provenanceLine(out))
+			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
+		st.human("provenance: " + provenanceLine(out))
 	}
 	if overlap != nil {
-		emitOverlapHuman(r, overlap)
+		st.emitOverlapHuman(overlap)
 	}
 }
 
@@ -326,50 +325,6 @@ func uniqueStrings(sorted []string) []string {
 		if i == 0 || sorted[i-1] != s {
 			out = append(out, s)
 		}
-	}
-	return out
-}
-
-// emitEnvelope ports the trend --json envelope: generated_at first, then
-// the rollup keys, per_bundle, and the optional overlap join.
-func emitEnvelope(r *cli.Runner, req Request, now string, out *rollup, rows []row, overlap *overlapRollup) {
-	perBundle := make([]any, 0, len(rows))
-	for i := range rows {
-		perBundle = append(perBundle, rowDoc(&rows[i]))
-	}
-	middle := rollupDoc(out)
-	data := jq.NewObj("generated_at", now)
-	for _, k := range middle.Keys {
-		v, _ := middle.Get(k)
-		data.Set(k, v)
-	}
-	data.Set("per_bundle", perBundle)
-	if overlap != nil {
-		data.Set("overlap", overlapDoc(overlap))
-	}
-	next := "calibrate recent bundles for per-model tier precision"
-	if out.bundles == 0 {
-		next = "no reviewed bundles yet — fetch + post/record first"
-	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "trend",
-		"repo", req.Repo,
-		"pr", nil,
-		"at", now,
-		"next", next,
-		"warnings", cliStrings(r.Warnings),
-		"data", data,
-		"error", nil,
-	)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-}
-
-// cliStrings converts warnings to JSON string values.
-func cliStrings(in []string) []any {
-	out := make([]any, 0, len(in))
-	for _, s := range in {
-		out = append(out, s)
 	}
 	return out
 }
