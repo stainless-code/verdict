@@ -63,7 +63,15 @@ EOF
     awk -v f="$i" 'BEGIN{for(j=0;j<1500;j++) printf "base line %06d file%d padding padding padding padding\n", j, f}' > "cloc-f$i.txt"
   done
   printf 'alpha\nbeta\ngamma\n' > cloc-small.txt
-  git add cloc-f1.txt cloc-f2.txt cloc-f3.txt cloc-f4.txt cloc-f5.txt cloc-f6.txt cloc-small.txt .gitignore
+  # Prompt files for the --show-prompts leg: the dump refuses typed without
+  # the preamble (F7), so the sandbox carries committed prompt files — the
+  # explicit-path fetches below keep them out of every diff.
+  printf '# verdict skill (eval fixture)\n' > SKILL.md
+  mkdir -p prompts
+  printf '# system (eval fixture)\n' > prompts/system.md
+  printf '# review mode (eval fixture)\n' > prompts/review.md
+  printf '# diagrams (eval fixture)\n' > prompts/diagrams.md
+  git add cloc-f1.txt cloc-f2.txt cloc-f3.txt cloc-f4.txt cloc-f5.txt cloc-f6.txt cloc-small.txt SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md .gitignore
   git commit -qm cloc-base 2>/dev/null || true
 )
 (

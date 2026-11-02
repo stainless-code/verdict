@@ -3,18 +3,23 @@
 #
 # Grades (all hermetic — crafted bundles, stub gh, sandbox git worktree):
 #   P1  dump parity (fetch-local): --show-prompts stdout == the assembled
-#       files concatenated in documented order (SKILL.md, system, mode, meta,
-#       toc, roles, diff, recall when present, advisories/panel when present).
+#       files concatenated in documented order (SKILL.md, system, mode,
+#       diagrams, meta, toc, roles, diff, recall when present,
+#       advisories/panel when present).
 #   P2  no extra store writes: with-flag vs without-flag bundles hold identical
 #       file sets and identical diff bytes; stdout carries only the dump
 #       (progress stays on stderr).
 #   P3  no agent, no extra network: fetch-local makes zero gh calls; the
 #       canned-gh fetch path makes the same call count with and without flag.
 #   P4  dump parity (fetch): same concatenation contract on the PR path via a
-#       canned gh stub (SKILL.md/prompts absent there also covered: missing
-#       files are skipped silently).
+#       canned gh stub (run with the sandbox prompt files present; missing
+#       siblings warn, a missing preamble refuses — graded under F7).
 #   P5  --json parity: with the flag the envelope gains data.prompt_dump equal
 #       to the concatenation; without the flag the key is absent.
+#   F7  missing prompt files fail loudly: no prompts/system.md refuses typed
+#       (prompt-dump-failed, no dump on stdout); a missing sibling prompt
+#       warns on stderr (+ envelope warnings[] under --json) while the dump
+#       proceeds without it.
 #   S1  report --output leads with confidence + safety from the stored record,
 #       keeps machine markers, and omits the checked list when findings stand.
 #   S2  clean reports carry a bounded checked list (max 7 + overflow pointer).
@@ -45,6 +50,7 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   mkdir -p prompts
   printf '# system (eval fixture)\n' > prompts/system.md
   printf '# review mode (eval fixture)\n' > prompts/review.md
+  printf '# diagrams (eval fixture)\n' > prompts/diagrams.md
   mkdir -p dumpdir
   echo "probe v1" > dumpdir/probe.txt
   git add SKILL.md prompts dumpdir/probe.txt .gitignore 2>/dev/null || true
@@ -61,7 +67,7 @@ dump_expected() {
     local dir="$1" meta="$1/PR.json" f
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$2"
-    for f in SKILL.md prompts/system.md prompts/review.md "$meta" "$dir/toc.txt" "$dir/roles.txt" "$dir/full.diff" "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
+    for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md "$meta" "$dir/toc.txt" "$dir/roles.txt" "$dir/full.diff" "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
       [ -f "$f" ] || continue
       cat -- "$f" >> "$2"
     done
@@ -212,6 +218,60 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   good "without the flag the envelope carries no prompt_dump key"
 else
   bad "plain --json leaks prompt_dump"
+fi
+
+# --- F7: missing prompt files fail loudly, never silently ---
+mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
+run_review fetch-local acme/app dump-f7a --show-prompts
+f7a_status="$EVAL_STATUS"
+mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
+if [ "$f7a_status" -ne 0 ] \
+  && grep -q "prompts/system.md" "$EVAL_ERR" \
+  && ! grep -q "system (eval fixture)" "$EVAL_OUT"; then
+  good "F7: missing preamble refuses loudly (exit $f7a_status), no dump on stdout"
+else
+  bad "F7: missing preamble did not refuse loudly (exit $f7a_status)"
+fi
+mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
+run_review fetch-local acme/app dump-f7b --show-prompts --json
+f7b_status="$EVAL_STATUS"
+mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
+if [ "$f7b_status" -ne 0 ] \
+  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "prompt-dump-failed" ] \
+  && [ "$(jq -r '.data | tostring' <"$EVAL_OUT" 2>/dev/null)" = "null" ]; then
+  good "F7: missing preamble refuses typed in the envelope (prompt-dump-failed, data null)"
+else
+  bad "F7: missing preamble refusal not typed (exit $f7b_status)"
+fi
+mv "$EVAL_SANDBOX/prompts/review.md" "$EVAL_SANDBOX/prompts/review.md.f7hide"
+run_review fetch-local acme/app dump-f7c --show-prompts
+f7c_status="$EVAL_STATUS"
+mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"
+# The hidden file is tracked, so its deletion still rides the dump's own diff
+# section (as a `-` line) — the prompt-section copy is the anchored `^#`
+# line, which must be gone while the preamble stays.
+f7c_omitted="$(grep -c '^# review mode (eval fixture)' "$EVAL_OUT" || true)"
+if [ "$f7c_status" -eq 0 ] \
+  && grep -q "prompts/review.md" "$EVAL_ERR" \
+  && [ "$f7c_omitted" = "0" ] \
+  && grep -q "review mode (eval fixture)" "$EVAL_OUT" \
+  && grep -q "system (eval fixture)" "$EVAL_OUT"; then
+  good "F7: missing sibling warns on stderr, dump proceeds with the preamble intact"
+else
+  bad "F7: missing sibling did not warn-and-proceed (exit $f7c_status)"
+fi
+mv "$EVAL_SANDBOX/prompts/review.md" "$EVAL_SANDBOX/prompts/review.md.f7hide"
+run_review fetch-local acme/app dump-f7d --show-prompts --json
+f7d_status="$EVAL_STATUS"
+mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"
+f7d_omitted="$(jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | grep -c '^# review mode (eval fixture)' || true)"
+if [ "$f7d_status" -eq 0 ] \
+  && jq -e '.warnings | join(" ") | contains("prompts/review.md")' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && [ "$f7d_omitted" = "0" ] \
+  && jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | grep -q "review mode (eval fixture)"; then
+  good "F7: missing sibling rides warnings[] while data.prompt_dump stays complete otherwise"
+else
+  bad "F7: missing sibling warning missing from warnings[] (exit $f7d_status)"
 fi
 
 # --- S1: lead lines from the stored record + markers, no checked list ---

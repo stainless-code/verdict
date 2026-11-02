@@ -284,6 +284,7 @@ fail() {
   case "$code" in
     auth-missing) hint="try: export the credential named above, then re-run";;
     fetch-failed|pr-read-failed|threads-failed) hint="try: run 'gh auth status', confirm the repo/PR spelling, then re-run";;
+    prompt-dump-failed) hint="try: run from a checkout carrying SKILL.md/prompts, then re-run";;
     post-failed) hint="try: narrow anchor drift or body size (see above), then re-run";;
     diff-too-large) hint="try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch";;
     missing-chunk-coverage|missing-chunk-snapshot) hint="try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run";;
@@ -2419,10 +2420,12 @@ emit_context() { # $1 = dir
 # stdout in documented order (SKILL.md, system, mode, diagrams fragment,
 # bundle meta, coverage
 # manifest, roles, diff, recall, advisories, panel). Pure-local reads only:
-# no agent runs, no network, no store writes. Missing/optional files are
+# no agent runs, no network, no store writes. Missing bundle files are
 # skipped silently, so the dump is exactly the concatenation of what exists —
 # except a chunked bundle with an unreadable snapshot, which warns loudly
-# before falling back to full.diff.
+# before falling back to full.diff. Missing trusted prompt files never skip
+# silently: no preamble (prompts/system.md) refuses typed, a missing sibling
+# prompt warns loudly and the dump proceeds without it.
 render_chunk_diffs() { # $1 = bundle dir; cats chunk diffs in manifest order; nonzero when not chunked
   local dir="$1" man="$1/chunks/manifest.json" d=""
   [[ -f "$man" ]] || return 1
@@ -2439,10 +2442,21 @@ render_chunk_diffs() { # $1 = bundle dir; cats chunk diffs in manifest order; no
 render_prompt_dump() { # $1 = bundle dir
   local dir="$1" meta="$1/PR.json" f miss
   [[ -f "$1/source.json" ]] && meta="$1/source.json"
-  for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md "$meta" "$dir/toc.txt" "$dir/roles.txt"; do
+  # Trusted prompt files fail loudly, never silently: without the preamble
+  # (prompts/system.md) a dump is unsafe, so its absence refuses typed
+  # (prompt-dump-failed); a missing sibling prompt warns (human stderr +
+  # envelope warnings[]) and the dump proceeds without it. Bundle files
+  # below stay silent-skipped (optional per bundle).
+  [[ -f "prompts/system.md" ]] || fail "prompt-dump-failed" "prompts/system.md is missing — prompt dump refused: the untrusted-data preamble lives there, so a dump without it is unsafe"
+  for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md; do
+    if [[ -f "$f" ]]; then cat -- "$f";
+    else warn "prompt file '$f' is missing — prompt dump omits it"; fi
+  done
+  for f in "$meta" "$dir/toc.txt" "$dir/roles.txt"; do
     [[ -f "$f" ]] || continue
     cat -- "$f"
   done
+
   # Diff section: a chunked bundle concatenates the chunk diffs in manifest
   # order (one ordered document, byte-equal to full.diff); anything else
   # reads full.diff exactly as today, so non-chunked dumps stay byte-identical.

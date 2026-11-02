@@ -278,7 +278,12 @@ meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
 order — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
-byte-identical.
+byte-identical. Missing bundle files skip silently, but missing trusted
+prompt files fail loudly: no `prompts/system.md` refuses typed
+(`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
+without it is unsafe), while a missing `SKILL.md`, `prompts/review.md`, or
+`prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
+proceeds without it.
 
 `ready` stays advisory by default (exit 0, blockers listed); `ready --check`
 opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait,
