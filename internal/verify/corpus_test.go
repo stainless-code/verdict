@@ -2,10 +2,13 @@ package verify_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -134,6 +137,16 @@ func writeCorpusFixtures(t *testing.T, dir string) {
 // rows reference (curl configs, wget URL lists, a git exec source).
 func writeCorpusTmpFixtures(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		writeCorpusTmpFixturesBash(t)
+		return
+	}
+	writeCorpusTmpFixturesPOSIX(t)
+}
+
+// writeCorpusTmpFixturesPOSIX stages the /tmp fixtures directly.
+func writeCorpusTmpFixturesPOSIX(t *testing.T) {
+	t.Helper()
 	for _, f := range []string{"/tmp/verify-fuzz-curlcfg", "/tmp/verify-fuzz-wgeturls"} {
 		if err := os.WriteFile(f, []byte("probe\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -151,6 +164,39 @@ func writeCorpusTmpFixtures(t *testing.T) {
 		}
 		defer os.Remove(f)
 	}
+}
+
+// writeCorpusTmpFixturesBash stages the fixtures through Git Bash on
+// Windows: Go resolves "/tmp" to C:\tmp, while the corpus commands run
+// under bash, whose /tmp is the MSYS temp mount. Only bash can plant the
+// files where the battery looks for them.
+func writeCorpusTmpFixturesBash(t *testing.T) {
+	t.Helper()
+	const stage = "set -e\n" +
+		"printf 'probe\\n' > /tmp/verify-fuzz-curlcfg\n" +
+		"printf 'probe\\n' > /tmp/verify-fuzz-wgeturls\n" +
+		"mkdir -p /tmp/verify-fuzz-gitexec\n" +
+		"printf 'exit 0\\n' > /tmp/verify-fuzz-src\n" +
+		"printf 'exit 0\\n' > /tmp/verify-fuzz-fetched\n"
+	if out, err := bashRun(stage); err != nil {
+		t.Fatalf("stage /tmp corpus fixtures: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		const clean = "rm -f /tmp/verify-fuzz-curlcfg /tmp/verify-fuzz-wgeturls " +
+			"/tmp/verify-fuzz-src /tmp/verify-fuzz-fetched && rm -rf /tmp/verify-fuzz-gitexec"
+		if _, err := bashRun(clean); err != nil {
+			t.Logf("clean /tmp corpus fixtures: %v", err)
+		}
+	})
+}
+
+// bashRun runs one bash command, returning its combined output.
+func bashRun(script string) ([]byte, error) {
+	out, err := exec.CommandContext(context.Background(), "bash", "-c", script).CombinedOutput()
+	if err != nil {
+		return out, fmt.Errorf("bash -c: %w", err)
+	}
+	return out, nil
 }
 
 // TestCorpusTally runs the full adversarial corpus under Go and tallies

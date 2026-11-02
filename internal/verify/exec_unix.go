@@ -92,6 +92,23 @@ func havePS() bool {
 	return err == nil
 }
 
+// trimTail matches shell command substitution: strip trailing newlines.
+func trimTail(s string) string {
+	return strings.TrimRight(s, "\n")
+}
+
+// releaseTree drops the platform process-tree bookkeeping after a run.
+// POSIX has none: the process group dies with its leader.
+func releaseTree(_ *exec.Cmd) {
+}
+
+// timeoutExitCode reports the timeout exit code the platform's wait status
+// cannot express. POSIX encodes the SIGKILL itself (137), so nothing is
+// overridden.
+func timeoutExitCode() (int, bool) {
+	return 0, false
+}
+
 // waitStatus carries the decoded process exit.
 type waitStatus struct {
 	signal   int

@@ -4,38 +4,274 @@ package verify
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"strings"
+	"sync"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
-// setGroup is a no-op on Windows: process-group semantics come from the
-// fallback kill below (documented: full tree-kill parity is Unix-only;
-// Windows CI runs build+vet+gofmt only per F12).
-func setGroup(cmd *exec.Cmd) {
+// The Windows watchdog uses a Job Object per verify run: descendants inherit
+// the job, so a timeout (or the post-exit sweep) terminates the whole tree
+// even though Windows has no negative-pgid kill. TerminateProcess records a
+// generic exit status, so timeoutExitCode maps a killed tree back to the
+// shell's 137 (GO-EXEC-01/05).
+const (
+	// jobObjectExtendedLimitInformation is JOBOBJECTINFOCLASS 9.
+	jobObjectExtendedLimitInformation = 9
+	// jobObjectBasicAccountingInformation is JOBOBJECTINFOCLASS 1.
+	jobObjectBasicAccountingInformation = 1
+	// jobLimitKillOnJobClose terminates survivors when the last job handle
+	// closes (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE).
+	jobLimitKillOnJobClose = 0x2000
+	// processQueryLimitedInformation lets us read the exit code.
+	processQueryLimitedInformation = 0x1000
+	// processSetQuota is required by AssignProcessToJobObject alongside
+	// PROCESS_TERMINATE.
+	processSetQuota = 0x0100
+	// stillActive is STILL_ACTIVE: the process has not exited.
+	stillActive = 259
+	// forcedExitCode is the exit status TerminateJobObject records.
+	forcedExitCode = 1
+)
+
+// kernel32 entry points; syscall exports the process calls but not the job
+// object API.
+var (
+	procCreateJobObject         = syscall.NewLazyDLL("kernel32.dll").NewProc("CreateJobObjectW")
+	procSetInformationJobObject = syscall.NewLazyDLL("kernel32.dll").NewProc("SetInformationJobObject")
+	procAssignProcessToJob      = syscall.NewLazyDLL("kernel32.dll").NewProc("AssignProcessToJobObject")
+	procTerminateJobObject      = syscall.NewLazyDLL("kernel32.dll").NewProc("TerminateJobObject")
+	procQueryInformationJob     = syscall.NewLazyDLL("kernel32.dll").NewProc("QueryInformationJobObject")
+	procGetExitCodeProcess      = syscall.NewLazyDLL("kernel32.dll").NewProc("GetExitCodeProcess")
+)
+
+// jobExtendedLimit mirrors JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
+type jobExtendedLimit struct {
+	BasicLimit            jobBasicLimit
+	IOInfo                jobIOCounters
+	ProcessMemoryLimit    uintptr
+	JobMemoryLimit        uintptr
+	PeakProcessMemoryUsed uintptr
+	PeakJobMemoryUsed     uintptr
 }
 
-// killGroup kills the verify process on Windows (no negative-pgid kill;
-// best effort, documented above).
+// jobBasicLimit mirrors JOBOBJECT_BASIC_LIMIT_INFORMATION.
+type jobBasicLimit struct {
+	PerProcessUserTimeLimit int64
+	PerJobUserTimeLimit     int64
+	LimitFlags              uint32
+	MinimumWorkingSetSize   uintptr
+	MaximumWorkingSetSize   uintptr
+	ActiveProcessLimit      uint32
+	Affinity                uintptr
+	PriorityClass           uint32
+	SchedulingClass         uint32
+}
+
+// jobIOCounters mirrors IO_COUNTERS.
+type jobIOCounters struct {
+	ReadOperationCount  uint64
+	WriteOperationCount uint64
+	OtherOperationCount uint64
+	ReadTransferCount   uint64
+	WriteTransferCount  uint64
+	OtherTransferCount  uint64
+}
+
+// jobAccounting mirrors JOBOBJECT_BASIC_ACCOUNTING_INFORMATION.
+type jobAccounting struct {
+	TotalUserTime             int64
+	TotalKernelTime           int64
+	ThisPeriodTotalUserTime   int64
+	ThisPeriodTotalKernelTime int64
+	TotalPageFaultCount       uint32
+	TotalProcesses            uint32
+	ActiveProcesses           uint32
+	TotalTerminatedProcesses  uint32
+}
+
+// tree is the per-command job object. A nil/zero handle means the job could
+// not be created; the taskkill fallback still stops the tree.
+type tree struct {
+	mu       sync.Mutex
+	handle   syscall.Handle
+	attached bool
+	closed   bool
+}
+
+// trees maps each verify command to its job object. setGroup runs before
+// Start and releaseTree after Wait, so the entry never outlives its command.
+var trees sync.Map
+
+// setGroup creates the job object before the child starts; the process is
+// assigned on the first watchdog tick (see attach).
+func setGroup(cmd *exec.Cmd) {
+	tr := &tree{}
+	handle, _, _ := procCreateJobObject.Call(0, 0)
+	if handle != 0 {
+		info := jobExtendedLimit{}
+		info.BasicLimit.LimitFlags = jobLimitKillOnJobClose
+		ok, _, _ := procSetInformationJobObject.Call(
+			handle, jobObjectExtendedLimitInformation,
+			uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info),
+		)
+		if ok != 0 {
+			tr.handle = syscall.Handle(handle)
+		} else {
+			_ = syscall.CloseHandle(syscall.Handle(handle)) // creation failed; no tree to kill
+		}
+	}
+	trees.Store(cmd, tr)
+}
+
+// treeFor returns the job object registered for cmd, or nil.
+func treeFor(cmd *exec.Cmd) *tree {
+	v, _ := trees.Load(cmd)
+	tr, _ := v.(*tree)
+	return tr
+}
+
+// attach puts the started child into the job so descendants inherit it. It
+// is idempotent and reports whether the tree is covered.
+func (tr *tree) attach(cmd *exec.Cmd) bool {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if tr.closed || tr.handle == 0 {
+		return false
+	}
+	if tr.attached {
+		return true
+	}
+	if cmd.Process == nil {
+		return false
+	}
+	handle, err := syscall.OpenProcess(processSetQuota|syscall.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = syscall.CloseHandle(handle) }() // assignment error already rules
+	r, _, _ := procAssignProcessToJob.Call(uintptr(tr.handle), uintptr(handle))
+	tr.attached = r != 0
+	return tr.attached
+}
+
+// terminate kills every process in the job.
+func (tr *tree) terminate() bool {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if tr.closed || tr.handle == 0 {
+		return false
+	}
+	r, _, _ := procTerminateJobObject.Call(uintptr(tr.handle), forcedExitCode)
+	return r != 0
+}
+
+// active reports whether the job still holds a process.
+func (tr *tree) active() bool {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if tr.closed || tr.handle == 0 {
+		return false
+	}
+	var info jobAccounting
+	r, _, _ := procQueryInformationJob.Call(
+		uintptr(tr.handle), jobObjectBasicAccountingInformation,
+		uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info), 0,
+	)
+	return r != 0 && info.ActiveProcesses > 0
+}
+
+// killGroup terminates the child's whole tree: the job object when it could
+// be attached, else taskkill /T /F.
 func killGroup(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return errNoProcess
 	}
-	return cmd.Process.Kill()
+	if tr := treeFor(cmd); tr != nil && tr.attach(cmd) && tr.terminate() {
+		return nil
+	}
+	return taskkillTree(cmd.Process.Pid)
 }
 
-// processAlive ports the poll liveness check: the process handle reads
-// alive until Wait reaps it.
+// taskkillTree is the fallback tree kill when the job object could not be
+// used (creation or assignment failed).
+func taskkillTree(pid int) error {
+	kill := exec.Command("taskkill", "/T", "/F", "/PID", itoa(pid))
+	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if out, err := kill.CombinedOutput(); err != nil {
+		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
+		return fmt.Errorf("taskkill verify tree: %v\n%s", err, out)
+	}
+	return nil
+}
+
+// processAlive polls the child's own exit code (not the job's population:
+// a surviving grandchild must not read as the parent still running). The
+// first tick also assigns the child to the job, before it can spawn.
 func processAlive(_ context.Context, cmd *exec.Cmd) bool {
 	if cmd.Process == nil {
 		return false
 	}
-	return cmd.ProcessState == nil || !cmd.ProcessState.Exited()
+	if tr := treeFor(cmd); tr != nil {
+		tr.attach(cmd)
+	}
+	handle, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = syscall.CloseHandle(handle) }() // liveness read already rules
+	var code uint32
+	r, _, _ := procGetExitCodeProcess.Call(uintptr(handle), uintptr(unsafe.Pointer(&code)))
+	return r != 0 && code == stillActive
 }
 
-// sweepOrphans has no process-group sweep on Windows; the documented Unix
-// behavior is a no-op here.
+// sweepOrphans ports the post-reap sweep: after the parent exits, a job
+// that still holds processes gets a grace period, then the survivors are
+// terminated and the decoy exit reported.
 func sweepOrphans(cmd *exec.Cmd) bool {
-	return false
+	tr := treeFor(cmd)
+	if tr == nil || !tr.active() {
+		return false
+	}
+	time.Sleep(sweepGrace)
+	if !tr.active() {
+		return false
+	}
+	tr.terminate()
+	return true
+}
+
+// trimTail matches shell command substitution under Git Bash: native
+// Windows commands write CRLF through the Go-opened output handle, and the
+// shell's recorded tail has both bytes stripped, so strip the pair here too.
+func trimTail(s string) string {
+	return strings.TrimRight(s, "\r\n")
+}
+
+// releaseTree closes the job after the run: the kill-on-close limit stops
+// any process the sweep did not already terminate.
+func releaseTree(cmd *exec.Cmd) {
+	v, ok := trees.LoadAndDelete(cmd)
+	if !ok {
+		return
+	}
+	tr, _ := v.(*tree)
+	if tr == nil {
+		return
+	}
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if tr.closed {
+		return
+	}
+	tr.closed = true
+	if tr.handle != 0 {
+		_ = syscall.CloseHandle(tr.handle) // final kill-on-close; no recovery path
+		tr.handle = 0
+	}
 }
 
 // waitStatusOf extracts the wait status from an exit error.
@@ -46,9 +282,16 @@ func waitStatusOf(exitErr *exec.ExitError) (waitStatus, bool) {
 	return waitStatus{status: exitErr.ProcessState.ExitCode()}, true
 }
 
-// havePS reports whether a zombie arm exists on Windows (none).
+// timeoutExitCode maps a terminated tree to the shell's SIGKILL wait code;
+// TerminateJobObject itself records a generic exit status.
+func timeoutExitCode() (int, bool) {
+	return sigkillExit, true
+}
+
+// havePS reports whether the watchdog can poll and kill a tree. Windows has
+// no ps(1), but the job-object watchdog provides the same contract.
 func havePS() bool {
-	return false
+	return true
 }
 
 // waitStatus carries the decoded process exit.
@@ -67,7 +310,7 @@ type watchdogError string
 // Error implements error.
 func (e watchdogError) Error() string { return string(e) }
 
-// sweepGrace is unused on Windows (kept for symmetry with the Unix file).
+// sweepGrace is the post-exit grace period for legitimate stragglers.
 const sweepGrace = 2 * time.Second
 
 // waitDelay lets stdio flush after a timeout kill (GO-EXEC-05).

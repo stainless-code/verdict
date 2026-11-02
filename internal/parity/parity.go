@@ -41,6 +41,9 @@ const (
 	stubPerm = 0o755
 )
 
+// osWindows names the Windows GOOS value (avoiding repeated literals).
+const osWindows = "windows"
+
 // Harness carries the built binary, stub tooling, and repo root.
 type Harness struct {
 	RepoRoot string
@@ -83,7 +86,7 @@ func Build() (*Harness, error) {
 // buildBinary compiles the CLI under test into dir.
 func buildBinary(repoRoot, dir string) error {
 	bin := filepath.Join(dir, "verdict")
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		bin += ".exe"
 	}
 	build := exec.CommandContext(context.Background(), "go", "build", "-o", bin, "./cmd/verdict")
@@ -188,7 +191,7 @@ func writeStub() (string, error) {
 		return "", fmt.Errorf("write gh stub: %v", err)
 	}
 	for _, s := range allStubs() {
-		if err := writeStubFile(stubBin, s.name, s.script); err != nil {
+		if err := WriteStubFile(stubBin, s.name, s.script); err != nil {
 			os.RemoveAll(stubBin)
 			return "", err
 		}
@@ -215,13 +218,36 @@ func allStubs() []stubDef {
 	return out
 }
 
-// writeStubFile plants one executable stub script in the stub directory.
-func writeStubFile(stubBin, name, script string) error {
+// WriteStubFile plants one executable stub script in the stub directory.
+// Windows [exec.LookPath] resolves only PATHEXT names, while Git Bash runs
+// the extensionless shebang script directly, so Windows also gets a .cmd
+// shim beside it: Go-only tests find the shim, the shell side the script.
+func WriteStubFile(stubBin, name, script string) error {
 	if err := os.WriteFile(filepath.Join(stubBin, name), []byte(script), stubPerm); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return fmt.Errorf("write %s stub: %v", name, err)
 	}
+	if runtime.GOOS != osWindows {
+		return nil
+	}
+	shim := "@echo off\r\nbash \"%~dp0" + name + "\" %*\r\n"
+	if err := os.WriteFile(filepath.Join(stubBin, name+".cmd"), []byte(shim), stubPerm); err != nil {
+		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
+		return fmt.Errorf("write %s cmd stub: %v", name, err)
+	}
 	return nil
+}
+
+// SkipBashOnWindows skips a bash-vs-Go parity run on Windows: Git Bash's
+// native jq narrows environment values through the ANSI code page, so
+// non-ASCII warning text reaches the JSON envelope as U+FFFD and the shell
+// implementation cannot produce its byte contract there. The shell is
+// deleted in go-port 08, so only the Go side needs Windows coverage.
+func SkipBashOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == osWindows {
+		t.Skip("bash side not graded on Windows: Git Bash jq narrows env, corrupting non-ASCII; shell deleted in go-port 08")
+	}
 }
 
 // Teardown removes the harness temp roots.
@@ -352,11 +378,14 @@ func keepEnv(kv string, extraEnv map[string]string) bool {
 // and the written tree. extraEnv overlays additional variables.
 func (h *Harness) Run(t *testing.T, useGo bool, dir, home string, extraEnv map[string]string, args ...string) Outputs {
 	t.Helper()
+	if !useGo {
+		SkipBashOnWindows(t)
+	}
 	var cmd *exec.Cmd
 	//nolint:gosec // G204: the harness intentionally executes the CLI under test with fixture args.
 	if useGo {
 		bin := filepath.Join(h.BinDir, "verdict")
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == osWindows {
 			bin += ".exe"
 		}
 		cmd = exec.CommandContext(t.Context(), bin, args...)

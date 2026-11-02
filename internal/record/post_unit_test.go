@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/parity"
 )
 
 // postTestRunner builds a runner capturing warnings for unit tests.
@@ -458,7 +459,7 @@ func TestPostRecheckMalformed(t *testing.T) {
 		"  esac\n" +
 		"fi\necho dead >&2; exit 1\n"
 	stubDir := t.TempDir()
-	if err := os.WriteFile(stubDir+"/gh", []byte(stub), 0o755); err != nil {
+	if err := parity.WriteStubFile(stubDir, "gh", stub); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))

@@ -16,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/parity"
 )
 
 var (
@@ -213,6 +215,9 @@ func runOne(t *testing.T, useGo bool, dir, home string, args ...string) outputs 
 // runOneEnv is runOne with extra environment variables.
 func runOneEnv(t *testing.T, useGo bool, dir, home string, extraEnv map[string]string, args ...string) outputs {
 	t.Helper()
+	if !useGo {
+		parity.SkipBashOnWindows(t)
+	}
 	cmd := sideCommand(t, useGo, args)
 	cmd.Dir = dir
 	cmd.Env = childEnv(home, dir, extraEnv)

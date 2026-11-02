@@ -51,6 +51,7 @@ func execute(ctx context.Context, dir, vcmd string, timeoutSecs int, warn func(s
 		return outcome{}, err
 	}
 	defer outFile.Close()
+	defer releaseTree(cmd)
 	timedOut := runWatchdog(tctx, cmd, timeoutSecs, warn)
 	exit := waitExit(cmd, waitDone, timedOut)
 	if timedOut, err = recordTimeoutMarker(timeoutPath, timeoutSecs, timedOut, cmd); err != nil {
@@ -62,7 +63,7 @@ func execute(ctx context.Context, dir, vcmd string, timeoutSecs int, warn func(s
 	tail := lastBytes(outPath, tailCap)
 	// Command substitution strips trailing newlines from the shell's
 	// tail; trim the same way before redaction.
-	tail = strings.TrimRight(tail, "\n")
+	tail = trimTail(tail)
 	tail = redactSecrets(tail)
 	return outcome{exit: exit, timedOut: timedOut, tail: tail}, nil
 }
@@ -98,6 +99,7 @@ func spawnWatched(tctx context.Context, vcmd, outPath string, env []string) (*ex
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
 		_ = outFile.Close()
+		releaseTree(cmd)
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return nil, nil, nil, fmt.Errorf("start verify command: %v", err)
 	}
@@ -208,6 +210,11 @@ func waitExit(_ *exec.Cmd, waitDone chan error, timedOut bool) int {
 // 128+signo for signaled processes, the exit status otherwise. An
 // undecodable status reads 1, or 137 on a timed-out tree.
 func waitStatusCode(exitErr *exec.ExitError, timedOut bool) int {
+	if timedOut {
+		if code, ok := timeoutExitCode(); ok {
+			return code
+		}
+	}
 	ws, ok := waitStatusOf(exitErr)
 	if !ok {
 		if timedOut {
