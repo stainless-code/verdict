@@ -813,6 +813,25 @@ reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses lo
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —
 record predictions locally, settle them after the upgrade below.
 
+### Go implementation (experimental until 1.0)
+
+`record` can run from a compiled Go binary instead of the shell, with
+byte-identical envelopes, hints, and exits. It is opt-in and experimental
+until 1.0: the default stays shell, so nothing changes unless asked for.
+
+| Setting                                         | Meaning                                                          |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `VERDICT_IMPL` unset or `bash` (default)        | shell implementation (today's behavior)                          |
+| `VERDICT_IMPL=go`                               | dispatch `record` to the Go binary (everything else stays shell) |
+| `VERDICT_BIN=<path>`                            | binary to dispatch to (wins over the default below)              |
+| `make build` (writes `bin/verdict`, gitignored) | the default binary when `VERDICT_BIN` is unset                   |
+
+`VERDICT_IMPL=go` with no binary at `VERDICT_BIN` (or `bin/verdict` by
+default) refuses typed `missing-go-binary` (exit 1) with a build hint —
+never a silent fallback to shell. Any other `VERDICT_IMPL` value is a usage
+error (exit 2). Only `record` dispatches for now; later verbs follow the same
+switch as they port.
+
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`
 history event and re-resolves anchors against the PR hunks (unmatched paths land

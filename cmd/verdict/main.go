@@ -175,7 +175,11 @@ func routeHuman(r *cli.Runner) {
 }
 
 // exeRoot resolves the checkout root the way the shell resolves its script
-// directory: the directory holding this binary.
+// directory: the directory holding this binary, walking up to the checkout
+// carrying scripts/review.sh so a conventional bin/verdict build (see the
+// Makefile) still finds package.json and prompts/ at the checkout root. A
+// relocated binary with no checkout above it keeps the binary directory, so
+// hermetic harnesses can plant the provenance inputs beside it.
 func exeRoot() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -184,7 +188,27 @@ func exeRoot() string {
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
 	}
-	return filepath.Dir(exe)
+	return checkoutRoot(filepath.Dir(exe))
+}
+
+// checkoutDepth caps the walk-up from the binary directory to the checkout.
+const checkoutDepth = 5
+
+// checkoutRoot walks up from dir to the checkout carrying
+// scripts/review.sh, falling back to dir when none is found.
+func checkoutRoot(dir string) string {
+	root := dir
+	for range checkoutDepth {
+		if st, err := os.Stat(filepath.Join(root, "scripts", "review.sh")); err == nil && !st.IsDir() {
+			return root
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			break
+		}
+		root = parent
+	}
+	return dir
 }
 
 // envMap snapshots the process environment names the CLI reads. Presence

@@ -209,6 +209,10 @@ fi
 if [[ "$cmd" == "trend" ]]; then
   repo="${1:-}"; shift $(( $# >= 1 ? 1 : $# ))
 fi
+# Pre-strip argv for the Go dispatch block below (the single dispatch site):
+# the binary re-parses globals itself, so it receives the verb, the repo/pr
+# positionals, and these exact remaining args.
+DISPATCH_ARGS=("$@")
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need gh; need jq; need shasum
@@ -290,6 +294,7 @@ fail() {
     diff-too-large) hint="try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch";;
     missing-chunk-coverage|missing-chunk-snapshot) hint="try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run";;
     bad-review-input) hint="try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run";;
+    missing-go-binary) hint="try: run 'make build' to build bin/verdict (or set VERDICT_BIN to a built binary), then re-run";;
     missing-*|not-a-repo|not-local|no-pr-target|no-threads|no-verify-cmd|report-failed) hint="try: run the fetch/record step named above first, then re-run";;
     corrupt-store) hint="try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run";;
     bad-timeout) hint="try: pass --timeout <positive-seconds> (default 300)";;
@@ -886,6 +891,72 @@ substitute_override_placeholders() { # $1 = text, $2 = dir; echoes substituted t
   text=${text//\{model\}/${model}}
   printf '%s' "$text"
 }
+# Positional-arity gate (usage, exit 2). One definition, two call sites:
+# the Go dispatch block above (a dispatched verb with missing positionals
+# must usage-error exactly like bash instead of reaching the binary) and the
+# main flow below. Uses only builtins, so the early (pre-prefs) dispatch call
+# leaves no observable side effects when positionals are present.
+check_arity() {
+  if [[ -z "$cmd" ]]; then
+    usage >&2; exit 2
+  fi
+  if [[ "$cmd" == "trend" ]] && [[ -z "$repo" ]]; then
+    usage >&2; exit 2
+  fi
+  if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" && "$cmd" != "install" ]] && [[ -z "$repo" || -z "$pr" ]]; then
+    usage >&2; exit 2
+  fi
+}
+# ---- Go implementation switch (go-port 02) ----
+# VERDICT_IMPL selects the implementation: bash (default, today's behavior)
+# or go (dispatch ported verbs to the compiled binary). Unknown values are a
+# usage error (exit 2). VERDICT_BIN names the binary explicitly; otherwise the
+# conventional `make build` output beside this script (bin/verdict) is used.
+# A requested-but-missing binary refuses typed (exit 1) with a build hint —
+# never a silent fallback to bash, which would hide parity bugs. Only verbs
+# in VERDICT_GO_VERBS dispatch; every other verb stays bash regardless of the
+# switch. Later tickets add verbs to that list — this block is the single
+# dispatch site. The binary receives the verb, the repo/pr positionals, and
+# DISPATCH_ARGS (the pre-strip argv, globals included) so it parses
+# presentation/publish flags exactly as the shell would; stdio, cwd, and the
+# exit code carry over via exec. This runs before any redirection or prefs
+# work, so the binary owns every observable byte of the run (no duplicate
+# warns, no stolen stdout).
+VERDICT_GO_VERBS="record"
+verdict_impl="${VERDICT_IMPL:-bash}"
+case "$verdict_impl" in
+  bash|"") ;;
+  go) ;;
+  *) echo "unknown VERDICT_IMPL '$verdict_impl' (want bash|go)" >&2; exit 2;;
+esac
+if [[ "$verdict_impl" == "go" && -n "$cmd" ]]; then
+  case " $VERDICT_GO_VERBS " in
+    *" $cmd "*)
+      check_arity
+      verdict_root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+      if [[ -n "${VERDICT_BIN:-}" ]]; then verdict_bin="$VERDICT_BIN";
+      else verdict_bin="$verdict_root/bin/verdict"; fi
+      if [[ ! -x "$verdict_bin" ]]; then
+        # Peek --json (stopping at `--`) so the refusal lands in the envelope
+        # when the caller asked for JSON, mirroring the early peek below.
+        if (( ${#DISPATCH_ARGS[@]} > 0 )); then
+          for _va in "${DISPATCH_ARGS[@]}"; do
+            [[ "$_va" == "--" ]] && break
+            if [[ "$_va" == "--json" ]]; then json_mode="true"; fi
+          done
+          unset _va
+        fi
+        json_redirect
+        fail "missing-go-binary" "go implementation requested (VERDICT_IMPL=go) but no binary at '$verdict_bin' (run 'make build' or set VERDICT_BIN to a built verdict binary)"
+      fi
+      if (( ${#DISPATCH_ARGS[@]} > 0 )); then
+        exec "$verdict_bin" "$cmd" "$repo" "$pr" "${DISPATCH_ARGS[@]}"
+      else
+        exec "$verdict_bin" "$cmd" "$repo" "$pr"
+      fi;;
+  esac
+fi
+unset verdict_impl verdict_root verdict_bin
 _FD9_READY="false"
 # Peek --json early (stopping at a `--` paths separator) so typed prefs
 # errors land in the envelope when the caller asked for JSON. _JSON_PEEKED
@@ -3172,15 +3243,7 @@ write_kb_recall() { # $1 = dir, $2 = newline-separated extra paths (may be empty
   return 0
 }
 
-if [[ -z "$cmd" ]]; then
-  usage >&2; exit 2
-fi
-if [[ "$cmd" == "trend" ]] && [[ -z "$repo" ]]; then
-  usage >&2; exit 2
-fi
-if [[ "$cmd" != "check-tree" && "$cmd" != "doctor" && "$cmd" != "trend" && "$cmd" != "learn" && "$cmd" != "init" && "$cmd" != "install" ]] && [[ -z "$repo" || -z "$pr" ]]; then
-  usage >&2; exit 2
-fi
+check_arity
 
 # ---------------------------------------------------------------- fetch ---
 # Diff size gate: empty diffs warn-and-proceed (bundle kept, review proceeds on

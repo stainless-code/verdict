@@ -9,3 +9,7 @@ dist/
 pack.log
 # Local-only working notes (strategy, scratch). Never commit.
 .agents/local/
+# Go build output (go-port 02): `make build` writes bin/verdict, the
+# repo-local binary the shell dispatches to under VERDICT_IMPL=go.
+# Never commit binaries.
+bin/
