@@ -125,7 +125,7 @@ jobs:
           grep -q '^--- PASS: TestParityMatrix' "$RUNNER_TEMP/parity-guard.log"
 
   go-windows:
-    name: 🐹 Go Windows build
+    name: 🐹 Go Windows
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -139,10 +139,19 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Compile-level contract only: `go test` does not run on Windows yet.
-      # internal/atomic renames over an existing store file, which Windows
-      # refuses (genuine port gap, go-port FOLLOWUPS F12), and the parity
-      # harness shells the bash suite (Git Bash semantics unverified).
+      - name: Harness deps (bash/jq/git feed the parity tests)
+        shell: bash
+        run: |
+          # Go-only tests still shell bash, and the Go CLI probes git/jq, so
+          # assert each tool separately: `command -v a b c` passes when only
+          # one is found. The bash parity leg itself is skipped on Windows
+          # (Git Bash's jq narrows env through ANSI; see
+          # parity.SkipBashOnWindows).
+          command -v bash
+          command -v jq
+          command -v git
+          jq --version
+
       - name: gofmt check
         shell: bash
         run: test -z "$(gofmt -l .)"
@@ -156,6 +165,10 @@ jobs:
         run: |
           go vet ./...
           go mod verify
+
+      - name: go test
+        shell: bash
+        run: go test -count=1 -timeout=25m ./...
 
   evals:
     name: 🧪 Evals (${{ matrix.impl }}, ${{ matrix.os }})
