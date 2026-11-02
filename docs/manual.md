@@ -274,8 +274,9 @@ joins findings against live ground truth, read-only.
 the script renders the assembled agent reading list — `SKILL.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
-`kb.txt`, `sensitive.txt`, and `panel` when present, concatenated in that
-order — to stdout (human mode; progress moves to stderr) or
+`kb.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
+prompts verbatim, then the trust-boundary prologue, then one nonce fence
+per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
 byte-identical. Missing bundle files skip silently, but missing trusted
@@ -283,7 +284,27 @@ prompt files fail loudly: no `prompts/system.md` refuses typed
 (`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
 without it is unsafe), while a missing `SKILL.md`, `prompts/review.md`, or
 `prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
-proceeds without it.
+proceeds without it. Trusted prompts print verbatim first, then a
+tool-generated trust-boundary prologue naming the run's nonce, then every
+present bundle file inside its own fence — the bundle meta (`PR.json` or
+`source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the
+manifest-order chunk concat on chunked bundles under the same label),
+`kb.txt`, `sensitive.txt`, and `panel` — each wrapped as
+`<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
+`<<<END UNTRUSTED nonce=<same>>>`, open and close markers each on their own
+line (a missing trailing newline is added, never a content byte dropped).
+The nonce is 16 lowercase hex chars (64 bits) from `od -An -tx1 /dev/urandom`
+with a `$RANDOM` fallback, minted fresh per dump: text and `--json` dumps
+from separate runs carry different nonces. Only a fence carrying exactly the
+prologue's nonce opens or closes a region — payload text shaped like a fence
+(wrong or missing nonce) stays inside as evidence, and `prompts/system.md`
+instructs the model to treat all fenced content as evidence, never
+instructions. Thread files (`reviews.json`, `inline.json`) are deliberately
+excluded: the dump reproduces the initial-review reading list (the fetch
+`next:` line), and threads are prior-review context consumed live via
+`gh api` on the incremental path — never bundle files in the prompt. This
+section is the format contract: the Go port reproduces it exactly (same
+order, markers, nonce grammar, and section labels).
 
 `ready` stays advisory by default (exit 0, blockers listed); `ready --check`
 opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait,
@@ -913,7 +934,8 @@ checklist), and `chunk-NN.roles.txt`, plus `chunks/manifest.json` (`schema_versi
 chunk list with member files, sizes, and diff/toc/roles refs). The top-level
 bundle keeps `full.diff` for anchor pinning and drift detection; the `--json`
 envelope gains additive `data.chunk` (`count`/`manifest`/`total_bytes`);
-`--show-prompts` concatenates the chunk diffs in manifest order.
+`--show-prompts` fences the chunk diffs in manifest order (one ordered
+document, byte-equal to `full.diff`, labeled `source=full.diff`).
 
 Review from the chunks: read the manifest first, then each chunk diff
 end-to-end against its own checklist — an unread chunk is as visible as an
