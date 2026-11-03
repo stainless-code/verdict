@@ -48,6 +48,8 @@ type Harness struct {
 	RepoRoot string
 	BinDir   string
 	StubBin  string
+	// shim is the Windows stub launcher (see buildShim); "" elsewhere.
+	shim string
 }
 
 // Build creates the harness binary and stub tooling once per test
@@ -74,12 +76,35 @@ func Build() (*Harness, error) {
 		os.RemoveAll(tmp)
 		return nil, err
 	}
-	stubBin, err := writeStub()
-	if err != nil {
+	h := &Harness{RepoRoot: repoRoot, BinDir: tmp}
+	if h.shim, err = buildShim(repoRoot, tmp); err != nil {
 		os.RemoveAll(tmp)
 		return nil, err
 	}
-	return &Harness{RepoRoot: repoRoot, BinDir: tmp, StubBin: stubBin}, nil
+	if err := h.writeStubs(); err != nil {
+		os.RemoveAll(tmp)
+		return nil, err
+	}
+	return h, nil
+}
+
+// buildShim compiles the Windows stub launcher: Windows resolves only
+// PATHEXT names, and a .cmd shim would re-parse stub arguments through
+// cmd.exe (quotes, pipes), so each stub gets a real executable that runs
+// the extensionless bash script beside it with the argv untouched. Off
+// Windows no launcher is needed.
+func buildShim(repoRoot, dir string) (string, error) {
+	if runtime.GOOS != osWindows {
+		return "", nil
+	}
+	shim := filepath.Join(dir, "stubshim.exe")
+	build := exec.CommandContext(context.Background(), "go", "build", "-o", shim, "./internal/parity/stubshim")
+	build.Dir = repoRoot
+	if out, err := build.CombinedOutput(); err != nil {
+		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
+		return "", fmt.Errorf("build stub shim: %v\n%s", err, out)
+	}
+	return shim, nil
 }
 
 // buildBinary compiles the CLI under test into dir.
@@ -176,26 +201,25 @@ var fetchStubScripts = map[string]string{
 	"wget": "#!/usr/bin/env bash\necho \"Connecting to 127.0.0.1:9... failed: Connection refused.\" >&2\nexit 4\n",
 }
 
-// writeStub creates the network-dead gh stub directory plus the
-// deterministic toolchain stubs.
-func writeStub() (string, error) {
+// writeStubs creates the stub directory holding the network-dead gh stub
+// plus the deterministic toolchain stubs, all through [Harness.WriteStub] so
+// every OS resolves the same stubs first on PATH.
+func (h *Harness) writeStubs() error {
 	stubBin, err := os.MkdirTemp("", "verdict-parity-stub")
 	if err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return "", fmt.Errorf("stub temp dir: %v", err)
+		return fmt.Errorf("stub temp dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(stubBin, "gh"), []byte(stubScript), stubPerm); err != nil {
-		os.RemoveAll(stubBin)
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return "", fmt.Errorf("write gh stub: %v", err)
-	}
-	for _, s := range allStubs() {
-		if err := WriteStubFile(stubBin, s.name, s.script); err != nil {
+	h.StubBin = stubBin
+	stubs := append([]stubDef{{name: "gh", script: stubScript}}, allStubs()...)
+	for _, s := range stubs {
+		if err := h.WriteStub(s.name, s.script); err != nil {
 			os.RemoveAll(stubBin)
-			return "", err
+			h.StubBin = ""
+			return err
 		}
 	}
-	return stubBin, nil
+	return nil
 }
 
 // stubDef pairs a stubbed binary name with its script.
@@ -217,22 +241,22 @@ func allStubs() []stubDef {
 	return out
 }
 
-// WriteStubFile plants one executable stub script in the stub directory.
-// Windows [exec.LookPath] resolves only PATHEXT names, while Git Bash runs
-// the extensionless shebang script directly, so Windows also gets a .cmd
-// shim beside it: Go-only tests find the shim, the shell side the script.
-func WriteStubFile(stubBin, name, script string) error {
-	if err := os.WriteFile(filepath.Join(stubBin, name), []byte(script), stubPerm); err != nil {
+// WriteStub plants one executable stub script in the stub directory.
+// Windows [exec.LookPath] resolves only PATHEXT names, so Windows also gets a
+// stubshim copy named name.exe beside the extensionless script: the binary
+// under test then finds the stub (never the runner's real tool) and the shim
+// hands the script to bash.
+func (h *Harness) WriteStub(name, script string) error {
+	if err := os.WriteFile(filepath.Join(h.StubBin, name), []byte(script), stubPerm); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return fmt.Errorf("write %s stub: %v", name, err)
 	}
-	if runtime.GOOS != osWindows {
+	if h.shim == "" {
 		return nil
 	}
-	shim := "@echo off\r\nbash \"%~dp0" + name + "\" %*\r\n"
-	if err := os.WriteFile(filepath.Join(stubBin, name+".cmd"), []byte(shim), stubPerm); err != nil {
+	if err := copyFile(h.shim, filepath.Join(h.StubBin, name+".exe")); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("write %s cmd stub: %v", name, err)
+		return fmt.Errorf("write %s exe stub: %v", name, err)
 	}
 	return nil
 }

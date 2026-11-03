@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 	harness = h
-	if err := installStubs(harness.StubBin); err != nil {
+	if err := installStubs(harness); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		harness.Teardown()
 		os.Exit(2)
@@ -62,7 +62,7 @@ func TestMain(m *testing.M) {
 
 // installStubs replaces the harness's network-dead gh stub with the smart
 // fetch stubs and adds the glab/cafe/curl/az provider stubs.
-func installStubs(stubBin string) error {
+func installStubs(h *parity.Harness) error {
 	for name, script := range map[string]string{
 		"gh":   ghStub,
 		"glab": glabStub,
@@ -70,7 +70,7 @@ func installStubs(stubBin string) error {
 		"curl": curlStub,
 		"az":   azStub,
 	} {
-		if err := os.WriteFile(filepath.Join(stubBin, name), []byte(script), 0o755); err != nil {
+		if err := h.WriteStub(name, script); err != nil {
 			return err
 		}
 	}
