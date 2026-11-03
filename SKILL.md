@@ -48,6 +48,10 @@ verdict fetch owner/repo 123
 
 # 2. Review with any agent. Load prompts/system.md, then the one mode file
 #    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
+#    Prior feedback lives in `.review/N/threads.json` (all six hosts): host-resolved
+#    state, anchors, authors, and `finding_sig` links. `verdict threads owner/repo N`
+#    refreshes it alone — no diff refetch — so run it after pushing fixes and before
+#    a re-review or merge gate.
 
 # 3. Post. Done when exactly one review lands — one review.json, one post call.
 verdict post owner/repo 123 --approve=false
@@ -62,7 +66,8 @@ to `findings.json` — read with `report`, never `post` (no PR target).
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
 Between runs the operator may run `verdict triage …` (status changes), `report`
-(ranked read), `calibrate` (predictions vs ground truth), or `fix` (one bounded
+(ranked read), `verdict threads …` (refresh the PR conversation feed),
+`calibrate` (predictions vs ground truth), or `fix` (one bounded
 verify-gated pass over a local bundle — prints the finding plus land instructions;
 agents never call `triage` — they propose via `triage[]`).
 

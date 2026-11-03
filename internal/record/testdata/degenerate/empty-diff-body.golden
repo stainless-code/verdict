@@ -120,7 +120,7 @@ recorded: .review/local-dg/findings.json (2 open) + .review/local-dg/record.json
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "f3968c9318dd18ec2d2df4770ec713904df2d6637def187754a6df960c1ea9ad",
+  "prompts_hash": "570ad32e735cf310fa878f6668d2c838674a0831c8b722280f59552212551ee1",
   "model": null
 }
 --- file C/.review/local-dg/review.json ---

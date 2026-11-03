@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -21,7 +22,8 @@ func fetchTail(
 ) (*core.FetchData, string, error) {
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + " to any agent; ask it to write " + dir + "/review.json"
+		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + " to any agent; ask it to write " + dir + "/review.json" +
+		threadsHint(dir)
 	if req.JSONMode {
 		return writeFetchTailJSON(ctx2, f, budget, fcap, chunkJSON, incBase, next)
 	}
@@ -83,8 +85,18 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/PR.json + %s (+ %s/roles.txt) to any agent; ask it to write %s/review.json\n",
-		dir, diffFeed(dir, chunked, dir+"/full.diff"), dir, dir)
+		"%s/PR.json + %s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s\n",
+		dir, diffFeed(dir, chunked, dir+"/full.diff"), dir, dir, threadsHint(dir))
+}
+
+// threadsHint names the normalized conversation feed when the PR carries
+// threads, so the driving agent reads prior feedback instead of reverse-
+// engineering the raw provider files. Empty when there are no threads.
+func threadsHint(dir string) string {
+	if threadscore.CountFile(dir+suffixThreadsJSON) == 0 {
+		return ""
+	}
+	return "; prior threads are in " + dir + "/threads.json (run verdict threads to refresh)"
 }
 
 // diffFeed names the diff input of the next step: the whole diff, or — once
