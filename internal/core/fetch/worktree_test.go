@@ -39,7 +39,7 @@ func worktreeReq(cmdr *scriptCommander, human, diag *bytes.Buffer, streamed *[]s
 	}
 	return &core.FetchLocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{Worktree: true},
+		Flags:       core.FetchLocalFlags{Worktree: true, HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       human,
@@ -162,7 +162,7 @@ func TestRunLocalWorktreeRange(t *testing.T) {
 	}
 	req := &core.FetchLocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{Worktree: true, RangeSpec: "a..b"},
+		Flags:       core.FetchLocalFlags{Worktree: true, RangeSpec: "a..b", HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       &human,
@@ -222,7 +222,7 @@ func TestRunLocalWorktreeStaged(t *testing.T) {
 	}
 	req := &core.FetchLocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{Worktree: true, Staged: true},
+		Flags:       core.FetchLocalFlags{Worktree: true, Staged: true, HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       &human,

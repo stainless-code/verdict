@@ -52,6 +52,12 @@ triage + re-check is the recovery.
 | `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`  | GitHub reads and the posted review        |
 | A model key (e.g. `ANTHROPIC_API_KEY`)   | your agent's key, in your repo's secrets  |
 
+`fetch-depth: 0` on checkout keeps the PR base commit in the clone: verdict
+reads the review controls (`.review/kb.jsonl`, `panel`, `budget`, overrides,
+...) from that commit with `git show <base>:<path>`, so a PR cannot edit the
+rules it is judged by. A shallow checkout without the base refuses
+`controls-unavailable` (verdict never fetches it for you); a targeted
+`git fetch --depth=1 origin <base-sha>` step is the minimal alternative.
 `persist-credentials: false` on checkout keeps the git credential helper
 empty; `gh` authenticates from `GH_TOKEN` only. Fork PRs have no secrets:
 run the fetch + advisory steps there, and keep `post` on same-repo runs.

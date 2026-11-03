@@ -11,7 +11,7 @@ exit: 0
   "data": {
     "dir": ".review/4705",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
     "files": 1,
     "additions": 3,
     "deletions": 1,
@@ -21,6 +21,11 @@ exit: 0
     "panel": {
       "source": null,
       "members": []
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
     },
     "artifacts": {
       "PR.json": ".review/4705/PR.json",
@@ -65,7 +70,82 @@ CALL: api repos/acme/app/pulls/4705/comments --paginate
 --- file C/.review/4705/.difffiles ---
 notes.txt
 --- file C/.review/4705/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+--- file C/.review/4705/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
 --- file C/.review/4705/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
@@ -124,7 +204,7 @@ index 2222222..3333333 100644
 +newer line
  bottom
 --- file C/canned/pr.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
 --- file C/canned/stat.txt ---
 notes.txt (+3/-1)
 --- file C/prompts/diagrams.md ---

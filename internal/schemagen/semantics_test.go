@@ -15,6 +15,9 @@ import (
 // change updates this map in its own ticket (audit-24 drift rule); a mere
 // reformat of schemas/*.schema.json must not change it.
 var publishedSemantics = map[string]string{
+	// D1: additive controls.schema.json (new bundle document; no existing
+	// schema property, required key, or type changed).
+	"controls.schema.json": "082e250d59c616ecf9b1a69493cd0ffc143b51e8279c1411d46320a776024f5a",
 	// 06a: additive corpus.schema.json (new document; no existing schema
 	// property, required key, or type changed).
 	"corpus.schema.json": "99994b94c985b183118bc49d86751d70a868fa5b914c7579aeaf454bf0fc4a2b",

@@ -18,7 +18,7 @@ index 1111111..2222222 100644
 --- file C/canned/gl-changes.json ---
 {"changes":[{"old_path":"a.txt","new_path":"a.txt","new_file":false,"deleted_file":false,"renamed_file":false}]}
 --- file C/canned/gl-meta.json ---
-{"iid":5,"title":"MR five","description":"body","target_branch":"main","source_branch":"feat","diff_refs":{"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}
+{"iid":5,"title":"MR five","description":"body","target_branch":"main","source_branch":"feat","diff_refs":{"base_sha":"488310afbc29fb48fbd84cf16c89d3726158a444","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}
 --- file C/canned/gl-notes.json ---
 [{"type":"DiffNote"},{"type":"Note"}]
 --- file C/prompts/diagrams.md ---

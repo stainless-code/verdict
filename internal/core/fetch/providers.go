@@ -26,6 +26,9 @@ func runProvider(
 	if err := fetchProviderBundle(ctx, ctx2, req, f.Provider); err != nil {
 		return nil, "", err
 	}
+	if ref := resolveControls(ctx, ctx2, prField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+		return nil, "", ref
+	}
 	fc, chunkActive, err := providerCap(r, dir, f.ChunkFlag)
 	if err != nil {
 		return nil, "", err

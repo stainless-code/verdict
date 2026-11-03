@@ -34,7 +34,7 @@ func resolveFetchCap(r *session) (fetchCap, error) {
 	raw, src := "", ""
 	if v, ok := env["REVIEW_MAX_BYTES"]; ok && v != "" {
 		raw, src = strings.TrimSpace(v), "REVIEW_MAX_BYTES"
-	} else if v, ok := readKnobFile(".review/max_bytes"); ok {
+	} else if v, ok := readKnobFile(r, ".review/max_bytes"); ok {
 		raw, src = v, ".review/max_bytes"
 	}
 	if raw == "" {
@@ -72,9 +72,9 @@ func parsePositiveInt(s string) (int64, bool) {
 // readKnobFile reads the first usable line of a knob file (comment and
 // blank lines skipped, surrounding whitespace trimmed), reporting ok=false
 // when the file is missing or holds no usable line.
-func readKnobFile(path string) (string, bool) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
+func readKnobFile(r *session, path string) (string, bool) {
+	raw, ok := r.readControl(path)
+	if !ok {
 		return "", false
 	}
 	for _, line := range splitLines(string(raw)) {
@@ -96,14 +96,14 @@ type chunkOptIn struct {
 // resolveChunkOptIn ports resolve_chunk_opt_in: an overridden cap wins
 // outright (chunking disabled), else explicit --chunk wins, else the first
 // usable line of .review/chunk, else off. Garbage refuses typed.
-func resolveChunkOptIn(chunkFlag bool, capSource string) (chunkOptIn, error) {
+func resolveChunkOptIn(r *session, chunkFlag bool, capSource string) (chunkOptIn, error) {
 	if capSource != "" {
 		return chunkOptIn{}, nil
 	}
 	if chunkFlag {
 		return chunkOptIn{active: true, source: flagChunk}, nil
 	}
-	knob, ok := readKnobFile(".review/chunk")
+	knob, ok := readKnobFile(r, ".review/chunk")
 	if !ok {
 		return chunkOptIn{}, nil
 	}
@@ -147,7 +147,7 @@ func checkDiffSize(r *session, fullDiff string, lim fetchCap, chunkFlag bool) (c
 // boundaries (the single-file degenerate keeps the advisory refusal with
 // no chunks written); otherwise the refusal carries split candidates.
 func overCap(r *session, fullDiff string, total int64, lim fetchCap, chunkFlag bool) (bool, error) {
-	optIn, ref := resolveChunkOptIn(chunkFlag, lim.source)
+	optIn, ref := resolveChunkOptIn(r, chunkFlag, lim.source)
 	if ref != nil {
 		return false, ref
 	}

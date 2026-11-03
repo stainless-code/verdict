@@ -125,5 +125,20 @@
       "/$defs/usageTokens/properties/cache_read": "Input tokens served from cache; a subset of input, never an addition.",
       "/$defs/usageTokens/properties/cache_write": "Input tokens spent writing the cache; a subset of input, never an addition."
     }
+  },
+  "controls": {
+    "descriptions": {
+      "": "The bundle's resolved review controls: fetch snapshots every control file at the PR base commit, and post/record refuse to trust the snapshot when its base or any used-file hash drifted. policy 'base' is the default; 'head' is the explicit --allow-head-controls opt-out.",
+      "/properties/schema_version": "Snapshot format version; only \"1\" is trusted.",
+      "/properties/policy": "base is the default base-owned rule set; head is the recorded opt-out.",
+      "/properties/base_sha": "The bundle's base commit, the value post/record verify against.",
+      "/properties/sha": "The commit the controls were read at; \"\" for the worktree opt-out.",
+      "/properties/files": "One entry per inventory path, in inventory order.",
+      "/$defs/file": "One control path's snapshot status: used entries carry the exact written bytes and SHA-256.",
+      "/$defs/file/properties/path": "The inventory path, relative to the repository root (.review/...).",
+      "/$defs/file/properties/status": "used means materialized and safe to read; missing means absent at the source.",
+      "/$defs/file/properties/bytes": "The exact bytes written to the snapshot.",
+      "/$defs/file/properties/sha256": "SHA-256 of the exact written bytes; post/record re-hash and refuse controls-stale on drift."
+    }
   }
 }

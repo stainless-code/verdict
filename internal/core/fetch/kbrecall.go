@@ -49,8 +49,8 @@ func clearKBRecall(mf, mfj string) {
 // recallRanked ports the recall pipeline: store read, file set, active
 // rules, scope matching, and the top-N rank.
 func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
-	raw, err := os.ReadFile(kbRecallFile)
-	if err != nil {
+	raw, ok := r.readControl(kbRecallFile)
+	if !ok {
 		return nil, false
 	}
 	files := recallFiles(dir, extra)

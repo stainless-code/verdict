@@ -22,7 +22,7 @@ exit: 1
 --- file C/canned/az-changes.json ---
 []
 --- file C/canned/az-meta.json ---
-{"pullRequestId":13,"title":"PR thirteen","description":"body","targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat","lastMergeTargetCommit":{"commitId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"lastMergeSourceCommit":{"commitId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/13","status":"active","isDraft":false,"repository":{"remoteUrl":"https://example.invalid/r.git"}}
+{"pullRequestId":13,"title":"PR thirteen","description":"body","targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat","lastMergeTargetCommit":{"commitId":"488310afbc29fb48fbd84cf16c89d3726158a444"},"lastMergeSourceCommit":{"commitId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/13","status":"active","isDraft":false,"repository":{"remoteUrl":"https://example.invalid/r.git"}}
 --- file C/canned/az-threads.json ---
 [{"id":1},{"id":2,"threadContext":{}}]
 --- file C/prompts/diagrams.md ---

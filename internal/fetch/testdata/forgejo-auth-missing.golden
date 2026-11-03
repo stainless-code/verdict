@@ -22,7 +22,7 @@ exit: 1
 --- file C/canned/fj-files.json ---
 [{"filename":"a.txt","status":"modified","additions":1,"deletions":1}]
 --- file C/canned/fj-meta.json ---
-{"index":9,"title":"PR nine","body":"body","base":{"label":"main","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"head":{"label":"feat","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"mate"},"html_url":"https://example.invalid/9","state":"open","diff_url":"https://example.invalid/9.diff"}
+{"index":9,"title":"PR nine","body":"body","base":{"label":"main","sha":"488310afbc29fb48fbd84cf16c89d3726158a444"},"head":{"label":"feat","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"mate"},"html_url":"https://example.invalid/9","state":"open","diff_url":"https://example.invalid/9.diff"}
 --- file C/canned/full.diff ---
 diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644

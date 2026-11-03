@@ -145,7 +145,7 @@ func fetchTestReq(cmdr Commander, human, diag *bytes.Buffer, warnings *[]string)
 	}
 	return &core.FetchRequest{
 		ReadRequest: read,
-		Flags:       core.FetchFlags{},
+		Flags:       core.FetchFlags{HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       human,
@@ -416,6 +416,7 @@ func TestRunLocalWorktree(t *testing.T) {
 	}
 	req := &core.FetchLocalRequest{
 		ReadRequest: read,
+		Flags:       core.FetchLocalFlags{HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       &human,

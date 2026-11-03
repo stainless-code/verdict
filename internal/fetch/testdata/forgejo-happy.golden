@@ -11,7 +11,7 @@ exit: 0
   "data": {
     "dir": ".review/4708",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
     "files": 1,
     "additions": 1,
     "deletions": 1,
@@ -21,6 +21,11 @@ exit: 0
     "panel": {
       "source": null,
       "members": []
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
     },
     "artifacts": {
       "PR.json": ".review/4708/PR.json",
@@ -62,7 +67,7 @@ a.txt
   "body": "body",
   "base_ref": "main",
   "head_ref": "feat",
-  "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "author": "mate",
   "url": "https://example.invalid/9",
@@ -78,6 +83,81 @@ a.txt
   ],
   "additions": 1,
   "deletions": 1
+}
+--- file C/.review/4708/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
 }
 --- file C/.review/4708/full.diff ---
 diff --git a/a.txt b/a.txt
@@ -121,7 +201,7 @@ omitted: (none)
 --- file C/canned/fj-files.json ---
 [{"filename":"a.txt","status":"modified","additions":1,"deletions":1}]
 --- file C/canned/fj-meta.json ---
-{"index":9,"title":"PR nine","body":"body","base":{"label":"main","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"head":{"label":"feat","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"mate"},"html_url":"https://example.invalid/9","state":"open","diff_url":"https://example.invalid/9.diff"}
+{"index":9,"title":"PR nine","body":"body","base":{"label":"main","sha":"488310afbc29fb48fbd84cf16c89d3726158a444"},"head":{"label":"feat","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"mate"},"html_url":"https://example.invalid/9","state":"open","diff_url":"https://example.invalid/9.diff"}
 --- file C/canned/full.diff ---
 diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644

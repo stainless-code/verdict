@@ -29,6 +29,12 @@ type CorpusProvenance = core.CorpusProvenance
 // CorpusBug is one known defect in a corpus case.
 type CorpusBug = core.CorpusBug
 
+// ControlsFile is the bundle's resolved-controls snapshot manifest.
+type ControlsFile = core.ControlsFile
+
+// ControlsFileEntry is one control path's snapshot status and hash.
+type ControlsFileEntry = core.ControlsFileEntry
+
 // Review is core's agent-written review input.
 type Review = core.Review
 

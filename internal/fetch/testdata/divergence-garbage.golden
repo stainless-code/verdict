@@ -10,51 +10,21 @@ exit: 1
   "warnings": [],
   "data": null,
   "error": {
-    "code": "fetch-failed",
-    "message": "unreadable .review/4714/PR.json (re-fetch the PR)\ntry: run 'gh auth status', confirm the repo/PR spelling, then re-run"
+    "code": "controls-unavailable",
+    "message": "the bundle does not name a full PR base commit\ntry: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"
   }
 }
 --- stderr ---
 » gh pr view acme/app#4714
 » gh pr diff -> .review/4714/full.diff
-» roles -> .review/4714/roles.txt (heuristic file roles for triage)
-» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
-» reviews + inline comments
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4714 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4714 --repo acme/app
-CALL: pr view 4714 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
-CALL: api repos/acme/app/pulls/4714/reviews --paginate
-CALL: api repos/acme/app/pulls/4714/comments --paginate
---- file C/.review/4714/.difffiles ---
-
 --- file C/.review/4714/PR.json ---
 not json{{{
 --- file C/.review/4714/full.diff ---
 diff --git a/a b/b
---- file C/.review/4714/hunks.tsv ---
-
---- file C/.review/4714/inline.json ---
-[]
---- file C/.review/4714/reviews.json ---
-[]
---- file C/.review/4714/roles.txt ---
-
---- file C/.review/4714/store.json ---
-{
-  "schema_version": "1"
-}
---- file C/.review/4714/toc.txt ---
-# TOC for PR #4714 (acme/app) — read ranges as coverage checklist
-
-1:diff --git a/a b/b
-
-## stat
-
-## coverage manifest
-files in PR: ? | files with diff hunks: 0
-omitted: (none)
 --- file C/SKILL.md ---
 # verdict skill (parity fixture)
 --- file C/canned/full.diff ---

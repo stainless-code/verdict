@@ -22,6 +22,11 @@ exit: 0
       "source": null,
       "members": []
     },
+    "controls": {
+      "policy": "base",
+      "sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+      "files": 0
+    },
     "artifacts": {
       "PR.json": ".review/4716/PR.json",
       "full.diff": ".review/4716/full.diff",
@@ -78,6 +83,81 @@ a.txt
   ],
   "additions": 1,
   "deletions": 1
+}
+--- file C/.review/4716/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+  "sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
 }
 --- file C/.review/4716/full.diff ---
 diff --git a/a.txt b/a.txt

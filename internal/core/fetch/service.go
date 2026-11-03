@@ -12,6 +12,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/retry"
 )
@@ -273,6 +274,7 @@ type session struct {
 	env       map[string]string
 	warnings  *[]string
 	iso       *isolation
+	controls  *controls.Snapshot
 	Effective core.Effective
 	JSONMode  bool
 }

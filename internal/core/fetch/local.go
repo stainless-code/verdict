@@ -50,6 +50,9 @@ func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
 	r *session, dir, slug string, mode *localMode,
 ) (*core.FetchData, string, error) {
+	if ref := resolveControls(ctx, ctx2, mode.baseSHA, f.HeadControls, nil, false); ref != nil {
+		return nil, "", ref
+	}
 	budget, ref := localBudget(r, f, dir)
 	if ref != nil {
 		return nil, "", ref
@@ -133,7 +136,7 @@ func localSetup(
 // localBudget ports the fetch-local budget preamble: resolution, gate,
 // directory, and receipt.
 func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, error) {
-	budget, err := resolveBudget(r.env)
+	budget, err := resolveBudget(r.env, r)
 	if err != nil {
 		return budget, err
 	}

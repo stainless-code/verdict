@@ -228,6 +228,7 @@ func fetchData(
 		Omitted:    st.omitted,
 		DiffBytes:  st.diffSize,
 		Panel:      panelVal(ctx2),
+		Controls:   controlsWire(ctx2),
 		Artifacts:  artifacts,
 		PromptDump: dump,
 	}
@@ -306,6 +307,7 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 		Kind:       mode.kind,
 		HeadSHA:    mode.headSHA,
 		BaseSHA:    mode.baseSHA,
+		Controls:   controlsWire(ctx2),
 		Files:      total,
 		Additions:  adds,
 		Deletions:  dels,

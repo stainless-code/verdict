@@ -112,6 +112,7 @@ else
   bad "local --chunk exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 printf 'true\n' > "$KNOB"
+eval_commit_controls
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -121,6 +122,7 @@ else
   bad "knob-file exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 rm -f "$KNOB"
+eval_commit_controls
 MAN="$BUNDLE/chunks/manifest.json"
 N="$(jq -r '.chunk_count' <"$MAN" 2>/dev/null || echo 0)"
 if [ -f "$MAN" ] \
@@ -160,6 +162,10 @@ if cmp -s "$EVAL_SANDBOX/cloc-concat.diff" "$BUNDLE/full.diff"; then
 else
   bad "local chunk concat differs from full.diff"
 fi
+# Re-fetch at the settled HEAD: the knob commits above moved the base the
+# manifest records, so the reproducibility pair is taken after them.
+# shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
+run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
 cp "$MAN" "$EVAL_SANDBOX/cloc-manifest-1.json"
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
@@ -217,6 +223,7 @@ echo "fake-gh: unexpected call ($*)" >&2; exit 1
 EOF
 chmod +x "$CLOC_FAKEBIN/gh"
 run_review_fake() {
+  eval_seed_base
   set +e
   (
     cd "$EVAL_SANDBOX" || exit 99
@@ -320,6 +327,7 @@ else
   bad "under-cap absent parity exits $EVAL_STATUS"
 fi
 printf 'false\n' > "$KNOB"
+eval_commit_controls
 (
   cd "$EVAL_SANDBOX" || exit 99
   for i in 1 2 3 4 5 6; do
@@ -332,6 +340,7 @@ false_status="$EVAL_STATUS"
 cp "$EVAL_ERR" "$EVAL_SANDBOX/cloc-false-err.txt"
 cp "$EVAL_OUT" "$EVAL_SANDBOX/cloc-false-out.txt"
 rm -f "$KNOB"
+eval_commit_controls
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 if [ "$false_status" -eq 1 ] && [ "$EVAL_STATUS" -eq 1 ] \

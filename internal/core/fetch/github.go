@@ -37,6 +37,9 @@ func runGitHub(
 	if ref := githubFetch(ctx, ctx2, r, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
+	if ref := resolveControls(ctx, ctx2, prField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+		return nil, "", ref
+	}
 	fc, ref := resolveFetchCap(r)
 	if ref != nil {
 		return nil, "", ref
@@ -354,7 +357,7 @@ func neutralPrField(m map[string]any, field string) string {
 // fetchPrepare ports the fetch preamble: budget resolution and gate,
 // the bundle directory, and the budget receipt.
 func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
-	budget, ref := resolveBudget(ctx2.env)
+	budget, ref := resolveBudget(ctx2.env, ctx2.runner)
 	if ref != nil {
 		return nil, "", ref
 	}

@@ -343,6 +343,7 @@ echo "fake-gh: unexpected call ($*)" >&2; exit 1
 EOF
 chmod +x "$CENV_FAKEBIN/gh"
 run_review_fake() {
+  eval_seed_base
   set +e
   (
     cd "$EVAL_SANDBOX" || exit 99

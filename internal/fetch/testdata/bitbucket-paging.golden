@@ -11,7 +11,7 @@ exit: 0
   "data": {
     "dir": ".review/4717",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
     "files": 2,
     "additions": 2,
     "deletions": 1,
@@ -21,6 +21,11 @@ exit: 0
     "panel": {
       "source": null,
       "members": []
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
     },
     "artifacts": {
       "PR.json": ".review/4717/PR.json",
@@ -65,7 +70,7 @@ b.txt
   "body": "body",
   "base_ref": "main",
   "head_ref": "feat",
-  "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "author": "mate",
   "url": "https://example.invalid/17",
@@ -87,6 +92,81 @@ b.txt
   ],
   "additions": 2,
   "deletions": 1
+}
+--- file C/.review/4717/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
 }
 --- file C/.review/4717/full.diff ---
 diff --git a/a.txt b/a.txt
@@ -136,7 +216,7 @@ omitted: (none)
 --- file C/canned/bb-comments.json ---
 {"values":[]}
 --- file C/canned/bb-meta.json ---
-{"id":17,"title":"PR seventeen","summary":{"raw":"body"},"destination":{"branch":{"name":"main"},"commit":{"hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},"source":{"branch":{"name":"feat"},"commit":{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/17"}},"state":"OPEN","draft":false}
+{"id":17,"title":"PR seventeen","summary":{"raw":"body"},"destination":{"branch":{"name":"main"},"commit":{"hash":"488310afbc29fb48fbd84cf16c89d3726158a444"}},"source":{"branch":{"name":"feat"},"commit":{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/17"}},"state":"OPEN","draft":false}
 --- file C/canned/bb-page1.json ---
 {"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://example.invalid/diffstat?cursor=cursor2"}
 --- file C/canned/bb-page2.json ---

@@ -54,6 +54,10 @@ var hintRules = []HintRule{
 	{isCode("bad-settings-credentials"), "try: remove the credential key from the settings file " +
 		"(credentials never live there), then re-run"},
 	{isCode("bad-settings"), "try: keep only output/layout/color/publish keys (see docs/manual.md), then re-run"},
+	{isCode("controls-unavailable"), "try: check out the PR base (actions/checkout fetch-depth: 0, " +
+		"or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"},
+	{isCode("controls-stale"), "try: re-fetch the bundle (controls changed under it), then re-run"},
+	{isCode("controls-too-large"), "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{isCode("bad-review-input"), "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
 	{hasPrefixCode("bad-"), "try: re-run with one of the valid values named above"},

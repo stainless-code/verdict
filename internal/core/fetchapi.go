@@ -14,6 +14,7 @@ type FetchFlags struct {
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool
+	HeadControls  bool
 	HasBase       bool
 	HasProvider   bool
 }
@@ -30,6 +31,7 @@ type FetchLocalFlags struct {
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool
+	HeadControls  bool
 }
 
 // FetchRequest is the fetch service invocation: the read runtime and
@@ -113,6 +115,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 	Omitted         []any
 	DiffBytes       int64
 	Panel           FetchPanel
+	Controls        *jq.Obj `json:"-"`
 	Artifacts       *jq.Obj `json:"-"`
 	IncrementalBase *string `json:"-"`
 	Estimate        any     `json:"-"`
@@ -143,6 +146,9 @@ func (d *FetchData) Wire() *jq.Obj {
 	o.Set("omitted", omitted)
 	o.Set("diff_bytes", d.DiffBytes)
 	o.Set("panel", d.Panel.Wire())
+	if d.Controls != nil {
+		o.Set("controls", d.Controls)
+	}
 	o.Set("artifacts", d.Artifacts)
 	d.wireTail(o)
 	return o

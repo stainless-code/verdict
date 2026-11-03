@@ -23,6 +23,11 @@ exit: 0
       "source": null,
       "members": []
     },
+    "controls": {
+      "policy": "base",
+      "sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
+      "files": 0
+    },
     "artifacts": {
       "source.json": ".review/local-demo/source.json",
       "full.diff": ".review/local-demo/full.diff",
@@ -43,6 +48,81 @@ next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.m
 
 --- file C/.review/local-demo/.difffiles ---
 notes.txt
+--- file C/.review/local-demo/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
+  "sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
 --- file C/.review/local-demo/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 163ed5c..6b7bc77 100644

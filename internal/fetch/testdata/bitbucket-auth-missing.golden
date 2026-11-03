@@ -22,7 +22,7 @@ exit: 1
 --- file C/canned/bb-comments.json ---
 {"values":[{"id":1},{"id":2,"inline":{"path":"a.txt"}}]}
 --- file C/canned/bb-meta.json ---
-{"id":11,"title":"PR eleven","summary":{"raw":"body"},"destination":{"branch":{"name":"main"},"commit":{"hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},"source":{"branch":{"name":"feat"},"commit":{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/11"}},"state":"OPEN","draft":false}
+{"id":11,"title":"PR eleven","summary":{"raw":"body"},"destination":{"branch":{"name":"main"},"commit":{"hash":"488310afbc29fb48fbd84cf16c89d3726158a444"}},"source":{"branch":{"name":"feat"},"commit":{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/11"}},"state":"OPEN","draft":false}
 --- file C/canned/bb-page1.json ---
 {"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},"status":"modified","lines_added":1,"lines_removed":1}],"next":null}
 --- file C/canned/full.diff ---

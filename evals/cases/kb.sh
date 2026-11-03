@@ -227,6 +227,7 @@ fi
   cd "$EVAL_SANDBOX" || exit 99
   echo "change" >> src/app.ts
 )
+eval_commit_controls
 run_review fetch-local acme/app kbrecall1 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" ]; then
   good "matching diff writes kb.txt"
@@ -254,6 +255,7 @@ fi
   git commit -qm readme
   echo "more" >> README.md
 )
+eval_commit_controls
 run_review fetch-local acme/app kbrecall2 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.review/local-kbrecall2/kb.txt" ]; then
   good "clean diff leaves no kb.txt"
@@ -262,6 +264,7 @@ else
 fi
 # No kb.jsonl reads byte-identical: no file, no envelope key.
 mv "$EVAL_SANDBOX/.review/kb.jsonl" "$EVAL_SANDBOX/.review/kb.jsonl.hold"
+eval_commit_controls
 run_review fetch-local acme/app kbrecall3 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ ! -f "$EVAL_SANDBOX/.review/local-kbrecall3/kb.txt" ] \
@@ -377,6 +380,7 @@ run_review triage acme/app "$PR" --sig "$osig5" --status false-positive --ration
   git commit -qm ord
   echo "more" >> ord/x.ts
 )
+eval_commit_controls
 run_review fetch-local acme/app kbrecall4 --json >/dev/null
 kb_order="$(grep '^# ord-' "$EVAL_SANDBOX/.review/local-kbrecall4/kb.txt" 2>/dev/null | cut -d' ' -f2 | tr '\n' ',' || true)"
 if [ "$kb_order" = "ord-a,ord-b,ord-c," ]; then

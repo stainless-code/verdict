@@ -116,6 +116,7 @@ EOF
 
 # --- P1: dump parity on fetch-local ---
 calls_p3_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
+eval_commit_controls
 run_review fetch-local acme/app dump-a --show-prompts
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "fetch-local --show-prompts exits 0"
@@ -136,6 +137,7 @@ else
 fi
 
 # --- P2: no extra store writes, stdout carries only the dump ---
+eval_commit_controls
 run_review fetch-local acme/app dump-b
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "twin fetch without the flag exits 0"
@@ -241,6 +243,7 @@ else
 fi
 
 # --- P5: --json parity ---
+eval_commit_controls
 run_review fetch-local acme/app dump-j --show-prompts --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(stdout_docs)" = "1" ]; then
   good "json dump exits 0 with exactly one envelope"
@@ -253,6 +256,7 @@ if jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | cmp -s - "$EVAL_SANDBOX/exp
 else
   bad "data.prompt_dump differs from the assembled concatenation"
 fi
+eval_commit_controls
 run_review fetch-local acme/app dump-k --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data | has("prompt_dump")' <"$EVAL_OUT" 2>/dev/null)" = "false" ]; then
@@ -263,6 +267,7 @@ fi
 
 # --- F7: missing prompt files fail loudly, never silently ---
 mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
+eval_commit_controls
 run_review fetch-local acme/app dump-f7a --show-prompts
 f7a_status="$EVAL_STATUS"
 mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
@@ -274,6 +279,7 @@ else
   bad "F7: missing preamble did not refuse loudly (exit $f7a_status)"
 fi
 mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
+eval_commit_controls
 run_review fetch-local acme/app dump-f7b --show-prompts --json
 f7b_status="$EVAL_STATUS"
 mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
@@ -285,6 +291,7 @@ else
   bad "F7: missing preamble refusal not typed (exit $f7b_status)"
 fi
 mv "$EVAL_SANDBOX/prompts/review.md" "$EVAL_SANDBOX/prompts/review.md.f7hide"
+eval_commit_controls
 run_review fetch-local acme/app dump-f7c --show-prompts
 f7c_status="$EVAL_STATUS"
 mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"
@@ -302,6 +309,7 @@ else
   bad "F7: missing sibling did not warn-and-proceed (exit $f7c_status)"
 fi
 mv "$EVAL_SANDBOX/prompts/review.md" "$EVAL_SANDBOX/prompts/review.md.f7hide"
+eval_commit_controls
 run_review fetch-local acme/app dump-f7d --show-prompts --json
 f7d_status="$EVAL_STATUS"
 mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"

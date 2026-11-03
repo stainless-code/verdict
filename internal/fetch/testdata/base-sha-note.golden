@@ -11,7 +11,7 @@ exit: 0
   "data": {
     "dir": ".review/4701",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
     "files": 1,
     "additions": 3,
     "deletions": 1,
@@ -21,6 +21,11 @@ exit: 0
     "panel": {
       "source": null,
       "members": []
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
     },
     "artifacts": {
       "PR.json": ".review/4701/PR.json",
@@ -42,7 +47,7 @@ exit: 0
 » roles -> .review/4701/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
 » reviews + inline comments
-» compare bbbbbbb...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -> .review/4701/incremental.diff
+» compare 488310a...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -> .review/4701/incremental.diff
 incrementalUnavailable: gh: no common ancestor
 done: .review/4701/PR.json .review/4701/full.diff .review/4701/toc.txt .review/4701/roles.txt (1 files)
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json
@@ -53,13 +58,88 @@ CALL: pr diff 4701 --repo acme/app
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4701/reviews --paginate
 CALL: api repos/acme/app/pulls/4701/comments --paginate
-CALL: api repos/acme/app/compare/bbbbbbb...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -H Accept: application/vnd.github.diff
+CALL: api repos/acme/app/compare/488310a...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -H Accept: application/vnd.github.diff
 --- file C/.review/4701/.compare.err ---
 gh: no common ancestor
 --- file C/.review/4701/.difffiles ---
 notes.txt
 --- file C/.review/4701/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+--- file C/.review/4701/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
 --- file C/.review/4701/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
@@ -120,7 +200,7 @@ index 2222222..3333333 100644
 +newer line
  bottom
 --- file C/canned/pr.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
 --- file C/canned/stat.txt ---
 notes.txt (+3/-1)
 --- file C/prompts/diagrams.md ---

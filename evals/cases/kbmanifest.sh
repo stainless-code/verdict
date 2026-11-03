@@ -64,6 +64,7 @@ run_review triage acme/app "$PR" --sig "e523456789abcdef0123456789abcdef01234567
   cd "$EVAL_SANDBOX" || exit 99
   echo "more" >> m1recall/a.ts
 )
+eval_commit_controls
 run_review fetch-local acme/app m1recall1 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ -f "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" ] \
@@ -126,6 +127,7 @@ fi
 # manifest delete + re-fetch of the same diff.
 kb_hash_before="$(shasum -a 1 "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" | cut -d' ' -f1)"
 rm -f "$EVAL_SANDBOX/.review/local-m1recall1/kb-recall.json"
+eval_commit_controls
 run_review fetch-local acme/app m1recall1 --json >/dev/null
 kb_hash_after="$(shasum -a 1 "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" | cut -d' ' -f1)"
 if [ "$kb_hash_before" = "$kb_hash_after" ] \
@@ -142,6 +144,7 @@ fi
   git commit -qm m1recall-done 2>/dev/null || true
   echo "readme" > README-m1.md
 )
+eval_commit_controls
 run_review fetch-local acme/app m1recall-clean --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ ! -f "$EVAL_SANDBOX/.review/local-m1recall-clean/kb.txt" ] \

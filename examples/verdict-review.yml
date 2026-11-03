@@ -35,6 +35,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          # The review controls are read from the PR base commit
+          # (`git show <base>:<path>`), so the checkout must hold it.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install verdict

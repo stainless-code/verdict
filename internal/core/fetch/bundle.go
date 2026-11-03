@@ -230,7 +230,7 @@ func joinLines(paths []string) string {
 // the member list lands in $dir/panel. Compact mode skips the advisory
 // notices. Sets panelSrc/panelList on the run context.
 func emitContext(ctx *fetchRunCtx) *core.RefusalError {
-	panelList, panelSrc := resolvePanel(ctx.env)
+	panelList, panelSrc := resolvePanel(ctx.env, ctx.runner)
 	ctx.panelSrc, ctx.panelList = panelSrc, panelList
 	if ref := emitPanel(ctx, panelList, panelSrc); ref != nil {
 		return ref
@@ -260,14 +260,10 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 // compact mode when the file reads.
 func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	if ctx.runner.Effective.Compact != strTrue {
-		if fi, err := os.Stat(".review/learnings.md"); err == nil && !fi.IsDir() {
+		if raw, ok := ctx.runner.readControl(".review/learnings.md"); ok {
 			// `wc -l` counts newline bytes, not lines.
-			raw, rerr := os.ReadFile(".review/learnings.md")
-			if rerr != nil {
-				return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read .review/learnings.md: %v", rerr)}
-			}
-			fmt.Fprintf(ctx.runner.Human, "» learnings: .review/learnings.md (%d lines — read headings first, not the full file)\n",
-				countNewlines(string(raw)))
+			fmt.Fprintf(ctx.runner.Human, "» learnings: %s (%d lines — read headings first, not the full file)\n",
+				ctx.runner.controls.Path(".review/learnings.md"), countNewlines(string(raw)))
 		}
 	}
 	return nil
@@ -275,12 +271,12 @@ func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 
 // resolvePanel ports the REVIEW_PANEL / .review/panel precedence: env wins
 // (comma/space split), else the file (comments and blanks skipped).
-func resolvePanel(env map[string]string) ([]string, string) {
+func resolvePanel(env map[string]string, r *session) ([]string, string) {
 	if v, ok := env["REVIEW_PANEL"]; ok && v != "" {
 		return splitPanelList(v), "REVIEW_PANEL"
 	}
-	raw, err := os.ReadFile(".review/panel")
-	if err != nil {
+	raw, ok := r.readControl(".review/panel")
+	if !ok {
 		return nil, ""
 	}
 	return panelFileLines(string(raw))

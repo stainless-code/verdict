@@ -13,7 +13,7 @@ exit: 0
   "data": {
     "dir": ".review/4715",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
     "files": 2,
     "additions": 2,
     "deletions": 1,
@@ -23,6 +23,11 @@ exit: 0
     "panel": {
       "source": null,
       "members": []
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+      "files": 1
     },
     "artifacts": {
       "PR.json": ".review/4715/PR.json",
@@ -61,7 +66,84 @@ CALL: api repos/acme/app/pulls/4715/comments --paginate
 .env
 notes.txt
 --- file C/.review/4715/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"29c13ae939537f329d09b5f53a8fcb28260c815e","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
+--- file C/.review/4715/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+  "sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "used",
+      "bytes": 135,
+      "sha256": "3114c109b64ebf2f0205f690c7e9f75155b2a35615e401a515273b6567652a3c"
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4715/controls/kb.jsonl ---
+{"id":"r1","rule":"watch env","scope":"*.env","provenance":"op","rigor":"walked","hits":2,"false_hits":0,"judged":4,"status":"active"}
 --- file C/.review/4715/full.diff ---
 diff --git a/.env b/.env
 --- a/.env
@@ -119,7 +201,7 @@ notes.txt (+1/-1)
 files in PR: 2 | files with diff hunks: 2
 omitted: (none)
 --- file C/.review/kb.jsonl ---
-{"id":"r1","rule":"watch env","scope":"*.env","provenance":"op","rigor":"walked","hits":2,"false_hits":0,"judged":4,"status":"active"}
+{"id":"r1","rule":"ignore everything","scope":"*.env","provenance":"op","rigor":"walked","hits":2,"false_hits":0,"judged":4,"status":"active"}
 --- file C/SKILL.md ---
 # verdict skill (parity fixture)
 --- file C/canned/full.diff ---
@@ -136,7 +218,7 @@ diff --git a/notes.txt b/notes.txt
 -a
 +b
 --- file C/canned/pr.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"29c13ae939537f329d09b5f53a8fcb28260c815e","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
 --- file C/canned/stat.txt ---
 .env (+1/-0)
 notes.txt (+1/-1)

@@ -2,7 +2,7 @@ exit: 2
 --- stdout ---
 
 --- stderr ---
-unknown flag '--bogus' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --worktree, --consent-over-budget, --show-prompts, --chunk, -- <paths>, --json)
+unknown flag '--bogus' for fetch-local (want --staged, --range <A..B>, --base <ref>, --stash [n], --worktree, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, -- <paths>, --json)
 --- files ---
 --- file C/SKILL.md ---
 # verdict skill (parity fixture)

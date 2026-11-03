@@ -11,7 +11,7 @@ exit: 0
   "data": {
     "dir": ".review/4712",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
     "files": 2,
     "additions": 3,
     "deletions": 1,
@@ -23,6 +23,11 @@ exit: 0
     "panel": {
       "source": null,
       "members": []
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
     },
     "artifacts": {
       "PR.json": ".review/4712/PR.json",
@@ -61,7 +66,7 @@ f00.txt
 {
   "state": "OPEN",
   "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "baseRefOid": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "author": {
     "login": "teammate"
   },
@@ -79,6 +84,81 @@ f00.txt
   ],
   "additions": 3,
   "deletions": 1
+}
+--- file C/.review/4712/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
 }
 --- file C/.review/4712/filesource.json ---
 {
@@ -134,7 +214,7 @@ diff --git a/f00.txt b/f00.txt
 -a
 +b
 --- file C/canned/pr.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1},{"path":"f01.txt","additions":1,"deletions":1},{"path":"f02.txt","additions":1,"deletions":1},{"path":"f03.txt","additions":1,"deletions":1},{"path":"f04.txt","additions":1,"deletions":1},{"path":"f05.txt","additions":1,"deletions":1},{"path":"f06.txt","additions":1,"deletions":1},{"path":"f07.txt","additions":1,"deletions":1},{"path":"f08.txt","additions":1,"deletions":1},{"path":"f09.txt","additions":1,"deletions":1},{"path":"f10.txt","additions":1,"deletions":1},{"path":"f11.txt","additions":1,"deletions":1},{"path":"f12.txt","additions":1,"deletions":1},{"path":"f13.txt","additions":1,"deletions":1},{"path":"f14.txt","additions":1,"deletions":1},{"path":"f15.txt","additions":1,"deletions":1},{"path":"f16.txt","additions":1,"deletions":1},{"path":"f17.txt","additions":1,"deletions":1},{"path":"f18.txt","additions":1,"deletions":1},{"path":"f19.txt","additions":1,"deletions":1},{"path":"f20.txt","additions":1,"deletions":1},{"path":"f21.txt","additions":1,"deletions":1},{"path":"f22.txt","additions":1,"deletions":1},{"path":"f23.txt","additions":1,"deletions":1},{"path":"f24.txt","additions":1,"deletions":1},{"path":"f25.txt","additions":1,"deletions":1},{"path":"f26.txt","additions":1,"deletions":1},{"path":"f27.txt","additions":1,"deletions":1},{"path":"f28.txt","additions":1,"deletions":1},{"path":"f29.txt","additions":1,"deletions":1},{"path":"f30.txt","additions":1,"deletions":1},{"path":"f31.txt","additions":1,"deletions":1},{"path":"f32.txt","additions":1,"deletions":1},{"path":"f33.txt","additions":1,"deletions":1},{"path":"f34.txt","additions":1,"deletions":1},{"path":"f35.txt","additions":1,"deletions":1},{"path":"f36.txt","additions":1,"deletions":1},{"path":"f37.txt","additions":1,"deletions":1},{"path":"f38.txt","additions":1,"deletions":1},{"path":"f39.txt","additions":1,"deletions":1},{"path":"f40.txt","additions":1,"deletions":1},{"path":"f41.txt","additions":1,"deletions":1},{"path":"f42.txt","additions":1,"deletions":1},{"path":"f43.txt","additions":1,"deletions":1},{"path":"f44.txt","additions":1,"deletions":1},{"path":"f45.txt","additions":1,"deletions":1},{"path":"f46.txt","additions":1,"deletions":1},{"path":"f47.txt","additions":1,"deletions":1},{"path":"f48.txt","additions":1,"deletions":1},{"path":"f49.txt","additions":1,"deletions":1},{"path":"f50.txt","additions":1,"deletions":1},{"path":"f51.txt","additions":1,"deletions":1},{"path":"f52.txt","additions":1,"deletions":1},{"path":"f53.txt","additions":1,"deletions":1},{"path":"f54.txt","additions":1,"deletions":1},{"path":"f55.txt","additions":1,"deletions":1},{"path":"f56.txt","additions":1,"deletions":1},{"path":"f57.txt","additions":1,"deletions":1},{"path":"f58.txt","additions":1,"deletions":1},{"path":"f59.txt","additions":1,"deletions":1},{"path":"f60.txt","additions":1,"deletions":1},{"path":"f61.txt","additions":1,"deletions":1},{"path":"f62.txt","additions":1,"deletions":1},{"path":"f63.txt","additions":1,"deletions":1},{"path":"f64.txt","additions":1,"deletions":1},{"path":"f65.txt","additions":1,"deletions":1},{"path":"f66.txt","additions":1,"deletions":1},{"path":"f67.txt","additions":1,"deletions":1},{"path":"f68.txt","additions":1,"deletions":1},{"path":"f69.txt","additions":1,"deletions":1},{"path":"f70.txt","additions":1,"deletions":1},{"path":"f71.txt","additions":1,"deletions":1},{"path":"f72.txt","additions":1,"deletions":1},{"path":"f73.txt","additions":1,"deletions":1},{"path":"f74.txt","additions":1,"deletions":1},{"path":"f75.txt","additions":1,"deletions":1},{"path":"f76.txt","additions":1,"deletions":1},{"path":"f77.txt","additions":1,"deletions":1},{"path":"f78.txt","additions":1,"deletions":1},{"path":"f79.txt","additions":1,"deletions":1},{"path":"f80.txt","additions":1,"deletions":1},{"path":"f81.txt","additions":1,"deletions":1},{"path":"f82.txt","additions":1,"deletions":1},{"path":"f83.txt","additions":1,"deletions":1},{"path":"f84.txt","additions":1,"deletions":1},{"path":"f85.txt","additions":1,"deletions":1},{"path":"f86.txt","additions":1,"deletions":1},{"path":"f87.txt","additions":1,"deletions":1},{"path":"f88.txt","additions":1,"deletions":1},{"path":"f89.txt","additions":1,"deletions":1},{"path":"f90.txt","additions":1,"deletions":1},{"path":"f91.txt","additions":1,"deletions":1},{"path":"f92.txt","additions":1,"deletions":1},{"path":"f93.txt","additions":1,"deletions":1},{"path":"f94.txt","additions":1,"deletions":1},{"path":"f95.txt","additions":1,"deletions":1},{"path":"f96.txt","additions":1,"deletions":1},{"path":"f97.txt","additions":1,"deletions":1},{"path":"f98.txt","additions":1,"deletions":1},{"path":"f99.txt","additions":1,"deletions":1}],"additions":100,"deletions":100}
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1},{"path":"f01.txt","additions":1,"deletions":1},{"path":"f02.txt","additions":1,"deletions":1},{"path":"f03.txt","additions":1,"deletions":1},{"path":"f04.txt","additions":1,"deletions":1},{"path":"f05.txt","additions":1,"deletions":1},{"path":"f06.txt","additions":1,"deletions":1},{"path":"f07.txt","additions":1,"deletions":1},{"path":"f08.txt","additions":1,"deletions":1},{"path":"f09.txt","additions":1,"deletions":1},{"path":"f10.txt","additions":1,"deletions":1},{"path":"f11.txt","additions":1,"deletions":1},{"path":"f12.txt","additions":1,"deletions":1},{"path":"f13.txt","additions":1,"deletions":1},{"path":"f14.txt","additions":1,"deletions":1},{"path":"f15.txt","additions":1,"deletions":1},{"path":"f16.txt","additions":1,"deletions":1},{"path":"f17.txt","additions":1,"deletions":1},{"path":"f18.txt","additions":1,"deletions":1},{"path":"f19.txt","additions":1,"deletions":1},{"path":"f20.txt","additions":1,"deletions":1},{"path":"f21.txt","additions":1,"deletions":1},{"path":"f22.txt","additions":1,"deletions":1},{"path":"f23.txt","additions":1,"deletions":1},{"path":"f24.txt","additions":1,"deletions":1},{"path":"f25.txt","additions":1,"deletions":1},{"path":"f26.txt","additions":1,"deletions":1},{"path":"f27.txt","additions":1,"deletions":1},{"path":"f28.txt","additions":1,"deletions":1},{"path":"f29.txt","additions":1,"deletions":1},{"path":"f30.txt","additions":1,"deletions":1},{"path":"f31.txt","additions":1,"deletions":1},{"path":"f32.txt","additions":1,"deletions":1},{"path":"f33.txt","additions":1,"deletions":1},{"path":"f34.txt","additions":1,"deletions":1},{"path":"f35.txt","additions":1,"deletions":1},{"path":"f36.txt","additions":1,"deletions":1},{"path":"f37.txt","additions":1,"deletions":1},{"path":"f38.txt","additions":1,"deletions":1},{"path":"f39.txt","additions":1,"deletions":1},{"path":"f40.txt","additions":1,"deletions":1},{"path":"f41.txt","additions":1,"deletions":1},{"path":"f42.txt","additions":1,"deletions":1},{"path":"f43.txt","additions":1,"deletions":1},{"path":"f44.txt","additions":1,"deletions":1},{"path":"f45.txt","additions":1,"deletions":1},{"path":"f46.txt","additions":1,"deletions":1},{"path":"f47.txt","additions":1,"deletions":1},{"path":"f48.txt","additions":1,"deletions":1},{"path":"f49.txt","additions":1,"deletions":1},{"path":"f50.txt","additions":1,"deletions":1},{"path":"f51.txt","additions":1,"deletions":1},{"path":"f52.txt","additions":1,"deletions":1},{"path":"f53.txt","additions":1,"deletions":1},{"path":"f54.txt","additions":1,"deletions":1},{"path":"f55.txt","additions":1,"deletions":1},{"path":"f56.txt","additions":1,"deletions":1},{"path":"f57.txt","additions":1,"deletions":1},{"path":"f58.txt","additions":1,"deletions":1},{"path":"f59.txt","additions":1,"deletions":1},{"path":"f60.txt","additions":1,"deletions":1},{"path":"f61.txt","additions":1,"deletions":1},{"path":"f62.txt","additions":1,"deletions":1},{"path":"f63.txt","additions":1,"deletions":1},{"path":"f64.txt","additions":1,"deletions":1},{"path":"f65.txt","additions":1,"deletions":1},{"path":"f66.txt","additions":1,"deletions":1},{"path":"f67.txt","additions":1,"deletions":1},{"path":"f68.txt","additions":1,"deletions":1},{"path":"f69.txt","additions":1,"deletions":1},{"path":"f70.txt","additions":1,"deletions":1},{"path":"f71.txt","additions":1,"deletions":1},{"path":"f72.txt","additions":1,"deletions":1},{"path":"f73.txt","additions":1,"deletions":1},{"path":"f74.txt","additions":1,"deletions":1},{"path":"f75.txt","additions":1,"deletions":1},{"path":"f76.txt","additions":1,"deletions":1},{"path":"f77.txt","additions":1,"deletions":1},{"path":"f78.txt","additions":1,"deletions":1},{"path":"f79.txt","additions":1,"deletions":1},{"path":"f80.txt","additions":1,"deletions":1},{"path":"f81.txt","additions":1,"deletions":1},{"path":"f82.txt","additions":1,"deletions":1},{"path":"f83.txt","additions":1,"deletions":1},{"path":"f84.txt","additions":1,"deletions":1},{"path":"f85.txt","additions":1,"deletions":1},{"path":"f86.txt","additions":1,"deletions":1},{"path":"f87.txt","additions":1,"deletions":1},{"path":"f88.txt","additions":1,"deletions":1},{"path":"f89.txt","additions":1,"deletions":1},{"path":"f90.txt","additions":1,"deletions":1},{"path":"f91.txt","additions":1,"deletions":1},{"path":"f92.txt","additions":1,"deletions":1},{"path":"f93.txt","additions":1,"deletions":1},{"path":"f94.txt","additions":1,"deletions":1},{"path":"f95.txt","additions":1,"deletions":1},{"path":"f96.txt","additions":1,"deletions":1},{"path":"f97.txt","additions":1,"deletions":1},{"path":"f98.txt","additions":1,"deletions":1},{"path":"f99.txt","additions":1,"deletions":1}],"additions":100,"deletions":100}
 --- file C/canned/stat.txt ---
 f00.txt (+1/-1)
 --- file C/prompts/diagrams.md ---

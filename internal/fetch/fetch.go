@@ -27,9 +27,10 @@ type Request struct {
 }
 
 // Run executes `fetch <owner/repo> <pr> [--base-sha|--since <sha>]
-// [--provider <name>] [--consent-over-budget] [--show-prompts] [--chunk]
-// [--json]`, returning the process exit code. Human progress goes to the
-// runner's human stream; --json mode prints exactly one envelope to stdout.
+// [--provider <name>] [--consent-over-budget] [--allow-head-controls]
+// [--show-prompts] [--chunk] [--json]`, returning the process exit code.
+// Human progress goes to the runner's human stream; --json mode prints
+// exactly one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	f, code, done := parseFetchFlags(r, args)
@@ -53,8 +54,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // RunLocal executes `fetch-local <owner/repo> <name> [--staged]
 // [--range A[..|...]B] [--base R] [--stash [n]] [--worktree]
-// [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...]
-// [--json]`, returning the process exit code.
+// [--consent-over-budget] [--allow-head-controls] [--show-prompts] [--chunk]
+// [-- paths...] [--json]`, returning the process exit code.
 func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	f, code, done := parseLocalFlags(r, args)
@@ -200,6 +201,8 @@ func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) 
 			f.Provider, i = flagValue(args, i)
 		case "--consent-over-budget":
 			f.BudgetConsent = true
+		case "--allow-head-controls":
+			f.HeadControls = true
 		case "--show-prompts":
 			f.ShowPrompts = true
 		case flagChunk:
@@ -207,7 +210,7 @@ func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) 
 		case flagJSON:
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
-				"--provider <name>, --consent-over-budget, --show-prompts, --chunk, --json)", a)
+				"--provider <name>, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
@@ -243,6 +246,8 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 		f.Worktree = true
 	case "--consent-over-budget":
 		f.BudgetConsent = true
+	case "--allow-head-controls":
+		f.HeadControls = true
 	case "--show-prompts":
 		f.ShowPrompts = true
 	case flagChunk:
@@ -255,7 +260,7 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 		if strings.HasPrefix(a, "-") {
 			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
 				"--range <A..B>, --base <ref>, --stash [n], --worktree, --consent-over-budget, "+
-				"--show-prompts, --chunk, -- <paths>, --json)", a)
+				"--allow-head-controls, --show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 		f.Paths = append(f.Paths, a)

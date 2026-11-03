@@ -36,12 +36,12 @@ type budgetState struct {
 // resolveBudget ports resolve_budget: REVIEW_BUDGET_USD wins, else the
 // first usable line of .review/budget (a leading $ is stripped). Unset
 // disables the whole plane.
-func resolveBudget(env map[string]string) (budgetState, error) {
+func resolveBudget(env map[string]string, r *session) (budgetState, error) {
 	var st budgetState
 	raw, src := "", ""
 	if v, ok := env["REVIEW_BUDGET_USD"]; ok && v != "" {
 		raw, src = strings.TrimSpace(v), "REVIEW_BUDGET_USD"
-	} else if v, ok := readKnobFile(".review/budget"); ok {
+	} else if v, ok := readKnobFile(r, ".review/budget"); ok {
 		raw, src = strings.TrimSpace(strings.TrimPrefix(v, "$")), ".review/budget"
 	}
 	if raw == "" {

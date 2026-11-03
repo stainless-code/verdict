@@ -121,6 +121,7 @@ else
 fi
 
 printf 'true\n' > "$KNOB"
+eval_commit_controls
 run_review fetch-local acme/app chunkbig
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "chunking opted in (from .review/chunk)" "$EVAL_ERR" \
@@ -131,6 +132,7 @@ else
 fi
 
 printf 'false\n' > "$KNOB"
+eval_commit_controls
 run_review fetch-local acme/app chunkbig --chunk
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "chunking opted in (from --chunk)" "$EVAL_ERR"; then
   good "flag wins over a false knob file"
@@ -145,6 +147,7 @@ else
   bad "false-file parity exits $EVAL_STATUS"
 fi
 : > "$KNOB"
+eval_commit_controls
 run_review fetch-local acme/app chunkbig
 if [ "$EVAL_STATUS" -eq 1 ] && cmp -s "$EVAL_ERR" "$EVAL_SANDBOX/k0-err.txt"; then
   good "empty knob file reads off"
@@ -152,6 +155,7 @@ else
   bad "empty-file parity exits $EVAL_STATUS"
 fi
 rm -f "$KNOB"
+eval_commit_controls
 
 # --- K3: cap-override-wins (env and file forms) ---
 REVIEW_MAX_BYTES=2000000 run_review fetch-local acme/app chunkbig --chunk
@@ -172,7 +176,9 @@ else
   bad "tiny-cap exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 printf '2500000\n' > "$EVAL_SANDBOX/.review/max_bytes"
+eval_commit_controls
 printf 'true\n' > "$KNOB"
+eval_commit_controls
 run_review fetch-local acme/app chunkbig
 if [ "$EVAL_STATUS" -eq 0 ] \
   && ! grep -q "chunking" "$EVAL_ERR" \
@@ -182,6 +188,7 @@ else
   bad "cap-file exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 rm -f "$EVAL_SANDBOX/.review/max_bytes" "$KNOB"
+eval_commit_controls
 
 # --- K4: under-cap unaffected (flag vs file vs absent, same bytes) ---
 (
@@ -206,6 +213,7 @@ else
   bad "under-cap absent exits $EVAL_STATUS"
 fi
 printf 'true\n' > "$KNOB"
+eval_commit_controls
 run_review fetch-local acme/app chunksmall
 if [ "$EVAL_STATUS" -eq 0 ] \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/k4-flag-out.txt" \
@@ -218,6 +226,7 @@ fi
 
 # --- K5: bad knob refuses typed on the over-cap path only ---
 printf 'maybe\n' > "$KNOB"
+eval_commit_controls
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- chunksmall.txt
@@ -247,6 +256,7 @@ fi
   git checkout -q -- chunkbig.txt chunksmall.txt 2>/dev/null || true
 )
 rm -f "$KNOB" "$EVAL_SANDBOX/.review/max_bytes"
+eval_commit_controls
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 rm -f "$EVAL_SANDBOX"/k0-*.txt "$EVAL_SANDBOX"/k2-*.txt "$EVAL_SANDBOX"/k4-*
 unset XDG_CONFIG_HOME || true

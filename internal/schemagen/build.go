@@ -122,6 +122,15 @@ const defsRecord = "record"
 func documents() []document {
 	return []document{
 		{
+			name:  "controls",
+			title: "controls.json — resolved review controls snapshot",
+			root:  reflect.TypeFor[ControlsFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[ControlsFileEntry](), name: "file"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "corpus",
 			title: "corpus.json — benchmark corpus case manifest",
 			root:  reflect.TypeFor[CorpusCase](),
