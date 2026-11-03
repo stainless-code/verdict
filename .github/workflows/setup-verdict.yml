@@ -104,7 +104,7 @@ jobs:
           [ -x "${{ steps.first.outputs.path }}" ]
           "${{ steps.first.outputs.path }}" --version | grep -q 0.0.0-test.1
           [ "$(command -v verdict)" = "${{ steps.first.outputs.path }}" ]
-          grep -q '"version":"0.0.0-test.1"' "${{ steps.first.outputs.path }}"/../.verdict-installer
+          grep -q '"version":"0.0.0-test.1"' "$(dirname "${{ steps.first.outputs.path }}")/.verdict-installer"
           echo "outputs, PATH, and --version ok: ${{ steps.first.outputs.path }}"
 
       - name: Assert outputs, PATH, and --version (Windows)
@@ -125,7 +125,11 @@ jobs:
         shell: bash
         run: |
           set -eu
-          sha256sum "${{ steps.first.outputs.path }}" | awk '{print $1}' > "$RUNNER_TEMP/hash.before"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ steps.first.outputs.path }}" | awk '{print $1}' > "$RUNNER_TEMP/hash.before"
+          else
+            shasum -a 256 "${{ steps.first.outputs.path }}" | awk '{print $1}' > "$RUNNER_TEMP/hash.before"
+          fi
           wc -l < "$FAKE_CURL_LOG" | tr -d ' ' > "$RUNNER_TEMP/curl.before"
 
       - name: Record state before second run (Windows)
@@ -147,7 +151,12 @@ jobs:
         run: |
           set -eu
           [ "${{ steps.second.outputs.path }}" = "${{ steps.first.outputs.path }}" ]
-          [ "$(sha256sum "${{ steps.second.outputs.path }}" | awk '{print $1}')" = "$(cat "$RUNNER_TEMP/hash.before")" ]
+          if command -v sha256sum >/dev/null 2>&1; then
+            second_hash="$(sha256sum "${{ steps.second.outputs.path }}" | awk '{print $1}')"
+          else
+            second_hash="$(shasum -a 256 "${{ steps.second.outputs.path }}" | awk '{print $1}')"
+          fi
+          [ "$second_hash" = "$(cat "$RUNNER_TEMP/hash.before")" ]
           [ "$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')" = "$(cat "$RUNNER_TEMP/curl.before")" ]
           echo "reuse ok: no new download on second invocation"
 
