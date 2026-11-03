@@ -19,7 +19,7 @@ import (
 // The child reports its pid, so a parent-only kill cannot pass.
 func TestExecuteTimeoutKillsTree(t *testing.T) {
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "grandchild.pid"))
-	vcmd := `trap '' TERM; (trap '' TERM; exec sleep 30) & echo $! > '` + pidFile + `'; exec sleep 30`
+	vcmd := `trap '' TERM; (trap '' TERM; exec sleep 30) & ` + pidReport(pidFile) + `; exec sleep 30`
 	tctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
@@ -31,6 +31,15 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 			res.ExitCode, res.TimedOut, res.Decoy, sigkillExit)
 	}
 	assertPidDead(t, pidFile)
+}
+
+// pidReport is the shell fragment that writes the last background job's
+// Windows pid to file. Git Bash's `$!` is an MSYS pid, a different number
+// space from the Windows pids OpenProcess takes: probing it could hit an
+// unrelated process (a false "alive") or nothing at all (a false "dead").
+// MSYS exposes the real pid at /proc/<pid>/winpid.
+func pidReport(file string) string {
+	return `cat /proc/$!/winpid > '` + file + `'`
 }
 
 // pidAlive reports whether pid is still running: the job object holds the

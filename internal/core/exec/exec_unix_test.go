@@ -13,6 +13,12 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
+// pidReport is the shell fragment that writes the last background job's pid
+// to file.
+func pidReport(file string) string {
+	return `echo $! > '` + file + `'`
+}
+
 // pidAlive reports whether pid is still running: kill -0 succeeds for a
 // running (or zombie) process, and EPERM still means the pid exists.
 func pidAlive(pid int) bool {
