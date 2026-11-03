@@ -333,7 +333,10 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	for _, f := range files {
 		fileRecs, ok := readCostRecs(f)
 		if !ok {
-			bad = append(bad, f)
+			// The warning is user-visible: glob returns OS separators,
+			// so Windows would print `.review\2\cost.json` where every
+			// bundle path uses slashes.
+			bad = append(bad, filepath.ToSlash(f))
 			continue
 		}
 		joinMeasured(fileRecs, usage, f)
