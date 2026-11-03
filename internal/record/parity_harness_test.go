@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var (
@@ -153,45 +155,25 @@ func scrub(s string) string {
 	return tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 }
 
-// childEnv builds the hermetic environment both implementations share:
-// isolated HOME, the network-dead gh stub first on PATH, no REVIEW_*
-// leakage from the developer shell. extraEnv overlays test variables.
+// childEnv builds the hermetic environment every record case shares:
+// testenv.Base drops developer credentials and pins git's configuration,
+// then the isolated HOME/TMPDIR and the network-dead gh stub first on PATH.
+// extraEnv overlays test variables.
 func childEnv(home, tmp string, extraEnv map[string]string) []string {
-	env := scrubParentEnv(extraEnv)
-	env = append(env, "HOME="+home, "TMPDIR="+tmp)
-	path := os.Getenv("PATH")
-	env = append(env, "PATH="+stubBin+string(os.PathListSeparator)+path)
-	for k, v := range extraEnv {
-		env = append(env, k+"="+v)
+	merged := maps.Clone(extraEnv)
+	if merged == nil {
+		merged = map[string]string{}
 	}
-	return env
-}
-
-// scrubParentEnv drops shell leakage (REVIEW_*, HOME, TMPDIR, NO_COLOR) and
-// any variable the test overrides.
-func scrubParentEnv(extraEnv map[string]string) []string {
-	var env []string
-	for _, kv := range os.Environ() {
-		if dropParentVar(kv, extraEnv) {
-			continue
-		}
-		env = append(env, kv)
+	if _, ok := merged["HOME"]; !ok {
+		merged["HOME"] = home
 	}
-	return env
-}
-
-// dropParentVar reports whether a parent variable stays out of the harness.
-func dropParentVar(kv string, extraEnv map[string]string) bool {
-	for _, prefix := range []string{"REVIEW_", "XDG_CONFIG_HOME=", "NO_COLOR=", "HOME=", "TMPDIR="} {
-		if strings.HasPrefix(kv, prefix) {
-			return true
-		}
+	if _, ok := merged["TMPDIR"]; !ok {
+		merged["TMPDIR"] = tmp
 	}
-	if k, _, ok := strings.Cut(kv, "="); ok {
-		_, override := extraEnv[k]
-		return override
+	if _, ok := merged["PATH"]; !ok {
+		merged["PATH"] = stubBin + string(os.PathListSeparator) + os.Getenv("PATH")
 	}
-	return false
+	return testenv.Base(merged)
 }
 
 // outputs captures one record run.

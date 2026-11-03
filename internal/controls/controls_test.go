@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // gitRun runs one git command in the current directory, failing on error.
@@ -20,9 +21,12 @@ func gitRun(t *testing.T, args ...string) string {
 		t.Skip("git unavailable")
 	}
 	cmd := exec.CommandContext(t.Context(), "git", args...)
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=controls", "GIT_AUTHOR_EMAIL=controls@example.invalid",
-		"GIT_COMMITTER_NAME=controls", "GIT_COMMITTER_EMAIL=controls@example.invalid")
+	cmd.Env = testenv.Base(map[string]string{
+		"GIT_AUTHOR_NAME":     "controls",
+		"GIT_AUTHOR_EMAIL":    "controls@example.invalid",
+		"GIT_COMMITTER_NAME":  "controls",
+		"GIT_COMMITTER_EMAIL": "controls@example.invalid",
+	})
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git %v: %v", args, err)

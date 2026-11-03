@@ -3,11 +3,14 @@
 # Mirrors evals/run.sh sandbox setup for one case only (fast iteration).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=evals/lib/testenv.sh
+. "$ROOT/evals/lib/testenv.sh"
 case_name="${1:?usage: evals/one.sh <case>}"
 for dep in jq shasum git; do
   command -v "$dep" >/dev/null 2>&1 || { echo "evals need $dep on PATH" >&2; exit 2; }
 done
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/verdict-eval-one.XXXXXX")"
+testenv_init "$SANDBOX"
 STUBBIN="$SANDBOX/stubbin"
 STUBLOG="$SANDBOX/gh-stub.log"
 mkdir -p "$STUBBIN"

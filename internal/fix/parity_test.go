@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var harness *parity.Harness
@@ -57,9 +58,12 @@ func mkRepo(t *testing.T, dir string) {
 	run := func(args ...string) {
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=fix", "GIT_AUTHOR_EMAIL=fix@eval",
-			"GIT_COMMITTER_NAME=fix", "GIT_COMMITTER_EMAIL=fix@eval")
+		cmd.Env = testenv.Base(map[string]string{
+			"GIT_AUTHOR_NAME":     "fix",
+			"GIT_AUTHOR_EMAIL":    "fix@eval",
+			"GIT_COMMITTER_NAME":  "fix",
+			"GIT_COMMITTER_EMAIL": "fix@eval",
+		})
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}

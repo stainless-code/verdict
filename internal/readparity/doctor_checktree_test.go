@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestDoctorParity proves the doctor verb matches bash with the
@@ -23,11 +25,12 @@ func TestDoctorParity(t *testing.T) {
 	goldenRead(t, "doctor/json", empty, nil, nil, goArgs...)
 }
 
-// gitRun runs git in dir.
+// gitRun runs git in dir with the harness's pinned configuration.
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	cmd.Env = testenv.Base(nil)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}

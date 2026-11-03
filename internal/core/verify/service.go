@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -381,38 +382,11 @@ func secretNames(environ []string) []string {
 	return out
 }
 
-// stripRotationSuffix removes trailing rotation digits and underscores
-// before the suffix match, like the shell loop.
-func stripRotationSuffix(name string) string {
-	norm := name
-	for len(norm) > 0 {
-		last := norm[len(norm)-1]
-		if (last < '0' || last > '9') && last != '_' {
-			break
-		}
-		norm = norm[:len(norm)-1]
-	}
-	return norm
-}
-
 // isSecretName ports the nocasematch suffix match with trailing
-// rotation-digit/underscore stripping.
+// rotation-digit/underscore stripping. The classifier lives in envsecret so
+// the test harnesses drop the same names this redactor rewrites.
 func isSecretName(name string) bool {
-	lower := strings.ToLower(stripRotationSuffix(name))
-	for _, suffix := range secretSuffixes {
-		if strings.HasSuffix(lower, suffix) {
-			return true
-		}
-	}
-	return false
-}
-
-// Redaction constants, mirroring the shell loop.
-var secretSuffixes = []string{
-	"_token", "_secret", "_key", "_password", "_passphrase", "_pat",
-	"_auth", "_credential", "_credentials", "_pass", "_pwd",
-	"token", "secret", "key", "password",
-	"aws_access_key_id", "ssh_auth_sock", "ssh_agent_pid",
+	return envsecret.IsSecret(name)
 }
 
 // secretMinLen skips empty and short (<8 char) values, like the shell.

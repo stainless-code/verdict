@@ -45,6 +45,8 @@ for arg in "$@"; do
 done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=evals/lib/testenv.sh
+. "$ROOT/evals/lib/testenv.sh"
 for dep in jq shasum git; do
   command -v "$dep" >/dev/null 2>&1 || { echo "evals need $dep on PATH" >&2; exit 2; }
 done
@@ -72,6 +74,9 @@ fi
 pre_status="$(git -C "$ROOT" status --short)"
 
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/verdict-evals.XXXXXX")"
+# Hermetic by construction: no credential-shaped variable survives into a
+# case or its git/gh/verdict children, and git runs with the pinned config.
+testenv_init "$SANDBOX"
 STUBBIN="$SANDBOX/stubbin"
 mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'EOF'
@@ -134,6 +139,7 @@ trap cleanup EXIT
 echo "evals: stub gh at $(PATH="$STUBBIN:$PATH" command -v gh) (all network calls fail there)"
 echo "evals: sandbox $SANDBOX (fixtures live here, never in the repo)"
 echo "evals: running with $JOBS job(s) (EVAL_JOBS overrides)"
+echo "evals: scrubbed $TESTENV_SCRUBBED secret-shaped variable(s); git config pinned"
 
 # is_serial <case> — true when the case's header carries `# eval: serial`.
 # awk (not grep in a pipe) keeps this safe under `set -o pipefail`.

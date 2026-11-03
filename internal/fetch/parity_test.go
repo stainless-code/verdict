@@ -36,6 +36,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var harness *parity.Harness
@@ -273,8 +274,6 @@ func promptFiles(t *testing.T, dir string) {
 func seedBase(t *testing.T, dir string, controls map[string]string) string {
 	t.Helper()
 	runGit(t, dir, "init", "-q", "-b", "main")
-	runGit(t, dir, "config", "commit.gpgsign", "false")
-	runGit(t, dir, "config", "core.autocrlf", "false") // Windows runners default to true and warn on stderr
 	for name, content := range controls {
 		writeFile(t, dir, name, content)
 	}
@@ -328,8 +327,6 @@ func gitSetup(files map[string]string) func(t *testing.T, dir, home string) {
 		runGit(t, dir, "init", "-q", "-b", "main")
 		runGit(t, dir, "config", "user.email", "parity@example.invalid")
 		runGit(t, dir, "config", "user.name", "parity")
-		runGit(t, dir, "config", "commit.gpgsign", "false")
-		runGit(t, dir, "config", "core.autocrlf", "false")
 		n := 0
 		for name, content := range files {
 			writeFile(t, dir, name, content)
@@ -355,17 +352,21 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-// gitCmd builds a git command with the pinned environment.
+// gitCmd builds a git command with the pinned environment: testenv.Base
+// supplies the fixed git config, and the fixed identity/dates keep commit
+// hashes reproducible without per-repo config calls.
 func gitCmd(t *testing.T, dir string, args ...string) *exec.Cmd {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=parity",
-		"GIT_AUTHOR_EMAIL=parity@example.invalid",
-		"GIT_COMMITTER_NAME=parity",
-		"GIT_COMMITTER_EMAIL=parity@example.invalid",
-		"GIT_AUTHOR_DATE=2026-01-01T00:00:00Z",
-		"GIT_COMMITTER_DATE=2026-01-01T00:00:00Z")
+	cmd.Env = testenv.Base(map[string]string{
+		"GIT_AUTHOR_NAME":     "parity",
+		"GIT_AUTHOR_EMAIL":    "parity@example.invalid",
+		"GIT_COMMITTER_NAME":  "parity",
+		"GIT_COMMITTER_EMAIL": "parity@example.invalid",
+		"GIT_AUTHOR_DATE":     "2026-01-01T00:00:00Z",
+		"GIT_COMMITTER_DATE":  "2026-01-01T00:00:00Z",
+	})
 	return cmd
 }
 
@@ -1184,7 +1185,6 @@ func TestFetchParityAzureHappy(t *testing.T) {
 		runGit(t, remote, "init", "-q", "-b", "main")
 		runGit(t, remote, "config", "user.email", "parity@example.invalid")
 		runGit(t, remote, "config", "user.name", "parity")
-		runGit(t, remote, "config", "core.autocrlf", "false")
 		writeFile(t, remote, "a.txt", "one\n")
 		runGit(t, remote, "add", "a.txt")
 		runGit(t, remote, "commit", "-qm", "one")

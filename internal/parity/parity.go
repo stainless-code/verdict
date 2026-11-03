@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // Harness temp-dir and walk-up-depth constants (revive add-constant:
@@ -418,50 +420,25 @@ type Outputs struct {
 	Status int
 }
 
-// envDropPrefixes are stripped from the developer shell before the
-// hermetic child environment is built.
-//
-// GH_ and GITHUB_ keep the runner's gh auth (GH_TOKEN, GITHUB_TOKEN,
-// GH_HOST, ...) out of the "hermetic" runs: a case that needs one sets it
-// through extraEnv, which overlays after this filter.
-var envDropPrefixes = []string{
-	"REVIEW_", "GH_", "GITHUB_", "XDG_CONFIG_HOME=", "NO_COLOR=", "HOME=", "TMPDIR=",
-}
-
-// childEnv builds the hermetic environment both implementations share:
-// isolated HOME, the network-dead gh stub first on PATH, no REVIEW_*
-// leakage from the developer shell. extraEnv overlays test variables.
+// childEnv builds the hermetic environment every case shares: testenv.Base
+// drops the developer shell's credentials and harness knobs and pins git's
+// configuration, then the isolated HOME and the network-dead gh stub go
+// first on PATH. extraEnv overlays test variables (and can override the
+// pinned git config).
 func childEnv(home string, extraEnv map[string]string, stubBin string) []string {
-	var env []string
-	for _, kv := range os.Environ() {
-		if !keepEnv(kv, extraEnv) {
-			continue
-		}
-		env = append(env, kv)
+	merged := maps.Clone(extraEnv)
+	if merged == nil {
+		merged = map[string]string{}
 	}
-	env = append(env, "HOME="+home)
-	path := os.Getenv("PATH")
-	env = append(env, "PATH="+stubBin+string(os.PathListSeparator)+path)
-	for k, v := range extraEnv {
-		env = append(env, k+"="+v)
+	// Defaults only: a test that hands in its own PATH (a per-case gh stub)
+	// must win, exactly as when extraEnv was appended last.
+	if _, ok := merged["HOME"]; !ok {
+		merged["HOME"] = home
 	}
-	return env
-}
-
-// keepEnv reports whether a parent-process entry survives into the
-// hermetic child environment.
-func keepEnv(kv string, extraEnv map[string]string) bool {
-	for _, prefix := range envDropPrefixes {
-		if strings.HasPrefix(kv, prefix) {
-			return false
-		}
+	if _, ok := merged["PATH"]; !ok {
+		merged["PATH"] = stubBin + string(os.PathListSeparator) + os.Getenv("PATH")
 	}
-	if k, _, ok := strings.Cut(kv, "="); ok {
-		if _, override := extraEnv[k]; override {
-			return false
-		}
-	}
-	return true
+	return testenv.Base(merged)
 }
 
 // Run runs the Go binary in dir, capturing exit code, streams, and the
