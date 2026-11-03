@@ -364,6 +364,72 @@
       ],
       "additionalProperties": true
     },
+    "showData": {
+      "description": "show --json data: item is the raw finding record in store key order; fix is the read-only machine repair directive built from that record plus the bundle's patch/verification history. Neither key adds execution, flags, or store writes.",
+      "type": "object",
+      "properties": {
+        "item": {},
+        "fix": { "$ref": "#/$defs/showFix" }
+      },
+      "required": ["item", "fix"],
+      "additionalProperties": true
+    },
+    "showFix": {
+      "description": "The per-finding repair directive: identity, status, files, locator, embedded suggestion, and the last recorded rerun hint. Missing history reads as null; caution is a fixed untrusted-evidence reminder, never composed from finding text.",
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "status": {
+          "description": "The record's stored status string, read verbatim (absent reads empty, never invented).",
+          "type": "string"
+        },
+        "severity": {
+          "enum": ["critical", "important", "informational", null]
+        },
+        "files": {
+          "description": "Deduped anchor paths read from the record (path plus any files/related_files lists); [] when the record names none.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "locator": {
+          "description": "path[:line] for inline findings, the heading for section findings, else empty.",
+          "type": "string"
+        },
+        "suggestion": {
+          "description": "The record's embedded suggestion body, or null when absent.",
+          "type": ["string", "null"]
+        },
+        "verify_hint": {
+          "description": "The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verifyHint" }]
+        },
+        "caution": {
+          "description": "Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sig",
+        "status",
+        "severity",
+        "files",
+        "locator",
+        "suggestion",
+        "verify_hint",
+        "caution"
+      ],
+      "additionalProperties": true
+    },
+    "verifyHint": {
+      "description": "A recorded rerun command and its nullable head bracket.",
+      "type": "object",
+      "properties": {
+        "verifyCmd": { "type": "string" },
+        "resultHead": { "type": ["string", "null"] }
+      },
+      "required": ["verifyCmd", "resultHead"],
+      "additionalProperties": true
+    },
     "fetchEstimate": {
       "description": "fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did.",
       "type": "object",

@@ -34,6 +34,7 @@ func RunShow(_ context.Context, req *core.ShowRequest) (*core.ShowResponse, *cor
 	}
 	if rec := findRecord(entries, full); rec != nil {
 		resp.Item = &core.FindingItem{Raw: rec}
+		resp.Fix = buildFix(rec, dir)
 	}
 	return resp, nil
 }

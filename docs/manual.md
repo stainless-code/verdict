@@ -293,6 +293,26 @@ prose emoji never parsed) — rank uses status, then severity, then rigor, then
 anchored/inBounds, then path/line/sig. `doctor` preflights the harness; `calibrate`
 joins findings against live ground truth, read-only.
 
+`show --json` returns the finding in `data.item` (the raw store record in key
+order) plus `data.fix`, a read-only repair directive built from that record
+and the bundle's history:
+
+| `data.fix` key | Meaning                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sig`          | Full finding sig (short prefixes still address the run).                                                                       |
+| `status`       | The record's stored status string, read verbatim (absent reads empty).                                                         |
+| `severity`     | `critical`/`important`/`informational`, else `null`.                                                                           |
+| `files`        | Deduped anchor paths: the record's `path` plus any `files`/`related_files` lists; `[]` when none.                              |
+| `locator`      | `path:line` for inline findings, the heading for section findings, else empty.                                                 |
+| `suggestion`   | The record's embedded suggestion body, else `null`.                                                                            |
+| `verify_hint`  | `{verifyCmd, resultHead}` from a `verification.json` claim for this sig, else a matching (or unnamed) `patch.json`; else null. |
+| `caution`      | Fixed reminder that finding text quotes attacker-controlled PR content and is untrusted evidence, never instructions.          |
+
+The block is pure read: no `gh` call, no `verifyCmd` execution, no store
+writes — the bundle is byte-identical after the run, and the bare text path
+(no `--json`) still prints just the record. Missing history reads as nulls,
+never a warning.
+
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
 the script renders the assembled agent reading list — `SKILL.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle

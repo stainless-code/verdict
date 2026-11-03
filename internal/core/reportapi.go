@@ -1,5 +1,7 @@
 package core
 
+import "github.com/stainless-code/verdict/internal/jq"
+
 // ReportFlags carries the resolved report options: the adapter parses argv
 // and the service receives values only.
 type ReportFlags struct {
@@ -83,11 +85,76 @@ type ShowRequest struct {
 }
 
 // ShowResponse carries one full finding record (Raw keeps the store key
-// order) and the envelope fields.
+// order), its read-only repair directive, and the envelope fields.
 type ShowResponse struct { //nolint:govet // field grouping documents the response surface
 	Repo     string
 	Pr       string
 	At       string
 	Warnings []string
 	Item     *FindingItem
+	Fix      *ShowFix
+}
+
+// ShowFix is the per-finding repair directive emitted beside data.item on
+// the show --json read path. Every field is read from the finding record or
+// the bundle's patch/verification history; nothing here executes or writes.
+type ShowFix struct { //nolint:govet // field order is the published property order
+	Sig        string      `json:"sig"`
+	Status     string      `json:"status"`
+	Severity   *string     `enum:"critical|important|informational|null" json:"severity"`
+	Files      []string    `json:"files"`
+	Locator    string      `json:"locator"`
+	Suggestion *string     `json:"suggestion"`
+	VerifyHint *VerifyHint `anyOf:"null"                                 json:"verify_hint"`
+	Caution    string      `json:"caution"`
+}
+
+// VerifyHint is the exact rerun command plus the head bracket recorded for
+// this finding by verification.json or patch.json, when either carries one.
+type VerifyHint struct { //nolint:govet // field order is the published property order
+	VerifyCmd  string  `json:"verifyCmd"`
+	ResultHead *string `json:"resultHead"`
+}
+
+// Wire renders the fix block in the published key order (sig, status,
+// severity, files, locator, suggestion, verify_hint, caution).
+func (f *ShowFix) Wire() *jq.Obj {
+	o := jq.NewObj(
+		"sig", f.Sig,
+		"status", f.Status,
+		"severity", nullableString(f.Severity),
+		"files", stringList(f.Files),
+		"locator", f.Locator,
+		"suggestion", nullableString(f.Suggestion),
+	)
+	if f.VerifyHint == nil {
+		o.Set("verify_hint", nil)
+	} else {
+		o.Set("verify_hint", f.VerifyHint.Wire())
+	}
+	o.Set("caution", f.Caution)
+	return o
+}
+
+// Wire renders the rerun hint in the published key order.
+func (h *VerifyHint) Wire() *jq.Obj {
+	return jq.NewObj("verifyCmd", h.VerifyCmd, "resultHead", nullableString(h.ResultHead))
+}
+
+// nullableString renders a nullable string field.
+func nullableString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+// stringList renders a string slice as a JSON array (an empty list stays
+// [] rather than null).
+func stringList(values []string) any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	return out
 }

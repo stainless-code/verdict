@@ -135,6 +135,19 @@ type Post = core.Post
 // Record is core's completed-record artifact.
 type Record = core.Record
 
+// ShowFix is core's per-finding repair directive on the show read path.
+type ShowFix = core.ShowFix
+
+// VerifyHint is core's patch/verification rerun hint inside a fix block.
+type VerifyHint = core.VerifyHint
+
+// ShowData is the show verb's --json data profile: the raw finding record
+// plus the read-only fix block.
+type ShowData struct {
+	Item any     `json:"item"`
+	Fix  ShowFix `json:"fix"`
+}
+
 // FetchEstimate is the fetch verb's optional data.estimate object: the
 // projected per-run cost plus, when a local harness measurement priced a
 // comparable run, the measured basis it was built from.

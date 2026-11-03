@@ -189,6 +189,9 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
+		{typ: reflect.TypeFor[ShowData](), name: "showData"},
+		{typ: reflect.TypeFor[ShowFix](), name: "showFix"},
+		{typ: reflect.TypeFor[VerifyHint](), name: "verifyHint"},
 		{typ: reflect.TypeFor[FetchEstimate](), name: "fetchEstimate"},
 	}
 }

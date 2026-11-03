@@ -16,9 +16,11 @@ import (
 // reformat of schemas/*.schema.json must not change it.
 var publishedSemantics = map[string]string{
 	"cost.schema.json": "30031615315e1a60fac58a9b978b2e2ec30142001c92a78dbd25e7e34c46d217",
-	// 08: additive fetchEstimate $defs entry (measured-usage basis fields);
-	// no existing property, required key, or type changed.
-	"envelope.schema.json": "3cf90e95e28fbb24006823109ace0ecd387261be1083f6f8365e85d1b23fc8c8",
+	// 08: additive fetchEstimate $defs entry (measured-usage basis fields).
+	// BL04: additive showData/showFix/verifyHint $defs entries (show --json
+	// data.fix). Neither change touched an existing property, required key,
+	// or type.
+	"envelope.schema.json": "25f0255f901143af705b7d6d8179b8154f0e76dd0ba63f8fd1da3e36d0bc4b6b",
 	"findings.schema.json": "2ee11aaeb826ef09afcca6a675e7c5780ef05576c654e6f833545441921c2a26",
 	"post.schema.json":     "f706cc28f621eb668c8d621b03013f65f706a352d0ddc4da8b64068f98a3f100",
 	"record.schema.json":   "6e14c660471d31aa6a88e0cff787860a6ecdd0302cdc527eb511dde8542767fc",

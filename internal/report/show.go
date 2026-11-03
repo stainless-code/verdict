@@ -33,9 +33,13 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 		rec = resp.Item.Raw
 	}
 	if r.JSONMode {
+		data := jq.NewObj("item", rec)
+		if resp.Fix != nil {
+			data.Set("fix", resp.Fix.Wire())
+		}
 		env := core.RenderEnvelope("show", req.Repo, req.Pr, resp.At,
 			"address via address-reviews mode, then post", resp.Warnings,
-			jq.NewObj("item", rec), nil)
+			data, nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 		return cli.ExitOK
 	}

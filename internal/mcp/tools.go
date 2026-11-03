@@ -226,7 +226,11 @@ func invokeShow(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
 	if resp.Item != nil {
 		item = resp.Item.Raw
 	}
-	return jq.NewObj("item", item), nil
+	data := jq.NewObj("item", item)
+	if resp.Fix != nil {
+		data.Set("fix", resp.Fix.Wire())
+	}
+	return data, nil
 }
 
 // invokeCheckTree maps the not-a-repo machine refusal to a tool refusal.
