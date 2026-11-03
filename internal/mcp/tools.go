@@ -98,8 +98,6 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 // refuses the two together, and the filter order here makes that impossible
 // to violate from the library either. upgrade/skill are distribution
 // surfaces, never review tools.
-//
-//nolint:revive // the registry literal and surface filter read as one table
 func allTools(readOnly, operator bool) []*tool {
 	tools := []*tool{
 		dataTool(&toolSpec{
@@ -263,15 +261,22 @@ func allTools(readOnly, operator bool) []*tool {
 	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
-		if readOnly && !t.readOnly {
-			continue
-		}
-		if t.operatorOnly && (readOnly || !operator) {
+		if !exposed(t, readOnly, operator) {
 			continue
 		}
 		kept = append(kept, t)
 	}
 	return kept
+}
+
+// exposed reports whether one tool is on the surface the two flags select.
+// The CLI refuses --read-only with --operator, but the predicate stays total
+// so the library cannot expose an operator tool on a read-only surface either.
+func exposed(t *tool, readOnly, operator bool) bool {
+	if readOnly && !t.readOnly {
+		return false
+	}
+	return !t.operatorOnly || (!readOnly && operator)
 }
 
 // operatorTool marks one tool as part of the opt-in operator surface.

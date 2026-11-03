@@ -543,6 +543,11 @@ a review and calls GitHub, so it is not exposed under `--read-only`.
 `trend`, `ready`, `doctor`, `check-tree`) and is mutually exclusive with
 `--operator`. Every review verb except the human-owned `triage` is exposed by
 default because the host already authorizes the binary and its credentials.
+A call to a tool the flags hide is a JSON-RPC `-32602` error whose message and
+`data` name the tool and the flag combination that exposes it (`record` under
+`--read-only`, `triage` without `--operator`), so a hidden verb is never
+reported as an unknown one; a truly unknown name still answers
+`unknown tool`.
 `--operator` adds `triage` (18 tools) for an operator's own assistant that is
 allowed to flip statuses; it is never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
@@ -555,9 +560,14 @@ refusals carry a `hint`; never `triage` without `--operator`), so an MCP-only
 agent sees it before its first call. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
-`{code, message, hint}` in both places. A malformed call is a JSON-RPC
-`-32602` error, not a refusal. Human progress and warnings go to stderr (or MCP
-notifications), never stdout: stdout is the protocol channel.
+`{code, message, hint}` in both places. The text block is budgeted at 256 KiB:
+a larger result keeps `structuredContent` whole and replaces the text with a
+JSON summary carrying `truncated: true`, the measured `bytes` and `limit`, the
+on-disk `artifact` (the bundle directory when the verb reports one) and a
+`next` step, so one oversized `report` cannot silently consume the agent's
+context. A malformed call is a JSON-RPC `-32602` error, not a refusal. Human
+progress and warnings go to stderr (or MCP notifications), never stdout:
+stdout is the protocol channel.
 
 #### Host config
 

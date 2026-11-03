@@ -179,3 +179,85 @@ func TestInvalidParamsContract(t *testing.T) {
 		})
 	}
 }
+
+// TestHiddenToolErrorContract pins the protocol error a call to a known tool
+// hidden by the server flags returns: -32602 like an unknown name, but the
+// message and data name the tool and the flag combination that exposes it,
+// so an agent can tell a forbidden verb from a typo.
+func TestHiddenToolErrorContract(t *testing.T) {
+	t.Parallel()
+	cases := []hiddenCase{
+		{
+			call:     "triage",
+			requires: "a server started with --operator",
+		},
+		{
+			readOnly: true,
+			call:     "record",
+			requires: "a server started without --read-only",
+		},
+		{
+			readOnly: true,
+			call:     "triage",
+			requires: "a server started with --operator and without --read-only",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.call, func(t *testing.T) {
+			t.Parallel()
+			cfg := testConfig()
+			cfg.ReadOnly = tc.readOnly
+			cfg.Operator = tc.operator
+			frames := serve(t, &cfg,
+				`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+tc.call+`","arguments":{}}}`)
+			assertHiddenToolError(t, frames["1"], tc.call, tc.requires)
+		})
+	}
+}
+
+// TestUnknownToolErrorUnchanged proves a name the registry never mentions
+// keeps the old -32602 answer with no error data.
+func TestUnknownToolErrorUnchanged(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nope","arguments":{}}}`)
+	got := frames["1"]
+	if got.Error == nil || got.Error.Code != codeInvalidParams || got.Error.Message != "unknown tool: nope" {
+		t.Fatalf("unknown tool = %+v, want the unchanged -32602", got.Error)
+	}
+	if got.Error.Data != nil {
+		t.Errorf("unknown tool data = %v, want none", got.Error.Data)
+	}
+}
+
+// hiddenCase is one hidden-tool error case: the surface flags, the call, and
+// the requirement the message and data must name.
+type hiddenCase struct { //nolint:govet // three small cases read clearer than a packed struct
+	readOnly bool
+	operator bool
+	call     string
+	requires string
+}
+
+// assertHiddenToolError pins one hidden-tool error frame.
+func assertHiddenToolError(t *testing.T, got frame, call, requires string) {
+	t.Helper()
+	if got.Error == nil {
+		t.Fatalf("hidden %s call = %+v, want a protocol error", call, got)
+	}
+	if got.Error.Code != codeInvalidParams {
+		t.Errorf("code = %d, want %d", got.Error.Code, codeInvalidParams)
+	}
+	want := `tool "` + call + `" is hidden: it requires ` + requires
+	if got.Error.Message != want {
+		t.Errorf("message = %q, want %q", got.Error.Message, want)
+	}
+	data, ok := got.Error.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("error data = %T, want an object", got.Error.Data)
+	}
+	if data["tool"] != call || data["hidden"] != true || data["requires"] != requires {
+		t.Errorf("error data = %v", data)
+	}
+}

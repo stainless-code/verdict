@@ -13,8 +13,10 @@
 #       block is the same data as structuredContent and matches the CLI
 #       envelope's data shape.
 #   M5  a typed refusal is isError with the code/message/hint intact; an
-#       unknown tool and missing required args are -32602, not refusals.
-#   M6  --read-only filters the list and rejects a writing tool.
+#       unknown tool and missing required args are -32602, not refusals; a
+#       known-but-hidden tool is -32602 naming the flag that exposes it.
+#   M6  --read-only filters the list and refuses a writing tool as hidden by
+#       --read-only, never as an unknown tool.
 #   M7  stdout is protocol frames only and stdin close exits 0.
 #   M8  the post tool dry-runs behind a smart gh stub: the envelope data comes
 #       back with no reviews POST and a bad approve is a typed refusal.
@@ -141,6 +143,7 @@ cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":"9999"}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"nope","arguments":{}}}
 {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app"}}}
+{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"deadbeef","status":"wont-fix","rationale":"eval hidden surface rationale"}}}
 EOF
 run_mcp_input "$FRAMES"
 if [ "$EVAL_STATUS" -eq 0 ]; then good "success/refusal session exits 0"; else bad "exit $EVAL_STATUS (want 0)"; fi
@@ -155,15 +158,20 @@ if jq -e 'select(.id == 3).result | .structuredContent.hint as $hint | (.isError
 else
   bad "typed refusal shape drifted"
 fi
-if jq -e 'select(.id == 4).error.code == -32602' <"$MCP_OUT" >/dev/null; then
-  good "unknown tool is -32602"
+if jq -e 'select(.id == 4).error | (.code == -32602) and (.message == "unknown tool: nope") and (.data == null)' <"$MCP_OUT" >/dev/null; then
+  good "unknown tool is -32602 and keeps the unknown-tool message"
 else
-  bad "unknown tool did not return -32602"
+  bad "unknown tool did not return the unchanged -32602"
 fi
 if jq -e 'select(.id == 5).error.code == -32602' <"$MCP_OUT" >/dev/null; then
   good "missing required argument is -32602"
 else
   bad "missing required argument did not return -32602"
+fi
+if jq -e 'select(.id == 6).error | (.code == -32602) and (.message | contains("is hidden") and contains("--operator")) and (.data.tool == "triage") and (.data.hidden == true) and (.data.requires | contains("--operator"))' <"$MCP_OUT" >/dev/null; then
+  good "hidden triage is -32602 naming --operator, not an unknown tool"
+else
+  bad "hidden triage did not name --operator"
 fi
 
 # --- M6: read-only policy ---
@@ -185,10 +193,10 @@ if jq -e 'select(.id == 3).result.isError == false' <"$MCP_OUT" >/dev/null; then
 else
   bad "--read-only blocked report"
 fi
-if jq -e 'select(.id == 4).error.code == -32602' <"$MCP_OUT" >/dev/null; then
-  good "--read-only rejects record as unknown tool"
+if jq -e 'select(.id == 4).error | (.code == -32602) and (.message | contains("is hidden") and contains("--read-only")) and (.data.tool == "record")' <"$MCP_OUT" >/dev/null; then
+  good "--read-only refuses record as hidden by --read-only"
 else
-  bad "--read-only did not reject record"
+  bad "--read-only did not refuse record as a hidden tool"
 fi
 
 # --- M9: operator surface ---

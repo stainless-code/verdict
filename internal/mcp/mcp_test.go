@@ -336,9 +336,9 @@ func TestPostTool(t *testing.T) {
 }
 
 // TestReadOnlyPolicy proves --read-only filters the tool list and makes a
-// write tool an invalid-params error.
+// write tool a hidden-tool error naming --read-only.
 //
-//nolint:revive // the policy matrix reads as one assertion block
+//nolint:revive,cyclop // the policy matrix reads as one assertion block
 func TestReadOnlyPolicy(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig()
@@ -371,6 +371,9 @@ func TestReadOnlyPolicy(t *testing.T) {
 	}
 	if frames["2"].Error == nil || frames["2"].Error.Code != codeInvalidParams {
 		t.Fatalf("record in read-only = %+v, want -32602", frames["2"].Error)
+	}
+	if msg := frames["2"].Error.Message; !strings.Contains(msg, "is hidden") || !strings.Contains(msg, "--read-only") {
+		t.Errorf("record in read-only = %q, want a hidden-tool error naming --read-only", msg)
 	}
 }
 
@@ -539,8 +542,9 @@ func findTool(t *testing.T, name string) *tool {
 
 // TestOperatorSurface proves the human-owned triage verb stays off the
 // default and read-only surfaces and appears only with --operator. A call
-// without the flag is an unknown tool; with it, the call reaches the
-// service (a typed refusal here is still a tool result, not -32602).
+// without the flag is a hidden-tool error naming --operator; with it, the
+// call reaches the service (a typed refusal here is still a tool result, not
+// -32602).
 //
 //nolint:revive // the surface matrix reads as one assertion block
 func TestOperatorSurface(t *testing.T) {
@@ -562,6 +566,9 @@ func TestOperatorSurface(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1","sig":"deadbeef","status":"wont-fix","rationale":"operator-only test rationale here","dryRun":true}}}`)
 	if frames["1"].Error == nil || frames["1"].Error.Code != codeInvalidParams {
 		t.Fatalf("triage call without --operator = %+v, want -32602", frames["1"].Error)
+	}
+	if msg := frames["1"].Error.Message; !strings.Contains(msg, "is hidden") || !strings.Contains(msg, "--operator") {
+		t.Errorf("triage call without --operator = %q, want a hidden-tool error naming --operator", msg)
 	}
 	cfg.Operator = true
 	frames = serve(t, &cfg,

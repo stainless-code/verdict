@@ -26,9 +26,12 @@ import (
 // negotiates, the transport's frame cap, and the JSON-RPC error codes the
 // subset uses.
 const (
-	jsonRPCVersion      = "2.0"
-	latestProtocol      = "2025-06-18"
-	maxFrameBytes       = 16 << 20
+	jsonRPCVersion = "2.0"
+	latestProtocol = "2025-06-18"
+	maxFrameBytes  = 16 << 20
+	// maxResultTextBytes caps the text block of one tool result. The data stays
+	// whole in structuredContent; only the text an agent reads is budgeted.
+	maxResultTextBytes  = 256 << 10
 	methodInitialize    = "initialize"
 	methodInitialized   = "notifications/initialized"
 	methodPing          = "ping"
@@ -73,6 +76,9 @@ type Server struct { //nolint:govet // the grouping separates config, tools, and
 	cfg    Config
 	tools  []*tool
 	byName map[string]*tool
+	// hidden names the registered tools this surface filters out, so a call
+	// can say why the tool is absent instead of answering "unknown tool".
+	hidden map[string]hiddenTool
 
 	out      io.Writer
 	writeMu  sync.Mutex
@@ -107,7 +113,50 @@ func New(cfg *Config) *Server {
 	for _, t := range tools {
 		byName[t.name] = t
 	}
-	return &Server{cfg: *cfg, tools: tools, byName: byName, calls: map[string]context.CancelFunc{}}
+	return &Server{
+		cfg:    *cfg,
+		tools:  tools,
+		byName: byName,
+		hidden: hiddenTools(cfg.ReadOnly, cfg.Operator),
+		calls:  map[string]context.CancelFunc{},
+	}
+}
+
+// hiddenTool is one registered tool that this surface does not expose, plus
+// the flag combination that would expose it.
+//
+// A call to a hidden tool is a protocol error, not a refusal: the tool exists,
+// so the answer names the tool and the server shape it needs instead of
+// pretending the name is unknown.
+type hiddenTool struct {
+	requires string
+}
+
+// hiddenTools returns the registry entries the surface filter removed. (The
+// full surface is the only one that exposes every tool, so it is the
+// difference set.)
+func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
+	out := map[string]hiddenTool{}
+	for _, t := range allTools(false, true) {
+		if exposed(t, readOnly, operator) {
+			continue
+		}
+		out[t.name] = hiddenTool{requires: toolRequires(t, readOnly)}
+	}
+	return out
+}
+
+// toolRequires names the server shape a hidden tool needs, in the words the
+// error message and its machine-readable data both use.
+func toolRequires(t *tool, readOnly bool) string {
+	switch {
+	case t.operatorOnly && readOnly:
+		return "a server started with --operator and without --read-only"
+	case t.operatorOnly:
+		return "a server started with --operator"
+	default:
+		return "a server started without --read-only"
+	}
 }
 
 // applyCommanderOverrides replaces a tool's production runner with a test
@@ -262,7 +311,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 	}
 	t, ok := s.byName[params.Name]
 	if !ok {
-		s.writeError(req.ID, codeInvalidParams, "unknown tool: "+params.Name)
+		s.writeHiddenToolError(req.ID, params.Name)
 		return
 	}
 	request, ok := s.decodeCall(t, req.ID, params.Arguments)
@@ -310,7 +359,23 @@ func (s *Server) call(ctx context.Context, t *tool, request any) any {
 	if ref != nil {
 		return refusalResult(ref)
 	}
-	return successResult(data)
+	return successResult(t.name, data)
+}
+
+// writeHiddenToolError answers a call to a tool this surface filters out. The
+// MCP spec models an unavailable tool name as a protocol error with -32602
+// (the code it shows for an unknown tool), so the distinction rides in the
+// message and in the error's data, and a truly unknown name keeps the old
+// "unknown tool" answer unchanged.
+func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
+	hidden, known := s.hidden[name]
+	if !known {
+		s.writeError(id, codeInvalidParams, "unknown tool: "+name)
+		return
+	}
+	s.writeErrorData(id, codeInvalidParams,
+		"tool \""+name+"\" is hidden: it requires "+hidden.requires,
+		hiddenToolContent{Tool: name, Hidden: true, Requires: hidden.requires})
 }
 
 // bindings snapshots the session runtime a tool's wire function injects.
@@ -424,14 +489,48 @@ func parseCallParams(raw json.RawMessage) (callParams, error) {
 }
 
 // successResult builds the MCP tool result: the CLI envelope's data as one
-// compact text block plus structuredContent.
-func successResult(data *jq.Obj) callToolResult {
+// compact text block plus structuredContent. An oversized result keeps its
+// structuredContent whole but swaps the text for an explicit truncation
+// summary, so one huge report cannot silently eat the agent's context.
+func successResult(tool string, data *jq.Obj) callToolResult {
 	raw := rawMarshal(data)
+	if len(raw) <= maxResultTextBytes {
+		return callToolResult{
+			Content:           []contentBlock{{Type: contentTypeText, Text: string(raw)}},
+			StructuredContent: raw,
+			IsError:           false,
+		}
+	}
 	return callToolResult{
-		Content:           []contentBlock{{Type: contentTypeText, Text: string(raw)}},
+		Content:           []contentBlock{{Type: contentTypeText, Text: truncationSummary(tool, data, len(raw))}},
 		StructuredContent: raw,
 		IsError:           false,
 	}
+}
+
+// truncationSummary is the small text block an oversized result carries: the
+// marker, the measured size, the on-disk artifact when the verb reports one,
+// and what to call next. It is JSON so a host can branch on `truncated`
+// without parsing prose.
+func truncationSummary(tool string, data *jq.Obj, size int) string {
+	pairs := []any{
+		"truncated", true,
+		"tool", tool,
+		"bytes", size,
+		"limit", maxResultTextBytes,
+	}
+	artifact, _ := data.Get("dir")
+	path, ok := artifact.(string)
+	if ok && path != "" {
+		pairs = append(pairs, "artifact", path, "next",
+			"structuredContent carries the full result; read it from the bundle at "+path+
+				" on disk, or narrow the call (for example report --check/--status or "+
+				"show --sig) for a smaller text block")
+	} else {
+		pairs = append(pairs, "next", "structuredContent carries the full result; "+
+			"narrow the call to get a smaller text block")
+	}
+	return jq.NewObj(pairs...).MarshalCompact()
 }
 
 // refusalResult builds a typed refusal result: isError true, text
@@ -466,10 +565,20 @@ type rpcResponse struct { //nolint:govet // field order mirrors the wire frame
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
-// rpcError is the JSON-RPC error object.
+// rpcError is the JSON-RPC error object. Data is the spec's escape hatch for
+// machine-readable detail; absent data leaves the frame byte-identical to the
+// subset this server has always written.
 type rpcError struct { //nolint:govet // field order mirrors the wire frame
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+}
+
+// hiddenToolContent is the data of a hidden-tool protocol error.
+type hiddenToolContent struct { //nolint:govet // field order mirrors the wire frame
+	Tool     string `json:"tool"`
+	Hidden   bool   `json:"hidden"`
+	Requires string `json:"requires"`
 }
 
 // callParams is the tools/call params subset.
@@ -556,6 +665,11 @@ func (s *Server) writeResult(id json.RawMessage, result any) {
 // writeError emits a JSON-RPC error frame.
 func (s *Server) writeError(id json.RawMessage, code int, message string) {
 	s.writeFrame(rpcResponse{JSONRPC: jsonRPCVersion, ID: id, Error: &rpcError{Code: code, Message: message}})
+}
+
+// writeErrorData emits a JSON-RPC error frame with structured detail.
+func (s *Server) writeErrorData(id json.RawMessage, code int, message string, data any) {
+	s.writeFrame(rpcResponse{JSONRPC: jsonRPCVersion, ID: id, Error: &rpcError{Code: code, Message: message, Data: data}})
 }
 
 // writeFrame serializes one frame under the write lock. A failed write is
