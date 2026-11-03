@@ -232,7 +232,7 @@ func gateBattery(t *testing.T) []batteryRow {
 		out = append(out, batteryRow{id: fmt.Sprintf("V%03d", i), cmd: p.cmd, strict: true, expect: p.want})
 	}
 	for _, r := range readCorpus(t) {
-		out = append(out, batteryRow{id: r.id, cmd: r.cmd, strict: r.mode == "strict", expect: r.expect})
+		out = append(out, batteryRow{id: r.id, cmd: r.cmd, strict: r.mode == "strict", xfail: r.mode == "xfail", expect: r.expect})
 	}
 	for _, e := range gateOnlyExtras() {
 		out = append(out, batteryRow{id: e[0], cmd: e[1]})
@@ -244,12 +244,14 @@ func gateBattery(t *testing.T) []batteryRow {
 }
 
 // batteryRow is one gate probe with its corpus expectation (empty expect
-// means change-detected only).
+// means change-detected only). An xfail row is a known gap: executing is
+// the recorded expectation, so a refusal is an XPASS that must be promoted.
 type batteryRow struct {
 	id     string
 	cmd    string
 	expect string
 	strict bool
+	xfail  bool
 }
 
 // updateGateGolden regenerates the gate golden file instead of comparing.
@@ -279,10 +281,18 @@ func gateVerdict(ref *cli.RefusalError) string {
 	return "CLEAN"
 }
 
-// checkStrictRow asserts a strict row's corpus expectation.
+// checkStrictRow asserts a corpus row's mode: a strict row must match its
+// expectation, while an xfail row that starts refusing is an XPASS the
+// suite must fail with a promote-to-strict message (the corpus header's
+// contract, not a generic golden diff).
 func checkStrictRow(t *testing.T, b batteryRow, ref *cli.RefusalError) {
 	t.Helper()
 	switch {
+	case b.xfail:
+		if ref != nil {
+			t.Errorf("%s %q: gate now refuses %q — XPASS: promote to strict (mode xfail -> strict, expect %q)",
+				b.id, b.cmd, ref.Code, b.expect)
+		}
 	case !b.strict:
 		return
 	case b.expect == "PASS":
