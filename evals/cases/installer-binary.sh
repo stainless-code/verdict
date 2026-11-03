@@ -39,7 +39,7 @@ cat > "$FAKEBIN/uname" <<'EOF'
 case "$1" in
   -s) printf '%s\n' "${FAKE_UNAME_S:-$(command -p uname -s)}" ;;
   -m) printf '%s\n' "${FAKE_UNAME_M:-$(command -p uname -m)}" ;;
-  *) exec command -p uname "$@" ;;
+  *) real=$(PATH="$(getconf PATH)"; command -v uname); exec "$real" "$@" ;;
 esac
 EOF
 cat > "$FAKEBIN/sysctl" <<'EOF'
@@ -61,7 +61,8 @@ printf '%s\n' "$*" >> "${FAKE_CURL_LOG:-/dev/null}"
 for a in "$@"; do
   if [ "$a" = '%{url_effective}' ]; then printf '%s\n' "${FAKE_EFFECTIVE_URL:-}"; exit 0; fi
 done
-exec command -p curl "$@"
+real=$(PATH="$(getconf PATH)"; command -v curl)
+exec "$real" "$@"
 EOF
 chmod +x "$FAKEBIN/uname" "$FAKEBIN/sysctl" "$FAKEBIN/cosign" "$FAKEBIN/curl"
 
