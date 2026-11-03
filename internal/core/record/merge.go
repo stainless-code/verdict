@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
 )
 
@@ -205,7 +206,8 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	if st.preFooter != nil {
 		body = st.preFooter(body)
 	}
-	if ref := validateOverridesAt(st.controls.OverridesDir()); ref != nil {
+	if ref := readcommon.ValidateOverridesAt(st.controls.OverridesDir()); ref != nil {
+		//nolint:wrapcheck // the typed bad-override refusal passes through unchanged; the edge renders Code/Message
 		return "", dr.Status, ref
 	}
 	body = st.applyFooter(body)

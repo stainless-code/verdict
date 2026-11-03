@@ -35,6 +35,11 @@ type Set struct {
 // directory). The default paths keep their logical labels in messages.
 func At(dir string) Set { return Set{Dir: dir} }
 
+// Path maps one fragment file name ("preamble.md") to this set's read path,
+// so a validator can check a snapshot's fragment without rebuilding the path
+// by hand.
+func (s Set) Path(name string) string { return s.path(name) }
+
 // path maps one fragment name to its read path.
 func (s Set) path(name string) string {
 	if s.Dir == "" {
@@ -270,9 +275,6 @@ func removeSpaces(s string) string {
 // must fit on one line. The shell's command substitution strips trailing
 // newlines before the line count, so interior newlines refuse but a single
 // trailing newline reads as the one line.
-func AttributionText() (string, error) { return At("").AttributionText() }
-
-// AttributionText reads the attribution fragment from this set.
 func (s Set) AttributionText() (string, error) {
 	raw, err := os.ReadFile(s.path("attribution.md"))
 	if err != nil {
