@@ -253,7 +253,7 @@ func collectPackageName(t *testing.T, path string, entry os.DirEntry, err error,
 		return err
 	}
 	if entry.IsDir() {
-		if changesetSkipDirs[entry.Name()] {
+		if skipManifestDir(entry.Name()) {
 			return filepath.SkipDir
 		}
 		return nil
@@ -261,12 +261,20 @@ func collectPackageName(t *testing.T, path string, entry os.DirEntry, err error,
 	if entry.Name() != "package.json" {
 		return nil
 	}
-	name, ok := packageName(path)
-	if !ok {
-		t.Fatalf("%s: package.json declares no name", path)
+	// A nameless manifest (a private workspace root, say) declares nothing a
+	// changeset could name, so it adds no package rather than failing.
+	if name, ok := packageName(path); ok {
+		names[name] = true
 	}
-	names[name] = true
 	return nil
+}
+
+// skipManifestDir reports a directory that cannot hold a shipped package:
+// the named build and dependency trees, and every hidden directory (tool
+// caches and local state, such as a docs builder's dependency cache that
+// writes nameless package.json files).
+func skipManifestDir(name string) bool {
+	return changesetSkipDirs[name] || (strings.HasPrefix(name, ".") && name != ".")
 }
 
 // packageName reads the name field of one package.json.
