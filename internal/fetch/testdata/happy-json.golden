@@ -22,6 +22,14 @@ exit: 0
       "source": null,
       "members": []
     },
+    "capabilities": {
+      "provider": "github",
+      "fetch": true,
+      "post": true,
+      "inline_anchors": true,
+      "thread_resolution": true,
+      "review_verdicts": true
+    },
     "controls": {
       "policy": "base",
       "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",

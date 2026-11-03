@@ -1305,10 +1305,17 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post`, `calibrate`,
-and `adopt`-into refuse non-GitHub bundles: none of these hosts has GitHub's
-single atomic review submit (GitLab needs draft-notes-then-publish, Bitbucket
-and Azure need N thread POSTs, Forgejo's CLIs can't author inline comments),
-so submit stays a per-host follow-up rather than unverified code.
+and `adopt`-into refuse non-GitHub bundles. The refusal is deliberate, not a
+claim that submit is impossible elsewhere: GitLab accepts per-comment
+discussion POSTs plus one summary note and an approve call, and Forgejo can
+author inline comments through its API even though its CLIs cannot. What those
+hosts lack is GitHub's single atomic review submit, so a submit path needs the
+comments → summary body → verdict-last ordering and the partial-post receipt
+that already exists here. Until that per-host replay lands, submit stays a
+follow-up rather than unverified code. `fetch --json` publishes the facts in
+`data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`,
+`thread_resolution`, and `review_verdicts`, so an agent can plan before it
+writes a review.
 
 | Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |

@@ -22,6 +22,14 @@ exit: 0
       "source": null,
       "members": []
     },
+    "capabilities": {
+      "provider": "azure",
+      "fetch": true,
+      "post": false,
+      "inline_anchors": false,
+      "thread_resolution": false,
+      "review_verdicts": false
+    },
     "controls": {
       "policy": "base",
       "sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",

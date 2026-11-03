@@ -31,6 +31,7 @@ func fetchTail(
 	}
 	writeFetchDone(s, dir, stats.filesStr, chunkJSON != nil)
 	data := fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, nil)
+	data.Capabilities = capabilityWire(f.Provider)
 	if f.ShowPrompts {
 		dump, err := renderPromptDump(ctx2)
 		if err != nil {
@@ -60,7 +61,9 @@ func writeFetchTailJSON(
 	if hasDump {
 		dumpPtr = &dump
 	}
-	return fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, dumpPtr), next, nil
+	data := fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, dumpPtr)
+	data.Capabilities = capabilityWire(f.Provider)
+	return data, next, nil
 }
 
 // stageDump renders the prompt dump before progress, so a dump refusal

@@ -230,12 +230,13 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 }
 
 // checkBundle ports the post bundle gates: local bundles never post, only
-// GitHub posts at all, then the store marker and the required files.
+// hosts whose declared capabilities allow posting do, then the store marker
+// and the required files.
 func (st *state) checkBundle() *core.RefusalError {
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
 	}
-	if prov := postProvider(st.dir); prov != providerGitHub {
+	if prov := postProvider(st.dir); !core.CapabilitiesFor(prov).Post {
 		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
 	}
 	if err := recordcore.EnsureStore(st.dir); err != nil {

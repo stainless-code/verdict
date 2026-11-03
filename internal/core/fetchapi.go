@@ -115,6 +115,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 	Omitted         []any
 	DiffBytes       int64
 	Panel           FetchPanel
+	Capabilities    *jq.Obj `json:"-"`
 	Controls        *jq.Obj `json:"-"`
 	Artifacts       *jq.Obj `json:"-"`
 	IncrementalBase *string `json:"-"`
@@ -146,6 +147,9 @@ func (d *FetchData) Wire() *jq.Obj {
 	o.Set("omitted", omitted)
 	o.Set("diff_bytes", d.DiffBytes)
 	o.Set("panel", d.Panel.Wire())
+	if d.Capabilities != nil {
+		o.Set("capabilities", d.Capabilities)
+	}
 	if d.Controls != nil {
 		o.Set("controls", d.Controls)
 	}
