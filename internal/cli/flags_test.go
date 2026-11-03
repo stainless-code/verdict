@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
@@ -62,7 +63,7 @@ func checkSetValue(t *testing.T, name, got string, set bool, want string) {
 // mustStrip strips globals or fails the test.
 func mustStrip(t *testing.T, args []string) ([]string, *cli.GlobalForces) {
 	t.Helper()
-	rest, g, uerr, ref := cli.StripGlobal(args, "record")
+	rest, g, uerr, ref := cli.StripGlobal(args)
 	if uerr != nil || ref != nil {
 		t.Fatalf("unexpected error: %v %v", uerr, ref)
 	}
@@ -71,14 +72,14 @@ func mustStrip(t *testing.T, args []string) ([]string, *cli.GlobalForces) {
 
 // TestStripGlobalBareAttribution checks bare --attribution means product.
 func TestStripGlobalBareAttribution(t *testing.T) {
-	_, g, uerr, ref := cli.StripGlobal([]string{"--attribution", "record"}, "record")
+	_, g, uerr, ref := cli.StripGlobal([]string{"--attribution", "record"})
 	if uerr != nil || ref != nil {
 		t.Fatalf("unexpected error: %v %v", uerr, ref)
 	}
 	if g.PublishAttributionForce != "product" {
 		t.Errorf("attribution = %q", g.PublishAttributionForce)
 	}
-	_, g, uerr, ref = cli.StripGlobal([]string{"--attribution"}, "record")
+	_, g, uerr, ref = cli.StripGlobal([]string{"--attribution"})
 	if uerr != nil || ref != nil {
 		t.Fatalf("unexpected error: %v %v", uerr, ref)
 	}
@@ -87,23 +88,71 @@ func TestStripGlobalBareAttribution(t *testing.T) {
 	}
 }
 
-// TestStripGlobalErrors checks missing values are usage errors and bad
-// values are typed refusals.
-func TestStripGlobalErrors(t *testing.T) {
-	if _, _, uerr, ref := cli.StripGlobal([]string{"--color"}, "record"); uerr == nil || ref != nil {
-		t.Errorf("missing --color value should be a usage error, got %v %v", uerr, ref)
+// TestStripGlobalMissingValue pins the one missing-value text: a global value
+// flag given without its value says so, and never reads as an unknown flag.
+func TestStripGlobalMissingValue(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+		flag string
+	}{
+		{"color", "--color needs a value (want auto|always|never)", "--color"},
+		{"logo-url", "--logo-url needs a value (want <url>)", "--logo-url"},
+		{"attribution-text", "--attribution-text needs a value (want <text>)", "--attribution-text"},
+		{"copyright", "--copyright needs a value (want <text>)", "--copyright"},
 	}
-	if _, _, uerr, ref := cli.StripGlobal([]string{"--color", "bogus"}, "record"); ref == nil || uerr != nil {
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			checkMissingValue(t, tc.flag, tc.want)
+		})
+	}
+}
+
+// checkMissingValue asserts one global flag with no value reports want.
+func checkMissingValue(t *testing.T, flag, want string) {
+	t.Helper()
+	_, _, uerr, ref := cli.StripGlobal([]string{"record", flag})
+	if ref != nil {
+		t.Fatalf("%s: refusal %v; want a usage error", flag, ref)
+	}
+	if uerr == nil {
+		t.Fatalf("%s: no usage error", flag)
+	}
+	if uerr.Message != want {
+		t.Errorf("%s = %q; want %q", flag, uerr.Message, want)
+	}
+	if strings.Contains(uerr.Message, "unknown flag") {
+		t.Errorf("%s: a known flag must not read as unknown: %q", flag, uerr.Message)
+	}
+}
+
+// TestMissingValue checks the shared helper renders both message shapes.
+func TestMissingValue(t *testing.T) {
+	for _, tc := range []struct{ name, flag, want, wantMsg string }{
+		{"bare", "--version", "", "--version needs a value"},
+		{"with hint", "--format", "md or json", "--format needs a value (want md or json)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := cli.MissingValue(tc.flag, tc.want).Message; got != tc.wantMsg {
+				t.Errorf("MissingValue(%q, %q) = %q; want %q", tc.flag, tc.want, got, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// TestStripGlobalErrors checks bad values are typed refusals.
+func TestStripGlobalErrors(t *testing.T) {
+	if _, _, uerr, ref := cli.StripGlobal([]string{"--color", "bogus"}); ref == nil || uerr != nil {
 		t.Errorf("bad --color value should be a refusal, got %v %v", uerr, ref)
 	}
-	if _, _, uerr, ref := cli.StripGlobal([]string{"--attribution=nope"}, "record"); ref == nil || uerr != nil {
+	if _, _, uerr, ref := cli.StripGlobal([]string{"--attribution=nope"}); ref == nil || uerr != nil {
 		t.Errorf("bad --attribution value should be a refusal, got %v %v", uerr, ref)
 	}
 }
 
 // TestStripGlobalDashDash checks flags after -- pass through untouched.
 func TestStripGlobalDashDash(t *testing.T) {
-	rest, g, uerr, ref := cli.StripGlobal([]string{"--", "--compact"}, "record")
+	rest, g, uerr, ref := cli.StripGlobal([]string{"--", "--compact"})
 	if uerr != nil || ref != nil {
 		t.Fatalf("unexpected error: %v %v", uerr, ref)
 	}
@@ -141,7 +190,7 @@ func TestStripGlobalJSONToggle(t *testing.T) {
 
 // TestStripGlobalJSONAfterDashDash checks --json after -- stays positional.
 func TestStripGlobalJSONAfterDashDash(t *testing.T) {
-	rest, g, uerr, ref := cli.StripGlobal([]string{"--", "--json"}, "fetch-local")
+	rest, g, uerr, ref := cli.StripGlobal([]string{"--", "--json"})
 	if uerr != nil || ref != nil {
 		t.Fatalf("unexpected error: %v %v", uerr, ref)
 	}
@@ -175,7 +224,7 @@ func TestApplyGlobalForcesJSONMode(t *testing.T) {
 // checkApplyJSONMode strips args and asserts the resolved toggle.
 func checkApplyJSONMode(t *testing.T, args []string, want bool) {
 	t.Helper()
-	_, g, uerr, ref := cli.StripGlobal(args, "report")
+	_, g, uerr, ref := cli.StripGlobal(args)
 	if uerr != nil || ref != nil {
 		t.Fatalf("unexpected error: %v %v", uerr, ref)
 	}

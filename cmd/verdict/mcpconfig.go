@@ -65,7 +65,7 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 		switch arg := args[i]; {
 		case arg == "--agent":
 			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "--agent needs a value (claude, cursor, or codex)")
+				fmt.Fprintln(stderr, cli.MissingValue("--agent", "claude, cursor, or codex").Message)
 				return f, cli.ExitUsage, true
 			}
 			i++

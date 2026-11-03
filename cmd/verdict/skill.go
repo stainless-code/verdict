@@ -68,7 +68,7 @@ func parseSkillShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 		switch arg := args[i]; {
 		case arg == "--format":
 			if i+1 >= len(args) {
-				return "", r.ReportUsage(&cli.UsageError{Message: "--format needs a value (md or json)"}), true
+				return "", r.ReportUsage(cli.MissingValue("--format", "md or json")), true
 			}
 			i++
 			format = args[i]
@@ -170,7 +170,7 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 		switch arg := args[i]; {
 		case arg == "--dir" || arg == "--agent":
 			if i+1 >= len(args) {
-				return f, r.ReportUsage(&cli.UsageError{Message: arg + " needs a value"}), true
+				return f, r.ReportUsage(cli.MissingValue(arg, "")), true
 			}
 			i++
 			if arg == "--dir" {

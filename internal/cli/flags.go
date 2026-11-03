@@ -83,9 +83,9 @@ func applyJSONMode(r *Runner, g *GlobalForces) {
 // args. Unknown flags pass through for the verb parser. A --json anywhere
 // before `--` is peeked for the prefs phase. Missing option values are plain
 // usage errors (exit 2, no envelope); invalid values are typed refusals.
-func StripGlobal(args []string, cmd string) (rest []string, g *GlobalForces, uerr *UsageError, ref error) {
+func StripGlobal(args []string) (rest []string, g *GlobalForces, uerr *UsageError, ref error) {
 	g = &GlobalForces{}
-	st := &stripState{args: args, cmd: cmd, g: g}
+	st := &stripState{args: args, g: g}
 	for st.i < len(st.args) {
 		r, u, done, f := st.step()
 		if u != nil || f != nil {
@@ -102,7 +102,6 @@ func StripGlobal(args []string, cmd string) (rest []string, g *GlobalForces, uer
 // stripState carries the StripGlobal scan position.
 type stripState struct {
 	g    *GlobalForces
-	cmd  string
 	args []string
 	i    int
 	seen bool
@@ -163,22 +162,22 @@ func matchToggle(a string) (func(*GlobalForces), bool) {
 // usage/refusal error; a zero count means a is not a value flag (boolean
 // toggles and passthrough are handled by the caller).
 func stripOne(st *stripState) (int, []string, *UsageError, error) {
-	args, i, cmd, g := st.args, st.i, st.cmd, st.g
+	args, i, g := st.args, st.i, st.g
 	a := args[i]
 	switch {
 	case a == "--":
 		st.seen = true
 		return 1, []string{a}, nil, nil
 	case a == "--color":
-		return stripColor(args, i, cmd, g)
+		return stripColor(args, i, g)
 	case a == "--attribution":
 		return stripAttribution(args, i, g)
 	case a == "--logo-url":
-		return stripLogoURL(args, i, cmd, g)
+		return stripLogoURL(args, i, g)
 	case a == "--attribution-text":
-		return stripTextValue(st, "--attribution-text <text>", setAttributionText)
+		return stripTextValue(st, "<text>", setAttributionText)
 	case a == "--copyright":
-		return stripTextValue(st, "--copyright <text>", setCopyright)
+		return stripTextValue(st, "<text>", setCopyright)
 	case strings.Contains(a, "="):
 		return stripEq(a, g)
 	default:
@@ -204,10 +203,21 @@ func setCopyright(v string, g *GlobalForces) {
 	g.PublishCopyrightSet = true
 }
 
+// MissingValue is the one missing-value usage error: a flag that was given
+// without its value is a known flag, never an unknown one. want names the
+// accepted values and is appended as `(want ...)`; "" omits it.
+func MissingValue(flag, want string) *UsageError {
+	msg := flag + " needs a value"
+	if want != "" {
+		msg += " (want " + want + ")"
+	}
+	return &UsageError{Message: msg}
+}
+
 // stripColor consumes the --color flag.
-func stripColor(args []string, i int, cmd string, g *GlobalForces) (int, []string, *UsageError, error) {
+func stripColor(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 >= len(args) {
-		return 0, nil, &UsageError{fmt.Sprintf("unknown flag '%s' for %s (want --color <auto|always|never>)", args[i], cmd)}, nil
+		return 0, nil, MissingValue(args[i], "auto|always|never"), nil
 	}
 	if ref := setColor(args[i+1], g); ref != nil {
 		return 0, nil, nil, ref
@@ -238,9 +248,9 @@ func stripAttributionEq(a string, g *GlobalForces) (int, []string, *UsageError, 
 }
 
 // stripLogoURL consumes the --logo-url value flag.
-func stripLogoURL(args []string, i int, cmd string, g *GlobalForces) (int, []string, *UsageError, error) {
+func stripLogoURL(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 >= len(args) {
-		return 0, nil, &UsageError{fmt.Sprintf("unknown flag '%s' for %s (want --logo-url <url>)", args[i], cmd)}, nil
+		return 0, nil, MissingValue(args[i], "<url>"), nil
 	}
 	setLogoURL(args[i+1], g)
 	return 2, nil, nil, nil
@@ -282,10 +292,10 @@ func PeekJSON(args []string) bool {
 
 // stripTextValue consumes a --flag <text> value flag.
 func stripTextValue(st *stripState, want string, set func(string, *GlobalForces)) (int, []string, *UsageError, error) {
-	args, i, cmd := st.args, st.i, st.cmd
+	args, i := st.args, st.i
 	a := args[i]
 	if i+1 >= len(args) {
-		return 0, nil, &UsageError{fmt.Sprintf("unknown flag '%s' for %s (want %s)", a, cmd, want)}, nil
+		return 0, nil, MissingValue(a, want), nil
 	}
 	set(args[i+1], st.g)
 	return 2, nil, nil, nil

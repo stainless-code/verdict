@@ -49,7 +49,7 @@ func parseUpgradeFlags(r *cli.Runner, verb string, args []string, uninstall bool
 			f.dryRun = true
 		case !uninstall && arg == "--version":
 			if i+1 >= len(args) {
-				return f, r.ReportUsage(&cli.UsageError{Message: "--version needs a value"}), true
+				return f, r.ReportUsage(cli.MissingValue("--version", "")), true
 			}
 			i++
 			f.version = args[i]

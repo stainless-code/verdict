@@ -100,7 +100,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if code, done := resolveRunnerPrefs(r, env, readFile); done {
 		return code
 	}
-	rest, forces, code, done := stripRunnerFlags(r, args, cmd)
+	rest, forces, code, done := stripRunnerFlags(r, args)
 	if done {
 		return code
 	}
@@ -321,8 +321,8 @@ func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(stri
 }
 
 // stripRunnerFlags strips global flags, reporting usage/refusal failures.
-func stripRunnerFlags(r *cli.Runner, args []string, cmd string) ([]string, *cli.GlobalForces, int, bool) {
-	rest, forces, uerr, ref := cli.StripGlobal(args, cmd)
+func stripRunnerFlags(r *cli.Runner, args []string) ([]string, *cli.GlobalForces, int, bool) {
+	rest, forces, uerr, ref := cli.StripGlobal(args)
 	if uerr != nil {
 		routeHuman(r)
 		return nil, nil, r.ReportUsage(uerr), true
