@@ -27,6 +27,10 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// fetchRunner is the commander posture for the fetch tools: the fetch output
+// cap plus the missing-tool pre-check.
+var fetchRunner = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+
 // Argument keys and adapter constants shared by the registry.
 const (
 	argRepo            = "repo"
@@ -141,14 +145,14 @@ func allTools(readOnly, operator bool) []*tool {
 				"Writes the bundle and calls GitHub.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch pull request", idempotent: true, openWorld: true},
-		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeFetch, wireFetch, invokeFetch),
+		}, toolDeps{commander: fetchRunner}, decodeFetch, wireFetch, invokeFetch),
 		directTool(&toolSpec{
 			name: "fetch-local",
 			description: "Fetch a local git diff into .review/local-<name>. Call to review " +
 				"uncommitted or branch changes without a PR. Writes the bundle; no network.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch local diff", idempotent: true},
-		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
+		}, toolDeps{commander: fetchRunner}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
 		dataTool(&toolSpec{
 			name: "fix",
 			description: "Run one bounded, verify-gated fix pass over an inline finding. " +
@@ -156,7 +160,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Writes the fix ledger and runs the recorded verify command.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Prepare a fix"},
-		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeFix, wireFix, fixcore.Run,
+		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "init",
@@ -165,7 +169,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"runs a tree check.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Scaffold controls", destructive: true, idempotent: true},
-		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeInit, wireInit, initcore.Run,
+		}, toolDeps{commander: fetchRunner}, decodeInit, wireInit, initcore.Run,
 			func(resp *initcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "learn",
@@ -189,7 +193,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"sends to GitHub.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
-		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodePost, wirePost, postcore.Run,
+		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
 			func(resp *core.PostResponse) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "ready",
