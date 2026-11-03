@@ -38,6 +38,7 @@ var allowedDeps = map[string]bool{
 	"internal/core/triage":    true,
 	"internal/core/verify":    true,
 	"internal/diagram":        true,
+	"internal/envsecret":      true,
 	"internal/hunks":          true,
 	"internal/jq":             true,
 	"internal/kb":             true,
