@@ -1,27 +1,40 @@
 ---
 title: Comparison
-description: "Verdict against CodeRabbit, Greptile, Pullfrog, and human-only review."
+description: "Verdict against CodeRabbit, Greptile, Pullfrog, Macroscope, Bugbot, and human-only review."
 search:
-  tags: ["comparison", "alternatives", "coderabbit", "greptile", "pullfrog"]
+  tags:
+    [
+      "comparison",
+      "alternatives",
+      "coderabbit",
+      "greptile",
+      "pullfrog",
+      "macroscope",
+      "bugbot",
+    ]
 ---
 
 The real competition is anything that reviews a pull request: CodeRabbit, Greptile,
-and Pullfrog, plus a long tail of same-shaped SaaS reviewers (Sourcery, Qodo, cubic:
-subscription plus dashboard, different logos) and the status quo of human-only review.
+Pullfrog, Macroscope, and Cursor's Bugbot, plus a long tail of same-shaped SaaS
+reviewers (Sourcery, Qodo, cubic: subscription plus dashboard, different logos) and
+the status quo of human-only review.
 
-| Reviewer                  | Price and ask                                                                        | Where they win                                                     | What Verdict does differently                                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| CodeRabbit                | Per-dev subscription, GitHub App plus webhooks                                       | Polish, merge gating, enterprise surface                           | Same review depth, zero subscription, zero app install, zero metering. Loses hosted gating by design.                                       |
-| Greptile                  | 30 dollars per dev per month with 50 reviews, 1 dollar per extra, per-author credits | Whole-codebase graph context, careful actionable comments          | Graph-grade context via full-diff plus caller tracing, unlimited re-reviews at no extra cost, any model. Loses the managed graph by design. |
-| Pullfrog                  | SaaS with free personal and OSS tiers plus BYOK billing, GitHub App                  | Configurable automations beyond review (fix CI, conflicts, triage) | Review craft without accounts, keys-out, or meters. Loses automations beyond review by design.                                              |
-| Human-only and gh aliases | Salaries plus waiting                                                                | Judgment, taste, context                                           | Every PR gets a grounded first pass in minutes. Humans spend attention on the hard 10 percent.                                              |
+| Reviewer                  | Price and ask (as of 2026-11)                                                                                                                                                                     | Where they win                                                                                                               | What Verdict does differently                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CodeRabbit                | Essentials `$24/$30`, Team `$48/$60`, Advanced `$72/$90` per dev/mo (annual/monthly), plus `$0.25`/file overage and `$0.40`/agent-min; GitHub App, with CLI/IDE as clients of the hosted service. | Polish, merge gating, enterprise surface, a full clone and code graph, and 59 bundled tools.                                 | Runs fetch, review, and post as one local transaction: no vendor subscription, app install, or metered review; findings carry evidence rungs and checked anchors. Narrower on whole-repo context; no hosted merge gate. |
+| Greptile                  | `$1`/credit, no seats, credits shared org-wide; Starter free (1 dev, 50 credits/mo); Base 1 / Plus 3 / Apex 10 per review, TREX 3 per run.                                                        | Whole-codebase graph context, careful actionable comments, hosted review and analytics.                                      | Full-diff context plus agent-driven caller tracing; no managed index. Re-reviews carry no per-review charge, and any model can review. Loses the managed graph by design.                                               |
+| Pullfrog                  | GitHub Actions only (hosted control plane); no local review. Free for personal accounts and public repos; `$30`/mo or `$300`/yr per org, models separate.                                         | Configurable automations beyond review (fix CI, conflicts, triage), wrapping Claude Code, OpenCode, or Codex on your runner. | Review craft without a third-party review account, with keys staying on your machine. Loses automations beyond review by design.                                                                                        |
+| Macroscope                | Hosted app and CLI; `$0.025–$0.20`/KB by mode (10 KB minimum) plus agent credits; prepaid balance, `$100` welcome usage.                                                                          | Hosted check runs, fix PRs, analytics exports, and a published benchmark method.                                             | Local, file-based controls; no per-KB meter or hosted checks. Reads only files handed to it.                                                                                                                            |
+| Bugbot (Cursor)           | Hosted; usage-based, about `$1.00–$1.50` per review on Cursor Premium and up, no separate Bugbot subscription.                                                                                    | Cursor-native workflow, base-branch review config, automatic learned rules, and a vendor-run resolution-rate study.          | Local, any model, evidence-graded findings; no hosted dashboard, auto-learned rules, or remote code storage.                                                                                                            |
+| Human-only and gh aliases | Salaries plus waiting                                                                                                                                                                             | Judgment, taste, context                                                                                                     | Every PR gets a grounded first pass in minutes. Humans spend attention on the hard 10 percent.                                                                                                                          |
 
 <Callout type="info" title="Prices change">
-  Check the vendors for current numbers. The shape below does not change.
+  Prices above were checked in 2026-11. Check the vendors for current numbers.
+  The shape does not change.
 </Callout>
 
 Every competitor charges
-rent on the review (seats, credits, keys, dashboards) for craft that runs fine without
+rent on the review (seats, credits, org fees, keys, dashboards) for craft that runs fine without
 any of it. Verdict wins the single transaction (fetch, review, post, stop) on setup
 cost, blast radius, model freedom, and verifiability per line of machinery.
 
@@ -34,10 +47,19 @@ them is the alternative a buyer evaluates.
 
 ## Lineage
 
-Verdict's review core descends from Pullfrog's open-source action, credited in
+Verdict's review core descends from Pullfrog's open-source action — the review prompt,
+not its harness wrapping — credited in
 [NOTICE](https://github.com/stainless-code/verdict/blob/main/NOTICE.md). The craft is
 shared on purpose. The meters are Verdict's disagreement, and the table above states
 it plainly.
+
+## Sources
+
+- CodeRabbit: [pricing](https://www.coderabbit.ai/pricing), [architecture](https://docs.coderabbit.ai/overview/architecture).
+- Greptile: [pricing](https://www.greptile.com/pricing), [codebase context](https://www.greptile.com/docs/how-greptile-works/graph-based-codebase-context).
+- Pullfrog: [pricing](https://pullfrog.com/pricing), [review behavior](https://docs.pullfrog.com/pr-reviews).
+- Macroscope: [pricing](https://docs.macroscope.com/pricing), [check runs](https://docs.macroscope.com/check-run-agents/configuration), [benchmark](https://macroscope.com/blog/macroscopebench).
+- Bugbot: [docs](https://cursor.com/docs/bugbot), [learning study](https://cursor.com/blog/bugbot-learning), [May 2026 pricing change](https://cursor.com/blog/may-2026-bugbot-changes).
 
 <CardGroup cols={2}>
   <Card title="Why Verdict" href="/why-verdict">
