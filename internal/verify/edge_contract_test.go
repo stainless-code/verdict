@@ -235,6 +235,59 @@ func TestVerifyContractRedaction(t *testing.T) {
 	}
 }
 
+// TestVerifyContractShapeRedaction pins the shape half of the redaction
+// contract end to end: a command that echoes a leaked token, an
+// Authorization header, URL userinfo, and ANSI colors records a plain,
+// redacted tail — the value list alone cannot see any of them — while
+// .verify.out keeps the raw bytes for debugging.
+func TestVerifyContractShapeRedaction(t *testing.T) {
+	dir := t.TempDir()
+	edgePatch(t, dir, `printf '\033[31m%s\033[0m\r\n' "Authorization: Bearer ghp_0123456789abcdefghij"`+
+		`; printf 'clone https://alice:s3cretpw@example.invalid/r.git\n'`)
+	if code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10"); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	rec := edgeRecord(t, dir)
+	tail, ok := rec["verifiedTail"].(string)
+	if !ok || tail == "" {
+		t.Fatalf("recorded tail empty, want redacted output\n%v", rec)
+	}
+	checkTailRedacted(t, tail)
+	checkRawOutputKept(t, dir)
+}
+
+// checkTailRedacted proves the recorded tail carries no credential, no ANSI
+// escape, and no carriage return, while naming what it did redact.
+func checkTailRedacted(t *testing.T, tail string) {
+	t.Helper()
+	for _, leak := range []string{"ghp_0123456789abcdefghij", "s3cretpw", "\x1b", "\r"} {
+		if strings.Contains(tail, leak) {
+			t.Fatalf("recorded tail leaks %q:\n%q", leak, tail)
+		}
+	}
+	for _, want := range []string{
+		"Authorization: ***REDACTED***",
+		"clone https://***REDACTED***@example.invalid/r.git",
+	} {
+		if !strings.Contains(tail, want) {
+			t.Fatalf("recorded tail misses %q:\n%q", want, tail)
+		}
+	}
+}
+
+// checkRawOutputKept proves .verify.out still holds the raw bytes: debugging a
+// failed proof needs what the command actually printed.
+func checkRawOutputKept(t *testing.T, dir string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.out"))
+	if err != nil {
+		t.Fatalf("read .verify.out: %v", err)
+	}
+	if !strings.Contains(string(raw), "ghp_0123456789abcdefghij") || !strings.Contains(string(raw), "\x1b") {
+		t.Fatalf(".verify.out = %q, want raw output", raw)
+	}
+}
+
 // TestVerifyContractNoColor pins NO_COLOR inheritance: under --json with
 // no ambient NO_COLOR, the verify child sees NO_COLOR=1.
 func TestVerifyContractNoColor(t *testing.T) {

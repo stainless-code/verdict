@@ -173,7 +173,7 @@ func failed(err error) *core.RefusalError {
 // record writes the patch outcome and builds the typed success response.
 func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) (*core.VerifyResponse, *core.RefusalError) {
 	combined := res.Stdout + res.Stderr
-	tail := redactSecrets(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
+	tail := sanitizeTail(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
 	st.human(fmt.Sprintf("recorded into %s/patch.json", dir))
 	if err := writeOutputs(outPath, combined); err != nil {
