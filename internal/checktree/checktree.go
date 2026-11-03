@@ -89,23 +89,10 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 		case "--expect":
 			expect = next
 			i += 2
-		case "--json":
-			r.JSONMode = true
-			routeHuman(r)
-			i++
 		default:
 			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 				"unknown flag '%s' for check-tree (want --expect <prefix,...>, --json)", a)}), true
 		}
 	}
 	return expect, 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }

@@ -66,8 +66,6 @@ func threadsRequest(r *cli.Runner, req Request, provider string) *fetchcore.Thre
 func parseFlags(r *cli.Runner, args []string) (provider string, code int, done bool) {
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
-		case "--json":
-			r.JSONMode = true
 		case "--provider":
 			provider, i = flagValue(args, i)
 		default:

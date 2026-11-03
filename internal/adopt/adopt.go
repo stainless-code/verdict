@@ -96,7 +96,6 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 			} else {
 				from = ""
 			}
-		case "--json":
 		default:
 			msg := fmt.Sprintf(msgUnknownFlag, a)
 			code := r.ReportUsage(&cli.UsageError{Message: msg})

@@ -133,7 +133,6 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 			f.preset = strings.TrimPrefix(a, "--preset=")
 		case a == "--yes" || a == "-y" || a == "--force":
 			f.yes = true
-		case a == "--json":
 		default:
 			msg := fmt.Sprintf(
 				"unknown flag '%s' for init (want --preset <chill|standard|strict>, "+

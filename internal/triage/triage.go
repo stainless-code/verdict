@@ -117,7 +117,6 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 			f.force = true
 		case "--dry-run":
 			f.dryRun = true
-		case "--json":
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for triage "+
 				"(want --sig, --status, --rationale, --force, --dry-run, --json)", a)

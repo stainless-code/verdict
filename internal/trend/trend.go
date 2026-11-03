@@ -86,22 +86,10 @@ func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
 		switch a {
 		case "--overlap":
 			overlap = true
-		case "--json":
-			r.JSONMode = true
-			routeHuman(r)
 		default:
 			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 				"unknown flag '%s' for trend (want --overlap, --json)", a)}), true
 		}
 	}
 	return overlap, 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }

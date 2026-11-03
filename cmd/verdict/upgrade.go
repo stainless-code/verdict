@@ -40,14 +40,13 @@ func runUninstall(ctx context.Context, r *cli.Runner, args []string, env map[str
 
 // parseUpgradeFlags strips both verbs' flags, reporting unknown ones.
 //
-//nolint:cyclop,revive // the flag switch is the parser; splitting it hides the grammar
+//nolint:revive // the flag switch is the parser; splitting it hides the grammar
 func parseUpgradeFlags(r *cli.Runner, verb string, args []string, uninstall bool) (upgradeFlags, int, bool) {
 	var f upgradeFlags
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
 		case arg == "--dry-run":
 			f.dryRun = true
-		case arg == flagJSON:
 		case !uninstall && arg == "--version":
 			if i+1 >= len(args) {
 				return f, r.ReportUsage(&cli.UsageError{Message: "--version needs a value"}), true

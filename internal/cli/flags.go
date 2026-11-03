@@ -147,6 +147,7 @@ var boolFlags = map[string]func(*GlobalForces){
 	"--no-diagram-expanded":   func(g *GlobalForces) { g.DiagramsExpandedForce = FlagOff },
 	"--logo":                  func(g *GlobalForces) { g.PublishLogoForce = FlagOn },
 	"--no-logo":               func(g *GlobalForces) { g.PublishLogoForce = FlagOff },
+	"--json":                  func(g *GlobalForces) { g.OutputForce = formatJSON },
 	"--no-json":               func(g *GlobalForces) { g.OutputForce = formatText },
 	"--no-attribution":        func(g *GlobalForces) { g.PublishAttributionForce = AttributionOff },
 }
@@ -236,8 +237,6 @@ func stripAttributionEq(a string, g *GlobalForces) (int, []string, *UsageError, 
 	return 1, nil, nil, nil
 }
 
-// stripAttribution consumes the --attribution flag (bare means product).
-
 // stripLogoURL consumes the --logo-url value flag.
 func stripLogoURL(args []string, i int, cmd string, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 >= len(args) {
@@ -247,6 +246,7 @@ func stripLogoURL(args []string, i int, cmd string, g *GlobalForces) (int, []str
 	return 2, nil, nil, nil
 }
 
+// stripAttribution consumes the --attribution flag (bare means product).
 func stripAttribution(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 < len(args) && isAttributionTier(args[i+1]) {
 		g.PublishAttributionForce = args[i+1]

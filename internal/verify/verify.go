@@ -110,7 +110,6 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 		switch a {
 		case "--timeout":
 			timeoutS, i = parseTimeoutFlag(args, i)
-		case "--json":
 		default:
 			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 				"unknown flag '%s' for verify (want --timeout <secs>, --json)", a)}), true

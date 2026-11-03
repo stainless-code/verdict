@@ -61,13 +61,11 @@ func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[str
 
 // parseSkillShowFlags parses the show format grammar.
 //
-//nolint:cyclop,revive // the flag switch is the parser; splitting it hides the grammar
+//nolint:revive // the flag switch is the parser; splitting it hides the grammar
 func parseSkillShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 	format := skillFormat(r)
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
-		case arg == flagJSON:
-			format = formatJSONName
 		case arg == "--format":
 			if i+1 >= len(args) {
 				return "", r.ReportUsage(&cli.UsageError{Message: "--format needs a value (md or json)"}), true
@@ -98,7 +96,6 @@ func parseSkillShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 func runSkillFiles(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	for _, arg := range args {
 		switch arg {
-		case flagJSON:
 		case flagShortHelp, flagHelp:
 			fmt.Fprint(r.Out, skillUsageText())
 			return cli.ExitOK
@@ -189,7 +186,6 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 			f.force = true
 		case arg == flagDryRun:
 			f.dry = true
-		case arg == flagJSON:
 		case arg == flagShortHelp || arg == flagHelp:
 			fmt.Fprint(r.Out, skillUsageText())
 			return f, cli.ExitOK, true

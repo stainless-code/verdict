@@ -61,10 +61,6 @@ func parseShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 		case "--sig":
 			sig = next
 			i += 2
-		case flagJSON:
-			r.JSONMode = true
-			routeHuman(r)
-			i++
 		default:
 			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for show (want --sig, --json)", a)}), true
 		}

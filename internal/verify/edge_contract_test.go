@@ -24,7 +24,8 @@ import (
 )
 
 // edgeRun executes verify.Run in dir with a private HOME, returning exit
-// code plus captured stdout. args are the post-positional flags.
+// code plus captured stdout. args are the post-positional flags; --json is
+// the global toggle (jsonMode) and never reaches the verb parser.
 func edgeRun(t *testing.T, dir, home string, env map[string]string, jsonMode bool, args ...string) (int, string) {
 	t.Helper()
 	t.Chdir(dir)
@@ -45,10 +46,21 @@ func edgeRun(t *testing.T, dir, home string, env map[string]string, jsonMode boo
 	if jsonMode {
 		r.Human = &derr
 	}
-	code := verify.Run(context.Background(), r, args, verify.Request{
+	code := verify.Run(context.Background(), r, withoutJSON(args), verify.Request{
 		Env: full, Repo: "acme/app", Pr: "5201", Root: dir,
 	})
 	return code, out.String()
+}
+
+// withoutJSON drops the global --json toggle from verb-local args.
+func withoutJSON(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if a != "--json" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // edgePatch writes patch.json carrying the verifyCmd.

@@ -207,7 +207,6 @@ func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) 
 			f.ShowPrompts = true
 		case flagChunk:
 			f.ChunkFlag = true
-		case flagJSON:
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
 				"--provider <name>, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, --json)", a)
@@ -252,7 +251,6 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 		f.ShowPrompts = true
 	case flagChunk:
 		f.ChunkFlag = true
-	case flagJSON:
 	case "--":
 		f.Paths = append(f.Paths, args[i+1:]...)
 		return len(args), 0, false
@@ -312,10 +310,9 @@ func checkCancelled(ctx context.Context, r *cli.Runner) (int, bool) {
 	return 0, false
 }
 
-// providerGitHub, flagChunk, and flagJSON mirror the fetchcore spellings
-// the usage text names.
+// providerGitHub and flagChunk mirror the fetchcore spellings the usage
+// text names.
 const (
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
-	flagJSON       = "--json"
 )

@@ -85,9 +85,6 @@ func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
 	check := false
 	for _, a := range args {
 		switch a {
-		case "--json":
-			r.JSONMode = true
-			routeHuman(r)
 		case "--check":
 			check = true
 		default:
@@ -96,13 +93,4 @@ func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
 		}
 	}
 	return check, 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }

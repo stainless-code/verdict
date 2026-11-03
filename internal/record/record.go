@@ -103,15 +103,12 @@ func setupRunner(r *cli.Runner, req Request) {
 	}
 }
 
-// parseRecordFlags strips record's flags, reporting unknown ones.
+// parseRecordFlags rejects leftovers: record takes no verb-local flags.
 func parseRecordFlags(r *cli.Runner, args []string) (int, bool) {
-	for _, a := range args {
-		if a == "--json" {
-			continue
-		}
-		return r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for record (want --json)", a)}), true
+	if len(args) == 0 {
+		return 0, false
 	}
-	return 0, false
+	return r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for record (want --json)", args[0])}), true
 }
 
 // checkCancelled refuses when the context is already done.

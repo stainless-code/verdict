@@ -112,7 +112,6 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 			}
 		case "--status":
 			f.status = true
-		case "--json":
 		default:
 			return f, r.ReportUsage(unknownFlag(a)), true
 		}

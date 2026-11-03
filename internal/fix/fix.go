@@ -35,7 +35,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if flags.sig != "" {
 		r.Rentry += " --sig " + flags.sig
 	}
-	if flags.json {
+	if r.JSONMode {
 		r.Rentry += " --json"
 	}
 	if err := ctx.Err(); err != nil {
@@ -97,8 +97,7 @@ func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // flags carries the parsed fix options.
 type flags struct {
-	sig  string
-	json bool
+	sig string
 }
 
 // parseFlags strips fix's flags, reporting unknown ones.
@@ -114,8 +113,6 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 			} else {
 				f.sig = ""
 			}
-		case "--json":
-			f.json = true
 		default:
 			msg := fmt.Sprintf(
 				"unknown flag '%s' for fix (want --sig <sig>, --json)", a)

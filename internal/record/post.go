@@ -101,7 +101,6 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			f.Force = true
 		case a == "--dry-run":
 			f.DryRun = true
-		case a == "--json":
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
 				"--bind, --force, --review-file <path>, --dry-run, --json)", a)

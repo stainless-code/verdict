@@ -123,10 +123,6 @@ func parseArg(r *cli.Runner, st *flagState, args []string, i int) (int, int, boo
 		return takeJudgeFile(st, r, next, i)
 	case strings.HasPrefix(a, "--judge-file="):
 		return takeJudgeFileEq(st, r, strings.TrimPrefix(a, "--judge-file="), i)
-	case a == "--json":
-		r.JSONMode = true
-		routeHuman(r)
-		return i + 1, 0, false
 	default:
 		return 0, usage(r, fmt.Sprintf("unknown flag '%s' for calibrate (want --probe, --judge, --judge-file, --json)", a)), true
 	}
@@ -178,13 +174,4 @@ func takeJudgeFileEq(st *flagState, r *cli.Runner, value string, i int) (int, in
 	}
 	st.judgeFile = value
 	return i + 1, 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }

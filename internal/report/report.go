@@ -30,7 +30,6 @@ const (
 	kindSection    = "section"
 	tierCritical   = "critical"
 	codeCanceled   = "canceled"
-	flagJSON       = "--json"
 	liveAuto       = "auto"
 	reportFilePerm = 0o600
 )
@@ -216,9 +215,6 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, a, next string) (int, int
 		return 1, 0, false
 	case "--live":
 		return parseLiveFlag(r, flags, next)
-	case flagJSON:
-		r.JSONMode = true
-		return 1, 0, false
 	default:
 		return 0, r.ReportUsage(usageErr(
 			"unknown flag '%s' for report (want --status, --kind, --output, "+

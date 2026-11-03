@@ -110,23 +110,8 @@ func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFlags parses the doctor flags.
 func parseFlags(r *cli.Runner, args []string) (int, bool) {
-	for _, a := range args {
-		switch a {
-		case "--json":
-			r.JSONMode = true
-			routeHuman(r)
-		default:
-			return r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for doctor (want --json)", a)}), true
-		}
+	if len(args) == 0 {
+		return 0, false
 	}
-	return 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
+	return r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for doctor (want --json)", args[0])}), true
 }
