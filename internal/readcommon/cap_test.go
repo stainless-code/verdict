@@ -1,6 +1,7 @@
 package readcommon
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,10 +11,14 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// writePaddedStore writes content padded with JSON whitespace to exactly
-// size bytes, so an at-cap store still decodes.
+// writePaddedStore writes valid JSON padded with trailing whitespace to
+// exactly size bytes. The padding parses, so the same bytes decode unless a
+// size cap refuses them: an over-cap leg can only fail through the cap.
 func writePaddedStore(t *testing.T, path, content string, size int64) {
 	t.Helper()
+	if int64(len(content)) > size {
+		t.Fatalf("fixture is %d bytes, larger than the %d-byte store", len(content), size)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -22,17 +27,21 @@ func writePaddedStore(t *testing.T, path, content string, size int64) {
 	for i := len(content); i < len(data); i++ {
 		data[i] = ' '
 	}
+	if !json.Valid(data) {
+		t.Fatalf("padded store %q is not valid JSON at %d bytes", content, size)
+	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// growStore extends a store past its cap without writing the body: the cap
-// must refuse before decoding, so the contents never matter.
-func growStore(t *testing.T, path string, size int64) {
+// requireOverCap fails unless the store's own read path (jq.CappedFile)
+// refuses path at limit with ErrTooLarge, so the over-cap leg cannot pass on
+// any other failure.
+func requireOverCap(t *testing.T, path string, limit int64) {
 	t.Helper()
-	if err := os.Truncate(path, size); err != nil {
-		t.Fatal(err)
+	if _, err := jq.CappedFile(path, limit); !errors.Is(err, jq.ErrTooLarge) {
+		t.Fatalf("CappedFile(%s, %d) = %v, want ErrTooLarge", path, limit, err)
 	}
 }
 
@@ -46,7 +55,7 @@ func TestLoadFindingsStoreCap(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("LoadFindings at cap = %v, %v; want empty, nil", entries, err)
 	}
-	growStore(t, path, jq.MaxFindingsBytes+1)
+	writePaddedStore(t, path, "[]", jq.MaxFindingsBytes+1)
 	_, err = LoadFindings(dir)
 	var ref *core.RefusalError
 	if !errors.As(err, &ref) || ref.Code != "corrupt-store" {
@@ -59,11 +68,16 @@ func TestLoadFindingsStoreCap(t *testing.T) {
 func TestPrFieldStoreCap(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "PR.json")
-	writePaddedStore(t, path, `{"headRefOid":"abc1234"}`, jq.MaxPRBytes)
+	const pr = `{"provider":"gitlab","head_sha":"abc1234"}`
+	writePaddedStore(t, path, pr, jq.MaxPRBytes)
 	if got := PrField(dir, "head_sha"); got != "abc1234" {
 		t.Errorf("PrField at cap = %q, want abc1234", got)
 	}
-	growStore(t, path, jq.MaxPRBytes+1)
+	if got := ProviderOf(dir); got != "gitlab" {
+		t.Errorf("ProviderOf at cap = %q, want gitlab", got)
+	}
+	writePaddedStore(t, path, pr, jq.MaxPRBytes+1)
+	requireOverCap(t, path, jq.MaxPRBytes)
 	if got := PrField(dir, "head_sha"); got != "" {
 		t.Errorf("PrField over cap = %q, want empty", got)
 	}
@@ -81,7 +95,8 @@ func TestReadCostFileStoreCap(t *testing.T) {
 	if !present || !parsed {
 		t.Errorf("readCostFile at cap = present %v parsed %v, want present and parsed", present, parsed)
 	}
-	growStore(t, path, jq.MaxCostBytes+1)
+	writePaddedStore(t, path, "[]", jq.MaxCostBytes+1)
+	requireOverCap(t, path, jq.MaxCostBytes)
 	_, present, parsed = readCostFile(path)
 	if !present || parsed {
 		t.Errorf("readCostFile over cap = present %v parsed %v, want true false", present, parsed)
