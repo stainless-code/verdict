@@ -287,7 +287,7 @@ func TestPostTool(t *testing.T) {
 	for _, tool := range list.Tools {
 		if tool.Name == "post" {
 			post = true
-			if ro, ok := tool.Annotations[annotationReadOnly].(bool); !ok || ro {
+			if ro := tool.Annotations.ReadOnlyHint; ro {
 				t.Error("post readOnlyHint is not false")
 			}
 		}
@@ -364,8 +364,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 		if tool.Name == "record" || tool.Name == "post" {
 			t.Errorf("read-only list exposed %q", tool.Name)
 		}
-		readOnly, ok := tool.Annotations[annotationReadOnly].(bool)
-		if !ok || !readOnly {
+		if !tool.Annotations.ReadOnlyHint {
 			t.Errorf("%s readOnlyHint = false", tool.Name)
 		}
 	}

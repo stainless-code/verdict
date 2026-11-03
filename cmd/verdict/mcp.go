@@ -28,8 +28,9 @@ func mcpUsageText() string {
 		"  with --operator: status flips are human-owned, and agents propose `triage[]` in\n" +
 		"  review.json instead.\n" +
 		"  Each tool takes the core request shape: repo/pr plus verb fields; schemas are generated\n" +
-		"  from those structs. Success data matches the CLI --json envelope's data; typed refusals\n" +
-		"  return isError=true with code/message/hint.\n" +
+		"  from those structs. tools/list adds a title and the four MCP behavior hints; initialize\n" +
+		"  returns the review doctrine in `instructions`. Success data matches the CLI --json\n" +
+		"  envelope's data; typed refusals return isError=true with code/message/hint.\n" +
 		"\n" +
 		"  mcp config prints the exact host snippet; --write merges it idempotently into\n" +
 		"  .mcp.json (claude), .cursor/mcp.json (cursor), or $CODEX_HOME/config.toml (codex),\n" +

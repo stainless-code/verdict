@@ -14,6 +14,7 @@ import (
 	"io"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,8 +41,8 @@ const (
 	codeMethodNotFound  = -32601
 	codeInvalidParams   = -32602
 	contentTypeText     = "text"
+	lineBreak           = "\n"
 	serverName          = "verdict"
-	annotationReadOnly  = "readOnlyHint"
 	scannerInitialBytes = 64 * 1024
 )
 
@@ -217,7 +218,26 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 			Version:      s.cfg.Version,
 			Experimental: true,
 		},
+		Instructions: s.instructions(),
 	})
+}
+
+// instructions is the one doctrine block every host sees before its first
+// tool call: the review loop, the single terminal write, and the operator
+// boundary that the tool list alone cannot state.
+func (s *Server) instructions() string {
+	lines := []string{
+		"Review one pull request at a time: fetch, read .review/<pr>, write exactly one review.json, then post.",
+		"Use report, next, or show to rank and inspect findings; refusals carry a hint, so follow it.",
+		"post is the only terminal write and never writes a review note; dryRun previews it.",
+		"Never call triage while reviewing a PR: propose status changes through triage[] in review.json.",
+	}
+	if s.cfg.Operator {
+		return strings.Join(append(lines,
+			"This server runs with --operator, so triage is available for human-owned status flips."), lineBreak)
+	}
+	return strings.Join(append(lines,
+		"triage is not on this surface; it is available only when the server starts with --operator."), lineBreak)
 }
 
 // handleToolsCall validates the call envelope, then runs the tool on its
@@ -309,7 +329,13 @@ func (s *Server) listTools() toolsListResult {
 			Name:        t.name,
 			Description: t.description,
 			InputSchema: inputSchema(t),
-			Annotations: map[string]any{annotationReadOnly: t.readOnly},
+			Annotations: toolAnnotations{
+				Title:           t.title,
+				ReadOnlyHint:    t.readOnly,
+				DestructiveHint: t.destructive,
+				IdempotentHint:  t.idempotent,
+				OpenWorldHint:   t.openWorld,
+			},
 		})
 	}
 	return toolsListResult{Tools: out}
@@ -444,7 +470,7 @@ func successResult(data *jq.Obj) callToolResult {
 // `code: message\nhint`, and the same fields as structured content.
 func refusalResult(ref *core.RefusalError) callToolResult {
 	hint := core.HintFor(ref.Code)
-	text := ref.Code + ": " + ref.Message + "\n" + hint
+	text := ref.Code + ": " + ref.Message + lineBreak + hint
 	structured, err := json.Marshal(refusalContent{Code: ref.Code, Message: ref.Message, Hint: hint})
 	if err != nil {
 		structured = []byte("{}")
@@ -485,11 +511,21 @@ type callParams struct {
 }
 
 // toolDescriptor is one tools/list entry.
-type toolDescriptor struct { //nolint:govet // field order mirrors the wire frame
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-	Annotations map[string]any `json:"annotations"`
+type toolDescriptor struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema map[string]any  `json:"inputSchema"`
+	Annotations toolAnnotations `json:"annotations"`
+}
+
+// toolAnnotations is the MCP hint block. Every field is always emitted, so a
+// host never has to infer a protocol default.
+type toolAnnotations struct {
+	Title           string `json:"title"`
+	ReadOnlyHint    bool   `json:"readOnlyHint"`
+	DestructiveHint bool   `json:"destructiveHint"`
+	IdempotentHint  bool   `json:"idempotentHint"`
+	OpenWorldHint   bool   `json:"openWorldHint"`
 }
 
 // toolsListResult is the tools/list result.
@@ -518,10 +554,11 @@ type refusalContent struct {
 }
 
 // initializeResult is the initialize result.
-type initializeResult struct {
+type initializeResult struct { //nolint:govet // field order mirrors the wire frame
 	ProtocolVersion string         `json:"protocolVersion"`
 	Capabilities    map[string]any `json:"capabilities"`
 	ServerInfo      serverInfo     `json:"serverInfo"`
+	Instructions    string         `json:"instructions"`
 }
 
 // serverInfo carries the experimental marker required until 1.0.
@@ -553,7 +590,7 @@ func (s *Server) writeFrame(resp rpcResponse) {
 		s.logf("marshal response: %v", err)
 		return
 	}
-	raw := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+	raw := bytes.TrimSuffix(buf.Bytes(), []byte(lineBreak))
 	raw = append(raw, '\n')
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

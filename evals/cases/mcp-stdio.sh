@@ -2,10 +2,11 @@
 # Case mcp-stdio: `verdict mcp` is a JSON-RPC 2.0 MCP server over stdio.
 #
 # Grades (all hermetic; the network-dead gh stub stays first on PATH):
-#   M1  initialize negotiates the revision, advertises tools only, and
-#       carries the experimental serverInfo marker.
+#   M1  initialize negotiates the revision, advertises tools only, carries
+#       the experimental serverInfo marker, and sends the workflow doctrine.
 #   M2  tools/list exposes one tool per core verb (install is never a tool),
-#       with reflected input schemas and required keys that exist.
+#       with reflected input schemas, required keys that exist, and complete
+#       title/behavior annotations.
 #   M3  ping answers `{}`; an unknown method is -32601; malformed JSON is a
 #       -32700 frame with a null id.
 #   M4  tools/call report succeeds against a temp .review bundle: the text
@@ -81,6 +82,11 @@ if jq -e 'select(.id == 1).result | (.protocolVersion == "2025-06-18") and (.ser
 else
   bad "initialize result is missing the revision/experimental marker"
 fi
+if jq -e 'select(.id == 1).result.instructions | (type == "string") and (contains("fetch")) and (contains("review.json")) and (contains("post")) and (contains("triage")) and (contains("hint"))' <"$MCP_OUT" >/dev/null; then
+  good "initialize carries the fetch/review/post doctrine"
+else
+  bad "initialize instructions are missing or thin"
+fi
 if jq -e 'select(.id == 2).result.tools | length == 17' <"$MCP_OUT" >/dev/null; then
   good "tools/list carries 17 core tools (triage is operator-only)"
 else
@@ -100,6 +106,16 @@ if jq -e 'select(.id == 2).result.tools | map(.inputSchema as $s | $s.required[]
   good "required keys all name real properties"
 else
   bad "a required key has no property"
+fi
+if jq -e 'select(.id == 2).result.tools | all(.[]; (.description | type == "string") and (.annotations.title | type == "string" and length > 0) and (.annotations | has("readOnlyHint") and has("destructiveHint") and has("idempotentHint") and has("openWorldHint")) and (.annotations.readOnlyHint and .annotations.destructiveHint | not))' <"$MCP_OUT" >/dev/null; then
+  good "every tool carries a title and complete behavior annotations"
+else
+  bad "a tool is missing title or annotations"
+fi
+if jq -e 'select(.id == 2).result.tools | (map(select(.name == "post"))[0].annotations | .destructiveHint == true and .openWorldHint == true and .readOnlyHint == false) and (map(select(.name == "report"))[0].annotations | .readOnlyHint == true and .idempotentHint == true)' <"$MCP_OUT" >/dev/null; then
+  good "post is destructive+openWorld and report is readOnly+idempotent"
+else
+  bad "the post/report annotation contract drifted"
 fi
 if jq -e 'select(.id == 3).result == {}' <"$MCP_OUT" >/dev/null; then
   good "ping answers {}"
@@ -158,8 +174,8 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
-  good "--read-only exposes only non-writing tools"
+if jq -e 'select(.id == 2).result.tools | (length == 7) and (map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+  good "--read-only exposes only the 7 non-writing tools"
 else
   bad "--read-only tool list drifted"
 fi

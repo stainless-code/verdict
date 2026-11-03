@@ -521,7 +521,15 @@ under `--read-only`.
 `--operator`. Every review verb except the human-owned `triage` is exposed by
 default because the host already authorizes the binary and its credentials.
 `--operator` adds `triage` (18 tools) for an operator's own assistant that is
-allowed to flip statuses; it is never the default. Each
+allowed to flip statuses; it is never the default. Each `tools/list` entry
+carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
+real behavior: `post` is destructive and open-world, `fetch` is open-world,
+`report` is read-only and idempotent. Descriptions state what the tool does,
+when to call it, and what it writes or sends. `initialize` returns an
+`instructions` string with the same doctrine (fetch, review, post; one review;
+refusals carry a `hint`; never `triage` without `--operator`), so an MCP-only
+agent sees it before its first call. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
 `{code, message, hint}` in both places. A malformed call is a JSON-RPC
