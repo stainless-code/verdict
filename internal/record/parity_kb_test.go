@@ -82,8 +82,8 @@ func sequenced(t *testing.T, name string, setup, mutate func(t *testing.T, dir s
 		full := append([]string{"record", "acme/app", sequencedSlug}, args...)
 		a := runOne(t, dirA, t.TempDir(), full...)
 		b := runOne(t, dirB, t.TempDir(), full...)
-		if a.status != 0 || b.status != 0 {
-			t.Fatalf("phase 1 failed: go=%d/%d\n%s\n%s", a.status, b.status, a.stderr, b.stderr)
+		if a.Status != 0 || b.Status != 0 {
+			t.Fatalf("phase 1 failed: go=%d/%d\n%s\n%s", a.Status, b.Status, a.Stderr, b.Stderr)
 		}
 		mutate(t, dirA)
 		mutate(t, dirB)

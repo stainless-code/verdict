@@ -28,28 +28,6 @@ const (
 // updateGolden regenerates testdata goldens instead of comparing.
 var updateGolden = flag.Bool("update", false, "regenerate testdata golden files")
 
-// Golden runs the Go binary in a fresh sandbox and home, pins the scrubbed
-// result against testdata/<name>.golden, and returns the outputs for extra
-// assertions. setup writes identical fixtures per run. extraEnv overlays
-// variables. args are the direct-protocol CLI argv (no dispatch
-// placeholders).
-func Golden(
-	t *testing.T, h *Harness, name string,
-	setup func(t *testing.T, dir, home string),
-	extraEnv map[string]string, args ...string,
-) Outputs {
-	t.Helper()
-	dir := t.TempDir()
-	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerm); err != nil {
-		t.Fatal(err)
-	}
-	setup(t, dir, home)
-	out := h.Run(t, dir, home, extraEnv, args...)
-	Check(t, name, Render(out, []string{dir, home}))
-	return out
-}
-
 // Render scrubs one run into the golden file shape: exit, stdout, stderr,
 // then every written file sorted by key with slash-normalized keys
 // (Windows walks join with backslashes; content stays byte-exact).
@@ -57,12 +35,12 @@ func Render(out Outputs, roots []string) string {
 	var sb strings.Builder
 	sb.WriteString("exit: " + strconv.Itoa(out.Status) + "\n")
 	sb.WriteString("--- stdout ---\n")
-	sb.WriteString(scrub(scrubRoots(out.Stdout, roots)))
+	sb.WriteString(Scrub(scrubRoots(out.Stdout, roots)))
 	if !strings.HasSuffix(out.Stdout, newline) {
 		sb.WriteString(newline)
 	}
 	sb.WriteString("--- stderr ---\n")
-	sb.WriteString(scrub(scrubRoots(out.Stderr, roots)))
+	sb.WriteString(Scrub(scrubRoots(out.Stderr, roots)))
 	if !strings.HasSuffix(out.Stderr, newline) {
 		sb.WriteString(newline)
 	}
@@ -74,7 +52,7 @@ func Render(out Outputs, roots []string) string {
 	slices.Sort(keys)
 	for _, k := range keys {
 		sb.WriteString("--- file " + filepath.ToSlash(k) + " ---\n")
-		sb.WriteString(scrub(scrubRoots(out.Files[k], roots)))
+		sb.WriteString(Scrub(scrubRoots(out.Files[k], roots)))
 		if !strings.HasSuffix(out.Files[k], newline) {
 			sb.WriteString(newline)
 		}

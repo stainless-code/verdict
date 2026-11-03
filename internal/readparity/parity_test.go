@@ -14,11 +14,8 @@ package readparity_test
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"testing"
 
@@ -27,92 +24,15 @@ import (
 
 var harness *parity.Harness
 
-// TestMain builds the Go binary once and runs the read-parity suite.
+// TestMain builds the Go binary once and runs the parity suite.
 func TestMain(m *testing.M) {
-	h, err := parity.Build()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-	harness = h
-	code := m.Run()
-	harness.Teardown()
-	os.Exit(code)
+	os.Exit(parity.RunMain(m, &harness))
 }
 
-// tsRe scrubs timestamps; everything else compares byte-exact.
-var tsRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
-
-// scrub normalizes timestamps and nothing else.
-func scrub(s string) string {
-	return tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
-}
-
-// isGitPath skips .git internals (hashes and timestamps, never graded;
-// the evals grade worktree files, not the object store).
-func isGitPath(p string) bool {
-	return slices.Contains(strings.Split(filepath.ToSlash(p), "/"), ".git")
-}
-
-// snapshotTree reads every file under root (except .git internals),
-// keyed by a tag plus the relative path. It runs BEFORE the invocation
-// so the read-only legs can prove nothing was written or changed.
-func snapshotTree(t *testing.T, tag, root string) map[string]string {
-	t.Helper()
-	out := map[string]string{}
-	err := filepath.Walk(root, snapshotVisit(tag, root, out))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-// snapshotVisit returns the Walk callback recording file bytes into out.
-// Unreadable entries abort the snapshot: silently skipping them would
-// hide real writes.
-func snapshotVisit(tag, root string, out map[string]string) filepath.WalkFunc {
-	return func(p string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if fi.IsDir() || isGitPath(p) {
-			return nil
-		}
-		return snapshotFile(tag, root, out, p)
-	}
-}
-
-// snapshotFile records one file's bytes into out.
-func snapshotFile(tag, root string, out map[string]string, p string) error {
-	raw, err := os.ReadFile(p)
-	if err != nil {
-		return err
-	}
-	rel, err := filepath.Rel(root, p)
-	if err != nil {
-		return err
-	}
-	out[tag+"/"+filepath.ToSlash(rel)] = string(raw)
-	return nil
-}
-
-// mergeMaps unions two file maps.
-func mergeMaps(a, b map[string]string) map[string]string {
-	maps.Copy(a, b)
-	return a
-}
-
-// snapshotBoth snapshots the sandbox and home trees with the harness tags.
-func snapshotBoth(t *testing.T, dir, home string) map[string]string {
-	t.Helper()
-	return mergeMaps(snapshotTree(t, "C", dir), snapshotTree(t, "H", home))
-}
-
-// goldenRead runs the Go binary on hermetic fixtures, pins exit codes,
-// streams, and every written file against the checked-in golden, and proves
-// the read-only contract: nothing outside allowedWrites changed.
-// setup writes the bundle into dir (fixtures must be deterministic).
-// extraEnv overlays variables.
+// goldenRead pins one read leg against testdata/<name>.golden and proves the
+// read-only contract: nothing outside allowedWrites was created, changed, or
+// deleted. The sandbox, the scrub, and the proof all live in the shared
+// harness, so this suite cannot drift from the others.
 func goldenRead(
 	t *testing.T, name string,
 	setup func(t *testing.T, dir, home string),
@@ -120,58 +40,7 @@ func goldenRead(
 	args ...string,
 ) {
 	t.Helper()
-	t.Run(name, func(t *testing.T) {
-		t.Helper()
-		t.Parallel()
-		dir := t.TempDir()
-		home := filepath.Join(t.TempDir(), "home")
-		if err := os.MkdirAll(home, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		setup(t, dir, home)
-		before := snapshotBoth(t, dir, home)
-		out := harness.Run(t, dir, home, extraEnv, args...)
-		parity.Check(t, name, parity.Render(out, []string{dir, home}))
-		assertNoWrites(t, before, out.Files, allowedWrites, "go")
-	})
-}
-
-// assertNoWrites proves the read-only contract: every file present after
-// the run matches the pre-run snapshot, except explicitly requested
-// artifacts (which compareReadOutputs already byte-compares across
-// sides). Deletions fail too — readers remove nothing.
-func assertNoWrites(
-	t *testing.T, before, after map[string]string,
-	allowedWrites map[string]bool, side string,
-) {
-	t.Helper()
-	for k, va := range after {
-		// Requested artifacts are byte-compared across sides by
-		// compareReadOutputs; they are exempt from the no-change
-		// proof on both sides.
-		if allowedWrites[k] {
-			continue
-		}
-		checkKeptFile(t, k, va, before, side)
-	}
-	for k := range before {
-		if _, ok := after[k]; !ok {
-			t.Errorf("%s deleted file: %s", side, k)
-		}
-	}
-}
-
-// checkKeptFile proves one pre-existing file survived the run unchanged.
-func checkKeptFile(t *testing.T, k, va string, before map[string]string, side string) {
-	t.Helper()
-	vb, ok := before[k]
-	if !ok {
-		t.Errorf("%s wrote unexpected file: %s", side, k)
-		return
-	}
-	if scrub(va) != scrub(vb) {
-		t.Errorf("%s changed file: %s", side, k)
-	}
+	parity.GoldenRead(t, harness, name, setup, extraEnv, allowedWrites, args...)
 }
 
 // splitRepo builds argv for verbs taking repo+pr positionals. Every leg

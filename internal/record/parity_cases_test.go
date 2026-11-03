@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/parity"
 )
 
 func writeFiles(t *testing.T, dir string, files map[string]string) {
@@ -182,8 +183,9 @@ func compareRuns(t *testing.T, name, dirA, dirB, slug string, args []string) {
 	full := append([]string{"record", "acme/app", slug}, args...)
 	a := runOne(t, dirA, t.TempDir(), full...)
 	b := runOne(t, dirB, t.TempDir(), full...)
-	if a.status != b.status || scrub(a.stdout) != scrub(b.stdout) || scrub(a.stderr) != scrub(b.stderr) {
-		t.Fatalf("same fixtures diverge:\n%s\n%s", a.stderr, b.stderr)
+	if a.Status != b.Status || parity.Scrub(a.Stdout) != parity.Scrub(b.Stdout) ||
+		parity.Scrub(a.Stderr) != parity.Scrub(b.Stderr) {
+		t.Fatalf("same fixtures diverge:\n%s\n%s", a.Stderr, b.Stderr)
 	}
 	pinGolden(t, name, dirB, b)
 }
@@ -218,8 +220,8 @@ func matrixRereview(t *testing.T, n int) {
 	matrixSetup(n)(t, dirB)
 	a := runOne(t, dirA, t.TempDir(), "record", "acme/app", "local-mx", "--json")
 	b := runOne(t, dirB, t.TempDir(), "record", "acme/app", "local-mx", "--json")
-	if a.status != 0 || b.status != 0 {
-		t.Fatalf("first pass failed: go=%d/%d", a.status, b.status)
+	if a.Status != 0 || b.Status != 0 {
+		t.Fatalf("first pass failed: go=%d/%d", a.Status, b.Status)
 	}
 	mutateSecondPass(t, dirA)
 	mutateSecondPass(t, dirB)

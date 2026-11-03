@@ -358,10 +358,12 @@ func repoRoot() string {
 	return "."
 }
 
-// scrub normalizes timestamps, prompt nonces, the manifest version, and
-// (R6: the sanctioned scrub, extended only for tool-runtime metadata that
-// differs by construction). Everything else compares byte-exact.
-func scrub(s string) string {
+// Scrub normalizes timestamps, prompt nonces, the manifest version, and
+// curl's connection timing (R6: the sanctioned scrub, extended only for
+// tool-runtime metadata that differs by construction). Everything else
+// compares byte-exact, and a suite that needs to compare two runs of its own
+// shares this scrub instead of forking a weaker one.
+func Scrub(s string) string {
 	s = tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 	s = scrubNonce(s)
 	s = versionScrub()(s)

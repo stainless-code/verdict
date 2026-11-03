@@ -6,7 +6,6 @@
 package fix_test
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,15 +19,7 @@ var harness *parity.Harness
 
 // TestMain builds the Go binary once and runs the parity suite.
 func TestMain(m *testing.M) {
-	h, err := parity.Build()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-	harness = h
-	code := m.Run()
-	harness.Teardown()
-	os.Exit(code)
+	os.Exit(parity.RunMain(m, &harness))
 }
 
 // Finding sigs shared by the fix fixtures.

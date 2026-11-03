@@ -45,20 +45,7 @@ var harness *parity.Harness
 // over the harness stub dir, and runs the golden suite.
 // TestMain pins the byte-parity behavior.
 func TestMain(m *testing.M) {
-	h, err := parity.Build()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-	harness = h
-	if err := installStubs(harness); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		harness.Teardown()
-		os.Exit(2)
-	}
-	code := m.Run()
-	harness.Teardown()
-	os.Exit(code)
+	os.Exit(parity.RunMain(m, &harness, installStubs))
 }
 
 // installStubs replaces the harness's network-dead gh stub with the smart
