@@ -35,6 +35,8 @@ TAP_REPO="$(node -p "require('./release/contract.json').formula.tap")"
 # `brew install owner/name/verdict` resolves to github.com/owner/homebrew-name,
 # so the formula must be pushed to the homebrew-prefixed repository.
 TAP_GH_REPO="${TAP_REPO%%/*}/homebrew-${TAP_REPO#*/}"
+# Path of the formula inside the (possibly multi-product) tap, e.g. Formula/verdict.rb.
+TAP_FORMULA="$(node -p "require('./release/contract.json').formula.path")"
 TAG="${TAG_PREFIX}${VERSION}"
 
 TAP_DIR=""
@@ -248,16 +250,26 @@ stage_tap() {
   fi
   TAP_DIR="$(mktemp -d)"
   git clone --quiet "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${TAP_GH_REPO}.git" "$TAP_DIR"
-  if [ -f "$TAP_DIR/verdict.rb" ] && cmp -s dist/verdict.rb "$TAP_DIR/verdict.rb"; then
+  if [ -f "$TAP_DIR/$TAP_FORMULA" ] && cmp -s dist/verdict.rb "$TAP_DIR/$TAP_FORMULA"; then
     echo "release: tap already carries the $VERSION formula; skipping push"
     return 0
   fi
-  cp dist/verdict.rb "$TAP_DIR/verdict.rb"
-  git -C "$TAP_DIR" add verdict.rb
+  mkdir -p "$TAP_DIR/$(dirname "$TAP_FORMULA")"
+  cp dist/verdict.rb "$TAP_DIR/$TAP_FORMULA"
+  git -C "$TAP_DIR" add "$TAP_FORMULA"
   git -C "$TAP_DIR" -c user.name="verdict-release" \
     -c user.email="verdict-release@users.noreply.github.com" \
     commit -m "verdict ${VERSION}"
-  git -C "$TAP_DIR" push origin HEAD:main
+  # The tap is shared by every stainless-code product: another release may
+  # push between our clone and our push. Rebase onto it and retry.
+  attempt=1
+  until git -C "$TAP_DIR" push origin HEAD:main; do
+    if [ "$attempt" -ge 3 ]; then
+      die "tap push to ${TAP_GH_REPO} still rejected after ${attempt} attempts"
+    fi
+    attempt=$((attempt + 1))
+    git -C "$TAP_DIR" pull --rebase --quiet origin main
+  done
 }
 
 run_all() {

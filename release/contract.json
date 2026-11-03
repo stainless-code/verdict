@@ -79,7 +79,7 @@
   },
   "formula": {
     "tap": "stainless-code/tap",
-    "path": "verdict.rb",
+    "path": "Formula/verdict.rb",
     "class": "Verdict",
     "desc": "Local on-demand PR review for any coding agent",
     "homepage": "https://stainless-code.com/verdict",
