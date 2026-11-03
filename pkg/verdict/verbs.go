@@ -210,7 +210,7 @@ type FetchRequest struct {
 // Fetch fetches a pull request into .review/<pr>.
 func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) {
 	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: c.readWith(c.fetch, req.Repo, req.PR),
 		Flags: core.FetchFlags{
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk,
@@ -237,7 +237,7 @@ type FetchLocalRequest struct {
 // FetchLocal fetches a local git diff into .review/local-<name>.
 func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Result, error) {
 	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: c.readWith(c.fetch, req.Repo, req.PR),
 		Flags: core.FetchLocalFlags{
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,

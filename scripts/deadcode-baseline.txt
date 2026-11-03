@@ -4,11 +4,3 @@
 #
 # Keep the comments with the group and the entries sorted by file/symbol
 # (LC_ALL=C); the gate compares against the sorted, comment-stripped list.
-
-# The public Go SDK's two fetch verbs: Client.New wires one default
-# commander (exec.Watchdog) for every verb, but fetchcore.Run/RunLocal
-# require their own Run+LookPath seam, so both always refuse
-# `fetch-failed: no commander in runtime` and no test can reach a success
-# path. Delete these two lines once New selects the per-verb runner.
-pkg/verdict/verbs.go: Client.Fetch
-pkg/verdict/verbs.go: Client.FetchLocal

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	osexec "os/exec"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -91,6 +92,9 @@ type Client struct { //nolint:govet // field order is the public API surface
 	now       func() time.Time
 	progress  Progress
 	commander core.Commander
+	// fetch is the fetch verbs' runner: fetchcore needs Run plus LookPath,
+	// and it alone wants the fetch cap and the missing-tool pre-check.
+	fetch core.Commander
 }
 
 // New builds a Client. The zero Options yields a usable client with the wall
@@ -102,11 +106,19 @@ func New(o Options) *Client {
 	if now == nil {
 		now = time.Now
 	}
-	var commander core.Commander = exec.Watchdog{}
-	if o.Commander != nil {
-		commander = &commanderAdapter{c: o.Commander}
+	var commander, fetch core.Commander = exec.Watchdog{}, exec.Runner{
+		OutputCap: exec.FetchOutputCap, MissingTool: true,
 	}
-	return &Client{dir: o.Dir, env: env, now: now, progress: o.Progress, commander: commander}
+	if o.Commander != nil {
+		// One adapter serves both postures: spawns go to the injected
+		// runner and the fetch pre-check asks the host PATH.
+		adapter := &commanderAdapter{c: o.Commander}
+		commander, fetch = adapter, adapter
+	}
+	return &Client{
+		dir: o.Dir, env: env, now: now, progress: o.Progress,
+		commander: commander, fetch: fetch,
+	}
 }
 
 // Close releases client resources. It is a no-op today, kept so embedding
@@ -158,9 +170,15 @@ type Artifact struct {
 
 // read builds the shared invocation: injected runtime plus positionals.
 func (c *Client) read(repo, pr string) core.ReadRequest {
+	return c.readWith(c.commander, repo, pr)
+}
+
+// readWith builds an invocation for a specific runner: fetch selects its own
+// posture, every other verb shares the client's.
+func (c *Client) readWith(commander core.Commander, repo, pr string) core.ReadRequest {
 	root := c.dir
 	return core.ReadRequest{
-		Runtime: &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: c.commander},
+		Runtime: &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: commander},
 		Repo:    repo,
 		Pr:      pr,
 		Forces:  &core.GlobalForces{},
@@ -280,6 +298,15 @@ func (e *commanderError) Error() string { return "verdict: commander: " + e.err.
 
 // Unwrap returns the runner's cause.
 func (e *commanderError) Unwrap() error { return e.err }
+
+// LookPath implements fetchcore.Commander: the missing-tool pre-check asks
+// the host PATH while spawns still go to the injected runner.
+func (a *commanderAdapter) LookPath(tool string) error {
+	if _, err := osexec.LookPath(tool); err != nil {
+		return &core.MissingToolError{Tool: tool}
+	}
+	return nil
+}
 
 // Run implements core.Commander.
 func (a *commanderAdapter) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
