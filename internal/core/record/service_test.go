@@ -48,7 +48,7 @@ func bundle(t *testing.T, slug, review string) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	writeFile(t, ".review/"+slug+"/source.json",
-		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`)
+		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
 	writeFile(t, ".review/"+slug+"/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
@@ -63,7 +63,9 @@ func reviewJSON(kbFrag string) string {
 }
 
 // recordRequest builds the service request for slug.
-func recordRequest(c *collector, slug string) *core.RecordRequest {
+func recordRequest(t *testing.T, c *collector, slug string) *core.RecordRequest {
+	t.Helper()
+	seedControls(t, ".review/"+slug)
 	read := core.ReadRequest{
 		Runtime: testRuntime(c),
 		Repo:    "acme/app",
@@ -80,7 +82,7 @@ func recordRequest(c *collector, slug string) *core.RecordRequest {
 func TestRunRecordData(t *testing.T) {
 	bundle(t, "local-rr", reviewJSON(""))
 	c := &collector{}
-	resp, ref := recordcore.Run(context.Background(), recordRequest(c, "local-rr"))
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-rr"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -186,7 +188,7 @@ func checkRecordRefusal(t *testing.T, setup func(t *testing.T), pr, code string)
 	bundle(t, "local-rf", reviewJSON(""))
 	setup(t)
 	c := &collector{}
-	req := recordRequest(c, pr)
+	req := recordRequest(t, c, pr)
 	req.Warnings = []string{"prefs warning"}
 	_, ref := recordcore.Run(context.Background(), req)
 	if ref == nil {
@@ -209,7 +211,7 @@ func TestRunRecordKBCite(t *testing.T) {
 	bundle(t, "local-kb", reviewJSON(`,"kb":["rec-rule"]`))
 	writeFile(t, ".review/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")
 	c := &collector{}
-	resp, ref := recordcore.Run(context.Background(), recordRequest(c, "local-kb"))
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-kb"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -227,7 +229,7 @@ func TestRunRecordKBCite(t *testing.T) {
 	bundle(t, "local-kb2", reviewJSON(`,"kb":["nope-missing"]`))
 	writeFile(t, ".review/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")
 	c2 := &collector{}
-	if _, ref := recordcore.Run(context.Background(), recordRequest(c2, "local-kb2")); ref != nil {
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c2, "local-kb2")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	if !strings.Contains(strings.Join(c2.warns, "\n"), "ignoring unknown kb rule 'nope-missing'") {

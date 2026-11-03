@@ -10,7 +10,7 @@ import (
 func refuseFixture(t *testing.T, dir, review string, extra map[string]string) {
 	t.Helper()
 	files := map[string]string{
-		".review/local-rf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+		".review/local-rf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-rf/full.diff":   genDiff(2),
 		".review/local-rf/review.json": review,
 	}
@@ -72,12 +72,12 @@ func TestParitySourceShapes(t *testing.T) {
 	// A missing head_sha reads dirty too.
 	goldenBoth(t, "source/dirty-head", "local-rf", func(t *testing.T, dir string) {
 		t.Helper()
-		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"head_ref":"work"}`})
+		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`})
 	}, "--json")
 	// A string "true" dirty flag is inert for record (both ignore it).
 	goldenBoth(t, "source/dirty-string", "local-rf", func(t *testing.T, dir string) {
 		t.Helper()
-		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","dirty":"true"}`})
+		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","dirty":"true"}`})
 	}, "--json")
 	// Corrupt PR.json on a provider bundle refuses not-local on both sides.
 	goldenBoth(t, "source/corrupt-pr", "4251", func(t *testing.T, dir string) {
@@ -91,7 +91,7 @@ func TestParitySourceShapes(t *testing.T) {
 	goldenBoth(t, "source/garbage-provider", "47", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/47/PR.json":   `{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+			".review/47/PR.json":   `{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`,
 			".review/47/full.diff": genDiff(2),
 		})
 	})

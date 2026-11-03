@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -27,6 +28,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	confidence   any
 	security     any
 	review       *jq.Obj
+	controls     *controls.Snapshot
 	kb           *kb.Ctx
 	forces       *core.GlobalForces
 	preFooter    func(string) string
@@ -87,7 +89,8 @@ func (st *state) human(line string) {
 // and keeps the warnings; the post verb posts the curated body.
 func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.kb = kb.New(st.warn)
-	st.kb.ResolvePolicy(st.env, exists(kb.File))
+	st.kb.ReadFile = st.controls.ReadFile
+	st.kb.ResolvePolicy(st.env, st.controls.Has(kb.File))
 	st.kb.Broken = false
 	st.loadKB()
 	st.kb.Staged = []map[string]any{}
@@ -155,11 +158,11 @@ func (st *state) applyClaims(body string) (string, diagram.Status, error) {
 // loadKB reads the KB store, marking it broken (citations ignored) when the
 // file exists but does not parse.
 func (st *state) loadKB() {
-	if !exists(kb.File) {
+	if !st.controls.Has(kb.File) {
 		return
 	}
-	raw, err := os.ReadFile(kb.File)
-	if err != nil || !validJSON(raw) {
+	raw, ok := st.controls.ReadFile(kb.File)
+	if !ok || !validJSON(raw) {
 		st.warn(fmt.Sprintf("kb store %s unreadable — citations ignored for this run (fix the bad line)", kb.File))
 		st.kb.Broken = true
 	}
@@ -209,7 +212,7 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	if st.preFooter != nil {
 		body = st.preFooter(body)
 	}
-	if ref := validateOverrides(); ref != nil {
+	if ref := validateOverridesAt(st.controls.OverridesDir()); ref != nil {
 		return "", dr.Status, ref
 	}
 	body = st.applyFooter(body)
@@ -573,7 +576,7 @@ func (st *state) buildEntries(body string) {
 	var fresh []freshEntry
 	fresh = append(fresh, freshInline(st.kept, st.moved)...)
 	fresh = append(fresh, freshSections(body, secs)...)
-	kbExists := exists(kb.File)
+	kbExists := st.controls.Has(kb.File)
 	for _, fe := range fresh {
 		st.entries = append(st.entries, stampEntry(st, fe.entry, fe.kbRaw, kbExists).Wire())
 	}

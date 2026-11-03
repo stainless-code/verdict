@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -33,6 +34,11 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	snap, ref := controls.Gate(dir, BundleBase(dir))
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	st.controls = snap
 	res, ref := st.merge(dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -87,6 +93,7 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		Repo:         req.Repo,
 		Pr:           req.Pr,
 		Cmd:          "record",
+		Controls:     st.controls,
 	})
 	if err != nil {
 		return MergeResult{}, refusalOrFailed(err)
@@ -107,7 +114,20 @@ func refusalOrFailed(err error) *core.RefusalError {
 // before the response or refusal.
 type svc struct {
 	req      *core.RecordRequest
+	controls *controls.Snapshot
 	warnings []string
+}
+
+// BundleBase reads the base commit a bundle was fetched at: the local
+// source.json base_sha, else the GitHub PR.json baseRefOid.
+func BundleBase(dir string) string {
+	if base := jqField(dir+"/source.json", "base_sha"); base != "" {
+		return base
+	}
+	if base := jqField(dir+prSuffix, "baseRefOid"); base != "" {
+		return base
+	}
+	return jqField(dir+prSuffix, "base_sha")
 }
 
 // runtime builds the injected runtime for the merge: the request's env,

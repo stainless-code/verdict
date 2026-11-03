@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
 
@@ -114,7 +116,7 @@ func ExampleClient_Triage() {
 func ExampleClient_Record() {
 	defer chdirTemp()()
 	writeFile(".review/local-demo/source.json",
-		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`)
+		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"`+strings.Repeat("b", 40)+`","head_ref":"work"}`)
 	writeFile(".review/local-demo/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
@@ -122,6 +124,12 @@ func ExampleClient_Record() {
 		`{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,`+
 			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Cited finding here with enough substance.",`+
 			`"rigor":"walked","severity":"important"}]}`)
+	if _, ref := controls.Resolve(context.Background(), nil, controls.Request{
+		BundleDir: ".review/local-demo", BaseSHA: strings.Repeat("b", 40), AllowHead: true,
+	}); ref != nil {
+		fmt.Println("error:", ref)
+		return
+	}
 	c := verdict.New(verdict.Options{Now: func() time.Time { return exampleNow }})
 	defer c.Close()
 	inv := verdict.Invocation{Repo: "acme/app", PR: "local-demo"}

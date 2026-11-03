@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
@@ -76,6 +77,7 @@ type state struct {
 	extraParts   []string
 	findingsFile string
 	now          string
+	controls     *controls.Snapshot
 	comments     []any
 	diagram      diagram.Status
 	embedded     int
@@ -251,7 +253,10 @@ func (st *state) checkBundle() *core.RefusalError {
 	default:
 		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState(st.dir))}
 	}
-	return nil
+	// Last gate: the controls snapshot must match the bundle before any read.
+	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir))
+	st.controls = snap
+	return ref
 }
 
 // loadReview reads and gates the review.json through the shared loader (a
@@ -327,7 +332,7 @@ func (st *state) merge() *core.RefusalError {
 		DryRun: st.flags.DryRun, FindingsFile: st.findingsFile,
 		PreFooter: st.splitPreFooter,
 		Effective: st.req.Effective, Forces: st.req.Forces,
-		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post",
+		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 	})
 	if err != nil {
 		return refusalOrFailed(err)

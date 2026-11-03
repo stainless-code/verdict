@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,38 +6,20 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "report or triage the local bundle; post stays refused (no PR target)",
+  "next": "",
   "warnings": [
-    "no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+    "no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
   ],
-  "data": {
-    "dir": ".review/local-rf",
-    "anchors": {
-      "kept": 0,
-      "moved": 0
-    },
-    "findings": {
-      "open": 0,
-      "deferred": 0,
-      "addressed": 0,
-      "file": ".review/local-rf/findings.json"
-    },
-    "confidence": null,
-    "security_summary": null,
-    "items": []
-  },
-  "error": null
+  "data": null,
+  "error": {
+    "code": "controls-unavailable",
+    "message": "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)\ntry: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"
+  }
 }
 --- stderr ---
 warn: no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-» anchors: 0 inline, 0 moved to body
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
-» findings: 0 sigs -> .review/local-rf/findings.json
-recorded: .review/local-rf/findings.json (0 open) + .review/local-rf/record.json — report/triage read it; post stays refused (no PR target)
+re-enter: verdict record acme/app local-rf --json
 --- files ---
---- file C/.review/local-rf/findings.json ---
-[]
 --- file C/.review/local-rf/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
@@ -75,21 +57,6 @@ notes.txt	OLD	11	17
 notes.txt	NEW	11	17
 other.txt	OLD	1	3
 other.txt	NEW	1	3
---- file C/.review/local-rf/record.json ---
-{
-  "schema_version": "1",
-  "status": "local",
-  "head": "dirty",
-  "diff_sha256": "ad170d66e9e46837651817fd7d3009b2e2d27afd8e5612be10a809778ebb526a",
-  "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 0,
-  "open": 0,
-  "confidence": null,
-  "security_summary": null,
-  "tool_version": "VERSION",
-  "prompts_hash": "03110b91c533583c0ebf0e79c3e973acbcbcac8787cae80e2365c8f5ebedf7d1",
-  "model": null
-}
 --- file C/.review/local-rf/review.json ---
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
 --- file C/.review/local-rf/source.json ---

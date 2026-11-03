@@ -15,8 +15,8 @@
 #       (absent/unparsable files still read as no claims).
 #   R8  corrupt or non-list prior findings.json refuses corrupt-store —
 #       the run never starts fresh (seeded bytes stay byte-identical).
-#   R9  a corrupt source.json degrades to the dirty-head path (exit 0,
-#       record.json head reads "dirty"), matching the missing-key fallback.
+#   R9  a corrupt source.json names no base commit, so the controls gate
+#       refuses controls-unavailable (no record.json is written).
 #   R10 the shared post path refuses a corrupt review.json typed too.
 #   R11 control: a valid review still records (exit 0, findings written).
 set -euo pipefail
@@ -35,7 +35,7 @@ mk_local() { # stdin review.json becomes the bundle input
   rm -rf "$LB"
   mkdir -p "$LB"
   cat > "$LB/source.json" <<'EOF'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 EOF
   cat > "$LB/full.diff" <<'EOF'
 diff --git a/notes.txt b/notes.txt
@@ -213,14 +213,15 @@ printf '%s' '{"sig":"x"}' > "$LB/findings.json"
 before="$(shasum -a 256 "$LB/findings.json" | cut -d' ' -f1)"
 expect_refusal_keep "R8 non-list prior findings.json" "corrupt-store" "$before"
 
-# --- R9: corrupt source.json degrades to the dirty-head path ---
+# --- R9: corrupt source.json leaves no base to verify the controls against ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
 EOF
 echo '{oops' > "$LB/source.json"
 run_review record acme/app "$SLUG" --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(jq -r '.head' "$LB/record.json" 2>/dev/null)" = "dirty" ]; then
-  good "R9 corrupt source.json records on the dirty-head path"
+if [ "$EVAL_STATUS" -eq 1 ] && [ ! -e "$LB/record.json" ] \
+  && [ "$(jq -r '.error.code // empty' "$EVAL_OUT" 2>/dev/null)" = "controls-unavailable" ]; then
+  good "R9 corrupt source.json refuses controls-unavailable"
 else
   bad "R9 corrupt source.json exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi

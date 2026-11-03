@@ -60,7 +60,7 @@ func (c *Ctx) stageCites(entry *jq.Obj, kbList []any, sig, outcome, actor, verb,
 
 // stageCite stages one rule's credit op when the rule is active.
 func (c *Ctx) stageCite(sig, rid, outcome, actor, verb, now string) {
-	if !ruleActive(rid) {
+	if !c.ruleActive(rid) {
 		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, File))
 		return
 	}
@@ -154,9 +154,9 @@ func creditRef(cr any) (string, string, bool) {
 
 // ruleActive ports the active-status gate: the rule row must exist with
 // status active. An unreadable store reads inactive (the caller warns).
-func ruleActive(rid string) bool {
-	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
-	if err != nil {
+func (c *Ctx) ruleActive(rid string) bool {
+	raw, ok := c.ReadFile(File)
+	if !ok {
 		return false
 	}
 	rows, err := jq.DecodeJSONLOrdered(raw)

@@ -204,6 +204,7 @@ cat >"$FRAMES" <<EOF
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"yes","dryRun":true}}}}
 EOF
 mark="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
+eval_seed_controls
 run_mcp_input "$FRAMES"
 if [ "$EVAL_STATUS" -eq 0 ]; then good "post dry-run session exits 0"; else bad "post dry-run exit $EVAL_STATUS"; fi
 check_stdout_frames

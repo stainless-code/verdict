@@ -13,6 +13,7 @@ import (
 	"regexp"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -41,6 +42,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	Repo         string
 	Pr           string
 	Cmd          string
+	Controls     *controls.Snapshot
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
@@ -66,6 +68,9 @@ type MergeResult struct { //nolint:govet // field grouping documents the merge c
 // the post verb carries the body into the payload. Errors are typed
 // refusals matched with [errors.As] at the edge.
 func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
+	if in.Controls == nil {
+		return MergeResult{}, &core.RefusalError{Code: controls.CodeUnavailable, Message: "merge needs a controls snapshot"}
+	}
 	st := &state{
 		review:       in.Review,
 		forces:       in.Forces,
@@ -85,6 +90,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		headShort:    shortSHA(in.HeadFull),
 		prov:         in.Prov,
 		dryRun:       in.DryRun,
+		controls:     in.Controls,
 	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {

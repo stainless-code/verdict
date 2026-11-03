@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -253,7 +254,7 @@ func postSplitState(warnings *[]string) *state {
 		Root:      &root,
 		Effective: core.Defaults(),
 	}
-	return &state{req: req, warnings: *warnings}
+	return &state{req: req, warnings: *warnings, controls: &controls.Snapshot{Dir: "no-snapshot"}}
 }
 
 // TestSplitPreFooterPassthrough proves bodies that fit with their footer
@@ -544,7 +545,8 @@ func postBundle(t *testing.T, review string) {
 	head := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	dir := ".review/7"
 	if err := writeTestFile(dir+"/PR.json",
-		`{"state":"OPEN","headRefOid":"`+head+`","author":{"login":"someone-else"}}`); err != nil {
+		`{"state":"OPEN","headRefOid":"`+head+`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",`+
+			`"author":{"login":"someone-else"}}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeTestFile(dir+"/full.diff",
@@ -555,6 +557,7 @@ func postBundle(t *testing.T, review string) {
 	if err := writeTestFile(dir+"/review.json", review); err != nil {
 		t.Fatal(err)
 	}
+	seedPostControls(t, dir, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 }
 
 // postCommander scripts the post happy path: the live-SHA read, the

@@ -51,10 +51,11 @@ func runPostDryRun(t *testing.T) *core.PostResponse {
 	t.Chdir(dir)
 	writeFixture(t, ".review/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
-			`"author":{"login":"someone-else"}}`)
+			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
 	writeFixture(t, ".review/5101/full.diff", fixtureDiff())
 	writeFixture(t, ".review/5101/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	seedControls(t, ".review/5101")
 	threads := "gh\x00api\x00graphql\x00--paginate\x00-F\x00owner=acme\x00-F\x00name=app\x00-F\x00pr=5101\x00-f\x00query=" + postQueryLiveCount
 	_ = threads
 	cmdr := postCommander{t: t, out: map[string]string{
@@ -85,10 +86,11 @@ func runPostSubmit(t *testing.T) *core.PostResponse {
 	t.Chdir(dir)
 	writeFixture(t, ".review/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
-			`"author":{"login":"someone-else"}}`)
+			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
 	writeFixture(t, ".review/5101/full.diff", fixtureDiff())
 	writeFixture(t, ".review/5101/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	seedControls(t, ".review/5101")
 	cmdr := postCommander{t: t, out: map[string]string{
 		"gh\x00api\x00repos/acme/app/pulls/5101\x00--jq\x00.head.sha":                                                                       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
 		"gh\x00api\x00repos/acme/app/pulls/5101/reviews\x00--method\x00POST\x00--input\x00-\x00--jq\x00{id, state, html_url, submitted_at}": `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}`,

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
@@ -256,13 +257,17 @@ func postFixture(t *testing.T) {
 	t.Helper()
 	writeFile(t, ".review/7/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
-			`"author":{"login":"someone-else"}}`)
+			`"baseRefOid":"`+strings.Repeat("b", 40)+`","author":{"login":"someone-else"}}`)
 	writeFile(t, ".review/7/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
 	writeFile(t, ".review/7/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
 	writeFile(t, ".review/7/findings.json", `[]`)
+	req := controls.Request{BundleDir: ".review/7", BaseSHA: strings.Repeat("b", 40), AllowHead: true}
+	if _, ref := controls.Resolve(t.Context(), nil, req); ref != nil {
+		t.Fatal(ref)
+	}
 }
 
 // TestPostTool proves the post tool is registered from core.PostRequest, a

@@ -3,6 +3,7 @@ package recordcore
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -13,38 +14,35 @@ import (
 	"github.com/stainless-code/verdict/internal/provenance"
 )
 
-// validateOverrides ports validate_overrides: locked-block scans plus the
-// parsed-shape gates for the four P5 fragments. Absent fragments pass
-// silently; every violation fails closed.
-func validateOverrides() error {
+// validateOverridesAt ports validate_overrides: locked-block scans plus the
+// parsed-shape gates for the four P5 fragments, read from the bundle's
+// controls snapshot. Absent fragments pass silently; every violation fails
+// closed.
+func validateOverridesAt(dir string) error {
+	set := overrides.At(dir)
 	fragments := []string{
 		overrides.Preamble, overrides.FooterOrderPath, overrides.Threshold, overrides.Attribution,
 	}
 	for _, f := range fragments {
-		if ref := validateFragment(f); ref != nil {
+		if ref := validateFragment(filepath.Join(dir, filepath.Base(f)), f); ref != nil {
 			return ref
 		}
 	}
-	if ref := validateShapes(); ref != nil {
-		return ref
-	}
-	return nil
+	return validateShapes(set)
 }
 
 // validateShapes validates the parsed-shape gates for the P5 fragments.
-func validateShapes() error {
-	if _, err := overrides.FooterOrder(); err != nil {
+func validateShapes(set overrides.Set) error {
+	if _, err := set.FooterOrder(); err != nil {
 		return passRefusal(err)
 	}
-	if _, _, err := overrides.Thresholds(); err != nil {
+	if _, _, err := set.Thresholds(); err != nil {
 		return passRefusal(err)
 	}
 	// The attribution fragment is validated for shape here; rendering
 	// happens post-side, where the record verb discards the body.
-	if exists(overrides.Attribution) {
-		if _, err := overrides.AttributionText(); err != nil {
-			return passRefusal(err)
-		}
+	if _, err := set.AttributionText(); err != nil {
+		return passRefusal(err)
 	}
 	return nil
 }
@@ -53,16 +51,16 @@ func validateShapes() error {
 // missing path — or a non-regular file such as a directory in the
 // fragment's place — reads as no fragment (matching the shell's [[ -f ]]
 // skip, I12).
-func validateFragment(f string) error {
-	if fi, err := os.Stat(f); err == nil && fi.Mode().IsRegular() {
-		return validateFragmentFile(f)
+func validateFragment(path, f string) error {
+	if fi, err := os.Stat(path); err == nil && fi.Mode().IsRegular() {
+		return validateFragmentFile(path, f)
 	}
 	return nil
 }
 
 // validateFragmentFile validates one present regular override fragment.
-func validateFragmentFile(f string) error {
-	raw, err := os.ReadFile(f)
+func validateFragmentFile(path, f string) error {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return &core.RefusalError{Code: "bad-override", Message: fmt.Sprintf("override %s is unreadable (fix permissions or remove it)", f)}
 	}
@@ -111,12 +109,12 @@ func (st *state) applyFooter(body string) string {
 // review model is empty on the record/post path (review.json carries none;
 // cost-record model or unrecorded decides, like the shell).
 func (st *state) footerOpts() *provenance.FooterOpts {
-	return FooterOpts(&st.effective, st.forces, st.root, st.dir)
+	return FooterOpts(&st.effective, st.forces, st.root, st.dir, overrides.At(st.controls.OverridesDir()))
 }
 
 // FooterOpts builds the footer inputs shared by the merge and the post
 // split hook (which must reserve the same block it later appends).
-func FooterOpts(effective *core.Effective, forces *core.GlobalForces, root, dir string) *provenance.FooterOpts {
+func FooterOpts(effective *core.Effective, forces *core.GlobalForces, root, dir string, set overrides.Set) *provenance.FooterOpts {
 	return &provenance.FooterOpts{
 		Dir:                    dir,
 		PublishFooter:          effective.PublishFooter,
@@ -128,6 +126,7 @@ func FooterOpts(effective *core.Effective, forces *core.GlobalForces, root, dir 
 		Root:                   root,
 		ReviewModel:            "",
 		AttributionTextSet:     forces != nil && forces.PublishAttributionTextSet,
+		Overrides:              set,
 	}
 }
 

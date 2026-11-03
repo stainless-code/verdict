@@ -277,7 +277,7 @@ func TestParityDegenerateInputs(t *testing.T) {
 // TestParityMissingFiles checks missing bundle files refuse identically.
 func TestParityMissingFiles(t *testing.T) {
 	full := map[string]string{
-		".review/local-mf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+		".review/local-mf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-mf/full.diff":   genDiff(2),
 		".review/local-mf/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
 	}
@@ -300,7 +300,7 @@ func TestParityMissingFiles(t *testing.T) {
 	goldenBoth(t, "provider/gitlab", "47", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/47/PR.json":     `{"provider":"gitlab","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`,
+			".review/47/PR.json":     `{"provider":"gitlab","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","base_sha":"cccccccccccccccccccccccccccccccccccccccc"}`,
 			".review/47/full.diff":   genDiff(2),
 			".review/47/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Provider comment.","rigor":"pointed"}]}`,
 		})
@@ -315,7 +315,7 @@ func TestParityChunked(t *testing.T) {
 	setup := func(t *testing.T, dir string, manifest, review, c1, c2 string) {
 		t.Helper()
 		files := map[string]string{
-			".review/local-ch/source.json":          `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+			".review/local-ch/source.json":          `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 			".review/local-ch/full.diff":            c1 + c2,
 			".review/local-ch/review.json":          review,
 			".review/local-ch/chunks/manifest.json": manifest,

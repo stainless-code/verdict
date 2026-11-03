@@ -97,7 +97,7 @@ fi
 LB="$EVAL_SANDBOX/.review/local-p1"
 rm -rf "$LB"; mkdir -p "$LB"
 cat > "$LB/source.json" <<'EOF'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 EOF
 cat > "$LB/full.diff" <<'EOF'
 diff --git a/notes.txt b/notes.txt

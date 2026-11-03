@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 )
 
@@ -96,7 +97,7 @@ func splitFollowHead(k, n int) string {
 // review POSTs. A body that fits with its footer passes through untouched.
 func (st *state) splitPreFooter(body string) string {
 	block, ferr := provenance.RenderFooter(recordcore.FooterOpts(
-		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir))
+		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
 	if ferr != nil {
 		block = ""
 	}
@@ -264,7 +265,7 @@ func postCommentKeys(comments []any) string {
 //nolint:revive // the JSON/human envelope branches mirror the shell's dry-run fork
 func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	footerText, ferr := provenance.RenderFooter(recordcore.FooterOpts(
-		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir))
+		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
 	if ferr != nil {
 		footerText = ""
 	}

@@ -60,7 +60,7 @@ other.txt	NEW	1	3
 --- file C/.review/local-rf/review.json ---
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"x body with enough substance.","suggestion":true}]}
 --- file C/.review/local-rf/source.json ---
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 --- file C/.review/local-rf/store.json ---
 {
   "schema_version": "1"

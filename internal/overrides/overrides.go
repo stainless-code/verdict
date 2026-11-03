@@ -7,6 +7,7 @@ package overrides
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,6 +24,24 @@ const (
 	Threshold       = Dir + "/walkthrough-threshold.md"
 	Attribution     = Dir + "/attribution.md"
 )
+
+// Set is one overrides directory. The zero value reads the worktree default
+// (.review/overrides); At(controlsDir) reads a bundle's controls snapshot.
+type Set struct {
+	Dir string
+}
+
+// At returns the override set rooted at dir (the snapshot's overrides
+// directory). The default paths keep their logical labels in messages.
+func At(dir string) Set { return Set{Dir: dir} }
+
+// path maps one fragment name to its read path.
+func (s Set) path(name string) string {
+	if s.Dir == "" {
+		return Dir + "/" + name
+	}
+	return filepath.Join(s.Dir, name)
+}
 
 var (
 	markerLine    = regexp.MustCompile(`(?m)^> ✅|^> ℹ️|^> \[!IMPORTANT\]|^> \[!CAUTION\]`)
@@ -59,9 +78,12 @@ func cliRef(path, invariant, why string) error {
 
 // FooterOrder ports override_footer_order: one field per line from
 // tier|cost|files|link, unique, non-empty; defaults to the full order.
-func FooterOrder() ([]string, error) {
+func FooterOrder() ([]string, error) { return At("").FooterOrder() }
+
+// FooterOrder reads the footer-order fragment from this set.
+func (s Set) FooterOrder() ([]string, error) {
 	def := []string{"tier", "cost", "files", "link"}
-	if raw, err := os.ReadFile(FooterOrderPath); err == nil {
+	if raw, err := os.ReadFile(s.path("footer-order.md")); err == nil {
 		return parseOrderOrDef(raw)
 	}
 	// A missing fragment file reads as the default order.
@@ -134,9 +156,12 @@ const (
 
 // Thresholds ports override thresholds: 8 files / 24576 bytes defaults,
 // degenerate-guarded by the locked invariants.
-func Thresholds() (files, bytes int, ref error) {
+func Thresholds() (files, bytes int, ref error) { return At("").Thresholds() }
+
+// Thresholds reads the walkthrough-threshold fragment from this set.
+func (s Set) Thresholds() (files, bytes int, ref error) {
 	files, bytes = defaultMaxFiles, defaultMaxBytes
-	raw, err := os.ReadFile(Threshold)
+	raw, err := os.ReadFile(s.path("walkthrough-threshold.md"))
 	if err != nil {
 		return files, bytes, nil
 	}
@@ -245,8 +270,11 @@ func removeSpaces(s string) string {
 // must fit on one line. The shell's command substitution strips trailing
 // newlines before the line count, so interior newlines refuse but a single
 // trailing newline reads as the one line.
-func AttributionText() (string, error) {
-	raw, err := os.ReadFile(Attribution)
+func AttributionText() (string, error) { return At("").AttributionText() }
+
+// AttributionText reads the attribution fragment from this set.
+func (s Set) AttributionText() (string, error) {
+	raw, err := os.ReadFile(s.path("attribution.md"))
 	if err != nil {
 		//nolint:nilerr // an absent override file means "no override", not a failure
 		return "", nil

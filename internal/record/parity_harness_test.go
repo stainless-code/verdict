@@ -215,6 +215,7 @@ func runOne(t *testing.T, dir, home string, args ...string) outputs {
 // runOneEnv is runOne with extra environment variables.
 func runOneEnv(t *testing.T, dir, home string, extraEnv map[string]string, args ...string) outputs {
 	t.Helper()
+	seedControls(t, dir)
 	cmd := sideCommand(t, args)
 	cmd.Dir = dir
 	cmd.Env = childEnv(home, dir, extraEnv)
@@ -297,18 +298,12 @@ func pinGolden(t *testing.T, name, dir string, out outputs) {
 // under the C/ tag, relative to root.
 func collectGoldenFile(root string, files map[string]string) filepath.WalkFunc {
 	return func(p string, fi os.FileInfo, err error) error {
-		if err != nil || fi.IsDir() {
+		rel, rerr := filepath.Rel(root, p)
+		if err != nil || rerr != nil || fi.IsDir() || isControlsArtifact(rel) {
 			return err
 		}
 		raw, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
 		files["C/"+rel] = string(raw)
-		return nil
+		return err
 	}
 }

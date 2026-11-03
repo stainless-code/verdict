@@ -7,7 +7,6 @@ package kb
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,7 +29,10 @@ type Policy struct {
 
 // Ctx carries the KB runtime state for one record run.
 type Ctx struct {
-	Warn     func(string)
+	Warn func(string)
+	// ReadFile reads a decision store: the worktree by default, the controls
+	// snapshot for record/post (write paths always use the worktree).
+	ReadFile func(string) ([]byte, bool)
 	Policy   Policy
 	Staged   []map[string]any
 	Credited []any
@@ -42,6 +44,10 @@ func New(warn func(string)) *Ctx {
 	return &Ctx{
 		Policy: Policy{MinJudged: defaultMinJudged, MaxFPRate: defaultMaxFPRate},
 		Warn:   warn,
+		ReadFile: func(path string) ([]byte, bool) {
+			raw, err := jq.CappedFile(path, jq.MaxKBBytes)
+			return raw, err == nil
+		},
 	}
 }
 
@@ -78,7 +84,7 @@ func (c *Ctx) resolveMinJudged(env map[string]string) {
 
 // resolveMinJudgedFile resolves the quorum from the policy file.
 func (c *Ctx) resolveMinJudgedFile() {
-	raw := policyLine(PolicyFile, envMinJudged, "MIN_JUDGED")
+	raw := c.policyLine(PolicyFile, envMinJudged, "MIN_JUDGED")
 	if raw == "" {
 		return
 	}
@@ -106,7 +112,7 @@ func (c *Ctx) resolveMaxFPRate(env map[string]string) {
 
 // resolveMaxFPRateFile resolves the ceiling from the policy file.
 func (c *Ctx) resolveMaxFPRateFile() {
-	raw := policyLine(PolicyFile, envMaxFPRate, "MAX_FP_RATE")
+	raw := c.policyLine(PolicyFile, envMaxFPRate, "MAX_FP_RATE")
 	if raw == "" {
 		return
 	}
@@ -119,9 +125,9 @@ func (c *Ctx) resolveMaxFPRateFile() {
 
 // policyLine reads the last matching KEY= line from the policy file,
 // trimmed. Missing/unreadable files read empty.
-func policyLine(path, k1, k2 string) string {
-	raw, err := os.ReadFile(path)
-	if err != nil {
+func (c *Ctx) policyLine(path, k1, k2 string) string {
+	raw, ok := c.ReadFile(path)
+	if !ok {
 		return ""
 	}
 	found := ""
@@ -280,8 +286,8 @@ func (n *normalizer) live(s string) bool {
 // readRows slurps kb.jsonl order-preserving. ok is false when the file is
 // missing, oversized, or does not parse.
 func (c *Ctx) readRows() ([]*jq.Obj, bool) {
-	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
-	if err != nil {
+	raw, ok := c.ReadFile(File)
+	if !ok {
 		return nil, false
 	}
 	rows, err := jq.DecodeJSONLOrdered(raw)

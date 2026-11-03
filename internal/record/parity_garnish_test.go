@@ -10,7 +10,7 @@ import (
 // ovGood is the minimal valid local bundle for the override legs.
 func ovGood() map[string]string {
 	return map[string]string{
-		".review/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+		".review/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-ov/full.diff":   genDiff(2),
 		".review/local-ov/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`,
 	}
@@ -55,7 +55,7 @@ func TestParityBodies(t *testing.T) {
 	goldenBoth(t, "body/non-ascii", "local-dg", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+			".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 			".review/local-dg/full.diff":   genDiff(2),
 			".review/local-dg/review.json": "{\"schema_version\":\"1\",\"body\":\"> ✅ ünïcodé marker plus enough length to pass.\",\"approved\":false,\"comments\":[{\"path\":\"notes.txt\",\"line\":2,\"side\":\"RIGHT\",\"body\":\"🎉 fix the thïng with a non-breaking space.\"}]}",
 		})
@@ -63,7 +63,7 @@ func TestParityBodies(t *testing.T) {
 	goldenBoth(t, "body/receipt-collision", "local-dg", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+			".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 			".review/local-dg/full.diff":   genDiff(2),
 			".review/local-dg/review.json": "{\"schema_version\":\"1\",\"body\":\"> ✅ marker plus enough length to pass the guard ok.\\n\\n<!-- verdict-footer -->\\n> old receipt\\n\",\"approved\":false,\"comments\":[]}",
 		})
@@ -71,7 +71,7 @@ func TestParityBodies(t *testing.T) {
 	goldenBoth(t, "body/mermaid-stripped", "local-dg", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+			".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 			".review/local-dg/full.diff":   genDiff(2),
 			".review/local-dg/review.json": "{\"schema_version\":\"1\",\"body\":\"> ✅ marker plus enough length to pass the guard ok.\\n\\n### Flow\\n\\n```mermaid\\nflowchart TD\\n    A --> B\\n```\\n\",\"approved\":false,\"comments\":[]}",
 		})
@@ -88,7 +88,7 @@ func TestParityChunkDrift(t *testing.T) {
 		c1 := chunkDiff("-old1\n+new1")
 		c2 := chunkDiff("-old2\n+new2")
 		writeFiles(t, dir, map[string]string{
-			".review/local-ch/source.json":          `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+			".review/local-ch/source.json":          `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 			".review/local-ch/full.diff":            c1 + c2 + "# drifted after fetch\n",
 			".review/local-ch/review.json":          `{"schema_version":"1","chunks":["a","b"],"body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`,
 			".review/local-ch/chunks/manifest.json": `{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".review/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".review/local-ch/chunks/b.diff","files":["c1.txt"]}]}`,

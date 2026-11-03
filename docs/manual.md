@@ -205,8 +205,11 @@ everything else in a bundle dir is script-owned.
 
 `.review/learnings.md` at the repo root is the skill's only cross-run memory: durable
 knowledge (test commands, conventions, gotchas) in `##`-headed sections. `fetch` reports
-it when present; agents read headings first and challenge stale claims. Post-run reflection
-appends durable lessons (never transcripts). Deleting a wrong entry beats editing around it.
+its base-resolved copy (`.review/N/controls/learnings.md`, see
+[Review controls are base-owned](#review-controls-are-base-owned)); agents read headings
+first and challenge stale claims. Post-run reflection appends durable lessons (never
+transcripts) to the worktree file — commit it, then re-fetch; do not run `learn` or edit
+the file while a review is in flight. Deleting a wrong entry beats editing around it.
 
 ## Knowledge base (scoped local rules)
 
@@ -216,7 +219,9 @@ false_hits, judged, status}` (`id` matches `^[a-z0-9][a-z0-9-]{0,64}$`,
 `scope` is a non-empty comma-separated glob list, `rigor` is
 `said`/`pointed`/`walked`/`ran`/`reproduced`, counters are non-negative ints
 with `judged == hits+false_hits`, `status` is `active`/`retired`). Commit it;
-it compounds.
+it compounds. This repo's `.gitignore` tracks the control files (`.review/*` with
+negations), so a plain `git add .review/kb.jsonl` works; an older checkout that ignores
+all of `.review/` needs the one-time `git add -f` of each control file.
 
 `learn` manages it (no repo/PR args, no network):
 
@@ -265,6 +270,47 @@ Retirement is data-driven: after any credit, a rule with `judged` at/above
 `.review/kb-policy` (`MIN_JUDGED=`/`MAX_FP_RATE=` lines), then defaults;
 invalid values warn and fall back, never failing the flip. Retired rules never
 recall; citing one warns and drops.
+
+## Review controls are base-owned
+
+A pull request must not be able to edit the rules it is judged by. `fetch` and
+`fetch-local` therefore read every review control from the PR base commit —
+`git show <base>:<path>` through the command seam, never the worktree — and
+snapshot the bytes into the bundle:
+
+| Control                                         | Consumed by                           |
+| ----------------------------------------------- | ------------------------------------- |
+| `.review/panel`, `budget`, `max_bytes`, `chunk` | `fetch` panel, budget, cap, chunking  |
+| `.review/kb.jsonl`, `kb-policy`                 | `fetch` recall; `record`/`post` cites |
+| `.review/learnings.md`                          | the review agent (headings)           |
+| `.review/overrides/*.md` (four fragments)       | `record`/`post` body and footer       |
+
+`.review/N/controls/` holds the bytes and `.review/N/controls.json` records
+`policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
+files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
+and `sha256` (schema: `schemas/controls.schema.json`). The base is `PR.json`'s base
+commit for `fetch`, and the mode base for `fetch-local` (`HEAD`, the merge-base for
+`--base`, the range base, the stash parent), so uncommitted edits to a control are
+not read. Environment knobs (`REVIEW_PANEL`, `REVIEW_MAX_BYTES`, `REVIEW_BUDGET_USD`,
+`REVIEW_KB_*`) still win over the file layer. A default run prints nothing extra;
+the JSON envelope gains `data.controls` (`policy`, `sha`, `files`).
+
+`post` and `record` load `controls.json` before any merge read and re-hash every
+used file. They refuse:
+
+- `controls-unavailable` — no or invalid `controls.json` (re-fetch), or at fetch
+  time the base commit is not in the clone (a shallow checkout: use
+  `actions/checkout` with `fetch-depth: 0`, or `git fetch --depth=1 origin <base>`;
+  verdict never fetches for you), or a control is a symlink.
+- `controls-stale` — the snapshot's base is not the bundle's base, or a file's
+  bytes changed under the bundle: re-fetch.
+- `controls-too-large` — a control over 256 KiB (1 MiB across all); never truncated.
+
+`--allow-head-controls` on `fetch`/`fetch-local` is the only opt-out: it reads the
+worktree as before, warns once (human and JSON), and stamps `policy: "head"`.
+Track your controls once so the base commit carries them:
+`git add .review/kb.jsonl .review/learnings.md .review/panel` (and any other
+control you use), then commit.
 
 ## Machine surface
 
@@ -1191,7 +1237,8 @@ candidates (largest file alone, everything-but-largest, range half-split) —
 nothing auto-narrows. Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
 or a `.review/max_bytes` file holding one plain byte count (env wins, then
 the file, then the 512000 default; either override disables chunking outright
-and the fetch prints its source).
+and the fetch prints its source). The file knobs (`max_bytes`, `chunk`) are read
+from the PR base commit, so a PR cannot raise its own cap.
 
 Chunked fetch is the opted-in over-cap path: pass `--chunk` on `fetch` or
 `fetch-local`, or hold `true` (`on`/`1`/`yes` — first usable line wins) in a

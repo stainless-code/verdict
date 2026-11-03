@@ -260,7 +260,7 @@ func flipToAddressed(entries []any) bool {
 // TestParityOverrides checks fragment overrides behave identically.
 func TestParityOverrides(t *testing.T) {
 	good := map[string]string{
-		".review/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`,
+		".review/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-ov/full.diff":   genDiff(2),
 		".review/local-ov/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
 	}

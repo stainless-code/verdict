@@ -125,7 +125,7 @@ func runRecordFixture(t *testing.T) *core.RecordResponse {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	writeFixture(t, ".review/local-rr/source.json",
-		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`)
+		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
 	writeFixture(t, ".review/local-rr/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
@@ -134,6 +134,7 @@ func runRecordFixture(t *testing.T) *core.RecordResponse {
 			`"approved":false,"confidence":5,"security_summary":"short summary",`+
 			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT",`+
 			`"body":"Usable body with enough substance.","rigor":"walked","severity":"critical"}]}`)
+	seedControls(t, ".review/local-rr")
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	runtime := &core.Runtime{Now: func() time.Time { return now }}
 	read := core.ReadRequest{Runtime: runtime, Repo: "acme/app", Pr: "local-rr"}

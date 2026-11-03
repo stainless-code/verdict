@@ -114,7 +114,7 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 	// verify command (C5). Dry runs stage nothing (the shell's kb_apply_credit
 	// calls sit behind the dryrun-filename guard), so flips stay credit-free.
 	if !st.dryRun {
-		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.cmd, st.now, exists(kb.File))
+		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
 	}
 	st.checkVerifyContradiction(full)
@@ -259,7 +259,7 @@ func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim)
 		if st.dryRun {
 			return
 		}
-		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.cmd, st.now, exists(kb.File))
+		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
 	}
 }

@@ -7,7 +7,7 @@ try: run the fetch/record step named above first, then re-run
 re-enter: verdict record acme/app 47
 --- files ---
 --- file C/.review/47/PR.json ---
-{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
 --- file C/.review/47/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644

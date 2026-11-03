@@ -10,6 +10,7 @@ import (
 // FooterOpts carries everything render_footer needs after the record flow
 // resolved knobs, fragments, and bundle values.
 type FooterOpts struct {
+	Overrides              overrides.Set
 	Dir                    string
 	PublishFooter          string
 	PublishAttribution     string
@@ -39,7 +40,7 @@ func RenderFooter(o *FooterOpts) (string, error) {
 	}
 	vals := footerValues(o)
 	attr := footerAttribution(o, &vals)
-	order, err := overrides.FooterOrder()
+	order, err := o.Overrides.FooterOrder()
 	if err != nil {
 		return "", passRefusal(err)
 	}
@@ -77,7 +78,7 @@ func footerAttribution(o *FooterOpts, vals *overrides.Values) string {
 	if attr == "" {
 		attr = placeholderBase
 	}
-	if frag, ref := overrides.AttributionText(); ref == nil && frag != "" && !o.AttributionTextSet {
+	if frag, ref := o.Overrides.AttributionText(); ref == nil && frag != "" && !o.AttributionTextSet {
 		// A present fragment wins over settings/env/default — but a per-run
 		// flag still wins over the fragment. (Refusals surface in
 		// validate_overrides, not here.)
