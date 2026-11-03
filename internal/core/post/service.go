@@ -503,6 +503,15 @@ func (st *state) duplicateGuard() *core.RefusalError {
 // same reviewed SHA refuses unless --force; a new SHA proceeds and refreshes
 // the record. The local post.json is the fast path, the fetched reviews the
 // fresh-bundle fallback. Unreadable records warn and proceed.
+//
+// Precedence (BL05, operator decision OP-03): this guard runs inside prepare,
+// before drift's live reads, the hunks snapshot, and the merge, so it wins
+// over every later refusal except review-load. Concretely: a same-SHA bundle
+// whose review.json is semantically invalid reports already-posted, not the
+// validation error; and a literal re-post reports already-posted, not the
+// later duplicateGuard's duplicate-payload. The zero-network win is the
+// reason: a repeat post on a known SHA pays no forge call and no findings
+// rewrite. --force bypasses both guards and falls through to validation.
 func (st *state) finalizerGuard() *core.RefusalError {
 	if st.commitID == "" || st.flags.Force {
 		return nil
