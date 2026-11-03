@@ -1,4 +1,6 @@
+---
 "@stainless-code/verdict": minor
+---
 
 Experimental `pkg/verdict` Go facade: embed review operations in-process
 through a context-first `Client` with typed requests/responses and a public

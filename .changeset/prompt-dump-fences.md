@@ -1,3 +1,4 @@
+---
 "@stainless-code/verdict": minor
 ---
 
