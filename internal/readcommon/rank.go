@@ -253,20 +253,6 @@ func entryHeading(entry any) any {
 	return heading
 }
 
-// SigPrefix renders the 8-codepoint sig prefix for human tables.
-func SigPrefix(entry any) string {
-	return Prefix(sigOf(entry))
-}
-
-// sigOf reads an entry's sig string ("" unless it is one).
-func sigOf(entry any) string {
-	sig, ok := FieldOf(entry, "sig").(string)
-	if !ok {
-		return ""
-	}
-	return sig
-}
-
 // Prefix takes the first 8 runes, mirroring jq's [0:8] codepoint slice
 // (sigs are hex, so bytes and runes agree).
 func Prefix(s string) string {

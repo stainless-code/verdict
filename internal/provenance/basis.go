@@ -14,48 +14,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// rigors lists the evidence ladder in Basis order.
-var rigors = []string{rigorReproduced, rigorRan, rigorWalked, rigorPointed, rigorSaid}
-
-// BasisCounts ports basis_counts: rigor rung counts in evidence order,
-// distinct cited kb rule ids, addressed (verified-fixed) findings.
-func BasisCounts(entries []any) string {
-	counts := map[string]int{}
-	cited := map[string]bool{}
-	verified := 0
-	for _, e := range entries {
-		m, ok := e.(*jq.Obj)
-		if !ok {
-			continue
-		}
-		counts[basisRigor(m)]++
-		collectCited(m, cited)
-		if st, _ := m.Get("status"); st == outcomeAddressed {
-			verified++
-		}
-	}
-	parts := make([]string, 0, basisFieldCount)
-	for _, r := range rigors {
-		parts = append(parts, strconv.Itoa(counts[r]))
-	}
-	parts = append(parts, strconv.Itoa(len(cited)), strconv.Itoa(verified))
-	return strings.Join(parts, " ")
-}
-
-// basisRigor normalizes one entry's rigor rung: missing/null/false reads
-// pointed; present non-strings and unknown strings match no rung and are
-// counted nowhere (the empty key).
-func basisRigor(m *jq.Obj) string {
-	rigorRaw, has := m.Get("rigor")
-	if !has || rigorRaw == nil || rigorRaw == false {
-		return rigorPointed
-	}
-	if s, ok := rigorRaw.(string); ok {
-		return s
-	}
-	return ""
-}
-
 // collectCited adds one entry's raw kb ids to the cited set.
 func collectCited(m *jq.Obj, cited map[string]bool) {
 	kbl, ok := m.Get("kb")

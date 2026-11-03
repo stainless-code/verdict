@@ -34,7 +34,3 @@ pkg/verdict/verbs.go: Client.Trend
 internal/jq/jq.go: AsSlice
 internal/jq/jq.go: DecodeArray
 internal/jq/jq.go: Present
-internal/provenance/basis.go: BasisCounts
-internal/provenance/basis.go: basisRigor
-internal/readcommon/rank.go: SigPrefix
-internal/readcommon/rank.go: sigOf
