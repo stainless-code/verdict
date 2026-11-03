@@ -29,10 +29,11 @@ and drops the extraction.
 
 - **Latency becomes minutes, locally.** `fetch` pulls the bundle with no clone. Any agent
   you already run does the review. `post` lands exactly one native GitHub review. Total
-  setup: `gh`, `jq`, one token.
-- **Trust becomes nothing to exfiltrate.** There is no server side. Keys never leave your
-  machine, diffs never leave your machine, and the roughly 5,500 lines of bash read in one
-  sitting.
+  setup: `gh`, one static `verdict` binary, one token.
+- **Trust becomes nothing to exfiltrate.** Verdict has no server side and sends nothing
+  itself: keys stay on your machine, and the only network calls are the `gh` reads and the
+  one post you ask for. Diffs go only where your chosen model runs (a local model keeps them
+  on the machine). The source is open Go with no runtime dependencies.
 - **Output becomes verifiable.** Every finding carries an evidence rung from `said` to
   `reproduced`. Unproven claims ship labeled `unproven` or die. Anchors are
   machine-checked against the diff hunks, and suggestions render as real GitHub
