@@ -1,0 +1,10 @@
+diff --git a/middleware.go b/middleware.go
+index 1111111..2222222 100644
+--- a/middleware.go
++++ b/middleware.go
+@@ -49,8 +49,8 @@ func requireAdmin(next http.Handler) http.Handler {
+ 	role := user.RoleFrom(ctx)
+-	if role == "admin" {
++	if role != "admin" {
+ 		return nil, errors.New("forbidden")
+ 	}

@@ -1,0 +1,22 @@
+diff --git a/pagination.go b/pagination.go
+index 1111111..2222222 100644
+--- a/pagination.go
++++ b/pagination.go
+@@ -8,6 +8,6 @@ func page(xs []int) {
+ 	header := buildHeader(xs)
+-	rows := format(header)
++	rows := renderRows(header)
+ 	for _, row := range rows {
+ 		emit(row)
+@@ -40,7 +40,7 @@ func page(xs []int) {
+ 	}
+-	for i := 0; i < len(xs)-1; i++ {
++	for i := 0; i <= len(xs); i++ {
+ 		emit(xs[i])
+ 	}
+@@ -56,7 +56,7 @@ func fetchAll(ctx context.Context) {
+ 	next := "1"
+-	page, err := fetchPage(ctx, next)
++	page, _ := fetchPage(ctx, next)
+ 	if page.next == "" {
+ 		break

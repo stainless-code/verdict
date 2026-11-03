@@ -1,0 +1,10 @@
+diff --git a/pool.go b/pool.go
+index 1111111..2222222 100644
+--- a/pool.go
++++ b/pool.go
+@@ -85,13 +85,13 @@ func (p *Pool) release(c *conn) {
+ 	p.mu.Lock()
+ 	defer p.mu.Unlock()
+-	go c.Close()
+ 	p.free <- c
++	go c.Close()

@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "id": "missing-error-check",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "io.Copy result is dropped, so a truncated upload still returns success.",
+    "source": "bench/corpus/missing-error-check/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "upload.go",
+      "line": 24,
+      "kind": "missing-error-check",
+      "severity": "important",
+      "note": "copy result is ignored, so a short write reports success"
+    }
+  ]
+}

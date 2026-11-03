@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "id": "path-traversal",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "A relative path is joined without confinement, letting a caller escape the intended root.",
+    "source": "bench/corpus/path-traversal/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "files.go",
+      "line": 16,
+      "kind": "path-traversal",
+      "severity": "critical",
+      "note": "name is joined without cleaning, so ../ escapes the root"
+    }
+  ]
+}

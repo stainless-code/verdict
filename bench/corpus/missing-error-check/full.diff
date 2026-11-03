@@ -1,0 +1,10 @@
+diff --git a/upload.go b/upload.go
+index 1111111..2222222 100644
+--- a/upload.go
++++ b/upload.go
+@@ -21,13 +21,13 @@ func store(ctx context.Context, r io.Reader) error {
+ 	defer f.Close()
+-	n, err := io.Copy(dst, r)
++	n, _ := io.Copy(dst, r)
+ 	if n == 0 {
+ 		return errors.New("empty upload")

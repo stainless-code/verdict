@@ -1,0 +1,11 @@
+diff --git a/parse.go b/parse.go
+index 1111111..2222222 100644
+--- a/parse.go
++++ b/parse.go
+@@ -10,13 +10,13 @@ func firstField(line string) string {
+ 	parts := strings.SplitN(line, "=", 2)
+ 	if len(parts) == 0 {
+ 		return ""
+ 	}
+-	return strings.TrimSpace(parts[1])
++	return strings.TrimSpace(parts[0])

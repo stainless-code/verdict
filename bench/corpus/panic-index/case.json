@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "id": "panic-index",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "A split result is indexed without a length check, so a malformed line panics.",
+    "source": "bench/corpus/panic-index/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "parse.go",
+      "line": 13,
+      "kind": "index-out-of-range",
+      "severity": "important",
+      "note": "parts[1] is indexed without checking the split length"
+    }
+  ]
+}

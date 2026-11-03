@@ -1,0 +1,19 @@
+{
+  "model": "fixture-good",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "middleware.go",
+        "line": 52,
+        "side": "RIGHT",
+        "body": "The role comparison is inverted; reject when role != \"admin\".",
+        "rigor": "walked",
+        "severity": "critical"
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "model": "fixture-good",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "session.go",
+        "line": 31,
+        "side": "RIGHT",
+        "body": "Check the lookup error before dereferencing session.",
+        "rigor": "walked",
+        "severity": "critical"
+      }
+    ]
+  }
+}

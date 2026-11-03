@@ -1,0 +1,27 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "pool.go",
+        "line": 88,
+        "side": "RIGHT",
+        "body": "Wait for the close before returning the conn to the pool.",
+        "rigor": "reproduced",
+        "severity": "important"
+      },
+      {
+        "path": "pool.go",
+        "line": 95,
+        "side": "RIGHT",
+        "body": "The close goroutine could carry a name for debugging.",
+        "rigor": "observed",
+        "severity": "informational"
+      }
+    ]
+  }
+}

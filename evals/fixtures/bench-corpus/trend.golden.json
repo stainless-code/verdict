@@ -1,0 +1,64 @@
+{
+  "bundles": 16,
+  "by_model": [
+    {
+      "bundles": 8,
+      "false_positive_rate": 0.1,
+      "false_positives": 1,
+      "ground_truth": 9,
+      "matched": 9,
+      "missed": 0,
+      "model": "fixture-good",
+      "precision": 0.9,
+      "recall": 1,
+      "reported": 10
+    },
+    {
+      "bundles": 8,
+      "false_positive_rate": 0.4,
+      "false_positives": 4,
+      "ground_truth": 9,
+      "matched": 6,
+      "missed": 3,
+      "model": "fixture-noisy",
+      "precision": 0.6,
+      "recall": 0.6667,
+      "reported": 10
+    }
+  ],
+  "by_panel": [
+    {
+      "bundles": 8,
+      "false_positive_rate": 0.2,
+      "false_positives": 2,
+      "ground_truth": 10,
+      "matched": 8,
+      "missed": 2,
+      "panel": "panel-alpha",
+      "precision": 0.8,
+      "recall": 0.8,
+      "reported": 10
+    },
+    {
+      "bundles": 8,
+      "false_positive_rate": 0.3,
+      "false_positives": 3,
+      "ground_truth": 8,
+      "matched": 7,
+      "missed": 1,
+      "panel": "panel-beta",
+      "precision": 0.7,
+      "recall": 0.875,
+      "reported": 10
+    }
+  ],
+  "cases": 8,
+  "false_positive_rate": 0.25,
+  "false_positives": 5,
+  "ground_truth": 18,
+  "matched": 15,
+  "missed": 3,
+  "precision": 0.75,
+  "recall": 0.8333,
+  "reported": 20
+}
