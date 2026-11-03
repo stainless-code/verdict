@@ -169,8 +169,8 @@ func refusalOrFailed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("post failed: %v", err)}
 }
 
-// prepare runs the bundle gates, review load, drift, hunks, and the shared
-// merge.
+// prepare runs the bundle gates, review load, the local same-SHA finalizer
+// guard, drift, hunks, and the shared merge.
 func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	st.dir = ".review/" + st.req.Pr
 	st.event = eventComment
@@ -180,12 +180,22 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if ref := st.loadReview(); ref != nil {
 		return ref
 	}
+	// The finalizer guard reads only local stores (PR.json, post.json), so
+	// it runs before drift's live lookup: a repeat post on an already-posted
+	// SHA refuses without paying for any network round-trip, and the
+	// deterministic local refusal wins over the nondeterministic reads that
+	// follow. Dry runs stay advisory exactly as before, so they skip it.
+	st.commitID = recordcore.ProvHead(st.dir)
+	if !st.flags.DryRun {
+		if ref := st.finalizerGuard(); ref != nil {
+			return ref
+		}
+	}
 	st.checkDrift(ctx)
 	if err := recordcore.EnsureHunksSnapshot(st.mergeRuntime(), st.dir); err != nil {
 		return refusalOrFailed(err)
 	}
 	st.applyApprovedFlag()
-	st.commitID = recordcore.ProvHead(st.dir)
 	st.now = st.req.TimeUTC()
 	st.findingsFile = st.dir + "/findings.json"
 	if st.flags.DryRun {
@@ -209,9 +219,6 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
 	}
 	if ref := st.duplicateGuard(); ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	if ref := st.finalizerGuard(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	return st.submit(ctx)

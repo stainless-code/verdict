@@ -506,19 +506,20 @@ func TestRunCanceled(t *testing.T) {
 }
 
 // postBundle writes a minimal GitHub bundle plus review for Run tests.
-func postBundle(t *testing.T, pr, review string) {
+func postBundle(t *testing.T, review string) {
 	t.Helper()
 	head := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := writeTestFile(".review/"+pr+"/PR.json",
+	dir := ".review/7"
+	if err := writeTestFile(dir+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+head+`","author":{"login":"someone-else"}}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeTestFile(".review/"+pr+"/full.diff",
+	if err := writeTestFile(dir+"/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeTestFile(".review/"+pr+"/review.json", review); err != nil {
+	if err := writeTestFile(dir+"/review.json", review); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -549,7 +550,7 @@ func postCommander(t *testing.T, payload *string) *scriptCommander {
 func TestRunDryRun(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	postBundle(t, "7", `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
 	cmdr := postCommander(t, nil)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json", DryRun: true}, &warnings, &human)
@@ -597,7 +598,7 @@ func TestRunDryRun(t *testing.T) {
 func TestRunSubmit(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	postBundle(t, "7", `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
 	cmdr := postCommander(t, nil)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
