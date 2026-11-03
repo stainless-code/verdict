@@ -8,12 +8,13 @@ package main
 
 // usageText is the frozen CLI usage block: the shell usage text
 // with the program name changed to verdict and no rewritten prose
-// (go-port 08, operator ruling: substitution only). Printed to
-// stdout by -h/--help (exit 0) and to stderr by the arity gate
-// (exit 2).
+// (go-port 08, operator ruling: substitution only). The two experimental
+// mcp lines are the operator-approved exception (2026-11-02): the transport
+// is discoverable but still tagged experimental. Printed to stdout by
+// -h/--help (exit 0) and to stderr by the arity gate (exit 2).
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install|skill|upgrade|uninstall [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install|skill|upgrade|uninstall|mcp [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -210,6 +211,11 @@ func usageText() string {
 		"    remove an installer-managed verdict plus its receipt; only with --remove-path\n" +
 		"    also remove the marked PATH line. npm/brew/project-local/skill copies refuse\n" +
 		"    with the owning removal command.\n" +
+		"  mcp [--read-only] (experimental)\n" +
+		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
+		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
+		"  mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json] (experimental)\n" +
+		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
 		"  Global presentation flags (any verb; stripped before verb parsing):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
 		"  Global publish flags (any verb; stripped before verb parsing):\n" +

@@ -34,8 +34,8 @@ func readOutput(t *testing.T, f *os.File) string {
 	return string(raw)
 }
 
-// TestMCPHelp proves `verdict mcp --help` documents the transport without
-// moving the review usage block.
+// TestMCPHelp proves `verdict mcp --help` documents the transport and the
+// top-level review usage block lists the experimental entry points.
 func TestMCPHelp(t *testing.T) {
 	out, errOut := mcpTempFiles(t)
 	code := run([]string{"mcp", "--help"}, out, errOut, os.Getenv, os.ReadFile)
@@ -48,8 +48,12 @@ func TestMCPHelp(t *testing.T) {
 			t.Errorf("help misses %q:\n%s", want, help)
 		}
 	}
-	if strings.Contains(usageText(), "mcp") {
-		t.Error("mcp leaked into the review usage block")
+	if !strings.Contains(usageText(), "mcp [--read-only] (experimental)") {
+		t.Error("review usage block misses the experimental mcp line")
+	}
+	if !strings.Contains(usageText(), "mcp config --agent") ||
+		!strings.Contains(usageText(), "(experimental)") {
+		t.Error("review usage block misses mcp config tagged experimental")
 	}
 }
 

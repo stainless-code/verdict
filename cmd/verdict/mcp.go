@@ -10,8 +10,9 @@ import (
 	"github.com/stainless-code/verdict/internal/mcp"
 )
 
-// mcpUsageText documents the hidden stdio transport. `mcp` stays out of the
-// review usage block so ticket 08's usage bytes and evals do not move.
+// mcpUsageText documents the stdio transport. The top-level usage block now
+// lists the experimental entry points; this remains the transport's full
+// flag reference.
 func mcpUsageText() string {
 	return "usage: verdict mcp [--read-only]\n" +
 		"       verdict mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json]\n" +

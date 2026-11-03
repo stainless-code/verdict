@@ -15,7 +15,8 @@
 #       exit 2; an unknown verb with both positionals fails with the
 #       unknown-cmd message and exit 2.
 #   U5  the block names `verdict` (never review.sh) and still names --json,
-#       the four verify refusal codes, and the token-scopes-excess row.
+#       the four verify refusal codes, the token-scopes-excess row, and the
+#       experimental mcp/mcp config entry points.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -134,6 +135,13 @@ for anchor in --json verify-destructive verify-networked verify-credential-read 
   grep -q -F -- "$anchor" "$USAGE" || { anchors_ok="false"; bad "U5 block misses $anchor"; }
 done
 [ "$anchors_ok" = "true" ] && good "U5 block keeps --json, the verify codes, and token-scopes-excess"
+if grep -q -F -- "mcp [--read-only] (experimental)" "$USAGE" \
+  && grep -q -F -- "mcp config --agent <claude|cursor|codex>" "$USAGE" \
+  && grep -q -F -- "(experimental)" "$USAGE"; then
+  good "U5 block lists mcp and mcp config tagged experimental"
+else
+  bad "U5 block misses the experimental mcp entry points"
+fi
 
 unset XDG_CONFIG_HOME || true
 rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-bad"

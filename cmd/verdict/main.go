@@ -67,8 +67,9 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	// Installed binaries ship no package.json: the linked release version
 	// (if any) owns the footer before any flag handling runs.
 	provenance.SetBuildVersion(strings.TrimPrefix(version, "v"))
-	// `mcp` is the hidden stdio transport: dispatched before usage/arity so
-	// the review usage block (and its byte contract) never grows a line.
+	// `mcp` keeps its own flag grammar, so it is dispatched before the
+	// review arity gate; the top-level usage block documents the
+	// experimental entry points without routing through splitCommand.
 	if len(args) > 0 && args[0] == "mcp" {
 		return runMCP(args[1:], stdout, stderr, getenv, readFile)
 	}
