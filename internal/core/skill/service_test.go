@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -119,7 +120,7 @@ func TestInstallCreateDryRunApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shim.Mode().Perm()&0o111 == 0 {
+	if runtime.GOOS != "windows" && shim.Mode().Perm()&0o111 == 0 { // NTFS carries no executable bit
 		t.Error("installed shim is not executable")
 	}
 	receipt := readReceiptMap(t, filepath.Join(target, ".verdict-managed"))

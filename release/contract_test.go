@@ -328,7 +328,7 @@ func checkBinExecutable(t *testing.T, pkg, bin string) {
 	info, err := os.Stat(bin)
 	if err != nil {
 		t.Errorf("%s missing binary: %v", pkg, err)
-	} else if info.Mode().Perm()&0o111 == 0 {
+	} else if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 { // NTFS carries no executable bit
 		t.Errorf("%s binary is not executable", pkg)
 	}
 }

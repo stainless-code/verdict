@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -73,6 +74,9 @@ func assertEmbeddedFile(t *testing.T, path string) {
 	}
 	if !bytes.Equal(embedded, disk) {
 		t.Errorf("embedded %s differs from the checked-in file", path)
+	}
+	if runtime.GOOS == "windows" {
+		return // NTFS carries no executable bit: Linux and macOS CI pin the modes
 	}
 	info, err := os.Stat(filepath.FromSlash(path))
 	if err != nil {
