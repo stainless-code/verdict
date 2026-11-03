@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -161,15 +162,16 @@ func (e *transportError) Error() string { return "read stdin: " + e.err.Error() 
 // Unwrap exposes the cause to [errors.Is].
 func (e *transportError) Unwrap() error { return e.err }
 
-// handleLine parses and dispatches one frame. Parse errors get a JSON-RPC
-// error with a null id; notification-shaped garbage gets no response.
+// handleLine parses and dispatches one frame. The frame is decoded once: a
+// syntax error is a parse error, while a shape error is an invalid request.
+// Both get a null id; notification-shaped garbage gets no response.
 func (s *Server) handleLine(ctx context.Context, line []byte) {
-	if !json.Valid(line) {
-		s.writeError(nil, codeParse, "parse error")
-		return
-	}
 	var req rpcRequest
 	if err := json.Unmarshal(line, &req); err != nil {
+		if _, syntax := errors.AsType[*json.SyntaxError](err); syntax {
+			s.writeError(nil, codeParse, "parse error")
+			return
+		}
 		s.writeError(nil, codeInvalidRequest, "invalid request")
 		return
 	}
@@ -212,14 +214,10 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 	if len(req.ID) == 0 {
 		return
 	}
-	var params struct {
-		ProtocolVersion string `json:"protocolVersion"`
-	}
-	if len(req.Params) > 0 && string(req.Params) != jsonNull {
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			s.writeError(req.ID, codeInvalidParams, "invalid initialize params")
-			return
-		}
+	params, ok := decodeParams[initializeParams](req.Params)
+	if !ok {
+		s.writeError(req.ID, codeInvalidParams, "invalid initialize params")
+		return
 	}
 	s.writeResult(req.ID, initializeResult{
 		ProtocolVersion: negotiate(params.ProtocolVersion),
@@ -267,6 +265,10 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 		s.writeError(req.ID, codeInvalidParams, "unknown tool: "+params.Name)
 		return
 	}
+	request, ok := s.decodeCall(t, req.ID, params.Arguments)
+	if !ok {
+		return
+	}
 	callCtx, cancel := context.WithCancel(ctx)
 	key := string(req.ID)
 	s.callMu.Lock()
@@ -279,34 +281,36 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 			s.callMu.Unlock()
 		}()
 		defer cancel()
-		result, rpcErr := s.call(callCtx, t, params.Arguments)
-		if rpcErr != nil {
-			s.writeError(req.ID, rpcErr.Code, rpcErr.Message)
-			return
-		}
-		s.writeResult(req.ID, result)
+		s.writeResult(req.ID, s.call(callCtx, t, request))
 	})
 }
 
-// call decodes arguments, injects the runtime, and translates the core
-// refusal/success contract into a tool result.
-func (s *Server) call(ctx context.Context, t *tool, raw json.RawMessage) (any, *rpcError) {
-	var req any
-	if t.decode != nil {
-		var err error
-		req, err = decodeArgs(t, raw)
-		if err != nil {
-			return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
-		}
+// decodeCall decodes one call's arguments into the tool's typed request once,
+// before dispatch, so the worker goroutine never parses params again. A
+// hand-built tool (tests) carries no decoder and owns its request shape.
+func (s *Server) decodeCall(t *tool, id, raw json.RawMessage) (any, bool) {
+	if t.decode == nil {
+		return nil, true
 	}
+	request, err := t.decode(raw)
+	if err != nil {
+		s.writeError(id, codeInvalidParams, err.Error())
+		return nil, false
+	}
+	return request, true
+}
+
+// call injects the runtime into the already-decoded request and translates
+// the core refusal/success contract into a tool result.
+func (s *Server) call(ctx context.Context, t *tool, request any) any {
 	if t.wire != nil {
-		t.wire(s.bindings(t), req)
+		t.wire(s.bindings(t), request)
 	}
-	data, ref := t.invoke(ctx, req)
+	data, ref := t.invoke(ctx, request)
 	if ref != nil {
-		return refusalResult(ref), nil
+		return refusalResult(ref)
 	}
-	return successResult(data), nil
+	return successResult(data)
 }
 
 // bindings snapshots the session runtime a tool's wire function injects.
@@ -327,13 +331,8 @@ func (s *Server) bindings(t *tool) *bindings {
 // handleCancelled maps the cancel notification onto the in-flight call's
 // context. Unknown ids are ignored.
 func (s *Server) handleCancelled(req *rpcRequest) {
-	var params struct {
-		RequestID json.RawMessage `json:"requestId"`
-	}
-	if len(req.Params) == 0 || string(req.Params) == jsonNull {
-		return
-	}
-	if err := json.Unmarshal(req.Params, &params); err != nil || len(params.RequestID) == 0 {
+	params, ok := decodeParams[cancelParams](req.Params)
+	if !ok || len(params.RequestID) == 0 {
 		return
 	}
 	s.callMu.Lock()
@@ -394,6 +393,19 @@ func negotiate(requested string) string {
 		return requested
 	}
 	return latestProtocol
+}
+
+// decodeParams decodes one method's params object; absent or null params
+// leave the zero value, and a false result means malformed params.
+func decodeParams[T any](raw json.RawMessage) (T, bool) {
+	var params T
+	if len(raw) == 0 || string(raw) == jsonNull {
+		return params, true
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return params, false
+	}
+	return params, true
 }
 
 // parseCallParams validates the tools/call params object.
@@ -464,6 +476,18 @@ type rpcError struct { //nolint:govet // field order mirrors the wire frame
 type callParams struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
+}
+
+// initializeParams is the initialize params subset.
+type initializeParams struct {
+	ProtocolVersion string `json:"protocolVersion"`
+}
+
+// cancelParams is the notifications/cancelled params subset.
+//
+//nolint:misspell // MCP spells the method "cancelled"
+type cancelParams struct {
+	RequestID json.RawMessage `json:"requestId"`
 }
 
 // toolDescriptor is one tools/list entry.
