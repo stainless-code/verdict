@@ -43,50 +43,87 @@ func readContents(ctx context.Context, cmd core.Commander, repo, base string) (m
 	if !repoSlug.MatchString(repo) {
 		return nil, refuse(CodeUnavailable, "the repository is not an owner/repo slug — cannot read controls through the contents API")
 	}
-	contents, total := map[string][]byte{}, 0
+	reader := contentsReader{contents: map[string][]byte{}}
 	for _, path := range Inventory {
-		doc, ref := fetchContent(ctx, cmd, repo, base, path)
-		if ref != nil {
+		if ref := reader.read(ctx, cmd, repo, base, path); ref != nil {
 			return nil, ref
 		}
-		if doc == nil {
-			continue // absent at base: no control
-		}
-		if total += doc.Size; total > MaxTotalBytes {
-			return nil, refuse(CodeTooLarge, fmt.Sprintf("controls exceed the %d-byte total cap — trim them at base", MaxTotalBytes))
-		}
-		raw, ref := decodeContent(path, doc)
-		if ref != nil {
-			return nil, ref
-		}
-		contents[path] = raw
 	}
-	return contents, nil
+	return reader.contents, nil
+}
+
+// contentsReader accumulates the controls and their reported sizes.
+type contentsReader struct {
+	contents map[string][]byte
+	total    int
+}
+
+// read records one inventory path: a 404 is absence, and the total cap
+// applies before the bytes are kept.
+func (r *contentsReader) read(ctx context.Context, cmd core.Commander, repo, base, path string) *core.RefusalError {
+	raw, size, ref := contentAt(ctx, cmd, repo, base, path)
+	if ref != nil {
+		return ref
+	}
+	if raw == nil {
+		return nil
+	}
+	r.total += size
+	if r.total > MaxTotalBytes {
+		return refuse(CodeTooLarge, fmt.Sprintf("controls exceed the %d-byte total cap — trim them at base", MaxTotalBytes))
+	}
+	r.contents[path] = raw
+	return nil
+}
+
+// contentAt fetches and decodes one inventory path: nil bytes is a 404.
+func contentAt(ctx context.Context, cmd core.Commander, repo, base, path string) ([]byte, int, *core.RefusalError) {
+	doc, ref := fetchContent(ctx, cmd, repo, base, path)
+	if ref != nil || doc == nil {
+		return nil, 0, ref
+	}
+	raw, ref := decodeContent(path, doc)
+	return raw, doc.Size, ref
 }
 
 // fetchContent asks the contents API for one path: nil, nil is a 404.
 func fetchContent(ctx context.Context, cmd core.Commander, repo, base, path string) (*contentsDoc, *core.RefusalError) {
 	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
 	res, err := cmd.Run(ctx, core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
-	if err == nil && res.StdoutTruncated {
+	if err != nil {
+		return nil, contentsFailure(path, base, res, err)
+	}
+	if res.StdoutTruncated {
 		return nil, refuse(CodeTooLarge, fmt.Sprintf("control %s is over the %d-byte cap", path, MaxFileBytes))
 	}
-	if err != nil {
-		stderr := strings.TrimSpace(res.Stderr)
-		if strings.Contains(stderr, httpNotFound) {
-			return nil, nil
-		}
-		return nil, refuse(CodeUnavailable, fmt.Sprintf("could not read %s at %s through the contents API: %v",
-			path, base[:shortLen], jq.Sealed(stderr[:min(len(stderr), stderrCap)], err)))
-	}
-	var doc contentsDoc
-	if json.Unmarshal([]byte(res.Stdout), &doc) != nil || doc.Type != typeFile {
-		// A directory answers with an array, a symlink or submodule with
-		// another type: none is a regular file.
-		return nil, refuse(CodeUnavailable, fmt.Sprintf("control %s is not a regular file — replace it with one", path))
+	doc, ref := parseContents(path, res.Stdout)
+	if ref != nil {
+		return nil, ref
 	}
 	if doc.Size > MaxFileBytes {
 		return nil, refuse(CodeTooLarge, fmt.Sprintf("control %s is over the %d-byte cap", path, MaxFileBytes))
+	}
+	return doc, nil
+}
+
+// contentsFailure maps one failed gh call: a 404 is absence, any other
+// failure refuses.
+func contentsFailure(path, base string, res core.Result, err error) *core.RefusalError {
+	stderr := strings.TrimSpace(res.Stderr)
+	if strings.Contains(stderr, httpNotFound) {
+		return nil
+	}
+	return refuse(CodeUnavailable, fmt.Sprintf("could not read %s at %s through the contents API: %v",
+		path, base[:shortLen], jq.Sealed(stderr[:min(len(stderr), stderrCap)], err)))
+}
+
+// parseContents decodes one API body and rejects non-file shapes.
+func parseContents(path, stdout string) (*contentsDoc, *core.RefusalError) {
+	var doc contentsDoc
+	if json.Unmarshal([]byte(stdout), &doc) != nil || doc.Type != typeFile {
+		// A directory answers with an array, a symlink or submodule with
+		// another type: none is a regular file.
+		return nil, refuse(CodeUnavailable, fmt.Sprintf("control %s is not a regular file — replace it with one", path))
 	}
 	return &doc, nil
 }

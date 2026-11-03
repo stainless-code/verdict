@@ -60,8 +60,38 @@ func apiResolve(t *testing.T, f *apiFake, repo string) (*Snapshot, *core.Refusal
 }
 
 // TestResolveContentsFallback proves present and absent controls land in the
-// snapshot at the API's base bytes, with the ref pinned to the full SHA.
+// snapshot at the API's base bytes.
 func TestResolveContentsFallback(t *testing.T) {
+	_, snap, want := contentsFallback(t)
+	if snap.File.Policy != PolicyBase || snap.File.SHA != apiBase || snap.Used() != 3 {
+		t.Fatalf("file = %+v", snap.File)
+	}
+	for path, content := range want {
+		if got, ok := snap.ReadFile(path); !ok || string(got) != content {
+			t.Errorf("%s = %q (ok=%v), want %q", path, got, ok, content)
+		}
+	}
+	if snap.Has(".review/learnings.md") {
+		t.Error("a 404 control became used")
+	}
+}
+
+// TestResolveContentsFallbackPinsBase proves the API read asks at the full
+// base SHA and the resulting snapshot passes the gate.
+func TestResolveContentsFallbackPinsBase(t *testing.T) {
+	f, snap, _ := contentsFallback(t)
+	if len(f.calls) != len(Inventory) || !strings.HasSuffix(f.calls[0], "?ref="+apiBase) {
+		t.Errorf("calls = %q", f.calls)
+	}
+	if _, ref := Gate(filepath.Dir(snap.Dir), apiBase); ref != nil {
+		t.Errorf("Gate rejected the API snapshot: %v", ref)
+	}
+}
+
+// contentsFallback resolves the fallback fixture and returns the fake, the
+// snapshot, and the bytes each control must carry.
+func contentsFallback(t *testing.T) (*apiFake, *Snapshot, map[string]string) {
+	t.Helper()
 	long := strings.Repeat("a rule that wraps the base64 lines\n", 20)
 	f := &apiFake{bodies: map[string]string{
 		".review/panel":    fileBody("base-model\n"),
@@ -72,29 +102,11 @@ func TestResolveContentsFallback(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Resolve: %v", ref)
 	}
-	if snap.File.Policy != PolicyBase || snap.File.SHA != apiBase || snap.Used() != 3 {
-		t.Fatalf("file = %+v", snap.File)
-	}
-	for path, want := range map[string]string{".review/panel": "base-model\n", ".review/kb.jsonl": long, ".review/budget": ""} {
-		if got, ok := snap.ReadFile(path); !ok || string(got) != want {
-			t.Errorf("%s = %q (ok=%v), want %q", path, got, ok, want)
-		}
-	}
-	if snap.Has(".review/learnings.md") {
-		t.Error("a 404 control became used")
-	}
-	if len(f.calls) != len(Inventory) || !strings.HasSuffix(f.calls[0], "?ref="+apiBase) {
-		t.Errorf("calls = %q", f.calls)
-	}
-	if _, ref := Gate(filepath.Dir(snap.Dir), apiBase); ref != nil {
-		t.Errorf("Gate rejected the API snapshot: %v", ref)
-	}
+	return f, snap, map[string]string{".review/panel": "base-model\n", ".review/kb.jsonl": long, ".review/budget": ""}
 }
 
 // TestResolveContentsRefusals proves the caps, non-file shapes, bad payloads,
 // and every non-404 failure refuse typed, and a missing repo never calls gh.
-//
-//nolint:revive // the refusal matrix reads as one block
 func TestResolveContentsRefusals(t *testing.T) {
 	over := fmt.Sprintf(`{"type":"file","encoding":"base64","size":%d,"content":""}`, MaxFileBytes+1)
 	big := fileBody(strings.Repeat("x", MaxFileBytes))
@@ -103,19 +115,20 @@ func TestResolveContentsRefusals(t *testing.T) {
 		totalOver[p] = big
 	}
 	for _, tc := range []struct {
-		name, code, repo string
-		bodies, fail     map[string]string
+		name, code   string
+		bodies, fail map[string]string
+		repo         string
 	}{
-		{"per-file cap on size before decode", CodeTooLarge, "acme/app", map[string]string{".review/panel": over}, nil},
-		{"total cap", CodeTooLarge, "acme/app", totalOver, nil},
-		{"directory answers an array", CodeUnavailable, "acme/app", map[string]string{".review/panel": `[{"type":"file"}]`}, nil},
-		{"symlink type", CodeUnavailable, "acme/app", map[string]string{".review/panel": `{"type":"symlink","size":3}`}, nil},
-		{"undecodable base64", CodeUnavailable, "acme/app", map[string]string{".review/panel": `{"type":"file","encoding":"base64","size":3,"content":"@@@"}`}, nil},
-		{"size mismatch", CodeUnavailable, "acme/app", map[string]string{".review/panel": `{"type":"file","encoding":"base64","size":9,"content":"YWJj"}`}, nil},
-		{"non-base64 encoding", CodeUnavailable, "acme/app", map[string]string{".review/panel": `{"type":"file","encoding":"none","size":3,"content":""}`}, nil},
-		{"server error is not absence", CodeUnavailable, "acme/app", nil, map[string]string{".review/budget": "gh: Server Error (HTTP 500)"}},
-		{"unknown ref is not absence", CodeUnavailable, "acme/app", nil, map[string]string{".review/panel": "gh: No commit found for the ref (HTTP 422)"}},
-		{"unsafe repo slug", CodeUnavailable, "acme/../app", nil, nil},
+		{"per-file cap on size before decode", CodeTooLarge, map[string]string{".review/panel": over}, nil, "acme/app"},
+		{"total cap", CodeTooLarge, totalOver, nil, "acme/app"},
+		{"directory answers an array", CodeUnavailable, map[string]string{".review/panel": `[{"type":"file"}]`}, nil, "acme/app"},
+		{"symlink type", CodeUnavailable, map[string]string{".review/panel": `{"type":"symlink","size":3}`}, nil, "acme/app"},
+		{"undecodable base64", CodeUnavailable, map[string]string{".review/panel": `{"type":"file","encoding":"base64","size":3,"content":"@@@"}`}, nil, "acme/app"},
+		{"size mismatch", CodeUnavailable, map[string]string{".review/panel": `{"type":"file","encoding":"base64","size":9,"content":"YWJj"}`}, nil, "acme/app"},
+		{"non-base64 encoding", CodeUnavailable, map[string]string{".review/panel": `{"type":"file","encoding":"none","size":3,"content":""}`}, nil, "acme/app"},
+		{"server error is not absence", CodeUnavailable, nil, map[string]string{".review/budget": "gh: Server Error (HTTP 500)"}, "acme/app"},
+		{"unknown ref is not absence", CodeUnavailable, nil, map[string]string{".review/panel": "gh: No commit found for the ref (HTTP 422)"}, "acme/app"},
+		{"unsafe repo slug", CodeUnavailable, nil, nil, "acme/../app"},
 	} {
 		f := &apiFake{bodies: tc.bodies, fail: tc.fail}
 		snap, ref := apiResolve(t, f, tc.repo)
