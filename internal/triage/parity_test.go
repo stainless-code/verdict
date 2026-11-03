@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/parity"
@@ -30,9 +31,9 @@ func TestMain(m *testing.M) {
 }
 
 // mkBundle crafts a GitHub-shaped PR bundle with canned findings.
-func mkBundle(t *testing.T, dir, slug, findings string) {
+func mkBundle(t *testing.T, dir, findings string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", slug)
+	bdir := filepath.Join(dir, ".review", "4251")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -66,20 +67,30 @@ const (
 // setupKB builds the two-finding bundle plus the kb store.
 func setupKB(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkBundle(t, dir, "4251", "["+findingCited+","+findingPlain+"]")
+	mkBundle(t, dir, "["+findingCited+","+findingPlain+"]")
 	kbSeed(t, dir)
 }
 
 // setupPlain builds the two-finding bundle without kb state.
 func setupPlain(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkBundle(t, dir, "4251", "["+findingCited+","+findingPlain+"]")
+	mkBundle(t, dir, "["+findingCited+","+findingPlain+"]")
+}
+
+// setupAmbiguous builds two findings whose sigs share the "1234" prefix,
+// so a prefix resolve must report MANY instead of picking one.
+func setupAmbiguous(t *testing.T, dir, _ string) {
+	t.Helper()
+	sigA := strings.Replace(findingCited,
+		"0123456789abcdef0123456789abcdef01234567",
+		"1234567890abcdef0123456789abcdef01234567", 1)
+	mkBundle(t, dir, "["+sigA+","+findingPlain+"]")
 }
 
 // setupCorrupt builds a bundle with a truncated findings store.
 func setupCorrupt(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkBundle(t, dir, "4251", findingCited[:40])
+	mkBundle(t, dir, findingCited[:40])
 }
 
 // setupMissing builds an empty bundle dir with no findings store.
@@ -142,7 +153,7 @@ func runTriageRefusalCases(t *testing.T, sig1 string) {
 	t.Helper()
 	parity.Golden(t, harness, "unknown-sig", setupPlain, nil,
 		"triage", "acme/app", "4251", "--sig", "deadbeef", "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
-	parity.Golden(t, harness, "ambiguous-sig", setupPlain, nil,
+	parity.Golden(t, harness, "ambiguous-sig", setupAmbiguous, nil,
 		"triage", "acme/app", "4251", "--sig", "1234", "--status", "addressed", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
 	parity.Golden(t, harness, "bad-triage-status", setupPlain, nil,
 		"triage", "acme/app", "4251", "--sig", sig1, "--status", "bogus", "--rationale", "verified the await path now handles errors, fix confirmed", "--json")
