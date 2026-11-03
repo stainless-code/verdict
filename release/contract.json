@@ -68,7 +68,7 @@
     "bin": {
       "verdict": "bin/verdict.js"
     },
-    "wrapperFiles": ["bin/verdict.js"],
+    "wrapperFiles": ["bin/verdict.js", "bin/platforms.gen.json"],
     "publishArgs": ["--provenance", "--access", "public"]
   },
   "urls": {

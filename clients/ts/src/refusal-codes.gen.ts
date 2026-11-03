@@ -1,4 +1,4 @@
-// GENERATED from internal/core/hint.go isCode(...) literals by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
+// GENERATED from internal/core/hint.go hintRules by cmd/tsgen. Do not edit.
 // Open families (missing-*, bad-*) accept any suffix; keep this union
 // exact and widen at the use site with ` | (string & {})`.
 export type RefusalCode =

@@ -16,8 +16,8 @@ export class VerdictRefusalError extends Error {
   readonly warnings: string[];
 
   constructor(code: string, message: string, warnings: string[] = []) {
-    const hint = extractHint(message);
-    super(stripHint(message));
+    const { cause, hint } = splitHint(message);
+    super(cause);
     this.name = "VerdictRefusalError";
     this.code = code;
     this.hint = hint;
@@ -118,20 +118,13 @@ export class VerdictSchemaError extends Error {
   }
 }
 
-// extractHint returns the trailing `try: ...` line of a refusal message.
-function extractHint(message: string): string {
+// splitHint splits the trailing `try: ...` hint off a refusal message, so
+// `cause` reads as the cause and `hint` as the remediation line.
+function splitHint(message: string): { cause: string; hint: string } {
   const marker = "\ntry: ";
   const at = message.lastIndexOf(marker);
-  if (at < 0) return "";
-  return message.slice(at + 1).trim();
-}
-
-// stripHint removes that trailing line so message reads as the cause.
-function stripHint(message: string): string {
-  const marker = "\ntry: ";
-  const at = message.lastIndexOf(marker);
-  if (at < 0) return message;
-  return message.slice(0, at);
+  if (at < 0) return { cause: message, hint: "" };
+  return { cause: message.slice(0, at), hint: message.slice(at + 1).trim() };
 }
 
 // firstLine keeps usage errors to one line for Error.message.

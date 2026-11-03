@@ -7,14 +7,9 @@
 const { spawnSync } = require("node:child_process");
 
 const REPAIR = "npm i -g @stainless-code/verdict@latest";
-const PACKAGES = {
-  "darwin-x64": "@stainless-code/verdict-darwin-x64",
-  "darwin-arm64": "@stainless-code/verdict-darwin-arm64",
-  "linux-x64": "@stainless-code/verdict-linux-x64",
-  "linux-arm64": "@stainless-code/verdict-linux-arm64",
-  "win32-x64": "@stainless-code/verdict-win32-x64",
-  "win32-arm64": "@stainless-code/verdict-win32-arm64",
-};
+// Generated from release/contract.json by clients/ts/scripts/gen-ts-types.mjs
+// (the typed copy the client imports is clients/ts/src/platforms.gen.ts).
+const PACKAGES = require("./platforms.gen.json");
 
 function refuse(code, detail) {
   process.stderr.write(`verdict: ${code}: ${detail}\nrepair: ${REPAIR}\n`);

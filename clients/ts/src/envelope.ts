@@ -70,35 +70,12 @@ export function assertEnvelope<T = unknown>(
   value: unknown,
   stdout: string,
 ): asserts value is Envelope<T> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new VerdictSchemaError(
-      `expected exactly one JSON envelope object, got ${describe(value)}`,
-      stdout,
-    );
-  }
-  const record = value as Record<string, unknown>;
-  for (const key of REQUIRED_KEYS) {
-    if (!(key in record)) {
-      throw new VerdictSchemaError(
-        `envelope is missing required key ${JSON.stringify(key)}`,
-        stdout,
-      );
-    }
-  }
-  if (record["schema_version"] !== SCHEMA_VERSION) {
-    throw new VerdictSchemaError(
-      `unsupported schema_version ${JSON.stringify(record["schema_version"] ?? null)}; want "1"`,
-      stdout,
-    );
-  }
-  if (record["error"] !== null) {
+  assertEnvelopeShape(value, stdout);
+  if (value["error"] !== null) {
     throw new VerdictSchemaError(
       "envelope carries error on an exit-0 run; refusing to misread it",
       stdout,
     );
-  }
-  if (!Array.isArray(record["warnings"])) {
-    throw new VerdictSchemaError("envelope warnings is not an array", stdout);
   }
 }
 
@@ -129,7 +106,8 @@ export function assertRefusalEnvelope(
   }
 }
 
-// assertEnvelopeShape checks keys and version without judging error/data.
+// assertEnvelopeShape checks keys, version, and warnings without judging
+// error/data; it is the one shape implementation both assertions use.
 function assertEnvelopeShape(
   value: unknown,
   stdout: string,

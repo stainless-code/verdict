@@ -22,19 +22,7 @@ import {
   VerdictTimeoutError,
   VerdictUsageError,
 } from "./errors.js";
-
-// PLATFORM_PACKAGES mirrors scripts/npm-shim/verdict.js: the optional
-// dependencies the wrapper package installs per platform. The resolver
-// below is the same lookup (package binary first, PATH last), so the
-// client and the bin shim never disagree about which binary runs.
-const PLATFORM_PACKAGES: Record<string, string> = {
-  "darwin-x64": "@stainless-code/verdict-darwin-x64",
-  "darwin-arm64": "@stainless-code/verdict-darwin-arm64",
-  "linux-x64": "@stainless-code/verdict-linux-x64",
-  "linux-arm64": "@stainless-code/verdict-linux-arm64",
-  "win32-x64": "@stainless-code/verdict-win32-x64",
-  "win32-arm64": "@stainless-code/verdict-win32-arm64",
-};
+import { PLATFORM_PACKAGES } from "./platforms.gen.js";
 
 // DEFAULT_TIMEOUT_MS bounds every run; the child is killed past it.
 export const DEFAULT_TIMEOUT_MS = 300_000;
@@ -55,7 +43,10 @@ export interface ClientOptions extends RunOptions {
 }
 
 // resolveBin picks the binary without ever installing anything:
-// explicit opt > VERDICT_BIN > the wrapper's platform package > PATH.
+// explicit opt > VERDICT_BIN > the wrapper's platform package > PATH. The
+// platform map is generated from release/contract.json (platforms.gen.ts),
+// the same rows the npm install shim resolves from, so the two cannot
+// disagree about which package ships a binary.
 export function resolveBin(explicit?: string): string {
   if (explicit) return explicit;
   const fromEnv = process.env["VERDICT_BIN"];

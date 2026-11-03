@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -352,7 +354,18 @@ func checkWrapper(t *testing.T, out string, doc *contractDoc) {
 			t.Errorf("wrapper dep %s = %q; want exact 1.2.3", entry.NPMPackage, decoded[entry.NPMPackage])
 		}
 	}
+	checkWrapperPlatformMap(t, out)
 	checkNoScripts(t, "wrapper", wrapper)
+}
+
+// checkWrapperPlatformMap proves the wrapper ships the generated map the shim
+// requires, byte for byte.
+func checkWrapperPlatformMap(t *testing.T, out string) {
+	t.Helper()
+	shipped := mustRead(t, filepath.Join(out, "verdict", "bin", "platforms.gen.json"))
+	if want := mustRead(t, filepath.Join("..", "scripts", "npm-shim", "platforms.gen.json")); !bytes.Equal(shipped, want) {
+		t.Error("wrapper bin/platforms.gen.json differs from the generated shim map")
+	}
 }
 
 // checkShimSource validates the checked-in shim the wrapper copies.
@@ -365,11 +378,63 @@ func checkShimSource(t *testing.T) {
 	if lines := strings.Count(string(shim), "\n") + 1; lines > 80 {
 		t.Errorf("shim is %d lines; budget is ~80", lines)
 	}
-	for _, want := range []string{"require.resolve", "npm i -g @stainless-code/verdict@latest", "stdio"} {
+	for _, want := range []string{"require.resolve", "npm i -g @stainless-code/verdict@latest", "stdio", `require("./platforms.gen.json")`} {
 		if !strings.Contains(string(shim), want) {
 			t.Errorf("shim missing %q", want)
 		}
 	}
+	// The map has one source (release/contract.json): an inlined copy here
+	// would drift from the client's generated copy on the next rename.
+	if strings.Contains(string(shim), "@stainless-code/verdict-linux-x64") {
+		t.Error("shim inlines the platform map; require the generated platforms.gen.json instead")
+	}
+}
+
+// TestGeneratedPlatformMapsMatchContract proves the platform -> npm package
+// map has one source: the client's typed copy and the shim's JSON copy must
+// both equal contract.archives, so renaming a package cannot leave a stale
+// resolver behind.
+func TestGeneratedPlatformMapsMatchContract(t *testing.T) {
+	doc := loadContract(t)
+	want := make(map[string]string, len(doc.Archives))
+	for _, entry := range doc.Archives {
+		want[entry.NPMOS+"-"+entry.NPMCPU] = entry.NPMPackage
+	}
+	shimMap := decodePlatformMap(t, mustRead(t, filepath.Join("..", "scripts", "npm-shim", "platforms.gen.json")))
+	if !maps.Equal(shimMap, want) {
+		t.Errorf("scripts/npm-shim/platforms.gen.json = %v; want %v", shimMap, want)
+	}
+	clientMap := parseClientPlatformMap(t, repoFile(t, "clients/ts/src/platforms.gen.ts"))
+	if !maps.Equal(clientMap, want) {
+		t.Errorf("clients/ts/src/platforms.gen.ts = %v; want %v", clientMap, want)
+	}
+}
+
+// decodePlatformMap decodes the shim's generated JSON map.
+func decodePlatformMap(t *testing.T, raw []byte) map[string]string {
+	t.Helper()
+	var got map[string]string
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("platforms.gen.json: %v", err)
+	}
+	return got
+}
+
+// clientPlatformPair matches one `"os-cpu": "@stainless-code/verdict-…"` row
+// of the generated TypeScript map.
+var clientPlatformPair = regexp.MustCompile(`"([a-z0-9]+-[a-z0-9]+)": "([^"]+)"`)
+
+// parseClientPlatformMap reads the generated TypeScript map's rows.
+func parseClientPlatformMap(t *testing.T, source string) map[string]string {
+	t.Helper()
+	got := make(map[string]string)
+	for _, match := range clientPlatformPair.FindAllStringSubmatch(source, -1) {
+		got[match[1]] = match[2]
+	}
+	if len(got) == 0 {
+		t.Fatal("clients/ts/src/platforms.gen.ts has no platform rows")
+	}
+	return got
 }
 
 // TestNpmTreeMatchesContract generates the npm tree from staged binaries
@@ -562,15 +627,13 @@ func TestFormulaMatchesContract(t *testing.T) {
 	}
 }
 
-// writeShimTree plants a wrapper (shim + manifest) under dir/node_modules,
-// returning the shim path. Siblings resolve like installed optional
-// dependencies.
+// writeShimTree plants a wrapper (shim, generated platform map, and
+// manifest) under dir/node_modules, returning the shim path. Siblings resolve
+// like installed optional dependencies.
 func writeShimTree(t *testing.T, dir string) string {
 	t.Helper()
-	shim, err := os.ReadFile(filepath.Join("..", "scripts", "npm-shim", "verdict.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	shim := mustRead(t, filepath.Join("..", "scripts", "npm-shim", "verdict.js"))
+	platforms := mustRead(t, filepath.Join("..", "scripts", "npm-shim", "platforms.gen.json"))
 	binDir := filepath.Join(dir, "node_modules", "wrapper", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -581,6 +644,9 @@ func writeShimTree(t *testing.T, dir string) string {
 	}
 	shimPath := filepath.Join(binDir, "verdict.js")
 	if err := os.WriteFile(shimPath, shim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "platforms.gen.json"), platforms, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return shimPath

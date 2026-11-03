@@ -87,14 +87,27 @@ createClient({
 });
 ```
 
-## Regenerating types
+## Regenerating the generated sources
 
-`src/types.gen.ts` (envelope `$defs`) and `src/refusal-codes.gen.ts`
-(`isCode(...)` literals in `internal/core/hint.go`) are generated:
+`src/types.gen.ts` (envelope `$defs`) and the platform → npm package map
+(`src/platforms.gen.ts` for the client, `scripts/npm-shim/platforms.gen.json`
+for the install shim) are rendered from `schemas/envelope.schema.json` and
+`release/contract.json`:
 
 ```sh
-node clients/ts/scripts/gen-ts-types.mjs       # rewrite
+node clients/ts/scripts/gen-ts-types.mjs          # rewrite
 node clients/ts/scripts/gen-ts-types.mjs --check  # drift gate (CI)
 ```
 
-Node ≥ 18. Works on Bun (the test suite runs under both).
+`src/refusal-codes.gen.ts` is rendered from the Go refusal hint table in
+`internal/core/hint.go`, so a code added to a `hintRules` row cannot be
+missed by a source scrape:
+
+```sh
+go run ./cmd/tsgen -write  # rewrite (make tsgen)
+go run ./cmd/tsgen         # drift gate (runs in make clients-ts)
+```
+
+`make clients-ts` runs both gates, builds the binary, then tests and
+typechecks. The Node generator needs Node ≥ 18 and works on Bun; it has no
+dependencies outside Node builtins.

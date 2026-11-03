@@ -243,11 +243,18 @@ export function generateNpmTree(options) {
     };
   }
   writeJSON(join(wrapperDir, "package.json"), wrapperManifest);
-  const shimSrc = join(REPO_ROOT, "scripts", "npm-shim", "verdict.js");
+  const shimDir = join(REPO_ROOT, "scripts", "npm-shim");
   const shimDest = join(wrapperDir, contract.npm.bin.verdict);
   mkdirSync(dirname(shimDest), { recursive: true });
-  cpSync(shimSrc, shimDest);
+  cpSync(join(shimDir, "verdict.js"), shimDest);
   chmodSync(shimDest, 0o755);
+  // The shim requires this generated map as a sibling; it is rendered from
+  // the same contract rows by clients/ts/scripts/gen-ts-types.mjs, and a
+  // missing file fails here rather than at a user's first `verdict` call.
+  cpSync(
+    join(shimDir, "platforms.gen.json"),
+    join(dirname(shimDest), "platforms.gen.json"),
+  );
   return { version, archiveVersion: archiveVersionSeen, staged, wrapperDir };
 }
 

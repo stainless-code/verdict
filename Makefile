@@ -89,9 +89,19 @@ release-dry-run:
 # clients-ts builds, drift-gates, tests, and typechecks the official TS
 # client (clients/ts). The client ships as the ./client subpath export of
 # the npm wrapper; generate-npm.mjs bundles clients/ts/dist when present.
+# Two gates: gen-ts-types.mjs --check covers the schema/codegen sources (Go
+# free, Node only), `go run ./cmd/tsgen` covers the refusal codes rendered
+# from the Go hint table.
 .PHONY: clients-ts
-clients-ts:
+clients-ts: build
+	go run ./cmd/tsgen
 	node clients/ts/scripts/gen-ts-types.mjs --check
 	node_modules/.bin/tsc -p clients/ts/tsconfig.json
 	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/client.test.mjs
 	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json
+
+# tsgen rewrites the TS client sources derived from Go (the refusal codes);
+# the check form runs inside clients-ts.
+.PHONY: tsgen
+tsgen:
+	go run ./cmd/tsgen -write

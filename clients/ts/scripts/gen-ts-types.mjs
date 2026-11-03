@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Generate the TS client's generated sources from the repo contracts:
-//   schemas/envelope.schema.json ($defs -> types.gen.ts)
-//   internal/core/hint.go (isCode literals -> refusal-codes.gen.ts)
+//   schemas/envelope.schema.json ($defs -> clients/ts/src/types.gen.ts)
+//   release/contract.json (archives[] -> clients/ts/src/platforms.gen.ts and
+//     scripts/npm-shim/platforms.gen.json)
+// Refusal codes are not generated here: they come from the Go hint table via
+// `go run ./cmd/tsgen`, because the table is data the Go compiler checks.
 // No dependencies beyond Node builtins. Run `bun run gen` (or node this
-// script) after changing a schema or a refusal code; `--check` fails when
-// the checked-in files are stale (drift gate, like make schemas-check).
+// script) after changing a schema or the release contract; `--check` fails
+// when the checked-in files are stale (drift gate, like make schemas-check).
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +15,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..", "..");
 const SRC_DIR = join(HERE, "..", "src");
+const SHIM_DIR = join(REPO_ROOT, "scripts", "npm-shim");
 
 // NAME_OVERRIDES renames $defs that would collide with globals (`error`
 // vs the global Error); $refs resolve through the same mapping.
@@ -165,25 +169,47 @@ function genTypes() {
   return `${header("schemas/envelope.schema.json ($defs)")}\n${chunks.join("\n\n")}\n`;
 }
 
-// genCodes extracts every exact refusal code from the isCode(...) call
-// sites in internal/core/hint.go. Prefix families (missing-*, bad-*) are
-// open-ended by design, so the emitted union stays open via ` | (string &
-// {})` at the use site (see errors.ts).
-function genCodes() {
-  const source = readFileSync(
-    join(REPO_ROOT, "internal", "core", "hint.go"),
-    "utf8",
+// genPlatforms renders the platform -> npm package map twice from one source:
+// `client` is the typed copy the ESM client imports, `shim` the JSON the CJS
+// install shim requires. Both are byte-compared by --check, so a rename in
+// release/contract.json cannot leave one of them resolving a dead package.
+function genPlatforms() {
+  const contract = JSON.parse(
+    readFileSync(join(REPO_ROOT, "release", "contract.json"), "utf8"),
   );
-  const codes = new Set();
-  for (const match of source.matchAll(/\bisCode\(([^)]*)\)/g)) {
-    for (const literal of match[1].matchAll(/"([^"\\]*)"/g)) {
-      codes.add(literal[1]);
-    }
+  const archives = contract.archives ?? [];
+  if (archives.length === 0) {
+    throw new Error("release/contract.json carries no archives");
   }
-  if (codes.size === 0) throw new Error("no refusal codes found in hint.go");
-  const sorted = [...codes].sort();
-  const union = sorted.map((c) => `  | ${JSON.stringify(c)}`).join("\n");
-  return `${header("internal/core/hint.go isCode(...) literals")}\n// Open families (missing-*, bad-*) accept any suffix; keep this union\n// exact and widen at the use site with \` | (string & {})\`.\nexport type RefusalCode =\n${union};\n`;
+  const rows = archives.map((entry) => {
+    for (const field of ["npmOS", "npmCPU", "npmPackage"]) {
+      if (typeof entry[field] !== "string") {
+        throw new Error(
+          `contract archive row needs a string ${field}: ${JSON.stringify(entry)}`,
+        );
+      }
+    }
+    return [`${entry.npmOS}-${entry.npmCPU}`, entry.npmPackage];
+  });
+  const keys = new Set(rows.map(([key]) => key));
+  if (keys.size !== rows.length) {
+    throw new Error("release/contract.json repeats an npmOS/npmCPU pair");
+  }
+  const entries = rows
+    .map(([key, pkg]) => `  ${JSON.stringify(key)}: ${JSON.stringify(pkg)},`)
+    .join("\n");
+  const client =
+    `${header("release/contract.json archives[]")}\n` +
+    "// platform key (`<process.platform>-<process.arch>`) -> the optional\n" +
+    "// dependency package that ships that binary. The npm install shim\n" +
+    "// requires scripts/npm-shim/platforms.gen.json, rendered from the same\n" +
+    "// rows by this script.\n" +
+    `export const PLATFORM_PACKAGES: Record<string, string> = {\n${entries}\n};\n`;
+  const shim = `${JSON.stringify(Object.fromEntries(rows), null, 2)}\n`;
+  return [
+    [join(SRC_DIR, "platforms.gen.ts"), client],
+    [join(SHIM_DIR, "platforms.gen.json"), shim],
+  ];
 }
 
 function header(from) {
@@ -194,7 +220,7 @@ function main(argv) {
   const check = argv.includes("--check");
   const outputs = [
     [join(SRC_DIR, "types.gen.ts"), genTypes()],
-    [join(SRC_DIR, "refusal-codes.gen.ts"), genCodes()],
+    ...genPlatforms(),
   ];
   let stale = 0;
   for (const [path, want] of outputs) {
