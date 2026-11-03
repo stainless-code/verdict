@@ -21,7 +21,7 @@ func fetchTail(
 ) (*core.FetchData, string, error) {
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		dir + "/PR.json + full.diff to any agent; ask it to write " + dir + "/review.json"
+		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, "full.diff") + " to any agent; ask it to write " + dir + "/review.json"
 	if req.JSONMode {
 		return writeFetchTailJSON(ctx2, f, budget, fcap, chunkJSON, incBase, next)
 	}
@@ -29,7 +29,7 @@ func fetchTail(
 	if err != nil {
 		return nil, "", err
 	}
-	writeFetchDone(s, dir, stats.filesStr)
+	writeFetchDone(s, dir, stats.filesStr, chunkJSON != nil)
 	data := fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, nil)
 	if f.ShowPrompts {
 		dump, err := renderPromptDump(ctx2)
@@ -55,7 +55,7 @@ func writeFetchTailJSON(
 	if err != nil {
 		return nil, "", err
 	}
-	writeFetchDone(ctx2.runner, ctx2.dir, stats.filesStr)
+	writeFetchDone(ctx2.runner, ctx2.dir, stats.filesStr, chunkJSON != nil)
 	var dumpPtr *string
 	if hasDump {
 		dumpPtr = &dump
@@ -77,10 +77,21 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 }
 
 // writeFetchDone ports the human done/next lines.
-func writeFetchDone(r *session, dir, filesStr string) {
+func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/PR.json + %s/full.diff (+ %s/roles.txt) to any agent; ask it to write %s/review.json\n", dir, dir, dir, dir)
+		"%s/PR.json + %s (+ %s/roles.txt) to any agent; ask it to write %s/review.json\n",
+		dir, diffFeed(dir, chunked, dir+"/full.diff"), dir, dir)
+}
+
+// diffFeed names the diff input of the next step: the whole diff, or — once
+// the diff was chunked past the cap — the manifest and the chunks it lists
+// (feeding full.diff would defeat the cap).
+func diffFeed(dir string, chunked bool, whole string) string {
+	if !chunked {
+		return whole
+	}
+	return dir + "/chunks/manifest.json and the chunks it lists"
 }
 
 // fetchStats carries the tail's bundle measurements.
@@ -353,7 +364,7 @@ func fetchTailLocal(
 	listed string, total, adds, dels int,
 ) (*core.FetchData, string, error) {
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		ctx2.dir + "/source.json + full.diff to any agent; ask it to write " + ctx2.dir + "/review.json"
+		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, "full.diff") + " to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {
 		return nil, "", err

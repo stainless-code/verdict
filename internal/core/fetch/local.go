@@ -50,7 +50,7 @@ func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
 	r *session, dir, slug string, mode *localMode,
 ) (*core.FetchData, string, error) {
-	if ref := resolveControls(ctx, ctx2, mode.baseSHA, f.HeadControls, nil, false); ref != nil {
+	if ref := resolveControls(ctx, ctx2, "", mode.baseSHA, f.HeadControls, nil, false); ref != nil {
 		return nil, "", ref
 	}
 	budget, ref := localBudget(r, f, dir)
@@ -258,7 +258,7 @@ func localFinish(
 	}
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", dir, dir, dir, dir, total)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/source.json + full.diff to any agent; ask it to write %s/review.json\n", dir, dir)
+		"%s/source.json + %s to any agent; ask it to write %s/review.json\n", dir, diffFeed(dir, chunkActive, "full.diff"), dir)
 	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, mode.headSHA, mode.baseSHA, fc.source)
 	if ref != nil {
 		return nil, "", ref

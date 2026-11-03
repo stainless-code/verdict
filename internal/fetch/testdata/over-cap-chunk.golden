@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4703,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + full.diff to any agent; ask it to write .review/4703/review.json",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/chunks/manifest.json and the chunks it lists to any agent; ask it to write .review/4703/review.json",
   "warnings": [],
   "data": {
     "dir": ".review/4703",
@@ -55,7 +55,7 @@ exit: 0
 » reviews + inline comments
 » chunked: 2 chunk(s) at or under 512000 bytes + .review/4703/chunks/manifest.json
 done: .review/4703/PR.json .review/4703/full.diff .review/4703/toc.txt .review/4703/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/full.diff (+ .review/4703/roles.txt) to any agent; ask it to write .review/4703/review.json
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/chunks/manifest.json and the chunks it lists (+ .review/4703/roles.txt) to any agent; ask it to write .review/4703/review.json
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state

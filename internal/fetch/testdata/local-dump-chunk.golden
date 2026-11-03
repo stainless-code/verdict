@@ -18080,7 +18080,7 @@ index d7ed94a..ee1194e 100644
 » roles -> .review/local-demo/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
 done: .review/local-demo/source.json .review/local-demo/full.diff .review/local-demo/toc.txt .review/local-demo/roles.txt (3 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/local-demo/source.json + full.diff to any agent; ask it to write .review/local-demo/review.json
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/local-demo/source.json + .review/local-demo/chunks/manifest.json and the chunks it lists to any agent; ask it to write .review/local-demo/review.json
 » chunked: 3 chunk(s) at or under 512000 bytes + .review/local-demo/chunks/manifest.json
 --- files ---
 --- file C/.review/local-demo/.diff.err ---

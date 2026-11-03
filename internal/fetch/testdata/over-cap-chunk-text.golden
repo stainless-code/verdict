@@ -6,7 +6,7 @@ exit: 0
 » panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
 » reviews + inline comments
 done: .review/4703/PR.json .review/4703/full.diff .review/4703/toc.txt .review/4703/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/full.diff (+ .review/4703/roles.txt) to any agent; ask it to write .review/4703/review.json
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/chunks/manifest.json and the chunks it lists (+ .review/4703/roles.txt) to any agent; ask it to write .review/4703/review.json
 --- stderr ---
 » chunking opted in (from --chunk) — slicing over-cap diff (832678 bytes, cap 512000) into cap-sized chunks
 » chunked: 2 chunk(s) at or under 512000 bytes + .review/4703/chunks/manifest.json
