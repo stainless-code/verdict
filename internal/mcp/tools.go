@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
@@ -31,6 +30,8 @@ import (
 const (
 	argRepo            = "repo"
 	argPr              = "pr"
+	argFlags           = "flags"
+	argStatus          = "status"
 	fieldRepo          = "Repo"
 	fieldPr            = "Pr"
 	msgRequestMismatch = "tool request type mismatch"
@@ -54,13 +55,23 @@ type toolMeta struct {
 	openWorld   bool
 }
 
-// tool is one MCP tool: the core request type it decodes into, the field
-// policy that hides adapter-owned members, and the service call it maps to.
+// toolSpec is the policy half of one registry entry.
+type toolSpec struct {
+	name        string
+	description string
+	omit        map[string]bool
+	required    []string
+	meta        toolMeta
+}
+
+// tool is one MCP tool: the request type its schema comes from, the field
+// policy that hides adapter-owned members, and the explicit decode, inject,
+// and service seams for that type.
 type tool struct { //nolint:govet // the grouping documents the descriptor; alignment is irrelevant
 	name         string
 	title        string
 	description  string
-	request      reflect.Type
+	request      schemaSource
 	omit         map[string]bool
 	required     []string
 	readOnly     bool
@@ -68,6 +79,8 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	idempotent   bool
 	openWorld    bool
 	operatorOnly bool
+	decode       func(json.RawMessage) (any, error)
+	wire         func(*bindings, any)
 	invoke       func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
@@ -80,115 +93,164 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 //nolint:revive // the registry literal and surface filter read as one table
 func allTools(readOnly, operator bool) []*tool {
 	tools := []*tool{
-		dataTool("adopt", "Copy findings from a local bundle into the target PR bundle "+
-			"and re-anchor them. Call after a local review to post it on a PR. "+
-			"Writes the target bundle's findings store.",
-			reflect.TypeFor[adoptcore.Request](), nil, []string{argRepo, argPr, "from"},
-			toolMeta{title: "Adopt findings", idempotent: true}, adoptcore.Run),
-		dataTool("calibrate", "Join stored findings against live thread and file state, "+
-			"or grade the offline probe. Call after posting to measure precision. "+
-			"Reads GitHub live; the probe rewrites kb-grades.jsonl.",
-			reflect.TypeFor[calibratecore.Request](), nil, requiredRepoPr,
-			toolMeta{title: "Calibrate findings", idempotent: true, openWorld: true}, calibratecore.Run),
-		{
-			name: "check-tree", title: "Check worktree",
-			request: reflect.TypeFor[checktreecore.Request](),
+		dataTool(&toolSpec{
+			name: "adopt",
+			description: "Copy findings from a local bundle into the target PR bundle " +
+				"and re-anchor them. Call after a local review to post it on a PR. " +
+				"Writes the target bundle's findings store.",
+			required: []string{argRepo, argPr, "from"},
+			meta:     toolMeta{title: "Adopt findings", idempotent: true},
+		}, decodeAdopt, wireAdopt, adoptcore.Run,
+			func(resp *adoptcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "calibrate",
+			description: "Join stored findings against live thread and file state, " +
+				"or grade the offline probe. Call after posting to measure precision. " +
+				"Reads GitHub live; the probe rewrites kb-grades.jsonl.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Calibrate findings", idempotent: true, openWorld: true},
+		}, decodeCalibrate, wireCalibrate, calibratecore.Run,
+			func(resp *calibratecore.Response) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "check-tree",
 			description: "Gate on a clean git worktree, allowing the paths in expect. " +
 				"Call before finalizing when stray edits must fail the review. " +
 				"Reads git only; writes nothing.",
-			readOnly: true, idempotent: true, omit: omitPositionals, invoke: invokeCheckTree,
-		},
-		dataTool("doctor", "Preflight gh auth, git, and storage. Call first when a verb "+
-			"fails for environmental reasons. Reads local tools and config; writes nothing.",
-			reflect.TypeFor[doctorcore.Request](), omitPositionals, nil,
-			toolMeta{title: "Preflight environment", readOnly: true, idempotent: true}, doctorcore.Run),
-		{
-			name: "fetch", title: "Fetch pull request",
-			request: reflect.TypeFor[core.FetchRequest](),
+			omit: omitPositionals,
+			meta: toolMeta{title: "Check worktree", readOnly: true, idempotent: true},
+		}, decodeCheckTree, wireCheckTree, invokeCheckTree),
+		dataTool(&toolSpec{
+			name: "doctor",
+			description: "Preflight gh auth, git, and storage. Call first when a verb " +
+				"fails for environmental reasons. Reads local tools and config; writes nothing.",
+			omit: omitPositionals,
+			meta: toolMeta{title: "Preflight environment", readOnly: true, idempotent: true},
+		}, decodeDoctor, wireDoctor, doctorcore.Run,
+			func(resp *doctorcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "fetch",
 			description: "Fetch a PR into .review/<pr> (diff, metadata, threads, prompt input). " +
 				"Call first for any PR review; an over-cap diff refuses, so re-run with chunk=true. " +
 				"Writes the bundle and calls GitHub.",
-			required: requiredRepoPr, idempotent: true, openWorld: true, invoke: invokeFetch,
-		},
-		{
-			name: "fetch-local", title: "Fetch local diff",
-			request: reflect.TypeFor[core.FetchLocalRequest](),
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Fetch pull request", idempotent: true, openWorld: true},
+		}, decodeFetch, wireFetch, invokeFetch),
+		directTool(&toolSpec{
+			name: "fetch-local",
 			description: "Fetch a local git diff into .review/local-<name>. Call to review " +
 				"uncommitted or branch changes without a PR. Writes the bundle; no network.",
-			required: requiredRepoPr, idempotent: true, invoke: invokeFetchLocal,
-		},
-		dataTool("fix", "Run one bounded, verify-gated fix pass over an inline finding. "+
-			"Call after review to prepare one finding's patch; the ledger caps passes. "+
-			"Writes the fix ledger and runs the recorded verify command.",
-			reflect.TypeFor[fixcore.Request](), nil, requiredRepoPr,
-			toolMeta{title: "Prepare a fix"}, fixcore.Run),
-		dataTool("init", "Scaffold .review control files from a style preset. Call once in a "+
-			"new repository; yes=true overwrites existing controls. Writes controls and "+
-			"runs a tree check.",
-			reflect.TypeFor[initcore.Request](), omitPositionals, nil,
-			toolMeta{title: "Scaffold controls", destructive: true, idempotent: true}, initcore.Run),
-		dataTool("learn", "Read or update the local knowledge base. Call to list rules or "+
-			"add, retire, or restore one. Writes .review/kb.jsonl.",
-			reflect.TypeFor[learncore.Request](), omitPositionals, nil,
-			toolMeta{title: "Manage knowledge base", idempotent: true}, learncore.Run),
-		{
-			name: "next", title: "Next finding",
-			request: reflect.TypeFor[core.NextRequest](),
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Fetch local diff", idempotent: true},
+		}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
+		dataTool(&toolSpec{
+			name: "fix",
+			description: "Run one bounded, verify-gated fix pass over an inline finding. " +
+				"Call after review to prepare one finding's patch; the ledger caps passes. " +
+				"Writes the fix ledger and runs the recorded verify command.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Prepare a fix"},
+		}, decodeFix, wireFix, fixcore.Run,
+			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "init",
+			description: "Scaffold .review control files from a style preset. Call once in a " +
+				"new repository; yes=true overwrites existing controls. Writes controls and " +
+				"runs a tree check.",
+			omit: omitPositionals,
+			meta: toolMeta{title: "Scaffold controls", destructive: true, idempotent: true},
+		}, decodeInit, wireInit, initcore.Run,
+			func(resp *initcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "learn",
+			description: "Read or update the local knowledge base. Call to list rules or " +
+				"add, retire, or restore one. Writes .review/kb.jsonl.",
+			omit: omitPositionals,
+			meta: toolMeta{title: "Manage knowledge base", idempotent: true},
+		}, decodeLearn, wireLearn, learncore.Run,
+			func(resp *learncore.Response) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "next",
 			description: "Return the top actionable finding. Call after fetch to pick the next " +
 				"review or fix target. Reads the bundle; writes nothing.",
-			required: requiredRepoPr, readOnly: true, idempotent: true, invoke: invokeNext,
-		},
-		dataTool("post", "Post exactly one review to GitHub, or preview with dryRun. Call once "+
-			"after review.json is final; never write a review note. Writes post.json and "+
-			"sends to GitHub.",
-			reflect.TypeFor[core.PostRequest](), nil, requiredRepoPr,
-			toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
-			postcore.Run),
-		dataTool("ready", "Report merge readiness (checks, threads, draft, conflict) or gate on "+
-			"it. Call before merging. Reads GitHub; writes nothing.",
-			reflect.TypeFor[readycore.Request](), nil, requiredRepoPr,
-			toolMeta{title: "Merge readiness", readOnly: true, idempotent: true, openWorld: true},
-			readycore.Run),
-		dataTool("record", "Validate and merge review.json into the findings and record stores. "+
-			"Call for local bundles that cannot post. Writes findings.json and record.json.",
-			reflect.TypeFor[core.RecordRequest](), nil, requiredRepoPr,
-			toolMeta{title: "Record review", idempotent: true}, recordcore.Run),
-		{
-			name: "report", title: "Render report",
-			request: reflect.TypeFor[core.ReportRequest](),
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Next finding", readOnly: true, idempotent: true},
+		}, decodeNext, wireNext, invokeNext),
+		dataTool(&toolSpec{
+			name: "post",
+			description: "Post exactly one review to GitHub, or preview with dryRun. Call once " +
+				"after review.json is final; never write a review note. Writes post.json and " +
+				"sends to GitHub.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
+		}, decodePost, wirePost, postcore.Run,
+			func(resp *core.PostResponse) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "ready",
+			description: "Report merge readiness (checks, threads, draft, conflict) or gate on " +
+				"it. Call before merging. Reads GitHub; writes nothing.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Merge readiness", readOnly: true, idempotent: true, openWorld: true},
+		}, decodeReady, wireReady, readycore.Run,
+			func(resp *readycore.Response) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "record",
+			description: "Validate and merge review.json into the findings and record stores. " +
+				"Call for local bundles that cannot post. Writes findings.json and record.json.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Record review", idempotent: true},
+		}, decodeRecord, wireRecord, recordcore.Run,
+			func(resp *core.RecordResponse) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "report",
 			description: "Render the offline review report (ranked findings, counts, markdown/SARIF). " +
 				"Call after fetch or record; the follow-up is next. Reads the bundle and writes " +
 				"only artifacts you request.",
-			required: requiredRepoPr, readOnly: true, idempotent: true, invoke: invokeReport,
-		},
-		{
-			name: "show", title: "Show finding",
-			request: reflect.TypeFor[core.ShowRequest](),
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Render report", readOnly: true, idempotent: true},
+		}, decodeReport, wireReport, invokeReport),
+		directTool(&toolSpec{
+			name: "show",
 			description: "Return one full finding by signature or unique prefix. Call to inspect " +
 				"a finding named by report or next. Reads the bundle; writes nothing.",
-			required: []string{argRepo, argPr, "sig"}, readOnly: true, idempotent: true,
-			invoke: invokeShow,
-		},
-		dataTool("threads", "Refresh the normalized review-thread feed "+
-			"(.review/<pr>/threads.json) from the host. Call after pushing fixes to re-read "+
-			"resolution state before a re-review or merge readiness. Reads the host; writes "+
-			"threads.json only.",
-			reflect.TypeFor[fetchcore.ThreadsRequest](), nil, requiredRepoPr,
-			toolMeta{title: "Refresh review threads", readOnly: true, idempotent: true, openWorld: true},
-			fetchcore.RunThreads),
-		dataTool("trend", "Roll up review outcomes across fetched bundles. Call for a cross-PR "+
-			"summary. Reads local bundles; writes nothing.",
-			reflect.TypeFor[trendcore.Request](), map[string]bool{fieldPr: true}, []string{argRepo},
-			toolMeta{title: "Review trend", readOnly: true, idempotent: true}, trendcore.Run),
-		operatorTool(dataTool("triage", "Operator-only: flip one finding's status with a "+
-			"rationale. Never call while reviewing a PR; propose triage[] in review.json "+
-			"instead. Writes findings.json and stages KB credit.",
-			reflect.TypeFor[triagecore.Request](), nil, []string{argRepo, argPr, "sig", "status"},
-			toolMeta{title: "Triage finding", destructive: true}, triagecore.Run)),
-		dataTool("verify", "Run the recorded verifyCmd under the watchdog and record the proof. "+
-			"Call to prove a fix before post. Writes verification.json and runs the recorded command.",
-			reflect.TypeFor[core.VerifyRequest](), nil, requiredRepoPr,
-			toolMeta{title: "Run verification", destructive: true, openWorld: true}, verifycore.Run),
+			required: []string{argRepo, argPr, "sig"},
+			meta:     toolMeta{title: "Show finding", readOnly: true, idempotent: true},
+		}, decodeShow, wireShow, invokeShow),
+		dataTool(&toolSpec{
+			name: "threads",
+			description: "Refresh the normalized review-thread feed " +
+				"(.review/<pr>/threads.json) from the host. Call after pushing fixes to re-read " +
+				"resolution state before a re-review or merge readiness. Reads the host; writes " +
+				"threads.json only.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Refresh review threads", readOnly: true, idempotent: true, openWorld: true},
+		}, decodeThreads, wireThreads, fetchcore.RunThreads,
+			func(resp *fetchcore.ThreadsResponse) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "trend",
+			description: "Roll up review outcomes across fetched bundles. Call for a cross-PR " +
+				"summary. Reads local bundles; writes nothing.",
+			omit:     map[string]bool{fieldPr: true},
+			required: []string{argRepo},
+			meta:     toolMeta{title: "Review trend", readOnly: true, idempotent: true},
+		}, decodeTrend, wireTrend, trendcore.Run,
+			func(resp *trendcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		operatorTool(dataTool(&toolSpec{
+			name: "triage",
+			description: "Operator-only: flip one finding's status with a " +
+				"rationale. Never call while reviewing a PR; propose triage[] in review.json " +
+				"instead. Writes findings.json and stages KB credit.",
+			required: []string{argRepo, argPr, "sig", argStatus},
+			meta:     toolMeta{title: "Triage finding", destructive: true},
+		}, decodeTriage, wireTriage, triagecore.Run,
+			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) })),
+		dataTool(&toolSpec{
+			name: "verify",
+			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
+				"Call to prove a fix before post. Writes verification.json and runs the recorded command.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
+		}, decodeVerify, wireVerify, verifycore.Run,
+			func(resp *core.VerifyResponse) *jq.Obj { return wireData(resp.Data) }),
 	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
@@ -210,61 +272,85 @@ func operatorTool(t *tool) *tool {
 }
 
 // dataTool builds a tool whose service returns a response carrying a Data
-// field, the shape every verb except next/show/check-tree/fetch shares.
-func dataTool[R, S any](
-	name, description string, request reflect.Type, omit map[string]bool,
-	required []string, meta toolMeta, svc func(context.Context, *R) (*S, *core.RefusalError),
+// field, the shape every verb except next/show/check-tree/fetch shares. The
+// response accessor is explicit: a renamed Data field is a compile error.
+func dataTool[Req, S any](
+	spec *toolSpec,
+	decode func(*Req, *args), wire func(*bindings, *Req),
+	svc func(context.Context, *Req) (*S, *core.RefusalError),
+	data func(*S) *jq.Obj,
+) *tool {
+	return newTool(spec, decode, wire, func(ctx context.Context, req *Req) (*jq.Obj, *core.RefusalError) {
+		return invokeService(ctx, req, svc, data)
+	})
+}
+
+// directTool builds a tool with a hand-written response mapping.
+func directTool[Req any](
+	spec *toolSpec,
+	decode func(*Req, *args), wire func(*bindings, *Req),
+	run func(context.Context, *Req) (*jq.Obj, *core.RefusalError),
+) *tool {
+	return newTool(spec, decode, wire, run)
+}
+
+// newTool assembles one registry entry. The request type parameter is the
+// single source of the arg schema and of the decode/wire/invoke type
+// assertions, so none of the three can name a different request type.
+func newTool[Req any](
+	spec *toolSpec,
+	decode func(*Req, *args), wire func(*bindings, *Req),
+	run func(context.Context, *Req) (*jq.Obj, *core.RefusalError),
 ) *tool {
 	return &tool{
-		name: name, title: meta.title, description: description, request: request, omit: omit,
-		required: required, readOnly: meta.readOnly, destructive: meta.destructive,
-		idempotent: meta.idempotent, openWorld: meta.openWorld,
+		name:         spec.name,
+		title:        spec.meta.title,
+		description:  spec.description,
+		request:      schemaOf[Req](),
+		omit:         spec.omit,
+		required:     spec.required,
+		readOnly:     spec.meta.readOnly,
+		destructive:  spec.meta.destructive,
+		idempotent:   spec.meta.idempotent,
+		openWorld:    spec.meta.openWorld,
+		operatorOnly: false,
+		decode: func(raw json.RawMessage) (any, error) {
+			return decodeRequest[Req](raw, spec.required, decode)
+		},
+		wire: func(b *bindings, raw any) {
+			if req, ok := raw.(*Req); ok {
+				wire(b, req)
+			}
+		},
 		invoke: func(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-			return invokeService(ctx, raw, svc, wireResponseData[S])
+			req, ok := raw.(*Req)
+			if !ok {
+				return nil, internalRefusal()
+			}
+			return run(ctx, req)
 		},
 	}
 }
 
-// invokeService adapts one typed core service call. The request pointer is
-// built by the reflector from the same type the schema came from, so the
-// assertion is exact; a mismatch is an internal bug, never user input.
+// invokeService adapts one typed core service call.
 func invokeService[R, S any](
-	ctx context.Context, raw any,
+	ctx context.Context, req *R,
 	svc func(context.Context, *R) (*S, *core.RefusalError),
 	data func(*S) *jq.Obj,
 ) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*R)
-	if !ok {
-		return nil, internalRefusal()
-	}
 	resp, ref := svc(ctx, req)
 	if ref != nil {
 		return nil, ref
 	}
+	if resp == nil || data == nil {
+		return jq.NewObj(), nil
+	}
 	return data(resp), nil
-}
-
-// wireResponseData reflects the response's Data field (the shared profile
-// shape) through core's ordered wire mapping.
-func wireResponseData[S any](resp *S) *jq.Obj {
-	value := reflect.ValueOf(resp)
-	if value.Kind() != reflect.Pointer || value.IsNil() {
-		return jq.NewObj()
-	}
-	data := value.Elem().FieldByName("Data")
-	if !data.IsValid() {
-		return jq.NewObj()
-	}
-	return wireData(data.Interface())
 }
 
 // invokeReport runs report and writes its requested artifacts (the CLI
 // adapter owns the same writes; the transport returns data, not files).
-func invokeReport(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*core.ReportRequest)
-	if !ok {
-		return nil, internalRefusal()
-	}
+func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.Run(ctx, req)
 	if ref != nil {
 		return nil, ref
@@ -279,11 +365,7 @@ func invokeReport(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
 }
 
 // invokeNext maps the next response to the CLI envelope's data shape.
-func invokeNext(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*core.NextRequest)
-	if !ok {
-		return nil, internalRefusal()
-	}
+func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.RunNext(ctx, req)
 	if ref != nil {
 		return nil, ref
@@ -296,11 +378,7 @@ func invokeNext(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
 }
 
 // invokeShow maps the show response to the CLI envelope's data shape.
-func invokeShow(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*core.ShowRequest)
-	if !ok {
-		return nil, internalRefusal()
-	}
+func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.RunShow(ctx, req)
 	if ref != nil {
 		return nil, ref
@@ -317,11 +395,7 @@ func invokeShow(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
 }
 
 // invokeCheckTree maps the not-a-repo machine refusal to a tool refusal.
-func invokeCheckTree(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*checktreecore.Request)
-	if !ok {
-		return nil, internalRefusal()
-	}
+func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, *core.RefusalError) {
 	resp, ref := checktreecore.Run(ctx, req)
 	if ref != nil {
 		return nil, ref
@@ -334,11 +408,7 @@ func invokeCheckTree(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError)
 
 // invokeFetch calls the network-backed fetch service; its error is the
 // adapter's missing-tool/refusal seam.
-func invokeFetch(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*core.FetchRequest)
-	if !ok {
-		return nil, internalRefusal()
-	}
+func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.Run(ctx, req)
 	if err != nil {
 		return nil, commandRefusal(err)
@@ -347,11 +417,7 @@ func invokeFetch(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
 }
 
 // invokeFetchLocal calls the local fetch service.
-func invokeFetchLocal(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-	req, ok := raw.(*core.FetchLocalRequest)
-	if !ok {
-		return nil, internalRefusal()
-	}
+func invokeFetchLocal(ctx context.Context, req *core.FetchLocalRequest) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.RunLocal(ctx, req)
 	if err != nil {
 		return nil, commandRefusal(err)

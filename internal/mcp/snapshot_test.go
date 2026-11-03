@@ -19,7 +19,7 @@ var updateToolsList = flag.Bool("update-tools-list", false, "regenerate the tool
 // every surface. The frame is the agent-facing contract: names, descriptions,
 // generated schemas, required keys, enums, and annotations all ride in it.
 //
-//nolint:revive // the surface matrix reads as one assertion block
+//nolint:revive,gocognit // the surface matrix reads as one setup/compare block
 func TestToolsListWireSnapshot(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

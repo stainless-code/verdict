@@ -53,6 +53,14 @@ var internalFieldNames = map[string]bool{
 	"ReportWarnings": true,
 }
 
+// schemaSource is one tool's schema source type. The registry treats it as an
+// opaque handle; this file is the only production code that reaches through
+// reflect, and only to derive the JSON schema from the request struct.
+type schemaSource = reflect.Type
+
+// schemaOf names the schema source for one request type.
+func schemaOf[Req any]() schemaSource { return reflect.TypeFor[Req]() }
+
 // readRequestType is core's embedded transport-neutral invocation.
 var readRequestType = reflect.TypeFor[core.ReadRequest]()
 

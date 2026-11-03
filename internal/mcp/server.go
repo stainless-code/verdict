@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -280,16 +279,37 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 // call decodes arguments, injects the runtime, and translates the core
 // refusal/success contract into a tool result.
 func (s *Server) call(ctx context.Context, t *tool, raw json.RawMessage) (any, *rpcError) {
-	req, err := decodeArgs(t, raw)
-	if err != nil {
-		return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
+	var req any
+	if t.decode != nil {
+		var err error
+		req, err = decodeArgs(t, raw)
+		if err != nil {
+			return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
+		}
 	}
-	s.prepare(req, t)
+	if t.wire != nil {
+		t.wire(s.bindings(t), req)
+	}
 	data, ref := t.invoke(ctx, req)
 	if ref != nil {
 		return refusalResult(ref), nil
 	}
 	return successResult(data), nil
+}
+
+// bindings snapshots the session runtime a tool's wire function injects.
+func (s *Server) bindings(t *tool) *bindings {
+	return &bindings{
+		env:       s.cfg.Env,
+		now:       s.cfg.Now,
+		progress:  stderrProgress{w: s.cfg.Stderr},
+		root:      s.cfg.Root,
+		effective: s.cfg.Effective,
+		warnings:  s.cfg.Warnings,
+		environ:   s.cfg.Environ,
+		stderr:    s.cfg.Stderr,
+		commander: s.commander(t),
+	}
 }
 
 // handleCancelled maps the cancel notification onto the in-flight call's
@@ -339,64 +359,6 @@ func (s *Server) listTools() toolsListResult {
 		})
 	}
 	return toolsListResult{Tools: out}
-}
-
-// prepare injects the session runtime, effective prefs, warnings, and
-// adapter streams into a decoded request, using the shared request shape
-// rather than a per-tool setter.
-func (s *Server) prepare(raw any, t *tool) {
-	rv := reflect.ValueOf(raw).Elem()
-	rt := &core.Runtime{
-		Env:       s.cfg.Env,
-		Now:       s.cfg.Now,
-		Progress:  stderrProgress{w: s.cfg.Stderr},
-		Commander: s.commander(t),
-	}
-	root := s.cfg.Root
-	for i := range rv.NumField() {
-		sf := rv.Type().Field(i)
-		fv := rv.Field(i)
-		switch {
-		case sf.Anonymous && sf.Type == readRequestType:
-			read, ok := reflect.TypeAssert[*core.ReadRequest](fv.Addr())
-			if !ok {
-				continue
-			}
-			read.Runtime = rt
-			read.Forces = &core.GlobalForces{}
-			read.Root = &root
-		case sf.Type == effectiveType:
-			fv.Set(reflect.ValueOf(s.cfg.Effective))
-		case sf.Name == "Warnings":
-			fv.Set(reflect.ValueOf(append([]string{}, s.cfg.Warnings...)))
-		case sf.Name == "Human", sf.Name == "Diag":
-			fv.Set(reflect.ValueOf(s.cfg.Stderr))
-		case sf.Name == "Environ":
-			fv.Set(reflect.ValueOf(append([]string{}, s.cfg.Environ...)))
-		case sf.Name == "JSONMode":
-			fv.SetBool(true)
-		}
-	}
-	derivePresence(rv)
-}
-
-// derivePresence fills the adapter-owned presence bits the CLI sets while
-// parsing flags (HasBase/HasProvider/HasStash) from the decoded values.
-func derivePresence(rv reflect.Value) {
-	flags := rv.FieldByName("Flags")
-	if !flags.IsValid() || flags.Kind() != reflect.Struct {
-		return
-	}
-	pair := func(present, value string) {
-		pf := flags.FieldByName(present)
-		vf := flags.FieldByName(value)
-		if pf.IsValid() && vf.IsValid() && vf.Kind() == reflect.String {
-			pf.SetBool(vf.String() != "")
-		}
-	}
-	pair("HasBase", "BaseSHA")
-	pair("HasProvider", "Provider")
-	pair("HasStash", "StashN")
 }
 
 // commander returns the production runner the verb's CLI adapter installs,
