@@ -44,6 +44,21 @@ operator manual:
 Triage or fix, then re-fetch and re-run: there is no `--force` — fetch +
 triage + re-check is the recovery.
 
+## Required versus advisory legs
+
+A job either blocks a merge or it does not — never both, and never by
+accident. Declare the split once: `ci-complete` in this repository's own
+workflow carries `REQUIRED_JOBS` and `ADVISORY_JOBS`, and its `needs` list
+must name exactly the union, so a new job cannot stay silently optional
+(`internal/archtest` fails the build on drift). A required lane must be
+literally `success`; a skip or a cancel fails it, because a skipped job
+reports success to branch protection. An advisory lane only has to report a
+result: it shows up red on the PR without blocking anyone. `ADVISORY_JOBS`
+may be empty — that is the current state — and the gate then simply has no
+second tier. Keep a lane required unless the operator has decided that its
+failures are not merge-blocking; a green, deterministic leg belongs on the
+required side whatever platform it runs on.
+
 ## Permissions and secrets
 
 | Need                                     | Value                                     |

@@ -410,6 +410,18 @@ jobs:
 
   ci-complete:
     name: CI complete
+    # The single declaration of what blocks a merge. Every job below must
+    # appear in exactly one list (`internal/archtest` fails the build on
+    # drift), and only a required lane can fail this gate: a required lane
+    # must be literally `success` — a skip reports success to branch
+    # protection, so a skip fails here too — while an advisory lane just has
+    # to report its result. Both platform legs stay required: `go-windows` is
+    # green and deterministic, and demoting a platform is a policy decision,
+    # not a flake workaround. ADVISORY_JOBS is empty today; the gate below
+    # reads an empty list as "no advisory lanes".
+    env:
+      REQUIRED_JOBS: format lint installer installers installers-windows go go-windows evals docs ts-client audit release-dry-run
+      ADVISORY_JOBS: ""
     needs:
       [
         format,
@@ -428,17 +440,36 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      # One data-driven gate: `needs` is the required-job list, so adding a
-      # job cannot silently leave the check optional. A skipped job reports
-      # success to branch protection, so every result must be literally
-      # `success`; a skip or a cancel fails here just like a failure.
-      - name: Every required job succeeded
+      - name: Required lanes succeeded, advisory lanes reported
         shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
-          printf '%s' "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"'
-          printf '%s' "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success")' > /dev/null
+          # One data-driven gate over the declaration above: report every
+          # lane, then fail only on a required lane that is not `success`, an
+          # advisory lane that never reported, or a job nobody declared.
+          printf '%s' "$NEEDS" | jq -r --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
+            def lanes: split(" ") | map(select(length > 0));
+            ($req | lanes) as $r | ($adv | lanes) as $a
+            | to_entries[]
+            | .key as $k | (.value.result // "") as $res
+            | if ($r | index($k)) then "required \($k): \($res)"
+              elif ($a | index($k)) then "advisory \($k): \($res) (never blocks)"
+              else "undeclared \($k): \($res)" end'
+          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
+            def lanes: split(" ") | map(select(length > 0));
+            ($req | lanes) as $r | ($adv | lanes) as $a
+            | [to_entries[].key] as $have
+            | [((($r + $a) - $have)[]) | "declared but absent from needs: \(.)"]
+              + [to_entries[]
+                 | .key as $k | (.value.result // "") as $res
+                 | if ($r | index($k)) then
+                     (if $res != "success" then "required but \($res): \($k)" else empty end)
+                   elif ($a | index($k)) then
+                     (if $res == "" then "advisory but silent: \($k)" else empty end)
+                   else "undeclared in needs: \($k)" end]
+            | if length == 0 then true
+              else (.[] | halt_error(1)) end' > /dev/null
 
       - name: OK
         run: echo "CI requirements satisfied"
