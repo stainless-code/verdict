@@ -158,11 +158,12 @@ func (s *scriptCommander) Run(_ context.Context, cmd verdict.Command) (verdict.C
 }
 
 // TestClientVerifyFakeCommander proves the Commander seam: a scripted runner
-// serves the watchdog spawn and the typed outcome returns in-process.
+// serves the watchdog spawn and the typed outcome maps the nonzero exit and
+// combined stderr through, instead of echoing zero values.
 func TestClientVerifyFakeCommander(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeFile(".review/5201/patch.json", `{"verifyCmd":"printf ok"}`)
-	cmdr := &scriptCommander{res: verdict.CommandResult{Stdout: "ok"}}
+	cmdr := &scriptCommander{res: verdict.CommandResult{Stdout: "ok", Stderr: "boom\n", ExitCode: 3}}
 	c := verdict.New(verdict.Options{
 		Now:       func() time.Time { return exampleNow },
 		Commander: cmdr,
@@ -174,8 +175,14 @@ func TestClientVerifyFakeCommander(t *testing.T) {
 		t.Fatalf("Verify: %v", err)
 	}
 	checkVerifySpawn(t, cmdr)
-	if resp.Exit != 0 || resp.Tail != "ok" {
-		t.Errorf("outcome = exit %d tail %q, want 0 ok", resp.Exit, resp.Tail)
+	if resp.Exit != 3 || resp.Tail != "okboom" {
+		t.Errorf("outcome = exit %d tail %q, want exit 3 tail okboom", resp.Exit, resp.Tail)
+	}
+	if resp.TimedOut {
+		t.Error("outcome timed out, want a completed run")
+	}
+	if resp.Next != "proof failed — fix, do not claim" {
+		t.Errorf("next = %q, want the failed-proof guidance", resp.Next)
 	}
 }
 
