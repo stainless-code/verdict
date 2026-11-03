@@ -54,6 +54,12 @@ func TestSkillShowAndFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(want) == 0 {
+		t.Fatal("embedded SKILL.md is empty")
+	}
+	if !strings.HasPrefix(string(want), "---\nname: verdict\n") {
+		t.Fatalf("embedded SKILL.md lost its frontmatter: %q", string(want[:min(len(want), 80)]))
+	}
 	code, out, derr := runCapture(t, []string{"skill"})
 	if code != 0 || out != string(want) || derr != "" {
 		t.Fatalf("skill = exit %d stderr %q (stdout %d bytes)", code, derr, len(out))
