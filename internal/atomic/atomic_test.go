@@ -120,17 +120,42 @@ func TestWriteFileNoTempOnFailure(t *testing.T) {
 	if err := atomic.WriteFile(filepath.Join(dir, "no-such-dir", "f"), []byte("x\n")); err == nil {
 		t.Fatal("want error, got nil")
 	}
-	var names []string
+	assertNoTempFiles(t, dir)
+}
+
+// TestWriteFileRenameFailureLeavesNoTemp covers a failure after the temp
+// file exists: the target is a non-empty directory, so the rename fails and
+// the deferred cleanup must remove the staged temp (the earlier failure leg
+// dies in CreateTemp, before any temp exists).
+func TestWriteFileRenameFailureLeavesNoTemp(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomic.WriteFile(target, []byte("replacement\n")); err == nil {
+		t.Fatal("want a failed rename, got nil")
+	}
+	assertNoTempFiles(t, dir)
+	raw, err := os.ReadFile(filepath.Join(target, "keep"))
+	if err != nil || string(raw) != "keep\n" {
+		t.Errorf("failed rename changed the target: %q, %v", raw, err)
+	}
+}
+
+// assertNoTempFiles fails on any staged atomic temp left in dir.
+func assertNoTempFiles(t *testing.T, dir string) {
+	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	for _, n := range names {
-		if strings.HasPrefix(n, ".tmp-") {
-			t.Errorf("temp leftover %q after failed write", n)
+		if strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Errorf("temp leftover %q after failed write", e.Name())
 		}
 	}
 }
