@@ -58,14 +58,14 @@ func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
 	i := 0
 	for i < len(args) {
 		a := args[i]
-		next := ""
-		if i+1 < len(args) {
-			next = args[i+1]
-		}
 		switch a {
-		case "--status":
-			statusF = next
-			i += 2
+		case flagStatus:
+			v, next, u := cli.FlagValue(args, i, a, "<status>")
+			if u != nil {
+				return "", r.ReportUsage(u), true
+			}
+			statusF = v
+			i = next + 1
 		default:
 			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for next (want --status, --json)", a)}), true
 		}

@@ -53,14 +53,14 @@ func parseShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 	i := 0
 	for i < len(args) {
 		a := args[i]
-		next := ""
-		if i+1 < len(args) {
-			next = args[i+1]
-		}
 		switch a {
 		case "--sig":
-			sig = next
-			i += 2
+			v, next, u := cli.FlagValue(args, i, a, "<sig>")
+			if u != nil {
+				return "", r.ReportUsage(u), true
+			}
+			sig = v
+			i = next + 1
 		default:
 			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for show (want --sig, --json)", a)}), true
 		}

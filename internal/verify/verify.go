@@ -75,32 +75,35 @@ func verifyRequest(r *cli.Runner, req Request, timeoutS string) *core.VerifyRequ
 // defaultTimeoutS is the watchdog budget when --timeout is absent.
 const defaultTimeoutS = "300"
 
-// parseFlags strips verify's flags, reporting unknown ones.
+// parseFlags strips verify's flags, reporting unknown ones. A value flag with
+// no operand is a usage error; an explicit empty --timeout value still falls
+// back to the default, mirroring ${2:-300}.
 func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 	timeoutS := defaultTimeoutS
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch a {
-		case "--timeout":
-			timeoutS, i = parseTimeoutFlag(args, i)
-		default:
-			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-				"unknown flag '%s' for verify (want --timeout <secs>, --json)", a)}), true
+		next, code, done := parseToken(r, args, i, &timeoutS)
+		if done {
+			return "", code, true
 		}
+		i = next
 	}
 	return timeoutS, 0, false
 }
 
-// parseTimeoutFlag reads the --timeout value at args[i], returning the
-// value and the index of the last consumed argument.
-func parseTimeoutFlag(args []string, i int) (string, int) {
-	if i+1 >= len(args) {
-		return defaultTimeoutS, i
+// parseToken consumes one verify argument, returning the next index plus a
+// usage refusal when the token is unknown or --timeout lost its operand.
+func parseToken(r *cli.Runner, args []string, i int, timeoutS *string) (int, int, bool) {
+	a := args[i]
+	if a != "--timeout" {
+		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			"unknown flag '%s' for verify (want --timeout <secs>, --json)", a)}), true
 	}
-	// Mirror ${2:-300}: an explicit empty value falls back
-	// to the default rather than refusing.
-	if v := args[i+1]; v != "" {
-		return v, i + 1
+	v, next, u := cli.FlagValue(args, i, a, "<secs>")
+	if u != nil {
+		return i, r.ReportUsage(u), true
 	}
-	return defaultTimeoutS, i + 1
+	if v != "" {
+		*timeoutS = v
+	}
+	return next, 0, false
 }

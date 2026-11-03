@@ -80,12 +80,12 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 		a := args[i]
 		switch a {
 		case "--sig":
-			if i+1 < len(args) {
-				i++
-				f.sig = args[i]
-			} else {
-				f.sig = ""
+			v, next, u := cli.FlagValue(args, i, a, "<sig>")
+			if u != nil {
+				return f, r.ReportUsage(u), true
 			}
+			f.sig = v
+			i = next
 		default:
 			msg := fmt.Sprintf(
 				"unknown flag '%s' for fix (want --sig <sig>, --json)", a)

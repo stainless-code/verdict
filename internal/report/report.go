@@ -153,19 +153,13 @@ func refuseGate(r *cli.Runner, err error, gate bool) int {
 	return r.Refuse(err)
 }
 
-// parseFlags parses the report flags left to right. A missing option value
-// reads the flag default (the flag is consumed either way); an invalid value
-// is a usage error (exit 2, no envelope).
+// parseFlags parses the report flags left to right. A value flag with no
+// operand is a usage error (exit 2, no envelope); an invalid value is too.
 func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
 	flags := reportcore.Flags{Status: statusAll, Kind: statusAll, Live: liveAuto}
 	i := 0
 	for i < len(args) {
-		a := args[i]
-		next := ""
-		if i+1 < len(args) {
-			next = args[i+1]
-		}
-		consumed, code, done := parseFlag(r, &flags, a, next)
+		consumed, code, done := parseFlag(r, &flags, args, i)
 		if done {
 			return flags, code, true
 		}
@@ -175,35 +169,71 @@ func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
 	return flags, 0, false
 }
 
+// flagStatus names the --status filter shared by report and next.
+const flagStatus = "--status"
+
+// reportValueWants names each report value flag's operand for the
+// missing-value usage error.
+var reportValueWants = map[string]string{
+	flagStatus: "all|open|addressed|deferred|wont-fix|false-positive",
+	"--kind":   "all|inline|section",
+	"--output": "<path>",
+	"--sarif":  "<path>",
+	"--check":  "critical|important|informational",
+	"--live":   "auto|strict|skip",
+}
+
 // parseFlag handles one report flag, returning how many args it consumed.
-// An unknown or invalid value is a usage error (exit 2, no envelope).
-func parseFlag(r *cli.Runner, flags *reportcore.Flags, a, next string) (int, int, bool) {
+// An unknown flag or a missing/invalid value is a usage error (exit 2, no
+// envelope).
+func parseFlag(r *cli.Runner, flags *reportcore.Flags, args []string, i int) (int, int, bool) {
+	a := args[i]
+	if want, ok := reportValueWants[a]; ok {
+		return parseReportValue(r, flags, args, i, want)
+	}
 	switch a {
-	case "--status":
-		return parseStatusFlag(r, flags, next)
-	case "--kind":
-		return parseKindFlag(r, flags, next)
-	case "--output":
-		flags.Output = next
-		return 2, 0, false
-	case "--sarif":
-		flags.Sarif = next
-		return 2, 0, false
 	case "--cost":
 		flags.Cost = true
 		return 1, 0, false
-	case "--check":
-		return parseCheckFlag(r, flags, next)
 	case "--completeness":
 		flags.Completeness = true
 		return 1, 0, false
-	case "--live":
-		return parseLiveFlag(r, flags, next)
 	default:
 		return 0, r.ReportUsage(usageErr(
 			"unknown flag '%s' for report (want --status, --kind, --output, "+
 				"--sarif, --cost, --check, --completeness, --live, --json)",
 			a)), true
+	}
+}
+
+// parseReportValue consumes one report value flag and applies its validation.
+func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i int, want string) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, args[i], want)
+	if u != nil {
+		return 0, r.ReportUsage(u), true
+	}
+	switch args[i] {
+	case flagStatus:
+		return parseStatusFlag(r, flags, v)
+	case "--kind":
+		return parseKindFlag(r, flags, v)
+	case "--check":
+		return parseCheckFlag(r, flags, v)
+	case "--live":
+		return parseLiveFlag(r, flags, v)
+	default: // --output, --sarif
+		setReportPath(flags, args[i], v)
+		return next - i + 1, 0, false
+	}
+}
+
+// setReportPath applies the --output/--sarif artifact paths.
+func setReportPath(flags *reportcore.Flags, name, value string) {
+	switch name {
+	case "--output":
+		flags.Output = value
+	case "--sarif":
+		flags.Sarif = value
 	}
 }
 

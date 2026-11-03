@@ -61,26 +61,22 @@ func threadsRequest(r *cli.Runner, req Request, provider string) *fetchcore.Thre
 	}
 }
 
-// parseFlags parses the threads flags. A trailing value flag reads "" and
-// falls back to github, like fetch's documented divergence.
+// parseFlags parses the threads flags. A value flag with no operand is a
+// usage error, like every other verb.
 func parseFlags(r *cli.Runner, args []string) (provider string, code int, done bool) {
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
 		case "--provider":
-			provider, i = flagValue(args, i)
+			v, next, u := cli.FlagValue(args, i, a, "<name>")
+			if u != nil {
+				return "", r.ReportUsage(u), true
+			}
+			provider = v
+			i = next
 		default:
 			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 				"unknown flag '%s' for threads (want --provider <name>, --json)", a)}), true
 		}
 	}
 	return provider, 0, false
-}
-
-// flagValue reads a trailing flag value ("", the unset default,
-// when absent).
-func flagValue(args []string, i int) (string, int) {
-	if i+1 < len(args) {
-		return args[i+1], i + 1
-	}
-	return "", i
 }

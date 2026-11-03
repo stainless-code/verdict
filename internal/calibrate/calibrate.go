@@ -91,20 +91,16 @@ func parseFlags(r *cli.Runner, args []string) (flagState, int, bool) {
 // exit when done).
 func parseArg(r *cli.Runner, st *flagState, args []string, i int) (int, int, bool) {
 	a := args[i]
-	next := ""
-	if i+1 < len(args) {
-		next = args[i+1]
-	}
 	switch {
 	case a == "--probe":
 		st.probe = true
 		return i + 1, 0, false
 	case a == "--judge":
-		return takeJudge(st, r, next, i)
+		return takeJudge(st, r, args, i)
 	case strings.HasPrefix(a, "--judge="):
 		return takeJudgeEq(st, r, strings.TrimPrefix(a, "--judge="), i)
 	case a == "--judge-file":
-		return takeJudgeFile(st, r, next, i)
+		return takeJudgeFile(st, r, args, i)
 	case strings.HasPrefix(a, "--judge-file="):
 		return takeJudgeFileEq(st, r, strings.TrimPrefix(a, "--judge-file="), i)
 	default:
@@ -117,14 +113,24 @@ func usage(r *cli.Runner, msg string) int {
 	return r.ReportUsage(&cli.UsageError{Message: msg})
 }
 
+// judgeWant and judgeFileWant name the --judge/--judge-file operand forms.
+const (
+	judgeWant     = "SIG:VERDICT[:HELPFUL]"
+	judgeFileWant = "PATH"
+)
+
 // takeJudge handles one --judge value.
-func takeJudge(st *flagState, r *cli.Runner, next string, i int) (int, int, bool) {
-	if next == "" {
-		return 0, usage(r, "missing value for --judge (want SIG:VERDICT[:HELPFUL], "+
-			"verdict real|false|unknown, helpful true|false|null)"), true
+func takeJudge(st *flagState, r *cli.Runner, args []string, i int) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, "--judge", judgeWant)
+	if u == nil && v == "" {
+		// An explicit empty operand still carries no judgment.
+		u = cli.MissingValue("--judge", judgeWant)
 	}
-	st.specs = append(st.specs, next)
-	return i + 2, 0, false
+	if u != nil {
+		return 0, r.ReportUsage(u), true
+	}
+	st.specs = append(st.specs, v)
+	return next + 1, 0, false
 }
 
 // takeJudgeEq handles one --judge= value.
@@ -137,15 +143,20 @@ func takeJudgeEq(st *flagState, r *cli.Runner, value string, i int) (int, int, b
 }
 
 // takeJudgeFile handles one --judge-file value.
-func takeJudgeFile(st *flagState, r *cli.Runner, next string, i int) (int, int, bool) {
-	if next == "" {
-		return 0, usage(r, "missing value for --judge-file (want PATH to a JSON/JSONL judgments fragment)"), true
+func takeJudgeFile(st *flagState, r *cli.Runner, args []string, i int) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, "--judge-file", judgeFileWant)
+	if u == nil && v == "" {
+		// An explicit empty operand still names no fragment.
+		u = cli.MissingValue("--judge-file", judgeFileWant)
+	}
+	if u != nil {
+		return 0, r.ReportUsage(u), true
 	}
 	if st.judgeFile != "" {
 		return 0, usage(r, "duplicate --judge-file (pass one fragment)"), true
 	}
-	st.judgeFile = next
-	return i + 2, 0, false
+	st.judgeFile = v
+	return next + 1, 0, false
 }
 
 // takeJudgeFileEq handles one --judge-file= value.

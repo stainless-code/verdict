@@ -78,27 +78,53 @@ type flags struct {
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 	f := flags{provenance: defaultProvenance, rigor: rigorPointed}
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch a {
-		case "--rule", "--scope", "--id", "--provenance", "--rigor", "--retire", "--restore", "--reason":
-			if i+1 < len(args) {
-				i++
-				setFlag(&f, a, args[i])
-			} else {
-				setFlag(&f, a, "")
-			}
-		case "--status":
-			f.status = true
-		default:
-			return f, r.ReportUsage(unknownFlag(a)), true
+		next, code, done := parseToken(r, &f, args, i)
+		if done {
+			return f, code, true
 		}
+		i = next
 	}
 	return f, 0, false
+}
+
+// parseToken consumes one learn argument, returning the next index plus a
+// usage refusal when the token is unknown or a value flag lost its operand.
+func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	a := args[i]
+	if want, ok := learnWants[a]; ok {
+		v, next, u := cli.FlagValue(args, i, a, want)
+		if u != nil {
+			return i, r.ReportUsage(u), true
+		}
+		setFlag(f, a, v)
+		return next, 0, false
+	}
+	if a != "--status" {
+		return i, r.ReportUsage(unknownFlag(a)), true
+	}
+	f.status = true
+	return i, 0, false
 }
 
 // unknownFlag reports one unknown learn flag.
 func unknownFlag(a string) *cli.UsageError {
 	return &cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for learn (want %s)", a, usageFlags)}
+}
+
+// learnIDWant is the operand hint shared by the id-taking learn flags.
+const learnIDWant = "<id>"
+
+// learnWants names each value flag's accepted operand for the missing-value
+// usage error.
+var learnWants = map[string]string{
+	"--rule":       "<text>",
+	"--scope":      "<globs>",
+	"--id":         learnIDWant,
+	"--provenance": "<s>",
+	"--rigor":      "<level>",
+	"--retire":     learnIDWant,
+	"--restore":    learnIDWant,
+	"--reason":     "<text>",
 }
 
 // setFlag stores one value-taking flag.

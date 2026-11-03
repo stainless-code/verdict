@@ -63,23 +63,22 @@ func postRequest(r *cli.Runner, req Request, f core.PostFlags) *core.PostRequest
 	}
 }
 
-// parsePostFlags strips post's flags, reporting unknown ones. A trailing
-// value flag reads "" (the gate below refuses typed when the value is
-// required).
+// parsePostFlags strips post's flags, reporting unknown ones. A value flag
+// with no operand is a usage error.
 func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, int, bool) {
 	f := core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == "--approve", a == "--review-file":
-			v := ""
-			if i+1 < len(args) {
-				i++
-				v = args[i]
+		case a == postApproveFlag, a == "--review-file":
+			v, next, u := cli.FlagValue(args, i, a, postWants[a])
+			if u != nil {
+				return f, r.ReportUsage(u), true
 			}
 			setPostValue(&f, a, v)
-		case strings.HasPrefix(a, "--approve="):
-			f.Approve = strings.TrimPrefix(a, "--approve=")
+			i = next
+		case strings.HasPrefix(a, postApproveFlag+"="):
+			f.Approve = strings.TrimPrefix(a, postApproveFlag+"=")
 		case a == "--request-changes":
 			f.RequestChanges = true
 		case a == "--bind":
@@ -97,9 +96,20 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 	return f, 0, false
 }
 
+// postApproveFlag names the --approve flag (which also takes the documented
+// --approve=bool form).
+const postApproveFlag = "--approve"
+
+// postWants names each value flag's accepted operand for the missing-value
+// usage error.
+var postWants = map[string]string{
+	postApproveFlag: "true|false",
+	"--review-file": "<path>",
+}
+
 // setPostValue stores one value-taking post flag's value.
 func setPostValue(f *core.PostFlags, name, val string) {
-	if name == "--approve" {
+	if name == postApproveFlag {
 		f.Approve = val
 	} else {
 		f.ReviewFile = val

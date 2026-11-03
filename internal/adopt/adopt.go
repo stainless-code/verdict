@@ -67,12 +67,12 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 		a := args[i]
 		switch a {
 		case "--from":
-			if i+1 < len(args) {
-				i++
-				from = args[i]
-			} else {
-				from = ""
+			v, next, u := cli.FlagValue(args, i, a, "<local-slug>")
+			if u != nil {
+				return "", r.ReportUsage(u), true
 			}
+			from = v
+			i = next
 		default:
 			msg := fmt.Sprintf(msgUnknownFlag, a)
 			code := r.ReportUsage(&cli.UsageError{Message: msg})

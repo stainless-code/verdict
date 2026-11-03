@@ -101,7 +101,12 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 		a := args[i]
 		switch {
 		case a == "--preset":
-			f.preset = presetValue(args, &i)
+			v, next, u := cli.FlagValue(args, i, a, "chill|standard|strict")
+			if u != nil {
+				return f, r.ReportUsage(u), true
+			}
+			f.preset = v
+			i = next
 		case strings.HasPrefix(a, "--preset="):
 			f.preset = strings.TrimPrefix(a, "--preset=")
 		case a == "--yes" || a == "-y" || a == "--force":
@@ -117,13 +122,4 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 		i++
 	}
 	return f, 0, false
-}
-
-// presetValue reads the --preset operand, advancing i past it.
-func presetValue(args []string, i *int) string {
-	if *i+1 < len(args) {
-		*i++
-		return args[*i]
-	}
-	return ""
 }

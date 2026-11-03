@@ -151,39 +151,60 @@ func refuseFetch(r *cli.Runner, err error) int {
 	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
 }
 
-// parseFetchFlags strips fetch's flags, reporting unknown ones. A trailing
-// value flag reads "" (the gate below refuses typed when the value is
-// required).
+// parseFetchFlags strips fetch's flags, reporting unknown ones. A value flag
+// with no operand is a usage error.
 func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) {
 	f := core.FetchFlags{Provider: providerGitHub}
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch a {
-		case "--base-sha", "--since":
-			f.HasBase = true
-			f.BaseSHA, i = flagValue(args, i)
-		case "--provider":
-			f.HasProvider = true
-			f.Provider, i = flagValue(args, i)
-		case "--consent-over-budget":
-			f.BudgetConsent = true
-		case "--allow-head-controls":
-			f.HeadControls = true
-		case "--show-prompts":
-			f.ShowPrompts = true
-		case flagChunk:
-			f.ChunkFlag = true
-		default:
-			msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
-				"--provider <name>, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, --json)", a)
-			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
+		next, code, done := parseFetchToken(r, &f, args, i)
+		if done {
+			return f, code, true
 		}
+		i = next
 	}
 	return f, 0, false
 }
 
-// parseLocalFlags strips fetch-local's flags, reporting unknown ones. A
-// trailing value flag reads "" and a bare --stash reads "0".
+// fetchValueWants names each fetch value flag's operand for the
+// missing-value usage error.
+var fetchValueWants = map[string]string{
+	"--base-sha": "<sha>",
+	"--since":    "<sha>",
+	"--provider": "<name>",
+}
+
+// parseFetchToken consumes one fetch argument, returning the next index plus a
+// usage refusal when the token is unknown or a value flag lost its operand.
+func parseFetchToken(r *cli.Runner, f *core.FetchFlags, args []string, i int) (int, int, bool) {
+	a := args[i]
+	if want, ok := fetchValueWants[a]; ok {
+		v, next, u := cli.FlagValue(args, i, a, want)
+		if u != nil {
+			return i, r.ReportUsage(u), true
+		}
+		setFetchValue(f, a, v)
+		return next, 0, false
+	}
+	switch a {
+	case "--consent-over-budget":
+		f.BudgetConsent = true
+	case "--allow-head-controls":
+		f.HeadControls = true
+	case "--show-prompts":
+		f.ShowPrompts = true
+	case flagChunk:
+		f.ChunkFlag = true
+	default:
+		msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
+			"--provider <name>, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, --json)", a)
+		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
+	}
+	return i, 0, false
+}
+
+// parseLocalFlags strips fetch-local's flags, reporting unknown ones. A bare
+// --stash keeps its documented optional value ("0"); every other value flag
+// with no operand is a usage error.
 func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, bool) {
 	var f core.FetchLocalFlags
 	for i := 0; i < len(args); i++ {
@@ -200,7 +221,10 @@ func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, b
 // index plus a usage refusal when the token is an unknown flag.
 func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i int) (int, int, bool) {
 	a := args[i]
-	if next, ok := parseLocalValueFlag(f, a, args, i); ok {
+	if next, u, ok := parseLocalValueFlag(f, a, args, i); ok {
+		if u != nil {
+			return i, r.ReportUsage(u), true
+		}
 		return next, 0, false
 	}
 	switch a {
@@ -232,38 +256,48 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 }
 
 // parseLocalValueFlag consumes fetch-local's value flags, returning the next
-// index and whether the flag matched.
-func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int) (int, bool) {
+// index, a missing-value usage error, and whether the flag matched.
+func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
 	switch a {
 	case "--range":
-		f.RangeSpec, i = flagValue(args, i)
+		v, next, u := cli.FlagValue(args, i, a, "A[..|...]B")
+		if u != nil {
+			return i, u, true
+		}
+		f.RangeSpec = v
+		return next, nil, true
 	case "--base":
-		f.BaseRef, i = flagValue(args, i)
+		v, next, u := cli.FlagValue(args, i, a, "<ref>")
+		if u != nil {
+			return i, u, true
+		}
+		f.BaseRef = v
+		return next, nil, true
 	case "--stash":
 		f.HasStash = true
 		f.StashN, i = stashValue(args, i)
+		return i, nil, true
 	default:
-		return i, false
+		return i, nil, false
 	}
-	return i, true
 }
 
-// flagValue reads a trailing flag value, returning the next index
-// ("" when absent).
-func flagValue(args []string, i int) (string, int) {
-	if i+1 < len(args) {
-		return args[i+1], i + 1
-	}
-	return "", i
-}
-
-// stashValue reads the optional stash number: a non-flag trailing word,
-// else the "0" default. Returns the next index.
+// stashValue reads --stash's optional operand: a non-flag trailing word, else
+// the documented "0" default (a bare --stash means stash@{0}).
 func stashValue(args []string, i int) (string, int) {
 	if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 		return args[i+1], i + 1
 	}
 	return "0", i
+}
+
+// setFetchValue applies one fetch value flag's operand.
+func setFetchValue(f *core.FetchFlags, name, value string) {
+	if name == "--provider" {
+		f.HasProvider, f.Provider = true, value
+		return
+	}
+	f.HasBase, f.BaseSHA = true, value
 }
 
 // providerGitHub and flagChunk mirror the fetchcore spellings the usage

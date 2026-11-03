@@ -214,6 +214,17 @@ func MissingValue(flag, want string) *UsageError {
 	return &UsageError{Message: msg}
 }
 
+// FlagValue returns the value operand of the value flag at args[i], plus the
+// index of that operand. A flag last in argv has no value: the returned usage
+// error names want, so a known flag never reads as unknown and never silently
+// becomes "".
+func FlagValue(args []string, i int, flag, want string) (value string, next int, uerr *UsageError) {
+	if i+1 >= len(args) {
+		return "", i, MissingValue(flag, want)
+	}
+	return args[i+1], i + 1, nil
+}
+
 // stripColor consumes the --color flag.
 func stripColor(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 >= len(args) {

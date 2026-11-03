@@ -81,26 +81,46 @@ type flags struct {
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 	var f flags
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch a {
-		case "--sig", "--status", "--rationale":
-			if i+1 < len(args) {
-				i++
-				setFlag(&f, a, args[i])
-			} else {
-				setFlag(&f, a, "")
-			}
-		case "--force":
-			f.force = true
-		case "--dry-run":
-			f.dryRun = true
-		default:
-			msg := fmt.Sprintf("unknown flag '%s' for triage "+
-				"(want --sig, --status, --rationale, --force, --dry-run, --json)", a)
-			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
+		next, code, done := parseToken(r, &f, args, i)
+		if done {
+			return f, code, true
 		}
+		i = next
 	}
 	return f, 0, false
+}
+
+// parseToken consumes one triage argument, returning the next index plus a
+// usage refusal when the token is unknown or a value flag lost its operand.
+func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	a := args[i]
+	if want, ok := triageWants[a]; ok {
+		v, next, u := cli.FlagValue(args, i, a, want)
+		if u != nil {
+			return i, r.ReportUsage(u), true
+		}
+		setFlag(f, a, v)
+		return next, 0, false
+	}
+	switch a {
+	case "--force":
+		f.force = true
+	case "--dry-run":
+		f.dryRun = true
+	default:
+		msg := fmt.Sprintf("unknown flag '%s' for triage "+
+			"(want --sig, --status, --rationale, --force, --dry-run, --json)", a)
+		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
+	}
+	return i, 0, false
+}
+
+// triageWants names each value flag's accepted operand for the missing-value
+// usage error.
+var triageWants = map[string]string{
+	"--sig":       "<sig>",
+	"--status":    "<status>",
+	"--rationale": "<text>",
 }
 
 // setFlag stores one value-taking flag.
