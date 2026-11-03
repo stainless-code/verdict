@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -316,12 +317,12 @@ func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 // content can carry token-adjacent gh diagnostics.
 const probeStagePerm = 0o600
 
-// writeErrFile stages probe stderr beside the bundle. The write is
-// best-effort like the shell's 2> redirect, so a failure warns instead of
-// refusing: the file is a debug side channel and the run must not fail
-// over garnish.
+// writeErrFile stages probe stderr beside the bundle through the shared
+// atomic path. The write is best-effort like the shell's 2> redirect, so a
+// failure warns instead of refusing: the file is a debug side channel and
+// the run must not fail over garnish.
 func writeErrFile(st *state, path, stderr string) {
-	if err := os.WriteFile(path, []byte(stderr), probeStagePerm); err != nil {
+	if err := atomic.WriteFileMode(path, []byte(stderr), probeStagePerm); err != nil {
 		// Un-actionable beyond the notice: the live data already loaded.
 		st.diag("ready: could not stage probe stderr in " + path + ": " + err.Error())
 	}

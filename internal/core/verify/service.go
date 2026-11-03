@@ -287,29 +287,32 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string) *core.
 	return nil
 }
 
-// truncateOutputs empties the watchdog outputs before a run, mirroring the
-// shell's `: >` truncations.
+// truncateOutputs empties the watchdog outputs before a run through the
+// shared atomic path, mirroring the shell's `: >` truncations.
 func truncateOutputs(paths ...string) error {
 	for _, p := range paths {
-		if err := os.WriteFile(p, nil, outFilePerm); err != nil {
+		if err := atomic.WriteFile(p, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// writeOutputs persists the combined command output for operator debugging.
+// writeOutputs persists the combined command output for operator debugging
+// through the shared atomic path, so an interrupted write never leaves a
+// torn record.
 func writeOutputs(outPath, combined string) error {
-	return os.WriteFile(outPath, []byte(combined), outFilePerm)
+	return atomic.WriteFile(outPath, []byte(combined))
 }
 
-// recordTimeoutMarker writes the timeout marker for a timed-out run (the
-// clean path leaves the truncated file empty, like the shell).
+// recordTimeoutMarker writes the timeout marker for a timed-out run through
+// the shared atomic path (the clean path leaves the truncated file empty,
+// like the shell).
 func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
 	if marker == "" {
 		return nil
 	}
-	if err := os.WriteFile(timeoutPath, []byte(marker), outFilePerm); err != nil {
+	if err := atomic.WriteFile(timeoutPath, []byte(marker)); err != nil {
 		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 	}
 	return nil
@@ -421,9 +424,6 @@ const tailCap = 4000
 
 // decimalBase is the radix for small-int parsing.
 const decimalBase = 10
-
-// outFilePerm allows the harness and operators to read the raw outputs.
-const outFilePerm = 0o666
 
 // boolStr renders timed_out the shell way (true/false, lowercase).
 func boolStr(b bool) string {

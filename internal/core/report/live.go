@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -134,13 +135,13 @@ const errHeadBytes = 120
 // content can carry token-adjacent gh diagnostics.
 const recheckStagePerm = 0o600
 
-// writeErrFile stages probe stderr beside the bundle (removed after the
-// probe either way, so readers stay side-effect free). The write is
-// best-effort like the shell's 2> redirect, so a failure warns instead of
-// refusing: the file is a debug side channel and the run must not fail
-// over garnish.
+// writeErrFile stages probe stderr beside the bundle through the shared
+// atomic path (removed after the probe either way, so readers stay
+// side-effect free). The write is best-effort like the shell's 2>
+// redirect, so a failure warns instead of refusing: the file is a debug
+// side channel and the run must not fail over garnish.
 func writeErrFile(st *state, path, stderr string) {
-	if err := os.WriteFile(path, []byte(stderr), recheckStagePerm); err != nil {
+	if err := atomic.WriteFileMode(path, []byte(stderr), recheckStagePerm); err != nil {
 		// Un-actionable beyond the notice: the live data already loaded.
 		st.req.Diag(fmt.Sprintf("report: could not stage probe stderr in %s: %v", path, err))
 	}

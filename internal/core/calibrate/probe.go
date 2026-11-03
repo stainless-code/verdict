@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -427,15 +428,16 @@ func baselineVerdict(entry any) string {
 // carry no secrets, but 0644 is never needed.
 const gradesFilePerm = 0o600
 
-// writeGrades rewrites kb-grades.jsonl deterministically: one compact row
-// per grade plus a trailing newline.
+// writeGrades rewrites kb-grades.jsonl deterministically through the shared
+// atomic path: one compact row per grade plus a trailing newline, so an
+// interrupted write keeps the last good grades byte-identical (audit 19).
 func writeGrades(dir string, grades []*jq.Obj) error {
 	var sb strings.Builder
 	for _, g := range grades {
 		sb.WriteString(g.MarshalCompact())
 		sb.WriteByte('\n')
 	}
-	if err := os.WriteFile(dir+"/kb-grades.jsonl", []byte(sb.String()), gradesFilePerm); err != nil {
+	if err := atomic.WriteFileMode(dir+"/kb-grades.jsonl", []byte(sb.String()), gradesFilePerm); err != nil {
 		return &core.RefusalError{Code: codeCalibrateFailed, Message: fmt.Sprintf("could not write %s/kb-grades.jsonl: %v", dir, err)}
 	}
 	return nil
