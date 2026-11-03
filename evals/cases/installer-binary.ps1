@@ -44,10 +44,24 @@ $payloadExe = Join-Path $env:SystemRoot 'System32\curl.exe'
 if (-not (Test-Path -LiteralPath $payloadExe)) { throw "installer-binary needs $payloadExe as the fake payload" }
 [System.IO.File]::Copy($payloadExe, $BinSrc, $true)
 
+# Windows PowerShell 5.1 hard-wraps redirected host output at the console
+# width, so a long installer line can land split across lines in the log.
+# Compare with every whitespace run collapsed to one space on both sides.
+function Squash-Space {
+  param([string]$Text)
+  return [regex]::Replace($Text, '\s+', ' ')
+}
 function Log-Contains {
   param([string]$Needle)
   if (-not (Test-Path -LiteralPath $script:Log)) { return $false }
-  return ([System.IO.File]::ReadAllText($script:Log)).Contains($Needle)
+  return (Squash-Space ([System.IO.File]::ReadAllText($script:Log))).Contains((Squash-Space $Needle))
+}
+# Status-Detail: the exit status plus the installer log, so a failed leg says
+# why instead of only "status 1".
+function Status-Detail {
+  $text = ''
+  if (Test-Path -LiteralPath $script:Log) { $text = Squash-Space ([System.IO.File]::ReadAllText($script:Log)) }
+  return "status $($script:Status): $text"
 }
 function File-Contains {
   param([string]$Path, [string]$Needle)
@@ -231,7 +245,7 @@ try {
   if ($script:Status -eq 0 -and (Same-Bytes $BinSrc $target) -and (Request-Seen "/v1.2.3/$expectedArchive")) {
     Good 'windows/amd64 installs the contract archive and expected bytes'
   } else {
-    Bad "happy path status $($script:Status): $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
+    Bad "happy path $(Status-Detail)"
   }
   $receipt = Join-Path $script:InstallDir '.verdict-installer'
   if ((Test-Path -LiteralPath $receipt) -and ((Get-Content -Raw $receipt | ConvertFrom-Json).version -eq '1.2.3')) {
@@ -258,7 +272,7 @@ try {
   if ($script:Status -ne 0 -and (Log-Contains 'SHA-256 mismatch') -and (Same-Bytes (Join-Path $Sandbox 'old.exe') $target)) {
     Good 'checksum mismatch refuses and leaves the old binary'
   } else {
-    Bad "checksum mismatch status $($script:Status)"
+    Bad "checksum mismatch $(Status-Detail)"
   }
   $script:Pin = '1.2.3'
   Invoke-Installer
@@ -269,7 +283,7 @@ try {
   if ($script:Status -ne 0 -and (Log-Contains 'signature verification failed') -and (Same-Bytes (Join-Path $Sandbox 'old2.exe') $target)) {
     Good 'bad signature refuses before replacing the binary'
   } else {
-    Bad "bad signature status $($script:Status)"
+    Bad "bad signature $(Status-Detail)"
   }
   $env:FAKE_COSIGN_STATUS = '0'
   if (Get-ChildItem -LiteralPath $script:InstallDir -Filter '.verdict-stage-*' -Force -ErrorAction SilentlyContinue) {
@@ -284,14 +298,14 @@ try {
   if ($script:Status -ne 0 -and (Log-Contains 'download failed')) {
     Good 'an unpublished windows/arm64 archive refuses the download'
   } else {
-    Bad "wrong-arch status $($script:Status)"
+    Bad "wrong-arch $(Status-Detail)"
   }
   $env:PROCESSOR_ARCHITECTURE = 'IA64'
   Invoke-Installer
   if ($script:Status -ne 0 -and (Log-Contains 'supported: windows/amd64, windows/arm64')) {
     Good 'unknown Windows architecture refuses with the supported list'
   } else {
-    Bad "unknown-arch status $($script:Status)"
+    Bad "unknown-arch $(Status-Detail)"
   }
   $env:PROCESSOR_ARCHITECTURE = 'AMD64'
 
@@ -303,7 +317,7 @@ try {
       -and (Request-Seen '/v3.0.0/')) {
     Good 'Version v3.0.0 pins the release'
   } else {
-    Bad "version pin status $($script:Status)"
+    Bad "version pin $(Status-Detail)"
   }
   Reset-Install
   Invoke-Installer -Version 'latest'
@@ -312,7 +326,7 @@ try {
       -and (Request-Seen '/latest') -and (Request-Seen '/v9.9.9/')) {
     Good 'latest resolves through the releases redirect'
   } else {
-    Bad "latest status $($script:Status)"
+    Bad "latest $(Status-Detail)"
   }
 
   # --- PATH: one append, switch/env opt-outs, removal ---
@@ -363,7 +377,7 @@ try {
       -and -not (Get-ChildItem -LiteralPath $script:InstallDir -Filter '.verdict-stage-*' -Force -ErrorAction SilentlyContinue)) {
     Good 're-install is idempotent and leaves no staging dirs'
   } else {
-    Bad "re-install status $($script:Status)"
+    Bad "re-install $(Status-Detail)"
   }
   Set-Content -Path (Join-Path $script:InstallDir 'notes.txt') -Value 'foreign' -Encoding ASCII
   Invoke-Installer -Uninstall
@@ -372,7 +386,7 @@ try {
       -and (Test-Path -LiteralPath (Join-Path $script:InstallDir 'notes.txt'))) {
     Good 'uninstall removes managed files and leaves foreign files'
   } else {
-    Bad "uninstall status $($script:Status)"
+    Bad "uninstall $(Status-Detail)"
   }
   $foreignDir = Join-Path $Sandbox 'foreign'
   New-Item -ItemType Directory -Path $foreignDir -Force | Out-Null
@@ -381,7 +395,7 @@ try {
   if ($script:Status -ne 0 -and (Log-Contains 'refusing to remove') -and (Test-Path -LiteralPath (Join-Path $foreignDir 'verdict.exe'))) {
     Good 'uninstall refuses a foreign verdict.exe without a receipt'
   } else {
-    Bad "foreign uninstall status $($script:Status)"
+    Bad "foreign uninstall $(Status-Detail)"
   }
 
   # --- checksum-only fallback and require-signature fail-closed ---
@@ -390,14 +404,14 @@ try {
   if ($script:Status -eq 0 -and (Log-Contains 'SHA-256 only')) {
     Good 'missing cosign falls back to checksum-only with a loud warning'
   } else {
-    Bad "checksum-only fallback status $($script:Status)"
+    Bad "checksum-only fallback $(Status-Detail)"
   }
   Reset-Install
   Invoke-Installer -CosignPath (Join-Path $Sandbox 'no-cosign.exe') -RequireSignature
   if ($script:Status -ne 0 -and (Log-Contains 'VERDICT_REQUIRE_SIGNATURE=1')) {
     Good 'RequireSignature fails closed without cosign'
   } else {
-    Bad "require-signature status $($script:Status)"
+    Bad "require-signature $(Status-Detail)"
   }
 } finally {
   if ($job) { Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
