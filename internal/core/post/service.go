@@ -72,6 +72,8 @@ type state struct {
 	commitID     string
 	fetchedSHA   string
 	payload      string
+	payloads     []string
+	extraParts   []string
 	findingsFile string
 	now          string
 	comments     []any
@@ -208,7 +210,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 // and submit tail.
 func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
 	st.preflight()
-	st.buildPayload()
+	st.buildPayloads()
 	st.eventLine()
 	if st.flags.DryRun {
 		return st.dryRunResponse()
@@ -323,7 +325,7 @@ func (st *state) merge() *core.RefusalError {
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
 		Root: st.req.RootPath(), Body: st.body,
 		DryRun: st.flags.DryRun, FindingsFile: st.findingsFile,
-		PreFooter: st.trimmedBody,
+		PreFooter: st.splitPreFooter,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post",
 	})
@@ -472,10 +474,12 @@ func (st *state) eventLine() {
 }
 
 // duplicateGuard ports the double-post guard: exact payload replays refuse
-// unless --force. The marker is only touched after a successful submit, so
-// legit re-reviews hash differently and pass.
+// unless --force. The marker covers every posted part (a single part joins
+// to itself, so the marker stays byte-identical there). The marker is only
+// touched after a successful submit, so legit re-reviews hash differently
+// and pass.
 func (st *state) duplicateGuard() *core.RefusalError {
-	st.phash = sig.Sum([]byte(st.payload))
+	st.phash = sig.Sum(st.payloadBytes())
 	if exists(st.dir+"/.posted_"+st.phash) && !st.flags.Force {
 		return &core.RefusalError{Code: "duplicate-payload", Message: "identical payload already posted — " +
 			"refusing duplicate (pass --force to repost)"}

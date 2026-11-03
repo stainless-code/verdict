@@ -417,8 +417,10 @@ func postOnce(ctx context.Context, cmdr Commander, repo, pr, dir, payload string
 	return strings.TrimRight(res.Stdout, newline), "", true
 }
 
-// submit runs the bounded retry loop and publishes: the marker and receipt
-// land only after a decoded review object, so failures never arm anything.
+// submit runs the bounded retry loop and publishes: the first part posts as
+// the review and each follow-up posts as a COMMENT review. The marker and
+// receipt land only after every part decodes, so partial failures never arm
+// anything — like every other post failure.
 func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
 	cmdr, ref := st.commander()
 	if ref != nil {
@@ -442,12 +444,32 @@ func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalE
 	return st.successResponse(obj, posted), nil
 }
 
-// postWithRetry ports the retry loop: up to 3 attempts, warning before each
-// wait, then a typed post-failed carrying the last attempt's head.
+// postWithRetry ports the retry loop: the first part posts as the review,
+// each follow-up posts as a COMMENT review, up to 3 attempts per part with
+// a warning before each wait. A follow-up failure refuses typed, naming the
+// landed first review so the operator can finish the remainder by hand.
 func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *core.RefusalError) {
+	posted, ref := st.postOneWithRetry(ctx, cmdr, st.payloads[0])
+	if ref != nil {
+		return "", ref
+	}
+	for i, payload := range st.payloads[1:] {
+		part, ref := st.postOneWithRetry(ctx, cmdr, payload)
+		if ref != nil {
+			return "", st.followRefusal(i+2, len(st.payloads), posted)
+		}
+		st.followPosted(i+2, len(st.payloads), part)
+	}
+	return posted, nil
+}
+
+// postOneWithRetry ports one part's retry loop: up to 3 attempts, warning
+// before each wait, then a typed post-failed carrying the last attempt's
+// head.
+func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload string) (string, *core.RefusalError) {
 	attempt := 0
 	for {
-		posted, errText, ok := postOnce(ctx, cmdr, st.req.Repo, st.req.Pr, st.dir, st.payload)
+		posted, errText, ok := postOnce(ctx, cmdr, st.req.Repo, st.req.Pr, st.dir, payload)
 		if ok {
 			return posted, nil
 		}
@@ -460,6 +482,39 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 		time.Sleep(wait)
 	}
 	return "", &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf(msgPostFailed, headReason(st.dir))}
+}
+
+// followPosted reports one landed follow-up review on the human stream.
+func (st *state) followPosted(k, n int, part string) {
+	if id := reviewID(part); id != "" {
+		st.human(fmt.Sprintf("posted follow-up part %d/%d as review %s", k, n, id))
+		return
+	}
+	st.human(fmt.Sprintf("posted follow-up part %d/%d", k, n))
+}
+
+// followRefusal ports the partial-post failure: the first review already
+// landed, so the refusal names it and says how to finish — the marker stays
+// unarmed (failures never arm), and a re-run reposts every part.
+func (st *state) followRefusal(k, n int, posted string) *core.RefusalError {
+	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf(
+		"post failed: follow-up part %d/%d not posted (review %s landed part 1 — fix the cause and re-run; part 1 reposts as a duplicate)",
+		k, n, reviewID(posted))}
+}
+
+// reviewID reads one accepted review's id for progress lines, "" when the
+// response does not carry one.
+func reviewID(posted string) string {
+	doc, err := jq.DecodeOrdered([]byte(posted))
+	if err != nil {
+		return ""
+	}
+	obj, ok := doc.(*jq.Obj)
+	if !ok || obj == nil {
+		return ""
+	}
+	id, _ := obj.Get("id")
+	return jq.Interp(id)
 }
 
 // postMaxRetries caps POST attempts (the shell's `while (( attempt < 3 ))`).

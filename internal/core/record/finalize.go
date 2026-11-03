@@ -115,7 +115,7 @@ func (st *state) footerOpts() *provenance.FooterOpts {
 }
 
 // FooterOpts builds the footer inputs shared by the merge and the post
-// trim hook (which must reserve the same block it later appends).
+// split hook (which must reserve the same block it later appends).
 func FooterOpts(effective *core.Effective, forces *core.GlobalForces, root, dir string) *provenance.FooterOpts {
 	return &provenance.FooterOpts{
 		Dir:                    dir,

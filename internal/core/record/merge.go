@@ -202,7 +202,7 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	}
 	dr := st.applyDiagram(body)
 	body = dr.Body
-	// The post hosting-limit guard trims here: after the diagram strips
+	// The post hosting-limit guard splits here: after the diagram strips
 	// (entries already derive from the full body) and before the footer
 	// receipt, so the appended block always survives intact.
 	if st.preFooter != nil {
@@ -344,13 +344,16 @@ func (st *state) validateAnchors(body string) string {
 }
 
 // classifyComment keeps or moves one review comment by its diff anchoring.
+// A path outside the diff index moves into the body section: GitHub would
+// reject the inline anchor, so the point survives as an unanchored
+// observation instead of dying at submit. Ambiguity still keeps the run
+// green with a warning — the comment is moved, never dropped.
 func (st *state) classifyComment(m *jq.Obj, rows []hunkRow) {
 	p, _ := m.Get(fieldPath)
 	path := jq.Str(p)
 	key := stripDiffPrefix(path)
 	if !hunks.Indexed(rowsToHunks(rows), key) {
-		st.warn("kept despite unknown path (not in diff index, ambiguity keeps): " + path)
-		st.kept = append(st.kept, m)
+		st.moveUnknownPath(m, path)
 		return
 	}
 	lo, hi, side := anchorRange(m)
@@ -370,6 +373,16 @@ func (st *state) classifyComment(m *jq.Obj, rows []hunkRow) {
 	moved := m.Clone()
 	moved.Set(fieldDropReason, fmt.Sprintf("anchor %d-%d (%s) outside reviewed hunks", lo, hi, side))
 	st.moved = append(st.moved, moved)
+}
+
+// moveUnknownPath moves one review comment whose path is absent from the
+// diff index into the body section, reusing the move-section rendering the
+// out-of-hunk anchors already use.
+func (st *state) moveUnknownPath(m *jq.Obj, path string) {
+	moved := m.Clone()
+	moved.Set(fieldDropReason, fmt.Sprintf("path not in diff index (%s) — posted here instead of inline", path))
+	st.moved = append(st.moved, moved)
+	st.warn("moved to body: unknown path (not in diff index): " + path)
 }
 
 // stripDiffPrefix drops the a//b/ diff-path prefix for index lookup.

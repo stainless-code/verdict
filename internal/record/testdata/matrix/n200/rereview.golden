@@ -86,12 +86,6 @@ exit: 0
         "locator": "notes.txt:633"
       },
       {
-        "sig": "caecd3a690a0c1d8e2a057e48d159143c89b7ad8",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "3799f659ab520605018f5f06298e698cdedf1537",
         "status": "open",
         "anchored": true,
@@ -192,12 +186,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:2033"
-      },
-      {
-        "sig": "5676864e7b0edd65a71ec8b921da9902e9d737cf",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "102a5d936d30cb6ec72879131374ef7736dc162c",
@@ -302,12 +290,6 @@ exit: 0
         "locator": "notes.txt:1233"
       },
       {
-        "sig": "b3b64c3ed96602a9de0e81578b7dd111664d5b9f",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "3727577a3bae92f93647ca786d349659d78c0517",
         "status": "open",
         "anchored": true,
@@ -408,12 +390,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:433"
-      },
-      {
-        "sig": "6202bde33e6f135576c4b24c61e30ab0240235ad",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "9cac678be749e4cbf3bdc55da7972e5da001b178",
@@ -518,12 +494,6 @@ exit: 0
         "locator": "notes.txt:1833"
       },
       {
-        "sig": "84371e80f39a0e131ec8cdd3d3c928b874a17e6e",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "4d0314614f59b8ef4db42b592f3c1a6444f4b1c1",
         "status": "open",
         "anchored": true,
@@ -624,12 +594,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:1033"
-      },
-      {
-        "sig": "9f8948417e851fedf255fdf0ae2fd63905354fe8",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "654f7a3da4bcbe590d1765505cc8dd9f944cf64d",
@@ -734,12 +698,6 @@ exit: 0
         "locator": "notes.txt:233"
       },
       {
-        "sig": "855b078f35c5a523889a1313b8e21e70cc6d6a01",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "ef443857e9d739a1d1eaa501094ee5aa89b0b2a0",
         "status": "open",
         "anchored": true,
@@ -840,12 +798,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:1633"
-      },
-      {
-        "sig": "a2b1354270785eb2d786314a6f4cf030422cd2db",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "3f1186943c57b2a4db065eb79123c1dd7b826acd",
@@ -950,12 +902,6 @@ exit: 0
         "locator": "notes.txt:833"
       },
       {
-        "sig": "55d125a40871d122443e1a2fcd9cfacb02fd9202",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "cf2cfdad559b05e493821f56d151ff46bd270742",
         "status": "open",
         "anchored": true,
@@ -1056,12 +1002,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:33"
-      },
-      {
-        "sig": "a4a2b4fd60e09dc136395c75a4646f82d16397a3",
-        "status": "open",
-        "anchored": true,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "b3e169dc8a39c83949d71608418b2b73bf7fd4ad",
@@ -1166,10 +1106,22 @@ exit: 0
         "locator": "notes.txt:1943"
       },
       {
+        "sig": "caecd3a690a0c1d8e2a057e48d159143c89b7ad8",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
         "sig": "29e0cb91381cedb15ff38c803a8b036d3661453e",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "5676864e7b0edd65a71ec8b921da9902e9d737cf",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "7b2b8bff18a60e09abf33dc1d0f9fcea8c730cc6",
@@ -1178,10 +1130,22 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
+        "sig": "b3b64c3ed96602a9de0e81578b7dd111664d5b9f",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
         "sig": "795db78f2b8834d7abea19532cf216e033c16c5c",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "6202bde33e6f135576c4b24c61e30ab0240235ad",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "07aa857278f5e735de38b5a6f51c9032b90ee5e3",
@@ -1190,10 +1154,22 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
+        "sig": "84371e80f39a0e131ec8cdd3d3c928b874a17e6e",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
         "sig": "b4cc44e3306df715686f82aec274071f26dab419",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "9f8948417e851fedf255fdf0ae2fd63905354fe8",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "cbf9b6eaa6f3249144e136e81815e4d45dce93eb",
@@ -1202,10 +1178,22 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
+        "sig": "855b078f35c5a523889a1313b8e21e70cc6d6a01",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
         "sig": "ec359a362473cb16a25722091c68e531a844dd70",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "a2b1354270785eb2d786314a6f4cf030422cd2db",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "a859c615a5583db806babdc6c8706c1c29343187",
@@ -1214,10 +1202,22 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
+        "sig": "55d125a40871d122443e1a2fcd9cfacb02fd9202",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
         "sig": "90c9d2554fe13e963ecce25b17e09c961e76cb41",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "a4a2b4fd60e09dc136395c75a4646f82d16397a3",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "5c088656b7929020994ea2f12f9a05ae01a66268",
@@ -1261,7 +1261,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   5ae01706  open  true  notes.txt
   c2009016  open  true  notes.txt
   65c5e5ce  open  true  notes.txt
-  caecd3a6  open  true  unknown/file.txt
   3799f659  open  true  notes.txt
   b874f950  open  true  notes.txt
   b280b3f8  open  true  notes.txt
@@ -1279,7 +1278,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   6bce9b05  open  true  notes.txt
   f1d10005  open  true  notes.txt
   1af55343  open  true  notes.txt
-  5676864e  open  true  unknown/file.txt
   102a5d93  open  true  notes.txt
   3b89d802  open  true  notes.txt
   0b7162fe  open  true  notes.txt
@@ -1297,7 +1295,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   a045e2bc  open  true  notes.txt
   ab7a49a1  open  true  notes.txt
   d2ca3f8a  open  true  notes.txt
-  b3b64c3e  open  true  unknown/file.txt
   3727577a  open  true  notes.txt
   0b10e9a5  open  true  notes.txt
   e12cb642  open  true  notes.txt
@@ -1315,7 +1312,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   7ad05197  open  true  notes.txt
   0b511800  open  true  notes.txt
   73927a00  open  true  notes.txt
-  6202bde3  open  true  unknown/file.txt
   9cac678b  open  true  notes.txt
   a08abaa7  open  true  notes.txt
   d0bb6bf4  open  true  notes.txt
@@ -1333,7 +1329,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   5fa2d5d3  open  true  notes.txt
   65569d06  open  true  notes.txt
   edddefc4  open  true  notes.txt
-  84371e80  open  true  unknown/file.txt
   4d031461  open  true  notes.txt
   4f591ac7  open  true  notes.txt
   c69bd007  open  true  notes.txt
@@ -1351,7 +1346,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   723ffecb  open  true  notes.txt
   ce1e511d  open  true  notes.txt
   7f0f0b1f  open  true  notes.txt
-  9f894841  open  true  unknown/file.txt
   654f7a3d  open  true  notes.txt
   7596d641  open  true  notes.txt
   7e9838fd  open  true  notes.txt
@@ -1369,7 +1363,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   745c0fa1  open  true  notes.txt
   6528ccd0  open  true  notes.txt
   bab6667c  open  true  notes.txt
-  855b078f  open  true  unknown/file.txt
   ef443857  open  true  notes.txt
   24f4279f  open  true  notes.txt
   27232165  open  true  notes.txt
@@ -1387,7 +1380,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   aa45820e  open  true  notes.txt
   6604f70c  open  true  notes.txt
   fecf6472  open  true  notes.txt
-  a2b13542  open  true  unknown/file.txt
   3f118694  open  true  notes.txt
   361934d3  open  true  notes.txt
   2cb91f12  open  true  notes.txt
@@ -1405,7 +1397,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   bcc8913c  open  true  notes.txt
   e904ff3b  open  true  notes.txt
   cde0138e  open  true  notes.txt
-  55d125a4  open  true  unknown/file.txt
   cf2cfdad  open  true  notes.txt
   6f8a15cb  open  true  notes.txt
   84a8fdb9  open  true  notes.txt
@@ -1423,7 +1414,6 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   e5e86986  open  true  notes.txt
   c416cecf  open  true  notes.txt
   c054b504  open  true  notes.txt
-  a4a2b4fd  open  true  unknown/file.txt
   b3e169dc  open  true  notes.txt
   d8ca9065  open  true  notes.txt
   a5c35e45  open  true  notes.txt
@@ -1441,15 +1431,25 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   41040d39  open  false  notes.txt
   3ac501dc  open  false  notes.txt
   85f1aca7  open  false  notes.txt
+  caecd3a6  open  false  unknown/file.txt
   29e0cb91  open  false  notes.txt
+  5676864e  open  false  unknown/file.txt
   7b2b8bff  open  false  notes.txt
+  b3b64c3e  open  false  unknown/file.txt
   795db78f  open  false  notes.txt
+  6202bde3  open  false  unknown/file.txt
   07aa8572  open  false  notes.txt
+  84371e80  open  false  unknown/file.txt
   b4cc44e3  open  false  notes.txt
+  9f894841  open  false  unknown/file.txt
   cbf9b6ea  open  false  notes.txt
+  855b078f  open  false  unknown/file.txt
   ec359a36  open  false  notes.txt
+  a2b13542  open  false  unknown/file.txt
   a859c615  open  false  notes.txt
+  55d125a4  open  false  unknown/file.txt
   90c9d255  open  false  notes.txt
+  a4a2b4fd  open  false  unknown/file.txt
   5c088656  open  false  notes.txt
   99cd29f4  open  body  ### Watch the loop
   e5ae2abb  open  body  ### Check the edges
@@ -1712,31 +1712,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "reproduced",
     "severity": "critical",
     "sig": "65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 10 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "caecd3a690a0c1d8e2a057e48d159143c89b7ad8",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -2176,31 +2151,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 30 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": "critical",
-    "sig": "5676864e7b0edd65a71ec8b921da9902e9d737cf",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": "two",
@@ -2612,31 +2562,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "reproduced",
     "severity": null,
     "sig": "d2ca3f8acc3763fbb3d42e887cc8b59a469c3e4b",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 50 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "b3b64c3ed96602a9de0e81578b7dd111664d5b9f",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -3076,31 +3001,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 70 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "6202bde33e6f135576c4b24c61e30ab0240235ad",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": "two",
@@ -3512,31 +3412,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "reproduced",
     "severity": null,
     "sig": "edddefc49c4458dd36207bc4bcbaa75c03ff55de",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 90 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": "critical",
-    "sig": "84371e80f39a0e131ec8cdd3d3c928b874a17e6e",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -3976,31 +3851,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 110 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "9f8948417e851fedf255fdf0ae2fd63905354fe8",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": "two",
@@ -4412,31 +4262,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "reproduced",
     "severity": "critical",
     "sig": "bab6667c874f7e2455d7c7f04ebade1f5db36b3f",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 130 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "855b078f35c5a523889a1313b8e21e70cc6d6a01",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -4876,31 +4701,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 150 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": "critical",
-    "sig": "a2b1354270785eb2d786314a6f4cf030422cd2db",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": "two",
@@ -5312,31 +5112,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "reproduced",
     "severity": null,
     "sig": "cde0138e8d7fa4289c844f388ed23dd2dbef3aea",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 170 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "55d125a40871d122443e1a2fcd9cfacb02fd9202",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -5776,31 +5551,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
-    "path": "unknown/file.txt",
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": true,
-    "body": "Comment 190 body with enough substance to read as a finding.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "said",
-    "severity": null,
-    "sig": "a4a2b4fd60e09dc136395c75a4646f82d16397a3",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": "two",
@@ -6226,6 +5976,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 10 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "caecd3a690a0c1d8e2a057e48d159143c89b7ad8",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": 99991,
@@ -6237,6 +6012,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "walked",
     "severity": "critical",
     "sig": "29e0cb91381cedb15ff38c803a8b036d3661453e",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 30 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": "critical",
+    "sig": "5676864e7b0edd65a71ec8b921da9902e9d737cf",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -6276,6 +6076,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 50 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "b3b64c3ed96602a9de0e81578b7dd111664d5b9f",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": 99991,
@@ -6287,6 +6112,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "walked",
     "severity": null,
     "sig": "795db78f2b8834d7abea19532cf216e033c16c5c",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 70 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "6202bde33e6f135576c4b24c61e30ab0240235ad",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -6326,6 +6176,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 90 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": "critical",
+    "sig": "84371e80f39a0e131ec8cdd3d3c928b874a17e6e",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": 99991,
@@ -6337,6 +6212,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "walked",
     "severity": null,
     "sig": "b4cc44e3306df715686f82aec274071f26dab419",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 110 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "9f8948417e851fedf255fdf0ae2fd63905354fe8",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -6376,6 +6276,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 130 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "855b078f35c5a523889a1313b8e21e70cc6d6a01",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": 99991,
@@ -6387,6 +6312,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "walked",
     "severity": "critical",
     "sig": "ec359a362473cb16a25722091c68e531a844dd70",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 150 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": "critical",
+    "sig": "a2b1354270785eb2d786314a6f4cf030422cd2db",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
@@ -6426,6 +6376,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   },
   {
     "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 170 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "55d125a40871d122443e1a2fcd9cfacb02fd9202",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
     "path": "notes.txt",
     "side": "RIGHT",
     "line": 99991,
@@ -6437,6 +6412,31 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
     "rigor": "walked",
     "severity": null,
     "sig": "90c9d2554fe13e963ecce25b17e09c961e76cb41",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "unknown/file.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": false,
+    "body": "Comment 190 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "a4a2b4fd60e09dc136395c75a4646f82d16397a3",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",

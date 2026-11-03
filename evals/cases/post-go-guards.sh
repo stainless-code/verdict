@@ -7,9 +7,12 @@
 #       calls, one review created).
 #   G2  a persistent 429 fails fast after three attempts (exit 1, post-failed,
 #       three reviews calls, no post.json) — bounded, never hanging the run.
-#   G3  oversized bodies trim with a notice: a body past the 65,536-char
-#       hosting limit posts once with the notice and an intact footer instead
-#       of submitting a doomed review.
+#   G3  oversized bodies split across follow-up review comments: a body past
+#       the 65,536-char hosting limit posts twice (review + one COMMENT
+#       follow-up), each part fitting the limit with the footer intact on
+#       the first part, instead of submitting a doomed review.
+#   G4  unknown-path comments move to the body: a comment on a path outside
+#       the diff index posts under Unanchored observations, never inline.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -45,7 +48,7 @@ case "$*" in
         exit 1
       fi
     fi
-    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat >> "$EVAL_SAVE_PAYLOAD"; fi
     printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
     exit 0;;
   *pulls*)
@@ -121,7 +124,7 @@ else
 fi
 rm -f "$EVAL_SANDBOX/rate-budget" "$EVAL_SANDBOX/rate-count"
 
-# --- G3: oversized body trims with a notice, footer intact ---
+# --- G3: oversized body splits across a follow-up review, footer intact ---
 PR=4473
 eval_mk_bundle "$PR"
 python3 -c "print('{\"schema_version\":\"1\",\"body\":\"> ✅ ' + 'x' * 70000 + '\",\"approved\":false,\"comments\":[]}')" \
@@ -133,22 +136,64 @@ run_review post acme/app "$PR" --json
 unset EVAL_SAVE_PAYLOAD
 event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "COMMENT" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 2 ]; then
+  good "oversized body posts twice as COMMENT + follow-up (exit 0)"
+else
+  bad "oversized body gave exit $EVAL_STATUS event '$event' calls $(reviews_posts_since "$m"), want 0/COMMENT/2"
+fi
+if grep -q "split into 2 review comments" "$EVAL_ERR" \
+  && grep -q "posted follow-up part 2/2 as review 101" "$EVAL_ERR"; then
+  good "split warns loudly and reports the landed follow-up"
+else
+  bad "split stderr: $(head -c 200 "$EVAL_ERR")"
+fi
+if jq -s -e '
+  length == 2
+  and (.[0].event == "COMMENT" and .[1].event == "COMMENT")
+  and (.[1].comments | length == 0)
+  and ((.[0].body | length) <= 65536 and (.[1].body | length) <= 65536)
+  and (.[0].body | contains("continues in 1 follow-up"))
+  and (.[1].body | contains("review body continued (part 2/2"))
+  and (.[0].body | contains("verdict-footer"))
+' "$EVAL_SANDBOX/posted-4473.json" >/dev/null; then
+  good "both parts fit the limit: first carries the footer, second the continuation header"
+else
+  bad "split payloads: $(head -c 300 "$EVAL_SANDBOX/posted-4473.json")"
+fi
+
+# --- G4: unknown-path comment moves to the body, never inline ---
+PR=4474
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[{"path":"ghost/file.txt","line":1,"body":"stray note on a file outside the diff"}]}
+EOF
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4474.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+m="$(mark)"
+run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
+moved="$(jq -r '.data.anchors.moved // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+kept="$(jq -r '.data.anchors.kept // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$moved" = "1" ] && [ "$kept" = "0" ] \
   && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
-  good "oversized body posts once as COMMENT (exit 0)"
+  good "unknown-path comment moves (kept=0 moved=1, one review posted)"
 else
-  bad "oversized body gave exit $EVAL_STATUS event '$event', want 0/COMMENT"
+  bad "unknown-path gave exit $EVAL_STATUS kept '$kept' moved '$moved', want 0/0/1"
 fi
-if grep -q "trimmed with a notice" "$EVAL_ERR" \
-  && grep -q "exceeded the 65,536-char hosting limit" "$EVAL_SANDBOX/posted-4473.json" \
-  && grep -q "verdict-footer" "$EVAL_SANDBOX/posted-4473.json"; then
-  good "posted body carries the trim notice with the footer intact"
+if grep -q "moved to body: unknown path" "$EVAL_ERR" \
+  && jq -e '.warnings | join("\n") | contains("moved to body: unknown path")' "$EVAL_OUT" >/dev/null; then
+  good "move warns loudly (stderr + envelope)"
 else
-  bad "trim stderr/payload: $(head -c 200 "$EVAL_ERR")"
+  bad "move warning: $(head -c 200 "$EVAL_ERR")"
 fi
-if python3 -c "import json,sys; sys.exit(0 if len(json.load(open('$EVAL_SANDBOX/posted-4473.json'))['body']) <= 65536 else 1)"; then
-  good "posted body fits the hosting limit"
+if jq -e '.body | contains("Unanchored observations") and contains("ghost/file.txt")' \
+  "$EVAL_SANDBOX/posted-4474.json" >/dev/null \
+  && jq -e '.comments | length == 0' "$EVAL_SANDBOX/posted-4474.json" >/dev/null \
+  && jq -e '[.[] | select(.path == "ghost/file.txt" and .anchored == false)] | length == 1' \
+  "$EVAL_SANDBOX/.review/$PR/findings.json" >/dev/null; then
+  good "moved comment lands in the body section, never inline"
 else
-  bad "posted body still exceeds the hosting limit"
+  bad "moved payload/findings: $(head -c 300 "$EVAL_SANDBOX/posted-4474.json")"
 fi
 
 if [ "$fails" -ne 0 ]; then echo "case post-go-guards: FAIL ($fails)"; exit 1; fi

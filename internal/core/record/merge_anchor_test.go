@@ -25,15 +25,16 @@ func anchorComment(path, line, start, side string) *jq.Obj {
 	return m
 }
 
-// TestAnchorPartitionKeepBias proves the keep-biased doctrine: unknown paths,
-// non-numeric anchors, and swapped spans keep with a warning; only provably
-// outside anchors move, and LEFT reads the OLD side.
+// TestAnchorPartitionKeepBias proves the keep-biased doctrine: unknown paths
+// move to the body with a warning (GitHub would reject the inline anchor);
+// non-numeric anchors keep with a warning; only provably outside anchors
+// move, and LEFT reads the OLD side.
 func TestAnchorPartitionKeepBias(t *testing.T) {
 	t.Parallel()
 	rows := []hunkRow{{file: "notes.txt", side: "NEW", start: 1, end: 3}}
 	tests := []anchorCase{
 		{"inline", "notes.txt", "2", "RIGHT", true},
-		{"unknown-path-keeps", "missing.txt", "2", "RIGHT", true},
+		{"unknown-path-moves", "missing.txt", "2", "RIGHT", false},
 		{"outside-moves", "notes.txt", "99", "RIGHT", false},
 		{"non-numeric-keeps", "notes.txt", "abc", "RIGHT", true},
 		{"missing-line-keeps", "notes.txt", "", "RIGHT", true},
@@ -96,7 +97,7 @@ func TestAnchorLeftOldSide(t *testing.T) {
 	}
 	st2 := anchorTestState(nil)
 	st2.classifyComment(anchorComment("notes.txt", "2", "", "LEFT"), nil)
-	if len(st2.kept) != 1 {
-		t.Errorf("LEFT with unknown path keeps (ambiguity keeps): kept=%d", len(st2.kept))
+	if len(st2.moved) != 1 {
+		t.Errorf("LEFT with unknown path moves to the body: kept=%d moved=%d", len(st2.kept), len(st2.moved))
 	}
 }

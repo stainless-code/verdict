@@ -21,7 +21,7 @@ import (
 
 // MergeParams carries one shared merge invocation: the record and post
 // verbs run the same validate_and_merge core over different bodies (the
-// review body, or the drift-annotated post body with the hosting trim
+// review body, or the drift-annotated post body with the hosting split
 // hook), persisting to different findings files (dry runs stage to
 // findings.dryrun.json).
 type MergeParams struct { //nolint:govet // field grouping documents the merge contract

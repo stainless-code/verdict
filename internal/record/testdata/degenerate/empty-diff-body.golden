@@ -9,18 +9,18 @@ exit: 0
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
     "no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "kept despite unknown path (not in diff index, ambiguity keeps): notes.txt",
+    "moved to body: unknown path (not in diff index): notes.txt",
     "no basis line under the confidence lead — keeping body as-is (report renders it exactly)",
     "no hunks indexed — anchors unchecked, everything kept"
   ],
   "data": {
     "dir": ".review/local-dg",
     "anchors": {
-      "kept": 1,
-      "moved": 0
+      "kept": 0,
+      "moved": 1
     },
     "findings": {
-      "open": 1,
+      "open": 2,
       "deferred": 0,
       "addressed": 0,
       "file": ".review/local-dg/findings.json"
@@ -31,8 +31,14 @@ exit: 0
       {
         "sig": "0b29915495b63a9f90cedae07412ac85276081b2",
         "status": "open",
-        "anchored": true,
+        "anchored": false,
         "locator": "notes.txt:2"
+      },
+      {
+        "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
+        "status": "open",
+        "anchored": "body",
+        "locator": "### ℹ️ Unanchored observations"
       }
     ]
   },
@@ -40,13 +46,15 @@ exit: 0
 }
 --- stderr ---
 warn: no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: kept despite unknown path (not in diff index, ambiguity keeps): notes.txt
-» anchors: 1 inline, 0 moved to body
+warn: moved to body: unknown path (not in diff index): notes.txt
+» anchors: 0 inline, 1 moved to body
+  - `notes.txt:2-2` (path not in diff index (notes.txt) — posted here instead of inline): Anchors unchecked.
 warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
-» findings: 1 sigs -> .review/local-dg/findings.json
-  0b299154  open  true  notes.txt
+» findings: 2 sigs -> .review/local-dg/findings.json
+  0b299154  open  false  notes.txt
+  1b5fa562  open  body  ### ℹ️ Unanchored observations
 warn: no hunks indexed — anchors unchecked, everything kept
-recorded: .review/local-dg/findings.json (1 open) + .review/local-dg/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .review/local-dg/findings.json (2 open) + .review/local-dg/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
 --- file C/.review/local-dg/findings.json ---
 [
@@ -55,7 +63,7 @@ recorded: .review/local-dg/findings.json (1 open) + .review/local-dg/record.json
     "path": "notes.txt",
     "side": "RIGHT",
     "line": 2,
-    "anchored": true,
+    "anchored": false,
     "body": "Anchors unchecked.",
     "suggestion": null,
     "kb": [],
@@ -68,6 +76,26 @@ recorded: .review/local-dg/findings.json (1 open) + .review/local-dg/record.json
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "section",
+    "heading": "### ℹ️ Unanchored observations",
+    "anchored": "body",
+    "body": "### ℹ️ Unanchored observations",
+    "severity": null,
+    "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "kb": [],
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -87,8 +115,8 @@ recorded: .review/local-dg/findings.json (1 open) + .review/local-dg/record.json
   "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 1,
-  "open": 1,
+  "findings": 2,
+  "open": 2,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",

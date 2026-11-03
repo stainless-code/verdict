@@ -313,8 +313,8 @@ func TestRetryDelayBounded(t *testing.T) {
 	}
 }
 
-// postTrimState builds a minimal state for trim unit tests.
-func postTrimState(warnings *[]string) *state {
+// postSplitState builds a minimal state for split unit tests.
+func postSplitState(warnings *[]string) *state {
 	root := ""
 	req := &core.PostRequest{
 		Runtime: &core.Runtime{
@@ -328,49 +328,154 @@ func postTrimState(warnings *[]string) *state {
 	return &state{req: req, warnings: *warnings}
 }
 
-// TestTrimmedBodyPassthrough proves under-limit bodies pass through
-// untouched and unwarned.
-func TestTrimmedBodyPassthrough(t *testing.T) {
+// TestSplitPreFooterPassthrough proves bodies that fit with their footer
+// pass through untouched and unwarned.
+func TestSplitPreFooterPassthrough(t *testing.T) {
 	t.Parallel()
 	var warnings []string
-	p := postTrimState(&warnings)
+	p := postSplitState(&warnings)
 	short := "> ✅ " + strings.Repeat("x", 100)
-	if got := p.trimmedBody(short); got != short {
-		t.Errorf("short body trimmed to %d chars", len(got))
+	if got := p.splitPreFooter(short); got != short {
+		t.Errorf("short body split to %d chars", len(got))
 	}
 	if len(warnings) != 0 {
 		t.Errorf("short body warned: %q", warnings)
 	}
-	exact := strings.Repeat("y", hostingBodyLimit)
-	if got := p.trimmedBody(exact); got != exact {
-		t.Errorf("at-limit body trimmed to %d chars", len(got))
+	if len(p.extraParts) != 0 {
+		t.Errorf("short body stashed %d parts", len(p.extraParts))
 	}
 }
 
-// TestTrimmedBodyTrims proves over-limit bodies trim on a rune boundary
-// with a notice, staying inside the hosting budget.
-func TestTrimmedBodyTrims(t *testing.T) {
+// TestSplitPreFooterSplits proves an over-limit body splits with a
+// continuation note, warning loudly instead of trimming.
+func TestSplitPreFooterSplits(t *testing.T) {
 	t.Parallel()
 	var warnings []string
-	p := postTrimState(&warnings)
+	p := postSplitState(&warnings)
 	big := strings.Repeat("z", hostingBodyLimit+1)
-	got := p.trimmedBody(big)
-	if len(got) > hostingBodyLimit {
-		t.Errorf("over-limit body still %d chars", len(got))
+	got := p.splitPreFooter(big)
+	if !strings.HasSuffix(got, splitFirstNote(2)) {
+		t.Errorf("split head misses the continuation note: %.60q", got)
 	}
-	if !strings.HasSuffix(got, trimNotice) {
-		t.Errorf("trimmed body misses the notice: %.60q", got)
+	if !utf8.ValidString(got) {
+		t.Errorf("split head is not valid UTF-8")
 	}
-	if !strings.Contains(strings.Join(warnings, "\n"), "trimmed with a notice") {
-		t.Errorf("trim warned nothing: %q", warnings)
+	if len(p.extraParts) != 1 {
+		t.Fatalf("split stashed %d parts, want 1", len(p.extraParts))
 	}
+	if !strings.Contains(strings.Join(warnings, "\n"), "split into 2 review comments") {
+		t.Errorf("split warned nothing: %q", warnings)
+	}
+	assertSplitPart(t, got)
+	for _, part := range p.extraParts {
+		assertSplitPart(t, part)
+	}
+}
+
+// TestSplitPreFooterMultibyte proves the split keeps every part inside the
+// hosting limit on rune boundaries.
+func TestSplitPreFooterMultibyte(t *testing.T) {
+	t.Parallel()
+	var warnings []string
+	p := postSplitState(&warnings)
 	multi := strings.Repeat("⚠️", hostingBodyLimit/4+10)
-	mgot := p.trimmedBody(multi)
-	if !utf8.ValidString(mgot) {
-		t.Errorf("trimmed body is not valid UTF-8")
+	got := p.splitPreFooter(multi)
+	if !utf8.ValidString(got) {
+		t.Errorf("multibyte split head is not valid UTF-8")
 	}
-	if len(mgot) > hostingBodyLimit {
-		t.Errorf("multibyte body still %d bytes", len(mgot))
+	assertSplitPart(t, got)
+	for _, part := range p.extraParts {
+		assertSplitPart(t, part)
+	}
+}
+
+// assertSplitPart proves one split part fits the hosting limit on a rune
+// boundary.
+func assertSplitPart(t *testing.T, part string) {
+	t.Helper()
+	if len(part) > hostingBodyLimit {
+		t.Errorf("split part still %d chars", len(part))
+	}
+	if !utf8.ValidString(part) {
+		t.Errorf("split part is not valid UTF-8")
+	}
+}
+
+// TestSplitBodyParagraphs proves the chunker prefers paragraph boundaries.
+func TestSplitBodyParagraphs(t *testing.T) {
+	t.Parallel()
+	joined := strings.Repeat("a", 100) + "\n\n" + strings.Repeat("b", 100)
+	if parts := splitBody(joined, 1000); len(parts) != 1 || parts[0] != joined {
+		t.Errorf("fitting paragraphs split: %d parts", len(parts))
+	}
+	wide := strings.Repeat("c", 30) + "\n\n" + strings.Repeat("d", 30)
+	parts := splitBody(wide, 40)
+	if len(parts) != 2 {
+		t.Fatalf("wide paragraphs gave %d parts, want 2", len(parts))
+	}
+	for _, part := range parts {
+		if len(part) > 40 {
+			t.Errorf("paragraph part %d chars over budget", len(part))
+		}
+	}
+}
+
+// TestSplitBodyRuneFallback proves over-long paragraphs fall back to rune
+// chunks without losing a byte.
+func TestSplitBodyRuneFallback(t *testing.T) {
+	t.Parallel()
+	single := strings.Repeat("e", 101)
+	runeParts := splitBody(single, 40)
+	if len(runeParts) != 3 {
+		t.Fatalf("over-long paragraph gave %d parts, want 3", len(runeParts))
+	}
+	for _, part := range runeParts {
+		if len(part) > 40 {
+			t.Errorf("rune part %d chars over budget", len(part))
+		}
+	}
+	if got := strings.Join(runeParts, ""); got != single {
+		t.Errorf("rune chunks lose bytes")
+	}
+}
+
+// TestSplitFollowPayload proves follow-up payloads post as COMMENT reviews
+// with an empty (not null) comments array and a continuation header.
+func TestSplitFollowPayload(t *testing.T) {
+	t.Parallel()
+	got := postPayload(splitFollowHead(2, 2)+"rest", eventComment, commitIDValue("abc"), []any{})
+	for _, want := range []string{`"event": "COMMENT"`, `"comments": []`, "review body continued (part 2/2", `"commit_id": "abc"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("follow-up payload misses %s:\n%s", want, got)
+		}
+	}
+}
+
+// TestReviewID proves the follow-up progress line reads the accepted id,
+// and stays silent when the response carries none.
+func TestReviewID(t *testing.T) {
+	t.Parallel()
+	if id := reviewID(`{"id":101,"state":"commented"}`); id != "101" {
+		t.Errorf("id=%q want 101", id)
+	}
+	if id := reviewID("not json"); id != "" {
+		t.Errorf("garbage id=%q want empty", id)
+	}
+}
+
+// TestFollowRefusal proves a partial post refuses typed, naming the landed
+// first review and the missing part.
+func TestFollowRefusal(t *testing.T) {
+	t.Parallel()
+	p := postSplitState(&[]string{})
+	ref := p.followRefusal(2, 3, `{"id":101,"state":"commented"}`)
+	if ref.Code != codePostFailed {
+		t.Errorf("code=%q want post-failed", ref.Code)
+	}
+	for _, want := range []string{"follow-up part 2/3", "review 101"} {
+		if !strings.Contains(ref.Message, want) {
+			t.Errorf("refusal misses %q: %q", want, ref.Message)
+		}
 	}
 }
 
