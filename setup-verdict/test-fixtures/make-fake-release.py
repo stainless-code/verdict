@@ -103,7 +103,9 @@ def main():
 
     if not args.no_shims:
         if goos == "windows":
-            with open(os.path.join(fakebin, "cosign.cmd"), "w", newline="\r\n") as f:
+            # newline="" keeps the explicit CRLF from being translated again
+            # into CRCRLF, which cmd.exe would parse as part of the command.
+            with open(os.path.join(fakebin, "cosign.cmd"), "w", newline="") as f:
                 f.write("@echo off\r\n"
                         "echo %*>>\"%FAKE_COSIGN_LOG%\"\r\n"
                         "if \"%FAKE_COSIGN_STATUS%\"==\"\" exit /b 0\r\n"

@@ -69,7 +69,9 @@ jobs:
 
       - name: Build fake release (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        # Windows PowerShell 5.1, not pwsh: Add-Type -OutputType
+        # ConsoleApplication is unsupported on PowerShell 7.
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $fake = Join-Path $env:RUNNER_TEMP 'fake'
@@ -117,7 +119,13 @@ jobs:
           $out = & '${{ steps.first.outputs.path }}' --version
           if ($out -notmatch '0\.0\.0-test\.1') { throw "unexpected --version: $out" }
           $onPath = (Get-Command verdict).Source
-          if ($onPath -ne '${{ steps.first.outputs.path }}') { throw "PATH verdict is $onPath" }
+          $expected = '${{ steps.first.outputs.path }}'
+          if (-not $onPath -or -not $expected) { throw 'PATH verdict or action path missing' }
+          # Compare resolved files: the tool-cache path may carry mixed
+          # separators, while Get-Command normalizes them.
+          if ((Get-Item -LiteralPath $onPath).FullName -ne (Get-Item -LiteralPath $expected).FullName) {
+            throw "PATH verdict is $onPath"
+          }
           Write-Host "outputs, PATH, and --version ok: ${{ steps.first.outputs.path }}"
 
       - name: Record state before second run (macOS/Linux)
