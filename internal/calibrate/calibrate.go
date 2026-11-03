@@ -54,7 +54,7 @@ func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.R
 	}
 	read.Now = r.Now
 	read.Progress = runnerProgress{r}
-	read.Commander = coreexec.SpawnCommander{}
+	read.Commander = coreexec.Runner{}
 	return &calibratecore.Request{
 		ReadRequest: read,
 		Probe:       st.probe,

@@ -84,6 +84,9 @@ func parseEntry(entry string) (string, int, *core.RefusalError) {
 // first 300 bytes of stderr, never a bare exit status.
 func runGit(ctx context.Context, cmd core.Commander, outputCap int, args ...string) (string, error) {
 	res, err := cmd.Run(ctx, core.Command{Argv: append([]string{"git"}, args...), OutputCap: outputCap})
+	if err == nil && res.ExitCode != 0 {
+		err = res.ExitFailure("git")
+	}
 	if err == nil && res.StdoutTruncated {
 		err = errors.New("output over its cap")
 	}

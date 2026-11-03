@@ -73,19 +73,28 @@ func runReadRetry(ctx context.Context, cmdr Commander, cmd core.Command) (core.R
 	var err error
 	for attempt := range retry.MaxAttempts {
 		res, err = cmdr.Run(ctx, cmd)
-		if err == nil {
+		if err != nil {
+			return res, jq.Sealed("read retry", err)
+		}
+		if res.ExitCode == 0 {
 			return res, nil
 		}
-		wait, ok := retry.Delay(res.Stderr, attempt)
-		if !ok || attempt >= retry.MaxAttempts-1 {
+		if stopRetry(res, attempt) {
 			break
 		}
-		time.Sleep(wait)
 	}
-	if err == nil {
-		return res, nil
+	return res, jq.Sealed("read retry", res.ExitFailure(cmd.Argv[0]))
+}
+
+// stopRetry waits before the next attempt and reports whether the loop must
+// stop: an unretryable failure or the final attempt.
+func stopRetry(res core.Result, attempt int) bool {
+	wait, ok := retry.Delay(res.Stderr, attempt)
+	if !ok || attempt >= retry.MaxAttempts-1 {
+		return true
 	}
-	return res, jq.Sealed("read retry", err)
+	time.Sleep(wait)
+	return false
 }
 
 // ghLiveSHA ports the live-SHA lookup: the fetched PR head, or an error
@@ -291,7 +300,7 @@ func postOnce(ctx context.Context, cmdr Commander, repo, pr, dir, payload string
 	if werr := atomic.WriteErrSidecar(dir+"/.post.err", []byte(res.Stderr)); werr != nil {
 		return "", "", false
 	}
-	if err != nil {
+	if err != nil || res.ExitCode != 0 {
 		return "", res.Stderr, false
 	}
 	return strings.TrimRight(res.Stdout, newline), "", true

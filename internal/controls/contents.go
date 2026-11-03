@@ -90,6 +90,9 @@ func contentAt(ctx context.Context, cmd core.Commander, repo, base, path string)
 func fetchContent(ctx context.Context, cmd core.Commander, repo, base, path string) (*contentsDoc, *core.RefusalError) {
 	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
 	res, err := cmd.Run(ctx, core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
+	if err == nil && res.ExitCode != 0 {
+		err = res.ExitFailure("gh")
+	}
 	if err != nil {
 		return nil, contentsFailure(path, base, res, err)
 	}

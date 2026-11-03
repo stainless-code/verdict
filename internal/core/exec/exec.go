@@ -1,8 +1,9 @@
-// Package exec is core's production command runner: the [core.Commander]
-// that spawns argv in its own process group, captures combined output,
-// kills the whole tree when the context deadline fires, and sweeps orphans
-// that outlive the parent. No service body calls exec directly; tests
-// inject a scripted [core.Commander] instead.
+// Package exec is core's production command runners: [Watchdog] for the
+// verify proof path (combined output, process group, tree kill on the
+// watchdog budget, orphan sweep) and [Runner] for every verb that needs the
+// streams apart. Both report completed processes as results; spawn failures
+// are errors. No service body calls exec directly; tests inject a scripted
+// [core.Commander] instead.
 package exec
 
 import (
@@ -14,17 +15,18 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// OSCommander runs commands on the host with the verify watchdog contract:
+// Watchdog runs commands on the host with the verify watchdog contract:
 // process-group kill on timeout, orphan sweep on clean exits, and the
-// shell `wait` exit code (128+signo for signaled processes).
-type OSCommander struct{}
+// shell `wait` exit code (128+signo for signaled processes). It is the only
+// combined-capture runner; every other verb uses [Runner].
+type Watchdog struct{}
 
 // Run starts cmd.Argv in its own process group with combined output
 // capture, returning the wait status. The context deadline is the watchdog
 // budget: expiry SIGKILLs the group. A nil Stdin or Env inherits the
 // caller's. Infra failures (spawn) come back as errors; completed
 // processes — any exit code — come back as results.
-func (OSCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+func (Watchdog) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
 	}

@@ -59,7 +59,7 @@ func baseRepo(t *testing.T, files map[string]string) string {
 	return gitRun(t, "rev-parse", "HEAD")
 }
 
-var cmdr = coreexec.SplitCommander{}
+var cmdr = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 
 // TestResolveReadsBaseNotHead proves a head edit to every control leaves the
 // snapshot at the base bytes, and the gate then accepts it.

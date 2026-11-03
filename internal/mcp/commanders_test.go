@@ -6,42 +6,58 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 )
 
 // TestToolCommanders pins each tool's production runner at construction, so
-// the mapping cannot drift back into a name switch in the server.
+// the mapping cannot drift back into a name switch in the server. A Runner
+// pins its image cap and missing-tool pre-check too: the two documented
+// postures differ only in those options.
 func TestToolCommanders(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
 		"adopt":       "<nil>",
-		"calibrate":   "exec.SpawnCommander",
-		"check-tree":  "exec.SpawnCommander",
-		"doctor":      "exec.SpawnCommander",
-		"fetch":       "exec.SplitCommander",
-		"fetch-local": "exec.SplitCommander",
-		"fix":         "exec.SplitCommander",
-		"init":        "exec.SplitCommander",
+		"calibrate":   "exec.Runner{cap=4194304 missing=false}",
+		"check-tree":  "exec.Runner{cap=4194304 missing=false}",
+		"doctor":      "exec.Runner{cap=4194304 missing=false}",
+		"fetch":       "exec.Runner{cap=67108864 missing=true}",
+		"fetch-local": "exec.Runner{cap=67108864 missing=true}",
+		"fix":         "exec.Runner{cap=67108864 missing=true}",
+		"init":        "exec.Runner{cap=67108864 missing=true}",
 		"learn":       "<nil>",
 		"next":        "<nil>",
-		"post":        "exec.SplitCommander",
-		"ready":       "exec.SpawnCommander",
+		"post":        "exec.Runner{cap=67108864 missing=true}",
+		"ready":       "exec.Runner{cap=4194304 missing=false}",
 		"record":      "<nil>",
 		"report":      "<nil>",
 		"show":        "<nil>",
 		"threads":     "<nil>",
 		"trend":       "<nil>",
 		"triage":      "<nil>",
-		"verify":      "exec.OSCommander",
+		"verify":      "exec.Watchdog",
 	}
 	tools := allTools(false, true)
 	if len(want) != len(tools) {
 		t.Fatalf("commander pin has %d entries, tools = %d", len(want), len(tools))
 	}
 	for _, tool := range tools {
-		if got := fmt.Sprintf("%T", tool.deps.commander); got != want[tool.name] {
+		if got := commanderPose(tool.deps.commander); got != want[tool.name] {
 			t.Errorf("%s commander = %s, want %s", tool.name, got, want[tool.name])
 		}
 	}
+}
+
+// commanderPose names a commander's type and, for the split-stream Runner,
+// the two options that distinguish its postures.
+func commanderPose(c core.Commander) string {
+	if r, ok := c.(coreexec.Runner); ok {
+		limit := r.OutputCap
+		if limit <= 0 {
+			limit = coreexec.ReadOutputCap
+		}
+		return fmt.Sprintf("exec.Runner{cap=%d missing=%t}", limit, r.MissingTool)
+	}
+	return fmt.Sprintf("%T", c)
 }
 
 // TestCommanderOverride proves a test can replace one tool's runner through

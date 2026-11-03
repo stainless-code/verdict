@@ -49,7 +49,7 @@ func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result,
 	}
 	out := core.Result{Stdout: res.stdout, Stderr: res.stderr}
 	if res.fail {
-		return out, errors.New("exit 1: " + key)
+		out.ExitCode = 1
 	}
 	return out, nil
 }

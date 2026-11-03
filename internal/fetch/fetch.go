@@ -85,7 +85,7 @@ func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequ
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
 			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
-			Commander: coreexec.SplitCommander{},
+			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root,
 	}
@@ -106,7 +106,7 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *cor
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
 			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
-			Commander: coreexec.SplitCommander{},
+			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root,
 	}

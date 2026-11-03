@@ -56,7 +56,7 @@ func readyRequest(r *cli.Runner, req Request, check bool) *readycore.Request {
 	}
 	read.Now = r.Now
 	read.Progress = runnerProgress{r}
-	read.Commander = coreexec.SpawnCommander{}
+	read.Commander = coreexec.Runner{}
 	return &readycore.Request{
 		ReadRequest: read,
 		Check:       check,

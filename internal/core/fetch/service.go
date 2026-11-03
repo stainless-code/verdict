@@ -27,7 +27,7 @@ const codeCanceled = "canceled"
 
 // Commander is the exec seam every fetch spawn goes through: gh, glab,
 // git, curl, and the az/cafe probes. The production implementation is
-// [exec.SplitCommander] (separate stdout/stderr capture, missing binaries
+// [exec.Runner] (separate stdout/stderr capture, missing binaries
 // read [core.MissingToolError]); tests inject a scripted commander and
 // assert the exact argv. No service body spawns directly.
 type Commander interface {
@@ -303,12 +303,20 @@ func (s *session) needTool(tool string) error {
 	return s.commander.LookPath(tool)
 }
 
-// run spawns argv with an empty stdin, capturing both streams. A missing
-// binary or a failing call returns the sealed error with streams attached;
-// callers map failures to the fetch warn-or-refuse posture.
+// run spawns argv with the runner's stdin default, capturing both streams.
+// A missing binary or a spawn failure returns the seam error with streams
+// attached; a completed process with a non-zero wait code returns the same
+// shell-visible failure text, and callers map both to the fetch
+// warn-or-refuse posture.
 func (s *session) run(ctx context.Context, bin string, args ...string) (core.Result, error) {
-	//nolint:wrapcheck // the seam error passes through by design; callers map it per site
-	return s.commander.Run(ctx, core.Command{Argv: append([]string{bin}, args...)})
+	res, err := s.commander.Run(ctx, core.Command{Argv: append([]string{bin}, args...)})
+	if err != nil {
+		return res, err //nolint:wrapcheck // the seam error passes through by design; callers map it per site
+	}
+	if res.ExitCode != 0 {
+		return res, res.ExitFailure(bin) //nolint:wrapcheck // locally constructed exit-status error, not an external error
+	}
+	return res, nil
 }
 
 // ghFetch runs gh with exactly the given argv and the shared bounded

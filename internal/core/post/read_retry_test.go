@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"context"
-	"errors"
 	"os"
 	"slices"
 	"testing"
@@ -37,7 +36,7 @@ func (s *retryCommander) Run(_ context.Context, cmd core.Command) (core.Result, 
 	s.results = s.results[1:]
 	out := core.Result{Stdout: res.stdout, Stderr: res.stderr}
 	if res.fail {
-		return out, errors.New("exit 1")
+		out.ExitCode = 1
 	}
 	return out, nil
 }

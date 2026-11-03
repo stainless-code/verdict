@@ -17,7 +17,7 @@ import (
 // Commander is the exec seam every post spawn goes through: the live-SHA
 // read, the authorship read, the live-thread recheck, and the reviews POST
 // (stdin payload plus one newline, exact argv). The production
-// implementation is [exec.SplitCommander] (separate stdout/stderr capture);
+// implementation is [exec.Runner] (separate stdout/stderr capture);
 // tests inject a scripted commander and assert the exact argv. No service
 // body spawns directly.
 type Commander interface {

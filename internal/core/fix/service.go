@@ -442,6 +442,9 @@ func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error
 		//nolint:wrapcheck // the commander error is only a non-zero signal; the refusal carries the contract
 		return core.Result{}, err
 	}
+	if res.ExitCode != 0 {
+		return core.Result{}, res.ExitFailure(argv[0]) //nolint:wrapcheck // locally constructed exit-status error
+	}
 	return res, nil
 }
 

@@ -85,7 +85,7 @@ func doctorRequest(r *cli.Runner, req Request, now time.Time) *doctorcore.Reques
 	}
 	read.Now = func() time.Time { return now }
 	read.Progress = runnerProgress{r}
-	read.Commander = coreexec.SpawnCommander{}
+	read.Commander = coreexec.Runner{}
 	return &doctorcore.Request{
 		ReadRequest: read,
 		Warnings:    append([]string{}, r.Warnings...),

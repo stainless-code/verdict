@@ -119,7 +119,7 @@ func readRequest(r *cli.Runner, req Request) core.ReadRequest {
 	}
 	read.Now = r.Now
 	read.Progress = runnerProgress{r}
-	read.Commander = coreexec.SpawnCommander{}
+	read.Commander = coreexec.Runner{}
 	return read
 }
 

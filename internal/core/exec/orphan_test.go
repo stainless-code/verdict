@@ -16,7 +16,7 @@ import (
 func TestExecuteOrphanSweepKillsTree(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	res, err := OSCommander{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", `(sleep 30 &)`}, Env: os.Environ()})
+	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", `(sleep 30 &)`}, Env: os.Environ()})
 	if err != nil {
 		t.Fatal(err)
 	}

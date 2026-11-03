@@ -102,7 +102,7 @@ func New(o Options) *Client {
 	if now == nil {
 		now = time.Now
 	}
-	var commander core.Commander = exec.OSCommander{}
+	var commander core.Commander = exec.Watchdog{}
 	if o.Commander != nil {
 		commander = &commanderAdapter{c: o.Commander}
 	}

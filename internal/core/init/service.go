@@ -522,6 +522,9 @@ func (st *state) gitStatus(ctx context.Context) (string, error) {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; check-tree reads "not a git repo"
 		return "", err
 	}
+	if res.ExitCode != 0 {
+		return "", res.ExitFailure("git") //nolint:wrapcheck // locally constructed exit-status error
+	}
 	return res.Stdout, nil
 }
 

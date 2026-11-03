@@ -116,7 +116,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Reads GitHub live; the probe rewrites kb-grades.jsonl.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Calibrate findings", idempotent: true, openWorld: true},
-		}, toolDeps{commander: coreexec.SpawnCommander{}}, decodeCalibrate, wireCalibrate, calibratecore.Run,
+		}, toolDeps{commander: coreexec.Runner{}}, decodeCalibrate, wireCalibrate, calibratecore.Run,
 			func(resp *calibratecore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "check-tree",
@@ -125,14 +125,14 @@ func allTools(readOnly, operator bool) []*tool {
 				"Reads git only; writes nothing.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Check worktree", readOnly: true, idempotent: true},
-		}, toolDeps{commander: coreexec.SpawnCommander{}}, decodeCheckTree, wireCheckTree, invokeCheckTree),
+		}, toolDeps{commander: coreexec.Runner{}}, decodeCheckTree, wireCheckTree, invokeCheckTree),
 		dataTool(&toolSpec{
 			name: "doctor",
 			description: "Preflight gh auth, git, and storage. Call first when a verb " +
 				"fails for environmental reasons. Reads local tools and config; writes nothing.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Preflight environment", readOnly: true, idempotent: true},
-		}, toolDeps{commander: coreexec.SpawnCommander{}}, decodeDoctor, wireDoctor, doctorcore.Run,
+		}, toolDeps{commander: coreexec.Runner{}}, decodeDoctor, wireDoctor, doctorcore.Run,
 			func(resp *doctorcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "fetch",
@@ -141,14 +141,14 @@ func allTools(readOnly, operator bool) []*tool {
 				"Writes the bundle and calls GitHub.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch pull request", idempotent: true, openWorld: true},
-		}, toolDeps{commander: coreexec.SplitCommander{}}, decodeFetch, wireFetch, invokeFetch),
+		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeFetch, wireFetch, invokeFetch),
 		directTool(&toolSpec{
 			name: "fetch-local",
 			description: "Fetch a local git diff into .review/local-<name>. Call to review " +
 				"uncommitted or branch changes without a PR. Writes the bundle; no network.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch local diff", idempotent: true},
-		}, toolDeps{commander: coreexec.SplitCommander{}}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
+		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
 		dataTool(&toolSpec{
 			name: "fix",
 			description: "Run one bounded, verify-gated fix pass over an inline finding. " +
@@ -156,7 +156,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Writes the fix ledger and runs the recorded verify command.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Prepare a fix"},
-		}, toolDeps{commander: coreexec.SplitCommander{}}, decodeFix, wireFix, fixcore.Run,
+		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeFix, wireFix, fixcore.Run,
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "init",
@@ -165,7 +165,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"runs a tree check.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Scaffold controls", destructive: true, idempotent: true},
-		}, toolDeps{commander: coreexec.SplitCommander{}}, decodeInit, wireInit, initcore.Run,
+		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodeInit, wireInit, initcore.Run,
 			func(resp *initcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "learn",
@@ -189,7 +189,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"sends to GitHub.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
-		}, toolDeps{commander: coreexec.SplitCommander{}}, decodePost, wirePost, postcore.Run,
+		}, toolDeps{commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}, decodePost, wirePost, postcore.Run,
 			func(resp *core.PostResponse) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "ready",
@@ -197,7 +197,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"it. Call before merging. Reads GitHub; writes nothing.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Merge readiness", readOnly: true, idempotent: true, openWorld: true},
-		}, toolDeps{commander: coreexec.SpawnCommander{}}, decodeReady, wireReady, readycore.Run,
+		}, toolDeps{commander: coreexec.Runner{}}, decodeReady, wireReady, readycore.Run,
 			func(resp *readycore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "record",
@@ -256,7 +256,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call to prove a fix before post. Writes verification.json and runs the recorded command.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
-		}, toolDeps{commander: coreexec.OSCommander{}}, decodeVerify, wireVerify, verifycore.Run,
+		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
 			func(resp *core.VerifyResponse) *jq.Obj { return wireData(resp.Data) }),
 	}
 	kept := make([]*tool, 0, len(tools))

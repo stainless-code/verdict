@@ -48,6 +48,19 @@ type Commander interface {
 	Run(ctx context.Context, cmd Command) (Result, error)
 }
 
+// ExitFailure renders the completed process as the error its wait code
+// implies — `<bin>: exit status N` — for the callers whose retry loop or
+// refusal text carries a command failure. A zero wait code reads nil. The
+// commander seam reports completed processes as results (GO-EXEC-05); this
+// is the caller's mapping, not the commander's posture, and it exists so the
+// shell-visible text has one definition.
+func (r Result) ExitFailure(bin string) error {
+	if r.ExitCode == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s: exit status %d", bin, r.ExitCode) //nolint:wrapcheck // locally constructed message, not an external error
+}
+
 // MissingToolError marks a missing-tool exit: the adapter prints the
 // `missing: <tool>` line and exits 1 with no envelope, never a typed
 // refusal. Commanders return it when argv[0] does not resolve (production

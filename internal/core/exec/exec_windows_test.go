@@ -18,7 +18,7 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 	const vcmd = `trap '' TERM; (trap '' TERM; sleep 30) & sleep 30`
 	tctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	res, err := OSCommander{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
+	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
 	if err != nil {
 		t.Fatal(err)
 	}

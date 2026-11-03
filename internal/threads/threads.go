@@ -53,7 +53,7 @@ func threadsRequest(r *cli.Runner, req Request, provider string) *fetchcore.Thre
 	}
 	read.Now = r.Now
 	read.Progress = runnerProgress{r}
-	read.Commander = coreexec.SplitCommander{}
+	read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 	return &fetchcore.ThreadsRequest{
 		ReadRequest: read,
 		Provider:    provider,
