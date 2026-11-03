@@ -2,6 +2,7 @@ package reportcore_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,10 +102,31 @@ func TestRunReportData(t *testing.T) {
 	}
 }
 
+// sarifFindingJSON renders one finding with an explicit kind and severity,
+// so the SARIF export can be checked field by field.
+func sarifFindingJSON(kind, severity, sig string) string {
+	return `{"kind":"` + kind + `","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"anchored":true,"body":"` + kind + ` body.","suggestion":null,` +
+		`"inBounds":true,"rigor":"walked","severity":"` + severity + `",` +
+		`"sig":"` + sig + `","sig_version":"1","firstSeen":"aaaaaaa",` +
+		`"lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
+}
+
 // TestRunReportArtifacts proves --output/--sarif return bytes instead of
-// writing them.
+// writing them, and that the SARIF export carries the 2.1.0 document shape,
+// per-kind rules, result level mapping, locations, and sig fingerprints.
+//
+//nolint:cyclop,gocognit,revive // one assertion block per SARIF dimension
 func TestRunReportArtifacts(t *testing.T) {
-	req := fixture(t, "[]")
+	const (
+		sigBug   = "1111111111111111111111111111111111111111"
+		sigSec   = "2222222222222222222222222222222222222222"
+		sigStyle = "3333333333333333333333333333333333333333"
+	)
+	req := fixture(t, "["+
+		sarifFindingJSON("bug", "critical", sigBug)+","+
+		sarifFindingJSON("security", "important", sigSec)+","+
+		sarifFindingJSON("style", "informational", sigStyle)+"]")
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
 		Flags:       core.ReportFlags{Output: "out.md", Sarif: "out.sarif"},
@@ -118,11 +140,91 @@ func TestRunReportArtifacts(t *testing.T) {
 	if !strings.Contains(string(resp.Output.Content), "# Review report — acme/app#5101") {
 		t.Error("output artifact missing report heading")
 	}
-	if resp.Sarif == nil || !strings.HasPrefix(string(resp.Sarif.Content), "{") {
+	if resp.Sarif == nil || resp.Sarif.Path != "out.sarif" {
 		t.Fatalf("sarif artifact = %+v", resp.Sarif)
+	}
+	var doc struct {
+		Version string `json:"version"`
+		Runs    []struct {
+			Tool struct {
+				Driver struct {
+					Rules []struct {
+						ID string `json:"id"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []struct { //nolint:govet // decode-only shape mirrors the SARIF document
+				RuleID  string `json:"ruleId"`
+				Level   string `json:"level"`
+				Message struct {
+					Text string `json:"text"`
+				} `json:"message"`
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+						Region struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+				PartialFingerprints map[string]string `json:"partialFingerprints"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(resp.Sarif.Content, &doc); err != nil {
+		t.Fatalf("sarif is not JSON: %v\n%s", err, resp.Sarif.Content)
+	}
+	if doc.Version != "2.1.0" {
+		t.Errorf("sarif version = %q, want 2.1.0", doc.Version)
+	}
+	if len(doc.Runs) != 1 {
+		t.Fatalf("sarif runs = %d, want 1", len(doc.Runs))
+	}
+	var ruleIDs []string
+	for _, rule := range doc.Runs[0].Tool.Driver.Rules {
+		ruleIDs = append(ruleIDs, rule.ID)
+	}
+	if got, want := strings.Join(ruleIDs, ","), "verdict/bug,verdict/security,verdict/style"; got != want {
+		t.Errorf("sarif rules = %s, want %s", got, want)
+	}
+	if len(doc.Runs[0].Results) != 3 {
+		t.Fatalf("sarif results = %d, want 3", len(doc.Runs[0].Results))
+	}
+	wantLevels := map[string]string{
+		"verdict/bug":      "error",
+		"verdict/security": "warning",
+		"verdict/style":    "note",
+	}
+	wantSigs := map[string]string{
+		"verdict/bug":      sigBug,
+		"verdict/security": sigSec,
+		"verdict/style":    sigStyle,
+	}
+	for _, result := range doc.Runs[0].Results {
+		if got := result.Level; got != wantLevels[result.RuleID] {
+			t.Errorf("%s level = %q, want %q", result.RuleID, got, wantLevels[result.RuleID])
+		}
+		if !strings.Contains(result.Message.Text, strings.TrimPrefix(result.RuleID, "verdict/")+" body.") {
+			t.Errorf("%s message = %q", result.RuleID, result.Message.Text)
+		}
+		if len(result.Locations) != 1 {
+			t.Fatalf("%s locations = %d, want 1", result.RuleID, len(result.Locations))
+		}
+		loc := result.Locations[0].PhysicalLocation
+		if loc.ArtifactLocation.URI != "notes.txt" || loc.Region.StartLine != 2 {
+			t.Errorf("%s location = %+v, want notes.txt:2", result.RuleID, loc)
+		}
+		if got := result.PartialFingerprints["verdict/sig"]; got != wantSigs[result.RuleID] {
+			t.Errorf("%s fingerprint = %q, want %q", result.RuleID, got, wantSigs[result.RuleID])
+		}
 	}
 	if _, err := os.Stat("out.md"); !os.IsNotExist(err) {
 		t.Error("core wrote the output artifact; adapters own writes")
+	}
+	if _, err := os.Stat("out.sarif"); !os.IsNotExist(err) {
+		t.Error("core wrote the sarif artifact; adapters own writes")
 	}
 }
 
