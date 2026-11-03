@@ -282,11 +282,9 @@ func typedItems(entries []any) []core.FindingItem {
 		sv, _ := m.Get("sig")
 		tv, _ := m.Get("status")
 		av, _ := m.Get("anchored")
-		sig := jq.StrOf(sv)
-		status := jq.StrOf(tv)
 		items = append(items, core.FindingItem{
-			Sig:      sig,
-			Status:   status,
+			Sig:      jq.StrOf(sv),
+			Status:   jq.StrOf(tv),
 			Anchored: av,
 			Locator:  readcommon.Locator(m),
 		})

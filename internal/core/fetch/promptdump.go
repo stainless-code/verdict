@@ -1,17 +1,16 @@
 package fetchcore
 
 import (
-	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // promptNonce ports prompt_nonce: a per-run untrusted-fence nonce of 16
@@ -116,60 +115,9 @@ func sortedManifestChunks(m map[string]any) []map[string]any {
 		}
 	}
 	slices.SortStableFunc(out, func(a, b map[string]any) int {
-		ra, rb := manifestRank(a[keyIndex]), manifestRank(b[keyIndex])
-		if ra != rb {
-			return cmp.Compare(ra, rb)
-		}
-		return manifestIndexTie(a[keyIndex], b[keyIndex])
+		return readcommon.Cmp(a[keyIndex], b[keyIndex])
 	})
 	return out
-}
-
-// manifestIndexTie ports sort_by's tiebreak within one index rank.
-func manifestIndexTie(a, b any) int {
-	switch manifestRank(a) {
-	case rankNumber:
-		return cmp.Compare(manifestNum(a), manifestNum(b))
-	case rankString:
-		return strings.Compare(jq.Str(a), jq.Str(b))
-	default:
-		return 0
-	}
-}
-
-// manifestRank ports the jq type rank.
-func manifestRank(v any) int {
-	switch v.(type) {
-	case nil:
-		return 0
-	case bool:
-		return 1
-	case jq.Number, float64, int:
-		return rankNumber
-	case string:
-		return rankString
-	case []any:
-		return rankArray
-	default:
-		return rankOther
-	}
-}
-
-// manifestNum reads a numeric index value.
-func manifestNum(v any) float64 {
-	switch t := v.(type) {
-	case jq.Number:
-		if f, err := strconv.ParseFloat(t.String(), numBitSize); err == nil {
-			return f
-		}
-		return 0
-	case float64:
-		return t
-	case int:
-		return float64(t)
-	default:
-		return 0
-	}
 }
 
 // renderPromptDump ports render_prompt_dump: the trusted prompt files,

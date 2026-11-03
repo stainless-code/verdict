@@ -1729,8 +1729,8 @@ func sumStats(files []any) (adds, dels float64) {
 		} else {
 			continue
 		}
-		adds += numFloat(m[keyAdditions])
-		dels += numFloat(m[keyDeletions])
+		adds += readcommon.NumOr(m[keyAdditions])
+		dels += readcommon.NumOr(m[keyDeletions])
 	}
 	return adds, dels
 }

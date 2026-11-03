@@ -45,13 +45,19 @@ func CanonFloat(f float64) string {
 // floatBits is the float precision for rendering and parsing.
 const floatBits = 64
 
-// NumVal extracts a numeric value: JSON numbers (either decoder spelling)
-// and Go floats count; everything else (including numeric strings, per the
-// `numbers` filter) does not.
+// NumVal extracts a numeric value: JSON numbers (either decoder spelling),
+// Go floats, and the Go integer widths services hand in count; everything
+// else (including numeric strings, per the `numbers` filter) does not.
 func NumVal(v any) (float64, bool) {
 	switch t := v.(type) {
 	case float64:
 		return t, true
+	case float32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
 	case json.Number:
 		return parseJSONFloat(t.String())
 	case jq.Number:
@@ -59,6 +65,13 @@ func NumVal(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// NumOr reads a numeric value, reading 0 for anything else — the `// 0`
+// arithmetic posture the stat sums use.
+func NumOr(v any) float64 {
+	f, _ := NumVal(v)
+	return f
 }
 
 // parseJSONFloat parses one JSON number literal.

@@ -216,7 +216,7 @@ func (st *state) applyFlip(dir string, entries []any, full, now string) *core.Re
 		return st.refuse("triage-failed", fmt.Sprintf("could not write %s%s: %v", dir, findingsSuffix, err))
 	}
 	k.CommitStaged(dir+findingsSuffix, now)
-	st.human = fmt.Sprintf("triaged %s -> %s", prefix8(st.req.Sig), st.req.Status)
+	st.human = fmt.Sprintf("triaged %s -> %s", readcommon.Prefix(st.req.Sig), st.req.Status)
 	st.next = "none — triage recorded"
 	st.data = &Data{Sig: full, Status: st.req.Status}
 	return nil
@@ -246,7 +246,7 @@ func writeFindings(dir string, entries []any) error {
 // dryRun records the --dry-run echo: no store is touched, no credit staged.
 func (st *state) dryRun(full string) {
 	st.human = fmt.Sprintf("triage --dry-run: would set %s -> %s (rationale %d chars, actor human)",
-		prefix8(full), st.req.Status, utf8.RuneCountInString(st.req.Rationale))
+		readcommon.Prefix(full), st.req.Status, utf8.RuneCountInString(st.req.Rationale))
 	st.next = "none — dry run, nothing written"
 	st.data = &Data{Sig: full, Status: st.req.Status, DryRun: true}
 }
@@ -324,23 +324,12 @@ func historyOf(m *jq.Obj) []any {
 	return []any{}
 }
 
-// prefix8 renders the 8-char sig prefix for the human summary.
-func prefix8(sig string) string {
-	runes := []rune(sig)
-	if len(runes) > sigPrefixLen {
-		return string(runes[:sigPrefixLen])
-	}
-	return sig
-}
-
 // Refusal and message constants.
 const (
 	// rationaleMin is the human-rationale floor (characters, like ${#}).
 	rationaleMin = 30
 	// forcedNote is the rationale stamped on --force flips without one.
 	forcedNote = "forced without rationale"
-	// sigPrefixLen is the human sig-prefix width.
-	sigPrefixLen = 8
 	// findingsSuffix is the store filename joined to the bundle dir.
 	findingsSuffix = "/findings.json"
 )

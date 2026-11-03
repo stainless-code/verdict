@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // applyVerification ports the verification-gated flip: addressed requires
@@ -71,10 +72,10 @@ func (st *state) applyVerificationClaim(v *jq.Obj) {
 	full, code := resolveSig(st.entries, vsig)
 	switch code {
 	case sigNone:
-		st.warn(fmt.Sprintf("verification claim %s ignored (not in store)", prefix8(vsig)))
+		st.warn(fmt.Sprintf("verification claim %s ignored (not in store)", readcommon.Prefix(vsig)))
 		return
 	case sigMany:
-		st.warn(fmt.Sprintf("verification claim %s ignored (ambiguous prefix)", prefix8(vsig)))
+		st.warn(fmt.Sprintf("verification claim %s ignored (ambiguous prefix)", readcommon.Prefix(vsig)))
 		return
 	}
 	st.applyVerdict(findEntry(st.entries, full), full, claim)
@@ -151,11 +152,11 @@ func (st *state) recordRevalidation(target *jq.Obj, claim verifyClaim) {
 func (st *state) checkVerifyContradiction(full string) {
 	vexit := jq.R(jq.Alt(patchField(st.dir, "verifyExit"), ""))
 	if vexit != "" && vexit != "0" && vexit != "null" {
-		st.warn(fmt.Sprintf(msgContradictExit, prefix8(full), vexit))
+		st.warn(fmt.Sprintf(msgContradictExit, readcommon.Prefix(full), vexit))
 		return
 	}
 	if jq.R(jq.Alt(patchField(st.dir, "timedOut"), "")) == core.FlagOn {
-		st.warn(fmt.Sprintf(msgContradictTimeout, prefix8(full), vexit))
+		st.warn(fmt.Sprintf(msgContradictTimeout, readcommon.Prefix(full), vexit))
 	}
 }
 
@@ -218,14 +219,14 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 	full, code := resolveSig(st.entries, claim.sig)
 	switch code {
 	case sigNone:
-		st.warn(fmt.Sprintf("triage claim %s ignored (not in store)", prefix8(claim.sig)))
+		st.warn(fmt.Sprintf("triage claim %s ignored (not in store)", readcommon.Prefix(claim.sig)))
 		return nil
 	case sigMany:
-		st.warn("triage claim " + prefix8(claim.sig) + " ignored (ambiguous prefix)")
+		st.warn("triage claim " + readcommon.Prefix(claim.sig) + " ignored (ambiguous prefix)")
 		return nil
 	}
 	if utf8.RuneCountInString(claim.reason) < minRationaleRunes {
-		st.warn("triage claim without rationale, kept prior status: " + prefix8(claim.sig))
+		st.warn("triage claim without rationale, kept prior status: " + readcommon.Prefix(claim.sig))
 		return nil
 	}
 	st.applyTriageFlip(findEntry(st.entries, full), full, claim)

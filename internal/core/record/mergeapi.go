@@ -137,7 +137,7 @@ func reportFindings(st *state) {
 		pv, _ := m.Get("path")
 		hv, _ := m.Get("heading")
 		st.human(fmt.Sprintf("  %s  %s  %s  %s",
-			sigPrefix(jq.Interp(sv)),
+			readcommon.Prefix(jq.Interp(sv)),
 			jq.Interp(tv),
 			jq.Interp(av),
 			jq.Interp(jq.Alt(jq.Alt(pv, hv), "?")),
@@ -296,14 +296,6 @@ func removeBestEffort(path string) {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-// sigPrefix renders the 8-char sig prefix for the human table.
-func sigPrefix(sig string) string {
-	if len(sig) > sigPrefixLen {
-		return sig[:sigPrefixLen]
-	}
-	return sig
 }
 
 // checkDegenerate ports the degenerate-body guard: a verdict marker exempts

@@ -153,10 +153,6 @@ const (
 	numWorktreeSuffixes = 99
 	repoParts           = 3
 	cafeMaxPages        = 20
-	rankNumber          = 3
-	rankString          = 4
-	rankArray           = 5
-	rankOther           = 6
 	recallBaseScore     = 0.5
 	dirPerm             = 0o755
 	gitConfigMode       = 0o644

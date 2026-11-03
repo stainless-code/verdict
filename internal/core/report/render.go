@@ -1,9 +1,7 @@
 package reportcore
 
 import (
-	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -173,7 +171,7 @@ func costFromObj(cost *jq.Obj) *core.ReportCost {
 		ByTier:       costTiers(cost),
 	}
 	c.CachedInputTokens = jqInt(cost, "cached_input_tokens")
-	if est, ok := numVal(jqVal(cost, "est_usd")); ok {
+	if est, ok := readcommon.NumVal(jqVal(cost, "est_usd")); ok {
 		c.EstUSD = &est
 	}
 	if receipts, ok := jqVal(cost, "receipts").([]any); ok {
@@ -211,38 +209,13 @@ func costTier(byTier *jq.Obj, tier string) core.CostTier {
 	}
 }
 
-// float64Bits is the IEEE-754 width strconv parses into.
-const float64Bits = 64
-
 // keyRuns names the rollup's runs field (frozen wire key).
 const keyRuns = "runs"
 
 // jqInt reads one numeric rollup field as an int (absent reads 0).
 func jqInt(obj *jq.Obj, key string) int {
-	f, _ := numVal(jqVal(obj, key))
+	f, _ := readcommon.NumVal(jqVal(obj, key))
 	return int(f)
-}
-
-// numVal reads one JSON number.
-func numVal(v any) (float64, bool) {
-	switch t := v.(type) {
-	case json.Number:
-		f, err := t.Float64()
-		return f, err == nil
-	case jq.Number:
-		f, err := strconv.ParseFloat(string(t), float64Bits)
-		return f, err == nil
-	case float64:
-		return t, true
-	case float32:
-		return float64(t), true
-	case int:
-		return float64(t), true
-	case int64:
-		return float64(t), true
-	default:
-		return 0, false
-	}
 }
 
 // jqVal reads one envelope value.

@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // validateChunkMerge ports validate_chunk_merge: chunked bundles pin anchors
@@ -74,7 +74,7 @@ func readChunkManifest(manifest, refetch string) ([]chunk, []string, error) {
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkUnreadable, manifest, schema, refetch)}
 	}
 	chunks := parseChunks(jq.Elements(manMap["chunks"]))
-	slices.SortStableFunc(chunks, func(a, b chunk) int { return cmpLess(a.index, b.index) })
+	sortChunks(chunks)
 	names := chunkNames(chunks)
 	if len(names) == 0 {
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkNoChunks, manifest, refetch)}
@@ -321,64 +321,11 @@ func chunkName(v any) string {
 	return jq.Str(v)
 }
 
-// cmpLess is the three-way chunk-index order for [slices.SortStableFunc],
-// porting sort_by: null < false < true < numbers < strings < arrays < objects.
-func cmpLess(a, b any) int {
-	ra, rb := jqRank(a), jqRank(b)
-	if ra != rb {
-		return ra - rb
-	}
-	switch ra {
-	case rankNumber:
-		fa, fb := jqNum(a), jqNum(b)
-		switch {
-		case fa < fb:
-			return -1
-		case fa > fb:
-			return 1
-		default:
-			return 0
-		}
-	case rankString:
-		return strings.Compare(jq.Str(a), jq.Str(b))
-	default:
-		return 0
-	}
-}
-
-// jqRank returns the jq type rank.
-func jqRank(v any) int {
-	switch v.(type) {
-	case nil:
-		return 0
-	case bool:
-		return 1
-	case jq.Number, float64, int:
-		return rankNumber
-	case string:
-		return rankString
-	case []any:
-		return rankArray
-	default:
-		return rankObject
-	}
-}
-
-// jqNum reads a numeric index value.
-func jqNum(v any) float64 {
-	switch t := v.(type) {
-	case jq.Number:
-		if f, err := strconv.ParseFloat(t.String(), floatBits); err == nil {
-			return f
-		}
-		return 0
-	case float64:
-		return t
-	case int:
-		return float64(t)
-	default:
-		return 0
-	}
+// sortChunks orders manifest chunks by jq's total order on their index
+// (null < false < true < numbers < strings < arrays < objects), stable for
+// ties.
+func sortChunks(chunks []chunk) {
+	slices.SortStableFunc(chunks, func(a, b chunk) int { return readcommon.Cmp(a.index, b.index) })
 }
 
 // fileNonEmpty reports whether path exists with size > 0 (`-s`).

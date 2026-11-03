@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // pageFileList ports audit 18 as structure: a file list arriving exactly
@@ -226,38 +226,9 @@ func replaceFiles(ordered *jq.Obj, paged []any) {
 		} else {
 			continue
 		}
-		adds += numFloat(m[keyAdditions])
-		dels += numFloat(m[keyDeletions])
+		adds += readcommon.NumOr(m[keyAdditions])
+		dels += readcommon.NumOr(m[keyDeletions])
 	}
 	ordered.Set(keyAdditions, adds)
 	ordered.Set(keyDeletions, dels)
-}
-
-// parseFloatOrZero parses a rendered JSON number, reading 0 on garbage.
-func parseFloatOrZero(s string) float64 {
-	f, err := strconv.ParseFloat(s, numBitSize)
-	if err != nil {
-		return 0
-	}
-	return f
-}
-
-// numFloat reads a JSON number as float64.
-func numFloat(v any) float64 {
-	switch t := v.(type) {
-	case jq.Number:
-		return parseFloatOrZero(t.String())
-	case json.Number:
-		return parseFloatOrZero(t.String())
-	case float64:
-		return t
-	case float32:
-		return float64(t)
-	case int:
-		return float64(t)
-	case int64:
-		return float64(t)
-	default:
-		return 0
-	}
 }

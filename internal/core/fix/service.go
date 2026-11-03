@@ -271,23 +271,23 @@ func (st *state) resolveExplicit(entries []any) (string, *jq.Obj, *core.RefusalE
 		return "", nil, st.refuse(codeBadSig, fmt.Sprintf(
 			"fix: sig prefix '%s' not in store "+
 				"(list open inline sigs with report --status open --kind inline)",
-			prefixN(sigFlag, sigPrefixMsgLen)))
+			readcommon.PrefixN(sigFlag, sigPrefixMsgLen)))
 	case resolveMany:
 		return "", nil, st.refuse("ambiguous-sig", fmt.Sprintf(
 			"fix: sig prefix '%s' is ambiguous "+
 				"(copy the full prefix from report output)",
-			prefixN(sigFlag, sigPrefixMsgLen)))
+			readcommon.PrefixN(sigFlag, sigPrefixMsgLen)))
 	}
 	rec := findEntry(entries, full)
 	if kindOf(rec) != kindInline {
 		return "", nil, st.refuse(codeBadSig, fmt.Sprintf(
 			"fix: sig %s is a %s finding (fix picks inline only)",
-			prefix8(full), kindOf(rec)))
+			readcommon.Prefix(full), kindOf(rec)))
 	}
 	if statusOf(rec) != statusOpen {
 		return "", nil, st.refuse(codeBadSig, fmt.Sprintf(
 			"fix: sig %s is %s (fix iterates open sigs only)",
-			prefix8(full), statusOf(rec)))
+			readcommon.Prefix(full), statusOf(rec)))
 	}
 	return full, rec, nil
 }
@@ -331,7 +331,7 @@ func (st *state) runPass(
 	if anchor == "" {
 		return st.refuse(codeBadSig, fmt.Sprintf(
 			"fix: sig %s carries no anchor path (cannot scope the pass)",
-			prefix8(full)))
+			readcommon.Prefix(full)))
 	}
 	if passes >= 1 {
 		if _, first, n := st.scopeEscape(ctx, store, full, anchor); n > 0 {
@@ -698,10 +698,10 @@ func (st *state) ceilingStop(
 	st.humanf(fmtFixComplete,
 		dir, fixedCount(entries), fixOpen, stoppedCount(store), ledgerPath)
 	st.humanf("next: sig %s hit the 3-pass ceiling — triage it or split the fix\n",
-		prefix8(full))
+		readcommon.Prefix(full))
 	return st.refuse("fix-ceiling", fmt.Sprintf(
 		"fix: sig %s already used %d/3 passes — ceiling reached "+
-			"(stopped: ceiling)", prefix8(full), passes))
+			"(stopped: ceiling)", readcommon.Prefix(full), passes))
 }
 
 // ensurePasses backfills a missing non-numeric passes value.
@@ -928,7 +928,7 @@ func (st *state) passOutput(
 	pass, fixOpen, fixOpenInline int,
 ) *core.RefusalError {
 	st.humanf("» ledger: %s — sig %s pass %d/3\n",
-		ledgerPath, prefix8(full), pass)
+		ledgerPath, readcommon.Prefix(full), pass)
 	locator := locatorOf(rec)
 	sev := interpOf(rec, keySeverity)
 	if sev == "" {
@@ -949,7 +949,7 @@ func (st *state) passOutput(
 	}
 	an := interpOf(rec, keyAnchored)
 	st.humanf("fix: %s [%s] %s (pass %d/3, ledger %s)\n",
-		prefix8(full), sev, locator, pass, ledgerPath)
+		readcommon.Prefix(full), sev, locator, pass, ledgerPath)
 	st.humanf("finding: %s\n", body)
 	st.humanf("anchors: %s:%s-%s side=%s anchored=%s\n",
 		anchor, sl, ln, side, an)
@@ -1057,26 +1057,16 @@ func (st *state) completeRun(
 	return nil
 }
 
-// prefixN truncates to n runes (the shell's ${var:0:n} under UTF-8).
-func prefixN(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) > n {
-		return string(runes[:n])
-	}
-	return s
-}
-
-// prefix8 renders the 8-char sig prefix for summaries.
-func prefix8(sig string) string {
-	return prefixN(sig, sigPrefixLen)
+// sealed annotates err without exposing it, per GO-ERRORS-03 (see jq.Sealed).
+func sealed(op string, err error) error {
+	//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
+	return fmt.Errorf("%s: %v", op, err)
 }
 
 // Fix-loop constants.
 const (
 	// maxPasses is the hard-coded 3-pass ceiling per sig.
 	maxPasses = 3
-	// sigPrefixLen is the human sig-prefix width.
-	sigPrefixLen = 8
 	// sigPrefixMsgLen is the prefix width shown in sig error messages.
 	sigPrefixMsgLen = 12
 	// porcelainPathOff is the byte offset of the path in porcelain -z records.

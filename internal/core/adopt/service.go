@@ -365,17 +365,6 @@ func matchesStatus(e any, status string) bool {
 	return ok && s == status
 }
 
-// shortSHALen is the abbreviated commit width.
-const shortSHALen = 7
-
-// shortSHA ports ${commit_id:0:7}.
-func shortSHA(head string) string {
-	if len(head) > shortSHALen {
-		return head[:shortSHALen]
-	}
-	return head
-}
-
 // bundleProvider reads the bundle provider with adopt's github default: a
 // missing, unreadable, or markerless record is GitHub, and any present marker
 // routes on its rendered value.

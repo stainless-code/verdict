@@ -76,8 +76,6 @@ const (
 const (
 	// shortSHALen is the abbreviated commit width.
 	shortSHALen = 7
-	// sigPrefixLen is the short signature display width (${sig:0:8}).
-	sigPrefixLen = 8
 	// maxBodyRunes caps the human `record` finding preview.
 	maxBodyRunes = 200
 	// minRationaleRunes is the triage-claim rationale floor.
@@ -91,14 +89,4 @@ const (
 	degenerateFloor = 20
 	// placeholderFloor is the body length below which placeholder text refuses.
 	placeholderFloor = 50
-	// floatBits is the precision for threshold parsing.
-	floatBits = 64
-)
-
-// jq type-rank constants for chunk index ordering.
-const (
-	rankNumber = 3
-	rankString = 4
-	rankArray  = 5
-	rankObject = 6
 )

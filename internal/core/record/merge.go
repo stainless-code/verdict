@@ -1009,9 +1009,9 @@ func (st *state) recordResolvedClaim(s string) {
 	full, code := resolveSig(st.entries, s)
 	switch code {
 	case sigNone:
-		st.warn(fmt.Sprintf("resolved claim %s ignored (not in store)", prefix8(s)))
+		st.warn(fmt.Sprintf("resolved claim %s ignored (not in store)", readcommon.Prefix(s)))
 	case sigMany:
-		st.warn(fmt.Sprintf("resolved claim %s ignored (ambiguous prefix)", prefix8(s)))
+		st.warn(fmt.Sprintf("resolved claim %s ignored (ambiguous prefix)", readcommon.Prefix(s)))
 	default:
 		target := findEntry(st.entries, full)
 		target.Set(fieldHistory, appendHistory(target, jq.NewObj(
@@ -1019,14 +1019,6 @@ func (st *state) recordResolvedClaim(s string) {
 			"note", "claimed in review", fieldSHA, st.headShort,
 		)))
 	}
-}
-
-// prefix8 renders the ${sig:0:8} short form.
-func prefix8(s string) string {
-	if len(s) > sigPrefixLen {
-		return s[:sigPrefixLen]
-	}
-	return s
 }
 
 // resolveSig ports resolve_sig: a sig prefix resolves to the unique full
