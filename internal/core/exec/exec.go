@@ -156,6 +156,11 @@ func waitExit(waitDone chan error, timedOut bool) int {
 	if exitErr, ok := errors.AsType[*osexec.ExitError](err); ok {
 		return waitStatusCode(exitErr, timedOut)
 	}
+	if errors.Is(err, osexec.ErrWaitDelay) {
+		// The command itself exited 0; an orphan held the output pipe past
+		// WaitDelay, which the orphan sweep reports through the decoy flag.
+		return 0
+	}
 	if timedOut {
 		return sigkillExit
 	}
