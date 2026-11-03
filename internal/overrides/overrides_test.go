@@ -86,6 +86,55 @@ func TestThresholds(t *testing.T) {
 	}
 }
 
+// thresholdCase is one threshold-file parsing leg.
+type thresholdCase struct {
+	name string
+	line string
+	want int
+	ok   bool
+}
+
+// TestThresholdOverflow pins the digit gate on the threshold file: leading
+// zeros parse, signs refuse, and an overlong value refuses without wrapping.
+func TestThresholdOverflow(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.MkdirAll(overrides.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []thresholdCase{
+		{"leading-zeros", "files: 007\n", 7, true},
+		{"max-15-digits", "files: 999999999999999\n", 999999999999999, true},
+		{"plus-sign", "files: +3\n", 0, false},
+		{"negative", "files: -3\n", 0, false},
+		{"16-digits-overflow", "files: 9999999999999999\n", 0, false},
+		{"20-digits-overflow", "files: 99999999999999999999\n", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkThresholdCase(t, tc)
+		})
+	}
+}
+
+// checkThresholdCase writes one threshold line and asserts its outcome.
+func checkThresholdCase(t *testing.T, tc thresholdCase) {
+	t.Helper()
+	path := filepath.Join(overrides.Dir, "walkthrough-threshold.md")
+	if err := os.WriteFile(path, []byte(tc.line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, _, ref := overrides.Thresholds()
+	if tc.ok {
+		if ref != nil || files != tc.want {
+			t.Fatalf("parsed files = %d, %v; want %d, nil", files, ref, tc.want)
+		}
+		return
+	}
+	if refusalCode(t, ref) != "bad-override" {
+		t.Errorf("refusal = %v; want bad-override", ref)
+	}
+}
+
 // TestCheckLocked checks locked-invariant fragment rejection.
 func TestCheckLocked(t *testing.T) {
 	if err := overrides.CheckLocked("f", "> ✅ marker line"); refusalCode(t, err) != "bad-override" {

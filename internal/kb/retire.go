@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -293,17 +294,22 @@ func (c *Ctx) retireRow(rows []*jq.Obj, row *jq.Obj, rid, now string) {
 }
 
 // numField reads an integer counter field, reporting false unless the raw
-// value matches ^[0-9]+$ after jq -r rendering.
+// value matches ^[0-9]+$ after jq -r rendering and fits in an int. Like the
+// shell gate, zero is accepted only in its canonical "0" spelling.
 func numField(row *jq.Obj, key string) (int, bool) {
 	v, ok := row.Get(key)
 	if !ok {
 		return 0, false
 	}
 	s := jq.Str(v)
-	if !isPositiveInt(s) && s != "0" {
+	if !jq.Digits(s) {
 		return 0, false
 	}
-	return parseNum(s), true
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 || (n == 0 && s != "0") {
+		return 0, false
+	}
+	return n, true
 }
 
 // rateVal parses the max-FP-rate threshold.

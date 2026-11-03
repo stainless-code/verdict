@@ -7,6 +7,8 @@ package hunks
 import (
 	"strconv"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Hunk is one side-aware hunk range, 1-based inclusive, mirroring one
@@ -82,25 +84,9 @@ func parseRange(s string) (int, int) {
 			count = "1"
 		}
 	}
-	return awkNum(start), awkNum(count)
-}
-
-// awkNum converts like awk's string-to-number: the longest leading numeric
-// prefix, else 0. Headers are canonical in practice; this only matters for
-// hand-crafted degenerate diffs.
-func awkNum(s string) int {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 {
-		return 0
-	}
-	n, err := strconv.Atoi(s[:i])
-	if err != nil {
-		return 0
-	}
-	return n
+	startN, _ := jq.PrefixInt(start)
+	countN, _ := jq.PrefixInt(count)
+	return startN, countN
 }
 
 // Indexed reports whether any hunk names file (the keep-biased first gate:

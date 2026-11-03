@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // cliFileCap is the hosting CLI's file-list cap: a list arriving exactly
@@ -325,7 +326,7 @@ func githubPrField(m map[string]any, field string) string {
 	case keyBaseSHA:
 		return jq.R(m["baseRefOid"])
 	case keyState:
-		return asciiLower(jq.R(m[keyState]))
+		return readcommon.ASCIILower(jq.R(m[keyState]))
 	case keyAuthor:
 		if a, ok := m[keyAuthor].(map[string]any); ok {
 			return jq.R(a[keyLogin])

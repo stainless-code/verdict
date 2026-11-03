@@ -400,9 +400,9 @@ func numAdd(row *jq.Obj, key string, n int) (any, bool) {
 	}
 	switch t := v.(type) {
 	case jq.Number:
-		return jsonNumber(parseNum(t.String()) + n), true
+		return addCounter(t.String(), n)
 	case json.Number:
-		return jsonNumber(parseNum(t.String()) + n), true
+		return addCounter(t.String(), n)
 	case float64:
 		return jsonNumber(int(t) + n), true
 	case int:
@@ -412,36 +412,19 @@ func numAdd(row *jq.Obj, key string, n int) (any, bool) {
 	}
 }
 
+// addCounter adds n to one stored counter literal, refusing a numeric value
+// that overflows an int instead of wrapping it negative.
+func addCounter(lit string, n int) (any, bool) {
+	f, ok := jq.SignedPrefixInt(lit)
+	if !ok {
+		return nil, false
+	}
+	return jsonNumber(f + n), true
+}
+
 // jsonNumber renders n as a JSON number literal.
 func jsonNumber(n int) jq.Number {
 	return jq.Number(strconv.Itoa(n))
-}
-
-// parseNum reads a numeric field value.
-func parseNum(s string) int {
-	n, neg := parseDigits(s)
-	if neg {
-		return -n
-	}
-	return n
-}
-
-// parseDigits parses the leading-optional-minus digit run, stopping at the
-// first non-digit (awk-style prefix semantics).
-func parseDigits(s string) (int, bool) {
-	n := 0
-	neg := false
-	for i := range len(s) {
-		switch {
-		case s[i] == '-' && i == 0:
-			neg = true
-		case s[i] >= '0' && s[i] <= '9':
-			n = n*creditDecimalBase + int(s[i]-'0')
-		default:
-			return n, neg
-		}
-	}
-	return n, neg
 }
 
 // storeFileMode is the umask-022 default for KB store files.

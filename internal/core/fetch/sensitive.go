@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // sensNameSet lists the exact secret-adjacent basenames.
@@ -41,7 +42,7 @@ func sensPathReasons(path string) []string {
 	if base == "" || base == devNullPath {
 		return nil
 	}
-	lb := asciiLower(base)
+	lb := readcommon.ASCIILower(base)
 	return append(sensNameReason(lb), sensExtReason(lb)...)
 }
 

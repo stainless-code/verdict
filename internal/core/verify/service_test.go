@@ -254,6 +254,10 @@ func TestVerifyRefusals(t *testing.T) {
 		{"missing-patch", "", "10", "missing-patch"},
 		{"no-verify-cmd", `{}`, "10", "no-verify-cmd"},
 		{"bad-timeout", `{"verifyCmd":"printf ok"}`, "abc", "bad-timeout"},
+		{"bad-timeout-zero", `{"verifyCmd":"printf ok"}`, "0", "bad-timeout"},
+		{"bad-timeout-negative", `{"verifyCmd":"printf ok"}`, "-5", "bad-timeout"},
+		{"bad-timeout-overflow", `{"verifyCmd":"printf ok"}`, "99999999999999999999", "bad-timeout"},
+		{"bad-timeout-max-plus-one", `{"verifyCmd":"printf ok"}`, "9223372036854775808", "bad-timeout"},
 		{"gate", `{"verifyCmd":"rm -rf ./scratch-del"}`, "10", "verify-destructive"},
 	}
 	for _, tc := range cases {

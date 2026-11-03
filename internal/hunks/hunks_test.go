@@ -42,6 +42,40 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// TestParseRangeOverflow proves a degenerate @@ range that does not fit in an
+// int coerces to zero, never a wrapped negative span, and that awk's no-sign
+// coercion still reads a signed range as zero.
+func TestParseRangeOverflow(t *testing.T) {
+	t.Parallel()
+	for _, diff := range []string{
+		"diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -99999999999999999999,1 +1,1 @@\n-a\n+b\n",
+		"diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ --5,1 +1,1 @@\n-a\n+b\n",
+	} {
+		t.Run(diff, func(t *testing.T) {
+			t.Parallel()
+			checkDegenerateRange(t, diff)
+		})
+	}
+}
+
+// checkDegenerateRange asserts one degenerate header coerces to zero.
+func checkDegenerateRange(t *testing.T, diff string) {
+	t.Helper()
+	got := hunks.Parse(diff)
+	want := []hunks.Hunk{
+		{File: "x", Side: "OLD", Start: 0, End: 0},
+		{File: "x", Side: "NEW", Start: 1, End: 1},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Parse(%q) = %v; want %v", diff, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Parse(%q)[%d] = %+v; want %+v", diff, i, got[i], want[i])
+		}
+	}
+}
+
 // TestKeepBiasedPartition checks keep-biased anchor partitioning.
 func TestKeepBiasedPartition(t *testing.T) {
 	hs := hunks.Parse(twoFileDiff)

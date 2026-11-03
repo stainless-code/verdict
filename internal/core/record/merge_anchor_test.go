@@ -85,6 +85,55 @@ func TestAnchorSwappedSpan(t *testing.T) {
 	}
 }
 
+// TestAnchorOverflowKeepsWithWarning proves a digit string that does not fit
+// in an int takes the non-numeric anchor path: the comment is kept inline and
+// the exact warning is pinned, never a wrapped span. Leading zeros stay
+// numeric, and a sign stays non-numeric.
+func TestAnchorOverflowKeepsWithWarning(t *testing.T) {
+	t.Parallel()
+	rows := []hunkRow{{file: "notes.txt", side: "NEW", start: 1, end: 3}}
+	for _, line := range []string{
+		"99999999999999999999",
+		"9223372036854775808",
+		"-3",
+		"+3",
+	} {
+		t.Run(line, func(t *testing.T) {
+			t.Parallel()
+			checkAnchorWarning(t, rows, line)
+		})
+	}
+	t.Run("leading-zeros", func(t *testing.T) {
+		t.Parallel()
+		checkAnchorKept(t, rows, "002")
+	})
+}
+
+// checkAnchorWarning asserts a non-numeric anchor keeps with the exact
+// warning, never a wrapped span.
+func checkAnchorWarning(t *testing.T, rows []hunkRow, line string) {
+	t.Helper()
+	st := anchorTestState(rows)
+	st.classifyComment(anchorComment("notes.txt", line, "", "RIGHT"), rows)
+	if len(st.kept) != 1 || len(st.moved) != 0 {
+		t.Fatalf("non-numeric anchor: kept=%d moved=%d", len(st.kept), len(st.moved))
+	}
+	want := "kept despite non-numeric anchor: notes.txt " + line + "-" + line
+	if len(st.warnings) != 1 || st.warnings[0] != want {
+		t.Fatalf("warnings = %q; want %q", st.warnings, want)
+	}
+}
+
+// checkAnchorKept asserts a numeric anchor stays inline with no warning.
+func checkAnchorKept(t *testing.T, rows []hunkRow, line string) {
+	t.Helper()
+	st := anchorTestState(rows)
+	st.classifyComment(anchorComment("notes.txt", line, "", "RIGHT"), rows)
+	if len(st.kept) != 1 || len(st.moved) != 0 || len(st.warnings) != 0 {
+		t.Fatalf("numeric anchor: kept=%d moved=%d warnings=%q", len(st.kept), len(st.moved), st.warnings)
+	}
+}
+
 // TestAnchorLeftOldSide proves LEFT anchors validate against the OLD side:
 // a line inside an OLD hunk keeps, the same line with no OLD hunk moves.
 func TestAnchorLeftOldSide(t *testing.T) {

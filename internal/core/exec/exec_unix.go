@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	osexec "os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -42,7 +43,7 @@ func processAlive(ctx context.Context, cmd *osexec.Cmd) bool {
 		return false
 	}
 	//nolint:gosec // G204: the pid is our own verify child, not external input.
-	out, err := osexec.CommandContext(ctx, "ps", "-p", itoa(cmd.Process.Pid), "-o", "stat=").Output()
+	out, err := osexec.CommandContext(ctx, "ps", "-p", strconv.Itoa(cmd.Process.Pid), "-o", "stat=").Output()
 	if err != nil {
 		return true
 	}

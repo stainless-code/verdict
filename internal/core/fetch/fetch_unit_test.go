@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // diffFixture builds a two-file diff with known per-file byte sizes.
@@ -213,7 +214,7 @@ func TestRecordBasisMixed(t *testing.T) {
 // TestIsBudgetNumber exercises the fetch helper.
 func TestIsBudgetNumber(t *testing.T) {
 	t.Parallel()
-	for _, good := range []string{"0", "0.50", "10", "10.25"} {
+	for _, good := range []string{"0", "0.50", "10", "10.25", "007", "99999999999999999999"} {
 		if !isBudgetNumber(good) {
 			t.Fatalf("%q reads invalid", good)
 		}
@@ -381,8 +382,8 @@ func TestLocalSlug(t *testing.T) {
 	if got := localSlug(strings.Repeat("a", 60)); len(got) != 48 {
 		t.Fatalf("long slug length = %d", len(got))
 	}
-	if !isDigits("4351") || isDigits("43a1") || isDigits("") {
-		t.Fatal("isDigits wrong")
+	if !readcommon.IsDigits("4351") || readcommon.IsDigits("43a1") || readcommon.IsDigits("") {
+		t.Fatal("IsDigits wrong")
 	}
 }
 
@@ -399,6 +400,21 @@ func TestNumOrZero(t *testing.T) {
 	t.Parallel()
 	if numOrZero("12") != 12 || numOrZero("-") != 0 || numOrZero("") != 0 || numOrZero("12x") != 0 {
 		t.Fatal("numOrZero wrong")
+	}
+	if numOrZero("007") != 7 || numOrZero("99999999999999999999") != 0 || numOrZero("-3") != 0 {
+		t.Fatal("numOrZero overflow/sign wrong")
+	}
+}
+
+// TestIntOrZero exercises the local numstat helper: leading zeros parse and
+// an overflow reads zero instead of a wrapped count.
+func TestIntOrZero(t *testing.T) {
+	t.Parallel()
+	if intOrZero("12") != 12 || intOrZero("007") != 7 || intOrZero("") != 0 || intOrZero("12x") != 0 {
+		t.Fatal("intOrZero wrong")
+	}
+	if intOrZero("99999999999999999999") != 0 || intOrZero("9223372036854775808") != 0 {
+		t.Fatal("intOrZero overflow wrong")
 	}
 }
 

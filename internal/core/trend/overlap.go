@@ -442,7 +442,7 @@ func (st *state) emitOverlapHuman(out *overlapRollup) {
 		row := &out.perBundle[i]
 		st.human(fmt.Sprintf("  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) "+
 			"outcomes addressed=%d false-positive=%d pending=%d",
-			row.bundle, boolStr(row.measured), numOrNA(row.precision), numOrNA(row.coverage),
+			row.bundle, strconv.FormatBool(row.measured), numOrNA(row.precision), numOrNA(row.coverage),
 			len(row.recalled), len(row.cited), len(row.overlap), row.addressed, row.falsePositive, row.pending))
 	}
 }
@@ -456,11 +456,6 @@ func numOrNA(v any) string {
 		return readcommon.CanonFloat(f)
 	}
 	return jq.Str(v)
-}
-
-// boolStr renders a bool jq -r style.
-func boolStr(b bool) string {
-	return strconv.FormatBool(b)
 }
 
 // overlapDoc renders the overlap envelope fragment in shell key order.

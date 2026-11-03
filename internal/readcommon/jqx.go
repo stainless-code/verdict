@@ -54,16 +54,16 @@ func NumVal(v any) (float64, bool) {
 	case float64:
 		return t, true
 	case json.Number:
-		return parseNum(t.String())
+		return parseJSONFloat(t.String())
 	case jq.Number:
-		return parseNum(t.String())
+		return parseJSONFloat(t.String())
 	default:
 		return 0, false
 	}
 }
 
-// parseNum parses one JSON number literal.
-func parseNum(lit string) (float64, bool) {
+// parseJSONFloat parses one JSON number literal.
+func parseJSONFloat(lit string) (float64, bool) {
 	f, err := strconv.ParseFloat(lit, floatBits)
 	if err != nil {
 		return 0, false
@@ -226,15 +226,8 @@ func ASCIILower(s string) string {
 }
 
 // IsDigits reports whether s is a non-empty ASCII digit run, mirroring the
-// shell's `”|*[!0-9]*` guard inverted.
+// shell's `”|*[!0-9]*` guard inverted. It is the shared spelling of the
+// [jq.Digits] gate.
 func IsDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
+	return jq.Digits(s)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -394,7 +395,8 @@ func stripDiffPrefix(path string) string {
 }
 
 // anchorRange reads the comment's line span and side, returning lo < 0 when
-// the anchors are non-numeric.
+// the anchors are non-numeric or do not fit in an int (a 20-digit line must
+// refuse like any other non-numeric anchor, never wrap into a nonsense span).
 func anchorRange(m *jq.Obj) (lo, hi int, side string) {
 	line, _ := m.Get(fieldLine)
 	start, _ := m.Get(fieldStartLine)
@@ -402,10 +404,14 @@ func anchorRange(m *jq.Obj) (lo, hi int, side string) {
 	if ss == "" {
 		ss = ls
 	}
-	if !isAnchorNum(ls) || !isAnchorNum(ss) {
+	if !jq.Digits(ls) || !jq.Digits(ss) {
 		return -1, -1, ""
 	}
-	lo, hi = atoi(ss), atoi(ls)
+	hi, errLine := strconv.Atoi(ls)
+	lo, errStart := strconv.Atoi(ss)
+	if errLine != nil || errStart != nil {
+		return -1, -1, ""
+	}
 	if lo > hi {
 		lo, hi = hi, lo
 	}
@@ -435,28 +441,6 @@ func jqLine(v any) string {
 	return jq.R(v)
 }
 
-// isAnchorNum mirrors `[[ ... =~ ^[0-9]+$ ]]`.
-func isAnchorNum(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-// atoi parses a validated anchor number.
-func atoi(s string) int {
-	n := 0
-	for i := range len(s) {
-		n = n*decimalBase + int(s[i]-'0')
-	}
-	return n
-}
-
 // rowsToHunks adapts parsed rows to the hunks package.
 func rowsToHunks(rows []hunkRow) []hunks.Hunk {
 	out := make([]hunks.Hunk, 0, len(rows))
@@ -482,21 +466,11 @@ func loadHunkRows(path string) []hunkRow {
 		if len(f) < hunkFieldCount {
 			continue
 		}
-		out = append(out, hunkRow{file: f[0], side: f[1], start: awkNum(f[hunkStartIdx]), end: awkNum(f[hunkEndIdx])})
+		start, _ := jq.PrefixInt(f[hunkStartIdx])
+		end, _ := jq.PrefixInt(f[hunkEndIdx])
+		out = append(out, hunkRow{file: f[0], side: f[1], start: start, end: end})
 	}
 	return out
-}
-
-// awkNum coerces like awk's string-to-number: leading digits, else 0.
-func awkNum(s string) int {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 {
-		return 0
-	}
-	return atoi(s[:i])
 }
 
 // demoteFences ports the suggestion-fence demotion: comments whose suggestion

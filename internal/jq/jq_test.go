@@ -1,6 +1,8 @@
 package jq_test
 
 import (
+	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
@@ -129,5 +131,155 @@ func TestOrderedRoundTrip(t *testing.T) {
 	want := "{\n  \"b\": 1,\n  \"a\": [\n    1,\n    {\n      \"z\": null\n    }\n  ],\n  \"c\": \"x\"\n}"
 	if got := o.MarshalPretty(); got != want {
 		t.Errorf("MarshalPretty() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// intParsingCase is one strict digit-parsing leg.
+type intParsingCase struct {
+	name string
+	lit  string
+	want int
+	ok   bool
+}
+
+// intParsingCases pins the strict digit contract shared by every anchor
+// parser: leading zeros parse, signs/fractions/exponents/trailing junk
+// refuse, and a value past the int range refuses instead of wrapping.
+func intParsingCases() []intParsingCase {
+	maxInt := int(^uint(0) >> 1)
+	return []intParsingCase{
+		{"empty", "", 0, false},
+		{"zero", "0", 0, true},
+		{"leading zeros", "007", 7, true},
+		{"negative", "-3", 0, false},
+		{"plus sign", "+3", 0, false},
+		{"fraction", "1.5", 0, false},
+		{"exponent", "1e3", 0, false},
+		{"trailing junk", "12abc", 0, false},
+		{"max int", strconv.Itoa(maxInt), maxInt, true},
+		{"max int64 plus one", "9223372036854775808", 0, false},
+		{"20 digits", "99999999999999999999", 0, false},
+	}
+}
+
+// TestDigits pins the shared non-empty digit-run gate.
+func TestDigits(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"empty", "", false},
+		{"zero", "0", true},
+		{"leading zeros", "007", true},
+		{"negative", "-3", false},
+		{"plus sign", "+3", false},
+		{"fraction", "1.5", false},
+		{"exponent", "1e3", false},
+		{"trailing junk", "12abc", false},
+		{"20 digits", "99999999999999999999", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := jq.Digits(tc.in); got != tc.want {
+				t.Errorf("Digits(%q) = %v; want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIntOf pins the JSON number accessor: it accepts the digit form only and
+// refuses an overflowing literal rather than returning a wrapped int.
+func TestIntOf(t *testing.T) {
+	t.Parallel()
+	for _, tc := range intParsingCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkIntOf(t, tc)
+		})
+	}
+}
+
+// checkIntOf asserts one literal through both decoder spellings.
+func checkIntOf(t *testing.T, tc intParsingCase) {
+	t.Helper()
+	for _, v := range []any{jq.Number(tc.lit), json.Number(tc.lit)} {
+		got, ok := jq.IntOf(v)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("IntOf(%T %q) = %d, %v; want %d, %v", v, tc.lit, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// TestPrefixInt pins awk's no-sign prefix coercion: leading digits parse,
+// everything else follows awk, and an overflow refuses.
+func TestPrefixInt(t *testing.T) {
+	t.Parallel()
+	maxInt := int(^uint(0) >> 1)
+	for _, tc := range []struct {
+		name string
+		in   string
+		want int
+		ok   bool
+	}{
+		{"empty", "", 0, true},
+		{"zero", "0", 0, true},
+		{"leading zeros", "007", 7, true},
+		{"negative", "-3", 0, true},
+		{"plus sign", "+3", 0, true},
+		{"fraction", "1.5", 1, true},
+		{"exponent", "1e3", 1, true},
+		{"trailing junk", "12abc", 12, true},
+		{"max int", strconv.Itoa(maxInt), maxInt, true},
+		{"max int64 plus one", "9223372036854775808", 0, false},
+		{"20 digits", "99999999999999999999", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := jq.PrefixInt(tc.in)
+			if got != tc.want || ok != tc.ok {
+				t.Errorf("PrefixInt(%q) = %d, %v; want %d, %v", tc.in, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+// TestSignedPrefixInt pins the KB counter's optional-minus variant, including
+// the minimum int (which fits) and the refusing overflow.
+func TestSignedPrefixInt(t *testing.T) {
+	t.Parallel()
+	minInt := -int(^uint(0)>>1) - 1
+	maxInt := int(^uint(0) >> 1)
+	for _, tc := range []struct {
+		name string
+		in   string
+		want int
+		ok   bool
+	}{
+		{"empty", "", 0, true},
+		{"lone minus", "-", 0, true},
+		{"zero", "0", 0, true},
+		{"leading zeros", "007", 7, true},
+		{"negative", "-3", -3, true},
+		{"negative leading zeros", "-007", -7, true},
+		{"plus sign", "+3", 0, true},
+		{"fraction", "1.5", 1, true},
+		{"exponent", "1e3", 1, true},
+		{"trailing junk", "12abc", 12, true},
+		{"negative trailing junk", "-12abc", -12, true},
+		{"max int", strconv.Itoa(maxInt), maxInt, true},
+		{"min int", strconv.Itoa(minInt), minInt, true},
+		{"max int64 plus one", "9223372036854775808", 0, false},
+		{"20 digits", "99999999999999999999", 0, false},
+		{"negative 20 digits", "-99999999999999999999", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := jq.SignedPrefixInt(tc.in)
+			if got != tc.want || ok != tc.ok {
+				t.Errorf("SignedPrefixInt(%q) = %d, %v; want %d, %v", tc.in, got, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }

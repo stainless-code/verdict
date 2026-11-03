@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // SettingsPath returns the settings file path from HOME/XDG_CONFIG_HOME.
@@ -291,23 +291,9 @@ func (w *credWalker) walk(v any) {
 // walkMap counts credential keys in one object.
 func (w *credWalker) walkMap(t map[string]any) {
 	for k, child := range t {
-		if credRe.MatchString(asciiLower(k)) {
+		if credRe.MatchString(readcommon.ASCIILower(k)) {
 			w.n++
 		}
 		w.walk(child)
 	}
-}
-
-// asciiLower lowercases ASCII letters only, like jq's ascii_downcase.
-func asciiLower(s string) string {
-	var sb strings.Builder
-	sb.Grow(len(s))
-	for i := range len(s) {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		sb.WriteByte(c)
-	}
-	return sb.String()
 }

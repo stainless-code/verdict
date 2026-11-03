@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // runLocal mirrors the fetch-local block: worktree/staged/range/branch/
@@ -75,7 +77,7 @@ func localSlugGate(pr, slug string) *core.RefusalError {
 	if slug == "" || slug == "local" {
 		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("name '%s' sanitizes to nothing — pass a usable bundle name", pr)}
 	}
-	if isDigits(slug) {
+	if readcommon.IsDigits(slug) {
 		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("'%s' looks like a PR number — use fetch for PRs", slug)}
 	}
 	if strings.HasPrefix(slug, "local-") {
@@ -264,7 +266,7 @@ func localFinish(
 // localSlug ports the fetch-local slug pipeline on bytes: ASCII-lowercase,
 // non-[a-z0-9-] runs to one dash, trim dashes, first 48 bytes.
 func localSlug(pr string) string {
-	lower := asciiLower(pr)
+	lower := readcommon.ASCIILower(pr)
 	var sb strings.Builder
 	sb.Grow(len(lower))
 	dash := false
@@ -290,19 +292,6 @@ func localSlug(pr string) string {
 // slugKeep ports the slug character class: ASCII alnum and dash survive.
 func slugKeep(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-'
-}
-
-// isDigits ports `[[ "$slug" =~ ^[0-9]+$ ]]`.
-func isDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // localMode is one resolved fetch-local diff source.
@@ -557,14 +546,14 @@ func countNonEmptyLines(s string) int {
 }
 
 // intOrZero ports the numstat awk: plain-digit fields sum, anything else
-// reads zero.
+// reads zero. An overflow reads zero too, never a wrapped negative count.
 func intOrZero(s string) int {
-	n := 0
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return 0
-		}
-		n = n*numBase10 + int(s[i]-'0')
+	if !readcommon.IsDigits(s) {
+		return 0
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
 	}
 	return n
 }

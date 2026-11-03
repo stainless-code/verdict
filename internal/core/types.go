@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -300,7 +301,7 @@ func fieldTag(field *reflect.StructField) (name string, skip, omit bool) {
 	if tag == "-" {
 		return "", true, false
 	}
-	parts := splitTag(tag)
+	parts := strings.Split(tag, ",")
 	name = parts[0]
 	if name == "" {
 		return "", true, false
@@ -311,19 +312,6 @@ func fieldTag(field *reflect.StructField) (name string, skip, omit bool) {
 		}
 	}
 	return name, false, omit
-}
-
-// splitTag splits a struct tag on commas.
-func splitTag(tag string) []string {
-	var out []string
-	start := 0
-	for i := range len(tag) {
-		if tag[i] == ',' {
-			out = append(out, tag[start:i])
-			start = i + 1
-		}
-	}
-	return append(out, tag[start:])
 }
 
 // emptyValue ports encoding/json's omitempty test for the kinds wire shapes

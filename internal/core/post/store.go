@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -28,9 +27,6 @@ func shortSHA(head string) string {
 
 // sigSumOf seals the payload hash for the duplicate guard.
 func sigSumOf(b []byte) string { return sig.Sum(b) }
-
-// itoa renders a body length for the dry-run preview.
-func itoa(n int) string { return strconv.Itoa(n) }
 
 // stOpen passes the open count through (kept as a helper so the dry-run
 // response reads symmetrically with the envelope tally).

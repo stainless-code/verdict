@@ -13,6 +13,3 @@ const outcomeAddressed = "addressed"
 
 // statusActive is the live KB rule status.
 const statusActive = "active"
-
-// decimalBase is the radix for hand-rolled integer parsing.
-const creditDecimalBase = 10

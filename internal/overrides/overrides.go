@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Dir and fragment paths, mirroring the shell's OVERRIDES_DIR globals.
@@ -124,8 +126,6 @@ const (
 	defaultMaxBytes = 24576
 	// maxThresholdDigits caps threshold values to 64-bit arithmetic.
 	maxThresholdDigits = 15
-	// decimalBase is the radix for threshold parsing.
-	decimalBase = 10
 	// codeBadOverride names the refusal code for fragment violations.
 	codeBadOverride = "bad-override"
 	// keyFiles names the files threshold key.
@@ -175,36 +175,45 @@ func parseThresholdEntry(ln string, seen map[string]bool) (key string, val int, 
 		return "", 0, true, nil
 	}
 	k, v := splitThreshold(line)
-	if r := checkThreshold(line, k, v, seen); r != nil {
+	n, r := checkThreshold(line, k, v, seen)
+	if r != nil {
 		return "", 0, false, r
 	}
-	return k, atoi(v), false, nil
+	return k, n, false, nil
 }
 
 // checkThreshold gates one threshold entry: unknown keys, non-numeric and
-// overlong values, then duplicates — in shell order.
-func checkThreshold(line, key, val string, seen map[string]bool) error {
+// overlong values, then duplicates — in shell order — and returns the
+// parsed value.
+func checkThreshold(line, key, val string, seen map[string]bool) (int, error) {
 	if key == "" {
-		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant 'degenerate-guard' "+
-			"(unknown key in '%s' — want only 'files: N' and 'bytes: N')", Threshold, line)}
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+			"override %s violates locked invariant 'degenerate-guard' "+
+				"(unknown key in '%s' — want only 'files: N' and 'bytes: N')", Threshold, line)}
 	}
-	if !isDigits(val) {
-		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+	if !jq.Digits(val) {
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
 			"override %s violates locked invariant 'degenerate-guard' (value '%s'"+
 				" for '%s' is not a non-negative integer — thresholds must stay satisfiable)",
 			Threshold, val, key)}
 	}
 	if len(val) > maxThresholdDigits {
-		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
 			"override %s violates locked invariant 'degenerate-guard' (value"+
 				" '%s' for '%s' exceeds 15 digits — thresholds must fit 64-bit arithmetic)",
 			Threshold, val, key)}
 	}
 	if seen[key] {
-		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant "+
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant "+
 			"'degenerate-guard' (duplicate '%s' — list each key once)", Threshold, key)}
 	}
-	return nil
+	// The digit gate and the 15-digit cap above guarantee the value fits in
+	// an int; keep the check so an overflow can never wrap into a threshold.
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, jq.Sealed("parse threshold", err)
+	}
+	return n, nil
 }
 
 // splitThreshold removes all whitespace, maps `:` to `=`, and splits
@@ -230,29 +239,6 @@ func removeSpaces(s string) string {
 			return r
 		}
 	}, s)
-}
-
-// isDigits reports whether s is all ASCII digits (empty reads false — the
-// shell's `”|*[!0-9]*` case matches empty too).
-func isDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-// atoi parses a validated digit string.
-func atoi(s string) int {
-	n := 0
-	for i := range len(s) {
-		n = n*decimalBase + int(s[i]-'0')
-	}
-	return n
 }
 
 // AttributionText ports override_attribution_text: the raw fragment, which

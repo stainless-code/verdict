@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	osexec "os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -199,7 +200,7 @@ func killGroup(cmd *osexec.Cmd) error {
 // taskkillTree is the fallback tree kill when the job object could not be
 // used (creation or assignment failed).
 func taskkillTree(pid int) error {
-	kill := osexec.Command("taskkill", "/T", "/F", "/PID", itoa(pid))
+	kill := osexec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
 	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := kill.CombinedOutput(); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)

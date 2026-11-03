@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // promptFiles lists the assembled agent prompt in hash order.
@@ -176,7 +177,7 @@ func recordTier(rec any, dflt string) string {
 	if !ok || e == nil || e == false {
 		return dflt
 	}
-	switch tier := asciiLower(jq.Str(e)); tier {
+	switch tier := readcommon.ASCIILower(jq.Str(e)); tier {
 	case "cheap", "standard", "deep":
 		return tier
 	default:
@@ -491,18 +492,4 @@ func numVal(v any) (float64, bool) {
 // round4 rounds to 4 decimal places like jq's (add * 10000 | round) / 10000.
 func round4(f float64) float64 {
 	return math.Round(f*roundScale) / roundScale
-}
-
-// asciiLower lowercases ASCII letters only.
-func asciiLower(s string) string {
-	var sb strings.Builder
-	sb.Grow(len(s))
-	for i := range len(s) {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		sb.WriteByte(c)
-	}
-	return sb.String()
 }

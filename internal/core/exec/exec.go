@@ -56,24 +56,6 @@ func (OSCommander) Run(ctx context.Context, cmd core.Command) (core.Result, erro
 	}, nil
 }
 
-// itoa renders a small non-negative int.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%decimalBase)
-		n /= decimalBase
-	}
-	return string(b[i:])
-}
-
-// decimalBase is the radix for small-int rendering.
-const decimalBase = 10
-
 // errEmptyArgv is the spawn error for an empty argv.
 var errEmptyArgv = watchdogError("empty argv")
 

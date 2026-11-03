@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -314,29 +315,19 @@ func anchorKey(path string) string {
 	return path
 }
 
-// numVal reads a JSON number as an int (decoded stores hold json.Number;
+// numVal reads a JSON number as an int (decoded stores hold [json.Number];
 // the shell's arithmetic contexts only see validated digit strings).
 func numVal(v any) (int, bool) {
 	if n, ok := jq.IntOf(v); ok {
 		return n, true
 	}
-	if s, ok := v.(string); ok {
-		return atoi(s)
-	}
-	return 0, false
-}
-
-// atoi parses a validated digit string (the shell's [[ =~ ^[0-9]+$ ]] gate).
-func atoi(s string) (int, bool) {
-	if s == "" {
+	s, ok := v.(string)
+	if !ok || !jq.Digits(s) {
 		return 0, false
 	}
-	n := 0
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return 0, false
-		}
-		n = n*decimalBase + int(s[i]-'0')
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
 	}
 	return n, true
 }
@@ -482,8 +473,8 @@ func parseHunkRow(ln string) (hunks.Hunk, bool) {
 	if len(f) != hunkFieldCount {
 		return hunks.Hunk{}, false
 	}
-	start, ok1 := atoi(f[hunkStartIdx])
-	end, ok2 := atoi(f[hunkEndIdx])
+	start, ok1 := numVal(f[hunkStartIdx])
+	end, ok2 := numVal(f[hunkEndIdx])
 	if !ok1 || !ok2 {
 		return hunks.Hunk{}, false
 	}
@@ -531,8 +522,6 @@ const (
 	prefixLen = 2
 	// shortSHALen is the ${var:0:7} width.
 	shortSHALen = 7
-	// decimalBase is the radix for hand-rolled integer parsing.
-	decimalBase = 10
 	// hunkFieldCount is the hunks.tsv column count.
 	hunkFieldCount = 4
 	// hunkStartIdx indexes the hunks.tsv start column.

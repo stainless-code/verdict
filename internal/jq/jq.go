@@ -145,9 +145,9 @@ func CanonNumber(lit string) string {
 func IntOf(v any) (int, bool) {
 	switch t := v.(type) {
 	case Number:
-		return atoiStrict(t.String())
+		return digitsInt(t.String())
 	case json.Number:
-		return atoiStrict(t.String())
+		return digitsInt(t.String())
 	case float64:
 		return int(t), true
 	case int:
@@ -157,18 +157,67 @@ func IntOf(v any) (int, bool) {
 	}
 }
 
-// atoiStrict parses a validated digit string (the shell's
-// [[ =~ ^[0-9]+$ ]] gate).
-func atoiStrict(s string) (int, bool) {
+// Digits reports whether s is a non-empty ASCII digit run (the shell's
+// `[[ =~ ^[0-9]+$ ]]` gate). Magnitude is not checked: callers that need an
+// int parse with [strconv.Atoi] and refuse the overflow instead of wrapping.
+func Digits(s string) bool {
 	if s == "" {
-		return 0, false
+		return false
 	}
-	n := 0
 	for i := range len(s) {
 		if s[i] < '0' || s[i] > '9' {
-			return 0, false
+			return false
 		}
-		n = n*decimalBase + int(s[i]-'0')
+	}
+	return true
+}
+
+// digitsInt parses one validated digit string, refusing values that do not
+// fit in an int (a 20-digit anchor must not wrap into a nonsense span).
+func digitsInt(s string) (int, bool) {
+	if !Digits(s) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// PrefixInt ports awk's string-to-number coercion used by hunks.tsv: the
+// longest leading ASCII digit run ("12abc" reads 12, "-3" reads 0); a prefix
+// with no digits reads 0. It reports false when the prefix overflows an int,
+// so a hostile 20-digit span refuses rather than wrapping negative.
+func PrefixInt(s string) (int, bool) {
+	return prefixInt(s, false)
+}
+
+// SignedPrefixInt ports the KB counter path's one legacy difference from awk:
+// an optional leading minus before the digit run ("-12abc" reads -12). It is
+// used only for KB counter fields, where the shell parsed with an explicit
+// sign case. Overflow still reports false.
+func SignedPrefixInt(s string) (int, bool) {
+	return prefixInt(s, true)
+}
+
+// prefixInt scans the longest leading digit run, optionally after one minus,
+// and parses it with [strconv.Atoi] so overflow is an error, not a wrap.
+func prefixInt(s string, signed bool) (int, bool) {
+	i := 0
+	if signed && strings.HasPrefix(s, "-") {
+		i = 1
+	}
+	start := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == start {
+		return 0, true
+	}
+	n, err := strconv.Atoi(s[:i])
+	if err != nil {
+		return 0, false
 	}
 	return n, true
 }

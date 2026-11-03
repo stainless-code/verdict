@@ -76,8 +76,6 @@ const (
 
 // Numeric parsing/rendering constants.
 const (
-	// decimalBase is the radix for hand-rolled integer parsing.
-	decimalBase = 10
 	// shortSHALen is the abbreviated commit width.
 	shortSHALen = 7
 	// sigPrefixLen is the short signature display width (${sig:0:8}).

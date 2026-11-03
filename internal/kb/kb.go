@@ -62,8 +62,8 @@ func (c *Ctx) ResolvePolicy(env map[string]string, kbExists bool) {
 func (c *Ctx) resolveMinJudged(env map[string]string) {
 	if raw, ok := env[envMinJudged]; ok && raw != "" {
 		v := strings.TrimSpace(raw)
-		if isPositiveInt(v) {
-			c.Policy.MinJudged = atoi(v)
+		if n, ok := positiveInt(v); ok {
+			c.Policy.MinJudged = n
 		} else {
 			c.Warn(fmt.Sprintf("ignoring invalid REVIEW_KB_MIN_JUDGED '%s' (want a positive integer) — trying file, then default", raw))
 		}
@@ -82,8 +82,8 @@ func (c *Ctx) resolveMinJudgedFile() {
 	if raw == "" {
 		return
 	}
-	if isPositiveInt(raw) {
-		c.Policy.MinJudged = atoi(raw)
+	if n, ok := positiveInt(raw); ok {
+		c.Policy.MinJudged = n
 	} else {
 		c.Warn(fmt.Sprintf("ignoring invalid MIN_JUDGED '%s' in %s (want a positive integer) — default 5", raw, PolicyFile))
 	}
@@ -139,15 +139,21 @@ func policyLine(path, k1, k2 string) string {
 
 // isPositiveInt mirrors `[[ "$raw" =~ ^[0-9]+$ ]] && (( 10#$raw > 0 ))`.
 func isPositiveInt(s string) bool {
-	if s == "" {
-		return false
+	_, ok := positiveInt(s)
+	return ok
+}
+
+// positiveInt parses a strict positive integer, refusing a value that
+// overflows an int instead of wrapping it negative.
+func positiveInt(s string) (int, bool) {
+	if !jq.Digits(s) {
+		return 0, false
 	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return 0, false
 	}
-	return atoi(s) > 0
+	return n, true
 }
 
 // isRate mirrors the shell's `^[0-9]*\.?[0-9]+$` plus the awk 0..1 range.
@@ -178,15 +184,6 @@ func scanRate(s string) (int, bool) {
 		}
 	}
 	return digits, true
-}
-
-// atoi parses a validated digit string.
-func atoi(s string) int {
-	n := 0
-	for i := range len(s) {
-		n = n*decimalBase + int(s[i]-'0')
-	}
-	return n
 }
 
 // NormalizeEntry ports kb_normalize_entry: it returns the normalized kb id
@@ -325,8 +322,6 @@ const (
 	defaultMinJudged = 5
 	// defaultMaxFPRate is the retire ceiling when no knob is set.
 	defaultMaxFPRate = "0.5"
-	// decimalBase is the radix for hand-rolled integer parsing.
-	decimalBase = 10
 	// floatBits is the precision for threshold rate parsing.
 	floatBits = 64
 	// kbListCap caps the human `kb list` rendering.

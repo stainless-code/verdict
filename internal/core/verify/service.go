@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,7 +173,7 @@ func failed(err error) *core.RefusalError {
 func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) (*core.VerifyResponse, *core.RefusalError) {
 	combined := res.Stdout + res.Stderr
 	tail := redactSecrets(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
-	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, boolStr(res.TimedOut)))
+	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
 	st.human(fmt.Sprintf("recorded into %s/patch.json", dir))
 	if err := writeOutputs(outPath, combined); err != nil {
 		return nil, st.withWarnings(failed(err))
@@ -250,19 +251,14 @@ func readVerifyCmd(dir string) (string, *core.RefusalError) {
 	return vcmd, nil
 }
 
-// parseTimeout ports the timeout gate: positive integers only.
+// parseTimeout ports the timeout gate: positive integers only, refusing an
+// overflow instead of wrapping into a negative budget.
 func parseTimeout(s string) (int, bool) {
-	if s == "" {
+	if !jq.Digits(s) {
 		return 0, false
 	}
-	n := 0
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return 0, false
-		}
-		n = n*decimalBase + int(s[i]-'0')
-	}
-	if n <= 0 {
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
 		return 0, false
 	}
 	return n, true
@@ -427,14 +423,3 @@ const redacted = "***REDACTED***"
 
 // tailCap is the recorded tail size (tail -c 4000).
 const tailCap = 4000
-
-// decimalBase is the radix for small-int parsing.
-const decimalBase = 10
-
-// boolStr renders timed_out the shell way (true/false, lowercase).
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}

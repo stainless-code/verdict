@@ -11,13 +11,13 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // MergeParams carries one shared merge invocation: the record and post
@@ -346,21 +346,7 @@ func checkDegenerate(body string) error {
 // asciiContainsLower reports a case-insensitive ASCII match, mirroring grep
 // -i under the C locale.
 func asciiContainsLower(s string, re *regexp.Regexp) bool {
-	return re.MatchString(asciiLower(s))
-}
-
-// asciiLower lowercases ASCII letters only.
-func asciiLower(s string) string {
-	var sb strings.Builder
-	sb.Grow(len(s))
-	for i := range len(s) {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		sb.WriteByte(c)
-	}
-	return sb.String()
+	return re.MatchString(readcommon.ASCIILower(s))
 }
 
 var (

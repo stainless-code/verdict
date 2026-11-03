@@ -3,6 +3,8 @@ package verifycore
 import (
 	"regexp"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // gateText carries the normalized verifyCmd texts every arm matches
@@ -25,7 +27,7 @@ type gateText struct {
 func normalize(raw string) *gateText {
 	g := &gateText{raw: raw}
 	g.flat = flatOf(raw)
-	g.lc = lowerASCII(g.flat)
+	g.lc = readcommon.ASCIILower(g.flat)
 	g.scan = scanOf(g.lc)
 	g.bare = bareOf(g.scan, false)
 	g.csbare = bareOf(g.flat, true)
@@ -68,32 +70,6 @@ func lastByte(sb *strings.Builder) (byte, bool) {
 		return 0, false
 	}
 	return s[len(s)-1], true
-}
-
-// lowerASCII lowercases ASCII letters only, mirroring tr under the C
-// locale. Non-ASCII bytes pass through untouched (gate inputs are ASCII;
-// invalid UTF-8 must survive per R2).
-func lowerASCII(s string) string {
-	if !hasUpper(s) {
-		return s
-	}
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 'a' - 'A'
-		}
-	}
-	return string(b)
-}
-
-// hasUpper reports whether s holds an ASCII uppercase letter.
-func hasUpper(s string) bool {
-	for i := range len(s) {
-		if s[i] >= 'A' && s[i] <= 'Z' {
-			return true
-		}
-	}
-	return false
 }
 
 // scanOf ports the scan pipeline: @@null@@ for the discard sink, =op for

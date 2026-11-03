@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // runProvider mirrors the non-GitHub fetch path: the provider bundle, the
@@ -312,21 +313,18 @@ func diffNumstatMap(ctx context.Context, s *session, fullDiff string) map[string
 	return out
 }
 
-// numOrZero ports `($1=="-"||$1=="")?0:$1` with `tonumber? // 0`.
+// numOrZero ports `($1=="-"||$1=="")?0:$1` with `tonumber? // 0`: a
+// plain-digit field parses, anything else (including an overflow) reads zero.
 func numOrZero(s string) int64 {
 	if s == "" || s == "-" {
 		return 0
 	}
-	var n int64
-	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+	if !readcommon.IsDigits(s) {
 		return 0
 	}
-	// tonumber? fails on trailing junk ("12x" → empty → 0); Sscanf
-	// accepts it, so re-gate on pure digits.
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return 0
-		}
+	n, err := strconv.ParseInt(s, numBase10, numBitSize)
+	if err != nil {
+		return 0
 	}
 	return n
 }

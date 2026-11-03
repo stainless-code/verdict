@@ -234,7 +234,7 @@ func writeBarePatch(t *testing.T, dir string) {
 // assertBadTimeouts pins the timeout-flag refusals.
 func assertBadTimeouts(t *testing.T, dir string) {
 	t.Helper()
-	for _, timeout := range []string{"0", "abc", "-5"} {
+	for _, timeout := range []string{"0", "abc", "-5", "99999999999999999999"} {
 		code, stdout := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", timeout)
 		if code != 1 || edgeCode(stdout) != "bad-timeout" {
 			t.Fatalf("timeout %q exit = %d code = %q, want 1/bad-timeout\n%s", timeout, code, edgeCode(stdout), stdout)

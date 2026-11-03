@@ -56,7 +56,6 @@ func resolveBudget(env map[string]string) (budgetState, error) {
 	return st, nil
 }
 
-// isBudgetNumber ports `^[0-9]+(\.[0-9]+)?$`.
 // isBudgetNumber ports the knob regex `^[0-9]+(\.[0-9]+)?$`: digits
 // with an optional decimal fraction (a bare "1." or "." never matches).
 func isBudgetNumber(s string) bool {
@@ -64,24 +63,11 @@ func isBudgetNumber(s string) bool {
 	if hasDot && strings.Contains(fracPart, ".") {
 		return false
 	}
-	if !allDigits(intPart) {
+	if !readcommon.IsDigits(intPart) {
 		return false
 	}
-	if hasDot && !allDigits(fracPart) {
+	if hasDot && !readcommon.IsDigits(fracPart) {
 		return false
-	}
-	return true
-}
-
-// allDigits reports whether s is a non-empty ASCII digit run.
-func allDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
 	}
 	return true
 }
@@ -507,17 +493,3 @@ func indentPretty(pretty string) string {
 
 // st2at formats the run timestamp (callers pass cli.NowUTC already).
 func st2at(now string) string { return now }
-
-// asciiLower lowercases ASCII letters only (C-locale tr semantics).
-func asciiLower(s string) string {
-	var sb strings.Builder
-	sb.Grow(len(s))
-	for i := range len(s) {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		sb.WriteByte(c)
-	}
-	return sb.String()
-}

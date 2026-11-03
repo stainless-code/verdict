@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -305,7 +306,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 			Next:     "payload NOT posted (dry-run)",
 		}, nil
 	}
-	st.human("dry-run: payload NOT posted. body chars: " + itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
+	st.human("dry-run: payload NOT posted. body chars: " + strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
 	if footerText != "" {
 		st.human("footer preview:\n" + footerText)
 	}
