@@ -32,6 +32,9 @@ fi
 TAG_PREFIX="$(node -p "require('./release/contract.json').tagPrefix")"
 REPO="$(node -p "require('./release/contract.json').repo")"
 TAP_REPO="$(node -p "require('./release/contract.json').formula.tap")"
+# `brew install owner/name/verdict` resolves to github.com/owner/homebrew-name,
+# so the formula must be pushed to the homebrew-prefixed repository.
+TAP_GH_REPO="${TAP_REPO%%/*}/homebrew-${TAP_REPO#*/}"
 TAG="${TAG_PREFIX}${VERSION}"
 
 TAP_DIR=""
@@ -244,7 +247,7 @@ stage_tap() {
     node scripts/generate-formula.mjs --version "$VERSION" --dist dist --out dist/verdict.rb
   fi
   TAP_DIR="$(mktemp -d)"
-  git clone --quiet "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${TAP_REPO}.git" "$TAP_DIR"
+  git clone --quiet "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${TAP_GH_REPO}.git" "$TAP_DIR"
   if [ -f "$TAP_DIR/verdict.rb" ] && cmp -s dist/verdict.rb "$TAP_DIR/verdict.rb"; then
     echo "release: tap already carries the $VERSION formula; skipping push"
     return 0

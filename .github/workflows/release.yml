@@ -79,10 +79,11 @@ jobs:
           create-github-releases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Tap push auth is an open operator question (PAT vs GitHub App vs
-          # deploy key); release.sh skips the tap push until TAP_PUSH=1 is set
-          # alongside this secret.
+          # Tap push: a fine-grained token with Contents read/write on
+          # stainless-code/homebrew-tap, enabled by the TAP_PUSH=1 repository
+          # variable; release.sh skips the tap push while TAP_PUSH is unset.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAP_PUSH: ${{ vars.TAP_PUSH }}
 
       # Provenance attestation over the signed checksums. Runs only when the
       # publish chain produced a release (no dist/ on Version-PR-only runs).
