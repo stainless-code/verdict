@@ -8,7 +8,7 @@ import (
 
 // TestHeaderPaths pins the shared quote/space-safe header parser: C-quoted
 // tokens decode (octal UTF-8, escaped quotes, backslashes), unquoted paths
-// may contain spaces, and renames keep both sides.
+// may contain spaces, and renames keep both paths.
 func TestHeaderPaths(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

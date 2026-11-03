@@ -426,7 +426,7 @@ func checkAnyOf(path string, base, current map[string]any, changes *[]string) {
 	}
 }
 
-// walkSubschema recurses when both sides are schema objects.
+// walkSubschema recurses when both values are schema objects.
 func walkSubschema(path string, base, current any, changes *[]string) {
 	baseMap, baseOK := base.(map[string]any)
 	currentMap, currentOK := current.(map[string]any)

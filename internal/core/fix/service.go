@@ -851,9 +851,9 @@ func stringsOf(in []string) []any {
 	return out
 }
 
-// worktreeFiles collects the sorted unique worktree-changed
-// paths, renames contributing both sides, own .review/ included here (the
-// anchor audit filters it).
+// worktreeFiles collects the sorted unique worktree-changed paths, renames
+// contributing both their paths, own .review/ included here (the anchor
+// audit filters it).
 func (st *state) worktreeFiles(ctx context.Context) []string {
 	res, err := st.runGit(ctx, "git", "status", "--porcelain", "-z")
 	if err != nil {
@@ -865,7 +865,7 @@ func (st *state) worktreeFiles(ctx context.Context) []string {
 	return slices.Compact(paths)
 }
 
-// parsePorcelain extracts changed paths, renames contributing both sides.
+// parsePorcelain extracts changed paths, renames contributing both paths.
 func parsePorcelain(recs []string) []string {
 	var paths []string
 	for i := 0; i < len(recs); {

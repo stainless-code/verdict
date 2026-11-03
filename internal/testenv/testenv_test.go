@@ -133,7 +133,7 @@ func checkEvalsGitConfig(t *testing.T, got map[string]string) {
 	}
 }
 
-// checkGlobalSet accepts any path: both sides point at an empty file, but the
+// checkGlobalSet accepts any path: both point at an empty file, but the
 // eval harness owns its sandbox copy.
 func checkGlobalSet(t *testing.T, got map[string]string, name string) {
 	t.Helper()

@@ -335,7 +335,7 @@ func TestSensAllHitsQuotedHeader(t *testing.T) {
 	raw := "diff --git \"a/my key.pem\" \"b/my key.pem\"\n@@ -1 +1 @@\n+x\n"
 	hits := sensAllHits(raw, "")
 	if len(hits) != 2 || hits[0].path != "my key.pem" || hits[1].path != "my key.pem" {
-		t.Fatalf("sensAllHits = %v; want both sides of my key.pem", hits)
+		t.Fatalf("sensAllHits = %v; want both occurrences of my key.pem", hits)
 	}
 }
 

@@ -31,7 +31,7 @@ const (
 	// while keeping the golden reviewable.
 	largeFileBytes = 64 << 10
 	// diffLines bounds each side of a mismatch report: a multi-megabyte
-	// golden must never dump both sides into the test log.
+	// golden must never dump want and got into the test log.
 	diffLines = 80
 	// diffContext is how many matching lines precede the first divergence,
 	// so a failure shows where it happened instead of only what it was.

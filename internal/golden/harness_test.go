@@ -207,7 +207,7 @@ func TestRenderDigestForLargePayload(t *testing.T) {
 }
 
 // TestDivergenceBounded proves a mismatched multi-megabyte golden reports a
-// bounded window instead of printing both sides: the failing line is named,
+// bounded window instead of printing want and got: the failing line is named,
 // with only its neighborhood rendered.
 func TestDivergenceBounded(t *testing.T) {
 	t.Parallel()
