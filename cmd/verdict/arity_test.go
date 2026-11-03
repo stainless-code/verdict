@@ -111,7 +111,9 @@ func TestUnknownCmdMessage(t *testing.T) {
 }
 
 // runCapture runs run() with piped stdio and a hermetic environment,
-// returning the exit code plus captured stdout/stderr.
+// returning the exit code plus captured stdout/stderr. Both pipes drain
+// concurrently: a Windows pipe buffers only 4 KiB, so a usage block written
+// before anyone reads would block run() forever.
 func runCapture(t *testing.T, args []string) (int, string, string) {
 	t.Helper()
 	stdoutR, stdoutW, err := os.Pipe()
@@ -122,18 +124,19 @@ func runCapture(t *testing.T, args []string) (int, string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	drain := func(r *os.File) <-chan []byte {
+		ch := make(chan []byte, 1)
+		go func() {
+			raw, _ := io.ReadAll(r)
+			ch <- raw
+		}()
+		return ch
+	}
+	out, derr := drain(stdoutR), drain(stderrR)
 	code := run(args, stdoutW, stderrW, func(string) string { return "" }, os.ReadFile)
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
-	out, err := io.ReadAll(stdoutR)
-	if err != nil {
-		t.Fatal(err)
-	}
-	derr, err := io.ReadAll(stderrR)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return code, string(out), string(derr)
+	return code, string(<-out), string(<-derr)
 }
 
 // hermeticEnv points every environment-read setting at empty temp dirs so
