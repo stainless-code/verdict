@@ -122,15 +122,11 @@ func nestedReviewID(dir string) string {
 	return jq.R(id)
 }
 
-// liveThreads reads the live review threads with comments.
+// liveThreads reads the live review threads with comments through the
+// injected commander and the shared thread read.
 func (st *state) liveThreads(ctx context.Context) ([]any, *core.RefusalError) {
 	owner, name := readcommon.SplitOwner(st.req.Repo)
-	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
-		readcommon.ThreadsArgv(owner, name, st.req.Pr, readcommon.QueryCalibrate)...)
-	if !ok {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
-	}
-	nodes, err := readcommon.SlurpThreads(stdout)
+	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.req.Pr, true)
 	if err != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
 	}
@@ -251,7 +247,7 @@ func joinOne(entry any, threads, changed []any) outcome {
 		withKb(&out, entry)
 		return out
 	}
-	if !threadResolved(hit) {
+	if !readcommon.ThreadResolved(hit) {
 		out.result = statusOpen
 		out.detail = "thread still open"
 		withKb(&out, entry)
@@ -407,16 +403,6 @@ func commentNodes(comments any) []any {
 	default:
 		return nil
 	}
-}
-
-// threadResolved reports the thread's resolution flag.
-func threadResolved(thread any) bool {
-	m, ok := thread.(map[string]any)
-	if !ok {
-		return false
-	}
-	resolved, ok := m["isResolved"].(bool)
-	return ok && resolved
 }
 
 // pathChanged reports whether the cited path changed since review head.

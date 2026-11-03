@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -109,8 +110,8 @@ func reportRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *core.Re
 	}
 }
 
-// readRequest injects the runner's clock and progress observer into the
-// typed read request.
+// readRequest injects the runner's clock, progress observer, and command
+// runner into the typed read request.
 func readRequest(r *cli.Runner, req Request) core.ReadRequest {
 	read := req
 	if read.Runtime == nil {
@@ -118,6 +119,7 @@ func readRequest(r *cli.Runner, req Request) core.ReadRequest {
 	}
 	read.Now = r.Now
 	read.Progress = runnerProgress{r}
+	read.Commander = coreexec.SpawnCommander{}
 	return read
 }
 

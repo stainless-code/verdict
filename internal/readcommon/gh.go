@@ -1,20 +1,23 @@
 package readcommon
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
+	"errors"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // GraphQL queries, byte-identical to the shell's -f query= arguments
 // (indentation included: the eval stub logs argv verbatim, so the parity
-// harness compares these bytes between implementations).
+// harness compares these bytes between implementations). One constant per
+// payload shape, never per verb: ready and report --live share the
+// resolution-only read, calibrate uses the comment variant.
 const (
-	// QueryLiveCount is live_open_thread_count's resolution-only read.
-	QueryLiveCount = `
+	// QueryThreads is the resolution-only read for ready and report --live.
+	QueryThreads = `
       query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
         repository(owner:$owner, name:$name) {
           pullRequest(number:$pr) {
@@ -24,8 +27,9 @@ const (
           }
         }
       }`
-	// QueryCalibrate is the calibrate join's thread read with comments.
-	QueryCalibrate = `
+	// QueryThreadsWithComments is the calibrate join's read: resolution
+	// state plus the comment bodies and paths the join matches on.
+	QueryThreadsWithComments = `
     query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
       repository(owner:$owner, name:$name) {
         pullRequest(number:$pr) {
@@ -35,18 +39,11 @@ const (
         }
       }
     }`
-	// QueryReady is ready's resolution-only read.
-	QueryReady = `
-    query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
-      repository(owner:$owner, name:$name) {
-        pullRequest(number:$pr) {
-          reviewThreads(first:100, after:$endCursor) {
-            nodes { isResolved }
-          }
-        }
-      }
-    }`
 )
+
+// errGhFailed seals a gh call that could not run or exited nonzero. The
+// captured streams ride GhResult; callers only distinguish success.
+var errGhFailed = errors.New("gh call failed")
 
 // GhResult carries a gh call's captured streams.
 type GhResult struct {
@@ -54,39 +51,31 @@ type GhResult struct {
 	Stderr string
 }
 
-// Gh runs gh with exactly the given argv, capturing both streams. A missing
-// binary or a failing call returns the sealed error with stderr attached;
-// callers map failures to the verb's warn-or-refuse posture. Callers needing
-// the stub-log comparison pass the same argv the shell passes (O5).
-func Gh(ctx context.Context, args ...string) (GhResult, error) {
-	return ghRun(ctx, "", args...)
-}
-
-// GhStdin runs gh with exactly the given argv and stdin body, capturing
-// both streams. The post verb's reviews POST pipes the payload the way the
-// shell's `echo "$payload" | gh ... --input -` does (payload plus one
-// newline); the stub-log comparison covers those bytes on both sides.
-func GhStdin(ctx context.Context, stdin string, args ...string) (GhResult, error) {
-	return ghRun(ctx, stdin, args...)
-}
-
-// ghRun is the shared gh spawn: stdin carries the POST payload (payload
-// plus one newline, exactly what the shell's echo pipes); reads pass "".
-func ghRun(ctx context.Context, stdin string, args ...string) (GhResult, error) {
-	cmd := exec.CommandContext(ctx, "gh", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Stdin = strings.NewReader(stdin)
-	res := GhResult{}
-	if err := cmd.Run(); err != nil {
-		res.Stdout = stdout.String()
-		res.Stderr = stderr.String()
-		return res, jq.Sealed("gh", err)
+// Threads reads the paginated live review threads for owner/name/pr through
+// cmdr, flattening every page. withComments selects the calibrate shape
+// (comment bodies and paths); the resolution-only shape is shared by ready
+// and report --live. Callers write res.Stderr to their probe err file
+// before mapping err to their verb's warn-or-refuse posture (O5).
+func Threads(
+	ctx context.Context,
+	cmdr core.Commander,
+	owner, name, pr string,
+	withComments bool,
+) ([]any, GhResult, error) {
+	query := QueryThreads
+	if withComments {
+		query = QueryThreadsWithComments
 	}
-	res.Stdout = stdout.String()
-	res.Stderr = stderr.String()
-	return res, nil
+	stdout, stderr, ok := coreexec.Gh(ctx, cmdr, ThreadsArgv(owner, name, pr, query)...)
+	res := GhResult{Stdout: stdout, Stderr: stderr}
+	if !ok {
+		return nil, res, jq.Sealed("gh", errGhFailed)
+	}
+	nodes, err := SlurpThreads(stdout)
+	if err != nil {
+		return nil, res, err
+	}
+	return nodes, res, nil
 }
 
 // SplitOwner splits owner/repo into its two halves.
@@ -151,33 +140,53 @@ func pageNodes(doc any) []any {
 	return list
 }
 
-// LiveOpenThreadCount ports live_open_thread_count: the count of unresolved
-// live threads, or an error when the lookup fails. Callers write res.Stderr
-// to the probe err file before mapping the error to their posture.
-func LiveOpenThreadCount(ctx context.Context, repo, pr string) (int, GhResult, error) {
-	owner, name := SplitOwner(repo)
-	res, err := Gh(ctx, ThreadsArgv(owner, name, pr, QueryLiveCount)...)
-	if err != nil {
-		return 0, res, err
-	}
-	nodes, err := SlurpThreads(res.Stdout)
-	if err != nil {
-		return 0, res, err
-	}
-	return countOpenNodes(nodes), res, nil
-}
-
-// countOpenNodes counts unresolved live threads, skipping exotic nodes.
-func countOpenNodes(nodes []any) int {
+// OpenThreadCount counts unresolved live review threads. The posture is
+// fail-closed: only an object whose isResolved is exactly true reads
+// resolved, so a null or other non-object node, a missing flag, or a
+// non-bool flag counts as unresolved. A malformed payload therefore cannot
+// hide open threads from the ready gate or the report --live probe (this
+// replaces the old skip-and-zero postures, which could disagree about the
+// same PR).
+func OpenThreadCount(nodes []any) int {
 	n := 0
 	for _, node := range nodes {
-		m, ok := node.(map[string]any)
-		if !ok {
-			continue
-		}
-		if resolved, ok := m["isResolved"].(bool); !ok || !resolved {
+		if !ThreadResolved(node) {
 			n++
 		}
 	}
 	return n
+}
+
+// MalformedThreadCount counts thread nodes whose resolution state cannot be
+// read: non-object nodes and objects without an exactly-bool isResolved.
+// Callers warn with this count so a fail-closed gate verdict explains
+// itself instead of looking like a plain open-thread result.
+func MalformedThreadCount(nodes []any) int {
+	n := 0
+	for _, node := range nodes {
+		if _, ok := threadResolvedValue(node); !ok {
+			n++
+		}
+	}
+	return n
+}
+
+// ThreadResolved reports whether one live review thread is resolved:
+// exactly true. Everything else (null, a non-object node, a missing or
+// non-bool isResolved) reads unresolved, the same fail-closed posture
+// [OpenThreadCount] applies.
+func ThreadResolved(node any) bool {
+	resolved, _ := threadResolvedValue(node)
+	return resolved
+}
+
+// threadResolvedValue reads one node's isResolved flag, reporting whether
+// the node carried a readable bool.
+func threadResolvedValue(node any) (bool, bool) {
+	m, ok := node.(map[string]any)
+	if !ok {
+		return false, false
+	}
+	resolved, ok := m["isResolved"].(bool)
+	return resolved, ok
 }

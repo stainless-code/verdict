@@ -527,25 +527,23 @@ func checkName(m map[string]any) string {
 }
 
 // loadThreads counts unresolved live threads: resolution state exists
-// only live, so the bundle's thread files never count.
+// only live, so the bundle's thread files never count. The shared helper
+// applies the fail-closed posture (malformed nodes count as unresolved),
+// and a malformed read warns before it can flip the gate.
 func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 	owner, name := readcommon.SplitOwner(st.repo)
-	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
-		readcommon.ThreadsArgv(owner, name, st.pr, readcommon.QueryReady)...)
-	if !ok {
-		return st.withWarnings(&core.RefusalError{
-			Code:    "threads-failed",
-			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
-		})
-	}
-	nodes, err := readcommon.SlurpThreads(stdout)
+	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.pr, false)
 	if err != nil {
 		return st.withWarnings(&core.RefusalError{
 			Code:    "threads-failed",
 			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
 		})
 	}
-	st.threadsOpen = countOpenThreads(nodes)
+	if malformed := readcommon.MalformedThreadCount(nodes); malformed > 0 {
+		st.warn(strconv.Itoa(malformed) + " live thread node(s) carry no readable resolution state " +
+			"— counted as unresolved (fail-closed)")
+	}
+	st.threadsOpen = readcommon.OpenThreadCount(nodes)
 	if st.threadsOpen > 0 {
 		st.blockers = append(st.blockers, Blocker{
 			Kind:   "threads-open",
@@ -554,37 +552,6 @@ func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 		})
 	}
 	return nil
-}
-
-// countOpenThreads counts nodes with isResolved exactly false, zeroing the
-// whole read when any node is a non-object (the shell's jq errors and the
-// `|| echo 0` fallback zeroes the count).
-func countOpenThreads(nodes []any) int {
-	n := 0
-	for _, node := range nodes {
-		add, stop := countThreadNode(node)
-		if stop {
-			return 0
-		}
-		n += add
-	}
-	return n
-}
-
-// countThreadNode ports one thread node: nil reads skipped, non-objects
-// zero the whole read (stop), unresolved reads counted.
-func countThreadNode(node any) (add int, stop bool) {
-	if node == nil {
-		return 0, false
-	}
-	m, ok := node.(map[string]any)
-	if !ok {
-		return 0, true
-	}
-	if resolved, ok := m["isResolved"].(bool); !ok || !resolved {
-		return 1, false
-	}
-	return 0, false
 }
 
 // computeReadiness ports the ready/rec decision plus the draft, conflict,

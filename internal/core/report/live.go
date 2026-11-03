@@ -82,24 +82,37 @@ func providerName(dir string) string {
 	return readcommon.ProviderOf(dir)
 }
 
-// probeLiveCount runs the live count lookup and maps the outcome.
+// probeLiveCount runs the live count lookup through the injected commander
+// and maps the outcome. The count uses the same fail-closed posture as the
+// ready gate, so the two verbs cannot disagree about the same PR.
 func probeLiveCount(ctx context.Context, st *state) {
-	n, res, err := readcommon.LiveOpenThreadCount(ctx, st.req.Repo, st.req.Pr)
+	owner, name := readcommon.SplitOwner(st.req.Repo)
+	nodes, res, err := readcommon.Threads(ctx, st.commander(), owner, name, st.req.Pr, false)
 	writeErrFile(st, st.dir+"/.recheck.err", res.Stderr)
 	if err != nil {
 		probeUnreachable(st, res.Stderr)
 		return
 	}
 	removeErrFile(st.dir + "/.recheck.err")
-	if n < 0 {
-		n = 0
+	if malformed := readcommon.MalformedThreadCount(nodes); malformed > 0 {
+		st.warn(fmt.Sprintf("live thread recheck: %d malformed thread node(s) counted as "+
+			"unresolved (fail-closed)", malformed))
 	}
-	st.live.open = n
-	if n > st.nAllOpen {
+	st.live.open = readcommon.OpenThreadCount(nodes)
+	if st.live.open > st.nAllOpen {
 		st.live.status = liveFail
 		return
 	}
 	st.live.status = livePass
+}
+
+// commander returns the injected commander (nil when the caller set none).
+func (st *state) commander() core.Commander {
+	var commander core.Commander
+	if rt := st.req.Runtime; rt != nil {
+		commander = rt.Commander
+	}
+	return commander
 }
 
 // probeUnreachable maps a failed lookup to the live posture.
