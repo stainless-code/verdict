@@ -85,8 +85,9 @@ exit "${FAKE_COSIGN_STATUS:-0}"
 EOF
 chmod +x "$FAKEBIN/npm" "$FAKEBIN/cosign"
 
-# Local release server (python3 stdlib). Without python3 the server-backed
-# legs are skipped; every channel/delegation/refusal leg still runs.
+# Local release server (python3 stdlib). python3 is a hard prerequisite like
+# jq/shasum: the server-backed legs prove the checksum gate, self-replace, and
+# receipt update, so skipping them silently would grade a broken upgrade green.
 SERVER_PID=''
 PORT=''
 cleanup() {
@@ -125,7 +126,7 @@ PY
   PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
   [ -n "$PORT" ] || { bad "local release server did not report a port"; SERVER_PID=''; }
 else
-  echo "  skip: python3 unavailable; server-backed legs skipped"
+  bad "python3 unavailable; server-backed upgrade legs cannot run (install python3)"
 fi
 BASE_URL=""
 [ -z "$PORT" ] || BASE_URL="http://127.0.0.1:$PORT"
