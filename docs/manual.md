@@ -603,37 +603,51 @@ scalar (shown as `cached=N` on the human line) while totals stay
 `input + output` exactly; the script never prices cached tokens (`est_usd`
 remains the agent's own math, as today).
 
-#### Measured usage (local harness files)
+#### Measured usage (explicit usage handoff)
 
-When a local agent-harness session file is available, the budget gate prices
-comparable runs from it instead of the self-reported `est_usd` — read locally,
-never over the network. Two shapes are supported:
+When the operator hands over usage records, the budget gate prices
+comparable runs from them instead of the self-reported `est_usd` — read
+locally, never over the network, and never discovered on its own. Point
+`VERDICT_USAGE` at one file (a single record, an array of records, or a
+`.jsonl` log with one record per line) or a directory of such files, all in
+the contract shape published as `schemas/usage.schema.json`:
 
-- **Claude Code transcripts** — `$CLAUDE_CONFIG_DIR/projects/<slug>/*.jsonl`
-  (or `~/.claude/projects/<slug>/`). The last `cost-state` entry's
-  `totalCostUSD` is the measured session total; without one, deduplicated
-  per-request `costUSD` entries sum.
-- **opencode exports** — one `opencode export <session>` JSON file (an `info`
-  object carrying `cost`/`time` plus `messages`) named by
-  `VERDICT_HARNESS_USAGE` (a file, a directory of `*.json`/`*.jsonl`, or a
-  path list).
+```json
+{
+  "schema_version": "1",
+  "source": "claude-code",
+  "model": "claude-sonnet-4-5",
+  "tokens": { "input": 3000, "output": 170, "cache_read": 800 },
+  "usd": 2.5,
+  "started_at": "2026-09-01T10:00:00Z",
+  "ended_at": "2026-09-01T10:02:00Z"
+}
+```
 
-A session is joined to a `.review/*/cost.json` record only when its window
-brackets that record's mtime, so a transcript from another checkout — or an
-unrelated coding session — never prices a review. The measured USD replaces
-the self-reported `est_usd` for that run; records without a measured twin keep
-their self-report. Tokens without a priced total are never converted to USD
-(the tool never prices tokens).
+Only `schema_version`, `source` (a free-form measurer name), and the
+`started_at`/`ended_at` window are required; `model`, `tokens`, and `usd`
+ride along when the measurer knows them. If the agent running the review
+knows its real usage, it writes one such record (see `SKILL.md`) and reports
+the path; harness exports (Claude Code transcripts, opencode exports) are
+converted with the optional scripts in `examples/usage-adapters/` — the
+binary never opens those files itself.
 
-The estimate names its basis whenever a measurement contributed:
-`data.estimate.basis` is `measured` (every priced sample in the projected tier
-came from a harness) or `mixed`, with `harness[]` naming the sources and
-`measured_runs` counting them; the human estimate line and an over-budget
-refusal carry `[measured from N harness session(s)]`. Those keys are absent —
-and the legacy output stays byte-identical — when no harness data exists, so a
-self-reported estimate is never silently labeled as measured. Other formats
-(telemetry spans, generic runner logs) are not parsed yet: export them to one
-of the two shapes above.
+A record is joined to a `.review/*/cost.json` entry only when its window
+brackets that record's mtime, so an unrelated session never prices a review.
+The handed USD replaces the self-reported `est_usd` for that run; records
+without a handed twin keep their self-report. Records without a priced
+total are never converted to USD (the tool never prices tokens).
+
+The estimate names its basis whenever a handed record contributed:
+`data.estimate.basis` is `measured` (every priced sample in the projected
+tier came from handed usage) or `mixed`, with `harness[]` naming the
+record `source` strings and `measured_runs` counting them; the human
+estimate line and an over-budget refusal carry
+`[measured from N harness session(s)]`. Those keys are absent — and the
+legacy output stays byte-identical — when nothing was handed over, so a
+self-reported estimate is never silently labeled as measured. A named path
+that is missing, oversized, or malformed refuses typed (`bad-usage`) before
+the bundle is written: an explicit handoff never silently degrades.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 

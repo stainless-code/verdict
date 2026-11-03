@@ -59,6 +59,9 @@ reachability).
 ## Ground rules
 
 No auto-updater phones home by design, and `GH_TOKEN` never leaves
-the operator's machine — please do not test with tokens or private
-data you do not own, and do not probe live infrastructure beyond a
-minimal proof of concept.
+the operator's machine — please do not test with tokens or private data
+you do not own, and do not probe live infrastructure beyond a minimal
+proof of concept. Local file scope: `verdict` opens only files it is
+explicitly handed (bundle inputs, `VERDICT_USAGE`, settings, stores it
+owns); it never discovers or opens other tools' transcripts, logs, or
+config directories.

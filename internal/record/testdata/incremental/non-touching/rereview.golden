@@ -148,7 +148,7 @@ index 3333333..4444444 100644
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "b808dfa015138773a18dec34705d865fadf84d999be227a748ebb969a58f7d20",
+  "prompts_hash": "03110b91c533583c0ebf0e79c3e973acbcbcac8787cae80e2365c8f5ebedf7d1",
   "model": null
 }
 --- file C/.review/local-kb/review.json ---

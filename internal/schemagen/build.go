@@ -115,6 +115,9 @@ type document struct {
 // interfaceType is the [reflect.Type] of any.
 var interfaceType = reflect.TypeFor[any]()
 
+// definition names the shared $defs entries reused across documents.
+const defsRecord = "record"
+
 // documents returns every published schema, in filename order.
 func documents() []document {
 	return []document{
@@ -133,7 +136,7 @@ func documents() []document {
 			title: "cost.json — agent self-reported spend record",
 			anyOf: []reflect.Type{reflect.TypeFor[CostRecord](), reflect.TypeFor[[]CostRecord]()},
 			defs: []definition{
-				{typ: reflect.TypeFor[CostRecord](), name: "record"},
+				{typ: reflect.TypeFor[CostRecord](), name: defsRecord},
 				{typ: reflect.TypeFor[ModelSpend](), name: "modelSpend"},
 			},
 			additionalProperties: true,
@@ -173,6 +176,16 @@ func documents() []document {
 			title:                "review.json — agent-written review input",
 			root:                 reflect.TypeFor[Review](),
 			defs:                 reviewDefs(),
+			additionalProperties: true,
+		},
+		{
+			name:  "usage",
+			title: "usage.json — explicitly handed spend record",
+			anyOf: []reflect.Type{reflect.TypeFor[Usage](), reflect.TypeFor[[]Usage]()},
+			defs: []definition{
+				{typ: reflect.TypeFor[Usage](), name: defsRecord},
+				{typ: reflect.TypeFor[UsageTokens](), name: "usageTokens"},
+			},
 			additionalProperties: true,
 		},
 	}

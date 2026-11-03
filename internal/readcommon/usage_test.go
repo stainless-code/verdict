@@ -1,11 +1,14 @@
 package readcommon_test
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -20,127 +23,180 @@ func writeUsageFixture(t *testing.T, path, content string) {
 	}
 }
 
-// TestReadClaudeTranscript proves the Claude Code reader prefers the
-// authoritative cost-state snapshot, dedupes repeated request lines, and
-// keeps transcript timestamps.
-func TestReadClaudeTranscript(t *testing.T) {
+// usageRefusalCode proves a handoff failure refuses typed as bad-usage.
+func usageRefusalCode(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("want a bad-usage refusal, got nil")
+	}
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-usage" {
+		t.Fatalf("refusal = %v, want code bad-usage", err)
+	}
+}
+
+// TestReadContractUsageObject proves one handed .json object reads its
+// source, model, tokens, priced total, and window.
+func TestReadContractUsageObject(t *testing.T) {
 	t.Parallel()
-	cwd := t.TempDir()
-	dir := filepath.Join(t.TempDir(), "projects", readcommon.ClaudeProjectSlug(cwd))
-	transcript := filepath.Join(dir, "s1.jsonl")
-	writeUsageFixture(t, transcript, `{"type":"assistant","sessionId":"s1","cwd":"`+cwd+`","timestamp":"2026-01-01T00:00:00Z","requestId":"r1","costUSD":0.10,"message":{"id":"m1"}}
-{"type":"assistant","sessionId":"s1","cwd":"`+cwd+`","timestamp":"2026-01-01T00:01:00Z","requestId":"r1","costUSD":0.10,"message":{"id":"m1"}}
-{"type":"assistant","sessionId":"s1","cwd":"`+cwd+`","timestamp":"2026-01-01T00:02:00Z","requestId":"r2","costUSD":0.20,"message":{"id":"m2"}}
-{"type":"cost-state","sessionId":"s1","cwd":"`+cwd+`","totalCostUSD":0.50,"startTime":1767225600000}
-`)
-	env := map[string]string{"CLAUDE_CONFIG_DIR": filepath.Dir(filepath.Dir(dir))}
-	usage := readcommon.ReadHarnessUsage(cwd, env)
+	file := filepath.Join(t.TempDir(), "usage.json")
+	writeUsageFixture(t, file, `{"schema_version":"1","source":"bench-harness","model":"sonnet",
+"tokens":{"input":1000,"output":50,"cache_read":800},"usd":0.42,
+"started_at":"2026-01-01T00:00:00Z","ended_at":"2026-01-01T01:00:00Z"}`)
+	usage, err := readcommon.ReadContractUsage(map[string]string{"VERDICT_USAGE": file})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(usage) != 1 {
-		t.Fatalf("usage sessions = %d, want 1", len(usage))
+		t.Fatalf("records = %d, want 1", len(usage))
 	}
-	got := usage[0]
-	if got.Source != "claude-code" || got.Session != "s1" {
-		t.Errorf("identity = %s/%s", got.Source, got.Session)
+	assertContractRecord(t, &usage[0])
+}
+
+// assertContractRecord checks one decoded usage record field by field.
+func assertContractRecord(t *testing.T, got *readcommon.ContractUsage) {
+	t.Helper()
+	assertContractIdentity(t, got)
+	assertContractPriced(t, got)
+	assertContractWindow(t, got)
+}
+
+// assertContractIdentity checks a decoded record's source, model, and
+// tokens.
+func assertContractIdentity(t *testing.T, got *readcommon.ContractUsage) {
+	t.Helper()
+	if got.Source != "bench-harness" || got.Model != "sonnet" {
+		t.Errorf("identity = %s/%s", got.Source, got.Model)
 	}
-	if got.USD == nil || *got.USD != 0.50 {
-		t.Errorf("USD = %v, want the cost-state 0.50", got.USD)
+	if !got.HasTokens || got.Input != 1000 || got.Output != 50 || got.CacheRead != 800 || got.CacheWrite != 0 {
+		t.Errorf("tokens = %+v, want input 1000 output 50 cache_read 800", got)
 	}
+}
+
+// assertContractPriced checks a decoded record's priced total.
+func assertContractPriced(t *testing.T, got *readcommon.ContractUsage) {
+	t.Helper()
+	if got.USD == nil || *got.USD != 0.42 {
+		t.Errorf("USD = %v, want 0.42", got.USD)
+	}
+}
+
+// assertContractWindow checks a decoded record's window.
+func assertContractWindow(t *testing.T, got *readcommon.ContractUsage) {
+	t.Helper()
 	if !got.Started.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("started = %v", got.Started)
 	}
-	if !got.Ended.Equal(time.Date(2026, 1, 1, 0, 2, 0, 0, time.UTC)) {
+	if !got.Ended.Equal(time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)) {
 		t.Errorf("ended = %v", got.Ended)
 	}
 }
 
-// TestReadClaudeTranscriptFallbacks proves summed per-request costs price a
-// transcript without a cost-state, and tokens without a price stay nil.
-func TestReadClaudeTranscriptFallbacks(t *testing.T) {
+// TestReadContractUsageShapes proves the handed shapes compose: a .json
+// array reads every record, a directory reads its *.json and *.jsonl
+// entries in order while ignoring anything else, and an empty handed
+// directory reads as no measurement.
+func TestReadContractUsageShapes(t *testing.T) {
 	t.Parallel()
-	cwd := t.TempDir()
-	base := t.TempDir()
-	dir := filepath.Join(base, "projects", readcommon.ClaudeProjectSlug(cwd))
-	priced := filepath.Join(dir, "priced.jsonl")
-	writeUsageFixture(t, priced, `{"type":"assistant","sessionId":"p","cwd":"`+cwd+`","requestId":"a","costUSD":0.4}
-{"type":"assistant","sessionId":"p","cwd":"`+cwd+`","requestId":"b","costUSD":0.6}
-`)
-	tokensOnly := filepath.Join(dir, "tokens.jsonl")
-	writeUsageFixture(t, tokensOnly, `{"type":"assistant","sessionId":"t","cwd":"`+cwd+`","message":{"id":"m","usage":{"input_tokens":10,"output_tokens":5}}}
-`)
-	usage := readcommon.ReadHarnessUsage(cwd, map[string]string{"CLAUDE_CONFIG_DIR": base})
-	if len(usage) != 2 {
-		t.Fatalf("sessions = %d, want 2", len(usage))
+	dir := t.TempDir()
+	writeUsageShapes(t, dir)
+	usage, err := readcommon.ReadContractUsage(map[string]string{"VERDICT_USAGE": dir})
+	if err != nil {
+		t.Fatal(err)
 	}
-	byID := map[string]readcommon.HarnessUsage{}
-	for _, record := range usage {
-		byID[record.Session] = record
+	assertUsageShapes(t, usage)
+
+	if usage, err := readcommon.ReadContractUsage(map[string]string{"VERDICT_USAGE": t.TempDir()}); err != nil || len(usage) != 0 {
+		t.Fatalf("empty dir = %v/%v, want no measurement", usage, err)
 	}
-	if got := byID["p"].USD; got == nil || *got != 1.0 {
-		t.Errorf("summed USD = %v, want 1.0", got)
-	}
-	if got := byID["t"].USD; got != nil {
-		t.Errorf("token-only USD = %v, want nil (the tool never prices)", got)
+	if usage, err := readcommon.ReadContractUsage(map[string]string{}); err != nil || len(usage) != 0 {
+		t.Fatalf("unset = %v/%v, want no measurement", usage, err)
 	}
 }
 
-// TestReadHarnessUsageSkipsOtherDirectories proves a transcript from another
-// checkout never feeds this checkout's estimate.
-func TestReadHarnessUsageSkipsOtherDirectories(t *testing.T) {
-	t.Parallel()
-	cwd := t.TempDir()
-	base := t.TempDir()
-	dir := filepath.Join(base, "projects", readcommon.ClaudeProjectSlug(cwd))
-	writeUsageFixture(t, filepath.Join(dir, "other.jsonl"),
-		`{"type":"cost-state","sessionId":"o","cwd":"/somewhere/else","totalCostUSD":9.0}`)
-	if usage := readcommon.ReadHarnessUsage(cwd, map[string]string{"CLAUDE_CONFIG_DIR": base}); len(usage) != 0 {
-		t.Fatalf("other-directory session leaked: %+v", usage)
+// writeUsageShapes writes the directory-shape fixture: an array file, a
+// log file, and an ignored non-usage entry.
+func writeUsageShapes(t *testing.T, dir string) {
+	t.Helper()
+	record := `{"schema_version":"1","source":"%s","started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}`
+	writeUsageFixture(t, filepath.Join(dir, "b.json"),
+		`[`+fmt.Sprintf(record, "second")+`,`+fmt.Sprintf(record, "third")+`]`)
+	writeUsageFixture(t, filepath.Join(dir, "a.jsonl"),
+		fmt.Sprintf(record, "first")+"\n\n"+fmt.Sprintf(record, "fourth")+"\n")
+	writeUsageFixture(t, filepath.Join(dir, "notes.txt"), "not usage\n")
+}
+
+// assertUsageShapes checks the directory shape reads every record in order
+// without inventing data.
+func assertUsageShapes(t *testing.T, usage []readcommon.ContractUsage) {
+	t.Helper()
+	if len(usage) != 4 {
+		t.Fatalf("records = %d, want 4", len(usage))
+	}
+	for i, want := range []string{"first", "fourth", "second", "third"} {
+		if usage[i].Source != want {
+			t.Errorf("record %d source = %s, want %s", i, usage[i].Source, want)
+		}
+		if usage[i].HasTokens || usage[i].USD != nil {
+			t.Errorf("record %d invents data: %+v", i, usage[i])
+		}
 	}
 }
 
-// TestReadOpencodeExport proves the opencode export shape reads the session
-// total, falls back to message costs, and honors the session directory.
-func TestReadOpencodeExport(t *testing.T) {
+// TestReadContractUsageRefusals proves a broken explicit handoff refuses
+// typed — naming the file — instead of silently degrading: missing paths,
+// empty files, non-JSON, wrong stamps, missing sources, bad windows, and
+// negative numbers.
+func TestReadContractUsageRefusals(t *testing.T) {
 	t.Parallel()
-	cwd := t.TempDir()
-	total := filepath.Join(t.TempDir(), "session.json")
-	writeUsageFixture(t, total, `{"info":{"id":"ses_a","directory":"`+cwd+`","cost":1.25,`+
-		`"time":{"created":1000,"updated":2000}},"messages":[]}`)
-	messages := filepath.Join(t.TempDir(), "messages.json")
-	writeUsageFixture(t, messages, `{"info":{"id":"ses_b","directory":"`+cwd+`","time":{"created":3000,"updated":4000}},`+
-		`"messages":[{"info":{"cost":0.4}},{"info":{"cost":0.6}}]}`)
-	other := filepath.Join(t.TempDir(), "other.json")
-	writeUsageFixture(t, other, `{"info":{"id":"ses_c","directory":"/elsewhere","cost":9},"messages":[]}`)
-	env := map[string]string{"VERDICT_HARNESS_USAGE": total + string(os.PathListSeparator) + messages + string(os.PathListSeparator) + other}
-	usage := readcommon.ReadHarnessUsage(cwd, env)
-	if len(usage) != 2 {
-		t.Fatalf("sessions = %d, want 2", len(usage))
+	bad := map[string]string{
+		"empty.json":       ``,
+		"garbage.json":     `not json`,
+		"trailing.json":    `{"schema_version":"1"} {"schema_version":"1"}`,
+		"array-bad.json":   `[{"schema_version":"1","source":"x","started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"},42]`,
+		"stamp.json":       `{"schema_version":"2","source":"x","started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}`,
+		"no-source.json":   `{"schema_version":"1","started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}`,
+		"bad-start.json":   `{"schema_version":"1","source":"x","started_at":"yesterday","ended_at":"2099-01-01T00:00:00Z"}`,
+		"backwards.json":   `{"schema_version":"1","source":"x","started_at":"2099-01-01T00:00:00Z","ended_at":"2000-01-01T00:00:00Z"}`,
+		"negative.json":    `{"schema_version":"1","source":"x","usd":-1,"started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}`,
+		"tokens-lax.json":  `{"schema_version":"1","source":"x","tokens":{"input":1},"started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}`,
+		"tokens-neg.json":  `{"schema_version":"1","source":"x","tokens":{"input":1,"output":-1},"started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}`,
+		"empty-log.jsonl":  "\n  \n",
+		"bad-line.jsonl":   "{\"schema_version\":\"1\",\"source\":\"x\",\"started_at\":\"2000-01-01T00:00:00Z\",\"ended_at\":\"2099-01-01T00:00:00Z\"}\nnope\n",
+		"wrong-shape.json": `[1,2]`,
 	}
-	byID := map[string]readcommon.HarnessUsage{}
-	for _, record := range usage {
-		byID[record.Session] = record
+	dir := t.TempDir()
+	for name, content := range bad {
+		writeUsageFixture(t, filepath.Join(dir, name), content)
 	}
-	if got := byID["ses_a"]; got.Source != "opencode" || got.USD == nil || *got.USD != 1.25 {
-		t.Errorf("total session = %+v", got)
+	for name := range bad {
+		path := filepath.Join(dir, name)
+		if _, err := readcommon.ReadContractUsage(map[string]string{"VERDICT_USAGE": path}); err == nil {
+			t.Errorf("%s reads ok, want bad-usage", name)
+		} else {
+			usageRefusalCode(t, err)
+		}
 	}
-	if got := byID["ses_b"].USD; got == nil || *got != 1.0 {
-		t.Errorf("message-summed USD = %v, want 1.0", got)
-	}
+	missing := filepath.Join(t.TempDir(), "absent.json")
+	_, err := readcommon.ReadContractUsage(map[string]string{"VERDICT_USAGE": missing})
+	usageRefusalCode(t, err)
 }
 
-// TestMatchHarnessUsage proves a cost record joins the session whose window
-// brackets it, nearest end first, and that no containment reads as nil.
-func TestMatchHarnessUsage(t *testing.T) {
+// TestMatchContractUsage proves a cost record joins the usage session whose
+// window brackets it, nearest end first, and that no containment reads as
+// no measurement.
+func TestMatchContractUsage(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	usage := []readcommon.HarnessUsage{
-		{Source: "claude-code", Session: "outer", Started: start, Ended: start.Add(4 * time.Hour)},
-		{Source: "claude-code", Session: "inner", Started: start.Add(time.Hour), Ended: start.Add(2 * time.Hour)},
+	usage := []readcommon.ContractUsage{
+		{Source: "outer", Started: start, Ended: start.Add(4 * time.Hour)},
+		{Source: "inner", Started: start.Add(time.Hour), Ended: start.Add(2 * time.Hour)},
 	}
-	match := readcommon.MatchHarnessUsage(usage, start.Add(90*time.Minute))
-	if match == nil || match.Session != "inner" {
+	match := readcommon.MatchContractUsage(usage, start.Add(90*time.Minute))
+	if match == nil || match.Source != "inner" {
 		t.Fatalf("match = %+v, want inner", match)
 	}
-	if got := readcommon.MatchHarnessUsage(usage, start.Add(5*time.Hour)); got != nil {
+	if got := readcommon.MatchContractUsage(usage, start.Add(5*time.Hour)); got != nil {
 		t.Fatalf("outside match = %+v, want nil", got)
 	}
 }

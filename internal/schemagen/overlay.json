@@ -111,5 +111,19 @@
       "/$defs/comment/properties/in-bounds": "Hyphenated in agent input; absent reads true.",
       "/$defs/comment/properties/kb": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop."
     }
+  },
+  "usage": {
+    "descriptions": {
+      "": "What the agent or a usage adapter hands the budget gate through VERDICT_USAGE: one measured run per record (a single object) or a run log (an array). The gate joins each record against past cost records by its window and prices comparable runs from usd, preferring it over the self-reported est_usd; records without usd never become a measured claim. verdict never discovers these files — the operator names them explicitly. Unknown keys are ignored, so newer writers stay readable.",
+      "/$defs/record/properties/source": "Free-form measurer name (e.g. claude-code, opencode); carried into data.estimate.harness when the record prices a run.",
+      "/$defs/record/properties/model": "Model that burned the tokens, when known; absent reads unknown, never priced.",
+      "/$defs/record/properties/tokens": "Token counts for the window, when known; absent reads as unknown, never zero.",
+      "/$defs/record/properties/usd": "Measured session price in USD, when the measurer priced it; the tool never prices tokens itself.",
+      "/$defs/record/properties/started_at": "Window start (RFC 3339); the joined cost record's mtime must fall inside it.",
+      "/$defs/record/properties/ended_at": "Window end (RFC 3339), never before the start.",
+      "/$defs/usageTokens": "Token counts for one usage record: input and output plus the provider-reported cache subsets.",
+      "/$defs/usageTokens/properties/cache_read": "Input tokens served from cache; a subset of input, never an addition.",
+      "/$defs/usageTokens/properties/cache_write": "Input tokens spent writing the cache; a subset of input, never an addition."
+    }
   }
 }

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VERDICT_USAGE_DIR=\"$HOME/.verdict/usage\" /path/to/examples/usage-adapters/claude-code/on-stop.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -149,14 +149,14 @@ func TestPickEstimateTier(t *testing.T) {
 	}
 }
 
-// TestPickEstimateTierMeasured proves a joined harness measurement prices
-// the run and names its session source, while the self-reported value stays
+// TestPickEstimateTierMeasured proves a handed usage record prices
+// the run and names its free-form source, while the self-reported value stays
 // the fallback for runs with no measured twin.
 func TestPickEstimateTierMeasured(t *testing.T) {
 	t.Parallel()
 	measured := 0.75
 	recs := []costRec{
-		{tier: "standard", usd: "5.00", has: true, measured: &measured, usageSource: "claude-code"},
+		{tier: "standard", usd: "5.00", has: true, measured: &measured, usageSource: "bench-harness"},
 		{tier: "standard", usd: "0.25", has: true},
 	}
 	tier, runs, stat, ok := pickEstimateTier(recs)
@@ -166,7 +166,7 @@ func TestPickEstimateTierMeasured(t *testing.T) {
 	if stat.mean != "0.5" || stat.priced != 2 || stat.measured != 1 {
 		t.Fatalf("stat = %+v, want mean 0.5 with 1 measured of 2 priced", stat)
 	}
-	if len(stat.harness) != 1 || stat.harness[0] != "claude-code" {
+	if len(stat.harness) != 1 || stat.harness[0] != "bench-harness" {
 		t.Fatalf("harness = %v", stat.harness)
 	}
 }

@@ -112,3 +112,14 @@ to write dispatches, lenses run under it.
 
 There is no server side: anything not in this folder or reachable via `gh` doesn't
 exist for this run — don't look for it.
+
+## Spend tracking (usage handoff, optional)
+
+If you know this run's real usage — tokens in/out (plus cached), USD, and the
+run window — write one usage record per `schemas/usage.schema.json` and report
+its path. The operator hands it to the next `fetch` via
+`VERDICT_USAGE=<file|dir>` so the spend budget prices from measured runs.
+Otherwise write nothing: the budget estimate stays self-reported, never
+guessed. Harness exports (Claude Code transcripts, opencode exports) are
+outside the binary — convert them with `examples/usage-adapters/` first;
+`verdict` never reads those files itself.

@@ -92,7 +92,9 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 	if !st.hasBudget {
 		return nil
 	}
-	costEstimate(r, st)
+	if err := costEstimate(r, st); err != nil {
+		return err
+	}
 	st.budgetJSON = jq.NewObj("usd", jsonNumber(st.budgetUSD), keySource, st.budgetSrc, "consented", consent)
 	tierVal := any(nil)
 	if st.estTier != "" {
@@ -115,8 +117,8 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 }
 
 // estimateObject renders the estimate summary. The basis/harness/measured_runs
-// keys appear only when a harness measurement contributed, so the legacy
-// self-reported estimate keeps its exact bytes.
+// keys appear only when a handed usage record priced a comparable run, so the
+// legacy self-reported estimate keeps its exact bytes.
 func estimateObject(st *budgetState, tierVal any) *jq.Obj {
 	o := jq.NewObj("tier", tierVal, "projected_usd", jsonFloat(st.estUSD), "comparable_runs", st.estRuns)
 	if st.measuredRuns == 0 {
@@ -145,20 +147,25 @@ func (st *budgetState) basisNote() string {
 
 // costEstimate ports cost_estimate: the mean est_usd of the most-run effort
 // tier across every .review/*/cost.json record (ties break toward the
-// deeper tier). Unknown history reads unknown, never blocking.
-func costEstimate(r *session, st *budgetState) {
+// deeper tier). Unknown history reads unknown, never blocking. Handed usage
+// records price the runs they bracket; a broken handoff refuses typed.
+func costEstimate(r *session, st *budgetState) error {
 	st.estUSD, st.estRuns, st.estTier, st.tierRuns = "", 0, "", 0
-	recs := estimateRecs(r)
+	usage, err := measuredUsage(r)
+	if err != nil {
+		return err
+	}
+	recs := estimateRecs(r, usage)
 	if len(recs) == 0 {
 		fmt.Fprintln(r.Human, "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)")
-		return
+		return nil
 	}
 	tier, tierRuns, stat, ok := pickEstimateTier(recs)
 	st.estRuns = len(recs)
 	if !ok {
 		fmt.Fprintln(r.Human, "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)")
 		st.estRuns = 0
-		return
+		return nil
 	}
 	st.estTier, st.tierRuns = tier, tierRuns
 	st.recordBasis(stat)
@@ -166,7 +173,7 @@ func costEstimate(r *session, st *budgetState) {
 		fmt.Fprintf(r.Human, "» estimate: tier %s from %d comparable run(s) — projected cost unknown "+
 			"(none reported est_usd); budget $%s (%s) unenforced on unknown\n",
 			tier, tierRuns, st.budgetUSD, st.budgetSrc)
-		return
+		return nil
 	}
 	st.estUSD = stat.mean
 	line := fmt.Sprintf("» estimate: tier %s ~$%s/run from %d comparable run(s) — ", tier, stat.mean, st.estRuns)
@@ -176,6 +183,7 @@ func costEstimate(r *session, st *budgetState) {
 		line += fmt.Sprintf("within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 	}
 	fmt.Fprintln(r.Human, line+st.basisNote())
+	return nil
 }
 
 // recordBasis carries the measured split of the picked tier into the gate's
@@ -195,8 +203,8 @@ func (st *budgetState) recordBasis(stat tierStat) {
 }
 
 // costRec is one normalized cost record: effort tier plus optional est_usd.
-// measured carries the joined harness session cost for the run that wrote
-// this file (the last record of an array), which wins over the self-report.
+// measured carries the handed usage cost for the run that wrote this file
+// (the last record of an array), which wins over the self-report.
 type costRec struct {
 	measured    *float64
 	tier        string
@@ -306,7 +314,7 @@ func pickEstimateTier(recs []costRec) (tier string, tierRuns int, stat tierStat,
 
 // tierStats ports one tier's accumulation: the run count plus the priced
 // mean (-1 with no priced runs, so unpriced tiers still compete on runs).
-// A joined harness measurement prices that run and names its source.
+// A handed usage record prices that run and names its source.
 func tierStats(recs []costRec, t string) tierStat {
 	var st tierStat
 	var sum float64
@@ -328,7 +336,7 @@ func tierStats(recs []costRec, t string) tierStat {
 // estimateRecs ports the cost-history sweep: every readable record
 // accumulates, while unreadable files warn once (the shell accumulates
 // "$bad$f " per file, trailing space included).
-func estimateRecs(r *session) []costRec {
+func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	var recs []costRec
 	var bad []string
 	files, gerr := filepath.Glob(".review/*/cost.json")
@@ -336,7 +344,6 @@ func estimateRecs(r *session) []costRec {
 		files = nil
 	}
 	slices.Sort(files)
-	usage := measuredUsage(r)
 	for _, f := range files {
 		fileRecs, ok := readCostRecs(f)
 		if !ok {
@@ -352,26 +359,23 @@ func estimateRecs(r *session) []costRec {
 	return recs
 }
 
-// measuredUsage reads the local harness sessions for this checkout. A read
-// failure is not a gate failure: no measurement simply leaves the
-// self-reported record in charge.
-func measuredUsage(r *session) []readcommon.HarnessUsage {
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "."
-	}
-	return readcommon.ReadHarnessUsage(cwd, r.env)
+// measuredUsage reads the usage records the operator handed over via
+// VERDICT_USAGE. A broken handoff refuses typed at the gate; no handoff
+// simply leaves the self-reported record in charge.
+func measuredUsage(r *session) ([]readcommon.ContractUsage, error) {
+	//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message (R4)
+	return readcommon.ReadContractUsage(r.env)
 }
 
-// joinMeasured attaches the harness session that brackets the cost file's
-// mtime to the run that wrote it (the last record of a re-review array).
-// Absent measurement leaves every record untouched.
-func joinMeasured(fileRecs []costRec, usage []readcommon.HarnessUsage, path string) {
+// joinMeasured attaches the handed usage record whose window brackets the
+// cost file's mtime to the run that wrote it (the last record of a
+// re-review array). No matching record leaves every record untouched.
+func joinMeasured(fileRecs []costRec, usage []readcommon.ContractUsage, path string) {
 	info, err := os.Stat(path)
 	if err != nil || len(fileRecs) == 0 {
 		return
 	}
-	match := readcommon.MatchHarnessUsage(usage, info.ModTime())
+	match := readcommon.MatchContractUsage(usage, info.ModTime())
 	if match == nil || match.USD == nil {
 		return
 	}
@@ -394,7 +398,7 @@ func addTierSample(r costRec, sum float64, st tierStat) (float64, tierStat) {
 	return sum, st
 }
 
-// tierPriced ports one priced record: the joined harness measurement wins,
+// tierPriced ports one priced record: the handed usage cost wins,
 // else the self-reported usd parses into the sum.
 func tierPriced(r costRec, sum float64, priced int) (float64, int) {
 	if r.measured != nil {

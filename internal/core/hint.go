@@ -36,6 +36,8 @@ var hintRules = []HintRule{
 	{isCode("approve-blocked"), "try: triage the findings or re-run with --force"},
 	{isCode("budget-exceeded"), "try: re-run with --consent-over-budget once the spend " +
 		"is approved, or raise REVIEW_BUDGET_USD/.review/budget"},
+	{isCode("bad-usage"), "try: fix the usage record named above to match " +
+		"schemas/usage.schema.json, then re-run"},
 	{isCode("duplicate-payload"), "try: re-run with --force to repost the identical payload"},
 	{isCode("already-posted"), "try: re-run with --force to override, or fetch --base-sha " +
 		"<posted-head> for the delta and review it instead"},

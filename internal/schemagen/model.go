@@ -159,8 +159,8 @@ type ShowData struct {
 }
 
 // FetchEstimate is the fetch verb's optional data.estimate object: the
-// projected per-run cost plus, when a local harness measurement priced a
-// comparable run, the measured basis it was built from.
+// projected per-run cost plus, when an explicitly handed usage record priced
+// a comparable run, the measured basis it was built from.
 type FetchEstimate struct { //nolint:govet // field order is the published property order
 	Tier           *string  `json:"tier"`
 	ProjectedUSD   *float64 `json:"projected_usd"`
@@ -168,4 +168,28 @@ type FetchEstimate struct { //nolint:govet // field order is the published prope
 	Basis          string   `json:"basis"           optional:"true"`
 	Harness        []string `json:"harness"         optional:"true"`
 	MeasuredRuns   int      `json:"measured_runs"   optional:"true"`
+}
+
+// Usage is one explicitly handed spend record (or one element of an array),
+// read from VERDICT_USAGE and published as schemas/usage.schema.json. The
+// agent or a usage adapter writes it; the budget gate joins it against past
+// cost records by window. Tokens without a priced total never become a
+// measured claim.
+type Usage struct {
+	SchemaVersion string       `const:"1"              json:"schema_version"`
+	Model         string       `json:"model,omitempty"`
+	Tokens        *UsageTokens `anyOf:"null"           json:"tokens,omitempty"`
+	USD           *float64     `json:"usd,omitempty"   min:"0"`
+	Source        string       `json:"source"`
+	StartedAt     string       `format:"date-time"     json:"started_at"`
+	EndedAt       string       `format:"date-time"     json:"ended_at"`
+}
+
+// UsageTokens is one usage record's token counts: input and output when the
+// measurer knows them, cache subsets when the provider reports them.
+type UsageTokens struct { //nolint:govet // field order is the published property order
+	Input      float64  `json:"input"                 min:"0"`
+	Output     float64  `json:"output"                min:"0"`
+	CacheRead  *float64 `json:"cache_read,omitempty"  min:"0"`
+	CacheWrite *float64 `json:"cache_write,omitempty" min:"0"`
 }

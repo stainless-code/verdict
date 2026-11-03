@@ -28,6 +28,10 @@ var publishedSemantics = map[string]string{
 	"post.schema.json":     "f706cc28f621eb668c8d621b03013f65f706a352d0ddc4da8b64068f98a3f100",
 	"record.schema.json":   "6e14c660471d31aa6a88e0cff787860a6ecdd0302cdc527eb511dde8542767fc",
 	"review.schema.json":   "75471bb0d98ac1ddbc07be485ef00d7a2777501cb0756d50fbc100b2cb054423",
+	// 08-redesign: additive usage.schema.json (new handoff document; no
+	// existing schema property, required key, or type changed — the
+	// envelope fetchEstimate entry from f3a22047 is untouched).
+	"usage.schema.json": "95da162703b04193308f8c55cef95affefb4ecd278cc09e5ea3801e061be999e",
 }
 
 // TestGeneratedSchemasPreservePublishedSemantics proves the generated files
