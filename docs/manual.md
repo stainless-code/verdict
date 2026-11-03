@@ -1256,6 +1256,27 @@ through any of these reopens the mandate discussion.
   as found, never "complete");
 - container/VM escape (out of scope by recipe, not by gate).
 
+## Child environment (what inherits, what is explicit)
+
+Documented so nobody "fixes" it: verdict's children do not all get the same
+environment, and the split is deliberate (the security rationale is in
+`SECURITY.md` § Child process environment).
+
+- The `gh` and `git` calls **verdict issues itself** (fetch, post, triage,
+  `doctor`, and the base-owned control reads) **inherit your environment**.
+  That is the point: they must use your `gh` auth and your git config,
+  because verdict is a local CLI working on your behalf.
+- The **agent-written `verifyCmd`** runs under `bash -c` with an **explicit**
+  environment — the ordered snapshot the CLI hands `verify`, not a silent
+  inheritance. The same snapshot is the redaction list for the recorded tail,
+  so a token you exported is scrubbed from `.verify.out` and `patch.json`.
+
+In tests the counterpart is `internal/testenv`: every harness that spawns
+`git`, `gh`, or `verdict` builds a fixed, secret-free child environment
+(secret-shaped names and harness knobs dropped, git configuration pinned) and
+never inherits the runner's. Production inherits the operator's environment on
+purpose; tests never do.
+
 ## Over-cap diffs (chunked fetch + manual recipe)
 
 Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names

@@ -64,6 +64,34 @@ vulnerabilities in `apps/docs` build-time dependencies that never
 reach the published static site (still reportable, assessed by
 reachability).
 
+## Child process environment
+
+Verdict spawns two kinds of child, and their environments differ on purpose.
+Do not "fix" the inherited side: it is the documented local posture.
+
+- **Inherited: the fixed `gh` and `git` argv verdict itself issues** (fetch,
+  post, triage, `doctor`, and the base-owned control reads). These run with
+  the developer's environment because verdict is a local CLI acting for the
+  operator: the calls must use the operator's existing `gh` auth and git
+  configuration, and shadowing either would break the command rather than
+  harden it. The spawn site passes no environment, so the child inherits the
+  parent's (`internal/core/exec`).
+- **Explicit: the agent-written `bash -c` verify command.** `verify` runs the
+  agent's claimed proof with an environment the caller handed in as an
+  ordered snapshot (`internal/core/verify/service.go`), never by inheriting
+  silently. The same snapshot is the redaction list for the recorded tail, so
+  a token the operator passed to verdict is scrubbed from `.verify.out` and
+  `patch.json`. This is the untrusted side: the command text is agent output,
+  so what the child can see is decided at the edge instead of defaulting to
+  whatever the shell happened to export.
+
+The hermetic counterpart for tests is `internal/testenv`: every harness that
+spawns `git`, `gh`, or the verdict binary builds its child environment there.
+It drops secret-shaped variables (`*_TOKEN`, `*_KEY`, `*_SECRET`, `AWS_*`) and
+harness knobs (`REVIEW_*`, `GH_*`, `GITHUB_*`, `GIT_CONFIG_*`), and pins git's
+configuration, so a test never inherits the runner's environment. Production
+inherits the operator's, tests never do — both are deliberate.
+
 ## Ground rules
 
 No auto-updater phones home by design, and `GH_TOKEN` never leaves
