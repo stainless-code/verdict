@@ -44,6 +44,10 @@ var version string
 // envHome is the HOME fallback key for hermetic test runs.
 const envHome = "HOME"
 
+// verbSkill is the skill verb name, shared by the dispatch, arity, and help
+// tables.
+const verbSkill = "skill"
+
 // verbsHint lists the verbs the CLI owns, in the frozen unknown-cmd order.
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|skill|upgrade|uninstall"
@@ -208,7 +212,7 @@ func dispatchMutating(
 		return learn.Run(ctx, r, rest, env), true
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env}), true
-	case "skill":
+	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
 	case "upgrade":
 		return runUpgrade(ctx, r, rest, env), true

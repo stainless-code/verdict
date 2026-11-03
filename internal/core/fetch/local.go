@@ -258,7 +258,7 @@ func localFinish(
 	}
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", dir, dir, dir, dir, total)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/source.json + %s to any agent; ask it to write %s/review.json\n", dir, diffFeed(dir, chunkActive, "full.diff"), dir)
+		"%s/source.json + %s to any agent; ask it to write %s/review.json\n", dir, diffFeed(dir, chunkActive, fullDiffFile), dir)
 	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, mode.headSHA, mode.baseSHA, fc.source)
 	if ref != nil {
 		return nil, "", ref

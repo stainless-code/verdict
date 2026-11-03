@@ -4,7 +4,7 @@ import "strings"
 
 // ownHelpVerbs keep their own `--help` (a grammar the shared block cannot
 // carry); every other verb answers `<verb> --help` with just its block.
-var ownHelpVerbs = map[string]bool{"skill": true, "mcp": true}
+var ownHelpVerbs = map[string]bool{verbSkill: true, "mcp": true}
 
 // verbUsage returns one verb's usage block: its header line(s) through the
 // indented continuation lines, "" when the verb has no entry.

@@ -287,7 +287,7 @@ func dumpChunkDiffs(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 // writeChunkedDiffs fences the chunk diffs as one document, keeping the
 // newline guard so the closing fence never joins the last diff line.
 func writeChunkedDiffs(sb *strings.Builder, nonce, dir, chunked string) {
-	sb.WriteString(fenceOpen(nonce, "full.diff"))
+	sb.WriteString(fenceOpen(nonce, fullDiffFile))
 	sb.WriteString(chunked)
 	if last := lastChunkDiff(dir); last != "" {
 		if raw, err := os.ReadFile(last); err == nil && len(raw) > 0 && raw[len(raw)-1] != '\n' {
@@ -306,7 +306,7 @@ func dumpFullDiffFallback(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 			miss, ctx.dir))
 	}
 	if _, err := os.Stat(ctx.dir + suffixFullDiff); err == nil {
-		sb.WriteString(fenceSection(nonce, "full.diff", ctx.dir+suffixFullDiff))
+		sb.WriteString(fenceSection(nonce, fullDiffFile, ctx.dir+suffixFullDiff))
 	}
 }
 

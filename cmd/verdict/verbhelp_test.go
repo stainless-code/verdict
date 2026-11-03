@@ -11,14 +11,14 @@ import (
 func TestVerbHelpPrintsOnlyThatVerb(t *testing.T) {
 	hermeticEnv(t)
 	for _, tc := range []struct {
-		args    []string
 		want    string
 		notWant string
+		args    []string
 	}{
-		{[]string{"post", "--help"}, "  post  <owner/repo> <pr>", "  fetch <owner/repo>"},
-		{[]string{"post", "acme/app", "7", "-h"}, "--review-file", "  triage <owner/repo>"},
-		{[]string{"learn", "--help"}, "learn --retire <id>", "  init ["},
-		{[]string{"doctor", "--help"}, "  doctor [--json]", "usage: verdict"},
+		{want: "  post  <owner/repo> <pr>", notWant: "  fetch <owner/repo>", args: []string{"post", "--help"}},
+		{want: "--review-file", notWant: "  triage <owner/repo>", args: []string{"post", "acme/app", "7", "-h"}},
+		{want: "learn --retire <id>", notWant: "  init [", args: []string{"learn", "--help"}},
+		{want: "  doctor [--json]", notWant: "usage: verdict", args: []string{"doctor", "--help"}},
 	} {
 		code, out, derr := runCapture(t, tc.args)
 		if code != 0 || derr != "" || !strings.Contains(out, tc.want) || strings.Contains(out, tc.notWant) {

@@ -40,6 +40,9 @@ const (
 	keyTitle       = "title"
 	keyURL         = "url"
 
+	// fullDiffFile names the whole-diff artifact in next-step text and dumps.
+	fullDiffFile = "full.diff"
+
 	// Bundle path suffixes (dir + suffix, like record's prSuffix).
 	suffixChunks        = "/chunks/"
 	suffixChunkManifest = "/chunks/manifest.json"

@@ -238,7 +238,7 @@ var bareVerbs = map[string]bool{
 	"doctor":     true,
 	"learn":      true,
 	"init":       true,
-	"skill":      true,
+	verbSkill:    true,
 	"upgrade":    true,
 	"uninstall":  true,
 }

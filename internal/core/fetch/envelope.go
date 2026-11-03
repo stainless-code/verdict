@@ -21,7 +21,7 @@ func fetchTail(
 ) (*core.FetchData, string, error) {
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, "full.diff") + " to any agent; ask it to write " + dir + "/review.json"
+		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + " to any agent; ask it to write " + dir + "/review.json"
 	if req.JSONMode {
 		return writeFetchTailJSON(ctx2, f, budget, fcap, chunkJSON, incBase, next)
 	}
@@ -214,7 +214,7 @@ func fetchData(
 ) *core.FetchData {
 	artifacts := jq.NewObj(
 		"PR.json", ctx2.dir+suffixPRJSON,
-		"full.diff", ctx2.dir+suffixFullDiff,
+		fullDiffFile, ctx2.dir+suffixFullDiff,
 		"toc.txt", ctx2.dir+"/toc.txt",
 		"roles.txt", ctx2.dir+"/roles.txt",
 		"reviews.json", ctx2.dir+suffixReviewsJSON,
@@ -336,7 +336,7 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 func localArtifacts(dir string) *jq.Obj {
 	artifacts := jq.NewObj(
 		"source.json", dir+"/source.json",
-		"full.diff", dir+suffixFullDiff,
+		fullDiffFile, dir+suffixFullDiff,
 		"toc.txt", dir+"/toc.txt",
 		"roles.txt", dir+"/roles.txt",
 		"sensitive.txt", sensitiveVal(dir),
@@ -364,7 +364,8 @@ func fetchTailLocal(
 	listed string, total, adds, dels int,
 ) (*core.FetchData, string, error) {
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, "full.diff") + " to any agent; ask it to write " + ctx2.dir + "/review.json"
+		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) +
+		" to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {
 		return nil, "", err
