@@ -15,8 +15,16 @@ type FetchFlags struct {
 	ShowPrompts   bool
 	ChunkFlag     bool
 	HeadControls  bool
-	HasBase       bool
-	HasProvider   bool
+	HasBase       bool `json:"-"`
+	HasProvider   bool `json:"-"`
+}
+
+// Presences lists the presence bits JSON transports derive for fetch.
+func (f *FetchFlags) Presences() []Presence {
+	return []Presence{
+		{Name: "HasBase", Value: f.BaseSHA, Flag: &f.HasBase},
+		{Name: "HasProvider", Value: f.Provider, Flag: &f.HasProvider},
+	}
 }
 
 // FetchLocalFlags carries the resolved fetch-local options.
@@ -26,12 +34,19 @@ type FetchLocalFlags struct {
 	StashN        string
 	Paths         []string
 	Staged        bool
-	HasStash      bool
+	HasStash      bool `json:"-"`
 	Worktree      bool
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool
 	HeadControls  bool
+}
+
+// Presences lists the presence bits JSON transports derive for fetch-local.
+func (f *FetchLocalFlags) Presences() []Presence {
+	return []Presence{
+		{Name: "HasStash", Value: f.StashN, Flag: &f.HasStash},
+	}
 }
 
 // FetchRequest is the fetch service invocation: the read runtime and

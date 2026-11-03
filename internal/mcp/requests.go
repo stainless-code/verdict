@@ -124,8 +124,7 @@ func wireFetch(b *bindings, req *core.FetchRequest) {
 	req.Warnings = b.warningList()
 	req.Human = b.stderr
 	req.Diag = b.stderr
-	req.Flags.HasBase = req.Flags.BaseSHA != ""
-	req.Flags.HasProvider = req.Flags.Provider != ""
+	core.DerivePresences(&req.Flags)
 }
 
 // decodeFetchLocal fills fetch-local's request.
@@ -155,7 +154,7 @@ func wireFetchLocal(b *bindings, req *core.FetchLocalRequest) {
 	req.Warnings = b.warningList()
 	req.Human = b.stderr
 	req.Diag = b.stderr
-	req.Flags.HasStash = req.Flags.StashN != ""
+	core.DerivePresences(&req.Flags)
 }
 
 // decodeFix fills fix's request.

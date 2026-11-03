@@ -47,9 +47,6 @@ var internalFieldNames = map[string]bool{
 	"Environ":        true,
 	"JSONMode":       true,
 	"Interactive":    true,
-	"HasBase":        true,
-	"HasProvider":    true,
-	"HasStash":       true,
 	"ReportWarnings": true,
 }
 
