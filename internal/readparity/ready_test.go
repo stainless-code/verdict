@@ -33,14 +33,17 @@ exit 1
 `
 
 // writeStub writes an executable gh stub with the given script, returning
-// extraEnv that puts it first on PATH for both sides.
+// extraEnv that puts it first on PATH for both sides. The stub goes through
+// harness.WriteStubAt so Windows gets the .exe launcher beside the script
+// (exec.LookPath resolves only PATHEXT names there), and PATH joins with the
+// host separator.
 func writeStub(t *testing.T, script string, extra map[string]string) map[string]string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(dir+"/gh", []byte(script), 0o755); err != nil {
+	if err := harness.WriteStubAt(dir, "gh", script); err != nil {
 		t.Fatal(err)
 	}
-	env := map[string]string{"PATH": dir + ":" + os.Getenv("PATH")}
+	env := map[string]string{"PATH": dir + string(os.PathListSeparator) + os.Getenv("PATH")}
 	maps.Copy(env, extra)
 	return env
 }

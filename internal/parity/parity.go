@@ -241,20 +241,28 @@ func allStubs() []stubDef {
 	return out
 }
 
-// WriteStub plants one executable stub script in the stub directory.
+// WriteStub plants one executable stub script in the shared stub directory.
 // Windows [exec.LookPath] resolves only PATHEXT names, so Windows also gets a
 // stubshim copy named name.exe beside the extensionless script: the binary
 // under test then finds the stub (never the runner's real tool) and the shim
 // hands the script to bash.
 func (h *Harness) WriteStub(name, script string) error {
-	if err := os.WriteFile(filepath.Join(h.StubBin, name), []byte(script), stubPerm); err != nil {
+	return h.WriteStubAt(h.StubBin, name, script)
+}
+
+// WriteStubAt plants one executable stub script in dir, with the same
+// Windows launcher as [Harness.WriteStub]. Per-case stubs pass a fresh
+// t.TempDir so parallel legs keep distinct behavior instead of overwriting
+// the shared stub directory.
+func (h *Harness) WriteStubAt(dir, name, script string) error {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), stubPerm); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return fmt.Errorf("write %s stub: %v", name, err)
 	}
 	if h.shim == "" {
 		return nil
 	}
-	if err := copyFile(h.shim, filepath.Join(h.StubBin, name+".exe")); err != nil {
+	if err := copyFile(h.shim, filepath.Join(dir, name+".exe")); err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return fmt.Errorf("write %s exe stub: %v", name, err)
 	}
