@@ -11,7 +11,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -78,25 +81,78 @@ func edgeRecord(t *testing.T, dir string) map[string]any {
 	return doc
 }
 
+// readPID reads one pid file the verify child wrote.
+func readPID(t *testing.T, path string) int {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read pid file %s: %v", path, err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 0 {
+		t.Fatalf("pid file %s = %q: %v", path, raw, err)
+	}
+	return pid
+}
+
+// requireProcessGone proves the pid is dead, polling past the reparent/reap
+// window. Windows needs a different liveness API; its tree kill is covered
+// by core/exec's Windows tests.
+func requireProcessGone(t *testing.T, pid int) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		t.Fatalf("find pid %d: %v", pid, err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			_ = proc.Kill() //nolint:errcheck // best-effort cleanup before the failure
+			t.Fatalf("pid %d survived the verify tree kill", pid)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// verifyMarker reads the recorded .verify.timeout marker.
+func verifyMarker(t *testing.T, dir string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.timeout"))
+	if err != nil {
+		t.Fatalf("read .verify.timeout: %v", err)
+	}
+	return string(raw)
+}
+
 // TestVerifyContractTimeoutTreeKill pins the process-group kill: a
-// grandchild that ignores SIGTERM still dies with the group, timed_out
-// records true, and the timeout marker names the seconds.
+// grandchild that ignores SIGTERM writes its pid, and the timeout must kill
+// it with the group, record timed_out, and name the seconds.
 func TestVerifyContractTimeoutTreeKill(t *testing.T) {
 	dir := t.TempDir()
-	edgePatch(t, dir, `trap '' TERM; (trap '' TERM; sleep 30) & sleep 30`)
+	edgePatch(t, dir, `trap '' TERM; (trap '' TERM; sleep 30 & echo $! > gc.pid; wait) & sleep 30`)
 	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "2")
 	rec := edgeRecord(t, dir)
 	if rec["timedOut"] != true {
 		t.Fatalf("timedOut = %v exit = %d, want true\n%v", rec["timedOut"], code, rec)
 	}
+	if got := verifyMarker(t, dir); got != "timeout after 2s\n" {
+		t.Errorf(".verify.timeout = %q, want the 2s timeout line", got)
+	}
+	requireProcessGone(t, readPID(t, filepath.Join(dir, "gc.pid")))
 }
 
 // TestVerifyContractOrphanSweep pins the decoy-exit sweep: the parent
-// exits 0 while a child outlives it, so the recorded exit stays 0 with
-// timedOut true and the orphan marker.
+// exits 0 while a grandchild outlives it, so the recorded exit stays 0 with
+// timedOut true, the orphan marker, and the grandchild dead.
 func TestVerifyContractOrphanSweep(t *testing.T) {
 	dir := t.TempDir()
-	edgePatch(t, dir, `(sleep 30 &)`)
+	edgePatch(t, dir, `(sleep 30 & echo $! > orphan.pid)`)
 	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "3")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (decoy exit)", code)
@@ -105,6 +161,10 @@ func TestVerifyContractOrphanSweep(t *testing.T) {
 	if rec["timedOut"] != true {
 		t.Fatalf("timed_out = %v, want true\n%v", rec["timedOut"], rec)
 	}
+	if got := verifyMarker(t, dir); got != "orphaned command tree killed after exit\n" {
+		t.Errorf(".verify.timeout = %q, want the orphan marker", got)
+	}
+	requireProcessGone(t, readPID(t, filepath.Join(dir, "orphan.pid")))
 }
 
 // TestVerifyContractTruncatedOutput pins the capture cap: a noisy but
