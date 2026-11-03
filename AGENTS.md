@@ -5,7 +5,8 @@ verdict conventions. Repo-specific rules live here, where any agent working in
 this checkout reads them.
 
 **Budget:** 70 lines, hard ceiling. Anything longer than a rule belongs in
-`docs/` — the operator contract is `docs/manual.md`.
+`docs/` — Go code rules in `docs/go-rules.md`, the operator contract in
+`docs/manual.md`.
 
 ## Verification ladder
 
@@ -24,6 +25,13 @@ claiming done. Each rung is a command CI runs.
    `./evals/one.sh <case>` grades one case.
 6. **Schemas** — `make schemas-check` (`cmd/schemagen` drift; part of
    `make ci-go`).
+
+## Go rules
+
+`docs/go-rules.md` carries the adopted Go rules: one line per rule with its
+`GO-<TOPIC>-<NN>` KB ID and an honest enforcement marker (gated versus
+review-only), plus the accepted deviations. Read it before writing or
+reviewing Go here.
 
 ## Hazards
 
