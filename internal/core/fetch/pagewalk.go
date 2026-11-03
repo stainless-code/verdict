@@ -7,12 +7,18 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // providerMaxPages caps every provider list walk: a broken or hostile host
 // that repeats its cursor would otherwise page forever, and ten pages is a
 // generous read for every list these hosts serve.
-const providerMaxPages = 10
+const (
+	providerMaxPages    = 10
+	forgejoPageSize     = 50
+	gitlabNotePageSize  = 100
+	azureChangePageSize = 1000
+)
 
 // pageWalk pages one provider list. first is the first page cursor; fetch
 // resolves one cursor to its page items and the next cursor ("" when the
@@ -37,6 +43,20 @@ func pageWalk(
 		cursor = next
 	}
 	return items, false, nil
+}
+
+// jsonArray decodes one JSON array response, sealing anything else as an
+// internal error the page walk can warn about.
+func jsonArray(raw string) ([]any, error) {
+	doc, err := jq.Decode([]byte(raw))
+	if err != nil {
+		return nil, err
+	}
+	list, ok := doc.([]any)
+	if !ok {
+		return nil, internalErrorf("response is not a JSON array")
+	}
+	return list, nil
 }
 
 // sameOrigin reports whether raw resolves to the same scheme and host as

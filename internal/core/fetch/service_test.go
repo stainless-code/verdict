@@ -462,3 +462,40 @@ func assertLocalFiles(t *testing.T, diff string) {
 		t.Errorf("missing source.json: %v", err)
 	}
 }
+
+// TestGitHubThreadReadFailureWarns proves a failed review/comments read
+// writes [] but carries a warning: a silent empty list would read as "no
+// prior threads" on a re-review.
+func TestGitHubThreadReadFailureWarns(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmdr := fetchHappyCommander(t)
+	cmdr.out["gh\x00api\x00repos/o/r/pulls/7/reviews\x00--paginate"] = scriptResult{
+		stderr: "gh: threads down", fail: true,
+	}
+	var human, diag bytes.Buffer
+	var streamed []string
+	resp, err := Run(context.Background(), fetchTestReq(cmdr, &human, &diag, &streamed))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !warningContains(resp.Warnings, "review read failed") {
+		t.Errorf("warnings = %v, want the review-read warning", resp.Warnings)
+	}
+	if raw, rerr := os.ReadFile(".review/7/reviews.json"); rerr != nil || string(raw) != "[]\n" {
+		t.Errorf("reviews.json = %q, %v; want []", raw, rerr)
+	}
+	if raw, rerr := os.ReadFile(".review/7/inline.json"); rerr != nil || string(raw) != "[]\n" {
+		t.Errorf("inline.json = %q, %v", raw, rerr)
+	}
+}
+
+// warningContains reports whether any accumulated warning carries want.
+func warningContains(warnings []string, want string) bool {
+	for _, w := range warnings {
+		if strings.Contains(w, want) {
+			return true
+		}
+	}
+	return false
+}

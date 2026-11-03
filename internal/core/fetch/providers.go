@@ -113,14 +113,14 @@ func fetchGitLab(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest)
 	if err := r.needTool(binGlab); err != nil {
 		return err
 	}
-	meta, changes, err := gitlabReads(ctx, r, dir, repo, pr)
+	meta, changes, pid, err := gitlabReads(ctx, r, dir, repo, pr)
 	if err != nil {
 		return err
 	}
 	if err := gitlabDiff(ctx, r, dir, repo, pr); err != nil {
 		return err
 	}
-	if err := gitlabThreads(ctx, r, dir, repo, pr); err != nil {
+	if err := gitlabThreads(ctx, r, dir, pid, pr); err != nil {
 		return err
 	}
 	numstat := diffNumstatMap(ctx, r, dir+suffixFullDiff)
@@ -128,25 +128,26 @@ func fetchGitLab(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest)
 	return writePRJSON(dir, "GitLab MR", pr, doc, normErr)
 }
 
-// gitlabReads ports the GitLab view and changes reads: the MR metadata
-// and the diffs-or-changes payload (empty on total failure).
-func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, changes string, err error) {
+// gitlabReads ports the GitLab view and changes reads: the MR metadata, the
+// diffs-or-changes payload (empty on total failure), and the project id the
+// thread read pages by.
+func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, changes, pid string, err error) {
 	metaRes, merr := r.cliFetch(ctx, binGlab, "mr", "view", pr, flagRepo, repo, "-F", keyJSON)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
-		return "", "", werr
+		return "", "", "", werr
 	}
 	if merr != nil {
-		return "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
 			"glab mr view failed for %s!%s: %s (auth? iid?)", repo, pr, headBytes(metaRes.Stderr, numExcerpt))}
 	}
 	// The project id lookup encodes `repo\n`: `jq -sRr @uri <<<"$repo"`
 	// slurps the herestring's trailing newline into the encoding.
 	pidRes, perr := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+url.PathEscape(repo+newline), "--jq", ".id")
 	if perr != nil {
-		return "", "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
+		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
 	}
-	pid := strings.TrimRight(pidRes.Stdout, newline)
-	return metaRes.Stdout, gitlabChanges(ctx, r, repo, pr, pid), nil
+	pid = strings.TrimRight(pidRes.Stdout, newline)
+	return metaRes.Stdout, gitlabChanges(ctx, r, repo, pr, pid), pid, nil
 }
 
 // gitlabChanges ports the diffs-or-changes read: diffs first, then
@@ -186,12 +187,9 @@ func gitlabDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: "glab mr diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
-// gitlabThreads ports the note-list read and the DiffNote split.
-func gitlabThreads(ctx context.Context, r *session, dir, repo, pr string) error {
-	notes := emptyJSONArray
-	if res, err := r.cliFetch(ctx, binGlab, "mr", "note", "list", pr, flagRepo, repo, "-F", keyJSON); err == nil {
-		notes = res.Stdout
-	}
+// gitlabThreads ports the paged note-list read and the DiffNote split.
+func gitlabThreads(ctx context.Context, r *session, dir, pid, pr string) error {
+	notes := gitlabNotes(ctx, r, pid, pr)
 	inlineDoc, reviewsDoc := splitGitLabNotes(notes)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(inlineDoc))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
@@ -200,6 +198,55 @@ func gitlabThreads(ctx context.Context, r *session, dir, repo, pr string) error 
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
 	}
 	return nil
+}
+
+// gitlabNotes pages the MR notes (per_page=100, stop on a short page): `glab
+// mr note list` has no page flags, so the walk reads the notes endpoint
+// directly. A single complete page returns verbatim; a failed page or the
+// page cap warns instead of writing an empty/partial list silently.
+func gitlabNotes(ctx context.Context, r *session, pid, pr string) string {
+	pages := 0
+	rawFirst := ""
+	items, truncated, err := pageWalk(ctx, "1", providerMaxPages,
+		func(ctx context.Context, cursor string) ([]any, string, error) {
+			page, cerr := strconv.Atoi(cursor)
+			if cerr != nil {
+				return nil, "", cerr
+			}
+			pages++
+			path := fmt.Sprintf("projects/%s/merge_requests/%s/notes?per_page=%d&page=%d",
+				pid, pr, gitlabNotePageSize, page)
+			res, ferr := r.cliFetch(ctx, binGlab, ghCmdAPI, path)
+			if ferr != nil {
+				return nil, "", ferr
+			}
+			if page == 1 {
+				rawFirst = res.Stdout
+			}
+			list, derr := jsonArray(res.Stdout)
+			if derr != nil {
+				return nil, "", internalErrorf("gitlab notes page unreadable: %v", derr)
+			}
+			next := ""
+			if len(list) >= gitlabNotePageSize {
+				next = strconv.Itoa(page + 1)
+			}
+			return list, next, nil
+		})
+	switch {
+	case err != nil:
+		r.Warn("gitlab notes paging stopped on a failed page (" +
+			headBytes(err.Error(), numExcerptShort) + ") — inline.json/reviews.json may be incomplete")
+	case truncated:
+		r.Warn(fmt.Sprintf("gitlab notes paging hit the %d-page cap — inline.json/reviews.json may be incomplete", providerMaxPages))
+	}
+	if err == nil && !truncated && pages == 1 {
+		return rawFirst
+	}
+	if items == nil {
+		items = []any{}
+	}
+	return jq.Pretty(items)
 }
 
 // splitGitLabNotes ports the DiffNote/non-DiffNote thread split. A scalar
@@ -757,27 +804,79 @@ func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []str
 	return nil
 }
 
-// forgejoFiles ports the file-list read, defaulting to [] on failure.
+// forgejoFiles ports the paged file-list read, defaulting to [] on failure.
 func forgejoFiles(ctx context.Context, r *session, auth []string, api string) string {
-	if res, err := r.curlFetch(ctx, curlArgs(auth, api+"/files")...); err == nil {
-		return res.Stdout
-	}
-	return emptyJSONArray
+	return forgejoList(ctx, r, auth, api+"/files", "file list")
 }
 
-// forgejoThreads ports the review-thread reads: reviews land raw and the
-// per-review comments concatenate, defaulting to [] on failure.
-func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api string) error {
-	revs := emptyJSONArray
-	if res, err := r.curlFetch(ctx, curlArgs(auth, api+"/reviews")...); err == nil {
-		revs = res.Stdout
+// forgejoList pages one Forgejo list endpoint (limit=50, stop on a short
+// page). A single complete page returns verbatim, so existing bundles stay
+// byte-identical; a failed page or the page cap warns instead of returning
+// the first page silently.
+func forgejoList(ctx context.Context, r *session, auth []string, base, what string) string {
+	pages := 0
+	rawFirst := ""
+	items, truncated, err := pageWalk(ctx, "1", providerMaxPages,
+		func(ctx context.Context, cursor string) ([]any, string, error) {
+			page, cerr := strconv.Atoi(cursor)
+			if cerr != nil {
+				return nil, "", cerr
+			}
+			pages++
+			u := fmt.Sprintf("%s?limit=%d&page=%d", base, forgejoPageSize, page)
+			res, ferr := r.curlFetch(ctx, curlArgs(auth, u)...)
+			if ferr != nil {
+				return nil, "", ferr
+			}
+			if page == 1 {
+				rawFirst = res.Stdout
+			}
+			list, derr := jsonArray(res.Stdout)
+			if derr != nil {
+				return nil, "", internalErrorf("forgejo %s page unreadable: %v", what, derr)
+			}
+			next := ""
+			if len(list) >= forgejoPageSize {
+				next = strconv.Itoa(page + 1)
+			}
+			return list, next, nil
+		})
+	forgejoWarnPaging(r, what, err, truncated)
+	if err == nil && !truncated && pages == 1 {
+		return rawFirst
 	}
+	if items == nil {
+		items = []any{}
+	}
+	return jq.Pretty(items)
+}
+
+// forgejoWarnPaging surfaces an early-stopped list read: the page itself is
+// kept, but the agent must know the bundle may under-cover.
+func forgejoWarnPaging(r *session, what string, err error, truncated bool) {
+	switch {
+	case err != nil:
+		r.Warn("forgejo " + what + " paging stopped on a failed page (" +
+			headBytes(err.Error(), numExcerptShort) + ") — the list may be incomplete")
+	case truncated:
+		r.Warn(fmt.Sprintf("forgejo %s paging hit the %d-page cap — the list may be incomplete", what, providerMaxPages))
+	}
+}
+
+// forgejoThreads ports the review-thread reads: reviews page fully and the
+// per-review comments concatenate, defaulting to [] (with a warning) on
+// failure.
+func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api string) error {
+	revs := forgejoList(ctx, r, auth, api+"/reviews", "reviews")
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
 	}
-	inline, ok := forgejoInline(ctx, r, api, auth, revs)
-	if !ok {
-		inline = emptyJSONArray
+	inline, complete := forgejoInline(ctx, r, api, auth, revs)
+	if !complete {
+		r.Warn("forgejo review-comment read failed — inline.json may be incomplete; the bundle may under-cover threads")
+		if inline == "" {
+			inline = emptyJSONArray
+		}
 	}
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inline)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
@@ -787,8 +886,8 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, 
 
 // forgejoInline ports the per-review comments concat: each review id's
 // comments fetched and `jq -s 'add // []'`-merged (pretty, trailing
-// newline). ok=false when any piece is undecodable, like the shell's jq
-// failure falling back to "[]".
+// newline). complete=false when a piece failed to fetch or decode, so the
+// caller warns; undecodable reviews still merge to [] like the shell.
 func forgejoInline(ctx context.Context, r *session, api string, auth []string, revs string) (string, bool) {
 	doc, err := jq.Decode([]byte(revs))
 	if err != nil {
@@ -800,15 +899,12 @@ func forgejoInline(ctx context.Context, r *session, api string, auth []string, r
 	for _, e := range forgejoItems(doc) {
 		ids = append(ids, forgejoID(e))
 	}
-	docs, ok := forgejoCommentDocs(ctx, r, api, auth, ids)
-	if !ok {
-		return "", false
-	}
+	docs, complete := forgejoCommentDocs(ctx, r, api, auth, ids)
 	merged, ok := mergeAdd(docs)
 	if !ok {
 		return "", false
 	}
-	return jq.Pretty(merged), true
+	return jq.Pretty(merged), complete
 }
 
 // forgejoItems ports the `.[]` read: array elements pass through and
@@ -833,22 +929,25 @@ func forgejoItems(doc any) []any {
 }
 
 // forgejoCommentDocs ports the per-review comments concat: each review
-// id's comments decode and merge, failing the run on garbage.
+// id's comments decode and merge; complete=false when a read failed (the
+// other reviews' comments still merge), false-and-nil on garbage.
 func forgejoCommentDocs(ctx context.Context, r *session, api string, auth, ids []string) ([]any, bool) {
 	var docs []any
+	complete := true
 	for _, id := range ids {
 		res, err := r.curlFetch(ctx, curlArgs(auth, api+"/reviews/"+id+"/comments")...)
-		part := "[]"
-		if err == nil {
-			part = res.Stdout
-		}
-		doc, err := jq.Decode([]byte(part))
 		if err != nil {
+			complete = false
+			docs = append(docs, plainValue([]any{}))
+			continue
+		}
+		doc, derr := jq.Decode([]byte(res.Stdout))
+		if derr != nil {
 			return nil, false
 		}
 		docs = append(docs, plainValue(doc))
 	}
-	return docs, true
+	return docs, complete
 }
 
 // forgejoID ports `jq -r '.[].id'`: the review id rendered for the URL.
@@ -1314,12 +1413,14 @@ func azureAPI(org, project, rname, pr, path, query, format string) []string {
 }
 
 // azureThreads ports the thread read and split: threads land as inline
-// and review files.
+// and review files, with a warning when the read fails.
 func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, pr string) error {
 	threads := emptyJSONArray
 	args := azureAPI(conn.org, conn.project, conn.rname, pr, "/threads?api-version=7.1", "value", keyJSON)
 	if res, err := r.cliFetch(ctx, binAz, args...); err == nil {
 		threads = res.Stdout
+	} else {
+		r.Warn("azure review-thread read failed — inline.json and reviews.json are empty; the bundle may under-cover threads")
 	}
 	inline, reviews := splitAzureThreads(threads)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(plainAll(inline)))); werr != nil {
@@ -1331,8 +1432,9 @@ func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, 
 	return nil
 }
 
-// azureChanges ports the iteration-changes read: the latest iteration id
-// selects the change entries, defaulting to [] on failure.
+// azureChanges ports the paged iteration-changes read: the latest iteration
+// id selects the change entries (`$top`/`$skip`, stop on a short page),
+// defaulting to [] (with a warning) on a failed page or at the page cap.
 func azureChanges(ctx context.Context, r *session, conn *azureConn, pr string) string {
 	iid := ""
 	iterArgs := azureAPI(conn.org, conn.project, conn.rname, pr, "/iterations?api-version=7.1",
@@ -1340,15 +1442,43 @@ func azureChanges(ctx context.Context, r *session, conn *azureConn, pr string) s
 	if res, err := r.cliFetch(ctx, binAz, iterArgs...); err == nil {
 		iid = strings.TrimRight(res.Stdout, newline)
 	}
-	changes := emptyJSONArray
-	if iid != "" {
-		changeArgs := azureAPI(conn.org, conn.project, conn.rname, pr,
-			"/iterations/"+iid+"/changes?api-version=7.1", "changeEntries", keyJSON)
-		if res, err := r.cliFetch(ctx, binAz, changeArgs...); err == nil {
-			changes = res.Stdout
-		}
+	if iid == "" {
+		return emptyJSONArray
 	}
-	return changes
+	items, truncated, err := pageWalk(ctx, "0", providerMaxPages,
+		func(ctx context.Context, cursor string) ([]any, string, error) {
+			skip, cerr := strconv.Atoi(cursor)
+			if cerr != nil {
+				return nil, "", cerr
+			}
+			path := fmt.Sprintf("/iterations/%s/changes?api-version=7.1&$top=%d&$skip=%d",
+				iid, azureChangePageSize, skip)
+			args := azureAPI(conn.org, conn.project, conn.rname, pr, path, "changeEntries", keyJSON)
+			res, ferr := r.cliFetch(ctx, binAz, args...)
+			if ferr != nil {
+				return nil, "", ferr
+			}
+			list, derr := jsonArray(res.Stdout)
+			if derr != nil {
+				return nil, "", internalErrorf("azure change-entry page unreadable: %v", derr)
+			}
+			next := ""
+			if len(list) >= azureChangePageSize {
+				next = strconv.Itoa(skip + azureChangePageSize)
+			}
+			return list, next, nil
+		})
+	switch {
+	case err != nil:
+		r.Warn("azure change-entry paging stopped on a failed page (" +
+			headBytes(err.Error(), numExcerptShort) + ") — the file list may be incomplete")
+	case truncated:
+		r.Warn(fmt.Sprintf("azure change-entry paging hit the %d-page cap — the file list may be incomplete", providerMaxPages))
+	}
+	if items == nil {
+		items = []any{}
+	}
+	return jq.Pretty(items)
 }
 
 // azureMergeRef ports the merge-commit/remote read: empty when absent.

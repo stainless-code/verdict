@@ -193,3 +193,172 @@ func TestAzureSetupRefusesOffOriginRemote(t *testing.T) {
 		t.Errorf("calls = %q, want only the metadata read (no credentialed fetch)", cmdr.calls)
 	}
 }
+
+// jsonRows renders a JSON array of n items from an item builder.
+func jsonRows(n int, item func(int) string) string {
+	rows := make([]string, n)
+	for i := range rows {
+		rows[i] = item(i)
+	}
+	return "[" + strings.Join(rows, ",") + "]"
+}
+
+// forgejoCall is the exact scripted argv one Forgejo list page fires.
+func forgejoCall(url string) string {
+	return "curl\x00-sf\x00-H\x00Authorization: token tok\x00" + url
+}
+
+// TestForgejoFilesPages proves the file list walks every page instead of
+// writing the 50-row default page.
+func TestForgejoFilesPages(t *testing.T) {
+	t.Parallel()
+	base := "https://example.invalid/api/v1/repos/o/r/pulls/7/files"
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		forgejoCall(base + "?limit=50&page=1"): {stdout: jsonRows(forgejoPageSize, func(int) string { return `{"id":1}` })},
+		forgejoCall(base + "?limit=50&page=2"): {stdout: `[{"id":2}]`},
+	}}
+	s, warns := newTestSession(cmdr)
+	raw := forgejoFiles(context.Background(), s, []string{"-H", "Authorization: token tok"},
+		"https://example.invalid/api/v1/repos/o/r/pulls/7")
+	items, err := jsonArray(raw)
+	if err != nil || len(items) != forgejoPageSize+1 {
+		t.Fatalf("files = %d, %v; want %d", len(items), err, forgejoPageSize+1)
+	}
+	if len(cmdr.calls) != 2 {
+		t.Errorf("calls = %q, want both pages", cmdr.calls)
+	}
+	if len(*warns) != 0 {
+		t.Errorf("warnings = %v, want none", *warns)
+	}
+}
+
+// TestForgejoListSinglePageVerbatim proves a complete one-page list keeps
+// the host's exact bytes (the golden bundles compare it).
+func TestForgejoListSinglePageVerbatim(t *testing.T) {
+	t.Parallel()
+	base := "https://example.invalid/api/v1/repos/o/r/pulls/7/reviews"
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		forgejoCall(base + "?limit=50&page=1"): {stdout: `[{"id":7}]`},
+	}}
+	s, _ := newTestSession(cmdr)
+	raw := forgejoList(context.Background(), s, []string{"-H", "Authorization: token tok"},
+		base, "reviews")
+	if raw != `[{"id":7}]` {
+		t.Errorf("raw = %q, want the host bytes", raw)
+	}
+}
+
+// TestForgejoListWarnsAtPageCap proves the cap stops a long list with a
+// warning instead of silently truncating at page one.
+func TestForgejoListWarnsAtPageCap(t *testing.T) {
+	t.Parallel()
+	base := "https://example.invalid/api/v1/repos/o/r/pulls/7/files"
+	out := map[string]scriptResult{}
+	for page := 1; page <= providerMaxPages; page++ {
+		u := fmt.Sprintf("%s?limit=%d&page=%d", base, forgejoPageSize, page)
+		out[forgejoCall(u)] = scriptResult{stdout: jsonRows(forgejoPageSize, func(int) string { return `{"id":1}` })}
+	}
+	s, warns := newTestSession(&scriptCommander{t: t, out: out})
+	raw := forgejoFiles(context.Background(), s, []string{"-H", "Authorization: token tok"},
+		"https://example.invalid/api/v1/repos/o/r/pulls/7")
+	items, err := jsonArray(raw)
+	if err != nil || len(items) != providerMaxPages*forgejoPageSize {
+		t.Fatalf("files = %d, %v", len(items), err)
+	}
+	if len(*warns) != 1 || !strings.Contains((*warns)[0], "10-page cap") {
+		t.Errorf("warnings = %v, want the cap warning", *warns)
+	}
+}
+
+// TestForgejoCommentReadFailureWarns proves a failed per-review comment
+// read surfaces instead of writing a silent empty inline list.
+func TestForgejoCommentReadFailureWarns(t *testing.T) {
+	t.Parallel()
+	api := "https://example.invalid/api/v1/repos/o/r/pulls/7"
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		forgejoCall(api + "/reviews?limit=50&page=1"): {stdout: `[{"id":7}]`},
+		forgejoCall(api + "/reviews/7/comments"):      {stderr: "curl: (22)", fail: true},
+	}}
+	s, warns := newTestSession(cmdr)
+	dir := t.TempDir()
+	if err := forgejoThreads(context.Background(), s, dir, []string{"-H", "Authorization: token tok"}, api); err != nil {
+		t.Fatal(err)
+	}
+	if len(*warns) != 1 || !strings.Contains((*warns)[0], "review-comment read failed") {
+		t.Errorf("warnings = %v, want the comment-read warning", *warns)
+	}
+}
+
+// TestGitLabNotesPages proves the MR notes walk both pages instead of one
+// `glab mr note list` page.
+func TestGitLabNotesPages(t *testing.T) {
+	t.Parallel()
+	page := func(n int) string {
+		return fmt.Sprintf("glab\x00api\x00projects/11/merge_requests/7/notes?per_page=100&page=%d", n)
+	}
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		page(1): {stdout: jsonRows(gitlabNotePageSize, func(int) string { return `{"id":1}` })},
+		page(2): {stdout: `[{"id":2}]`},
+	}}
+	s, warns := newTestSession(cmdr)
+	raw := gitlabNotes(context.Background(), s, "11", "7")
+	items, err := jsonArray(raw)
+	if err != nil || len(items) != gitlabNotePageSize+1 {
+		t.Fatalf("notes = %d, %v; want %d", len(items), err, gitlabNotePageSize+1)
+	}
+	if len(cmdr.calls) != 2 {
+		t.Errorf("calls = %q, want both pages", cmdr.calls)
+	}
+	if len(*warns) != 0 {
+		t.Errorf("warnings = %v, want none", *warns)
+	}
+}
+
+// TestGitLabNotesFailureWarns proves a failed note read surfaces before the
+// empty inline/review files land.
+func TestGitLabNotesFailureWarns(t *testing.T) {
+	t.Parallel()
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		"glab\x00api\x00projects/11/merge_requests/7/notes?per_page=100&page=1": {
+			stderr: "glab: notes unavailable", fail: true,
+		},
+	}}
+	s, warns := newTestSession(cmdr)
+	raw := gitlabNotes(context.Background(), s, "11", "7")
+	if raw != emptyJSONArray {
+		t.Errorf("notes = %q, want empty array", raw)
+	}
+	if len(*warns) != 1 || !strings.Contains((*warns)[0], "notes paging stopped") {
+		t.Errorf("warnings = %v, want the paging warning", *warns)
+	}
+}
+
+// TestAzureChangesPages proves the change-entry walk sends $top/$skip and
+// concatenates every page.
+func TestAzureChangesPages(t *testing.T) {
+	t.Parallel()
+	conn := &azureConn{org: "https://example.invalid", project: "acme", rname: "app"}
+	iter := "az\x00rest\x00--method\x00get\x00--url\x00https://example.invalid/acme/_apis/git/repositories/app" +
+		"/pullRequests/7/iterations?api-version=7.1\x00--query\x00max_by(value, &id).id\x00-o\x00tsv"
+	changes := func(skip int) string {
+		return fmt.Sprintf("az\x00rest\x00--method\x00get\x00--url\x00https://example.invalid/acme/_apis/git/repositories/app"+
+			"/pullRequests/7/iterations/3/changes?api-version=7.1&$top=1000&$skip=%d\x00--query\x00changeEntries\x00-o\x00json", skip)
+	}
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		iter:          {stdout: "3\n"},
+		changes(0):    {stdout: jsonRows(azureChangePageSize, func(int) string { return `{"item":{"path":"/f.txt"}}` })},
+		changes(1000): {stdout: `[{"item":{"path":"/last.txt"}}]`},
+	}}
+	s, warns := newTestSession(cmdr)
+	raw := azureChanges(context.Background(), s, conn, "7")
+	items, err := jsonArray(raw)
+	if err != nil || len(items) != azureChangePageSize+1 {
+		t.Fatalf("changes = %d, %v; want %d", len(items), err, azureChangePageSize+1)
+	}
+	if len(cmdr.calls) != 3 {
+		t.Errorf("calls = %d, want the iteration read plus both pages", len(cmdr.calls))
+	}
+	if len(*warns) != 0 {
+		t.Errorf("warnings = %v, want none", *warns)
+	}
+}

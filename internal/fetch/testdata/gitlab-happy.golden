@@ -53,7 +53,7 @@ CALL: mr view 4706 -R acme/app -F json
 CALL: api projects/acme%2Fapp%0A --jq .id
 CALL: api projects/11/merge_requests/4706/diffs --paginate
 CALL: mr diff 4706 -R acme/app --raw
-CALL: mr note list 4706 -R acme/app -F json
+CALL: api projects/11/merge_requests/4706/notes?per_page=100&page=1
 --- file C/.review/4706/.diff.err ---
 
 --- file C/.review/4706/.difffiles ---

@@ -51,8 +51,8 @@ next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.m
 --- file C/.curl-calls.log ---
 CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708
 CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708.diff
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/files
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/files?limit=50&page=1
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews?limit=50&page=1
 CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews/7/comments
 --- file C/.review/4708/.difffiles ---
 a.txt

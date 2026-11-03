@@ -51,7 +51,7 @@ next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.m
 CALL: repos pr show --id 4716 --org https://example.invalid --project acme --repository app -o json
 CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/threads?api-version=7.1 --query value -o json
 CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations?api-version=7.1 --query max_by(value, &id).id -o tsv
-CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations/3/changes?api-version=7.1 --query changeEntries -o json
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations/3/changes?api-version=7.1&$top=1000&$skip=0 --query changeEntries -o json
 --- file C/.review/4716/.diff.err ---
 
 --- file C/.review/4716/.difffiles ---

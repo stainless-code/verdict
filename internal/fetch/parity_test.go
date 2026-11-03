@@ -119,7 +119,7 @@ const glabStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.glab-calls.l
 	"  *diffs*) cat \"$PWD/canned/gl-changes.json\"; exit 0;;\n" +
 	"  *changes*) cat \"$PWD/canned/gl-changes.json\"; exit 0;;\n" +
 	"  *mr\\ diff*) cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
-	"  *note\\ list*) cat \"$PWD/canned/gl-notes.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
+	"  */notes*) cat \"$PWD/canned/gl-notes.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
 	"esac\necho \"glab-stub: unexpected ($*)\" >&2\nexit 1\n"
 
 // cafeStub answers the GitCafe CLI shapes, with two-page review/comment

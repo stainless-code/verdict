@@ -7,7 +7,10 @@ exit: 0
   "pr": 4701,
   "at": "0000-00-00T00:00:00Z",
   "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + full.diff to any agent; ask it to write .review/4701/review.json",
-  "warnings": [],
+  "warnings": [
+    "github review read failed — reviews.json is empty; re-fetch after confirming gh auth",
+    "github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth"
+  ],
   "data": {
     "dir": ".review/4701",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -47,6 +50,8 @@ exit: 0
 » roles -> .review/4701/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
 » reviews + inline comments
+warn: github review read failed — reviews.json is empty; re-fetch after confirming gh auth
+warn: github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth
 done: .review/4701/PR.json .review/4701/full.diff .review/4701/toc.txt .review/4701/roles.txt (1 files)
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json
 --- files ---
