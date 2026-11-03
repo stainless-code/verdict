@@ -197,6 +197,82 @@ func validateWire(t *testing.T, doc map[string]any, path string, schema, v any) 
 	}
 }
 
+// TestSchemaErrorRejectsViolations proves the in-house validator enforces the
+// numeric bounds and date-time formats the generated schemas use, and that a
+// reference it cannot resolve is an error rather than an accept.
+//
+//nolint:revive // the positive/negative table reads best inline
+func TestSchemaErrorRejectsViolations(t *testing.T) {
+	doc := map[string]any{"$defs": map[string]any{
+		"scalar": map[string]any{"type": "string"},
+	}}
+	cases := []struct {
+		name    string
+		schema  map[string]any
+		value   any
+		wantErr string
+	}{
+		{
+			name:    "minimum violated",
+			schema:  map[string]any{"type": "integer", "minimum": 1},
+			value:   json.Number("0"),
+			wantErr: "minimum",
+		},
+		{
+			name:    "maximum violated",
+			schema:  map[string]any{"type": "integer", "maximum": 5},
+			value:   json.Number("6"),
+			wantErr: "maximum",
+		},
+		{
+			name:    "date-time malformed",
+			schema:  map[string]any{"type": "string", "format": "date-time"},
+			value:   "yesterday",
+			wantErr: "date-time",
+		},
+		{
+			name:    "unresolved ref",
+			schema:  map[string]any{"$ref": "#/$defs/missing"},
+			value:   "anything",
+			wantErr: "unresolved $ref",
+		},
+		{
+			name:   "minimum respected",
+			schema: map[string]any{"type": "integer", "minimum": 1},
+			value:  json.Number("1"),
+		},
+		{
+			name:   "maximum respected",
+			schema: map[string]any{"type": "integer", "maximum": 5},
+			value:  json.Number("5"),
+		},
+		{
+			name:   "date-time respected",
+			schema: map[string]any{"type": "string", "format": "date-time"},
+			value:  "2026-11-02T12:00:00Z",
+		},
+		{
+			name:   "ref resolved",
+			schema: map[string]any{"$ref": "#/$defs/scalar"},
+			value:  "anything",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := schemaError(doc, tc.schema, tc.value)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Errorf("schemaError(%v) = %v; want nil", tc.value, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("schemaError(%v) = %v; want an error naming %q", tc.value, err, tc.wantErr)
+			}
+		})
+	}
+}
+
 // schemaError validates one value, supporting the keywords the generated
 // schemas use.
 //
@@ -207,7 +283,11 @@ func schemaError(doc map[string]any, schema, v any) error {
 		return nil
 	}
 	if ref, ok := s["$ref"].(string); ok {
-		return schemaError(doc, resolveRef(doc, ref), v)
+		target, err := resolveRef(doc, ref)
+		if err != nil {
+			return err
+		}
+		return schemaError(doc, target, v)
 	}
 	if branches, ok := s["anyOf"].([]any); ok {
 		for _, branch := range branches {
@@ -226,6 +306,12 @@ func schemaError(doc map[string]any, schema, v any) error {
 	if typ, ok := s["type"]; ok && !typeMatches(typ, v) {
 		return fmt.Errorf("type %v, got %T (%v)", typ, v, v)
 	}
+	if err := boundsError(s, v); err != nil {
+		return err
+	}
+	if err := formatError(s, v); err != nil {
+		return err
+	}
 	if m, ok := v.(map[string]any); ok {
 		if err := objectError(doc, s, m); err != nil {
 			return err
@@ -239,6 +325,57 @@ func schemaError(doc map[string]any, schema, v any) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// boundsError enforces numeric minimum/maximum on a number value.
+func boundsError(s map[string]any, v any) error {
+	n, ok := v.(json.Number)
+	if !ok {
+		return nil
+	}
+	num, err := n.Float64()
+	if err != nil {
+		return fmt.Errorf("number %q: %w", n, err)
+	}
+	if low, ok := boundOf(s, keyMinimum); ok && num < low {
+		return fmt.Errorf("minimum %v, got %v", low, n)
+	}
+	if high, ok := boundOf(s, keyMaximum); ok && num > high {
+		return fmt.Errorf("maximum %v, got %v", high, n)
+	}
+	return nil
+}
+
+// boundOf reads one numeric bound, whether the schema was decoded as
+// float64 or with number fidelity.
+func boundOf(s map[string]any, key string) (float64, bool) {
+	switch raw := s[key].(type) {
+	case float64:
+		return raw, true
+	case json.Number:
+		n, err := raw.Float64()
+		return n, err == nil
+	case int:
+		return float64(raw), true
+	default:
+		return 0, false
+	}
+}
+
+// formatError enforces the date-time format. Other formats are annotations.
+func formatError(s map[string]any, v any) error {
+	format, ok := s[keyFormat].(string)
+	if !ok || format != "date-time" {
+		return nil
+	}
+	text, ok := v.(string)
+	if !ok {
+		return nil
+	}
+	if _, err := time.Parse(time.RFC3339, text); err != nil {
+		return fmt.Errorf("format date-time: %q: %w", text, err)
 	}
 	return nil
 }
@@ -278,17 +415,22 @@ func objectError(doc map[string]any, s map[string]any, m map[string]any) error {
 	return nil
 }
 
-// resolveRef resolves one local #/$defs/... reference.
-func resolveRef(doc map[string]any, ref string) any {
+// resolveRef resolves one local #/$defs/... reference and fails when the
+// document has no such definition: a dangling reference must never validate.
+func resolveRef(doc map[string]any, ref string) (any, error) {
 	const prefix = "#/$defs/"
 	if !strings.HasPrefix(ref, prefix) {
-		return map[string]any{}
+		return nil, fmt.Errorf("unsupported $ref %q", ref)
 	}
 	defs, ok := doc["$defs"].(map[string]any)
 	if !ok {
-		return map[string]any{}
+		return nil, fmt.Errorf("unresolved $ref %q: schema has no $defs", ref)
 	}
-	return defs[strings.TrimPrefix(ref, prefix)]
+	target, ok := defs[strings.TrimPrefix(ref, prefix)]
+	if !ok || target == nil {
+		return nil, fmt.Errorf("unresolved $ref %q", ref)
+	}
+	return target, nil
 }
 
 // enumContains reports whether v equals one enum member.

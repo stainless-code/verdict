@@ -19,9 +19,9 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// fixedNow is the conformance clock: the zero instant renders as the
-// deterministic 0000-00-00T00:00:00Z envelope timestamp.
-func fixedNow() time.Time { return time.Time{} }
+// fixedNow is the conformance clock: one deterministic, valid RFC 3339
+// instant so the envelope's date-time format is exercised for real.
+func fixedNow() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) }
 
 // fixedRuntime builds the hermetic service runtime.
 func fixedRuntime() *core.Runtime {
