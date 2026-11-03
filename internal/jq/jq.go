@@ -63,15 +63,6 @@ func Alt(a, b any) any {
 	return a
 }
 
-// Present reports whether key exists and holds a non-null, non-false value,
-// i.e. jq's `has(key) and .[key] != null and .[key] != false` collapsed form
-// used by `has("kb") and (.kb != null)`-style guards. Callers needing the
-// bare has() check use the two-value map lookup directly.
-func Present(m map[string]any, key string) bool {
-	v, ok := m[key]
-	return ok && !Falsey(v)
-}
-
 // Str renders v the way `jq -r` does for shell interpolation contexts
 // (anchors, paths, body length checks): null renders as "null", strings pass
 // raw, [json.Number] uses jq's canonical number form, booleans render as
@@ -285,19 +276,6 @@ func DecodeObject(data []byte) (map[string]any, error) {
 	return m, nil
 }
 
-// DecodeArray parses one JSON array document.
-func DecodeArray(data []byte) ([]any, error) {
-	v, err := Decode(data)
-	if err != nil {
-		return nil, err
-	}
-	a, ok := v.([]any)
-	if !ok {
-		return nil, Sealed(opDecodeJSON, errWantArray)
-	}
-	return a, nil
-}
-
 // DecodeSlurp parses a JSON sequence (jq -s), e.g. kb.jsonl stores: every
 // whitespace-separated value in order. A missing or empty file reads as no
 // values, matching `jq -s` over an empty input.
@@ -410,12 +388,6 @@ func sortStrings(s []string) {
 func AsMap(v any) (map[string]any, bool) {
 	m, ok := v.(map[string]any)
 	return m, ok
-}
-
-// AsSlice returns v as a slice when it is one.
-func AsSlice(v any) ([]any, bool) {
-	s, ok := v.([]any)
-	return s, ok
 }
 
 // Number parsing and error-message constants.
