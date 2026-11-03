@@ -18,7 +18,7 @@ in the grades file, so that agreement is measured, not assumed.
    (`--json` for the machine envelope). The script writes
    `.review/<bundle>/kb-grades.jsonl` — one row per finding with script-owned
    baseline columns (`verdict` from the disposition, first cited `rule`,
-   `helpfulness`). Never hand-edit that file; the next probe run regenerates
+   `helpful`). Never hand-edit that file; the next probe run regenerates
    the baseline and overwrites direct edits. To change the baseline itself,
    triage the finding and re-run.
 4. **Judge the sample.** Re-read each sampled closed finding against the code at
@@ -46,7 +46,7 @@ in the grades file, so that agreement is measured, not assumed.
 6. **Report the number.** The evidence number is the agreement rate over
    doubly-judged rows (baseline known AND agent judged `real`/`false`), with
    the sample size: `judgments: sampled=S judged=J agreed=A disagreed=D
-rate=R` (also `data.judgment` in the `--json` envelope). Name each dissent
+rate=R` (also `data.judgment.agreement_rate` in the `--json` envelope). Name each dissent
    (sig, baseline vs yours, why) as advisory text — the file already holds the
    record, the prose holds the reasoning.
 7. **Close advisory-only.** Name the top finding the probe confirms (highest

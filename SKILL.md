@@ -40,9 +40,11 @@ verdict fetch owner/repo 123
 # controls.json. Review controls (.review/kb.jsonl, panel, budget, overrides,
 # ...) are read from the PR base commit, never the PR head — from the clone,
 # else the GitHub contents API; --allow-head-controls is the one recorded opt-out.
-# Over-cap diffs refuse: re-run fetch with --chunk (or hold true in
-# .review/chunk), read each chunk per chunks/manifest.json, and stamp
-# top-level "chunks" naming every manifest chunk in review.json.
+# Over-cap diffs refuse: re-run fetch with --chunk (or commit true in
+# .review/chunk at the bundle base: the PR base for fetch, the local diff
+# base (HEAD by default) for fetch-local), read each chunk per
+# chunks/manifest.json, and stamp top-level "chunks" naming every manifest
+# chunk in review.json.
 
 # 2. Review with any agent. Load prompts/system.md, then the one mode file
 #    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
