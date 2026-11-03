@@ -1,19 +1,16 @@
 // Package bundle ports the small shared read helpers the local-state verbs
-// need: bundle-dir resolution, sig-prefix resolution, and the ASCII string
-// folds the shell does under the C locale. It is additive-only: verb
-// packages import it instead of editing each other or the existing shared
-// packages.
+// need: bundle-dir resolution and the ASCII string folds the shell does
+// under the C locale. It is additive-only: verb packages import it instead
+// of editing each other or the existing shared packages.
 //
-// R2: store bytes are sacred — resolution and prefix matching are pure
-// reads; nothing here writes. R5: bundle paths come from the operator's own
-// invocation (fixed filenames under the cwd), not from agents.
+// R2: store bytes are sacred — resolution is a pure read; nothing here
+// writes. R5: bundle paths come from the operator's own invocation (fixed
+// filenames under the cwd), not from agents.
 package bundle
 
 import (
 	"os"
 	"strings"
-
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Dir ports resolve_bundle_dir: local-* slugs and bare slugs with a matching
@@ -44,62 +41,6 @@ func IsFile(path string) bool {
 func IsDir(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.IsDir()
-}
-
-// ResolveSig ports resolve_sig: entries whose sig starts with prefix resolve
-// to the single full sig, "NONE" when nothing matches, "MANY" when the
-// prefix is ambiguous.
-func ResolveSig(entries []any, prefix string) string {
-	found, many := scanSigs(entries, prefix)
-	return decideSig(found, many)
-}
-
-// scanSigs finds the first matching sig and whether the prefix is ambiguous.
-func scanSigs(entries []any, prefix string) (string, bool) {
-	found := ""
-	many := false
-	for _, e := range entries {
-		sig, ok := matchingSig(e, prefix)
-		if !ok {
-			continue
-		}
-		if found == "" {
-			found = sig
-			continue
-		}
-		if found != sig {
-			many = true
-		}
-	}
-	return found, many
-}
-
-// matchingSig extracts the sig string when entry e carries one with prefix.
-func matchingSig(e any, prefix string) (string, bool) {
-	m, ok := e.(*jq.Obj)
-	if !ok || m == nil {
-		return "", false
-	}
-	sv, _ := m.Get("sig")
-	sig, ok := sv.(string)
-	if !ok {
-		return "", false
-	}
-	if !strings.HasPrefix(sig, prefix) {
-		return "", false
-	}
-	return sig, true
-}
-
-// decideSig maps a scan result to the resolve_sig contract strings.
-func decideSig(found string, many bool) string {
-	if many {
-		return "MANY"
-	}
-	if found == "" {
-		return "NONE"
-	}
-	return found
 }
 
 // TrimSpace trims ASCII whitespace (space, tab, newline, vertical tab, form

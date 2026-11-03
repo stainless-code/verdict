@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Request carries the resolved triage invocation.
@@ -178,7 +179,7 @@ func corruptStore(dir string) *core.RefusalError {
 
 // resolveSig resolves the sig prefix or refuses when unknown/ambiguous.
 func resolveSig(entries []any, prefix string) (string, *core.RefusalError) {
-	switch full := bundle.ResolveSig(entries, prefix); full {
+	switch full := readcommon.ResolveSig(entries, prefix); full {
 	case "NONE":
 		return "", &core.RefusalError{Code: "unknown-sig", Message: "refusing triage: sig not in store"}
 	case "MANY":

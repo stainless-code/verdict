@@ -266,7 +266,7 @@ func (st *state) selectRec(entries []any, fixOpenInline int, dir string) (string
 // resolveExplicit resolves an explicit --sig flag to its entry.
 func (st *state) resolveExplicit(entries []any) (string, *jq.Obj, *core.RefusalError) {
 	sigFlag := st.req.Sig
-	full := bundle.ResolveSig(entries, sigFlag)
+	full := readcommon.ResolveSig(entries, sigFlag)
 	switch full {
 	case resolveNone:
 		return "", nil, st.refuse(codeBadSig, fmt.Sprintf(
