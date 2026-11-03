@@ -241,10 +241,15 @@ if command -v script >/dev/null 2>&1; then
     *) pty_avail="false";;
   esac
   # Restricted sandboxes can exist without pty allocation; skip there too
-  # rather than grading an openpty failure as a CLI defect.
-  if [ "$pty_avail" = "true" ] \
-    && ! script -q /dev/null /bin/sh -c true >/dev/null 2>&1; then
-    pty_avail="false"
+  # rather than grading an openpty failure as a CLI defect. Probe with the same
+  # per-OS form the legs use: util-linux script(1) takes the command via -c and
+  # rejects the BSD trailing-command form, which made Linux always SKIP.
+  if [ "$pty_avail" = "true" ]; then
+    if [ "$(uname -s)" = "Darwin" ]; then
+      script -q /dev/null /bin/sh -c true </dev/null >/dev/null 2>&1 || pty_avail="false"
+    else
+      script -qec true /dev/null </dev/null >/dev/null 2>&1 || pty_avail="false"
+    fi
   fi
 else
   pty_avail="false"
