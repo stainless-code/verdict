@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	osexec "os/exec"
-	"sync"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -48,7 +47,13 @@ func (OSCommander) Run(ctx context.Context, cmd core.Command) (core.Result, erro
 	if ctx.Err() == context.DeadlineExceeded {
 		timedOut = true
 	}
-	return core.Result{Stdout: out.String(), ExitCode: exit, TimedOut: timedOut, Decoy: decoy}, nil
+	return core.Result{
+		Stdout:          out.String(),
+		ExitCode:        exit,
+		TimedOut:        timedOut,
+		Decoy:           decoy,
+		StdoutTruncated: out.Truncated(),
+	}, nil
 }
 
 // itoa renders a small non-negative int.
@@ -90,9 +95,9 @@ func watchdogBudget(ctx context.Context) (int, bool) {
 }
 
 // spawnWatched starts argv in its own process group with combined output
-// captured to memory, returning the command, its wait channel, and the
-// locked output buffer (closed over by the caller after the wait).
-func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan error, *lockedBuffer, error) {
+// captured to a bounded tail, returning the command, its wait channel, and
+// the capture (read after the wait).
+func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan error, *boundedBuffer, error) {
 	//nolint:gosec // G204: argv is the operator's own verify command (like the shell's bash -c), not external input.
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
 	// Inherit the binary's cwd (the shell spawns the same way, so relative
@@ -100,7 +105,7 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 	setGroup(proc)
 	proc.Cancel = func() error { return killGroup(proc) }
 	proc.WaitDelay = waitDelay
-	out := &lockedBuffer{}
+	out := newBoundedBuffer(outputCap(cmd.OutputCap, VerifyOutputCap), captureTail)
 	proc.Stdout = out
 	proc.Stderr = out
 	proc.Env = cmd.Env
@@ -112,28 +117,6 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- proc.Wait() }()
 	return proc, waitDone, out, nil
-}
-
-// lockedBuffer is a goroutine-safe combined capture: stdout and stderr
-// interleave at write granularity, like the shell's `>>file 2>&1`.
-type lockedBuffer struct {
-	buf []byte
-	mu  sync.Mutex
-}
-
-// Write appends p to the combined capture.
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.buf = append(b.buf, p...)
-	return len(p), nil
-}
-
-// String returns the combined capture.
-func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return string(b.buf)
 }
 
 // pollTimeout ports the polling watchdog: while the main pid reads alive

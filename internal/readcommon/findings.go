@@ -1,8 +1,8 @@
 package readcommon
 
 import (
+	"errors"
 	"fmt"
-	"os"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -24,8 +24,13 @@ const (
 // envelope, so it now refuses typed corrupt-store instead (the shell gained
 // the same guard with this port; see evals/cases/read-refusals.sh).
 func LoadFindings(dir string) ([]any, error) {
-	raw, err := os.ReadFile(dir + "/findings.json")
+	raw, err := jq.CappedFile(dir+"/findings.json", jq.MaxFindingsBytes)
 	if err != nil {
+		// An oversized store is present but unreadable, so it refuses
+		// corrupt-store; only a genuinely absent file reads missing-findings.
+		if errors.Is(err, jq.ErrTooLarge) {
+			return nil, corruptStore(dir)
+		}
 		return nil, &core.RefusalError{Code: codeMissingFindings, Message: fmt.Sprintf(msgMissingFindings, dir)}
 	}
 	doc, err := jq.DecodeOrdered(raw)

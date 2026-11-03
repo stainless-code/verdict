@@ -281,9 +281,9 @@ func (n *normalizer) live(s string) bool {
 }
 
 // readRows slurps kb.jsonl order-preserving. ok is false when the file is
-// missing or does not parse.
+// missing, oversized, or does not parse.
 func (c *Ctx) readRows() ([]*jq.Obj, bool) {
-	raw, err := os.ReadFile(File)
+	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
 	if err != nil {
 		return nil, false
 	}
@@ -305,9 +305,10 @@ func findRow(rows []*jq.Obj, id string) *jq.Obj {
 }
 
 // readJoins slurps the joins log; the second return is false when the file
-// exists but does not parse.
+// exists but does not parse (an oversized log reads as no joins, like any
+// other unreadable store).
 func readJoins() ([]*jq.Obj, bool) {
-	raw, err := os.ReadFile(Joins)
+	raw, err := jq.CappedFile(Joins, jq.MaxKBBytes)
 	if err != nil {
 		return nil, true
 	}

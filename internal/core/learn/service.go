@@ -194,7 +194,7 @@ func (st *state) readStatusRows() ([]any, *core.RefusalError) {
 	if !bundle.IsFile(kbFile) {
 		return rows, nil
 	}
-	raw, err := os.ReadFile(kbFile)
+	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
 	if err != nil {
 		return nil, st.corruptStore()
 	}
@@ -481,10 +481,10 @@ func (st *state) appendHistory(cur *jq.Obj, event string) {
 	cur.Set(fieldHistory, hist)
 }
 
-// readRows reads the KB store when present (missing, unreadable, or corrupt
-// reads !ok; the caller refuses corrupt-store).
+// readRows reads the KB store when present (missing, oversized, unreadable,
+// or corrupt reads !ok; the caller refuses corrupt-store).
 func readRows() ([]*jq.Obj, bool) {
-	raw, err := os.ReadFile(kbFile)
+	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
 	if err != nil {
 		return nil, false
 	}
@@ -503,7 +503,7 @@ func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
 	if !bundle.IsFile(kbFile) {
 		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, kbFile))
 	}
-	raw, err := os.ReadFile(kbFile)
+	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
 	if err != nil {
 		return nil, st.corruptStore()
 	}
@@ -571,7 +571,7 @@ func appendRow(line string) error {
 	var prev []byte
 	if bundle.Exists(kbFile) {
 		var err error
-		prev, err = os.ReadFile(kbFile)
+		prev, err = jq.CappedFile(kbFile, jq.MaxKBBytes)
 		if err != nil {
 			//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 			return fmt.Errorf("read %s: %v", kbFile, err)

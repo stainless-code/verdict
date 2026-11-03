@@ -146,11 +146,17 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
-// runCommand spawns one command under the watchdog timeout.
+// runCommand spawns one command under the watchdog timeout. The capture cap
+// is explicit: verify records the proof tail, and a noisy command must not
+// grow the process without bound.
 func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int, env []string) (core.Result, *core.RefusalError) {
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	res, err := commander.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: env})
+	res, err := commander.Run(tctx, core.Command{
+		Argv:      []string{"bash", "-c", vcmd},
+		Env:       env,
+		OutputCap: coreexec.VerifyOutputCap,
+	})
 	if err != nil {
 		return core.Result{}, failed(err)
 	}

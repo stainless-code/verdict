@@ -195,7 +195,7 @@ func isPlainInt(lit string) bool {
 
 // Decode parses one JSON document with agent-input discipline: numbers stay
 // [json.Number] (no float64 precision loss near sigs and SHAs), and the stream
-// must hold exactly one value. Size caps belong to the caller (see Capped).
+// must hold exactly one value. Size caps belong to the caller (see [Capped]).
 func Decode(data []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()

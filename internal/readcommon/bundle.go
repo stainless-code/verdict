@@ -38,9 +38,10 @@ func ResolveBundleDir(pr string) string {
 }
 
 // PrField ports pr_field: the provider-aware PR meta read (head_sha,
-// base_sha, state, author). Missing or unreadable records read "".
+// base_sha, state, author). Missing or unreadable records read "" (an
+// over-cap record is unreadable too, never allocated).
 func PrField(dir, field string) string {
-	raw, err := os.ReadFile(dir + prSuffix)
+	raw, err := jq.CappedFile(dir+prSuffix, jq.MaxPRBytes)
 	if err != nil {
 		return ""
 	}
@@ -98,7 +99,7 @@ func neutralField(m map[string]any, field string) string {
 // ProviderOf reads .provider from PR.json ("" when missing or unreadable,
 // mirroring `jq -r '.provider // empty' ... || true`).
 func ProviderOf(dir string) string {
-	raw, err := os.ReadFile(dir + prSuffix)
+	raw, err := jq.CappedFile(dir+prSuffix, jq.MaxPRBytes)
 	if err != nil {
 		return ""
 	}

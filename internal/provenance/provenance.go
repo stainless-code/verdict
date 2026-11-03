@@ -145,9 +145,10 @@ func Spend(dir string) (tier, cost string) {
 	return tier, "$" + jqTostring(round4(sum))
 }
 
-// costRecords reads the cost log as a record list.
+// costRecords reads the cost log as a record list (an oversized store reads
+// absent, exactly like an unreadable one).
 func costRecords(dir string) []any {
-	raw, err := os.ReadFile(filepath.Join(dir, "cost.json"))
+	raw, err := jq.CappedFile(filepath.Join(dir, "cost.json"), jq.MaxCostBytes)
 	if err != nil {
 		return nil
 	}

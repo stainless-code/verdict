@@ -1,7 +1,6 @@
 package exec
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	osexec "os/exec"
@@ -17,9 +16,12 @@ import (
 // inherits the caller's, exactly like the shell spawn it replaces. The
 // verify watchdog in exec.go stays the combined-capture contract; fetch
 // needs the streams apart for its .err sidecars and terminal passthrough.
+// Stdout keeps its head and stderr its tail, both bounded by
+// [FetchOutputCap]; an over-cap stdout is [core.OutputCappedError] because a
+// truncated diff must never reach the bundle as if it were complete.
 type SplitCommander struct{}
 
-// Run starts argv to completion, capturing both streams apart.
+// Run starts argv to completion, capturing both streams apart and bounded.
 func (SplitCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
@@ -31,16 +33,27 @@ func (SplitCommander) Run(ctx context.Context, cmd core.Command) (core.Result, e
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
 	proc.Env = cmd.Env
 	proc.Stdin = cmd.Stdin
-	var stdout, stderr bytes.Buffer
-	proc.Stdout = &stdout
-	proc.Stderr = &stderr
-	res := core.Result{Stdout: stdout.String(), Stderr: stderr.String()}
-	if err := proc.Run(); err != nil {
-		res.Stdout, res.Stderr = stdout.String(), stderr.String()
-		res.ExitCode = splitExitCode(err)
-		return res, &splitError{bin: cmd.Argv[0], err: err}
+	limit := outputCap(cmd.OutputCap, FetchOutputCap)
+	stdout := newBoundedBuffer(limit, captureHead)
+	stderr := newBoundedBuffer(limit, captureTail)
+	proc.Stdout = stdout
+	proc.Stderr = stderr
+	runErr := proc.Run()
+	res := core.Result{
+		Stdout:          stdout.String(),
+		Stderr:          stderr.String(),
+		StdoutTruncated: stdout.Truncated(),
+		StderrTruncated: stderr.Truncated(),
 	}
-	res.Stdout, res.Stderr = stdout.String(), stderr.String()
+	if runErr != nil {
+		res.ExitCode = splitExitCode(runErr)
+	}
+	if res.StdoutTruncated {
+		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit}
+	}
+	if runErr != nil {
+		return res, &splitError{bin: cmd.Argv[0], err: runErr}
+	}
 	return res, nil
 }
 

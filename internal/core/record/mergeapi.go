@@ -8,6 +8,7 @@ package recordcore
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -237,26 +238,43 @@ func ReadOptional(path string) ([]byte, bool) {
 
 // maxAgentBytes caps one agent-written input (review.json,
 // verification.json, chunk manifest) at 32 MiB. Go-only defense-in-depth
-// (R3): the shell reads whatever the agent wrote, but a bounded read keeps
-// a hostile bundle from exhausting memory. Unknown keys are never
-// rejected — decoding stays open.
+// (R3): the Go binary is the only reader, so a bounded read keeps a hostile
+// bundle from exhausting memory. Unknown keys are never rejected — decoding
+// stays open.
 const maxAgentBytes = 32 << 20
 
-// readAgentFile reads one agent-written input with the size cap applied.
-// Missing/unreadable files report the read error; over-cap files report a
-// typed refusal (callers distinguish with [errors.As]).
+// readAgentFile reads one agent-written input through a limiting reader, so
+// at most maxAgentBytes+1 bytes are ever allocated. Stat refuses an
+// obviously oversized file without reading it, but the limiter is the
+// contract: a file that grows after the stat still stops at the cap.
+// Missing/unreadable files report the sealed read error; over-cap files
+// report the same typed refusal as before (callers distinguish it with
+// [errors.As]).
 func readAgentFile(path string) ([]byte, error) {
-	raw, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		// Sealed at the layer boundary (GO-ERRORS-03, R4); callers only
 		// distinguish over-cap refusals via errors.As.
 		return nil, jq.Sealed("read agent file", err)
 	}
+	defer func() { _ = f.Close() }() // read-only handle; the read error rules
+	if fi, statErr := f.Stat(); statErr == nil && fi.Size() > maxAgentBytes {
+		return nil, agentCapRefusal(path)
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxAgentBytes+1))
+	if err != nil {
+		return nil, jq.Sealed("read agent file", err)
+	}
 	if len(raw) > maxAgentBytes {
-		return nil, &core.RefusalError{Code: codeBadReviewInput, Message: path +
-			" exceeds the 32 MiB agent-input cap (shrink the review, then re-run)"}
+		return nil, agentCapRefusal(path)
 	}
 	return raw, nil
+}
+
+// agentCapRefusal builds the frozen over-cap refusal for an agent input.
+func agentCapRefusal(path string) error {
+	return &core.RefusalError{Code: codeBadReviewInput, Message: path +
+		" exceeds the 32 MiB agent-input cap (shrink the review, then re-run)"}
 }
 
 // agentRefusal reports whether err is an over-cap refusal from readAgentFile.

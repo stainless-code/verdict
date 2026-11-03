@@ -155,7 +155,7 @@ func creditRef(cr any) (string, string, bool) {
 // ruleActive ports the active-status gate: the rule row must exist with
 // status active. An unreadable store reads inactive (the caller warns).
 func ruleActive(rid string) bool {
-	raw, err := os.ReadFile(File)
+	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
 	if err != nil {
 		return false
 	}
@@ -206,7 +206,7 @@ func (c *Ctx) CommitStaged(findingsFile, now string) {
 // loadStore reads the KB store for the commit, dropping staged credit with
 // a loud warning when unreadable.
 func (c *Ctx) loadStore(findingsFile string) ([]*jq.Obj, bool) {
-	raw, err := os.ReadFile(File)
+	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
 	rows, derr := jq.DecodeJSONLOrdered(raw)
 	if err != nil || derr != nil {
 		c.Warn(fmt.Sprintf("kb store %s unreadable at commit — staged credit dropped (flips stand); re-run the flip to retry", File))

@@ -164,7 +164,7 @@ func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 	}
 	name := e.Name()
 	bundle := ".review/" + name + "/"
-	raw, err := os.ReadFile(bundle + "findings.json")
+	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
 		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
@@ -345,13 +345,13 @@ func appendTier(efforts []any, seen map[string]bool, tier string) []any {
 	return efforts
 }
 
-// costRecords reads one cost file as a record list, or nil when absent or
-// invalid (the shell's `|| echo "[]"`).
+// costRecords reads one cost file as a record list, or nil when absent,
+// oversized, or invalid (the shell's `|| echo "[]"`).
 func costRecords(path string) []any {
 	if !isRegular(path) {
 		return nil
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
 	if err != nil {
 		return nil
 	}

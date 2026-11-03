@@ -51,9 +51,10 @@ func recoverySkipped(findingsFile string, warn func(string)) {
 		"(staged stamps kept — credit for these flips is spent)", findingsFile))
 }
 
-// loadFindingsEntries reads the findings file as an entry list.
+// loadFindingsEntries reads the findings file as an entry list. An oversized
+// store reads unreadable, exactly like a corrupt one.
 func loadFindingsEntries(findingsFile string) ([]any, bool) {
-	raw, err := os.ReadFile(findingsFile)
+	raw, err := jq.CappedFile(findingsFile, jq.MaxFindingsBytes)
 	if err != nil {
 		return nil, false
 	}
@@ -222,7 +223,7 @@ func credKey(cr any) string {
 // maybeRetire ports kb_maybe_retire: it tombstones an active rule whose
 // false-hit rate exceeds the explicit threshold. It warns, never fails.
 func (c *Ctx) maybeRetire(rid, now string) {
-	raw, err := os.ReadFile(File)
+	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
 	if err != nil {
 		return
 	}

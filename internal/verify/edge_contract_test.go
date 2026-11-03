@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/verify"
 )
 
@@ -103,6 +104,34 @@ func TestVerifyContractOrphanSweep(t *testing.T) {
 	rec := edgeRecord(t, dir)
 	if rec["timedOut"] != true {
 		t.Fatalf("timed_out = %v, want true\n%v", rec["timedOut"], rec)
+	}
+}
+
+// TestVerifyContractTruncatedOutput pins the capture cap: a noisy but
+// successful command records a bounded .verify.out carrying the truncation
+// marker (and the redacted proof tail names it too), instead of growing the
+// process with the child's output.
+func TestVerifyContractTruncatedOutput(t *testing.T) {
+	dir := t.TempDir()
+	edgePatch(t, dir, `yes | head -c 2097152`)
+	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "10")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.out"))
+	if err != nil {
+		t.Fatalf("read .verify.out: %v", err)
+	}
+	if len(raw) > coreexec.VerifyOutputCap+256 {
+		t.Errorf(".verify.out = %d bytes, want <= the %d-byte cap plus the marker", len(raw), coreexec.VerifyOutputCap)
+	}
+	if !strings.Contains(string(raw), "output truncated") {
+		t.Errorf(".verify.out carries no truncation marker")
+	}
+	rec := edgeRecord(t, dir)
+	tail, ok := rec["verifiedTail"].(string)
+	if !ok || !strings.Contains(tail, "truncated") {
+		t.Errorf("verifiedTail = %q, want the truncation marker", tail)
 	}
 }
 

@@ -138,7 +138,7 @@ func readCostFile(path string) (recs []any, present, parsed bool) {
 	if !isRegular(path) {
 		return nil, false, false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
 	if err != nil {
 		return nil, true, false
 	}
@@ -487,7 +487,7 @@ func attachReceipts(dir string, res *CostResult) {
 	if !isRegular(path) {
 		return
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
 	if err != nil {
 		return
 	}
