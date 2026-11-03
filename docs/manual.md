@@ -421,7 +421,7 @@ instructions. Thread files (`reviews.json`, `inline.json`) are deliberately
 excluded: the dump reproduces the initial-review reading list (the fetch
 `next:` line), and threads are prior-review context consumed live via
 `gh api` on the incremental path — never bundle files in the prompt. This
-section is the format contract: the Go port reproduces it exactly (same
+section is the format contract: the binary reproduces it exactly (same
 order, markers, nonce grammar, and section labels).
 
 `ready` stays advisory by default (exit 0, blockers listed); `ready --check`
@@ -990,8 +990,8 @@ Flags `--footer/--no-footer`, `--attribution [off|product|full]`/`--no-attributi
 over defaults. Unknown `publish.*` keys refuse typed `bad-settings`, and any
 credential-shaped key at any depth refuses `bad-settings-credentials`.
 
-Migration note (P1b breaks the day-old P1 default): `publish.attribution`
-was a bool in 0.2.0 and is now `off`/`product`/`full` — a file carrying
+Migration note: `publish.attribution` was a bool in 0.2.0 and is now
+`off`/`product`/`full` — a file carrying
 `true`/`false` refuses with the mapping named (`"off"` for `false`,
 `"product"` for `true`). `--attribution`/`--no-attribution` keep working
 (product/off); `--attribution full` reaches the maker level.
@@ -1052,12 +1052,12 @@ divider, bounded because the footer marker cuts to end-of-body and a mid-body
 diagram is not terminal. Knobs live under `publish.diagrams`:
 `publish.diagrams.behavioral` (bool, default `false` — the block renders
 only when opted in), `publish.diagrams.structural` (bool, default `true` —
-the P3 topology half above), `publish.diagrams.expanded` (bool, default
+the topology half above), `publish.diagrams.expanded` (bool, default
 `false` — renders the kept block open instead of collapsed). Flags
 `--diagram-behavioral` / `--no-diagram-behavioral` (plus
 the matching `-structural` / `-expanded` pairs) win over the file; the file
 wins over `REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL` / `_STRUCTURAL` / `_EXPANDED`
-env; env wins over defaults. With no diagram in the body the script path is
+env; env wins over defaults. With no diagram in the body the output path is
 byte-identical whether the knobs are set or not.
 
 ## Section overrides (per-block template fragments)
@@ -1103,7 +1103,8 @@ still kills the block). Validation runs at `check-tree` (authoring-time) and
 is revalidated cheaply at `post`/`record`/`report` time with no re-render —
 every violation refuses loudly with the broken invariant named (fail-closed;
 warn-and-keep never applies to explicit operator intent). With no
-`.review/overrides/` dir the script path is byte-identical to today.
+`.review/overrides/` dir the output path is byte-identical to the built-in
+fragments.
 
 ## Local review (no PR)
 

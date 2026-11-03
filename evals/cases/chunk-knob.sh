@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# Case chunk-knob-parity: explicit --chunk flag + .review/chunk knob file with
+# Case chunk-knob: explicit --chunk flag + .review/chunk knob file with
 # flag-wins -> file -> off precedence, cap-override-wins, and absent-knob
-# byte-identical refusal. No slicing behavior yet — this grades the settled
-# opt-in predicate plus the parity lock (later slices replace the opted-in
-# refusal with real chunking).
+# byte-identical refusal. This grades the opt-in predicate and the opted-in
+# refusal path.
 #
 # Grades (all hermetic — sandbox git repo, stub gh, no network):
 #   K1  absent-knob baseline: the over-cap refusal without the knob is
 #       byte-identical (exit, stdout, stderr) in text mode, and identical
 #       modulo the `at` timestamp in --json mode — pinned directly against
-#       the case's own fixed assertions below (the pre-change shell parity
-#       lock retired with the shell in go-port 08).
+#       the case's own fixed assertions below.
 #   K2  precedence: --chunk alone opts in; .review/chunk true alone opts in;
 #       flag wins over a false file; a false/empty file alone reads off
 #       (stderr identical to the absent baseline). Opted in still refuses as

@@ -5,8 +5,8 @@ untrusted PR content: diffs, PR bodies, and thread comments. The hermetic
 eval `evals/cases/prompt-injection.sh` grades them through the prompt-dump
 surface (`--show-prompts`, `data.prompt_dump`).
 
-**Cross-reference:** benchmark ticket 06 reuses this directory for live
-model grading of the same payloads.
+**Cross-reference:** the live benchmark (`docs/benchmark.md`) reuses this
+directory for model grading of the same payloads.
 
 Each file carries a unique `PI23-*` token so the eval (and the live
 benchmark) can locate the payload bytes in a dump. Tokens appear ONLY in

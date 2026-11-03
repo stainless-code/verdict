@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Case usage-errors: the binary owns usage errors (go-port 08, F11).
+# Case usage-errors: the binary owns usage errors.
 #
 # Grades (all hermetic — no bundles, no network; the built binary is
 # invoked directly, never through a dispatcher):

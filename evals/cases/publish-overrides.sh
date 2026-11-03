@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Case publish-overrides: operator-owned per-block template fragments (P5).
+# Case publish-overrides: operator-owned per-block template fragments.
 #
 # Grades (all hermetic — crafted bundles, stub gh, no network):
 #   V1  absent-fragment default: no .review/overrides reads the built-in
 #       bytes (report --output and human post dry-run succeed; V2 pins the
-#       default-fragment rendering, the pre-P5 shell parity lock retired
-#       with the shell).
+#       default-fragment rendering).
 #   V2  valid default fragments render byte-identically (all four present with
 #       default content; report cmp identical; post dry-run exit 0; check-tree
 #       passes fragment validation and fails only on the repo/tree gate).

@@ -14,7 +14,7 @@
 #   D4  structural split: diagrams.structural=false hides the P3 topology
 #       half but keeps the table; the default keeps today's bytes.
 #   D5  no-diagram default: a diagram-less bundle renders with no diagram
-#       line (the pre-P4 shell parity lock retired with the shell).
+#       line.
 #   D6  precedence flags > file > env on the new knobs.
 #   D7  unknown diagrams keys and non-boolean values refuse typed bad-settings.
 #   M1  the manual carries the behavioral paragraph (knobs, flags, markers).

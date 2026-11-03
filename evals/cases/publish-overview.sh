@@ -12,8 +12,7 @@
 #   O4  flag overrides both ways (small + --overview shown;
 #       large + --no-overview omitted).
 #   O5  omitted default: a below-threshold bundle renders with no
-#       <details> overview (the pre-P3 shell parity lock retired with the
-#       shell).
+#       <details> overview.
 #   O6  precedence flags > file > env (file/env false hide a large bundle;
 #       --overview wins over a false file).
 #   M1  the manual carries the threshold paragraph (numbers, flags, row-id

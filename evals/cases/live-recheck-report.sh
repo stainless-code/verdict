@@ -312,8 +312,8 @@ fi
 # A real failing gh prints its error document to stdout (gh api prints the
 # response body there) while the human message goes to stderr. The warn line
 # must carry only gh's stderr — never a downstream `jq: error ... Cannot
-# iterate over null` from slurping that stdout (Go prints gh's stderr only;
-# R1: the bash crash noise is not contract, so the shell was fixed to match).
+# iterate over null` from slurping that stdout (the binary prints gh's stderr
+# only).
 PR=4291
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"

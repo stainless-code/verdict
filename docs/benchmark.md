@@ -218,9 +218,9 @@ Publish a checked-in JSON next to the corpus (for example
 - the per-model cost estimate and whether it is measured or projected;
 - the three-run spread and the ±5-point tolerance.
 
-Then update the comparison page (ticket 07) to link that file.
+Then link that file from the model comparison page.
 
-## What ticket 07 may cite
+## What the comparison page may cite
 
 Once 06b has run, the comparison page may cite:
 
@@ -231,11 +231,11 @@ Once 06b has run, the comparison page may cite:
 - the cost note per model, labelled measured or projected;
 - a link to the published JSON and to this runbook.
 
-It may not cite "same review depth", "better findings", or any parity claim
-without a linked corpus number. Claims with no data stay removed or become
+It may not cite "same review depth", "better findings", or any equivalence
+claim without a linked corpus number. Claims with no data stay removed or become
 explicitly stated opinion. Do not cherry-pick a subset of cases: the
 published block is all runs, and a subset is a new publication with its own
 denominators and rationale.
 
 Until 06b publishes a measurement, the comparison page has no measured
-claim to cite; keep unmeasured parity wording softened or removed.
+claim to cite; keep unmeasured equivalence wording softened or removed.

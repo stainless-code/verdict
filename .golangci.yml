@@ -82,7 +82,7 @@ linters:
       - common-false-positives
       - legacy
     rules:
-      # Test ergonomics: fixture builders and the parity harness use direct
+      # Test ergonomics: fixture builders and the golden harness use direct
       # output and temp-dir cleanup; failures surface via t.Fatal/Fail.
       - path: .*_test\.go
         linters:
@@ -191,8 +191,8 @@ linters:
       excludes:
         - G104
         # G304: the CLI reads operator-specified bundle paths (fixed filenames
-        # joined under the invocation cwd) by design — the same exposure as
-        # the shell port, operating on the caller's own checkout.
+        # joined under the invocation cwd) by design — the operator's own
+        # checkout, never agent-supplied paths.
         - G304
     govet:
       enable:

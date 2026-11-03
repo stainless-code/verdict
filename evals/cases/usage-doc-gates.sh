@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Case usage-parity-gates: usage text names the verify refusal codes and the
-# doctor excess-scope row (parity with the operator manual, which covers both).
+# Case usage-doc-gates: usage text names the verify refusal codes and the
+# doctor excess-scope row, and the operator manual covers both.
 #
 # Grades (all hermetic — --help output plus doc greps, no network):
 #   U1  `verify` usage names all four refusal codes (verify-destructive,
 #       verify-networked, verify-credential-read, verify-repo-escape).
 #   U2  `doctor` usage names the token-scopes-excess row.
-#   U3  the operator manual still covers both (parity anchor against drift).
+#   U3  the operator manual still covers both (a drift anchor).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh

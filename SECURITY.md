@@ -83,7 +83,7 @@ Do not "fix" the inherited side: it is the documented local posture.
   a token the operator passed to verdict is scrubbed from `.verify.out` and
   `patch.json`. This is the untrusted side: the command text is agent output,
   so what the child can see is decided at the edge instead of defaulting to
-  whatever the shell happened to export.
+  whatever the developer's environment happens to export.
 
 The hermetic counterpart for tests is `internal/testenv`: every harness that
 spawns `git`, `gh`, or the verdict binary builds its child environment there.
