@@ -35,20 +35,22 @@ stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 command -v npm >/dev/null 2>&1 || { bad "npm not on PATH (route proof needs npm pack)"; echo "case install-routes: FAIL ($fails)"; exit 1; }
 
 # --- R1: pack, unpack as a registry skill copy, install from it ---
-PACK_OUT="$EVAL_SANDBOX/install-routes-pack.txt"
+PACK_OUT="$EVAL_SANDBOX/install-routes-pack.json"
+PACK_ERR="$EVAL_SANDBOX/install-routes-pack.err"
 set +e
-(cd "$EVAL_ROOT" && npm pack --offline --pack-destination "$EVAL_SANDBOX" >"$PACK_OUT" 2>&1)
+(cd "$EVAL_ROOT" && npm pack --offline --json --pack-destination "$EVAL_SANDBOX" >"$PACK_OUT" 2>"$PACK_ERR")
 pack_status=$?
 set -e
 if [ "$pack_status" -ne 0 ]; then
-  bad "npm pack exits $pack_status: $(head -c 200 "$PACK_OUT")"
+  bad "npm pack exits $pack_status: $(head -c 200 "$PACK_ERR")"
   echo "case install-routes: FAIL ($fails)"; exit 1
 fi
-TARBALL="$EVAL_SANDBOX/$(tail -n 1 "$PACK_OUT")"
-if [ -f "$TARBALL" ]; then
+PACK_NAME="$(jq -r '.[0].filename // empty' "$PACK_OUT" 2>/dev/null || true)"
+TARBALL="$EVAL_SANDBOX/$PACK_NAME"
+if [ -n "$PACK_NAME" ] && [ -f "$TARBALL" ]; then
   good "real pack lands in the sandbox, never the repo"
 else
-  bad "pack printed no tarball ($TARBALL missing)"
+  bad "pack reported no tarball ($TARBALL missing)"
 fi
 mkdir -p "$EVAL_SANDBOX/regunpack"
 tar -xzf "$TARBALL" -C "$EVAL_SANDBOX/regunpack"
@@ -78,6 +80,18 @@ else
   bad "verdict skill install exits $install_status"
 fi
 copy_ok="true"
+inventory_status=0
+inventory="$("$EVAL_CLI" skill files)" || inventory_status=$?
+if [ "$inventory_status" -ne 0 ] || [ -z "$inventory" ]; then
+  copy_ok="false"
+  bad "skill files exits $inventory_status with an empty payload inventory"
+fi
+for want in SKILL.md scripts/verdict schemas/validate.sh prompts/review.md; do
+  if ! grep -qxF "$want" <<<"$inventory"; then
+    copy_ok="false"
+    bad "payload inventory misses $want"
+  fi
+done
 for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
   # Every embedded payload file matches the packed registry copy (the
   # unpacked tarball is the source of record, not the checkout), and the
@@ -85,7 +99,7 @@ for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
   while IFS= read -r rel; do
     [ -n "$rel" ] || continue
     cmp -s "$PKG/$rel" "$root/verdict/$rel" || copy_ok="false"
-  done < <("$EVAL_CLI" skill files)
+  done <<<"$inventory"
   [ "$(jq -r '.tool // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "verdict" ] || copy_ok="false"
   [ "$(jq -r '.version // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] || copy_ok="false"
 done
@@ -138,10 +152,20 @@ else
 fi
 COPY="$TARGET/.agents/skills/verdict"
 refs_ok="true"
+refs_seen=0
+if [ ! -f "$COPY/SKILL.md" ]; then
+  refs_ok="false"
+  bad "installed copy lacks SKILL.md"
+fi
 while IFS= read -r ref; do
   [ -n "$ref" ] || continue
+  refs_seen=$((refs_seen + 1))
   [ -f "$COPY/$ref" ] || { refs_ok="false"; bad "installed copy lacks SKILL.md reference $ref"; }
-done < <(grep -o -E '(scripts|prompts)/[A-Za-z0-9_.-]+' "$COPY/SKILL.md" | LC_ALL=C sort -u)
+done < <(grep -o -E '(scripts|prompts)/[A-Za-z0-9_.-]+' "$COPY/SKILL.md" 2>/dev/null | LC_ALL=C sort -u || true)
+if [ "$refs_seen" -eq 0 ]; then
+  refs_ok="false"
+  bad "SKILL.md names no script/prompt paths"
+fi
 if [ "$refs_ok" = "true" ]; then
   good "every SKILL.md script/prompt path resolves inside the installed copy"
 fi
