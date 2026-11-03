@@ -3,7 +3,9 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 )
 
 // jsonNull is the JSON null literal the argument decoder recognizes.
@@ -47,12 +49,14 @@ func decodeArgs(t *tool, raw json.RawMessage) (any, error) {
 	return req.Interface(), nil
 }
 
-// firstKey returns one map key in deterministic order ("" when empty).
+// firstKey returns the lexicographically first map key ("" when empty), so
+// unknown-argument errors name the same key on every run.
 func firstKey(obj map[string]json.RawMessage) string {
-	for key := range obj {
-		return key
+	keys := slices.Collect(maps.Keys(obj))
+	if len(keys) == 0 {
+		return ""
 	}
-	return ""
+	return slices.Min(keys)
 }
 
 // checkRequired proves every declared required argument is present and
