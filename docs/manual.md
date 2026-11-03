@@ -512,8 +512,9 @@ contract; `repo`/`pr` plus verb fields are the arguments. `post` writes a
 review and calls GitHub, so it is not exposed under `--read-only`.
 
 `--read-only` exposes only the non-writing tools (`report`, `next`, `show`,
-`trend`, `ready`, `doctor`, `check-tree`); every verb is exposed by default
-because the host already authorizes the binary and its credentials. Each
+`trend`, `ready`, `doctor`, `check-tree`); every review verb except the
+operator-only `triage` is exposed by default because the host already
+authorizes the binary and its credentials. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
 `{code, message, hint}` in both places. A malformed call is a JSON-RPC
