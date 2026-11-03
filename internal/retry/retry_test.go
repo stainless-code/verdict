@@ -1,6 +1,7 @@
 package retry_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -38,6 +39,34 @@ func TestDelayBounded(t *testing.T) {
 	wait, ok := retry.Delay("secondary rate limit retry-after: 3600", 2)
 	if !ok || wait != retry.MaxBackoff {
 		t.Errorf("wait=%v ok=%v, want %v true", wait, ok, retry.MaxBackoff)
+	}
+}
+
+// TestSleepHonorsContext proves the shared backoff wait stops at once when
+// the run is canceled instead of sleeping through the hint.
+func TestSleepHonorsContext(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if retry.Sleep(ctx, time.Hour) {
+		t.Fatal("canceled sleep reported elapsed")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("canceled sleep took %v, want an immediate return", elapsed)
+	}
+	if !retry.Sleep(context.Background(), 0) {
+		t.Error("zero wait on a live context reported canceled")
+	}
+}
+
+// TestAtFormatsRetryTime proves retry_at uses the injected clock and the
+// envelope's RFC 3339 shape.
+func TestAtFormatsRetryTime(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	if got, want := retry.At(now, 5*time.Second), "2026-11-02T12:00:05Z"; got != want {
+		t.Errorf("At = %q, want %q", got, want)
 	}
 }
 

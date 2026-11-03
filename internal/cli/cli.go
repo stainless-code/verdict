@@ -113,12 +113,6 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	msg := ref.Message + "\n" + HintFor(ref.Code)
 	if r.JSONMode {
-		errObj := jq.NewObj("code", ref.Code, "message", msg)
-		// The oversize-fetch refusal carries narrowing candidates
-		// (additive-only: absent reads null and the key stays dropped).
-		if r.Candidates != nil {
-			errObj.Set("candidates", r.Candidates)
-		}
 		env := jq.NewObj(
 			"schema_version", "1",
 			"verb", r.Cmd,
@@ -128,7 +122,7 @@ func (r *Runner) RefuseExit(err error, code int) int {
 			"next", "",
 			"warnings", cliStrings(r.Warnings),
 			"data", nil,
-			"error", errObj,
+			"error", r.refusalObject(ref, msg),
 		)
 		fmt.Fprintln(r.Out, env.MarshalPretty())
 	} else {
@@ -142,6 +136,19 @@ func (r *Runner) RefuseExit(err error, code int) int {
 		fmt.Fprintf(r.Diag, "re-enter: %s\n", r.Rentry)
 	}
 	return code
+}
+
+// refusalObject builds the envelope error object with the additive
+// candidate and retry_at keys (absent keys stay dropped).
+func (r *Runner) refusalObject(ref *RefusalError, msg string) *jq.Obj {
+	errObj := jq.NewObj("code", ref.Code, "message", msg)
+	if r.Candidates != nil {
+		errObj.Set("candidates", r.Candidates)
+	}
+	if ref.RetryAt != "" {
+		errObj.Set("retry_at", ref.RetryAt)
+	}
+	return errObj
 }
 
 // refusalOf recovers the typed refusal carried by err via [errors.As].

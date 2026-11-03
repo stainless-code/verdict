@@ -663,6 +663,36 @@ func TestSchemaNamesSorted(t *testing.T) {
 	}
 }
 
+// TestRefusalResultRetryAt proves a retryable refusal carries retry_at in
+// both MCP representations, and a plain refusal stays unchanged.
+func TestRefusalResultRetryAt(t *testing.T) {
+	t.Parallel()
+	res := refusalResult(&core.RefusalError{
+		Code: "post-failed", Message: "post failed", RetryAt: "2026-11-02T12:00:05Z",
+	})
+	if !strings.Contains(res.Content[0].Text, "retry_at: 2026-11-02T12:00:05Z") {
+		t.Errorf("text = %q, want retry_at", res.Content[0].Text)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(res.StructuredContent, &got); err != nil {
+		t.Fatalf("structuredContent: %v", err)
+	}
+	if got["retry_at"] != "2026-11-02T12:00:05Z" {
+		t.Errorf("structured retry_at = %q", got["retry_at"])
+	}
+	plain := refusalResult(&core.RefusalError{Code: "post-failed", Message: "post failed"})
+	if strings.Contains(plain.Content[0].Text, "retry_at") {
+		t.Errorf("plain text carries retry_at: %q", plain.Content[0].Text)
+	}
+	var plainMap map[string]any
+	if err := json.Unmarshal(plain.StructuredContent, &plainMap); err != nil {
+		t.Fatalf("plain structuredContent: %v", err)
+	}
+	if _, ok := plainMap["retry_at"]; ok {
+		t.Error("plain structuredContent carries retry_at")
+	}
+}
+
 // threadsCommander answers the refresh's GraphQL page.
 type threadsCommander struct {
 	t    *testing.T

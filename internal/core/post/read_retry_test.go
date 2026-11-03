@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/retry"
@@ -132,6 +133,65 @@ func TestReadRetryBounded(t *testing.T) {
 	assertRetryCalls(t, cmdr, retry.MaxAttempts,
 		[]string{"gh", "api", "repos/acme/app/pulls/7", "--jq", ".head.sha"})
 }
+
+// TestPostRetryAtOnExhaustion proves an exhausted retryable post carries the
+// next retry time onto its typed refusal, using the injected clock.
+func TestPostRetryAtOnExhaustion(t *testing.T) {
+	t.Parallel()
+	limited := retryResult{stderr: "HTTP 429: secondary rate limit exceeded, retry-after: 0", fail: true}
+	cmdr := &retryCommander{t: t, results: []retryResult{limited, limited, limited}}
+	var warnings []string
+	st := postTestState(t.TempDir(), "", core.PostFlags{}, &warnings)
+	_, ref := st.postOneWithRetry(context.Background(), cmdr, "{}")
+	if ref == nil {
+		t.Fatal("exhausted retry returned no refusal")
+	}
+	if ref.RetryAt != "2026-11-02T12:00:00Z" {
+		t.Errorf("retry_at = %q, want the injected clock", ref.RetryAt)
+	}
+	if len(cmdr.calls) != retry.MaxAttempts {
+		t.Errorf("calls = %d, want %d", len(cmdr.calls), retry.MaxAttempts)
+	}
+}
+
+// TestPostRetryCanceledDuringBackoff proves cancellation ends the wait at
+// once and refuses as canceled instead of sleeping through the hint.
+func TestPostRetryCanceledDuringBackoff(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cmdr := &cancelRetryCommander{cancel: cancel, stderr: "HTTP 429: secondary rate limit exceeded, retry-after: 30"}
+	var warnings []string
+	st := postTestState(t.TempDir(), "", core.PostFlags{}, &warnings)
+	start := time.Now()
+	_, ref := st.postOneWithRetry(ctx, cmdr, "{}")
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("canceled retry took %v, want a prompt return", elapsed)
+	}
+	if ref == nil || ref.Code != codeCanceled {
+		t.Fatalf("ref = %v, want canceled", ref)
+	}
+	if cmdr.calls != 1 {
+		t.Errorf("calls = %d, want 1", cmdr.calls)
+	}
+}
+
+// cancelRetryCommander cancels the run inside its first failed spawn, so the
+// backoff sees a dead context before it can sleep.
+type cancelRetryCommander struct {
+	cancel context.CancelFunc
+	stderr string
+	calls  int
+}
+
+// Run cancels and reports one retryable failure.
+func (c *cancelRetryCommander) Run(context.Context, core.Command) (core.Result, error) {
+	c.calls++
+	c.cancel()
+	return core.Result{Stderr: c.stderr}, errors.New("exit 1")
+}
+
+// LookPath reports every tool present.
+func (c *cancelRetryCommander) LookPath(string) error { return nil }
 
 // assertRetryCalls proves the attempt count and that every attempt ran the
 // exact same argv.

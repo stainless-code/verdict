@@ -534,11 +534,17 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 }
 
 // refusalResult builds a typed refusal result: isError true, text
-// `code: message\nhint`, and the same fields as structured content.
+// `code: message\nhint`, and the same fields as structured content, plus
+// `retry_at` when the refusal is retryable.
 func refusalResult(ref *core.RefusalError) callToolResult {
 	hint := core.HintFor(ref.Code)
 	text := ref.Code + ": " + ref.Message + lineBreak + hint
-	structured, err := json.Marshal(refusalContent{Code: ref.Code, Message: ref.Message, Hint: hint})
+	if ref.RetryAt != "" {
+		text += lineBreak + "retry_at: " + ref.RetryAt
+	}
+	structured, err := json.Marshal(refusalContent{
+		Code: ref.Code, Message: ref.Message, Hint: hint, RetryAt: ref.RetryAt,
+	})
 	if err != nil {
 		structured = []byte("{}")
 	}
@@ -640,6 +646,7 @@ type refusalContent struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Hint    string `json:"hint"`
+	RetryAt string `json:"retry_at,omitempty"`
 }
 
 // initializeResult is the initialize result.

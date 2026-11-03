@@ -560,7 +560,8 @@ refusals carry a `hint`; never `triage` without `--operator`), so an MCP-only
 agent sees it before its first call. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
-`{code, message, hint}` in both places. The text block is budgeted at 256 KiB:
+`{code, message, hint}` in both places, plus `retry_at` when the refusal is
+retryable. The text block is budgeted at 256 KiB:
 a larger result keeps `structuredContent` whole and replaces the text with a
 JSON summary carrying `truncated: true`, the measured `bytes` and `limit`, the
 on-disk `artifact` (the bundle directory when the verb reports one) and a
@@ -1143,7 +1144,9 @@ attempts, never publishing twice — and review bodies past the 65,536-char
 hosting limit split into parts: the first review keeps the footer intact,
 and the remaining parts post as follow-up COMMENT reviews with a continuation
 header. A failed follow-up refuses typed (`post-failed`) and names the review
-that already landed.
+that already landed. When the last permitted attempt still carries a
+retryable signal, the refusal adds `retry_at` (RFC 3339), so an agent can wait
+for that instant instead of parsing the prose.
 
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`

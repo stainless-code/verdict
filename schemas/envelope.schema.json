@@ -43,7 +43,8 @@
         "candidates": {
           "type": "array",
           "items": { "$ref": "#/$defs/candidate" }
-        }
+        },
+        "retry_at": { "type": "string", "format": "date-time" }
       },
       "required": ["code", "message"],
       "additionalProperties": true

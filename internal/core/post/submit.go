@@ -68,6 +68,8 @@ func splitOwner(repo string) (owner, name string) {
 // Plain failures return their first error, like the shell. The final result
 // and error are what callers write into their sidecars and degrade from, so a
 // retried read keeps today's warn-or-downgrade posture.
+//
+//nolint:revive // the bounded retry loop branches are the read contract
 func runReadRetry(ctx context.Context, cmdr Commander, cmd core.Command) (core.Result, error) {
 	var res core.Result
 	var err error
@@ -79,22 +81,24 @@ func runReadRetry(ctx context.Context, cmdr Commander, cmd core.Command) (core.R
 		if res.ExitCode == 0 {
 			return res, nil
 		}
-		if stopRetry(res, attempt) {
+		wait, ok := retry.Delay(res.Stderr, attempt)
+		if !ok || attempt >= retry.MaxAttempts-1 {
 			break
+		}
+		if waitErr := awaitRead(ctx, wait); waitErr != nil {
+			return res, waitErr
 		}
 	}
 	return res, jq.Sealed("read retry", res.ExitFailure(cmd.Argv[0]))
 }
 
-// stopRetry waits before the next attempt and reports whether the loop must
-// stop: an unretryable failure or the final attempt.
-func stopRetry(res core.Result, attempt int) bool {
-	wait, ok := retry.Delay(res.Stderr, attempt)
-	if !ok || attempt >= retry.MaxAttempts-1 {
-		return true
+// awaitRead waits before the next read attempt; a canceled wait returns the
+// context error.
+func awaitRead(ctx context.Context, wait time.Duration) error {
+	if retry.Sleep(ctx, wait) {
+		return nil
 	}
-	time.Sleep(wait)
-	return false
+	return ctx.Err() //nolint:wrapcheck // the context error is the cancellation signal
 }
 
 // ghLiveSHA ports the live-SHA lookup: the fetched PR head, or an error
@@ -345,7 +349,7 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 	for i, payload := range st.payloads[1:] {
 		part, ref := st.postOneWithRetry(ctx, cmdr, payload)
 		if ref != nil {
-			return "", st.followRefusal(i+2, len(st.payloads), posted)
+			return "", st.followRefusal(i+2, len(st.payloads), posted, ref.RetryAt)
 		}
 		st.followPosted(i+2, len(st.payloads), part)
 	}
@@ -355,20 +359,55 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 // postOneWithRetry ports one part's retry loop: up to retry.MaxAttempts
 // attempts, warning before each wait, then a typed post-failed carrying the
 // last attempt's head.
+//
+//nolint:revive // the bounded retry loop branches are the post contract
 func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload string) (string, *core.RefusalError) {
+	st.retryAt = ""
 	for attempt := range retry.MaxAttempts {
 		posted, errText, ok := postOnce(ctx, cmdr, st.req.Repo, st.req.Pr, st.dir, payload)
 		if ok {
 			return posted, nil
 		}
 		wait, canRetry := retry.Delay(errText, attempt)
-		if !canRetry || attempt >= retry.MaxAttempts-1 {
+		if !canRetry {
 			break
 		}
-		st.warn(fmt.Sprintf("transient GitHub error — retry %d/2, comments untouched", attempt+1))
-		time.Sleep(wait)
+		done, ref := st.awaitPostRetry(ctx, wait, attempt)
+		if ref != nil {
+			return "", ref
+		}
+		if done {
+			break
+		}
 	}
-	return "", &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf(msgPostFailed, headReason(st.dir))}
+	return "", &core.RefusalError{
+		Code: codePostFailed, Message: fmt.Sprintf(msgPostFailed, headReason(st.dir)), RetryAt: st.retryAt,
+	}
+}
+
+// awaitPostRetry waits before the next post attempt. The last attempt records
+// the refusal's retry_at and reports exhaustion; a canceled wait refuses as
+// canceled at once.
+func (st *state) awaitPostRetry(ctx context.Context, wait time.Duration, attempt int) (bool, *core.RefusalError) {
+	if attempt >= retry.MaxAttempts-1 {
+		st.retryAt = st.retryTime(wait)
+		return true, nil
+	}
+	st.warn(fmt.Sprintf("transient GitHub error — retry %d/2, comments untouched", attempt+1))
+	if !retry.Sleep(ctx, wait) {
+		return true, &core.RefusalError{Code: codeCanceled, Message: msgCanceledPost}
+	}
+	return false, nil
+}
+
+// retryTime formats the run clock plus a wait for the refusal envelope.
+func (st *state) retryTime(wait time.Duration) string {
+	if st.req != nil {
+		if rt := st.req.Runtime; rt != nil && rt.Now != nil {
+			return retry.At(rt.Now(), wait)
+		}
+	}
+	return retry.At(time.Now(), wait)
 }
 
 // followPosted reports one landed follow-up review on the human stream.
@@ -383,8 +422,8 @@ func (st *state) followPosted(k, n int, part string) {
 // followRefusal ports the partial-post failure: the first review already
 // landed, so the refusal names it and says how to finish — the marker stays
 // unarmed (failures never arm), and a re-run reposts every part.
-func (st *state) followRefusal(k, n int, posted string) *core.RefusalError {
-	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf(
+func (st *state) followRefusal(k, n int, posted, retryAt string) *core.RefusalError {
+	return &core.RefusalError{Code: codePostFailed, RetryAt: retryAt, Message: fmt.Sprintf(
 		"post failed: follow-up part %d/%d not posted (review %s landed part 1 — fix the cause and re-run; part 1 reposts as a duplicate)",
 		k, n, reviewID(posted))}
 }

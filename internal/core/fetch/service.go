@@ -25,6 +25,9 @@ const CodeFetchFailed = "fetch-failed"
 // codeCanceled names the cancel refusal the adapter exits 3 on.
 const codeCanceled = "canceled"
 
+// msgCanceledFetch is the frozen pre/post-cancel refusal message.
+const msgCanceledFetch = "canceled before fetch completed"
+
 // Commander is the exec seam every fetch spawn goes through: gh, glab,
 // git, curl, and the az/cafe probes. The production implementation is
 // [exec.Runner] (separate stdout/stderr capture, missing binaries
@@ -44,7 +47,7 @@ type Commander interface {
 func Run(ctx context.Context, req *core.FetchRequest) (*core.FetchResponse, error) {
 	st := newState(req)
 	if err := ctx.Err(); err != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before fetch completed"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledFetch})
 	}
 	s, ref := st.session()
 	if ref != nil {
@@ -63,7 +66,7 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	ctx2 := &fetchRunCtx{runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath()}
 	budget, _, err := fetchPrepare(ctx2, req, f)
 	if err != nil {
-		return nil, st.finalizeErr(err)
+		return nil, st.fail(ctx, err, s)
 	}
 	if f.Provider != providerGitHub && f.HasBase && f.BaseSHA != "" {
 		return nil, st.withWarnings(&core.RefusalError{Code: "bad-flags", Message: "--base-sha/--since is GitHub-only for now " +
@@ -71,7 +74,7 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	}
 	data, next, err := st.backend(ctx, ctx2, req, f, budget)
 	if err != nil {
-		return nil, st.finalizeErr(err)
+		return nil, st.fail(ctx, err, s)
 	}
 	return st.response(req, data, next), nil
 }
@@ -106,7 +109,7 @@ func (st *state) backend(
 func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResponse, error) {
 	st := newLocalState(req)
 	if err := ctx.Err(); err != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before fetch completed"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledFetch})
 	}
 	s, ref := st.session()
 	if ref != nil {
@@ -115,7 +118,7 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 	ctx2 := &fetchRunCtx{runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath()}
 	data, next, err := runLocalTail(ctx, ctx2, req)
 	if err != nil {
-		return nil, st.finalizeErr(err)
+		return nil, st.fail(ctx, err, s)
 	}
 	resp := &core.FetchResponse{
 		Repo:     req.Repo,
@@ -159,18 +162,42 @@ func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	return ref
 }
 
-// finalizeErr maps a run error: typed refusals carry the warnings, the
-// missing-tool kind passes through untouched (the adapter renders the
-// frozen line with no envelope), and anything else becomes a fetch-failed
-// refusal at the boundary.
-func (st *state) finalizeErr(err error) error {
+// fail maps a run error: a missing tool keeps its frozen line, a canceled
+// context refuses as canceled at once, and everything else goes through
+// finalizeErr's typed/generic mapping.
+func (st *state) fail(ctx context.Context, err error, s *session) error {
+	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
+		return mt
+	}
+	if ctx.Err() != nil {
+		return st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledFetch})
+	}
+	return st.finalizeErr(err, s)
+}
+
+// finalizeErr maps a run error: typed refusals carry the warnings and any
+// retry hint from the last exhausted transient call, the missing-tool kind
+// passes through untouched (the adapter renders the frozen line with no
+// envelope), and anything else becomes a fetch-failed refusal at the
+// boundary.
+func (st *state) finalizeErr(err error, s *session) error {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		attachRetryAt(ref, s)
 		return st.withWarnings(ref)
 	}
 	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
 		return mt
 	}
-	return st.withWarnings(&core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
+	ref := &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)}
+	attachRetryAt(ref, s)
+	return st.withWarnings(ref)
+}
+
+// attachRetryAt copies a retryable failure's envelope hint onto a refusal.
+func attachRetryAt(ref *core.RefusalError, s *session) {
+	if s != nil && ref.RetryAt == "" {
+		ref.RetryAt = s.retryAt
+	}
 }
 
 // response builds the typed success response.
@@ -273,6 +300,9 @@ type session struct {
 	Now       func() time.Time
 	env       map[string]string
 	warnings  *[]string
+	// retryAt is the last exhausted transient call's RFC 3339 retry time;
+	// finalizeErr copies it onto the refusal (empty on every other path).
+	retryAt   string
 	iso       *isolation
 	controls  *controls.Snapshot
 	Effective core.Effective
@@ -285,6 +315,15 @@ func (s *session) nowUTC() string {
 		return core.NowUTC(time.Now())
 	}
 	return core.NowUTC(s.Now())
+}
+
+// retryTime formats the session clock plus a wait for the refusal envelope.
+func (s *session) retryTime(wait time.Duration) string {
+	now := time.Now()
+	if s.Now != nil {
+		now = s.Now()
+	}
+	return retry.At(now, wait)
 }
 
 // Warn records a warning and streams it through the progress observer,
@@ -337,22 +376,45 @@ func (s *session) curlFetch(ctx context.Context, args ...string) (core.Result, e
 // retry.MaxAttempts attempts with the attempt-based sleep. A missing binary
 // never retries. Only failed calls retry, so a retry can never double-write
 // (the bundle lands only after a success).
+//
+//nolint:revive // the bounded retry loop branches are the retry contract
 func (s *session) fetchWithRetry(ctx context.Context, bin string, args []string) (core.Result, error) {
 	var res core.Result
 	var err error
+	s.retryAt = ""
 	for attempt := range retry.MaxAttempts {
 		res, err = s.run(ctx, bin, args...)
 		if err == nil || s.missing(err) {
-			break
+			return res, err
 		}
 		wait, ok := retry.Delay(res.Stderr, attempt)
-		if !ok || attempt >= retry.MaxAttempts-1 {
-			break
+		if !ok {
+			return res, err
 		}
-		s.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
-		time.Sleep(wait)
+		exhausted, waitErr := s.awaitRetry(ctx, wait, attempt)
+		if waitErr != nil {
+			return res, waitErr
+		}
+		if exhausted {
+			return res, err
+		}
 	}
 	return res, err
+}
+
+// awaitRetry waits before the next attempt. The last attempt records the
+// refusal's retry_at and reports exhaustion; a canceled wait returns the
+// context error.
+func (s *session) awaitRetry(ctx context.Context, wait time.Duration, attempt int) (bool, error) {
+	if attempt >= retry.MaxAttempts-1 {
+		s.retryAt = s.retryTime(wait)
+		return true, nil
+	}
+	s.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
+	if !retry.Sleep(ctx, wait) {
+		return false, ctx.Err() //nolint:wrapcheck // the context error is the cancellation signal
+	}
+	return false, nil
 }
 
 // missing reports whether err is the missing-tool kind the adapter renders

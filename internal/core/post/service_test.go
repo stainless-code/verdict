@@ -400,7 +400,7 @@ func TestReviewID(t *testing.T) {
 func TestFollowRefusal(t *testing.T) {
 	t.Parallel()
 	p := postSplitState(&[]string{})
-	ref := p.followRefusal(2, 3, `{"id":101,"state":"commented"}`)
+	ref := p.followRefusal(2, 3, `{"id":101,"state":"commented"}`, "")
 	if ref.Code != codePostFailed {
 		t.Errorf("code=%q want post-failed", ref.Code)
 	}

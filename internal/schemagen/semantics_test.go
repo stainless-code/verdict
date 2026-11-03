@@ -29,7 +29,9 @@ var publishedSemantics = map[string]string{
 	// T6: description prose corrected (nine keys; derived from
 	// RenderEnvelope; show listed as pinned). No property, required key, or
 	// type changed.
-	"envelope.schema.json": "3a22d156bb4b2f521fdf5253e41d3a077e60c44584372ac636414742199f4a2a",
+	// T3-10: additive retry_at on $defs/error (optional RFC 3339 property;
+	// no existing property, required key, or type changed).
+	"envelope.schema.json": "3cad927b2d30da030dd3dc275b1744f72c51af839489d73b23a37cfe69316b5f",
 	"findings.schema.json": "2ee11aaeb826ef09afcca6a675e7c5780ef05576c654e6f833545441921c2a26",
 	"post.schema.json":     "f706cc28f621eb668c8d621b03013f65f706a352d0ddc4da8b64068f98a3f100",
 	"record.schema.json":   "6e14c660471d31aa6a88e0cff787860a6ecdd0302cdc527eb511dde8542767fc",

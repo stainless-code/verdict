@@ -118,6 +118,12 @@ if [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ] \
 else
   bad "bounded failure armed the record"
 fi
+retry_at="$(jq -r '.error.retry_at // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ -n "$retry_at" ] && jq -en --arg t "$retry_at" '$t | fromdateiso8601' >/dev/null 2>&1; then
+  good "persistent 429 carries retry_at"
+else
+  bad "persistent 429 retry_at '$retry_at', want RFC 3339"
+fi
 rm -f "$EVAL_SANDBOX/rate-budget" "$EVAL_SANDBOX/rate-count"
 
 # --- G3: oversized body splits across a follow-up review, footer intact ---

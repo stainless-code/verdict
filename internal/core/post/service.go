@@ -30,6 +30,9 @@ const CodePostFailed = codePostFailed
 // codeCanceled names the cancel refusal the adapter exits 3 on.
 const codeCanceled = "canceled"
 
+// msgCanceledPost is the frozen pre/post-cancel refusal message.
+const msgCanceledPost = "canceled before post completed"
+
 // Run executes `post <owner/repo> <pr>`: bundle gates, drift, the shared
 // merge, binding, recheck, payload guards, and submit. It never writes
 // stdout/stderr or exits; human lines stream through the runtime progress
@@ -39,7 +42,7 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	st.flags = req.Flags
 	if err := ctx.Err(); err != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before post completed"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledPost})
 	}
 	if st.flags.Approve != approveTrue && st.flags.Approve != approveFalse {
 		return nil, st.withWarnings(&core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)})
@@ -77,6 +80,7 @@ type state struct {
 	live         []liveReview
 	findingsFile string
 	now          string
+	retryAt      string
 	controls     *controls.Snapshot
 	comments     []any
 	diagram      diagram.Status

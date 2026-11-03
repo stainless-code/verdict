@@ -12,10 +12,13 @@ import (
 // Candidates carries the fetch diff-too-large narrowing suggestions the
 // refusal owns on the diagnostic stream (nil on every other verb, so the
 // envelope stays byte-identical); the adapter copies them onto the runner
-// before rendering.
+// before rendering. RetryAt carries the RFC 3339 time a retryable refusal
+// becomes due (empty on every non-retryable refusal, so the envelope key
+// stays dropped).
 type RefusalError struct {
 	Code       string
 	Message    string
+	RetryAt    string
 	Warnings   []string
 	Candidates []any
 }

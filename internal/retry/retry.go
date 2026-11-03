@@ -6,6 +6,7 @@
 package retry
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -51,6 +52,29 @@ func Delay(stderr string, attempt int) (time.Duration, bool) {
 		wait = base
 	}
 	return min(wait, MaxBackoff), true
+}
+
+// Sleep waits for d unless ctx ends first. It reports whether the full wait
+// elapsed; a canceled context returns false at once, so a retry loop never
+// sleeps past cancellation.
+func Sleep(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// At formats the absolute retry time for a wait in the envelope's date-time
+// shape (RFC 3339, UTC), using the caller's injected clock.
+func At(now time.Time, wait time.Duration) string {
+	return now.Add(wait).UTC().Format(time.RFC3339)
 }
 
 // rateLimitWait detects a secondary rate-limit response and its wait: the
