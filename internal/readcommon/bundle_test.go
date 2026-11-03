@@ -39,7 +39,9 @@ func TestBundleReadsEachRecordOnce(t *testing.T) {
 	counts := map[string]int{}
 	original := readStoreFile
 	readStoreFile = func(path string, maxBytes int64) ([]byte, error) {
-		counts[path]++
+		// Key by file name: the bundle joins paths with "/", which differs
+		// from filepath.Join's separator on Windows.
+		counts[filepath.Base(filepath.FromSlash(path))]++
 		return original(path, maxBytes)
 	}
 	t.Cleanup(func() { readStoreFile = original })
@@ -49,10 +51,10 @@ func TestBundleReadsEachRecordOnce(t *testing.T) {
 		checkBundleViews(t, b)
 	}
 
-	if got := counts[filepath.Join(dir, "PR.json")]; got != 1 {
+	if got := counts["PR.json"]; got != 1 {
 		t.Errorf("PR.json reads = %d, want 1", got)
 	}
-	if got := counts[filepath.Join(dir, "post.json")]; got != 1 {
+	if got := counts["post.json"]; got != 1 {
 		t.Errorf("post.json reads = %d, want 1", got)
 	}
 }

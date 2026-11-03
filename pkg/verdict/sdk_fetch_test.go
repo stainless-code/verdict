@@ -3,6 +3,7 @@ package verdict_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,9 +19,16 @@ import (
 func stubTools(t *testing.T, tools ...string) {
 	t.Helper()
 	dir := t.TempDir()
+	// The stubs only have to resolve through exec.LookPath (the commander is
+	// a fake, so nothing runs them). Windows resolves a bare name only
+	// through PATHEXT, so the stub there is a .bat file.
+	name, body := "%s", "#!/bin/sh\nexit 1\n"
+	if runtime.GOOS == "windows" {
+		name, body = "%s.bat", "@exit /b 1\r\n"
+	}
 	for _, tool := range tools {
-		path := filepath.Join(dir, tool)
-		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		path := filepath.Join(dir, fmt.Sprintf(name, tool))
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
