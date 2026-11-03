@@ -19,6 +19,9 @@ func usageText() string {
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
+		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate/adopt/ready\n" +
+		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented). Incremental re-review\n" +
+		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.\n" +
 		"    Chunking opt-in only: --chunk (or .review/chunk holding true) marks over-cap fetches for " +
@@ -47,6 +50,7 @@ func usageText() string {
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"  adopt <owner/repo> <pr> --from <local-slug> [--json]\n" +
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
+		"    Adopt-into needs a GitHub PR target: non-GitHub targets refuse typed (provider-unimplemented).\n" +
 		"  fix <owner/repo> <local-slug> [--sig <s>] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
@@ -61,6 +65,7 @@ func usageText() string {
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
 		"    verification.json evidence (VERIFIED + resultHead matching HEAD).\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
+		"    GitHub PR bundles only: local bundles and non-GitHub providers refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
@@ -134,6 +139,7 @@ func usageText() string {
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
 		"    (review/wait/nudge-author). PR bundles only; local bundles refused.\n" +
+		"    Non-GitHub provider bundles refuse typed (provider-unimplemented).\n" +
 		"    --check opts into gating (same output, machine exits): 0 ready, 1 blockers\n" +
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
@@ -150,6 +156,7 @@ func usageText() string {
 		"    (addressed vs false-positive); missing manifests read unmeasured (never\n" +
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
+		"    GitHub PR bundles only: local bundles and non-GitHub providers refuse typed (provider-unimplemented).\n" +
 		"  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]\n" +
 		"    append one rule to .review/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +
