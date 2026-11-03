@@ -14,6 +14,9 @@
 #       plus the excess row for the non-baseline grant; exit 0 (warn-only
 #       never fails the run)
 #   S5  text mode with excess stub → WARN line on stdout, exit stays 0
+#   D1  text mode opens with the `doctor @ <utc>` run stamp
+#   D2  text mode closes with the Summary line and its word agrees with the
+#       exit code (dead stub → unhealthy, exit 1)
 #   S6  doctor writes nothing to the sandbox (tree-clean: no .review/ dir)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -132,6 +135,28 @@ else
   bad "S5 text mode gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_OUT")"
 fi
 unset GH_STUB_DOCTOR
+
+# --- D1/D2: human run stamp + trailing summary (dead stub → unhealthy) ---
+run_review doctor
+stamp="$(head -n 1 "$EVAL_OUT")"
+summary="$(tail -n 1 "$EVAL_OUT")"
+if printf '%s' "$stamp" | grep -Eq '^doctor @ [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+  good "D1 first line is the doctor run stamp"
+else
+  bad "D1 first line: $(printf '%s' "$stamp" | head -c 120)"
+fi
+if printf '%s' "$summary" | grep -Eq '^Summary: (healthy|unhealthy) — [0-9]+ ok, [0-9]+ warn, [0-9]+ fail$'; then
+  word="${summary#Summary: }"
+  word="${word%% *}"
+  if { [ "$EVAL_STATUS" -eq 0 ] && [ "$word" = "healthy" ]; } \
+    || { [ "$EVAL_STATUS" -ne 0 ] && [ "$word" = "unhealthy" ]; }; then
+    good "D2 summary word '$word' agrees with exit $EVAL_STATUS"
+  else
+    bad "D2 summary word '$word' disagrees with exit $EVAL_STATUS"
+  fi
+else
+  bad "D2 last line: $(printf '%s' "$summary" | head -c 120)"
+fi
 
 # --- S6: doctor writes nothing (tree-clean: sandbox tree identical) ---
 post_tree="$(snap_tree)"

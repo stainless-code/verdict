@@ -63,6 +63,24 @@ func (d *Data) Wire() *jq.Obj {
 	return jq.NewObj("healthy", d.Healthy, "checks", rows)
 }
 
+// Counts tallies the human display buckets over the existing check results:
+// ok rows (ok true, whatever the severity), advisory warnings (ok false with
+// warn severity), and failures. The healthy predicate stays allHealthy; this
+// only counts the rows the human path already renders.
+func (d *Data) Counts() (ok, warn, fail int) {
+	for _, c := range d.Checks {
+		switch {
+		case c.OK:
+			ok++
+		case c.Severity == severityWarn:
+			warn++
+		default:
+			fail++
+		}
+	}
+	return ok, warn, fail
+}
+
 // Run executes the harness preflight.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
