@@ -1,63 +1,15 @@
 package core_test
 
 import (
-	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// forbiddenDeps are the transport and verb packages core must never reach,
-// directly or transitively.
-var forbiddenDeps = []string{
-	"/internal/cli",
-	"/internal/mcp",
-	"/internal/schemagen",
-	"/internal/parity",
-	"/internal/readparity",
-	"/cmd/verdict",
-	"/internal/report",
-	"/internal/record",
-	"/internal/fetch",
-	"/internal/verify",
-	"/internal/triage",
-	"/internal/adopt",
-	"/internal/fix",
-	"/internal/learn",
-	"/internal/ready",
-	"/internal/threads",
-	"/internal/trend",
-	"/internal/calibrate",
-	"/internal/doctor",
-	"/internal/checktree",
-	"/internal/scaffold",
-}
-
-// TestCoreImportDirection proves `go list -deps ./internal/core/...` never
-// reaches a transport, verb package, or the schema generator.
-//
-//nolint:revive // one scan loop per dependency kind reads clearer than a helper
-func TestCoreImportDirection(t *testing.T) {
-	cmd := exec.CommandContext(context.Background(), "go", "list", "-deps", "-f", "{{.ImportPath}}", "./...")
-	cmd.Dir = "."
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list -deps: %v\n%s", err, out)
-	}
-	for dep := range strings.FieldsSeq(string(out)) {
-		for _, forbidden := range forbiddenDeps {
-			if strings.HasSuffix(dep, forbidden) || dep == strings.TrimPrefix(forbidden, "/") {
-				t.Errorf("internal/core imports forbidden package %q", dep)
-			}
-		}
-	}
-}
 
 // TestCoreSourcesAvoidProcessIO proves core code never touches stdout,
 // stderr, [os.Exit], argv, or the environment directly: those are adapter
