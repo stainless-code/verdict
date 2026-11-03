@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
-	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -49,8 +48,10 @@ const (
 var supportedProtocols = []string{"2024-11-05", "2025-03-26", latestProtocol}
 
 // Config is the transport's injected environment: the version string, the
-// prefs/core runtime the CLI resolved, the production command runners, and
-// the stderr stream every progress line uses (stdout stays protocol-only).
+// prefs/core runtime the CLI resolved, and the stderr stream every progress
+// line uses (stdout stays protocol-only). Commanders overrides a tool's
+// production runner by name; it is a test seam, while the registry owns the
+// production wiring.
 type Config struct { //nolint:govet // the grouping documents the injection surface; alignment is irrelevant
 	Version    string
 	Env        map[string]string
@@ -100,11 +101,22 @@ func New(cfg *Config) *Server {
 		cfg.Stderr = io.Discard
 	}
 	tools := allTools(cfg.ReadOnly, cfg.Operator)
+	applyCommanderOverrides(tools, cfg.Commanders)
 	byName := make(map[string]*tool, len(tools))
 	for _, t := range tools {
 		byName[t.name] = t
 	}
 	return &Server{cfg: *cfg, tools: tools, byName: byName, calls: map[string]context.CancelFunc{}}
+}
+
+// applyCommanderOverrides replaces a tool's production runner with a test
+// fake. Production deps come from the registry, not from this map.
+func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander) {
+	for _, t := range tools {
+		if commander, ok := overrides[t.name]; ok {
+			t.deps.commander = commander
+		}
+	}
 }
 
 // Serve runs the newline-delimited JSON-RPC loop until stdin closes, then
@@ -308,7 +320,7 @@ func (s *Server) bindings(t *tool) *bindings {
 		warnings:  s.cfg.Warnings,
 		environ:   s.cfg.Environ,
 		stderr:    s.cfg.Stderr,
-		commander: s.commander(t),
+		commander: t.deps.commander,
 	}
 }
 
@@ -359,24 +371,6 @@ func (s *Server) listTools() toolsListResult {
 		})
 	}
 	return toolsListResult{Tools: out}
-}
-
-// commander returns the production runner the verb's CLI adapter installs,
-// or a test/embed override from Config.
-func (s *Server) commander(t *tool) core.Commander {
-	if c, ok := s.cfg.Commanders[t.name]; ok {
-		return c
-	}
-	switch t.name {
-	case "fetch", "fetch-local", "fix", "init", "post":
-		return coreexec.SplitCommander{}
-	case "verify":
-		return coreexec.OSCommander{}
-	case "ready", "doctor", "check-tree", "calibrate":
-		return coreexec.SpawnCommander{}
-	default:
-		return nil
-	}
 }
 
 // stderrProgress routes core's human/warn/diag observations to stderr; a
