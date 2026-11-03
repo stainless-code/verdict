@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 )
@@ -167,5 +168,14 @@ func TestLinkedVersionPreference(t *testing.T) {
 	}
 	if got := provenance.ToolVersion(filepath.Join(dir, "missing")); got != "1.2.3" {
 		t.Errorf("ToolVersion(linked, no checkout) = %q; want 1.2.3", got)
+	}
+}
+
+// TestToolVersionDegrade checks the footer's no-metadata fallback is the
+// shared version constant, so --version and the footer agree (F3).
+func TestToolVersionDegrade(t *testing.T) {
+	dir := writeBundle(t, map[string]string{})
+	if got := provenance.ToolVersion(filepath.Join(dir, "missing")); got != core.VersionUnknown {
+		t.Errorf("ToolVersion(no metadata) = %q; want %q", got, core.VersionUnknown)
 	}
 }

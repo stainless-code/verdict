@@ -948,7 +948,8 @@ block at the end:
 ```
 
 Fields degrade factually, never blank, never failing the run: an unreadable
-version reads `unknown`, unpriced spend reads `cost unrecorded`, uncountable
+version reads `0.0.0-unknown` (the same string `--version` prints), unpriced
+spend reads `cost unrecorded`, uncountable
 files read `files unrecorded`, and the review link renders only when a
 completed post record carries it (never invented pre-post). When the post
 record's head matches the bundle HEAD the link is omitted instead of pointing

@@ -38,6 +38,11 @@ const (
 	FooterDivider     = "<!-- verdict-footer -->"
 )
 
+// VersionUnknown is the one degrade string for builds with no release
+// metadata: --version, the skill payload, and the footer all report it, so
+// the same fact never renders two ways.
+const VersionUnknown = "0.0.0-unknown"
+
 // Effective holds the resolved presentation knobs as "true"/"false"/enum
 // strings, mirroring the shell's EFFECTIVE_* globals.
 type Effective struct {

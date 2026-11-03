@@ -410,13 +410,13 @@ func envMap(getenv func(string) string) map[string]string {
 func versionOf(root string, readFile func(string) ([]byte, error)) string {
 	raw, err := readFile(filepath.Join(root, "package.json"))
 	if err != nil {
-		return "0.0.0-unknown"
+		return core.VersionUnknown
 	}
 	var doc struct {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil || doc.Version == "" {
-		return "0.0.0-unknown"
+		return core.VersionUnknown
 	}
 	return doc.Version
 }

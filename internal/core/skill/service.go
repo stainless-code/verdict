@@ -42,7 +42,6 @@ const (
 	codeInstall    = "skill-install-failed"
 	codeRead       = "skill-read-failed"
 	codeCanceled   = "canceled"
-	defaultVersion = "0.0.0-unknown"
 	dirPerm        = 0o755
 )
 
@@ -400,10 +399,10 @@ func writeReceipt(target, version, now string) error {
 	return atomic.WriteFile(filepath.Join(target, ReceiptName), []byte(doc.MarshalPretty()+"\n"))
 }
 
-// version returns the served skill version with the unknown fallback.
+// version returns the served skill version with the shared unknown fallback.
 func (req *Request) version() string {
 	if req.Version == "" {
-		return defaultVersion
+		return core.VersionUnknown
 	}
 	return req.Version
 }

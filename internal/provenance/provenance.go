@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -35,27 +36,28 @@ func SetBuildVersion(v string) {
 }
 
 // ToolVersion reads the tool version beside the binary root, defaulting to
-// unknown when the checkout marker is absent. A linked release version
-// (installed binaries ship no package.json) wins over the file read.
+// [core.VersionUnknown] when the checkout marker is absent (the same degrade
+// every version surface reports). A linked release version (installed
+// binaries ship no package.json) wins over the file read.
 func ToolVersion(root string) string {
 	if buildVersion != "" {
 		return buildVersion
 	}
 	raw, err := os.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
-		return unknown
+		return core.VersionUnknown
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return unknown
+		return core.VersionUnknown
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return unknown
+		return core.VersionUnknown
 	}
 	v := jq.StrOf(m["version"])
 	if v == "" {
-		return unknown
+		return core.VersionUnknown
 	}
 	return v
 }

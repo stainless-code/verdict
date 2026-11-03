@@ -5,12 +5,12 @@
 #   V1  `verdict --version` stdout equals `jq -r .version package.json`.
 #   V2  the rendered footer resolves `{version}` to the same string on a
 #       healthy tree (report --output carries `Verdict <version>`, never
-#       `unknown`); no second version source exists (no VERSION file at
-#       the root, the version is read from package.json at runtime, every
-#       `.version` read targets package.json).
+#       the degrade `0.0.0-unknown`); no second version source exists (no
+#       VERSION file at the root, the version is read from package.json at
+#       runtime, every `.version` read targets package.json).
 #   V3  degrade path: with package.json unreadable, `--version` reads
-#       `0.0.0-unknown` and the footer still renders `Verdict unknown`
-#       (never a failure).
+#       `0.0.0-unknown` and the footer renders `Verdict 0.0.0-unknown`
+#       (the same string; never a failure).
 #   D1  docs: README ## Versioning states the changeset rule; the manual
 #       points at it rather than duplicating it.
 set -euo pipefail
@@ -40,7 +40,7 @@ EOF
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4601.md"
 assert_exit "rendered footer succeeds" 0
 assert_file_grep "rendered footer carries the package.json version" "$EVAL_SANDBOX/out-4601.md" "Verdict $VER" "-F"
-assert_file_nogrep "rendered footer never says unknown" "$EVAL_SANDBOX/out-4601.md" 'Verdict unknown' "-F"
+assert_file_nogrep "rendered footer never says the degrade" "$EVAL_SANDBOX/out-4601.md" 'Verdict 0.0.0-unknown' "-F"
 if [ -e "$EVAL_ROOT/VERSION" ] || [ -e "$EVAL_ROOT/version.txt" ]; then
   bad "second version source file exists at the repo root"
 else
@@ -100,8 +100,8 @@ set +e
 )
 fake_status=$?
 set -e
-if [ "$fake_status" -eq 0 ] && grep -Fq 'Verdict unknown' "$EVAL_SANDBOX/out-4602.md"; then
-  good "unreadable package.json still renders Verdict unknown, never fails"
+if [ "$fake_status" -eq 0 ] && grep -Fq 'Verdict 0.0.0-unknown' "$EVAL_SANDBOX/out-4602.md"; then
+  good "unreadable package.json still renders Verdict 0.0.0-unknown, never fails"
 else
   bad "degraded footer gave exit $fake_status"
 fi
