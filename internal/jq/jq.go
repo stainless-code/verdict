@@ -2,7 +2,7 @@
 // the Go port emits byte-identical stores and reads agent JSON the same way.
 //
 // The rules below are bug-for-bug ports, verified against jq 1.7 in the
-// parity harness (internal/record/parity_test.go):
+// record golden suite:
 //   - `//` yields the right side when the left is null OR false.
 //   - `jq -r` renders null as "null", strings raw, numbers in jq's shortest
 //     round-trip form, booleans as true/false, containers as compact JSON.

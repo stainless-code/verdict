@@ -27,8 +27,8 @@ func TestMain(m *testing.M) {
 // initBoth runs one init case with dispatch-faithful args.
 func initBoth(t *testing.T, name string, setup func(t *testing.T, dir, home string), args ...string) {
 	t.Helper()
-	bashArgs := append([]string{args[0]}, args[3:]...)
-	golden.Pin(t, harness, name, setup, nil, bashArgs...)
+	cliArgs := append([]string{args[0]}, args[3:]...)
+	golden.Pin(t, harness, name, setup, nil, cliArgs...)
 }
 
 // mkRepo initializes a clean git repo sandbox.
