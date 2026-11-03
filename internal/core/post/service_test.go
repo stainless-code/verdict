@@ -197,6 +197,12 @@ func checkFinalizerCase(t *testing.T, tc *finalizerCase) {
 	var warnings []string
 	p := postTestState(dir, tc.commitID, core.PostFlags{}, &warnings)
 	ref := p.finalizerGuard()
+	if tc.wantWarn != "" {
+		joined := strings.Join(p.warnings, "\n")
+		if !strings.Contains(joined, tc.wantWarn) {
+			t.Errorf("warnings miss %q: %q", tc.wantWarn, joined)
+		}
+	}
 	if tc.wantCode == "" && ref != nil {
 		t.Fatalf("proceed case refused: %v", ref)
 	}
@@ -212,12 +218,6 @@ func checkFinalizerCase(t *testing.T, tc *finalizerCase) {
 	}
 	if tc.wantPiece != "" && !strings.Contains(ref.Error(), tc.wantPiece) {
 		t.Errorf("refusal misses %q: %v", tc.wantPiece, ref)
-	}
-	if tc.wantWarn != "" {
-		joined := strings.Join(warnings, "\n")
-		if !strings.Contains(joined, tc.wantWarn) {
-			t.Errorf("warnings miss %q: %q", tc.wantWarn, joined)
-		}
 	}
 }
 
