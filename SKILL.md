@@ -13,7 +13,7 @@ the model is whatever agent you invoke.
 Run the CLI from the repo under review: `.review/` is created in the
 current directory, never beside the tool. The primary path is the GLOBAL
 `verdict` binary installed once (`curl -fsSL
-https://github.com/stainless-code/verdict/releases/latest/download/install.sh
+https://stainless-code.com/verdict/install.sh
 | sh`, `npm i -g @stainless-code/verdict`, or `brew install
 stainless-code/tap/verdict`); the installed `verdict/` skill dir is only the
 skill. A skill copy resolves the binary through `scripts/verdict`:

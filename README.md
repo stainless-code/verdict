@@ -28,11 +28,17 @@ or a daemon.
 
 ```bash
 # macOS / Linux (sh, bash, zsh, dash, ash)
-curl -fsSL https://github.com/stainless-code/verdict/releases/latest/download/install.sh | sh
+curl -fsSL https://stainless-code.com/verdict/install.sh | sh
 
 # Windows (PowerShell)
-irm https://github.com/stainless-code/verdict/releases/latest/download/install.ps1 | iex
+irm https://stainless-code.com/verdict/install.ps1 | iex
 ```
+
+Fallback if the docs site is unreachable, or directly from GitHub Releases:
+`https://github.com/stainless-code/verdict/releases/latest/download/install.sh`
+(macOS/Linux) or
+`https://github.com/stainless-code/verdict/releases/latest/download/install.ps1`
+(Windows).
 
 Pin a version with `VERDICT_VERSION=vX.Y.Z` (Windows: `-Version vX.Y.Z`).
 `VERDICT_INSTALL` picks another directory (default `~/.verdict/bin`).

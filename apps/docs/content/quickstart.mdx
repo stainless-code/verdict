@@ -17,14 +17,20 @@ Order matters, so follow the steps.
     <Tabs>
       <Tab title="Binary (verified)">
         ```bash
-        curl -fsSL https://github.com/stainless-code/verdict/releases/latest/download/install.sh | sh
+        curl -fsSL https://stainless-code.com/verdict/install.sh | sh
         ```
         macOS/Linux: installs `verdict` to `~/.verdict/bin` after verifying the
         checksum (and the cosign bundle when cosign is present). Pin with
         `VERDICT_VERSION=vX.Y.Z`, skip the
         PATH edit with `--no-modify-path`, and uninstall with
         `install.sh --uninstall --remove-path`. Windows:
-        `irm https://github.com/stainless-code/verdict/releases/latest/download/install.ps1 | iex`.
+        `irm https://stainless-code.com/verdict/install.ps1 | iex`.
+
+        If the docs site is unreachable, or directly from GitHub Releases:
+        `https://github.com/stainless-code/verdict/releases/latest/download/install.sh`
+        (macOS/Linux) or
+        `https://github.com/stainless-code/verdict/releases/latest/download/install.ps1`
+        (Windows).
       </Tab>
       <Tab title="skills.sh">
         ```bash
@@ -41,6 +47,7 @@ Order matters, so follow the steps.
         called `install.sh` before 0.4; that name is now the binary installer.)
       </Tab>
     </Tabs>
+
   </Step>
   <Step title="Scaffold local defaults (optional)">
     ```bash

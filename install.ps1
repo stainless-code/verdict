@@ -3,7 +3,7 @@
 # SHA-256, extracts only verdict.exe, and replaces the target atomically.
 # No admin/root required, no eval of release metadata.
 #
-#   irm .../install.ps1 | iex
+#   irm https://stainless-code.com/verdict/install.ps1 | iex
 #   ./install.ps1 -Version 1.2.3 -InstallDir C:\tools\verdict
 #   ./install.ps1 -Uninstall [-RemovePath]
 #

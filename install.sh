@@ -4,7 +4,7 @@
 # archive SHA-256, extract only `verdict`, and atomically replace the target.
 # No root, no daemon, no eval of release metadata. Windows: use install.ps1.
 #
-#   curl -fsSL .../install.sh | sh
+#   curl -fsSL https://stainless-code.com/verdict/install.sh | sh
 #   sh install.sh ./verdict_1.2.3_linux_amd64.tar.gz   # offline/local
 #   sh install.sh --uninstall [--remove-path]
 set -eu

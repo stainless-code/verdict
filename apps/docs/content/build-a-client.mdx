@@ -156,10 +156,10 @@ Pin the binary, not just the client:
 
 ```bash
 # Installer (macOS/Linux): pin the release tag.
-VERDICT_VERSION=v0.3.1 sh install.sh
+curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=v0.3.1 sh
 
-# npm wrapper: pin the package version.
-npm i -g @stainless-code/verdict@0.3.1
+# npm wrapper: unpinned, tracks the latest release.
+npm i -g @stainless-code/verdict
 
 # Assert at client startup (prints e.g. 0.3.1, no leading v).
 verdict --version
