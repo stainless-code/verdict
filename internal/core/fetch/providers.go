@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -704,7 +705,7 @@ func forgejoDiff(ctx context.Context, r *session, dir string, auth []string, api
 	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", dir)
 	diffRes, err := r.curlFetch(ctx, curlArgs(auth, api+".diff")...)
 	if err != nil {
-		return forgejoDiffFallback(ctx, r, dir, auth, metaStdout)
+		return forgejoDiffFallback(ctx, r, dir, auth, api, metaStdout)
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
@@ -735,8 +736,12 @@ func forgejoDiffURL(metaStdout string) string {
 
 // forgejoDiffFallback ports the metadata-URL fallback with its stderr
 // sidecar and empty-diff truncation on total failure.
-func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []string, metaStdout string) error {
-	diffRes, err := r.curlFetch(ctx, curlArgs(auth, forgejoDiffURL(metaStdout))...)
+func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
+	diffURL := forgejoDiffURL(metaStdout)
+	if diffURL != "" && !sameOrigin(api, diffURL) {
+		return offOriginRefusal("forgejo", diffURL)
+	}
+	diffRes, err := r.curlFetch(ctx, curlArgs(auth, diffURL)...)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
 	}
@@ -1008,8 +1013,14 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, b
 // bitbucketThreads ports the diffstat/comments reads and the split writes,
 // returning the diffstat entries for normalization.
 func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base string) ([]any, *core.RefusalError) {
-	ds := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100", "values")
-	cm := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100", "values")
+	ds, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100", "values")
+	if ref != nil {
+		return nil, ref
+	}
+	cm, ref := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100", "values")
+	if ref != nil {
+		return nil, ref
+	}
 	inline, reviews := splitBitbucketComments(cm)
 	if err := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(plainAll(inline)))); err != nil {
 		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, err)}
@@ -1022,21 +1033,34 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 
 // bitbucketPages ports the pagelen loop: `curl -sfL` pages decoded with
 // `.values // []`, concatenated; failed pages feed '{}' and `.next // empty`
-// ends the walk.
-func bitbucketPages(ctx context.Context, r *session, auth []string, first, field string) []any {
-	var out []any
-	for u := first; u != "" && u != nullStr; {
-		m, ok := bitbucketPage(ctx, r, auth, u)
-		if !ok {
-			break
-		}
-		out = append(out, jq.Elements(m[field])...)
-		u = bitbucketNext(m)
+// ends the walk. Each server-supplied `next` stays on the API origin (the
+// bearer rides every page) and the walk is capped.
+func bitbucketPages(ctx context.Context, r *session, auth []string, first, field string) ([]any, *core.RefusalError) {
+	out, truncated, err := pageWalk(ctx, first, providerMaxPages,
+		func(ctx context.Context, u string) ([]any, string, error) {
+			target, ok := resolveOnOrigin(first, u)
+			if !ok {
+				return nil, "", offOriginRefusal("bitbucket", u)
+			}
+			m, ok := bitbucketPage(ctx, r, auth, target)
+			if !ok {
+				return nil, "", internalErrorf("bitbucket page unreadable")
+			}
+			return jq.Elements(m[field]), bitbucketNext(m), nil
+		})
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return nil, ref
+	}
+	if err != nil {
+		r.Warn("bitbucket paging stopped on an unreadable page (" +
+			headBytes(err.Error(), numExcerptShort) + ") — the bundle may be incomplete")
+	} else if truncated {
+		r.Warn("bitbucket paging ended early (page cap or repeated next cursor) — the bundle may be incomplete")
 	}
 	if out == nil {
 		out = []any{}
 	}
-	return out
+	return out, nil
 }
 
 // bitbucketPage fetches and decodes one page (ok=false on bad JSON).
@@ -1056,7 +1080,9 @@ func bitbucketPage(ctx context.Context, r *session, auth []string, u string) (ma
 // bitbucketNext ports `.next // empty` over a decoded page.
 func bitbucketNext(m map[string]any) string {
 	if next, has := m["next"]; has && next != nil {
-		return jq.R(next)
+		if s := jq.R(next); s != nullStr {
+			return s
+		}
 	}
 	return ""
 }
@@ -1178,6 +1204,9 @@ func azureSetup(ctx context.Context, ctx2 *fetchRunCtx, repo, pr string) (azureC
 	remote, hs, bs := azureMergeRef(metaRes.Stdout)
 	if azureMergeMissing(remote, hs, bs) {
 		return conn, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("azure PR %s carries no merge commits/remote", pr)}
+	}
+	if !sameOrigin(org, remote) {
+		return conn, offOriginRefusal("azure", remote)
 	}
 	tok, err := azureToken(ctx, r, ctx2)
 	if err != nil {

@@ -171,6 +171,10 @@ const azStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.az-calls.log\"
 const (
 	headA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	headB = "488310afbc29fb48fbd84cf16c89d3726158a444"
+	// azureRemote is the https clone URL the azure fixture advertises: it
+	// shares AZURE_DEVOPS_ORG's origin, and the case's git config rewrites
+	// it to the local remote so the fetch stays hermetic.
+	azureRemote = "https://example.invalid/r.git"
 )
 
 // writeCanned writes one canned provider payload, failing the test on error.
@@ -1164,6 +1168,10 @@ func TestFetchParitySensitiveKB(t *testing.T) {
 // TestFetchParityAzureHappy pins the byte-parity behavior.
 func TestFetchParityAzureHappy(t *testing.T) {
 	t.Parallel()
+	env := map[string]string{
+		"AZURE_DEVOPS_ORG":     "https://example.invalid",
+		"AZURE_DEVOPS_EXT_PAT": "tok",
+	}
 	setup := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
@@ -1186,17 +1194,23 @@ func TestFetchParityAzureHappy(t *testing.T) {
 		headSHA := strings.TrimSpace(runGit(t, remote, "rev-parse", "HEAD"))
 		// The sandbox repo needs the remote's base object for the controls read.
 		runGit(t, dir, "fetch", "-q", remote, "HEAD")
+		// The response names the real https clone URL (same origin as
+		// AZURE_DEVOPS_ORG); a git URL rewrite points that URL at the local
+		// fixture so the fetch stays hermetic and the origin check runs.
+		localURL := "file://" + filepath.ToSlash(remote)
+		if !strings.HasPrefix(filepath.ToSlash(remote), "/") {
+			localURL = "file:///" + filepath.ToSlash(remote) // Windows drive path
+		}
+		env["GIT_CONFIG_COUNT"] = "1"
+		env["GIT_CONFIG_KEY_0"] = "url." + localURL + ".insteadOf"
+		env["GIT_CONFIG_VALUE_0"] = azureRemote
 		writeCanned(t, dir, "az-meta.json", `{"pullRequestId":16,"title":"PR sixteen","description":"body",`+
 			`"targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat",`+
 			`"lastMergeTargetCommit":{"commitId":"`+baseSHA+`"},"lastMergeSourceCommit":{"commitId":"`+headSHA+`"},`+
 			`"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/16","status":"active","isDraft":false,`+
-			`"repository":{"remoteUrl":`+slashJSONPath(t, remote)+`}}`)
+			`"repository":{"remoteUrl":"`+azureRemote+`"}}`)
 		writeCanned(t, dir, "az-threads.json", `[{"id":1}]`)
 		writeCanned(t, dir, "az-changes.json", `[{"item":{"path":"/a.txt"},"changeType":"edit"}]`)
-	}
-	env := map[string]string{
-		"AZURE_DEVOPS_ORG":     "https://example.invalid",
-		"AZURE_DEVOPS_EXT_PAT": "tok",
 	}
 	parity.Golden(t, harness, "azure-happy", setup, env,
 		"fetch", "acme/app", "4716", "--provider", "azure", "--json")
@@ -1218,7 +1232,7 @@ func TestFetchParityBitbucketPaging(t *testing.T) {
 		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n"+
 			"diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-c\n+d\n")
 		writeCanned(t, dir, "bb-page1.json", `{"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},`+
-			`"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://example.invalid/diffstat?cursor=cursor2"}`)
+			`"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?cursor=cursor2"}`)
 		// The stub serves page2 only when the URL carries cursor2.
 		writeCanned(t, dir, "bb-page2.json", `{"values":[{"new":{"path":"b.txt"},"old":{"path":"b.txt"},`+
 			`"status":"modified","lines_added":1,"lines_removed":0}],"next":null}`)
