@@ -9,16 +9,16 @@ package learncore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -190,18 +190,14 @@ func (st *state) runStatus() *core.RefusalError {
 
 // readStatusRows reads the store with precision, refusing corrupt stores.
 func (st *state) readStatusRows() ([]any, *core.RefusalError) {
-	rows := []any{}
-	if !readcommon.IsFile(kbFile) {
-		return rows, nil
+	decoded, err := kb.ReadRows()
+	if errors.Is(err, kb.ErrMissing) {
+		return []any{}, nil
 	}
-	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
 	if err != nil {
 		return nil, st.corruptStore()
 	}
-	decoded, err := jq.DecodeJSONLOrdered(raw)
-	if err != nil {
-		return nil, st.corruptStore()
-	}
+	rows := make([]any, 0, len(decoded))
 	for _, row := range decoded {
 		rows = append(rows, withPrecision(row))
 	}
@@ -284,7 +280,7 @@ func (st *state) runAppend() *core.RefusalError {
 		return ref
 	}
 	row := appendRowDoc(validated)
-	if err := appendRow(row.MarshalCompact() + "\n"); err != nil {
+	if err := kb.AppendRow(row.MarshalCompact() + "\n"); err != nil {
 		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, kbFile, err))
 	}
 	st.next = nextAppend
@@ -344,7 +340,7 @@ func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.Refus
 	if lid == "" {
 		lid = readcommon.Slugify(ruleT)
 	}
-	if !idRe.MatchString(lid) {
+	if !kb.ValidID(lid) {
 		return nil, st.refuse(codeBadID, fmt.Sprintf(msgBadIDExplicit, lid))
 	}
 	return &appendInput{rule: ruleT, scope: scopeT, lid: lid, prov: prov, rigor: st.req.Rigor}, nil
@@ -359,8 +355,8 @@ func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
 	if !readcommon.IsFile(kbFile) {
 		return nil
 	}
-	rows, ok := readRows()
-	if !ok {
+	rows, err := kb.ReadRows()
+	if err != nil {
 		return st.corruptStore()
 	}
 	return st.checkDupRows(rows, ruleT, lid)
@@ -397,7 +393,7 @@ func appendRowDoc(in *appendInput) *jq.Obj {
 // runRetire ports `learn --retire`: the tombstone write with a reason.
 func (st *state) runRetire() *core.RefusalError {
 	id := st.req.Retire
-	if !idRe.MatchString(id) {
+	if !kb.ValidID(id) {
 		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
 	}
 	rows, cur, ref := st.loadVetoRow(id)
@@ -423,7 +419,7 @@ func (st *state) runRetire() *core.RefusalError {
 // runRestore ports `learn --restore`: reactivation with history kept.
 func (st *state) runRestore() *core.RefusalError {
 	id := st.req.Restore
-	if !idRe.MatchString(id) {
+	if !kb.ValidID(id) {
 		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
 	}
 	rows, cur, ref := st.loadVetoRow(id)
@@ -453,7 +449,7 @@ func (st *state) loadVetoRow(id string) ([]*jq.Obj, *jq.Obj, *core.RefusalError)
 	if ref != nil {
 		return nil, nil, ref
 	}
-	cur := findRow(rows, id)
+	cur := kb.FindRow(rows, id)
 	if cur == nil {
 		return nil, nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRule, id))
 	}
@@ -470,58 +466,22 @@ func (st *state) tombstoneRetire(cur *jq.Obj) {
 
 // appendHistory appends one history event (missing history reads empty).
 func (st *state) appendHistory(cur *jq.Obj, event string) {
-	hist := []any{}
-	if raw, ok := cur.Get(fieldHistory); ok {
-		if arr, ok := raw.([]any); ok {
-			hist = arr
-		}
-	}
-	hist = append(hist, jq.NewObj(fieldAt, st.now, fieldEvent, event,
+	kb.AppendHistory(cur, jq.NewObj(fieldAt, st.now, fieldEvent, event,
 		fieldActor, actorHuman, fieldNote, st.req.Reason))
-	cur.Set(fieldHistory, hist)
-}
-
-// readRows reads the KB store when present (missing, oversized, unreadable,
-// or corrupt reads !ok; the caller refuses corrupt-store).
-func readRows() ([]*jq.Obj, bool) {
-	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
-	if err != nil {
-		return nil, false
-	}
-	rows, err := jq.DecodeJSONLOrdered(raw)
-	if err != nil {
-		return nil, false
-	}
-	return rows, true
 }
 
 // readRowsStrict reads the KB store, refusing when absent or corrupt. An
-// absent store (anything but a regular file, matching `[[ -f ]]`) refuses
-// unknown-rule naming the missing store; a corrupt store refuses
-// corrupt-store.
+// absent store refuses unknown-rule naming the missing store; a corrupt
+// store refuses corrupt-store.
 func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
-	if !readcommon.IsFile(kbFile) {
+	rows, err := kb.ReadRows()
+	if errors.Is(err, kb.ErrMissing) {
 		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, kbFile))
 	}
-	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
-	if err != nil {
-		return nil, st.corruptStore()
-	}
-	rows, err := jq.DecodeJSONLOrdered(raw)
 	if err != nil {
 		return nil, st.corruptStore()
 	}
 	return rows, nil
-}
-
-// findRow returns the first row with .id == id.
-func findRow(rows []*jq.Obj, id string) *jq.Obj {
-	for _, row := range rows {
-		if idOf(row) == id {
-			return row
-		}
-	}
-	return nil
 }
 
 // idOf reads a row id.
@@ -553,31 +513,13 @@ func mustGet(m *jq.Obj, key string) any {
 	return v
 }
 
-// writeRows rewrites the store compactly (one JSON object per line).
+// writeRows rewrites the store compactly, mapping a write failure to the
+// frozen corrupt-store refusal.
 func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
-	var sb strings.Builder
-	for _, row := range rows {
-		sb.WriteString(row.MarshalCompact())
-		sb.WriteByte('\n')
-	}
-	if err := atomic.WriteFile(kbFile, []byte(sb.String())); err != nil {
+	if err := kb.WriteRows(rows); err != nil {
 		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, kbFile))
 	}
 	return nil
-}
-
-// appendRow appends one compact row to the store.
-func appendRow(line string) error {
-	var prev []byte
-	if readcommon.Exists(kbFile) {
-		var err error
-		prev, err = jq.CappedFile(kbFile, jq.MaxKBBytes)
-		if err != nil {
-			//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-			return fmt.Errorf("read %s: %v", kbFile, err)
-		}
-	}
-	return atomic.WriteFile(kbFile, append(prev, line...))
 }
 
 // corruptStore refuses on an unreadable KB store.
@@ -695,7 +637,3 @@ const (
 
 // jsonZero renders the zero counters as the number literal 0.
 var jsonZero = jq.Number("0")
-
-// idRe matches the learn id shape ^[a-z0-9][a-z0-9-]{0,64}$ (shared with
-// the kb citation gate).
-var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,64}$`)

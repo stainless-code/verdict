@@ -7,7 +7,6 @@ package trendcore
 
 import (
 	"context"
-	"maps"
 	"os"
 	"slices"
 
@@ -216,13 +215,13 @@ func bundleTime(bundle string) (string, bool) {
 
 // bundleModels ports the per-bundle model list (unique, invalid reads []).
 func bundleModels(bundle string) []any {
-	costs := costRecords(bundle + "cost.json")
+	costs := readcommon.CostRecords(bundle)
 	if costs == nil {
 		return []any{}
 	}
 	var names []any
 	for _, rec := range costs {
-		models, ok := recordModels(rec)
+		models, ok := readcommon.CostModels(rec)
 		if !ok {
 			return []any{}
 		}
@@ -263,7 +262,7 @@ func appendModelName(names []any, mm any) ([]any, bool) {
 
 // bundleEfforts ports the per-bundle effort list (unique, invalid reads []).
 func bundleEfforts(bundle string) []any {
-	costs := costRecords(bundle + "cost.json")
+	costs := readcommon.CostRecords(bundle)
 	if costs == nil {
 		return []any{}
 	}
@@ -290,59 +289,6 @@ func appendTier(efforts []any, seen map[string]bool, tier string) []any {
 		efforts = append(efforts, tier)
 	}
 	return efforts
-}
-
-// costRecords reads one cost file as a record list, or nil when absent,
-// oversized, or invalid (the shell's `|| echo "[]"`).
-func costRecords(path string) []any {
-	if !isRegular(path) {
-		return nil
-	}
-	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
-	if err != nil {
-		return nil
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return nil
-	}
-	if arr, ok := doc.([]any); ok {
-		return arr
-	}
-	return []any{doc}
-}
-
-// recordModels reads one cost record's models list.
-func recordModels(rec any) ([]any, bool) {
-	m, ok := rec.(map[string]any)
-	if !ok {
-		if rec == nil {
-			return nil, true
-		}
-		return nil, false
-	}
-	raw, ok := m["models"]
-	if !ok || raw == nil {
-		return nil, true
-	}
-	return coerceModels(raw)
-}
-
-// coerceModels ports the models shape gate: arrays pass through, maps
-// contribute values in key order, anything else fails the bundle read.
-func coerceModels(raw any) ([]any, bool) {
-	switch t := raw.(type) {
-	case []any:
-		return t, true
-	case map[string]any:
-		vals := make([]any, 0, len(t))
-		for _, k := range sortedKeys(t) {
-			vals = append(vals, t[k])
-		}
-		return vals, true
-	default:
-		return nil, false
-	}
 }
 
 // bundleProvenance ports the per-bundle provenance triple: the post
@@ -449,9 +395,4 @@ func dedupeSorted(vals []any) []any {
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
-}
-
-// sortedKeys returns the sorted keys of m (jq object iteration order).
-func sortedKeys(m map[string]any) []string {
-	return slices.Sorted(maps.Keys(m))
 }

@@ -8,7 +8,6 @@ package provenance
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -83,33 +82,11 @@ func PromptsHash(root string) string {
 // CostModel returns the first model of the latest cost record, or "" when
 // absent or unreadable (callers store null, never invent).
 func CostModel(dir string) string {
-	records := costRecords(dir)
+	records := readcommon.CostRecords(dir)
 	if len(records) == 0 {
 		return ""
 	}
-	rec, ok := latestRecord(records)
-	if !ok {
-		return ""
-	}
-	models, ok := rec["models"].([]any)
-	if !ok || len(models) == 0 {
-		return ""
-	}
-	m, ok := models[0].(map[string]any)
-	if !ok {
-		return ""
-	}
-	return jq.StrOf(m["name"])
-}
-
-// latestRecord returns the latest cost record as a map.
-func latestRecord(records []any) (map[string]any, bool) {
-	switch t := records[len(records)-1].(type) {
-	case map[string]any:
-		return t, true
-	default:
-		return nil, false
-	}
+	return firstNameModel(records, len(records)-1)
 }
 
 // BundleProvenance emits the compact provenance triple for a bundle dir.
@@ -136,11 +113,11 @@ func Triple(root, dir string) (toolVersion, promptsHash, model string) {
 // degrading silently (garnish, never a refusal).
 func Spend(dir string) (tier, cost string) {
 	tier, cost = "standard", unrecorded
-	records := costRecords(dir)
+	records := readcommon.CostRecords(dir)
 	if len(records) == 0 {
 		return tier, cost
 	}
-	tier = recordTier(records[len(records)-1], tier)
+	tier = readcommon.CostTier(records[len(records)-1])
 	sum, n := sumEstimates(records)
 	if n == 0 {
 		return tier, unrecorded
@@ -148,72 +125,22 @@ func Spend(dir string) (tier, cost string) {
 	return tier, "$" + jqTostring(readcommon.Round4(sum))
 }
 
-// costRecords reads the cost log as a record list (an oversized store reads
-// absent, exactly like an unreadable one).
-func costRecords(dir string) []any {
-	raw, err := jq.CappedFile(filepath.Join(dir, "cost.json"), jq.MaxCostBytes)
-	if err != nil {
-		return nil
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return nil
-	}
-	switch t := doc.(type) {
-	case []any:
-		return t
-	case map[string]any:
-		return []any{t}
-	default:
-		return nil
-	}
-}
-
-// recordTier reads the latest record's effort tier.
-func recordTier(rec any, dflt string) string {
-	m, ok := rec.(map[string]any)
-	if !ok {
-		return dflt
-	}
-	e, ok := m["effort"]
-	if !ok || e == nil || e == false {
-		return dflt
-	}
-	switch tier := readcommon.ASCIILower(jq.Str(e)); tier {
-	case "cheap", "standard", "deep":
-		return tier
-	default:
-		return dflt
-	}
-}
-
 // sumEstimates sums the est_usd estimates, bailing to unrecorded on a
 // non-object record (mirrors the shell's jq failure).
 func sumEstimates(records []any) (float64, int) {
 	sum, n := 0.0, 0
 	for _, r := range records {
-		rm, ok := r.(map[string]any)
-		if !ok {
+		if _, ok := r.(map[string]any); !ok {
 			return sum, 0
 		}
-		add, count := recordEstimate(rm)
-		sum += add
-		n += count
+		est, ok := readcommon.CostEstimate(r)
+		if !ok {
+			continue
+		}
+		sum += est
+		n++
 	}
 	return sum, n
-}
-
-// recordEstimate reads one record's est_usd estimate.
-func recordEstimate(rm map[string]any) (float64, int) {
-	est, ok := rm["est_usd"]
-	if !ok {
-		return 0, 0
-	}
-	f, ok := numVal(est)
-	if !ok {
-		return 0, 0
-	}
-	return f, 1
 }
 
 // jqTostring renders a float the way jq's tostring does for ordinary
@@ -347,7 +274,8 @@ func prHead(dir string) string {
 // OverrideModel ports override_model: first cost model name, REVIEW_MODEL,
 // or unrecorded.
 func OverrideModel(dir, reviewModel string) string {
-	if name := firstCostModel(costRecords(dir)); name != "" {
+	records := readcommon.CostRecords(dir)
+	if name := firstNameModel(records, 0); name != "" {
 		return name
 	}
 	if reviewModel != "" {
@@ -356,16 +284,16 @@ func OverrideModel(dir, reviewModel string) string {
 	return unrecorded
 }
 
-// firstCostModel reads the first cost record's first model name.
-func firstCostModel(records []any) string {
+// firstNameModel reads one cost record's first model name, "" when absent or
+// invalid. i indexes the record to read (0 for the first, -1 for the latest).
+func firstNameModel(records []any, i int) string {
 	if len(records) == 0 {
 		return ""
 	}
-	fm, ok := records[0].(map[string]any)
-	if !ok {
-		return ""
+	if i < 0 {
+		i += len(records)
 	}
-	models, ok := fm["models"].([]any)
+	models, ok := readcommon.CostModels(records[i])
 	if !ok || len(models) == 0 {
 		return ""
 	}
@@ -456,25 +384,4 @@ func bundleHead(dir string) string {
 		return ""
 	}
 	return jq.StrOf(sm["head_sha"])
-}
-
-func numVal(v any) (float64, bool) {
-	switch t := v.(type) {
-	case jq.Number:
-		f, err := strconv.ParseFloat(t.String(), floatBits)
-		if err != nil {
-			return 0, false
-		}
-		return f, true
-	case json.Number:
-		f, err := strconv.ParseFloat(t.String(), floatBits)
-		if err != nil {
-			return 0, false
-		}
-		return f, true
-	case float64:
-		return t, true
-	default:
-		return 0, false
-	}
 }

@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 
-	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -159,11 +157,11 @@ func (c *Ctx) ruleActive(rid string) bool {
 	if !ok {
 		return false
 	}
-	rows, err := jq.DecodeJSONLOrdered(raw)
+	rows, err := ParseRows(raw)
 	if err != nil {
 		return false
 	}
-	row := findRow(rows, rid)
+	row := FindRow(rows, rid)
 	if row == nil {
 		return false
 	}
@@ -207,7 +205,7 @@ func (c *Ctx) CommitStaged(findingsFile, now string) {
 // a loud warning when unreadable.
 func (c *Ctx) loadStore(findingsFile string) ([]*jq.Obj, bool) {
 	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
-	rows, derr := jq.DecodeJSONLOrdered(raw)
+	rows, derr := ParseRows(raw)
 	if err != nil || derr != nil {
 		c.Warn(fmt.Sprintf("kb store %s unreadable at commit — staged credit dropped (flips stand); re-run the flip to retry", File))
 		StripStamps(findingsFile, c.Staged, c.Warn)
@@ -245,12 +243,7 @@ func (c *Ctx) rewriteCounters(rows []*jq.Obj, live []map[string]any, findingsFil
 		c.Staged = nil
 		return false
 	}
-	var sb strings.Builder
-	for _, row := range rows {
-		sb.WriteString(row.MarshalCompact())
-		sb.WriteByte('\n')
-	}
-	if err := atomic.WriteFile(File, []byte(sb.String())); err != nil {
+	if err := WriteRows(rows); err != nil {
 		c.Warn(fmt.Sprintf("kb commit failed: could not rewrite %s (flips stand, staged credit dropped) — re-run the flip to retry", File))
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil

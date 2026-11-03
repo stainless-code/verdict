@@ -1,11 +1,13 @@
 package learncore
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 )
 
 // writePaddedKB writes the row padded with JSON whitespace to exactly size
@@ -29,8 +31,8 @@ func writePaddedKB(t *testing.T, row string, size int64) {
 func checkLearnReadsAtCap(t *testing.T) {
 	t.Helper()
 	st := &state{req: &Request{}}
-	if rows, ok := readRows(); !ok || len(rows) != 1 {
-		t.Fatalf("readRows at cap = %d rows, %v; want 1, true", len(rows), ok)
+	if rows, err := kb.ReadRows(); err != nil || len(rows) != 1 {
+		t.Fatalf("kb.ReadRows at cap = %d rows, %v; want 1, nil", len(rows), err)
 	}
 	if rows, ref := st.readRowsStrict("r1"); ref != nil || len(rows) != 1 {
 		t.Fatalf("readRowsStrict at cap = %d rows, %v; want 1, nil", len(rows), ref)
@@ -45,8 +47,8 @@ func checkLearnReadsAtCap(t *testing.T) {
 func checkLearnReadsOverCap(t *testing.T) {
 	t.Helper()
 	st := &state{req: &Request{}}
-	if _, ok := readRows(); ok {
-		t.Error("readRows over cap = true, want false")
+	if _, err := kb.ReadRows(); !errors.Is(err, kb.ErrCorrupt) {
+		t.Errorf("kb.ReadRows over cap = %v, want ErrCorrupt", err)
 	}
 	if _, ref := st.readRowsStrict("r1"); ref == nil || ref.Code != codeCorruptStore {
 		t.Errorf("readRowsStrict over cap = %v, want corrupt-store", ref)

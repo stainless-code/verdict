@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // writePaddedStore writes valid JSON padded with trailing whitespace to
@@ -45,15 +46,15 @@ func requireOverCap(t *testing.T, path string, limit int64) {
 // absent (never allocated) one byte over it.
 func TestCostRecordsStoreCap(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "cost.json")
+	path := filepath.Join(dir, readcommon.CostFile)
 	const row = `[{"est_usd":1}]`
 	writePaddedStore(t, path, row, jq.MaxCostBytes)
-	if recs := costRecords(dir); len(recs) != 1 {
-		t.Fatalf("costRecords at cap = %d records, want 1", len(recs))
+	if recs := readcommon.CostRecords(dir); len(recs) != 1 {
+		t.Fatalf("CostRecords at cap = %d records, want 1", len(recs))
 	}
 	writePaddedStore(t, path, row, jq.MaxCostBytes+1)
 	requireOverCap(t, path, jq.MaxCostBytes)
-	if recs := costRecords(dir); recs != nil {
-		t.Errorf("costRecords over cap = %v, want nil", recs)
+	if recs := readcommon.CostRecords(dir); recs != nil {
+		t.Errorf("CostRecords over cap = %v, want nil", recs)
 	}
 }

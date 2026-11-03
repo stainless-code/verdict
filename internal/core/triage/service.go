@@ -226,7 +226,7 @@ func (st *state) applyFlip(dir string, entries []any, full, now string) *core.Re
 func (st *state) stageCredit(k *kb.Ctx, entries []any, full, now string) []any {
 	k.ResolvePolicy(st.req.Env, readcommon.Exists(kb.File))
 	if readcommon.IsFile(kb.File) {
-		if _, derr := jq.DecodeJSONLOrdered(mustRead(kb.File)); derr != nil {
+		if _, err := kb.ParseRows(mustRead(kb.File)); err != nil {
 			st.warn(fmt.Sprintf("kb store %s unreadable — no credit for this flip (fix the bad line)", kb.File))
 			k.Broken = true
 		}

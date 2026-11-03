@@ -5,7 +5,6 @@ import (
 	"os"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -228,11 +227,11 @@ func (c *Ctx) maybeRetire(rid, now string) {
 	if err != nil {
 		return
 	}
-	rows, err := jq.DecodeJSONLOrdered(raw)
+	rows, err := ParseRows(raw)
 	if err != nil {
 		return
 	}
-	row := findRow(rows, rid)
+	row := FindRow(rows, rid)
 	if row == nil {
 		return
 	}
@@ -278,15 +277,10 @@ func (c *Ctx) retireRow(rows []*jq.Obj, row *jq.Obj, rid, now string) {
 	row.Set("status", "retired")
 	row.Set("retiredAt", now)
 	row.Set("retireReason", reason)
-	appendHistory(row, jq.NewObj(
+	AppendHistory(row, jq.NewObj(
 		"at", now, fieldEvent, "auto-retired", fieldActor, "script", fieldNote, reason,
 	))
-	var sb strings.Builder
-	for _, r := range rows {
-		sb.WriteString(r.MarshalCompact())
-		sb.WriteByte('\n')
-	}
-	if err := atomic.WriteFile(File, []byte(sb.String())); err != nil {
+	if err := WriteRows(rows); err != nil {
 		c.Warn(fmt.Sprintf("kb auto-retire skipped: could not rewrite %s for '%s'", File, rid))
 		return
 	}
@@ -323,16 +317,6 @@ func rateVal(s string) float64 {
 		return fallbackRate
 	}
 	return f
-}
-
-// appendHistory appends an event to the row's history array.
-func appendHistory(row *jq.Obj, ev *jq.Obj) {
-	h, _ := row.Get(fieldHistory)
-	hist, ok := h.([]any)
-	if !ok {
-		hist = []any{}
-	}
-	row.Set(fieldHistory, append(hist, ev))
 }
 
 // History field names.

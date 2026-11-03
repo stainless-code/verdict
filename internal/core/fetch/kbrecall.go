@@ -12,10 +12,8 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 )
-
-// kbRecallFile is the operator knowledge store the recall reads.
-const kbRecallFile = ".review/kb.jsonl"
 
 // writeKBRecall ports write_kb_recall: scoped rules recalled onto a bundle
 // as advisory context (kb.txt plus the kb-recall.json machine manifest,
@@ -50,7 +48,7 @@ func clearKBRecall(mf, mfj string) {
 // recallRanked ports the recall pipeline: store read, file set, active
 // rules, scope matching, and the top-N rank.
 func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
-	raw, ok := r.readControl(kbRecallFile)
+	raw, ok := r.readControl(kb.File)
 	if !ok {
 		return nil, false
 	}
@@ -145,9 +143,9 @@ type recallRule struct {
 // recallRules ports the active-row slurp: unreadable store warns and reads
 // absent (callers remove both files).
 func recallRules(r *session, raw []byte) ([]recallRule, bool) {
-	docs, err := jq.DecodeJSONLOrdered(raw)
+	docs, err := kb.ParseRows(raw)
 	if err != nil {
-		r.Warn(fmt.Sprintf("kb recall skipped: %s unreadable", kbRecallFile))
+		r.Warn(fmt.Sprintf("kb recall skipped: %s unreadable", kb.File))
 		return nil, false
 	}
 	var out []recallRule

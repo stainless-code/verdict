@@ -49,7 +49,7 @@ type CostResult struct {
 // unparseable files warn and contribute zeros — neither ever fails the run.
 func CostRollup(dir string) CostResult {
 	res := CostResult{}
-	top, topPresent, topParsed := readCostFile(dir + "/cost.json")
+	top, topPresent, topParsed := readCostFile(filepath.Join(dir, CostFile))
 	chunkFiles := chunkCostFiles(dir)
 	if len(chunkFiles) == 0 {
 		res.Cost = rollupTop(top, topPresent, topParsed, &res)
@@ -127,6 +127,86 @@ func chunkWarn(path string) string {
 		base = after
 	}
 	return "chunk cost " + base + " unreadable — spend unrecorded for this chunk"
+}
+
+// CostFile is the bundle's agent-written spend record, read by the report
+// rollup, the trend rollup, and the provenance footer.
+const CostFile = "cost.json"
+
+// CostRecords reads a bundle's spend record the way the shell slurps it: an
+// array passes, a single object reads as one record, and an absent,
+// oversized, or unparsable store reads nil (the callers degrade, never fail).
+func CostRecords(dir string) []any {
+	recs, _, _ := readCostFile(filepath.Join(dir, CostFile))
+	return recs
+}
+
+// CostTier reads one record's effort tier as cheap, standard, or deep;
+// everything absent, falsey, or unknown reads standard.
+func CostTier(rec any) string {
+	m, ok := rec.(map[string]any)
+	if !ok {
+		return tierStandard
+	}
+	return EffortTier(m["effort"])
+}
+
+// CostEstimate reads one record's numeric est_usd.
+func CostEstimate(rec any) (float64, bool) {
+	m, ok := rec.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	est, ok := m["est_usd"]
+	if !ok {
+		return 0, false
+	}
+	return NumVal(est)
+}
+
+// CostModels reads one record's models list: an array passes, an object
+// contributes its values in key order (jq's `.models[]` iterates objects
+// too), and an absent or null list reads empty. Every non-null element must
+// be an object, like the shell's shape filter.
+func CostModels(rec any) ([]any, bool) {
+	m, ok := rec.(map[string]any)
+	if !ok {
+		if rec == nil {
+			return nil, true
+		}
+		return nil, false
+	}
+	raw, ok := m["models"]
+	if !ok || raw == nil {
+		return nil, true
+	}
+	list, ok := coerceModelList(raw)
+	if !ok || !allModelMaps(list) {
+		return nil, false
+	}
+	return list, true
+}
+
+// coerceModelList accepts the two shapes jq's `.models[]` walks: an array
+// as-is, an object as its values in key order.
+func coerceModelList(raw any) ([]any, bool) {
+	switch t := raw.(type) {
+	case []any:
+		return t, true
+	case map[string]any:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		vals := make([]any, 0, len(keys))
+		for _, k := range keys {
+			vals = append(vals, t[k])
+		}
+		return vals, true
+	default:
+		return nil, false
+	}
 }
 
 // readCostFile reads one cost file: records plus its present/parsed
@@ -333,9 +413,9 @@ func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
 	if !ok {
 		return false
 	}
-	a := acc[recordTier(rm)]
+	a := acc[CostTier(rm)]
 	a.runs++
-	models, ok := costModels(rm)
+	models, ok := CostModels(rm)
 	if !ok {
 		return false
 	}
@@ -350,7 +430,7 @@ func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
 		sum.output += out
 		sum.cached += modelCached(mm)
 	}
-	if est, ok := recordEstimate(rm); ok {
+	if est, ok := CostEstimate(rm); ok {
 		sum.estSum += est
 		sum.estN++
 	}
@@ -368,22 +448,6 @@ func costRecordMap(rec any) (map[string]any, bool) {
 		return nil, false
 	}
 	return m, true
-}
-
-// costModels validates one record's models list: absent reads empty.
-func costModels(rm map[string]any) ([]any, bool) {
-	raw, ok := rm["models"]
-	if !ok || raw == nil {
-		return nil, true
-	}
-	list, ok := raw.([]any)
-	if !ok {
-		return nil, false
-	}
-	if !allModelMaps(list) {
-		return nil, false
-	}
-	return list, true
 }
 
 // allModelMaps reports whether every non-null models element is an object,
@@ -430,21 +494,6 @@ func modelCached(mm any) float64 {
 		cached += f
 	}
 	return cached
-}
-
-// recordTier reads one record's effort tier.
-func recordTier(rm map[string]any) string {
-	eff, _ := rm["effort"]
-	return EffortTier(eff)
-}
-
-// recordEstimate reads one record's numeric est_usd.
-func recordEstimate(rm map[string]any) (float64, bool) {
-	est, ok := rm["est_usd"]
-	if !ok {
-		return 0, false
-	}
-	return NumVal(est)
 }
 
 // Round4 ports jq's (add * 10000 | round) / 10000.

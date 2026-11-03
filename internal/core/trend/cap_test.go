@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // writePaddedStore writes content padded with JSON whitespace to exactly size
@@ -55,15 +56,15 @@ func TestFindingsStoreReadRefusesOversizedInput(t *testing.T) {
 // TestCostRecordsStoreCap proves the per-bundle cost store decodes at the cap
 // and reads absent when oversized.
 func TestCostRecordsStoreCap(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cost.json")
+	path := filepath.Join(t.TempDir(), readcommon.CostFile)
 	writePaddedStore(t, path, `[{"est_usd":1}]`, jq.MaxCostBytes)
-	if recs := costRecords(path); len(recs) != 1 {
+	if recs := readcommon.CostRecords(filepath.Dir(path)); len(recs) != 1 {
 		t.Fatalf("costRecords at cap = %d records, want 1", len(recs))
 	}
 	if err := os.Truncate(path, jq.MaxCostBytes+1); err != nil {
 		t.Fatal(err)
 	}
-	if recs := costRecords(path); recs != nil {
+	if recs := readcommon.CostRecords(filepath.Dir(path)); recs != nil {
 		t.Errorf("costRecords over cap = %v, want nil", recs)
 	}
 }

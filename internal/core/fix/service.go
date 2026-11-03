@@ -1057,12 +1057,6 @@ func (st *state) completeRun(
 	return nil
 }
 
-// sealed annotates err without exposing it, per GO-ERRORS-03 (see jq.Sealed).
-func sealed(op string, err error) error {
-	//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-	return fmt.Errorf("%s: %v", op, err)
-}
-
 // Fix-loop constants.
 const (
 	// maxPasses is the hard-coded 3-pass ceiling per sig.

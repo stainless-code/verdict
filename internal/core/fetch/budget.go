@@ -325,7 +325,7 @@ func tierStats(recs []costRec, t string) tierStat {
 func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	var recs []costRec
 	var bad []string
-	files, gerr := filepath.Glob(".review/*/cost.json")
+	files, gerr := filepath.Glob(".review/*/" + readcommon.CostFile)
 	if gerr != nil {
 		files = nil
 	}

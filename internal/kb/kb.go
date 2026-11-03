@@ -263,7 +263,7 @@ func (n *normalizer) live(s string) bool {
 	}
 	st := "UNREADABLE"
 	if rows, ok := n.c.readRows(); ok {
-		if row := findRow(rows, s); row != nil {
+		if row := FindRow(rows, s); row != nil {
 			v, _ := row.Get("status")
 			st = jq.Str(v)
 		} else {
@@ -283,28 +283,18 @@ func (n *normalizer) live(s string) bool {
 	return false
 }
 
-// readRows slurps kb.jsonl order-preserving. ok is false when the file is
-// missing, oversized, or does not parse.
+// readRows slurps the decision store order-preserving. ok is false when the
+// file is missing, oversized, or does not parse.
 func (c *Ctx) readRows() ([]*jq.Obj, bool) {
 	raw, ok := c.ReadFile(File)
 	if !ok {
 		return nil, false
 	}
-	rows, err := jq.DecodeJSONLOrdered(raw)
+	rows, err := ParseRows(raw)
 	if err != nil {
 		return nil, false
 	}
 	return rows, true
-}
-
-// findRow returns the first row with .id == id.
-func findRow(rows []*jq.Obj, id string) *jq.Obj {
-	for _, r := range rows {
-		if v, ok := r.Get("id"); ok && v == id {
-			return r
-		}
-	}
-	return nil
 }
 
 // readJoins slurps the joins log; the second return is false when the file

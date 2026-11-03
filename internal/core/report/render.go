@@ -263,7 +263,8 @@ func costHuman(st *state) []string {
 	}
 	runs := jqStr(cost, keyRuns)
 	if runs == "0" {
-		return []string{fmt.Sprintf("cost: unrecorded (no usable %s/cost.json — the agent writes one per prompts/review.md)", st.dir)}
+		return []string{fmt.Sprintf("cost: unrecorded (no usable %s/%s — the agent writes one per prompts/review.md)",
+			st.dir, readcommon.CostFile)}
 	}
 	lines := []string{fmt.Sprintf("cost: %s run(s), %s with records — in=%s out=%s total=%s est_usd=%s cached=%s",
 		runs, jqStr(cost, "runs_with_cost"), jqStr(cost, "input_tokens"),
