@@ -25,10 +25,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 snap_tree() { # sandbox tree minus harness-owned capture/minimal-PATH files (content changes, not the tree)
   # A per-case sandbox starts empty, so grep -v can see zero lines; tolerate
   # that instead of letting pipefail abort the case before it prints anything.
@@ -192,5 +188,4 @@ else
   bad "S6 sandbox tree changed: $(diff <(printf '%s\n' "$pre_tree") <(printf '%s\n' "$post_tree") | head -5)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case doctor-scope-audit: FAIL ($fails)"; exit 1; fi
-echo "case doctor-scope-audit: PASS"
+eval_end

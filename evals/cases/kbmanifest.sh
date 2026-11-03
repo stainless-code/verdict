@@ -19,10 +19,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Scratch git repo (standalone-safe: init is a no-op when kb.sh already made
 # one; unique scope m1recall/ isolates this case from other rules).
 (
@@ -192,5 +188,4 @@ else
   bad "old-bundle fix gave exit $EVAL_STATUS"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case kbmanifest: FAIL ($fails)"; exit 1; fi
-echo "case kbmanifest: PASS"
+eval_end

@@ -41,10 +41,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 VER="$(jq -r .version "$EVAL_ROOT/package.json")"
 PRODUCT_URL="https://stainless-code.com/verdict"
 PRODUCT_LINK="Reviewed with [**Verdict $VER**]($PRODUCT_URL)"
@@ -588,5 +584,4 @@ unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 rm -rf "$EVAL_SANDBOX/xdg-off" "$EVAL_SANDBOX/xdg-on" "$EVAL_SANDBOX/xdg-bad" \
   "$EVAL_SANDBOX/xdg-typo" "$EVAL_SANDBOX/xdg-lvl" "$EVAL_SANDBOX/xdg-logo"
 
-if [ "$fails" -ne 0 ]; then echo "case publish-footer: FAIL ($fails)"; exit 1; fi
-echo "case publish-footer: PASS"
+eval_end

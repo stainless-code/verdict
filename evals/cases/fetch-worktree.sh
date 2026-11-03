@@ -24,10 +24,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -158,5 +154,4 @@ rm -rf "$EVAL_SANDBOX/.review" "$EVAL_SANDBOX/xdg-empty"
 rm -f "$EVAL_SANDBOX"/wt-dirty.diff "$EVAL_SANDBOX"/wt-current-flag.diff "$EVAL_SANDBOX"/wt-expected.diff "$EVAL_SANDBOX"/wt-range.txt
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case fetch-worktree: FAIL ($fails)"; exit 1; fi
-echo "case fetch-worktree: PASS"
+eval_end

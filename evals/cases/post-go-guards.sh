@@ -18,10 +18,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 # Overlay a smart gh stub: pulls/user answer locally, the reviews POST fails
@@ -196,5 +192,4 @@ else
   bad "moved payload/findings: $(head -c 300 "$EVAL_SANDBOX/posted-4474.json")"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case post-go-guards: FAIL ($fails)"; exit 1; fi
-echo "case post-go-guards: PASS"
+eval_end

@@ -20,10 +20,6 @@ HERE="$(dirname "$0")"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Cases share one sandbox: stash any bundles other cases left behind so the
 # rollup below grades exactly this case's fixtures (restored on exit,
 # even on failure — later cases must see their own stores untouched).
@@ -259,5 +255,4 @@ else
   bad "empty store edge broke"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case kboverlap: FAIL ($fails)"; exit 1; fi
-echo "case kboverlap: PASS"
+eval_end

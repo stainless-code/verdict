@@ -16,10 +16,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 MANUAL="$EVAL_ROOT/docs/manual.md"
 SYSTEM="$EVAL_ROOT/prompts/system.md"
 
@@ -84,5 +80,4 @@ else
   bad "recipe misses the known-residuals subsection in docs/manual.md"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case sandbox-recipe-docs: FAIL ($fails)"; exit 1; fi
-echo "case sandbox-recipe-docs: PASS"
+eval_end

@@ -13,10 +13,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 ADDR="$EVAL_ROOT/prompts/address-reviews.md"
 FIXCI="$EVAL_ROOT/prompts/fix-ci.md"
 
@@ -49,5 +45,4 @@ else
   bad "fix-ci misses the abort pin"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case fix-prompt-pins: FAIL ($fails)"; exit 1; fi
-echo "case fix-prompt-pins: PASS"
+eval_end

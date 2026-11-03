@@ -27,12 +27,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
-WANT_KEYS="at data error next pr repo schema_version verb warnings"
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -213,7 +207,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "--chunk --json exits $EVAL_STATUS: $(jq -c '.data.chunk // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
-if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$WANT_KEYS" ] \
+if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$EVAL_ENVELOPE_KEYS" ] \
   && jq -e '.error == null' <"$EVAL_OUT" >/dev/null 2>&1 \
   && [ "$(jq -r '[.data.chunk | keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "count manifest total_bytes" ]; then
   good "envelope keeps exactly the documented top-level keys; data.chunk carries exactly count/manifest/total_bytes"
@@ -285,7 +279,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "--json coexistence exits $EVAL_STATUS"
 fi
-if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$WANT_KEYS" ]; then
+if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$EVAL_ENVELOPE_KEYS" ]; then
   good "coexistence envelope keeps exactly the documented top-level keys"
 else
   bad "coexistence envelope keys broke: '$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)'"
@@ -306,7 +300,7 @@ else
 fi
 run_review fetch-local acme/app cenvsmall --json -- cenv-small.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$WANT_KEYS" ] \
+  && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$EVAL_ENVELOPE_KEYS" ] \
   && [ "$(jq -r '.data | has("chunk")' <"$EVAL_OUT" 2>/dev/null)" = "false" ] \
   && [ "$(jq -r '.data | has("prompt_dump")' <"$EVAL_OUT" 2>/dev/null)" = "false" ]; then
   good "plain --json keeps the key set with no data.chunk and no prompt_dump key"
@@ -356,7 +350,7 @@ run_review_fake() {
 }
 run_review_fake fetch acme/app 4399 --chunk --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$WANT_KEYS" ] \
+  && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "$EVAL_ENVELOPE_KEYS" ] \
   && jq -e '.data.chunk.count >= 2 and .error == null' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "PR --chunk --json keeps the key set with additive data.chunk"
 else
@@ -387,5 +381,4 @@ rm -f "$EVAL_SANDBOX"/cenv-small-expected.txt
 rm -f "$EVAL_SANDBOX"/cenv-99-expected.txt "$EVAL_SANDBOX"/cenv-canned.diff "$EVAL_SANDBOX"/cenv-pr.json
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-envelope: FAIL ($fails)"; exit 1; fi
-echo "case chunk-envelope: PASS"
+eval_end

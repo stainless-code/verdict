@@ -23,9 +23,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # in one, which some tooling reports differently).
 EVAL_SANDBOX="$(cd "$EVAL_SANDBOX" && pwd -P)"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 GOLDENS="$EVAL_ROOT/evals/fixtures/show-fix-block"
 
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
@@ -167,4 +164,4 @@ else
   bad "F5 show attempted $((gh_after - gh_before)) gh call(s)"
 fi
 
-exit "$fails"
+eval_end

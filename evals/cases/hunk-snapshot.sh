@@ -13,10 +13,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Smart gh stub: review POSTs succeed (payload saved when asked), the live
 # SHA read returns a moved HEAD (bbbb…) so drift context triggers while
 # validation must stay pinned to the snapshot.
@@ -164,5 +160,4 @@ else
   good "pinned run warns about nothing snapshot-related"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case hunk-snapshot: FAIL ($fails)"; exit 1; fi
-echo "case hunk-snapshot: PASS"
+eval_end

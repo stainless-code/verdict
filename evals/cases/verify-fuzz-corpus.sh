@@ -36,10 +36,8 @@ trap 'rm -rf "$FUZZ_TMP"' EXIT
 CORPUS="$EVAL_SANDBOX/verify-fuzz-corpus.tsv"
 sed "s#/tmp/verify-fuzz[.-]#$FUZZ_TMP/#g" "$CORPUS_SRC" >"$CORPUS"
 
-fails=0 strict_ok=0 pass_ok=0 xfail_ok=0
+strict_ok=0 pass_ok=0 xfail_ok=0
 refused_total=0 executed_total=0
-
-WANT_KEYS="at data error next pr repo schema_version verb warnings"
 
 # Sandbox fixtures the executed rows need (executed = gate passed, command
 # really runs — keep every fixture inert and fast):
@@ -78,7 +76,7 @@ grade_refuse() { # $1 = pr, $2 = want-code, $3 = label
   docs="$(stdout_docs)"
   msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
   if [ "$docs" != "1" ] \
-    || [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null || true)" != "$WANT_KEYS" ] \
+    || [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null || true)" != "$EVAL_ENVELOPE_KEYS" ] \
     || ! jq -e '.data == null and (.error.code | type) == "string"' <"$EVAL_OUT" >/dev/null 2>&1; then
     echo "  FAIL: $label refusal breaks the envelope shape"
     return 1
@@ -160,5 +158,4 @@ rm -rf "$FUZZ_TMP"
 rm -f "$EVAL_SANDBOX/fz-notes.txt" "$EVAL_SANDBOX/f" "$EVAL_SANDBOX/fz-out"
 
 echo "corpus: $strict_ok strict-refuse ok, $pass_ok pass ok, $xfail_ok xfail-known gaps ($refused_total refused, $executed_total executed)"
-if [ "$fails" -ne 0 ]; then echo "case verify-fuzz-corpus: FAIL ($fails)"; exit 1; fi
-echo "case verify-fuzz-corpus: PASS"
+eval_end

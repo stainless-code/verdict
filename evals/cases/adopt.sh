@@ -15,10 +15,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 mk_local_findings() { # $1 = bare slug, stdin = findings array
@@ -158,5 +154,4 @@ else
   bad "stub gh intercepted calls during adopt legs"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case adopt: FAIL ($fails)"; exit 1; fi
-echo "case adopt: PASS"
+eval_end

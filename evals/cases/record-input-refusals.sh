@@ -24,10 +24,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 SLUG="local-refuse"
 LB="$EVAL_SANDBOX/.review/$SLUG"
 
@@ -251,5 +247,4 @@ fi
 
 rm -rf "$LB"
 
-if [ "$fails" -ne 0 ]; then echo "case record-input-refusals: FAIL ($fails)"; exit 1; fi
-echo "case record-input-refusals: PASS"
+eval_end

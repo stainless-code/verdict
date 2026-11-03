@@ -23,10 +23,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Overlay a smart gh stub: the threads (graphql) read follows
 # $EVAL_SANDBOX/recheck-mode (clear/one/open, else unreachable). Everything
 # else stays network-dead. Restored on exit so sibling cases keep theirs.
@@ -370,5 +366,4 @@ else
   bad "stdout-error gh envelope warnings: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case live-recheck-report: FAIL ($fails)"; exit 1; fi
-echo "case live-recheck-report: PASS"
+eval_end

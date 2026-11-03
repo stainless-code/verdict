@@ -25,10 +25,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Cases share one sandbox: stash any bundles other cases left behind so the
 # rollup below grades exactly this case's fixtures (restored on exit —
 # later cases must see their own stores untouched).
@@ -213,5 +209,4 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.review/$SLUG"
 
-if [ "$fails" -ne 0 ]; then echo "case read-refusals: FAIL ($fails)"; exit 1; fi
-echo "case read-refusals: PASS"
+eval_end

@@ -12,10 +12,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 run_review --help
 if [ "$EVAL_STATUS" -ne 0 ]; then
   bad "--help exits $EVAL_STATUS"
@@ -52,5 +48,4 @@ else
   bad "manual misses the token-scopes-excess row"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case usage-parity-gates: FAIL ($fails)"; exit 1; fi
-echo "case usage-parity-gates: PASS"
+eval_end

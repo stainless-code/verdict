@@ -21,10 +21,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 RECIPE="$EVAL_ROOT/docs/ci-recipe.md"
 WORKFLOW="$EVAL_ROOT/examples/verdict-review.yml"
 
@@ -135,5 +131,4 @@ fi
 rm -rf "$EVAL_SANDBOX/.review" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case automation-recipe: FAIL ($fails)"; exit 1; fi
-echo "case automation-recipe: PASS"
+eval_end

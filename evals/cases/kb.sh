@@ -22,10 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Scratch git repo for the fetch-local recall legs. Everything git runs in a
 # subshell pinned to the sandbox cwd — never the caller's cwd, never the
 # repo checkout under test (a stray `git add` there would stage the harness).
@@ -533,5 +529,4 @@ else
   bad "PR joins row: $jrow"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case kb: FAIL ($fails)"; exit 1; fi
-echo "case kb: PASS"
+eval_end

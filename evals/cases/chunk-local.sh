@@ -31,10 +31,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -375,5 +371,4 @@ rm -f "$EVAL_SANDBOX"/cloc-under-out.txt "$EVAL_SANDBOX"/cloc-under.diff
 rm -f "$EVAL_SANDBOX"/cloc-false-err.txt "$EVAL_SANDBOX"/cloc-false-out.txt
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-local: FAIL ($fails)"; exit 1; fi
-echo "case chunk-local: PASS"
+eval_end

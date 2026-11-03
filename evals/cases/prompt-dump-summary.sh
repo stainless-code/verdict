@@ -34,10 +34,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 # --- sandbox git worktree (kb.sh already inits one; ensure standalone-safe) ---
@@ -437,5 +433,4 @@ else
   bad "neutral lead missing (exit $EVAL_STATUS)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case prompt-dump-summary: FAIL ($fails)"; exit 1; fi
-echo "case prompt-dump-summary: PASS"
+eval_end

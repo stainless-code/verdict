@@ -37,17 +37,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
-if ! command -v ps >/dev/null 2>&1; then
-  echo "case never-prompts: FAIL (ps(1) missing — the watchdog cannot rule out zombies)"
-  exit 1
-fi
+command -v ps >/dev/null 2>&1 || bail "ps(1) missing — the watchdog cannot rule out zombies"
 
 LIMIT=15
-WANT_KEYS="at data error next pr repo schema_version verb warnings"
 WD_STATUS=0
 WD_TIMED_OUT="false"
 WD_DIR=""
@@ -168,7 +160,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "machine install: exit $EVAL_STATUS data $(jq -r '.data.status // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 fi
-if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null || true)" = "$WANT_KEYS" ] \
+if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null || true)" = "$EVAL_ENVELOPE_KEYS" ] \
   && jq -e '.data != null' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "keep keeps the one-doc envelope (documented keys, data present)"
 else
@@ -383,5 +375,4 @@ export HOME="$OLD_HOME"
 rm -rf "$EVAL_SANDBOX/fakehome" "$EVAL_SANDBOX/.agents" "$EVAL_SANDBOX/np-repo" "$EVAL_SANDBOX/never-skills" "$EVAL_SANDBOX/foreign-snap.txt"
 rm -rf "$EVAL_SANDBOX/.review/6101"
 
-if [ "$fails" -ne 0 ]; then echo "case never-prompts: FAIL ($fails)"; exit 1; fi
-echo "case never-prompts: PASS"
+eval_end

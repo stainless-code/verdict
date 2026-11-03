@@ -18,10 +18,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 VER="$(jq -r .version "$EVAL_ROOT/package.json")"
 
 # --- V1: --version is single-sourced on package.json ---
@@ -123,5 +119,4 @@ else
   bad "manual versioning pointer missing or rule duplicated"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case version-source: FAIL ($fails)"; exit 1; fi
-echo "case version-source: PASS"
+eval_end

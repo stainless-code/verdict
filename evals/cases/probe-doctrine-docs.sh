@@ -14,10 +14,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # --- D1: machine-modes-never-prompt doctrine in Machine surface ---
 if grep -q "Machine modes never prompt" "$EVAL_ROOT/docs/manual.md" \
   && awk '/--json/ && /never/ && /interactive/ {found=1} END {exit !found}' \
@@ -48,5 +44,4 @@ else
   bad "probe subsection misses the fetch cross-link or the offline note"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case probe-doctrine-docs: FAIL ($fails)"; exit 1; fi
-echo "case probe-doctrine-docs: PASS"
+eval_end

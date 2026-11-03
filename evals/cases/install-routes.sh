@@ -26,13 +26,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
-command -v npm >/dev/null 2>&1 || { bad "npm not on PATH (route proof needs npm pack)"; echo "case install-routes: FAIL ($fails)"; exit 1; }
+command -v npm >/dev/null 2>&1 || bail "npm not on PATH (route proof needs npm pack)"
 
 # --- R1: pack, unpack as a registry skill copy, install from it ---
 PACK_OUT="$EVAL_SANDBOX/install-routes-pack.json"
@@ -42,8 +38,7 @@ set +e
 pack_status=$?
 set -e
 if [ "$pack_status" -ne 0 ]; then
-  bad "npm pack exits $pack_status: $(head -c 200 "$PACK_ERR")"
-  echo "case install-routes: FAIL ($fails)"; exit 1
+  bail "npm pack exits $pack_status: $(head -c 200 "$PACK_ERR")"
 fi
 PACK_NAME="$(jq -r '.[0].filename // empty' "$PACK_OUT" 2>/dev/null || true)"
 TARBALL="$EVAL_SANDBOX/$PACK_NAME"
@@ -239,5 +234,4 @@ rm -rf "$EVAL_SANDBOX/fakehome-install" "$EVAL_SANDBOX/fakehome-minbin" \
   "$EVAL_SANDBOX/regunpack" "$EVAL_SANDBOX"/install-routes-pack.txt "$EVAL_SANDBOX"/readme-registry.txt
 rm -f "$EVAL_SANDBOX"/*.tgz
 
-if [ "$fails" -ne 0 ]; then echo "case install-routes: FAIL ($fails)"; exit 1; fi
-echo "case install-routes: PASS"
+eval_end

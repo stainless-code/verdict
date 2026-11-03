@@ -12,10 +12,6 @@ HERE="$(dirname "$0")"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 REPO="$EVAL_SANDBOX/hooktest"
 rm -rf "$REPO"
 mkdir -p "$REPO"
@@ -86,5 +82,4 @@ else
 fi
 
 rm -rf "$REPO" "$EVAL_SANDBOX/stubbin-nosc"
-if [ "$fails" -ne 0 ]; then echo "case precommit-hook: FAIL ($fails)"; exit 1; fi
-echo "case precommit-hook: PASS"
+eval_end

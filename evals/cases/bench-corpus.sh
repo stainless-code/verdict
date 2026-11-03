@@ -25,10 +25,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Cases share one sandbox: stash bundles other cases left behind so these
 # assertions grade exactly this case's fixtures (restored on exit).
 HOLD="$EVAL_SANDBOX/.review-hold-bench"
@@ -215,8 +211,4 @@ else
   bad "corpus path touched the network ($stub_before -> $stub_after)"
 fi
 
-if [ "$fails" -ne 0 ]; then
-  echo "  $fails assertion(s) failed"
-  exit 1
-fi
-echo "  all bench-corpus assertions passed"
+eval_end

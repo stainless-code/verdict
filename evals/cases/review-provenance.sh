@@ -24,10 +24,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -227,5 +223,4 @@ rm -rf "$EVAL_SANDBOX/.review/local-prov1" "$EVAL_SANDBOX/.review/4922" \
   "$EVAL_SANDBOX/.review/4923" "$EVAL_SANDBOX/.review/4924" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case review-provenance: FAIL ($fails)"; exit 1; fi
-echo "case review-provenance: PASS"
+eval_end

@@ -23,10 +23,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_PUBLISH_OVERVIEW || true
@@ -433,5 +429,4 @@ unset REVIEW_PUBLISH_OVERVIEW || true
 rm -rf "$EVAL_SANDBOX/xdg-beh" "$EVAL_SANDBOX/xdg-d3" "$EVAL_SANDBOX/xdg-nostruct" \
   "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-doff" "$EVAL_SANDBOX/xdg-dbad"
 
-if [ "$fails" -ne 0 ]; then echo "case publish-diagram: FAIL ($fails)"; exit 1; fi
-echo "case publish-diagram: PASS"
+eval_end

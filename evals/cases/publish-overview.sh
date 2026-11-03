@@ -23,10 +23,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 
@@ -330,5 +326,4 @@ unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-ov"
 
-if [ "$fails" -ne 0 ]; then echo "case publish-overview: FAIL ($fails)"; exit 1; fi
-echo "case publish-overview: PASS"
+eval_end

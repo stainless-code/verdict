@@ -33,10 +33,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -376,5 +372,4 @@ rm -rf "$EVAL_SANDBOX/.review/4641" "$EVAL_SANDBOX/.review/4642" \
 rm -f "$EVAL_SANDBOX"/posted-4644.json "$EVAL_SANDBOX"/cov-post.log
 unset XDG_CONFIG_HOME EVAL_SAVE_PAYLOAD || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-coverage: FAIL ($fails)"; exit 1; fi
-echo "case chunk-coverage: PASS"
+eval_end

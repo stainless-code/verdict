@@ -23,10 +23,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_PANEL REVIEW_MAX_BYTES REVIEW_BUDGET_USD REVIEW_MODEL REVIEW_OUTPUT_FORMAT || true
@@ -182,9 +178,4 @@ fi
 
 rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/snap-controls" "$EVAL_SANDBOX/snap-controls.json"
 unset XDG_CONFIG_HOME || true
-if [ "$fails" -eq 0 ]; then
-  echo "controls-base: ok"
-else
-  echo "controls-base: $fails failure(s)"
-  exit 1
-fi
+eval_end

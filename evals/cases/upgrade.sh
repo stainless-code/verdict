@@ -23,10 +23,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 CASE="$EVAL_SANDBOX/upgrade"
 REL="$CASE/release"
 FAKEBIN="$CASE/fakebin"
@@ -53,9 +49,9 @@ chmod +x "$BIN_SRC"
 
 # Contract platform of the machine running the eval.
 os="$(uname -s)"
-case "$os" in Darwin) os=darwin ;; Linux) os=linux ;; *) bad "unsupported eval OS $os"; echo "case upgrade: FAIL ($fails)"; exit 1 ;; esac
+case "$os" in Darwin) os=darwin ;; Linux) os=linux ;; *) bail "unsupported eval OS $os" ;; esac
 machine="$(uname -m)"
-case "$machine" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) bad "unsupported eval arch $machine"; echo "case upgrade: FAIL ($fails)"; exit 1 ;; esac
+case "$machine" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) bail "unsupported eval arch $machine" ;; esac
 archive="$(jq -r --arg v "$VERSION" --arg os "$os" --arg arch "$arch" \
   '.archives[] | select(.goos == $os and .goarch == $arch) | .file | sub("\\{version\\}"; $v)' \
   "$EVAL_ROOT/release/contract.json")"
@@ -357,8 +353,4 @@ else
   bad "U7 foreign uninstall exit $EVAL_STATUS code $(envelope_code)"
 fi
 
-if [ "$fails" -gt 0 ]; then
-  echo "case upgrade: FAIL ($fails)"
-  exit 1
-fi
-echo "case upgrade: PASS"
+eval_end

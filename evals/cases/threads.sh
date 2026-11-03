@@ -22,10 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 SIG="6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e"
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -198,8 +194,4 @@ rm -f "$EVAL_SANDBOX"/page1.json "$EVAL_SANDBOX"/page1-resolved.json \
   "$EVAL_SANDBOX"/page2.json "$EVAL_SANDBOX"/page2-resolved.json \
   "$EVAL_SANDBOX"/pr.before "$EVAL_SANDBOX"/diff.before
 
-if [ "$fails" -ne 0 ]; then
-  echo "case threads: FAIL ($fails)"
-  exit 1
-fi
-echo "case threads: PASS"
+eval_end

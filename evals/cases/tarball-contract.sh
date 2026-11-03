@@ -26,13 +26,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
-command -v npm >/dev/null 2>&1 || { bad "npm not on PATH (pack contract needs npm)"; echo "case tarball-contract: FAIL ($fails)"; exit 1; }
+command -v npm >/dev/null 2>&1 || bail "npm not on PATH (pack contract needs npm)"
 
 PACK_JSON="$EVAL_SANDBOX/tarball-pack.json"
 PACK_ERR="$EVAL_SANDBOX/tarball-pack-err.txt"
@@ -156,5 +152,4 @@ else
   bad "stub gh intercepted calls during pack legs"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case tarball-contract: FAIL ($fails)"; exit 1; fi
-echo "case tarball-contract: PASS"
+eval_end

@@ -12,10 +12,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 PR=4242
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -62,5 +58,4 @@ else
   bad "request-changes gave exit $EVAL_STATUS event '$event', want 0/REQUEST_CHANGES"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case bind-downgrade: FAIL ($fails)"; exit 1; fi
-echo "case bind-downgrade: PASS"
+eval_end

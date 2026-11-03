@@ -24,11 +24,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
-WANT_KEYS="at data error next pr repo schema_version verb warnings"
 SKILLS="$EVAL_SANDBOX/skills"
 SKILL="$SKILLS/verdict"
 
@@ -49,7 +44,7 @@ else
 fi
 run_review skill --format json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT")" = "$WANT_KEYS" ] \
+  && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT")" = "$EVAL_ENVELOPE_KEYS" ] \
   && [ "$(jq -r '.data.name' <"$EVAL_OUT")" = "verdict" ] \
   && [ "$(jq -r '.data.version' <"$EVAL_OUT")" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] \
   && jq -e '.data.files | index("scripts/verdict") != null' <"$EVAL_OUT" >/dev/null \
@@ -273,5 +268,4 @@ else
   bad "bad bootstrap exits $st (partial binary left?)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case skill-route: FAIL ($fails)"; exit 1; fi
-echo "case skill-route: PASS"
+eval_end

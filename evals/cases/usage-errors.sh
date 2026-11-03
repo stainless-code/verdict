@@ -22,13 +22,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 if [ -z "${EVAL_CLI:-}" ] || [ ! -x "$EVAL_CLI" ]; then
-  bad "EVAL_CLI missing (run via evals/run.sh or evals/one.sh after make build)"
-  echo "case usage-errors: FAIL ($fails)"; exit 1
+  bail "EVAL_CLI missing (run via evals/run.sh or evals/one.sh after make build)"
 fi
 
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
@@ -146,5 +141,4 @@ fi
 unset XDG_CONFIG_HOME || true
 rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-bad"
 
-if [ "$fails" -ne 0 ]; then echo "case usage-errors: FAIL ($fails)"; exit 1; fi
-echo "case usage-errors: PASS"
+eval_end

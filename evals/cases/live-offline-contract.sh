@@ -31,10 +31,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Overlay a smart gh stub: the threads (graphql) read follows
 # $EVAL_SANDBOX/recheck-mode (clear/open, else unreachable). Everything
 # else stays network-dead. Restored on exit so sibling cases keep theirs.
@@ -272,5 +268,4 @@ else
   bad "advisory --live paid $(graphql_since "$m") call(s): $(head -c 200 "$EVAL_ERR")"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case live-offline-contract: FAIL ($fails)"; exit 1; fi
-echo "case live-offline-contract: PASS"
+eval_end

@@ -20,10 +20,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # reviews_posts_since <mark> — reviews POST calls logged after <mark>.
 reviews_posts_since() {
   local n
@@ -254,5 +250,4 @@ else
   bad "downgrade stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case post-refusals: FAIL ($fails)"; exit 1; fi
-echo "case post-refusals: PASS"
+eval_end

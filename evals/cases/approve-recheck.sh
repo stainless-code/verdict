@@ -17,10 +17,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Overlay a smart gh stub: live SHA + authorship + reviews POST succeed, the
 # threads (graphql) read follows $EVAL_SANDBOX/recheck-mode (clear|open, else
 # unreachable). Restored on exit so sibling cases keep the dead stub.
@@ -214,5 +210,4 @@ else
   bad "dry run paid $(graphql_since "$m") recheck call(s)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case approve-recheck: FAIL ($fails)"; exit 1; fi
-echo "case approve-recheck: PASS"
+eval_end

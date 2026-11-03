@@ -25,10 +25,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 MCP_OUT="$EVAL_SANDBOX/mcp-out.jsonl"
 MCP_ERR="$EVAL_SANDBOX/mcp-err.txt"
 FRAMES="$EVAL_SANDBOX/mcp-frames.jsonl"
@@ -278,8 +274,4 @@ else
   bad "post bad approve did not refuse typed"
 fi
 
-if [ "$fails" -ne 0 ]; then
-  echo "mcp-stdio: $fails failed"
-  exit 1
-fi
-echo "mcp-stdio: ok"
+eval_end

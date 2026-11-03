@@ -28,10 +28,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 VAL="$EVAL_ROOT/schemas/validate.sh"
 SCH="$EVAL_ROOT/schemas"
 ENV="$SCH/envelope.schema.json"
@@ -226,5 +222,4 @@ fi
 rm -rf "$LB" "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX"/s1-review.json \
   "$EVAL_SANDBOX"/s5-post.json "$EVAL_SANDBOX"/s6-*.json "$DATA"
 
-if [ "$fails" -ne 0 ]; then echo "case schema-contract: FAIL ($fails)"; exit 1; fi
-echo "case schema-contract: PASS"
+eval_end

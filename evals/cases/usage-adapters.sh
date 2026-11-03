@@ -22,10 +22,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
 skips=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 skip() { echo "  skip: $1"; skips=$((skips + 1)); }
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -152,6 +149,6 @@ else
 fi
 
 if [ "$skips" -gt 0 ]; then
-  echo "case usage-adapters: PASS with $skips skip(s) ($fails failures)"
+  echo "case usage-adapters: $skips skipped leg(s)"
 fi
-exit "$fails"
+eval_end

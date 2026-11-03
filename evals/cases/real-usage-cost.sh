@@ -31,10 +31,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # ends in one, while the CLI's cwd does not.
 EVAL_SANDBOX="$(cd "$EVAL_SANDBOX" && pwd -P)"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -213,4 +209,4 @@ else
 fi
 unset VERDICT_USAGE
 
-exit "$fails"
+eval_end

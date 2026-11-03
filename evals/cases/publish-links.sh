@@ -19,10 +19,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 SHA_F="ffffffffffffffffffffffffffffffffffffffff"
@@ -165,5 +161,4 @@ else
   bad "permalink paragraph missing from docs/manual.md"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case publish-links: FAIL ($fails)"; exit 1; fi
-echo "case publish-links: PASS"
+eval_end

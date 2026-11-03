@@ -28,10 +28,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_C="cccccccccccccccccccccccccccccccccccccccc"
 HEAD_D="dddddddddddddddddddddddddddddddddddddddd"
@@ -270,5 +266,4 @@ else
   bad "local mismatch exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case completeness: FAIL ($fails)"; exit 1; fi
-echo "case completeness: PASS"
+eval_end
