@@ -936,19 +936,18 @@ func forgejoID(e any) string {
 	return nullStr
 }
 
-// forgejoFilesList ports the files shape gate: arrays pass, anything
-// else reads empty.
-func forgejoFilesList(filesRaw string) []any {
-	var files []any
-	if doc, err := jq.Decode([]byte(filesRaw)); err == nil {
-		if arr, ok := doc.([]any); ok {
-			files = arr
-		}
+// jsonArrayOrEmpty decodes an array payload: arrays pass, anything else
+// reads empty.
+func jsonArrayOrEmpty(raw string) []any {
+	doc, err := jq.Decode([]byte(raw))
+	if err != nil {
+		return []any{}
 	}
-	if files == nil {
-		files = []any{}
+	arr, ok := doc.([]any)
+	if !ok {
+		return []any{}
 	}
-	return files
+	return arr
 }
 
 // forgejoState ports the state fold: merged wins, open/closed pass, and
@@ -1500,12 +1499,7 @@ func nestedStr(m map[string]any, outer, inner string) string {
 	if o, ok := m[outer].(map[string]any); ok {
 		return strOrEmpty(o, inner)
 	}
-	return nestedObjStr(m[outer], inner)
-}
-
-// nestedObjStr reads a string member from an ordered object.
-func nestedObjStr(v any, inner string) string {
-	om, ok := v.(*jq.Obj)
+	om, ok := m[outer].(*jq.Obj)
 	if !ok {
 		return ""
 	}
@@ -1749,71 +1743,153 @@ func renderStats(f float64) any {
 	return f
 }
 
+// prSpec is one provider's normalized PR values; buildPR emits the one
+// ordered PR.json record from it.
+type prSpec struct {
+	Provider string
+	Number   any
+	Title    string
+	Body     string
+	BaseRef  string
+	HeadRef  string
+	BaseSHA  any
+	HeadSHA  any
+	Author   any
+	URL      any
+	State    string
+	Draft    any
+	Files    []any
+}
+
+// buildPR builds the single PR.json record: a nil draft reads false and a
+// nil file slice reads [] so every provider emits both keys.
+func buildPR(spec *prSpec) *jq.Obj {
+	files := spec.Files
+	if files == nil {
+		files = []any{}
+	}
+	adds, dels := sumStats(files)
+	draft := spec.Draft
+	if draft == nil {
+		draft = false
+	}
+	return jq.NewObj(
+		keySchema, schemaV1,
+		keyProvider, spec.Provider,
+		keyNumber, spec.Number,
+		keyTitle, spec.Title,
+		keyBody, spec.Body,
+		keyBaseRef, spec.BaseRef,
+		keyHeadRef, spec.HeadRef,
+		keyBaseSHA, spec.BaseSHA,
+		keyHeadSHA, spec.HeadSHA,
+		keyAuthor, spec.Author,
+		keyURL, spec.URL,
+		keyState, spec.State,
+		keyDraft, draft,
+		keyFiles, files,
+		keyAdditions, renderStats(adds),
+		keyDeletions, renderStats(dels),
+	)
+}
+
+// prFileRow builds one normalized file row (path, status, line counts).
+func prFileRow(path string, status, additions, deletions any) *jq.Obj {
+	return jq.NewObj(keyPath, path, keyStatus, status,
+		keyAdditions, additions, keyDeletions, deletions)
+}
+
+// fileRows normalizes a provider file list: non-object entries drop (the
+// shell's object filter) and an empty list stays [].
+func fileRows(entries []any, row func(map[string]any) *jq.Obj) []any {
+	files := make([]any, 0, len(entries))
+	for _, e := range entries {
+		if m := objOrMap(e); m != nil {
+			files = append(files, row(m))
+		}
+	}
+	return files
+}
+
+// elementsOrEmpty reads array elements, mapping non-arrays to an empty list.
+func elementsOrEmpty(v any) []any {
+	if elems := jq.Elements(v); elems != nil {
+		return elems
+	}
+	return []any{}
+}
+
+// providerStates maps each provider's wire state to the shared PR state.
+var providerStates = map[string]map[string]string{
+	providerGitLab:    {"opened": stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
+	providerGitCafe:   {stateOpen: stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
+	providerBitbucket: {"OPEN": stateOpen, stateMerged: stateMerged, "DECLINED": stateClosed, "SUPERSEDED": stateClosed},
+	providerAzure:     {stateActive: stateOpen, "abandoned": stateClosed, "completed": stateMerged},
+}
+
+// providerState folds a provider's wire state through providerStates; an
+// unknown state reads "unknown" like the shell's fallback.
+func providerState(provider, state string) string {
+	if mapped, ok := providerStates[provider][state]; ok {
+		return mapped
+	}
+	return stateUnknown
+}
+
+// statusOrModified defaults a nil file status to "modified" (`//
+// "modified"`).
+func statusOrModified(v any) any {
+	if v == nil {
+		return statusModified
+	}
+	return v
+}
+
 // normalizeGitLab ports normalize_gitlab.
 func normalizeGitLab(metaRaw, changesRaw string, ns map[string]map[string]int64) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
 		return nil, err
 	}
-	var fl []any
-	for _, f := range gitlabFilesList(changesRaw) {
-		fm := objOrMap(f)
-		if fm == nil {
-			continue
-		}
-		fl = append(fl, gitlabFileEntry(fm, ns))
-	}
-	if fl == nil {
-		fl = []any{}
-	}
-	adds, dels := sumStats(plainAll(fl))
 	diffRefs := nestedMap(meta, "diff_refs")
-	author := nestedMap(meta, keyAuthor)
-	obj := jq.NewObj(
-		keySchema, schemaV1,
-		keyProvider, providerGitLab,
-		keyNumber, firstPresent(meta["iid"], meta[keyID]),
-		keyTitle, normStr(meta, keyTitle),
-		keyBody, normStr(meta, keyDescription),
-		keyBaseRef, normStr(meta, "target_branch"),
-		keyHeadRef, normStr(meta, "source_branch"),
-		keyBaseSHA, normStr(diffRefs, keyBaseSHA, "start_sha"),
-		keyHeadSHA, normStr(meta, "sha"),
-		keyAuthor, normStr(author, "username", "name"),
-		keyURL, normStr(meta, "web_url"),
-		keyState, gitlabState(normStr(meta, keyState)),
-		keyDraft, boolOrFalse(meta[keyDraft]),
-		keyFiles, fl,
-		keyAdditions, renderStats(adds),
-		keyDeletions, renderStats(dels),
-	)
-	gitlabHeadFallback(obj, diffRefs)
-	return obj, nil
+	headSHA := normStr(meta, "sha")
+	if headSHA == "" {
+		headSHA = normStr(diffRefs, keyHeadSHA)
+	}
+	return buildPR(&prSpec{
+		Provider: providerGitLab, Number: firstPresent(meta["iid"], meta[keyID]),
+		Title: normStr(meta, keyTitle), Body: normStr(meta, keyDescription),
+		BaseRef: normStr(meta, "target_branch"), HeadRef: normStr(meta, "source_branch"),
+		BaseSHA: normStr(diffRefs, keyBaseSHA, "start_sha"), HeadSHA: headSHA,
+		Author: normStr(nestedMap(meta, keyAuthor), "username", "name"), URL: normStr(meta, "web_url"),
+		State: providerState(providerGitLab, normStr(meta, keyState)), Draft: meta[keyDraft],
+		Files: gitlabFileRows(changesRaw, ns),
+	}), nil
 }
 
-// gitlabFilesList ports the changes shape gate: arrays pass, maps read
-// their changes member, and anything else reads empty.
-func gitlabFilesList(changesRaw string) []any {
+// gitlabFileRows normalizes the changes payload into file rows: arrays pass,
+// maps read their changes member, and anything else reads empty.
+func gitlabFileRows(changesRaw string, ns map[string]map[string]int64) []any {
 	doc, err := jq.Decode([]byte(changesRaw))
 	if err != nil {
 		return []any{}
 	}
-	if arr, ok := doc.([]any); ok {
-		return arr
-	}
-	m, ok := jq.AsMap(doc)
+	entries, ok := doc.([]any)
 	if !ok {
-		return []any{}
+		m, isMap := jq.AsMap(doc)
+		if !isMap {
+			return []any{}
+		}
+		entries = elementsOrEmpty(m["changes"])
 	}
-	if ch, has := m["changes"]; has && ch != nil {
-		return jq.Elements(ch)
-	}
-	return []any{}
+	return fileRows(entries, func(fm map[string]any) *jq.Obj {
+		return gitlabFileRow(fm, ns)
+	})
 }
 
-// gitlabFileEntry ports one normalized file row: path, status, and the
+// gitlabFileRow ports one normalized file row: path, status, and the
 // numstat counts keyed by new (then old) path.
-func gitlabFileEntry(fm map[string]any, ns map[string]map[string]int64) any {
+func gitlabFileRow(fm map[string]any, ns map[string]map[string]int64) *jq.Obj {
 	newPath := strOrEmpty(fm, "new_path")
 	oldPath := strOrEmpty(fm, "old_path")
 	path := newPath
@@ -1822,11 +1898,11 @@ func gitlabFileEntry(fm map[string]any, ns map[string]map[string]int64) any {
 	}
 	status := statusModified
 	switch {
-	case truthy(fm["new_file"]):
+	case !jq.Falsey(fm["new_file"]):
 		status = "added"
-	case truthy(fm["deleted_file"]):
+	case !jq.Falsey(fm["deleted_file"]):
 		status = "deleted"
-	case truthy(fm["renamed_file"]):
+	case !jq.Falsey(fm["renamed_file"]):
 		status = "renamed"
 	}
 	var adds, dels int64
@@ -1835,19 +1911,7 @@ func gitlabFileEntry(fm map[string]any, ns map[string]map[string]int64) any {
 	} else if s, ok := ns[oldPath]; ok {
 		adds, dels = s[keyAdds], s[keyDels]
 	}
-	return jq.NewObj(keyPath, path, keyStatus, status, keyAdditions, adds, keyDeletions, dels)
-}
-
-// gitlabHeadFallback ports the head_sha fallback: diff_refs head_sha
-// wins when the record head is empty.
-func gitlabHeadFallback(obj *jq.Obj, diffRefs map[string]any) {
-	if hs := objHeadSHA(obj); hs == "" {
-		if diffRefs != nil {
-			if s := normStr(diffRefs, keyHeadSHA); s != "" {
-				obj.Set(keyHeadSHA, s)
-			}
-		}
-	}
+	return prFileRow(path, status, adds, dels)
 }
 
 // strOrEmpty reads a string field, defaulting to "" (the shell's `// ""`).
@@ -1856,11 +1920,6 @@ func strOrEmpty(m map[string]any, key string) string {
 		return s
 	}
 	return ""
-}
-
-// truthy ports jq truthiness (only null and false are false).
-func truthy(v any) bool {
-	return v != nil && v != false
 }
 
 // firstPresent ports `a // b` for values (null/missing/false fall
@@ -1874,132 +1933,46 @@ func firstPresent(vals ...any) any {
 	return nil
 }
 
-// boolOrFalse ports `// false` for draft flags.
-func boolOrFalse(v any) any {
-	if v == nil {
-		return false
-	}
-	return v
-}
-
-// gitlabState ports the gitlab state map.
-func gitlabState(s string) string {
-	switch s {
-	case "opened":
-		return stateOpen
-	case stateClosed:
-		return stateClosed
-	case stateMerged:
-		return stateMerged
-	default:
-		return stateUnknown
-	}
-}
-
-// objHeadSHA reads head_sha from a built record.
-func objHeadSHA(obj *jq.Obj) string {
-	if v, has := obj.Get(keyHeadSHA); has {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
 // normalizeGitCafe ports normalize_gitcafe.
 func normalizeGitCafe(metaRaw, itemsRaw string) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
 		return nil, err
 	}
-	items := cafeItemsList(itemsRaw)
 	res := cafeResource(meta)
-	var fl []any
-	for _, e := range items {
-		var m map[string]any
-		if pm, ok := e.(map[string]any); ok {
-			m = pm
-		} else if om, ok := e.(*jq.Obj); ok {
-			m = objFields(om)
-		} else {
-			continue
-		}
-		fl = append(fl, jq.NewObj(
-			keyPath, normStr(m, keyPath),
-			keyStatus, cafeStatus(m[keyStatus]),
-			keyAdditions, numOrEmpty(m[keyAdditions]),
-			keyDeletions, numOrEmpty(m[keyDeletions]),
-		))
-	}
-	if fl == nil {
-		fl = []any{}
-	}
-	adds, dels := sumStats(plainAll(fl))
-	return jq.NewObj(
-		keySchema, schemaV1,
-		keyProvider, providerGitCafe,
-		keyNumber, res[keyNumber],
-		keyTitle, normStr(res, keyTitle),
-		keyBody, normStr(res, keyDescription),
-		keyBaseRef, normStr(res, "targetBranch"),
-		keyHeadRef, normStr(res, "sourceBranch"),
-		keyBaseSHA, firstPresent(res["observedBaseOid"], res["baseOid"]),
-		keyHeadSHA, firstPresent(res["sourceOid"], res["headOid"]),
-		keyAuthor, cafeAuthor(res),
-		keyURL, firstPresent(nestedURL(meta, res), nil),
-		keyState, cafeState(normStr(res, keyState)),
-		keyDraft, boolOrFalse(res[keyDraft]),
-		keyFiles, fl,
-		keyAdditions, renderStats(adds),
-		keyDeletions, renderStats(dels),
-	), nil
+	return buildPR(&prSpec{
+		Provider: providerGitCafe, Number: res[keyNumber],
+		Title: normStr(res, keyTitle), Body: normStr(res, keyDescription),
+		BaseRef: normStr(res, "targetBranch"), HeadRef: normStr(res, "sourceBranch"),
+		BaseSHA: firstPresent(res["observedBaseOid"], res["baseOid"]), HeadSHA: firstPresent(res["sourceOid"], res["headOid"]),
+		Author: cafeAuthor(res), URL: cafeURL(meta, res),
+		State: providerState(providerGitCafe, normStr(res, keyState)), Draft: res[keyDraft],
+		Files: fileRows(cafeItemsList(itemsRaw), func(m map[string]any) *jq.Obj { return entryFileRow(m, keyPath) }),
+	}), nil
 }
 
 // cafeItemsList ports the items shape gate: arrays pass, maps read
-// .data.items (then .items), and anything else reads empty.
+// .data.items (even when empty) then the top .items member, and anything
+// else reads empty.
 func cafeItemsList(itemsRaw string) []any {
-	var items []any
-	if doc, err := jq.Decode([]byte(itemsRaw)); err == nil {
-		if arr, ok := doc.([]any); ok {
-			items = arr
-		} else if m, ok := jq.AsMap(doc); ok {
-			items = cafeItemsFromMap(m)
+	doc, err := jq.Decode([]byte(itemsRaw))
+	if err != nil {
+		return []any{}
+	}
+	if arr, ok := doc.([]any); ok {
+		return arr
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return []any{}
+	}
+	data, _ := jq.AsMap(m[keyData])
+	for _, src := range []map[string]any{data, m} {
+		if it, has := src[keyItems]; has && it != nil {
+			return elementsOrEmpty(it)
 		}
 	}
-	if items == nil {
-		items = []any{}
-	}
-	return items
-}
-
-// cafeItemsFromMap ports the map shape: .data.items wins when present
-// (even when empty), else the top .items member.
-func cafeItemsFromMap(m map[string]any) []any {
-	if items, ok := cafeDataItems(m); ok {
-		return items
-	}
-	if top, has := m[keyItems]; has && top != nil {
-		return jq.Elements(top)
-	}
 	return []any{}
-}
-
-// cafeDataItems ports the .data.items read, reporting whether the member
-// matched (an explicitly empty list still wins).
-func cafeDataItems(m map[string]any) ([]any, bool) {
-	d, has := m[keyData]
-	if !has {
-		return nil, false
-	}
-	dm, ok := jq.AsMap(d)
-	if !ok {
-		return nil, false
-	}
-	it, has := dm[keyItems]
-	if !has || it == nil {
-		return nil, false
-	}
-	return jq.Elements(it), true
 }
 
 // cafeResource ports the resource shape gate: .data (or .data.resource)
@@ -2020,75 +1993,25 @@ func cafeResource(meta map[string]any) map[string]any {
 	return res
 }
 
-// cafeStatus ports `(.status // statusModified)`.
-func cafeStatus(v any) any {
-	if v == nil {
-		return statusModified
-	}
-	return v
-}
-
-// cafeAuthor ports the author handle chain.
+// cafeAuthor ports the author handle chain: the resource's handle-ish fields
+// first, then the nested author object.
 func cafeAuthor(res map[string]any) string {
-	if res == nil {
-		return ""
-	}
-	if s := cafeHandle(res); s != "" {
-		return s
-	}
-	if a, has := res[keyAuthor]; has {
-		if am, ok := a.(map[string]any); ok {
-			return cafeHandle(am)
+	for _, m := range []map[string]any{res, objOrMap(res[keyAuthor])} {
+		for _, k := range []string{"handle", keyLogin, "displayName", "authorHandle"} {
+			if s, ok := m[k].(string); ok && s != "" {
+				return s
+			}
 		}
 	}
 	return ""
 }
 
-// cafeHandle reads the first non-empty handle-ish member: the shell's
-// handle/login/displayName chain.
-func cafeHandle(m map[string]any) string {
-	for _, k := range []string{"handle", keyLogin, "displayName", "authorHandle"} {
-		if s, ok := m[k].(string); ok && s != "" {
-			return s
-		}
+// cafeURL ports `($m.data.url // $r.url // null)`.
+func cafeURL(meta, res map[string]any) any {
+	if d, ok := meta[keyData].(map[string]any); ok && d[keyURL] != nil {
+		return d[keyURL]
 	}
-	return ""
-}
-
-// nestedURL ports `($m.data.url // $r.url // null)`.
-func nestedURL(meta, res map[string]any) any {
-	if d, has := meta[keyData]; has {
-		if u, found := memberURL(d); found {
-			return u
-		}
-	}
-	if u, has := res[keyURL]; has && u != nil {
-		return u
-	}
-	return nil
-}
-
-// memberURL reads a url member from a plain object (found=false when absent).
-func memberURL(d any) (any, bool) {
-	dm, ok := d.(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	u, has := dm[keyURL]
-	if !has || u == nil {
-		return nil, false
-	}
-	return u, true
-}
-
-// cafeState ports the gitcafe state gate.
-func cafeState(s string) string {
-	switch s {
-	case stateOpen, stateClosed, stateMerged:
-		return s
-	default:
-		return stateUnknown
-	}
+	return res[keyURL]
 }
 
 // normalizeForgejo ports normalize_forgejo.
@@ -2097,59 +2020,22 @@ func normalizeForgejo(metaRaw, filesRaw string) (*jq.Obj, error) {
 	if err != nil {
 		return nil, err
 	}
-	files := forgejoFilesList(filesRaw)
-	var fl []any
-	for _, e := range files {
-		var m map[string]any
-		if pm, ok := e.(map[string]any); ok {
-			m = pm
-		} else if om, ok := e.(*jq.Obj); ok {
-			m = objFields(om)
-		} else {
-			continue
-		}
-		fl = append(fl, jq.NewObj(
-			keyPath, normStr(m, keyFilename),
-			keyStatus, forgejoStatus(m[keyStatus]),
-			keyAdditions, numOrEmpty(m[keyAdditions]),
-			keyDeletions, numOrEmpty(m[keyDeletions]),
-		))
-	}
-	if fl == nil {
-		fl = []any{}
-	}
-	adds, dels := sumStats(plainAll(fl))
-	base := nestedMap(meta, "base")
-	head := nestedMap(meta, "head")
-	user := nestedMap(meta, "user")
-	state := forgejoState(meta)
-	draft := forgejoDraft(meta)
-	return jq.NewObj(
-		keySchema, schemaV1,
-		keyProvider, providerForgejo,
-		keyNumber, firstPresent(meta[keyIndex], meta[keyNumber]),
-		keyTitle, normStr(meta, keyTitle),
-		keyBody, normStr(meta, keyBody),
-		keyBaseRef, normStr(base, "label"),
-		keyHeadRef, normStr(head, "label"),
-		keyBaseSHA, normStr(base, "sha"),
-		keyHeadSHA, normStr(head, "sha"),
-		keyAuthor, normStr(user, keyLogin),
-		keyURL, normStr(meta, "html_url"),
-		keyState, state,
-		keyDraft, draft,
-		keyFiles, fl,
-		keyAdditions, renderStats(adds),
-		keyDeletions, renderStats(dels),
-	), nil
+	base, head := nestedMap(meta, "base"), nestedMap(meta, "head")
+	return buildPR(&prSpec{
+		Provider: providerForgejo, Number: firstPresent(meta[keyIndex], meta[keyNumber]),
+		Title: normStr(meta, keyTitle), Body: normStr(meta, keyBody),
+		BaseRef: normStr(base, "label"), HeadRef: normStr(head, "label"),
+		BaseSHA: normStr(base, "sha"), HeadSHA: normStr(head, "sha"),
+		Author: normStr(nestedMap(meta, "user"), keyLogin), URL: normStr(meta, "html_url"),
+		State: forgejoState(meta), Draft: forgejoDraft(meta),
+		Files: fileRows(jsonArrayOrEmpty(filesRaw), func(m map[string]any) *jq.Obj { return entryFileRow(m, keyFilename) }),
+	}), nil
 }
 
-// forgejoStatus ports `(.status // statusModified)`.
-func forgejoStatus(v any) any {
-	if v == nil {
-		return statusModified
-	}
-	return v
+// entryFileRow builds one normalized diffstat row from a keyed entry.
+func entryFileRow(m map[string]any, pathKey string) *jq.Obj {
+	return prFileRow(normStr(m, pathKey), statusOrModified(m[keyStatus]),
+		numOrEmpty(m[keyAdditions]), numOrEmpty(m[keyDeletions]))
 }
 
 // normalizeBitbucket ports normalize_bitbucket.
@@ -2158,114 +2044,34 @@ func normalizeBitbucket(metaRaw string, ds []any) (*jq.Obj, error) {
 	if err != nil {
 		return nil, err
 	}
-	fl := bitbucketFileRows(ds)
-	adds, dels := sumStats(plainAll(fl))
-	destBranch, srcBranch, destCommit, srcCommit := bitbucketRefs(meta)
-	author := nestedMap(meta, keyAuthor)
-	return jq.NewObj(
-		keySchema, schemaV1,
-		keyProvider, providerBitbucket,
-		keyNumber, meta[keyID],
-		keyTitle, normStr(meta, keyTitle),
-		keyBody, bitbucketBody(meta),
-		keyBaseRef, destBranch,
-		keyHeadRef, srcBranch,
-		keyBaseSHA, destCommit,
-		keyHeadSHA, srcCommit,
-		keyAuthor, firstPresent(authorString(author, "nickname"), authorString(author, "display_name")),
-		keyURL, normStr(nestedMap(nestedMap(meta, "links"), "html"), "href"),
-		keyState, bitbucketState(normStr(meta, keyState)),
-		keyDraft, boolOrFalse(meta[keyDraft]),
-		keyFiles, fl,
-		keyAdditions, renderStats(adds),
-		keyDeletions, renderStats(dels),
-	), nil
+	dest, src := nestedMap(meta, "destination"), nestedMap(meta, keySource)
+	body := normStr(meta, keyDescription)
+	if raw := normStr(nestedMap(meta, "summary"), "raw"); raw != "" {
+		body = raw
+	}
+	return buildPR(&prSpec{
+		Provider: providerBitbucket, Number: meta[keyID],
+		Title: normStr(meta, keyTitle), Body: body,
+		BaseRef: normStr(nestedMap(dest, modeBranch), "name"), HeadRef: normStr(nestedMap(src, modeBranch), "name"),
+		BaseSHA: normStr(nestedMap(dest, "commit"), "hash"), HeadSHA: normStr(nestedMap(src, "commit"), "hash"),
+		// The shell's `//` chain stops at the first string (even ""), so
+		// nickname is authoritative and display_name never wins.
+		Author: normStr(nestedMap(meta, keyAuthor), "nickname"),
+		URL:    normStr(nestedMap(nestedMap(meta, "links"), "html"), "href"),
+		State:  providerState(providerBitbucket, normStr(meta, keyState)),
+		Draft:  meta[keyDraft], Files: fileRows(ds, bitbucketFileRow),
+	}), nil
 }
 
-// bitbucketFileRows ports the file list: path from new then old, status
-// and line counts from the diffstat entry.
-func bitbucketFileRows(ds []any) []any {
-	var fl []any
-	for _, e := range ds {
-		m := objOrMap(e)
-		if m == nil {
-			continue
-		}
-		fl = append(fl, jq.NewObj(
-			keyPath, bitbucketEntryPath(m),
-			keyStatus, bitbucketStatus(m[keyStatus]),
-			keyAdditions, numOrEmpty(m["lines_added"]),
-			keyDeletions, numOrEmpty(m["lines_removed"]),
-		))
+// bitbucketFileRow builds one normalized diffstat row: path from new then
+// old, status and line counts from the entry.
+func bitbucketFileRow(m map[string]any) *jq.Obj {
+	path := normStr(nestedMap(m, "new"), keyPath)
+	if path == "" {
+		path = normStr(nestedMap(m, "old"), keyPath)
 	}
-	if fl == nil {
-		fl = []any{}
-	}
-	return fl
-}
-
-// bitbucketEntryPath ports `new.path // old.path // ""`.
-func bitbucketEntryPath(m map[string]any) string {
-	if p := normStr(nestedMap(m, "new"), keyPath); p != "" {
-		return p
-	}
-	return normStr(nestedMap(m, "old"), keyPath)
-}
-
-// bitbucketRefs ports the destination/source branch and commit reads.
-func bitbucketRefs(meta map[string]any) (destBranch, srcBranch, destCommit, srcCommit string) {
-	if dest := nestedMap(meta, "destination"); dest != nil {
-		destBranch = normStr(nestedMap(dest, modeBranch), "name")
-		destCommit = normStr(nestedMap(dest, "commit"), "hash")
-	}
-	if src := nestedMap(meta, keySource); src != nil {
-		srcBranch = normStr(nestedMap(src, modeBranch), "name")
-		srcCommit = normStr(nestedMap(src, "commit"), "hash")
-	}
-	return destBranch, srcBranch, destCommit, srcCommit
-}
-
-// bitbucketStatus ports `(.status // statusModified)`.
-func bitbucketStatus(v any) any {
-	if v == nil {
-		return statusModified
-	}
-	return v
-}
-
-// bitbucketBody ports `.summary.raw // .description // ""`.
-func bitbucketBody(meta map[string]any) string {
-	if s := nestedMap(meta, "summary"); s != nil {
-		if r := normStr(s, "raw"); r != "" {
-			return r
-		}
-	}
-	return normStr(meta, keyDescription)
-}
-
-// authorString reads one author string field ("" when absent).
-func authorString(author map[string]any, key string) string {
-	if author == nil {
-		return ""
-	}
-	if s, ok := author[key].(string); ok {
-		return s
-	}
-	return ""
-}
-
-// bitbucketState ports the bitbucket state map.
-func bitbucketState(s string) string {
-	switch s {
-	case "OPEN":
-		return stateOpen
-	case "MERGED":
-		return stateMerged
-	case "DECLINED", "SUPERSEDED":
-		return stateClosed
-	default:
-		return stateUnknown
-	}
+	return prFileRow(path, statusOrModified(m[keyStatus]),
+		numOrEmpty(m["lines_added"]), numOrEmpty(m["lines_removed"]))
 }
 
 // normalizeAzure ports normalize_azure.
@@ -2274,87 +2080,29 @@ func normalizeAzure(metaRaw, changesRaw string, ns map[string]map[string]int64) 
 	if err != nil {
 		return nil, err
 	}
-	fl := azureFileRows(changesRaw, ns)
-	adds, dels := sumStats(plainAll(fl))
-	created := nestedMap(meta, "createdBy")
-	return jq.NewObj(
-		keySchema, schemaV1,
-		keyProvider, providerAzure,
-		keyNumber, meta["pullRequestId"],
-		keyTitle, normStr(meta, keyTitle),
-		keyBody, normStr(meta, keyDescription),
-		keyBaseRef, strings.TrimPrefix(normStr(meta, "targetRefName"), "refs/heads/"),
-		keyHeadRef, strings.TrimPrefix(normStr(meta, "sourceRefName"), "refs/heads/"),
-		keyBaseSHA, normStr(nestedMap(meta, "lastMergeTargetCommit"), keyCommitID),
-		keyHeadSHA, normStr(nestedMap(meta, "lastMergeSourceCommit"), keyCommitID),
-		keyAuthor, firstPresent(authorString(created, "uniqueName"), authorString(created, "displayName")),
-		keyURL, normStr(meta, keyURL),
-		keyState, azureState(normStr(meta, keyStatus)),
-		keyDraft, boolOrFalse(meta["isDraft"]),
-		keyFiles, fl,
-		keyAdditions, renderStats(adds),
-		keyDeletions, renderStats(dels),
-	), nil
+	files := fileRows(jsonArrayOrEmpty(changesRaw), func(m map[string]any) *jq.Obj { return azureFileRow(m, ns) })
+	return buildPR(&prSpec{
+		Provider: providerAzure, Number: meta["pullRequestId"],
+		Title: normStr(meta, keyTitle), Body: normStr(meta, keyDescription),
+		BaseRef: strings.TrimPrefix(normStr(meta, "targetRefName"), "refs/heads/"),
+		HeadRef: strings.TrimPrefix(normStr(meta, "sourceRefName"), "refs/heads/"),
+		BaseSHA: normStr(nestedMap(meta, "lastMergeTargetCommit"), keyCommitID),
+		HeadSHA: normStr(nestedMap(meta, "lastMergeSourceCommit"), keyCommitID),
+		// The shell's `//` chain stops at the first string (even ""), so
+		// uniqueName is authoritative and displayName never wins.
+		Author: normStr(nestedMap(meta, "createdBy"), "uniqueName"), URL: normStr(meta, keyURL),
+		State: providerState(providerAzure, normStr(meta, keyStatus)),
+		Draft: meta["isDraft"], Files: files,
+	}), nil
 }
 
-// azureChangesEntries ports the iteration-changes shape gate: an array
-// passes, anything else reads empty.
-func azureChangesEntries(changesRaw string) []any {
-	doc, err := jq.Decode([]byte(changesRaw))
-	if err != nil {
-		return []any{}
+// azureFileRow ports one change entry: item.path with numstat counts; a
+// null changeType stays null (the shell preserves it).
+func azureFileRow(m map[string]any, ns map[string]map[string]int64) *jq.Obj {
+	p := strings.TrimPrefix(normStr(nestedMap(m, "item"), keyPath), pathSep)
+	var adds, dels int64
+	if s, ok := ns[p]; ok {
+		adds, dels = s[keyAdds], s[keyDels]
 	}
-	arr, ok := doc.([]any)
-	if !ok {
-		return []any{}
-	}
-	return arr
-}
-
-// azureFileRows ports the change entries: item.path with numstat counts.
-func azureFileRows(changesRaw string, ns map[string]map[string]int64) []any {
-	var fl []any
-	for _, e := range azureChangesEntries(changesRaw) {
-		m := objOrMap(e)
-		if m == nil {
-			continue
-		}
-		p := strings.TrimPrefix(normStr(nestedMap(m, "item"), keyPath), pathSep)
-		var adds, dels int64
-		if s, ok := ns[p]; ok {
-			adds, dels = s[keyAdds], s[keyDels]
-		}
-		fl = append(fl, jq.NewObj(
-			keyPath, p,
-			keyStatus, azureStatus(m["changeType"]),
-			keyAdditions, adds,
-			keyDeletions, dels,
-		))
-	}
-	if fl == nil {
-		fl = []any{}
-	}
-	return fl
-}
-
-// azureStatus ports the changeType read (null preserved like the shell).
-func azureStatus(v any) any {
-	if v == nil {
-		return nil
-	}
-	return v
-}
-
-// azureState ports the azure status map.
-func azureState(s string) string {
-	switch s {
-	case stateActive:
-		return stateOpen
-	case "abandoned":
-		return stateClosed
-	case "completed":
-		return stateMerged
-	default:
-		return stateUnknown
-	}
+	return prFileRow(p, m["changeType"], adds, dels)
 }
