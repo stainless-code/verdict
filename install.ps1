@@ -195,8 +195,21 @@ try {
   [System.IO.File]::WriteAllText($ReceiptPath, $receipt, [System.Text.Encoding]::ASCII)
   # Smoke the new binary from its final path: that is what the user runs, so
   # it proves the file we just moved in is executable where it landed.
-  $reported = (& $target --version 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -ne 0 -or -not "$reported".Trim()) {
+  # Drain the whole output before reading the exit code: `Select-Object -First`
+  # stops the pipeline early, which can kill the child or leave $LASTEXITCODE
+  # stale on Windows PowerShell 5.1. Stderr is discarded under 'Continue' so a
+  # stray stderr line is not promoted to a terminating NativeCommandError.
+  $previousPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $versionOutput = @(& $target --version 2>$null)
+    $versionStatus = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousPreference
+  }
+  $reported = ''
+  if ($versionOutput.Count -gt 0) { $reported = "$($versionOutput[0])".Trim() }
+  if ($versionStatus -ne 0 -or -not $reported) {
     throw "installed $target but it does not answer --version; check the archive for this platform"
   }
   Write-Host "install: installed verdict $Version to $target (SHA-256 verified; reports $reported)"
