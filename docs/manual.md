@@ -1528,11 +1528,17 @@ explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
 `data` for `report`, `post`, `record`, and `show`, plus fetch's additive
 estimate). `schemas/validate.sh` is the
-offline checker (bash 3.2 + jq, no network — it implements only the keyword
-subset the schemas use, and fails loudly on anything outside it);
-`evals/cases/schema-contract.sh` asserts representative fixtures validate —
-a shape change that breaks agents or parsers fails the build instead of a
-review.
+offline checker: a shim over `verdict __validate-schema`, whose implementation
+lives in `internal/schemacheck` — the one keyword subset the published schemas
+use (`$ref` within a file or across sibling files, `type`, `const`, `enum`,
+`properties`, `required`, `items`, `additionalProperties` as a bool or a
+schema, `minimum`/`maximum`, `minLength`/`maxLength`, `pattern`, `anyOf`,
+`format: date-time`), with anything outside it failing loudly and an
+unresolvable `$ref` never validating. The Go conformance tests and the evals
+therefore run the same code, so a fixture cannot pass one side and fail the
+other; `evals/cases/schema-contract.sh` asserts representative fixtures
+validate — a shape change that breaks agents or parsers fails the build
+instead of a review.
 
 Drift rule: additive within `schema_version`/`sig_version` `"1"`, matching
 the changelog above — new optional keys pass through the stores and the

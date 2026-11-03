@@ -43,7 +43,7 @@ func TestThreadsGoldensValidate(t *testing.T) {
 				t.Errorf("%s: threads.json golden is not JSON: %v", path, derr)
 				continue
 			}
-			if serr := schemaError(doc, doc, v); serr != nil {
+			if serr := validationError(doc, doc, v); serr != nil {
 				t.Errorf("%s: threads.json golden does not validate: %v", path, serr)
 			}
 			validated++

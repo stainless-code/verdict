@@ -116,7 +116,7 @@ func validateEnvelopeGolden(doc map[string]any, stdout string) (bool, error) {
 	if _, ok := env["schema_version"]; !ok {
 		return false, nil
 	}
-	if err := schemaError(doc, doc, env); err != nil {
+	if err := validationError(doc, doc, env); err != nil {
 		return true, fmt.Errorf("envelope: %w", err)
 	}
 	if err := pinnedDataError(doc, env); err != nil {
@@ -142,7 +142,7 @@ func pinnedDataError(doc map[string]any, env map[string]any) error {
 	if !ok || env["data"] == nil {
 		return nil
 	}
-	if err := schemaError(doc, def, env["data"]); err != nil {
+	if err := validationError(doc, def, env["data"]); err != nil {
 		return fmt.Errorf("%s data: %w", verb, err)
 	}
 	return nil

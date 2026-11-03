@@ -31,6 +31,7 @@ import (
 	"github.com/stainless-code/verdict/internal/record"
 	"github.com/stainless-code/verdict/internal/report"
 	"github.com/stainless-code/verdict/internal/scaffold"
+	"github.com/stainless-code/verdict/internal/schemacheck"
 	"github.com/stainless-code/verdict/internal/threads"
 	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
@@ -63,10 +64,10 @@ func main() {
 //
 //nolint:revive // the hidden transport dispatch adds one branch to the front door
 func run(args []string, stdout, stderr *os.File, getenv func(string) string, readFile func(string) ([]byte, error)) int {
-	// The Windows replacement helper is a hidden dispatch: it must run
-	// before usage/arity/prefs and never appears in the usage block.
-	if len(args) > 0 && args[0] == upgrade.HelperCommand {
-		return upgrade.RunHelper(context.Background(), args[1:], stderr)
+	// Hidden transport verbs run before usage/arity/prefs and never appear
+	// in the usage block.
+	if code, ok := dispatchHidden(args, stderr); ok {
+		return code
 	}
 	// Installed binaries ship no package.json: the linked release version
 	// (if any) owns the footer before any flag handling runs.
@@ -147,6 +148,23 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 		return true
 	}
 	return false
+}
+
+// dispatchHidden runs the transport-only verbs: the Windows replacement helper
+// and the schema checker behind `schemas/validate.sh`. ok is false for a real
+// verb, which then goes through usage, arity, and the normal dispatch.
+func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
+	if len(args) == 0 {
+		return 0, false
+	}
+	switch args[0] {
+	case upgrade.HelperCommand:
+		return upgrade.RunHelper(context.Background(), args[1:], stderr), true
+	case schemacheck.Command:
+		return schemacheck.Run(args[1:], stderr), true
+	default:
+		return 0, false
+	}
 }
 
 // readHandler is the shared signature of the read-only verbs.

@@ -1,10 +1,12 @@
 package schemagen
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -296,7 +298,7 @@ func checkEnums(path string, base, current map[string]any, changes *[]string) {
 		return
 	}
 	for _, member := range want {
-		if !enumContains(got, member) {
+		if !slices.ContainsFunc(got, func(kept any) bool { return reflect.DeepEqual(kept, member) }) {
 			*changes = append(*changes, fmt.Sprintf("%s: enum value %v removed", path, member))
 		}
 	}
@@ -309,6 +311,22 @@ func checkRequired(path string, base, current map[string]any, changes *[]string)
 		if !want[name] {
 			*changes = append(*changes, fmt.Sprintf("%s: newly required %q", path, name))
 		}
+	}
+}
+
+// boundOf reads one numeric bound from a decoded schema, whether the document
+// was decoded as float64 or with number fidelity.
+func boundOf(s map[string]any, key string) (float64, bool) {
+	switch raw := s[key].(type) {
+	case float64:
+		return raw, true
+	case json.Number:
+		number, err := raw.Float64()
+		return number, err == nil
+	case int:
+		return float64(raw), true
+	default:
+		return 0, false
 	}
 }
 
