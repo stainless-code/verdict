@@ -520,7 +520,7 @@ func snapshotFile(tag, root string, out map[string]string, p string) error {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
 		return fmt.Errorf("rel %s: %v", p, err)
 	}
-	out[tag+"/"+rel] = string(raw)
+	out[tag+"/"+filepath.ToSlash(rel)] = string(raw)
 	return nil
 }
 

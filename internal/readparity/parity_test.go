@@ -92,7 +92,7 @@ func snapshotFile(tag, root string, out map[string]string, p string) error {
 	if err != nil {
 		return err
 	}
-	out[tag+"/"+rel] = string(raw)
+	out[tag+"/"+filepath.ToSlash(rel)] = string(raw)
 	return nil
 }
 
