@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/sig"
 )
 
 // scriptCommander is a hermetic Commander: canned stdout/stderr per exact
@@ -425,9 +426,9 @@ func projectCommentFixture() *jq.Obj {
 func TestProjectCommentProjection(t *testing.T) {
 	t.Parallel()
 	m := projectCommentFixture()
-	got := projectComment(m)
-	if jq.R(mustGet(got, fieldBody)) != "seen\n\n```suggestion\nfix();\n```" {
-		t.Errorf("suggestion body: %q", jq.R(mustGet(got, fieldBody)))
+	got := projectComment(m, "")
+	if jq.R(mustGet(got)) != "seen\n\n```suggestion\nfix();\n```" {
+		t.Errorf("suggestion body: %q", jq.R(mustGet(got)))
 	}
 	for _, k := range []string{fieldPath, fieldLine, "side", fieldBody} {
 		if _, has := got.Get(k); !has {
@@ -441,7 +442,7 @@ func TestProjectCommentProjection(t *testing.T) {
 		t.Errorf("unknown key shipped")
 	}
 	falsy := jq.NewObj(fieldPath, "a.txt", fieldBody, false)
-	if v, has := projectComment(falsy).Get(fieldBody); !has || v != false {
+	if v, has := projectComment(falsy, "").Get(fieldBody); !has || v != false {
 		t.Errorf("false body dropped, want it kept: %v %v", v, has)
 	}
 }
@@ -455,7 +456,7 @@ func TestProjectCommentCounts(t *testing.T) {
 	if n := countEmbedded([]any{m, falsy}); n != 1 {
 		t.Errorf("embedded=%d want 1", n)
 	}
-	if keys := postCommentKeys([]any{projectComment(m)}); keys != "path,line,side,body" {
+	if keys := postCommentKeys([]any{projectComment(m, "")}); keys != "path,line,side,body" {
 		t.Errorf("keys=%q", keys)
 	}
 	if keys := postCommentKeys(nil); keys != "" {
@@ -464,8 +465,8 @@ func TestProjectCommentCounts(t *testing.T) {
 }
 
 // mustGet reads a field the test guarantees present.
-func mustGet(m *jq.Obj, key string) any {
-	v, _ := m.Get(key)
+func mustGet(m *jq.Obj) any {
+	v, _ := m.Get(fieldBody)
 	return v
 }
 
@@ -730,7 +731,8 @@ func TestRunSubmit(t *testing.T) {
 	}
 	wantComments := []any{map[string]any{
 		"path": "notes.txt", "line": float64(2), "side": "RIGHT",
-		"body": "Consider clarifying this line.",
+		"body": "Consider clarifying this line.\n\n<!-- verdict-finding sig=" +
+			sig.Of("notes.txt"+"\n"+"\n"+"Consider clarifying this line.") + " -->",
 	}}
 	if !reflect.DeepEqual(payload["comments"], wantComments) {
 		t.Errorf("posted comments = %#v, want %#v", payload["comments"], wantComments)
