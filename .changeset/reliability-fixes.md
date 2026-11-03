@@ -19,3 +19,8 @@ closed with `bad-review-input` — unparsable `review.json`, non-object
 verification claims — and a corrupt findings store now refuses typed
 `corrupt-store` across `report`, `show`, `calibrate`, and `trend` instead of
 crashing mid-render with no envelope, never starting fresh over history.
+
+A value flag given without its value now fails as a usage error naming what
+it wanted (`--provider needs a value (want <name>)`, exit 2) before any
+network call, instead of falling back to a default target. A bare `--stash`
+still means `stash@{0}`.
