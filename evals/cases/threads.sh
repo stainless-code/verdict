@@ -174,7 +174,7 @@ else
 fi
 run_review threads acme/app 99 --json
 if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "fetch-failed"' <"$EVAL_OUT" >/dev/null \
-  && jq -r '.error.message' <"$EVAL_OUT" | grep -q 'fetch the PR first'; then
+  && jq -r '.error.message' <"$EVAL_OUT" | matches 'fetch the PR first'; then
   good "T5 a missing bundle names the fetch step"
 else
   bad "T5 missing bundle: exit $EVAL_STATUS $(head -c 200 "$EVAL_ERR")"

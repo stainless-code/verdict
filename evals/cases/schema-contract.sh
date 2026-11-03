@@ -214,7 +214,7 @@ else
 fi
 stub_now="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 if [ "$(( stub_now - stub_pre_post ))" = "1" ] \
-  && sed -n "$(( stub_pre_post + 1 )),$(( stub_now ))p" "$EVAL_STUBLOG" | grep -q "^stub-gh api repos/acme/app/pulls/4951"; then
+  && sed -n "$(( stub_pre_post + 1 )),$(( stub_now ))p" "$EVAL_STUBLOG" | matches "^stub-gh api repos/acme/app/pulls/4951"; then
   good "S7 dry-run post made only the one stubbed SHA lookup (offline)"
 else
   bad "S7 unexpected network attempts around the dry-run post leg"

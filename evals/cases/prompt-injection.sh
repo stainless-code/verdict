@@ -104,7 +104,7 @@ done
 # match is always a real fence — attacker bytes sort after the fenced meta.
 dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
 nonce="$(dump_nonce "$EVAL_SANDBOX/pinj-diff.txt")"
-if printf '%s' "$nonce" | grep -q '^[0-9a-f]\{16\}$' \
+if printf '%s' "$nonce" | matches '^[0-9a-f]\{16\}$' \
   && grep -q "this run's nonce: $nonce" "$EVAL_SANDBOX/pinj-diff.txt"; then
   good "I4: per-run nonce ($nonce) matches the 16-hex grammar, named in the prologue"
 else
@@ -129,7 +129,7 @@ done
 # must sit inside it, with exactly one real close bounding it.
 diff_slice="$(sed -n "/<<<UNTRUSTED nonce=$nonce source=full.diff>>>/,/<<<END UNTRUSTED nonce=$nonce>>>/p" "$EVAL_SANDBOX/pinj-diff.txt")"
 for tok in PI23-FAKE-CLOSE PI23-FORGED-FENCE "nonce=0000000000000000" "<<<UNTRUSTED nonce=evil"; do
-  if printf '%s' "$diff_slice" | grep -q -F "$tok"; then
+  if printf '%s' "$diff_slice" | matches -F "$tok"; then
     good "I6: '$tok' contained inside the real diff fence"
   else
     bad "I6: '$tok' escaped the real diff fence (or went missing)"
@@ -144,7 +144,7 @@ fi
 run_review fetch-local acme/app inj-diff --staged --show-prompts
 nonce2="$(dump_nonce "$EVAL_OUT")"
 if [ -n "$nonce2" ] && [ "$nonce2" != "$nonce" ] \
-  && printf '%s' "$nonce2" | grep -q '^[0-9a-f]\{16\}$'; then
+  && printf '%s' "$nonce2" | matches '^[0-9a-f]\{16\}$'; then
   good "I7: second run mints a fresh nonce ($nonce2 != $nonce)"
 else
   bad "I7: nonce not fresh (got '$nonce2', first was '$nonce')"
@@ -217,7 +217,7 @@ good "F-PI-2 recorded: the dump reproduces the initial-review reading list (the 
 pr_nonce="$(dump_nonce "$EVAL_SANDBOX/pinj-pr.txt")"
 pr_slice="$(sed -n "/<<<UNTRUSTED nonce=$pr_nonce source=PR.json>>>/,/<<<END UNTRUSTED nonce=$pr_nonce>>>/p" "$EVAL_SANDBOX/pinj-pr.txt")"
 if [ "$(grep -c -F "<<<UNTRUSTED nonce=$pr_nonce source=PR.json>>>" "$EVAL_SANDBOX/pinj-pr.txt" || true)" = "1" ] \
-  && printf "%s" "$pr_slice" | grep -q -F "PI23-BODY"; then
+  && printf "%s" "$pr_slice" | matches -F "PI23-BODY"; then
   good "I4: PR-channel dump fences PR.json and the body rides inside it"
 else
   bad "I4: PR-channel fence off (nonce '$pr_nonce')"

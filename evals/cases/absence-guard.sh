@@ -58,7 +58,7 @@ defined="$(grep -oE '^[a-z_]+\(\)' "$COMMON" | sed 's/()$//')"
 called="$(grep -rhoE '\bassert_[a-z_]+' "$CASES"/*.sh | sort -u)"
 unknown=""
 for fn in $called; do
-  if printf '%s\n' "$defined" | grep -qx "$fn"; then continue; fi
+  if printf '%s\n' "$defined" | matches -x "$fn"; then continue; fi
   unknown="$unknown $fn"
 done
 if [ -z "$unknown" ]; then

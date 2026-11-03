@@ -67,7 +67,7 @@ watchdog_review() {
   while :; do
     alive="1"
     kill -0 "$pid" 2>/dev/null || alive=""
-    if [ -n "$alive" ] && ps -p "$pid" -o stat= 2>/dev/null | grep -q 'Z'; then alive=""; fi
+    if [ -n "$alive" ] && ps -p "$pid" -o stat= 2>/dev/null | matches 'Z'; then alive=""; fi
     if [ -z "$alive" ]; then break; fi
     if [ "$elapsed" -ge "$limit" ]; then
       kill -9 "$pid" 2>/dev/null || true
@@ -278,7 +278,7 @@ if [ "${pty_avail:-false}" = "true" ]; then
     while :; do
       alive="1"
       kill -0 "$pid" 2>/dev/null || alive=""
-      if [ -n "$alive" ] && ps -p "$pid" -o stat= 2>/dev/null | grep -q 'Z'; then alive=""; fi
+      if [ -n "$alive" ] && ps -p "$pid" -o stat= 2>/dev/null | matches 'Z'; then alive=""; fi
       if [ -z "$alive" ]; then break; fi
       if [ "$elapsed" -ge "$limit" ]; then
         kill -9 "$pid" 2>/dev/null || true

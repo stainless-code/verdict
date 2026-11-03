@@ -22,7 +22,7 @@ if grep -q "Machine modes never prompt" "$EVAL_ROOT/docs/manual.md" \
 else
   bad "doctrine line missing from docs/manual.md"
 fi
-if "$EVAL_CLI" --help 2>/dev/null | grep -q -- "--json"; then
+if "$EVAL_CLI" --help 2>/dev/null | matches -- "--json"; then
   good "usage text still names --json"
 else
   bad "usage text misses --json"
@@ -37,8 +37,8 @@ if grep -q "Pre-push probe" "$EVAL_ROOT/docs/manual.md" \
 else
   bad "probe subsection missing from docs/manual.md"
 fi
-if awk '/^### Pre-push probe/,/^## /' "$EVAL_ROOT/docs/manual.md" | grep -q -- "--base-sha" \
-  && awk '/^### Pre-push probe/,/^## /' "$EVAL_ROOT/docs/manual.md" | grep -qi "offline"; then
+if awk '/^### Pre-push probe/,/^## /' "$EVAL_ROOT/docs/manual.md" | matches -- "--base-sha" \
+  && awk '/^### Pre-push probe/,/^## /' "$EVAL_ROOT/docs/manual.md" | matches -i "offline"; then
   good "probe subsection cross-links --base-sha recovery and notes offline safety"
 else
   bad "probe subsection misses the fetch cross-link or the offline note"

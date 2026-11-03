@@ -29,7 +29,7 @@ case_names="$(ls "$CASES"/*.sh | sed -E 's#.*/##; s/\.sh$//' | LC_ALL=C sort)"
 
 undocumented=""
 for c in $case_names; do
-  if ! printf '%s\n' "$doc_rows" | grep -qx "$c"; then
+  if ! printf '%s\n' "$doc_rows" | matches -x "$c"; then
     undocumented="$undocumented $c"
   fi
 done
@@ -41,7 +41,7 @@ fi
 
 stale=""
 for d in $doc_rows; do
-  if ! printf '%s\n' "$case_names" | grep -qx "$d"; then
+  if ! printf '%s\n' "$case_names" | matches -x "$d"; then
     stale="$stale $d"
   fi
 done

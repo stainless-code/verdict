@@ -195,7 +195,7 @@ run_review post acme/app "$PR" --approve=yes --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "bad-approve" ] \
-  && printf '%s' "$msg" | grep -q "got 'yes'"; then
+  && printf '%s' "$msg" | matches "got 'yes'"; then
   good "bad --approve refuses bad-approve naming the value"
 else
   bad "bad --approve gave exit $EVAL_STATUS code '$code'"

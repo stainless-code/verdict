@@ -138,12 +138,12 @@ unset GH_STUB_DOCTOR
 run_review doctor
 stamp="$(head -n 1 "$EVAL_OUT")"
 summary="$(tail -n 1 "$EVAL_OUT")"
-if printf '%s' "$stamp" | grep -Eq '^doctor @ [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+if printf '%s' "$stamp" | matches -E '^doctor @ [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
   good "D1 first line is the doctor run stamp"
 else
   bad "D1 first line: $(printf '%s' "$stamp" | head -c 120)"
 fi
-if printf '%s' "$summary" | grep -Eq '^Summary: (healthy|unhealthy) — [0-9]+ ok, [0-9]+ warn, [0-9]+ fail$'; then
+if printf '%s' "$summary" | matches -E '^Summary: (healthy|unhealthy) — [0-9]+ ok, [0-9]+ warn, [0-9]+ fail$'; then
   word="${summary#Summary: }"
   word="${word%% *}"
   if { [ "$EVAL_STATUS" -eq 0 ] && [ "$word" = "healthy" ]; } \

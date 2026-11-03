@@ -46,7 +46,7 @@ if [ -e "$EVAL_ROOT/VERSION" ] || [ -e "$EVAL_ROOT/version.txt" ]; then
 else
   good "no second version source file at the repo root"
 fi
-if grep -rn -- "-version" "$EVAL_ROOT/cmd/verdict" | grep -v '_test\.go' | grep -q 'package\.json'; then
+if grep -rn -- "-version" "$EVAL_ROOT/cmd/verdict" | grep -v '_test\.go' | matches 'package\.json'; then
   good "the CLI reads its version from package.json at runtime"
 else
   bad "no package.json version read in cmd/verdict"

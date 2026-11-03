@@ -33,6 +33,12 @@ EVAL_ENVELOPE_KEYS="at data error next pr repo schema_version verb warnings"
 fails=0
 # shellcheck disable=SC2034 # the counter is read by cases and by eval_end
 skips=0
+# matches [grep flags] PATTERN: `grep -q` for the end of a pipeline. grep -q
+# exits at the first match, so a producer still writing then takes SIGPIPE and,
+# under `set -o pipefail`, fails the whole test even though the text matched
+# (timing-dependent: it bit Linux CI, never macOS). This reads all of stdin.
+matches() { grep "$@" >/dev/null; }
+
 good() { echo "  ok: $1"; }
 bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 

@@ -110,7 +110,7 @@ run_review fetch-local acme/app mrecopt --range "$MREC_BASE..$MREC_C" --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT")" = "diff-too-large" ] \
   && jq -e '.error.candidates | length > 0' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && jq -r '.error.message' <"$EVAL_OUT" | grep -q "try: split the range"; then
+  && jq -r '.error.message' <"$EVAL_OUT" | matches "try: split the range"; then
   good "--json refusal keeps code + candidates + the manual hint"
 else
   bad "--json refusal exits $EVAL_STATUS"
@@ -205,7 +205,7 @@ if grep -q "## Over-cap diffs" "$EVAL_ROOT/docs/manual.md" \
 else
   bad "operator manual misses the chunking/manual-recipe prose"
 fi
-if "$EVAL_CLI" --help 2>/dev/null | grep -q -- "--chunk"; then
+if "$EVAL_CLI" --help 2>/dev/null | matches -- "--chunk"; then
   good "usage text names the --chunk opt-in"
 else
   bad "usage text misses --chunk"

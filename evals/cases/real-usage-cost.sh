@@ -102,7 +102,7 @@ msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "budget-exceeded" ] \
   && grep -Fq '[measured from 1 harness session(s)]' "$EVAL_ERR" \
-  && printf '%s' "$msg" | grep -Fq '[measured from 1 harness session(s)]'; then
+  && printf '%s' "$msg" | matches -F '[measured from 1 harness session(s)]'; then
   good "measured spend refuses a run the self-report would have blessed, and says measured"
 else
   bad "measured refusal: exit $EVAL_STATUS msg=$(printf '%s' "$msg" | head -1) err=$(head -2 "$EVAL_ERR" | tr '\n' ' ')"

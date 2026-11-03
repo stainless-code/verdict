@@ -173,7 +173,7 @@ if [ -n "$PORT" ]; then
     bad "U1 self-replace exit $EVAL_STATUS ($(head -c 240 "$EVAL_ERR"))"
   fi
   if [ "$(digest "$INSTALL_DIR/verdict")" != "$before" ] \
-    && "$INSTALL_DIR/verdict" --version | grep -qx "$VERSION"; then
+    && "$INSTALL_DIR/verdict" --version | matches -x "$VERSION"; then
     good "U1 the replaced binary answers --version"
   else
     bad "U1 the replaced binary is unchanged or mis-versioned"
@@ -186,7 +186,7 @@ if [ -n "$PORT" ]; then
   else
     bad "U1 cosign argv missing the contract identity/issuer: $(cat "$COSIGN_LOG")"
   fi
-  if find "$INSTALL_DIR" \( -name '.verdict-stage-*' -o -name 'previous-*' \) | grep -q .; then
+  if find "$INSTALL_DIR" \( -name '.verdict-stage-*' -o -name 'previous-*' \) | matches .; then
     bad "U1 self-replace left staging artifacts"
   else
     good "U1 self-replace cleans its staging"
@@ -301,7 +301,7 @@ printf '{"name":"demo"}\n' > "$PROJECT_ROOT/package.json"
 cp "$EVAL_CLI" "$PROJECT_ROOT/node_modules/@stainless-code/verdict/bin/verdict"
 run_cli "$PROJECT_ROOT/node_modules/@stainless-code/verdict/bin/verdict" "" upgrade --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "upgrade-project-local" ] \
-  && jq -r '.error.message' "$EVAL_OUT" | grep -Fq 'npm install @stainless-code/verdict@latest'; then
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F 'npm install @stainless-code/verdict@latest'; then
   good "U6 project-local refuses typed with the manifest command"
 else
   bad "U6 project-local exit $EVAL_STATUS code $(envelope_code)"
@@ -311,7 +311,7 @@ mkdir -p "$SKILL_ROOT"
 cp "$EVAL_CLI" "$SKILL_ROOT/verdict"
 run_cli "$SKILL_ROOT/verdict" "" upgrade --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "upgrade-skill-copy" ] \
-  && jq -r '.error.message' "$EVAL_OUT" | grep -Fq 'npx skills update'; then
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F 'npx skills update'; then
   good "U6 skill copy refuses typed at the skills update flow"
 else
   bad "U6 skill copy exit $EVAL_STATUS code $(envelope_code)"
@@ -320,7 +320,7 @@ mkdir -p "$CASE/random"
 cp "$EVAL_CLI" "$CASE/random/verdict"
 run_cli "$CASE/random/verdict" "" upgrade --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "upgrade-unidentified" ] \
-  && jq -r '.error.message' "$EVAL_OUT" | grep -Fq 'install.sh'; then
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F 'install.sh'; then
   good "U6 unidentifiable refuses typed with the installer command"
 else
   bad "U6 unidentifiable exit $EVAL_STATUS code $(envelope_code)"
@@ -350,7 +350,7 @@ else
 fi
 run_cli "$NPM_ROOT/verdict" "" uninstall --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "uninstall-foreign" ] \
-  && jq -r '.error.message' "$EVAL_OUT" | grep -Fq 'npm uninstall -g @stainless-code/verdict'; then
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F 'npm uninstall -g @stainless-code/verdict'; then
   good "U7 foreign npm install refuses with the owner command"
 else
   bad "U7 foreign uninstall exit $EVAL_STATUS code $(envelope_code)"

@@ -78,7 +78,7 @@ if [ "$man_ids" = "m1-a,m1-b,m1-c," ] && [ "$txt_ids" = "$man_ids" ]; then
 else
   bad "ids differ manifest='$man_ids' kb.txt='$txt_ids'"
 fi
-if head -n 1 "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" | grep -q "^# kb recall"; then
+if head -n 1 "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" | matches "^# kb recall"; then
   good "kb.txt keeps its header line byte-identically"
 else
   bad "kb.txt header changed"

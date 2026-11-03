@@ -185,7 +185,7 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-posted" ] \
 else
   bad "fresh bundle gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/already-posted/0"
 fi
-if printf '%s' "$msg" | grep -q "re-fetch if the earlier review was deleted"; then
+if printf '%s' "$msg" | matches "re-fetch if the earlier review was deleted"; then
   good "fresh-bundle refusal names the stale-review re-fetch hint"
 else
   bad "fresh-bundle refusal message: $(printf '%s' "$msg" | head -c 300)"
@@ -217,8 +217,8 @@ fi
 run_review post acme/app "$PR" --json
 msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] \
-  && printf '%s' "$msg" | grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" \
-  && printf '%s' "$msg" | grep -q -- "--force"; then
+  && printf '%s' "$msg" | matches "fetch acme/app $PR --base-sha ${HEADA:0:7}" \
+  && printf '%s' "$msg" | matches -- "--force"; then
   good "--json error.message names the exact advance command + --force"
 else
   bad "--json error.message: $(head -c 300 "$EVAL_OUT")"

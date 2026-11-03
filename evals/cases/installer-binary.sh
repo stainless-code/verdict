@@ -206,7 +206,7 @@ else
   bad "bad signature exit $EVAL_STATUS"
 fi
 FAKE_COSIGN_STATUS=0
-if find "$INSTALL_DIR" -name '.verdict-stage-*' -print | grep -q .; then
+if find "$INSTALL_DIR" -name '.verdict-stage-*' -print | matches .; then
   bad "refused runs left a staging dir"
 else
   good "refused runs clean staging behind"
@@ -332,7 +332,7 @@ cp "$INSTALL_DIR/verdict" "$CASE/first-verdict"
 run_install
 if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$CASE/first-verdict" "$INSTALL_DIR/verdict" \
   && [ "$(grep -c -F '"binary":"verdict"' "$INSTALL_DIR/.verdict-installer")" = 1 ] \
-  && ! find "$INSTALL_DIR" -name '.verdict-stage-*' -print | grep -q .; then
+  && ! find "$INSTALL_DIR" -name '.verdict-stage-*' -print | matches .; then
   good "re-install is idempotent and leaves no staging dirs"
 else
   bad "re-install not idempotent (exit $EVAL_STATUS)"

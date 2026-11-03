@@ -164,9 +164,9 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "partial post gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
 fi
-if jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "chunk-02" \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "b.txt" \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "try: re-fetch"; then
+if jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-02" \
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "b.txt" \
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "try: re-fetch"; then
   good "refusal names the missing chunk (chunk-02, b.txt) with the re-fetch remediation"
 else
   bad "refusal message misses the chunk/remediation: $(jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | head -c 300)"
@@ -187,7 +187,7 @@ EOF
 run_review record acme/app local-covrec --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-chunk-coverage" ] \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "chunk-01"; then
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-01"; then
   good "record refuses the partial attestation naming chunk-01"
 else
   bad "record gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
@@ -208,8 +208,8 @@ EOF
 run_review post acme/app 4642 --dry-run --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-chunk-snapshot" ] \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "chunk-02" \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "try: re-fetch"; then
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-02" \
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "try: re-fetch"; then
   good "missing pinned diff refuses typed missing-chunk-snapshot naming chunk-02 + re-fetch"
 else
   bad "snapshot leg gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"

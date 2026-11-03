@@ -120,7 +120,7 @@ else
   bad "fetch-local --show-prompts exits $EVAL_STATUS"
 fi
 dump_expected ".review/local-dump-a" "$EVAL_SANDBOX/expected-a.txt" "$(dump_nonce "$EVAL_OUT")"
-if printf '%s' "$(dump_nonce "$EVAL_OUT")" | grep -q '^[0-9a-f]\{16\}$' \
+if printf '%s' "$(dump_nonce "$EVAL_OUT")" | matches '^[0-9a-f]\{16\}$' \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/expected-a.txt"; then
   good "dump stdout equals the fenced assembly with a well-formed nonce"
 else
@@ -150,7 +150,7 @@ if cmp -s "$EVAL_SANDBOX/.review/local-dump-a/full.diff" "$EVAL_SANDBOX/.review/
 else
   bad "full.diff differs between flagged and plain fetch"
 fi
-if find "$EVAL_SANDBOX/.review/local-dump-a" -iname '*prompt*' | grep -q .; then
+if find "$EVAL_SANDBOX/.review/local-dump-a" -iname '*prompt*' | matches .; then
   bad "dump left prompt-named files in the store"
 else
   good "no prompt-named files in the store"
@@ -304,7 +304,7 @@ f7d_omitted="$(jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | grep -c '^# rev
 if [ "$f7d_status" -eq 0 ] \
   && jq -e '.warnings | join(" ") | contains("prompts/review.md")' <"$EVAL_OUT" >/dev/null 2>&1 \
   && [ "$f7d_omitted" = "0" ] \
-  && jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | grep -q "review mode (eval fixture)"; then
+  && jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | matches "review mode (eval fixture)"; then
   good "F7: missing sibling rides warnings[] while data.prompt_dump stays complete otherwise"
 else
   bad "F7: missing sibling warning missing from warnings[] (exit $f7d_status)"
@@ -327,7 +327,7 @@ else
   bad "lead line is '$(sed -n '4p' "$EVAL_SANDBOX/out-4301.md" 2>/dev/null)' (exit $EVAL_STATUS)"
 fi
 if grep -q "<!-- report-machine:start -->" "$EVAL_SANDBOX/out-4301.md" \
-  && tail -n 1 "$EVAL_SANDBOX/out-4301.md" | grep -q "<!-- report-machine:end -->"; then
+  && tail -n 1 "$EVAL_SANDBOX/out-4301.md" | matches "<!-- report-machine:end -->"; then
   good "machine markers wrap the new template"
 else
   bad "machine markers broke"
