@@ -184,6 +184,37 @@ func writeCanned(t *testing.T, dir, name, doc string) {
 	}
 }
 
+// slashJSONPath renders a fixture path as a JSON string literal with forward
+// slashes. Canned payload bytes are graded, so a Windows temp path must
+// neither print backslashes nor break the JSON string (an unescaped `\U` made
+// the azure meta undecodable and the merge-ref gate refused the PR).
+func slashJSONPath(t *testing.T, p string) string {
+	t.Helper()
+	raw, err := json.Marshal(strings.ReplaceAll(p, `\`, "/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// TestSlashJSONPath proves the fixture path rendering is a portable JSON
+// string on every OS: Windows separators become slashes and the literal
+// decodes back to the slash path the root scrub expects.
+func TestSlashJSONPath(t *testing.T) {
+	t.Parallel()
+	got := slashJSONPath(t, `C:\tmp\remote`)
+	if !json.Valid([]byte(got)) {
+		t.Fatalf("invalid JSON literal %q", got)
+	}
+	var decoded string
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if want := "C:/tmp/remote"; decoded != want {
+		t.Fatalf("decoded = %q, want %q", decoded, want)
+	}
+}
+
 // writeContent plants the contents-API answer for one control path at the
 // PR base (the body the stub serves for repos/.../contents/<path>).
 func writeContent(t *testing.T, dir, path, content string) {
@@ -1159,7 +1190,7 @@ func TestFetchParityAzureHappy(t *testing.T) {
 			`"targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat",`+
 			`"lastMergeTargetCommit":{"commitId":"`+baseSHA+`"},"lastMergeSourceCommit":{"commitId":"`+headSHA+`"},`+
 			`"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/16","status":"active","isDraft":false,`+
-			`"repository":{"remoteUrl":"`+remote+`"}}`)
+			`"repository":{"remoteUrl":`+slashJSONPath(t, remote)+`}}`)
 		writeCanned(t, dir, "az-threads.json", `[{"id":1}]`)
 		writeCanned(t, dir, "az-changes.json", `[{"item":{"path":"/a.txt"},"changeType":"edit"}]`)
 	}

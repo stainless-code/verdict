@@ -385,7 +385,8 @@ func scrubNonce(s string) string {
 
 // scrubRoots normalizes sandbox roots and homes to placeholders so golden
 // files stay machine-independent. Longer (home) paths sort first so nested
-// prefixes cannot shadow.
+// prefixes cannot shadow. Windows roots carry backslashes while fixtures and
+// product output render slash paths, so both spellings scrub to ROOT.
 func scrubRoots(s string, roots []string) string {
 	ordered := append([]string{}, roots...)
 	slices.SortFunc(ordered, func(a, b string) int { return len(b) - len(a) })
@@ -394,6 +395,9 @@ func scrubRoots(s string, roots []string) string {
 			continue
 		}
 		s = strings.ReplaceAll(s, r, "ROOT")
+		if slash := strings.ReplaceAll(r, `\`, "/"); slash != r {
+			s = strings.ReplaceAll(s, slash, "ROOT")
+		}
 	}
 	return s
 }
