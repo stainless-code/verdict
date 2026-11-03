@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // providerGitHub is the default provider marker.
@@ -25,29 +26,14 @@ func typedPostItems(entries []any) []core.FindingItem {
 		sv, _ := m.Get("sig")
 		tv, _ := m.Get("status")
 		av, _ := m.Get("anchored")
-		pv, _ := m.Get("path")
-		lv, _ := m.Get("line")
-		hv, _ := m.Get("heading")
 		items = append(items, core.FindingItem{
 			Sig:      jq.StrOf(sv),
 			Status:   jq.StrOf(tv),
 			Anchored: av,
-			Locator:  itemLocatorPost(pv, lv, hv),
+			Locator:  readcommon.Locator(m),
 		})
 	}
 	return items
-}
-
-// itemLocatorPost renders an entry's path:line or heading fallback.
-func itemLocatorPost(pv, lv, hv any) string {
-	if jq.Falsey(pv) {
-		return jq.Interp(jq.Alt(hv, "?"))
-	}
-	locator := jq.Interp(pv)
-	if !jq.Falsey(lv) {
-		locator += ":" + jq.Interp(lv)
-	}
-	return locator
 }
 
 // intOrNilPost reads an agent confidence as an int (nil when absent).

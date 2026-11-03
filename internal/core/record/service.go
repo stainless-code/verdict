@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Run executes `record <owner/repo> <local-slug>`: bundle gates, the
@@ -275,16 +276,13 @@ func typedItems(entries []any) []core.FindingItem {
 		sv, _ := m.Get("sig")
 		tv, _ := m.Get("status")
 		av, _ := m.Get("anchored")
-		pv, _ := m.Get("path")
-		lv, _ := m.Get("line")
-		hv, _ := m.Get("heading")
 		sig := jq.StrOf(sv)
 		status := jq.StrOf(tv)
 		items = append(items, core.FindingItem{
 			Sig:      sig,
 			Status:   status,
 			Anchored: av,
-			Locator:  itemLocator(pv, lv, hv),
+			Locator:  readcommon.Locator(m),
 		})
 	}
 	return items

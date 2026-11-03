@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // validateOverridesAt ports validate_overrides: locked-block scans plus the
@@ -174,9 +175,6 @@ func EnvelopeItems(entries []any) []any {
 
 // envelopeItem builds one finding summary with its locator.
 func envelopeItem(m *jq.Obj) *jq.Obj {
-	pv, _ := m.Get("path")
-	lv, _ := m.Get("line")
-	hv, _ := m.Get("heading")
 	sv, _ := m.Get("sig")
 	tv, _ := m.Get("status")
 	av, _ := m.Get("anchored")
@@ -184,20 +182,8 @@ func envelopeItem(m *jq.Obj) *jq.Obj {
 		"sig", sv,
 		"status", tv,
 		"anchored", av,
-		"locator", itemLocator(pv, lv, hv),
+		"locator", readcommon.Locator(m),
 	)
-}
-
-// itemLocator renders an entry's path:line or heading fallback.
-func itemLocator(pv, lv, hv any) string {
-	if jq.Falsey(pv) {
-		return jq.Interp(jq.Alt(hv, "?"))
-	}
-	locator := jq.Interp(pv)
-	if !jq.Falsey(lv) {
-		locator += ":" + jq.Interp(lv)
-	}
-	return locator
 }
 
 // hunkLines counts hunks.tsv lines the way `wc -l` does.
