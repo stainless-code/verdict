@@ -2,10 +2,12 @@ package postcore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -560,6 +562,36 @@ func postBundle(t *testing.T, review string) {
 	seedPostControls(t, dir, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 }
 
+// postReview is the review both Run-path tests post: one inline comment, so
+// the payload body and comments are non-empty.
+const postReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
+	`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
+	`"rigor":"pointed","severity":"informational"}]}`
+
+// decodePostedPayload decodes one reviews-POST stdin body.
+func decodePostedPayload(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		t.Fatalf("POST stdin is not one JSON object: %v\n%s", err, raw)
+	}
+	return doc
+}
+
+// decodeFindingsStore decodes a findings array from path.
+func decodeFindingsStore(t *testing.T, path string) []map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("%s is not a findings array: %v\n%s", path, err, raw)
+	}
+	return entries
+}
+
 // postCommander scripts the post happy path: the live-SHA read, the
 // authorship read, the empty thread recheck, and the reviews POST.
 func postCommander(t *testing.T, payload *string) *scriptCommander {
@@ -579,14 +611,15 @@ func postCommander(t *testing.T, payload *string) *scriptCommander {
 
 // TestRunDryRun proves the dry-run path builds the payload behind the
 // commander seam: the exact live-sha/authorship/recheck argv fire with no
-// POST, the findings file stages, and the typed data carries the envelope
-// inputs.
+// POST, the findings file carries the merged comment, and the typed data
+// carries the envelope inputs.
 //
 //nolint:gocognit,revive,cyclop // dry-run asserts argv, stores, and streams inline
 func TestRunDryRun(t *testing.T) {
+	const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	dir := t.TempDir()
 	t.Chdir(dir)
-	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	postBundle(t, postReview)
 	cmdr := postCommander(t, nil)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json", DryRun: true}, &warnings, &human)
@@ -594,8 +627,11 @@ func TestRunDryRun(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	if resp.Data == nil || !resp.Data.DryRun || resp.Data.Event != "COMMENT" {
+	if resp.Data == nil || !resp.Data.DryRun || resp.Data.Event != "COMMENT" || resp.Data.CommitID != head {
 		t.Fatalf("data = %+v", resp.Data)
+	}
+	if resp.Data.Anchors.Kept != 1 {
+		t.Errorf("anchors kept = %d, want 1", resp.Data.Anchors.Kept)
 	}
 	for _, want := range []string{
 		"gh api repos/acme/app/pulls/7 --jq .head.sha",
@@ -615,8 +651,26 @@ func TestRunDryRun(t *testing.T) {
 			t.Errorf("dry-run posted: %q", c)
 		}
 	}
-	if _, err := os.Stat(".review/7/findings.dryrun.json"); err != nil {
-		t.Errorf("missing findings.dryrun.json: %v", err)
+	entries := decodeFindingsStore(t, ".review/7/findings.dryrun.json")
+	if len(entries) != 1 {
+		t.Fatalf("findings.dryrun.json entries = %d, want 1: %v", len(entries), entries)
+	}
+	entry := entries[0]
+	for key, want := range map[string]any{
+		"path":   "notes.txt",
+		"line":   float64(2),
+		"side":   "RIGHT",
+		"body":   "Consider clarifying this line.",
+		"status": "open",
+		"kind":   "inline",
+	} {
+		if got := entry[key]; got != want {
+			t.Errorf("findings[0].%s = %v, want %v", key, got, want)
+		}
+	}
+	sig, ok := entry["sig"].(string)
+	if !ok || len(sig) != 40 {
+		t.Errorf("findings[0].sig = %q, want a full 40-char sig", sig)
 	}
 	if _, err := os.Stat(".review/7/post.json"); !os.IsNotExist(err) {
 		t.Errorf("dry-run wrote post.json")
@@ -627,14 +681,16 @@ func TestRunDryRun(t *testing.T) {
 }
 
 // TestRunSubmit proves the submit path POSTs the payload with one trailing
-// newline on stdin: the exact reviews argv fires, the marker and receipt
-// land, and the typed data carries the accepted review.
+// newline on stdin and the review's body, event, commit, and comments: the
+// exact reviews argv fires, the marker and receipt land, and the typed data
+// carries the accepted review.
 //
-//nolint:revive,cyclop // submit asserts POST stdin, the marker, and the receipt inline
+//nolint:gocognit,revive,cyclop // submit asserts POST stdin, the marker, and the receipt inline
 func TestRunSubmit(t *testing.T) {
+	const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	dir := t.TempDir()
 	t.Chdir(dir)
-	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	postBundle(t, postReview)
 	cmdr := postCommander(t, nil)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
@@ -660,6 +716,24 @@ func TestRunSubmit(t *testing.T) {
 	marker := "<!-- verdict-review payload=" + resp.Data.PayloadHash + " head=" + strings.Repeat("a", 40) + " -->"
 	if !strings.Contains(posted[0], marker) {
 		t.Errorf("POST stdin misses the hidden repeat marker %q: %s", marker, posted[0])
+	}
+	payload := decodePostedPayload(t, posted[0])
+	if payload["event"] != "COMMENT" {
+		t.Errorf("posted event = %v, want COMMENT", payload["event"])
+	}
+	if payload["commit_id"] != head {
+		t.Errorf("posted commit_id = %v, want %s", payload["commit_id"], head)
+	}
+	body, ok := payload["body"].(string)
+	if !ok || !strings.HasPrefix(body, "> ✅ Looks good — minor note below.") {
+		t.Errorf("posted body lost the review prose: %q", body)
+	}
+	wantComments := []any{map[string]any{
+		"path": "notes.txt", "line": float64(2), "side": "RIGHT",
+		"body": "Consider clarifying this line.",
+	}}
+	if !reflect.DeepEqual(payload["comments"], wantComments) {
+		t.Errorf("posted comments = %#v, want %#v", payload["comments"], wantComments)
 	}
 	if _, err := os.Stat(".review/7/post.json"); err != nil {
 		t.Errorf("missing post.json: %v", err)
