@@ -12,7 +12,7 @@
 # Verbs, one per line (printf keeps this free of arrays and word-splitting
 # quirks, which differ between bash and zsh).
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready trend learn init install
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready trend learn init skill upgrade uninstall
 }
 
 # Flags for a verb, one per line.
@@ -33,7 +33,9 @@ _verdict_flags() { # $1 = verb
     fix) printf '%s\n' --sig --json;;
     ready) printf '%s\n' --json --check;;
     init) printf '%s\n' --preset --yes --force --json;;
-    install) printf '%s\n' --yes --force --json;;
+    skill) printf '%s\n' show files install --format --dir --agent --force --dry-run --json;;
+    upgrade) printf '%s\n' --version --dry-run --json;;
+    uninstall) printf '%s\n' --remove-path --dry-run --json;;
     *) return 0;;
   esac
 }

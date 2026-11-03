@@ -9,9 +9,10 @@
 #       standard envelope with name/version/files.
 #   S2  install matrix: --dry-run writes nothing; create writes SKILL.md +
 #       prompts/ + schemas/ + an executable scripts/verdict with a receipt;
-#       a re-run keeps; byte drift updates; a foreign dir refuses typed
-#       without --force, previews blocked on --dry-run, and --force writes
-#       only verdict's payload (foreign files intact).
+#       a re-run keeps; byte drift updates; a stale receipt refreshes on keep;
+#       a foreign dir refuses typed without --force, previews blocked on
+#       --dry-run, and --force writes only verdict's payload (foreign files
+#       intact).
 #   S3  shim resolution: VERDICT_BIN, then the bundled bin, then PATH; with
 #       none it exits typed missing-go-binary naming the bootstrap and never
 #       calls curl.
@@ -115,6 +116,21 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ -x "$FOREIGN/verdict/scripts/verdict" ] \
   good "--force writes only verdict's payload and spares foreign files"
 else
   bad "--force exits $EVAL_STATUS or touched foreign files"
+fi
+
+# A stale receipt on a keep slot refreshes only the receipt (moved from the
+# deleted copy-installer case): the payload bytes stay untouched.
+jq '.version="0.0.0-stale"' "$SKILL/.verdict-managed" >"$EVAL_SANDBOX/rec.tmp"
+mv "$EVAL_SANDBOX/rec.tmp" "$SKILL/.verdict-managed"
+skill_sum="$(shasum "$SKILL/SKILL.md")"
+run_review skill install --dir "$SKILLS"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && grep -q "receipt refreshed" "$EVAL_OUT" \
+  && [ "$(jq -r '.version' "$SKILL/.verdict-managed")" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] \
+  && [ "$(shasum "$SKILL/SKILL.md")" = "$skill_sum" ]; then
+  good "stale receipt refreshes on keep without touching payload bytes"
+else
+  bad "stale receipt leg exits $EVAL_STATUS"
 fi
 
 # --- S3: shim resolution and the typed miss (no fetch) ---

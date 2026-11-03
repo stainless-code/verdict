@@ -31,7 +31,6 @@ var forbiddenMCPDeps = []string{
 	"/internal/doctor",
 	"/internal/checktree",
 	"/internal/scaffold",
-	"/internal/install",
 }
 
 // TestImportDirection proves internal/mcp is a thin inbound adapter: its

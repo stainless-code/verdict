@@ -20,9 +20,21 @@ func TestArityMatrix(t *testing.T) {
 		"triage", "report", "next", "show", "verify", "calibrate",
 		"ready",
 	})
-	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "install", "skill", "upgrade", "uninstall"})
+	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall"})
 	checkTrendArity(t)
 	checkUnknownArity(t)
+}
+
+// TestDeletedInstallVerbIsUnknown pins the copy installer's removal: bare
+// `install` is no longer a verb, so the front door stops at the usage gate
+// instead of running a second installer.
+func TestDeletedInstallVerbIsUnknown(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"install"})
+	if code != cli.ExitUsage || derr != usageText() || out != "" {
+		t.Fatalf("install exit = %d, want %d with the usage block on stderr\nstdout: %s\nstderr: %s",
+			code, cli.ExitUsage, out, derr)
+	}
 }
 
 // checkPositionalVerbs pins the repo/pr requirement matrix.

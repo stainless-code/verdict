@@ -266,7 +266,7 @@ recall; citing one warns and drops.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`install`/`skill` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`skill` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
@@ -453,7 +453,7 @@ bytes stay frozen) but `verdict mcp --help` documents it.
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
 `learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `trend`, `triage`,
-`verify`. `install`, `upgrade`, and `skill` are distribution surfaces, never
+`verify`. `upgrade` and `skill` are distribution surfaces, never
 tools. Input schemas are generated from the Go request structs, so they cannot
 drift from the core contract; `repo`/`pr` plus verb fields are the arguments.
 `post` writes a review and calls GitHub, so it is not exposed under
@@ -816,13 +816,6 @@ you stand).
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only. (Before 0.4 this script was named
   `install.sh`; the name now belongs to the binary installer.)
-- **Copy** (`verdict install --yes` from any tool root):
-  copies the payload (`SKILL.md` + `prompts/` + `scripts/`) into the
-  de-facto skill dirs (`.agents/skills`, `.claude/skills`, `.codex/skills`,
-  repo-local and `$HOME`), receipted by `.verdict-managed`. Only
-  installer-owned `verdict/` dirs are ever written; foreign skills and
-  unowned `verdict/` dirs stay untouched. The installed copy is a runnable
-  tool root — re-running its own `install` reads keep.
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
   `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
   never skew from the binary. `verdict skill` prints `SKILL.md` (default
@@ -1039,7 +1032,7 @@ record predictions locally, settle them after the upgrade below.
 
 ### Go implementation (experimental until 1.0)
 
-`record`, `post`, `triage`, `adopt`, `fix`, `learn`, `init`, `install`,
+`record`, `post`, `triage`, `adopt`, `fix`, `learn`, `init`,
 `verify`, `report`, `next`, `show`, `ready`, `trend`, `calibrate`, `doctor`,
 and `check-tree` can run from a compiled Go binary instead of the shell, with
 byte-identical envelopes, hints, and exits. It is opt-in and experimental

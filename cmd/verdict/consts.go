@@ -4,13 +4,13 @@ package main
 // same spellings, so one constant keeps the grammar and the re-entry hints in
 // sync across cmd/verdict files.
 const (
-	cmdShow        = "show"
-	cmdInstallVerb = "install"
-	flagJSON       = "--json"
-	flagHelp       = "--help"
-	flagShortHelp  = "-h"
-	flagDryRun     = "--dry-run"
-	formatJSONName = "json"
-	entryDryRun    = " " + flagDryRun
-	entryJSON      = " " + flagJSON
+	cmdShow         = "show"
+	cmdSkillInstall = "install"
+	flagJSON        = "--json"
+	flagHelp        = "--help"
+	flagShortHelp   = "-h"
+	flagDryRun      = "--dry-run"
+	formatJSONName  = "json"
+	entryDryRun     = " " + flagDryRun
+	entryJSON       = " " + flagJSON
 )

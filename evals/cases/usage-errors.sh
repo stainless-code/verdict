@@ -6,7 +6,7 @@
 #   U1  no verb prints the full usage block on stderr, exit 2.
 #   U2  missing positionals print the full usage block on stderr, exit 2:
 #       one leg per verb; bare verbs (check-tree, doctor, learn, init,
-#       install) never fail the gate; trend needs a repo.
+#       skill) never fail the gate; trend needs a repo.
 #   U3  usage wins over corrupt settings: a missing positional plus a
 #       corrupt settings file still prints usage/exit 2 with no settings
 #       read, while a complete invocation reads settings and refuses typed
@@ -75,7 +75,7 @@ for verb in fetch fetch-local record adopt fix post triage report next show veri
   usage_gate "U2 $verb (repo only)" -- "$verb" acme/app
 done
 usage_gate "U2 trend (no repo)" -- trend
-for verb in check-tree doctor learn init install skill; do
+for verb in check-tree doctor learn init skill; do
   set +e
   ( cd "$EVAL_SANDBOX" && XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty" "$EVAL_CLI" "$verb" </dev/null >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
   st=$?

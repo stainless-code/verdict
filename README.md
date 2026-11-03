@@ -171,16 +171,13 @@ Anything else on the
 [agent list](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)
 is one `npx skills add -a <agent>` away.
 
-Operator verbs (offline, same preview-then-confirm idiom): scaffold repo
-controls with `verdict init --preset standard --yes`, copy the skill payload
-(`SKILL.md` + `prompts/` + `scripts/`) with `verdict install --yes`
-(detects `.agents/skills`, `.claude/skills`, `.codex/skills`; only writes
-installer-owned `verdict/` dirs), or write the binary's own embedded skill
-atomically with `verdict skill install --agent claude` (or `--dir
-<skills-dir>`; previews create/update/keep/blocked, refuses a foreign target
-unless `--force`, never prompts, supports `--dry-run`/`--json`). The
-`install-skill.sh` symlink route is the wide-coverage sibling for git
-checkouts only (nine agents, `--detect`/`--all`).
+Operator verbs (offline): scaffold repo controls with `verdict init --preset
+standard --yes`, or install the binary's own embedded skill atomically with
+`verdict skill install --agent claude` (or `--dir <skills-dir>`; previews
+create/update/keep/blocked, refuses a foreign target unless `--force`, never
+prompts, supports `--dry-run`/`--json`). The `install-skill.sh` symlink route
+is the wide-coverage sibling for git checkouts only (nine agents,
+`--detect`/`--all`).
 
 ## Security
 
@@ -232,7 +229,7 @@ verdict/
   prompts/            # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
   scripts/verdict     # POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
   scripts/verdict-complete.sh  # bash/zsh completion for verdict
-  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/install/skill
+  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/skill
 ```
 
 ## Updating

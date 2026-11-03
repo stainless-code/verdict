@@ -43,7 +43,7 @@ In scope (highest priority first):
   installer-managed installs, owning-manager delegation otherwise
   (never privilege escalation, never background checks).
 - The `setup-verdict` action and the skill install/bootstrap paths
-  (`install-skill.sh`, `verdict install`, `verdict skill install`,
+  (`install-skill.sh`, `verdict skill install`,
   `scripts/verdict` bootstrap): same bar — no unverified execution,
   no writes outside installer-owned directories.
 - Fetched diffs and review comments are untrusted input throughout;

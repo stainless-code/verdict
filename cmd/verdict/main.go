@@ -24,7 +24,6 @@ import (
 	"github.com/stainless-code/verdict/internal/doctor"
 	"github.com/stainless-code/verdict/internal/fetch"
 	"github.com/stainless-code/verdict/internal/fix"
-	"github.com/stainless-code/verdict/internal/install"
 	"github.com/stainless-code/verdict/internal/learn"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -47,7 +46,7 @@ const envHome = "HOME"
 
 // verbsHint lists the verbs the CLI owns, in the frozen unknown-cmd order.
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|install|skill|upgrade|uninstall"
+	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|skill|upgrade|uninstall"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -205,8 +204,6 @@ func dispatchMutating(
 		return learn.Run(ctx, r, rest, env), true
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env}), true
-	case cmdInstallVerb:
-		return install.Run(ctx, r, rest, install.Request{Env: env, Root: root}), true
 	case "skill":
 		return runSkill(ctx, r, rest, env, root), true
 	case "upgrade":

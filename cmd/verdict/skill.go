@@ -24,7 +24,7 @@ func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]
 		return runSkillShow(ctx, r, args, env, root)
 	case "files":
 		return runSkillFiles(ctx, r, args, env, root)
-	case cmdInstallVerb:
+	case cmdSkillInstall:
 		return runSkillInstall(ctx, r, args, env, root)
 	case flagShortHelp, flagHelp, "help":
 		fmt.Fprint(r.Out, skillUsageText())

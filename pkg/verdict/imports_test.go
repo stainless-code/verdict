@@ -33,7 +33,6 @@ var forbiddenDeps = []string{
 	"/internal/doctor",
 	"/internal/checktree",
 	"/internal/scaffold",
-	"/internal/install",
 }
 
 // TestFacadeImportDirection proves `go list -deps ./pkg/verdict` never

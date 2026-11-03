@@ -14,7 +14,7 @@ package main
 // -h/--help (exit 0) and to stderr by the arity gate (exit 2).
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|install|skill|upgrade|uninstall|mcp [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -176,25 +176,6 @@ func usageText() string {
 		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
 		"    Never touches network. Existing files print a preview and need\n" +
 		"    --yes/--force (or an interactive confirm) before overwrite.\n" +
-		"  install [--yes] [--force] [--json]\n" +
-		"    copy-based skill installer (offline): detects the de-facto agent skill\n" +
-		"    dirs (.agents/skills, .claude/skills, .codex/skills at the repo root\n" +
-		"    and $HOME), previews the copy plan for the tool-owned verdict/\n" +
-		"    payload (SKILL.md + prompts/ + scripts/), applies only on explicit\n" +
-		"    confirm. The installed copy carries the CLI, so SKILL.md command paths\n" +
-		"    resolve inside it. Only installer-owned verdict/ dirs (carrying a\n" +
-		"    .verdict-managed receipt) are ever written; foreign skills and unowned\n" +
-		"    verdict/ dirs are left untouched. An up-to-date re-run reads keep\n" +
-		"    (idempotent); a receipt/tool version skew warns, never fails. Same\n" +
-		"    preview-then-confirm idiom as init: writes need --yes/--force (or, in\n" +
-		"    human mode, an interactive confirm when stdin is a tty; --json never\n" +
-		"    prompts and refuses typed needs-confirm). Run the CLI from the repo\n" +
-		"    under review: `.review/` is created in the current directory, never\n" +
-		"    beside the tool. The CLI lives at `<tool>/scripts/verdict` — the\n" +
-		"    checkout for symlink installs, the installed `verdict/` skill dir for\n" +
-		"    registry and copy installs (both ship `scripts/`). The install-skill.sh\n" +
-		"    symlink route stays the wide-coverage sibling for git checkouts only\n" +
-		"    (nine agents, --detect/--all).\n" +
 		"  skill [show|files|install] [--format md|json] [--dir <skills-dir>|--agent <name>]\n" +
 		"        [--force] [--dry-run] [--json]\n" +
 		"    serve or install the skill embedded in this binary (never a skew):\n" +
@@ -245,7 +226,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/install/skill/upgrade/uninstall: " +
+		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/skill/upgrade/uninstall: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"
@@ -253,14 +234,13 @@ func usageText() string {
 
 // bareVerbs lists the verbs that take no repo/pr positionals.
 var bareVerbs = map[string]bool{
-	"check-tree":   true,
-	"doctor":       true,
-	"learn":        true,
-	"init":         true,
-	cmdInstallVerb: true,
-	"skill":        true,
-	"upgrade":      true,
-	"uninstall":    true,
+	"check-tree": true,
+	"doctor":     true,
+	"learn":      true,
+	"init":       true,
+	"skill":      true,
+	"upgrade":    true,
+	"uninstall":  true,
 }
 
 // arityUsage reports whether the invocation fails the positional-arity

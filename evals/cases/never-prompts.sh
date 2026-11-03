@@ -2,10 +2,11 @@
 # Case never-prompts: machine modes never block on stdin (ticket 16).
 #
 # Grades (all hermetic — sandbox cwd, fake HOME, stub gh, stdin never a TTY):
-#   H1  installer preview with stdin CLOSED refuses typed needs-confirm
-#       (exit exactly 1, try: hint on stderr) and writes nothing.
-#   H2  installer preview with stdin at /dev/null under --json refuses typed
-#       needs-confirm in the envelope (data null, try: hint), exit exactly 1.
+#   H1  embedded skill install with stdin CLOSED applies the payload (exit 0)
+#       without reading stdin and without dropping a verdict/ slot in any
+#       detected agent dir.
+#   H2  `skill install --json` with stdin at /dev/null reads keep (exit 0),
+#       keeps the documented envelope, and never prompts.
 #   H3  scaffolder overwrite with stdin at /dev/null refuses typed
 #       needs-confirm (exit 1, try: hint) and overwrites nothing.
 #   H4  scaffolder overwrite with stdin CLOSED under --json refuses typed
@@ -13,14 +14,14 @@
 #   H5  verification step: a verifyCmd that consumes stdin (`read -r line`)
 #       completes promptly with stdin closed (exit 0, timedOut false, proof
 #       recorded) — the spawned verification never waits on stdin either.
-#   H6  hang-trap: installer preview with stdin a held-open pipe (open for
-#       read+write, never EOF, never data) still refuses promptly. A
+#   H6  hang-trap: `skill install --json` with stdin a held-open pipe (open
+#       for read+write, never EOF, never data) still completes promptly. A
 #       regressed bare `read` would block here, so the watchdog — never the
 #       suite — eats the timeout and the leg FAILs.
-#   H8  live pty: `install --json` and `init --json` with stdin a pseudo-TTY
-#       (via script(1), macOS/Linux forms detected, skip-with-notice where
-#       unavailable) still refuse typed `needs-confirm` at exit 1 with no
-#       `Proceed?` text on stdout or stderr, and write nothing. A regressed
+#   H8  live pty: `skill install --json` and `init --json` with stdin a
+#       pseudo-TTY (via script(1), macOS/Linux forms detected, skip-with-notice
+#       where unavailable) never prompt; the installer applies/keeps, the
+#       scaffolder refuses typed `needs-confirm` at exit 1. A regressed
 #       TTY-scoped prompt would block on the pty read, so the watchdog turns
 #       it into a leg FAIL instead of a suite hang.
 #   H7  offline: zero stub-gh intercepts across every leg.
@@ -111,6 +112,7 @@ mkdir -p "$EVAL_SANDBOX/.agents/skills" "$HOME/.agents/skills"
 echo "foreign skill" > "$HOME/.agents/skills/foreign-skill.txt"
 FOREIGN_SNAP="$EVAL_SANDBOX/foreign-snap.txt"
 (cd "$EVAL_SANDBOX" && find .agents fakehome -type f | LC_ALL=C sort | xargs shasum) > "$FOREIGN_SNAP"
+NEVER_SKILLS="$EVAL_SANDBOX/never-skills"
 
 # --- scratch repo for the scaffolder overwrite path (own .review/, own tree) ---
 mkdir -p "$EVAL_SANDBOX/np-repo"
@@ -135,43 +137,42 @@ else
 fi
 seed_sums="$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)"
 
-# --- H1: installer preview, stdin closed, human mode ---
+# --- H1: skill install, stdin closed, human mode ---
 WD_DIR="$EVAL_SANDBOX"
-watchdog_review "$LIMIT" "closed" -- install
-hung_ok "install with stdin closed"
-if [ "$EVAL_STATUS" -eq 1 ]; then
-  good "preview without confirm exits exactly 1 (typed refusal, not usage 2)"
+watchdog_review "$LIMIT" "closed" -- skill install --dir "$NEVER_SKILLS"
+hung_ok "skill install with stdin closed"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$NEVER_SKILLS/verdict/SKILL.md" ]; then
+  good "skill install applies the embedded payload (exit 0)"
 else
-  bad "preview without confirm exits $EVAL_STATUS, want exactly 1"
+  bad "skill install exits $EVAL_STATUS without the payload"
 fi
-if grep -q "without confirm" "$EVAL_ERR" && grep -q "try:" "$EVAL_ERR"; then
-  good "refusal names the confirm handshake with a try: hint on stderr"
+if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
+  bad "prompt text leaked from skill install"
 else
-  bad "refusal stderr: $(head -c 200 "$EVAL_ERR")"
+  good "skill install never prompts (no Proceed? text)"
 fi
 if (cd "$EVAL_SANDBOX" && shasum -c "$FOREIGN_SNAP" >/dev/null 2>&1) \
   && [ ! -e "$EVAL_SANDBOX/.agents/skills/verdict" ] \
   && [ ! -e "$HOME/.agents/skills/verdict" ]; then
-  good "refused run wrote nothing (foreign bytes intact, no verdict/ slot)"
+  good "install left detected agent dirs and foreign bytes alone"
 else
-  bad "refused run wrote files"
+  bad "install touched foreign or detected agent dirs"
 fi
 
-# --- H2: installer preview, stdin /dev/null, machine mode ---
-watchdog_review "$LIMIT" "/dev/null" -- install --json
-hung_ok "install --json with stdin at /dev/null"
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "needs-confirm" ]; then
-  good "machine refusal is typed needs-confirm at exit 1"
+# --- H2: skill install, stdin /dev/null, machine mode ---
+watchdog_review "$LIMIT" "/dev/null" -- skill install --dir "$NEVER_SKILLS" --json
+hung_ok "skill install --json with stdin at /dev/null"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.error == null and .data.status == "keep"' <"$EVAL_OUT" 2>/dev/null)" = "true" ]; then
+  good "machine keep is a success envelope at exit 0"
 else
-  bad "machine refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+  bad "machine install: exit $EVAL_STATUS data $(jq -r '.data.status // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 fi
 if [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null || true)" = "$WANT_KEYS" ] \
-  && jq -e '.data == null' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && grep -q "try:" "$EVAL_OUT"; then
-  good "refusal keeps the one-doc envelope (data null, documented keys, try: hint)"
+  && jq -e '.data != null' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "keep keeps the one-doc envelope (documented keys, data present)"
 else
-  bad "refusal breaks the envelope shape"
+  bad "keep breaks the envelope shape"
 fi
 
 # --- H3: scaffolder overwrite, stdin /dev/null, human mode ---
@@ -226,12 +227,12 @@ mkfifo "$EVAL_SANDBOX/stdin-pipe"
 # O_RDWR open never blocks and never delivers EOF: a regressed bare `read`
 # would block here until the watchdog fires.
 exec 9<> "$EVAL_SANDBOX/stdin-pipe"
-watchdog_review "$LIMIT" "$EVAL_SANDBOX/stdin-pipe" -- install --json
-hung_ok "install --json with a held-open pipe as stdin"
+watchdog_review "$LIMIT" "$EVAL_SANDBOX/stdin-pipe" -- skill install --dir "$NEVER_SKILLS" --json
+hung_ok "skill install --json with a held-open pipe as stdin"
 exec 9>&-
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "needs-confirm" ]; then
-  good "piped stdin refuses without reading (typed needs-confirm, exit 1)"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && jq -e '.error == null' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "piped stdin completes without reading (keep envelope, exit 0)"
 else
   bad "piped-stdin leg exits $EVAL_STATUS"
 fi
@@ -249,6 +250,12 @@ if command -v script >/dev/null 2>&1; then
     Darwin|Linux) pty_avail="true";;
     *) pty_avail="false";;
   esac
+  # Restricted sandboxes can exist without pty allocation; skip there too
+  # rather than grading an openpty failure as a CLI defect.
+  if [ "$pty_avail" = "true" ] \
+    && ! script -q /dev/null /bin/sh -c true >/dev/null 2>&1; then
+    pty_avail="false"
+  fi
 else
   pty_avail="false"
 fi
@@ -307,34 +314,33 @@ if [ "${pty_avail:-false}" = "true" ]; then
     awk '{ sub(/\r$/, "") } /^{$/ { buf=""; inenv=1 } inenv { buf=buf $0 "\n" } /^}$/ { if (inenv) { printf "%s", buf; inenv=0; buf="" } }' "$1"
   }
 
-  # --- H8a: installer preview under --json on a pty ---
+  # --- H8a: skill install under --json on a pty ---
   WD_DIR="$EVAL_SANDBOX"
-  watchdog_pty "$LIMIT" -- install --json
-  hung_ok "install --json on a pty"
+  watchdog_pty "$LIMIT" -- skill install --dir "$NEVER_SKILLS" --json
+  hung_ok "skill install --json on a pty"
   pty_env="$(pty_envelope "$EVAL_OUT")"
-  if [ "$EVAL_STATUS" -eq 1 ] \
-    && [ "$(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null)" = "needs-confirm" ]; then
-    good "pty machine refusal is typed needs-confirm at exit 1"
+  if [ "$EVAL_STATUS" -eq 0 ] \
+    && [ "$(jq -r '.error == null and .data.status == "keep"' <<<"$pty_env" 2>/dev/null)" = "true" ]; then
+    good "pty machine install keeps at exit 0"
   else
-    bad "pty machine refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null || true)"
+    bad "pty machine install: exit $EVAL_STATUS status $(jq -r '.data.status // empty' <<<"$pty_env" 2>/dev/null || true)"
   fi
   if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
     bad "prompt text leaked on a pty under --json"
   else
     good "no prompt text on stdout or stderr under --json on a pty"
   fi
-  if jq -e '.data == null' <<<"$pty_env" >/dev/null 2>&1 \
-    && grep -q "try:" <<<"$pty_env"; then
-    good "pty refusal keeps the envelope shape (data null, try: hint)"
+  if jq -e '.data != null and .error == null' <<<"$pty_env" >/dev/null 2>&1; then
+    good "pty keep keeps the envelope shape (data present, error null)"
   else
-    bad "pty refusal breaks the envelope shape"
+    bad "pty keep breaks the envelope shape"
   fi
   if (cd "$EVAL_SANDBOX" && shasum -c "$FOREIGN_SNAP" >/dev/null 2>&1) \
     && [ ! -e "$EVAL_SANDBOX/.agents/skills/verdict" ] \
     && [ ! -e "$HOME/.agents/skills/verdict" ]; then
-    good "pty refused run wrote nothing (foreign bytes intact, no verdict/ slot)"
+    good "pty install left detected agent dirs and foreign bytes alone"
   else
-    bad "pty refused run wrote files"
+    bad "pty install touched foreign or detected agent dirs"
   fi
 
   # --- H8b: scaffolder overwrite under --json on a pty ---
@@ -374,7 +380,7 @@ fi
 
 # --- restore: fake HOME and scratch state stay in the sandbox ---
 export HOME="$OLD_HOME"
-rm -rf "$EVAL_SANDBOX/fakehome" "$EVAL_SANDBOX/.agents" "$EVAL_SANDBOX/np-repo" "$EVAL_SANDBOX/foreign-snap.txt"
+rm -rf "$EVAL_SANDBOX/fakehome" "$EVAL_SANDBOX/.agents" "$EVAL_SANDBOX/np-repo" "$EVAL_SANDBOX/never-skills" "$EVAL_SANDBOX/foreign-snap.txt"
 rm -rf "$EVAL_SANDBOX/.review/6101"
 
 if [ "$fails" -ne 0 ]; then echo "case never-prompts: FAIL ($fails)"; exit 1; fi

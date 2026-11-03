@@ -56,8 +56,8 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	invoke      func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
-// allTools returns the registered tool set. install/upgrade/skill are
-// distribution surfaces, never review tools.
+// allTools returns the registered tool set. upgrade/skill are distribution
+// surfaces, never review tools.
 func allTools(readOnly bool) []*tool {
 	tools := []*tool{
 		dataTool("adopt", "Copy findings from a local bundle into the target PR bundle and re-anchor them.",

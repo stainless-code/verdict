@@ -36,7 +36,6 @@ var forbiddenDeps = []string{
 	"/internal/doctor",
 	"/internal/checktree",
 	"/internal/scaffold",
-	"/internal/install",
 }
 
 // TestCoreImportDirection proves `go list -deps ./internal/core/...` never
