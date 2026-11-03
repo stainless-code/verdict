@@ -4,6 +4,7 @@ export interface RefusalErrorBody {
   code: string;
   message: string;
   candidates?: Array<Candidate>;
+  retry_at?: string;
   [key: string]: unknown;
 }
 
