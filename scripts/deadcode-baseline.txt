@@ -5,26 +5,10 @@
 # Keep the comments with the group and the entries sorted by file/symbol
 # (LC_ALL=C); the gate compares against the sorted, comment-stripped list.
 
-# The public Go SDK: other repositories dial pkg/verdict, which deadcode
-# cannot see from inside this module.
-pkg/verdict/client.go: Client.readBare
-pkg/verdict/client.go: Client.streamWriter
-pkg/verdict/client.go: MissingToolError.Error
-pkg/verdict/client.go: convertErr
-pkg/verdict/client.go: findingOf
-pkg/verdict/client.go: lineWriter.Write
-pkg/verdict/client.go: outcomePtr
-pkg/verdict/verbs.go: Client.Adopt
-pkg/verdict/verbs.go: Client.Calibrate
-pkg/verdict/verbs.go: Client.CheckTree
-pkg/verdict/verbs.go: Client.Doctor
+# The public Go SDK's two fetch verbs: Client.New wires one default
+# commander (exec.Watchdog) for every verb, but fetchcore.Run/RunLocal
+# require their own Run+LookPath seam, so both always refuse
+# `fetch-failed: no commander in runtime` and no test can reach a success
+# path. Delete these two lines once New selects the per-verb runner.
 pkg/verdict/verbs.go: Client.Fetch
 pkg/verdict/verbs.go: Client.FetchLocal
-pkg/verdict/verbs.go: Client.Fix
-pkg/verdict/verbs.go: Client.Init
-pkg/verdict/verbs.go: Client.Learn
-pkg/verdict/verbs.go: Client.Next
-pkg/verdict/verbs.go: Client.Post
-pkg/verdict/verbs.go: Client.Ready
-pkg/verdict/verbs.go: Client.Show
-pkg/verdict/verbs.go: Client.Trend
