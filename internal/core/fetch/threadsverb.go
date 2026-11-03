@@ -131,7 +131,7 @@ func (st *threadsRun) read(
 			Message: fmt.Sprintf("could not read live threads for %s#%s: %v", st.req.Repo, st.req.Pr, err),
 		})
 	}
-	if len(feed) == 0 && truncated {
+	if len(feed) == 0 && (truncated || threadscore.CountFile(dir+suffixThreadsJSON) > 0) {
 		return nil, true, st.withWarnings(&core.RefusalError{
 			Code: codeThreadsFailed,
 			Message: fmt.Sprintf("could not read live threads for %s#%s; existing threads.json kept (never silently emptied)",

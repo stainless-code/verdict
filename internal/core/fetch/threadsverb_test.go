@@ -162,6 +162,34 @@ func TestRunThreadsKeepsFeedOnTotalFailure(t *testing.T) {
 	}
 }
 
+// TestRunThreadsKeepsFeedOnSilentEmpty proves a clean-but-empty read never
+// replaces a prior non-empty feed (the GitCafe pager cannot distinguish a
+// failed page from an empty one).
+func TestRunThreadsKeepsFeedOnSilentEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeThreadsBundle(t, "7", strings.Repeat("a", 40))
+	prior := `{"schema_version":"1","provider":"github","pr":7,"head_sha":"` +
+		strings.Repeat("a", 40) + `","fetched_at":"2026-11-01T00:00:00Z","truncated":false,"threads":[` +
+		`{"id":"t1","path":"a.go","line":2,"start_line":null,"side":"RIGHT","resolved":false,` +
+		`"outdated":false,"url":null,"author":"ana","author_kind":"human","finding_sig":null,` +
+		`"kind":"review-comment","comments":[]}]}`
+	if err := os.WriteFile(".review/7/threads.json", []byte(prior), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		githubThreadCall(""): {stdout: emptyThreadPage},
+	}}
+	_, ref := RunThreads(context.Background(), threadsRequest(cmdr, "o/r", "7"))
+	if ref == nil || ref.Code != codeThreadsFailed {
+		t.Fatalf("refusal = %v, want threads-failed", ref)
+	}
+	raw, err := os.ReadFile(".review/7/threads.json")
+	if err != nil || string(raw) != prior {
+		t.Errorf("existing feed changed: %q, %v", raw, err)
+	}
+}
+
 // TestRunThreadsRefusals pins the missing bundle and unknown provider paths.
 func TestRunThreadsRefusals(t *testing.T) {
 	dir := t.TempDir()
