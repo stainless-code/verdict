@@ -95,16 +95,12 @@ fi
 
 # --- M1: opted-out refusal names the working manual path ---
 run_review fetch-local acme/app mrecopt --range "$MREC_BASE..$MREC_C"
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && grep -q -- "--range" "$EVAL_ERR" \
-  && grep -q "paths filter" "$EVAL_ERR" \
-  && ! grep -qi "chunk" "$EVAL_ERR"; then
-  good "opted-out: multi-file over-cap refuses with the manual split-or-narrow hint, no chunk mention"
-else
-  bad "opted-out refusal exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "opted-out multi-file over-cap refuses" 1
+assert_file_grep "opted-out refusal names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "opted-out refusal carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_file_grep "opted-out refusal names --range" "$EVAL_ERR" "--range"
+assert_file_grep "opted-out refusal names the paths filter" "$EVAL_ERR" "paths filter"
+assert_stream_nogrep "opted-out refusal mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$EVAL_SANDBOX/.review/local-mrecopt/chunks" ]; then
   good "opted-out refusal writes no chunks dir"
 else

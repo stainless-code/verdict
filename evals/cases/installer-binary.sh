@@ -268,14 +268,11 @@ fi
 fresh
 PIN=latest; EFFECTIVE_URL="file://$REL/v9.9.9"
 run_install
-if [ "$EVAL_STATUS" -eq 0 ] && grep -Fq '"version":"9.9.9"' "$INSTALL_DIR/.verdict-installer" \
-  && grep -Fq "file://$REL/v9.9.9/" "$CURL_LOG" \
-  && grep -Fq "file://$REL/latest" "$CURL_LOG" \
-  && ! grep -q 'api.github.com' "$CURL_LOG"; then
-  good "latest resolves through the Releases redirect, never the API"
-else
-  bad "latest resolution exit $EVAL_STATUS"
-fi
+assert_exit "latest resolution succeeds" 0
+assert_file_grep "latest pins the resolved version" "$INSTALL_DIR/.verdict-installer" '"version":"9.9.9"' "-F"
+assert_file_grep "latest fetches the resolved release" "$CURL_LOG" "file://$REL/v9.9.9/" "-F"
+assert_file_grep "latest walks the redirect" "$CURL_LOG" "file://$REL/latest" "-F"
+assert_file_nogrep "latest never falls back to the API" "$CURL_LOG" 'api.github.com'
 EFFECTIVE_URL=''
 
 # --- B6: PATH append once, env and flag opt-outs ---
@@ -344,12 +341,14 @@ echo foreign > "$INSTALL_DIR/notes.txt"
 NO_PATH=0; TEST_SHELL=/bin/zsh; : > "$CASE_HOME/.zshrc"
 run_install
 run_install --uninstall --remove-path
-if [ "$EVAL_STATUS" -eq 0 ] && [ ! -e "$INSTALL_DIR/verdict" ] && [ ! -e "$INSTALL_DIR/.verdict-installer" ] \
-  && [ -f "$INSTALL_DIR/notes.txt" ] && ! grep -q -F '# verdict installer' "$CASE_HOME/.zshrc"; then
-  good "uninstall removes managed files + its PATH line, leaves foreign files"
+assert_exit "uninstall succeeds" 0
+if [ ! -e "$INSTALL_DIR/verdict" ] && [ ! -e "$INSTALL_DIR/.verdict-installer" ]; then
+  good "uninstall removes the managed binary and receipt"
 else
-  bad "uninstall exit $EVAL_STATUS"
+  bad "uninstall left a managed file behind"
 fi
+assert_file_grep "uninstall leaves the foreign file" "$INSTALL_DIR/notes.txt" "foreign"
+assert_stream_nogrep "uninstall removes its marked PATH line" "$CASE_HOME/.zshrc" '# verdict installer' "-F"
 mkdir -p "$INSTALL_DIR"; printf 'foreign\n' > "$INSTALL_DIR/verdict"
 run_install --uninstall
 if [ "$EVAL_STATUS" -ne 0 ] && grep -q "refusing to remove" "$EVAL_ERR" \

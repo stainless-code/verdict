@@ -102,12 +102,8 @@ if [ "$(jq -s -c '.[0] | keys' <"$EVAL_OUT")" = '["at","data","error","next","pr
 else
   bad "T1 envelope keys drifted: $(jq -s -c '.[0] | keys' <"$EVAL_OUT")"
 fi
-if [ "$(grep -c 'api graphql' "$EVAL_STUBLOG")" = "2" ] \
-  && ! grep -qE ' pr diff | repos/.*/pulls/' "$EVAL_STUBLOG"; then
-  good "T1 re-reads both thread pages and never refetches the diff"
-else
-  bad "T1 unexpected provider calls: $(cat "$EVAL_STUBLOG")"
-fi
+assert_eq "T1 re-reads both thread pages" "2" "$(grep -c 'api graphql' "$EVAL_STUBLOG")"
+assert_stream_nogrep "T1 never refetches the diff" "$EVAL_STUBLOG" ' pr diff | repos/.*/pulls/' "-E"
 if cmp -s "$EVAL_SANDBOX/pr.before" "$EVAL_SANDBOX/.review/7/PR.json" \
   && cmp -s "$EVAL_SANDBOX/diff.before" "$EVAL_SANDBOX/.review/7/full.diff"; then
   good "T1 touches only threads.json"

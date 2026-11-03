@@ -74,14 +74,10 @@ fi
 # --- M1: absent-knob parity on the multi-file over-cap fixture ---
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix -- $CMAN_FILES
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && ! grep -qi "chunk" "$EVAL_ERR"; then
-  good "absent knob: multi-file over-cap refuses diff-too-large, no chunk mention"
-else
-  bad "absent baseline exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "absent-knob multi-file over-cap refuses" 1
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$BUNDLE/chunks" ]; then
   good "absent refusal writes no chunks dir"
 else

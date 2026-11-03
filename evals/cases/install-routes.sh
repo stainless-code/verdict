@@ -82,7 +82,9 @@ if [ "$inventory_status" -ne 0 ] || [ -z "$inventory" ]; then
   bad "skill files exits $inventory_status with an empty payload inventory"
 fi
 for want in SKILL.md scripts/verdict schemas/validate.sh prompts/review.md; do
-  if ! grep -qxF "$want" <<<"$inventory"; then
+  if grep -qxF "$want" <<<"$inventory"; then
+    good "payload inventory lists $want"
+  else
     copy_ok="false"
     bad "payload inventory misses $want"
   fi
@@ -132,11 +134,7 @@ if grep -q -F "NOT shipped in the npm tarball" "$REG_RANGE"; then
 else
   bad "README registry block lost the install.sh note"
 fi
-if grep -q -F "./install.sh" "$REG_RANGE"; then
-  bad "README tells registry users to run ./install.sh"
-else
-  good "README never offers ./install.sh to registry users"
-fi
+assert_stream_nogrep "README never offers ./install.sh to registry users" "$REG_RANGE" "./install.sh" "-F"
 
 # --- R4: SKILL.md resolves from the installed copy, not just the checkout ---
 if grep -q "never beside the tool" "$EVAL_ROOT/SKILL.md" \

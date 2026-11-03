@@ -70,19 +70,12 @@ calls() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 # --- B1: the snapshot is the base commit's bytes ---
 mark="$(calls)"
 run_review fetch-local acme/app demo --base "$BASE" --json -- notes.txt
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q 'base-rule-text' "$BUNDLE/kb.txt" 2>/dev/null \
-  && ! grep -q 'evil-rule-text' "$BUNDLE/kb.txt" 2>/dev/null; then
-  good "kb recall reads the base rule and never the head rule"
-else
-  bad "kb recall exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
-if grep -q 'base-model' "$BUNDLE/panel" 2>/dev/null && ! grep -q 'evil-model' "$BUNDLE/panel" 2>/dev/null \
-  && [ "$(cat "$BUNDLE/controls/learnings.md" 2>/dev/null)" = "# base learning" ]; then
-  good "bundle panel and snapshot learnings are the base bytes"
-else
-  bad "panel/learnings are not the base bytes"
-fi
+assert_exit "kb recall run succeeds" 0
+assert_file_grep "kb recall reads the base rule" "$BUNDLE/kb.txt" 'base-rule-text'
+assert_file_nogrep "kb recall never reads the head rule" "$BUNDLE/kb.txt" 'evil-rule-text'
+assert_file_grep "bundle panel is the base bytes" "$BUNDLE/panel" 'base-model'
+assert_file_nogrep "bundle panel carries no head model" "$BUNDLE/panel" 'evil-model'
+assert_eq "snapshot learnings are the base bytes" "# base learning" "$(cat "$BUNDLE/controls/learnings.md" 2>/dev/null)"
 if [ "$(jq -r '.policy' "$BUNDLE/controls.json")" = "base" ] \
   && [ "$(jq -r '.sha' "$BUNDLE/controls.json")" = "$BASE" ] \
   && [ "$(jq -r '.base_sha' "$BUNDLE/controls.json")" = "$BASE" ] \
@@ -92,11 +85,9 @@ else
   bad "controls record: $(jq -c . "$BUNDLE/controls.json" 2>/dev/null | head -c 300) / $(jq -c '.data.controls' "$EVAL_OUT")"
 fi
 run_review fetch-local acme/app demo --base "$BASE" -- notes.txt
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -qiE 'allow-head-controls|controls resolved|» controls' "$EVAL_ERR" "$EVAL_OUT"; then
-  good "the default run prints no controls line"
-else
-  bad "default human run mentions controls: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "default human run succeeds" 0
+assert_stream_nogrep "the default run prints no controls line (stderr)" "$EVAL_ERR" 'allow-head-controls|controls resolved|» controls' "-iE"
+assert_stream_nogrep "the default run prints no controls line (stdout)" "$EVAL_OUT" 'allow-head-controls|controls resolved|» controls' "-iE"
 if [ "$(calls)" = "$mark" ]; then
   good "the git path made zero gh calls"
 else
@@ -132,11 +123,9 @@ EOF
 cp -r "$EVAL_SANDBOX/snap-controls" "$EVAL_SANDBOX/.review/$PR/controls"
 cp "$EVAL_SANDBOX/snap-controls.json" "$EVAL_SANDBOX/.review/$PR/controls.json"
 run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ] && grep -q 'Base attribution line' "$EVAL_OUT" && ! grep -q 'EVIL attribution' "$EVAL_OUT"; then
-  good "post --dry-run renders the base attribution, not the head's"
-else
-  bad "post dry-run exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "post dry-run succeeds" 0
+assert_file_grep "post --dry-run renders the base attribution" "$EVAL_OUT" 'Base attribution line'
+assert_stream_nogrep "post --dry-run renders no head attribution" "$EVAL_OUT" 'EVIL attribution'
 
 # --- B4: tamper and absence refuse typed ---
 printf 'EVIL attribution line\n' >"$EVAL_SANDBOX/.review/$PR/controls/overrides/attribution.md"

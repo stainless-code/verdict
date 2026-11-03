@@ -90,14 +90,10 @@ if [ "$EVAL_STATUS" -eq 1 ]; then
 else
   bad "strict unreachable clean exits $EVAL_STATUS, want 1"
 fi
-if grep -q "^check: live thread recheck unreachable" "$EVAL_ERR" \
-  && grep -q "offline posture is strict" "$EVAL_ERR" \
-  && grep -q "\-\-live skip" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR"; then
-  good "fail-closed line is typed and names the posture plus the recovery"
-else
-  bad "strict clean stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "fail-closed line is typed" "$EVAL_ERR" "^check: live thread recheck unreachable"
+assert_file_grep "fail-closed line names the posture" "$EVAL_ERR" "offline posture is strict"
+assert_file_grep "fail-closed line names the recovery" "$EVAL_ERR" "\-\-live skip"
+assert_stream_nogrep "fail-closed line carries no live verdict" "$EVAL_ERR" "live open"
 if grep -q "live thread recheck unreachable" "$EVAL_ERR"; then
   good "strict unreachable still warns on stderr"
 else
@@ -177,13 +173,9 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "strict local exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live recheck skipped" "$EVAL_ERR" \
-  && ! grep -q "offline posture is strict" "$EVAL_ERR" \
-  && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "local skip warns structurally with zero network, no fail-closed"
-else
-  bad "strict local stderr paid $(graphql_since "$m") call(s): $(head -c 200 "$EVAL_ERR")"
-fi
+assert_file_grep "local skip warns structurally" "$EVAL_ERR" "live recheck skipped"
+assert_stream_nogrep "local skip prints no fail-closed line" "$EVAL_ERR" "offline posture is strict"
+assert_eq "local skip pays zero graphql calls" "0" "$(graphql_since "$m")"
 
 # --- K1: --live skip is loud and network-free on a would-fail bundle ---
 PR=4375
@@ -198,14 +190,10 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "--live skip exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live recheck skipped (--live skip" "$EVAL_ERR" \
-  && grep -q "^check: live recheck skipped (--live skip)" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR" \
-  && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "skip warns loudly, prints a neutral skipped check: line, pays zero graphql"
-else
-  bad "skip stderr paid $(graphql_since "$m") call(s): $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "skip warns loudly" "$EVAL_ERR" "live recheck skipped (--live skip"
+assert_file_grep "skip prints a neutral skipped check: line" "$EVAL_ERR" "^check: live recheck skipped (--live skip)"
+assert_stream_nogrep "skip prints no live verdict" "$EVAL_ERR" "live open"
+assert_eq "skip pays zero graphql calls" "0" "$(graphql_since "$m")"
 run_review report acme/app "$PR" --check critical --completeness
 if [ "$EVAL_STATUS" -eq 1 ]; then
   good "same bundle without --live skip still fails (the skip is opt-in only)"
@@ -235,12 +223,8 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "explicit auto exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live thread recheck unreachable" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR"; then
-  good "explicit auto warns neutrally with no live verdict"
-else
-  bad "explicit auto stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "explicit auto warns unreachable" "$EVAL_ERR" "live thread recheck unreachable"
+assert_stream_nogrep "explicit auto prints no live verdict" "$EVAL_ERR" "live open"
 
 # --- K4: unknown posture refuses with exit 2 ---
 run_review report acme/app "$PR" --check critical --live bogus
@@ -262,10 +246,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "advisory --live exits $EVAL_STATUS, want 0"
 fi
-if ! grep -q "check:" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "advisory --live prints no check: line and makes zero calls"
-else
-  bad "advisory --live paid $(graphql_since "$m") call(s): $(head -c 200 "$EVAL_ERR")"
-fi
+assert_stream_nogrep "advisory --live prints no check: line" "$EVAL_ERR" "check:"
+assert_eq "advisory --live makes zero calls" "0" "$(graphql_since "$m")"
 
 eval_end

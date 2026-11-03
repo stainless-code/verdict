@@ -40,11 +40,7 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "APPROVE" ]; then
 else
   bad "--bind gave exit $EVAL_STATUS event '$event', want 0/APPROVE"
 fi
-if grep -q "downgraded" "$EVAL_ERR"; then
-  bad "bound run still warns about a downgrade"
-else
-  good "bound run warns about no downgrade"
-fi
+assert_stream_nogrep "bound run warns about no downgrade" "$EVAL_ERR" "downgraded"
 
 # --- B3: REQUEST_CHANGES with findings is normal ---
 eval_write_review "$PR" <<'EOF'

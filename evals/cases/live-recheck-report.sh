@@ -184,12 +184,8 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "unreachable clean exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live thread recheck unreachable" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR"; then
-  good "unreachable warns with no live check: line (neutral)"
-else
-  bad "unreachable clean stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "unreachable warns with the neutral reason" "$EVAL_ERR" "live thread recheck unreachable"
+assert_stream_nogrep "unreachable prints no live check: line (neutral)" "$EVAL_ERR" "live open"
 if jq -e '.warnings | join(" ") | contains("live thread recheck unreachable")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "envelope warnings carry the unreachable reason"
 else
@@ -206,13 +202,9 @@ if [ "$EVAL_STATUS" -eq 1 ]; then
 else
   bad "unreachable dirty exits $EVAL_STATUS, want 1"
 fi
-if grep -q "at-or-above critical — gate fails" "$EVAL_ERR" \
-  && grep -q "live thread recheck unreachable" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR"; then
-  good "tier fail line plus the neutral unreachable warn, no live verdict"
-else
-  bad "unreachable dirty stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "tier fail line names the failing rung" "$EVAL_ERR" "at-or-above critical — gate fails"
+assert_file_grep "dirty bundle warns unreachable" "$EVAL_ERR" "live thread recheck unreachable"
+assert_stream_nogrep "dirty bundle prints no live verdict" "$EVAL_ERR" "live open"
 if jq -e '.warnings | join(" ") | contains("live thread recheck unreachable")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "dirty envelope warnings carry the unreachable reason"
 else
@@ -231,11 +223,8 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "advisory report exits $EVAL_STATUS, want 0"
 fi
-if ! grep -q "check:" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "advisory report prints no check: line and makes zero recheck calls"
-else
-  bad "advisory run paid $(graphql_since "$m") call(s): $(head -c 200 "$EVAL_ERR")"
-fi
+assert_stream_nogrep "advisory report prints no check: line" "$EVAL_ERR" "check:"
+assert_eq "advisory report makes zero recheck calls" "0" "$(graphql_since "$m")"
 cp "$EVAL_OUT" "$EVAL_SANDBOX/live-g4-first.txt"
 run_review report acme/app "$PR"
 if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/live-g4-first.txt"; then
@@ -246,13 +235,14 @@ fi
 rm -f "$EVAL_SANDBOX/live-g4-first.txt"
 m="$(mark)"
 run_review report acme/app "$PR" --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.warnings == []' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && ! grep -q "check:" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "advisory --json stays warn-free with zero recheck calls"
+assert_exit "advisory --json success" 0
+if jq -e '.warnings == []' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "advisory --json stays warn-free"
 else
-  bad "advisory --json paid $(graphql_since "$m") call(s)"
+  bad "advisory --json warnings: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
 fi
+assert_stream_nogrep "advisory --json prints no check: line" "$EVAL_ERR" "check:"
+assert_eq "advisory --json makes zero recheck calls" "0" "$(graphql_since "$m")"
 
 # --- G5: provider + local bundles warn-skip with zero network ---
 PR=4289
@@ -270,12 +260,9 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "provider skip exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live recheck skipped: gitlab threads unreadable here" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "provider run warn-skips the GitHub-only read with zero calls"
-else
-  bad "provider stderr paid $(graphql_since "$m") call(s): $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "provider run warn-skips the GitHub-only read" "$EVAL_ERR" "live recheck skipped: gitlab threads unreadable here"
+assert_stream_nogrep "provider run prints no live open line" "$EVAL_ERR" "live open"
+assert_eq "provider run makes zero recheck calls" "0" "$(graphql_since "$m")"
 if jq -e '.warnings | join(" ") | contains("live recheck skipped")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "provider skip rides the envelope warnings"
 else
@@ -307,13 +294,10 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "local skip exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live recheck skipped" "$EVAL_ERR" \
-  && ! grep -qi "fetch-local" "$EVAL_ERR" \
-  && ! grep -q "live open" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "local run warn-skips with zero calls and no re-fetch noise"
-else
-  bad "local stderr paid $(graphql_since "$m") call(s): $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "local run warn-skips" "$EVAL_ERR" "live recheck skipped"
+assert_stream_nogrep "local run prints no fetch-local noise" "$EVAL_ERR" "fetch-local" "-i"
+assert_stream_nogrep "local run prints no live open line" "$EVAL_ERR" "live open"
+assert_eq "local run makes zero recheck calls" "0" "$(graphql_since "$m")"
 printf '%s' "$CRIT_FINDING" > "$EVAL_SANDBOX/.review/local-liverep/findings.json"
 m="$(mark)"
 run_review report acme/app liverep --check critical
@@ -352,13 +336,9 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "stdout-error gh exits $EVAL_STATUS, want 0"
 fi
-if grep -q "live thread recheck unreachable" "$EVAL_ERR" \
-  && grep -q "evals-stub-gh: Bad credentials (HTTP 401)" "$EVAL_ERR" \
-  && ! grep -q "jq: error" "$EVAL_ERR"; then
-  good "warn carries only gh's stderr (no downstream jq crash)"
-else
-  bad "stdout-error gh stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "stdout-error gh warns unreachable" "$EVAL_ERR" "live thread recheck unreachable"
+assert_file_grep "warn carries gh's own stderr" "$EVAL_ERR" "evals-stub-gh: Bad credentials (HTTP 401)"
+assert_stream_nogrep "warn has no downstream jq crash" "$EVAL_ERR" "jq: error"
 if jq -e '.warnings | join(" ") | contains("evals-stub-gh: Bad credentials (HTTP 401)")' <"$EVAL_OUT" >/dev/null 2>&1 \
   && ! jq -e '.warnings | join(" ") | contains("jq: error")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "envelope warnings match the clean human warn"

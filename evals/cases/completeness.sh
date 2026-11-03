@@ -116,11 +116,9 @@ if [ "$EVAL_STATUS" -eq 1 ]; then
 else
   bad "missing post exits $EVAL_STATUS, want 1"
 fi
-if grep -q "missing-post" "$EVAL_ERR" && grep -q "fetch acme/app 4263" "$EVAL_ERR" && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "missing post names missing-post plus the plain re-fetch command"
-else
-  bad "missing-post stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_file_grep "missing post names the typed code" "$EVAL_ERR" "missing-post"
+assert_file_grep "missing post names the plain re-fetch command" "$EVAL_ERR" "fetch acme/app 4263"
+assert_stream_nogrep "missing post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
 # --- C4: corrupt / empty-head post ---
 PR=4264
@@ -197,11 +195,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "plain report exits $EVAL_STATUS, want 0"
 fi
-if grep -q "check:" "$EVAL_ERR"; then
-  bad "plain report prints a check: line"
-else
-  good "plain report prints no check: line"
-fi
+assert_stream_nogrep "plain report prints no check: line" "$EVAL_ERR" "check:"
 run_review report acme/app 4262 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data | has("completeness")' <"$EVAL_OUT" 2>/dev/null)" = "false" ]; then
@@ -210,11 +204,8 @@ else
   bad "plain --json leaks completeness: $(jq -c '.data.completeness // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 run_review report acme/app 4262 --check critical
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "completeness" "$EVAL_ERR"; then
-  good "--check alone gates only on the tier (exit 0, no completeness)"
-else
-  bad "--check alone exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "--check alone exits 0" 0
+assert_stream_nogrep "--check alone mentions no completeness" "$EVAL_ERR" "completeness"
 
 # --- C7: dry-run never satisfies ---
 PR=4267
@@ -251,11 +242,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "local match exits $EVAL_STATUS, want 0"
 fi
-if grep -q "fetch-local" "$EVAL_ERR"; then
-  bad "local pass should name no re-fetch: $(head -c 200 "$EVAL_ERR")"
-else
-  good "local pass prints no re-fetch hint"
-fi
+assert_stream_nogrep "local pass prints no re-fetch hint" "$EVAL_ERR" "fetch-local"
 jq -n --arg h "$HEAD_C" \
   '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.review/local-compwork/post.json"

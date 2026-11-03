@@ -120,11 +120,8 @@ else
 fi
 
 # --- U5: program name and anchor strings ---
-if grep -q "usage: verdict " "$USAGE" && ! grep -q "review\.sh" "$USAGE"; then
-  good "U5 block names verdict, never review.sh"
-else
-  bad "U5 block program name wrong"
-fi
+assert_file_grep "U5 block names verdict" "$USAGE" "usage: verdict "
+assert_stream_nogrep "U5 block never names review.sh" "$USAGE" "review\.sh"
 anchors_ok="true"
 for anchor in --json verify-destructive verify-networked verify-credential-read verify-repo-escape token-scopes-excess; do
   grep -q -F -- "$anchor" "$USAGE" || { anchors_ok="false"; bad "U5 block misses $anchor"; }

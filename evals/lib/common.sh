@@ -31,8 +31,23 @@ EVAL_ENVELOPE_KEYS="at data error next pr repo schema_version verb warnings"
 # the runner replays.
 # shellcheck disable=SC2034 # the counter is read by cases and by eval_end
 fails=0
+# shellcheck disable=SC2034 # the counter is read by cases and by eval_end
+skips=0
 good() { echo "  ok: $1"; }
 bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
+
+# skip <reason> — a leg this machine cannot run (a missing tool, no pty). It is
+# graded as SKIP, never as a pass: eval_end exits 77, so the runner reports the
+# case as skipped and fails the run unless EVAL_ALLOW_SKIP=1 (test-audit F1/F8).
+skip() { echo "  SKIP: $1"; skips=$((skips + 1)); }
+
+# skip_case <reason> — the whole case cannot run here: the same SKIP status,
+# taken immediately so a half-graded case never reports PASS.
+skip_case() {
+  skip "$1"
+  echo "case $(basename "${0%.sh}"): SKIP ($1)"
+  exit 77
+}
 
 # bail <message> — hard-stop a case that cannot grade anything at all (a tool
 # missing, an unsupported platform) instead of letting it exit 0 having proved
@@ -43,15 +58,21 @@ bail() {
   exit 1
 }
 
-# eval_end — the shared case epilogue: exit 1 when any assertion failed, else
-# print the PASS line and exit 0. The case name comes from $0, so a case calls
-# it bare.
+# eval_end — the shared case epilogue. Three distinct statuses, because a leg
+# that did not run is not a pass: any failed assertion prints FAIL and exits 1,
+# a case with only skipped legs prints SKIP and exits 77 (the runner tallies it
+# separately and refuses it without EVAL_ALLOW_SKIP=1), else PASS and exit 0.
+# The case name comes from $0, so a case calls it bare.
 eval_end() {
   local name
   name="$(basename "${0%.sh}")"
   if [ "$fails" -ne 0 ]; then
     echo "case $name: FAIL ($fails)"
     exit 1
+  fi
+  if [ "$skips" -ne 0 ]; then
+    echo "case $name: SKIP ($skips skipped leg(s))"
+    exit 77
   fi
   echo "case $name: PASS"
 }
@@ -147,29 +168,50 @@ assert_json_field() {
   assert_eq "$label" "$want" "$got"
 }
 
-# assert_file_grep <label> <file> <pattern> — the file must exist and hold the
-# pattern. Positive greps fail loudly on a missing file already; the helper
-# keeps the diagnostic explicit.
+# assert_file_grep <label> <file> <pattern> [grep-flags] — the file must exist
+# and hold the pattern. Positive greps fail loudly on a missing file already;
+# the helper keeps the diagnostic explicit.
 assert_file_grep() {
-  local label="$1" file="$2" pat="$3"
+  local label="$1" file="$2" pat="$3" flags="${4:-}"
+  # shellcheck disable=SC2086 # flags is a deliberate list of grep options
   if [ ! -e "$file" ]; then
     bad "$label: $file is missing"
-  elif grep -q "$pat" "$file"; then
+  elif grep -q $flags -- "$pat" "$file"; then
     good "$label"
   else
     bad "$label: $file does not match '$pat'"
   fi
 }
 
-# assert_file_nogrep <label> <file> <pattern> — the file must exist AND NOT hold
-# the pattern. Existence is part of the assertion on purpose: `! grep -q` on a
-# missing file returns 2, which `!` turns into a pass, so an unwritten output
-# used to satisfy every "omits X" check (test-audit F5).
+# assert_file_nogrep <label> <file> <pattern> [grep-flags] — the file must
+# exist AND NOT hold the pattern. Existence plus non-emptiness are part of the
+# assertion on purpose: `! grep -q` on a missing file returns 2, which `!`
+# turns into a pass, so an unwritten output used to satisfy every "omits X"
+# check (test-audit F5). For a stream the harness owns, use
+# assert_stream_nogrep: those may be legitimately empty.
 assert_file_nogrep() {
-  local label="$1" file="$2" pat="$3"
+  local label="$1" file="$2" pat="$3" flags="${4:-}"
+  # shellcheck disable=SC2086 # flags is a deliberate list of grep options
   if [ ! -s "$file" ]; then
     bad "$label: $file is missing or empty (cannot prove the omission)"
-  elif grep -q "$pat" "$file"; then
+  elif grep -q $flags -- "$pat" "$file"; then
+    bad "$label: $file carries '$pat'"
+  else
+    good "$label"
+  fi
+}
+
+# assert_stream_nogrep <label> <file> <pattern> [grep-flags] — the same negation
+# for a stream the harness or the case creates ($EVAL_OUT, $EVAL_ERR, a stub
+# log): it must exist, but an empty stream is the usual PASS, so only existence
+# is required. Absence still fails the assertion, so a stream that was never
+# written cannot satisfy an "omits X" check.
+assert_stream_nogrep() {
+  local label="$1" file="$2" pat="$3" flags="${4:-}"
+  # shellcheck disable=SC2086 # flags is a deliberate list of grep options
+  if [ ! -e "$file" ]; then
+    bad "$label: $file was never written (cannot prove the omission)"
+  elif grep -q $flags -- "$pat" "$file"; then
     bad "$label: $file carries '$pat'"
   else
     good "$label"

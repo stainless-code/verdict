@@ -89,14 +89,14 @@ KNOB="$EVAL_SANDBOX/.review/chunk"
 # --- L1: same cap, same knob, same shape on the local path ---
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && ! grep -qi "chunk" "$EVAL_ERR" \
-  && [ ! -d "$BUNDLE/chunks" ]; then
-  good "absent knob: over-cap local refuses diff-too-large, no chunk mention, no chunks dir"
+assert_exit "absent-knob over-cap local refuses" 1
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
+if [ ! -d "$BUNDLE/chunks" ]; then
+  good "absent knob writes no chunks dir"
 else
-  bad "absent baseline exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
+  bad "absent knob wrote a chunks dir"
 fi
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
@@ -307,11 +307,7 @@ else
 fi
 cp "$EVAL_OUT" "$EVAL_SANDBOX/cloc-under-out.txt"
 cp "$EVAL_SANDBOX/.review/local-clocsmall/full.diff" "$EVAL_SANDBOX/cloc-under.diff"
-if grep -qi "chunk" "$EVAL_ERR"; then
-  bad "under-cap --chunk mentions chunking: $(head -c 200 "$EVAL_ERR")"
-else
-  good "under-cap --chunk stays silent about chunking"
-fi
+assert_stream_nogrep "under-cap --chunk stays silent about chunking" "$EVAL_ERR" "chunk" "-i"
 run_review fetch-local acme/app clocsmall -- cloc-small.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cloc-under-out.txt" \

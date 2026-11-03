@@ -184,11 +184,8 @@ mk_sized_bundle() { # $1 = pr, $2 = file count, $3 = pad lines per file
 }
 mk_sized_bundle 4603 7 0
 run_review report acme/app 4603 --output "$EVAL_SANDBOX/out-4603.md"
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q 'Files changed' "$EVAL_SANDBOX/out-4603.md"; then
-  good "7-file small bundle omits the overview"
-else
-  bad "threshold low side gave exit $EVAL_STATUS"
-fi
+assert_exit "7-file small bundle renders" 0
+assert_file_nogrep "7-file small bundle omits the overview" "$EVAL_SANDBOX/out-4603.md" "Files changed"
 mk_sized_bundle 4604 9 0
 run_review report acme/app 4604 --output "$EVAL_SANDBOX/out-4604.md"
 if [ "$EVAL_STATUS" -eq 0 ] && grep -Fq '<summary>Files changed (9)</summary>' "$EVAL_SANDBOX/out-4604.md"; then
@@ -217,21 +214,15 @@ else
   bad "--overview force gave exit $EVAL_STATUS"
 fi
 run_review report acme/app 4604 --output "$EVAL_SANDBOX/out-4607.md" --no-overview
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q 'Files changed' "$EVAL_SANDBOX/out-4607.md"; then
-  good "--no-overview forces hide above threshold"
-else
-  bad "--no-overview force gave exit $EVAL_STATUS"
-fi
+assert_exit "--no-overview render succeeds" 0
+assert_file_nogrep "--no-overview forces hide above threshold" "$EVAL_SANDBOX/out-4607.md" "Files changed"
 
 # --- O5: omitted default (below threshold renders with no overview) ---
 mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 run_review report acme/app 4601 --output "$EVAL_SANDBOX/out-new.md"
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q '<details>' "$EVAL_SANDBOX/out-new.md"; then
-  good "below threshold the report renders with no <details> overview"
-else
-  bad "omitted-default gave exit $EVAL_STATUS or renders a <details> block"
-fi
+assert_exit "omitted-default render succeeds" 0
+assert_file_nogrep "below threshold the report renders with no <details> overview" "$EVAL_SANDBOX/out-new.md" "<details>"
 unset XDG_CONFIG_HOME || true
 
 # --- O6: precedence flags > file > env ---
@@ -239,11 +230,8 @@ mkdir -p "$EVAL_SANDBOX/xdg-ov/verdict"
 printf '{"publish":{"overview":false}}' > "$EVAL_SANDBOX/xdg-ov/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-ov"
 run_review report acme/app 4604 --output "$EVAL_SANDBOX/out-4608.md"
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q 'Files changed' "$EVAL_SANDBOX/out-4608.md"; then
-  good "file false hides a large bundle"
-else
-  bad "file-off gave exit $EVAL_STATUS"
-fi
+assert_exit "file-off render succeeds" 0
+assert_file_nogrep "file false hides a large bundle" "$EVAL_SANDBOX/out-4608.md" "Files changed"
 run_review report acme/app 4604 --output "$EVAL_SANDBOX/out-4609.md" --overview
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q 'Files changed' "$EVAL_SANDBOX/out-4609.md"; then
   good "flag --overview wins over a false file"
@@ -255,11 +243,8 @@ unset XDG_CONFIG_HOME || true
 REVIEW_PUBLISH_OVERVIEW="false"
 export REVIEW_PUBLISH_OVERVIEW
 run_review report acme/app 4604 --output "$EVAL_SANDBOX/out-4610.md"
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q 'Files changed' "$EVAL_SANDBOX/out-4610.md"; then
-  good "env false alone (no file) hides a large bundle"
-else
-  bad "env-off gave exit $EVAL_STATUS"
-fi
+assert_exit "env-off render succeeds" 0
+assert_file_nogrep "env false alone (no file) hides a large bundle" "$EVAL_SANDBOX/out-4610.md" "Files changed"
 unset REVIEW_PUBLISH_OVERVIEW || true
 
 # --- O7: colliding basenames label the edge with the full path ---
@@ -302,13 +287,9 @@ src/app.ts	NEW	1	4
 EOF
 printf '[{"kind":"inline","path":"src/app.ts","side":"RIGHT","line":2,"anchored":true,"body":"Collision probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"dddddddddddddddddddddddddddddddddddddddd","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]' > "$dir/findings.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4611.md" --overview
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq 'F3 -->|"uses b/theme.ts"|' "$EVAL_SANDBOX/out-4611.md" \
-  && ! grep -Fq 'uses theme.ts"|' "$EVAL_SANDBOX/out-4611.md"; then
-  good "colliding basenames label the edge with the full path"
-else
-  bad "collision label wrong: $(grep -ho 'F3 -->[^|]*|[^|]*|' "$EVAL_SANDBOX/out-4611.md" || echo MISSING)"
-fi
+assert_exit "collision bundle renders" 0
+assert_file_grep "colliding basenames label the edge with the full path" "$EVAL_SANDBOX/out-4611.md" 'F3 -->|"uses b/theme.ts"|' "-F"
+assert_file_nogrep "colliding basenames never drop to the bare basename" "$EVAL_SANDBOX/out-4611.md" 'uses theme.ts"|' "-F"
 
 # --- M1: manual carries the threshold paragraph ---
 if grep -Fq '24KB (24576 bytes)' "$EVAL_ROOT/docs/manual.md" \

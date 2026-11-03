@@ -83,11 +83,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "range --worktree exits $EVAL_STATUS or the diff drifts from the committed endpoints"
 fi
-if grep -q "line DIRT" "$EVAL_SANDBOX/.review/local-wtrange/full.diff"; then
-  bad "range --worktree leaks live-tree dirt into the bundle"
-else
-  good "range --worktree excludes live-tree dirt from the bundle"
-fi
+assert_file_nogrep "range --worktree excludes live-tree dirt from the bundle" "$EVAL_SANDBOX/.review/local-wtrange/full.diff" "line DIRT"
 if [ "$(worktrees)" = "1" ] \
   && [ ! -e "$EVAL_SANDBOX/.review/.worktree-wtrange" ] \
   && grep -q "line DIRT" "$EVAL_SANDBOX/a.txt"; then
@@ -136,14 +132,10 @@ fi
 run_review fetch-local acme/app wtdirty --worktree
 cp "$EVAL_SANDBOX/.review/local-wtdirty/full.diff" "$EVAL_SANDBOX/wt-current-flag.diff"
 run_review fetch-local acme/app wtdirty
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -q "worktree:" "$EVAL_OUT" \
-  && cmp -s "$EVAL_SANDBOX/.review/local-wtdirty/full.diff" "$EVAL_SANDBOX/wt-current-flag.diff" \
-  && [ "$(worktrees)" = "1" ]; then
-  good "without the flag no checkout is created and the bundle bytes match the isolated run"
-else
-  bad "default run exits $EVAL_STATUS or drifts from the isolated bytes"
-fi
+assert_exit "default run (no flag) succeeds" 0
+assert_stream_nogrep "without the flag stdout names no worktree" "$EVAL_OUT" "worktree:"
+assert_file_eq "bundle bytes match the isolated run" "$EVAL_SANDBOX/wt-current-flag.diff" "$EVAL_SANDBOX/.review/local-wtdirty/full.diff"
+assert_eq "no extra checkout is created" "1" "$(worktrees)"
 
 # --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (

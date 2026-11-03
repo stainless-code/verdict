@@ -346,13 +346,9 @@ eval_write_review 4641 <<'EOF'
 {"schema_version":"1","body":"> ✅ One note on chunk-01.\n> Basis: 0 reproduced · 1 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational"}]}
 EOF
 run_review post acme/app 4641 --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.data.anchors.kept' <"$EVAL_OUT" 2>/dev/null)" = "1" ] \
-  && ! grep -q "basis line counts" "$EVAL_ERR"; then
-  good "unattested partial review passes as today (exit 0, kept, no basis warning)"
-else
-  bad "unattested leg gave exit $EVAL_STATUS"
-fi
+assert_exit "unattested partial review passes as today" 0
+assert_json_field "unattested partial review keeps the anchor" "1" '.data.anchors.kept'
+assert_stream_nogrep "unattested partial review warns about no basis counts" "$EVAL_ERR" "basis line counts"
 if grep -q "no chunks attestation" "$EVAL_ERR" \
   && grep -q "chunks/manifest.json" "$EVAL_ERR"; then
   good "unattested chunked review warns loudly naming the manifest"

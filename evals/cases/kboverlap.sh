@@ -189,11 +189,8 @@ else
   bad "default envelope grew an overlap key (exit $EVAL_STATUS)"
 fi
 run_review trend acme/app
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "overlap:" "$EVAL_OUT"; then
-  good "default human output has no overlap section"
-else
-  bad "default human output grew an overlap section"
-fi
+assert_exit "default human trend succeeds" 0
+assert_stream_nogrep "default human output has no overlap section" "$EVAL_OUT" "overlap:"
 
 # --- O5: pure read (hashes stable, no network, corrupt joins warns+zeros) ---
 after_hash="$(cd "$EVAL_SANDBOX" && find .review -type f | LC_ALL=C sort | xargs shasum -a 1)"

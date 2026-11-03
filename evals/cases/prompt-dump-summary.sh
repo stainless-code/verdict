@@ -155,11 +155,7 @@ if find "$EVAL_SANDBOX/.review/local-dump-a" -iname '*prompt*' | grep -q .; then
 else
   good "no prompt-named files in the store"
 fi
-if grep -q "^done:" "$EVAL_SANDBOX/expected-a.txt"; then
-  bad "expected fixture leaked progress lines"
-else
-  good "dump owns stdout (no progress lines in the concatenation)"
-fi
+assert_file_nogrep "dump owns stdout (no progress lines in the concatenation)" "$EVAL_SANDBOX/expected-a.txt" "^done:"
 
 # --- P3: fetch-local makes zero gh calls ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - calls_p3_before ))" = "0" ]; then
@@ -265,15 +261,10 @@ fi
 mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
 eval_commit_controls
 run_review fetch-local acme/app dump-f7a --show-prompts
-f7a_status="$EVAL_STATUS"
 mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
-if [ "$f7a_status" -ne 0 ] \
-  && grep -q "prompts/system.md" "$EVAL_ERR" \
-  && ! grep -q "system (eval fixture)" "$EVAL_OUT"; then
-  good "F7: missing preamble refuses loudly (exit $f7a_status), no dump on stdout"
-else
-  bad "F7: missing preamble did not refuse loudly (exit $f7a_status)"
-fi
+assert_exit "F7: missing preamble refuses" 1
+assert_file_grep "F7: refusal names the missing file" "$EVAL_ERR" "prompts/system.md"
+assert_stream_nogrep "F7: no prompt dump reaches stdout" "$EVAL_OUT" "system (eval fixture)"
 mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
 eval_commit_controls
 run_review fetch-local acme/app dump-f7b --show-prompts --json
@@ -341,17 +332,10 @@ if grep -q "<!-- report-machine:start -->" "$EVAL_SANDBOX/out-4301.md" \
 else
   bad "machine markers broke"
 fi
-if grep -q "What we checked" "$EVAL_SANDBOX/out-4301.md"; then
-  bad "checked list leaked onto a report with open findings"
-else
-  good "no checked list while findings stand open"
-fi
+assert_file_nogrep "no checked list while findings stand open" "$EVAL_SANDBOX/out-4301.md" "What we checked"
 run_review report acme/app "$PR"
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "Confidence:" "$EVAL_OUT"; then
-  good "human stdout stays marker-free (lead lives in the file)"
-else
-  bad "human stdout changed shape"
-fi
+assert_exit "human report succeeds" 0
+assert_stream_nogrep "human stdout stays marker-free (lead lives in the file)" "$EVAL_OUT" "Confidence:"
 
 # --- S2: clean reports carry a bounded checked list ---
 PR=4302
@@ -389,14 +373,10 @@ jq -n --arg b "$LONG_A$LONG_B" \
   '[{kind:"inline",path:"notes.txt",side:"RIGHT",line:2,anchored:true,body:$b,suggestion:null,inBounds:true,rigor:"pointed",severity:"critical",sig:"3333333333333333333333333333333333333333",sig_version:"1",firstSeen:"aaaaaaa",lastSeen:"aaaaaaa",status:"open",rationale:"",history:[]}]' \
   | eval_write_findings "$PR"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4303.md" --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -qF "$LONG_A" "$EVAL_SANDBOX/out-4303.md" \
-  && ! grep -qF "$LONG_B" "$EVAL_SANDBOX/out-4303.md" \
-  && [ "$(jq -r '.data.items[0].body | length' <"$EVAL_OUT" 2>/dev/null)" = "300" ]; then
-  good "file keeps the 200-char summary, envelope keeps all 300 chars"
-else
-  bad "truncation/envelope contract broke (exit $EVAL_STATUS)"
-fi
+assert_exit "truncation render succeeds" 0
+assert_file_grep "file keeps the summary prefix" "$EVAL_SANDBOX/out-4303.md" "$LONG_A" "-F"
+assert_file_nogrep "file truncates before the tail" "$EVAL_SANDBOX/out-4303.md" "$LONG_B" "-F"
+assert_json_field "envelope keeps all 300 chars" "300" '.data.items[0].body | length'
 
 # --- S4: guided shape passes the degenerate-body guard ---
 PR=4304

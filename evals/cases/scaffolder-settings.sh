@@ -224,11 +224,8 @@ mkdir -p "$EVAL_SANDBOX/xdg-compact/verdict"
 printf '{"layout":{"compact":true}}' > "$EVAL_SANDBOX/xdg-compact/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-compact"
 run_review fetch-local acme/app compact-b
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "panel: none pinned" "$EVAL_OUT"; then
-  good "compact file suppresses the panel advisory"
-else
-  bad "compact file kept the advisory (exit $EVAL_STATUS)"
-fi
+assert_exit "compact file render succeeds" 0
+assert_stream_nogrep "compact file suppresses the panel advisory" "$EVAL_OUT" "panel: none pinned"
 run_review fetch-local acme/app compact-c --no-compact
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "panel: none pinned" "$EVAL_OUT"; then
   good "--no-compact wins over the compact file"
@@ -244,25 +241,16 @@ if [ "$EVAL_STATUS" -eq 0 ] && grep -q $'\033' "$EVAL_ERR"; then
 else
   bad "color always left stderr plain (exit $EVAL_STATUS)"
 fi
-if [ "$(stdout_docs)" = "0" ] && ! grep -q $'\033' "$EVAL_OUT"; then
-  good "human stdout carries no codes even when always"
-else
-  bad "stdout leaked codes or parsed as JSON"
-fi
+assert_eq "human stdout parsed as zero JSON docs" "0" "$(stdout_docs)"
+assert_stream_nogrep "human stdout carries no codes even when always" "$EVAL_OUT" $'\033' "-F"
 printf '{"color":{"mode":"never"}}' > "$EVAL_SANDBOX/xdg-color/verdict/settings.json"
 run_review fetch-local acme/app compact-e
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q $'\033' "$EVAL_ERR"; then
-  good "color never stays plain"
-else
-  bad "color never emitted codes (exit $EVAL_STATUS)"
-fi
+assert_exit "color never render succeeds" 0
+assert_stream_nogrep "color never stays plain" "$EVAL_ERR" $'\033' "-F"
 printf '{"color":{"mode":"always"}}' > "$EVAL_SANDBOX/xdg-color/verdict/settings.json"
 run_review fetch-local acme/app compact-f --color never
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q $'\033' "$EVAL_ERR"; then
-  good "--color never wins over the always file"
-else
-  bad "--color flag lost to the file (exit $EVAL_STATUS)"
-fi
+assert_exit "--color never render succeeds" 0
+assert_stream_nogrep "--color never wins over the always file" "$EVAL_ERR" $'\033' "-F"
 export NO_COLOR=1
 run_review fetch-local acme/app compact-g
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q $'\033' "$EVAL_ERR"; then

@@ -53,11 +53,7 @@ if [ "$uses_total" -ge 2 ] && [ "$uses_pinned" = "$uses_total" ]; then
 else
   bad "workflow has $uses_total uses: entries but only $uses_pinned pinned by full SHA"
 fi
-if grep -E 'uses:[^#]*@(v[0-9]|latest|main|master)' "$WORKFLOW" 2>/dev/null; then
-  bad "workflow floats on a moving tag"
-else
-  good "workflow floats on no moving tag"
-fi
+assert_stream_nogrep "workflow floats on no moving tag" "$WORKFLOW" 'uses:[^#]*@(v[0-9]|latest|main|master)' "-E"
 for anchor in "setup-verdict" "verdict fetch" "verdict post" "verdict report" "verdict ready" "--check"; do
   if grep -q -F -- "$anchor" "$WORKFLOW" 2>/dev/null; then
     good "workflow runs $anchor"

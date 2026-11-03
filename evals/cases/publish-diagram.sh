@@ -59,17 +59,13 @@ mkdir -p "$EVAL_SANDBOX/xdg-beh/verdict"
 printf '{"publish":{"diagrams":{"behavioral":true}}}' > "$EVAL_SANDBOX/xdg-beh/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-beh"
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_field keyword)" = "sequenceDiagram" ] \
-  && [ "$(diagram_bool collapsed)" = "true" ] \
-  && [ "$(diagram_bool wrapped)" = "true" ] \
-  && [ "$(diagram_field note)" = "" ] \
-  && ! grep -qi 'diagram' "$EVAL_ERR"; then
-  good "behavioral=true keeps the block collapsed with no warnings"
-else
-  bad "kept path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
+assert_exit "behavioral=true render succeeds" 0
+assert_eq "behavioral=true keeps the block" "kept" "$(diagram_status)"
+assert_eq "behavioral=true keeps the mermaid keyword" "sequenceDiagram" "$(diagram_field keyword)"
+assert_eq "behavioral=true collapses the block" "true" "$(diagram_bool collapsed)"
+assert_eq "behavioral=true wraps the block" "true" "$(diagram_bool wrapped)"
+assert_eq "behavioral=true leaves the note empty" "" "$(diagram_field note)"
+assert_stream_nogrep "behavioral=true warns about nothing" "$EVAL_ERR" "diagram" "-i"
 run_review post acme/app "$PR" --dry-run
 collapsed_chars="$(body_chars)"
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "^diagram: kept" "$EVAL_OUT"; then
@@ -259,14 +255,10 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>First (single-line, invalid)</summary>\n\n```mermaid sequenceDiagram C->>S: hi ```\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Second (valid)</summary>\n\n```mermaid\nsequenceDiagram\nC->>S: hi\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
 EOF
 run_review post acme/app "$PR" --dry-run --json --diagram-behavioral
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_field blocks)" = "2" ] \
-  && ! grep -q "unbalanced fence" "$EVAL_ERR"; then
-  good "single-line fence never opens a swallow; later valid block keeps"
-else
-  bad "single-line fence path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
+assert_exit "single-line fence render succeeds" 0
+assert_eq "single-line fence keeps the valid block" "kept" "$(diagram_status)"
+assert_eq "single-line fence never swallows into one block" "2" "$(diagram_field blocks)"
+assert_stream_nogrep "single-line fence reports no unbalanced fence" "$EVAL_ERR" "unbalanced fence"
 # Notes-before-divider idempotency: a pasted-output body (footer + note)
 # re-renders byte-identically to the fresh run — the note survives strip-replace.
 PR=4714
@@ -304,14 +296,10 @@ mkdir -p "$EVAL_SANDBOX/xdg-nostruct/verdict"
 printf '{"publish":{"diagrams":{"structural":false}}}' > "$EVAL_SANDBOX/xdg-nostruct/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-nostruct"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4708.md" --overview
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '<summary>Files changed (1)</summary>' "$EVAL_SANDBOX/out-4708.md" \
-  && ! grep -q 'Change topology' "$EVAL_SANDBOX/out-4708.md" \
-  && ! grep -q '```mermaid' "$EVAL_SANDBOX/out-4708.md"; then
-  good "structural=false keeps the table, hides the topology diagram"
-else
-  bad "structural split gave exit $EVAL_STATUS"
-fi
+assert_exit "structural=false render succeeds" 0
+assert_file_grep "structural=false keeps the files table" "$EVAL_SANDBOX/out-4708.md" '<summary>Files changed (1)</summary>' "-F"
+assert_file_nogrep "structural=false hides the topology heading" "$EVAL_SANDBOX/out-4708.md" "Change topology"
+assert_file_nogrep "structural=false hides the mermaid block" "$EVAL_SANDBOX/out-4708.md" '```mermaid' "-F"
 unset XDG_CONFIG_HOME || true
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4709.md" --overview
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -339,13 +327,8 @@ else
   bad "report baseline exits $EVAL_STATUS"
 fi
 run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "dry-run baseline exits $EVAL_STATUS"
-elif ! grep -qi 'diagram' "$EVAL_OUT"; then
-  good "human dry-run stdout carries no diagram line"
-else
-  bad "dry-run baseline exits $EVAL_STATUS or names a diagram"
-fi
+assert_exit "dry-run baseline succeeds" 0
+assert_stream_nogrep "human dry-run stdout carries no diagram line" "$EVAL_OUT" "diagram" "-i"
 unset XDG_CONFIG_HOME || true
 
 # --- D6: precedence flags > file > env ---

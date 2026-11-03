@@ -185,11 +185,8 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Two chunks reviewed, one minor note each.\n> Basis: 0 reproduced · 1 ran · 1 walked · 0 pointed · 0 said · 2 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational","kb":["synth-rule-one"]},{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational","kb":["synth-rule-two"]}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis line counts" "$EVAL_ERR"; then
-  good "summed Basis (1 ran + 1 walked, 2 rules) passes with no warning"
-else
-  bad "summed Basis gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
-fi
+assert_exit "summed Basis post succeeds" 0
+assert_stream_nogrep "summed Basis (1 ran + 1 walked, 2 rules) passes with no warning" "$EVAL_ERR" "basis line counts"
 
 # --- S4: wrong Basis warns and keeps, never fails ---
 eval_write_review "$PR" <<'EOF'

@@ -154,10 +154,6 @@ if grep -q "best-effort" "$EVAL_SANDBOX/err-4283.txt"; then
 else
   bad "rebuilt run stderr misses the best-effort warning"
 fi
-if grep -q "best-effort" "$EVAL_SANDBOX/err-4282.txt"; then
-  bad "pinned run should not warn about a missing snapshot"
-else
-  good "pinned run warns about nothing snapshot-related"
-fi
+assert_stream_nogrep "pinned run warns about nothing snapshot-related" "$EVAL_SANDBOX/err-4282.txt" "best-effort"
 
 eval_end

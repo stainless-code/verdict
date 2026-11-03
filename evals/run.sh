@@ -169,6 +169,8 @@ run_case() {
 }
 
 # report_case <case> — replay the buffered output in sorted order, then tally.
+# Three statuses: exit 0 PASS, exit 77 SKIP (the case reported a leg it could
+# not run), anything else FAIL. A skipped case is never counted as passed.
 report_case() {
   local c="$1" name dir st
   name="$(basename "$c" .sh)"
@@ -182,6 +184,10 @@ report_case() {
     echo "PASS $name"
     printf '%s PASS\n' "$name" >>"$tally"
     pass=$((pass + 1))
+  elif [ "$st" = "77" ]; then
+    echo "SKIP $name"
+    printf '%s SKIP\n' "$name" >>"$tally"
+    skipped=$((skipped + 1))
   else
     echo "FAIL $name"
     printf '%s FAIL\n' "$name" >>"$tally"
@@ -191,6 +197,7 @@ report_case() {
 
 pass=0
 fail=0
+skipped=0
 tally="$SANDBOX/case-results.txt"
 : >"$tally"
 
@@ -239,8 +246,9 @@ mkdir -p "$ROOT/evals/results"
 cases_json="$(jq -R -s '[split("\n")[] | select(length > 0) | split(" ") | {name: .[0], status: .[1]}]' "$tally")"
 at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -n --arg at "$at" --argjson pass "$pass" --argjson fail "$fail" \
+  --argjson skipped "$skipped" \
   --argjson intercepts "$intercepts" --argjson cases "$cases_json" \
-  '{at: $at, pass: $pass, fail: $fail,
+  '{at: $at, pass: $pass, fail: $fail, skipped: $skipped,
     hermetic: {network: "disabled via stub gh first on PATH", fixtures: "crafted bundles in a temp sandbox, removed unless --keep", gh_intercepts: $intercepts},
     cases: $cases}' >"$ROOT/evals/results/summary.json"
 echo "evals: wrote evals/results/summary.json (gitignored)"
@@ -254,5 +262,12 @@ if [ "$post_status" != "$pre_status" ]; then
 fi
 echo "evals: repo tree unchanged (fixtures stayed in the sandbox)"
 
-echo "evals: $pass passed, $fail failed"
+echo "evals: $pass passed, $fail failed, $skipped skipped"
 if [ "$fail" -ne 0 ]; then exit 1; fi
+# A skipped case is not a pass: a leg that did not run proves nothing, so the
+# run fails unless the operator accepts the gap explicitly (test-audit F1/F8).
+if [ "$skipped" -ne 0 ] && [ "${EVAL_ALLOW_SKIP:-0}" != "1" ]; then
+  echo "evals FAIL: $skipped case(s) skipped — a skipped leg proves nothing." >&2
+  echo "  Install the missing prerequisite, or re-run with EVAL_ALLOW_SKIP=1 to accept the gap." >&2
+  exit 1
+fi

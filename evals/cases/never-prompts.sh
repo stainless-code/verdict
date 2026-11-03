@@ -19,9 +19,10 @@
 #       regressed bare `read` would block here, so the watchdog — never the
 #       suite — eats the timeout and the leg FAILs.
 #   H8  live pty: `skill install --json` and `init --json` with stdin a
-#       pseudo-TTY (via script(1), macOS/Linux forms detected, skip-with-notice
-#       where unavailable) never prompt; the installer applies/keeps, the
-#       scaffolder refuses typed `needs-confirm` at exit 1. A regressed
+#       pseudo-TTY (via script(1), macOS/Linux forms detected; SKIP where
+#       unavailable, never a pass) never prompt; the installer
+#       applies/keeps, the scaffolder refuses typed `needs-confirm` at exit 1.
+#       A regressed
 #       TTY-scoped prompt would block on the pty read, so the watchdog turns
 #       it into a leg FAIL instead of a suite hang.
 #   H7  offline: zero stub-gh intercepts across every leg.
@@ -138,11 +139,8 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$NEVER_SKILLS/verdict/SKILL.md" ]; then
 else
   bad "skill install exits $EVAL_STATUS without the payload"
 fi
-if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
-  bad "prompt text leaked from skill install"
-else
-  good "skill install never prompts (no Proceed? text)"
-fi
+assert_stream_nogrep "skill install never prompts on stdout (no Proceed? text)" "$EVAL_OUT" "Proceed?"
+assert_stream_nogrep "skill install never prompts on stderr (no Proceed? text)" "$EVAL_ERR" "Proceed?"
 if (cd "$EVAL_SANDBOX" && shasum -c "$FOREIGN_SNAP" >/dev/null 2>&1) \
   && [ ! -e "$EVAL_SANDBOX/.agents/skills/verdict" ] \
   && [ ! -e "$HOME/.agents/skills/verdict" ]; then
@@ -235,8 +233,8 @@ rm -f "$EVAL_SANDBOX/stdin-pipe"
 # /dev/null, so a regressed prompt would block on the pty read and the
 # watchdog — never the suite — eats the timeout. macOS and Linux spell the
 # invocation differently (script -q /dev/null cmd... vs script -qec "cmd"
-# /dev/null); anything else, or no script(1) at all, skips with a notice and
-# never fails.
+# /dev/null); anything else, or no script(1) at all, reports SKIP — the leg did
+# not run, so it must not count as a pass (test-audit F8).
 if command -v script >/dev/null 2>&1; then
   case "$(uname -s 2>/dev/null || true)" in
     Darwin|Linux) pty_avail="true";;
@@ -317,11 +315,8 @@ if [ "${pty_avail:-false}" = "true" ]; then
   else
     bad "pty machine install: exit $EVAL_STATUS status $(jq -r '.data.status // empty' <<<"$pty_env" 2>/dev/null || true)"
   fi
-  if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
-    bad "prompt text leaked on a pty under --json"
-  else
-    good "no prompt text on stdout or stderr under --json on a pty"
-  fi
+  assert_stream_nogrep "no prompt text on stdout under --json on a pty" "$EVAL_OUT" "Proceed?"
+  assert_stream_nogrep "no prompt text on stderr under --json on a pty" "$EVAL_ERR" "Proceed?"
   if jq -e '.data != null and .error == null' <<<"$pty_env" >/dev/null 2>&1; then
     good "pty keep keeps the envelope shape (data present, error null)"
   else
@@ -349,18 +344,15 @@ if [ "${pty_avail:-false}" = "true" ]; then
   else
     bad "pty machine overwrite refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null || true)"
   fi
-  if grep -q "Proceed?" "$EVAL_OUT" "$EVAL_ERR" 2>/dev/null; then
-    bad "prompt text leaked on a pty under --json (init)"
-  else
-    good "no prompt text on stdout or stderr under --json on a pty (init)"
-  fi
+  assert_stream_nogrep "no prompt text on stdout under --json on a pty (init)" "$EVAL_OUT" "Proceed?"
+  assert_stream_nogrep "no prompt text on stderr under --json on a pty (init)" "$EVAL_ERR" "Proceed?"
   if [ "$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)" = "$seed_sums" ]; then
     good "pty refused overwrite left all four control files byte-identical"
   else
     bad "pty refused overwrite mutated the control files"
   fi
 else
-  good "script(1) unavailable or unsupported OS — pty leg skipped (hermetic-only, non-failing)"
+  skip "script(1) unavailable or unsupported OS — pty legs did not run"
 fi
 
 # --- H7: offline across every leg ---

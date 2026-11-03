@@ -324,14 +324,10 @@ PR=4299
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 run_review report acme/app "$PR" --completeness
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "missing-post" "$EVAL_ERR" \
-  && grep -q "fetch acme/app $PR" "$EVAL_ERR" \
-  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "missing-post (no head) keeps the plain fetch with no --base-sha"
-else
-  bad "missing-post stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "missing-post (no head) fails the gate" 1
+assert_file_grep "missing-post names the typed code" "$EVAL_ERR" "missing-post"
+assert_file_grep "missing-post names the plain fetch" "$EVAL_ERR" "fetch acme/app $PR"
+assert_stream_nogrep "missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
 # F7 provider: a stale-head on a provider bundle names the plain provider
 # fetch (no --base-sha — fetch refuses it for non-GitHub providers), and
@@ -346,14 +342,10 @@ jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.review/$PR/post.json"
 run_review report acme/app "$PR" --completeness
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "stale-head" "$EVAL_ERR" \
-  && grep -q "fetch acme/app $PR --provider gitlab" "$EVAL_ERR" \
-  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "provider stale-head names the plain provider fetch, no --base-sha"
-else
-  bad "provider stale-head stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "provider stale-head fails the gate" 1
+assert_file_grep "provider stale-head names the typed code" "$EVAL_ERR" "stale-head"
+assert_file_grep "provider stale-head names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"
+assert_stream_nogrep "provider stale-head keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 PR=4308
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
@@ -361,14 +353,10 @@ cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
 EOF
 printf '[]' | eval_write_findings "$PR"
 run_review report acme/app "$PR" --completeness
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "missing-post" "$EVAL_ERR" \
-  && grep -q "fetch acme/app $PR --provider gitlab" "$EVAL_ERR" \
-  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "provider missing-post names the plain provider fetch, no --base-sha"
-else
-  bad "provider missing-post stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "provider missing-post fails the gate" 1
+assert_file_grep "provider missing-post names the typed code" "$EVAL_ERR" "missing-post"
+assert_file_grep "provider missing-post names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"
+assert_stream_nogrep "provider missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
 # --- F8: mid-run-push nudge names the advance command; gh-down warns and proceeds ---
 # Overlay a stub whose pulls endpoint reports a NEWER live head (a push

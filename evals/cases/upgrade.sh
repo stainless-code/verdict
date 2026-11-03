@@ -330,12 +330,14 @@ fi
 fresh_install
 printf 'export KEEP_ME=1\nexport PATH="%s:$PATH" # verdict installer\n' "$INSTALL_DIR" > "$CASE_HOME/.zshrc"
 run_cli "$INSTALL_DIR/verdict" "" uninstall --remove-path
-if [ "$EVAL_STATUS" -eq 0 ] && [ ! -e "$INSTALL_DIR/verdict" ] && [ ! -e "$INSTALL_DIR/.verdict-installer" ] \
-  && grep -q 'KEEP_ME=1' "$CASE_HOME/.zshrc" && ! grep -q '# verdict installer' "$CASE_HOME/.zshrc"; then
-  good "U7 uninstall removes managed files + its marked PATH line, keeps foreign config"
+assert_exit "U7 uninstall succeeds" 0
+if [ ! -e "$INSTALL_DIR/verdict" ] && [ ! -e "$INSTALL_DIR/.verdict-installer" ]; then
+  good "U7 uninstall removes the managed binary and receipt"
 else
-  bad "U7 uninstall exit $EVAL_STATUS"
+  bad "U7 uninstall left a managed file behind"
 fi
+assert_file_grep "U7 uninstall keeps foreign config" "$CASE_HOME/.zshrc" 'KEEP_ME=1'
+assert_file_nogrep "U7 uninstall removes its marked PATH line" "$CASE_HOME/.zshrc" '# verdict installer'
 fresh_install
 printf 'export PATH="%s:$PATH" # verdict installer\n' "$INSTALL_DIR" > "$CASE_HOME/.zshrc"
 run_cli "$INSTALL_DIR/verdict" "" uninstall --dry-run --json

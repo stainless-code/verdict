@@ -136,14 +136,10 @@ fi
 # checkout's pre-commit. None is meaningful inside a registry copy, and the
 # README routes registry users to the bundled CLI instead. If a future change
 # ships them, the execution model must be re-settled, not drifted.
-if ! grep -q -x -F "install.sh" "$PACKED" \
-  && ! grep -q -x -F "install.ps1" "$PACKED" \
-  && ! grep -q -x -F "install-skill.sh" "$PACKED" \
-  && ! grep -q "^hooks/" "$PACKED"; then
-  good "installers and hooks/ stay out of the tarball (source-only by design)"
-else
-  bad "tarball ships source-only file(s): $(grep -E -x -e 'install(-skill)?\.(sh|ps1)' -e 'hooks/.*' "$PACKED" | tr '\n' ' ')"
-fi
+assert_file_nogrep "install.sh stays out of the tarball (source-only by design)" "$PACKED" "install.sh" "-xF"
+assert_file_nogrep "install.ps1 stays out of the tarball" "$PACKED" "install.ps1" "-xF"
+assert_file_nogrep "install-skill.sh stays out of the tarball" "$PACKED" "install-skill.sh" "-xF"
+assert_file_nogrep "hooks/ stays out of the tarball" "$PACKED" "^hooks/"
 
 # --- P6: offline across every leg ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then

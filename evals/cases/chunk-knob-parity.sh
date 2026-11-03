@@ -71,15 +71,11 @@ KNOB="$EVAL_SANDBOX/.review/chunk"
 
 # --- K1: absent-knob baseline + byte-identical parity vs HEAD ---
 run_review fetch-local acme/app chunkbig
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && grep -q "candidates (suggested scopes" "$EVAL_ERR" \
-  && ! grep -q "chunking" "$EVAL_ERR"; then
-  good "absent knob: over-cap fetch-local refuses diff-too-large with candidates + hint, no chunk mention"
-else
-  bad "absent baseline exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "absent-knob baseline refuses" 1
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_file_grep "absent knob lists candidate scopes" "$EVAL_ERR" "candidates (suggested scopes"
+assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunking"
 cp "$EVAL_OUT" "$EVAL_SANDBOX/k0-out.txt"
 cp "$EVAL_ERR" "$EVAL_SANDBOX/k0-err.txt"
 run_review fetch-local acme/app chunkbig --json
@@ -155,34 +151,22 @@ eval_commit_controls
 
 # --- K3: cap-override-wins (env and file forms) ---
 REVIEW_MAX_BYTES=2000000 run_review fetch-local acme/app chunkbig --chunk
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -q "chunking" "$EVAL_ERR" \
-  && [ -f "$EVAL_SANDBOX/.review/local-chunkbig/full.diff" ]; then
-  good "raised cap + --chunk succeeds with no chunk notice (override wins)"
-else
-  bad "raised-cap exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "raised cap + --chunk succeeds" 0
+assert_stream_nogrep "raised cap prints no chunk notice" "$EVAL_ERR" "chunking"
+assert_file_grep "raised cap writes full.diff" "$EVAL_SANDBOX/.review/local-chunkbig/full.diff" "."
 REVIEW_MAX_BYTES=100 run_review fetch-local acme/app chunkbig --chunk
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && ! grep -q "chunking" "$EVAL_ERR" \
-  && grep -q "exceeds cap 100 bytes" "$EVAL_ERR" \
-  && grep -q "from REVIEW_MAX_BYTES" "$EVAL_OUT"; then
-  good "still-over tiny cap + --chunk refuses with no chunk notice (override wins outright)"
-else
-  bad "tiny-cap exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "tiny cap + --chunk refuses" 1
+assert_stream_nogrep "tiny cap prints no chunk notice" "$EVAL_ERR" "chunking"
+assert_file_grep "tiny cap names the overriding cap" "$EVAL_ERR" "exceeds cap 100 bytes"
+assert_file_grep "tiny cap names the override source" "$EVAL_OUT" "from REVIEW_MAX_BYTES"
 printf '2500000\n' > "$EVAL_SANDBOX/.review/max_bytes"
 eval_commit_controls
 printf 'true\n' > "$KNOB"
 eval_commit_controls
 run_review fetch-local acme/app chunkbig
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -q "chunking" "$EVAL_ERR" \
-  && grep -q "from .review/max_bytes" "$EVAL_OUT"; then
-  good "cap file + true knob file succeeds with no chunk notice (override wins)"
-else
-  bad "cap-file exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "cap file + true knob succeeds" 0
+assert_stream_nogrep "cap file prints no chunk notice" "$EVAL_ERR" "chunking"
+assert_file_grep "cap file names the override source" "$EVAL_OUT" "from .review/max_bytes"
 rm -f "$EVAL_SANDBOX/.review/max_bytes" "$KNOB"
 eval_commit_controls
 
@@ -211,14 +195,10 @@ fi
 printf 'true\n' > "$KNOB"
 eval_commit_controls
 run_review fetch-local acme/app chunksmall
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/k4-flag-out.txt" \
-  && cmp -s "$EVAL_SANDBOX/.review/local-chunksmall/full.diff" "$EVAL_SANDBOX/k4-flag.diff" \
-  && ! grep -qi "chunk" "$EVAL_ERR"; then
-  good "under-cap filed knob succeeds with identical bytes, no chunk mention"
-else
-  bad "under-cap filed exits $EVAL_STATUS"
-fi
+assert_exit "under-cap filed knob succeeds" 0
+assert_file_eq "under-cap filed knob keeps identical stdout bytes" "$EVAL_SANDBOX/k4-flag-out.txt" "$EVAL_OUT"
+assert_file_eq "under-cap filed knob keeps identical full.diff" "$EVAL_SANDBOX/k4-flag.diff" "$EVAL_SANDBOX/.review/local-chunksmall/full.diff"
+assert_stream_nogrep "under-cap filed knob mentions no chunk" "$EVAL_ERR" "chunk" "-i"
 
 # --- K5: bad knob refuses typed on the over-cap path only ---
 printf 'maybe\n' > "$KNOB"

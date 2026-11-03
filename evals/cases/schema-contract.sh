@@ -52,10 +52,10 @@ must_fail() { # $1 = label, $2 = schema[#ptr], $3 = doc, $4 = expected stderr ru
   fi
   if err="$("$VAL" "$schema" "$doc" 2>&1)"; then
     bad "$label passed validation (checker toothless)"
-  elif ! grep -Fq "$want" <<<"$err"; then
-    bad "$label failed for the wrong reason (want $want): $err"
-  else
+  elif grep -Fq "$want" <<<"$err"; then
     good "$label refused as invalid ($want)"
+  else
+    bad "$label failed for the wrong reason (want $want): $err"
   fi
 }
 

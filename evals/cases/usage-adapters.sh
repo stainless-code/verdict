@@ -15,20 +15,15 @@
 #   A7  tokens without a price still convert (unpriced, never measured).
 #   A8  the adapters README documents both converters as optional.
 #
-# The converters need jq (>= 1.7 for the opencode epoch windows). When jq
-# is missing the case skips cleanly instead of failing.
+# The converters need jq (>= 1.7 for the opencode epoch windows). A missing jq
+# is a SKIP, not a pass: the case exits 77 and the runner refuses it unless
+# EVAL_ALLOW_SKIP=1.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-skips=0
-skip() { echo "  skip: $1"; skips=$((skips + 1)); }
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "case usage-adapters: SKIP (jq missing — converters need jq)"
-  exit 0
-fi
+command -v jq >/dev/null 2>&1 || skip_case "jq missing — the converters need jq"
 
 AD="$EVAL_ROOT/examples/usage-adapters"
 VAL="$EVAL_ROOT/schemas/validate.sh"
@@ -99,7 +94,7 @@ EOF
     bad "message-summed usd = $(jq -r '.usd' <"$WORK/msgs-out.json" 2>/dev/null), want 1"
   fi
 else
-  skip "opencode legs (jq without gmtime)"
+  skip "opencode fixture leg (jq without gmtime)"
   skip "opencode message-sum leg (jq without gmtime)"
 fi
 
@@ -148,7 +143,4 @@ else
   bad "adapters README misses a converter or the optional framing"
 fi
 
-if [ "$skips" -gt 0 ]; then
-  echo "case usage-adapters: $skips skipped leg(s)"
-fi
 eval_end

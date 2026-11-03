@@ -20,7 +20,7 @@ _NPROCESSORS_ONLN`, then `sysctl -n hw.ncpu`, then 4); `EVAL_JOBS=N` overrides
 that limit. Every case gets its own sandbox, stub `gh` dir and stub log, so
 cases cannot see each other's fixtures or intercept counts. Case output is
 buffered and replayed in sorted case order, so a parallel run's report is
-deterministic; the final `evals: N passed, M failed` line and the
+deterministic; the final `evals: N passed, M failed, K skipped` line and the
 repo-tree-unchanged check are unchanged.
 
 A case that genuinely cannot share the machine can opt out of the batch with
@@ -31,6 +31,25 @@ New cases go in `evals/cases/*.sh` (sourced helper: `evals/lib/common.sh`);
 `run.sh` picks up every file there, so no registration step. Results land in
 `evals/results/summary.json`, which is gitignored (`evals/.gitignore`) —
 the harness asserts the run, the repo keeps no trace of it.
+
+### Pass, fail, and skip are three different things
+
+A leg that did not run proves nothing, so it is never graded as a pass. A case
+that cannot run a leg calls `skip "<reason>"` (one leg) or `skip_case
+"<reason>"` (the whole case); `eval_end` then exits 77, `run.sh` reports `SKIP
+<case>` and tallies it separately, and **the run fails** with `evals FAIL: N
+case(s) skipped` unless `EVAL_ALLOW_SKIP=1` accepts the gap:
+
+```sh
+EVAL_ALLOW_SKIP=1 ./evals/run.sh   # accept skipped legs (they still print SKIP)
+```
+
+The same rule governs the shared assertions: an absence is stated with
+`assert_file_nogrep` (the file must exist and be non-empty) or
+`assert_stream_nogrep` (a stream the harness or the case owns; it must exist,
+but may be empty), never with a bare `! grep -q`, which passes when the file
+was never written. `absence-guard` grades that convention and the shared
+helper vocabulary against this suite's own sources.
 
 ## Implementation (the built binary)
 

@@ -162,13 +162,9 @@ fi
 printf 'files\ncost\ntier\n' > "$OV/footer-order.md"
 printf 'Reviewed with [**Verdict {version}**]({product_url})\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-e2.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '4 files · cost $0.05 · standard tier' "$EVAL_SANDBOX/out-e2.md" \
-  && ! grep -Fq '[review' "$EVAL_SANDBOX/out-e2.md"; then
-  good "custom footer-order reorders and drops the link field"
-else
-  bad "footer-order effect gave exit $EVAL_STATUS"
-fi
+assert_exit "footer-order render succeeds" 0
+assert_file_grep "custom footer-order reorders the receipt" "$EVAL_SANDBOX/out-e2.md" '4 files · cost $0.05 · standard tier' "-F"
+assert_file_nogrep "custom footer-order drops the link field" "$EVAL_SANDBOX/out-e2.md" '[review' "-F"
 
 # --- E3: custom threshold shows the overview below the defaults ---
 ov_rm; mkdir -p "$OV"
@@ -186,13 +182,9 @@ ov_rm
 mkdir -p "$OV"
 printf '## Walkthrough ({files_reviewed})\n' > "$OV/preamble.md"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-e4.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '## Walkthrough (4 files)' "$EVAL_SANDBOX/out-e4.md" \
-  && ! grep -Fq '## What we checked' "$EVAL_SANDBOX/out-e4.md"; then
-  good "custom preamble rewords the heading with substitution"
-else
-  bad "preamble effect gave exit $EVAL_STATUS"
-fi
+assert_exit "preamble render succeeds" 0
+assert_file_grep "custom preamble rewords the heading with substitution" "$EVAL_SANDBOX/out-e4.md" '## Walkthrough (4 files)' "-F"
+assert_file_nogrep "custom preamble drops the default heading" "$EVAL_SANDBOX/out-e4.md" '## What we checked' "-F"
 
 # --- E5: full v1 inventory substitutes in one line ---
 printf '## Walk ({version}|{tier}|{product_url}|{files_reviewed}|{head_sha_short}|{model}|{cost})\n' > "$OV/preamble.md"
@@ -271,13 +263,9 @@ ov_rm
 mkdir -p "$OV"
 printf 'Fragment loses {version}\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-p1.md" --attribution-text "Flag wins {version}"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq "Flag wins $VER" "$EVAL_SANDBOX/out-p1.md" \
-  && ! grep -Fq 'Fragment loses' "$EVAL_SANDBOX/out-p1.md"; then
-  good "flag --attribution-text wins over the fragment"
-else
-  bad "flag-over-fragment gave exit $EVAL_STATUS"
-fi
+assert_exit "flag-over-fragment render succeeds" 0
+assert_file_grep "flag --attribution-text wins over the fragment" "$EVAL_SANDBOX/out-p1.md" "Flag wins $VER" "-F"
+assert_file_nogrep "flag --attribution-text drops the fragment text" "$EVAL_SANDBOX/out-p1.md" 'Fragment loses' "-F"
 ov_rm
 
 # --- L3b: 20-digit threshold refuses (64-bit wrap guard) ---

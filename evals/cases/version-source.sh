@@ -38,13 +38,9 @@ eval_write_findings "$PR" <<'EOF'
 []
 EOF
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4601.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq "Verdict $VER" "$EVAL_SANDBOX/out-4601.md" \
-  && ! grep -Fq 'Verdict unknown' "$EVAL_SANDBOX/out-4601.md"; then
-  good "rendered footer carries the package.json version, never unknown"
-else
-  bad "footer version wrong (exit $EVAL_STATUS)"
-fi
+assert_exit "rendered footer succeeds" 0
+assert_file_grep "rendered footer carries the package.json version" "$EVAL_SANDBOX/out-4601.md" "Verdict $VER" "-F"
+assert_file_nogrep "rendered footer never says unknown" "$EVAL_SANDBOX/out-4601.md" 'Verdict unknown' "-F"
 if [ -e "$EVAL_ROOT/VERSION" ] || [ -e "$EVAL_ROOT/version.txt" ]; then
   bad "second version source file exists at the repo root"
 else
@@ -58,11 +54,17 @@ fi
 # --include rides before the paths: BSD grep treats options after the
 # first operand as filenames, so the GNU-permuted order silently searched
 # every file type (goldens included).
-if grep -rn --include='*.go' -- '"0\.0\.0-unknown"' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" | grep -v '_test\.go' | grep -q . \
-  && ! grep -rn --include='*.go' -- '"0\.[0-9][0-9]*\.[0-9][0-9]*' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" | grep -v '_test\.go' | grep -v '0\.0\.0-unknown' | grep -q .; then
-  good "the only version literal in the Go sources is the 0.0.0-unknown degrade fallback"
+# Both sides are computed first: an empty scan on either side is a distinct
+# diagnosis, not a pass (test-audit F5 — a bare negated grep over a pipeline
+# cannot tell "no literal" from "the search never ran").
+unknown_literals="$(grep -rn --include='*.go' -- '"0\.0\.0-unknown"' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" | grep -v '_test\.go' || true)"
+release_literals="$(grep -rn --include='*.go' -- '"0\.[0-9][0-9]*\.[0-9][0-9]*' "$EVAL_ROOT/cmd/verdict" "$EVAL_ROOT/internal" | grep -v '_test\.go' | grep -v '0\.0\.0-unknown' || true)"
+if [ -z "$unknown_literals" ]; then
+  bad "the 0.0.0-unknown degrade fallback is missing from the Go sources"
+elif [ -n "$release_literals" ]; then
+  bad "a release version literal lives in the Go sources: $(printf '%s' "$release_literals" | head -c 300)"
 else
-  bad "a release version literal lives in the Go sources"
+  good "the only version literal in the Go sources is the 0.0.0-unknown degrade fallback"
 fi
 
 # --- V3: degrade path with package.json unreadable ---
@@ -112,11 +114,7 @@ if grep -Fq '## Versioning' "$EVAL_ROOT/README.md" \
 else
   bad "README ## Versioning missing the changeset rule"
 fi
-if grep -Fq 'README ## Versioning' "$EVAL_ROOT/docs/manual.md" \
-  && ! grep -Fq 'version packages' "$EVAL_ROOT/docs/manual.md"; then
-  good "manual points at README ## Versioning, never a second copy"
-else
-  bad "manual versioning pointer missing or rule duplicated"
-fi
+assert_file_grep "manual points at README ## Versioning" "$EVAL_ROOT/docs/manual.md" 'README ## Versioning' "-F"
+assert_file_nogrep "manual never duplicates the version-packages rule" "$EVAL_ROOT/docs/manual.md" 'version packages' "-F"
 
 eval_end

@@ -230,12 +230,8 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_SANDBOX/.review/local-kbrecall1/kb.tx
 else
   bad "kbrecall1 exit $EVAL_STATUS (kb.txt missing?)"
 fi
-if grep -q "await-err" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" \
-  && ! grep -q "docs-ex" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt"; then
-  good "recall keeps active matches, excludes retired"
-else
-  bad "kb.txt content: $(cat "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" 2>/dev/null)"
-fi
+assert_file_grep "recall keeps active matches" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" "await-err"
+assert_file_nogrep "recall excludes retired rules" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" "docs-ex"
 if jq -e '.data.artifacts | has("kb.txt")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "envelope carries the kb.txt artifact"
 else
