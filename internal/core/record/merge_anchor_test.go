@@ -1,8 +1,10 @@
 package recordcore
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -31,7 +33,7 @@ func anchorComment(path, line, start, side string) *jq.Obj {
 // move, and LEFT reads the OLD side.
 func TestAnchorPartitionKeepBias(t *testing.T) {
 	t.Parallel()
-	rows := []hunkRow{{file: "notes.txt", side: "NEW", start: 1, end: 3}}
+	rows := []hunks.Hunk{{File: "notes.txt", Side: "NEW", Start: 1, End: 3}}
 	tests := []anchorCase{
 		{"inline", "notes.txt", "2", "RIGHT", true},
 		{"unknown-path-moves", "missing.txt", "2", "RIGHT", false},
@@ -54,7 +56,7 @@ func TestAnchorPartitionKeepBias(t *testing.T) {
 // partition: a kept anchor stays inline with nothing moved, and a moved
 // anchor lands in the body only. Checking both lists catches a duplicate
 // (kept and moved) that a one-sided count would miss.
-func checkAnchorPartition(t *testing.T, rows []hunkRow, tc anchorCase) {
+func checkAnchorPartition(t *testing.T, rows []hunks.Hunk, tc anchorCase) {
 	t.Helper()
 	st := anchorTestState()
 	st.classifyComment(anchorComment(tc.path, tc.line, "", tc.side), rows)
@@ -81,7 +83,7 @@ type anchorCase struct {
 // lookup instead of failing the run.
 func TestAnchorSwappedSpan(t *testing.T) {
 	t.Parallel()
-	rows := []hunkRow{{file: "notes.txt", side: "NEW", start: 1, end: 3}}
+	rows := []hunks.Hunk{{File: "notes.txt", Side: "NEW", Start: 1, End: 3}}
 	st := anchorTestState()
 	c := anchorComment("notes.txt", "1", "3", "RIGHT")
 	st.classifyComment(c, rows)
@@ -96,7 +98,7 @@ func TestAnchorSwappedSpan(t *testing.T) {
 // numeric, and a sign stays non-numeric.
 func TestAnchorOverflowKeepsWithWarning(t *testing.T) {
 	t.Parallel()
-	rows := []hunkRow{{file: "notes.txt", side: "NEW", start: 1, end: 3}}
+	rows := []hunks.Hunk{{File: "notes.txt", Side: "NEW", Start: 1, End: 3}}
 	for _, line := range []string{
 		"99999999999999999999",
 		"9223372036854775808",
@@ -116,7 +118,7 @@ func TestAnchorOverflowKeepsWithWarning(t *testing.T) {
 
 // checkAnchorWarning asserts a non-numeric anchor keeps with the exact
 // warning, never a wrapped span.
-func checkAnchorWarning(t *testing.T, rows []hunkRow, line string) {
+func checkAnchorWarning(t *testing.T, rows []hunks.Hunk, line string) {
 	t.Helper()
 	st := anchorTestState()
 	st.classifyComment(anchorComment("notes.txt", line, "", "RIGHT"), rows)
@@ -130,7 +132,7 @@ func checkAnchorWarning(t *testing.T, rows []hunkRow, line string) {
 }
 
 // checkAnchorKept asserts a numeric anchor stays inline with no warning.
-func checkAnchorKept(t *testing.T, rows []hunkRow, line string) {
+func checkAnchorKept(t *testing.T, rows []hunks.Hunk, line string) {
 	t.Helper()
 	st := anchorTestState()
 	st.classifyComment(anchorComment("notes.txt", line, "", "RIGHT"), rows)
@@ -143,7 +145,7 @@ func checkAnchorKept(t *testing.T, rows []hunkRow, line string) {
 // a line inside an OLD hunk keeps, the same line with no OLD hunk moves.
 func TestAnchorLeftOldSide(t *testing.T) {
 	t.Parallel()
-	old := []hunkRow{{file: "notes.txt", side: "OLD", start: 1, end: 3}}
+	old := []hunks.Hunk{{File: "notes.txt", Side: "OLD", Start: 1, End: 3}}
 	st := anchorTestState()
 	st.classifyComment(anchorComment("notes.txt", "2", "", "LEFT"), old)
 	if len(st.kept) != 1 || len(st.moved) != 0 {
@@ -154,4 +156,38 @@ func TestAnchorLeftOldSide(t *testing.T) {
 	if len(st2.kept) != 0 || len(st2.moved) != 1 {
 		t.Errorf("LEFT with unknown path moves to the body: kept=%d moved=%d", len(st2.kept), len(st2.moved))
 	}
+}
+
+// TestAnchorClassifyAllocsFlatInHunks proves the merge converts the hunk
+// index once per run: classifying one comment allocates the same bytes
+// whatever the index size, instead of copying it twice per comment.
+func TestAnchorClassifyAllocsFlatInHunks(t *testing.T) {
+	t.Parallel()
+	small := anchorClassifyBytes(t, 8)
+	large := anchorClassifyBytes(t, 512)
+	if large > small {
+		t.Errorf("classifyComment allocates %d B/op at 512 hunks and %d B/op at 8; the index is still rebuilt per comment",
+			large, small)
+	}
+}
+
+// anchorClassifyBytes measures one comment classification against an index
+// of n hunks, the last of which holds the comment.
+func anchorClassifyBytes(t *testing.T, n int) uint64 {
+	t.Helper()
+	hs := make([]hunks.Hunk, 0, n)
+	for i := range n - 1 {
+		hs = append(hs, hunks.Hunk{File: fmt.Sprintf("f%05d.txt", i), Side: "NEW", Start: 1, End: 9})
+	}
+	hs = append(hs, hunks.Hunk{File: "notes.txt", Side: "NEW", Start: 1, End: 9})
+	m := anchorComment("notes.txt", "2", "", "RIGHT")
+	res := testing.Benchmark(func(b *testing.B) {
+		b.Helper() // the closure is a measurement body, not a test (thelper)
+		b.ReportAllocs()
+		for b.Loop() {
+			st := &state{}
+			st.classifyComment(m, hs)
+		}
+	})
+	return uint64(res.AllocedBytesPerOp())
 }

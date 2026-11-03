@@ -59,14 +59,6 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	warnings     []string
 }
 
-// hunkRow is one parsed anchor-hunks row.
-type hunkRow struct {
-	file  string
-	side  string
-	start int
-	end   int
-}
-
 // warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
@@ -336,13 +328,15 @@ func (st *state) validateAnchors(body string) string {
 	if c, ok := st.review.Get("comments"); ok {
 		comments = jq.Elements(c)
 	}
-	rows := loadHunkRows(st.anchorHunks)
+	// The hunk index converts to the shared shape once per run: classifying
+	// a comment only scans it, never rebuilds it.
+	hs := loadHunkRows(st.anchorHunks)
 	for _, c := range comments {
 		m, ok := c.(*jq.Obj)
 		if !ok {
 			continue
 		}
-		st.classifyComment(m, rows)
+		st.classifyComment(m, hs)
 	}
 	return body
 }
@@ -352,11 +346,11 @@ func (st *state) validateAnchors(body string) string {
 // reject the inline anchor, so the point survives as an unanchored
 // observation instead of dying at submit. Ambiguity still keeps the run
 // green with a warning — the comment is moved, never dropped.
-func (st *state) classifyComment(m *jq.Obj, rows []hunkRow) {
+func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {
 	p, _ := m.Get(fieldPath)
 	path := jq.Str(p)
 	key := stripDiffPrefix(path)
-	if !hunks.Indexed(rowsToHunks(rows), key) {
+	if !hunks.Indexed(hs, key) {
 		st.moveUnknownPath(m, path)
 		return
 	}
@@ -370,7 +364,7 @@ func (st *state) classifyComment(m *jq.Obj, rows []hunkRow) {
 	if side == "LEFT" {
 		want = "OLD"
 	}
-	if hunks.Contains(rowsToHunks(rows), key, want, lo, hi) {
+	if hunks.Contains(hs, key, want, lo, hi) {
 		st.kept = append(st.kept, m)
 		return
 	}
@@ -444,23 +438,14 @@ func jqLine(v any) string {
 	return jq.R(v)
 }
 
-// rowsToHunks adapts parsed rows to the hunks package.
-func rowsToHunks(rows []hunkRow) []hunks.Hunk {
-	out := make([]hunks.Hunk, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, hunks.Hunk{File: r.file, Side: r.side, Start: r.start, End: r.end})
-	}
-	return out
-}
-
 // loadHunkRows parses a hunks.tsv snapshot, tolerating malformed rows the
 // way awk's numeric coercion does.
-func loadHunkRows(path string) []hunkRow {
+func loadHunkRows(path string) []hunks.Hunk {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
-	var out []hunkRow
+	var out []hunks.Hunk
 	for ln := range strings.SplitSeq(string(raw), newline) {
 		if ln == "" {
 			continue
@@ -471,7 +456,7 @@ func loadHunkRows(path string) []hunkRow {
 		}
 		start, _ := jq.PrefixInt(f[hunkStartIdx])
 		end, _ := jq.PrefixInt(f[hunkEndIdx])
-		out = append(out, hunkRow{file: f[0], side: f[1], start: start, end: end})
+		out = append(out, hunks.Hunk{File: f[0], Side: f[1], Start: start, End: end})
 	}
 	return out
 }

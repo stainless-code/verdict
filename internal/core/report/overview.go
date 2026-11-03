@@ -15,38 +15,101 @@ import (
 // change-topology block for large diffs, or "" when gated off. Rendering
 // never fails (missing inputs read as absent, like the shell's || guards).
 func renderOverview(st *state) string {
-	if !renderOverviewGate(st) {
+	show, forced := overviewGate(st)
+	if !show {
 		return ""
 	}
-	paths := overviewPaths(st.dir)
+	in := loadOverviewInputs(st.dir)
+	if !forced && !in.gateOpen(st.dir) {
+		return ""
+	}
+	paths := in.paths(st.dir)
 	roles := overviewRoles(st.dir, paths)
-	rows := overviewFileRows(st.dir, paths, roles)
-	edges := overviewEdges(rows, overviewAdded(st.dir))
+	rows := overviewFileRows(paths, roles, in.hunkCounts())
+	edges := overviewEdges(rows, scanAddedLines(in.diff))
 	lines := overviewTableLines(rows)
 	lines = append(lines, overviewTopologyLines(st, rows, edges)...)
 	return strings.Join(lines, newline)
 }
 
-// renderOverviewGate ports the overview gate: a forced off always hides, a
-// forced on always shows, otherwise the publish toggle and the P5
-// walkthrough size thresholds decide.
-func renderOverviewGate(st *state) bool {
-	forces := st.req.ForcesOrEmpty()
-	if forces.PublishOverviewForce == strFalse {
-		return false
+// overviewGate ports the forced/toggle half of the overview gate: a forced
+// off always hides, a forced on always shows (skipping the size
+// thresholds), otherwise the publish toggle decides. It runs before any
+// input is read, so a hidden overview never opens a file.
+func overviewGate(st *state) (show, forced bool) {
+	switch forces := st.req.ForcesOrEmpty(); forces.PublishOverviewForce {
+	case strFalse:
+		return false, false
+	case strTrue:
+		return true, true
 	}
-	if forces.PublishOverviewForce == strTrue {
-		return true
+	return st.req.Effective.PublishOverview == strTrue, false
+}
+
+// overviewInputs is the run's single read of the overview inputs: the diff
+// bytes every fallback scans, and the hunks.tsv NEW-side counts. Reading
+// them once per render keeps the file table linear in the diff size instead
+// of re-opening the same files per row.
+type overviewInputs struct {
+	diff     string
+	hasDiff  bool
+	hunksTSV map[string]int
+	hasTSV   bool
+}
+
+// loadOverviewInputs reads the diff and the hunks.tsv snapshot once.
+func loadOverviewInputs(dir string) *overviewInputs {
+	in := &overviewInputs{}
+	if raw, err := os.ReadFile(dir + fullDiffSuffix); err == nil {
+		in.diff, in.hasDiff = string(raw), true
 	}
-	if st.req.Effective.PublishOverview != strTrue {
-		return false
+	in.hunksTSV, in.hasTSV = overviewHunkCounts(dir + hunksTSVSuffix)
+	return in
+}
+
+// gateOpen ports the size half of the overview gate: file and byte counts
+// against the P5 walkthrough thresholds (defaults 8 files, 24576 bytes).
+func (in *overviewInputs) gateOpen(dir string) bool {
+	maxFiles, maxBytes := thresholdSizes()
+	return in.fileCount(dir) > maxFiles || len(in.diff) > maxBytes
+}
+
+// fileCount ports the file count: PR.json files length, else diff header
+// count.
+func (in *overviewInputs) fileCount(dir string) int {
+	if isRegular(dir + prJSONSuffix) {
+		if n, ok := prFilesLength(dir + prJSONSuffix); ok {
+			return n
+		}
 	}
-	files, maxFiles, bytes, maxBytes := overviewSizes(st.dir)
-	return files > maxFiles || bytes > maxBytes
+	return countDiffHeaders(in.diff)
+}
+
+// paths ports the paths.tsv build: PR.json files when the record names any,
+// else the diff scan.
+func (in *overviewInputs) paths(dir string) []overviewPath {
+	if isRegular(dir + prJSONSuffix) {
+		if rows, ok := prPathRows(dir + prJSONSuffix); ok {
+			return rows
+		}
+	}
+	if !in.hasDiff {
+		return nil
+	}
+	return scanFiles(in.diff)
+}
+
+// hunkCounts resolves the table's Hunks column for every path at once:
+// hunks.tsv NEW-side rows when the snapshot exists, else one diff pass.
+func (in *overviewInputs) hunkCounts() map[string]int {
+	if in.hasTSV {
+		return in.hunksTSV
+	}
+	return countHunkPathsAll(in.diff)
 }
 
 // overviewFileRows numbers the path rows and attaches roles and hunk counts.
-func overviewFileRows(dir string, paths []overviewPath, roles map[string]string) []fileRowShape {
+func overviewFileRows(paths []overviewPath, roles map[string]string, hunksByPath map[string]int) []fileRowShape {
 	rows := make([]fileRowShape, 0, len(paths))
 	for i, p := range paths {
 		role := roles[p.path]
@@ -59,7 +122,7 @@ func overviewFileRows(dir string, paths []overviewPath, roles map[string]string)
 			role:  role,
 			adds:  p.adds,
 			dels:  p.dels,
-			hunks: overviewHunks(dir, p.path),
+			hunks: hunksByPath[p.path],
 		})
 	}
 	return rows
@@ -105,15 +168,6 @@ func overviewTopologyLines(st *state, rows []fileRowShape, edges []overviewEdge)
 	return append(lines, "```", "", "</details>")
 }
 
-// overviewSizes ports the threshold gate: file and byte counts against the
-// P5 walkthrough thresholds (defaults 8 files, 24576 bytes).
-func overviewSizes(dir string) (files, maxFiles int, bytes, maxBytes int) {
-	maxFiles, maxBytes = thresholdSizes()
-	files = overviewFileCount(dir)
-	bytes = overviewByteCount(dir)
-	return files, maxFiles, bytes, maxBytes
-}
-
 // thresholdSizes reads the P5 walkthrough thresholds (validated earlier, so
 // errors degrade to defaults here).
 func thresholdSizes() (int, int) {
@@ -129,21 +183,6 @@ const (
 	defaultMaxFiles = 8
 	defaultMaxBytes = 24576
 )
-
-// overviewFileCount ports the file count: PR.json files length, else diff
-// header count.
-func overviewFileCount(dir string) int {
-	if isRegular(dir + prJSONSuffix) {
-		if n, ok := prFilesLength(dir + prJSONSuffix); ok {
-			return n
-		}
-	}
-	raw, err := os.ReadFile(dir + fullDiffSuffix)
-	if err != nil {
-		return 0
-	}
-	return countDiffHeaders(string(raw))
-}
 
 // prFilesLength ports `(.files // []) | length` with a validity flag: a
 // boolean files value fails the length (mirroring the jq error, which sends
@@ -208,15 +247,6 @@ func numericFilesLength(files any) (int, bool) {
 	return int(f), true
 }
 
-// overviewByteCount ports `wc -c` over the diff.
-func overviewByteCount(dir string) int {
-	raw, err := os.ReadFile(dir + fullDiffSuffix)
-	if err != nil {
-		return 0
-	}
-	return len(raw)
-}
-
 // countDiffHeaders counts `diff --git ` header lines.
 func countDiffHeaders(diff string) int {
 	n := 0
@@ -232,23 +262,6 @@ func countDiffHeaders(diff string) int {
 type overviewPath struct {
 	path       string
 	adds, dels int
-}
-
-// overviewPaths ports the paths.tsv build: PR.json files when the record
-// names any, else the diff scan.
-func overviewPaths(dir string) []overviewPath {
-	if isRegular(dir + prJSONSuffix) {
-		if rows, ok := prPathRows(dir + prJSONSuffix); ok {
-			return rows
-		}
-	}
-	if isRegular(dir + fullDiffSuffix) {
-		raw, err := os.ReadFile(dir + fullDiffSuffix)
-		if err == nil {
-			return scanFiles(string(raw))
-		}
-	}
-	return nil
 }
 
 // filesDisposition tells prPathRows whether the files value names rows,
@@ -573,65 +586,42 @@ func isGeneratedPath(path, base string) bool {
 	return strings.HasSuffix(base, ".snap")
 }
 
-// overviewHunks ports overview_hunks: hunks.tsv NEW-side counts, else the
-// diff hunks scan, else 0.
-func overviewHunks(dir, path string) int {
-	if isRegular(dir + hunksTSVSuffix) {
-		return hunksFromTSV(dir+hunksTSVSuffix, path)
+// overviewHunkCounts ports the hunks.tsv build for every path in one read:
+// NEW-side rows per file. A non-regular snapshot reports not-ok, so rows
+// fall back to the diff scan.
+func overviewHunkCounts(path string) (map[string]int, bool) {
+	if !isRegular(path) {
+		return nil, false
 	}
-	raw, err := os.ReadFile(dir + fullDiffSuffix)
-	if err != nil {
-		return 0
-	}
-	return countHunkPaths(string(raw), path)
-}
-
-// hunksFromTSV counts the NEW-side hunks.tsv rows naming path.
-func hunksFromTSV(path, want string) int {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0
+		return map[string]int{}, true
 	}
-	n := 0
+	counts := map[string]int{}
 	for ln := range strings.SplitSeq(string(raw), newline) {
-		if isNewHunkLine(ln, want) {
-			n++
+		fields := strings.Split(ln, tabSep)
+		if len(fields) >= 2 && fields[1] == newMarker {
+			counts[fields[0]]++
 		}
 	}
-	return n
+	return counts, true
 }
 
-// isNewHunkLine reports whether a hunks.tsv line counts a NEW-side hunk for
-// path.
-func isNewHunkLine(ln, want string) bool {
-	fields := strings.Split(ln, tabSep)
-	return len(fields) >= 2 && fields[0] == want && fields[1] == newMarker
-}
-
-// countHunkPaths ports the hunks-mode fallback: one count per @@ header
-// naming the path.
-func countHunkPaths(diff, path string) int {
-	n := 0
+// countHunkPathsAll ports the hunks-mode fallback for every path at once:
+// one count per @@ header under the current file.
+func countHunkPathsAll(diff string) map[string]int {
+	counts := map[string]int{}
 	cur := ""
 	for ln := range strings.SplitSeq(diff, newline) {
 		if rest, ok := strings.CutPrefix(ln, diffGitPrefix); ok {
 			cur = setCurrent(rest)
 			continue
 		}
-		if strings.HasPrefix(ln, hunkPrefix) && cur == path {
-			n++
+		if strings.HasPrefix(ln, hunkPrefix) {
+			counts[cur]++
 		}
 	}
-	return n
-}
-
-// overviewAdded ports the added-mode scan: path plus added-line rows.
-func overviewAdded(dir string) [][2]string {
-	raw, err := os.ReadFile(dir + fullDiffSuffix)
-	if err != nil {
-		return nil
-	}
-	return scanAddedLines(string(raw))
+	return counts
 }
 
 // scanAddedLines collects the added content lines with their file.
