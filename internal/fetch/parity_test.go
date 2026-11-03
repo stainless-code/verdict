@@ -239,6 +239,7 @@ func seedBase(t *testing.T, dir string, controls map[string]string) string {
 	t.Helper()
 	runGit(t, dir, "init", "-q", "-b", "main")
 	runGit(t, dir, "config", "commit.gpgsign", "false")
+	runGit(t, dir, "config", "core.autocrlf", "false") // Windows runners default to true and warn on stderr
 	for name, content := range controls {
 		writeFile(t, dir, name, content)
 	}
@@ -293,6 +294,7 @@ func gitSetup(files map[string]string) func(t *testing.T, dir, home string) {
 		runGit(t, dir, "config", "user.email", "parity@example.invalid")
 		runGit(t, dir, "config", "user.name", "parity")
 		runGit(t, dir, "config", "commit.gpgsign", "false")
+		runGit(t, dir, "config", "core.autocrlf", "false")
 		n := 0
 		for name, content := range files {
 			writeFile(t, dir, name, content)
@@ -1143,6 +1145,7 @@ func TestFetchParityAzureHappy(t *testing.T) {
 		runGit(t, remote, "init", "-q", "-b", "main")
 		runGit(t, remote, "config", "user.email", "parity@example.invalid")
 		runGit(t, remote, "config", "user.name", "parity")
+		runGit(t, remote, "config", "core.autocrlf", "false")
 		writeFile(t, remote, "a.txt", "one\n")
 		runGit(t, remote, "add", "a.txt")
 		runGit(t, remote, "commit", "-qm", "one")
