@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -195,11 +195,10 @@ func prPaths(m map[string]any) []string {
 
 // countHunkLines ports `{ grep '^@@' ...; } | wc -l`.
 func countHunkLines(fullDiff string) int {
+	sections := hunks.Files(readOptional(fullDiff))
 	n := 0
-	for _, line := range splitLines(readOptional(fullDiff)) {
-		if strings.HasPrefix(line, "@@") {
-			n++
-		}
+	for i := range sections {
+		n += sections[i].HunkMarks
 	}
 	return n
 }

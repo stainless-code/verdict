@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -157,13 +158,15 @@ func chunkIndex(plan []chunkEntry) map[string]int {
 }
 
 // sliceLines ports the awk slice: diff lines dealt into per-chunk runs,
-// switching runs on header lines the plan knows.
+// switching runs on header lines the plan knows. It stays line-based (not
+// section-based) so pre-header lines keep their chunk.
 func sliceLines(raw string, chunkOf map[string]int, n int) [][]string {
 	byChunk := make([][]string, n)
 	current := 0
 	for _, line := range splitLines(raw) {
-		if strings.HasPrefix(line, "diff --git ") {
-			if idx, ok := chunkOf[diffFilePath(line)]; ok && idx != current {
+		if _, isHeader := strings.CutPrefix(line, "diff --git "); isHeader {
+			_, path := hunks.HeaderPaths(line)
+			if idx, ok := chunkOf[path]; ok && idx != current {
 				current = idx
 			}
 		}
@@ -223,21 +226,21 @@ func writeChunkFiles(dir, cdir string, i, n int, ch chunkEntry) error {
 func chunkHeaderLines(path string) []string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return []string{"(no diff headers?)"}
+		return []string{noChunkHeaders}
 	}
-	var out []string
-	n := 0
-	for _, line := range splitLines(string(raw)) {
-		n++
-		if strings.HasPrefix(line, "diff --git ") {
-			out = append(out, fmt.Sprintf("%d:%s", n, line))
-		}
+	sections := hunks.Files(string(raw))
+	out := make([]string, 0, len(sections))
+	for i := range sections {
+		out = append(out, sections[i].HeaderIndex())
 	}
 	if len(out) == 0 {
-		return []string{"(no diff headers?)"}
+		return []string{noChunkHeaders}
 	}
 	return out
 }
+
+// noChunkHeaders is the per-chunk header-index fallback.
+const noChunkHeaders = "(no diff headers?)"
 
 // dirBase ports `$(basename "$dir")`.
 func dirBase(dir string) string {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -194,45 +195,19 @@ type fileSlice struct {
 	size int64
 }
 
-// chunkFileTable ports chunk_file_table: per-file byte sizes in diff
-// order, where each header line counts its own trailing newline.
+// chunkFileTable ports chunk_file_table: per-file byte sizes in diff order,
+// where each header line counts its own trailing newline.
 func chunkFileTable(fullDiff string) []fileSlice {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
 		return nil
 	}
-	var out []fileSlice
-	var cur string
-	var size int64
-	var started bool
-	flush := func() {
-		if started {
-			out = append(out, fileSlice{size: size, path: cur})
-		}
+	sections := hunks.Files(string(raw))
+	out := make([]fileSlice, 0, len(sections))
+	for i := range sections {
+		out = append(out, fileSlice{path: sections[i].Path, size: sections[i].Size})
 	}
-	// The shell awk prints the pending slice BEFORE counting the new
-	// header line; a final unterminated line still counts its +1.
-	for _, line := range splitLines(string(raw)) {
-		if strings.HasPrefix(line, "diff --git ") {
-			flush()
-			cur = diffFilePath(line)
-			size = int64(len(line)) + 1
-			started = true
-			continue
-		}
-		size += int64(len(line)) + 1
-	}
-	flush()
 	return out
-}
-
-// diffFilePath ports the awk `sub(/.* b\//, "", ...)` file extraction: the
-// path after the last " b/" marker (quoted paths stay quoted).
-func diffFilePath(header string) string {
-	if _, after, ok := strings.CutLast(header, " b/"); ok {
-		return after
-	}
-	return header
 }
 
 // chunkPlanOK ports chunk_plan_ok: every file slice fits the cap.

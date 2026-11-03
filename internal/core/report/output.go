@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -364,14 +365,12 @@ func addStr(v any) string {
 	return jq.Str(v)
 }
 
-// diffFileLines strips diff headers to b-side paths.
+// diffFileLines strips the diff's sections to their b-side paths.
 func diffFileLines(diff string) string {
-	var lines []string
-	for ln := range strings.SplitSeq(diff, newline) {
-		if !strings.HasPrefix(ln, diffGitPrefix) {
-			continue
-		}
-		lines = append(lines, setCurrent(strings.TrimPrefix(ln, diffGitPrefix)))
+	sections := hunks.Files(diff)
+	lines := make([]string, 0, len(sections))
+	for i := range sections {
+		lines = append(lines, sections[i].Path)
 	}
 	return strings.Join(lines, newline)
 }

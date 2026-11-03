@@ -325,27 +325,15 @@ func TestSensPathReasons(t *testing.T) {
 	}
 }
 
-// TestParseDiffHeader exercises the shared quote/space-safe header parser:
-// unquoted spaces and C-quoted unicode must yield the real paths so the
-// sensitive manifest and the hunk index agree.
-func TestParseDiffHeader(t *testing.T) {
+// TestSensAllHitsQuotedHeader proves the sensitive section walk reads
+// headers through the shared quote/space-safe parser: a C-quoted file with
+// spaces still flags under its decoded path.
+func TestSensAllHitsQuotedHeader(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name, header, old, new string
-	}{
-		{"plain", "diff --git a/old.txt b/new.txt", "old.txt", "new.txt"},
-		{"quoted spaces", `diff --git "a/my old.txt" "b/my new.txt"`, "my old.txt", "my new.txt"},
-		{"unquoted spaces", "diff --git a/my file.txt b/my file.txt", "my file.txt", "my file.txt"},
-		{"quoted unicode", `diff --git "a/h\303\251llo.txt" "b/h\303\251llo.txt"`, "héllo.txt", "héllo.txt"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			oldP, newP := parseDiffHeader(tt.header)
-			if oldP != tt.old || newP != tt.new {
-				t.Fatalf("parseDiffHeader(%q) = %q %q, want %q %q", tt.header, oldP, newP, tt.old, tt.new)
-			}
-		})
+	raw := "diff --git \"a/my key.pem\" \"b/my key.pem\"\n@@ -1 +1 @@\n+x\n"
+	hits := sensAllHits(raw, "")
+	if len(hits) != 2 || hits[0].path != "my key.pem" || hits[1].path != "my key.pem" {
+		t.Fatalf("sensAllHits = %v; want both sides of my key.pem", hits)
 	}
 }
 
@@ -395,14 +383,6 @@ func TestLocalSlug(t *testing.T) {
 	}
 	if !readcommon.IsDigits("4351") || readcommon.IsDigits("43a1") || readcommon.IsDigits("") {
 		t.Fatal("IsDigits wrong")
-	}
-}
-
-// TestDiffFilePath exercises the fetch helper.
-func TestDiffFilePath(t *testing.T) {
-	t.Parallel()
-	if got := diffFilePath("diff --git a/aa b/bb b/b"); got != "b" {
-		t.Fatalf("greedy path = %q", got)
 	}
 }
 

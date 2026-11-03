@@ -59,8 +59,6 @@ const (
 	// Sig-resolution outcomes.
 	sigNone = "NONE"
 	sigMany = "MANY"
-	// gitBPrefix is the " b/" separator in `diff --git` lines.
-	gitBPrefix = " b/"
 	// chunkHunksSuffix is the derived per-chunk snapshot filename.
 	chunkHunksSuffix = "/.chunk-hunks.tsv"
 	// revalidatorForced is the actor tag for forced revalidation.

@@ -25,22 +25,13 @@ func (h Hunk) Row() string {
 	return h.File + "\t" + h.Side + "\t" + strconv.Itoa(h.Start) + "\t" + strconv.Itoa(h.End) + "\n"
 }
 
-// Parse indexes diffText the way build_hunks_tsv's awk does: `diff --git`
-// headers name the file through the shared quote/space-safe parser, `rename
-// to` headers rename it, and `@@` headers contribute OLD/NEW ranges.
-// Zero-count sides contribute nothing.
+// Parse indexes diffText the way build_hunks_tsv's awk does: every section's
+// OLD/NEW ranges, flattened. Zero-count sides contribute nothing.
 func Parse(diffText string) []Hunk {
+	files := Files(diffText)
 	var out []Hunk
-	file := ""
-	for ln := range strings.SplitSeq(diffText, "\n") {
-		switch {
-		case strings.HasPrefix(ln, "diff --git "):
-			_, file = HeaderPaths(ln)
-		case strings.HasPrefix(ln, "rename to "):
-			file = UnquotePath(strings.TrimPrefix(ln, "rename to "))
-		case strings.HasPrefix(ln, "@@ "):
-			out = append(out, hunkRows(file, ln)...)
-		}
+	for i := range files {
+		out = append(out, files[i].Hunks...)
 	}
 	return out
 }

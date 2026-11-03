@@ -90,13 +90,13 @@ type sensHit struct {
 // sensEmitSection ports sens_emit_section: filename/extension reasons for
 // the section's old/new paths plus the content reason on the new path when
 // an added line carries a secret shape.
-func sensEmitSection(lines []string, first, last int) []sensHit {
+func sensEmitSection(lines []string, f *hunks.File, last int) []sensHit {
 	var out []sensHit
-	if first < 1 || first > len(lines) {
+	if f.StartLine < 1 || f.StartLine > len(lines) {
 		return nil
 	}
-	oldP, newP := parseDiffHeader(lines[first-1])
-	for _, p := range []string{oldP, newP} {
+	first, newP := f.StartLine, f.Path
+	for _, p := range []string{f.OldPath, newP} {
 		out = append(out, sensPathHits(p)...)
 	}
 	if last >= first {
@@ -149,24 +149,6 @@ func sensExtraHits(extra string) []sensHit {
 	return hits
 }
 
-// sensSectionStarts ports the section scan: 1-based header line numbers.
-func sensSectionStarts(lines []string) []int {
-	var starts []int
-	for i, l := range lines {
-		if strings.HasPrefix(l, "diff --git ") {
-			starts = append(starts, i+1)
-		}
-	}
-	return starts
-}
-
-// parseDiffHeader delegates the header parse to the shared quote/space-safe
-// parser used by internal/hunks, so the sensitive manifest and the anchor
-// index agree on quoted, spaced, and renamed paths.
-func parseDiffHeader(hline string) (oldPath, newPath string) {
-	return hunks.HeaderPaths(hline)
-}
-
 // writeSensitiveManifest ports write_sensitive_manifest: the advisory
 // flagged-path list with a stderr warning naming the first few. No hits:
 // no file, no warning.
@@ -202,15 +184,13 @@ func writeSensitiveManifest(r *session, dir, extra string) *core.RefusalError {
 func sensAllHits(raw, extra string) []sensHit {
 	lines := splitLines(raw)
 	hits := sensExtraHits(extra)
-	var prev int
-	for _, start := range sensSectionStarts(lines) {
-		if prev != 0 && start > prev {
-			hits = append(hits, sensEmitSection(lines, prev, start-1)...)
+	sections := hunks.Files(raw)
+	last := countNewlines(raw)
+	for i := range sections {
+		if i+1 < len(sections) {
+			last = sections[i+1].StartLine - 1
 		}
-		prev = start
-	}
-	if prev != 0 {
-		hits = append(hits, sensEmitSection(lines, prev, countNewlines(raw))...)
+		hits = append(hits, sensEmitSection(lines, &sections[i], last)...)
 	}
 	return hits
 }

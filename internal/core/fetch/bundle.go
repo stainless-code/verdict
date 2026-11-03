@@ -3,7 +3,6 @@ package fetchcore
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // buildHunksTSV ports build_hunks_tsv via the shared hunk index: identical
@@ -48,39 +48,17 @@ func diffFiles(fullDiff, dir string) ([]string, error) {
 	return files, nil
 }
 
-// diffHunkFiles ports the header/hunk scan: each header flushes the
-// previous path when hunks followed it (the shell's grep -B pipeline).
+// diffHunkFiles ports the header/hunk scan: the paths whose section carries
+// a hunk line, in diff order (the shell's grep -B pipeline).
 func diffHunkFiles(raw string) []string {
-	h := &hunkScan{}
-	for _, line := range splitLines(raw) {
-		h.visit(line)
-	}
-	if h.current != "" && h.has {
-		h.files = append(h.files, h.current)
-	}
-	return h.files
-}
-
-// hunkScan carries the header/hunk scan state across lines.
-type hunkScan struct {
-	current string
-	files   []string
-	has     bool
-}
-
-// visit feeds one diff line through the scan: a header flushes the
-// previous path when hunks followed it, and a hunk line arms the flag.
-func (h *hunkScan) visit(line string) {
-	if strings.HasPrefix(line, "diff --git ") {
-		if h.current != "" && h.has {
-			h.files = append(h.files, h.current)
+	sections := hunks.Files(raw)
+	var files []string
+	for i := range sections {
+		if sections[i].Path != "" && sections[i].HunkMarks > 0 {
+			files = append(files, sections[i].Path)
 		}
-		h.current, h.has = diffFilePath(line), false
-		return
 	}
-	if strings.HasPrefix(line, "@@") {
-		h.has = true
-	}
+	return files
 }
 
 // dedupeSorted drops adjacent duplicates from a sorted slice.
@@ -174,18 +152,15 @@ func prFilePaths(prJSON string) []string {
 func diffHeaderIndex(fullDiff string) string {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return "(no diff headers — empty diff?)\n"
+		return noDiffHeaders
 	}
+	sections := hunks.Files(string(raw))
 	var sb strings.Builder
-	n := 0
-	for _, line := range splitLines(string(raw)) {
-		n++
-		if strings.HasPrefix(line, "diff --git ") {
-			fmt.Fprintf(&sb, "%d:%s\n", n, line)
-		}
+	for i := range sections {
+		sb.WriteString(sections[i].HeaderIndex() + newline)
 	}
 	if sb.Len() == 0 {
-		return "(no diff headers — empty diff?)\n"
+		return noDiffHeaders
 	}
 	return sb.String()
 }
@@ -319,61 +294,6 @@ func ensureStore(dir string) error {
 	return atomic.WriteFile(dir+"/store.json", []byte("{\n  \"schema_version\": \"1\"\n}\n"))
 }
 
-// role patterns, mirroring roles_for_paths.
-var (
-	roleTestRe       = regexp.MustCompile(`(^|/)(test|tests|__tests__|e2e|spec)(s)?/`)
-	roleTestBaseRe   = regexp.MustCompile(`^(test_|spec_)`)
-	roleTestExtRe    = regexp.MustCompile(`[._](test|spec)\.`)
-	roleDocsBaseRe   = regexp.MustCompile(`\.md$|\.txt$|^LICENSE`)
-	roleConfigBaseRe = regexp.MustCompile(`^(package\.json|tsconfig.*|Dockerfile.*|Makefile|CMakeLists\.txt|pom\.xml|` +
-		`pyproject\.toml|go\.mod|go\.sum|Cargo\.toml|Gemfile)`)
-	roleConfigRcRe  = regexp.MustCompile(`^\..*rc`)
-	roleConfigExtRe = regexp.MustCompile(`\.(yml|yaml|toml)$`)
-)
-
-// pathRole ports the roles_for_paths role function.
-func pathRole(path string) string {
-	base := path
-	if _, after, ok := strings.CutLast(path, pathSep); ok {
-		base = after
-	}
-	switch {
-	case roleTestRe.MatchString(path) || roleTestBaseRe.MatchString(base) || roleTestExtRe.MatchString(base):
-		return "test"
-	case isGeneratedPath(path, base):
-		return "generated"
-	case roleDocsBaseRe.MatchString(base) || strings.HasPrefix(path, "docs/"):
-		return "docs"
-	case roleConfigBaseRe.MatchString(base) || roleConfigRcRe.MatchString(base) || roleConfigExtRe.MatchString(base):
-		return "config"
-	default:
-		return keySource
-	}
-}
-
-// generatedSubstrings lists the generated-path literal markers.
-var generatedSubstrings = []string{
-	"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
-	"Cargo.lock", "Gemfile.lock", "poetry.lock", ".min.js", ".min.css",
-	"__snapshots__/", ".snap", ".pb.go", ".g.dart", ".generated.",
-}
-
-// isGeneratedPath ports the generated branch, including the start-anchored
-// dist/build/vendor prefix.
-func isGeneratedPath(path, base string) bool {
-	for _, sub := range generatedSubstrings {
-		if strings.Contains(path, sub) {
-			return true
-		}
-	}
-	for _, prefix := range []string{"dist/", "build/", "vendor/"} {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
-	}
-	return strings.HasSuffix(base, ".snap")
-}
-
 // rolesForPaths ports roles_for_paths: grouped triage roles over the
 // newline-separated path list. The shell pipelines through `sort` (byte
 // order under LC_ALL=C); roles sort by group then path via the same key.
@@ -386,7 +306,7 @@ type roleRow struct {
 func rolesForPaths(paths []string) string {
 	rows := make([]roleRow, len(paths))
 	for i, p := range paths {
-		rows[i] = roleRow{role: pathRole(p), path: p}
+		rows[i] = roleRow{role: readcommon.PathRole(p), path: p}
 	}
 	slices.SortFunc(rows, compareRoleRows)
 	w := &roleWriter{first: true}
@@ -442,10 +362,9 @@ func rolesTextEmpty(paths []string) string {
 }
 
 // splitLines ports the shell line iteration (awk/grep/sed), yielding one
-// entry per input line.
-// newline, dropping only the final empty field of a newline-terminated
-// input. Carriage returns stay (unlike [strings.Lines]), and an empty input
-// yields no lines.
+// entry per input line, dropping only the final empty field of a
+// newline-terminated input. Carriage returns stay (unlike [strings.Lines]),
+// and an empty input yields no lines.
 func splitLines(s string) []string {
 	if s == "" {
 		return nil
@@ -456,6 +375,9 @@ func splitLines(s string) []string {
 	}
 	return parts
 }
+
+// noDiffHeaders is the toc header-index fallback for a diff with no headers.
+const noDiffHeaders = "(no diff headers — empty diff?)\n"
 
 // countNewlines ports `wc -l`: the number of newline bytes.
 func countNewlines(s string) int {

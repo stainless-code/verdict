@@ -938,16 +938,10 @@ func (st *state) autoReopen() {
 
 // touchedPaths parses the incremental diff's touched file set.
 func touchedPaths(raw string) map[string]bool {
+	sections := hunks.Files(raw)
 	files := map[string]bool{}
-	for ln := range strings.SplitSeq(raw, newline) {
-		if !strings.HasPrefix(ln, "diff --git ") {
-			continue
-		}
-		rest := strings.TrimPrefix(ln, "diff --git ")
-		if _, after, ok := strings.CutLast(rest, gitBPrefix); ok {
-			rest = after
-		}
-		files[rest] = true
+	for i := range sections {
+		files[sections[i].Path] = true
 	}
 	return files
 }

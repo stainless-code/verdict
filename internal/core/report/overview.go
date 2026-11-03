@@ -2,10 +2,10 @@ package reportcore
 
 import (
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -26,7 +26,7 @@ func renderOverview(st *state) string {
 	paths := in.paths(st.dir)
 	roles := overviewRoles(st.dir, paths)
 	rows := overviewFileRows(paths, roles, in.hunkCounts())
-	edges := overviewEdges(rows, scanAddedLines(in.diff))
+	edges := overviewEdges(rows, in.addedLines())
 	lines := overviewTableLines(rows)
 	lines = append(lines, overviewTopologyLines(st, rows, edges)...)
 	return strings.Join(lines, newline)
@@ -52,16 +52,19 @@ func overviewGate(st *state) (show, forced bool) {
 // of re-opening the same files per row.
 type overviewInputs struct {
 	diff     string
-	hasDiff  bool
 	hunksTSV map[string]int
+	files    []hunks.File
+	hasDiff  bool
 	hasTSV   bool
 }
 
-// loadOverviewInputs reads the diff and the hunks.tsv snapshot once.
+// loadOverviewInputs reads the diff and the hunks.tsv snapshot once, and
+// indexes the diff's sections once for every derived column.
 func loadOverviewInputs(dir string) *overviewInputs {
 	in := &overviewInputs{}
 	if raw, err := os.ReadFile(dir + fullDiffSuffix); err == nil {
 		in.diff, in.hasDiff = string(raw), true
+		in.files = hunks.Files(in.diff)
 	}
 	in.hunksTSV, in.hasTSV = overviewHunkCounts(dir + hunksTSVSuffix)
 	return in
@@ -82,7 +85,7 @@ func (in *overviewInputs) fileCount(dir string) int {
 			return n
 		}
 	}
-	return countDiffHeaders(in.diff)
+	return len(in.files)
 }
 
 // paths ports the paths.tsv build: PR.json files when the record names any,
@@ -96,7 +99,7 @@ func (in *overviewInputs) paths(dir string) []overviewPath {
 	if !in.hasDiff {
 		return nil
 	}
-	return scanFiles(in.diff)
+	return pathsFromFiles(in.files)
 }
 
 // hunkCounts resolves the table's Hunks column for every path at once:
@@ -105,7 +108,26 @@ func (in *overviewInputs) hunkCounts() map[string]int {
 	if in.hasTSV {
 		return in.hunksTSV
 	}
-	return countHunkPathsAll(in.diff)
+	counts := make(map[string]int, len(in.files))
+	for i := range in.files {
+		counts[in.files[i].Path] += in.files[i].HunkCount
+	}
+	return counts
+}
+
+// addedLines flattens the sections' added content lines into topology rows.
+func (in *overviewInputs) addedLines() [][2]string {
+	var rows [][2]string
+	for i := range in.files {
+		f := &in.files[i]
+		if f.Path == "" {
+			continue
+		}
+		for _, ln := range f.AddedLines {
+			rows = append(rows, [2]string{f.Path, ln})
+		}
+	}
+	return rows
 }
 
 // overviewFileRows numbers the path rows and attaches roles and hunk counts.
@@ -114,7 +136,7 @@ func overviewFileRows(paths []overviewPath, roles map[string]string, hunksByPath
 	for i, p := range paths {
 		role := roles[p.path]
 		if role == "" {
-			role = pathRole(p.path)
+			role = readcommon.PathRole(p.path)
 		}
 		rows = append(rows, fileRowShape{
 			id:    "F" + strconv.Itoa(i+1),
@@ -245,17 +267,6 @@ func numericFilesLength(files any) (int, bool) {
 		f = -f
 	}
 	return int(f), true
-}
-
-// countDiffHeaders counts `diff --git ` header lines.
-func countDiffHeaders(diff string) int {
-	n := 0
-	for ln := range strings.SplitSeq(diff, newline) {
-		if strings.HasPrefix(ln, diffGitPrefix) {
-			n++
-		}
-	}
-	return n
 }
 
 // overviewPath is one paths.tsv row.
@@ -393,103 +404,6 @@ func digitsOrZero(s string) int {
 	return n
 }
 
-// scanAccum gathers the scan.awk files mode: ordered unique paths with
-// added/removed line counts.
-type scanAccum struct {
-	cur   string
-	seen  map[string]bool
-	adds  map[string]int
-	dels  map[string]int
-	order []string
-}
-
-// scanFiles ports the scan.awk files mode: ordered unique paths with
-// added/removed line counts.
-func scanFiles(diff string) []overviewPath {
-	acc := scanAccum{seen: map[string]bool{}, adds: map[string]int{}, dels: map[string]int{}}
-	for ln := range strings.SplitSeq(diff, newline) {
-		acc.visit(ln)
-	}
-	rows := make([]overviewPath, 0, len(acc.order))
-	for _, path := range acc.order {
-		rows = append(rows, overviewPath{path: path, adds: acc.adds[path], dels: acc.dels[path]})
-	}
-	return rows
-}
-
-// visit consumes one diff line: headers switch the current file, content
-// lines count under it.
-func (a *scanAccum) visit(ln string) {
-	if rest, ok := strings.CutPrefix(ln, diffGitPrefix); ok {
-		a.setFile(rest)
-		return
-	}
-	a.countLine(ln)
-}
-
-// setFile ports the scan.awk setcur call: the header names the current file
-// and first sightings join the order.
-func (a *scanAccum) setFile(hdr string) {
-	a.cur = setCurrent(hdr)
-	if a.cur != "" && !a.seen[a.cur] {
-		a.seen[a.cur] = true
-		a.order = append(a.order, a.cur)
-	}
-}
-
-// countLine counts one content line under the current file.
-func (a *scanAccum) countLine(ln string) {
-	if a.cur == "" {
-		return
-	}
-	if isAddedLine(ln) {
-		a.adds[a.cur]++
-	} else if isDeletedLine(ln) {
-		a.dels[a.cur]++
-	}
-}
-
-// isAddedLine reports whether ln is an added content line (not the +++
-// header).
-func isAddedLine(ln string) bool {
-	return strings.HasPrefix(ln, diffPlus) && !strings.HasPrefix(ln, diffPlusPlus)
-}
-
-// isDeletedLine reports whether ln is a removed content line (not the ---
-// header).
-func isDeletedLine(ln string) bool {
-	return strings.HasPrefix(ln, diffMinus) && !strings.HasPrefix(ln, diffMinusMinus)
-}
-
-// setCurrent ports the scan.awk setcur header parse: quoted headers
-// unquote the same way, otherwise the b-side wins.
-func setCurrent(hdr string) string {
-	if rest, ok := strings.CutPrefix(hdr, quoteMark); ok {
-		t2 := afterFirst(rest, quoteMark)
-		cur := afterFirst(t2, quoteMark)
-		cur = strings.TrimSuffix(cur, quoteMark)
-		return strings.TrimPrefix(cur, bSlash)
-	}
-	if _, after, ok := strings.Cut(hdr, bSpace); ok {
-		return after
-	}
-	cur := hdr
-	if _, after, ok := strings.Cut(hdr, spaceSep); ok {
-		cur = after
-	}
-	return strings.TrimPrefix(cur, bSlash)
-}
-
-// afterFirst returns the text after the first occurrence of sep, or the
-// whole string when sep is absent (mirroring awk's 1-based substr/index
-// behavior when index returns 0).
-func afterFirst(s, sep string) string {
-	if _, after, ok := strings.Cut(s, sep); ok {
-		return after
-	}
-	return s
-}
-
 // overviewRoles ports the roles.map build: roles.txt first, else the batch
 // roles_for_paths fallback over every path.
 func overviewRoles(dir string, paths []overviewPath) map[string]string {
@@ -502,7 +416,7 @@ func overviewRoles(dir string, paths []overviewPath) map[string]string {
 		return roles
 	}
 	for _, p := range paths {
-		roles[p.path] = pathRole(p.path)
+		roles[p.path] = readcommon.PathRole(p.path)
 	}
 	return roles
 }
@@ -530,62 +444,6 @@ func parseRolesLine(ln string, roles map[string]string, current string) string {
 	return current
 }
 
-// role patterns, mirroring roles_for_paths.
-var (
-	roleTestRe       = regexp.MustCompile(`(^|/)(test|tests|__tests__|e2e|spec)(s)?/`)
-	roleTestBaseRe   = regexp.MustCompile(`^(test_|spec_)`)
-	roleTestExtRe    = regexp.MustCompile(`[._](test|spec)\.`)
-	roleDocsBaseRe   = regexp.MustCompile(`\.md$|\.txt$|^LICENSE`)
-	roleConfigBaseRe = regexp.MustCompile(`^(package\.json|tsconfig.*|Dockerfile.*|` +
-		`Makefile|CMakeLists\.txt|pom\.xml|pyproject\.toml|go\.mod|go\.sum|` +
-		`Cargo\.toml|Gemfile)`)
-	roleConfigRcRe  = regexp.MustCompile(`^\..*rc`)
-	roleConfigExtRe = regexp.MustCompile(`\.(yml|yaml|toml)$`)
-)
-
-// pathRole ports the roles_for_paths role function.
-func pathRole(path string) string {
-	base := path
-	if _, after, ok := strings.CutLast(path, slashSep); ok {
-		base = after
-	}
-	switch {
-	case roleTestRe.MatchString(path) || roleTestBaseRe.MatchString(base) || roleTestExtRe.MatchString(base):
-		return "test"
-	case isGeneratedPath(path, base):
-		return "generated"
-	case roleDocsBaseRe.MatchString(base) || strings.HasPrefix(path, "docs/"):
-		return "docs"
-	case roleConfigBaseRe.MatchString(base) || roleConfigRcRe.MatchString(base) || roleConfigExtRe.MatchString(base):
-		return "config"
-	default:
-		return "source"
-	}
-}
-
-// generatedSubstrings lists the generated-path literal markers.
-var generatedSubstrings = []string{
-	"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
-	"Cargo.lock", "Gemfile.lock", "poetry.lock", ".min.js", ".min.css",
-	"__snapshots__/", ".snap", ".pb.go", ".g.dart", ".generated.",
-}
-
-// isGeneratedPath ports the generated branch, including the start-anchored
-// dist/build/vendor prefix.
-func isGeneratedPath(path, base string) bool {
-	for _, sub := range generatedSubstrings {
-		if strings.Contains(path, sub) {
-			return true
-		}
-	}
-	for _, prefix := range []string{"dist/", "build/", "vendor/"} {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
-	}
-	return strings.HasSuffix(base, ".snap")
-}
-
 // overviewHunkCounts ports the hunks.tsv build for every path in one read:
 // NEW-side rows per file. A non-regular snapshot reports not-ok, so rows
 // fall back to the diff scan.
@@ -607,46 +465,26 @@ func overviewHunkCounts(path string) (map[string]int, bool) {
 	return counts, true
 }
 
-// countHunkPathsAll ports the hunks-mode fallback for every path at once:
-// one count per @@ header under the current file.
-func countHunkPathsAll(diff string) map[string]int {
-	counts := map[string]int{}
-	cur := ""
-	for ln := range strings.SplitSeq(diff, newline) {
-		if rest, ok := strings.CutPrefix(ln, diffGitPrefix); ok {
-			cur = setCurrent(rest)
+// pathsFromFiles ports the paths fallback: first-seen path order with the
+// added/removed line counts of every section naming it.
+func pathsFromFiles(files []hunks.File) []overviewPath {
+	var rows []overviewPath
+	index := map[string]int{}
+	for i := range files {
+		f := &files[i]
+		if f.Path == "" {
 			continue
 		}
-		if strings.HasPrefix(ln, hunkPrefix) {
-			counts[cur]++
+		i, ok := index[f.Path]
+		if !ok {
+			i = len(rows)
+			index[f.Path] = i
+			rows = append(rows, overviewPath{path: f.Path})
 		}
-	}
-	return counts
-}
-
-// scanAddedLines collects the added content lines with their file.
-func scanAddedLines(diff string) [][2]string {
-	var rows [][2]string
-	cur := ""
-	for ln := range strings.SplitSeq(diff, newline) {
-		if rest, ok := strings.CutPrefix(ln, diffGitPrefix); ok {
-			cur = setCurrent(rest)
-			continue
-		}
-		if added, ok := addedLine(cur, ln); ok {
-			rows = append(rows, added)
-		}
+		rows[i].adds += f.Additions
+		rows[i].dels += f.Deletions
 	}
 	return rows
-}
-
-// addedLine ports the added-mode row test: an added content line under a
-// current file yields a path-plus-line row.
-func addedLine(cur, ln string) ([2]string, bool) {
-	if cur == "" || !isAddedLine(ln) {
-		return [2]string{}, false
-	}
-	return [2]string{cur, ln[1:]}, true
 }
 
 // overviewEdge is one topology edge.

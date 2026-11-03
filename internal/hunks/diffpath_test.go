@@ -25,6 +25,7 @@ func TestHeaderPaths(t *testing.T) {
 		{"quoted backslash", `diff --git "a/c\\temp" "b/c\\temp"`, `c\temp`, `c\temp`},
 		{"tab separator", "diff --git \"a/x y\"\t\"b/x y\"", "x y", "x y"},
 		{"deleted to dev null", "diff --git a/gone.txt b/gone.txt", "gone.txt", "gone.txt"},
+		{"greedy b-side", "diff --git a/aa b/bb b/b", "aa b/bb", "b"},
 		{"not a header", "--- a/x", "", ""},
 	}
 	for _, tt := range tests {

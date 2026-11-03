@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -115,44 +116,21 @@ func recallFiles(dir, extra string) []string {
 	return dedupeSorted(out)
 }
 
-// recallDiffFiles ports the diff b-side scan for usable paths.
+// recallDiffFiles ports the diff scan for usable b-side paths: the shared
+// section index, empty and /dev/null headers dropped.
 func recallDiffFiles(dir string) []string {
 	raw, err := os.ReadFile(dir + suffixFullDiff)
 	if err != nil {
 		return nil
 	}
+	sections := hunks.Files(string(raw))
 	var files []string
-	for _, line := range splitLines(string(raw)) {
-		if !strings.HasPrefix(line, "diff --git ") {
-			continue
-		}
-		if p := diffBSide(strings.TrimPrefix(line, "diff --git ")); p != "" && p != devNullPath {
+	for i := range sections {
+		if p := sections[i].Path; p != "" && p != devNullPath {
 			files = append(files, p)
 		}
 	}
 	return files
-}
-
-// diffBSide ports the recall b-side parse: quoted headers split on the
-// quote boundary, unquoted on the first space.
-func diffBSide(hdr string) string {
-	if strings.HasPrefix(hdr, dblQuote) {
-		rest := hdr
-		if idx := strings.Index(hdr[1:], dblQuote); idx >= 0 {
-			rest = hdr[idx+2:]
-		}
-		rest = strings.TrimPrefix(rest, " ")
-		rest = strings.TrimPrefix(rest, dblQuote)
-		if idx := strings.LastIndex(rest, dblQuote); idx >= 0 {
-			rest = rest[:idx]
-		}
-		return strings.TrimPrefix(rest, "b/")
-	}
-	rest := hdr
-	if _, after, ok := strings.Cut(hdr, " "); ok {
-		rest = after
-	}
-	return strings.TrimPrefix(rest, "b/")
 }
 
 // recallRule is one active KB row.
