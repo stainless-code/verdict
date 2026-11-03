@@ -30,12 +30,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before adopt completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "adopt"); done {
+		return code
 	}
 	resp, ref := adoptcore.Run(ctx, adoptRequest(r, req, from))
 	if ref != nil {
-		return refuse(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
 	fmt.Fprintln(r.Human, resp.Human)
@@ -47,19 +47,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-// refuse replays the service's accumulated warnings before rendering.
-func refuse(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	return r.Refuse(ref)
-}
-
 // adoptRequest injects the runner's clock and progress observer into the
 // typed service request.
 func adoptRequest(r *cli.Runner, req Request, from string) *adoptcore.Request {
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: runnerProgress{r}},
+		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
 		Repo:    req.Repo,
 		Pr:      req.Pr,
 	}
@@ -67,21 +59,6 @@ func adoptRequest(r *cli.Runner, req Request, from string) *adoptcore.Request {
 	out.ReadRequest = read
 	return out
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// frozen streams: warnings keep the `warn: ` prefix and accumulate.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFlags strips adopt's flags, reporting unknown ones.
 func parseFlags(r *cli.Runner, args []string) (string, int, bool) {

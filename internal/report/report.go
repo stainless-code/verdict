@@ -29,7 +29,6 @@ const (
 	kindInline     = "inline"
 	kindSection    = "section"
 	tierCritical   = "critical"
-	codeCanceled   = "canceled"
 	liveAuto       = "auto"
 	reportFilePerm = 0o600
 )
@@ -43,8 +42,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before report completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "report"); done {
+		return code
 	}
 	gate := flags.Check != "" || flags.Completeness
 	resp, ref := reportcore.Run(ctx, reportRequest(r, req, &flags))
@@ -117,25 +116,10 @@ func readRequest(r *cli.Runner, req Request) core.ReadRequest {
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
-	read.Progress = runnerProgress{r}
+	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{}
 	return read
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// streams: human lines to Human, warnings and diagnostics to Diag.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one human output line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn writes one warn: line and accumulates it like every CLI warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // writeArtifact writes one requested output file (0600: the report can
 // carry reviewed-diff excerpts).
@@ -187,7 +171,7 @@ func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
 		}
 		i += consumed
 	}
-	routeHuman(r)
+	r.RouteHuman()
 	return flags, 0, false
 }
 
@@ -265,15 +249,6 @@ func parseLiveFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, in
 			flags.Live)), true
 	}
 	return 2, 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }
 
 // orDefault mirrors ${2:-default}: a missing or empty value reads the

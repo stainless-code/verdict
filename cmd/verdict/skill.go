@@ -264,7 +264,7 @@ func skillVersion(root string) string {
 
 // skillRuntime builds the injected service runtime.
 func skillRuntime(r *cli.Runner, env map[string]string) *core.Runtime {
-	return &core.Runtime{Env: env, Now: r.Now, Progress: runnerProgress{r}}
+	return &core.Runtime{Env: env, Now: r.Now, Progress: cli.Progress{R: r}}
 }
 
 // skillInventoryData builds the name/version/files envelope data.

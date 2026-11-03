@@ -24,8 +24,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := parseFlags(r, args); done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before doctor completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "doctor"); done {
+		return code
 	}
 	now := runTime(r)
 	writeStamp(r, now)
@@ -84,29 +84,13 @@ func doctorRequest(r *cli.Runner, req Request, now time.Time) *doctorcore.Reques
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = func() time.Time { return now }
-	read.Progress = runnerProgress{r}
+	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{}
 	return &doctorcore.Request{
 		ReadRequest: read,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// frozen streams: human lines and diagnostics keep their streams,
-// warnings keep the `warn: ` prefix and accumulate.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFlags parses the doctor flags.
 func parseFlags(r *cli.Runner, args []string) (int, bool) {

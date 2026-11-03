@@ -37,15 +37,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if r.JSONMode {
 		r.Rentry += " --json"
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{
-			Code:    "canceled",
-			Message: "canceled before init completed",
-		}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "init"); done {
+		return code
 	}
 	resp, ref := initcore.Run(ctx, initRequest(r, req, flags))
 	if ref != nil {
-		return refuse(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
 	if resp.ExitCode != 0 {
@@ -57,14 +54,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		fmt.Fprintln(r.Out, env.MarshalPretty())
 	}
 	return cli.ExitOK
-}
-
-// refuse replays the service's accumulated warnings before rendering.
-func refuse(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	return r.Refuse(ref)
 }
 
 // initRequest injects the runner's clock, streams, stdin seam, and the
@@ -80,7 +69,7 @@ func initRequest(r *cli.Runner, req Request, f flags) *initcore.Request {
 	}
 	out.ReadRequest = core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 	}
@@ -97,22 +86,6 @@ func readAnswer() string {
 	}
 	return strings.TrimSuffix(line, "\n")
 }
-
-// runnerProgress routes core's warning observations onto the runner's frozen
-// diagnostic stream.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line (init writes its human bytes through
-// the request's writer, so this is only a fallback).
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // flags carries the parsed init options.
 type flags struct {

@@ -37,7 +37,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if code, done := checkCancelled(ctx, r); done {
+	if code, done := r.Canceled(ctx, "fetch"); done {
 		return code
 	}
 	if f.ShowPrompts && !r.JSONMode {
@@ -62,7 +62,7 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 	if done {
 		return code
 	}
-	if code, done := checkCancelled(ctx, r); done {
+	if code, done := r.Canceled(ctx, "fetch"); done {
 		return code
 	}
 	if f.ShowPrompts && !r.JSONMode {
@@ -84,7 +84,7 @@ func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequ
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root,
@@ -105,7 +105,7 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *cor
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root,
@@ -147,43 +147,10 @@ func refuseFetch(r *cli.Runner, err error) int {
 		return cli.ExitRefused
 	}
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-		return refuseTyped(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
 }
-
-// refuseTyped renders a typed fetch refusal with its warnings and split
-// candidates riding along.
-func refuseTyped(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Candidates != nil {
-		r.Candidates = ref.Candidates
-	}
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	if ref.Code == codeCanceled {
-		return r.RefuseExit(ref, cli.ExitBroke)
-	}
-	return r.Refuse(ref)
-}
-
-// codeCanceled names the cancel refusal the adapter exits 3 on.
-const codeCanceled = "canceled"
-
-// runnerProgress routes core's progress observations onto the runner's
-// streams: human lines to Human, warnings and diagnostics to Diag.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one human output line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn writes one warn: line and accumulates it like every CLI warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A trailing
 // value flag reads "" (the shell dies on the shift instead — a documented
@@ -299,15 +266,6 @@ func stashValue(args []string, i int) (string, int) {
 		return args[i+1], i + 1
 	}
 	return "0", i
-}
-
-// checkCancelled refuses when the context is already done.
-func checkCancelled(ctx context.Context, r *cli.Runner) (int, bool) {
-	if err := ctx.Err(); err != nil {
-		// GO-CLI-05: cancel kills the run with exit 3 and a JSON envelope.
-		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before fetch completed"}, cli.ExitBroke), true
-	}
-	return 0, false
 }
 
 // providerGitHub and flagChunk mirror the fetchcore spellings the usage

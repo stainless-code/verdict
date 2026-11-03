@@ -27,9 +27,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	routeHuman(r)
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before threads completed"}, cli.ExitBroke)
+	r.RouteHuman()
+	if code, done := r.Canceled(ctx, "threads"); done {
+		return code
 	}
 	resp, ref := fetchcore.RunThreads(ctx, threadsRequest(r, req, provider))
 	if ref != nil {
@@ -52,7 +52,7 @@ func threadsRequest(r *cli.Runner, req Request, provider string) *fetchcore.Thre
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
-	read.Progress = runnerProgress{r}
+	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 	return &fetchcore.ThreadsRequest{
 		ReadRequest: read,
@@ -83,29 +83,4 @@ func flagValue(args []string, i int) (string, int) {
 		return args[i+1], i + 1
 	}
 	return "", i
-}
-
-// runnerProgress routes core's progress observations onto the runner's frozen
-// streams: human lines and diagnostics keep their streams, warnings keep the
-// `warn: ` prefix and accumulate.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
-
-// routeHuman sends human progress to stderr in JSON mode.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }

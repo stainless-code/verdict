@@ -19,8 +19,8 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: "canceled before next completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "next"); done {
+		return code
 	}
 	resp, ref := reportcore.RunNext(ctx, &core.NextRequest{
 		ReadRequest: readRequest(r, req),

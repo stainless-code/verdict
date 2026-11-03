@@ -25,8 +25,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before ready completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "ready"); done {
+		return code
 	}
 	resp, ref := readycore.Run(ctx, readyRequest(r, req, check))
 	if ref != nil {
@@ -55,7 +55,7 @@ func readyRequest(r *cli.Runner, req Request, check bool) *readycore.Request {
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
-	read.Progress = runnerProgress{r}
+	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{}
 	return &readycore.Request{
 		ReadRequest: read,
@@ -63,22 +63,6 @@ func readyRequest(r *cli.Runner, req Request, check bool) *readycore.Request {
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// frozen streams: human lines and diagnostics keep their streams,
-// warnings keep the `warn: ` prefix and accumulate.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFlags parses the ready flags.
 func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {

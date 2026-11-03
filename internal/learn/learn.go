@@ -24,12 +24,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, _ map[string]string)
 		return code
 	}
 	appendRentry(r, &f)
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: codeCanceled, Message: msgCanceled}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "learn"); done {
+		return code
 	}
 	resp, ref := learncore.Run(ctx, learnRequest(r, &f))
 	if ref != nil {
-		return refuse(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
@@ -38,14 +38,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, _ map[string]string)
 		fmt.Fprintln(r.Out, env.MarshalPretty())
 	}
 	return cli.ExitOK
-}
-
-// refuse replays the service's accumulated warnings before rendering.
-func refuse(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	return r.Refuse(ref)
 }
 
 // learnRequest injects the runner's clock and progress observer into the
@@ -64,25 +56,10 @@ func learnRequest(r *cli.Runner, f *flags) *learncore.Request {
 		JSONMode:   r.JSONMode,
 	}
 	out.ReadRequest = core.ReadRequest{
-		Runtime: &core.Runtime{Now: r.Now, Progress: runnerProgress{r}},
+		Runtime: &core.Runtime{Now: r.Now, Progress: cli.Progress{R: r}},
 	}
 	return out
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// frozen streams.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // flags carries the parsed learn options.
 type flags struct {
@@ -174,10 +151,6 @@ const (
 	defaultProvenance = "manual"
 	// rigorPointed is the --rigor default.
 	rigorPointed = "pointed"
-	// codeCanceled names the cancel refusal the adapter exits 3 on.
-	codeCanceled = "canceled"
-	// msgCanceled is the frozen cancel message.
-	msgCanceled = "canceled before learn completed"
 	// usageFlags lists the accepted flags for the unknown-flag message.
 	usageFlags = "--rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json"
 )

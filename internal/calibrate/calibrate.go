@@ -26,8 +26,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before calibrate completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "calibrate"); done {
+		return code
 	}
 	if !st.probe && (len(st.specs) > 0 || st.judgeFile != "") {
 		return r.ReportUsage(&cli.UsageError{Message: "--judge and --judge-file need --probe (judgments only merge on a probe run)"})
@@ -53,7 +53,7 @@ func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.R
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
-	read.Progress = runnerProgress{r}
+	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{}
 	return &calibratecore.Request{
 		ReadRequest: read,
@@ -63,22 +63,6 @@ func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.R
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// frozen streams: human lines and diagnostics keep their streams,
-// warnings keep the `warn: ` prefix and accumulate.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // flagState carries the calibrate flag parse.
 type flagState struct {

@@ -12,6 +12,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -127,6 +128,58 @@ func (r *Runner) RefuseExit(err error, code int) int {
 		fmt.Fprintf(r.Diag, "re-enter: %s\n", r.Rentry)
 	}
 	return code
+}
+
+// Progress adapts a [Runner] to core.Progress for the thin verb adapters.
+// Every line reads the runner's *current* streams, so [Runner.RouteHuman]'s
+// swap stays effective no matter when the service writes.
+type Progress struct {
+	R *Runner
+}
+
+// Human writes one rendered human line to the runner's human stream.
+func (p Progress) Human(line string) { fmt.Fprintln(p.R.Human, line) }
+
+// Warn records and streams one warning through the runner.
+func (p Progress) Warn(msg string) { p.R.Warn(msg) }
+
+// Diag writes one raw diagnostic line to the runner's diagnostic stream.
+func (p Progress) Diag(line string) { fmt.Fprintln(p.R.Diag, line) }
+
+// RouteHuman sends human progress to stderr in JSON mode (stdout carries
+// exactly one envelope) and to stdout otherwise, mirroring json_redirect.
+func (r *Runner) RouteHuman() {
+	if r.JSONMode {
+		r.Human = r.Diag
+	} else {
+		r.Human = r.Out
+	}
+}
+
+// RefuseTyped replays a typed refusal's accumulated warnings and candidates,
+// then renders it: a cancel exits 3 (GO-CLI-05) and anything else exits 1. A
+// nil Warnings keeps what the adapter already collected.
+func (r *Runner) RefuseTyped(ref *RefusalError) int {
+	if ref.Candidates != nil {
+		r.Candidates = ref.Candidates
+	}
+	if ref.Warnings != nil {
+		r.Warnings = ref.Warnings
+	}
+	if ref.Code == CodeCanceled {
+		return r.RefuseExit(ref, ExitBroke)
+	}
+	return r.Refuse(ref)
+}
+
+// Canceled renders the cancellation refusal (GO-CLI-05, exit 3) when ctx is
+// already done, naming the verb in the frozen message; otherwise it reports
+// false so the caller continues.
+func (r *Runner) Canceled(ctx context.Context, verb string) (int, bool) {
+	if ctx.Err() == nil {
+		return 0, false
+	}
+	return r.RefuseExit(&RefusalError{Code: CodeCanceled, Message: "canceled before " + verb + " completed"}, ExitBroke), true
 }
 
 // refusalObject builds the envelope error object with the additive

@@ -13,6 +13,10 @@ const (
 // codeBadSettings names the refusal code for invalid settings files.
 const codeBadSettings = "bad-settings"
 
+// CodeCanceled names the cancellation refusal (GO-CLI-05). Every adapter
+// exits 3 on it so scripts can tell a cancel from a failed gate.
+const CodeCanceled = "canceled"
+
 // formatJSON is the JSON output format name.
 const formatJSON = core.FormatJSON
 

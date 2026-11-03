@@ -25,13 +25,12 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req Request) int
 		return code
 	}
 	r.Rentry = postRentry(req.Repo, req.Pr, f, r.JSONMode)
-	if err := ctx.Err(); err != nil {
-		// GO-CLI-05: cancel kills the run with exit 3 and a JSON envelope.
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before post completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "post"); done {
+		return code
 	}
 	resp, ref := postcore.Run(ctx, postRequest(r, req, f))
 	if ref != nil {
-		return refusePost(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
@@ -42,18 +41,6 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	return cli.ExitOK
 }
 
-// refusePost renders a post failure: warnings carry onto the runner, a
-// cancel exits 3 (scripts treat it as broke), anything else exits 1.
-func refusePost(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	if ref.Code == codeCanceled {
-		return r.RefuseExit(ref, cli.ExitBroke)
-	}
-	return r.Refuse(ref)
-}
-
 // postRequest builds the core post request from the runner and invocation:
 // the injected runtime (environment, clock, progress, and the production
 // split-stream commander), the render configuration, and the adapter-routed
@@ -62,7 +49,7 @@ func postRequest(r *cli.Runner, req Request, f core.PostFlags) *core.PostRequest
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root,

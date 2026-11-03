@@ -34,12 +34,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before verify completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "verify"); done {
+		return code
 	}
 	resp, ref := verifycore.Run(ctx, verifyRequest(r, req, timeoutS))
 	if ref != nil {
-		return refuseVerify(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
@@ -50,18 +50,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return 0
 }
 
-// refuseVerify renders a verify refusal: warnings carry onto the runner,
-// a cancel exits 3 (scripts treat it as broke), anything else exits 1.
-func refuseVerify(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	if ref.Code == "canceled" {
-		return r.RefuseExit(ref, cli.ExitBroke)
-	}
-	return r.Refuse(ref)
-}
-
 // verifyRequest builds the core request: the injected runtime (full process
 // environ snapshot for the child and redaction, the production watchdog,
 // the progress observer), the raw timeout string, and the JSON-mode flag
@@ -70,7 +58,7 @@ func verifyRequest(r *cli.Runner, req Request, timeoutS string) *core.VerifyRequ
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Watchdog{},
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root,
@@ -83,21 +71,6 @@ func verifyRequest(r *cli.Runner, req Request, timeoutS string) *core.VerifyRequ
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// streams: human lines to Human, warnings and diagnostics to Diag.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one human output line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn writes one warn: line and accumulates it like every CLI warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // defaultTimeoutS is the watchdog budget when --timeout is absent.
 const defaultTimeoutS = "300"

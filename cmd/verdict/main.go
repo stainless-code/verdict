@@ -105,7 +105,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		return code
 	}
 	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
-		routeHuman(r)
+		r.RouteHuman()
 		return r.Refuse(err)
 	}
 	return dispatch(cmd, r, repo, pr, root, env, forces, rest, stderr)
@@ -191,7 +191,7 @@ func dispatch(
 	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
 	forces *cli.GlobalForces, rest []string, stderr *os.File,
 ) int {
-	routeHuman(r)
+	r.RouteHuman()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer stop()
 	if h, ok := readVerbs[cmd]; ok {
@@ -313,7 +313,7 @@ func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(stri
 	prefs, ref := cli.ResolvePrefs(r, env, readFile)
 	if ref != nil {
 		r.Effective = cli.Defaults()
-		routeHuman(r)
+		r.RouteHuman()
 		return r.Refuse(ref), true
 	}
 	r.Effective = prefs.Effective
@@ -324,24 +324,14 @@ func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(stri
 func stripRunnerFlags(r *cli.Runner, args []string) ([]string, *cli.GlobalForces, int, bool) {
 	rest, forces, uerr, ref := cli.StripGlobal(args)
 	if uerr != nil {
-		routeHuman(r)
+		r.RouteHuman()
 		return nil, nil, r.ReportUsage(uerr), true
 	}
 	if ref != nil {
-		routeHuman(r)
+		r.RouteHuman()
 		return nil, nil, r.Refuse(ref), true
 	}
 	return rest, forces, 0, false
-}
-
-// routeHuman sends human progress to stderr in JSON mode (stdout carries
-// exactly one envelope) and to stdout otherwise, mirroring json_redirect.
-func routeHuman(r *cli.Runner) {
-	if r.JSONMode {
-		r.Human = r.Diag
-	} else {
-		r.Human = r.Out
-	}
 }
 
 // exeRoot resolves the checkout root the way the shell resolved its script

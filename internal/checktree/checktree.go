@@ -26,8 +26,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{Code: "canceled", Message: "canceled before check-tree completed"}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "check-tree"); done {
+		return code
 	}
 	resp, ref := checktreecore.Run(ctx, checktreeRequest(r, req, expect))
 	if ref != nil {
@@ -50,7 +50,7 @@ func checktreeRequest(r *cli.Runner, req Request, expect string) *checktreecore.
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
-	read.Progress = runnerProgress{r}
+	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{}
 	return &checktreecore.Request{
 		ReadRequest: read,
@@ -58,22 +58,6 @@ func checktreeRequest(r *cli.Runner, req Request, expect string) *checktreecore.
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
-
-// runnerProgress routes core's progress observations onto the runner's
-// frozen streams: human lines and diagnostics keep their streams,
-// warnings keep the `warn: ` prefix and accumulate.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // parseFlags parses the check-tree flags.
 func parseFlags(r *cli.Runner, args []string) (string, int, bool) {

@@ -82,7 +82,7 @@ func finishUpgrade(ctx context.Context, r *cli.Runner, env map[string]string, f 
 		r.Rentry += entryJSON
 	}
 	req := upgrade.Request{
-		Runtime:    &core.Runtime{Env: env, Now: r.Now, Progress: runnerProgress{r}},
+		Runtime:    &core.Runtime{Env: env, Now: r.Now, Progress: cli.Progress{R: r}},
 		Executable: "",
 		PinVersion: f.version,
 		DryRun:     f.dryRun,
@@ -123,7 +123,7 @@ func finishUninstall(ctx context.Context, r *cli.Runner, env map[string]string, 
 		r.Rentry += entryJSON
 	}
 	req := upgrade.Request{
-		Runtime:    &core.Runtime{Env: env, Now: r.Now, Progress: runnerProgress{r}},
+		Runtime:    &core.Runtime{Env: env, Now: r.Now, Progress: cli.Progress{R: r}},
 		DryRun:     f.dryRun,
 		RemovePath: f.removePath,
 		EnvSlice:   os.Environ(),
@@ -227,17 +227,3 @@ func writeUpgradeEnvelope(r *cli.Runner, verb string, data *jq.Obj) {
 		r.Warnings, data, nil)
 	fmt.Fprintln(r.Out, env.MarshalPretty())
 }
-
-// runnerProgress adapts cli.Runner to core.Progress.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human implements core.Progress.
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn implements core.Progress.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag implements core.Progress.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }

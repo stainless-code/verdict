@@ -38,15 +38,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if r.JSONMode {
 		r.Rentry += " --json"
 	}
-	if err := ctx.Err(); err != nil {
-		return r.RefuseExit(&cli.RefusalError{
-			Code:    "canceled",
-			Message: "canceled before fix completed",
-		}, cli.ExitBroke)
+	if code, done := r.Canceled(ctx, "fix"); done {
+		return code
 	}
 	resp, ref := fixcore.Run(ctx, fixRequest(r, req, flags))
 	if ref != nil {
-		return refuse(r, ref)
+		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
@@ -57,43 +54,19 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-// refuse replays the service's accumulated warnings before rendering.
-func refuse(r *cli.Runner, ref *core.RefusalError) int {
-	if ref.Warnings != nil {
-		r.Warnings = ref.Warnings
-	}
-	return r.Refuse(ref)
-}
-
 // fixRequest injects the runner's clock, progress observer, and the
 // production commander into the typed service request.
 func fixRequest(r *cli.Runner, req Request, f flags) *fixcore.Request {
 	out := &fixcore.Request{Sig: f.sig, Human: r.Human}
 	out.ReadRequest = core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: runnerProgress{r},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
 		Repo: req.Repo, Pr: req.Pr,
 	}
 	return out
 }
-
-// runnerProgress routes core's warning observations onto the runner's frozen
-// diagnostic stream.
-type runnerProgress struct {
-	r *cli.Runner
-}
-
-// Human writes one rendered human line (fix writes its human bytes through
-// the request's writer, so this is only a fallback).
-func (p runnerProgress) Human(line string) { fmt.Fprintln(p.r.Human, line) }
-
-// Warn records and streams one warning.
-func (p runnerProgress) Warn(msg string) { p.r.Warn(msg) }
-
-// Diag writes one raw diagnostic line.
-func (p runnerProgress) Diag(line string) { fmt.Fprintln(p.r.Diag, line) }
 
 // flags carries the parsed fix options.
 type flags struct {
