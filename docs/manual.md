@@ -182,10 +182,12 @@ whole store — plugins read it instead of sniffing shapes. `PR.json`/`reviews.j
 
 ### Bundle namespace (core files vs `x-*`)
 
-A bundle dir holds exactly the core-owned files (`PR.json`/`source.json`,
+A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `panel`,
-`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, `chunks/`
+`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, `sensitive.txt`,
+`kb-recall.json`, `cost.json`, `budget.json`, `fix.json`, `kb-grades.jsonl`,
+`controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
 `.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`).
@@ -317,10 +319,10 @@ control you use), then commit.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`skill` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
+non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
 counts, patch passthrough, optional `--output` markdown with machine-header markers,
 optional `--sarif` for scanners/CI). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
@@ -373,7 +375,9 @@ prompts verbatim, then the trust-boundary prologue, then one nonce fence
 per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
-byte-identical. Missing bundle files skip silently, but missing trusted
+byte-identical. It reads the trusted prompts from the current directory, so
+run it from the skill/checkout carrying `SKILL.md` and `prompts/`. Missing
+bundle files skip silently, but missing trusted
 prompt files fail loudly: no `prompts/system.md` refuses typed
 (`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
 without it is unsafe), while a missing `SKILL.md`, `prompts/review.md`, or
@@ -387,8 +391,8 @@ manifest-order chunk concat on chunked bundles under the same label),
 `<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
 `<<<END UNTRUSTED nonce=<same>>>`, open and close markers each on their own
 line (a missing trailing newline is added, never a content byte dropped).
-The nonce is 16 lowercase hex chars (64 bits) from `od -An -tx1 /dev/urandom`
-with a `$RANDOM` fallback, minted fresh per dump: text and `--json` dumps
+The nonce is 8 crypto-random bytes rendered as 16 lowercase hex characters
+(64 bits), minted fresh per dump: text and `--json` dumps
 from separate runs carry different nonces. Only a fence carrying exactly the
 prologue's nonce opens or closes a region — payload text shaped like a fence
 (wrong or missing nonce) stays inside as evidence, and `prompts/system.md`
@@ -498,8 +502,8 @@ verdict report owner/repo 123 --check critical --completeness || exit 1
 `verdict mcp` serves the review verbs as MCP tools over stdio: newline-delimited
 JSON-RPC 2.0 on stdin/stdout, one frame per line. There is no daemon, listener,
 HTTP/SSE mode, or remote auth: the process shares the host's credentials and
-exits when stdin closes. It is hidden from the review usage block (the usage
-bytes stay frozen) but `verdict mcp --help` documents it.
+exits when stdin closes. It is listed as experimental in the usage block, and
+`verdict mcp --help` documents it.
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
@@ -737,11 +741,10 @@ The prefs file ends env sprawl without forcing migration. Path:
 respected, `$schema` key carries a schema hint that is never fetched).
 Presentation keys only — CLI survey: the only presentation surfaces are the
 machine envelope (`--json`), file outputs (`--output`/`--sarif`), and the
-prompt-dump destination, so the file exposes exactly three namespaces:
+prompt-dump destination, so the file exposes exactly four namespaces:
 
 ```json
 {
-  "$schema": "https://github.com/stainless-code/verdict/blob/main/schemas/settings.schema.json",
   "output": { "format": "text" },
   "layout": { "compact": false },
   "color": { "mode": "auto" },
@@ -881,8 +884,8 @@ you stand).
   a target without a verdict receipt unless `--force`, never removes foreign
   files, never prompts, and makes no network call. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
-  `goose`, `qwen`, and `windsurf`; no flag targets the shared
-  `~/.agents/skills/verdict` slot.
+  `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
+  shared `~/.agents/skills/verdict` slot.
 
 ## Publish footer + attribution knobs
 
@@ -1083,29 +1086,12 @@ reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses lo
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —
 record predictions locally, settle them after the upgrade below.
 
-### Go implementation (experimental until 1.0)
+The shipped `verdict` is a single static Go binary: `make build` writes
+`bin/verdict`. There is no shell leg and no `VERDICT_IMPL`/`VERDICT_BIN`
+dispatch.
 
-`record`, `post`, `triage`, `adopt`, `fix`, `learn`, `init`,
-`verify`, `report`, `next`, `show`, `ready`, `trend`, `calibrate`, `doctor`,
-and `check-tree` can run from a compiled Go binary instead of the shell, with
-byte-identical envelopes, hints, and exits. It is opt-in and experimental
-until 1.0: the default stays shell, so nothing changes unless asked for.
-
-| Setting                                         | Meaning                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `VERDICT_IMPL` unset or `bash` (default)        | shell implementation (today's behavior)                           |
-| `VERDICT_IMPL=go`                               | dispatch the ported verbs to the Go binary (the rest stays shell) |
-| `VERDICT_BIN=<path>`                            | binary to dispatch to (wins over the default below)               |
-| `make build` (writes `bin/verdict`, gitignored) | the default binary when `VERDICT_BIN` is unset                    |
-
-`VERDICT_IMPL=go` with no binary at `VERDICT_BIN` (or `bin/verdict` by
-default) refuses typed `missing-go-binary` (exit 1) with a build hint —
-never a silent fallback to shell. Any other `VERDICT_IMPL` value is a usage
-error (exit 2). Only the ported verbs dispatch; the rest stay shell as later
-verbs follow the same switch when they port.
-
-Two `post` guards exist only in the Go implementation (graded by
-`evals/cases/post-go-guards.sh`): secondary rate limits (a 403/429 with a rate-limit signal) retry within
+Two `post` guards (graded by `evals/cases/post-go-guards.sh`): secondary rate
+limits (a 403/429 with a rate-limit signal) retry within
 bounds — honoring the `retry-after` hint or the reset marker, at most three
 attempts, never publishing twice — and review bodies past the 65,536-char
 hosting limit split into parts: the first review keeps the footer intact,
@@ -1120,7 +1106,7 @@ history event and re-resolves anchors against the PR hunks (unmatched paths land
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
-#### Isolated checkout (`--worktree`)
+### Isolated checkout (`--worktree`)
 
 `fetch-local --worktree` checks the review target into a temporary detached
 worktree under `.review/` and builds the bundle from that checkout instead of
@@ -1448,10 +1434,13 @@ verbs and features ship in the release changelog.
 The shapes agents write and operators parse are pinned in `schemas/`
 (draft 2020-12, shipped in the npm tarball): `review.schema.json`
 (agent-written input), `findings.schema.json` (the merged findings store),
-`cost.schema.json` (the self-reported spend record), `post.schema.json` and
-`record.schema.json` (completed post/record captures), and
-`envelope.schema.json` (the `--json` envelope plus the stable per-verb
-`data` for `report`, `post`, and `record`). `schemas/validate.sh` is the
+`cost.schema.json` (the self-reported spend record), `controls.schema.json`
+(the resolved base-owned controls snapshot), `usage.schema.json` (the
+explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
+`post.schema.json` and `record.schema.json` (completed post/record captures),
+and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
+`data` for `report`, `post`, `record`, and `show`, plus fetch's additive
+estimate). `schemas/validate.sh` is the
 offline checker (bash 3.2 + jq, no network — it implements only the keyword
 subset the schemas use, and fails loudly on anything outside it);
 `evals/cases/schema-contract.sh` asserts representative fixtures validate —
@@ -1464,6 +1453,5 @@ schemas alike; renames, tighter types, and newly required keys never happen
 without a version bump, and a bump ships only by operator decision. Who
 updates: the slice that changes what the script reads or writes updates the
 matching schema plus the schema-contract fixtures in the same commit, so the
-eval proves the new shape. The Go port inherits this contract and generates
-the schemas from its store types (go-port ticket 08); until then the shell
-read-paths are the source of truth.
+eval proves the new shape. The Go implementation is the source of truth;
+`make schemas` generates the published schemas from its store types.

@@ -9,7 +9,7 @@ GitHub I/O. No servers, no external services, no daemons.
 
 - **Evidence-graded findings.** Every finding carries an evidence rung (`said` → `reproduced`) plus severity. The tool labels unproven claims and never posts them as fact.
 - **Keep-biased machinery.** Partitioned anchor validation, stale-SHA and double-post guards, binding verdicts behind `--bind`. One bad anchor never fails a post.
-- **Machine-readable.** Every verb speaks `--json` envelopes. SARIF export for scanners and CI. A `calibrate` verb joins predictions against live ground truth.
+- **Machine-readable.** Every review verb speaks `--json` envelopes; `mcp` speaks JSON-RPC. SARIF export for scanners and CI. A `calibrate` verb joins predictions against live ground truth.
 - **No-PR reviews.** `fetch-local` bundles the worktree, `record` merges the findings store, `adopt` carries them into a PR fetch later. Same review, no GitHub object.
 - **Any model.** The invoker is the review model. Lenses can run cheaper. No model pins, no slugs.
 
@@ -102,6 +102,7 @@ and exposes the binary path:
 
 ```yaml
 - uses: stainless-code/verdict/setup-verdict@v1 # keep the tag pinned
+  id: verdict
   with:
     version: v1.2.3 # `latest` also works, but a pin is recommended
 - run: ${{ steps.verdict.outputs.path }} --version # or just `verdict`
@@ -113,8 +114,8 @@ checksum-only install with a warning). Outputs: `path` (absolute path to
 the installed binary) and `version` (installed version, leading `v`
 stripped). The binary is cached by version + OS + arch (pinned versions
 only; `latest` always re-resolves) and a second call with the same version
-reuses it without downloading. Set an id on the step
-(`id: verdict`) to read `steps.verdict.outputs.path`.
+reuses it without downloading. The `id: verdict` above is what makes
+`steps.verdict.outputs.path` resolve.
 
 The action lives in-repo at `setup-verdict/` so it versions with the
 installers it calls; a dedicated `stainless-code/setup-verdict` repo stays
@@ -229,14 +230,14 @@ verdict/
   prompts/            # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
   scripts/verdict     # POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
   scripts/verdict-complete.sh  # bash/zsh completion for verdict
-  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/skill
+  bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/skill/upgrade/uninstall/mcp
 ```
 
 ## Updating
 
 No auto-updater, by design (no network surprises from a review tool):
 
-- binary install → re-run the installer (or `verdict upgrade` when it ships),
+- binary install → re-run the installer (or `verdict upgrade`),
 - symlink install → `git pull` (links stay current; re-run `install-skill.sh`
   after renames),
 - registry install → `npx skills update` (or re-run `npx skills add stainless-code/verdict`),
