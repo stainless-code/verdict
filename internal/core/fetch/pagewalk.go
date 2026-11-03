@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -28,21 +29,94 @@ const (
 func pageWalk(
 	ctx context.Context, first string, maxPages int,
 	fetch func(context.Context, string) ([]any, string, error),
-) (items []any, truncated bool, err error) {
+) (items []any, truncated bool, pages int, err error) {
 	seen := make(map[string]bool, maxPages)
 	for cursor := first; cursor != ""; {
 		if seen[cursor] || len(seen) == maxPages {
-			return items, true, nil
+			return items, true, pages, nil
 		}
 		seen[cursor] = true
+		pages++
 		page, next, ferr := fetch(ctx, cursor)
 		if ferr != nil {
-			return items, true, ferr
+			return items, true, pages, ferr
 		}
 		items = append(items, page...)
 		cursor = next
 	}
-	return items, false, nil
+	return items, false, pages, nil
+}
+
+// indexPager carries one index-paged list read: the 1-based page fetch and
+// the first page's raw body (kept so a complete single-page read stays
+// byte-identical to the host response).
+type indexPager struct {
+	fetch    func(context.Context, int) (string, error)
+	rawFirst string
+	pageSize int
+}
+
+// indexPageWalk walks a 1-based index endpoint until a short page, the page
+// cap, or a failed page. A complete single page returns verbatim; anything
+// else re-renders the concatenation.
+func indexPageWalk(
+	ctx context.Context, pageSize int, fetch func(context.Context, int) (string, error),
+) (body string, truncated bool, err error) {
+	p := &indexPager{pageSize: pageSize, fetch: fetch}
+	items, truncated, pages, werr := pageWalk(ctx, "1", providerMaxPages, p.page)
+	if pages == 1 && werr == nil && !truncated {
+		return p.rawFirst, false, nil
+	}
+	if items == nil {
+		items = []any{}
+	}
+	return jq.Pretty(items), truncated, werr
+}
+
+// page fetches and decodes one index page, reporting the next page only
+// while the host keeps filling the requested size.
+func (p *indexPager) page(ctx context.Context, cursor string) ([]any, string, error) {
+	page, ok := cursorPage(cursor)
+	if !ok {
+		return nil, "", internalErrorf("bad page cursor %q", cursor)
+	}
+	raw, ferr := p.fetch(ctx, page)
+	if ferr != nil {
+		return nil, "", ferr
+	}
+	if page == 1 {
+		p.rawFirst = raw
+	}
+	list, derr := jsonArray(raw)
+	if derr != nil {
+		return nil, "", internalErrorf("page unreadable: %v", derr)
+	}
+	if len(list) < p.pageSize {
+		return list, "", nil
+	}
+	return list, strconv.Itoa(page + 1), nil
+}
+
+// cursorPage parses an internal page cursor (always digits this code wrote).
+func cursorPage(cursor string) (int, bool) {
+	page, err := strconv.Atoi(cursor)
+	if err != nil {
+		return 0, false
+	}
+	return page, true
+}
+
+// warnPaging surfaces an early-stopped list read: the pages already fetched
+// are kept, but the agent must know the bundle may under-cover.
+func warnPaging(r *session, provider, what string, err error, truncated bool) {
+	switch {
+	case err != nil:
+		r.Warn(provider + " " + what + " paging stopped on a failed page (" +
+			headBytes(err.Error(), numExcerptShort) + ") — the list may be incomplete")
+	case truncated:
+		r.Warn(fmt.Sprintf("%s %s paging hit the %d-page cap — the list may be incomplete",
+			provider, what, providerMaxPages))
+	}
 }
 
 // jsonArray decodes one JSON array response, sealing anything else as an
@@ -50,7 +124,7 @@ func pageWalk(
 func jsonArray(raw string) ([]any, error) {
 	doc, err := jq.Decode([]byte(raw))
 	if err != nil {
-		return nil, err
+		return nil, internalErrorf("response is not JSON: %v", err)
 	}
 	list, ok := doc.([]any)
 	if !ok {

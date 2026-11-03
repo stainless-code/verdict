@@ -496,7 +496,7 @@ func TestNegotiate(t *testing.T) {
 // TestArgsDecode proves the reflector decodes nested flags and initialism
 // names into the concrete core request type.
 //
-//nolint:revive,cyclop // the decode matrix reads as one assertion block
+//nolint:revive // the decode matrix reads as one assertion block
 func TestArgsDecode(t *testing.T) {
 	t.Parallel()
 	report := findTool(t, "report")

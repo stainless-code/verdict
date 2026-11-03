@@ -89,11 +89,11 @@ func fetchProviderBundle(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetch
 		return fetchGitLab(ctx, ctx2, req)
 	case "gitcafe":
 		return fetchGitCafe(ctx, ctx2, req)
-	case "forgejo":
+	case providerForgejo:
 		return fetchForgejo(ctx, ctx2, req)
 	case "bitbucket":
 		return fetchBitbucket(ctx, ctx2, req)
-	case "azure":
+	case providerAzure:
 		return fetchAzure(ctx, ctx2, req)
 	default:
 		return &core.RefusalError{Code: "bad-provider", Message: fmt.Sprintf(
@@ -203,48 +203,18 @@ func gitlabThreads(ctx context.Context, r *session, dir, pid, pr string) error {
 // directly. A single complete page returns verbatim; a failed page or the
 // page cap warns instead of writing an empty/partial list silently.
 func gitlabNotes(ctx context.Context, r *session, pid, pr string) string {
-	pages := 0
-	rawFirst := ""
-	items, truncated, err := pageWalk(ctx, "1", providerMaxPages,
-		func(ctx context.Context, cursor string) ([]any, string, error) {
-			page, cerr := strconv.Atoi(cursor)
-			if cerr != nil {
-				return nil, "", cerr
-			}
-			pages++
+	body, truncated, err := indexPageWalk(ctx, gitlabNotePageSize,
+		func(ctx context.Context, page int) (string, error) {
 			path := fmt.Sprintf("projects/%s/merge_requests/%s/notes?per_page=%d&page=%d",
 				pid, pr, gitlabNotePageSize, page)
 			res, ferr := r.cliFetch(ctx, binGlab, ghCmdAPI, path)
 			if ferr != nil {
-				return nil, "", ferr
+				return "", ferr
 			}
-			if page == 1 {
-				rawFirst = res.Stdout
-			}
-			list, derr := jsonArray(res.Stdout)
-			if derr != nil {
-				return nil, "", internalErrorf("gitlab notes page unreadable: %v", derr)
-			}
-			next := ""
-			if len(list) >= gitlabNotePageSize {
-				next = strconv.Itoa(page + 1)
-			}
-			return list, next, nil
+			return res.Stdout, nil
 		})
-	switch {
-	case err != nil:
-		r.Warn("gitlab notes paging stopped on a failed page (" +
-			headBytes(err.Error(), numExcerptShort) + ") — inline.json/reviews.json may be incomplete")
-	case truncated:
-		r.Warn(fmt.Sprintf("gitlab notes paging hit the %d-page cap — inline.json/reviews.json may be incomplete", providerMaxPages))
-	}
-	if err == nil && !truncated && pages == 1 {
-		return rawFirst
-	}
-	if items == nil {
-		items = []any{}
-	}
-	return jq.Pretty(items)
+	warnPaging(r, "gitlab", "notes", err, truncated)
+	return body
 }
 
 // splitGitLabNotes ports the DiffNote/non-DiffNote thread split. A scalar
@@ -784,7 +754,7 @@ func forgejoDiffURL(metaStdout string) string {
 func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
 	diffURL := forgejoDiffURL(metaStdout)
 	if diffURL != "" && !sameOrigin(api, diffURL) {
-		return offOriginRefusal("forgejo", diffURL)
+		return offOriginRefusal(providerForgejo, diffURL)
 	}
 	diffRes, err := r.curlFetch(ctx, curlArgs(auth, diffURL)...)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
@@ -812,53 +782,17 @@ func forgejoFiles(ctx context.Context, r *session, auth []string, api string) st
 // byte-identical; a failed page or the page cap warns instead of returning
 // the first page silently.
 func forgejoList(ctx context.Context, r *session, auth []string, base, what string) string {
-	pages := 0
-	rawFirst := ""
-	items, truncated, err := pageWalk(ctx, "1", providerMaxPages,
-		func(ctx context.Context, cursor string) ([]any, string, error) {
-			page, cerr := strconv.Atoi(cursor)
-			if cerr != nil {
-				return nil, "", cerr
-			}
-			pages++
+	body, truncated, err := indexPageWalk(ctx, forgejoPageSize,
+		func(ctx context.Context, page int) (string, error) {
 			u := fmt.Sprintf("%s?limit=%d&page=%d", base, forgejoPageSize, page)
 			res, ferr := r.curlFetch(ctx, curlArgs(auth, u)...)
 			if ferr != nil {
-				return nil, "", ferr
+				return "", ferr
 			}
-			if page == 1 {
-				rawFirst = res.Stdout
-			}
-			list, derr := jsonArray(res.Stdout)
-			if derr != nil {
-				return nil, "", internalErrorf("forgejo %s page unreadable: %v", what, derr)
-			}
-			next := ""
-			if len(list) >= forgejoPageSize {
-				next = strconv.Itoa(page + 1)
-			}
-			return list, next, nil
+			return res.Stdout, nil
 		})
-	forgejoWarnPaging(r, what, err, truncated)
-	if err == nil && !truncated && pages == 1 {
-		return rawFirst
-	}
-	if items == nil {
-		items = []any{}
-	}
-	return jq.Pretty(items)
-}
-
-// forgejoWarnPaging surfaces an early-stopped list read: the page itself is
-// kept, but the agent must know the bundle may under-cover.
-func forgejoWarnPaging(r *session, what string, err error, truncated bool) {
-	switch {
-	case err != nil:
-		r.Warn("forgejo " + what + " paging stopped on a failed page (" +
-			headBytes(err.Error(), numExcerptShort) + ") — the list may be incomplete")
-	case truncated:
-		r.Warn(fmt.Sprintf("forgejo %s paging hit the %d-page cap — the list may be incomplete", what, providerMaxPages))
-	}
+	warnPaging(r, providerForgejo, what, err, truncated)
+	return body
 }
 
 // forgejoThreads ports the review-thread reads: reviews page fully and the
@@ -1110,11 +1044,11 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, b
 // bitbucketThreads ports the diffstat/comments reads and the split writes,
 // returning the diffstat entries for normalization.
 func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base string) ([]any, *core.RefusalError) {
-	ds, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100", "values")
+	ds, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
 	if ref != nil {
 		return nil, ref
 	}
-	cm, ref := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100", "values")
+	cm, ref := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100")
 	if ref != nil {
 		return nil, ref
 	}
@@ -1132,8 +1066,8 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 // `.values // []`, concatenated; failed pages feed '{}' and `.next // empty`
 // ends the walk. Each server-supplied `next` stays on the API origin (the
 // bearer rides every page) and the walk is capped.
-func bitbucketPages(ctx context.Context, r *session, auth []string, first, field string) ([]any, *core.RefusalError) {
-	out, truncated, err := pageWalk(ctx, first, providerMaxPages,
+func bitbucketPages(ctx context.Context, r *session, auth []string, first string) ([]any, *core.RefusalError) {
+	out, truncated, _, err := pageWalk(ctx, first, providerMaxPages,
 		func(ctx context.Context, u string) ([]any, string, error) {
 			target, ok := resolveOnOrigin(first, u)
 			if !ok {
@@ -1143,21 +1077,27 @@ func bitbucketPages(ctx context.Context, r *session, auth []string, first, field
 			if !ok {
 				return nil, "", internalErrorf("bitbucket page unreadable")
 			}
-			return jq.Elements(m[field]), bitbucketNext(m), nil
+			return jq.Elements(m["values"]), bitbucketNext(m), nil
 		})
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return nil, ref
 	}
-	if err != nil {
-		r.Warn("bitbucket paging stopped on an unreadable page (" +
-			headBytes(err.Error(), numExcerptShort) + ") — the bundle may be incomplete")
-	} else if truncated {
-		r.Warn("bitbucket paging ended early (page cap or repeated next cursor) — the bundle may be incomplete")
-	}
+	bitbucketWarnPaging(r, err, truncated)
 	if out == nil {
 		out = []any{}
 	}
 	return out, nil
+}
+
+// bitbucketWarnPaging surfaces a partial or early-stopped page walk.
+func bitbucketWarnPaging(r *session, err error, truncated bool) {
+	switch {
+	case err != nil:
+		r.Warn("bitbucket paging stopped on an unreadable page (" +
+			headBytes(err.Error(), numExcerptShort) + ") — the bundle may be incomplete")
+	case truncated:
+		r.Warn("bitbucket paging ended early (page cap or repeated next cursor) — the bundle may be incomplete")
+	}
 }
 
 // bitbucketPage fetches and decodes one page (ok=false on bad JSON).
@@ -1303,7 +1243,7 @@ func azureSetup(ctx context.Context, ctx2 *fetchRunCtx, repo, pr string) (azureC
 		return conn, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("azure PR %s carries no merge commits/remote", pr)}
 	}
 	if !sameOrigin(org, remote) {
-		return conn, offOriginRefusal("azure", remote)
+		return conn, offOriginRefusal(providerAzure, remote)
 	}
 	tok, err := azureToken(ctx, r, ctx2)
 	if err != nil {
@@ -1434,49 +1374,55 @@ func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, 
 // id selects the change entries (`$top`/`$skip`, stop on a short page),
 // defaulting to [] (with a warning) on a failed page or at the page cap.
 func azureChanges(ctx context.Context, r *session, conn *azureConn, pr string) string {
-	iid := ""
-	iterArgs := azureAPI(conn.org, conn.project, conn.rname, pr, "/iterations?api-version=7.1",
-		"max_by(value, &id).id", "tsv")
-	if res, err := r.cliFetch(ctx, binAz, iterArgs...); err == nil {
-		iid = strings.TrimRight(res.Stdout, newline)
-	}
+	iid := azureIterationID(ctx, r, conn, pr)
 	if iid == "" {
 		return emptyJSONArray
 	}
-	items, truncated, err := pageWalk(ctx, "0", providerMaxPages,
+	items, truncated, _, err := pageWalk(ctx, "0", providerMaxPages,
 		func(ctx context.Context, cursor string) ([]any, string, error) {
-			skip, cerr := strconv.Atoi(cursor)
-			if cerr != nil {
-				return nil, "", cerr
-			}
-			path := fmt.Sprintf("/iterations/%s/changes?api-version=7.1&$top=%d&$skip=%d",
-				iid, azureChangePageSize, skip)
-			args := azureAPI(conn.org, conn.project, conn.rname, pr, path, "changeEntries", keyJSON)
-			res, ferr := r.cliFetch(ctx, binAz, args...)
-			if ferr != nil {
-				return nil, "", ferr
-			}
-			list, derr := jsonArray(res.Stdout)
-			if derr != nil {
-				return nil, "", internalErrorf("azure change-entry page unreadable: %v", derr)
-			}
-			next := ""
-			if len(list) >= azureChangePageSize {
-				next = strconv.Itoa(skip + azureChangePageSize)
-			}
-			return list, next, nil
+			return azureChangePage(ctx, r, conn, pr, iid, cursor)
 		})
-	switch {
-	case err != nil:
-		r.Warn("azure change-entry paging stopped on a failed page (" +
-			headBytes(err.Error(), numExcerptShort) + ") — the file list may be incomplete")
-	case truncated:
-		r.Warn(fmt.Sprintf("azure change-entry paging hit the %d-page cap — the file list may be incomplete", providerMaxPages))
-	}
+	warnPaging(r, providerAzure, "change entries", err, truncated)
 	if items == nil {
 		items = []any{}
 	}
 	return jq.Pretty(items)
+}
+
+// azureIterationID reads the PR's latest iteration id ("" on failure).
+func azureIterationID(ctx context.Context, r *session, conn *azureConn, pr string) string {
+	iterArgs := azureAPI(conn.org, conn.project, conn.rname, pr, "/iterations?api-version=7.1",
+		"max_by(value, &id).id", "tsv")
+	res, err := r.cliFetch(ctx, binAz, iterArgs...)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(res.Stdout, newline)
+}
+
+// azureChangePage fetches and decodes one `$top`/`$skip` change-entry page.
+func azureChangePage(
+	ctx context.Context, r *session, conn *azureConn, pr, iid, cursor string,
+) ([]any, string, error) {
+	skip, ok := cursorPage(cursor)
+	if !ok {
+		return nil, "", internalErrorf("bad change-entry skip cursor %q", cursor)
+	}
+	path := fmt.Sprintf("/iterations/%s/changes?api-version=7.1&$top=%d&$skip=%d",
+		iid, azureChangePageSize, skip)
+	args := azureAPI(conn.org, conn.project, conn.rname, pr, path, "changeEntries", keyJSON)
+	res, ferr := r.cliFetch(ctx, binAz, args...)
+	if ferr != nil {
+		return nil, "", ferr
+	}
+	list, derr := jsonArray(res.Stdout)
+	if derr != nil {
+		return nil, "", internalErrorf("azure change-entry page unreadable: %v", derr)
+	}
+	if len(list) < azureChangePageSize {
+		return list, "", nil
+	}
+	return list, strconv.Itoa(skip + azureChangePageSize), nil
 }
 
 // azureMergeRef ports the merge-commit/remote read: empty when absent.
@@ -2126,7 +2072,7 @@ func normalizeForgejo(metaRaw, filesRaw string) (*jq.Obj, error) {
 	draft := forgejoDraft(meta)
 	return jq.NewObj(
 		keySchema, schemaV1,
-		keyProvider, "forgejo",
+		keyProvider, providerForgejo,
 		keyNumber, firstPresent(meta[keyIndex], meta[keyNumber]),
 		keyTitle, normStr(meta, keyTitle),
 		keyBody, normStr(meta, keyBody),
@@ -2279,7 +2225,7 @@ func normalizeAzure(metaRaw, changesRaw string, ns map[string]map[string]int64) 
 	created := nestedMap(meta, "createdBy")
 	return jq.NewObj(
 		keySchema, schemaV1,
-		keyProvider, "azure",
+		keyProvider, providerAzure,
 		keyNumber, meta["pullRequestId"],
 		keyTitle, normStr(meta, keyTitle),
 		keyBody, normStr(meta, keyDescription),

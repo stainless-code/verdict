@@ -66,7 +66,7 @@ func TestBitbucketPagesRefusesOffOriginNext(t *testing.T) {
 			`"next":"https://evil.invalid/steal?cursor=token-like"}`},
 	}}
 	s, _ := newTestSession(cmdr)
-	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst, "values")
+	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
 	if ref == nil || ref.Code != CodeFetchFailed {
 		t.Fatalf("refusal = %v, want fetch-failed", ref)
 	}
@@ -91,7 +91,7 @@ func TestBitbucketPagesFollowsSameOriginNext(t *testing.T) {
 		bitbucketCall(next):               {stdout: `{"values":[{"id":2}],"next":null}`},
 	}}
 	s, warns := newTestSession(cmdr)
-	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst, "values")
+	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v", ref)
 	}
@@ -114,7 +114,7 @@ func TestBitbucketPagesRepeatedCursorTrips(t *testing.T) {
 		bitbucketCall(testBitbucketFirst): {stdout: `{"values":[{"id":1}],"next":"` + testBitbucketFirst + `"}`},
 	}}
 	s, warns := newTestSession(cmdr)
-	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst, "values")
+	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v", ref)
 	}
@@ -133,13 +133,13 @@ func TestBitbucketPagesRepeatedCursorTrips(t *testing.T) {
 func TestPageWalkCap(t *testing.T) {
 	t.Parallel()
 	fetches := 0
-	items, truncated, err := pageWalk(context.Background(), "p1", 2,
+	items, truncated, pages, err := pageWalk(context.Background(), "p1", 2,
 		func(_ context.Context, cursor string) ([]any, string, error) {
 			fetches++
 			return []any{cursor}, fmt.Sprintf("p%d", fetches+1), nil
 		})
-	if err != nil || !truncated {
-		t.Fatalf("walk = %v %v, want truncated nil", truncated, err)
+	if err != nil || !truncated || pages != 2 {
+		t.Fatalf("walk = %v %v pages=%d, want truncated nil at two pages", truncated, err, pages)
 	}
 	if fetches != 2 || len(items) != 2 {
 		t.Errorf("fetches = %d, items = %v, want two pages", fetches, items)
