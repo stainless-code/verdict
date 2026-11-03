@@ -61,14 +61,48 @@ func splitOwner(repo string) (owner, name string) {
 	return repo, ""
 }
 
+// readMaxRetries caps one idempotent read attempt count, mirroring the
+// fetch and post bounds (3 attempts). Reads retry only failures carrying a
+// transient signal (secondary rate limit or the host's internal-error
+// retry note), so a retry can never duplicate a write.
+const readMaxRetries = 3
+
+// runReadRetry runs one idempotent gh read with the bounded backoff shared
+// with fetch and post submit (audit 21): a 403/429 secondary rate-limit
+// response honors the retry-after hint or the reset marker, and an unhinted
+// transient failure falls back to the attempt-based sleep. Plain failures
+// return their first error, like the shell. The final result and error are
+// what callers write into their sidecars and degrade from, so a retried
+// read keeps today's warn-or-downgrade posture.
+func runReadRetry(ctx context.Context, cmdr Commander, cmd core.Command) (core.Result, error) {
+	var res core.Result
+	var err error
+	for attempt := range readMaxRetries {
+		res, err = cmdr.Run(ctx, cmd)
+		if err == nil {
+			return res, nil
+		}
+		wait, retry := retryDelay(res.Stderr, attempt)
+		if !retry || attempt >= readMaxRetries-1 {
+			break
+		}
+		time.Sleep(wait)
+	}
+	if err == nil {
+		return res, nil
+	}
+	return res, jq.Sealed("read retry", err)
+}
+
 // ghLiveSHA ports the live-SHA lookup: the fetched PR head, or an error
 // when the lookup fails (stderr is discarded, like the shell's 2>/dev/null;
-// callers warn and proceed on the fetched hunks).
+// callers warn and proceed on the fetched hunks). Secondary rate limits and
+// transient host errors retry within the shared bound first.
 func ghLiveSHA(ctx context.Context, cmdr Commander, repo, pr string) (string, error) {
 	if cmdr == nil {
 		return "", errNoCommander
 	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: []string{toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr, flagJQ, ".head.sha"}})
+	res, err := runReadRetry(ctx, cmdr, core.Command{Argv: []string{toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr, flagJQ, ".head.sha"}})
 	if err != nil {
 		return "", jq.Sealed("live sha", err)
 	}
@@ -76,12 +110,13 @@ func ghLiveSHA(ctx context.Context, cmdr Commander, repo, pr string) (string, er
 }
 
 // ghSelfLogin ports the authorship lookup: the authenticated login, or an
-// error when it cannot be determined (callers warn and proceed).
+// error when it cannot be determined (callers warn and proceed). Secondary
+// rate limits and transient host errors retry within the shared bound first.
 func ghSelfLogin(ctx context.Context, cmdr Commander) (string, error) {
 	if cmdr == nil {
 		return "", errNoCommander
 	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: []string{toolGH, cmdAPI, "user", flagJQ, ".login"}})
+	res, err := runReadRetry(ctx, cmdr, core.Command{Argv: []string{toolGH, cmdAPI, "user", flagJQ, ".login"}})
 	if err != nil {
 		return "", jq.Sealed("self login", err)
 	}
@@ -113,7 +148,9 @@ func (e shapeError) Error() string { return string(e) }
 // failure or an unnavigable payload errors (callers downgrade to COMMENT
 // with the file's head as the reason), and the open count follows jq's
 // `select(.isResolved == false)` — missing isResolved never counts, and a
-// non-object node errors the whole read.
+// non-object node errors the whole read. Secondary rate limits retry within
+// the shared bound before the downgrade, so a transient limit does not turn
+// a bindable APPROVE into a COMMENT.
 func postRecheck(ctx context.Context, cmdr Commander, repo, pr, dir string) (int, string, error) {
 	owner, name := splitOwner(repo)
 	var res core.Result
@@ -121,7 +158,7 @@ func postRecheck(ctx context.Context, cmdr Commander, repo, pr, dir string) (int
 	if cmdr == nil {
 		err = errNoCommander
 	} else {
-		res, err = cmdr.Run(ctx, core.Command{Argv: append([]string{toolGH}, threadsArgv(owner, name, pr)...)})
+		res, err = runReadRetry(ctx, cmdr, core.Command{Argv: append([]string{toolGH}, threadsArgv(owner, name, pr)...)})
 	}
 	if werr := atomic.WriteFile(dir+"/.recheck.err", []byte(res.Stderr)); werr != nil {
 		return 0, "", werr
