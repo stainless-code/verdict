@@ -26,6 +26,7 @@ type FetchLocalFlags struct {
 	Paths         []string
 	Staged        bool
 	HasStash      bool
+	Worktree      bool
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool

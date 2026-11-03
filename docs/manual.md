@@ -1060,6 +1060,22 @@ history event and re-resolves anchors against the PR hunks (unmatched paths land
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
+#### Isolated checkout (`--worktree`)
+
+`fetch-local --worktree` checks the review target into a temporary detached
+worktree under `.review/` and builds the bundle from that checkout instead of
+the live tree: the default dirty tree via a read-only stash snapshot, `--staged`
+via a synthesized index commit, `--range`/`--base`/`--stash` at their head
+commits. The bundle bytes match the classic run on a quiet tree, but a dirty
+working tree — yours or a teammate's editor saving mid-fetch — cannot leak in
+or tear the read. The run prints the checkout path (`worktree: ...`) and always
+removes it before exiting, on success and on every refusal or cancel; a removal
+that fails warns with the manual `git worktree remove --force` recovery. When
+no checkout can be created the verb refuses typed `worktree-failed` and writes
+nothing. Re-materialize the same tree later for caller tracing or `verify`
+runs with `git worktree add --detach /tmp/<name> <head-sha from source.json>`
+and remove it when done — the working tree stays untouched throughout.
+
 ### Fix loops (bounded, verify-gated)
 
 `fix owner/repo local-<name> [--sig <s>] [--json]` runs one bounded pass over a

@@ -26,25 +26,47 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRe
 	if ref != nil {
 		return nil, "", ref
 	}
+	if !f.Worktree {
+		return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
+	}
+	iso, created, iref := setupIsolation(ctx, r, slug, &mode)
+	if iref != nil {
+		return nil, "", iref
+	}
+	if !created {
+		return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
+	}
+	r.iso = iso
+	defer iso.cleanup(ctx, r)
+	fmt.Fprintf(r.Human, "worktree: %s (temporary isolated checkout; removed on exit)\n", iso.dir)
+	return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
+}
+
+// runLocalBuild ports the fetch-local build after setup: budget, diff,
+// cap, stats, stores, and the finish tail.
+func runLocalBuild(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
+	r *session, dir, slug string, mode *localMode,
+) (*core.FetchData, string, error) {
 	budget, ref := localBudget(r, f, dir)
 	if ref != nil {
 		return nil, "", ref
 	}
-	if ref := localDiff(ctx, r, dir, &mode, f.Paths); ref != nil {
+	if ref := localDiff(ctx, r, dir, mode, f.Paths); ref != nil {
 		return nil, "", ref
 	}
 	fc, chunkActive, ref := localCap(r, dir, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref
 	}
-	listed, numstat, total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, &mode, f.Paths)
+	listed, numstat, total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, mode, f.Paths)
 	if serr != nil {
 		return nil, "", serr
 	}
 	if ref := localStores(ctx2, r, dir, slug, listed, numstat); ref != nil {
 		return nil, "", ref
 	}
-	return localFinish(ctx, ctx2, req, f, r, dir, &budget, fc, chunkActive, &mode, listed, total, adds, dels, diffSHA)
+	return localFinish(ctx, ctx2, req, f, r, dir, &budget, fc, chunkActive, mode, listed, total, adds, dels, diffSHA)
 }
 
 // localSlugGate ports the fetch-local name gate: empty, numeric, and
@@ -124,10 +146,15 @@ func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, 
 }
 
 // localDiff ports the fetch-local diff read: the mode diff runs with its
-// stderr sidecar, and full.diff lands (empty on failure, like `>`).
+// stderr sidecar, and full.diff lands (empty on failure, like `>`). Under
+// an isolated checkout the explicit commit pair replaces the mode's
+// live-tree refs, so the bytes come from the checkout, not the worktree.
 func localDiff(ctx context.Context, r *session, dir string, mode *localMode, paths []string) error {
 	diffArgs := append(mode.diffArgs(), paths...)
-	diffRes, err := r.run(ctx, binGit, diffArgs...)
+	if r.iso != nil {
+		diffArgs = append([]string{gitCmdDiff, r.iso.base, r.iso.head}, paths...)
+	}
+	diffRes, err := r.git(ctx, diffArgs...)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
 	}
@@ -449,25 +476,33 @@ func truncateEmpty(path string) *core.RefusalError {
 	return nil
 }
 
-// localFileStats ports the file-list and numstat reads for the mode.
+// localFileStats ports the file-list and numstat reads for the mode. Under
+// an isolated checkout the explicit commit pair replaces every mode's
+// live-tree refs (a three-dot A...B list is its merge-base-to-head pair,
+// so the file sets match the classic refs exactly).
 func localFileStats(ctx context.Context, s *session, mode *localMode, paths []string) (string, string) {
 	var listRef, statRef []string
-	switch mode.kind {
-	case modeStaged:
-		listRef = []string{flagCached}
-		statRef = []string{flagCached}
-	case modeRange:
-		listRef = []string{mode.rangeVal}
-		statRef = []string{mode.rangeVal}
-	case modeBranch:
-		listRef = []string{mode.rangeBaseRef() + "...HEAD"}
-		statRef = []string{mode.rangeBaseRef() + "...HEAD"}
-	case modeStash:
-		listRef = []string{mode.baseSHA, mode.headSHA}
-		statRef = []string{mode.baseSHA, mode.headSHA}
-	default:
-		listRef = []string{gitHeadRef}
-		statRef = []string{gitHeadRef}
+	if s.iso != nil {
+		listRef = []string{s.iso.base, s.iso.head}
+		statRef = []string{s.iso.base, s.iso.head}
+	} else {
+		switch mode.kind {
+		case modeStaged:
+			listRef = []string{flagCached}
+			statRef = []string{flagCached}
+		case modeRange:
+			listRef = []string{mode.rangeVal}
+			statRef = []string{mode.rangeVal}
+		case modeBranch:
+			listRef = []string{mode.rangeBaseRef() + "...HEAD"}
+			statRef = []string{mode.rangeBaseRef() + "...HEAD"}
+		case modeStash:
+			listRef = []string{mode.baseSHA, mode.headSHA}
+			statRef = []string{mode.baseSHA, mode.headSHA}
+		default:
+			listRef = []string{gitHeadRef}
+			statRef = []string{gitHeadRef}
+		}
 	}
 	if len(paths) > 0 {
 		listRef = append(listRef, "--")
@@ -476,13 +511,13 @@ func localFileStats(ctx context.Context, s *session, mode *localMode, paths []st
 		statRef = append(statRef, paths...)
 	}
 	fileList := ""
-	if res, err := s.run(ctx, binGit, append([]string{gitCmdDiff, "--no-renames", "--name-only"}, listRef...)...); err == nil {
+	if res, err := s.git(ctx, append([]string{gitCmdDiff, "--no-renames", "--name-only"}, listRef...)...); err == nil {
 		fileList = strings.TrimRight(res.Stdout, newline)
-	} else if res, err := s.run(ctx, binGit, append([]string{gitCmdDiff, "--name-only"}, listRef...)...); err == nil {
+	} else if res, err := s.git(ctx, append([]string{gitCmdDiff, "--name-only"}, listRef...)...); err == nil {
 		fileList = strings.TrimRight(res.Stdout, newline)
 	}
 	numstat := ""
-	if res, err := s.run(ctx, binGit, append([]string{gitCmdDiff, "--numstat"}, statRef...)...); err == nil {
+	if res, err := s.git(ctx, append([]string{gitCmdDiff, "--numstat"}, statRef...)...); err == nil {
 		numstat = strings.TrimRight(res.Stdout, newline)
 	}
 	return fileList, numstat

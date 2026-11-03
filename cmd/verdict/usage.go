@@ -28,9 +28,12 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...] [--json]\n" +
+		"        [--stash [n]] [--worktree] [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
 		"    .review/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.\n" +
+		"    --worktree checks the review target into a temporary isolated worktree and\n" +
+		"    builds the bundle from that checkout (removed on exit, even on refusal); without\n" +
+		"    it the bundle builds from the live tree exactly as before.\n" +
 		"    Same diff cap as fetch (512000 bytes, overridable as above); untracked/binary exclusions warn, never fail.\n" +
 		"    Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.\n" +
 		"    downstream verbs address it as local-<name>; post/calibrate refuse it.\n" +

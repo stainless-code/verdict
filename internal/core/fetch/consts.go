@@ -63,20 +63,30 @@ const (
 	flagCached   = "--cached"
 	flagChunk    = "--chunk"
 	flagCurlFail = "-sf"
+	flagDetach   = "--detach"
+	flagForce    = "--force"
 	flagJSON     = "--json"
 	flagPaginate = "--paginate"
 	flagRepo     = "-R"
 	flagVerify   = "--verify"
 
 	// Subcommands and git nouns.
-	gitCmdDiff     = "diff"
-	gitCmdRevParse = "rev-parse"
-	gitHeadRef     = "HEAD"
-	gitRange3      = "..."
-	modeBranch     = "branch"
-	modeRange      = "range"
-	modeStash      = "stash"
-	modeStaged     = "staged"
+	gitCmdDiff        = "diff"
+	gitCmdRevParse    = "rev-parse"
+	gitCmdWorktree    = "worktree"
+	gitCmdCommitTree  = "commit-tree"
+	gitCmdStash       = "stash"
+	gitWorktreeAdd    = "add"
+	gitWorktreeRemove = "remove"
+	gitStashCreate    = "create"
+	gitDashC          = "-C"
+	gitEmptyTree      = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+	gitHeadRef        = "HEAD"
+	gitRange3         = "..."
+	modeBranch        = "branch"
+	modeRange         = "range"
+	modeStash         = "stash"
+	modeStaged        = "staged"
 
 	// Providers, states, and misc values.
 	providerCafe   = "cafe"
@@ -90,6 +100,7 @@ const (
 	tierStandard   = "standard"
 	nullStr        = "null"
 	strTrue        = "true"
+	reviewDir      = ".review"
 	devNullPath    = "/dev/null"
 	emptyJSONArray = "[]\n"
 	newline        = "\n"
@@ -97,37 +108,41 @@ const (
 	pathSep        = "/"
 
 	// Refusal codes.
-	codeAuthMissing = "auth-missing"
-	codeBadRange    = "bad-range"
-	codeBadSlug     = "bad-slug"
+	codeAuthMissing    = "auth-missing"
+	codeBadRange       = "bad-range"
+	codeBadSlug        = "bad-slug"
+	codeWorktreeFailed = "worktree-failed"
 
 	// Messages and message formats.
-	msgUnreadablePR  = "unreadable %s/PR.json (re-fetch the PR)"
-	msgWriteFullDiff = "could not write %s/full.diff: %v"
-	msgWriteInline   = "could not write %s/inline.json: %v"
-	msgWriteReviews  = "could not write %s/reviews.json: %v"
-	noChunkRef       = "(no readable chunk diff ref)"
+	msgUnreadablePR   = "unreadable %s/PR.json (re-fetch the PR)"
+	msgWorktreeCommit = "verdict fetch-local --worktree target"
+	msgWriteFullDiff  = "could not write %s/full.diff: %v"
+	msgWriteInline    = "could not write %s/inline.json: %v"
+	msgWriteReviews   = "could not write %s/reviews.json: %v"
+	noChunkRef        = "(no readable chunk diff ref)"
 
 	// Numeric gates.
-	numBase10       = 10
-	numBitSize      = 64
-	numExcerpt      = 200
-	numExcerptShort = 120
-	numRoundScale   = 10000
-	numShownHits    = 5
-	numShownPaths   = 10
-	numSlugMax      = 48
-	numStatFields   = 3
-	numTopRules     = 3
-	repoParts       = 3
-	cafeMaxPages    = 20
-	rankNumber      = 3
-	rankString      = 4
-	rankArray       = 5
-	rankOther       = 6
-	recallBaseScore = 0.5
-	dirPerm         = 0o755
-	gitConfigMode   = 0o644
+	numBase10           = 10
+	numBitSize          = 64
+	numExcerpt          = 200
+	numExcerptShort     = 120
+	numRoundScale       = 10000
+	numShortSHA         = 7
+	numShownHits        = 5
+	numShownPaths       = 10
+	numSlugMax          = 48
+	numStatFields       = 3
+	numTopRules         = 3
+	numWorktreeSuffixes = 99
+	repoParts           = 3
+	cafeMaxPages        = 20
+	rankNumber          = 3
+	rankString          = 4
+	rankArray           = 5
+	rankOther           = 6
+	recallBaseScore     = 0.5
+	dirPerm             = 0o755
+	gitConfigMode       = 0o644
 )
 
 // Additional argv and schema constants (revive add-constant).

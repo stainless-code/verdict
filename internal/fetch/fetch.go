@@ -52,9 +52,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 }
 
 // RunLocal executes `fetch-local <owner/repo> <name> [--staged]
-// [--range A[..|...]B] [--base R] [--stash [n]] [--consent-over-budget]
-// [--show-prompts] [--chunk] [-- paths...] [--json]`, returning the
-// process exit code.
+// [--range A[..|...]B] [--base R] [--stash [n]] [--worktree]
+// [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...]
+// [--json]`, returning the process exit code.
 func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	f, code, done := parseLocalFlags(r, args)
@@ -239,6 +239,8 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 	switch a {
 	case "--staged":
 		f.Staged = true
+	case "--worktree":
+		f.Worktree = true
 	case "--consent-over-budget":
 		f.BudgetConsent = true
 	case "--show-prompts":
@@ -252,7 +254,7 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 	default:
 		if strings.HasPrefix(a, "-") {
 			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
-				"--range <A..B>, --base <ref>, --stash [n], --consent-over-budget, "+
+				"--range <A..B>, --base <ref>, --stash [n], --worktree, --consent-over-budget, "+
 				"--show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}

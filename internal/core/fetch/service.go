@@ -258,8 +258,10 @@ func discardNil(w io.Writer) io.Writer {
 }
 
 // session is the service's runner: the adapter's streams plus the warning
-// accumulation and exec seam the moved bodies thread through. Method names
-// mirror the old *cli.Runner surface so the moved bodies stay
+// accumulation and exec seam the moved bodies thread through. The iso
+// field carries the fetch-local --worktree checkout (nil on every other
+// path); the local bundle readers check it instead of branching on flags.
+// Method names mirror the old *cli.Runner surface so the moved bodies stay
 // byte-identical.
 type session struct {
 	Human     io.Writer
@@ -269,6 +271,7 @@ type session struct {
 	Now       func() time.Time
 	env       map[string]string
 	warnings  *[]string
+	iso       *isolation
 	Effective core.Effective
 	JSONMode  bool
 }
