@@ -62,7 +62,7 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 
 // state carries one post run: the request, the warnings accumulated before
 // the response or refusal, and the merge outputs the payload needs.
-type state struct {
+type state struct { //nolint:govet // field grouping documents the post run state
 	req          *core.PostRequest
 	warnings     []string
 	flags        core.PostFlags
@@ -85,6 +85,7 @@ type state struct {
 	controls     *controls.Snapshot
 	comments     []any
 	diagram      diagram.Status
+	bundle       *readcommon.Bundle
 	embedded     int
 	driftStale   bool
 	liveLoaded   bool
@@ -95,6 +96,25 @@ type state struct {
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	ref.Warnings = st.warnings
 	return ref
+}
+
+// store returns the run's decoded bundle records, opening them on first use
+// so PR.json and post.json are read once per run instead of once per field.
+func (st *state) store() *readcommon.Bundle {
+	if st.bundle == nil {
+		st.bundle = readcommon.OpenBundle(st.dir)
+	}
+	return st.bundle
+}
+
+// provider reads the bundle provider with post's github default: a bundle
+// with no provider marker is GitHub, and any present marker routes on its
+// rendered value (an empty or non-string marker is not a post target).
+func (st *state) provider() string {
+	if prov, present := st.store().ProviderMarker(); present {
+		return prov
+	}
+	return providerGitHub
 }
 
 // warn records and streams one warning.
@@ -195,7 +215,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	// SHA refuses without paying for any network round-trip, and the
 	// deterministic local refusal wins over the nondeterministic reads that
 	// follow. Dry runs stay advisory exactly as before, so they skip it.
-	st.commitID = recordcore.ProvHead(st.dir)
+	st.commitID = st.store().Head()
 	if !st.flags.DryRun {
 		if ref := st.finalizerGuard(); ref != nil {
 			return ref
@@ -241,7 +261,7 @@ func (st *state) checkBundle() *core.RefusalError {
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
 	}
-	if prov := postProvider(st.dir); !core.CapabilitiesFor(prov).Post {
+	if prov := st.provider(); !core.CapabilitiesFor(prov).Post {
 		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
 	}
 	if err := recordcore.EnsureStore(st.dir); err != nil {
@@ -253,15 +273,15 @@ func (st *state) checkBundle() *core.RefusalError {
 	if !exists(st.dir + "/full.diff") {
 		return &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiffPost, st.dir)}
 	}
-	switch prState(st.dir) {
+	switch prState := st.store().State(); prState {
 	case "":
 		st.warn("PR state unknown (re-fetch to record it) — proceeding")
 	case statusOpen:
 	default:
-		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState(st.dir))}
+		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState)}
 	}
 	// Last gate: the controls snapshot must match the bundle before any read.
-	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir))
+	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir, st.store()))
 	st.controls = snap
 	return ref
 }
@@ -284,7 +304,7 @@ func (st *state) loadReview() *core.RefusalError {
 // body note) — it never moves the validation target. Lookup failure degrades
 // to a warning, never a refusal.
 func (st *state) checkDrift(ctx context.Context) {
-	st.fetchedSHA = recordcore.ProvHead(st.dir)
+	st.fetchedSHA = st.store().Head()
 	live, err := ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
 	if err != nil {
 		live = ""
@@ -407,7 +427,7 @@ func (st *state) approveGate() *core.RefusalError {
 // self-approvals, so a binding verdict on the author's own PR downgrades to
 // COMMENT; an unreadable login warns and proceeds (GitHub may still refuse).
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
-	author := prAuthor(st.dir)
+	author := st.store().Author()
 	me, rerr := ghSelfLogin(ctx, st.commanderOrNil())
 	if rerr != nil {
 		me = ""
@@ -517,19 +537,29 @@ func (st *state) finalizerGuard() *core.RefusalError {
 		return nil
 	}
 	if exists(st.dir + "/post.json") {
-		storedHead, readable := postHead(st.dir + "/post.json")
+		storedHead, readable := st.store().PostedHead()
 		switch {
 		case !readable:
 			st.warn("post record unreadable — proceeding, will refresh it on success")
 		case storedHead == "":
 			st.warn("post record carries no head — proceeding, will refresh it on success")
 		case storedHead == st.commitID:
-			storedAt := postTime(st.dir + "/post.json")
+			storedAt := st.postedAt()
 			return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
 				readcommon.ShortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(storedHead))}
 		}
 	}
 	return st.liveAlreadyPosted()
+}
+
+// postedAt reads the recorded post time, defaulting to the frozen
+// "unknown time" placeholder when the receipt carries none.
+func (st *state) postedAt() string {
+	at, present := st.store().PostedAt()
+	if !present {
+		return unknownTime
+	}
+	return at
 }
 
 // exists reports whether path exists.

@@ -157,7 +157,7 @@ func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 	if err := ensureStore(dir); err != nil {
 		return st.refuse("adopt-failed", fmt.Sprintf("adopt failed: %v", err))
 	}
-	if prov := providerOf(dir); prov != providerGitHub {
+	if prov := bundleProvider(dir); prov != providerGitHub {
 		return st.refuse("provider-unimplemented", msgProviderUnimplemented)
 	}
 	return nil
@@ -175,7 +175,7 @@ func (st *state) checkAdoptFresh(dir string) *core.RefusalError {
 // the human and JSON reports.
 func (st *state) finishAdopt(dir, fromDir string, entries []any) *core.RefusalError {
 	now := st.req.TimeUTC()
-	commitID := prHeadSHA(dir)
+	commitID := readcommon.PrField(dir, "head_sha")
 	if ref := st.ensureHunks(dir); ref != nil {
 		return ref
 	}
@@ -366,53 +366,25 @@ func matchesStatus(e any, status string) bool {
 	return ok && s == status
 }
 
-// providerOf ports `jq -r '.provider // "github"'` with the unreadable-file
-// fallback to github.
-func providerOf(dir string) string {
-	raw, err := os.ReadFile(dir + prSuffix)
-	if err != nil {
-		return providerGitHub
+// shortSHALen is the abbreviated commit width.
+const shortSHALen = 7
+
+// shortSHA ports ${commit_id:0:7}.
+func shortSHA(head string) string {
+	if len(head) > shortSHALen {
+		return head[:shortSHALen]
 	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return providerGitHub
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return providerGitHub
-	}
-	prov, ok := m["provider"]
-	if !ok || prov == nil {
-		return providerGitHub
-	}
-	if s, ok := prov.(string); ok {
-		return s
-	}
-	return providerOther
+	return head
 }
 
-// prHeadSHA ports pr_field head_sha for the github provider shape.
-func prHeadSHA(dir string) string {
-	raw, err := os.ReadFile(dir + prSuffix)
-	if err != nil {
-		return ""
+// bundleProvider reads the bundle provider with adopt's github default: a
+// missing, unreadable, or markerless record is GitHub, and any present marker
+// routes on its rendered value.
+func bundleProvider(dir string) string {
+	if prov, present := readcommon.OpenBundle(dir).ProviderMarker(); present {
+		return prov
 	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	prov := ""
-	if p, ok := m["provider"].(string); ok {
-		prov = p
-	}
-	if prov == "" {
-		return jq.StrOf(m["headRefOid"])
-	}
-	return jq.StrOf(m["head_sha"])
+	return providerGitHub
 }
 
 // ensureStore ports ensure_store: backfill the store marker when absent.
@@ -481,12 +453,8 @@ const (
 	localPrefix = "local-"
 	// providerGitHub is the only adopt target provider.
 	providerGitHub = "github"
-	// providerOther marks unparseable provider values as non-GitHub.
-	providerOther = "non-github"
 	// findingsSuffix is the findings store filename suffix.
 	findingsSuffix = "/findings.json"
-	// prSuffix is the bundle PR-record path suffix.
-	prSuffix = "/PR.json"
 	// fullDiffSuffix is the bundle diff path suffix.
 	fullDiffSuffix = "/full.diff"
 	// storeSuffix is the store marker path suffix.

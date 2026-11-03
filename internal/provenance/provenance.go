@@ -406,21 +406,9 @@ func ReviewLink(dir string) string {
 	return "review `" + id + "`"
 }
 
-// postRecord reads the posted-review record.
+// postRecord reads the posted-review record through the shared capped read.
 func postRecord(dir string) map[string]any {
-	raw, err := os.ReadFile(filepath.Join(dir, "post.json"))
-	if err != nil {
-		return nil
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return nil
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return nil
-	}
-	return m
+	return readcommon.PostRecord(dir)
 }
 
 // reviewRef reads the review id and URL, tolerating a missing review block.

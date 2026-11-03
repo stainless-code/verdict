@@ -35,7 +35,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	snap, ref := controls.Gate(dir, BundleBase(dir))
+	snap, ref := controls.Gate(dir, BundleBase(dir, st.store))
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -50,8 +50,9 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 // bundle resolves the bundle dir, provider, store, head, and clock.
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {
 	req := st.req
-	dir = resolveBundleDir(req.Pr)
-	if prov, ref = resolveProvider(dir); ref != nil {
+	dir = readcommon.ResolveBundleDir(req.Pr)
+	st.store = readcommon.OpenBundle(dir)
+	if prov, ref = resolveProvider(dir, st.store); ref != nil {
 		return "", "", "", "", ref
 	}
 	if ref = checkBundleFiles(dir, prov); ref != nil {
@@ -60,7 +61,7 @@ func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError
 	if err := EnsureStore(dir); err != nil {
 		return "", "", "", "", recordFailed(err)
 	}
-	return dir, prov, resolveHead(dir, prov), req.TimeUTC(), nil
+	return dir, prov, resolveHead(dir, st.store, prov), req.TimeUTC(), nil
 }
 
 // loadInputs snapshots hunks and loads the review, mapping core errors to
@@ -111,24 +112,29 @@ func refusalOrFailed(err error) *core.RefusalError {
 	return recordFailed(err)
 }
 
-// svc carries one record run: the request plus the warnings accumulated
-// before the response or refusal.
+// svc carries one record run: the request, the decoded bundle store, and
+// the warnings accumulated before the response or refusal.
 type svc struct {
 	req      *core.RecordRequest
 	controls *controls.Snapshot
+	store    *readcommon.Bundle
 	warnings []string
 }
 
 // BundleBase reads the base commit a bundle was fetched at: the local
-// source.json base_sha, else the GitHub PR.json baseRefOid.
-func BundleBase(dir string) string {
-	if base := jqField(dir+"/source.json", "base_sha"); base != "" {
+// source.json base_sha, else the PR record's baseRefOid, else its base_sha.
+// store is the caller's decoded bundle so the run reads PR.json once.
+func BundleBase(dir string, store *readcommon.Bundle) string {
+	if base := readcommon.JSONStr(dir+"/source.json", "base_sha"); base != "" {
 		return base
 	}
-	if base := jqField(dir+prSuffix, "baseRefOid"); base != "" {
+	if store == nil {
+		store = readcommon.OpenBundle(dir)
+	}
+	if base := store.StrField("baseRefOid"); base != "" {
 		return base
 	}
-	return jqField(dir+prSuffix, "base_sha")
+	return store.StrField("base_sha")
 }
 
 // runtime builds the injected runtime for the merge: the request's env,
@@ -288,28 +294,15 @@ func typedItems(entries []any) []core.FindingItem {
 	return items
 }
 
-// resolveBundleDir ports resolve_bundle_dir plus the marked corpus kind:
-// local-*/corpus-* slugs resolve directly, and bare slugs with a matching
-// .review/local-* dir resolve local.
-func resolveBundleDir(pr string) string {
-	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
-		return ".review/" + pr
-	}
-	if isDir(".review/local-"+pr) && !exists(".review/"+pr+prSuffix) {
-		return ".review/local-" + pr
-	}
-	return ".review/" + pr
-}
-
 // resolveProvider maps the bundle dir to its provider, refusing non-bundles.
-func resolveProvider(dir string) (string, *core.RefusalError) {
+func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.RefusalError) {
 	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
 		// Corpus bundles are marked, local-shaped runs: record merges their
 		// reviewed output exactly like a local bundle, while post/ready keep
 		// refusing them (they have no PR target).
 		return providerLocal, nil
 	}
-	switch prov := providerOf(dir); prov {
+	switch prov := store.Provider(); prov {
 	case "":
 		return "", &core.RefusalError{Code: codeNotLocal, Message: msgNotLocal}
 	case "github":
@@ -317,23 +310,6 @@ func resolveProvider(dir string) (string, *core.RefusalError) {
 	default:
 		return prov, nil
 	}
-}
-
-// providerOf reads .provider from PR.json ("" when missing/unreadable).
-func providerOf(dir string) string {
-	raw, ok := ReadOptional(dir + prSuffix)
-	if !ok {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	return jq.StrOf(m["provider"])
 }
 
 // checkBundleFiles refuses when the bundle's required files are absent.
@@ -364,34 +340,17 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 }
 
 // resolveHead reads the reviewed SHA, defaulting per provider.
-func resolveHead(dir, prov string) string {
+func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 	if prov == providerLocal {
-		if headFull := jqField(dir+"/source.json", "head_sha"); headFull != "" {
+		if headFull := readcommon.JSONStr(dir+"/source.json", "head_sha"); headFull != "" {
 			return headFull
 		}
 		return "dirty"
 	}
-	if headFull := ProvHead(dir); headFull != "" {
+	if headFull := store.Head(); headFull != "" {
 		return headFull
 	}
 	return "unknown"
-}
-
-// jqField reads one string field from a JSON file ("" when absent).
-func jqField(path, field string) string {
-	raw, ok := ReadOptional(path)
-	if !ok {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	return jq.StrOf(m[field])
 }
 
 // sha256File streams full.diff into sha256, like shasum -a 256.
@@ -402,10 +361,4 @@ func sha256File(path string) string {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
-}
-
-// isDir reports whether path is a directory.
-func isDir(path string) bool {
-	fi, err := os.Stat(path)
-	return err == nil && fi.IsDir()
 }

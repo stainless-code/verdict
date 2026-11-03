@@ -27,24 +27,6 @@ func isRegular(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// jsonField reads one string field with || true semantics ("" when the
-// file is missing, invalid, or the field is absent).
-func jsonField(path, field string) string {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	return jq.StrOf(m[field])
-}
-
 // runLiveProbe ports the live-thread probe: the network-backed first half
 // of the gate's third dimension. Advisory runs (no gate flag) skip it with
 // zero network; --live skip warns and stays neutral; structural skips
@@ -167,7 +149,7 @@ func removeErrFile(path string) {
 func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) {
 	var posted string
 	if isRegular(dir + "/post.json") {
-		posted = jsonField(dir+"/post.json", "head")
+		posted = readcommon.JSONStr(dir+"/post.json", "head")
 	}
 	reviewed := headSHA != "" && posted != "" && headSHA == posted
 	comp := &core.ReportCompleteness{Reviewed: reviewed}
@@ -185,7 +167,7 @@ func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) 
 func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	prov := ""
 	if isRegular(dir + "/PR.json") {
-		prov = jsonField(dir+"/PR.json", "provider")
+		prov = readcommon.JSONStr(dir+"/PR.json", "provider")
 	}
 	if isLocalDir(dir) {
 		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))

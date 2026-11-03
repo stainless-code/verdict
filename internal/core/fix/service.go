@@ -202,7 +202,7 @@ func (st *state) checkPrGate(dir string) *core.RefusalError {
 	if !bundle.IsFile(dir + suffixPRJSON) {
 		return nil
 	}
-	state := prState(dir)
+	state := readcommon.PrField(dir, "state")
 	if state == prClosed || state == prMerged {
 		return st.refuse("pr-not-open", fmt.Sprintf(
 			"bundle PR is %s — refusing fix (re-fetch if bundle stale)", state))
@@ -370,35 +370,12 @@ func decodeEntries(raw []byte) ([]any, error) {
 	return arr, nil
 }
 
-// prState ports pr_field state for the fix gate: lowercase only when the
-// bundle carries no provider (a null or missing provider reads
-// providerless; any other value keeps its case, matching `.provider // empty`).
-func prState(dir string) string {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
-	if err != nil {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	st := jq.StrOf(m[fieldState])
-	if pv, has := m[fieldProvider]; has && pv != nil {
-		return st
-	}
-	return bundle.LowerASCII(st)
-}
-
 // prInfo ports the advisory readiness PR fragment.
 func prInfo(dir string) string {
 	if !bundle.IsFile(dir + suffixPRJSON) {
 		return "n/a (local bundle, PR check skipped)"
 	}
-	info := "state " + prState(dir)
+	info := "state " + readcommon.PrField(dir, "state")
 	if draftOf(dir) {
 		info += " draft"
 	}
@@ -1157,10 +1134,6 @@ const (
 	fieldStatus = "status"
 	// fieldKind is the entry kind field.
 	fieldKind = "kind"
-	// fieldState is the PR state field.
-	fieldState = "state"
-	// fieldProvider is the PR provider field.
-	fieldProvider = "provider"
 	// fieldDraft is the PR draft field.
 	fieldDraft = "draft"
 )

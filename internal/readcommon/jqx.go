@@ -2,7 +2,6 @@ package readcommon
 
 import (
 	"encoding/json"
-	"os"
 	"strconv"
 	"strings"
 
@@ -188,27 +187,49 @@ func EffortTier(eff any) string {
 	}
 }
 
-// JSONRaw reads one JSON field with `jq -r ... // empty` semantics:
-// missing or null reads "", scalars render jq-style, containers render
-// pretty. Unreadable files read "".
-func JSONRaw(path, field string) string {
-	raw, err := os.ReadFile(path)
+// jsonFieldAt decodes path (capped) and returns one field of its top-level
+// object, reporting whether the document and the field are usable.
+func jsonFieldAt(path, field string) (any, bool) {
+	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {
-		return ""
+		return nil, false
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return ""
+		return nil, false
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return ""
+		return nil, false
 	}
 	v, ok := m[field]
-	if !ok || v == nil {
+	return v, ok
+}
+
+// JSONRaw reads one JSON field with `jq -r ... // empty` semantics:
+// missing, null, and false read "", other scalars render jq-style, containers
+// render pretty. Unreadable files read ""; over-cap files are unreadable too
+// (PRE-01: every store read is capped). The callers read bundle metadata
+// records (PR.json, post.json, record.json, source.json), all far below the
+// PR-record cap.
+func JSONRaw(path, field string) string {
+	v, ok := jsonFieldAt(path, field)
+	if !ok {
 		return ""
 	}
-	return jq.R(v)
+	return scalarOrEmpty(v)
+}
+
+// JSONStr reads one string field with `jq -r ... // empty` typed-string
+// semantics: only a string value reads through, anything else reads "".
+// Callers whose frozen behavior is a string-only read (report's live probe,
+// record's source.json) use this instead of [JSONRaw].
+func JSONStr(path, field string) string {
+	v, ok := jsonFieldAt(path, field)
+	if !ok {
+		return ""
+	}
+	return jq.StrOf(v)
 }
 
 // ASCIILower lowercases ASCII letters only, mirroring tr -d under C locale.

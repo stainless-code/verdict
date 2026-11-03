@@ -21,7 +21,7 @@ func seedControls(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 	for _, bundle := range bundles {
-		base := recordcore.BundleBase(bundle)
+		base := recordcore.BundleBase(bundle, nil)
 		if fi, statErr := os.Stat(bundle); statErr != nil || !fi.IsDir() || base == "" {
 			continue
 		}

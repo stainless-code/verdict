@@ -12,7 +12,7 @@ import (
 // bundle without a recorded base is left unseeded and must refuse.
 func seedControls(t *testing.T, bundleDir string) {
 	t.Helper()
-	base := recordcore.BundleBase(bundleDir)
+	base := recordcore.BundleBase(bundleDir, nil)
 	if base == "" {
 		return
 	}

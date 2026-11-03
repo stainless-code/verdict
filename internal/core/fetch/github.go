@@ -37,7 +37,7 @@ func runGitHub(
 	if ref := githubFetch(ctx, ctx2, r, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
-	if ref := resolveControls(ctx, ctx2, repo, prField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+	if ref := resolveControls(ctx, ctx2, repo, readcommon.PrField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
 		return nil, "", ref
 	}
 	fc, ref := resolveFetchCap(r)
@@ -141,8 +141,8 @@ func githubBundle(
 	if ref := githubMiddle(ctx, ctx2, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
-	headSHA := prField(dir, keyHeadSHA)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, prField(dir, keyBaseSHA), fc.source)
+	headSHA := readcommon.PrField(dir, keyHeadSHA)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, readcommon.PrField(dir, keyBaseSHA), fc.source)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -204,7 +204,7 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 	}
 	feed, feedTruncated, feedErr := githubThreadFeed(ctx, r, repo, pr)
 	threadWarning(r, providerGitHub, feed, feedTruncated, feedErr)
-	return writeThreadsJSON(dir, providerGitHub, pr, prHeadRefOid(dir), r.nowUTC(),
+	return writeThreadsJSON(dir, providerGitHub, pr, readcommon.PrField(dir, keyHeadSHA), r.nowUTC(),
 		truncated || feedTruncated, feed)
 }
 
@@ -215,7 +215,7 @@ func githubIncremental(ctx context.Context, r *session, dir, repo string, f core
 	if !f.HasBase || f.BaseSHA == "" {
 		return incBase, nil
 	}
-	headSHA := prHeadRefOid(dir)
+	headSHA := readcommon.PrField(dir, keyHeadSHA)
 	fmt.Fprintf(r.Human, "» compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, dir)
 	res, err := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/compare/"+f.BaseSHA+gitRange3+headSHA,
 		flagH, "Accept: application/vnd.github.diff")
@@ -262,22 +262,6 @@ func githubIncrementalNote(r *session, dir, stderr string) *core.RefusalError {
 	return nil
 }
 
-func prHeadRefOid(dir string) string {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
-	if err != nil {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	return jq.R(m["headRefOid"])
-}
-
 // writeGitHubTOC ports the GitHub write_toc_roles call: the PR title line,
 // the gh files stat, and the coverage manifest.
 func writeGitHubTOC(ctx context.Context, ctx2 *fetchRunCtx) error {
@@ -311,58 +295,6 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	}
 	lines := append([]string{}, splitLines(res.Stdout)...)
 	return total, lines
-}
-
-// prField ports pr_field for the tail's head/base reads.
-func prField(dir, field string) string {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
-	if err != nil {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	prov := jq.StrOf(m[keyProvider])
-	if prov == "" {
-		return githubPrField(m, field)
-	}
-	return neutralPrField(m, field)
-}
-
-// githubPrField reads the GitHub-shaped record field.
-func githubPrField(m map[string]any, field string) string {
-	switch field {
-	case keyHeadSHA:
-		return jq.R(m["headRefOid"])
-	case keyBaseSHA:
-		return jq.R(m["baseRefOid"])
-	case keyState:
-		return readcommon.ASCIILower(jq.R(m[keyState]))
-	case keyAuthor:
-		if a, ok := m[keyAuthor].(map[string]any); ok {
-			return jq.R(a[keyLogin])
-		}
-		return ""
-	default:
-		return ""
-	}
-}
-
-// neutralPrField reads the normalized non-GitHub record field.
-func neutralPrField(m map[string]any, field string) string {
-	switch field {
-	case keyHeadSHA, keyBaseSHA, keyState:
-		return jq.R(m[field])
-	case keyAuthor:
-		return jq.R(m[keyAuthor])
-	default:
-		return ""
-	}
 }
 
 // prExtraPaths ports `jq -r '.files[] | .path, (.previous_filename //

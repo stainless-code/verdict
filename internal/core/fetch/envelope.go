@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // fetchTail ports fetch_tail: the human done/next lines plus the typed
@@ -245,8 +246,8 @@ func fetchData(
 	}
 	data := &core.FetchData{
 		Dir:        ctx2.dir,
-		HeadSHA:    prField(ctx2.dir, keyHeadSHA),
-		BaseSHA:    prField(ctx2.dir, keyBaseSHA),
+		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
+		BaseSHA:    readcommon.PrField(ctx2.dir, keyBaseSHA),
 		Files:      st.files,
 		Additions:  st.adds,
 		Deletions:  st.dels,

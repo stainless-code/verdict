@@ -265,7 +265,7 @@ func bundleHeads(dir string) (head, base string) {
 		return readcommon.PrField(dir, "head_sha"), readcommon.PrField(dir, "base_sha")
 	}
 	if isRegular(dir + "/source.json") {
-		return jsonField(dir+"/source.json", "head_sha"), jsonField(dir+"/source.json", "base_sha")
+		return readcommon.JSONStr(dir+"/source.json", "head_sha"), readcommon.JSONStr(dir+"/source.json", "base_sha")
 	}
 	return "", ""
 }

@@ -200,27 +200,6 @@ func EnsureHunksSnapshot(rt core.Runtime, dir string) error {
 	return atomic.WriteFile(dir+"/hunks.tsv", []byte(hunks.Format(hunks.Parse(string(raw)))))
 }
 
-// ProvHead reads the provider head SHA via the normalized field rules.
-func ProvHead(dir string) string {
-	raw, ok := ReadOptional(dir + prSuffix)
-	if !ok {
-		return ""
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return ""
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
-		return ""
-	}
-	prov := jq.StrOf(m["provider"])
-	if prov == "" {
-		return jq.StrOf(m["headRefOid"])
-	}
-	return jq.StrOf(m["head_sha"])
-}
-
 // CountStatus counts entries with status.
 func CountStatus(entries []any, status string) int {
 	n := 0

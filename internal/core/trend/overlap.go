@@ -334,18 +334,11 @@ func joinIDPresent(dir string) bool {
 	return reviewIDPresent(dir)
 }
 
-// reviewIDPresent reads the nested review.id field.
+// reviewIDPresent reads the nested review.id field from the shared capped
+// post-record read.
 func reviewIDPresent(dir string) bool {
-	raw, err := os.ReadFile(dir + "/post.json")
-	if err != nil {
-		return false
-	}
-	doc, err := jq.Decode(raw)
-	if err != nil {
-		return false
-	}
-	m, ok := jq.AsMap(doc)
-	if !ok {
+	m := readcommon.PostRecord(dir)
+	if m == nil {
 		return false
 	}
 	rev, ok := m["review"].(map[string]any)
