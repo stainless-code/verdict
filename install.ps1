@@ -170,7 +170,7 @@ try {
   $zip = $null
   try {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
-    $allowed = @('verdict.exe', 'LICENSE', 'README.md')
+    $allowed = @('verdict.exe', 'LICENSE', 'README.md', 'NOTICE.md')
     foreach ($member in $zip.Entries) {
       if ($allowed -notcontains $member.FullName) { throw "archive has an unexpected member: $($member.FullName)" }
     }
@@ -193,7 +193,13 @@ try {
   else { [System.IO.File]::Move($staged, $target) }
   $receipt = '{"binary":"verdict.exe","version":"' + $Version + '","installed_by":"install.ps1"}'
   [System.IO.File]::WriteAllText($ReceiptPath, $receipt, [System.Text.Encoding]::ASCII)
-  Write-Host "install: installed verdict $Version to $target (SHA-256 verified)"
+  # Smoke the new binary from its final path: that is what the user runs, so
+  # it proves the file we just moved in is executable where it landed.
+  $reported = (& $target --version 2>$null | Select-Object -First 1)
+  if ($LASTEXITCODE -ne 0 -or -not "$reported".Trim()) {
+    throw "installed $target but it does not answer --version; check the archive for this platform"
+  }
+  Write-Host "install: installed verdict $Version to $target (SHA-256 verified; reports $reported)"
 
   if ($NoModifyPath) {
     Write-Host "install: user PATH not modified (VERDICT_NO_MODIFY_PATH). Add: $InstallDir"

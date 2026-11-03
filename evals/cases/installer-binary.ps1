@@ -34,7 +34,11 @@ $originalArch = $env:PROCESSOR_ARCHITECTURE
 $originalArchW6432 = $env:PROCESSOR_ARCHITEW6432
 $job = $null
 New-Item -ItemType Directory -Path $Release, $FakeBin -Force | Out-Null
-[System.IO.File]::WriteAllText($BinSrc, "fake-verdict`n")
+# The payload must be a real executable: install.ps1 smokes the installed
+# binary's `--version` from its final path, and Windows cannot run a .exe that
+# is not a PE. git.exe is a console app that answers `--version` with exit 0.
+$gitExe = (Get-Command git.exe -ErrorAction Stop).Source
+[System.IO.File]::Copy($gitExe, $BinSrc, $true)
 
 function Log-Contains {
   param([string]$Needle)
@@ -98,10 +102,11 @@ function New-FakeRelease {
   Copy-Item -LiteralPath $BinSrc -Destination (Join-Path $payload 'verdict.exe')
   Set-Content -Path (Join-Path $payload 'LICENSE') -Value 'license' -Encoding ASCII
   Set-Content -Path (Join-Path $payload 'README.md') -Value 'readme' -Encoding ASCII
+  Set-Content -Path (Join-Path $payload 'NOTICE.md') -Value 'notice' -Encoding ASCII
   $zip = Join-Path $dir "verdict_${Version}_${Goos}_${Goarch}.zip"
   Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
   Push-Location $payload
-  try { Compress-Archive -Path 'verdict.exe', 'LICENSE', 'README.md' -DestinationPath $zip } finally { Pop-Location }
+  try { Compress-Archive -Path 'verdict.exe', 'LICENSE', 'README.md', 'NOTICE.md' -DestinationPath $zip } finally { Pop-Location }
   Remove-Item -LiteralPath $payload -Recurse -Force
 }
 function Complete-FakeRelease {
@@ -229,6 +234,11 @@ try {
     Good 'installer receipt records the pinned version'
   } else {
     Bad 'installer receipt missing or wrong version'
+  }
+  if (Log-Contains '(SHA-256 verified; reports ') {
+    Good 'installer smokes the installed binary and reports its --version'
+  } else {
+    Bad "no post-verify --version smoke: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
   }
   if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog 'refs/tags/v') `
       -and (File-Contains $CosignLog '--certificate-oidc-issuer') -and (File-Contains $CosignLog $contract.cosign.issuer)) {

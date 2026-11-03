@@ -5,10 +5,13 @@
 # a fake cosign records argv, fake uname/sysctl pin the platform):
 #   B1  happy path for each contract platform: the contract archive name is
 #       requested, the signature identity/issuer are passed to cosign, the
-#       SHA-256 is checked, and only the expected binary is installed.
+#       SHA-256 is checked, only the expected binary is installed, and the
+#       installed binary is smoke-checked with --version from its final path.
 #   B2  Rosetta 2: a darwin/x86_64 shell with sysctl.proc_translated=1 installs
 #       the native darwin/arm64 archive and says so.
-#   B3  checksum mismatch and bad signature refuse, leaving the old binary.
+#   B3  checksum mismatch and bad signature refuse, leaving the old binary;
+#       a verified archive whose binary cannot answer --version fails the
+#       install instead of passing silently.
 #   B4  unknown platform and wrong-arch archives refuse with the supported list.
 #   B5  version pin (vX.Y.Z) and latest-via-redirect (no API call).
 #   B6  PATH: one marked line only when missing; env and flag opt-outs.
@@ -69,7 +72,8 @@ mk_release() { # <version> <goos> <goarch>
   cp "$BIN_SRC" "$dir/verdict"
   : > "$dir/LICENSE"
   : > "$dir/README.md"
-  (cd "$dir" && tar -czf "../verdict_${v}_${goos}_${goarch}.tar.gz" verdict LICENSE README.md)
+  : > "$dir/NOTICE.md"
+  (cd "$dir" && tar -czf "../verdict_${v}_${goos}_${goarch}.tar.gz" verdict LICENSE README.md NOTICE.md)
   rm -rf "$dir"
 }
 finish_release() { # <version>
@@ -170,6 +174,11 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
   if [ "$ROSETTA" = 1 ]; then
     if grep -q "Rosetta 2" "$EVAL_ERR"; then good "Rosetta note is printed"; else bad "Rosetta note missing"; fi
   fi
+  if grep -Fq 'verified; reports fake-verdict --version' "$EVAL_OUT"; then
+    good "$want_os/$want_arch smokes the installed binary with --version"
+  else
+    bad "$want_os/$want_arch has no --version smoke ($(head -c 200 "$EVAL_OUT"))"
+  fi
 done
 
 # --- B3: checksum mismatch / bad signature leave the old binary ---
@@ -202,6 +211,19 @@ if find "$INSTALL_DIR" -name '.verdict-stage-*' -print | grep -q .; then
 else
   good "refused runs clean staging behind"
 fi
+
+# --- B3b: a verified archive whose binary cannot run still fails loudly ---
+printf '#!/bin/sh\nexit 3\n' > "$BIN_SRC"
+mk_release 4.0.0 linux amd64
+finish_release 4.0.0
+PIN=4.0.0; PLAT_OS=linux; PLAT_ARCH=amd64; run_install
+if [ "$EVAL_STATUS" -ne 0 ] && grep -q "does not answer --version" "$EVAL_ERR"; then
+  good "a binary that cannot answer --version fails the install instead of passing silently"
+else
+  bad "unrunnable binary exit $EVAL_STATUS ($(head -c 160 "$EVAL_ERR"))"
+fi
+printf '#!/bin/sh\nprintf "fake-verdict %%s\\n" "$*"\n' > "$BIN_SRC"
+chmod +x "$BIN_SRC"
 
 # --- B4: unknown platform, wrong arch, and local-archive mismatch ---
 PLAT_OS=SunOS; PLAT_ARCH=x86_64; PIN=1.2.3

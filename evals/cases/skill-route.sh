@@ -189,10 +189,11 @@ EOF
 chmod +x "$RELPAY/verdict"
 : >"$RELPAY/LICENSE"
 : >"$RELPAY/README.md"
+: >"$RELPAY/NOTICE.md"
 for v in 1.2.3 2.0.0; do
   mkdir -p "$REL/v$v"
   cp "$EVAL_ROOT/install.sh" "$REL/v$v/install.sh"
-  (cd "$RELPAY" && tar -czf "$REL/v$v/verdict_${v}_linux_amd64.tar.gz" verdict LICENSE README.md)
+  (cd "$RELPAY" && tar -czf "$REL/v$v/verdict_${v}_linux_amd64.tar.gz" verdict LICENSE README.md NOTICE.md)
   printf '{}\n' >"$REL/v$v/checksums.txt.sigstore.json"
 done
 (cd "$REL/v1.2.3" && shasum -a 256 verdict_1.2.3_linux_amd64.tar.gz >checksums.txt)

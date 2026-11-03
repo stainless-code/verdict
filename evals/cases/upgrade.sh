@@ -61,7 +61,8 @@ mkdir -p "$REL/v$VERSION/payload"
 cp "$BIN_SRC" "$REL/v$VERSION/payload/verdict"
 : > "$REL/v$VERSION/payload/LICENSE"
 : > "$REL/v$VERSION/payload/README.md"
-(cd "$REL/v$VERSION/payload" && COPYFILE_DISABLE=1 tar -czf "../$archive" verdict LICENSE README.md)
+: > "$REL/v$VERSION/payload/NOTICE.md"
+(cd "$REL/v$VERSION/payload" && COPYFILE_DISABLE=1 tar -czf "../$archive" verdict LICENSE README.md NOTICE.md)
 rm -rf "$REL/v$VERSION/payload"
 (cd "$REL/v$VERSION" && shasum -a 256 "$archive" > checksums.txt)
 printf '{}\n' > "$REL/v$VERSION/checksums.txt.sigstore.json"

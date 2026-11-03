@@ -273,17 +273,27 @@ installs work), and the same run renders `dist/verdict.rb` for the
 (`brew install stainless-code/tap/verdict`).
 
 Artifact names are frozen in [`release/contract.json`](release/contract.json);
-`.goreleaser.yml`, the npm scripts, and the formula generator must match it
-(the contract tests fail otherwise). `verdict --version` prints the tag in
+`.goreleaser.yml`, the npm scripts, the formula generator, and the archive
+allowlist both installers carry must match it (the contract tests fail
+otherwise). `verdict --version` prints the tag in
 release binaries (ldflags `main.version`) and the `package.json` version for
 source builds.
 
 Dry-run (publishes nothing, pushes nothing, needs no secrets):
 `make release-dry-run` — snapshot archives, the npm tree (a fake `npm`
-records argv), the formula, `npm pack` content checks, and the contract
+records argv), the formula rendered and `brew style` + `brew audit --strict`
+graded in a throwaway local tap (`make formula-audit`), `npm pack` content
+checks, and the contract
 tests. CI runs it on every PR. The real chain (`scripts/release.sh`) runs
-only from the Release workflow after a Version PR merges; the tap push stays
+only from the Release workflow after a Version PR merges, and audits the
+formula again before the tap push; the tap push stays
 off until tap auth lands (`TAP_PUSH=1` with `TAP_GITHUB_TOKEN`).
+
+`make deadcode` ratchets against unreachable functions
+(`deadcode -test ./...`); entries the tool cannot resolve — the `pkg/verdict`
+SDK, dialled from other repositories — live in
+[`scripts/deadcode-baseline.txt`](scripts/deadcode-baseline.txt). It runs in
+`make ci-go`.
 
 ## Formatting
 

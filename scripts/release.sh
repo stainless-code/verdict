@@ -248,6 +248,9 @@ stage_tap() {
   if [ ! -f dist/verdict.rb ]; then
     node scripts/generate-formula.mjs --version "$VERSION" --dist dist --out dist/verdict.rb
   fi
+  # Grade the exact file the tap will carry; a formula audit would reject here
+  # beats a broken `brew install verdict` after the push.
+  sh scripts/brew-audit.sh dist/verdict.rb
   TAP_DIR="$(mktemp -d)"
   git clone --quiet "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${TAP_GH_REPO}.git" "$TAP_DIR"
   if [ -f "$TAP_DIR/$TAP_FORMULA" ] && cmp -s dist/verdict.rb "$TAP_DIR/$TAP_FORMULA"; then

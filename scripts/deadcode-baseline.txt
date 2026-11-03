@@ -1,0 +1,40 @@
+# Accepted deadcode entries. `make deadcode` (scripts/deadcode.sh) fails on
+# anything reported that is not listed here, and on a listed entry that is no
+# longer reported, so this list cannot rot. Format: `<file>: <symbol>`.
+#
+# Keep the comments with the group and the entries sorted by file/symbol
+# (LC_ALL=C); the gate compares against the sorted, comment-stripped list.
+
+# The public Go SDK: other repositories dial pkg/verdict, which deadcode
+# cannot see from inside this module.
+pkg/verdict/client.go: Client.readBare
+pkg/verdict/client.go: Client.streamWriter
+pkg/verdict/client.go: MissingToolError.Error
+pkg/verdict/client.go: convertErr
+pkg/verdict/client.go: findingOf
+pkg/verdict/client.go: lineWriter.Write
+pkg/verdict/client.go: outcomePtr
+pkg/verdict/verbs.go: Client.Adopt
+pkg/verdict/verbs.go: Client.Calibrate
+pkg/verdict/verbs.go: Client.CheckTree
+pkg/verdict/verbs.go: Client.Doctor
+pkg/verdict/verbs.go: Client.Fetch
+pkg/verdict/verbs.go: Client.FetchLocal
+pkg/verdict/verbs.go: Client.Fix
+pkg/verdict/verbs.go: Client.Init
+pkg/verdict/verbs.go: Client.Learn
+pkg/verdict/verbs.go: Client.Next
+pkg/verdict/verbs.go: Client.Post
+pkg/verdict/verbs.go: Client.Ready
+pkg/verdict/verbs.go: Client.Show
+pkg/verdict/verbs.go: Client.Trend
+
+# Port-kept helpers with no current caller: the bash-era surfaces these back
+# are not all wired to the Go CLI yet. Delete a line as its caller lands.
+internal/jq/jq.go: AsSlice
+internal/jq/jq.go: DecodeArray
+internal/jq/jq.go: Present
+internal/provenance/basis.go: BasisCounts
+internal/provenance/basis.go: basisRigor
+internal/readcommon/rank.go: SigPrefix
+internal/readcommon/rank.go: sigOf

@@ -13,7 +13,7 @@
       "npmOS": "darwin",
       "npmCPU": "x64",
       "npmBin": "bin/verdict",
-      "members": ["verdict", "LICENSE", "README.md"]
+      "members": ["verdict", "LICENSE", "README.md", "NOTICE.md"]
     },
     {
       "goos": "darwin",
@@ -23,7 +23,7 @@
       "npmOS": "darwin",
       "npmCPU": "arm64",
       "npmBin": "bin/verdict",
-      "members": ["verdict", "LICENSE", "README.md"]
+      "members": ["verdict", "LICENSE", "README.md", "NOTICE.md"]
     },
     {
       "goos": "linux",
@@ -33,7 +33,7 @@
       "npmOS": "linux",
       "npmCPU": "x64",
       "npmBin": "bin/verdict",
-      "members": ["verdict", "LICENSE", "README.md"]
+      "members": ["verdict", "LICENSE", "README.md", "NOTICE.md"]
     },
     {
       "goos": "linux",
@@ -43,7 +43,7 @@
       "npmOS": "linux",
       "npmCPU": "arm64",
       "npmBin": "bin/verdict",
-      "members": ["verdict", "LICENSE", "README.md"]
+      "members": ["verdict", "LICENSE", "README.md", "NOTICE.md"]
     },
     {
       "goos": "windows",
@@ -53,7 +53,7 @@
       "npmOS": "win32",
       "npmCPU": "x64",
       "npmBin": "bin/verdict.exe",
-      "members": ["verdict.exe", "LICENSE", "README.md"]
+      "members": ["verdict.exe", "LICENSE", "README.md", "NOTICE.md"]
     },
     {
       "goos": "windows",
@@ -63,7 +63,7 @@
       "npmOS": "win32",
       "npmCPU": "arm64",
       "npmBin": "bin/verdict.exe",
-      "members": ["verdict.exe", "LICENSE", "README.md"]
+      "members": ["verdict.exe", "LICENSE", "README.md", "NOTICE.md"]
     }
   ],
   "checksums": "checksums.txt",

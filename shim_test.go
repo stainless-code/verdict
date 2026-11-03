@@ -252,10 +252,13 @@ func writeRelease(t *testing.T, root, version, binary string, corrupt bool, inst
 	}
 	name := fmt.Sprintf("verdict_%s_linux_amd64.tar.gz", version)
 	archive := filepath.Join(dir, name)
+	// install.sh smoke-checks `--version` from the installed path, so the
+	// payload has to be a script that answers it.
 	writeTarGz(t, archive, map[string]string{
-		"verdict":   binary,
+		"verdict":   fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' %q\n", binary),
 		"LICENSE":   "MIT\n",
 		"README.md": "verdict\n",
+		"NOTICE.md": "notices\n",
 	})
 	sum := sha256.Sum256(mustReadFile(t, archive))
 	hash := hex.EncodeToString(sum[:])

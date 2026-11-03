@@ -206,7 +206,7 @@ actual="$($SHA_CMD "$archive_path" | awk '{print $1}')"
 
 # --- extract only the expected member; reject archives carrying anything else ---
 tar -tzf "$archive_path" > "$TMP/members" 2>/dev/null || die "not a valid tar.gz archive: $archive_name"
-bad="$(grep -Ev '^(verdict|LICENSE|README\.md)$' "$TMP/members" || true)"
+bad="$(grep -Ev '^(verdict|LICENSE|README\.md|NOTICE\.md)$' "$TMP/members" || true)"
 [ -z "$bad" ] || die "archive has unexpected member(s): $bad"
 grep -qx verdict "$TMP/members" || die "archive does not contain the verdict binary"
 mkdir -p "$INSTALL" || die "cannot create $INSTALL"
@@ -220,7 +220,11 @@ sync 2>/dev/null || true
 mv -f "$STAGE/verdict" "$INSTALL/verdict" || die "atomic replace failed; the old binary is untouched"
 mv -f "$STAGE/receipt" "$RECEIPT" || die "installed the binary but could not write $RECEIPT"
 rm -rf "$STAGE"; STAGE=''
-echo "install: installed verdict $VERSION to $INSTALL/verdict (SHA-256 verified)"
+# Smoke the new binary from its final path: that is what the shell will run,
+# so it proves the file we just moved in is executable where it landed.
+reported="$("$INSTALL/verdict" --version 2>/dev/null)" || reported=''
+[ -n "$reported" ] || die "installed $INSTALL/verdict but it does not answer --version; check the archive for this platform"
+echo "install: installed verdict $VERSION to $INSTALL/verdict (SHA-256 verified; reports $reported)"
 
 if [ "$NO_MODIFY_PATH" = 1 ]; then
   echo "install: PATH not modified (VERDICT_NO_MODIFY_PATH). Add: export PATH=\"$INSTALL:\$PATH\""

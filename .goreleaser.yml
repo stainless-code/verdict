@@ -36,6 +36,7 @@ archives:
     files:
       - LICENSE
       - README.md
+      - NOTICE.md
 
 # The release carries archives, checksums, the signature bundle, SBOMs, and
 # the two installer scripts (stable `releases/latest/download/install.sh`
