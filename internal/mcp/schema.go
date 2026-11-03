@@ -36,18 +36,17 @@ const (
 // runtime, presentation prefs, adapter streams, and CLI-only switches. They
 // never appear in a tool schema or accept an argument.
 var internalFieldNames = map[string]bool{
-	"Runtime":        true,
-	"Root":           true,
-	"Forces":         true,
-	"Effective":      true,
-	"Warnings":       true,
-	"Human":          true,
-	"Diag":           true,
-	"ReadAnswer":     true,
-	"Environ":        true,
-	"JSONMode":       true,
-	"Interactive":    true,
-	"ReportWarnings": true,
+	"Runtime":     true,
+	"Root":        true,
+	"Forces":      true,
+	"Effective":   true,
+	"Warnings":    true,
+	"Human":       true,
+	"Diag":        true,
+	"ReadAnswer":  true,
+	"Environ":     true,
+	"JSONMode":    true,
+	"Interactive": true,
 }
 
 // schemaSource is one tool's schema source type. The registry treats it as an

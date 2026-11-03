@@ -10,9 +10,10 @@ import (
 )
 
 // RunNext executes the next service: the top-ranked actionable finding plus
-// the command to act on it. It calls the report service directly (never a
-// CLI replay), so the store reads and failure posture match the report verb
-// while the transport stays out of the domain.
+// the command to act on it. It calls the report service directly, so the
+// store reads and failure posture match the report verb while the transport
+// stays out of the domain. The report run carries the request's warnings
+// unchanged: prefs are resolved once, by the adapter.
 func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *core.RefusalError) {
 	statusF := orDefault(req.Status, statusOpen)
 	resp := &core.NextResponse{
@@ -22,11 +23,9 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 		Status:   statusF,
 		Warnings: req.Warnings,
 	}
-	// The sub-report validates --status like report does: a missing value
-	// reads open (the shell's ${2:-open}), and an invalid value fails the
-	// replay — bash's sub-invocation usage-errors, so the replay reads
-	// empty and the parent reports the store unreadable (exit 1), never
-	// an empty ranking.
+	// next validates --status like report does: a missing value reads open
+	// (the shell's ${2:-open}), and an invalid value fails closed — the
+	// parent reports the store unreadable (exit 1), never an empty ranking.
 	if !validStatus(statusF) {
 		resp.StoreUnreadable = true
 		return resp, nil
@@ -35,7 +34,7 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 		ReadRequest: req.ReadRequest,
 		Flags:       core.ReportFlags{Status: statusF, Kind: statusAll, Live: liveAuto},
 		Effective:   req.Effective,
-		Warnings:    req.ReportWarnings,
+		Warnings:    req.Warnings,
 	})
 	if ref != nil {
 		resp.StoreUnreadable = true

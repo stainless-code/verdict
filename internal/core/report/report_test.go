@@ -267,12 +267,12 @@ func TestRunNextEmptyStore(t *testing.T) {
 }
 
 // TestRunNextCorruptStore proves the corrupt store is classified and
-// carries the underlying report refusal.
+// carries the underlying report refusal with the adapter warnings once.
 func TestRunNextCorruptStore(t *testing.T) {
 	req := fixture(t, "[42]")
 	resp, ref := reportcore.RunNext(context.Background(), &core.NextRequest{
-		ReadRequest:    req,
-		ReportWarnings: []string{"duplicated prefs warning"},
+		ReadRequest: req,
+		Warnings:    []string{"prefs warning"},
 	})
 	if ref != nil {
 		t.Fatalf("RunNext refusal: %v", ref)

@@ -51,15 +51,15 @@ type ReportResponse struct { //nolint:govet // field grouping documents the resp
 	Sarif      *FileArtifact
 }
 
-// NextRequest is the next service invocation. ReportWarnings seeds the
-// internal report run (the shell's re-invocation re-resolved prefs and
-// duplicated their warnings, so the adapter passes the replayed list).
+// NextRequest is the next service invocation: the read runtime and
+// positionals, the status filter, the render configuration, and the
+// warnings the adapter already accumulated (prefs, carried into the report
+// run unchanged).
 type NextRequest struct {
 	ReadRequest
-	Status         string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
-	Effective      Effective
-	Warnings       []string
-	ReportWarnings []string
+	Status    string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
+	Effective Effective
+	Warnings  []string
 }
 
 // NextResponse carries the top actionable finding or the unreadable-store
