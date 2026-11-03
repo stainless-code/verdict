@@ -50,16 +50,21 @@ func TestAnchorPartitionKeepBias(t *testing.T) {
 	}
 }
 
-// checkAnchorPartition classifies one comment and asserts its side.
+// checkAnchorPartition classifies one comment and asserts the exact
+// partition: a kept anchor stays inline with nothing moved, and a moved
+// anchor lands in the body only. Checking both lists catches a duplicate
+// (kept and moved) that a one-sided count would miss.
 func checkAnchorPartition(t *testing.T, rows []hunkRow, tc anchorCase) {
 	t.Helper()
 	st := anchorTestState(rows)
 	st.classifyComment(anchorComment(tc.path, tc.line, "", tc.side), rows)
-	if tc.kept && len(st.kept) != 1 {
-		t.Errorf("kept=%v: kept=%d moved=%d", tc.kept, len(st.kept), len(st.moved))
+	wantKept, wantMoved := 1, 0
+	if !tc.kept {
+		wantKept, wantMoved = 0, 1
 	}
-	if !tc.kept && len(st.moved) != 1 {
-		t.Errorf("kept=%v: kept=%d moved=%d", tc.kept, len(st.kept), len(st.moved))
+	if len(st.kept) != wantKept || len(st.moved) != wantMoved {
+		t.Errorf("kept=%v: kept=%d moved=%d, want kept=%d moved=%d",
+			tc.kept, len(st.kept), len(st.moved), wantKept, wantMoved)
 	}
 }
 
@@ -80,7 +85,7 @@ func TestAnchorSwappedSpan(t *testing.T) {
 	st := anchorTestState(rows)
 	c := anchorComment("notes.txt", "1", "3", "RIGHT")
 	st.classifyComment(c, rows)
-	if len(st.kept) != 1 {
+	if len(st.kept) != 1 || len(st.moved) != 0 {
 		t.Errorf("swapped span 3-1 inside 1-3: kept=%d moved=%d", len(st.kept), len(st.moved))
 	}
 }
@@ -141,12 +146,12 @@ func TestAnchorLeftOldSide(t *testing.T) {
 	old := []hunkRow{{file: "notes.txt", side: "OLD", start: 1, end: 3}}
 	st := anchorTestState(old)
 	st.classifyComment(anchorComment("notes.txt", "2", "", "LEFT"), old)
-	if len(st.kept) != 1 {
+	if len(st.kept) != 1 || len(st.moved) != 0 {
 		t.Errorf("LEFT inside OLD hunk: kept=%d moved=%d", len(st.kept), len(st.moved))
 	}
 	st2 := anchorTestState(nil)
 	st2.classifyComment(anchorComment("notes.txt", "2", "", "LEFT"), nil)
-	if len(st2.moved) != 1 {
+	if len(st2.kept) != 0 || len(st2.moved) != 1 {
 		t.Errorf("LEFT with unknown path moves to the body: kept=%d moved=%d", len(st2.kept), len(st2.moved))
 	}
 }
