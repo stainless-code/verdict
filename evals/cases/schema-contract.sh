@@ -48,12 +48,18 @@ check() { # $1 = label, $2 = schema[#ptr], $3 = doc
   fi
 }
 
-must_fail() { # $1 = label, $2 = schema[#ptr], $3 = doc
-  local label="$1" schema="$2" doc="$3"
-  if "$VAL" "$schema" "$doc" >/dev/null 2>&1; then
+must_fail() { # $1 = label, $2 = schema[#ptr], $3 = doc, $4 = expected stderr rule
+  local label="$1" schema="$2" doc="$3" want="$4" err
+  if [ ! -s "$doc" ]; then
+    bad "$label fixture is missing or empty"
+    return
+  fi
+  if err="$("$VAL" "$schema" "$doc" 2>&1)"; then
     bad "$label passed validation (checker toothless)"
+  elif ! grep -Fq "$want" <<<"$err"; then
+    bad "$label failed for the wrong reason (want $want): $err"
   else
-    good "$label refused as invalid"
+    good "$label refused as invalid ($want)"
   fi
 }
 
@@ -193,13 +199,13 @@ check "S5 cost.json (prompts shape)" "$SCH/cost.schema.json" "$LB/cost.json"
 
 # --- S6: the checker has teeth ---
 printf '{"schema_version":"1","comments":[]}' > "$EVAL_SANDBOX/s6-nobody.json"
-must_fail "S6 review without body" "$SCH/review.schema.json" "$EVAL_SANDBOX/s6-nobody.json"
+must_fail "S6 review without body" "$SCH/review.schema.json" "$EVAL_SANDBOX/s6-nobody.json" "missing required key(s): body"
 printf '[{"sig":"x","sig_version":"1","kind":"inline","status":"maybe","firstSeen":"a","lastSeen":"b","history":[]}]' > "$EVAL_SANDBOX/s6-badstatus.json"
-must_fail "S6 findings off-enum status" "$SCH/findings.schema.json" "$EVAL_SANDBOX/s6-badstatus.json"
+must_fail "S6 findings off-enum status" "$SCH/findings.schema.json" "$EVAL_SANDBOX/s6-badstatus.json" "not one of"
 jq '. + {ninth_key: 1}' <"$EVAL_OUT" > "$EVAL_SANDBOX/s6-extrakey.json" 2>/dev/null
-must_fail "S6 envelope extra top-level key" "$ENV" "$EVAL_SANDBOX/s6-extrakey.json"
+must_fail "S6 envelope extra top-level key" "$ENV" "$EVAL_SANDBOX/s6-extrakey.json" "additional properties not allowed: ninth_key"
 printf '{"schema_version":"1","status":"local","head":"h","diff_sha256":"d","recorded_at":"not-a-time","findings":0,"open":0}' > "$EVAL_SANDBOX/s6-badtime.json"
-must_fail "S6 record bad date-time" "$SCH/record.schema.json" "$EVAL_SANDBOX/s6-badtime.json"
+must_fail "S6 record bad date-time" "$SCH/record.schema.json" "$EVAL_SANDBOX/s6-badtime.json" "not a date-time"
 
 # --- S7: offline across every leg + cleanup ---
 # record/report never touch the network; the dry-run post attempts one
