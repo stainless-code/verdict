@@ -284,9 +284,8 @@ func postCommentKeys(comments []any) string {
 
 // dryRunResponse ports the dry-run exit: the payload preview on the human
 // stream, or the dry-run envelope inputs (payload hash, footer and diagram
-// disposition included). Nothing posts, nothing arms.
-//
-//nolint:revive // the JSON/human envelope branches mirror the shell's dry-run fork
+// disposition included). Nothing posts, nothing arms. Both modes report the
+// same envelope; only the human preview lines and the payload hash differ.
 func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	footerText, ferr := provenance.RenderFooter(recordcore.FooterOpts(
 		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
@@ -297,46 +296,19 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	if footerText != "" {
 		footerVal = footerText
 	}
+	// Human mode previews the payload instead of reporting its hash; a real
+	// post is the only path that arms it, so the human envelope carries "".
+	payloadHash := ""
 	if st.req.JSONMode {
-		st.phash = sigSumOf(st.payloadBytes())
-		nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)
-		data := &core.PostData{
-			DryRun:   true,
-			Event:    st.event,
-			CommitID: st.commitID,
-			Body: core.PostBody{
-				Marker:  st.merged.Marker,
-				Footer:  footerVal,
-				Diagram: postDiagramValue(&st.diagram),
-			},
-			Anchors:     core.AnchorsSummary{Kept: st.merged.NKept, Moved: st.merged.NMoved},
-			Suggestions: core.Suggestions{Embedded: st.embedded},
-			Findings: core.PostFindings{
-				Open: stOpen(nOpen), Deferred: nDeferred, Addressed: nAddressed, File: st.findingsFile,
-			},
-			Items:           typedPostItems(st.merged.Entries),
-			Confidence:      intOrNilPost(st.merged.Confidence),
-			SecuritySummary: strOrNilPost(st.merged.Security),
-			PayloadHash:     st.phash,
-			ItemsRaw:        recordcore.EnvelopeItems(st.merged.Entries),
+		payloadHash = st.phash
+	} else {
+		st.human("dry-run: payload NOT posted. body chars: " + strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
+		if footerText != "" {
+			st.human("footer preview:\n" + footerText)
 		}
-		prov := decodeProvenanceTyped(st.req.RootPath(), st.dir)
-		if prov != nil {
-			data.Provenance = *prov
+		if st.diagram.State != "absent" {
+			st.human("diagram: " + st.diagram.State + " — " + st.diagram.Detail)
 		}
-		return &core.PostResponse{
-			Repo: st.req.Repo, Pr: st.req.Pr, At: st.now,
-			Data:     data,
-			Warnings: st.warnings,
-			Next:     "payload NOT posted (dry-run)",
-		}, nil
-	}
-	st.human("dry-run: payload NOT posted. body chars: " + strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
-	if footerText != "" {
-		st.human("footer preview:\n" + footerText)
-	}
-	if st.diagram.State != "absent" {
-		st.human("diagram: " + st.diagram.State + " — " + st.diagram.Detail)
 	}
 	nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)
 	data := &core.PostData{
@@ -356,7 +328,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 		Items:           typedPostItems(st.merged.Entries),
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
-		PayloadHash:     "",
+		PayloadHash:     payloadHash,
 		ItemsRaw:        recordcore.EnvelopeItems(st.merged.Entries),
 	}
 	prov := decodeProvenanceTyped(st.req.RootPath(), st.dir)
