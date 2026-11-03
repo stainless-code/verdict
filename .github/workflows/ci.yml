@@ -173,7 +173,7 @@ jobs:
           # Re-run one golden test verbosely: the step passes only on an
           # observed `--- PASS`, so a suite that never executes (or errors
           # before running) fails the build instead of looking green.
-          go test -count=1 -v -run '^TestGateGolden$' ./internal/verify/ > "$RUNNER_TEMP/golden-guard.log" 2>&1
+          go test -count=1 -v -run '^TestGateGolden$' ./internal/core/verify/ > "$RUNNER_TEMP/golden-guard.log" 2>&1
           grep -q '^--- PASS: TestGateGolden' "$RUNNER_TEMP/golden-guard.log"
 
   go-windows:
