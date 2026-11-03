@@ -237,7 +237,7 @@ func promptFiles(t *testing.T, dir string) {
 // this call are head edits the default resolution must not read.
 func seedBase(t *testing.T, dir string, controls map[string]string) string {
 	t.Helper()
-	runGit(t, dir, "init", "-q")
+	runGit(t, dir, "init", "-q", "-b", "main")
 	runGit(t, dir, "config", "commit.gpgsign", "false")
 	for name, content := range controls {
 		writeFile(t, dir, name, content)
@@ -289,7 +289,7 @@ func gitSetup(files map[string]string) func(t *testing.T, dir, home string) {
 	return func(t *testing.T, dir, _ string) {
 		t.Helper()
 		writePrompts(t, dir)
-		runGit(t, dir, "init", "-q")
+		runGit(t, dir, "init", "-q", "-b", "main")
 		runGit(t, dir, "config", "user.email", "parity@example.invalid")
 		runGit(t, dir, "config", "user.name", "parity")
 		runGit(t, dir, "config", "commit.gpgsign", "false")
@@ -1140,7 +1140,7 @@ func TestFetchParityAzureHappy(t *testing.T) {
 		if err := os.MkdirAll(remote, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		runGit(t, remote, "init", "-q")
+		runGit(t, remote, "init", "-q", "-b", "main")
 		runGit(t, remote, "config", "user.email", "parity@example.invalid")
 		runGit(t, remote, "config", "user.name", "parity")
 		writeFile(t, remote, "a.txt", "one\n")
