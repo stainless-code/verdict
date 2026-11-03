@@ -51,6 +51,7 @@ type MergeResult struct { //nolint:govet // field grouping documents the merge c
 	Diagram      diagram.Status
 	Entries      []any
 	Kept         []any
+	KeptSigs     []string
 	NKept        int
 	NMoved       int
 	HunkN        int
@@ -109,6 +110,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		Diagram:      dstat,
 		Entries:      st.entries,
 		Kept:         st.kept,
+		KeptSigs:     st.keptSigs,
 		NKept:        st.nKept,
 		NMoved:       st.nMoved,
 		HunkN:        st.hunkN,

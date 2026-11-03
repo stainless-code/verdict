@@ -49,6 +49,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	prov         string
 	headFull     string
 	kept         []any
+	keptSigs     []string
 	anchorRows   []hunkRow
 	moved        []any
 	entries      []any
@@ -113,6 +114,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	body = appendMoveSection(body, st.moved)
 	st.reportMoves()
 	st.buildEntries(body)
+	st.keptSigs = freshInlineSigs(st.entries, len(st.kept))
 	if err := st.mergeEntries(); err != nil {
 		return "", diagram.Status{}, err
 	}
@@ -586,6 +588,24 @@ func (st *state) buildEntries(body string) {
 type freshEntry struct {
 	entry *core.FindingEntry
 	kbRaw any
+}
+
+// freshInlineSigs reads the fresh inline entries' sigs in kept order. The
+// entries slice starts with freshInline output (kept first, then moved), so
+// the first len(kept) entries pair with the comments post sends inline.
+func freshInlineSigs(entries []any, kept int) []string {
+	if kept > len(entries) {
+		kept = len(entries)
+	}
+	out := make([]string, 0, kept)
+	for i := range kept {
+		value := ""
+		if m, ok := entries[i].(*jq.Obj); ok && m != nil {
+			value, _ = sigString(m)
+		}
+		out = append(out, value)
+	}
+	return out
 }
 
 // freshInline builds the inline entries from kept/moved comments.

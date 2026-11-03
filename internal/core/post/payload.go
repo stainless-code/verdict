@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -22,7 +23,7 @@ import (
 // indent, no trailing newline — the command substitution strips it).
 // The stub-log comparison covers these bytes exactly.
 func (st *state) buildPayloads() {
-	st.comments = buildPostComments(st.merged.Kept)
+	st.comments = buildPostComments(st.merged.Kept, st.merged.KeptSigs)
 	st.embedded = countEmbedded(st.merged.Kept)
 	st.payloads = []string{postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)}
 	n := len(st.extraParts) + 1
@@ -204,20 +205,27 @@ func fitRunes(s string, space int) int {
 // buildPostComments ports the post_comments projection: only GitHub-known
 // comment keys ship, suggestions render as fenced blocks inside body, and
 // null-valued keys drop (false values ship, like the shell's with_entries).
-func buildPostComments(kept []any) []any {
+// Each inline comment also carries verdict's hidden finding marker (its sig
+// as the final line), which links the posted thread back to the finding on
+// the next threads.json read.
+func buildPostComments(kept []any, sigs []string) []any {
 	out := make([]any, 0, len(kept))
-	for _, c := range kept {
+	for i, c := range kept {
 		m, ok := c.(*jq.Obj)
 		if !ok || m == nil {
 			continue
 		}
-		out = append(out, projectComment(m))
+		sig := ""
+		if i < len(sigs) {
+			sig = sigs[i]
+		}
+		out = append(out, projectComment(m, sig))
 	}
 	return out
 }
 
 // projectComment projects one kept comment onto the posted keys.
-func projectComment(m *jq.Obj) *jq.Obj {
+func projectComment(m *jq.Obj, sig string) *jq.Obj {
 	out := jq.NewObj()
 	for _, k := range []string{fieldPath, fieldLine, "side", fieldBody, fieldStartLine} {
 		if v, has := m.Get(k); has && v != nil {
@@ -228,6 +236,10 @@ func projectComment(m *jq.Obj) *jq.Obj {
 	if jq.R(jq.Alt(sugg, "")) != "" {
 		bd, _ := m.Get(fieldBody)
 		out.Set(fieldBody, jq.R(jq.Alt(bd, ""))+"\n\n```suggestion\n"+jq.R(sugg)+"\n```")
+	}
+	if sig != "" {
+		body, _ := out.Get(fieldBody)
+		out.Set(fieldBody, jq.R(jq.Alt(body, ""))+"\n\n"+threadscore.FindingMarker(sig))
 	}
 	return out
 }
