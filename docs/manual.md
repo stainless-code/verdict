@@ -1046,12 +1046,13 @@ error (exit 2). Only the ported verbs dispatch; the rest stay shell as later
 verbs follow the same switch when they port.
 
 Two `post` guards exist only in the Go implementation (graded by
-`evals/cases/post-go-guards.sh`, which skips on the shell leg until ticket
-08): secondary rate limits (a 403/429 with a rate-limit signal) retry within
+`evals/cases/post-go-guards.sh`): secondary rate limits (a 403/429 with a rate-limit signal) retry within
 bounds — honoring the `retry-after` hint or the reset marker, at most three
 attempts, never publishing twice — and review bodies past the 65,536-char
-hosting limit trim with a notice (footer intact) instead of submitting a
-doomed review.
+hosting limit split into parts: the first review keeps the footer intact,
+and the remaining parts post as follow-up COMMENT reviews with a continuation
+header. A failed follow-up refuses typed (`post-failed`) and names the review
+that already landed.
 
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`
