@@ -146,9 +146,9 @@ export interface PostData {
   confidence: number | null;
   security_summary: string | null;
   payload_hash: string;
-  provenance?: Provenance;
   /** Real-post only: the accepted GitHub review object. */
   review?: unknown;
+  provenance?: Provenance;
   [key: string]: unknown;
 }
 
@@ -160,6 +160,53 @@ export interface RecordData {
   confidence: number | null;
   security_summary: string | null;
   items: Array<FindingItem>;
+  [key: string]: unknown;
+}
+
+/** show --json data: item is the raw finding record in store key order; fix is the read-only machine repair directive built from that record plus the bundle's patch/verification history. Neither key adds execution, flags, or store writes. */
+export interface ShowData {
+  item: unknown;
+  fix: ShowFix;
+  [key: string]: unknown;
+}
+
+/** The per-finding repair directive: identity, status, files, locator, embedded suggestion, and the last recorded rerun hint. Missing history reads as null; caution is a fixed untrusted-evidence reminder, never composed from finding text. */
+export interface ShowFix {
+  sig: string;
+  /** The record's stored status string, read verbatim (absent reads empty, never invented). */
+  status: string;
+  severity: "critical" | "important" | "informational" | null;
+  /** Deduped anchor paths read from the record (path plus any files/related_files lists); [] when the record names none. */
+  files: Array<string>;
+  /** path[:line] for inline findings, the heading for section findings, else empty. */
+  locator: string;
+  /** The record's embedded suggestion body, or null when absent. */
+  suggestion: string | null;
+  /** The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
+  verify_hint: unknown;
+  /** Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction. */
+  caution: string;
+  [key: string]: unknown;
+}
+
+/** A recorded rerun command and its nullable head bracket. */
+export interface VerifyHint {
+  verifyCmd: string;
+  resultHead: string | null;
+  [key: string]: unknown;
+}
+
+/** fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did. */
+export interface FetchEstimate {
+  tier: string | null;
+  projected_usd: number | null;
+  comparable_runs: number;
+  /** measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed. */
+  basis?: string;
+  /** Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis. */
+  harness?: Array<string>;
+  /** How many priced samples in the projected tier came from a harness session; absent with basis. */
+  measured_runs?: number;
   [key: string]: unknown;
 }
 
