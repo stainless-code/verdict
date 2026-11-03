@@ -36,9 +36,13 @@ $job = $null
 New-Item -ItemType Directory -Path $Release, $FakeBin -Force | Out-Null
 # The payload must be a real executable: install.ps1 smokes the installed
 # binary's `--version` from its final path, and Windows cannot run a .exe that
-# is not a PE. git.exe is a console app that answers `--version` with exit 0.
-$gitExe = (Get-Command git.exe -ErrorAction Stop).Source
-[System.IO.File]::Copy($gitExe, $BinSrc, $true)
+# is not a PE. The inbox curl.exe (System32, Windows 10 1803+ and Server 2019+)
+# is a self-contained console app that answers `--version` with exit 0 from any
+# path. git.exe is not: the Git for Windows launcher resolves its install root
+# from its own location and fails with "Top-level not found" once copied.
+$payloadExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+if (-not (Test-Path -LiteralPath $payloadExe)) { throw "installer-binary needs $payloadExe as the fake payload" }
+[System.IO.File]::Copy($payloadExe, $BinSrc, $true)
 
 function Log-Contains {
   param([string]$Needle)
