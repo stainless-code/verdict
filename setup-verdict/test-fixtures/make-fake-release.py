@@ -121,7 +121,12 @@ def main():
                  'for a in "$@"; do\n'
                  "  if [ \"$a\" = '%{url_effective}' ]; then printf '%s\\n' \"${FAKE_EFFECTIVE_URL:-}\"; exit 0; fi\n"
                  "done\n"
-                 'exec command -p curl "$@"\n'),
+                 # Locate the real curl through the POSIX default PATH instead
+                 # of `exec command -p curl`: dash treats the first operand of
+                 # exec as a program, so that spelling dies with
+                 # "exec: command: not found" on Ubuntu's /bin/sh.
+                 'real="$(PATH="$(getconf PATH)"; command -v curl)" || exit 127\n'
+                 'exec "$real" "$@"\n'),
             ):
                 p = os.path.join(fakebin, name)
                 with open(p, "w", newline="\n") as f:
