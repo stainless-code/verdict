@@ -13,10 +13,12 @@ import (
 // budget armed only by the .review/budget file resolves here; the
 // REVIEW_BUDGET_USD env layer already gated before any provider call.
 func resolveControls(
-	ctx context.Context, ctx2 *fetchRunCtx, baseSHA string, allowHead bool, budget *budgetState, consent bool,
+	ctx context.Context, ctx2 *fetchRunCtx, repo, baseSHA string, allowHead bool, budget *budgetState, consent bool,
 ) error {
 	r := ctx2.runner
-	snap, ref := controls.Resolve(ctx, r.commander, controls.Request{BundleDir: ctx2.dir, BaseSHA: baseSHA, AllowHead: allowHead})
+	snap, ref := controls.Resolve(ctx, r.commander, controls.Request{
+		BundleDir: ctx2.dir, Repo: repo, BaseSHA: baseSHA, AllowHead: allowHead,
+	})
 	if ref != nil {
 		return ref //nolint:wrapcheck // the typed refusal passes through unchanged
 	}

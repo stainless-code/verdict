@@ -25,14 +25,20 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
 // readBase reads every inventory path at the PR base commit. The base object
 // must already be in the clone: the resolver never fetches, so a shallow
-// checkout refuses instead of silently reading the head.
-func readBase(ctx context.Context, cmd core.Commander, base string) (map[string][]byte, *core.RefusalError) {
+// checkout never silently reads the head. When git cannot supply the base
+// (not a repository, or the object is missing) and repo names a GitHub
+// repository, the same base commit is read through the contents API instead;
+// without a repo the read refuses.
+func readBase(ctx context.Context, cmd core.Commander, repo, base string) (map[string][]byte, *core.RefusalError) {
 	if !fullSHA.MatchString(base) {
 		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
 	}
 	// One ls-tree sees every control at once: the blob size caps it before
 	// any read, and mode 120000 (a tracked symlink) refuses.
 	tree, err := runGit(ctx, cmd, 0, append([]string{"ls-tree", "-lz", base, "--"}, Inventory...)...)
+	if err != nil && repo != "" {
+		return readContents(ctx, cmd, repo, base)
+	}
 	if err != nil {
 		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
 	}

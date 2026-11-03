@@ -38,8 +38,8 @@ it after upgrading the binary; `npx skills update` covers registry copies.
 verdict fetch owner/repo 123
 # Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt,
 # controls.json. Review controls (.review/kb.jsonl, panel, budget, overrides,
-# ...) are read from the PR base commit, never the PR head — CI needs
-# fetch-depth: 0; --allow-head-controls is the one recorded opt-out.
+# ...) are read from the PR base commit, never the PR head — from the clone,
+# else the GitHub contents API; --allow-head-controls is the one recorded opt-out.
 # Over-cap diffs refuse: re-run fetch with --chunk (or hold true in
 # .review/chunk), read each chunk per chunks/manifest.json, and stamp
 # top-level "chunks" naming every manifest chunk in review.json.

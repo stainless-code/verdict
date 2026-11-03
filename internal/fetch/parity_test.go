@@ -25,6 +25,7 @@
 package fetch_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -93,6 +94,9 @@ const ghStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.gh-calls.log\"
 	"  if [ \"$count\" -lt \"$budget\" ]; then echo \"HTTP 429: You have exceeded a secondary rate limit. retry-after: 0, slow down\" >&2; exit 1; fi\n" +
 	"fi\n" +
 	"case \"$*\" in\n" +
+	"  *api\\ repos/*/contents/*) p=\"${2#repos/*/contents/}\"; f=\"$PWD/canned/contents/${p%%\\?*}\"\n" +
+	"    if [ -f \"$f\" ]; then cat \"$f\"; exit 0; fi\n" +
+	"    echo \"gh: Not Found (HTTP 404)\" >&2; exit 1;;\n" +
 	"  *--jq*) cat \"$PWD/canned/stat.txt\" 2>/dev/null || printf ''; exit 0;;\n" +
 	"  *pr\\ view*) if [ \"${GH_VIEW_FAIL:-0}\" = 1 ]; then echo \"gh: PR not found\" >&2; exit 1; fi\n" +
 	"    cat \"$PWD/canned/pr.json\"; exit 0;;\n" +
@@ -178,6 +182,20 @@ func writeCanned(t *testing.T, dir, name, doc string) {
 	if err := os.WriteFile(filepath.Join(dir, "canned", name), []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// writeContent plants the contents-API answer for one control path at the
+// PR base (the body the stub serves for repos/.../contents/<path>).
+func writeContent(t *testing.T, dir, path, content string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"type": "file", "encoding": "base64", "size": len(content),
+		"content": base64.StdEncoding.EncodeToString([]byte(content)) + "\n",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "canned/contents/"+path, string(body))
 }
 
 // readCanned reads one canned payload back, failing the test on error.
@@ -348,14 +366,22 @@ func TestFetchParityGitHub(t *testing.T) {
 		"fetch", "acme/app", "4701", "--provider", "gitea")
 	parity.Golden(t, harness, "provider-base-refused", setup, nil,
 		"fetch", "acme/app", "4701", "--provider", "gitlab", "--base-sha", headB[:7])
-	// A shallow clone lacks the base object: refuse, never read the head.
-	parity.Golden(t, harness, "controls-base-absent", func(t *testing.T, dir, _ string) {
+	// The checkout lacks the base object (a shallow clone, or another repo):
+	// the controls come from the contents API at the base commit, never from
+	// the head worktree.
+	baseAbsent := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
 		writeCanned(t, dir, "pr.json", strings.ReplaceAll(readCanned(t, dir, "pr.json"), headB, strings.Repeat("c", 40)))
 		writeFile(t, dir, ".review/panel", "head-panel\n")
-	}, nil, "fetch", "acme/app", "4701", "--json")
+		writeContent(t, dir, ".review/panel", "api-base-panel\n")
+	}
+	parity.Golden(t, harness, "controls-base-absent", baseAbsent, nil, "fetch", "acme/app", "4701", "--json")
+	// Any API failure other than a 404 refuses: it is never read as absence.
+	parity.Golden(t, harness, "controls-contents-error", baseAbsent,
+		map[string]string{"GH_FAIL_MATCH": "contents", "GH_FAIL_TEXT": "gh: Server Error (HTTP 500)"},
+		"fetch", "acme/app", "4701", "--json")
 	parity.Golden(t, harness, "empty-diff", func(t *testing.T, dir, _ string) {
 		t.Helper()
 		promptFiles(t, dir)

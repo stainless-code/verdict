@@ -1,5 +1,6 @@
 // Package controls snapshots the review control files at the PR base commit
-// (`git show <base>:<path>` through [core.Commander]) into a bundle; the one
+// (`git show <base>:<path>` through [core.Commander], or the GitHub contents
+// API when the checkout cannot supply the base) into a bundle; the one
 // opt-out reads the worktree and is stamped in controls.json. post/record
 // re-hash the snapshot and refuse when it is stale or missing.
 package controls
@@ -64,6 +65,9 @@ var Inventory = []string{
 type Request struct {
 	BundleDir string
 	BaseSHA   string
+	// Repo is the GitHub owner/repo whose contents API reads the base when
+	// git cannot; "" keeps git the only source (other providers).
+	Repo string
 	// Root is the worktree the opt-out reads; "" is the working directory.
 	Root string
 	// AllowHead reads the worktree instead of the base commit.
@@ -89,7 +93,7 @@ func Resolve(ctx context.Context, cmd core.Commander, req Request) (*Snapshot, *
 		snap.File.Policy, snap.File.SHA = PolicyHead, ""
 		contents, ref = readWorktree(req.Root)
 	} else {
-		contents, ref = readBase(ctx, cmd, req.BaseSHA)
+		contents, ref = readBase(ctx, cmd, req.Repo, req.BaseSHA)
 	}
 	if ref == nil {
 		ref = snap.write(req.BundleDir, contents)

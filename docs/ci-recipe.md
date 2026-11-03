@@ -55,8 +55,11 @@ triage + re-check is the recovery.
 `fetch-depth: 0` on checkout keeps the PR base commit in the clone: verdict
 reads the review controls (`.review/kb.jsonl`, `panel`, `budget`, overrides,
 ...) from that commit with `git show <base>:<path>`, so a PR cannot edit the
-rules it is judged by. A shallow checkout without the base refuses
-`controls-unavailable` (verdict never fetches it for you); a targeted
+rules it is judged by. When the checkout cannot supply the base (a shallow
+checkout, or no checkout at all) a GitHub `fetch` reads the same base commit
+through the contents API instead (`gh api repos/<owner>/<repo>/contents/<path>?ref=<base>`,
+so `contents: read` is enough); other providers refuse `controls-unavailable`
+(verdict never fetches the base for you). A targeted
 `git fetch --depth=1 origin <base-sha>` step is the minimal alternative.
 `persist-credentials: false` on checkout keeps the git credential helper
 empty; `gh` authenticates from `GH_TOKEN` only. Fork PRs have no secrets:

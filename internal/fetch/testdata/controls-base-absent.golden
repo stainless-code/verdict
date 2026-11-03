@@ -1,4 +1,4 @@
-exit: 1
+exit: 0
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,23 +6,150 @@ exit: 1
   "repo": "acme/app",
   "pr": 4701,
   "at": "0000-00-00T00:00:00Z",
-  "next": "",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + full.diff to any agent; ask it to write .review/4701/review.json",
   "warnings": [],
-  "data": null,
-  "error": {
-    "code": "controls-unavailable",
-    "message": "PR base cccccccccccc is not readable here (shallow checkout?): fatal: not a tree object: git: exit status 128\ntry: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"
-  }
+  "data": {
+    "dir": ".review/4701",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "files": 1,
+    "additions": 3,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 146,
+    "panel": {
+      "source": ".review/panel",
+      "members": [
+        "api-base-panel"
+      ]
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "files": 1
+    },
+    "artifacts": {
+      "PR.json": ".review/4701/PR.json",
+      "full.diff": ".review/4701/full.diff",
+      "toc.txt": ".review/4701/toc.txt",
+      "roles.txt": ".review/4701/roles.txt",
+      "reviews.json": ".review/4701/reviews.json",
+      "inline.json": ".review/4701/inline.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
 }
 --- stderr ---
 » gh pr view acme/app#4701
 » gh pr diff -> .review/4701/full.diff
+» roles -> .review/4701/roles.txt (heuristic file roles for triage)
+» panel (1 from .review/panel)
+» reviews + inline comments
+done: .review/4701/PR.json .review/4701/full.diff .review/4701/toc.txt .review/4701/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4701 --repo acme/app
+CALL: api repos/acme/app/contents/.review/panel?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/budget?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/max_bytes?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/chunk?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/kb.jsonl?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/kb-policy?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/learnings.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/overrides/preamble.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/overrides/footer-order.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/overrides/walkthrough-threshold.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
+CALL: api repos/acme/app/pulls/4701/reviews --paginate
+CALL: api repos/acme/app/pulls/4701/comments --paginate
+--- file C/.review/4701/.difffiles ---
+notes.txt
 --- file C/.review/4701/PR.json ---
 {"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"cccccccccccccccccccccccccccccccccccccccc","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+--- file C/.review/4701/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "used",
+      "bytes": 15,
+      "sha256": "52dfe6b8ed69ffc717ac8d962f4439ae06186452a7472b4aea4d8ad7df11799c"
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4701/controls/panel ---
+api-base-panel
 --- file C/.review/4701/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
@@ -33,10 +160,39 @@ index 1111111..2222222 100644
 -old line
 +new line
  bottom
+--- file C/.review/4701/hunks.tsv ---
+notes.txt	OLD	1	3
+notes.txt	NEW	1	3
+--- file C/.review/4701/inline.json ---
+[]
+--- file C/.review/4701/panel ---
+api-base-panel
+--- file C/.review/4701/reviews.json ---
+[]
+--- file C/.review/4701/roles.txt ---
+## docs
+- notes.txt
+--- file C/.review/4701/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4701/toc.txt ---
+# TOC for PR #4701 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/notes.txt b/notes.txt
+
+## stat
+notes.txt (+3/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)
 --- file C/.review/panel ---
 head-panel
 --- file C/SKILL.md ---
 # verdict skill (parity fixture)
+--- file C/canned/contents/.review/panel ---
+{"content":"YXBpLWJhc2UtcGFuZWwK\n","encoding":"base64","size":15,"type":"file"}
 --- file C/canned/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644

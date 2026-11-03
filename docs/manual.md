@@ -299,9 +299,12 @@ the JSON envelope gains `data.controls` (`policy`, `sha`, `files`).
 used file. They refuse:
 
 - `controls-unavailable` — no or invalid `controls.json` (re-fetch), or at fetch
-  time the base commit is not in the clone (a shallow checkout: use
-  `actions/checkout` with `fetch-depth: 0`, or `git fetch --depth=1 origin <base>`;
-  verdict never fetches for you), or a control is a symlink.
+  time the base commit is not readable: a GitHub `fetch` falls back to the contents API
+  (`gh api repos/<owner>/<repo>/contents/<path>?ref=<base>`, a 404 reading as an absent
+  control) when the checkout lacks the base, but any other API failure refuses, and
+  other providers refuse outright (use `actions/checkout` with `fetch-depth: 0`, or
+  `git fetch --depth=1 origin <base>`; verdict never fetches for you), or a control is a
+  symlink.
 - `controls-stale` — the snapshot's base is not the bundle's base, or a file's
   bytes changed under the bundle: re-fetch.
 - `controls-too-large` — a control over 256 KiB (1 MiB across all); never truncated.

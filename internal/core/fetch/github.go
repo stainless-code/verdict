@@ -37,7 +37,7 @@ func runGitHub(
 	if ref := githubFetch(ctx, ctx2, r, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
-	if ref := resolveControls(ctx, ctx2, prField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+	if ref := resolveControls(ctx, ctx2, repo, prField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
 		return nil, "", ref
 	}
 	fc, ref := resolveFetchCap(r)
