@@ -408,7 +408,13 @@ type Outputs struct {
 
 // envDropPrefixes are stripped from the developer shell before the
 // hermetic child environment is built.
-var envDropPrefixes = []string{"REVIEW_", "XDG_CONFIG_HOME=", "NO_COLOR=", "HOME=", "TMPDIR="}
+//
+// GH_ and GITHUB_ keep the runner's gh auth (GH_TOKEN, GITHUB_TOKEN,
+// GH_HOST, ...) out of the "hermetic" runs: a case that needs one sets it
+// through extraEnv, which overlays after this filter.
+var envDropPrefixes = []string{
+	"REVIEW_", "GH_", "GITHUB_", "XDG_CONFIG_HOME=", "NO_COLOR=", "HOME=", "TMPDIR=",
+}
 
 // childEnv builds the hermetic environment both implementations share:
 // isolated HOME, the network-dead gh stub first on PATH, no REVIEW_*
