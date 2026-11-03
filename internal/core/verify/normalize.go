@@ -14,7 +14,6 @@ import (
 // case-preserved twin for upload flags), and adj (sentinel-marked
 // substitution spans).
 type gateText struct {
-	raw    string
 	flat   string
 	lc     string
 	scan   string
@@ -25,7 +24,7 @@ type gateText struct {
 
 // normalize builds every gate text from the raw command.
 func normalize(raw string) *gateText {
-	g := &gateText{raw: raw}
+	g := &gateText{}
 	g.flat = flatOf(raw)
 	g.lc = readcommon.ASCIILower(g.flat)
 	g.scan = scanOf(g.lc)

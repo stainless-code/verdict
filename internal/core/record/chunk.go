@@ -24,7 +24,7 @@ func (st *state) validateChunkMerge() (string, error) {
 		return dir + "/hunks.tsv", nil
 	}
 	refetch := chunkRefetch(st)
-	chunks, names, ref := readChunkManifest(st, manifest, refetch)
+	chunks, names, ref := readChunkManifest(manifest, refetch)
 	if ref != nil {
 		return "", ref
 	}
@@ -65,8 +65,7 @@ type chunk struct {
 
 // readChunkManifest reads and schema-gates the chunk manifest, returning the
 // sorted chunks and their names.
-func readChunkManifest(st *state, manifest, refetch string) ([]chunk, []string, error) {
-	_ = st
+func readChunkManifest(manifest, refetch string) ([]chunk, []string, error) {
 	schema, manMap := manifestSchema(manifest)
 	if schema != "1" {
 		if schema == "" {

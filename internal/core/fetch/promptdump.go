@@ -15,24 +15,13 @@ import (
 )
 
 // promptNonce ports prompt_nonce: a per-run untrusted-fence nonce of 16
-// lowercase hex chars from 8 crypto-random bytes. The shell falls back to
-// $RANDOM when od fails; crypto/rand does not fail in practice, and a
-// read error falls back to a process-seeded counter the same width.
+// lowercase hex chars from 8 crypto-random bytes. [crypto/rand.Read] never
+// fails (Go 1.24+), and a nonce must stay unpredictable, so there is no
+// counter fallback: a predictable fence nonce is worse than none.
 func promptNonce() string {
 	var b [8]byte
-	if _, err := rand.Read(b[:]); err == nil {
-		return hex.EncodeToString(b[:])
-	}
-	return fallbackNonce()
-}
-
-// fallbackCounter seeds the nonce fallback (unreachable in practice).
-var fallbackCounter uint64
-
-// fallbackNonce renders the process fallback nonce.
-func fallbackNonce() string {
-	fallbackCounter++
-	return fmt.Sprintf("%016x", fallbackCounter)
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 // fenceOpen ports fence_open: the open marker on its own line.

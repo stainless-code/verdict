@@ -407,8 +407,9 @@ func resolveThreeDot(ctx context.Context, s *session, spec string) (localMode, e
 	if err != nil {
 		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
 	}
-	_ = base
-	mb, err := s.gitLine(ctx, "merge-base", ra, rb)
+	// merge-base takes the resolved base: the rev-parse above both
+	// validates the ref (its refusal fires first) and pins the SHA.
+	mb, err := s.gitLine(ctx, "merge-base", base, rb)
 	if err != nil {
 		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("no merge-base for '%s'", spec)}
 	}

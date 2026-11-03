@@ -146,7 +146,7 @@ func githubBundle(
 	if ref != nil {
 		return nil, "", ref
 	}
-	incBase, ref := githubIncremental(ctx, r, dir, repo, pr, f)
+	incBase, ref := githubIncremental(ctx, r, dir, repo, f)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -210,7 +210,7 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 
 // githubIncremental ports the --base-sha compare: the incremental diff
 // and its note land beside the bundle, or the run continues without one.
-func githubIncremental(ctx context.Context, r *session, dir, repo string, _ string, f core.FetchFlags) (string, error) {
+func githubIncremental(ctx context.Context, r *session, dir, repo string, f core.FetchFlags) (string, error) {
 	incBase := nullStr
 	if !f.HasBase || f.BaseSHA == "" {
 		return incBase, nil

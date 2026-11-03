@@ -164,7 +164,7 @@ func removeErrFile(path string) {
 // completeness ports the HEAD-reviewed dimension: pass iff a completed post
 // record exists, parses, and carries the fetched HEAD. Stays nil without
 // the flag.
-func completeness(dir, headSHA string, _ core.ReadRequest) (*core.ReportCompleteness, bool, string) {
+func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) {
 	var posted string
 	if isRegular(dir + "/post.json") {
 		posted = jsonField(dir+"/post.json", "head")

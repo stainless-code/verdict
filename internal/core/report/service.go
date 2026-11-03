@@ -215,7 +215,7 @@ func loadStateCompleteness(st *state) {
 	if !st.flags.Completeness {
 		return
 	}
-	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA, st.req.ReadRequest)
+	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA)
 }
 
 // storeCounts ports the counts object over the whole findings store.

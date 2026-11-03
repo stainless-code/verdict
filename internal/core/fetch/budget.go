@@ -435,7 +435,7 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 		return
 	}
 	rc := jq.NewObj(
-		"at", st2at(now), "budget_usd", jsonNumber(st.budgetUSD), "budget_src", st.budgetSrc,
+		"at", now, "budget_usd", jsonNumber(st.budgetUSD), "budget_src", st.budgetSrc,
 		"projected_tier", st.estTier, "projected_usd", jsonFloat(st.estUSD),
 		"comparable_runs", st.estRuns,
 	)
@@ -493,6 +493,3 @@ func indentPretty(pretty string) string {
 	}
 	return strings.Join(lines, newline)
 }
-
-// st2at formats the run timestamp (callers pass cli.NowUTC already).
-func st2at(now string) string { return now }

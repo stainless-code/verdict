@@ -50,7 +50,6 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	headFull     string
 	kept         []any
 	keptSigs     []string
-	anchorRows   []hunkRow
 	moved        []any
 	entries      []any
 	hunkN        int
@@ -338,7 +337,6 @@ func (st *state) validateAnchors(body string) string {
 		comments = jq.Elements(c)
 	}
 	rows := loadHunkRows(st.anchorHunks)
-	st.anchorRows = rows
 	for _, c := range comments {
 		m, ok := c.(*jq.Obj)
 		if !ok {

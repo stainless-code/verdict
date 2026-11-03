@@ -10,10 +10,10 @@ import (
 // legs moved here with the engine (slice 16) so post keeps only its
 // payload/guard tests.
 
-// anchorTestState builds a merge state over the given hunk rows for
-// partition table tests.
-func anchorTestState(rows []hunkRow) *state {
-	return &state{anchorRows: rows}
+// anchorTestState builds an empty merge state for partition table tests;
+// the hunk rows reach the partition through classifyComment.
+func anchorTestState() *state {
+	return &state{}
 }
 
 // anchorComment builds a minimal review comment object.
@@ -56,7 +56,7 @@ func TestAnchorPartitionKeepBias(t *testing.T) {
 // (kept and moved) that a one-sided count would miss.
 func checkAnchorPartition(t *testing.T, rows []hunkRow, tc anchorCase) {
 	t.Helper()
-	st := anchorTestState(rows)
+	st := anchorTestState()
 	st.classifyComment(anchorComment(tc.path, tc.line, "", tc.side), rows)
 	wantKept, wantMoved := 1, 0
 	if !tc.kept {
@@ -82,7 +82,7 @@ type anchorCase struct {
 func TestAnchorSwappedSpan(t *testing.T) {
 	t.Parallel()
 	rows := []hunkRow{{file: "notes.txt", side: "NEW", start: 1, end: 3}}
-	st := anchorTestState(rows)
+	st := anchorTestState()
 	c := anchorComment("notes.txt", "1", "3", "RIGHT")
 	st.classifyComment(c, rows)
 	if len(st.kept) != 1 || len(st.moved) != 0 {
@@ -118,7 +118,7 @@ func TestAnchorOverflowKeepsWithWarning(t *testing.T) {
 // warning, never a wrapped span.
 func checkAnchorWarning(t *testing.T, rows []hunkRow, line string) {
 	t.Helper()
-	st := anchorTestState(rows)
+	st := anchorTestState()
 	st.classifyComment(anchorComment("notes.txt", line, "", "RIGHT"), rows)
 	if len(st.kept) != 1 || len(st.moved) != 0 {
 		t.Fatalf("non-numeric anchor: kept=%d moved=%d", len(st.kept), len(st.moved))
@@ -132,7 +132,7 @@ func checkAnchorWarning(t *testing.T, rows []hunkRow, line string) {
 // checkAnchorKept asserts a numeric anchor stays inline with no warning.
 func checkAnchorKept(t *testing.T, rows []hunkRow, line string) {
 	t.Helper()
-	st := anchorTestState(rows)
+	st := anchorTestState()
 	st.classifyComment(anchorComment("notes.txt", line, "", "RIGHT"), rows)
 	if len(st.kept) != 1 || len(st.moved) != 0 || len(st.warnings) != 0 {
 		t.Fatalf("numeric anchor: kept=%d moved=%d warnings=%q", len(st.kept), len(st.moved), st.warnings)
@@ -144,12 +144,12 @@ func checkAnchorKept(t *testing.T, rows []hunkRow, line string) {
 func TestAnchorLeftOldSide(t *testing.T) {
 	t.Parallel()
 	old := []hunkRow{{file: "notes.txt", side: "OLD", start: 1, end: 3}}
-	st := anchorTestState(old)
+	st := anchorTestState()
 	st.classifyComment(anchorComment("notes.txt", "2", "", "LEFT"), old)
 	if len(st.kept) != 1 || len(st.moved) != 0 {
 		t.Errorf("LEFT inside OLD hunk: kept=%d moved=%d", len(st.kept), len(st.moved))
 	}
-	st2 := anchorTestState(nil)
+	st2 := anchorTestState()
 	st2.classifyComment(anchorComment("notes.txt", "2", "", "LEFT"), nil)
 	if len(st2.kept) != 0 || len(st2.moved) != 1 {
 		t.Errorf("LEFT with unknown path moves to the body: kept=%d moved=%d", len(st2.kept), len(st2.moved))

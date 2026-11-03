@@ -521,7 +521,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 			Embedded: st.embedded,
 		},
 		Findings: core.PostFindings{
-			Open: stOpen(nOpen), Deferred: nDeferred, Addressed: nAddressed,
+			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed,
 		},
 		Items:           typedPostItems(st.merged.Entries),
 		Confidence:      intOrNilPost(st.merged.Confidence),

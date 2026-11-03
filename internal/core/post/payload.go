@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
+	sigsum "github.com/stainless-code/verdict/internal/sig"
 )
 
 // buildPayloads ports the payload construction: only GitHub-known comment
@@ -35,7 +36,7 @@ func (st *state) buildPayloads() {
 	// that hash and the reviewed SHA: a re-post can then be recognized from
 	// the live review without hashing a body that contains its own hash.
 	// Dry runs stay marker-free and report the same hash a real post arms.
-	st.phash = sigSumOf(st.payloadBytes())
+	st.phash = sigsum.Sum(st.payloadBytes())
 	if !st.flags.DryRun {
 		st.body += "\n\n" + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
 		st.payloads[0] = postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)
@@ -331,7 +332,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 		Anchors:     core.AnchorsSummary{Kept: st.merged.NKept, Moved: st.merged.NMoved},
 		Suggestions: core.Suggestions{Embedded: st.embedded},
 		Findings: core.PostFindings{
-			Open: stOpen(nOpen), Deferred: nDeferred, Addressed: nAddressed, File: st.findingsFile,
+			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed, File: st.findingsFile,
 		},
 		Items:           typedPostItems(st.merged.Entries),
 		Confidence:      intOrNilPost(st.merged.Confidence),

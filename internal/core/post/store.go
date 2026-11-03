@@ -8,18 +8,10 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
-	"github.com/stainless-code/verdict/internal/sig"
 )
 
 // providerGitHub is the default provider marker.
 const providerGitHub = "github"
-
-// sigSumOf seals the payload hash for the duplicate guard.
-func sigSumOf(b []byte) string { return sig.Sum(b) }
-
-// stOpen passes the open count through (kept as a helper so the dry-run
-// response reads symmetrically with the envelope tally).
-func stOpen(n int) int { return n }
 
 // typedPostItems builds the typed envelope summaries alongside the ordered
 // items the wire renders verbatim.
@@ -272,9 +264,6 @@ func decodeProvenanceTyped(root, dir string) *core.Provenance {
 	var model *string
 	if s, ok := modelRaw.(string); ok && s != "" {
 		model = &s
-	} else if modelRaw != nil {
-		// Explicit null stays null (nil pointer renders null).
-		model = nil
 	}
 	return &core.Provenance{ToolVersion: jq.StrOf(tool), PromptsHash: jq.StrOf(hash), Model: model}
 }
