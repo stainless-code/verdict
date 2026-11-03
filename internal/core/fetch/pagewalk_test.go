@@ -362,3 +362,24 @@ func TestAzureChangesPages(t *testing.T) {
 		t.Errorf("warnings = %v, want none", *warns)
 	}
 }
+
+// TestGitLabProjectIDHasNoNewline proves the project-id path escapes only
+// the repo: the bash-parity newline sent `%0A`, which GitLab does not trim.
+func TestGitLabProjectIDHasNoNewline(t *testing.T) {
+	t.Parallel()
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		"glab\x00mr\x00view\x007\x00-R\x00o/r\x00-F\x00json":              {stdout: `{}`},
+		"glab\x00api\x00projects/o%2Fr\x00--jq\x00.id":                    {stdout: "11\n"},
+		"glab\x00api\x00projects/11/merge_requests/7/diffs\x00--paginate": {stdout: `[]`},
+	}}
+	s, _ := newTestSession(cmdr)
+	_, _, pid, err := gitlabReads(context.Background(), s, t.TempDir(), "o/r", "7")
+	if err != nil || pid != "11" {
+		t.Fatalf("pid = %q, %v; want 11", pid, err)
+	}
+	for _, call := range cmdr.calls {
+		if strings.Contains(strings.Join(call, " "), "%0A") {
+			t.Fatalf("project-id argv carries a newline escape: %q", call)
+		}
+	}
+}

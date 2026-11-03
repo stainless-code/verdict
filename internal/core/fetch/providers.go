@@ -140,9 +140,7 @@ func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, c
 		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
 			"glab mr view failed for %s!%s: %s (auth? iid?)", repo, pr, headBytes(metaRes.Stderr, numExcerpt))}
 	}
-	// The project id lookup encodes `repo\n`: `jq -sRr @uri <<<"$repo"`
-	// slurps the herestring's trailing newline into the encoding.
-	pidRes, perr := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+url.PathEscape(repo+newline), "--jq", ".id")
+	pidRes, perr := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+url.PathEscape(repo), "--jq", ".id")
 	if perr != nil {
 		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
 	}

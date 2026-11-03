@@ -10,7 +10,7 @@ next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.m
 --- files ---
 --- file C/.glab-calls.log ---
 CALL: mr view 4706 -R acme/app -F json
-CALL: api projects/acme%2Fapp%0A --jq .id
+CALL: api projects/acme%2Fapp --jq .id
 CALL: api projects/11/merge_requests/4706/diffs --paginate
 CALL: mr diff 4706 -R acme/app --raw
 CALL: api projects/11/merge_requests/4706/notes?per_page=100&page=1
