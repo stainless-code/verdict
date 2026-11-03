@@ -41,6 +41,8 @@ index 1111111..2222222 100644
 -old line
 +new line
  bottom
+--- file C/canned/gh-threads.json ---
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"notes.txt","line":2,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":2,"nodes":[{"id":"PRRC_1","databaseId":101,"author":{"__typename":"Bot","login":"verdict[bot]"},"body":"Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/101"},{"id":"PRRC_2","databaseId":102,"author":{"__typename":"User","login":"mate"},"body":"Done.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/102"}]}},{"id":"PRRT_2","isResolved":true,"isOutdated":true,"path":"notes.txt","line":null,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":1,"nodes":[{"id":"PRRC_3","databaseId":103,"author":{"__typename":"User","login":"ana"},"body":"Old anchor.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/103"}]}}]}}}}}
 --- file C/canned/inc.diff ---
 diff --git a/notes.txt b/notes.txt
 index 2222222..3333333 100644

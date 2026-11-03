@@ -20,7 +20,7 @@ exit: 1
 --- file C/SKILL.md ---
 # verdict skill (parity fixture)
 --- file C/canned/bb-comments.json ---
-{"values":[{"id":1},{"id":2,"inline":{"path":"a.txt"}}]}
+{"values":[{"id":1,"content":{"raw":"General note"},"user":{"nickname":"rev"},"created_on":"0000-00-00T00:00:00Z","links":{"html":{"href":"https://example.invalid/c/1"}}},{"id":2,"content":{"raw":"Inline nit"},"user":{"nickname":"ana"},"created_on":"0000-00-00T00:00:00Z","inline":{"path":"a.txt","to":1,"outdated":false},"resolution":{"user":{"nickname":"ana"}},"links":{"html":{"href":"https://example.invalid/c/2"}}},{"id":3,"parent":{"id":2},"content":{"raw":"Reply"},"user":{"nickname":"bo"},"created_on":"0000-00-00T00:00:00Z"},{"id":4,"deleted":true,"content":{"raw":"gone"}},{"id":5,"pending":true,"content":{"raw":"draft"}}],"next":null}
 --- file C/canned/bb-meta.json ---
 {"id":11,"title":"PR eleven","summary":{"raw":"body"},"destination":{"branch":{"name":"main"},"commit":{"hash":"488310afbc29fb48fbd84cf16c89d3726158a444"}},"source":{"branch":{"name":"feat"},"commit":{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/11"}},"state":"OPEN","draft":false}
 --- file C/canned/bb-page1.json ---

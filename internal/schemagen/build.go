@@ -193,6 +193,7 @@ func documents() []document {
 			root:  reflect.TypeFor[ThreadsFile](),
 			defs: []definition{
 				{typ: reflect.TypeFor[Thread](), name: "thread"},
+				{typ: reflect.TypeFor[ThreadComment](), name: "comment"},
 			},
 			additionalProperties: false,
 		},

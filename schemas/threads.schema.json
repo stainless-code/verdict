@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/threads.schema.json",
   "title": "threads.json — normalized provider review threads",
-  "description": "One provider bundle's normalized review-thread feed, written beside the raw host files (inline.json/reviews.json stay byte-identical). Each host's payload is filtered the way its review surface expects (dropped system/deleted/pending comments, host resolution state) and flattened to one shape, so ready/report and an agent can read prior feedback without parsing six formats. Unknown root keys are rejected: a new field is a contract change.",
+  "description": "One provider bundle's normalized PR-conversation feed, written beside the raw host files (inline.json/reviews.json keep their exact bytes). Each host's native review data is filtered the way its review surface expects (system/deleted/pending comments dropped, host resolution and stale-anchor state read from the host's own fields) and flattened to one shape, so re-review, address-reviews, merge readiness, and calibration read prior feedback without parsing six formats. Review threads are authoritative: GitHub comes from GraphQL reviewThreads (REST has no resolution), GitLab from discussions (resolved/resolvable), Azure from thread status, Forgejo from review-comment resolver/position, Bitbucket from comment resolution + inline.outdated, GitCafe from its comment flags. Unknown root keys are rejected: a new field is a contract change.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -13,70 +13,151 @@
       "description": "The host whose raw payload produced this feed.",
       "enum": ["github", "gitlab", "gitcafe", "forgejo", "bitbucket", "azure"]
     },
+    "pr": {
+      "description": "Pull request number the feed belongs to (0 when the positional was not numeric).",
+      "type": "integer"
+    },
+    "head_sha": {
+      "description": "The PR head the feed was read at; GitLab and Forgejo compare it to a comment's anchor commit to flag outdated.",
+      "type": "string"
+    },
+    "fetched_at": {
+      "description": "UTC read timestamp (RFC 3339); the feed is a snapshot, not a live view.",
+      "type": "string",
+      "format": "date-time"
+    },
     "truncated": {
-      "description": "True when a thread read failed or stopped at the provider page cap; the threads present are still trustworthy, the list may under-cover.",
+      "description": "True when a thread read failed, a host thread arrived with more comments than its cap returned, or a page walk stopped at the provider cap. The threads present are still trustworthy; the list may under-cover.",
       "type": "boolean"
     },
     "threads": {
-      "description": "One normalized root comment per entry, in host order. Replies stay in the raw files; the root carries the thread identity, state, and body excerpt.",
+      "description": "One normalized thread per host root, in host order. A thread with a diff anchor is a review-comment; otherwise it is a conversation comment. Replies ride in comments[].",
       "type": "array",
       "items": { "$ref": "#/$defs/thread" }
     }
   },
-  "required": ["schema_version", "provider", "truncated", "threads"],
+  "required": [
+    "schema_version",
+    "provider",
+    "pr",
+    "head_sha",
+    "fetched_at",
+    "truncated",
+    "threads"
+  ],
   "additionalProperties": false,
   "$defs": {
     "thread": {
-      "description": "One root review thread or conversation comment: the fields every host shares after normalization.",
+      "description": "One review thread or conversation comment: host thread identity (what a resolution call takes), diff anchor and state, root author, and the replies.",
       "type": "object",
       "properties": {
         "id": {
-          "description": "Host comment (or thread) id as a string; empty when the payload carried none.",
+          "description": "Host thread identity (GitHub reviewThreads id, GitLab discussion id, Bitbucket root comment id, Azure thread id, Forgejo comment id, GitCafe thread id). Empty when the payload carried none.",
           "type": "string"
         },
         "path": {
-          "description": "Anchored diff path for a review-comment, empty for a conversation comment.",
+          "description": "Diff-relative path for a review-comment, empty for a conversation comment.",
           "type": "string"
         },
         "line": {
-          "description": "Root comment line, null when the host anchor is a file comment or absent.",
+          "description": "End line of the anchor (the commented line for a single-line anchor), null when absent.",
+          "type": ["integer", "null"]
+        },
+        "start_line": {
+          "description": "First line of a multi-line anchor, null for a single-line anchor or a host with no range field.",
           "type": ["integer", "null"]
         },
         "side": {
-          "description": "LEFT for a deleted-side anchor, RIGHT for an added/context anchor, null for a conversation comment.",
+          "description": "LEFT for a deleted-side anchor, RIGHT for an added/context anchor, null for a conversation comment or a host with no side.",
           "type": ["string", "null"]
         },
         "resolved": {
-          "description": "Host resolution state when the payload carries it; hosts without thread resolution read false.",
+          "description": "Host resolution state read from the host's own field: GitHub isResolved, GitLab note resolved, Azure thread status, Forgejo review-comment resolver, Bitbucket comment resolution, GitCafe resolved/resolvedAt. Hosts without a resolution field read false.",
           "type": "boolean"
         },
         "outdated": {
-          "description": "True when the host marks the anchor stale (the diff position no longer maps to the current head).",
+          "description": "True when the host says the anchor no longer maps to the current head: GitHub isOutdated, Bitbucket inline.outdated, GitLab position.head_sha differs from the feed head, Forgejo position 0 against a non-zero original_position, GitCafe outdated, Azure context without a line.",
           "type": "boolean"
+        },
+        "url": {
+          "description": "Host-comment permalink when the payload carries one cheaply (GitHub url, Forgejo html_url, Bitbucket links.html.href); null otherwise.",
+          "type": ["string", "null"]
         },
         "author": {
           "description": "Root comment author handle or display name, empty when absent.",
           "type": "string"
         },
+        "author_kind": {
+          "description": "verdict when the root comment's final line is verdict's own hidden marker, bot when the host marks the author as a bot (or the login carries GitHub's [bot] suffix), else human.",
+          "enum": ["human", "bot", "verdict"]
+        },
+        "finding_sig": {
+          "description": "Finding signature linked from the root comment's hidden final-line verdict marker; null for threads verdict did not author and for summaries.",
+          "type": ["string", "null"]
+        },
         "kind": {
           "description": "review-comment for a diff-anchored thread, issue-comment for a conversation comment.",
           "enum": ["issue-comment", "review-comment"]
         },
-        "body": {
-          "description": "Root comment body, truncated to a short excerpt; the raw file keeps the full text.",
-          "type": "string"
+        "comments": {
+          "description": "Root comment first, then replies in host order. Each comment id is the id a reply call takes (GitHub databaseId).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/comment" }
         }
       },
       "required": [
         "id",
         "path",
         "line",
+        "start_line",
         "side",
         "resolved",
         "outdated",
+        "url",
         "author",
+        "author_kind",
+        "finding_sig",
         "kind",
-        "body"
+        "comments"
+      ],
+      "additionalProperties": true
+    },
+    "comment": {
+      "description": "One comment inside a thread: author identity/kind, the body excerpt, and the truncation flag.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Host comment id (GitHub databaseId when present), empty when absent.",
+          "type": "string"
+        },
+        "author": {
+          "description": "Author handle or display name, empty when absent.",
+          "type": "string"
+        },
+        "author_kind": {
+          "description": "verdict when the comment's final line is verdict's own hidden marker, bot when the host marks the author as a bot (or the login carries GitHub's [bot] suffix), else human.",
+          "enum": ["human", "bot", "verdict"]
+        },
+        "body": {
+          "description": "Comment body, capped at 8 KiB; the raw provider file keeps the full text.",
+          "type": "string"
+        },
+        "truncated": {
+          "description": "True when body is an excerpt of a longer comment.",
+          "type": "boolean"
+        },
+        "created_at": {
+          "description": "Host creation timestamp (RFC 3339 when the host publishes one), empty when absent.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "author",
+        "author_kind",
+        "body",
+        "truncated",
+        "created_at"
       ],
       "additionalProperties": true
     }

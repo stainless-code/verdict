@@ -9,7 +9,8 @@ exit: 0
   "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + full.diff to any agent; ask it to write .review/4701/review.json",
   "warnings": [
     "github review read failed — reviews.json is empty; re-fetch after confirming gh auth",
-    "github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth"
+    "github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth",
+    "github thread read failed — threads.json is empty; re-fetch after confirming auth"
   ],
   "data": {
     "dir": ".review/4701",
@@ -61,6 +62,7 @@ exit: 0
 » reviews + inline comments
 warn: github review read failed — reviews.json is empty; re-fetch after confirming gh auth
 warn: github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth
+warn: github thread read failed — threads.json is empty; re-fetch after confirming auth
 done: .review/4701/PR.json .review/4701/full.diff .review/4701/toc.txt .review/4701/roles.txt (1 files)
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json
 --- files ---
@@ -70,6 +72,29 @@ CALL: pr diff 4701 --repo acme/app
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4701/reviews --paginate
 CALL: api repos/acme/app/pulls/4701/comments --paginate
+CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
+            }
+          }
+        }
+      }
 --- file C/.review/4701/.difffiles ---
 notes.txt
 --- file C/.review/4701/PR.json ---
@@ -177,6 +202,9 @@ notes.txt	NEW	1	3
 {
   "schema_version": "1",
   "provider": "github",
+  "pr": 4701,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
   "truncated": true,
   "threads": []
 }
@@ -203,6 +231,8 @@ index 1111111..2222222 100644
 -old line
 +new line
  bottom
+--- file C/canned/gh-threads.json ---
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"notes.txt","line":2,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":2,"nodes":[{"id":"PRRC_1","databaseId":101,"author":{"__typename":"Bot","login":"verdict[bot]"},"body":"Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/101"},{"id":"PRRC_2","databaseId":102,"author":{"__typename":"User","login":"mate"},"body":"Done.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/102"}]}},{"id":"PRRT_2","isResolved":true,"isOutdated":true,"path":"notes.txt","line":null,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":1,"nodes":[{"id":"PRRC_3","databaseId":103,"author":{"__typename":"User","login":"ana"},"body":"Old anchor.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/103"}]}}]}}}}}
 --- file C/canned/inc.diff ---
 diff --git a/notes.txt b/notes.txt
 index 2222222..3333333 100644

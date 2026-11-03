@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4706,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4706/PR.json + full.diff to any agent; ask it to write .review/4706/review.json",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4706/PR.json + full.diff to any agent; ask it to write .review/4706/review.json; prior threads are in .review/4706/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
     "dir": ".review/4706",
@@ -55,7 +55,7 @@ exit: 0
 » roles -> .review/4706/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
 done: .review/4706/PR.json .review/4706/full.diff .review/4706/toc.txt .review/4706/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4706/PR.json + .review/4706/full.diff (+ .review/4706/roles.txt) to any agent; ask it to write .review/4706/review.json
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4706/PR.json + .review/4706/full.diff (+ .review/4706/roles.txt) to any agent; ask it to write .review/4706/review.json; prior threads are in .review/4706/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.glab-calls.log ---
 CALL: mr view 4706 -R acme/app -F json
@@ -63,6 +63,7 @@ CALL: api projects/acme%2Fapp --jq .id
 CALL: api projects/11/merge_requests/4706/diffs --paginate
 CALL: mr diff 4706 -R acme/app --raw
 CALL: api projects/11/merge_requests/4706/notes?per_page=100&page=1
+CALL: api projects/11/merge_requests/4706/discussions?per_page=100&page=1
 --- file C/.review/4706/.diff.err ---
 
 --- file C/.review/4706/.difffiles ---
@@ -204,8 +205,92 @@ a.txt	NEW	1	1
 {
   "schema_version": "1",
   "provider": "gitlab",
+  "pr": 4706,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
   "truncated": false,
-  "threads": []
+  "threads": [
+    {
+      "id": "d1",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "201",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Please rename.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        },
+        {
+          "id": "202",
+          "author": "verdict",
+          "author_kind": "human",
+          "body": "Fixed.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d2",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": true,
+      "url": null,
+      "author": "bo",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "204",
+          "author": "bo",
+          "author_kind": "human",
+          "body": "Old note",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d3",
+      "path": "",
+      "line": null,
+      "start_line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "rev",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "issue-comment",
+      "comments": [
+        {
+          "id": "205",
+          "author": "rev",
+          "author_kind": "human",
+          "body": "LGTM",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
 }
 --- file C/.review/4706/toc.txt ---
 # TOC for gitlab #4706 (acme/app) — read ranges as coverage checklist
@@ -230,6 +315,8 @@ index 1111111..2222222 100644
 +b
 --- file C/canned/gl-changes.json ---
 {"changes":[{"old_path":"a.txt","new_path":"a.txt","new_file":false,"deleted_file":false,"renamed_file":false}]}
+--- file C/canned/gl-discussions.json ---
+[{"id":"d1","notes":[{"id":201,"body":"Please rename.","author":{"username":"ana"},"created_at":"0000-00-00T00:00:00Z","resolved":false,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt","new_line":1,"old_line":null,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},{"id":202,"body":"Fixed.","author":{"username":"verdict"},"created_at":"0000-00-00T00:00:00Z"},{"id":203,"system":true,"body":"added label"}]},{"id":"d2","notes":[{"id":204,"body":"Old note","author":{"username":"bo"},"created_at":"0000-00-00T00:00:00Z","resolved":true,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt","new_line":1,"old_line":null,"head_sha":"488310afbc29fb48fbd84cf16c89d3726158a444"}}]},{"id":"d3","notes":[{"id":205,"body":"LGTM","author":{"username":"rev"},"created_at":"0000-00-00T00:00:00Z"}]}]
 --- file C/canned/gl-meta.json ---
 {"iid":5,"title":"MR five","description":"body","target_branch":"main","source_branch":"feat","diff_refs":{"base_sha":"488310afbc29fb48fbd84cf16c89d3726158a444","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}
 --- file C/canned/gl-notes.json ---

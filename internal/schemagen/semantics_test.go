@@ -35,8 +35,11 @@ var publishedSemantics = map[string]string{
 	"record.schema.json":   "6e14c660471d31aa6a88e0cff787860a6ecdd0302cdc527eb511dde8542767fc",
 	"review.schema.json":   "75471bb0d98ac1ddbc07be485ef00d7a2777501cb0756d50fbc100b2cb054423",
 	// T3-04: additive threads.schema.json (new bundle document; no existing
-	// schema property, required key, or type changed).
-	"threads.schema.json": "6210d9f49b4d0fdb04ee8be0c2100e1bb42361806593c2a988047fcbb1bf03a5",
+	// schema property, required key, or type changed). The PR-conversation
+	// contract extends the first cut with the thread's host id, PR/head/time
+	// envelope, root author kind, finding_sig, and the comments[] array: all
+	// additions to the new document, no previously published shape changed.
+	"threads.schema.json": "bc3fe1b3b7bcc06f2eddcc5383d01145451f56bd0058655c213b7eefe1e2160f",
 	// 08-redesign: additive usage.schema.json (new handoff document; no
 	// existing schema property, required key, or type changed — the
 	// envelope fetchEstimate entry from f3a22047 is untouched).

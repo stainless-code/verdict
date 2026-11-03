@@ -86,7 +86,7 @@ func (st *state) provider(f core.FetchFlags) (core.FetchFlags, *core.RefusalErro
 	case providerGitHub, providerGitLab, providerGitCafe, providerForgejo, providerBitbucket, providerAzure:
 		return f, nil
 	default:
-		return f, st.withWarnings(&core.RefusalError{Code: "bad-provider", Message: fmt.Sprintf(
+		return f, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", f.Provider)})
 	}
 }
@@ -277,6 +277,14 @@ type session struct {
 	controls  *controls.Snapshot
 	Effective core.Effective
 	JSONMode  bool
+}
+
+// nowUTC renders the session clock in the feed's fetched_at format.
+func (s *session) nowUTC() string {
+	if s.Now == nil {
+		return core.NowUTC(time.Now())
+	}
+	return core.NowUTC(s.Now())
 }
 
 // Warn records a warning and streams it through the progress observer,

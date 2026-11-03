@@ -14,6 +14,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -96,7 +97,7 @@ func fetchProviderBundle(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetch
 	case providerAzure:
 		return fetchAzure(ctx, ctx2, req)
 	default:
-		return &core.RefusalError{Code: "bad-provider", Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", provider)}
 	}
 }
@@ -120,7 +121,7 @@ func fetchGitLab(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest)
 	if err := gitlabDiff(ctx, r, dir, repo, pr); err != nil {
 		return err
 	}
-	if err := gitlabThreads(ctx, r, dir, pid, pr); err != nil {
+	if err := gitlabThreads(ctx, r, dir, pid, pr, gitlabHeadSHA(meta)); err != nil {
 		return err
 	}
 	numstat := diffNumstatMap(ctx, r, dir+suffixFullDiff)
@@ -140,12 +141,21 @@ func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, c
 		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
 			"glab mr view failed for %s!%s: %s (auth? iid?)", repo, pr, headBytes(metaRes.Stderr, numExcerpt))}
 	}
-	pidRes, perr := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+url.PathEscape(repo), "--jq", ".id")
+	pid, perr := gitlabProjectID(ctx, r, repo)
 	if perr != nil {
-		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
+		return "", "", "", perr
 	}
-	pid = strings.TrimRight(pidRes.Stdout, newline)
 	return metaRes.Stdout, gitlabChanges(ctx, r, repo, pr, pid), pid, nil
+}
+
+// gitlabProjectID resolves the numeric project id the note/discussion reads
+// page by (the path is escaped as one segment, never with a trailing newline).
+func gitlabProjectID(ctx context.Context, r *session, repo string) (string, error) {
+	pidRes, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+url.PathEscape(repo), "--jq", ".id")
+	if err != nil {
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
+	}
+	return strings.TrimRight(pidRes.Stdout, newline), nil
 }
 
 // gitlabChanges ports the diffs-or-changes read: diffs first, then
@@ -185,8 +195,9 @@ func gitlabDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: "glab mr diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
-// gitlabThreads ports the paged note-list read and the DiffNote split.
-func gitlabThreads(ctx context.Context, r *session, dir, pid, pr string) error {
+// gitlabThreads ports the paged note-list read, the DiffNote split, and the
+// authoritative discussions read the feed is built from.
+func gitlabThreads(ctx context.Context, r *session, dir, pid, pr, head string) error {
 	notes, truncated := gitlabNotes(ctx, r, pid, pr)
 	inlineDoc, reviewsDoc := splitGitLabNotes(notes)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(inlineDoc))); werr != nil {
@@ -195,7 +206,9 @@ func gitlabThreads(ctx context.Context, r *session, dir, pid, pr string) error {
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(reviewsDoc))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
 	}
-	if ref := writeThreadsJSON(dir, providerGitLab, truncated, gitlabThreadRecords(notes)); ref != nil {
+	feed, feedTruncated, feedErr := gitlabDiscussionFeed(ctx, r, pid, pr, head)
+	threadWarning(r, providerGitLab, feed, feedTruncated, feedErr)
+	if ref := writeThreadsJSON(dir, providerGitLab, pr, head, r.nowUTC(), truncated || feedTruncated, feed); ref != nil {
 		return ref
 	}
 	return nil
@@ -373,7 +386,8 @@ func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(cmts)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
-	if ref := writeThreadsJSON(dir, providerGitCafe, false, gitcafeThreadRecords(revs, cmts)); ref != nil {
+	feed := threadscore.FromGitCafe(decodeThreadPayload(revs), decodeThreadPayload(cmts))
+	if ref := writeThreadsJSON(dir, providerGitCafe, pr, cafeHeadSHA(metaRes.Stdout), r.nowUTC(), false, feed); ref != nil {
 		return ref
 	}
 	doc, normErr := normalizeGitCafe(metaRes.Stdout, itemsRes.Stdout)
@@ -685,7 +699,7 @@ func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 		return err
 	}
 	files := forgejoFiles(ctx, r, auth, api)
-	if err := forgejoThreads(ctx, r, dir, auth, api); err != nil {
+	if err := forgejoThreads(ctx, r, dir, auth, api, pr, metaRes.Stdout); err != nil {
 		return err
 	}
 	doc, normErr := normalizeForgejo(metaRes.Stdout, files)
@@ -695,15 +709,20 @@ func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 // forgejoAuth ports the host/token gate: both set, or a typed refusal
 // naming the missing piece.
 func forgejoAuth(ctx2 *fetchRunCtx) (auth []string, api string, err error) {
-	host, _ := ctx2.env["FORGEJO_HOST"]
-	token, _ := ctx2.env["FORGEJO_TOKEN"]
+	return forgejoAuthFor(ctx2.env, ctx2.repo, ctx2.pr)
+}
+
+// forgejoAuthFor is forgejoAuth over an explicit environment and positionals:
+// the threads refresh has no fetchRunCtx but needs the same gate.
+func forgejoAuthFor(env map[string]string, repo, pr string) (auth []string, api string, err error) {
+	host, _ := env["FORGEJO_HOST"]
+	token, _ := env["FORGEJO_TOKEN"]
 	if host == "" {
 		return nil, "", &core.RefusalError{Code: codeAuthMissing, Message: "forgejo needs FORGEJO_HOST=https://host and FORGEJO_TOKEN set"}
 	}
 	if token == "" {
 		return nil, "", &core.RefusalError{Code: codeAuthMissing, Message: "forgejo needs FORGEJO_TOKEN set (app token with repo read)"}
 	}
-	repo, pr := ctx2.repo, ctx2.pr
 	return []string{flagH, "Authorization: token " + token}, host + "/api/v1/repos/" + repo + "/pulls/" + pr, nil
 }
 
@@ -788,7 +807,17 @@ func forgejoFiles(ctx context.Context, r *session, auth []string, api string) st
 // byte-identical; a failed page or the page cap warns instead of returning
 // the first page silently.
 func forgejoList(ctx context.Context, r *session, auth []string, base, what string) string {
-	body, truncated, err := indexPageWalk(ctx, forgejoPageSize,
+	body, truncated, err := forgejoListRead(ctx, r, auth, base)
+	warnPaging(r, providerForgejo, what, err, truncated)
+	return body
+}
+
+// forgejoListRead pages one Forgejo list endpoint and hands back the partial
+// body, truncation, and page error so a caller can decide warn-vs-refuse.
+func forgejoListRead(
+	ctx context.Context, r *session, auth []string, base string,
+) (body string, truncated bool, err error) {
+	return indexPageWalk(ctx, forgejoPageSize,
 		func(ctx context.Context, page int) (string, error) {
 			u := fmt.Sprintf("%s?limit=%d&page=%d", base, forgejoPageSize, page)
 			res, ferr := r.curlFetch(ctx, curlArgs(auth, u)...)
@@ -797,14 +826,12 @@ func forgejoList(ctx context.Context, r *session, auth []string, base, what stri
 			}
 			return res.Stdout, nil
 		})
-	warnPaging(r, providerForgejo, what, err, truncated)
-	return body
 }
 
 // forgejoThreads ports the review-thread reads: reviews page fully and the
 // per-review comments concatenate, defaulting to [] (with a warning) on
 // failure.
-func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api string) error {
+func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api, pr, meta string) error {
 	revs := forgejoList(ctx, r, auth, api+"/reviews", "reviews")
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
@@ -819,7 +846,8 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, 
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inline)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
-	if ref := writeThreadsJSON(dir, providerForgejo, !complete, forgejoThreadRecords(revs, inline)); ref != nil {
+	feed := threadscore.FromForgejo(decodeThreadPayload(revs), decodeThreadPayload(inline), forgejoHeadSHA(meta))
+	if ref := writeThreadsJSON(dir, providerForgejo, pr, forgejoHeadSHA(meta), r.nowUTC(), !complete, feed); ref != nil {
 		return ref
 	}
 	return nil
@@ -991,7 +1019,7 @@ func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchReque
 	if ref := bitbucketDiff(ctx, r, dir, auth, base); ref != nil {
 		return ref
 	}
-	ds, ref := bitbucketThreads(ctx, r, dir, auth, base)
+	ds, ref := bitbucketThreads(ctx, r, dir, auth, base, pr, bitbucketHead(meta))
 	if ref != nil {
 		return ref
 	}
@@ -1001,9 +1029,15 @@ func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchReque
 
 // bitbucketAuth ports the token/user-password gate.
 func bitbucketAuth(ctx2 *fetchRunCtx) ([]string, *core.RefusalError) {
-	token, _ := ctx2.env["BITBUCKET_TOKEN"]
-	user, _ := ctx2.env["BITBUCKET_USERNAME"]
-	pass, _ := ctx2.env["BITBUCKET_PASSWORD"]
+	return bitbucketAuthFor(ctx2.env)
+}
+
+// bitbucketAuthFor is bitbucketAuth over an explicit environment: the threads
+// refresh has no fetchRunCtx but needs the same credential gate.
+func bitbucketAuthFor(env map[string]string) ([]string, *core.RefusalError) {
+	token, _ := env["BITBUCKET_TOKEN"]
+	user, _ := env["BITBUCKET_USERNAME"]
+	pass, _ := env["BITBUCKET_PASSWORD"]
 	switch {
 	case token != "":
 		return []string{flagH, "Authorization: Bearer " + token}, nil
@@ -1052,7 +1086,7 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, b
 
 // bitbucketThreads ports the diffstat/comments reads and the split writes,
 // returning the diffstat entries for normalization.
-func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base string) ([]any, *core.RefusalError) {
+func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base, pr, head string) ([]any, *core.RefusalError) {
 	ds, _, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
 	if ref != nil {
 		return nil, ref
@@ -1068,7 +1102,8 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 	if err := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(plainAll(reviews)))); err != nil {
 		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, err)}
 	}
-	if ref := writeThreadsJSON(dir, providerBitbucket, truncated, bitbucketThreadRecords(cm)); ref != nil {
+	feed := threadscore.FromBitbucket(cm)
+	if ref := writeThreadsJSON(dir, providerBitbucket, pr, head, r.nowUTC(), truncated, feed); ref != nil {
 		return nil, ref
 	}
 	return ds, nil
@@ -1366,23 +1401,24 @@ func azureAPI(org, project, rname, pr, path, query, format string) []string {
 // azureThreads ports the thread read and split: threads land as inline
 // and review files, with a warning when the read fails.
 func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, pr string) error {
-	threads := emptyJSONArray
+	raw := emptyJSONArray
 	truncated := false
 	args := azureAPI(conn.org, conn.project, conn.rname, pr, "/threads?api-version=7.1", "value", keyJSON)
 	if res, err := r.cliFetch(ctx, binAz, args...); err == nil {
-		threads = res.Stdout
+		raw = res.Stdout
 	} else {
 		truncated = true
 		r.Warn("azure review-thread read failed — inline.json and reviews.json are empty; the bundle may under-cover threads")
 	}
-	inline, reviews := splitAzureThreads(threads)
+	inline, reviews := splitAzureThreads(raw)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(plainAll(inline)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(plainAll(reviews)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
 	}
-	if ref := writeThreadsJSON(dir, providerAzure, truncated, azureThreadRecords(threads)); ref != nil {
+	feed := threadscore.FromAzure(decodeThreadPayload(raw))
+	if ref := writeThreadsJSON(dir, providerAzure, pr, azureHeadSHA(conn.meta), r.nowUTC(), truncated, feed); ref != nil {
 		return ref
 	}
 	return nil
@@ -1488,8 +1524,8 @@ func base64Token(tok string) string {
 
 // splitAzureThreads ports the threadContext split (null reads the reviews
 // file). A scalar element fails the shell's jq outright (both read []).
-func splitAzureThreads(threads string) (inline, reviews []any) {
-	doc, err := jq.Decode([]byte(threads))
+func splitAzureThreads(raw string) (inline, reviews []any) {
+	doc, err := jq.Decode([]byte(raw))
 	if err != nil {
 		return []any{}, []any{}
 	}

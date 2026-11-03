@@ -13,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // scriptCommander is a hermetic Commander: canned stdout/stderr per exact
@@ -189,6 +190,7 @@ func fetchHappyCommander(t *testing.T) *scriptCommander {
 			"gh\x00" + stat:                          {stdout: "a.txt (+1/-1)\n"},
 			"gh\x00api\x00repos/o/r/pulls/7/reviews\x00--paginate":  {stdout: "[]\n"},
 			"gh\x00api\x00repos/o/r/pulls/7/comments\x00--paginate": {stdout: "[]\n"},
+			githubThreadCall(""): {stdout: emptyThreadPage},
 		},
 	}
 }
@@ -210,7 +212,8 @@ func TestRunGitHubHappyPath(t *testing.T) {
 	assertScriptCalls(t, cmdr, fetchHappyArgv())
 	assertBundleFiles(t, filepath.Join(".review", "7"), []string{
 		"PR.json", "full.diff",
-		"toc.txt", "roles.txt", "hunks.tsv", "store.json", "reviews.json", "inline.json", ".difffiles",
+		"toc.txt", "roles.txt", "hunks.tsv", "store.json", "reviews.json", "inline.json",
+		"threads.json", ".difffiles",
 	})
 	assertFetchFiles(t)
 	assertFetchData(t, resp, &human)
@@ -231,6 +234,7 @@ func fetchHappyArgv() [][]string {
 		},
 		{"gh", "api", "repos/o/r/pulls/7/reviews", "--paginate"},
 		{"gh", "api", "repos/o/r/pulls/7/comments", "--paginate"},
+		append([]string{"gh"}, readcommon.ReviewThreadsArgv("o", "r", "7", "")...),
 	}
 }
 
@@ -473,6 +477,9 @@ func TestGitHubThreadReadFailureWarns(t *testing.T) {
 	cmdr.out["gh\x00api\x00repos/o/r/pulls/7/reviews\x00--paginate"] = scriptResult{
 		stderr: "gh: threads down", fail: true,
 	}
+	cmdr.out[githubThreadCall("")] = scriptResult{
+		stderr: "gh: threads down", fail: true,
+	}
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := Run(context.Background(), fetchTestReq(cmdr, &human, &diag, &streamed))
@@ -482,12 +489,24 @@ func TestGitHubThreadReadFailureWarns(t *testing.T) {
 	if !warningContains(resp.Warnings, "review read failed") {
 		t.Errorf("warnings = %v, want the review-read warning", resp.Warnings)
 	}
+	if !warningContains(resp.Warnings, "thread read failed") {
+		t.Errorf("warnings = %v, want the thread-read warning", resp.Warnings)
+	}
 	if raw, rerr := os.ReadFile(".review/7/reviews.json"); rerr != nil || string(raw) != "[]\n" {
 		t.Errorf("reviews.json = %q, %v; want []", raw, rerr)
 	}
 	if raw, rerr := os.ReadFile(".review/7/inline.json"); rerr != nil || string(raw) != "[]\n" {
 		t.Errorf("inline.json = %q, %v", raw, rerr)
 	}
+}
+
+// emptyThreadPage is the no-threads GraphQL page.
+const emptyThreadPage = `{"data":{"repository":{"pullRequest":{"reviewThreads":{` +
+	`"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}`
+
+// githubThreadCall renders the script key for one GraphQL thread page read.
+func githubThreadCall(cursor string) string {
+	return "gh\x00" + strings.Join(readcommon.ReviewThreadsArgv("o", "r", "7", cursor), "\x00")
 }
 
 // warningContains reports whether any accumulated warning carries want.

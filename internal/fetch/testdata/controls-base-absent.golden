@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4701,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + full.diff to any agent; ask it to write .review/4701/review.json",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + full.diff to any agent; ask it to write .review/4701/review.json; prior threads are in .review/4701/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
     "dir": ".review/4701",
@@ -59,7 +59,7 @@ exit: 0
 » panel (1 from .review/panel)
 » reviews + inline comments
 done: .review/4701/PR.json .review/4701/full.diff .review/4701/toc.txt .review/4701/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json; prior threads are in .review/4701/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
@@ -78,6 +78,29 @@ CALL: api repos/acme/app/contents/.review/overrides/attribution.md?ref=ccccccccc
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4701/reviews --paginate
 CALL: api repos/acme/app/pulls/4701/comments --paginate
+CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
+            }
+          }
+        }
+      }
 --- file C/.review/4701/.difffiles ---
 notes.txt
 --- file C/.review/4701/PR.json ---
@@ -189,8 +212,68 @@ api-base-panel
 {
   "schema_version": "1",
   "provider": "github",
+  "pr": 4701,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
   "truncated": false,
-  "threads": []
+  "threads": [
+    {
+      "id": "PRRT_1",
+      "path": "notes.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": "https://example.invalid/c/101",
+      "author": "verdict[bot]",
+      "author_kind": "verdict",
+      "finding_sig": "6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e",
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "101",
+          "author": "verdict[bot]",
+          "author_kind": "verdict",
+          "body": "Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        },
+        {
+          "id": "102",
+          "author": "mate",
+          "author_kind": "human",
+          "body": "Done.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "PRRT_2",
+      "path": "notes.txt",
+      "line": null,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": true,
+      "url": "https://example.invalid/c/103",
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "103",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Old anchor.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
 }
 --- file C/.review/4701/toc.txt ---
 # TOC for PR #4701 (acme/app) — read ranges as coverage checklist
@@ -219,6 +302,8 @@ index 1111111..2222222 100644
 -old line
 +new line
  bottom
+--- file C/canned/gh-threads.json ---
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"notes.txt","line":2,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":2,"nodes":[{"id":"PRRC_1","databaseId":101,"author":{"__typename":"Bot","login":"verdict[bot]"},"body":"Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/101"},{"id":"PRRC_2","databaseId":102,"author":{"__typename":"User","login":"mate"},"body":"Done.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/102"}]}},{"id":"PRRT_2","isResolved":true,"isOutdated":true,"path":"notes.txt","line":null,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":1,"nodes":[{"id":"PRRC_3","databaseId":103,"author":{"__typename":"User","login":"ana"},"body":"Old anchor.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/103"}]}}]}}}}}
 --- file C/canned/inc.diff ---
 diff --git a/notes.txt b/notes.txt
 index 2222222..3333333 100644

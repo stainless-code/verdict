@@ -281,7 +281,7 @@ func TestForgejoCommentReadFailureWarns(t *testing.T) {
 	}}
 	s, warns := newTestSession(cmdr)
 	dir := t.TempDir()
-	if err := forgejoThreads(context.Background(), s, dir, []string{"-H", "Authorization: token tok"}, api); err != nil {
+	if err := forgejoThreads(context.Background(), s, dir, []string{"-H", "Authorization: token tok"}, api, "7", `{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`); err != nil {
 		t.Fatal(err)
 	}
 	if len(*warns) != 1 || !strings.Contains((*warns)[0], "review-comment read failed") {

@@ -1,6 +1,9 @@
 package schemagen
 
-import "github.com/stainless-code/verdict/internal/core"
+import (
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/threads"
+)
 
 // This file is the single source of truth for the published JSON Schemas.
 // The structs below mirror the JSON objects the Go writers build with
@@ -200,28 +203,18 @@ type UsageTokens struct { //nolint:govet // field order is the published propert
 	CacheWrite *float64 `json:"cache_write,omitempty" min:"0"`
 }
 
-// ThreadsFile is one provider bundle's normalized review-thread feed,
+// ThreadsFile is one provider bundle's normalized PR-conversation feed,
 // published as schemas/threads.schema.json. It is additive beside the raw
 // provider files: every host's payload is filtered and flattened to the same
-// fields, so one reader (or agent) can reason about prior feedback without
-// reverse-engineering six shapes.
-type ThreadsFile struct { //nolint:govet // field order is the published property order
-	SchemaVersion string   `const:"1"                                            json:"schema_version"`
-	Provider      string   `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure" json:"provider"`
-	Truncated     bool     `json:"truncated"`
-	Threads       []Thread `json:"threads"`
-}
+// shape, so re-review, addressing, merge readiness, and calibration can read
+// prior feedback without reverse-engineering six formats.
+type ThreadsFile = threadscore.File
 
-// Thread is one normalized root comment: a review-comment thread when it
-// carries a diff position, otherwise a conversation comment.
-type Thread struct { //nolint:govet // field order is the published property order
-	ID       string  `json:"id"`
-	Path     string  `json:"path"`
-	Line     *int    `json:"line"`
-	Side     *string `json:"side"`
-	Resolved bool    `json:"resolved"`
-	Outdated bool    `json:"outdated"`
-	Author   string  `json:"author"`
-	Kind     string  `enum:"issue-comment|review-comment" json:"kind"`
-	Body     string  `json:"body"`
-}
+// Thread is one normalized root review thread or conversation comment plus
+// its replies: the host thread id, diff anchor and state, and the author and
+// finding link of the root comment.
+type Thread = threadscore.Thread
+
+// ThreadComment is one comment inside a thread, body capped with a truncated
+// flag (the raw provider file keeps the full text).
+type ThreadComment = threadscore.Comment

@@ -104,6 +104,8 @@ const ghStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.gh-calls.log\"
 	"  *pr\\ diff*) if [ \"${GH_DIFF_FAIL:-0}\" = 1 ]; then echo \"gh: diff unavailable\" >&2; exit 1; fi\n" +
 	"    cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
 	"  *files*) cat \"$PWD\"/canned/files-page-*.json 2>/dev/null || printf '[]'; exit 0;;\n" +
+	"  *api\\ graphql*) if [ \"${GH_THREADS_FAIL:-0}\" = 1 ]; then echo \"gh: threads down\" >&2; exit 1; fi\n" +
+	"    cat \"$PWD/canned/gh-threads.json\" 2>/dev/null || printf '%s' '{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null},\"nodes\":[]}}}}}}'; exit 0;;\n" +
 	"  *reviews*|*comments*) if [ \"${GH_THREADS_FAIL:-0}\" = 1 ]; then echo \"gh: threads down\" >&2; exit 1; fi\n" +
 	"    printf '%s\\n' '[]'; exit 0;;\n" +
 	"  *compare*) if [ \"${GH_COMPARE_FAIL:-0}\" = 1 ]; then echo \"gh: no common ancestor\" >&2; exit 1; fi\n" +
@@ -121,6 +123,7 @@ const glabStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.glab-calls.l
 	"  *changes*) cat \"$PWD/canned/gl-changes.json\"; exit 0;;\n" +
 	"  *mr\\ diff*) cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
 	"  */notes*) cat \"$PWD/canned/gl-notes.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
+	"  */discussions*) cat \"$PWD/canned/gl-discussions.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
 	"esac\necho \"glab-stub: unexpected ($*)\" >&2\nexit 1\n"
 
 // cafeStub answers the GitCafe CLI shapes, with two-page review/comment
@@ -145,8 +148,8 @@ const curlStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.curl-calls.l
 	"  */pulls/*\\.diff*) cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
 	"  *diff_url*) cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
 	"  */pulls/*\\/files*) cat \"$PWD/canned/fj-files.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
-	"  */pulls/*\\/reviews\\/*\\/comments*) printf '%s' '[{\"id\":1}]'; exit 0;;\n" +
-	"  */pulls/*\\/reviews*) printf '%s' '[{\"id\":7}]'; exit 0;;\n" +
+	"  */pulls/*\\/reviews\\/*\\/comments*) cat \"$PWD/canned/fj-comments.json\" 2>/dev/null || printf '%s' '[{\"id\":1}]'; exit 0;;\n" +
+	"  */pulls/*\\/reviews*) cat \"$PWD/canned/fj-reviews.json\" 2>/dev/null || printf '%s' '[{\"id\":7}]'; exit 0;;\n" +
 	"  */pulls/*) cat \"$PWD/canned/fj-meta.json\"; exit 0;;\n" +
 	"  */diffstat*) case \"$*\" in *cursor2*) cat \"$PWD/canned/bb-page2.json\";; *) cat \"$PWD/canned/bb-page1.json\";; esac; exit 0;;\n" +
 	"  */comments*) cat \"$PWD/canned/bb-comments.json\" 2>/dev/null || printf '{\"values\":[]}'; exit 0;;\n" +
@@ -253,6 +256,17 @@ func stubPR(t *testing.T, dir string) {
 	writeCanned(t, dir, "full.diff", "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 		"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
 	writeCanned(t, dir, "stat.txt", "notes.txt (+3/-1)\n")
+	writeCanned(t, dir, "gh-threads.json", `{"data":{"repository":{"pullRequest":{"reviewThreads":{`+
+		`"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[`+
+		`{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"notes.txt","line":2,"startLine":null,"diffSide":"RIGHT",`+
+		`"comments":{"totalCount":2,"nodes":[`+
+		`{"id":"PRRC_1","databaseId":101,"author":{"__typename":"Bot","login":"verdict[bot]"},"body":"Consider clarifying this line.`+
+		`\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->","createdAt":"2026-11-01T10:00:00Z","url":"https://example.invalid/c/101"},`+
+		`{"id":"PRRC_2","databaseId":102,"author":{"__typename":"User","login":"mate"},"body":"Done.","createdAt":"2026-11-01T11:00:00Z","url":"https://example.invalid/c/102"}]}},`+
+		`{"id":"PRRT_2","isResolved":true,"isOutdated":true,"path":"notes.txt","line":null,"startLine":null,"diffSide":"RIGHT",`+
+		`"comments":{"totalCount":1,"nodes":[`+
+		`{"id":"PRRC_3","databaseId":103,"author":{"__typename":"User","login":"ana"},"body":"Old anchor.","createdAt":"2026-10-01T09:00:00Z","url":"https://example.invalid/c/103"}]}}`+
+		`]}}}}}`)
 	writeCanned(t, dir, "inc.diff", "diff --git a/notes.txt b/notes.txt\nindex 2222222..3333333 100644\n"+
 		"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n+new line\n+newer line\n bottom\n")
 }
@@ -782,6 +796,16 @@ func TestFetchParityProviders(t *testing.T) {
 		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
 		writeCanned(t, dir, "gl-notes.json", `[{"type":"DiffNote"},{"type":"Note"}]`)
+		writeCanned(t, dir, "gl-discussions.json", `[{"id":"d1","notes":[`+
+			`{"id":201,"body":"Please rename.","author":{"username":"ana"},"created_at":"2026-11-01T10:00:00Z",`+
+			`"resolved":false,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt",`+
+			`"new_line":1,"old_line":null,"head_sha":"`+headA+`"}},`+
+			`{"id":202,"body":"Fixed.","author":{"username":"verdict"},"created_at":"2026-11-01T11:00:00Z"},`+
+			`{"id":203,"system":true,"body":"added label"}]},`+
+			`{"id":"d2","notes":[{"id":204,"body":"Old note","author":{"username":"bo"},"created_at":"2026-10-01T09:00:00Z",`+
+			`"resolved":true,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt",`+
+			`"new_line":1,"old_line":null,"head_sha":"`+headB+`"}}]},`+
+			`{"id":"d3","notes":[{"id":205,"body":"LGTM","author":{"username":"rev"},"created_at":"2026-11-02T09:00:00Z"}]}]`)
 	}
 	parity.Golden(t, harness, "gitlab-happy", gitlab, nil,
 		"fetch", "acme/app", "4706", "--provider", "gitlab", "--json")
@@ -798,8 +822,10 @@ func TestFetchParityProviders(t *testing.T) {
 			`"sourceOid":"`+headA+`","author":{"handle":"mate"},"state":"open","draft":false},"url":"https://example.invalid/7"}}`)
 		writeCanned(t, dir, "cafe-items.json", `[{"path":"a.txt","patch":"@@ -1 +1 @@\n-a\n+b\n",`+
 			`"status":"modified","additions":1,"deletions":1}]`)
-		writeCanned(t, dir, "cafe-rev1.json", `{"data":{"items":[]}}`)
-		writeCanned(t, dir, "cafe-cmt1.json", `{"data":{"items":[]}}`)
+		writeCanned(t, dir, "cafe-rev1.json", `{"data":{"items":[{"id":"r1","body":"Summary note",`+
+			`"author":{"handle":"rev"},"createdAt":"2026-11-01T00:00:00Z"}]}}`)
+		writeCanned(t, dir, "cafe-cmt1.json", `{"data":{"items":[{"id":"c1","path":"a.txt","line":1,"side":"RIGHT",`+
+			`"body":"Nit","author":{"handle":"ana"},"createdAt":"2026-11-01T00:00:00Z","resolved":true}]}}`)
 	}
 	// The gitcafe backend expands `"${rargs[@]}"` under set -u, which
 	// crashes bash 3.2 (macOS) on the first cursor-less page while bash
@@ -822,6 +848,13 @@ func TestFetchParityProviders(t *testing.T) {
 		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
 		writeCanned(t, dir, "fj-files.json", `[{"filename":"a.txt","status":"modified","additions":1,"deletions":1}]`)
+		writeCanned(t, dir, "fj-reviews.json", `[{"id":7,"user":{"login":"rev"},"body":"Summary note",`+
+			`"submitted_at":"2026-11-01T00:00:00Z","html_url":"https://example.invalid/r/7"}]`)
+		writeCanned(t, dir, "fj-comments.json", `[{"id":11,"path":"a.txt","position":1,"original_position":1,`+
+			`"body":"Nit","user":{"login":"ana"},"created_at":"2026-11-01T00:00:00Z","resolver":{"login":"ana"},`+
+			`"html_url":"https://example.invalid/c/11"},`+
+			`{"id":12,"path":"a.txt","position":0,"original_position":2,"body":"Old spot","user":{"login":"bo"},`+
+			`"created_at":"2026-10-01T00:00:00Z","resolver":null,"html_url":"https://example.invalid/c/12"}]`)
 	}
 	parity.Golden(t, harness, "forgejo-happy", forgejo,
 		map[string]string{"FORGEJO_HOST": "https://example.invalid", "FORGEJO_TOKEN": "tok"},
@@ -841,7 +874,15 @@ func TestFetchParityProviders(t *testing.T) {
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
 		writeCanned(t, dir, "bb-page1.json", `{"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},`+
 			`"status":"modified","lines_added":1,"lines_removed":1}],"next":null}`)
-		writeCanned(t, dir, "bb-comments.json", `{"values":[{"id":1},{"id":2,"inline":{"path":"a.txt"}}]}`)
+		writeCanned(t, dir, "bb-comments.json", `{"values":[`+
+			`{"id":1,"content":{"raw":"General note"},"user":{"nickname":"rev"},"created_on":"2026-11-01T00:00:00Z",`+
+			`"links":{"html":{"href":"https://example.invalid/c/1"}}},`+
+			`{"id":2,"content":{"raw":"Inline nit"},"user":{"nickname":"ana"},"created_on":"2026-11-01T00:00:00Z",`+
+			`"inline":{"path":"a.txt","to":1,"outdated":false},"resolution":{"user":{"nickname":"ana"}},`+
+			`"links":{"html":{"href":"https://example.invalid/c/2"}}},`+
+			`{"id":3,"parent":{"id":2},"content":{"raw":"Reply"},"user":{"nickname":"bo"},"created_on":"2026-11-01T01:00:00Z"},`+
+			`{"id":4,"deleted":true,"content":{"raw":"gone"}},`+
+			`{"id":5,"pending":true,"content":{"raw":"draft"}}],"next":null}`)
 	}
 	parity.Golden(t, harness, "bitbucket-happy", bitbucket,
 		map[string]string{"BITBUCKET_TOKEN": "tok"},
@@ -857,7 +898,13 @@ func TestFetchParityProviders(t *testing.T) {
 			`"lastMergeTargetCommit":{"commitId":"`+headB+`"},"lastMergeSourceCommit":{"commitId":"`+headA+`"},`+
 			`"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/13","status":"active","isDraft":false,`+
 			`"repository":{"remoteUrl":"https://example.invalid/r.git"}}`)
-		writeCanned(t, dir, "az-threads.json", `[{"id":1},{"id":2,"threadContext":{}}]`)
+		writeCanned(t, dir, "az-threads.json", `[`+
+			`{"id":9,"status":"fixed","threadContext":{"filePath":"/a.txt","rightFileStart":{"line":1},"rightFileEnd":{"line":1}},`+
+			`"comments":[{"id":1,"content":"system","commentType":"system","publishedDate":"2026-01-01T00:00:00Z"},`+
+			`{"id":2,"content":"Nit","author":{"displayName":"ana"},"publishedDate":"2026-11-01T00:00:00Z"}]},`+
+			`{"id":10,"status":"active","comments":[{"id":3,"content":"Question","author":{"displayName":"bo"},`+
+			`"publishedDate":"2026-11-01T00:00:00Z"}]},`+
+			`{"id":11,"isDeleted":true,"comments":[{"id":4,"content":"gone","publishedDate":"2026-11-01T00:00:00Z"}]}]`)
 		writeCanned(t, dir, "az-changes.json", `[]`)
 	}
 	parity.Golden(t, harness, "azure-auth-missing", azure, nil,
@@ -1209,7 +1256,12 @@ func TestFetchParityAzureHappy(t *testing.T) {
 			`"lastMergeTargetCommit":{"commitId":"`+baseSHA+`"},"lastMergeSourceCommit":{"commitId":"`+headSHA+`"},`+
 			`"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/16","status":"active","isDraft":false,`+
 			`"repository":{"remoteUrl":"`+azureRemote+`"}}`)
-		writeCanned(t, dir, "az-threads.json", `[{"id":1}]`)
+		writeCanned(t, dir, "az-threads.json", `[`+
+			`{"id":9,"status":"fixed","threadContext":{"filePath":"/a.txt","rightFileStart":{"line":1},"rightFileEnd":{"line":1}},`+
+			`"comments":[{"id":1,"content":"system","commentType":"system","publishedDate":"2026-01-01T00:00:00Z"},`+
+			`{"id":2,"content":"Nit","author":{"displayName":"ana"},"publishedDate":"2026-11-01T00:00:00Z"}]},`+
+			`{"id":10,"status":"active","comments":[{"id":3,"content":"Question","author":{"displayName":"bo"},`+
+			`"publishedDate":"2026-11-01T00:00:00Z"}]}]`)
 		writeCanned(t, dir, "az-changes.json", `[{"item":{"path":"/a.txt"},"changeType":"edit"}]`)
 	}
 	parity.Golden(t, harness, "azure-happy", setup, env,

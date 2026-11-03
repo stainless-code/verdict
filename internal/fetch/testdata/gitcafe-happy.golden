@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4707,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4707/PR.json + full.diff to any agent; ask it to write .review/4707/review.json",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4707/PR.json + full.diff to any agent; ask it to write .review/4707/review.json; prior threads are in .review/4707/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
     "dir": ".review/4707",
@@ -54,7 +54,7 @@ exit: 0
 » roles -> .review/4707/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
 done: .review/4707/PR.json .review/4707/full.diff .review/4707/toc.txt .review/4707/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4707/PR.json + .review/4707/full.diff (+ .review/4707/roles.txt) to any agent; ask it to write .review/4707/review.json
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4707/PR.json + .review/4707/full.diff (+ .review/4707/roles.txt) to any agent; ask it to write .review/4707/review.json; prior threads are in .review/4707/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.cafe-calls.log ---
 CALL: pr view 4707 -R acme/app --json
@@ -177,9 +177,31 @@ diff --git a/a.txt b/a.txt
 a.txt	OLD	1	1
 a.txt	NEW	1	1
 --- file C/.review/4707/inline.json ---
-[]
+[
+  {
+    "author": {
+      "handle": "ana"
+    },
+    "body": "Nit",
+    "createdAt": "0000-00-00T00:00:00Z",
+    "id": "c1",
+    "line": 1,
+    "path": "a.txt",
+    "resolved": true,
+    "side": "RIGHT"
+  }
+]
 --- file C/.review/4707/reviews.json ---
-[]
+[
+  {
+    "author": {
+      "handle": "rev"
+    },
+    "body": "Summary note",
+    "createdAt": "0000-00-00T00:00:00Z",
+    "id": "r1"
+  }
+]
 --- file C/.review/4707/roles.txt ---
 ## docs
 - a.txt
@@ -191,8 +213,60 @@ a.txt	NEW	1	1
 {
   "schema_version": "1",
   "provider": "gitcafe",
+  "pr": 4707,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
   "truncated": false,
-  "threads": []
+  "threads": [
+    {
+      "id": "r1",
+      "path": "",
+      "line": null,
+      "start_line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "rev",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "issue-comment",
+      "comments": [
+        {
+          "id": "r1",
+          "author": "rev",
+          "author_kind": "human",
+          "body": "Summary note",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": false,
+      "url": null,
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "c1",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Nit",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
 }
 --- file C/.review/4707/toc.txt ---
 # TOC for gitcafe #4707 (acme/app) — read ranges as coverage checklist
@@ -208,13 +282,13 @@ omitted: (none)
 --- file C/SKILL.md ---
 # verdict skill (parity fixture)
 --- file C/canned/cafe-cmt1.json ---
-{"data":{"items":[]}}
+{"data":{"items":[{"id":"c1","path":"a.txt","line":1,"side":"RIGHT","body":"Nit","author":{"handle":"ana"},"createdAt":"0000-00-00T00:00:00Z","resolved":true}]}}
 --- file C/canned/cafe-items.json ---
 [{"path":"a.txt","patch":"@@ -1 +1 @@\n-a\n+b\n","status":"modified","additions":1,"deletions":1}]
 --- file C/canned/cafe-meta.json ---
 {"data":{"resource":{"number":7,"title":"PR seven","description":"body","targetBranch":"main","sourceBranch":"feat","observedBaseOid":"488310afbc29fb48fbd84cf16c89d3726158a444","sourceOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","author":{"handle":"mate"},"state":"open","draft":false},"url":"https://example.invalid/7"}}
 --- file C/canned/cafe-rev1.json ---
-{"data":{"items":[]}}
+{"data":{"items":[{"id":"r1","body":"Summary note","author":{"handle":"rev"},"createdAt":"0000-00-00T00:00:00Z"}]}}
 --- file C/prompts/diagrams.md ---
 # diagrams (parity fixture)
 --- file C/prompts/review.md ---

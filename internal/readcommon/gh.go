@@ -16,6 +16,8 @@ import (
 // payload shape, never per verb: ready and report --live share the
 // resolution-only read, calibrate uses the comment variant.
 const (
+	flagF = "-F"
+
 	// QueryThreads is the resolution-only read for ready and report --live.
 	QueryThreads = `
       query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
@@ -23,6 +25,34 @@ const (
           pullRequest(number:$pr) {
             reviewThreads(first:100, after:$endCursor) {
               nodes { isResolved }
+            }
+          }
+        }
+      }`
+	// QueryThreadsFull is the authoritative threads.json read: the whole
+	// thread (resolution, outdated, anchor, comment authors, bodies, ids).
+	// It carries pageInfo so a cursor walk can page every thread instead of
+	// trusting one page; comments carry totalCount so a capped comment list
+	// marks the feed truncated instead of silently dropping replies.
+	QueryThreadsFull = `
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
             }
           }
         }
@@ -93,6 +123,69 @@ func ThreadsArgv(owner, name, pr, query string) []string {
 		"-F", "owner=" + owner, "-F", "name=" + name, "-F", "pr=" + pr,
 		"-f", "query=" + query,
 	}
+}
+
+// ReviewThreadsArgv builds one GraphQL page read for the authoritative
+// threads.json feed. cursor "" omits the endCursor variable (GraphQL's
+// nullable String), so the walk needs no sentinel cursor.
+func ReviewThreadsArgv(owner, name, pr, cursor string) []string {
+	args := []string{
+		"api", "graphql",
+		flagF, "owner=" + owner, flagF, "name=" + name, flagF, "pr=" + pr,
+	}
+	if cursor != "" {
+		args = append(args, flagF, "endCursor="+cursor)
+	}
+	return append(args, "-f", "query="+QueryThreadsFull)
+}
+
+// ThreadsPage decodes one authoritative thread page: its reviewThreads
+// nodes, the next cursor ("" when the host says the list ended), and whether
+// more pages exist. A GraphQL errors payload is an error, never an empty
+// page: writing an empty feed over a failed read would read as "no prior
+// threads" on a re-review.
+func ThreadsPage(stdout string) (nodes []any, next string, more bool, err error) {
+	doc, err := jq.Decode([]byte(stdout))
+	if err != nil {
+		return nil, "", false, jq.Sealed("slurp threads", err)
+	}
+	threads := reviewThreadsNode(doc)
+	if threads == nil {
+		return nil, "", false, jq.Sealed("slurp threads", errors.New("payload carries no reviewThreads data"))
+	}
+	pageInfo, _ := jq.AsMap(threads["pageInfo"])
+	if b, ok := pageInfo["hasNextPage"].(bool); ok && b {
+		more = true
+		if s, ok := pageInfo["endCursor"].(string); ok {
+			next = s
+		}
+	}
+	return jq.Elements(threads["nodes"]), next, more, nil
+}
+
+// reviewThreadsNode navigates one decoded page to its reviewThreads object.
+func reviewThreadsNode(doc any) map[string]any {
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return nil
+	}
+	data, ok := m["data"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	repository, ok := data["repository"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	pull, ok := repository["pullRequest"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	threads, ok := pull["reviewThreads"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return threads
 }
 
 // SlurpThreads decodes the paginated thread payload: concatenated JSON docs

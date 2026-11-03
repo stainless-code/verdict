@@ -174,9 +174,11 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	return nil
 }
 
-// githubReviews ports the review-thread reads: reviews.json and
-// inline.json land as raw API bodies. A failed read writes [] but warns:
-// a silent empty list would read as "no prior threads" on a re-review.
+// githubReviews ports the review reads: reviews.json and inline.json land as
+// raw API bodies, and threads.json comes from the authoritative GraphQL
+// reviewThreads read (REST carries no resolution). A failed read writes []
+// but warns: a silent empty list would read as "no prior threads" on a
+// re-review.
 func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
 	fmt.Fprintln(r.Human, "» reviews + inline comments")
 	truncated := false
@@ -200,7 +202,10 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inlineBody)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
-	return writeThreadsJSON(dir, providerGitHub, truncated, githubThreadRecords(reviewsBody, inlineBody))
+	feed, feedTruncated, feedErr := githubThreadFeed(ctx, r, repo, pr)
+	threadWarning(r, providerGitHub, feed, feedTruncated, feedErr)
+	return writeThreadsJSON(dir, providerGitHub, pr, prHeadRefOid(dir), r.nowUTC(),
+		truncated || feedTruncated, feed)
 }
 
 // githubIncremental ports the --base-sha compare: the incremental diff

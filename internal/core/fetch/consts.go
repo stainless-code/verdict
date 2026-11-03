@@ -125,6 +125,8 @@ const (
 
 	// Refusal codes.
 	codeAuthMissing    = "auth-missing"
+	codeBadProvider    = "bad-provider"
+	codeThreadsFailed  = "threads-failed"
 	codeBadRange       = "bad-range"
 	codeBadSlug        = "bad-slug"
 	codeWorktreeFailed = "worktree-failed"

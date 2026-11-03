@@ -72,6 +72,29 @@ CALL: pr diff 4703 --repo acme/app
 CALL: pr view 4703 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4703/reviews --paginate
 CALL: api repos/acme/app/pulls/4703/comments --paginate
+CALL: api graphql -F owner=acme -F name=app -F pr=4703 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
+            }
+          }
+        }
+      }
 --- file C/.review/4703/.difffiles ---
 f00.txt
 f01.txt
@@ -25688,6 +25711,9 @@ f13.txt	NEW	1	1
 {
   "schema_version": "1",
   "provider": "github",
+  "pr": 4703,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
   "truncated": false,
   "threads": []
 }

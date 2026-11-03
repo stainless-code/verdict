@@ -548,12 +548,23 @@ func compareReportData(t *testing.T, got *core.ReportData, modeled *ReportData) 
 func TestRuntimeThreadsOutputValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "threads.schema.json")
 	line, side := 3, "RIGHT"
+	sig := strings.Repeat("a", 40)
+	turl := "https://example.invalid/comment/10"
 	sample := ThreadsFile{
 		SchemaVersion: "1",
 		Provider:      "github",
+		PR:            4701,
+		HeadSHA:       strings.Repeat("b", 40),
+		FetchedAt:     "2026-11-03T12:00:00Z",
 		Threads: []Thread{{
-			ID: "10", Path: "a.go", Line: &line, Side: &side,
-			Author: "ana", Kind: "review-comment", Body: "nit",
+			ID: "PRRT_10", Path: "a.go", Line: &line, Side: &side,
+			URL: &turl, Author: "ana", AuthorKind: "human",
+			FindingSig: &sig, Kind: "review-comment",
+			Comments: []ThreadComment{{
+				ID: "10", Author: "ana", AuthorKind: "human",
+				Body: "nit", Truncated: false,
+				CreatedAt: "2026-11-03T12:00:00Z",
+			}},
 		}},
 	}
 	validateWire(t, doc, "$", doc, decodeWire(t, sample))

@@ -211,6 +211,9 @@ b.txt	NEW	1	1
 {
   "schema_version": "1",
   "provider": "bitbucket",
+  "pr": 4717,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
   "truncated": false,
   "threads": []
 }
