@@ -202,15 +202,21 @@ func convertErr(err error) error {
 	return err
 }
 
-// wireJSON renders a core data profile to envelope-identical JSON.
+// wireJSON renders a core data profile to envelope-identical JSON. Ordered
+// profiles render through [jq.Obj.MarshalCompact] so the stored key order
+// survives; jq.Compact alone would encode the Obj's Go fields.
 func wireJSON(v any) json.RawMessage {
 	if v == nil {
 		return nil
 	}
-	if w := core.Wire(v); w != nil {
-		return json.RawMessage(jq.Compact(w))
+	w := core.Wire(v)
+	if w == nil {
+		return nil
 	}
-	return nil
+	if obj, ok := w.(*jq.Obj); ok {
+		return json.RawMessage(obj.MarshalCompact())
+	}
+	return json.RawMessage(jq.Compact(w))
 }
 
 // resultOf builds the shared bundle-scoped envelope.
