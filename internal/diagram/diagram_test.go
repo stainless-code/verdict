@@ -28,8 +28,30 @@ func TestStrippedWhenOptedOut(t *testing.T) {
 	if strings.Contains(res.Body, "```mermaid") {
 		t.Errorf("fence survived stripping: %q", res.Body)
 	}
+	assertProse(t, res.Body)
 	if len(res.Warns) != 1 {
 		t.Errorf("warns = %v; want 1", res.Warns)
+	}
+}
+
+// assertProse proves the surrounding text survived the edit, so an empty
+// body cannot satisfy the fence assertions.
+func assertProse(t *testing.T, body string) {
+	t.Helper()
+	for _, want := range []string{"top", "bottom"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body misses %q: %q", want, body)
+		}
+	}
+}
+
+// assertProseAndNote proves a drop kept the surrounding text and rendered
+// the omission note.
+func assertProseAndNote(t *testing.T, body string) {
+	t.Helper()
+	assertProse(t, body)
+	if !strings.Contains(body, diagram.NotePrefix) {
+		t.Errorf("body misses the drop note %q: %q", diagram.NotePrefix, body)
 	}
 }
 
@@ -57,5 +79,9 @@ func TestUnknownKeywordDropped(t *testing.T) {
 	}
 	if strings.Contains(res.Body, "pie chart") {
 		t.Errorf("unknown block survived: %q", res.Body)
+	}
+	assertProseAndNote(t, res.Body)
+	if len(res.Warns) != 1 {
+		t.Errorf("warns = %v; want 1", res.Warns)
 	}
 }
