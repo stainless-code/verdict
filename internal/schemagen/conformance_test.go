@@ -542,3 +542,19 @@ func compareReportData(t *testing.T, got *core.ReportData, modeled *ReportData) 
 		t.Errorf("completeness = %+v, want %+v", modeled.Completeness, got.Completeness)
 	}
 }
+
+// TestRuntimeThreadsOutputValidates proves a normalized thread feed (the
+// shape fetch writes) validates against the generated threads schema.
+func TestRuntimeThreadsOutputValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "threads.schema.json")
+	line, side := 3, "RIGHT"
+	sample := ThreadsFile{
+		SchemaVersion: "1",
+		Provider:      "github",
+		Threads: []Thread{{
+			ID: "10", Path: "a.go", Line: &line, Side: &side,
+			Author: "ana", Kind: "review-comment", Body: "nit",
+		}},
+	}
+	validateWire(t, doc, "$", doc, decodeWire(t, sample))
+}

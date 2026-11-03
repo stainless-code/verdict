@@ -151,6 +151,13 @@ a.txt	NEW	1	1
 {
   "schema_version": "1"
 }
+--- file C/.review/4706/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "gitlab",
+  "truncated": false,
+  "threads": []
+}
 --- file C/.review/4706/toc.txt ---
 # TOC for gitlab #4706 (acme/app) — read ranges as coverage checklist
 

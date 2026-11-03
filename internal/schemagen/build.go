@@ -188,6 +188,15 @@ func documents() []document {
 			additionalProperties: true,
 		},
 		{
+			name:  "threads",
+			title: "threads.json — normalized provider review threads",
+			root:  reflect.TypeFor[ThreadsFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[Thread](), name: "thread"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "usage",
 			title: "usage.json — explicitly handed spend record",
 			anyOf: []reflect.Type{reflect.TypeFor[Usage](), reflect.TypeFor[[]Usage]()},

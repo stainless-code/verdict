@@ -42,6 +42,7 @@ exit: 0
       "roles.txt": ".review/4709/roles.txt",
       "reviews.json": ".review/4709/reviews.json",
       "inline.json": ".review/4709/inline.json",
+      "threads.json": ".review/4709/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null
     },
@@ -200,6 +201,25 @@ a.txt	NEW	1	1
 --- file C/.review/4709/store.json ---
 {
   "schema_version": "1"
+}
+--- file C/.review/4709/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "bitbucket",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "2",
+      "path": "a.txt",
+      "line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "author": "",
+      "kind": "review-comment",
+      "body": ""
+    }
+  ]
 }
 --- file C/.review/4709/toc.txt ---
 # TOC for bitbucket #4709 (acme/app) — read ranges as coverage checklist

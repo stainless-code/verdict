@@ -175,7 +175,7 @@ func recallRules(r *session, raw []byte) ([]recallRule, bool) {
 	var out []recallRule
 	for _, doc := range docs {
 		status, _ := doc.Get(keyStatus)
-		if jq.StrOf(status) != "active" {
+		if jq.StrOf(status) != stateActive {
 			continue
 		}
 		id, _ := doc.Get(keyID)

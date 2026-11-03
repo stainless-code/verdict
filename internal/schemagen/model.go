@@ -199,3 +199,29 @@ type UsageTokens struct { //nolint:govet // field order is the published propert
 	CacheRead  *float64 `json:"cache_read,omitempty"  min:"0"`
 	CacheWrite *float64 `json:"cache_write,omitempty" min:"0"`
 }
+
+// ThreadsFile is one provider bundle's normalized review-thread feed,
+// published as schemas/threads.schema.json. It is additive beside the raw
+// provider files: every host's payload is filtered and flattened to the same
+// fields, so one reader (or agent) can reason about prior feedback without
+// reverse-engineering six shapes.
+type ThreadsFile struct { //nolint:govet // field order is the published property order
+	SchemaVersion string   `const:"1"                                            json:"schema_version"`
+	Provider      string   `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure" json:"provider"`
+	Truncated     bool     `json:"truncated"`
+	Threads       []Thread `json:"threads"`
+}
+
+// Thread is one normalized root comment: a review-comment thread when it
+// carries a diff position, otherwise a conversation comment.
+type Thread struct { //nolint:govet // field order is the published property order
+	ID       string  `json:"id"`
+	Path     string  `json:"path"`
+	Line     *int    `json:"line"`
+	Side     *string `json:"side"`
+	Resolved bool    `json:"resolved"`
+	Outdated bool    `json:"outdated"`
+	Author   string  `json:"author"`
+	Kind     string  `enum:"issue-comment|review-comment" json:"kind"`
+	Body     string  `json:"body"`
+}

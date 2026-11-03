@@ -85,13 +85,13 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 // per provider, normalized to the PR.json schema post/report understand.
 func fetchProviderBundle(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, provider string) error {
 	switch provider {
-	case "gitlab":
+	case providerGitLab:
 		return fetchGitLab(ctx, ctx2, req)
-	case "gitcafe":
+	case providerGitCafe:
 		return fetchGitCafe(ctx, ctx2, req)
 	case providerForgejo:
 		return fetchForgejo(ctx, ctx2, req)
-	case "bitbucket":
+	case providerBitbucket:
 		return fetchBitbucket(ctx, ctx2, req)
 	case providerAzure:
 		return fetchAzure(ctx, ctx2, req)
@@ -187,13 +187,16 @@ func gitlabDiffFail(dir, stderr string) error {
 
 // gitlabThreads ports the paged note-list read and the DiffNote split.
 func gitlabThreads(ctx context.Context, r *session, dir, pid, pr string) error {
-	notes := gitlabNotes(ctx, r, pid, pr)
+	notes, truncated := gitlabNotes(ctx, r, pid, pr)
 	inlineDoc, reviewsDoc := splitGitLabNotes(notes)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(inlineDoc))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(reviewsDoc))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+	}
+	if ref := writeThreadsJSON(dir, providerGitLab, truncated, gitlabThreadRecords(notes)); ref != nil {
+		return ref
 	}
 	return nil
 }
@@ -202,7 +205,7 @@ func gitlabThreads(ctx context.Context, r *session, dir, pid, pr string) error {
 // mr note list` has no page flags, so the walk reads the notes endpoint
 // directly. A single complete page returns verbatim; a failed page or the
 // page cap warns instead of writing an empty/partial list silently.
-func gitlabNotes(ctx context.Context, r *session, pid, pr string) string {
+func gitlabNotes(ctx context.Context, r *session, pid, pr string) (string, bool) {
 	body, truncated, err := indexPageWalk(ctx, gitlabNotePageSize,
 		func(ctx context.Context, page int) (string, error) {
 			path := fmt.Sprintf("projects/%s/merge_requests/%s/notes?per_page=%d&page=%d",
@@ -213,8 +216,8 @@ func gitlabNotes(ctx context.Context, r *session, pid, pr string) string {
 			}
 			return res.Stdout, nil
 		})
-	warnPaging(r, "gitlab", "notes", err, truncated)
-	return body
+	warnPaging(r, providerGitLab, "notes", err, truncated)
+	return body, err != nil || truncated
 }
 
 // splitGitLabNotes ports the DiffNote/non-DiffNote thread split. A scalar
@@ -369,6 +372,9 @@ func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	cmts := fetchCafePages(cafeCommentsPage(ctx, r, repo, pr))
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(cmts)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
+	}
+	if ref := writeThreadsJSON(dir, providerGitCafe, false, gitcafeThreadRecords(revs, cmts)); ref != nil {
+		return ref
 	}
 	doc, normErr := normalizeGitCafe(metaRes.Stdout, itemsRes.Stdout)
 	return writePRJSON(dir, "GitCafe PR", pr, doc, normErr)
@@ -813,6 +819,9 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, 
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inline)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
+	if ref := writeThreadsJSON(dir, providerForgejo, !complete, forgejoThreadRecords(revs, inline)); ref != nil {
+		return ref
+	}
 	return nil
 }
 
@@ -1044,11 +1053,11 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, b
 // bitbucketThreads ports the diffstat/comments reads and the split writes,
 // returning the diffstat entries for normalization.
 func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base string) ([]any, *core.RefusalError) {
-	ds, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
+	ds, _, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
 	if ref != nil {
 		return nil, ref
 	}
-	cm, ref := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100")
+	cm, truncated, ref := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100")
 	if ref != nil {
 		return nil, ref
 	}
@@ -1059,6 +1068,9 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 	if err := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(plainAll(reviews)))); err != nil {
 		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, err)}
 	}
+	if ref := writeThreadsJSON(dir, providerBitbucket, truncated, bitbucketThreadRecords(cm)); ref != nil {
+		return nil, ref
+	}
 	return ds, nil
 }
 
@@ -1066,12 +1078,12 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 // `.values // []`, concatenated; failed pages feed '{}' and `.next // empty`
 // ends the walk. Each server-supplied `next` stays on the API origin (the
 // bearer rides every page) and the walk is capped.
-func bitbucketPages(ctx context.Context, r *session, auth []string, first string) ([]any, *core.RefusalError) {
+func bitbucketPages(ctx context.Context, r *session, auth []string, first string) ([]any, bool, *core.RefusalError) {
 	out, truncated, _, err := pageWalk(ctx, first, providerMaxPages,
 		func(ctx context.Context, u string) ([]any, string, error) {
 			target, ok := resolveOnOrigin(first, u)
 			if !ok {
-				return nil, "", offOriginRefusal("bitbucket", u)
+				return nil, "", offOriginRefusal(providerBitbucket, u)
 			}
 			m, ok := bitbucketPage(ctx, r, auth, target)
 			if !ok {
@@ -1080,13 +1092,14 @@ func bitbucketPages(ctx context.Context, r *session, auth []string, first string
 			return jq.Elements(m["values"]), bitbucketNext(m), nil
 		})
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-		return nil, ref
+		return nil, true, ref
 	}
 	bitbucketWarnPaging(r, err, truncated)
 	if out == nil {
 		out = []any{}
 	}
-	return out, nil
+	//nolint:nilerr // a failed page is a warning path: the partial list and its truncated flag still return
+	return out, err != nil || truncated, nil
 }
 
 // bitbucketWarnPaging surfaces a partial or early-stopped page walk.
@@ -1354,10 +1367,12 @@ func azureAPI(org, project, rname, pr, path, query, format string) []string {
 // and review files, with a warning when the read fails.
 func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, pr string) error {
 	threads := emptyJSONArray
+	truncated := false
 	args := azureAPI(conn.org, conn.project, conn.rname, pr, "/threads?api-version=7.1", "value", keyJSON)
 	if res, err := r.cliFetch(ctx, binAz, args...); err == nil {
 		threads = res.Stdout
 	} else {
+		truncated = true
 		r.Warn("azure review-thread read failed — inline.json and reviews.json are empty; the bundle may under-cover threads")
 	}
 	inline, reviews := splitAzureThreads(threads)
@@ -1366,6 +1381,9 @@ func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, 
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(plainAll(reviews)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+	}
+	if ref := writeThreadsJSON(dir, providerAzure, truncated, azureThreadRecords(threads)); ref != nil {
+		return ref
 	}
 	return nil
 }
@@ -1717,7 +1735,7 @@ func normalizeGitLab(metaRaw, changesRaw string, ns map[string]map[string]int64)
 	author := nestedMap(meta, keyAuthor)
 	obj := jq.NewObj(
 		keySchema, schemaV1,
-		keyProvider, "gitlab",
+		keyProvider, providerGitLab,
 		keyNumber, firstPresent(meta["iid"], meta[keyID]),
 		keyTitle, normStr(meta, keyTitle),
 		keyBody, normStr(meta, keyDescription),
@@ -1883,7 +1901,7 @@ func normalizeGitCafe(metaRaw, itemsRaw string) (*jq.Obj, error) {
 	adds, dels := sumStats(plainAll(fl))
 	return jq.NewObj(
 		keySchema, schemaV1,
-		keyProvider, "gitcafe",
+		keyProvider, providerGitCafe,
 		keyNumber, res[keyNumber],
 		keyTitle, normStr(res, keyTitle),
 		keyBody, normStr(res, keyDescription),
@@ -2110,7 +2128,7 @@ func normalizeBitbucket(metaRaw string, ds []any) (*jq.Obj, error) {
 	author := nestedMap(meta, keyAuthor)
 	return jq.NewObj(
 		keySchema, schemaV1,
-		keyProvider, "bitbucket",
+		keyProvider, providerBitbucket,
 		keyNumber, meta[keyID],
 		keyTitle, normStr(meta, keyTitle),
 		keyBody, bitbucketBody(meta),
@@ -2294,7 +2312,7 @@ func azureStatus(v any) any {
 // azureState ports the azure status map.
 func azureState(s string) string {
 	switch s {
-	case "active":
+	case stateActive:
 		return stateOpen
 	case "abandoned":
 		return stateClosed

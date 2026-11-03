@@ -54,6 +54,7 @@ const (
 	suffixMetaErr       = "/.meta.err"
 	suffixPRJSON        = "/PR.json"
 	suffixReviewsJSON   = "/reviews.json"
+	suffixThreadsJSON   = "/threads.json"
 
 	// Provider binaries and argv tokens.
 	binAz        = "az"
@@ -92,25 +93,35 @@ const (
 	modeStaged        = "staged"
 
 	// Providers, states, and misc values.
-	providerAzure   = "azure"
-	providerCafe    = "cafe"
-	providerForgejo = "forgejo"
-	providerGitHub  = "github"
-	stateClosed     = "closed"
-	stateMerged     = "merged"
-	stateOpen       = "open"
-	stateUnknown    = "unknown"
-	statusModified  = "modified"
-	noteKindDiff    = "DiffNote"
-	tierStandard    = "standard"
-	nullStr         = "null"
-	strTrue         = "true"
-	reviewDir       = ".review"
-	devNullPath     = "/dev/null"
-	emptyJSONArray  = "[]\n"
-	newline         = "\n"
-	dblQuote        = "\""
-	pathSep         = "/"
+	providerAzure     = "azure"
+	providerBitbucket = "bitbucket"
+	providerCafe      = "cafe"
+	providerForgejo   = "forgejo"
+	providerGitCafe   = "gitcafe"
+	providerGitHub    = "github"
+	providerGitLab    = "gitlab"
+	stateActive       = "active"
+	stateClosed       = "closed"
+	stateMerged       = "merged"
+	stateOpen         = "open"
+	stateUnknown      = "unknown"
+	statusModified    = "modified"
+	noteKindDiff      = "DiffNote"
+
+	// Thread feed keys and side labels.
+	keyLine        = "line"
+	keySide        = "side"
+	sideLeft       = "LEFT"
+	sideRight      = "RIGHT"
+	tierStandard   = "standard"
+	nullStr        = "null"
+	strTrue        = "true"
+	reviewDir      = ".review"
+	devNullPath    = "/dev/null"
+	emptyJSONArray = "[]\n"
+	newline        = "\n"
+	dblQuote       = "\""
+	pathSep        = "/"
 
 	// Refusal codes.
 	codeAuthMissing    = "auth-missing"
@@ -131,6 +142,7 @@ const (
 	numBitSize          = 64
 	numExcerpt          = 200
 	numExcerptShort     = 120
+	threadBodyExcerpt   = 400
 	numRoundScale       = 10000
 	numShortSHA         = 7
 	numShownHits        = 5

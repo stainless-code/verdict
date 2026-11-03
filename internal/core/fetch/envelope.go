@@ -222,6 +222,7 @@ func fetchData(
 		"roles.txt", ctx2.dir+"/roles.txt",
 		"reviews.json", ctx2.dir+suffixReviewsJSON,
 		"inline.json", ctx2.dir+suffixInlineJSON,
+		"threads.json", ctx2.dir+suffixThreadsJSON,
 		"sensitive.txt", sensitiveVal(ctx2.dir),
 		"incremental.diff", incrementalVal(ctx2.dir, incBase),
 	)

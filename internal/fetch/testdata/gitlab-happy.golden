@@ -42,6 +42,7 @@ exit: 0
       "roles.txt": ".review/4706/roles.txt",
       "reviews.json": ".review/4706/reviews.json",
       "inline.json": ".review/4706/inline.json",
+      "threads.json": ".review/4706/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null
     },
@@ -198,6 +199,13 @@ a.txt	NEW	1	1
 --- file C/.review/4706/store.json ---
 {
   "schema_version": "1"
+}
+--- file C/.review/4706/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "gitlab",
+  "truncated": false,
+  "threads": []
 }
 --- file C/.review/4706/toc.txt ---
 # TOC for gitlab #4706 (acme/app) — read ranges as coverage checklist

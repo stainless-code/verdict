@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/threads.schema.json",
+  "title": "threads.json — normalized provider review threads",
+  "description": "One provider bundle's normalized review-thread feed, written beside the raw host files (inline.json/reviews.json stay byte-identical). Each host's payload is filtered the way its review surface expects (dropped system/deleted/pending comments, host resolution state) and flattened to one shape, so ready/report and an agent can read prior feedback without parsing six formats. Unknown root keys are rejected: a new field is a contract change.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Feed format version; only \"1\" is read.",
+      "const": "1"
+    },
+    "provider": {
+      "description": "The host whose raw payload produced this feed.",
+      "enum": ["github", "gitlab", "gitcafe", "forgejo", "bitbucket", "azure"]
+    },
+    "truncated": {
+      "description": "True when a thread read failed or stopped at the provider page cap; the threads present are still trustworthy, the list may under-cover.",
+      "type": "boolean"
+    },
+    "threads": {
+      "description": "One normalized root comment per entry, in host order. Replies stay in the raw files; the root carries the thread identity, state, and body excerpt.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/thread" }
+    }
+  },
+  "required": ["schema_version", "provider", "truncated", "threads"],
+  "additionalProperties": false,
+  "$defs": {
+    "thread": {
+      "description": "One root review thread or conversation comment: the fields every host shares after normalization.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Host comment (or thread) id as a string; empty when the payload carried none.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Anchored diff path for a review-comment, empty for a conversation comment.",
+          "type": "string"
+        },
+        "line": {
+          "description": "Root comment line, null when the host anchor is a file comment or absent.",
+          "type": ["integer", "null"]
+        },
+        "side": {
+          "description": "LEFT for a deleted-side anchor, RIGHT for an added/context anchor, null for a conversation comment.",
+          "type": ["string", "null"]
+        },
+        "resolved": {
+          "description": "Host resolution state when the payload carries it; hosts without thread resolution read false.",
+          "type": "boolean"
+        },
+        "outdated": {
+          "description": "True when the host marks the anchor stale (the diff position no longer maps to the current head).",
+          "type": "boolean"
+        },
+        "author": {
+          "description": "Root comment author handle or display name, empty when absent.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "review-comment for a diff-anchored thread, issue-comment for a conversation comment.",
+          "enum": ["issue-comment", "review-comment"]
+        },
+        "body": {
+          "description": "Root comment body, truncated to a short excerpt; the raw file keeps the full text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "line",
+        "side",
+        "resolved",
+        "outdated",
+        "author",
+        "kind",
+        "body"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

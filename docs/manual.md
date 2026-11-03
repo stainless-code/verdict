@@ -176,18 +176,24 @@ history — that ships as a new `sig_version` with a migration note here, never 
 `review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
 versions, warn-and-proceed when the stamp is missing); every bundle carries
 `.review/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
-whole store — plugins read it instead of sniffing shapes. `PR.json`/`reviews.json`/
-`inline.json` are raw GitHub output (GitHub's schema, unversioned); `post.json` and
-`record.json` carry `schema_version: "1"`.
+whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
+`PR.json`/`reviews.json`/`inline.json` as raw API output (GitHub's schema,
+unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
+and normalize `PR.json` to one schema. Every provider bundle also writes
+`threads.json` (`schema_version: "1"`, published as
+[`schemas/threads.schema.json`](../schemas/threads.schema.json)): the raw
+files stay as-is, and the feed flattens each host's root comments to one
+`{id, path, line, side, resolved, outdated, author, kind, body}` shape.
+`post.json` and `record.json` carry `schema_version: "1"`.
 
 ### Bundle namespace (core files vs `x-*`)
 
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
-`post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `panel`,
-`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, `sensitive.txt`,
-`kb-recall.json`, `cost.json`, `budget.json`, `fix.json`, `kb-grades.jsonl`,
-`controls.json`, `controls/`, `chunks/`
+`post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
+`panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
+`sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
 `.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`).

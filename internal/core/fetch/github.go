@@ -179,10 +179,12 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 // a silent empty list would read as "no prior threads" on a re-review.
 func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
 	fmt.Fprintln(r.Human, "» reviews + inline comments")
+	truncated := false
 	reviewsBody := emptyJSONArray
 	if res, err := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/pulls/"+pr+"/reviews", flagPaginate); err == nil {
 		reviewsBody = res.Stdout
 	} else {
+		truncated = true
 		r.Warn("github review read failed — reviews.json is empty; re-fetch after confirming gh auth")
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(reviewsBody)); werr != nil {
@@ -192,12 +194,13 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 	if res, err := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/pulls/"+pr+"/comments", flagPaginate); err == nil {
 		inlineBody = res.Stdout
 	} else {
+		truncated = true
 		r.Warn("github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth")
 	}
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inlineBody)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
-	return nil
+	return writeThreadsJSON(dir, providerGitHub, truncated, githubThreadRecords(reviewsBody, inlineBody))
 }
 
 // githubIncremental ports the --base-sha compare: the incremental diff

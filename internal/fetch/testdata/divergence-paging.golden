@@ -44,6 +44,7 @@ exit: 0
       "roles.txt": ".review/4712/roles.txt",
       "reviews.json": ".review/4712/reviews.json",
       "inline.json": ".review/4712/inline.json",
+      "threads.json": ".review/4712/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null
     },
@@ -197,6 +198,13 @@ f00.txt	NEW	1	1
 --- file C/.review/4712/store.json ---
 {
   "schema_version": "1"
+}
+--- file C/.review/4712/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "github",
+  "truncated": false,
+  "threads": []
 }
 --- file C/.review/4712/toc.txt ---
 # TOC for PR #4712 (acme/app) — read ranges as coverage checklist

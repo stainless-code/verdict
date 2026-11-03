@@ -25627,6 +25627,13 @@ f13.txt	NEW	1	1
 {
   "schema_version": "1"
 }
+--- file C/.review/4703/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "github",
+  "truncated": false,
+  "threads": []
+}
 --- file C/.review/4703/toc.txt ---
 # TOC for PR #4703 (acme/app) — read ranges as coverage checklist
 

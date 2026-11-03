@@ -66,7 +66,7 @@ func TestBitbucketPagesRefusesOffOriginNext(t *testing.T) {
 			`"next":"https://evil.invalid/steal?cursor=token-like"}`},
 	}}
 	s, _ := newTestSession(cmdr)
-	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
 	if ref == nil || ref.Code != CodeFetchFailed {
 		t.Fatalf("refusal = %v, want fetch-failed", ref)
 	}
@@ -91,7 +91,7 @@ func TestBitbucketPagesFollowsSameOriginNext(t *testing.T) {
 		bitbucketCall(next):               {stdout: `{"values":[{"id":2}],"next":null}`},
 	}}
 	s, warns := newTestSession(cmdr)
-	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v", ref)
 	}
@@ -114,7 +114,7 @@ func TestBitbucketPagesRepeatedCursorTrips(t *testing.T) {
 		bitbucketCall(testBitbucketFirst): {stdout: `{"values":[{"id":1}],"next":"` + testBitbucketFirst + `"}`},
 	}}
 	s, warns := newTestSession(cmdr)
-	items, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v", ref)
 	}
@@ -301,7 +301,7 @@ func TestGitLabNotesPages(t *testing.T) {
 		page(2): {stdout: `[{"id":2}]`},
 	}}
 	s, warns := newTestSession(cmdr)
-	raw := gitlabNotes(context.Background(), s, "11", "7")
+	raw, _ := gitlabNotes(context.Background(), s, "11", "7")
 	items, err := jsonArray(raw)
 	if err != nil || len(items) != gitlabNotePageSize+1 {
 		t.Fatalf("notes = %d, %v; want %d", len(items), err, gitlabNotePageSize+1)
@@ -324,7 +324,7 @@ func TestGitLabNotesFailureWarns(t *testing.T) {
 		},
 	}}
 	s, warns := newTestSession(cmdr)
-	raw := gitlabNotes(context.Background(), s, "11", "7")
+	raw, _ := gitlabNotes(context.Background(), s, "11", "7")
 	if raw != emptyJSONArray {
 		t.Errorf("notes = %q, want empty array", raw)
 	}

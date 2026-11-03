@@ -112,6 +112,25 @@
       "/$defs/comment/properties/kb": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop."
     }
   },
+  "threads": {
+    "descriptions": {
+      "": "One provider bundle's normalized review-thread feed, written beside the raw host files (inline.json/reviews.json stay byte-identical). Each host's payload is filtered the way its review surface expects (dropped system/deleted/pending comments, host resolution state) and flattened to one shape, so ready/report and an agent can read prior feedback without parsing six formats. Unknown root keys are rejected: a new field is a contract change.",
+      "/properties/schema_version": "Feed format version; only \"1\" is read.",
+      "/properties/provider": "The host whose raw payload produced this feed.",
+      "/properties/truncated": "True when a thread read failed or stopped at the provider page cap; the threads present are still trustworthy, the list may under-cover.",
+      "/properties/threads": "One normalized root comment per entry, in host order. Replies stay in the raw files; the root carries the thread identity, state, and body excerpt.",
+      "/$defs/thread": "One root review thread or conversation comment: the fields every host shares after normalization.",
+      "/$defs/thread/properties/id": "Host comment (or thread) id as a string; empty when the payload carried none.",
+      "/$defs/thread/properties/path": "Anchored diff path for a review-comment, empty for a conversation comment.",
+      "/$defs/thread/properties/line": "Root comment line, null when the host anchor is a file comment or absent.",
+      "/$defs/thread/properties/side": "LEFT for a deleted-side anchor, RIGHT for an added/context anchor, null for a conversation comment.",
+      "/$defs/thread/properties/resolved": "Host resolution state when the payload carries it; hosts without thread resolution read false.",
+      "/$defs/thread/properties/outdated": "True when the host marks the anchor stale (the diff position no longer maps to the current head).",
+      "/$defs/thread/properties/author": "Root comment author handle or display name, empty when absent.",
+      "/$defs/thread/properties/kind": "review-comment for a diff-anchored thread, issue-comment for a conversation comment.",
+      "/$defs/thread/properties/body": "Root comment body, truncated to a short excerpt; the raw file keeps the full text."
+    }
+  },
   "usage": {
     "descriptions": {
       "": "What the agent or a usage adapter hands the budget gate through VERDICT_USAGE: one measured run per record (a single object) or a run log (an array). The gate joins each record against past cost records by its window and prices comparable runs from usd, preferring it over the self-reported est_usd; records without usd never become a measured claim. verdict never discovers these files — the operator names them explicitly. Unknown keys are ignored, so newer writers stay readable.",

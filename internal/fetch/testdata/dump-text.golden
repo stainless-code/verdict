@@ -163,6 +163,13 @@ notes.txt	NEW	1	3
 {
   "schema_version": "1"
 }
+--- file C/.review/4702/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "github",
+  "truncated": false,
+  "threads": []
+}
 --- file C/.review/4702/toc.txt ---
 # TOC for PR #4702 (acme/app) — read ranges as coverage checklist
 

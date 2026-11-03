@@ -83,7 +83,7 @@ func (st *state) provider(f core.FetchFlags) (core.FetchFlags, *core.RefusalErro
 		f.Provider = providerGitHub
 	}
 	switch f.Provider {
-	case providerGitHub, "gitlab", "gitcafe", "forgejo", "bitbucket", "azure":
+	case providerGitHub, providerGitLab, providerGitCafe, providerForgejo, providerBitbucket, providerAzure:
 		return f, nil
 	default:
 		return f, st.withWarnings(&core.RefusalError{Code: "bad-provider", Message: fmt.Sprintf(
