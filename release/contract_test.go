@@ -19,13 +19,14 @@ import (
 
 // archiveEntry is one frozen os/arch row of the contract.
 type archiveEntry struct {
-	Goos       string `json:"goos"`
-	Goarch     string `json:"goarch"`
-	File       string `json:"file"`
-	NPMPackage string `json:"npmPackage"`
-	NPMOS      string `json:"npmOS"`
-	NPMCPU     string `json:"npmCPU"`
-	NPMBin     string `json:"npmBin"`
+	Goos       string   `json:"goos"`
+	Goarch     string   `json:"goarch"`
+	File       string   `json:"file"`
+	NPMPackage string   `json:"npmPackage"`
+	NPMOS      string   `json:"npmOS"`
+	NPMCPU     string   `json:"npmCPU"`
+	NPMBin     string   `json:"npmBin"`
+	Members    []string `json:"members"`
 }
 
 // contractDoc mirrors release/contract.json. Field order is the GC-optimal
@@ -46,17 +47,14 @@ type contractDoc struct {
 		Checksums       string `json:"checksums"`
 		SignatureBundle string `json:"signatureBundle"`
 	} `json:"urls"`
-	Cosign struct {
-		Identity string `json:"identity"`
-		Issuer   string `json:"issuer"`
-	} `json:"cosign"`
-	Project         string `json:"project"`
-	Repo            string `json:"repo"`
-	TagPrefix       string `json:"tagPrefix"`
-	Binary          string `json:"binary"`
-	Checksums       string `json:"checksums"`
-	SignatureBundle string `json:"signatureBundle"`
-	SBOMSuffix      string `json:"sbomSuffix"`
+	Cosign          cosignPolicy `json:"cosign"`
+	Project         string       `json:"project"`
+	Repo            string       `json:"repo"`
+	TagPrefix       string       `json:"tagPrefix"`
+	Binary          string       `json:"binary"`
+	Checksums       string       `json:"checksums"`
+	SignatureBundle string       `json:"signatureBundle"`
+	SBOMSuffix      string       `json:"sbomSuffix"`
 	NPM             struct {
 		Wrapper      string            `json:"wrapper"`
 		Bin          map[string]string `json:"bin"`
@@ -64,6 +62,14 @@ type contractDoc struct {
 		PublishArgs  []string          `json:"publishArgs"`
 	} `json:"npm"`
 	Archives []archiveEntry `json:"archives"`
+}
+
+// cosignPolicy is the contract's signing policy: the tag-wildcard identity
+// GoReleaser signs with, its installer-facing regexp form, and the OIDC issuer.
+type cosignPolicy struct {
+	Identity       string `json:"identity"`
+	IdentityRegexp string `json:"identityRegexp"`
+	Issuer         string `json:"issuer"`
 }
 
 // loadContract reads release/contract.json (the test cwd is the package dir).
@@ -140,7 +146,8 @@ func toJSON(t *testing.T, value any) string {
 // stageBins writes one fake executable per contract archive.
 func stageBins(t *testing.T, doc *contractDoc, dir string) {
 	t.Helper()
-	for _, entry := range doc.Archives {
+	for i := range doc.Archives {
+		entry := &doc.Archives[i]
 		ext := ""
 		if strings.HasSuffix(entry.NPMBin, ".exe") {
 			ext = ".exe"
@@ -168,6 +175,7 @@ func checkArchiveRow(t *testing.T, entry *archiveEntry, seen map[string]bool) {
 		t.Errorf("archive file = %q", entry.File)
 	}
 	checkArchiveNames(t, entry)
+	checkArchiveMembers(t, entry)
 	if entry.NPMBin != "bin/verdict" && entry.NPMBin != "bin/verdict.exe" {
 		t.Errorf("npm bin = %q; want bin/verdict[.exe]", entry.NPMBin)
 	}
@@ -176,6 +184,44 @@ func checkArchiveRow(t *testing.T, entry *archiveEntry, seen map[string]bool) {
 		t.Errorf("duplicate archive row: %+v", entry)
 	}
 	seen[key] = true
+}
+
+// checkArchiveMembers validates one row's archive allowlist: the platform
+// binary first, then the extra files GoReleaser packs, with no duplicates and
+// no path separators (both installers match bare member names).
+func checkArchiveMembers(t *testing.T, entry *archiveEntry) {
+	t.Helper()
+	wantBinary := "verdict"
+	if entry.Goos == "windows" {
+		wantBinary = "verdict.exe"
+	}
+	if len(entry.Members) < 2 || entry.Members[0] != wantBinary {
+		t.Errorf("%s/%s members = %v; want the platform binary first", entry.Goos, entry.Goarch, entry.Members)
+	}
+	seen := checkMemberShapes(t, entry)
+	for _, required := range []string{"LICENSE", "README.md"} {
+		if !seen[required] {
+			t.Errorf("%s/%s members %v lack %s", entry.Goos, entry.Goarch, entry.Members, required)
+		}
+	}
+}
+
+// checkMemberShapes validates every member name and returns the seen set.
+func checkMemberShapes(t *testing.T, entry *archiveEntry) map[string]bool {
+	t.Helper()
+	seen := make(map[string]bool, len(entry.Members))
+	for _, member := range entry.Members {
+		switch {
+		case member == "":
+			t.Errorf("%s/%s has an empty member", entry.Goos, entry.Goarch)
+		case strings.ContainsAny(member, "/\\"):
+			t.Errorf("member %q must be a bare file name", member)
+		case seen[member]:
+			t.Errorf("%s/%s repeats member %q", entry.Goos, entry.Goarch, member)
+		}
+		seen[member] = true
+	}
+	return seen
 }
 
 // checkArchiveNames validates the npm naming of one row.
@@ -200,9 +246,29 @@ func checkContractMeta(t *testing.T, doc *contractDoc) {
 	if doc.Formula.Tap == "" || doc.Formula.Class == "" || doc.Formula.Homepage == "" {
 		t.Errorf("formula incomplete: %+v", doc.Formula)
 	}
-	if !strings.Contains(doc.Cosign.Identity, "refs/tags/v*") || doc.Cosign.Issuer == "" {
-		t.Errorf("cosign incomplete: %+v", doc.Cosign)
+	checkCosignPolicy(t, &doc.Cosign)
+}
+
+// checkCosignPolicy validates the signing identity and its regexp form.
+func checkCosignPolicy(t *testing.T, cosign *cosignPolicy) {
+	t.Helper()
+	if !strings.Contains(cosign.Identity, "refs/tags/v*") || cosign.Issuer == "" {
+		t.Errorf("cosign incomplete: %+v", *cosign)
 	}
+	if want := deriveIdentityRegexp(cosign.Identity); cosign.IdentityRegexp != want {
+		t.Errorf("cosign.identityRegexp = %q; want the expansion of identity %q = %q",
+			cosign.IdentityRegexp, cosign.Identity, want)
+	}
+}
+
+// deriveIdentityRegexp is the independent oracle for cosign.identityRegexp:
+// the installers take a regexp, GoReleaser signs with the tag wildcard, and
+// the two representations must stay equivalent.
+func deriveIdentityRegexp(identity string) string {
+	if prefix, ok := strings.CutSuffix(identity, "v*"); ok {
+		return "^" + regexp.QuoteMeta(prefix) + `v[0-9]+\.[0-9]+\.[0-9]+.*$`
+	}
+	return "^" + regexp.QuoteMeta(identity) + "$"
 }
 
 // TestContractShape validates the frozen naming itself.
@@ -250,8 +316,9 @@ func goreleaserBanned() []string {
 	}
 }
 
-// checkGoreleaserKeys asserts the required and banned config keys.
-func checkGoreleaserKeys(t *testing.T, gr string) {
+// checkGoreleaserKeys asserts the required and banned config keys, and that
+// every non-binary archive member the contract allowlists is actually packed.
+func checkGoreleaserKeys(t *testing.T, gr string, doc *contractDoc) {
 	t.Helper()
 	for _, want := range goreleaserWants() {
 		if !strings.Contains(gr, want) {
@@ -263,6 +330,18 @@ func checkGoreleaserKeys(t *testing.T, gr string) {
 			t.Errorf(".goreleaser.yml must not define %q (contract owns those channels)", banned)
 		}
 	}
+	checkArchiveFilesList(t, gr, doc.Archives[0].Members[1:])
+}
+
+// checkArchiveFilesList asserts the goreleaser archive files carry every
+// extra contract member.
+func checkArchiveFilesList(t *testing.T, gr string, members []string) {
+	t.Helper()
+	for _, member := range members {
+		if !strings.Contains(gr, "\n      - "+member+"\n") {
+			t.Errorf(".goreleaser.yml archive files lack the contract member %q", member)
+		}
+	}
 }
 
 // TestGoreleaserMatchesContract asserts the GoReleaser config honors the
@@ -270,7 +349,7 @@ func checkGoreleaserKeys(t *testing.T, gr string) {
 func TestGoreleaserMatchesContract(t *testing.T) {
 	doc := loadContract(t)
 	gr := repoFile(t, ".goreleaser.yml")
-	checkGoreleaserKeys(t, gr)
+	checkGoreleaserKeys(t, gr, &doc)
 	for i := range doc.Archives {
 		if doc.Archives[i].File != contractArchiveName(&doc.Archives[i]) {
 			t.Errorf("contract archive %q does not match the goreleaser name template", doc.Archives[i].File)
@@ -349,7 +428,8 @@ func checkWrapper(t *testing.T, out string, doc *contractDoc) {
 	if len(decoded) != len(doc.Archives) {
 		t.Errorf("wrapper optionalDependencies = %d; want %d", len(decoded), len(doc.Archives))
 	}
-	for _, entry := range doc.Archives {
+	for i := range doc.Archives {
+		entry := &doc.Archives[i]
 		if decoded[entry.NPMPackage] != "1.2.3" {
 			t.Errorf("wrapper dep %s = %q; want exact 1.2.3", entry.NPMPackage, decoded[entry.NPMPackage])
 		}
@@ -738,4 +818,70 @@ func TestShimResolvesPlatformPackage(t *testing.T) {
 	}
 	out, code = runNode(t, nil, node, shim, "--version")
 	checkShimHit(t, out, code)
+}
+
+// platformRow returns the contract row for one goos/goarch, failing when the
+// contract ships no such platform.
+func platformRow(t *testing.T, doc *contractDoc, goos, goarch string) *archiveEntry {
+	t.Helper()
+	for i := range doc.Archives {
+		if doc.Archives[i].Goos == goos && doc.Archives[i].Goarch == goarch {
+			return &doc.Archives[i]
+		}
+	}
+	t.Fatalf("contract has no %s/%s row", goos, goarch)
+	return nil
+}
+
+// membersPattern renders a row's allowlist as the POSIX installer's anchored
+// alternation (dots escaped, so the shell pattern is literal).
+func membersPattern(members []string) string {
+	escaped := make([]string, 0, len(members))
+	for _, member := range members {
+		escaped = append(escaped, strings.ReplaceAll(member, ".", `\.`))
+	}
+	return "^(" + strings.Join(escaped, "|") + ")$"
+}
+
+// membersArray renders a row's allowlist as the PowerShell array literal.
+func membersArray(members []string) string {
+	return "@('" + strings.Join(members, "', '") + "')"
+}
+
+// requireLiterals fails for every literal the file does not carry verbatim.
+func requireLiterals(t *testing.T, name, body string, literals []string) {
+	t.Helper()
+	for _, literal := range literals {
+		if !strings.Contains(body, literal) {
+			t.Errorf("%s drifted from release/contract.json: missing %q", name, literal)
+		}
+	}
+}
+
+// TestInstallersMatchContract pins the policy the shipped installers carry a
+// second copy of: the cosign identity/issuer, the archive-member allowlist,
+// and the checksum/bundle names. contract.json is the source; a repo rename,
+// a workflow rename, or a new archive member must fail here instead of at
+// install time.
+func TestInstallersMatchContract(t *testing.T) {
+	doc := loadContract(t)
+	unix := platformRow(t, &doc, "darwin", "amd64")
+	windows := platformRow(t, &doc, "windows", "amd64")
+	sh := repoFile(t, "install.sh")
+	ps1 := repoFile(t, "install.ps1")
+	requireLiterals(t, "install.sh", sh, []string{
+		"COSIGN_IDENTITY='" + doc.Cosign.Identity + "'",
+		"COSIGN_IDENTITY_RE='" + doc.Cosign.IdentityRegexp + "'",
+		"COSIGN_ISSUER='" + doc.Cosign.Issuer + "'",
+		"CHECKSUMS='" + doc.Checksums + "'",
+		"BUNDLE='" + doc.SignatureBundle + "'",
+		"grep -Ev '" + membersPattern(unix.Members) + "'",
+	})
+	requireLiterals(t, "install.ps1", ps1, []string{
+		"$IdentityRegexp = '" + doc.Cosign.IdentityRegexp + "'",
+		"$Issuer = '" + doc.Cosign.Issuer + "'",
+		"$ChecksumsName = '" + doc.Checksums + "'",
+		"$BundleName = '" + doc.SignatureBundle + "'",
+		"$allowed = " + membersArray(windows.Members),
+	})
 }

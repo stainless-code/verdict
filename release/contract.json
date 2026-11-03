@@ -12,7 +12,8 @@
       "npmPackage": "@stainless-code/verdict-darwin-x64",
       "npmOS": "darwin",
       "npmCPU": "x64",
-      "npmBin": "bin/verdict"
+      "npmBin": "bin/verdict",
+      "members": ["verdict", "LICENSE", "README.md"]
     },
     {
       "goos": "darwin",
@@ -21,7 +22,8 @@
       "npmPackage": "@stainless-code/verdict-darwin-arm64",
       "npmOS": "darwin",
       "npmCPU": "arm64",
-      "npmBin": "bin/verdict"
+      "npmBin": "bin/verdict",
+      "members": ["verdict", "LICENSE", "README.md"]
     },
     {
       "goos": "linux",
@@ -30,7 +32,8 @@
       "npmPackage": "@stainless-code/verdict-linux-x64",
       "npmOS": "linux",
       "npmCPU": "x64",
-      "npmBin": "bin/verdict"
+      "npmBin": "bin/verdict",
+      "members": ["verdict", "LICENSE", "README.md"]
     },
     {
       "goos": "linux",
@@ -39,7 +42,8 @@
       "npmPackage": "@stainless-code/verdict-linux-arm64",
       "npmOS": "linux",
       "npmCPU": "arm64",
-      "npmBin": "bin/verdict"
+      "npmBin": "bin/verdict",
+      "members": ["verdict", "LICENSE", "README.md"]
     },
     {
       "goos": "windows",
@@ -48,7 +52,8 @@
       "npmPackage": "@stainless-code/verdict-win32-x64",
       "npmOS": "win32",
       "npmCPU": "x64",
-      "npmBin": "bin/verdict.exe"
+      "npmBin": "bin/verdict.exe",
+      "members": ["verdict.exe", "LICENSE", "README.md"]
     },
     {
       "goos": "windows",
@@ -57,7 +62,8 @@
       "npmPackage": "@stainless-code/verdict-win32-arm64",
       "npmOS": "win32",
       "npmCPU": "arm64",
-      "npmBin": "bin/verdict.exe"
+      "npmBin": "bin/verdict.exe",
+      "members": ["verdict.exe", "LICENSE", "README.md"]
     }
   ],
   "checksums": "checksums.txt",
@@ -88,6 +94,7 @@
   },
   "cosign": {
     "identity": "https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/tags/v*",
-    "issuer": "https://token.actions.githubusercontent.com"
+    "issuer": "https://token.actions.githubusercontent.com",
+    "identityRegexp": "^https://github\\.com/stainless-code/verdict/\\.github/workflows/release\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
   }
 }

@@ -26,7 +26,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -42,8 +42,6 @@ const (
 	checksumHexLength = 64
 	binNameUnix       = "verdict"
 	binNameWindows    = "verdict.exe"
-	licenseName       = "LICENSE"
-	readmeName        = "README.md"
 	sigVerified       = "verified"
 	sigChecksumOnly   = "checksum-only"
 	filePermExec      = 0o755
@@ -98,16 +96,20 @@ type contractDoc struct { //nolint:govet // contract order documents the artifac
 		ReleaseBase string `json:"releaseBase"`
 	} `json:"urls"`
 	Cosign struct {
-		Identity string `json:"identity"`
-		Issuer   string `json:"issuer"`
+		IdentityRegexp string `json:"identityRegexp"`
+		Issuer         string `json:"issuer"`
 	} `json:"cosign"`
 }
 
-// archiveEntry is one os/arch row of the contract.
-type archiveEntry struct {
-	Goos   string `json:"goos"`
-	Goarch string `json:"goarch"`
-	File   string `json:"file"`
+// archiveEntry is one os/arch row of the contract. Members is the archive
+// allowlist: the binary plus the license/readme/notice files GoReleaser
+// packs. install.sh and install.ps1 carry the same list as a literal, and
+// release/contract_test.go fails when either drifts.
+type archiveEntry struct { //nolint:govet // contract row order mirrors the JSON
+	Members []string `json:"members"`
+	Goos    string   `json:"goos"`
+	Goarch  string   `json:"goarch"`
+	File    string   `json:"file"`
 }
 
 // loadContract parses the embedded contract once.
@@ -116,6 +118,9 @@ var loadContract = sync.OnceValues(func() (contractDoc, error) {
 	if err := json.Unmarshal(contract.ContractJSON(), &doc); err != nil {
 		//nolint:errorlint // malformed embedded asset, not inspected
 		return contractDoc{}, fmt.Errorf("release contract: %v", err)
+	}
+	if doc.Cosign.IdentityRegexp == "" || doc.Cosign.Issuer == "" {
+		return contractDoc{}, newErr("release contract: cosign identity/issuer missing")
 	}
 	return doc, nil
 })
@@ -267,6 +272,7 @@ type source struct {
 	Checksums string
 	Bundle    string
 	BaseURL   string
+	Members   []string
 	BundleOK  bool
 }
 
@@ -286,6 +292,7 @@ func sourceFrom(req *Request, doc *contractDoc, asset archiveEntry, version stri
 		Checksums: filepath.Join(dirs.download, doc.Checksums),
 		Bundle:    filepath.Join(dirs.download, doc.SignatureBundle),
 		BaseURL:   base + "/v" + version + "/",
+		Members:   asset.Members,
 	}, nil
 }
 
@@ -322,7 +329,7 @@ func check(ctx context.Context, req *Request, doc *contractDoc, src *source) (Re
 			fmt.Sprintf("SHA-256 mismatch for %s (expected %s, got %s); nothing installed", name, sum, actual))
 	}
 	binary := filepath.Join(filepath.Dir(src.Archive), binaryName(req.GOOS))
-	extracted, err := extractBinary(src.Archive, filepath.Dir(binary), binaryName(req.GOOS))
+	extracted, err := extractBinary(src.Archive, filepath.Dir(binary), binaryName(req.GOOS), src.Members)
 	if err != nil {
 		_ = os.Remove(binary) // no partial binary survives a refusal
 		return Result{}, refuse(codeVerifyFailed, err.Error())
@@ -350,7 +357,7 @@ func verifySignature(ctx context.Context, req *Request, doc *contractDoc, src *s
 	}
 	args := []string{
 		"verify-blob", "--bundle", src.Bundle,
-		"--certificate-identity-regexp", identityRegexp(doc.Cosign.Identity),
+		"--certificate-identity-regexp", doc.Cosign.IdentityRegexp,
 		"--certificate-oidc-issuer", doc.Cosign.Issuer, src.Checksums,
 	}
 	out, err := runCosign(ctx, req, cosign, args)
@@ -402,15 +409,6 @@ func runCosign(ctx context.Context, req *Request, cosign string, args []string) 
 		return []byte(stderr.String()), sealed("cosign", err)
 	}
 	return out, nil
-}
-
-// identityRegexp expands the contract's tag wildcard into the installer's
-// certificate-identity regexp.
-func identityRegexp(identity string) string {
-	if prefix, ok := strings.CutSuffix(identity, "v*"); ok {
-		return "^" + regexp.QuoteMeta(prefix) + `v[0-9]+\.[0-9]+\.[0-9]+.*$`
-	}
-	return "^" + regexp.QuoteMeta(identity) + "$"
 }
 
 // assetFor finds the contract row for the running platform.
@@ -516,23 +514,23 @@ func fileSHA256(archivePath string) (string, error) {
 }
 
 // extractBinary opens archivePath (tar.gz or zip) and writes only the
-// expected binary into stageDir. Anything but the binary plus LICENSE and
-// README.md is refused, so a tampered archive never gets a free pass.
-func extractBinary(archivePath, stageDir, binary string) (string, error) {
+// expected binary into stageDir. Anything but the contract's member list is
+// refused, so a tampered archive never gets a free pass.
+func extractBinary(archivePath, stageDir, binary string, members []string) (string, error) {
 	if strings.HasSuffix(archivePath, ".zip") {
-		return extractZip(archivePath, stageDir, binary)
+		return extractZip(archivePath, stageDir, binary, members)
 	}
-	return extractTarGz(archivePath, stageDir, binary)
+	return extractTarGz(archivePath, stageDir, binary, members)
 }
 
 // allowedMember reports whether an archive member is part of the contract.
-func allowedMember(name, binary string) bool {
-	return name == binary || name == licenseName || name == readmeName
+func allowedMember(name string, members []string) bool {
+	return slices.Contains(members, name)
 }
 
 // checkMember refuses unexpected or non-regular members.
-func checkMember(name, binary string, regular bool) error {
-	if !allowedMember(name, binary) {
+func checkMember(name string, members []string, regular bool) error {
+	if !allowedMember(name, members) {
 		return newErrf("archive has unexpected member(s): %s", name)
 	}
 	if !regular {
@@ -542,7 +540,7 @@ func checkMember(name, binary string, regular bool) error {
 }
 
 // extractTarGz extracts the binary from a tar.gz archive.
-func extractTarGz(archivePath, stageDir, binary string) (string, error) {
+func extractTarGz(archivePath, stageDir, binary string, members []string) (string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return "", sealed("open archive", err)
@@ -554,7 +552,7 @@ func extractTarGz(archivePath, stageDir, binary string) (string, error) {
 	}
 	defer func() { _ = gz.Close() }() // gzip reader has no recovery path; extraction owns the outcome
 	dst := filepath.Join(stageDir, binary)
-	found, err := walkTar(tar.NewReader(gz), dst, binary)
+	found, err := walkTar(tar.NewReader(gz), dst, binary, members)
 	if err != nil {
 		return "", err
 	}
@@ -567,7 +565,7 @@ func extractTarGz(archivePath, stageDir, binary string) (string, error) {
 // walkTar extracts the binary member while validating the rest.
 //
 //nolint:revive // the archive walk is the algorithm
-func walkTar(tr *tar.Reader, dst, binary string) (bool, error) {
+func walkTar(tr *tar.Reader, dst, binary string, members []string) (bool, error) {
 	found := false
 	for {
 		hdr, err := tr.Next()
@@ -577,7 +575,7 @@ func walkTar(tr *tar.Reader, dst, binary string) (bool, error) {
 		if err != nil {
 			return false, sealed("read archive", err)
 		}
-		if err := consumeTarMember(tr, hdr, dst, binary); err != nil {
+		if err := consumeTarMember(tr, hdr, dst, binary, members); err != nil {
 			return false, err
 		}
 		if hdr.Name == binary {
@@ -587,8 +585,8 @@ func walkTar(tr *tar.Reader, dst, binary string) (bool, error) {
 }
 
 // consumeTarMember validates and extracts one tar member.
-func consumeTarMember(tr *tar.Reader, hdr *tar.Header, dst, binary string) error {
-	if err := checkMember(hdr.Name, binary, hdr.Typeflag == tar.TypeReg); err != nil {
+func consumeTarMember(tr *tar.Reader, hdr *tar.Header, dst, binary string, members []string) error {
+	if err := checkMember(hdr.Name, members, hdr.Typeflag == tar.TypeReg); err != nil {
 		return err
 	}
 	if hdr.Name != binary {
@@ -598,14 +596,14 @@ func consumeTarMember(tr *tar.Reader, hdr *tar.Header, dst, binary string) error
 }
 
 // extractZip extracts the binary from a zip archive (Windows releases).
-func extractZip(archivePath, stageDir, binary string) (string, error) {
+func extractZip(archivePath, stageDir, binary string, members []string) (string, error) {
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return "", sealed("not a valid zip archive", err)
 	}
 	defer func() { _ = zr.Close() }() // read-only archive; extraction owns the outcome
 	dst := filepath.Join(stageDir, binary)
-	found, err := walkZip(zr.File, dst, binary)
+	found, err := walkZip(zr.File, dst, binary, members)
 	if err != nil {
 		return "", err
 	}
@@ -616,10 +614,10 @@ func extractZip(archivePath, stageDir, binary string) (string, error) {
 }
 
 // walkZip extracts the binary member while validating the rest.
-func walkZip(files []*zip.File, dst, binary string) (bool, error) {
+func walkZip(files []*zip.File, dst, binary string, members []string) (bool, error) {
 	found := false
 	for _, member := range files {
-		extracted, err := consumeZipMember(member, dst, binary)
+		extracted, err := consumeZipMember(member, dst, binary, members)
 		if err != nil {
 			return false, err
 		}
@@ -631,8 +629,8 @@ func walkZip(files []*zip.File, dst, binary string) (bool, error) {
 }
 
 // consumeZipMember validates and extracts one zip member.
-func consumeZipMember(member *zip.File, dst, binary string) (bool, error) {
-	if err := checkMember(member.Name, binary, member.Mode().IsRegular()); err != nil {
+func consumeZipMember(member *zip.File, dst, binary string, members []string) (bool, error) {
+	if err := checkMember(member.Name, members, member.Mode().IsRegular()); err != nil {
 		return false, err
 	}
 	if member.Name != binary {
