@@ -49,14 +49,14 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// findingJSON renders one finding with the store's field order.
-func findingJSON(sig, status string) string {
-	return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
-		`"anchored":true,"body":"Usable body.","suggestion":null,` +
-		`"inBounds":true,"rigor":"walked","severity":"critical",` +
-		`"sig":"` + sig + `","sig_version":"1","firstSeen":"aaaaaaa",` +
-		`"lastSeen":"aaaaaaa","status":"` + status + `","rationale":"","history":[]}`
-}
+// openFinding is one open finding rendered with the store's field order: the
+// fixtures compare it byte for byte, so a reordered or renamed field fails.
+const openFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+	`"anchored":true,"body":"Usable body.","suggestion":null,` +
+	`"inBounds":true,"rigor":"walked","severity":"critical",` +
+	`"sig":"c111111111111111111111111111111111111111","sig_version":"1",` +
+	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open",` +
+	`"rationale":"","history":[]}`
 
 // TestRunReportData proves the typed report response carries the wire data
 // in shell key order, with items keeping their store key order and locator
@@ -64,7 +64,7 @@ func findingJSON(sig, status string) string {
 //
 //nolint:revive // one assertion block per response dimension
 func TestRunReportData(t *testing.T) {
-	req := fixture(t, "["+findingJSON("c111111111111111111111111111111111111111", "open")+"]")
+	req := fixture(t, "["+openFinding+"]")
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -291,7 +291,7 @@ func TestRunNextCorruptStore(t *testing.T) {
 // TestRunNextBadStatus proves an invalid status never reaches the store and
 // has no report refusal to replay.
 func TestRunNextBadStatus(t *testing.T) {
-	req := fixture(t, "["+findingJSON("c111111111111111111111111111111111111111", "open")+"]")
+	req := fixture(t, "["+openFinding+"]")
 	resp, ref := reportcore.RunNext(context.Background(), &core.NextRequest{
 		ReadRequest: req,
 		Status:      "bogus",
@@ -307,7 +307,7 @@ func TestRunNextBadStatus(t *testing.T) {
 // TestRunShow proves the show service resolves a short sig and returns the
 // full record with store key order.
 func TestRunShow(t *testing.T) {
-	req := fixture(t, "["+findingJSON("c111111111111111111111111111111111111111", "open")+"]")
+	req := fixture(t, "["+openFinding+"]")
 	resp, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{
 		ReadRequest: req,
 		Sig:         "c1111111",
@@ -318,8 +318,10 @@ func TestRunShow(t *testing.T) {
 	if resp.Item == nil || resp.Item.Raw == nil {
 		t.Fatal("no item returned")
 	}
-	if resp.Item.Raw.Keys[0] != "kind" {
-		t.Errorf("record first key = %q, want kind", resp.Item.Raw.Keys[0])
+	// The record round-trips byte for byte, in the store's field order: a
+	// reordered or dropped field is a wire change, not a detail.
+	if got := resp.Item.Raw.MarshalCompact(); got != openFinding {
+		t.Errorf("record = %s", got)
 	}
 }
 

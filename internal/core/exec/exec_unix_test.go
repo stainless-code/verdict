@@ -6,11 +6,19 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
+
+// pidAlive reports whether pid is still running: kill -0 succeeds for a
+// running (or zombie) process, and EPERM still means the pid exists.
+func pidAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
 
 // TestWatchdogRun proves the watchdog contract: argv runs, combined streams
 // come back in Stdout, the wait code maps, and a clean run is not a timeout.

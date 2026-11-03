@@ -238,10 +238,12 @@ func TestPromptNonceShape(t *testing.T) {
 		if !isLowerHex(n) {
 			t.Fatalf("nonce %q is not lowercase hex", n)
 		}
+		// A fence tag the model can predict is not a fence: each draw must
+		// be fresh (64 bits of entropy makes a repeat a red flag).
+		if seen[n] {
+			t.Fatalf("nonce %q repeated", n)
+		}
 		seen[n] = true
-	}
-	if len(seen) < 2 {
-		t.Fatal("nonces never vary")
 	}
 }
 

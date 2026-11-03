@@ -595,7 +595,7 @@ func decodeFindingsStore(t *testing.T, path string) []map[string]any {
 
 // postCommander scripts the post happy path: the live-SHA read, the
 // authorship read, the empty thread recheck, and the reviews POST.
-func postCommander(t *testing.T, payload *string) *scriptCommander {
+func postCommander(t *testing.T) *scriptCommander {
 	t.Helper()
 	threads := "gh\x00api\x00graphql\x00--paginate\x00-F\x00owner=acme\x00-F\x00name=app\x00-F\x00pr=7\x00-f\x00query=" + queryLiveCount
 	out := map[string]scriptResult{
@@ -606,7 +606,6 @@ func postCommander(t *testing.T, payload *string) *scriptCommander {
 			stdout: `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}`,
 		},
 	}
-	_ = payload
 	return &scriptCommander{t: t, out: out}
 }
 
@@ -621,7 +620,7 @@ func TestRunDryRun(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	postBundle(t, postReview)
-	cmdr := postCommander(t, nil)
+	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json", DryRun: true}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
@@ -692,7 +691,7 @@ func TestRunSubmit(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	postBundle(t, postReview)
-	cmdr := postCommander(t, nil)
+	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)

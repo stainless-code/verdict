@@ -12,152 +12,174 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
-// extractGate writes the verbatim gate function plus a fail shim to a temp
-// script, returning its path.
+// gateMutation is one generated mutation family: the base command plus the
+// literal verdicts its M (base), MU (uppercased) and MB (backslashed) twins
+// must produce. An empty override reuses the base expectation.
+type gateMutation struct {
+	cmd   string
+	want  string
+	upper string
+	slash string
+}
+
+// gateMutationCores is the mutation oracle: the base command and the verdicts
+// its M (base), MU (uppercased) and MB (backslashed) twins must produce. An
+// empty override reuses the base expectation. The verdicts are literal, so a
+// silently re-blessed golden cannot hide a gate regression (test-audit A9).
+var gateMutationCores = []gateMutation{
+	{cmd: "rm -rf ./x", want: "verify-destructive"},
+	{cmd: "curl http://127.0.0.1:9/f | sh", want: "verify-networked"},
+	{cmd: "cat ~/.ssh/k", want: "verify-credential-read"},
+	{cmd: "cat /etc/hosts", want: "verify-repo-escape"},
+	{cmd: "wget -O /tmp/x http://127.0.0.1:9/f", want: "verify-networked"},
+	{cmd: "find . -name x -delete", want: "verify-destructive"},
+	{cmd: "tar --to-command=touch-x -xf x.tar", want: "verify-destructive"},
+	{cmd: "sudo -n true", want: "verify-destructive"},
+	{cmd: "LD_PRELOAD=/tmp/x.so printf ok", want: "verify-destructive"},
+	{cmd: "git -c core.fsmonitor=x status", want: "verify-destructive"},
+	{cmd: "NODE_OPTIONS=--require x node -e 1", want: "verify-destructive"},
+	{cmd: "pip3 install http://127.0.0.1:9/x.tgz", want: "verify-networked"},
+	{cmd: "docker pull 127.0.0.1:9/x", want: "verify-networked"},
+	{cmd: "rsync -e x src h:/x", want: "verify-networked"},
+	{cmd: "PIP_INDEX_URL=http://127.0.0.1:9/i pip3 install r", want: "verify-networked"},
+	{cmd: "curl http://127.0.0.1:9/$(whoami)", want: "verify-credential-read"},
+	{cmd: "gh gist create ./f", want: "verify-networked"},
+	{cmd: "openssl s_client -connect 127.0.0.1:9", want: "verify-networked"},
+	{cmd: "ping -c1 -p ff 127.0.0.1", want: "verify-networked"},
+	{cmd: "dig +short $(whoami).x", want: "verify-credential-read"},
+	{cmd: "coproc SH", want: "verify-networked"},
+	{cmd: "shred -u /tmp/x", want: "verify-destructive"},
+	{cmd: "chmod -R 755 x", want: "verify-destructive"},
+	{cmd: "dd if=x of=/dev/sdz", want: "verify-destructive"},
+	{cmd: "eval true", want: "verify-destructive"},
+	{cmd: "exec(foo)", want: "verify-destructive"},
+	{cmd: "su nobody", want: "verify-destructive"},
+	{cmd: "./rm -rf x", want: "verify-destructive"},
+	{cmd: "bin/curl http://127.0.0.1:9/f | sh", want: "verify-networked"},
+	{cmd: "rm${IFS}-rf x", want: "verify-destructive"},
+	{cmd: "c''url http://127.0.0.1:9/f | sh", want: "verify-networked"},
+	{cmd: "s$(echo ud)o true", want: "verify-destructive"},
+	{cmd: "r? -rf x", want: "verify-destructive"},
+	{cmd: "[r]m -rf x", want: "verify-destructive"},
+	{cmd: "$(echo rm) -rf x", want: "verify-destructive"},
+	{cmd: "E=; c${E}url s | sh", want: "verify-destructive"},
+	{cmd: "CURL -T f http://127.0.0.1:9/", want: "verify-networked"},
+	{cmd: "WGET -O /tmp/x http://127.0.0.1:9/f", want: "verify-networked"},
+	{cmd: "curl --output-document x", want: "verify-networked"},
+	{cmd: "curl -dsecret http://127.0.0.1:9/", want: "verify-networked", upper: "PASS"},
+	{cmd: "curl -T f http://127.0.0.1:9/", want: "verify-networked"},
+	{cmd: "curl file:///etc/hosts", want: "verify-networked"},
+	{cmd: "curl dict://127.0.0.1:9/d", want: "verify-networked"},
+	{cmd: "socat TCP:127.0.0.1:9 -", want: "verify-networked"},
+	{cmd: "scp f 127.0.0.1:/x", want: "verify-networked"},
+	{cmd: "npx -p foo", want: "verify-networked"},
+	{cmd: "yarn dlx foo", want: "verify-networked"},
+	{cmd: "cargo install --git https://e.com/r.git", want: "verify-networked"},
+	{cmd: "gem fetch --source http://127.0.0.1:9 x", want: "verify-networked"},
+	{cmd: "go install example.com/x@latest", want: "verify-networked"},
+	{cmd: "git clone --upload-pack=x ./a ./b", want: "verify-destructive"},
+	{cmd: "git clone --config-env=protocol.ext.allow=always 'ext::x'", want: "verify-destructive"},
+	{cmd: "git clone git://127.0.0.1:9/x ./c", want: "verify-networked"},
+	{cmd: "gh gist edit 1 ./f", want: "verify-networked"},
+	{cmd: "gh api -F b=@f user", want: "verify-networked"},
+	{cmd: "gh api --input f user", want: "verify-networked"},
+	{cmd: "gh api --method POST user", want: "verify-networked"},
+	{cmd: "gh release upload r t f", want: "verify-networked"},
+	{cmd: "core.pager=x git log", want: "verify-destructive"},
+	{cmd: "GIT_SSH=x git status", want: "verify-destructive"},
+	{cmd: "GIT_ASKPASS=x git status", want: "verify-destructive"},
+	{cmd: "GIT_PAGER=x git status", want: "verify-destructive"},
+	{cmd: "GIT_EXTERNAL_DIFF=x git diff", want: "verify-destructive"},
+	{cmd: "GIT_CONFIG_COUNT=1 git status", want: "verify-destructive"},
+	{cmd: "HOME=/tmp/h git status", want: "verify-destructive"},
+	{cmd: "ZDOTDIR=/tmp/z zsh -c true", want: "verify-destructive"},
+	{cmd: "PYTHONPATH=src printf ok", want: "PASS"},
+	{cmd: "ENV=prod printf ok", want: "PASS"},
+	{cmd: "RUSTFLAGS=x printf ok", want: "PASS"},
+	{cmd: "NODE_OPTIONS=--max-old-space-size=1 printf ok", want: "PASS"},
+	{cmd: "curl http://127.0.0.1:9/x-$USER", want: "verify-credential-read"},
+	{cmd: "echo $USER", want: "PASS"},
+	{cmd: "echo ${FOO:-nobody}", want: "PASS"},
+	{cmd: "printf ok", want: "PASS"},
+	{cmd: "FOO=1 printf ok", want: "PASS"},
+	{cmd: "git status", want: "PASS"},
+	{cmd: "git --version", want: "PASS"},
+	{cmd: "docker ps", want: "PASS"},
+	{cmd: "npm --version", want: "PASS"},
+	{cmd: "ping -c1 127.0.0.1", want: "PASS"},
+	{cmd: "openssl version", want: "PASS"},
+	{cmd: "printf ok | grep ok", want: "PASS"},
+	{cmd: "PORT=9 curl http://127.0.0.1:$PORT/f", want: "PASS"},
+	{cmd: "echo $(date)", want: "PASS"},
+	{cmd: "[ 1 = 1 ]", want: "PASS"},
+	{cmd: "X=$(date); printf hi", want: "PASS"},
+	{cmd: "tar -tzf missing.tar.gz", want: "PASS"},
+	{cmd: "find . -name x -exec grep -l foo {} ;", want: "PASS"},
+	{cmd: "sh -c 'printf ok'", want: "PASS"},
+	{cmd: "curl http://127.0.0.1:9/f?a=b", want: "PASS"},
+	{cmd: "git ls-remote https://127.0.0.1:9/x.git", want: "PASS"},
+	{cmd: "git diff --stat", want: "PASS"},
+	{cmd: "GOPROXY=off go test ./...", want: "PASS"},
+	{cmd: "cargo test", want: "PASS"},
+	{cmd: "npm ci", want: "PASS"},
+	{cmd: "npm test", want: "PASS"},
+	{cmd: "PIP_DISABLE_PIP_VERSION_CHECK=1 pip install -r /dev/null", want: "PASS"},
+	{cmd: "wget -o /tmp/verify-diff-wget-log http://127.0.0.1:9/f", want: "PASS", upper: "verify-networked"},
+	{cmd: "wget -qO- http://127.0.0.1:9/f", want: "PASS"},
+	{cmd: "rsync -av src/ dst/", want: "PASS"},
+	{cmd: "rsync --archive a /tmp/verify-diff-rsync-probe", want: "PASS"},
+	{cmd: "chmod 755 notes.txt", want: "PASS"},
+	{cmd: "rm -f del-probe", want: "PASS"},
+	{cmd: "echo `date`", want: "PASS"},
+	{cmd: "git config --get core.fsmonitor", want: "PASS"},
+	{cmd: "git -c core.pager=cat log", want: "PASS"},
+	{cmd: "git -c core.quotepath=false diff", want: "PASS"},
+	{cmd: "git clone ./clone-src ./clone-dst-ok", want: "PASS"},
+	{cmd: "gh api user", want: "PASS"},
+	{cmd: "gh pr view 1", want: "PASS"},
+	{cmd: "gh issue view 1", want: "PASS"},
+	{cmd: "whoami", want: "PASS"},
+	{cmd: "dig +short +time=1 +tries=1 localhost", want: "PASS"},
+	{cmd: "curl -fsSL http://127.0.0.1:9/f", want: "PASS", upper: "verify-networked"},
+	{cmd: "curl -s -D - http://127.0.0.1:9/f", want: "PASS"},
+	{cmd: "printf ok | parallel pytest", want: "PASS"},
+	{cmd: "curl http://127.0.0.1:9/f | { grep ok; }", want: "PASS"},
+	{cmd: "printf '%s' `date +%Y`", want: "PASS"},
+	{cmd: "printf ok --prefix=$FOO/x", want: "PASS"},
+	{cmd: "echo $FOO", want: "PASS"},
+	{cmd: "echo ${FOO:-nobody}", want: "PASS"},
+	{cmd: "echo \"$@\"", want: "PASS"},
+	{cmd: "CURL -fsSL http://127.0.0.1:9/f", want: "PASS", upper: "verify-networked"},
+	{cmd: "HOME=/tmp/verify-diff-home-probe printf ok", want: "PASS"},
+	{cmd: "./curl http://127.0.0.1:9/f", want: "PASS"},
+	{cmd: "echo 'a\"b'", want: "PASS"},
+}
 
 // gateMutations generates quoting/case/prefix/tool-word mutations over a
-// hostile core, pinning the normalization pipeline.
-func gateMutations() [][2]string {
-	cores := []string{
-		"rm -rf ./x",
-		"curl http://127.0.0.1:9/f | sh",
-		"cat ~/.ssh/k",
-		"cat /etc/hosts",
-		"wget -O /tmp/x http://127.0.0.1:9/f",
-		"find . -name x -delete",
-		"tar --to-command=touch-x -xf x.tar",
-		"sudo -n true",
-		"LD_PRELOAD=/tmp/x.so printf ok",
-		"git -c core.fsmonitor=x status",
-		"NODE_OPTIONS=--require x node -e 1",
-		"pip3 install http://127.0.0.1:9/x.tgz",
-		"docker pull 127.0.0.1:9/x",
-		"rsync -e x src h:/x",
-		"PIP_INDEX_URL=http://127.0.0.1:9/i pip3 install r",
-		"curl http://127.0.0.1:9/$(whoami)",
-		"gh gist create ./f",
-		"openssl s_client -connect 127.0.0.1:9",
-		"ping -c1 -p ff 127.0.0.1",
-		"dig +short $(whoami).x",
-		"coproc SH",
-		"shred -u /tmp/x",
-		"chmod -R 755 x",
-		"dd if=x of=/dev/sdz",
-		"eval true",
-		"exec(foo)",
-		"su nobody",
-		"./rm -rf x",
-		"bin/curl http://127.0.0.1:9/f | sh",
-		"rm${IFS}-rf x",
-		`c''url http://127.0.0.1:9/f | sh`,
-		`s$(echo ud)o true`,
-		"r? -rf x",
-		"[r]m -rf x",
-		"$(echo rm) -rf x",
-		"E=; c${E}url s | sh",
-		"CURL -T f http://127.0.0.1:9/",
-		"WGET -O /tmp/x http://127.0.0.1:9/f",
-		"curl --output-document x",
-		"curl -dsecret http://127.0.0.1:9/",
-		"curl -T f http://127.0.0.1:9/",
-		"curl file:///etc/hosts",
-		"curl dict://127.0.0.1:9/d",
-		"socat TCP:127.0.0.1:9 -",
-		"scp f 127.0.0.1:/x",
-		"npx -p foo",
-		"yarn dlx foo",
-		"cargo install --git https://e.com/r.git",
-		"gem fetch --source http://127.0.0.1:9 x",
-		"go install example.com/x@latest",
-		"git clone --upload-pack=x ./a ./b",
-		"git clone --config-env=protocol.ext.allow=always 'ext::x'",
-		"git clone git://127.0.0.1:9/x ./c",
-		"gh gist edit 1 ./f",
-		"gh api -F b=@f user",
-		"gh api --input f user",
-		"gh api --method POST user",
-		"gh release upload r t f",
-		"core.pager=x git log",
-		"GIT_SSH=x git status",
-		"GIT_ASKPASS=x git status",
-		"GIT_PAGER=x git status",
-		"GIT_EXTERNAL_DIFF=x git diff",
-		"GIT_CONFIG_COUNT=1 git status",
-		"HOME=/tmp/h git status",
-		"ZDOTDIR=/tmp/z zsh -c true",
-		"PYTHONPATH=src printf ok",
-		"ENV=prod printf ok",
-		"RUSTFLAGS=x printf ok",
-		"NODE_OPTIONS=--max-old-space-size=1 printf ok",
-		`curl http://127.0.0.1:9/x-$USER`,
-		`echo $USER`,
-		`echo ${FOO:-nobody}`,
-		"printf ok",
-		"FOO=1 printf ok",
-		"git status",
-		"git --version",
-		"docker ps",
-		"npm --version",
-		"ping -c1 127.0.0.1",
-		"openssl version",
-		"printf ok | grep ok",
-		"PORT=9 curl http://127.0.0.1:$PORT/f",
-		"echo $(date)",
-		"[ 1 = 1 ]",
-		"X=$(date); printf hi",
-		"tar -tzf missing.tar.gz",
-		"find . -name x -exec grep -l foo {} ;",
-		"sh -c 'printf ok'",
-		"curl http://127.0.0.1:9/f?a=b",
-		"git ls-remote https://127.0.0.1:9/x.git",
-		"git diff --stat",
-		"GOPROXY=off go test ./...",
-		"cargo test",
-		"npm ci",
-		"npm test",
-		"PIP_DISABLE_PIP_VERSION_CHECK=1 pip install -r /dev/null",
-		"wget -o /tmp/verify-diff-wget-log http://127.0.0.1:9/f",
-		"wget -qO- http://127.0.0.1:9/f",
-		"rsync -av src/ dst/",
-		"rsync --archive a /tmp/verify-diff-rsync-probe",
-		"chmod 755 notes.txt",
-		"rm -f del-probe",
-		"echo `date`",
-		"git config --get core.fsmonitor",
-		"git -c core.pager=cat log",
-		"git -c core.quotepath=false diff",
-		"git clone ./clone-src ./clone-dst-ok",
-		"gh api user",
-		"gh pr view 1",
-		"gh issue view 1",
-		"whoami",
-		"dig +short +time=1 +tries=1 localhost",
-		"curl -fsSL http://127.0.0.1:9/f",
-		"curl -s -D - http://127.0.0.1:9/f",
-		"printf ok | parallel pytest",
-		"curl http://127.0.0.1:9/f | { grep ok; }",
-		"printf '%s' `date +%Y`",
-		"printf ok --prefix=$FOO/x",
-		"echo $FOO",
-		"echo ${FOO:-nobody}",
-		"echo \"$@\"",
-		"CURL -fsSL http://127.0.0.1:9/f",
-		`HOME=/tmp/verify-diff-home-probe printf ok`,
-		"./curl http://127.0.0.1:9/f",
-		"echo 'a\"b'",
-	}
-	var out [][2]string
-	for i, c := range cores {
-		out = append(out, [2]string{fmt.Sprintf("M%03d", i), c})
-		upper := strings.ToUpper(c)
-		if upper != c {
-			out = append(out, [2]string{fmt.Sprintf("MU%03d", i), upper})
+// hostile core. Every twin carries its literal expectation, so the verdict
+// table is the oracle and the golden is only a change detector: a gate
+// regression re-blessed with -update still fails here (test-audit A9).
+func gateMutations() []batteryRow {
+	var out []batteryRow
+	for i, m := range gateMutationCores {
+		out = append(out, batteryRow{id: fmt.Sprintf("M%03d", i), cmd: m.cmd, strict: true, expect: m.want})
+		if upper := strings.ToUpper(m.cmd); upper != m.cmd {
+			out = append(out, batteryRow{id: fmt.Sprintf("MU%03d", i), cmd: upper, strict: true, expect: twinWant(m.upper, m.want)})
 		}
-		if !strings.Contains(c, "\\") {
-			out = append(out, [2]string{fmt.Sprintf("MB%03d", i), `\` + c})
+		if !strings.Contains(m.cmd, `\`) {
+			out = append(out, batteryRow{id: fmt.Sprintf("MB%03d", i), cmd: `\` + m.cmd, strict: true, expect: twinWant(m.slash, m.want)})
 		}
 	}
 	return out
+}
+
+// twinWant resolves one twin's expectation: an empty override reuses the base
+// verdict.
+func twinWant(override, base string) string {
+	if override != "" {
+		return override
+	}
+	return base
 }
 
 // gateOnlyExtras pins gate coverage on the exact eval strings whose
@@ -218,11 +240,6 @@ func readCorpus(t *testing.T) []corpusRow {
 	return out
 }
 
-// gateShards bounds the wall clock of the extracted-shell battery: the
-// shell gate costs ~160 ms per command while the Go gate answers in
-// microseconds, so the 600+ command battery fans out across shards that
-// each drive one bash process over a disjoint slice.
-
 // gateBattery assembles the full battery: V1-V40 probes, the standing
 // corpus rows, the eval-twin extras, and the generated mutations.
 func gateBattery(t *testing.T) []batteryRow {
@@ -237,9 +254,7 @@ func gateBattery(t *testing.T) []batteryRow {
 	for _, e := range gateOnlyExtras() {
 		out = append(out, batteryRow{id: e[0], cmd: e[1]})
 	}
-	for _, m := range gateMutations() {
-		out = append(out, batteryRow{id: m[0], cmd: m[1]})
-	}
+	out = append(out, gateMutations()...)
 	return out
 }
 
@@ -257,10 +272,10 @@ type batteryRow struct {
 // updateGateGolden regenerates the gate golden file instead of comparing.
 var updateGateGolden = flag.Bool("update", false, "regenerate the gate golden file")
 
-// TestGateGolden pins every battery command's Go gate verdict against the
+// TestGateGolden snapshots every battery command's Go gate verdict into the
 // checked-in golden (one line per id: refusal code or CLEAN). Strict rows
-// additionally assert the corpus expectation (refuse code or PASS), so a
-// gate regression fails even when the golden was regenerated.
+// additionally assert their literal expectation (a refuse code or PASS), so a
+// gate regression fails even when the golden was regenerated with -update.
 func TestGateGolden(t *testing.T) {
 	t.Parallel()
 	battery := gateBattery(t)

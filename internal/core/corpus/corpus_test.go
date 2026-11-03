@@ -176,8 +176,11 @@ func TestEvaluateMatching(t *testing.T) {
 				t.Fatalf("got matched=%d fp=%d missed=%d, want %d/%d/%d",
 					rep.Matched, rep.FalsePositives, len(rep.Missed), tc.matched, tc.fp, tc.missed)
 			}
-			if rep.Reported != len(tc.entries) {
-				t.Fatalf("reported = %d, want %d", rep.Reported, len(tc.entries))
+			// True and false positives partition the reported set: every
+			// entry is graded exactly once, so nothing is silently dropped.
+			if rep.Matched+rep.FalsePositives != rep.Reported || len(rep.Outcomes) != rep.Reported {
+				t.Fatalf("matched=%d fp=%d graded=%d, reported=%d",
+					rep.Matched, rep.FalsePositives, len(rep.Outcomes), rep.Reported)
 			}
 		})
 	}

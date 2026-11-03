@@ -5,6 +5,8 @@ package exec
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -14,8 +16,10 @@ import (
 // TestExecuteTimeoutKillsTree proves the Windows watchdog: a command that
 // ignores TERM and leaves a sleeping child behind is killed as a tree,
 // recording the shell's SIGKILL code with the timeout flag set (no decoy).
+// The child reports its pid, so a parent-only kill cannot pass.
 func TestExecuteTimeoutKillsTree(t *testing.T) {
-	const vcmd = `trap '' TERM; (trap '' TERM; sleep 30) & sleep 30`
+	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "grandchild.pid"))
+	vcmd := `trap '' TERM; (trap '' TERM; exec sleep 30) & echo $! > '` + pidFile + `'; exec sleep 30`
 	tctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
@@ -26,4 +30,25 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 		t.Errorf("result = exit %d timedOut %v decoy %v; want exit %d, timedOut true, decoy false",
 			res.ExitCode, res.TimedOut, res.Decoy, sigkillExit)
 	}
+	assertPidDead(t, pidFile)
+}
+
+// pidAlive reports whether pid is still running: the job object holds the
+// process object until it exits, and STILL_ACTIVE is the released-code
+// sentinel.
+func pidAlive(pid int) bool {
+	const (
+		processQueryLimitedInformation = 0x1000
+		stillActive                    = 259
+	)
+	h, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = syscall.CloseHandle(h) }()
+	var code uint32
+	if err := syscall.GetExitCodeProcess(h, &code); err != nil {
+		return false
+	}
+	return code == stillActive
 }

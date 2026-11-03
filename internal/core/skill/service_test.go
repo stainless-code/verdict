@@ -123,12 +123,13 @@ func TestInstallCreateDryRunApply(t *testing.T) {
 	if runtime.GOOS != "windows" && shim.Mode().Perm()&0o111 == 0 { // NTFS carries no executable bit
 		t.Error("installed shim is not executable")
 	}
-	receipt := readReceiptMap(t, filepath.Join(target, ".verdict-managed"))
+	receipt := readReceiptMap(t, filepath.Join(target, skill.ReceiptName))
 	if receipt["tool"] != "verdict" || receipt["version"] != "1.2.3" || receipt["installed_at"] != "2026-11-02T12:00:00Z" {
 		t.Fatalf("receipt = %v", receipt)
 	}
-	if leftovers := tempLeftovers(t, target); len(leftovers) != 0 {
-		t.Fatalf("install left temp files: %v", leftovers)
+	planned := append(append([]string{}, plan.Files...), skill.ReceiptName)
+	if extra := extraFiles(t, target, planned); len(extra) != 0 {
+		t.Fatalf("install left unplanned files (temp leftovers included): %v", extra)
 	}
 
 	plan, ref = skill.Install(context.Background(), req)
@@ -375,21 +376,42 @@ func writeReceiptVersion(t *testing.T, target, version string) {
 	}
 }
 
-// tempLeftovers lists atomic temp files under root.
-func tempLeftovers(t *testing.T, root string) []string {
+// extraFiles lists files under root that the install plan did not write: any
+// extra file — an atomic temp leftover under whatever prefix it is renamed to,
+// or a stray write — fails the check, so it cannot go blind when the writer's
+// temp prefix changes (test-audit A8).
+func extraFiles(t *testing.T, root string, planned []string) []string {
 	t.Helper()
-	var leftovers []string
+	allowed := map[string]bool{skill.ReceiptName: true}
+	for _, rel := range planned {
+		allowed[filepath.FromSlash(rel)] = true
+	}
+	var extra []string
+	walkFiles(t, root, func(path string) {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			t.Fatalf("rel %s: %v", path, err)
+		}
+		if !allowed[rel] {
+			extra = append(extra, path)
+		}
+	})
+	return extra
+}
+
+// walkFiles calls fn for every regular file under root.
+func walkFiles(t *testing.T, root string, fn func(path string)) {
+	t.Helper()
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() && len(entry.Name()) > 5 && entry.Name()[:5] == ".tmp-" {
-			leftovers = append(leftovers, path)
+		if !entry.IsDir() {
+			fn(path)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return leftovers
 }

@@ -138,7 +138,7 @@ func TestRunForceSameSHAFallsThrough(t *testing.T) {
 	t.Chdir(dir)
 	postBundle(t, postReview)
 	first := seedPostedOnce(t)
-	cmdr := postCommander(t, nil)
+	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{
 		Approve: "false", ReviewFile: ".review/7/review.json", Force: true,
@@ -177,7 +177,7 @@ func assertOneHoistedReview(t *testing.T, cmdr *scriptCommander) {
 // duplicate-payload marker, and returns the payload hash.
 func seedPostedOnce(t *testing.T) string {
 	t.Helper()
-	cmdr := postCommander(t, nil)
+	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)

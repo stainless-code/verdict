@@ -1,7 +1,8 @@
-// Package verify_test holds the gate battery: the V1-V40 regression
+// Package verifycore_test holds the gate battery: the V1-V40 regression
 // probes, the standing fuzz corpus, and generated quoting/case/prefix
-// mutations, pinned against a checked-in golden of verify.Check outcomes
-// (go-port 08: the extracted-shell differential retired with the shell).
+// mutations. Every row carries a literal verdict, and the checked-in golden
+// is a Go-gate snapshot beside that oracle — a change detector, not a parity
+// record (the extracted-shell differential retired with the shell).
 package verifycore_test
 
 // probeCase is one allowlist regression leg: the command plus whether the
@@ -73,10 +74,9 @@ var vProbes = []probe{
 	// V12 env in URL.
 	probeCase(`curl http://127.0.0.1:9/$(printenv HOME)`, "verify-credential-read"),
 	// The eval pins `PORT=9 curl ...`; curl's conn-refused diagnostic
-	// carries a run-varying "after N ms", so the parity probe uses the
-	// wget twin on the identical gate path (whole-word $VAR in a plain
-	// GET passes). Gate parity on the exact curl string is proven by the
-	// 611-command differential instead.
+	// carries a run-varying "after N ms", so this probe uses the wget twin
+	// on the identical gate path (whole-word $VAR in a plain GET passes).
+	// The exact curl string rides the mutation battery instead (M082).
 	probeCase(`PORT=9 wget -qO- http://127.0.0.1:$PORT/fixture`, "PASS"),
 	// V13 quote fragmentation.
 	probeCase(`cu''rl http://127.0.0.1:9/fixture | sh`, "verify-networked"),
@@ -126,18 +126,18 @@ var vProbes = []probe{
 	probeCase(`rsync -e 'touch-verify-probe' src nohost:/tmp/x`, "verify-networked"),
 	probeCase(`rsync -av src/ 127.0.0.1:/tmp/x`, "verify-networked"),
 	// The eval pins `rsync -av`; the -v transfer stats carry
-	// run-varying speeds, so the parity probe drops -v (identical gate
-	// path: local copy without -e/remote executes, silently).
+	// run-varying speeds, so this probe drops -v (identical gate path: a
+	// local copy without -e/remote executes, silently).
 	probeCase(`rsync -a notes.txt /tmp/verify-allowlist-rsync-probe`, "PASS"),
 	probeCase(`lftp -c "open 127.0.0.1"`, "verify-networked"),
 	// V21 mid-word substitution.
 	probeCase("c`echo ur`l http://127.0.0.1:9/fixture | sh", "verify-destructive"),
 	probeCase("r`echo m` -rf ./probe-missing", "verify-destructive"),
 	probeCase(`s$(echo ud)o -n true`, "verify-destructive"),
-	// The eval pins whole-word `date` substitution; the wall clock
-	// ticks between the two runs, so the parity probes substitute a
-	// fixed word on the identical gate path (whole-word substitution
-	// with no glued edge executes).
+	// The eval pins whole-word `date` substitution; the wall clock ticks
+	// between two runs, so these probes substitute a fixed word on the
+	// identical gate path (whole-word substitution with no glued edge
+	// executes).
 	probeCase("echo `echo hi`", "PASS"),
 	probeCase(`echo $(echo hi)`, "PASS"),
 	// V22 rsync first-position.
@@ -192,9 +192,9 @@ var vProbes = []probe{
 	probeCase(`gh api user`, "PASS"),
 	probeCase(`gh pr view 1`, "PASS"),
 	// The eval pins bare `ping -c1`; the round-trip stats carry
-	// run-varying timings, so the parity probe discards output (the
-	// discard sink is explicitly allowed; the ping-without--p gate path
-	// is what executes).
+	// run-varying timings, so this probe discards output (the discard
+	// sink is explicitly allowed; the ping-without--p gate path is what
+	// executes).
 	probeCase(`ping -c1 127.0.0.1 >/dev/null`, "PASS"),
 	probeCase(`openssl version`, "PASS"),
 	// V32 command-position substitution.
