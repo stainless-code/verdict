@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/mcpconfig"
 )
@@ -107,17 +108,8 @@ func writeMCPConfigEnvelope(r *cli.Runner, res *mcpconfig.Result, f mcpConfigFla
 	if res.Backup != "" {
 		data.Set("backup", res.Backup)
 	}
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "mcp",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", "",
-		"warnings", cliWarnings(r.Warnings),
-		"data", data,
-		"error", nil,
-	)
+	env := core.RenderEnvelope("mcp", "", "", cli.NowUTC(r.Now()), "",
+		r.Warnings, data, nil)
 	fmt.Fprintln(r.Out, env.MarshalPretty())
 }
 

@@ -201,7 +201,7 @@ func upgradeData(resp *upgrade.Response) *jq.Obj {
 		data.Set("reason", resp.Reason)
 	}
 	if len(resp.Command) > 0 {
-		data.Set("command", stringSlice(resp.Command))
+		data.Set("command", core.StringValues(resp.Command))
 	}
 	if resp.HelperResult != "" {
 		data.Set("helper_result", resp.HelperResult)
@@ -216,7 +216,7 @@ func uninstallData(resp *upgrade.Response) *jq.Obj {
 		"channel", resp.Channel,
 		"action", resp.Action,
 		"target", resp.Target,
-		"removed", stringSlice(resp.Removed),
+		"removed", core.StringValues(resp.Removed),
 		"path_line_removed", resp.PathLineRemoved,
 		"dry_run", resp.DryRun,
 	)
@@ -224,36 +224,9 @@ func uninstallData(resp *upgrade.Response) *jq.Obj {
 
 // writeUpgradeEnvelope prints exactly one envelope for a successful call.
 func writeUpgradeEnvelope(r *cli.Runner, verb string, data *jq.Obj) {
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", verb,
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", "",
-		"warnings", cliWarnings(r.Warnings),
-		"data", data,
-		"error", nil,
-	)
+	env := core.RenderEnvelope(verb, "", "", cli.NowUTC(r.Now()), "",
+		r.Warnings, data, nil)
 	fmt.Fprintln(r.Out, env.MarshalPretty())
-}
-
-// cliWarnings renders the accumulated warnings as JSON strings.
-func cliWarnings(warnings []string) []any {
-	out := make([]any, 0, len(warnings))
-	for _, w := range warnings {
-		out = append(out, w)
-	}
-	return out
-}
-
-// stringSlice renders a Go string slice as a JSON array.
-func stringSlice(in []string) []any {
-	out := make([]any, 0, len(in))
-	for _, s := range in {
-		out = append(out, s)
-	}
-	return out
 }
 
 // runnerProgress adapts cli.Runner to core.Progress.

@@ -351,8 +351,10 @@ func mapValue(rv reflect.Value) any {
 }
 
 // RenderEnvelope builds the frozen envelope object: schema_version, verb,
-// repo, pr, at, next, warnings, data, error, in that order.
-func RenderEnvelope(verb, repo, pr, at, next string, warnings []string, data any, errObj *SchemaError) *jq.Obj {
+// repo, pr, at, next, warnings, data, error, in that order. errObj is a
+// [*SchemaError] or an already-ordered [*jq.Obj] (the CLI refusal object,
+// which carries candidates); both render through the same wire walker.
+func RenderEnvelope(verb, repo, pr, at, next string, warnings []string, data any, errObj any) *jq.Obj {
 	return jq.NewObj(
 		"schema_version", "1",
 		"verb", verb,

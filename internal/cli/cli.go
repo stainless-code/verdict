@@ -113,17 +113,8 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	msg := ref.Message + "\n" + HintFor(ref.Code)
 	if r.JSONMode {
-		env := jq.NewObj(
-			"schema_version", "1",
-			"verb", r.Cmd,
-			"repo", r.Repo,
-			"pr", PrJSON(r.Pr),
-			"at", NowUTC(r.Now()),
-			"next", "",
-			"warnings", cliStrings(r.Warnings),
-			"data", nil,
-			"error", r.refusalObject(ref, msg),
-		)
+		env := core.RenderEnvelope(r.Cmd, r.Repo, r.Pr, NowUTC(r.Now()), "",
+			r.Warnings, nil, r.refusalObject(ref, msg))
 		fmt.Fprintln(r.Out, env.MarshalPretty())
 	} else {
 		if r.Effective.Color == colorAlways {
@@ -172,34 +163,6 @@ func (r *Runner) ReportUsage(err *UsageError) int {
 	fmt.Fprintln(r.Diag, err.Message)
 	return ExitUsage
 }
-
-// OrderedEnvelope holds envelope fields in shell construction order. The
-// shell's `jq -n '{...}'` preserves insertion order, so envelopes render
-// through *jq.Obj (see Refuse), never through sorted maps.
-type OrderedEnvelope struct {
-	Pr            any
-	Data          any
-	Error         any
-	SchemaVersion string
-	Verb          string
-	Repo          string
-	At            string
-	Next          string
-	Warnings      []string
-}
-
-// cliStrings converts warnings to JSON string values.
-func cliStrings(in []string) []any {
-	out := make([]any, 0, len(in))
-	for _, s := range in {
-		out = append(out, s)
-	}
-	return out
-}
-
-// PrJSON ports `($p|tonumber? // null)`: a valid JSON number literal reads
-// as a number, everything else reads null.
-func PrJSON(pr string) any { return core.PrJSON(pr) }
 
 // HintFor returns the remediation hint for a refusal code. The table
 // lives in core so every transport renders the same hints (see

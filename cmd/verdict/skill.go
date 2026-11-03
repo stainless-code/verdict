@@ -276,7 +276,7 @@ func skillInventoryData(inv *skill.Inventory) *jq.Obj {
 	return jq.NewObj(
 		"name", inv.Name,
 		"version", inv.Version,
-		"files", stringSlice(inv.Files),
+		"files", core.StringValues(inv.Files),
 	)
 }
 
@@ -290,8 +290,8 @@ func skillInstallData(plan *skill.Plan, dry, force bool) *jq.Obj {
 		"dry_run", dry,
 		"force", force,
 		"written", plan.Written,
-		"files", stringSlice(plan.Files),
-		"changed", stringSlice(plan.Changed),
+		"files", core.StringValues(plan.Files),
+		"changed", core.StringValues(plan.Changed),
 	)
 	if plan.ReceiptVersion != "" {
 		data.Set("receipt_version", plan.ReceiptVersion)
@@ -301,17 +301,8 @@ func skillInstallData(plan *skill.Plan, dry, force bool) *jq.Obj {
 
 // writeSkillEnvelope prints exactly one standard envelope for a skill call.
 func writeSkillEnvelope(r *cli.Runner, data *jq.Obj) {
-	env := jq.NewObj(
-		"schema_version", "1",
-		"verb", "skill",
-		"repo", "",
-		"pr", nil,
-		"at", cli.NowUTC(r.Now()),
-		"next", "",
-		"warnings", cliWarnings(r.Warnings),
-		"data", data,
-		"error", nil,
-	)
+	env := core.RenderEnvelope("skill", "", "", cli.NowUTC(r.Now()), "",
+		r.Warnings, data, nil)
 	fmt.Fprintln(r.Out, env.MarshalPretty())
 }
 
