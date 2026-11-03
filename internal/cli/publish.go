@@ -7,7 +7,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// resolvePublishEnv ports the env half of resolve_publish: flags > file >
+// resolvePublishEnv owns the env half of resolve_publish: flags > file >
 // env > defaults, so the env layer applies even with no settings file. It
 // only warns; invalid values fall back to defaults.
 func resolvePublishEnv(env map[string]string, eff *Effective, warn func(string)) {
@@ -29,7 +29,7 @@ func resolvePublishEnv(env map[string]string, eff *Effective, warn func(string))
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_OVERVIEW", &eff.PublishOverview, warn)
 }
 
-// resolveOnOffEnv ports one true|false env knob.
+// resolveOnOffEnv handles one true|false env knob.
 func resolveOnOffEnv(env map[string]string, key string, dst *string, warn func(string)) {
 	switch v := env[key]; v {
 	case "":
@@ -40,7 +40,7 @@ func resolveOnOffEnv(env map[string]string, key string, dst *string, warn func(s
 	}
 }
 
-// resolveAttributionEnv ports the REVIEW_PUBLISH_ATTRIBUTION knob with its
+// resolveAttributionEnv owns the REVIEW_PUBLISH_ATTRIBUTION knob with its
 // P1-bool migration.
 func resolveAttributionEnv(env map[string]string, eff *Effective, warn func(string)) {
 	switch v := env["REVIEW_PUBLISH_ATTRIBUTION"]; v {
@@ -58,7 +58,7 @@ func resolveAttributionEnv(env map[string]string, eff *Effective, warn func(stri
 	}
 }
 
-// resolvePublishFile ports the settings-file half of resolve_publish plus
+// resolvePublishFile owns the settings-file half of resolve_publish plus
 // resolve_publish_diagrams. A missing file or a file without a publish key
 // keeps the env layer and only validates the attribution placeholders.
 func resolvePublishFile(path string, obj map[string]any, eff *Effective) error {
@@ -233,7 +233,7 @@ func resolveTextKey(path string, pub map[string]any, key, hint string, dst *stri
 	return nil
 }
 
-// resolveDiagrams ports resolve_publish_diagrams.
+// resolveDiagrams resolves the diagram knobs (flag > file > env).
 func resolveDiagrams(path string, raw any, eff *Effective) error {
 	d, ok := jq.AsMap(raw)
 	if !ok {
@@ -279,7 +279,7 @@ func setDiagramBool(path string, d map[string]any, key string, dst *string) erro
 	return nil
 }
 
-// ValidateAttributionPlaceholders ports validate_attribution_placeholders:
+// ValidateAttributionPlaceholders checks the attribution placeholders:
 // every {name} placeholder in text must come from the v1 inventory, scanned
 // in appearance order. The inventory lives in core so the read path can gate
 // overrides without importing this package.

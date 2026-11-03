@@ -26,9 +26,9 @@ type PrefsResult struct {
 	Path      string
 }
 
-// ResolvePrefs ports resolve_prefs + resolve_publish + resolve_publish_diagrams
-// in order: env layer, then the settings file layer. Warnings mirror the
-// shell's warn lines; file problems return typed refusals. readFile injects
+// ResolvePrefs resolves the preference layers in order: env layer, then the
+// settings file layer. Warnings ride the run's warn lines; file problems
+// return typed refusals. readFile injects
 // file reads; env maps the process environment.
 func ResolvePrefs(r *Runner, env map[string]string, readFile func(string) ([]byte, error)) (*PrefsResult, error) {
 	eff := Defaults()
@@ -57,7 +57,7 @@ func ResolvePrefs(r *Runner, env map[string]string, readFile func(string) ([]byt
 	return resolveSettingsFile(r, path, obj, doc, &eff)
 }
 
-// resolveOutputEnv ports the REVIEW_OUTPUT_FORMAT knob.
+// resolveOutputEnv owns the REVIEW_OUTPUT_FORMAT knob.
 func resolveOutputEnv(r *Runner, env map[string]string, warn func(string)) {
 	switch v := env["REVIEW_OUTPUT_FORMAT"]; v {
 	case "":
@@ -71,7 +71,7 @@ func resolveOutputEnv(r *Runner, env map[string]string, warn func(string)) {
 	}
 }
 
-// resolveCompactEnv ports the REVIEW_LAYOUT_COMPACT knob.
+// resolveCompactEnv owns the REVIEW_LAYOUT_COMPACT knob.
 func resolveCompactEnv(env map[string]string, eff *Effective, warn func(string)) {
 	switch c := env["REVIEW_LAYOUT_COMPACT"]; c {
 	case "":
@@ -82,7 +82,7 @@ func resolveCompactEnv(env map[string]string, eff *Effective, warn func(string))
 	}
 }
 
-// resolveColorEnv ports the REVIEW_COLOR_MODE knob.
+// resolveColorEnv owns the REVIEW_COLOR_MODE knob.
 func resolveColorEnv(env map[string]string, eff *Effective, warn func(string)) {
 	switch c := env["REVIEW_COLOR_MODE"]; c {
 	case "":
@@ -151,7 +151,7 @@ func checkSchemaKey(path string, obj map[string]any) error {
 	return nil
 }
 
-// resolveOutputFile ports the output.format file knob.
+// resolveOutputFile owns the output.format file knob.
 func resolveOutputFile(r *Runner, path string, obj map[string]any) error {
 	v, ok := obj["output"]
 	if !ok {
@@ -189,7 +189,7 @@ func applyOutputFormat(r *Runner, path string, f any) error {
 	}
 }
 
-// resolveLayoutFile ports the layout.compact file knob.
+// resolveLayoutFile owns the layout.compact file knob.
 func resolveLayoutFile(path string, obj map[string]any, eff *Effective) error {
 	v, ok := obj["layout"]
 	if !ok {
@@ -224,7 +224,7 @@ func applyCompact(path string, c any, eff *Effective) error {
 	return nil
 }
 
-// resolveColorFile ports the color.mode file knob.
+// resolveColorFile owns the color.mode file knob.
 func resolveColorFile(r *Runner, path string, obj map[string]any, eff *Effective) error {
 	v, ok := obj["color"]
 	if !ok {
@@ -262,8 +262,8 @@ func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 }
 
 // countCredKeys counts object keys anywhere in doc whose ASCII-lowercased
-// form matches the credential pattern, mirroring the shell's
-// `[.. | objects | keys[] | ascii_downcase] | map(select(test(...)))`.
+// form matches the credential pattern
+// (`[.. | objects | keys[] | ascii_downcase] | map(select(test(...)))`).
 func countCredKeys(doc any) int {
 	w := &credWalker{}
 	w.walk(doc)

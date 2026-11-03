@@ -64,8 +64,8 @@ func postRequest(r *cli.Runner, req Request, f core.PostFlags) *core.PostRequest
 }
 
 // parsePostFlags strips post's flags, reporting unknown ones. A trailing
-// value flag reads "" (the shell dies on the shift instead — a documented
-// divergence shared with the triage port — and the gate below refuses typed).
+// value flag reads "" (the gate below refuses typed when the value is
+// required).
 func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, int, bool) {
 	f := core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}
 	for i := 0; i < len(args); i++ {
@@ -106,9 +106,8 @@ func setPostValue(f *core.PostFlags, name, val string) {
 	}
 }
 
-// postRentry rebuilds the exact re-run command the shell records after flag
-// parsing (flags included, in shell order, so a retry reproduces this
-// invocation).
+// postRentry rebuilds the exact re-run command recorded after flag parsing
+// (flags included, in flag order, so a retry reproduces this invocation).
 func postRentry(repo, pr string, f core.PostFlags, jsonMode bool) string {
 	var sb strings.Builder
 	sb.WriteString("verdict post " + repo + " " + pr)

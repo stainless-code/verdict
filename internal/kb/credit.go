@@ -11,7 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// ApplyCredit ports kb_apply_credit: it stages one credit op per cited rule
+// ApplyCredit stages one credit op per cited rule
 // not already credited for this finding. Staging is memory-only; the caller
 // stamps Credited into the flipping history event, and CommitStaged applies
 // everything after the findings file persists. It never fails the flip.
@@ -94,7 +94,7 @@ func joinHas(joins []*jq.Obj, sig, rid, outcome string) bool {
 	return false
 }
 
-// historyHas ports the in-memory idempotency check: any history event on the
+// historyHas owns the in-memory idempotency check: any history event on the
 // entry carrying a kb_credit object with matching rule and to.
 func historyHas(entry *jq.Obj, rid, outcome string) bool {
 	histRaw, _ := entry.Get("history")
@@ -150,7 +150,7 @@ func creditRef(cr any) (string, string, bool) {
 	}
 }
 
-// ruleActive ports the active-status gate: the rule row must exist with
+// ruleActive owns the active-status gate: the rule row must exist with
 // status active. An unreadable store reads inactive (the caller warns).
 func (c *Ctx) ruleActive(rid string) bool {
 	raw, ok := c.ReadFile(File)
@@ -169,7 +169,7 @@ func (c *Ctx) ruleActive(rid string) bool {
 	return st == statusActive
 }
 
-// CommitStaged ports kb_commit_staged: it applies staged credit after the
+// CommitStaged applies staged credit after the
 // findings file carrying the flips has persisted. One kb.jsonl rewrite
 // (counters), then join rows, then retirement checks. Failures warn loudly
 // and strip the staged stamps so a later re-flip can retry; never fails.
@@ -231,7 +231,7 @@ func filterLive(staged []map[string]any, joins []*jq.Obj) []map[string]any {
 }
 
 // rewriteCounters bumps the hits/false_hits/judged counters, returning false
-// (staged credit dropped) when the rewrite fails. Like the shell's single jq
+// (staged credit dropped) when the rewrite fails. The rewrite is one
 // program, one bad counter fails the whole rewrite: jq's `+` errors on
 // strings, booleans, and containers, so those refuse here instead of
 // coercing (only null, false, missing, and numbers add).
@@ -306,7 +306,7 @@ func tallyOutcomes(live []map[string]any) (hits, fps map[string]int) {
 }
 
 // appendJoins writes one audit row per live op. Bundle scoping uses
-// [filepath.Dir]/[filepath.Base] (the shell's dirname/basename, I13).
+// [filepath.Dir]/[filepath.Base].
 func (c *Ctx) appendJoins(findingsFile string, live []map[string]any) {
 	bundleDir := filepath.Dir(findingsFile)
 	bundle := filepath.Base(bundleDir)

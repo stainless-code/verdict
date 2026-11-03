@@ -10,7 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 )
 
-// checkStoreMode pins the shell's umask-022 store mode on platforms that
+// checkStoreMode pins the umask-022 store mode on platforms that
 // model one.
 func checkStoreMode(t *testing.T, fi os.FileInfo) {
 	t.Helper()

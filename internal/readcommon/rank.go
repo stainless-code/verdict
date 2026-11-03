@@ -15,7 +15,7 @@ const (
 	KindInline     = "inline"
 )
 
-// statusRank ports the sk rank: open first, deferred second, rest last.
+// statusRank owns the sk rank: open first, deferred second, rest last.
 func statusRank(status string) int {
 	switch status {
 	case StatusOpen:
@@ -30,7 +30,7 @@ func statusRank(status string) int {
 // sevOrder is the severity tier rank order; unknown tiers sort last.
 var sevOrder = []string{"critical", "important", "informational"}
 
-// sevRank ports the sev rank: untagged severities read 3 and never meet a
+// sevRank owns the sev rank: untagged severities read 3 and never meet a
 // tier gate.
 func sevRank(sev any) int {
 	if s, ok := sev.(string); ok {
@@ -44,8 +44,8 @@ func sevRank(sev any) int {
 // rigorOrder is the rigor rung rank order; unknown rungs sort first (null).
 var rigorOrder = []string{"reproduced", "ran", "walked", "pointed", "said"}
 
-// rigorRank ports (4 - rw[.rigor // "said"]): known rungs descend from
-// reproduced to said. Unknown rungs read null in the shell and sort first,
+// rigorRank renders (4 - rw[.rigor // "said"]): known rungs descend from
+// reproduced to said. Unknown rungs read null and sort first,
 // which the -1 sentinel preserves without a per-comparison value allocation.
 func rigorRank(rigor any) int {
 	r, ok := rigor.(string)
@@ -61,7 +61,7 @@ func rigorRank(rigor any) int {
 	return -1
 }
 
-// boolRank ports (if .flag then 0 else 1 end): true first, everything else
+// boolRank renders (if .flag then 0 else 1 end): true first, everything else
 // (false, null, missing, exotic) last.
 func boolRank(v any) int {
 	if v == true {
@@ -102,9 +102,9 @@ type Ranked struct {
 	Rank  int
 }
 
-// Rank ports the ranked filter: status/kind display filters, then the
+// Rank owns the ranked filter: status/kind display filters, then the
 // open-first severity-rigor-anchor-path-line-sig sort (stable, like jq's
-// sort_by), then 1-based ranks. Null entries flow through like the shell's
+// sort_by), then 1-based ranks. Null entries flow through the same way
 // (their filters read null and their keys sort first).
 //
 // The comparator is shared with [TopOpenInline] and decorates the entries
@@ -229,7 +229,7 @@ func sortKeys(e any) rankKeys {
 	}
 }
 
-// Locator ports the ranked locator: path[:line] when path is truthy
+// Locator owns the ranked locator: path[:line] when path is truthy
 // (null/false read falsy; 0 and "" read truthy, like jq), else the heading
 // fallback. Rendering follows \(...) interpolation (null reads "").
 func Locator(entry any) string {

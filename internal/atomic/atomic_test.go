@@ -11,7 +11,7 @@ import (
 )
 
 // TestWriteFileRoundTrip checks the atomic path writes exact bytes with the
-// shell's umask-022 default mode and no temp leftovers.
+// umask-022 default mode and no temp leftovers.
 func TestWriteFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "store.json")

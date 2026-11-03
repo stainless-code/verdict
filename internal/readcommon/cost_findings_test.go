@@ -164,7 +164,7 @@ func TestCostRollupChunks(t *testing.T) {
 }
 
 // checkReceiptOrder checks the single receipt kept the budget file's key
-// order (R2 passthrough).
+// order (the passthrough contract).
 func checkReceiptOrder(t *testing.T, res readcommon.CostResult) {
 	t.Helper()
 	if len(res.Receipts) != 1 {

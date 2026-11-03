@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-// IsTerminal reports whether f is a console, mirroring the shell's
+// IsTerminal reports whether f is a console (the
 // `[ -t 0 ]` on Windows.
 func IsTerminal(f *os.File) bool {
 	var mode uint32

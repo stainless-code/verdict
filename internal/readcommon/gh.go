@@ -10,8 +10,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// GraphQL queries, byte-identical to the shell's -f query= arguments
-// (indentation included: the eval stub logs argv verbatim, so the parity
+// GraphQL queries, byte-identical to the pinned -f query= arguments
+// (indentation included: the eval stub logs argv verbatim, so the
 // harness compares these bytes between implementations). One constant per
 // payload shape, never per verb: ready and report --live share the
 // resolution-only read, calibrate uses the comment variant.
@@ -85,7 +85,7 @@ type GhResult struct {
 // cmdr, flattening every page. withComments selects the calibrate shape
 // (comment bodies and paths); the resolution-only shape is shared by ready
 // and report --live. Callers write res.Stderr to their probe err file
-// before mapping err to their verb's warn-or-refuse posture (O5).
+// before mapping err to their verb's warn-or-refuse posture.
 func Threads(
 	ctx context.Context,
 	cmdr core.Commander,
@@ -190,8 +190,7 @@ func reviewThreadsNode(doc any) map[string]any {
 
 // SlurpThreads decodes the paginated thread payload: concatenated JSON docs
 // (one per page) slurped like `jq -s`, navigating every page to its
-// reviewThreads nodes. An unreadable payload is an error, mirroring the
-// shell's `jq -s` failure.
+// reviewThreads nodes. An unreadable payload is an error.
 func SlurpThreads(stdout string) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(stdout))
 	if err != nil {

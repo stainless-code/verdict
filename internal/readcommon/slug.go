@@ -2,13 +2,10 @@ package readcommon
 
 import "strings"
 
-// Slugify ports kb_slugify: lowercase, collapse non-alnum runs to one dash,
-// trim leading/trailing dashes, keep the first 65 characters. Note: the
-// shell's dash trims are GNU-sed `\+` repetitions — BSD sed (macOS) reads
-// `\+` literally and keeps the dashes, so the shell itself is
-// platform-dependent on dashy inputs. No eval grades that edge (it cannot
-// be pinned without normalizing the bash leg); Go implements the intended
-// trimming behavior, matching GNU/Linux.
+// Slugify lowercases, collapses non-alnum runs to one dash, trims
+// leading/trailing dashes, and keeps the first 65 characters. The trimmed
+// form is the contract on every platform, so a slug of only dashes
+// sanitizes to nothing and refuses.
 func Slugify(s string) string {
 	lower := ASCIILower(s)
 	var sb strings.Builder

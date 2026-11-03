@@ -2,7 +2,7 @@ package cli
 
 import "github.com/stainless-code/verdict/internal/core"
 
-// Boolean-valued settings travel as "true"/"false" strings (the shell's
+// Boolean-valued settings travel as "true"/"false" strings (the
 // idiom); FlagOn/FlagOff name the two spellings for cross-package knob
 // comparisons.
 const (

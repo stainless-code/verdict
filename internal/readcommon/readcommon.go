@@ -1,10 +1,8 @@
-// Package readcommon carries the shared read-verb core for the pure-read
-// port (report, next, show, ready, trend, calibrate, doctor, check-tree):
-// bundle resolution, the findings-store load with its R1 entry guard, the
-// gh subprocess runner with byte-exact argv, jq-faithful value helpers,
-// finding ranking, and the cost rollup. Every helper preserves the frozen
-// CLI bytes; divergences from old bash crash corners are
-// documented at the call site.
+// Package readcommon carries the shared read-verb core (report, next, show,
+// ready, trend, calibrate, doctor, check-tree): bundle resolution, the
+// findings-store load with its entry-shape guard, the gh subprocess runner
+// with byte-exact argv, jq-faithful value helpers, finding ranking, and the
+// cost rollup. Every helper preserves the frozen CLI bytes.
 package readcommon
 
 import (

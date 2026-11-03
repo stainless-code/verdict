@@ -10,14 +10,14 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Cost rollup warning lines, byte-identical to the shell.
+// Cost rollup warning lines, frozen as the wire contract.
 const (
 	warnCostUnreadable   = "cost.json unreadable — spend unrecorded for this rollup"
 	warnChunkUnreadable  = "chunk cost %s unreadable — spend unrecorded for this chunk"
 	warnBudgetUnreadable = "budget.json unreadable — receipts unlisted for this rollup"
 )
 
-// Effort tiers, matching the shell's allowlist and tier rollups.
+// Effort tiers, the allowlist and tier rollups.
 const (
 	tierCheap    = "cheap"
 	tierStandard = "standard"
@@ -43,7 +43,7 @@ type CostResult struct {
 	Warns    []string
 }
 
-// CostRollup ports the report --cost rollup: the top-level cost.json plus
+// CostRollup owns the report --cost rollup: the top-level cost.json plus
 // every per-chunk <name>.cost.json merged through one rollup filter, then
 // the budget.json receipts join. Absent files contribute zeros silently;
 // unparseable files warn and contribute zeros — neither ever fails the run.
@@ -68,7 +68,7 @@ func CostRollup(dir string) CostResult {
 	if c := rollupRecords(merged); c != nil {
 		res.Cost = c
 	} else {
-		// R1: the shell's merged rollup died on shape-invalid merged
+		// A merged rollup over a shape-invalid
 		// streams (a chunk record the filter rejects); it now warns and
 		// keeps zeros like every other cost failure.
 		res.Warns = append(res.Warns, warnCostUnreadable)
@@ -133,7 +133,7 @@ func chunkWarn(path string) string {
 // rollup, the trend rollup, and the provenance footer.
 const CostFile = "cost.json"
 
-// CostRecords reads a bundle's spend record the way the shell slurps it: an
+// CostRecords reads a bundle's spend record: an
 // array passes, a single object reads as one record, and an absent,
 // oversized, or unparsable store reads nil (the callers degrade, never fail).
 func CostRecords(dir string) []any {
@@ -167,7 +167,7 @@ func CostEstimate(rec any) (float64, bool) {
 // CostModels reads one record's models list: an array passes, an object
 // contributes its values in key order (jq's `.models[]` iterates objects
 // too), and an absent or null list reads empty. Every non-null element must
-// be an object, like the shell's shape filter.
+// be an object (the shape filter).
 func CostModels(rec any) ([]any, bool) {
 	m, ok := rec.(map[string]any)
 	if !ok {
@@ -210,10 +210,10 @@ func coerceModelList(raw any) ([]any, bool) {
 }
 
 // readCostFile reads one cost file: records plus its present/parsed
-// tri-state. A non-regular path reads absent (the shell's [[ -f ]] gate);
+// tri-state. A non-regular path reads absent;
 // invalid JSON reads present-but-unparseable. Records that fail shape
-// validation survive the read and fail at rollup time, mirroring the
-// shell's two-stage filter.
+// validation survive the read and fail at rollup time (the two-stage
+// filter).
 func readCostFile(path string) (recs []any, present, parsed bool) {
 	if !IsFile(path) {
 		return nil, false, false
@@ -232,7 +232,7 @@ func readCostFile(path string) (recs []any, present, parsed bool) {
 	return []any{doc}, true, true
 }
 
-// chunkCostFiles ports the per-chunk file discovery: manifest names first,
+// chunkCostFiles owns the per-chunk file discovery: manifest names first,
 // then the on-disk chunk-*.cost.json glob, sorted and deduplicated.
 func chunkCostFiles(dir string) []string {
 	chunksDir := dir + "/chunks"
@@ -246,8 +246,8 @@ func chunkCostFiles(dir string) []string {
 	return dedupeSorted(appendChunkGlob(chunksDir, files))
 }
 
-// appendChunkGlob appends the on-disk chunk-*.cost.json names, mirroring
-// the shell's glob (unreadable dirs read as manifest-only via || true).
+// appendChunkGlob appends the on-disk chunk-*.cost.json names (an
+// unreadable dir reads as manifest-only).
 func appendChunkGlob(chunksDir string, files []string) []string {
 	entries, err := os.ReadDir(chunksDir)
 	if err != nil {
@@ -309,7 +309,7 @@ func manifestChunkList(path string) ([]any, bool) {
 }
 
 // manifestChunkName validates one manifest chunk entry: non-objects and
-// non-scalar names invalidate the whole manifest like the shell's jq
+// non-scalar names invalidate the whole manifest: the name
 // error; null/false read empty and skip.
 func manifestChunkName(c any) (string, bool) {
 	cm, ok := c.(map[string]any)
@@ -320,9 +320,9 @@ func manifestChunkName(c any) (string, bool) {
 }
 
 // chunkName renders a manifest chunk name: strings verbatim, numbers
-// canonically and true as "true" (the shell interpolates scalars into the
-// path), null/false read empty and skip, containers invalidate the whole
-// manifest like the shell's jq error.
+// canonically and true as "true" (scalars interpolate into the path),
+// null/false read empty and skip, and containers invalidate the whole
+// manifest.
 func chunkName(v any) (string, bool) {
 	switch t := v.(type) {
 	case nil:
@@ -389,9 +389,9 @@ func rollupRecords(records []any) *jq.Obj {
 			keyTotalTokens, a.input+a.output,
 		))
 	}
-	// The shell appends total_tokens after by_tier (`.total_tokens = ...`
+	// total_tokens is appended after by_tier (`.total_tokens = ...`
 	// past the object construction), so the key lands last: insertion
-	// order is the wire order (R2).
+	// order is the wire order.
 	obj := jq.NewObj(
 		keyRuns, sum.runs,
 		"runs_with_cost", sum.withCost,
@@ -406,7 +406,7 @@ func rollupRecords(records []any) *jq.Obj {
 }
 
 // foldRecord folds one cost record into the tier accumulators and running
-// totals, reporting shape failure like the shell filter's jq error.
+// totals, reporting shape failure.
 func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
 	sum.runs++
 	rm, ok := costRecordMap(rec)
@@ -438,7 +438,7 @@ func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
 }
 
 // costRecordMap validates one cost record: null and objects read; anything
-// else fails the rollup like the shell's jq error.
+// else fails the rollup.
 func costRecordMap(rec any) (map[string]any, bool) {
 	if rec == nil {
 		return map[string]any{}, true
@@ -451,7 +451,7 @@ func costRecordMap(rec any) (map[string]any, bool) {
 }
 
 // allModelMaps reports whether every non-null models element is an object,
-// mirroring the shell filter's shape gate.
+// the shape gate for the models list.
 func allModelMaps(list []any) bool {
 	for _, mm := range list {
 		if mm == nil {
@@ -496,7 +496,7 @@ func modelCached(mm any) float64 {
 	return cached
 }
 
-// Round4 ports jq's (add * 10000 | round) / 10000.
+// Round4 rounds to four decimals: (add * 10000 | round) / 10000.
 func Round4(f float64) float64 {
 	return math.Round(f*roundScale) / roundScale
 }
@@ -504,7 +504,7 @@ func Round4(f float64) float64 {
 // roundScale is the est_usd rounding factor.
 const roundScale = 10000
 
-// costZeros ports the zero rollup for absent or unreadable cost stores.
+// costZeros owns the zero rollup for absent or unreadable cost stores.
 func costZeros() *jq.Obj {
 	byTier := jq.NewObj()
 	for _, t := range []string{tierCheap, tierStandard, tierDeep} {
@@ -527,10 +527,10 @@ func costZeros() *jq.Obj {
 	)
 }
 
-// attachReceipts ports the budget.json receipts join: an array (or a
+// attachReceipts owns the budget.json receipts join: an array (or a
 // single record wrapped in one) attaches as receipts; an unreadable file
 // warns and leaves receipts null. Receipts decode ordered: the envelope
-// re-emits them in file key order like the shell's passthrough (R2).
+// re-emits them in file key order.
 func attachReceipts(dir string, res *CostResult) {
 	path := filepath.Join(dir, "budget.json")
 	if !IsFile(path) {

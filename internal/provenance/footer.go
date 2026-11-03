@@ -32,7 +32,7 @@ func baseAttribution(root string) string {
 	return strings.ReplaceAll(withVersion, "{product_url}", core.DefaultProductURL)
 }
 
-// RenderFooter ports render_footer: one merged block at the body end, or ""
+// RenderFooter renders one merged block at the body end, or ""
 // when publish.footer is off.
 func RenderFooter(o *FooterOpts) (string, error) {
 	if o.PublishFooter != core.FlagOn {
@@ -144,7 +144,7 @@ func attributionLine(o *FooterOpts, attr, receipt string) string {
 // wrapcheck add-context rule is waived here by design.
 func passRefusal(err error) error { return err }
 
-// StripFooter ports strip_rendered_footer: a previously rendered machine
+// StripFooter removes a previously rendered machine
 // footer (divider line through body end) is cut so re-rendering the same
 // body is byte-identical. Only the machine marker is stripped.
 func StripFooter(body string) string {

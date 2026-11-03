@@ -19,7 +19,7 @@ func TestOf(t *testing.T) {
 		{"single", "x", "11f6ad8ec52a2984abaafd7c3b516503785c2072"},
 		{"finding sig", "notes.txt\n\nUnhandled await error path here.", "1fd35ceaaa1fc0a98e1486617b35249c646ee577"},
 		// Non-breaking space is not C-locale [:space:]: it survives the
-		// squash on both sides (verified against tr -s '[:space:]' above).
+		// squash (verified against tr -s '[:space:]' above).
 		{"nbsp survives", "a\u00a0b", "a3256d02eb06787d15078a7ed2a32962ab7721e2"},
 	}
 	for _, tt := range tests {

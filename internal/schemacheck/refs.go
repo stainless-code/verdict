@@ -90,7 +90,7 @@ func descend(node any, token string) (any, bool) {
 
 // normalizeFragment accepts "" (whole document), "#", "#/..." and "/..." and
 // returns the "" or "/..." form the pointer walk expects. Anything else is a
-// usage error, like the shell checker's bad-sub-pointer refusal.
+// usage error (a bad sub-pointer refuses).
 func normalizeFragment(fragment string) (string, error) {
 	trimmed := strings.TrimPrefix(fragment, refHash)
 	if trimmed != "" && !strings.HasPrefix(trimmed, refSeparator) {

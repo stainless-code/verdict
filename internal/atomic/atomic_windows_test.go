@@ -23,7 +23,7 @@ const (
 )
 
 // checkStoreMode pins what a mode means on Windows: only the read-only
-// attribute is tracked, so the shell's 0644 contract is "owner writable".
+// attribute is tracked, so the 0644 contract reads "owner writable".
 func checkStoreMode(t *testing.T, fi os.FileInfo) {
 	t.Helper()
 	if fi.Mode().Perm()&0o200 == 0 {

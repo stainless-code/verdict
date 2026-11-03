@@ -87,7 +87,7 @@ func parseFlags(r *cli.Runner, args []string) (flagState, int, bool) {
 	return st, 0, false
 }
 
-// parseArg ports one flag step, returning the next index (or the usage
+// parseArg handles one flag step, returning the next index (or the usage
 // exit when done).
 func parseArg(r *cli.Runner, st *flagState, args []string, i int) (int, int, bool) {
 	a := args[i]
@@ -117,7 +117,7 @@ func usage(r *cli.Runner, msg string) int {
 	return r.ReportUsage(&cli.UsageError{Message: msg})
 }
 
-// takeJudge ports one --judge value.
+// takeJudge handles one --judge value.
 func takeJudge(st *flagState, r *cli.Runner, next string, i int) (int, int, bool) {
 	if next == "" {
 		return 0, usage(r, "missing value for --judge (want SIG:VERDICT[:HELPFUL], "+
@@ -127,7 +127,7 @@ func takeJudge(st *flagState, r *cli.Runner, next string, i int) (int, int, bool
 	return i + 2, 0, false
 }
 
-// takeJudgeEq ports one --judge= value.
+// takeJudgeEq handles one --judge= value.
 func takeJudgeEq(st *flagState, r *cli.Runner, value string, i int) (int, int, bool) {
 	if value == "" {
 		return 0, usage(r, "empty value for --judge (want SIG:VERDICT[:HELPFUL])"), true
@@ -136,7 +136,7 @@ func takeJudgeEq(st *flagState, r *cli.Runner, value string, i int) (int, int, b
 	return i + 1, 0, false
 }
 
-// takeJudgeFile ports one --judge-file value.
+// takeJudgeFile handles one --judge-file value.
 func takeJudgeFile(st *flagState, r *cli.Runner, next string, i int) (int, int, bool) {
 	if next == "" {
 		return 0, usage(r, "missing value for --judge-file (want PATH to a JSON/JSONL judgments fragment)"), true
@@ -148,7 +148,7 @@ func takeJudgeFile(st *flagState, r *cli.Runner, next string, i int) (int, int, 
 	return i + 2, 0, false
 }
 
-// takeJudgeFileEq ports one --judge-file= value.
+// takeJudgeFileEq handles one --judge-file= value.
 func takeJudgeFileEq(st *flagState, r *cli.Runner, value string, i int) (int, int, bool) {
 	if value == "" {
 		return 0, usage(r, "empty value for --judge-file (want PATH)"), true

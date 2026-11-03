@@ -41,8 +41,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return code
 	}
 	if f.ShowPrompts && !r.JSONMode {
-		// The dump owns stdout; progress moves to stderr (exec 8>&1;
-		// exec 1>&2 in the shell).
+		// The dump owns stdout; progress moves to stderr.
 		r.Human = r.Diag
 	}
 	resp, err := fetchcore.Run(ctx, fetchRequest(r, req, f))
@@ -153,8 +152,8 @@ func refuseFetch(r *cli.Runner, err error) int {
 }
 
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A trailing
-// value flag reads "" (the shell dies on the shift instead — a documented
-// divergence shared with the record port).
+// value flag reads "" (the gate below refuses typed when the value is
+// required).
 func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) {
 	f := core.FetchFlags{Provider: providerGitHub}
 	for i := 0; i < len(args); i++ {
@@ -184,8 +183,7 @@ func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) 
 }
 
 // parseLocalFlags strips fetch-local's flags, reporting unknown ones. A
-// trailing value flag reads "" and a bare --stash reads "0", mirroring the
-// shell's defaults.
+// trailing value flag reads "" and a bare --stash reads "0".
 func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, bool) {
 	var f core.FetchLocalFlags
 	for i := 0; i < len(args); i++ {
@@ -251,7 +249,7 @@ func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int
 }
 
 // flagValue reads a trailing flag value, returning the next index
-// ("", like the shell's unset default, when absent).
+// ("" when absent).
 func flagValue(args []string, i int) (string, int) {
 	if i+1 < len(args) {
 		return args[i+1], i + 1
@@ -260,7 +258,7 @@ func flagValue(args []string, i int) (string, int) {
 }
 
 // stashValue reads the optional stash number: a non-flag trailing word,
-// else the "0" default, like the shell. Returns the next index.
+// else the "0" default. Returns the next index.
 func stashValue(args []string, i int) (string, int) {
 	if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 		return args[i+1], i + 1

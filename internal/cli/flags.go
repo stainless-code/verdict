@@ -12,7 +12,7 @@ import (
 type GlobalForces = core.GlobalForces
 
 // ApplyGlobalForces applies the flag layer over eff and derives the final
-// JSONMode, mirroring lines 973-997 of the shell.
+// JSONMode.
 func ApplyGlobalForces(r *Runner, g *GlobalForces, noColorSet bool) error {
 	eff := &r.Effective
 	applyStringForces(r, eff, g)
@@ -62,7 +62,7 @@ func applyStringForces(r *Runner, eff *Effective, g *GlobalForces) {
 	}
 }
 
-// applyColorFallback ports the no-color rule: an explicit --no-color wins
+// applyColorFallback owns the no-color rule: an explicit --no-color wins
 // unless the color mode is forced or configured.
 func applyColorFallback(r *Runner, eff *Effective, g *GlobalForces, noColorSet bool) {
 	if noColorSet && g.ColorForce != colorAlways && r.EnvReviewColorMode == "" && !r.PrefColorSet {
@@ -276,8 +276,7 @@ func isAttributionTier(v string) bool {
 	}
 }
 
-// PeekJSON reports whether --json appears before any `--` separator,
-// mirroring the shell's early peek.
+// PeekJSON reports whether --json appears before any `--` separator.
 func PeekJSON(args []string) bool {
 	for _, a := range args {
 		if a == "--" {

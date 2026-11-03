@@ -11,7 +11,7 @@ import (
 // the supported surface, and it delegates here.
 const Command = "__validate-schema"
 
-// Exit codes the shim passes through unchanged: the shell checker's contract.
+// Exit codes the shim passes through unchanged: the checker contract.
 const (
 	exitInvalid = 1
 	exitUsage   = 2

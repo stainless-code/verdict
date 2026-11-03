@@ -153,9 +153,9 @@ func refuseGate(r *cli.Runner, err error, gate bool) int {
 	return r.Refuse(err)
 }
 
-// parseFlags parses the report flags in shell order. A missing option value
-// reads the flag default (the shell's ${2:-default} with a Blind shift 2);
-// an invalid value is a usage error (exit 2, no envelope).
+// parseFlags parses the report flags left to right. A missing option value
+// reads the flag default (the flag is consumed either way); an invalid value
+// is a usage error (exit 2, no envelope).
 func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
 	flags := reportcore.Flags{Status: statusAll, Kind: statusAll, Live: liveAuto}
 	i := 0
@@ -251,8 +251,8 @@ func parseLiveFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, in
 	return 2, 0, false
 }
 
-// orDefault mirrors ${2:-default}: a missing or empty value reads the
-// default (the shell consumes the flag either way).
+// orDefault reads a missing or empty value as the default (the flag is
+// consumed either way).
 func orDefault(v, dflt string) string {
 	if v == "" {
 		return dflt

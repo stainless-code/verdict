@@ -10,13 +10,12 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// unitSep mirrors the \u001f separator the shell uses for staged op keys.
+// unitSep is the \u001f separator for staged op keys.
 const unitSep = "\u001f"
 
-// StripStamps ports kb_strip_stamps: it removes staged kb_credit stamps from
-// the persisted findings file so a later re-flip can retry dropped credit.
-// Best effort; it never fails. Like the shell it warns loudly when the
-// rewrite cannot proceed (a missing file stays silent, matching the shell's
+// StripStamps removes staged kb_credit stamps from the persisted findings
+// file so a later re-flip can retry dropped credit. Best effort; it never
+// fails. It warns loudly when the rewrite cannot proceed (a missing file
 // early return).
 func StripStamps(findingsFile string, staged []map[string]any, warn func(string)) {
 	if len(staged) == 0 {
@@ -44,7 +43,7 @@ func StripStamps(findingsFile string, staged []map[string]any, warn func(string)
 	}
 }
 
-// recoverySkipped warns that staged stamps are kept, mirroring the shell's
+// recoverySkipped warns that staged stamps are kept, naming
 // kb_strip_stamps failure path byte-for-byte.
 func recoverySkipped(findingsFile string, warn func(string)) {
 	warn(fmt.Sprintf("kb recovery skipped: could not rewrite %s "+
@@ -103,7 +102,7 @@ func entrySig(m *jq.Obj) string {
 }
 
 // hasMalformedCredit reports whether any matched entry carries a non-array
-// kb_credit. Mirrors the shell: the jq filter errors on a non-array
+// kb_credit: a non-array value fails the filter,
 // kb_credit, so the whole recovery rewrite is skipped.
 func hasMalformedCredit(entries []any, sigSet map[string]bool, findingsFile string, warn func(string)) bool {
 	for _, e := range entries {
@@ -202,7 +201,7 @@ func filterCredits(credits []any, drop map[string]bool) []any {
 }
 
 // credKey renders the (rule, outcome) idempotency key for one kb_credit
-// element, or "" for non-objects (which the shell's select keeps).
+// element, or "" for non-objects (which the select keeps).
 func credKey(cr any) string {
 	switch cm := cr.(type) {
 	case *jq.Obj:
@@ -220,7 +219,7 @@ func credKey(cr any) string {
 	}
 }
 
-// maybeRetire ports kb_maybe_retire: it tombstones an active rule whose
+// maybeRetire tombstones an active rule whose
 // false-hit rate exceeds the explicit threshold. It warns, never fails.
 func (c *Ctx) maybeRetire(rid, now string) {
 	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
@@ -270,8 +269,8 @@ func (c *Ctx) retireReason(row *jq.Obj) string {
 }
 
 // retireRow marks the row retired and persists the store. The history event
-// keeps shell field order (at, event, actor, note) via *jq.Obj — plain maps
-// would serialize sorted (I4).
+// keeps wire field order (at, event, actor, note) via *jq.Obj — plain maps
+// would serialize sorted.
 func (c *Ctx) retireRow(rows []*jq.Obj, row *jq.Obj, rid, now string) {
 	reason := c.retireReason(row)
 	row.Set("status", "retired")

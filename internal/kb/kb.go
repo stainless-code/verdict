@@ -1,4 +1,4 @@
-// Package kb ports the structured knowledge-base helpers the record path
+// Package kb owns the structured knowledge-base helpers the record path
 // shares with triage: citation policy resolution, per-comment cite
 // normalization (absent/null keeps the prior cite, explicit [] clears),
 // verification/triage credit staging, the atomic commit, and threshold
@@ -14,7 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// File names relative to the working directory, mirroring the shell globals.
+// File names relative to the working directory.
 const (
 	File       = ".review/kb.jsonl"
 	Joins      = ".review/kb-joins.jsonl"
@@ -53,7 +53,7 @@ func New(warn func(string)) *Ctx {
 
 var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,64}$`)
 
-// ResolvePolicy ports kb_resolve_policy: env wins, then the policy file,
+// ResolvePolicy reads the policy: env wins, then the policy file,
 // then defaults. Invalid values warn and fall back. When no store and no
 // env knobs exist the defaults stand untouched.
 func (c *Ctx) ResolvePolicy(env map[string]string, kbExists bool) {
@@ -74,8 +74,8 @@ func (c *Ctx) resolveMinJudged(env map[string]string) {
 			c.Warn(fmt.Sprintf("ignoring invalid REVIEW_KB_MIN_JUDGED '%s' (want a positive integer) — trying file, then default", raw))
 		}
 	}
-	// The shell only tries the file when the env knob was absent/invalid;
-	// the `min_from_env` gate is folded into the outcome: an accepted env
+	// The file is read only when the env knob was absent or invalid; the
+	// `min_from_env` gate is folded into the outcome: an accepted env
 	// value wins outright.
 	if _, ok := env[envMinJudged]; !ok || !isPositiveInt(strings.TrimSpace(env[envMinJudged])) {
 		c.resolveMinJudgedFile()
@@ -162,7 +162,7 @@ func positiveInt(s string) (int, bool) {
 	return n, true
 }
 
-// isRate mirrors the shell's `^[0-9]*\.?[0-9]+$` plus the awk 0..1 range.
+// isRate accepts `^[0-9]*\.?[0-9]+$` within the 0..1 range.
 func isRate(s string) bool {
 	digits, ok := scanRate(s)
 	if !ok || digits == 0 {
@@ -192,7 +192,7 @@ func scanRate(s string) (int, bool) {
 	return digits, true
 }
 
-// NormalizeEntry ports kb_normalize_entry: it returns the normalized kb id
+// NormalizeEntry returns the normalized kb id
 // list for one comment entry. Absent or null kb reads nil (no re-cite — the
 // merge keeps the prior cite); explicit [] reads as an empty list (uncite).
 // Present arrays normalize per element with warn-and-drop. It is

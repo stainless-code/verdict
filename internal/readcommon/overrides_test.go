@@ -80,7 +80,7 @@ func checkOverrideShape(t *testing.T, tc overrideShapeCase) {
 }
 
 // TestValidateOverridesAtFragmentShapes proves the two fragment-posture
-// rules the shell and both old copies shared: a directory in a fragment's
+// rules every copy shares: a directory in a fragment's
 // place reads as no fragment at all, and a present fragment still runs the
 // locked-block and placeholder inventories.
 func TestValidateOverridesAtFragmentShapes(t *testing.T) {

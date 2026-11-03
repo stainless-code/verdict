@@ -1,8 +1,7 @@
 // Package atomic owns every store write: temp file in the target directory,
 // fsync, close, rename over the target, then a best-effort directory fsync.
 // Nothing is ever truncated in place, so a crash lands on either the old or
-// the new bytes, never a torn middle. This folds audit 19 in as structure:
-// the shell keeps its own writes, and every Go-ported verb shares this path.
+// the new bytes, never a torn middle. Every verb shares this one path.
 package atomic
 
 import (
@@ -12,7 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// storeFileMode is the shell's umask-022 default for store files.
+// storeFileMode is the umask-022 default for store files.
 const storeFileMode = 0o644
 
 // errSidecarMode marks command-stderr debug sidecars owner-only: their bytes
@@ -22,7 +21,7 @@ const errSidecarMode = 0o600
 // opWrite names the atomic-write operation in sealed errors.
 const opWrite = "atomic write "
 
-// WriteFile writes data to path atomically with mode 0o644 (the shell's
+// WriteFile writes data to path atomically with mode 0o644 (the
 // umask-022 default for store files). The temp file lives in the target
 // directory so the rename never crosses filesystems.
 func WriteFile(path string, data []byte) error {

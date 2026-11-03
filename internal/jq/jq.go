@@ -1,4 +1,4 @@
-// Package jq mirrors the jq behaviors the shell record path depends on, so
+// Package jq mirrors the jq behaviors the record path depends on, so
 // the Go port emits byte-identical stores and reads agent JSON the same way.
 //
 // The rules below are bug-for-bug ports, verified against jq 1.7 in the
@@ -55,7 +55,7 @@ func Falsey(v any) bool {
 	return v == nil || v == false
 }
 
-// Alt ports jq's `a // b`: b when a is missing (nil here), null, or false.
+// Alt reads `a // b`: b when a is missing (nil here), null, or false.
 func Alt(a, b any) any {
 	if Falsey(a) {
 		return b
@@ -160,7 +160,7 @@ func IntOf(v any) (int, bool) {
 	}
 }
 
-// Digits reports whether s is a non-empty ASCII digit run (the shell's
+// Digits reports whether s is a non-empty ASCII digit run (the
 // `[[ =~ ^[0-9]+$ ]]` gate). Magnitude is not checked: callers that need an
 // int parse with [strconv.Atoi] and refuse the overflow instead of wrapping.
 func Digits(s string) bool {
@@ -188,7 +188,7 @@ func digitsInt(s string) (int, bool) {
 	return n, true
 }
 
-// PrefixInt ports awk's string-to-number coercion used by hunks.tsv: the
+// PrefixInt is the string-to-number coercion used by hunks.tsv: the
 // longest leading ASCII digit run ("12abc" reads 12, "-3" reads 0); a prefix
 // with no digits reads 0. It reports false when the prefix overflows an int,
 // so a hostile 20-digit span refuses rather than wrapping negative.
@@ -196,9 +196,9 @@ func PrefixInt(s string) (int, bool) {
 	return prefixInt(s, false)
 }
 
-// SignedPrefixInt ports the KB counter path's one legacy difference from awk:
+// SignedPrefixInt owns the KB counter path's one legacy difference from awk:
 // an optional leading minus before the digit run ("-12abc" reads -12). It is
-// used only for KB counter fields, where the shell parsed with an explicit
+// used only for KB counter fields, which parse with an explicit
 // sign case. Overflow still reports false.
 func SignedPrefixInt(s string) (int, bool) {
 	return prefixInt(s, true)
@@ -262,8 +262,8 @@ func Decode(data []byte) (any, error) {
 }
 
 // DecodeObject parses one JSON object document into a string map, preserving
-// every unknown key (O3 passthrough for stores: never drop keys the script
-// does not know).
+// every unknown key (store passthrough: never drop keys this package does
+// not model).
 func DecodeObject(data []byte) (map[string]any, error) {
 	v, err := Decode(data)
 	if err != nil {
@@ -311,7 +311,7 @@ func PrettyOrdered(v any) string {
 
 // Compact renders v like `jq -c`: sorted keys, `:`/`,` separators, no HTML
 // escaping. [Number] renders as its raw literal — encoding/json would quote
-// the defined string type, but the shell's numbers stay numbers (R2).
+// the defined string type, but numbers stay numbers.
 func Compact(v any) string {
 	if n, ok := v.(Number); ok {
 		return n.String()
@@ -350,7 +350,7 @@ func StrOf(v any) string {
 	return ""
 }
 
-// Elements ports `. // [] | .[]` over an unknown-typed value: arrays yield
+// Elements reads `. // [] | .[]` over an unknown-typed value: arrays yield
 // elements in order, objects yield values in sorted-key order (jq iterates
 // objects by key), anything else yields nothing.
 func Elements(v any) []any {

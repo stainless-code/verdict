@@ -27,7 +27,7 @@ const (
 	fieldAuthor  = "author"
 )
 
-// ResolveBundleDir ports resolve_bundle_dir: local-* and corpus-* slugs
+// ResolveBundleDir resolves the bundle dir: local-* and corpus-* slugs
 // resolve directly; bare slugs with a matching .review/local-* dir (and no
 // PR bundle) resolve local.
 func ResolveBundleDir(pr string) string {
@@ -113,7 +113,7 @@ func (b *Bundle) State() string { return b.PrField(fieldState) }
 // Author reads the provider-aware author.
 func (b *Bundle) Author() string { return b.PrField(fieldAuthor) }
 
-// PostedHead ports `jq -r '.head // empty' post.json`: the stored reviewed
+// PostedHead reads `.head // empty` from post.json: the stored reviewed
 // head, with readable reporting whether the record decoded at all. Missing,
 // unreadable, and non-object records never arm the finalizer; a JSON null
 // document reads ("", true), exactly like the old per-verb reader.
@@ -213,7 +213,7 @@ func decodeStore(path string, maxBytes int64) (any, bool) {
 	return doc, true
 }
 
-// PrField ports pr_field: the provider-aware PR meta read (head_sha,
+// PrField reads the provider-aware PR meta (head_sha,
 // base_sha, state, author). Missing or unreadable records read "" (an
 // over-cap record is unreadable too, never allocated).
 func PrField(dir, field string) string {
@@ -272,7 +272,7 @@ func scalarOrEmpty(v any) string {
 	return jq.R(v)
 }
 
-// ShortSHA ports ${head_full:0:7}.
+// ShortSHA renders the 7-character short form of a full SHA.
 func ShortSHA(head string) string {
 	if len(head) > shortSHALen {
 		return head[:shortSHALen]

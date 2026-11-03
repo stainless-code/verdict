@@ -1,5 +1,5 @@
 // Command verdict is the only front door: it owns every verb, every usage
-// error, and the arity matrix (go-port 08, F11). A missing verb or
+// error, and the arity matrix. A missing verb or
 // positional fails with the full usage block on stderr and exit 2 before
 // any settings, store, or network read. main is thin: it parses, builds
 // the runner, delegates to run(), and exits once — only main calls [os.Exit].
@@ -139,7 +139,7 @@ func peekJSONMode(r *cli.Runner, args []string) {
 
 // noColorForFallback resolves the NO_COLOR convention for the color
 // fallback: an explicitly set (even empty) NO_COLOR is respected; in --json
-// mode an unset NO_COLOR defaults on, mirroring json_redirect (I11).
+// mode an unset NO_COLOR defaults on (machine output never carries color).
 func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 	if r.EnvNoColor {
 		return true
@@ -334,8 +334,8 @@ func stripRunnerFlags(r *cli.Runner, args []string) ([]string, *cli.GlobalForces
 	return rest, forces, 0, false
 }
 
-// exeRoot resolves the checkout root the way the shell resolved its script
-// directory: the directory holding this binary, walking up to the checkout
+// exeRoot resolves the checkout root from the directory holding this binary,
+// walking up to the checkout
 // carrying package.json so a conventional bin/verdict build (see the
 // Makefile) still finds package.json and prompts/ at the checkout root. A
 // relocated binary with no checkout above it keeps the binary directory, so

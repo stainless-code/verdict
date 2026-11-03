@@ -5,7 +5,7 @@
 //
 // Byte stability of the CLI contract is the point: message strings, key
 // order, exit codes, and the flags-win-over-file-over-env precedence are
-// frozen since the shell cutover (go-port 08). The one deliberate deviation
+// frozen. The one deliberate deviation
 // is logging: GO-LOG-01 wants slog, but the frozen CLI contract emits
 // exactly `warn: ...` / `error: ...` lines, so this package writes those
 // bytes directly instead of a log [record] with timestamps.
@@ -60,12 +60,12 @@ type Runner struct {
 // Effective is core's render configuration (alias of core.Effective).
 type Effective = core.Effective
 
-// Defaults mirrors the shell's global initializers.
+// Defaults returns the knob values every verb starts from.
 func Defaults() Effective {
 	return core.Defaults()
 }
 
-// DefaultProductURL and MakerURL mirror the shell constants.
+// DefaultProductURL and MakerURL are core's product constants.
 const (
 	DefaultProductURL = core.DefaultProductURL
 	DefaultMakerURL   = core.DefaultMakerURL
@@ -73,13 +73,13 @@ const (
 	FooterDivider     = core.FooterDivider
 )
 
-// NowUTC formats t like the shell's date -u +%Y-%m-%dT%H:%M:%SZ.
+// NowUTC formats t as UTC to the second.
 func NowUTC(t time.Time) string {
 	return core.NowUTC(t)
 }
 
 // Warn records a warning: `warn: ...` on the diagnostic stream plus the
-// WARNINGS_JSON accumulation that lands in the envelope. R5: this is a
+// WARNINGS_JSON accumulation that lands in the envelope. This is a
 // frozen-format writer, not a [slog] call — the bytes are the CLI contract.
 // Diagnostic stream writes are un-actionable, so errcheck excludes the
 // [fmt.Fprint] family here via .golangci.yml.
@@ -97,10 +97,10 @@ func (r *Runner) Warn(msg string) {
 // renders; matching uses [errors.As].
 type RefusalError = core.RefusalError
 
-// Refuse renders a refusal like the shell's fail() and returns exit 1
-// (check_gate stays false on the record path, so every refusal exits 1).
-// The edge accepts error and recovers the typed refusal with [errors.As]
-// (R4); non-refusal errors render as internal failures, never silently.
+// Refuse renders a refusal and returns exit 1 (check_gate stays false on the
+// record path, so every refusal exits 1). The edge accepts error and
+// recovers the typed refusal with [errors.As]; non-refusal errors render as
+// internal failures, never silently.
 func (r *Runner) Refuse(err error) int {
 	return r.RefuseExit(err, ExitRefused)
 }

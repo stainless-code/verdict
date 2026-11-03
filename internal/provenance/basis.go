@@ -29,7 +29,7 @@ func collectCited(m *jq.Obj, cited map[string]bool) {
 	}
 }
 
-// ReviewBasisCounts ports review_basis_counts: expected Basis numbers from
+// ReviewBasisCounts derives the expected Basis numbers from
 // the review's own comments (rigor normalized, distinct raw kb ids) plus the
 // verified count scoped to this run's addressed/triaged flips at now.
 func ReviewBasisCounts(review *jq.Obj, entries []any, now string) string {
@@ -139,7 +139,7 @@ var (
 	digitRunRe  = regexp.MustCompile(`[0-9]+`)
 )
 
-// ValidateBasisLine ports validate_basis_line: the agent-authored body may
+// ValidateBasisLine checks the Basis line: the agent-authored body may
 // carry a "> Basis:" counts line; the review's own comments decide. Mismatch
 // or unparseable warns and keeps the body.
 func ValidateBasisLine(expected, body string) []string {
@@ -169,7 +169,7 @@ func ValidateBasisLine(expected, body string) []string {
 	return nil
 }
 
-// EvidenceBaseURL ports evidence_base_url: the blob base for GitHub bundles,
+// EvidenceBaseURL returns the blob base for GitHub bundles,
 // "" otherwise.
 func EvidenceBaseURL(dir, repo string) string {
 	m := providerRecord(dir)
@@ -208,7 +208,7 @@ func providerRecord(dir string) map[string]any {
 	return m
 }
 
-// EvidenceLinkable ports evidence_linkable: "true" when this bundle posts to
+// EvidenceLinkable reports "true" when this bundle posts to
 // GitHub with a known reviewed SHA.
 func EvidenceLinkable(dir, sha string) string {
 	if sha == "" {
@@ -234,7 +234,7 @@ func EvidenceLinkable(dir, sha string) string {
 
 var blobSHARe = regexp.MustCompile(`blob/[0-9a-fA-F]{7,40}/`)
 
-// ValidateEvidenceLinks ports validate_evidence_links: blob SHAs must name
+// ValidateEvidenceLinks checks the evidence links: blob SHAs must name
 // the reviewed commit, and long quotes stay inside collapsed details.
 func ValidateEvidenceLinks(body, sha, linkable string) []string {
 	var warns []string
@@ -305,7 +305,7 @@ func sortHex(s []string) {
 	slices.Sort(s)
 }
 
-// longQuoteOutsideDetails ports the evidence-link awk verbatim: <details>
+// longQuoteOutsideDetails owns the evidence-link awk verbatim: <details>
 // depth tracks by substring anywhere in the line (even inside fences), ```
 // fences toggle only on exact ``` or ^```[^`] lines, and content lines count
 // only outside details.
@@ -360,7 +360,7 @@ func (st *quoteScan) toggleFence() {
 
 // finish flags a trailing unterminated long quote. Called after the last
 // line: the awk counts only closed fences, and an unterminated fence reads
-// as still-open — the shell's swallow-to-EOF.
+// as still-open (swallow-to-EOF).
 func (st *quoteScan) finish() {
 	if st.inFence && st.detail == 0 && st.n > minQuoteLines {
 		st.bad = true
@@ -370,7 +370,7 @@ func (st *quoteScan) finish() {
 // fencePrefix is the markdown fence marker.
 const fencePrefix = "```"
 
-// fenceOpenLine ports ($0 == "```" || $0 ~ /^```[^`]/) for the opening test.
+// fenceOpenLine is the opening-fence test ($0 == "```" || $0 ~ /^```[^`]/).
 func fenceOpenLine(line string) bool {
 	if line == fencePrefix {
 		return true

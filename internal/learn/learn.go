@@ -123,7 +123,7 @@ func setFlag(f *flags, name, val string) {
 	}
 }
 
-// appendRentry ports the rentry_cmd build (flag order fixed, values elided).
+// appendRentry owns the rentry_cmd build (flag order fixed, values elided).
 func appendRentry(r *cli.Runner, f *flags) {
 	if f.rule != "" {
 		r.Rentry += " --rule ..."

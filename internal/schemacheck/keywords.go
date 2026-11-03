@@ -298,7 +298,7 @@ func (w *walk) checkPattern(_ document, s map[string]any, value any, path string
 }
 
 // checkFormat enforces "format: date-time" (RFC 3339). Other formats are
-// outside this checker and fail loudly, as the shell checker did.
+// outside this checker and fail loudly.
 func (w *walk) checkFormat(_ document, s map[string]any, value any, path string) {
 	raw, has := s[keyFormat]
 	if !has {

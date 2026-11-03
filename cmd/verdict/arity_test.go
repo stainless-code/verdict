@@ -10,7 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 )
 
-// TestArityMatrix pins the front-door arity table (go-port 08, F11): no
+// TestArityMatrix pins the front-door arity table: no
 // verb, a missing trend repo, or a missing repo/pr on any other
 // positional verb is a usage error. Bare verbs never fail the gate.
 func TestArityMatrix(t *testing.T) {
@@ -100,8 +100,8 @@ func checkSplit(t *testing.T, args []string, wantCmd, wantRepo, wantPR string, w
 	}
 }
 
-// TestUnknownCmdMessage pins the shell refusal for a verb the CLI does
-// not know, reached only when the arity gate passed.
+// TestUnknownCmdMessage pins the refusal for a verb the CLI does not know,
+// reached only when the arity gate passed.
 func TestUnknownCmdMessage(t *testing.T) {
 	t.Parallel()
 	want := "unknown cmd 'bogus' (want " + verbsHint + ")"

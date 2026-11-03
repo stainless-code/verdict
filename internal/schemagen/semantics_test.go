@@ -23,7 +23,7 @@ var publishedSemantics = map[string]string{
 	"corpus.schema.json": "99994b94c985b183118bc49d86751d70a868fa5b914c7579aeaf454bf0fc4a2b",
 	"cost.schema.json":   "30031615315e1a60fac58a9b978b2e2ec30142001c92a78dbd25e7e34c46d217",
 	// 08: additive fetchEstimate $defs entry (measured-usage basis fields).
-	// BL04: additive showData/showFix/verifyHint $defs entries (show --json
+	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
 	// or type.
 	// T6: description prose corrected (nine keys; derived from

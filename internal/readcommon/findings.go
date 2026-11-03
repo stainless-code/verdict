@@ -8,7 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Store refusal codes and messages, byte-identical to the shell.
+// Store refusal codes and messages, frozen as the wire contract.
 const (
 	codeMissingFindings = "missing-findings"
 	codeCorruptStore    = "corrupt-store"
@@ -17,12 +17,11 @@ const (
 		" not a findings array (re-run post/record to rebuild, or restore the file)"
 )
 
-// LoadFindings ports the findings-store preamble shared by the readers:
+// LoadFindings owns the findings-store preamble shared by the readers:
 // the file must exist (missing-findings) and hold a JSON array
-// (corrupt-store). R1: entries must additionally be objects-or-null with a
-// null-or-string sig — anything else crashed bash with a jq exit-5 and no
-// envelope, so it now refuses typed corrupt-store instead (the shell gained
-// the same guard with this port; see evals/cases/read-refusals.sh).
+// (corrupt-store). Entries must additionally be objects-or-null with a
+// null-or-string sig — anything else refuses typed corrupt-store instead of
+// reaching the rank filters (see evals/cases/read-refusals.sh).
 func LoadFindings(dir string) ([]any, error) {
 	raw, err := jq.CappedFile(dir+"/findings.json", jq.MaxFindingsBytes)
 	if err != nil {
@@ -52,13 +51,12 @@ func corruptStore(dir string) *core.RefusalError {
 	return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
 }
 
-// ValidEntries enforces the R1 entry shape shared by the readers: every
-// entry is null or an object whose string-indexed fields (sig, body,
-// heading, kind) read null-or-string and whose indexed-map fields
-// (severity, rigor) never read object-or-array. Anything else crashed the
-// shell's rank, resolve, display, or SARIF filters with a jq exit-5 and no
-// envelope, so it now refuses typed corrupt-store instead (the shell
-// gained the same guard with this port; see evals/cases/read-refusals.sh).
+// ValidEntries enforces the entry shape shared by the readers: every entry
+// is null or an object whose string-indexed fields (sig, body, heading,
+// kind) read null-or-string and whose indexed-map fields (severity, rigor)
+// never read object-or-array. Anything else refuses typed corrupt-store
+// instead of reaching the rank, resolve, display, or SARIF filters (see
+// evals/cases/read-refusals.sh).
 // Fields the readers only compare or interpolate (status, path, line,
 // anchored, inBounds, kb) stay unguarded: exotic shapes flow crash-free.
 func ValidEntries(entries []any) bool {
@@ -114,7 +112,7 @@ func validEntryMaps(m *jq.Obj) bool {
 	return true
 }
 
-// ResolveSig ports resolve_sig: the unique full sig with the given prefix,
+// ResolveSig resolves the unique full sig with the given prefix,
 // or the NONE/MANY sentinels. Non-string sigs never match (the entry guard
 // above already refused exotic stores).
 func ResolveSig(entries []any, prefix string) string {

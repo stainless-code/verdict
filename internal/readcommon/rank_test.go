@@ -101,7 +101,7 @@ func TestRankFilters(t *testing.T) {
 }
 
 // TestRankNullEntry checks null entries flow through the ranking like the
-// shell's (filters read null, keys sort first) instead of crashing it.
+// ranking does (filters read null, keys sort first) instead of crashing it.
 func TestRankNullEntry(t *testing.T) {
 	t.Parallel()
 	entries := mustEntries(t, `[null,`+

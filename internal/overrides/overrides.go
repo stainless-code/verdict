@@ -1,7 +1,7 @@
-// Package overrides ports the P5 section-override fragments: operator-owned
+// Package overrides owns the section-override fragments: operator-owned
 // per-block templates under .review/overrides that reword fixed blocks.
-// Absent fragments pass silently (parity: no overrides reads today's
-// bytes); any violation fails closed with a typed bad-override refusal.
+// Absent fragments pass silently (no overrides reads the built-in bytes);
+// any violation fails closed with a typed bad-override refusal.
 package overrides
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Dir and fragment paths, mirroring the shell's OVERRIDES_DIR globals.
+// Dir and fragment paths for the overrides namespace.
 const (
 	Dir             = ".review/overrides"
 	Preamble        = Dir + "/preamble.md"
@@ -57,7 +57,7 @@ var (
 	newline       = "\n"
 )
 
-// CheckLocked ports override_check_locked over one fragment's raw text.
+// CheckLocked applies the locked-block gate over one fragment's raw text.
 func CheckLocked(path, text string) error {
 	switch {
 	case markerLine.MatchString(text):
@@ -81,7 +81,7 @@ func cliRef(path, invariant, why string) error {
 		"override %s violates locked invariant '%s' (%s)", path, invariant, why)}
 }
 
-// FooterOrder ports override_footer_order: one field per line from
+// FooterOrder reads the footer order: one field per line from
 // tier|cost|files|link, unique, non-empty; defaults to the full order.
 func FooterOrder() ([]string, error) { return At("").FooterOrder() }
 
@@ -113,7 +113,7 @@ func parseOrderLines(raw string) ([]string, error) {
 	var order []string
 	seen := map[string]bool{}
 	for ln := range strings.SplitSeq(raw, newline) {
-		// The shell reads with `|| [[ -n "$line" ]]` so a final unterminated
+		// A final unterminated line still counts, so
 		// line still counts; Split keeps it as the last element. A trailing
 		// newline yields a final empty element that skips below.
 		line := strings.TrimSpace(strings.ReplaceAll(ln, "\r", ""))
@@ -144,7 +144,7 @@ func checkOrderField(line string, seen map[string]bool) error {
 	return nil
 }
 
-// Thresholds ports override_thresholds: `files: N` / `bytes: N` lines (both
+// Thresholds reads `files: N` / `bytes: N` lines (both
 // `:` and `=` forms after whitespace removal), defaulting to 8 files and
 // Override threshold parsing constants.
 const (
@@ -159,7 +159,7 @@ const (
 	keyFiles = "files"
 )
 
-// Thresholds ports override thresholds: 8 files / 24576 bytes defaults,
+// Thresholds reads the overview thresholds: 8 files / 24576 bytes defaults,
 // degenerate-guarded by the locked invariants.
 func Thresholds() (files, bytes int, ref error) { return At("").Thresholds() }
 
@@ -259,7 +259,7 @@ func splitThreshold(line string) (key, val string) {
 	return "", ""
 }
 
-// removeSpaces strips ASCII whitespace, like the shell's tr -d '[:space:]'.
+// removeSpaces strips ASCII whitespace.
 func removeSpaces(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
@@ -271,8 +271,8 @@ func removeSpaces(s string) string {
 	}, s)
 }
 
-// AttributionText ports override_attribution_text: the raw fragment, which
-// must fit on one line. The shell's command substitution strips trailing
+// AttributionText reads the raw fragment, which must fit on one line.
+// Trailing
 // newlines before the line count, so interior newlines refuse but a single
 // trailing newline reads as the one line.
 func (s Set) AttributionText() (string, error) {
@@ -289,7 +289,7 @@ func (s Set) AttributionText() (string, error) {
 	return text, nil
 }
 
-// Substitute ports substitute_override_placeholders: v1 inventory replaced
+// Substitute replaces the placeholders: the v1 inventory
 // with bundle values. version/tier/cost/files/head/model come from the
 // provided bundle-value callbacks so this package stays I/O-free.
 func Substitute(text string, vals *Values) string {

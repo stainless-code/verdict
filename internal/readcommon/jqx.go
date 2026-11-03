@@ -8,12 +8,12 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Truthy ports jq truthiness: everything except null and false.
+// Truthy reports jq truthiness: everything except null and false.
 func Truthy(v any) bool {
 	return v != nil && v != false
 }
 
-// Tostring ports jq's `tostring`: strings pass raw, null renders "null",
+// Tostring renders jq's `tostring`: strings pass raw, null renders "null",
 // numbers render canonically, containers render compact.
 func Tostring(v any) string {
 	switch t := v.(type) {
@@ -95,7 +95,7 @@ const (
 	rankObject = 6
 )
 
-// TypeRank ports jq's total value order for sort_by keys. Exotic containers
+// TypeRank is jq's total value order for sort_by keys. Exotic containers
 // tie-break on their canonical bytes; finding stores only ever sort plain
 // scalars.
 func TypeRank(v any) int {
@@ -185,7 +185,7 @@ func cmpFloat(a, b float64) int {
 	}
 }
 
-// EffortTier ports the cost-effort normalization: null/false/missing
+// EffortTier owns the cost-effort normalization: null/false/missing
 // reads standard, strings downcase through the allowlist, anything else
 // reads standard.
 func EffortTier(eff any) string {
@@ -261,14 +261,14 @@ func ASCIILower(s string) string {
 
 // TrimSpace trims ASCII whitespace (space, tab, newline, vertical tab, form
 // feed, carriage return), mirroring sed 's/^[[:space:]]*//' under the C
-// locale. Unicode spaces are left alone: the shell folds those only under a
+// locale. Unicode spaces are left alone: they fold only under a
 // UTF-8 locale, and the contract inputs are ASCII.
 func TrimSpace(s string) string {
 	return strings.Trim(s, " \t\n\v\f\r")
 }
 
-// IsDigits reports whether s is a non-empty ASCII digit run, mirroring the
-// shell's `”|*[!0-9]*` guard inverted. It is the shared spelling of the
+// IsDigits reports whether s is a non-empty ASCII digit run, the inverted
+// `*[!0-9]*` guard. It is the shared spelling of the
 // [jq.Digits] gate.
 func IsDigits(s string) bool {
 	return jq.Digits(s)

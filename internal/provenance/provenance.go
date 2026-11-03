@@ -1,4 +1,4 @@
-// Package provenance ports the bundle-provenance triple (tool version,
+// Package provenance owns the bundle-provenance triple (tool version,
 // prompt-set hash, cost-record model) plus the P1 footer receipt, the P1
 // confidence basis line, and the P2 permalink evidence-link garnish. In the
 // record verb these only surface as warnings: the body they annotate is a
@@ -126,7 +126,7 @@ func Spend(dir string) (tier, cost string) {
 }
 
 // sumEstimates sums the est_usd estimates, bailing to unrecorded on a
-// non-object record (mirrors the shell's jq failure).
+// non-object record.
 func sumEstimates(records []any) (float64, int) {
 	sum, n := 0.0, 0
 	for _, r := range records {
@@ -153,7 +153,7 @@ func jqTostring(f float64) string {
 	return strconv.FormatFloat(f, 'g', -1, floatBits)
 }
 
-// FileCount ports publish_file_count: "N file(s)" or "files unrecorded".
+// FileCount renders "N file(s)" or "files unrecorded".
 func FileCount(dir string) string {
 	if n, ok := prFileCount(dir); ok {
 		return fileWords(n)
@@ -211,7 +211,7 @@ func fileWords(n int) string {
 	return fmt.Sprintf("%d files", n)
 }
 
-// HeadShort ports override_head_short: 7-char head, dirty, or unknown.
+// HeadShort renders head_short: 7-char head, dirty, or unknown.
 func HeadShort(dir string) string {
 	if _, err := os.Stat(filepath.Join(dir, prFile)); err == nil {
 		if hs := prHead(dir); hs != "" {
@@ -239,7 +239,7 @@ func sourceHeadShort(dir string) string {
 	if hs := jq.StrOf(m["head_sha"]); hs != "" {
 		return readcommon.ShortSHA(hs)
 	}
-	// The shell reads `jq -r '.dirty // false'` and compares to "true", so a
+	// The dirty flag is read as `.dirty // false` and compared to "true", so a
 	// JSON string "true" counts as dirty just like boolean true (R() mirrors
 	// the -r rendering, including its pretty containers).
 	if d, ok := m["dirty"]; ok && jq.R(jq.Alt(d, false)) == "true" {
@@ -271,7 +271,7 @@ func prHead(dir string) string {
 	return hs
 }
 
-// OverrideModel ports override_model: first cost model name, REVIEW_MODEL,
+// OverrideModel renders the cost model: first cost model name, REVIEW_MODEL,
 // or unrecorded.
 func OverrideModel(dir, reviewModel string) string {
 	records := readcommon.CostRecords(dir)
@@ -308,7 +308,7 @@ func firstNameModel(records []any, i int) string {
 	return jq.Str(name)
 }
 
-// ReviewLink ports publish_review_link: a factual review ref, or "".
+// ReviewLink renders a factual review ref, or "".
 func ReviewLink(dir string) string {
 	m := postRecord(dir)
 	if m == nil {

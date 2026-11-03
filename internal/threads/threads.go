@@ -76,7 +76,7 @@ func parseFlags(r *cli.Runner, args []string) (provider string, code int, done b
 	return provider, 0, false
 }
 
-// flagValue reads a trailing flag value ("", like the shell's unset default,
+// flagValue reads a trailing flag value ("", the unset default,
 // when absent).
 func flagValue(args []string, i int) (string, int) {
 	if i+1 < len(args) {

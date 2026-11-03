@@ -73,7 +73,7 @@ func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
 	return statusF, 0, false
 }
 
-// nextStoreError ports the unreadable-store path: in machine mode the
+// nextStoreError owns the unreadable-store path: in machine mode the
 // report envelope renders from the classified refusal (nil means the
 // invalid-status path produced no report), else the fixed human line.
 func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {

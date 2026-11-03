@@ -1,4 +1,4 @@
-// Package diagram ports validate_behavioral_diagram: grammar-level validation
+// Package diagram validates a behavioral diagram: grammar-level validation
 // plus opt-in gating of the agent-drawn mermaid block. It warns and drops
 // with a note, never failing the run — like the basis and evidence garnish.
 package diagram
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Markers and allowlist mirror the shell globals.
+// Markers and allowlist for the diagram grammar.
 const (
 	Start      = "<!-- verdict-diagram:start -->"
 	End        = "<!-- verdict-diagram:end -->"
@@ -50,7 +50,7 @@ var (
 	singleClose = regexp.MustCompile("```[ \t]*$")
 )
 
-// Validate ports validate_behavioral_diagram. behavioral/collapsed carry the
+// Validate checks a behavioral diagram. behavioral/collapsed carry the
 // EFFECTIVE_PUBLISH_DIAGRAMS_BEHAVIORAL/EXPANDED knobs; marker is the footer
 // divider that drop-notes land before.
 func Validate(body string, behavioral, expanded bool, marker string) Result {
@@ -75,11 +75,9 @@ func Validate(body string, behavioral, expanded bool, marker string) Result {
 	}
 	chk := &checker{cands: cands, regions: sc.regions, fenceInRegion: fenceInRegion, behavioral: behavioral, expanded: expanded, st: &st}
 	chk.run()
-	// The shell captures the awk render in $(...) which strips trailing
-	// newlines; bodies with no candidates return untouched above.
+	// Bodies with no candidates return untouched above; a rendered body
+	// loses its trailing newlines.
 	rendered := renderBody(bodyLines, marker, chk.dels, chk.notes, chk.dline, chk.dopen)
-	// The shell captures the awk render in $(...) which strips trailing
-	// newlines; bodies with no candidates return untouched above.
 	return Result{Body: strings.TrimRight(rendered, newline), Status: st, Warns: chk.warns}
 }
 
@@ -111,7 +109,7 @@ type region struct {
 	idx, start, end int
 }
 
-// scanner ports the awk pre-pass: it records fenced mermaid blocks and
+// scanner owns the awk pre-pass: it records fenced mermaid blocks and
 // marked regions with their details context.
 type scanner struct {
 	kw       string

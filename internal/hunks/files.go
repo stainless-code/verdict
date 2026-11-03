@@ -126,7 +126,7 @@ func removedContent(ln string) bool {
 	return strings.HasPrefix(ln, "-") && !strings.HasPrefix(ln, "---")
 }
 
-// Diff scanning constants, mirroring the shell greps they replace.
+// Diff scanning constants.
 const (
 	// diffGitPrefix opens every file section.
 	diffGitPrefix = "diff --git "

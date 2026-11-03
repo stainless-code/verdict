@@ -46,7 +46,7 @@ var generatedSubstrings = []string{
 	"__snapshots__/", ".snap", ".pb.go", ".g.dart", ".generated.",
 }
 
-// isGeneratedPath ports the generated branch, including the start-anchored
+// isGeneratedPath owns the generated branch, including the start-anchored
 // dist/build/vendor prefix.
 func isGeneratedPath(path, base string) bool {
 	for _, sub := range generatedSubstrings {

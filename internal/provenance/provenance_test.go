@@ -76,7 +76,7 @@ func TestStripFooterKeepsReceipt(t *testing.T) {
 }
 
 // TestHeadShortDirty checks the dirty-head readings, including the JSON
-// string "true" form the shell's `jq -r` comparison accepts.
+// string "true" form the comparison accepts.
 func TestHeadShortDirty(t *testing.T) {
 	dir := writeBundle(t, map[string]string{
 		"source.json": `{"head_ref":"work"}`,

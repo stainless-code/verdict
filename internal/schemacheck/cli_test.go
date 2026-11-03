@@ -35,7 +35,7 @@ func assertRun(t *testing.T, code int, want string, args ...string) {
 	}
 }
 
-// TestRunExitCodes pins the shell checker's contract: 0 valid, 1 rejected or
+// TestRunExitCodes pins the checker contract: 0 valid, 1 rejected or
 // unreadable input, 2 bad usage. The shim passes these through unchanged.
 func TestRunExitCodes(t *testing.T) {
 	dir := t.TempDir()

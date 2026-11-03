@@ -80,7 +80,7 @@ func seedBundleDir(t *testing.T, dir string) {
 	}
 }
 
-// TestResolveSig pins the shell's tally: exactly one full sig with the
+// TestResolveSig pins the tally rule: exactly one full sig with the
 // prefix resolves, zero reads NONE, and two read MANY — including two
 // entries that carry the identical sig, which the deleted bundle copy
 // resolved to a sig.

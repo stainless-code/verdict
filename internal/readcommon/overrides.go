@@ -10,12 +10,12 @@ import (
 	"github.com/stainless-code/verdict/internal/overrides"
 )
 
-// ValidateOverrides ports validate_overrides over the worktree's default
+// ValidateOverrides validates the worktree's default
 // overrides directory.
 func ValidateOverrides() error { return ValidateOverridesAt("") }
 
-// ValidateOverridesAt ports validate_overrides over one overrides directory:
-// the locked-block scans plus the parsed-shape gates for the four P5
+// ValidateOverridesAt validates one overrides directory:
+// the locked-block scans plus the parsed-shape gates for the four
 // fragments. Absent fragments pass silently; every violation fails closed
 // typed. "" reads the worktree default, a bundle passes its controls
 // snapshot's overrides dir, and messages keep the logical fragment labels.
@@ -36,8 +36,8 @@ func ValidateOverridesAt(dir string) error {
 	return nil
 }
 
-// validateFragments ports the per-file locked-shape gate over the four P5
-// fragments.
+// validateFragments applies the per-file locked-shape gate over the four
+// override fragments.
 func validateFragments(set overrides.Set) error {
 	fragments := []string{
 		overrides.Preamble, overrides.FooterOrderPath, overrides.Threshold, overrides.Attribution,

@@ -1,7 +1,7 @@
 package verify_test
 
-// Go contract for the verify execution edges (go-port 08): the retired
-// edge_test.go compared bash vs Go on execution behaviors the evals never
+// Go contract for the verify execution edges: the retired cross-implementation
+// suite compared bash vs Go on execution behaviors the evals never
 // graded (process-group kill, orphan sweep, secret redaction, NO_COLOR
 // inheritance, closed stdin, bundle gates). They are pinned here with
 // fixed expectations via direct verify.Run calls; no shell entry point,

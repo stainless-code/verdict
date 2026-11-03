@@ -1,14 +1,13 @@
 package main
 
-// Front-door usage and arity (go-port 08, F11): the binary owns every
-// verb, every usage error, and the arity matrix. A missing verb or
-// positional fails with the full usage block on stderr and exit 2 before
-// any settings, store, or network read. Unknown verbs with positionals
-// present keep the shell unknown-cmd message (exit 2).
+// Front-door usage and arity: the binary owns every verb, every usage
+// error, and the arity matrix. A missing verb or positional fails with the
+// full usage block on stderr and exit 2 before any settings, store, or
+// network read. Unknown verbs with positionals present print the unknown-cmd
+// message (exit 2).
 
-// usageText is the frozen CLI usage block: the shell usage text
-// with the program name changed to verdict and no rewritten prose
-// (go-port 08, operator ruling: substitution only). The two experimental
+// usageText is the frozen CLI usage block, prose included: changing a line
+// is a contract change, not a copy edit. The two experimental
 // mcp lines are the operator-approved exception (2026-11-02): the transport
 // is discoverable but still tagged experimental. Printed to stdout by
 // -h/--help (exit 0) and to stderr by the arity gate (exit 2).
@@ -265,9 +264,9 @@ func arityUsage(cmd, repo, pr string) bool {
 	return repo == "" || pr == ""
 }
 
-// unknownCmdMessage ports the shell tail-dispatch refusal for a verb it
-// does not know, reached only when the arity gate passed (both positionals
-// present, or the verb is bare).
+// unknownCmdMessage owns the refusal for a verb dispatch does not know,
+// reached only when the arity gate passed (both positionals present, or the
+// verb is bare).
 func unknownCmdMessage(cmd string) string {
 	return "unknown cmd '" + cmd + "' (want " + verbsHint + ")"
 }
