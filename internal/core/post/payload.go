@@ -30,6 +30,15 @@ func (st *state) buildPayloads() {
 		st.payloads = append(st.payloads, postPayload(
 			splitFollowHead(i+2, n)+extra, eventComment, commitIDValue(st.commitID), []any{}))
 	}
+	// Hash the marker-less payload, then append the hidden marker carrying
+	// that hash and the reviewed SHA: a re-post can then be recognized from
+	// the live review without hashing a body that contains its own hash.
+	// Dry runs stay marker-free and report the same hash a real post arms.
+	st.phash = sigSumOf(st.payloadBytes())
+	if !st.flags.DryRun {
+		st.body += "\n\n" + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
+		st.payloads[0] = postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)
+	}
 	st.payload = st.payloads[0]
 }
 
@@ -105,10 +114,13 @@ func (st *state) splitPreFooter(body string) string {
 	if block != "" {
 		sep = "\n\n"
 	}
-	if len(body)+len(sep)+len(block) <= hostingBodyLimit {
+	// Reserve the hidden marker too: post appends it after the footer once
+	// the payload hash exists, and the posted body must still fit.
+	reserve := len(sep) + len(block) + reviewMarkerReserve
+	if len(body)+reserve <= hostingBodyLimit {
 		return body
 	}
-	budget := max(hostingBodyLimit-len(sep)-len(block)-splitNoteReserve, 1)
+	budget := max(hostingBodyLimit-reserve-splitNoteReserve, 1)
 	parts := splitBody(body, budget)
 	if len(parts) <= 1 {
 		return body

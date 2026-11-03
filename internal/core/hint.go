@@ -38,9 +38,10 @@ var hintRules = []HintRule{
 		"is approved, or raise REVIEW_BUDGET_USD/.review/budget"},
 	{isCode("bad-usage"), "try: fix the usage record named above to match " +
 		"schemas/usage.schema.json, then re-run"},
-	{isCode("duplicate-payload"), "try: re-run with --force to repost the identical payload"},
+	{isCode("duplicate-payload"), "try: re-run with --force to repost the identical payload — " +
+		"re-fetch if the earlier review was deleted"},
 	{isCode("already-posted"), "try: re-run with --force to override, or fetch --base-sha " +
-		"<posted-head> for the delta and review it instead"},
+		"<posted-head> for the delta and review it instead — re-fetch if the earlier review was deleted"},
 	{isCode("degenerate-body"), "try: open with a verdict marker (see prompts/review.md), then re-run"},
 	{isCode("pr-not-open"), "try: re-fetch the PR (bundle may be stale)"},
 	{isCode("unknown-sig", "ambiguous-sig", "unknown-judgment"), "try: copy the full sig prefix from report output"},

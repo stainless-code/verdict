@@ -34,6 +34,21 @@ func TestRunAlreadyPostedZeroNetwork(t *testing.T) {
 	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
 }
 
+// TestRunLiveAlreadyPostedZeroNetwork proves the fetched-reviews leg keeps
+// the same hoist: a fresh bundle (no post.json) refuses from reviews.json
+// before drift's live lookup, with zero Commander calls (BL05).
+func TestRunLiveAlreadyPostedZeroNetwork(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
+	writeLiveReview(t, ".review/7", markedReview(hoistHead), hoistHead)
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	_, ref := Run(context.Background(), req)
+	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
+}
+
 // TestRunAlreadyPostedBeatsApproveBlocked proves the hoist's precedence: with
 // an open finding and a binding APPROVE, the local finalizer refusal wins
 // over approve-blocked, still with zero Commander calls (and therefore before

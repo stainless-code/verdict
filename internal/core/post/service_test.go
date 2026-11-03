@@ -657,6 +657,10 @@ func TestRunSubmit(t *testing.T) {
 	if !strings.HasSuffix(posted[0], "\n") || strings.HasSuffix(posted[0], "\n\n") {
 		t.Errorf("POST stdin misses the single trailing newline: %q", posted[0])
 	}
+	marker := "<!-- verdict-review payload=" + resp.Data.PayloadHash + " head=" + strings.Repeat("a", 40) + " -->"
+	if !strings.Contains(posted[0], marker) {
+		t.Errorf("POST stdin misses the hidden repeat marker %q: %s", marker, posted[0])
+	}
 	if _, err := os.Stat(".review/7/post.json"); err != nil {
 		t.Errorf("missing post.json: %v", err)
 	}

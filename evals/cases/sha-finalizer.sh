@@ -29,6 +29,11 @@
 #       (exit 0, posted once, reason in stderr + body — never a silent
 #       APPROVE); an unreachable live lookup warns and proceeds (exit 0,
 #       posted once — never a refusal), including on the APPROVE path.
+#   F9  fresh bundle: with no post.json or .posted_ marker, the same post
+#       refuses already-posted from the bundle's fetched reviews.json (the
+#       hidden marker on the reviewed commit); the same marker on another
+#       commit refuses duplicate-payload; --force passes; every refusal
+#       makes zero network POSTs and names the stale-review re-fetch hint.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -60,6 +65,7 @@ case "$*" in
     if [ -f "${EVAL_SANDBOX:-/tmp}/post-fail" ]; then
       echo "evals-stub-gh: POST rejected" >&2; exit 1
     fi
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
     printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
     exit 0;;
   *pulls*)
@@ -79,6 +85,21 @@ reviews_posts_since() {
   printf '%s' "$n"
 }
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
+
+# run_review_in <cwd> <verdict args...> — run_review from another directory,
+# for the fresh-bundle leg (a different checkout of the same bundle).
+run_review_in() {
+  local cwd="$1"
+  shift
+  set +e
+  (
+    cd "$cwd" || exit 99
+    PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" >"$EVAL_OUT" 2>"$EVAL_ERR"
+  )
+  EVAL_STATUS=$?
+  set -e
+  return 0
+}
 
 mk_comment() { # $1 = pr — clean bundle carrying a non-binding review
   eval_mk_bundle "$1"
@@ -100,8 +121,12 @@ fi
 # --- F1: first post arms, same-SHA repost refused ---
 PR=4296
 mk_comment "$PR"
+cp "$EVAL_SANDBOX/.review/$PR/review.json" "$EVAL_SANDBOX/review-$PR.json"
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-$PR.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
 m="$(mark)"
 run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEADA" ]; then
   good "first post completes and records the reviewed SHA"
@@ -138,6 +163,58 @@ if cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.review/$PR/post.json"
   good "refused repost posted nothing (no POST, post.json identical)"
 else
   bad "refused repost posted or rewrote the record"
+fi
+
+# --- F9: fresh bundle refuses from the fetched live reviews, not local stores ---
+# Copy the bundle without post.json or the dot-marker, then synthesize the
+# reviews.json a re-fetch would have written: the body GitHub actually
+# received (captured above, hidden marker included) on the reviewed commit.
+FRESH="$EVAL_SANDBOX/fresh"
+rm -rf "$FRESH"
+mkdir -p "$FRESH/.review"
+cp -R "$EVAL_SANDBOX/.review/$PR" "$FRESH/.review/$PR"
+cp "$EVAL_SANDBOX/review-$PR.json" "$FRESH/.review/$PR/review.json"
+rm -f "$FRESH/.review/$PR/post.json" "$FRESH/.review/$PR"/.posted_*
+posted_body="$(jq -r '.body // empty' "$EVAL_SANDBOX/posted-$PR.json" 2>/dev/null || true)"
+jq -n --arg b "$posted_body" --arg h "$HEADA" \
+  '[{id:901,body:$b,commit_id:$h,submitted_at:"2026-01-01T00:00:00Z"}]' \
+  >"$FRESH/.review/$PR/reviews.json"
+m="$(mark)"
+run_review_in "$FRESH" post acme/app "$PR" --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-posted" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
+  good "fresh bundle refuses already-posted from reviews.json (no network POST)"
+else
+  bad "fresh bundle gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/already-posted/0"
+fi
+if printf '%s' "$msg" | grep -q "re-fetch if the earlier review was deleted"; then
+  good "fresh-bundle refusal names the stale-review re-fetch hint"
+else
+  bad "fresh-bundle refusal message: $(printf '%s' "$msg" | head -c 300)"
+fi
+
+# Same marker, different commit: the coarse guard passes and the fine guard
+# recognizes the payload hash.
+jq --arg h "$HEADB" '.[0].commit_id = $h' "$FRESH/.review/$PR/reviews.json" \
+  >"$FRESH/.review/$PR/reviews.json.new"
+mv "$FRESH/.review/$PR/reviews.json.new" "$FRESH/.review/$PR/reviews.json"
+m="$(mark)"
+run_review_in "$FRESH" post acme/app "$PR" --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "duplicate-payload" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
+  good "fresh bundle refuses duplicate-payload from the live marker (no network POST)"
+else
+  bad "fresh duplicate gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/duplicate-payload/0"
+fi
+m="$(mark)"
+run_review_in "$FRESH" post acme/app "$PR" --force --json
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "--force posts through the live-review guard (exit 0, one POST)"
+else
+  bad "fresh --force gave exit $EVAL_STATUS calls $(reviews_posts_since "$m"), want 0/1"
 fi
 
 # --- F6: refusal names the advance command + force override, both surfaces ---

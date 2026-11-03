@@ -12,7 +12,6 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/sig"
 )
 
 // Commander is the exec seam every post spawn goes through: the live-SHA
@@ -75,6 +74,7 @@ type state struct {
 	payload      string
 	payloads     []string
 	extraParts   []string
+	live         []liveReview
 	findingsFile string
 	now          string
 	controls     *controls.Snapshot
@@ -82,6 +82,7 @@ type state struct {
 	diagram      diagram.Status
 	embedded     int
 	driftStale   bool
+	liveLoaded   bool
 }
 
 // withWarnings attaches the accumulated warnings to a refusal so the
@@ -479,42 +480,41 @@ func (st *state) eventLine() {
 }
 
 // duplicateGuard ports the double-post guard: exact payload replays refuse
-// unless --force. The marker covers every posted part (a single part joins
-// to itself, so the marker stays byte-identical there). The marker is only
-// touched after a successful submit, so legit re-reviews hash differently
-// and pass.
+// unless --force. It checks the local dot-marker and the fetched reviews;
+// the marker covers every posted part and is touched only after a successful
+// submit, so legit re-reviews hash differently and pass.
 func (st *state) duplicateGuard() *core.RefusalError {
-	st.phash = sig.Sum(st.payloadBytes())
-	if exists(st.dir+"/.posted_"+st.phash) && !st.flags.Force {
-		return &core.RefusalError{Code: "duplicate-payload", Message: "identical payload already posted — " +
-			"refusing duplicate (pass --force to repost)"}
+	if st.flags.Force {
+		return nil
 	}
-	return nil
+	if exists(st.dir + "/.posted_" + st.phash) {
+		return duplicatePayloadRefusal()
+	}
+	return st.liveDuplicatePayload()
 }
 
 // finalizerGuard ports the single-review finality: a completed post on the
-// same reviewed SHA refuses unless --force; any new SHA proceeds and
-// refreshes the record on success. Unreadable or head-less records warn and
-// proceed — they are overwritten on success, never wedging the run.
+// same reviewed SHA refuses unless --force; a new SHA proceeds and refreshes
+// the record. The local post.json is the fast path, the fetched reviews the
+// fresh-bundle fallback. Unreadable records warn and proceed.
 func (st *state) finalizerGuard() *core.RefusalError {
-	if st.commitID == "" || st.flags.Force || !exists(st.dir+"/post.json") {
+	if st.commitID == "" || st.flags.Force {
 		return nil
 	}
-	storedHead, readable := postHead(st.dir + "/post.json")
-	switch {
-	case !readable:
-		st.warn("post record unreadable — proceeding, will refresh it on success")
-		return nil
-	case storedHead == "":
-		st.warn("post record carries no head — proceeding, will refresh it on success")
-		return nil
-	case storedHead == st.commitID:
-		storedAt := postTime(st.dir + "/post.json")
-		return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
-			shortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, shortSHA(storedHead))}
-	default:
-		return nil
+	if exists(st.dir + "/post.json") {
+		storedHead, readable := postHead(st.dir + "/post.json")
+		switch {
+		case !readable:
+			st.warn("post record unreadable — proceeding, will refresh it on success")
+		case storedHead == "":
+			st.warn("post record carries no head — proceeding, will refresh it on success")
+		case storedHead == st.commitID:
+			storedAt := postTime(st.dir + "/post.json")
+			return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
+				shortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, shortSHA(storedHead))}
+		}
 	}
+	return st.liveAlreadyPosted()
 }
 
 // exists reports whether path exists.

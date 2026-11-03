@@ -142,10 +142,12 @@ else
   bad "rebuilt no-drop run exits $EVAL_STATUS"
 fi
 # The drift nudge names the per-PR advance command (fetch <repo> <pr>
-# --base-sha <short>), so mask the PR number before comparing: pinning must
-# change nothing else on the kept path.
-sed 's/acme\/app 428[23]/acme\/app PR/' "$EVAL_SANDBOX/posted-4282.json" > "$EVAL_SANDBOX/norm-4282.json"
-sed 's/acme\/app 428[23]/acme\/app PR/' "$EVAL_SANDBOX/posted-4283.json" > "$EVAL_SANDBOX/norm-4283.json"
+# --base-sha <short>), and the hidden repeat marker hashes the full payload
+# (PR number included), so mask both before comparing: pinning must change
+# nothing else on the kept path.
+mask() { sed -E 's/acme\/app 428[23]/acme\/app PR/; s/verdict-review payload=[0-9a-f]{40}/verdict-review payload=HASH/'; }
+mask <"$EVAL_SANDBOX/posted-4282.json" >"$EVAL_SANDBOX/norm-4282.json"
+mask <"$EVAL_SANDBOX/posted-4283.json" >"$EVAL_SANDBOX/norm-4283.json"
 if cmp -s "$EVAL_SANDBOX/norm-4282.json" "$EVAL_SANDBOX/norm-4283.json"; then
   good "no-drop payload is byte-identical with a pinned or rebuilt index"
 else
