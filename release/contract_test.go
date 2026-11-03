@@ -424,6 +424,66 @@ func TestPublishOrderRecordsArgv(t *testing.T) {
 	checkPublishFlags(t, lines)
 }
 
+// TestPublishSkipsExistingVersions proves --skip-existing resumes a partial
+// publish: the version the fake registry already serves is skipped and the
+// remaining packages keep contract order with the wrapper last.
+func TestPublishSkipsExistingVersions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake npm is a shell script (unix); order is platform-independent JS")
+	}
+	node := nodeBin(t)
+	doc := loadContract(t)
+	bins := t.TempDir()
+	stageBins(t, &doc, bins)
+	fakeDir := t.TempDir()
+	log := filepath.Join(fakeDir, "argv.log")
+	skipped := "@stainless-code/verdict-linux-x64"
+	fake := "#!/bin/sh\n" +
+		"if [ \"$1\" = view ]; then\n" +
+		"  if [ \"$2\" = \"" + skipped + "@1.2.3\" ]; then echo 1.2.3; exit 0; fi\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"printf '%s\\n' \"$*\" >> \"" + log + "\"\n"
+	if err := os.WriteFile(filepath.Join(fakeDir, "npm"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "npm")
+	got, code := runNode(t, []string{"PATH=" + fakeDir + ":" + os.Getenv("PATH")},
+		node, "../scripts/publish-npm.mjs",
+		"--bins="+bins, "--out="+out, "--skip-existing", "--version=1.2.3")
+	if code != 0 {
+		t.Fatalf("publish-npm.mjs exit %d:\n%s", code, got)
+	}
+	lines := strings.Split(strings.TrimSpace(string(mustRead(t, log))), "\n")
+	if len(lines) != len(doc.Archives) {
+		t.Fatalf("fake npm saw %d publishes; want %d (one skipped)", len(lines), len(doc.Archives))
+	}
+	assertPublishOrderSkipping(t, out, &doc, lines, skipped)
+}
+
+// wantPublishDirs lists the expected publish targets after skipping one
+// platform package, wrapper last.
+func wantPublishDirs(out string, doc *contractDoc, skipped string) []string {
+	want := make([]string, 0, len(doc.Archives))
+	for i := range doc.Archives {
+		if doc.Archives[i].NPMPackage == skipped {
+			continue
+		}
+		want = append(want, filepath.Join(out, strings.TrimPrefix(doc.Archives[i].NPMPackage, "@stainless-code/")))
+	}
+	return append(want, filepath.Join(out, "verdict"))
+}
+
+// assertPublishOrderSkipping pins the resume order against the fake npm log.
+func assertPublishOrderSkipping(t *testing.T, out string, doc *contractDoc, lines []string, skipped string) {
+	t.Helper()
+	for i, pkg := range wantPublishDirs(out, doc, skipped) {
+		if !strings.Contains(lines[i], "publish "+pkg) {
+			t.Errorf("publish %d = %q; want %s", i, lines[i], pkg)
+		}
+	}
+}
+
 // checkPublishOrder asserts contract order with the wrapper last.
 func checkPublishOrder(t *testing.T, out string, doc *contractDoc, lines []string) {
 	t.Helper()

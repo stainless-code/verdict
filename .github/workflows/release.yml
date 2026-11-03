@@ -1,10 +1,13 @@
 # Release: Changesets opens "Version packages" PRs on main; merging one runs
-# the full release chain (scripts/release.sh): git-tag the bumped version,
-# GoReleaser builds/signs/attests the six static binaries and owns the
-# GitHub Release, then the npm tree publishes (platforms first, wrapper
-# last) and the Homebrew formula renders. GoReleaser owns the GitHub
-# Release, so create-github-releases stays false. Trusted publishing is npm
-# OIDC (no NPM_TOKEN); cosign is keyless (GitHub OIDC, no keys).
+# the full release chain (scripts/release.sh) in four idempotent stages:
+# git-tag the bumped version, GoReleaser builds/signs/attests the six static
+# binaries and owns the GitHub Release, then the npm tree publishes (platforms
+# first, wrapper last) and the Homebrew formula renders. Each stage skips when
+# its effect already exists, so re-running this workflow after a mid-chain
+# failure finishes the remaining stages instead of wedging. GoReleaser owns
+# the GitHub Release, so create-github-releases stays false. Trusted
+# publishing is npm OIDC (no NPM_TOKEN); cosign is keyless (GitHub OIDC, no
+# keys).
 name: Release
 
 on:
