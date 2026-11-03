@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // checkRepoEscape ports the verify-repo-escape arms: device/proc/sys
@@ -46,7 +46,7 @@ func checkAbsPaths(g *gateText) *core.RefusalError {
 	}
 	lroot := ""
 	if wd, err := os.Getwd(); err == nil {
-		lroot = bundle.LowerASCII(wd)
+		lroot = readcommon.ASCIILower(wd)
 	}
 	for _, c := range cands {
 		norm, ok := normAbsPath(c, lroot)

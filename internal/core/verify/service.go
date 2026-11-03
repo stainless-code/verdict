@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Refusal codes and store names for the verify verb.
@@ -61,8 +61,8 @@ func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *c
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"}
 	}
-	dir := bundle.Dir(req.Pr)
-	if !bundle.IsFile(patchPath(dir)) {
+	dir := readcommon.ResolveBundleDir(req.Pr)
+	if !readcommon.IsFile(patchPath(dir)) {
 		return nil, st.withWarnings(missingPatchRefusal(dir))
 	}
 	now := req.TimeUTC()

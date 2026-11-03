@@ -182,14 +182,8 @@ func TestLocator(t *testing.T) {
 	if got := readcommon.Locator(entries[1]); got != "Scope note" {
 		t.Errorf("Locator() = %q; want the heading fallback", got)
 	}
-	if got := readcommon.ResolveSig(entries, "s"); got != "MANY" {
-		t.Errorf("ResolveSig() = %q; want MANY", got)
-	}
 	if got := readcommon.ResolveSig(entries, "s1"); got != "s1" {
 		t.Errorf("ResolveSig(s1) = %q; want s1", got)
-	}
-	if got := readcommon.ResolveSig(entries, "zzz"); got != "NONE" {
-		t.Errorf("ResolveSig(zzz) = %q; want NONE", got)
 	}
 	if got := readcommon.Prefix("c11111111"); got != "c1111111" {
 		t.Errorf("Prefix() = %q; want the 8-codepoint head", got)

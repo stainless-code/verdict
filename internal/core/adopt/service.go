@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -134,7 +133,7 @@ func (st *state) resolveAdoptDirs() (string, string, *core.RefusalError) {
 // loadFromEntries reads and decodes the source findings array, refusing
 // missing or corrupt stores.
 func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
-	if !bundle.IsFile(fromDir + findingsSuffix) {
+	if !readcommon.IsFile(fromDir + findingsSuffix) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(msgMissingFindings, fromDir))
 	}
 	fromRaw, err := os.ReadFile(fromDir + findingsSuffix)
@@ -151,7 +150,7 @@ func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
 // checkAdoptTarget refuses missing diffs and non-GitHub targets, ensuring
 // the store marker exists.
 func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
-	if !bundle.IsFile(dir + fullDiffSuffix) {
+	if !readcommon.IsFile(dir + fullDiffSuffix) {
 		return st.refuse("missing-diff", fmt.Sprintf(msgMissingDiff, dir))
 	}
 	if err := ensureStore(dir); err != nil {
@@ -165,7 +164,7 @@ func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 
 // checkAdoptFresh refuses targets that already carry findings.
 func (st *state) checkAdoptFresh(dir string) *core.RefusalError {
-	if bundle.Exists(dir + findingsSuffix) {
+	if readcommon.Exists(dir + findingsSuffix) {
 		return st.refuse("already-adopted", fmt.Sprintf(msgAlreadyAdopted, dir))
 	}
 	return nil
@@ -389,7 +388,7 @@ func bundleProvider(dir string) string {
 
 // ensureStore ports ensure_store: backfill the store marker when absent.
 func ensureStore(dir string) error {
-	if bundle.Exists(dir + storeSuffix) {
+	if readcommon.Exists(dir + storeSuffix) {
 		return nil
 	}
 	return atomic.WriteFile(dir+storeSuffix, []byte("{\n  \"schema_version\": \"1\"\n}\n"))
@@ -398,7 +397,7 @@ func ensureStore(dir string) error {
 // ensureHunks ports ensure_hunks_snapshot: rebuild from full.diff when the
 // fetch-time snapshot is missing, warning that validation is best-effort.
 func (st *state) ensureHunks(dir string) *core.RefusalError {
-	if bundle.Exists(dir + hunksSuffix) {
+	if readcommon.Exists(dir + hunksSuffix) {
 		return nil
 	}
 	st.warn(fmt.Sprintf(msgHunksRebuild, dir))

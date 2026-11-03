@@ -16,9 +16,9 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Scaffold refusal codes and paths.
@@ -289,7 +289,7 @@ func (st *state) writeControls(wants map[string]string) *core.RefusalError {
 		if err := atomic.WriteFile(reviewDir+t, []byte(wants[t]+newlineStr)); err != nil {
 			return st.cannotWriteControl(t)
 		}
-		if !bundle.IsFile(reviewDir + t) {
+		if !readcommon.IsFile(reviewDir + t) {
 			return st.cannotWriteControl(t)
 		}
 		st.humanf("wrote: .review/%s\n", t)
@@ -433,10 +433,10 @@ func checkBudget() *core.RefusalError {
 
 // checkScaffoldFiles validates the scaffolded panel and kb-policy files.
 func checkScaffoldFiles() *core.RefusalError {
-	if !bundle.IsFile(reviewDir + "panel") {
+	if !readcommon.IsFile(reviewDir + "panel") {
 		return &core.RefusalError{Code: codeInitFailed, Message: "scaffolded .review/panel missing after write"}
 	}
-	if !bundle.IsFile(reviewDir + "kb-policy") {
+	if !readcommon.IsFile(reviewDir + "kb-policy") {
 		return &core.RefusalError{
 			Code:    codeInitFailed,
 			Message: "scaffolded .review/kb-policy missing after write",

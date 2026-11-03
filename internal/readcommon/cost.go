@@ -135,7 +135,7 @@ func chunkWarn(path string) string {
 // validation survive the read and fail at rollup time, mirroring the
 // shell's two-stage filter.
 func readCostFile(path string) (recs []any, present, parsed bool) {
-	if !isRegular(path) {
+	if !IsFile(path) {
 		return nil, false, false
 	}
 	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
@@ -156,7 +156,7 @@ func readCostFile(path string) (recs []any, present, parsed bool) {
 // then the on-disk chunk-*.cost.json glob, sorted and deduplicated.
 func chunkCostFiles(dir string) []string {
 	chunksDir := dir + "/chunks"
-	if !isDir(chunksDir) {
+	if !IsDir(chunksDir) {
 		return nil
 	}
 	var files []string
@@ -484,7 +484,7 @@ func costZeros() *jq.Obj {
 // re-emits them in file key order like the shell's passthrough (R2).
 func attachReceipts(dir string, res *CostResult) {
 	path := filepath.Join(dir, "budget.json")
-	if !isRegular(path) {
+	if !IsFile(path) {
 		return
 	}
 	raw, err := jq.CappedFile(path, jq.MaxCostBytes)

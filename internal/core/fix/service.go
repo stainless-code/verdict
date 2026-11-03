@@ -17,7 +17,6 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -190,7 +189,7 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 
 // fixBundleDir resolves the bundle dir, refusing non-local slugs.
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
-	dir := bundle.Dir(st.req.Pr)
+	dir := readcommon.ResolveBundleDir(st.req.Pr)
 	if !strings.HasPrefix(dir, prefixLocalReview) {
 		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
 	}
@@ -199,7 +198,7 @@ func (st *state) fixBundleDir() (string, *core.RefusalError) {
 
 // checkPrGate refuses closed or merged bundle PRs.
 func (st *state) checkPrGate(dir string) *core.RefusalError {
-	if !bundle.IsFile(dir + suffixPRJSON) {
+	if !readcommon.IsFile(dir + suffixPRJSON) {
 		return nil
 	}
 	state := readcommon.PrField(dir, "state")
@@ -225,7 +224,7 @@ func (st *state) checkTreeGate(ctx context.Context) *core.RefusalError {
 
 // loadFindings reads and decodes findings.json, refusing when missing.
 func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
-	if !bundle.IsFile(dir + suffixFindings) {
+	if !readcommon.IsFile(dir + suffixFindings) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(
 			"missing %s/findings.json (run record first, then fix)", dir))
 	}
@@ -372,7 +371,7 @@ func decodeEntries(raw []byte) ([]any, error) {
 
 // prInfo ports the advisory readiness PR fragment.
 func prInfo(dir string) string {
-	if !bundle.IsFile(dir + suffixPRJSON) {
+	if !readcommon.IsFile(dir + suffixPRJSON) {
 		return "n/a (local bundle, PR check skipped)"
 	}
 	info := "state " + readcommon.PrField(dir, "state")
@@ -429,7 +428,7 @@ func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error
 func storedThreads(dir string) string {
 	nr := jsonLen(dir + suffixReviews)
 	ni := jsonLen(dir + suffixInline)
-	if !bundle.Exists(dir+suffixReviews) && !bundle.Exists(dir+suffixInline) {
+	if !readcommon.Exists(dir+suffixReviews) && !readcommon.Exists(dir+suffixInline) {
 		return "none stored"
 	}
 	return fmt.Sprintf("reviews.json=%d inline.json=%d", nr, ni)
@@ -531,7 +530,7 @@ type ledgerDoc struct {
 // loadLedger ports the ledger init: missing files are created with an empty
 // store; unreadable ones warn and start fresh.
 func (st *state) loadLedger(path string) (*ledgerDoc, *core.RefusalError) {
-	if !bundle.Exists(path) {
+	if !readcommon.Exists(path) {
 		return st.createLedger(path)
 	}
 	raw, err := os.ReadFile(path)
@@ -979,7 +978,7 @@ func (st *state) passOutput(
 
 // readKbValue reads kb.txt context for the envelope, if present.
 func readKbValue(dir string) any {
-	if !bundle.IsFile(dir + suffixKB) {
+	if !readcommon.IsFile(dir + suffixKB) {
 		return nil
 	}
 	kbRaw, err := os.ReadFile(dir + suffixKB)
@@ -992,7 +991,7 @@ func readKbValue(dir string) any {
 
 // printKbAndInstructions prints kb context plus the pass instructions.
 func (st *state) printKbAndInstructions(dir, anchor string) {
-	if bundle.IsFile(dir + suffixKB) {
+	if readcommon.IsFile(dir + suffixKB) {
 		kbRaw, err := os.ReadFile(dir + suffixKB)
 		if err != nil {
 			kbRaw = nil

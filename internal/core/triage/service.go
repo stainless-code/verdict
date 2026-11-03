@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -104,7 +103,7 @@ func (st *state) response() *Response {
 // runTriage mirrors the triage block: bundle and status gates, sig
 // resolution, the rationale rule, then the flip (or the dry-run echo).
 func (st *state) runTriage() *core.RefusalError {
-	dir := bundle.Dir(st.req.Pr)
+	dir := readcommon.ResolveBundleDir(st.req.Pr)
 	if ref := requireFindingsFile(dir); ref != nil {
 		return ref
 	}
@@ -132,7 +131,7 @@ func (st *state) runTriage() *core.RefusalError {
 
 // requireFindingsFile refuses when the bundle has no findings store.
 func requireFindingsFile(dir string) *core.RefusalError {
-	if !bundle.IsFile(dir + findingsSuffix) {
+	if !readcommon.IsFile(dir + findingsSuffix) {
 		return &core.RefusalError{
 			Code:    "missing-findings",
 			Message: fmt.Sprintf("missing %s%s (run post or record first)", dir, findingsSuffix),
@@ -225,14 +224,14 @@ func (st *state) applyFlip(dir string, entries []any, full, now string) *core.Re
 
 // stageCredit computes KB credit for the flip, warning on broken stores.
 func (st *state) stageCredit(k *kb.Ctx, entries []any, full, now string) []any {
-	k.ResolvePolicy(st.req.Env, bundle.Exists(kb.File))
-	if bundle.IsFile(kb.File) {
+	k.ResolvePolicy(st.req.Env, readcommon.Exists(kb.File))
+	if readcommon.IsFile(kb.File) {
 		if _, derr := jq.DecodeJSONLOrdered(mustRead(kb.File)); derr != nil {
 			st.warn(fmt.Sprintf("kb store %s unreadable — no credit for this flip (fix the bad line)", kb.File))
 			k.Broken = true
 		}
 	}
-	k.ApplyCredit(entries, full, st.req.Status, "human", "triage", now, bundle.Exists(kb.File))
+	k.ApplyCredit(entries, full, st.req.Status, "human", "triage", now, readcommon.Exists(kb.File))
 	if k.Credited == nil {
 		return []any{}
 	}

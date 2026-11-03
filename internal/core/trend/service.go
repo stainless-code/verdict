@@ -175,64 +175,11 @@ func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 		return row{}, false
 	}
 	findings, ok := doc.([]any)
-	if !ok || !validTrendEntries(findings) {
+	if !ok || !readcommon.ValidEntries(findings) {
 		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	return buildRow(bundle, name, findings), true
-}
-
-// validTrendEntries shares the entry-shape guard: trend warns and skips
-// the bundle instead of refusing.
-func validTrendEntries(findings []any) bool {
-	for _, e := range findings {
-		if !validTrendEntry(e) {
-			return false
-		}
-	}
-	return true
-}
-
-// validTrendEntry gates one entry like the read-verb entry guard.
-func validTrendEntry(e any) bool {
-	if e == nil {
-		return true
-	}
-	m, ok := e.(*jq.Obj)
-	if !ok {
-		return false
-	}
-	return validTrendStrings(m) && validTrendMaps(m)
-}
-
-// validTrendStrings gates the string-indexed entry fields.
-func validTrendStrings(m *jq.Obj) bool {
-	for _, key := range []string{"sig", "body", "heading", "kind", "suggestion"} {
-		v, has := m.Get(key)
-		if !has || v == nil {
-			continue
-		}
-		if _, ok := v.(string); !ok {
-			return false
-		}
-	}
-	return true
-}
-
-// validTrendMaps gates the indexed-map entry fields.
-func validTrendMaps(m *jq.Obj) bool {
-	for _, key := range []string{"severity", "rigor"} {
-		v, has := m.Get(key)
-		if !has || v == nil {
-			continue
-		}
-		switch v.(type) {
-		case map[string]any, *jq.Obj, []any:
-			return false
-		default:
-		}
-	}
-	return true
 }
 
 // buildRow builds one bundle row.

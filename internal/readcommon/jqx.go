@@ -246,6 +246,14 @@ func ASCIILower(s string) string {
 	return sb.String()
 }
 
+// TrimSpace trims ASCII whitespace (space, tab, newline, vertical tab, form
+// feed, carriage return), mirroring sed 's/^[[:space:]]*//' under the C
+// locale. Unicode spaces are left alone: the shell folds those only under a
+// UTF-8 locale, and the contract inputs are ASCII.
+func TrimSpace(s string) string {
+	return strings.Trim(s, " \t\n\v\f\r")
+}
+
 // IsDigits reports whether s is a non-empty ASCII digit run, mirroring the
 // shell's `”|*[!0-9]*` guard inverted. It is the shared spelling of the
 // [jq.Digits] gate.

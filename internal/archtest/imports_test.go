@@ -56,7 +56,6 @@ var forbiddenDeps = []string{
 // CLI/transport adapter are absent by design.
 var facadeAllowedDeps = map[string]bool{
 	"internal/atomic":         true,
-	"internal/bundle":         true,
 	"internal/controls":       true,
 	"internal/core":           true,
 	"internal/core/adopt":     true,
@@ -99,6 +98,20 @@ var coreSubpackages = []string{
 	"trend", "triage", "upgrade", "verify",
 }
 
+// readcommonDeniedCoreDeps names every core service package the shared store
+// helpers must not import. internal/core/exec is the process-runner primitive
+// the helper layer legitimately shares; every classified subpackage other than
+// it is a verb service.
+var readcommonDeniedCoreDeps = func() []string {
+	deny := make([]string, 0, len(coreSubpackages))
+	for _, name := range coreSubpackages {
+		if name != "exec" {
+			deny = append(deny, "internal/core/"+name)
+		}
+	}
+	return deny
+}()
+
 // boundary is one row of the import guard: every repository package matching
 // pattern is checked against deny (a denylist) or allow (an exact allowlist).
 // Exactly one of deny and allow is set.
@@ -120,6 +133,20 @@ var boundaries = []boundary{
 		name:    "mcp",
 		pattern: "./internal/mcp",
 		deny:    forbiddenDeps,
+	},
+	{
+		// core <- readcommon <- core/<verb>: the root contract package never
+		// reaches up into the shared store helpers.
+		name:    "core root",
+		pattern: "./internal/core",
+		deny:    []string{"internal/readcommon"},
+	},
+	{
+		// The helper layer depends on the contract root and the process
+		// runner only; reaching into a verb service would invert the DAG.
+		name:    "readcommon",
+		pattern: "./internal/readcommon",
+		deny:    readcommonDeniedCoreDeps,
 	},
 	{
 		name:    "facade",

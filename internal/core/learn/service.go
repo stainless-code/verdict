@@ -17,9 +17,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Request carries the resolved learn invocation. Learn takes no repo/pr
@@ -191,7 +191,7 @@ func (st *state) runStatus() *core.RefusalError {
 // readStatusRows reads the store with precision, refusing corrupt stores.
 func (st *state) readStatusRows() ([]any, *core.RefusalError) {
 	rows := []any{}
-	if !bundle.IsFile(kbFile) {
+	if !readcommon.IsFile(kbFile) {
 		return rows, nil
 	}
 	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
@@ -296,7 +296,7 @@ func (st *state) runAppend() *core.RefusalError {
 
 // validateAppend trims and validates the append flags.
 func (st *state) validateAppend() (*appendInput, *core.RefusalError) {
-	ruleT := bundle.TrimSpace(st.req.Rule)
+	ruleT := readcommon.TrimSpace(st.req.Rule)
 	if ruleT == "" {
 		return nil, st.refuse(codeBadRule, msgEmptyRule)
 	}
@@ -312,12 +312,12 @@ func (st *state) validateAppend() (*appendInput, *core.RefusalError) {
 
 // checkScope trims and validates the scope glob list.
 func (st *state) checkScope() (string, *core.RefusalError) {
-	scopeT := bundle.TrimSpace(st.req.Scope)
+	scopeT := readcommon.TrimSpace(st.req.Scope)
 	if scopeT == "" {
 		return "", st.refuse(codeBadScope, msgEmptyScope)
 	}
 	for elem := range strings.SplitSeq(scopeT, ",") {
-		if bundle.TrimSpace(elem) == "" {
+		if readcommon.TrimSpace(elem) == "" {
 			return "", st.refuse(codeBadScope, msgBlankScopeElem)
 		}
 	}
@@ -342,7 +342,7 @@ func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.Refus
 	}
 	lid := st.req.ID
 	if lid == "" {
-		lid = bundle.Slugify(ruleT)
+		lid = readcommon.Slugify(ruleT)
 	}
 	if !idRe.MatchString(lid) {
 		return nil, st.refuse(codeBadID, fmt.Sprintf(msgBadIDExplicit, lid))
@@ -356,7 +356,7 @@ func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
 	if err := os.MkdirAll(reviewDir, reviewDirPerm); err != nil {
 		return st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
 	}
-	if !bundle.IsFile(kbFile) {
+	if !readcommon.IsFile(kbFile) {
 		return nil
 	}
 	rows, ok := readRows()
@@ -500,7 +500,7 @@ func readRows() ([]*jq.Obj, bool) {
 // unknown-rule naming the missing store; a corrupt store refuses
 // corrupt-store.
 func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
-	if !bundle.IsFile(kbFile) {
+	if !readcommon.IsFile(kbFile) {
 		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, kbFile))
 	}
 	raw, err := jq.CappedFile(kbFile, jq.MaxKBBytes)
@@ -569,7 +569,7 @@ func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
 // appendRow appends one compact row to the store.
 func appendRow(line string) error {
 	var prev []byte
-	if bundle.Exists(kbFile) {
+	if readcommon.Exists(kbFile) {
 		var err error
 		prev, err = jq.CappedFile(kbFile, jq.MaxKBBytes)
 		if err != nil {

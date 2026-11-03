@@ -55,7 +55,7 @@ func validateFragments(set overrides.Set) error {
 // fragment's place — reads as no fragment.
 func validateFragment(set overrides.Set, f string) error {
 	path := set.Path(filepath.Base(f))
-	if !isRegular(path) {
+	if !IsFile(path) {
 		return nil
 	}
 	raw, err := os.ReadFile(path)

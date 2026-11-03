@@ -41,7 +41,7 @@ func LoadFindings(dir string) ([]any, error) {
 	if !ok {
 		return nil, corruptStore(dir)
 	}
-	if !validEntries(entries) {
+	if !ValidEntries(entries) {
 		return nil, corruptStore(dir)
 	}
 	return entries, nil
@@ -52,7 +52,7 @@ func corruptStore(dir string) *core.RefusalError {
 	return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
 }
 
-// validEntries enforces the R1 entry shape shared by the readers: every
+// ValidEntries enforces the R1 entry shape shared by the readers: every
 // entry is null or an object whose string-indexed fields (sig, body,
 // heading, kind) read null-or-string and whose indexed-map fields
 // (severity, rigor) never read object-or-array. Anything else crashed the
@@ -61,7 +61,7 @@ func corruptStore(dir string) *core.RefusalError {
 // gained the same guard with this port; see evals/cases/read-refusals.sh).
 // Fields the readers only compare or interpolate (status, path, line,
 // anchored, inBounds, kb) stay unguarded: exotic shapes flow crash-free.
-func validEntries(entries []any) bool {
+func ValidEntries(entries []any) bool {
 	for _, e := range entries {
 		if !validEntry(e) {
 			return false

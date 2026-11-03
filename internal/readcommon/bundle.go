@@ -34,7 +34,7 @@ func ResolveBundleDir(pr string) string {
 	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
 		return ".review/" + pr
 	}
-	if isDir(".review/local-"+pr) && !exists(".review/"+pr+prSuffix) {
+	if IsDir(".review/local-"+pr) && !Exists(".review/"+pr+prSuffix) {
 		return ".review/local-" + pr
 	}
 	return ".review/" + pr
@@ -283,20 +283,20 @@ func ShortSHA(head string) string {
 // shortSHALen is the abbreviated SHA width.
 const shortSHALen = 7
 
-// exists reports whether path exists (files or dirs).
-func exists(path string) bool {
+// Exists reports whether path exists (files or dirs), mirroring `[[ -e ]]`.
+func Exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-// isDir reports whether path is a directory.
-func isDir(path string) bool {
+// IsDir reports whether path is a directory, mirroring `[[ -d ]]`.
+func IsDir(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.IsDir()
 }
 
-// isRegular reports whether path is a regular file, mirroring [[ -f ]].
-func isRegular(path string) bool {
+// IsFile reports whether path is a regular file, mirroring `[[ -f ]]`.
+func IsFile(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
 }
