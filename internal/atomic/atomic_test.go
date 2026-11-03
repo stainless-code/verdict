@@ -40,6 +40,36 @@ func TestWriteFileRoundTrip(t *testing.T) {
 	}
 }
 
+// TestWriteErrSidecar checks stderr sidecars land exact bytes with the
+// owner-only mode and no temp leftovers.
+func TestWriteErrSidecar(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".post.err")
+	data := []byte("HTTP 401: bad credentials\n")
+	if err := atomic.WriteErrSidecar(path, data); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, data) {
+		t.Errorf("round trip = %q; want %q", raw, data)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkSidecarMode(t, fi)
+	leftovers, err := filepath.Glob(filepath.Join(dir, ".tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("temp leftovers = %v; want none", leftovers)
+	}
+}
+
 // TestWriteFileOverwrite checks an overwrite replaces bytes (rename, never a
 // torn middle: readers see old or new, never partial).
 func TestWriteFileOverwrite(t *testing.T) {

@@ -10,10 +10,11 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 )
 
-// writeErrFile plants an .err sidecar with the call's stderr, creating it
-// empty on success: the shell's `cmd 2>file` truncates the file either way.
+// writeErrFile plants an owner-only .err sidecar with the call's stderr,
+// creating it empty on success: the shell's `cmd 2>file` truncates the file
+// either way.
 func writeErrFile(path, stderr string) error {
-	if err := atomic.WriteFile(path, []byte(stderr)); err != nil {
+	if err := atomic.WriteErrSidecar(path, []byte(stderr)); err != nil {
 		return &fetchWriteError{path: path, err: err}
 	}
 	return nil

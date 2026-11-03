@@ -131,17 +131,13 @@ func firstLine(s string) string {
 // errHeadBytes caps the probe error detail.
 const errHeadBytes = 120
 
-// recheckStagePerm stages probe stderr readable only by the owner: the
-// content can carry token-adjacent gh diagnostics.
-const recheckStagePerm = 0o600
-
-// writeErrFile stages probe stderr beside the bundle through the shared
-// atomic path (removed after the probe either way, so readers stay
+// writeErrFile stages owner-only probe stderr beside the bundle through the
+// shared atomic path (removed after the probe either way, so readers stay
 // side-effect free). The write is best-effort like the shell's 2>
 // redirect, so a failure warns instead of refusing: the file is a debug
 // side channel and the run must not fail over garnish.
 func writeErrFile(st *state, path, stderr string) {
-	if err := atomic.WriteFileMode(path, []byte(stderr), recheckStagePerm); err != nil {
+	if err := atomic.WriteErrSidecar(path, []byte(stderr)); err != nil {
 		// Un-actionable beyond the notice: the live data already loaded.
 		st.req.Diag(fmt.Sprintf("report: could not stage probe stderr in %s: %v", path, err))
 	}

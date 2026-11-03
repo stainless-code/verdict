@@ -14,6 +14,10 @@ import (
 // storeFileMode is the shell's umask-022 default for store files.
 const storeFileMode = 0o644
 
+// errSidecarMode marks command-stderr debug sidecars owner-only: their bytes
+// can carry token-adjacent forge diagnostics (GO-FS-02).
+const errSidecarMode = 0o600
+
 // opWrite names the atomic-write operation in sealed errors.
 const opWrite = "atomic write "
 
@@ -28,6 +32,13 @@ func WriteFile(path string, data []byte) error {
 // payload files that must land executable (the skill shim, schema validator).
 func WriteFileMode(path string, data []byte, mode os.FileMode) error {
 	return writeFile(path, data, mode)
+}
+
+// WriteErrSidecar writes one command-stderr debug sidecar atomically with
+// mode 0o600: the bytes can carry token-adjacent forge diagnostics and are
+// debug residue, never published bundle content.
+func WriteErrSidecar(path string, data []byte) error {
+	return writeFile(path, data, errSidecarMode)
 }
 
 // writeFile is the shared temp+fsync+rename+dir-fsync path.

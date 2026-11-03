@@ -188,7 +188,9 @@ A bundle dir holds exactly the core-owned files (`PR.json`/`source.json`,
 `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
-`.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`). Router-authorized
+`.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`).
+Dot-scratch `.err` sidecars are owner-only (`0600`) debug residue, not published
+bundle content. Router-authorized
 agent terminal writes (`report.md` via `prompts/ci.md`, `replies.json` via
 `prompts/address-reviews.md`, `noreview.md` via `prompts/incremental-review.md`)
 are core-tolerated scratch: core verbs never read them. Anything else a

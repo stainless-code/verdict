@@ -31,6 +31,13 @@ func checkStoreMode(t *testing.T, fi os.FileInfo) {
 	}
 }
 
+// checkSidecarMode skips the POSIX permission assertion on Windows, where
+// os.Chmod does not model owner/group/other bits.
+func checkSidecarMode(t *testing.T, _ os.FileInfo) {
+	t.Helper()
+	t.Log("skipping POSIX sidecar mode assertion on Windows")
+}
+
 // seedWriteFailure seeds a store the write path cannot replace: Windows
 // MoveFileEx(MOVEFILE_REPLACE_EXISTING) fails with access denied when the
 // destination carries the read-only attribute.

@@ -160,7 +160,7 @@ func postRecheck(ctx context.Context, cmdr Commander, repo, pr, dir string) (int
 	} else {
 		res, err = runReadRetry(ctx, cmdr, core.Command{Argv: append([]string{toolGH}, threadsArgv(owner, name, pr)...)})
 	}
-	if werr := atomic.WriteFile(dir+"/.recheck.err", []byte(res.Stderr)); werr != nil {
+	if werr := atomic.WriteErrSidecar(dir+"/.recheck.err", []byte(res.Stderr)); werr != nil {
 		return 0, "", werr
 	}
 	if err != nil {
@@ -396,7 +396,7 @@ func parseResetEpoch(stderr string) (int64, bool) {
 // pipes), gh stderr truncated into .post.err either way.
 func postOnce(ctx context.Context, cmdr Commander, repo, pr, dir, payload string) (posted, errText string, ok bool) {
 	if cmdr == nil {
-		if werr := atomic.WriteFile(dir+"/.post.err", []byte("no commander in runtime")); werr != nil {
+		if werr := atomic.WriteErrSidecar(dir+"/.post.err", []byte("no commander in runtime")); werr != nil {
 			return "", "", false
 		}
 		return "", "no commander in runtime", false
@@ -408,7 +408,7 @@ func postOnce(ctx context.Context, cmdr Commander, repo, pr, dir, payload string
 		},
 		Stdin: strings.NewReader(payload + newline),
 	})
-	if werr := atomic.WriteFile(dir+"/.post.err", []byte(res.Stderr)); werr != nil {
+	if werr := atomic.WriteErrSidecar(dir+"/.post.err", []byte(res.Stderr)); werr != nil {
 		return "", "", false
 	}
 	if err != nil {
