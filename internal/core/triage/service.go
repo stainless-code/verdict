@@ -24,7 +24,7 @@ import (
 type Request struct {
 	core.ReadRequest
 	Sig       string
-	Status    string
+	Status    string `enum:"open|addressed|wont-fix|false-positive|deferred"`
 	Rationale string
 	Force     bool
 	DryRun    bool

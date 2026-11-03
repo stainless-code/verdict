@@ -5,12 +5,12 @@ import "github.com/stainless-code/verdict/internal/jq"
 // ReportFlags carries the resolved report options: the adapter parses argv
 // and the service receives values only.
 type ReportFlags struct {
-	Status       string
-	Kind         string
+	Status       string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
+	Kind         string `enum:"all|inline|section"`
 	Output       string
 	Sarif        string
-	Check        string
-	Live         string
+	Check        string `enum:"critical|important|informational"`
+	Live         string `enum:"auto|strict|skip"`
 	Cost         bool
 	Completeness bool
 }
@@ -56,7 +56,7 @@ type ReportResponse struct { //nolint:govet // field grouping documents the resp
 // duplicated their warnings, so the adapter passes the replayed list).
 type NextRequest struct {
 	ReadRequest
-	Status         string
+	Status         string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
 	Effective      Effective
 	Warnings       []string
 	ReportWarnings []string

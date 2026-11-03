@@ -524,10 +524,10 @@ func TestArgsDecode(t *testing.T) {
 	}
 }
 
-// findTool returns one registered tool.
+// findTool returns one registered tool from the full surface.
 func findTool(t *testing.T, name string) *tool {
 	t.Helper()
-	for _, tool := range allTools(false, false) {
+	for _, tool := range allTools(false, true) {
 		if tool.name == name {
 			return tool
 		}

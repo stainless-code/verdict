@@ -10,7 +10,7 @@ import (
 // and the service receives values only.
 type FetchFlags struct {
 	BaseSHA       string
-	Provider      string
+	Provider      string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool

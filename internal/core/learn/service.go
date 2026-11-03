@@ -30,7 +30,7 @@ type Request struct {
 	Scope      string
 	ID         string
 	Provenance string
-	Rigor      string
+	Rigor      string `enum:"said|pointed|walked|ran|reproduced"`
 	Reason     string
 	Retire     string
 	Restore    string

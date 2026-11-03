@@ -7,7 +7,7 @@ import (
 // PostFlags carries the resolved post options: the adapter parses argv and
 // the service receives values only.
 type PostFlags struct {
-	Approve        string
+	Approve        string `enum:"true|false"`
 	ReviewFile     string
 	RequestChanges bool
 	Bind           bool

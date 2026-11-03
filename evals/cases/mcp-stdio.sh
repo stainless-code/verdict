@@ -5,8 +5,8 @@
 #   M1  initialize negotiates the revision, advertises tools only, carries
 #       the experimental serverInfo marker, and sends the workflow doctrine.
 #   M2  tools/list exposes one tool per core verb (install is never a tool),
-#       with reflected input schemas, required keys that exist, and complete
-#       title/behavior annotations.
+#       with reflected input schemas, required keys that exist, complete
+#       title/behavior annotations, and the declared enums.
 #   M3  ping answers `{}`; an unknown method is -32601; malformed JSON is a
 #       -32700 frame with a null id.
 #   M4  tools/call report succeeds against a temp .review bundle: the text
@@ -117,6 +117,11 @@ if jq -e 'select(.id == 2).result.tools | (map(select(.name == "post"))[0].annot
 else
   bad "the post/report annotation contract drifted"
 fi
+if jq -e 'select(.id == 2).result.tools | (map(select(.name == "report"))[0].inputSchema.properties.flags.properties.status.enum == ["all","open","addressed","wont-fix","false-positive","deferred"]) and (map(select(.name == "report"))[0].inputSchema.properties.flags.properties.check.enum == ["critical","important","informational"]) and (map(select(.name == "init"))[0].inputSchema.properties.preset.enum == ["chill","standard","strict"]) and (map(select(.name == "post"))[0].inputSchema.properties.flags.properties.approve.enum == ["true","false"])' <"$MCP_OUT" >/dev/null; then
+  good "inputSchema carries the closed vocabularies the structs declare"
+else
+  bad "an inputSchema enum drifted or disappeared"
+fi
 if jq -e 'select(.id == 3).result == {}' <"$MCP_OUT" >/dev/null; then
   good "ping answers {}"
 else
@@ -204,8 +209,8 @@ else
 fi
 run_mcp_input "$FRAMES" --operator
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 18) and (map(.name) | index("triage") != null)' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 18 tools including triage"
+if jq -e 'select(.id == 2).result.tools | (length == 18) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
+  good "--operator exposes 18 tools including triage with its status enum"
 else
   bad "--operator tool list drifted"
 fi

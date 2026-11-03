@@ -39,7 +39,7 @@ const (
 // adapter-routed streams, and the stdin answer seam.
 type Request struct { //nolint:govet // the transport contract keeps its field order
 	core.ReadRequest
-	Preset      string
+	Preset      string `enum:"chill|standard|strict"`
 	Yes         bool
 	Interactive bool
 	Human       io.Writer

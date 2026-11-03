@@ -513,8 +513,11 @@ never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
 so they cannot drift from the core contract; `repo`/`pr` plus verb fields are
-the arguments. `post` writes a review and calls GitHub, so it is not exposed
-under `--read-only`.
+the arguments. Closed vocabularies and numeric bounds the structs declare
+(`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
+become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
+error the model sees before calling instead of a runtime refusal. `post` writes
+a review and calls GitHub, so it is not exposed under `--read-only`.
 
 `--read-only` exposes only the non-writing tools (`report`, `next`, `show`,
 `trend`, `ready`, `doctor`, `check-tree`) and is mutually exclusive with

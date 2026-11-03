@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -15,12 +16,20 @@ const (
 	schemaAdditionalProperties = "additionalProperties"
 	schemaItems                = "items"
 	schemaDescription          = "description"
+	schemaEnum                 = "enum"
+	schemaMinimum              = "minimum"
+	schemaMaximum              = "maximum"
+	tagEnum                    = "enum"
+	tagMin                     = "min"
+	tagMax                     = "max"
 	typeObject                 = "object"
 	typeArray                  = "array"
 	typeString                 = "string"
 	typeInteger                = "integer"
 	typeNumber                 = "number"
 	typeBoolean                = "boolean"
+	enumSeparator              = "|"
+	floatBits                  = 64
 )
 
 // internalFieldNames are request fields the transport owns: the injected
@@ -141,8 +150,9 @@ func lowerCamel(name string) string {
 	}
 }
 
-// fieldSchema builds one property schema from the field's Go type plus the
-// shared description table.
+// fieldSchema builds one property schema from the field's Go type, the
+// shared description table, and the closed vocabulary / numeric bounds the
+// request struct already declares.
 func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool) (map[string]any, bool) {
 	node, ok := typeSchema(sf.Type, omit)
 	if !ok {
@@ -151,7 +161,40 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 	if desc := fieldDescription(toolName, sf.Name); desc != "" {
 		node[schemaDescription] = desc
 	}
+	applyEnum(node, sf)
+	applyBound(node, schemaMinimum, sf.Tag.Get(tagMin))
+	applyBound(node, schemaMaximum, sf.Tag.Get(tagMax))
 	return node, true
+}
+
+// applyEnum turns the "a|b" enum tag into the schema's closed vocabulary.
+// Nullable enum tags (schemagen's "a|null" spelling) do not appear on
+// request fields; a literal null member would still be a valid JSON value.
+func applyEnum(node map[string]any, sf *reflect.StructField) {
+	spec := sf.Tag.Get(tagEnum)
+	if spec == "" {
+		return
+	}
+	parts := strings.Split(spec, enumSeparator)
+	values := make([]any, 0, len(parts))
+	for _, part := range parts {
+		values = append(values, part)
+	}
+	node[schemaEnum] = values
+}
+
+// applyBound copies one numeric tag onto the schema when it parses.
+func applyBound(node map[string]any, key, raw string) {
+	if raw == "" {
+		return
+	}
+	if n, err := strconv.Atoi(raw); err == nil {
+		node[key] = n
+		return
+	}
+	if f, err := strconv.ParseFloat(raw, floatBits); err == nil {
+		node[key] = f
+	}
 }
 
 // typeSchema maps a Go type to a JSON Schema node. It is intentionally a
