@@ -98,18 +98,18 @@ func resolveVersion(ctx context.Context, req *Request, base string) (string, *co
 func replaceInstalled(req *Request, det *detection, result *release.Result, version string) error {
 	backup := filepath.Join(filepath.Dir(result.Binary), "previous-"+filepath.Base(det.exe))
 	if err := copyFile(det.exe, backup); err != nil {
-		return newErrf("cannot back up %s: %s; the installed binary is untouched", det.exe, err.Error())
+		return jq.NewErrf("cannot back up %s: %s; the installed binary is untouched", det.exe, err.Error())
 	}
 	defer func() { _ = os.Remove(backup) }() // rollback already decided the outcome
 	if err := atomic.Replace(result.Binary, det.exe); err != nil {
-		return newErrf("atomic replace failed: %s; the old binary is untouched", err.Error())
+		return jq.NewErrf("atomic replace failed: %s; the old binary is untouched", err.Error())
 	}
 	body := receiptBody(filepath.Base(det.exe), version, receiptInstalledBy(det.Receipt, req.platform()))
 	if err := atomic.WriteFile(det.Receipt, []byte(body)); err != nil {
 		if rollback := atomic.Replace(backup, det.exe); rollback != nil {
-			return newErrf("receipt write failed (%s) and rollback failed (%s)", err.Error(), rollback.Error())
+			return jq.NewErrf("receipt write failed (%s) and rollback failed (%s)", err.Error(), rollback.Error())
 		}
-		return newErrf("receipt write failed: %s (old binary restored)", err.Error())
+		return jq.NewErrf("receipt write failed: %s (old binary restored)", err.Error())
 	}
 	return nil
 }
@@ -161,7 +161,7 @@ func defaultSmoke(ctx context.Context, path, version string) error {
 		return jq.Sealed("run "+path+" --version", err)
 	}
 	if got := strings.TrimSpace(string(out)); got != version {
-		return newErrf("--version printed %q; want %q", got, version)
+		return jq.NewErrf("--version printed %q; want %q", got, version)
 	}
 	return nil
 }

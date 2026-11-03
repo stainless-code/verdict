@@ -144,8 +144,7 @@ func checkTopKeys(path string, obj map[string]any) error {
 // checkSchemaKey validates the $schema hint key.
 func checkSchemaKey(path string, obj map[string]any) error {
 	if _, ok := obj["$schema"]; ok {
-		if s, isStr := obj["$schema"].(string); !isStr {
-			_ = s
+		if _, isStr := obj["$schema"].(string); !isStr {
 			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgSchemaType, path)}
 		}
 	}

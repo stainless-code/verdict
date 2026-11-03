@@ -11,7 +11,6 @@ package upgrade
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -636,14 +635,4 @@ func errText(err error) string {
 		return "unknown error"
 	}
 	return err.Error()
-}
-
-// newErr builds a locally owned error at the service boundary.
-func newErr(msg string) error {
-	return errors.New(msg) //nolint:wrapcheck // locally constructed message, not an external error
-}
-
-// newErrf builds a locally owned formatted error at the service boundary.
-func newErrf(format string, args ...any) error {
-	return fmt.Errorf(format, args...) //nolint:wrapcheck // locally constructed message, not an external error
 }

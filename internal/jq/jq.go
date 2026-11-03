@@ -16,6 +16,7 @@ package jq
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -29,6 +30,17 @@ type Number string
 
 // String returns the literal text.
 func (n Number) String() string { return string(n) }
+
+// NewErr builds a locally owned error at a service boundary: the message is
+// ours, so there is nothing to seal (GO-ERRORS-03) and nothing to unwrap.
+func NewErr(msg string) error {
+	return errors.New(msg) //nolint:wrapcheck // locally constructed message, not an external error
+}
+
+// NewErrf is [NewErr] with formatting.
+func NewErrf(format string, args ...any) error {
+	return fmt.Errorf(format, args...) //nolint:wrapcheck // locally constructed message, not an external error
+}
 
 // Sealed annotates err with op without exposing it to [errors.Is]/As, per
 // GO-ERRORS-03: layer boundaries seal causes; only the command layer's

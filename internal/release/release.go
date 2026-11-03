@@ -121,7 +121,7 @@ var loadContract = sync.OnceValues(func() (contractDoc, error) {
 		return contractDoc{}, fmt.Errorf("release contract: %v", err)
 	}
 	if doc.Cosign.IdentityRegexp == "" || doc.Cosign.Issuer == "" {
-		return contractDoc{}, newErr("release contract: cosign identity/issuer missing")
+		return contractDoc{}, jq.NewErr("release contract: cosign identity/issuer missing")
 	}
 	return doc, nil
 })
@@ -135,7 +135,7 @@ func DefaultBaseURL() (string, error) {
 	}
 	base := strings.TrimSuffix(doc.URLs.ReleaseBase, "/v{version}")
 	if base == doc.URLs.ReleaseBase {
-		return "", newErr("release contract: releaseBase lacks the version placeholder")
+		return "", jq.NewErr("release contract: releaseBase lacks the version placeholder")
 	}
 	return base, nil
 }
@@ -175,7 +175,7 @@ func LatestVersion(ctx context.Context, client *http.Client, baseURL string) (st
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 	default:
-		return "", newErrf("latest %s: HTTP %d (want a release redirect)", latest, resp.StatusCode)
+		return "", jq.NewErrf("latest %s: HTTP %d (want a release redirect)", latest, resp.StatusCode)
 	}
 	loc, err := url.Parse(resp.Header.Get("Location"))
 	if err != nil {
@@ -183,7 +183,7 @@ func LatestVersion(ctx context.Context, client *http.Client, baseURL string) (st
 	}
 	version := strings.TrimPrefix(path.Base(loc.Path), "v")
 	if !ValidVersion(version) {
-		return "", newErrf("could not parse a version from the latest redirect: %s", loc)
+		return "", jq.NewErrf("could not parse a version from the latest redirect: %s", loc)
 	}
 	return version, nil
 }
@@ -442,7 +442,7 @@ func download(ctx context.Context, client *http.Client, rawURL, dst string) erro
 	}
 	defer func() { _ = resp.Body.Close() }() // the body's fate is the copy below
 	if resp.StatusCode != http.StatusOK {
-		return newErrf("GET %s: HTTP %d", rawURL, resp.StatusCode)
+		return jq.NewErrf("GET %s: HTTP %d", rawURL, resp.StatusCode)
 	}
 	body := io.LimitReader(resp.Body, maxAssetBytes+1)
 	file, err := os.Create(dst)
@@ -459,7 +459,7 @@ func download(ctx context.Context, client *http.Client, rawURL, dst string) erro
 	}
 	if written > maxAssetBytes {
 		_ = os.Remove(dst) // oversize cleanup; the size error rules
-		return newErrf("%s exceeds the %d-byte download cap", rawURL, maxAssetBytes)
+		return jq.NewErrf("%s exceeds the %d-byte download cap", rawURL, maxAssetBytes)
 	}
 	return nil
 }
@@ -484,7 +484,7 @@ func sumFor(contents, name string) (string, error) {
 			return sum, nil
 		}
 	}
-	return "", newErr("checksums.txt has no entry for " + name)
+	return "", jq.NewErr("checksums.txt has no entry for " + name)
 }
 
 // sumFromLine parses one checksums.txt line for name.
@@ -495,7 +495,7 @@ func sumFromLine(line, name string) (string, bool, error) {
 	}
 	sum := strings.ToLower(fields[0])
 	if len(sum) != checksumHexLength || !isHex(sum) {
-		return "", false, newErrf("checksums.txt has no valid entry for %s", name)
+		return "", false, jq.NewErrf("checksums.txt has no valid entry for %s", name)
 	}
 	return sum, true, nil
 }
@@ -532,10 +532,10 @@ func allowedMember(name string, members []string) bool {
 // checkMember refuses unexpected or non-regular members.
 func checkMember(name string, members []string, regular bool) error {
 	if !allowedMember(name, members) {
-		return newErrf("archive has unexpected member(s): %s", name)
+		return jq.NewErrf("archive has unexpected member(s): %s", name)
 	}
 	if !regular {
-		return newErrf("archive member %s is not a regular file", name)
+		return jq.NewErrf("archive member %s is not a regular file", name)
 	}
 	return nil
 }
@@ -558,7 +558,7 @@ func extractTarGz(archivePath, stageDir, binary string, members []string) (strin
 		return "", err
 	}
 	if !found {
-		return "", newErr("archive does not contain the verdict binary")
+		return "", jq.NewErr("archive does not contain the verdict binary")
 	}
 	return dst, nil
 }
@@ -609,7 +609,7 @@ func extractZip(archivePath, stageDir, binary string, members []string) (string,
 		return "", err
 	}
 	if !found {
-		return "", newErr("archive does not contain the verdict binary")
+		return "", jq.NewErr("archive does not contain the verdict binary")
 	}
 	return dst, nil
 }
@@ -718,14 +718,4 @@ func clientOr(client *http.Client) *http.Client {
 		return client
 	}
 	return &http.Client{Timeout: downloadTimeout}
-}
-
-// newErr builds a locally owned error (GO-ERRORS-03 sealing at the edge).
-func newErr(msg string) error {
-	return errors.New(msg) //nolint:wrapcheck // locally constructed message, not an external error
-}
-
-// newErrf builds a locally owned formatted error.
-func newErrf(format string, args ...any) error {
-	return fmt.Errorf(format, args...) //nolint:wrapcheck // locally constructed message, not an external error
 }

@@ -185,11 +185,9 @@ func resolveBoolKey(path string, pub map[string]any, key string, dst *string) er
 
 // resolveFooterKey applies the publish.footer key.
 func resolveFooterKey(path string, pub map[string]any, eff *Effective) error {
-	v, ok := pub["footer"]
-	if !ok {
+	if _, ok := pub["footer"]; !ok {
 		return nil
 	}
-	_ = v
 	s, ref := publishBoolKey(path, pub, "footer", "true|false")
 	if ref != nil {
 		return ref
@@ -206,7 +204,6 @@ func resolveAttributionKey(path string, pub map[string]any, eff *Effective) erro
 	}
 	switch t := raw.(type) {
 	case bool:
-		_ = t
 		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgAttrMigrated, path)}
 	case string:
 		switch t {

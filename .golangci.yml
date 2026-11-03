@@ -247,6 +247,8 @@ linters:
       # callers map these errors to typed refusals instead of inspecting them.
       ignore-sigs:
         - .Sealed(
+        - .NewErr(
+        - .NewErrf(
         - .WriteFile(
 
 formatters:

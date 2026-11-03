@@ -310,13 +310,10 @@ func copyFile(src, dst string) error {
 // tsRe scrubs timestamps; everything else compares byte-exact.
 var tsRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
 
-// killNoticeRe drops the shell's job-control kill notice
-// (`path: line N: PID Killed: 9  bash -c ...`) from stderr. The notice
-// carries the killed PID, so it can never be byte-stable across runs
-// (not even bash-vs-bash); the kill itself stays proven by the 137 exit,
-// the timedOut flag, and the timeout marker, which all still compare.
-// A verifyCmd's own stderr never reaches the script's stderr (it is
-// redirected into .verify.out), so no command output can match this.
+// curlMsRe zeroes the elapsed milliseconds in curl's connect-failure
+// line, which no run can reproduce byte-exactly. The shell's job-control
+// kill notice needs no scrub: the shell is gone, and a timeout stays
+// proven by the 137 exit, the timedOut flag, and the timeout marker.
 var curlMsRe = regexp.MustCompile(`(Failed to connect to \S+ port \d+ after )\d+( ms)`)
 
 // versionScrub replaces the manifest version with a placeholder so goldens

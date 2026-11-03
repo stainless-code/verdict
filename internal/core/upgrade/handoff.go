@@ -79,10 +79,10 @@ func (h *Handoff) restore(old string, cause error) error {
 	failed := h.Target + ".failed"
 	_ = os.Remove(failed) // stale leftover; the rename below owns the outcome
 	if err := atomic.Replace(h.Target, failed); err != nil {
-		return newErrf("restoring the old binary failed too: %s; %s", err.Error(), cause.Error())
+		return jq.NewErrf("restoring the old binary failed too: %s; %s", err.Error(), cause.Error())
 	}
 	if err := atomic.Replace(old, h.Target); err != nil {
-		return newErrf("restoring the old binary failed: %s; %s", err.Error(), cause.Error())
+		return jq.NewErrf("restoring the old binary failed: %s; %s", err.Error(), cause.Error())
 	}
 	return cause
 }
@@ -140,7 +140,7 @@ func parseHandoff(args []string) (Handoff, error) {
 		ReceiptPath: *receipt, ReceiptBody: *body, Version: *version, ResultPath: *result,
 	}
 	if h.ParentPID <= 0 || h.Target == "" || h.New == "" || h.ReceiptPath == "" || h.Version == "" {
-		return Handoff{}, newErr("missing required helper flag")
+		return Handoff{}, jq.NewErr("missing required helper flag")
 	}
 	return h, nil
 }
