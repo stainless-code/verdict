@@ -187,7 +187,9 @@ try {
   $stream = [System.IO.File]::Open($staged, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
   try { $stream.Flush($true) } finally { $stream.Dispose() }
   $target = Join-Path $InstallDir 'verdict.exe'
-  if (Test-Path -LiteralPath $target) { [System.IO.File]::Replace($staged, $target, $null) }
+  # [NullString]::Value passes a real null backup path; a bare $null binds as
+  # '' and File.Replace rejects it as an illegal path.
+  if (Test-Path -LiteralPath $target) { [System.IO.File]::Replace($staged, $target, [NullString]::Value) }
   else { [System.IO.File]::Move($staged, $target) }
   $receipt = '{"binary":"verdict.exe","version":"' + $Version + '","installed_by":"install.ps1"}'
   [System.IO.File]::WriteAllText($ReceiptPath, $receipt, [System.Text.Encoding]::ASCII)
