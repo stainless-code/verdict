@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/cost.schema.json",
+  "title": "cost.json — agent self-reported spend record",
+  "description": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them.",
+  "anyOf": [
+    { "$ref": "#/$defs/record" },
+    {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    }
+  ],
+  "$defs": {
+    "record": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "effort": {
+          "description": "Run tier; missing or unknown values roll up as standard.",
+          "type": "string"
+        },
+        "models": {
+          "description": "One entry per model that generated tokens: the synthesizer first, then each lens.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/modelSpend" }
+        },
+        "est_usd": {
+          "description": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
+          "type": ["number", "null"]
+        },
+        "wall_seconds": { "type": ["number", "null"] },
+        "diff_bytes": { "type": ["number", "null"] },
+        "lenses": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "modelSpend": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "input_tokens": { "type": "number" },
+        "output_tokens": { "type": "number" },
+        "cache_read_input_tokens": {
+          "description": "Input tokens served from cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero.",
+          "type": ["number", "null"]
+        },
+        "cache_creation_input_tokens": {
+          "description": "Input tokens spent writing the cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero.",
+          "type": ["number", "null"]
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    }
+  }
+}

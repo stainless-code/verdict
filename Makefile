@@ -62,6 +62,13 @@ schemas:
 schemas-check:
 	$(GO) run ./cmd/schemagen
 
+# schemas-baseline snapshots the currently accepted published schemas. The
+# additive-evolution test compares the generator against this snapshot; update
+# it, in the same commit, only for a deliberate breaking change.
+.PHONY: schemas-baseline
+schemas-baseline:
+	$(GO) run ./cmd/schemagen -write -dir internal/schemagen/testdata/baseline
+
 # release-dry-run proves the whole release train without publishing
 # anything: snapshot archives, the npm tree, the tap formula, `npm pack`
 # content checks per package, and the contract tests (shim resolution

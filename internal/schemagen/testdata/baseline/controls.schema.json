@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/controls.schema.json",
+  "title": "controls.json — resolved review controls snapshot",
+  "description": "The bundle's resolved review controls: fetch snapshots every control file at the PR base commit, and post/record refuse to trust the snapshot when its base or any used-file hash drifted. policy 'base' is the default; 'head' is the explicit --allow-head-controls opt-out.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Snapshot format version; only \"1\" is trusted.",
+      "enum": ["1"]
+    },
+    "policy": {
+      "description": "base is the default base-owned rule set; head is the recorded opt-out.",
+      "enum": ["base", "head"]
+    },
+    "base_sha": {
+      "description": "The bundle's base commit, the value post/record verify against.",
+      "type": "string"
+    },
+    "sha": {
+      "description": "The commit the controls were read at; \"\" for the worktree opt-out.",
+      "type": "string"
+    },
+    "files": {
+      "description": "One entry per inventory path, in inventory order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/file" }
+    }
+  },
+  "required": ["schema_version", "policy", "base_sha", "sha", "files"],
+  "additionalProperties": false,
+  "$defs": {
+    "file": {
+      "description": "One control path's snapshot status: used entries carry the exact written bytes and SHA-256.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "The inventory path, relative to the repository root (.review/...).",
+          "type": "string"
+        },
+        "status": {
+          "description": "used means materialized and safe to read; missing means absent at the source.",
+          "enum": ["used", "missing"]
+        },
+        "bytes": {
+          "description": "The exact bytes written to the snapshot.",
+          "type": "integer"
+        },
+        "sha256": {
+          "description": "SHA-256 of the exact written bytes; post/record re-hash and refuse controls-stale on drift.",
+          "type": "string"
+        }
+      },
+      "required": ["path", "status", "bytes", "sha256"],
+      "additionalProperties": true
+    }
+  }
+}
