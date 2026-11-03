@@ -119,6 +119,16 @@ var interfaceType = reflect.TypeFor[any]()
 func documents() []document {
 	return []document{
 		{
+			name:  "corpus",
+			title: "corpus.json — benchmark corpus case manifest",
+			root:  reflect.TypeFor[CorpusCase](),
+			defs: []definition{
+				{typ: reflect.TypeFor[CorpusProvenance](), name: "provenance"},
+				{typ: reflect.TypeFor[CorpusBug](), name: "bug"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "cost",
 			title: "cost.json — agent self-reported spend record",
 			anyOf: []reflect.Type{reflect.TypeFor[CostRecord](), reflect.TypeFor[[]CostRecord]()},

@@ -11,6 +11,7 @@ import (
 	"errors"
 
 	"github.com/stainless-code/verdict/internal/core"
+	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -79,16 +80,20 @@ type Response struct { //nolint:govet // field grouping documents the response s
 }
 
 // Data is the calibrate verb's --json data profile: exactly one of the
-// live join or the probe grades renders, selected by the --probe flag.
+// live join, the offline corpus join, or the probe grades renders.
 type Data struct {
-	live  *liveResult
-	probe *probeResult
+	live   *liveResult
+	corpus *corpusResult
+	probe  *probeResult
 }
 
 // Wire renders the profile in published wire order.
 func (d *Data) Wire() *jq.Obj {
 	if d.probe != nil {
 		return d.probe.Wire()
+	}
+	if d.corpus != nil {
+		return d.corpus.Wire()
 	}
 	return d.live.Wire()
 }
@@ -99,6 +104,7 @@ type state struct { //nolint:govet // calibrate service state is allocated once 
 	req      *Request
 	warnings []string
 	live     *liveResult
+	corpus   *corpusResult
 	probe    *probeResult
 }
 
@@ -116,10 +122,21 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		}
 		return st.probeResponse(), nil
 	}
-	if ref := st.runLive(ctx, dir); ref != nil {
+	if ref := st.runJoin(ctx, dir); ref != nil {
 		return nil, ref
 	}
+	if st.corpus != nil {
+		return st.corpusResponse(), nil
+	}
 	return st.liveResponse(), nil
+}
+
+// runJoin selects the marked corpus join or the live ground-truth join.
+func (st *state) runJoin(ctx context.Context, dir string) *core.RefusalError {
+	if corpuscore.IsDir(dir) {
+		return st.runCorpus(dir)
+	}
+	return st.runLive(ctx, dir)
 }
 
 // warn records and streams one warning.

@@ -19,6 +19,16 @@ import "github.com/stainless-code/verdict/internal/core"
 //   - map[string]any is an open object; any is an empty (accept-anything)
 //     schema; []any is an array without items.
 
+// CorpusCase is the benchmark corpus case manifest, generated as
+// schemas/corpus.schema.json.
+type CorpusCase = core.CorpusCase
+
+// CorpusProvenance is the corpus case's origin record.
+type CorpusProvenance = core.CorpusProvenance
+
+// CorpusBug is one known defect in a corpus case.
+type CorpusBug = core.CorpusBug
+
 // Review is core's agent-written review input.
 type Review = core.Review
 

@@ -243,7 +243,18 @@ func rowDoc(r *row) *jq.Obj {
 }
 
 // emitHuman ports the human rollup lines.
-func (st *state) emitHuman(out *rollup, overlap *overlapRollup) {
+func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRollup) {
+	st.emitRollupHuman(out)
+	if overlap != nil {
+		st.emitOverlapHuman(overlap)
+	}
+	if corpus != nil {
+		st.emitCorpusHuman(corpus)
+	}
+}
+
+// emitRollupHuman prints the ordinary portfolio section.
+func (st *state) emitRollupHuman(out *rollup) {
 	if out.bundles == 0 {
 		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .review/*/findings.json yet)")
 	} else {
@@ -266,9 +277,6 @@ func (st *state) emitHuman(out *rollup, overlap *overlapRollup) {
 			out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
 			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
 		st.human("provenance: " + provenanceLine(out))
-	}
-	if overlap != nil {
-		st.emitOverlapHuman(overlap)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"slices"
 
 	"github.com/stainless-code/verdict/internal/core"
+	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -38,13 +39,15 @@ type Response struct { //nolint:govet // field grouping documents the response s
 }
 
 // Data is the trend verb's --json data profile: the generated_at stamp,
-// the portfolio rollup keys, the per-bundle rows, and the optional
-// overlap join. Field order is the shell's envelope construction order.
+// the portfolio rollup keys, the per-bundle rows, the optional overlap
+// join, and the optional corpus measurement. Field order is the shell's
+// envelope construction order.
 type Data struct { //nolint:govet // field order is the published property order
 	GeneratedAt string
 	Rollup      rollup
 	Rows        []row
 	Overlap     *overlapRollup
+	Corpus      *corpusRollup
 }
 
 // Wire renders the profile in published wire order.
@@ -63,6 +66,9 @@ func (d *Data) Wire() *jq.Obj {
 	if d.Overlap != nil {
 		data.Set("overlap", overlapDoc(d.Overlap))
 	}
+	if d.Corpus != nil {
+		data.Set("corpus", corpusDoc(d.Corpus))
+	}
 	return data
 }
 
@@ -73,6 +79,7 @@ type state struct {
 	req      *Request
 	warnings []string
 	lines    []string
+	corpora  []corpusPoint
 }
 
 // Run executes the portfolio rollup over every reviewed bundle.
@@ -84,11 +91,12 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	now := st.req.TimeUTC()
 	rows := collectRows(st)
 	rollup := rollupRows(rows)
+	corpus := corpusRollupOf(st.corpora)
 	var overlap *overlapRollup
 	if req.Overlap {
 		overlap = overlapAudit(st, rows)
 	}
-	st.emitHuman(&rollup, overlap)
+	st.emitHuman(&rollup, overlap, corpus)
 	next := "calibrate recent bundles for per-model tier precision"
 	if rollup.bundles == 0 {
 		next = "no reviewed bundles yet — fetch + post/record first"
@@ -99,7 +107,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		Next:     next,
 		Warnings: st.warnings,
 		Human:    st.lines,
-		Data:     &Data{GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap},
+		Data:     &Data{GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap, Corpus: corpus},
 	}, nil
 }
 
@@ -137,6 +145,10 @@ func collectRows(st *state) []row {
 	}
 	var rows []row
 	for _, e := range entries {
+		if corpuscore.IsDir(".review/" + e.Name()) {
+			st.readCorpus(e)
+			continue
+		}
 		if bundleRow, ok := readBundleRow(st, e); ok {
 			rows = append(rows, bundleRow)
 		}

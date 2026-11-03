@@ -221,21 +221,21 @@ func TestGenerateDeterministic(t *testing.T) {
 	}
 }
 
-// TestDocumentsCarryStableIdentity pins $schema, $id, title and the six names.
+// TestDocumentsCarryStableIdentity pins the header fields and every name.
 func TestDocumentsCarryStableIdentity(t *testing.T) {
 	files, err := Generate()
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 6 {
-		t.Fatalf("generated %d schemas, want 6", len(files))
+	if len(files) != 7 {
+		t.Fatalf("generated %d schemas, want 7", len(files))
 	}
 	seen := map[string]bool{}
 	for _, file := range files {
 		seen[file.Name] = true
 		assertIdentity(t, file)
 	}
-	for _, name := range []string{"cost.schema.json", "envelope.schema.json", "findings.schema.json", "post.schema.json", "record.schema.json", "review.schema.json"} {
+	for _, name := range []string{"corpus.schema.json", "cost.schema.json", "envelope.schema.json", "findings.schema.json", "post.schema.json", "record.schema.json", "review.schema.json"} {
 		if !seen[name] {
 			t.Errorf("missing generated schema %s", name)
 		}

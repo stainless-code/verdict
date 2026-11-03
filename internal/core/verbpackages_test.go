@@ -15,9 +15,9 @@ import (
 // adding a package here makes the guard fail if it ever imports a CLI
 // adapter or another transport.
 var coreSubpackages = []string{
-	"./adopt", "./calibrate", "./checktree", "./doctor", "./exec", "./fetch", "./fix", "./init",
-	"./learn", "./post", "./ready", "./record", "./report", "./skill", "./trend", "./triage",
-	"./upgrade", "./verify",
+	"./adopt", "./calibrate", "./checktree", "./corpus", "./doctor", "./exec", "./fetch", "./fix",
+	"./init", "./learn", "./post", "./ready", "./record", "./report", "./skill", "./trend",
+	"./triage", "./upgrade", "./verify",
 }
 
 // TestCoreSubpackageImportDirection proves every subpackage under

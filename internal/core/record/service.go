@@ -270,10 +270,11 @@ func typedItems(entries []any) []core.FindingItem {
 	return items
 }
 
-// resolveBundleDir ports resolve_bundle_dir: local-* slugs and bare slugs
-// with a matching .review/local-* dir resolve local.
+// resolveBundleDir ports resolve_bundle_dir plus the marked corpus kind:
+// local-*/corpus-* slugs resolve directly, and bare slugs with a matching
+// .review/local-* dir resolve local.
 func resolveBundleDir(pr string) string {
-	if strings.HasPrefix(pr, localPrefix) {
+	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
 		return ".review/" + pr
 	}
 	if isDir(".review/local-"+pr) && !exists(".review/"+pr+prSuffix) {
@@ -284,7 +285,10 @@ func resolveBundleDir(pr string) string {
 
 // resolveProvider maps the bundle dir to its provider, refusing non-bundles.
 func resolveProvider(dir string) (string, *core.RefusalError) {
-	if strings.HasPrefix(dir, ".review/local-") {
+	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
+		// Corpus bundles are marked, local-shaped runs: record merges their
+		// reviewed output exactly like a local bundle, while post/ready keep
+		// refusing them (they have no PR target).
 		return providerLocal, nil
 	}
 	switch prov := providerOf(dir); prov {

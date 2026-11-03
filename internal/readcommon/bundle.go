@@ -10,6 +10,9 @@ import (
 // localPrefix marks operator-local bundle slugs.
 const localPrefix = "local-"
 
+// corpusPrefix marks benchmark corpus bundle slugs.
+const corpusPrefix = "corpus-"
+
 // prSuffix is the provider record filename.
 const prSuffix = "/PR.json"
 
@@ -21,10 +24,11 @@ const (
 	fieldAuthor  = "author"
 )
 
-// ResolveBundleDir ports resolve_bundle_dir: local-* slugs and bare slugs
-// with a matching .review/local-* dir (and no PR bundle) resolve local.
+// ResolveBundleDir ports resolve_bundle_dir: local-* and corpus-* slugs
+// resolve directly; bare slugs with a matching .review/local-* dir (and no
+// PR bundle) resolve local.
 func ResolveBundleDir(pr string) string {
-	if strings.HasPrefix(pr, localPrefix) {
+	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
 		return ".review/" + pr
 	}
 	if isDir(".review/local-"+pr) && !exists(".review/"+pr+prSuffix) {

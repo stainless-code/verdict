@@ -40,6 +40,7 @@ const (
 	// Provider codes.
 	providerLocal = "local"
 	localPrefix   = "local-"
+	corpusPrefix  = "corpus-"
 	// statusOpen is the open finding status.
 	statusOpen = "open"
 	// Refusal codes.
