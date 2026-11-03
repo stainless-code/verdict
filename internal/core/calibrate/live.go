@@ -229,7 +229,7 @@ func joinOne(entry any, threads, changed []any) outcome {
 		sev:     severityOf(entry),
 		locator: locatorFor(entry),
 	}
-	kind, ok := fieldOf(entry, "kind").(string)
+	kind, ok := readcommon.FieldOf(entry, "kind").(string)
 	if !ok {
 		kind = ""
 	}
@@ -240,7 +240,7 @@ func joinOne(entry any, threads, changed []any) outcome {
 		return out
 	}
 	pb := postedBody(entry)
-	hit := findThread(threads, pb, fieldOf(entry, "path"))
+	hit := findThread(threads, pb, readcommon.FieldOf(entry, "path"))
 	if hit == nil {
 		out.result = outcomeUnknown
 		out.detail = "comment not found live"
@@ -253,7 +253,7 @@ func joinOne(entry any, threads, changed []any) outcome {
 		withKb(&out, entry)
 		return out
 	}
-	if pathChanged(changed, fieldOf(entry, "path")) {
+	if pathChanged(changed, readcommon.FieldOf(entry, "path")) {
 		out.result = outcomeFixed
 		out.detail = "thread resolved + cited file changed since review head"
 		withKb(&out, entry)
@@ -268,7 +268,7 @@ func joinOne(entry any, threads, changed []any) outcome {
 // withKb attaches the cited kb value when it reads non-empty (jq length
 // semantics with booleans reading 0, so the shell's length never errors).
 func withKb(out *outcome, entry any) {
-	kb := fieldOf(entry, "kb")
+	kb := readcommon.FieldOf(entry, "kb")
 	if kb == nil {
 		return
 	}
@@ -331,25 +331,15 @@ func severityOf(entry any) string {
 	return outcomeUntagged
 }
 
-// fieldOf reads one entry field (nil-safe for null entries).
-func fieldOf(entry any, key string) any {
-	m, ok := entry.(*jq.Obj)
-	if !ok || m == nil {
-		return nil
-	}
-	v, _ := m.Get(key)
-	return v
-}
-
 // postedBody ports the posted-body match key: body plus the fenced
 // suggestion block. Bodies and suggestions read raw (the entry guard keeps
 // them null-or-string, so only a present non-empty string appends).
 func postedBody(entry any) string {
-	body, ok := fieldOf(entry, "body").(string)
+	body, ok := readcommon.FieldOf(entry, "body").(string)
 	if !ok {
 		body = ""
 	}
-	suggestion, ok := fieldOf(entry, "suggestion").(string)
+	suggestion, ok := readcommon.FieldOf(entry, "suggestion").(string)
 	if !ok {
 		suggestion = ""
 	}

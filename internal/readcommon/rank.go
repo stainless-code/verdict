@@ -70,8 +70,8 @@ func boolRank(v any) int {
 	return 1
 }
 
-// fieldOf reads one entry field (nil when absent or non-object).
-func fieldOf(entry any, key string) any {
+// FieldOf reads one entry field (nil when absent or non-object).
+func FieldOf(entry any, key string) any {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
 		return nil
@@ -82,7 +82,7 @@ func fieldOf(entry any, key string) any {
 
 // StatusOf reads an entry's status for filters and counts.
 func StatusOf(entry any) string {
-	if s, ok := fieldOf(entry, "status").(string); ok {
+	if s, ok := FieldOf(entry, "status").(string); ok {
 		return s
 	}
 	return ""
@@ -90,7 +90,7 @@ func StatusOf(entry any) string {
 
 // KindOf reads an entry's kind for filters.
 func KindOf(entry any) string {
-	if s, ok := fieldOf(entry, "kind").(string); ok {
+	if s, ok := FieldOf(entry, "kind").(string); ok {
 		return s
 	}
 	return ""
@@ -209,23 +209,23 @@ func compareRankKeys(a, b rankKeys) int {
 
 // sortKeys builds the eight ranked sort keys for one entry.
 func sortKeys(e any) rankKeys {
-	path := fieldOf(e, "path")
+	path := FieldOf(e, "path")
 	if path == nil || path == false {
 		path = ""
 	}
-	line := fieldOf(e, "line")
+	line := FieldOf(e, "line")
 	if line == nil || line == false {
 		line = 0
 	}
 	return rankKeys{
 		status:   statusRank(StatusOf(e)),
-		severity: sevRank(fieldOf(e, "severity")),
-		rigor:    rigorRank(fieldOf(e, "rigor")),
-		anchored: boolRank(fieldOf(e, "anchored")),
-		inBounds: boolRank(fieldOf(e, "inBounds")),
+		severity: sevRank(FieldOf(e, "severity")),
+		rigor:    rigorRank(FieldOf(e, "rigor")),
+		anchored: boolRank(FieldOf(e, "anchored")),
+		inBounds: boolRank(FieldOf(e, "inBounds")),
 		path:     path,
 		line:     line,
-		sig:      fieldOf(e, "sig"),
+		sig:      FieldOf(e, "sig"),
 	}
 }
 
@@ -233,12 +233,12 @@ func sortKeys(e any) rankKeys {
 // (null/false read falsy; 0 and "" read truthy, like jq), else the heading
 // fallback. Rendering follows \(...) interpolation (null reads "").
 func Locator(entry any) string {
-	path := fieldOf(entry, "path")
+	path := FieldOf(entry, "path")
 	if !Truthy(path) {
 		return jq.Interp(entryHeading(entry))
 	}
 	locator := jq.Interp(path)
-	if line := fieldOf(entry, "line"); Truthy(line) {
+	if line := FieldOf(entry, "line"); Truthy(line) {
 		locator += ":" + jq.Interp(line)
 	}
 	return locator
@@ -246,7 +246,7 @@ func Locator(entry any) string {
 
 // entryHeading reads the heading fallback (nil or false read "?").
 func entryHeading(entry any) any {
-	heading := fieldOf(entry, "heading")
+	heading := FieldOf(entry, "heading")
 	if heading == nil || heading == false {
 		return "?"
 	}
@@ -260,7 +260,7 @@ func SigPrefix(entry any) string {
 
 // sigOf reads an entry's sig string ("" unless it is one).
 func sigOf(entry any) string {
-	sig, ok := fieldOf(entry, "sig").(string)
+	sig, ok := FieldOf(entry, "sig").(string)
 	if !ok {
 		return ""
 	}

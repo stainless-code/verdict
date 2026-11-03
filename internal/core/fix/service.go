@@ -361,7 +361,7 @@ func (st *state) corruptStore(dir string) *core.RefusalError {
 func decodeEntries(raw []byte) ([]any, error) {
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return nil, sealed(opDecodeFindings, err)
+		return nil, jq.Sealed(opDecodeFindings, err)
 	}
 	arr, ok := doc.([]any)
 	if !ok {
@@ -1093,12 +1093,6 @@ func prefixN(s string, n int) string {
 // prefix8 renders the 8-char sig prefix for summaries.
 func prefix8(sig string) string {
 	return prefixN(sig, sigPrefixLen)
-}
-
-// sealed annotates err without exposing it, per GO-ERRORS-03 (see jq.Sealed).
-func sealed(op string, err error) error {
-	//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-	return fmt.Errorf("%s: %v", op, err)
 }
 
 // Fix-loop constants.

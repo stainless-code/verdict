@@ -113,11 +113,11 @@ func TestSuggestSplits(t *testing.T) {
 // TestRound4 exercises the fetch helper.
 func TestRound4(t *testing.T) {
 	t.Parallel()
-	if got := round4(1.0 / 3.0); got != 0.3333 {
-		t.Fatalf("round4(1/3) = %v", got)
+	if got := readcommon.Round4(1.0 / 3.0); got != 0.3333 {
+		t.Fatalf("readcommon.Round4(1/3) = %v", got)
 	}
-	if got := round4(2.5); got != 2.5 {
-		t.Fatalf("round4(2.5) = %v", got)
+	if got := readcommon.Round4(2.5); got != 2.5 {
+		t.Fatalf("readcommon.Round4(2.5) = %v", got)
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // helperPoll bounds the parent-PID poll interval.
@@ -34,14 +36,14 @@ func removePathMarker(_ context.Context, env map[string]string, _ string) (strin
 		if errors.Is(err, os.ErrNotExist) {
 			return profile, false, nil
 		}
-		return "", false, sealed("read "+profile, err)
+		return "", false, jq.Sealed("read "+profile, err)
 	}
 	body, changed := stripMarker(string(raw))
 	if !changed {
 		return profile, false, nil
 	}
 	if err := os.WriteFile(profile, []byte(body), filePermResult); err != nil { //nolint:gosec // match the installer's profile mode
-		return "", false, sealed("rewrite "+profile, err)
+		return "", false, jq.Sealed("rewrite "+profile, err)
 	}
 	return profile, true, nil
 }
@@ -104,7 +106,7 @@ func waitProcess(ctx context.Context, pid int) error {
 		}
 		select {
 		case <-ctx.Done():
-			return sealed("wait for parent", ctx.Err())
+			return jq.Sealed("wait for parent", ctx.Err())
 		case <-ticker.C:
 		}
 	}
@@ -119,5 +121,5 @@ func processGone(pid int) (bool, error) {
 	if errors.Is(err, syscall.ESRCH) {
 		return true, nil
 	}
-	return false, sealed("probe parent pid", err)
+	return false, jq.Sealed("probe parent pid", err)
 }

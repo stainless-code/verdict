@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Request carries the resolved adopt invocation: the shared runtime plus the
@@ -179,7 +180,7 @@ func (st *state) finishAdopt(dir, fromDir string, entries []any) *core.RefusalEr
 		return ref
 	}
 	hs := readHunks(dir + hunksSuffix)
-	stamped := adoptEntries(entries, shortSHA(commitID), now, st.req.From, hs)
+	stamped := adoptEntries(entries, readcommon.ShortSHA(commitID), now, st.req.From, hs)
 	nOpen := countStatus(stamped, statusOpen)
 	if err := atomic.WriteFile(dir+findingsSuffix, []byte(jq.PrettyOrdered(stamped))); err != nil {
 		return st.refuse("adopt-failed", fmt.Sprintf("could not write %s/findings.json: %v", dir, err))
@@ -365,14 +366,6 @@ func matchesStatus(e any, status string) bool {
 	return ok && s == status
 }
 
-// shortSHA ports ${commit_id:0:7}.
-func shortSHA(head string) string {
-	if len(head) > shortSHALen {
-		return head[:shortSHALen]
-	}
-	return head
-}
-
 // providerOf ports `jq -r '.provider // "github"'` with the unreadable-file
 // fallback to github.
 func providerOf(dir string) string {
@@ -520,8 +513,6 @@ const (
 	prefixB = "b/"
 	// prefixLen strips the diff path prefixes.
 	prefixLen = 2
-	// shortSHALen is the ${var:0:7} width.
-	shortSHALen = 7
 	// hunkFieldCount is the hunks.tsv column count.
 	hunkFieldCount = 4
 	// hunkStartIdx indexes the hunks.tsv start column.

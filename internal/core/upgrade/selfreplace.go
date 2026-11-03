@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/release"
 )
 
@@ -157,7 +158,7 @@ func defaultSmoke(ctx context.Context, path, version string) error {
 	cmd.WaitDelay = commandWaitDelay
 	out, err := cmd.Output()
 	if err != nil {
-		return sealed("run "+path+" --version", err)
+		return jq.Sealed("run "+path+" --version", err)
 	}
 	if got := strings.TrimSpace(string(out)); got != version {
 		return newErrf("--version printed %q; want %q", got, version)
@@ -169,27 +170,27 @@ func defaultSmoke(ctx context.Context, path, version string) error {
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
-		return sealed("open "+src, err)
+		return jq.Sealed("open "+src, err)
 	}
 	defer func() { _ = in.Close() }() // read-only source; the copy error rules
 	info, err := in.Stat()
 	if err != nil {
-		return sealed("stat "+src, err)
+		return jq.Sealed("stat "+src, err)
 	}
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
 	if err != nil {
-		return sealed("create "+dst, err)
+		return jq.Sealed("create "+dst, err)
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close() // copy error rules
-		return sealed("copy "+dst, err)
+		return jq.Sealed("copy "+dst, err)
 	}
 	if err := out.Sync(); err != nil {
 		_ = out.Close() // sync error rules
-		return sealed("sync "+dst, err)
+		return jq.Sealed("sync "+dst, err)
 	}
 	if err := out.Close(); err != nil {
-		return sealed("close "+dst, err)
+		return jq.Sealed("close "+dst, err)
 	}
 	return nil
 }

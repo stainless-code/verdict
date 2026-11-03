@@ -67,10 +67,10 @@ func sigOf(top *core.FindingItem) string {
 	if top.Raw == nil {
 		return jq.Str(top.Sig)
 	}
-	if sig, ok := fieldOf(top.Raw, "sig").(string); ok {
+	if sig, ok := readcommon.FieldOf(top.Raw, "sig").(string); ok {
 		return readcommon.Prefix(sig)
 	}
-	return jq.Str(fieldOf(top.Raw, "sig"))
+	return jq.Str(readcommon.FieldOf(top.Raw, "sig"))
 }
 
 // statusOf renders the item status like the shell's jq interpolation.
@@ -78,7 +78,7 @@ func statusOf(top *core.FindingItem) string {
 	if top.Raw == nil {
 		return jq.Str(top.Status)
 	}
-	return jq.Str(fieldOf(top.Raw, "status"))
+	return jq.Str(readcommon.FieldOf(top.Raw, "status"))
 }
 
 // validStatus reports whether s is a known status filter.

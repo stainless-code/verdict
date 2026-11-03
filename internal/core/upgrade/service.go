@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Install channels, in the operator's §6 table order.
@@ -478,7 +479,7 @@ func resolveExecutable(req *Request) (string, error) {
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return "", sealed("os.Executable", err)
+		return "", jq.Sealed("os.Executable", err)
 	}
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
@@ -635,12 +636,6 @@ func errText(err error) string {
 		return "unknown error"
 	}
 	return err.Error()
-}
-
-// sealed annotates err without exposing it (GO-ERRORS-03).
-func sealed(op string, err error) error {
-	//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-	return fmt.Errorf("%s: %v", op, err)
 }
 
 // newErr builds a locally owned error at the service boundary.

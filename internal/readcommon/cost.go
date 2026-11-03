@@ -297,7 +297,7 @@ func rollupRecords(records []any) *jq.Obj {
 	}
 	var estUSD any
 	if sum.estN > 0 {
-		estUSD = round4(sum.estSum)
+		estUSD = Round4(sum.estSum)
 	}
 	byTier := jq.NewObj()
 	for _, t := range tiers {
@@ -447,8 +447,8 @@ func recordEstimate(rm map[string]any) (float64, bool) {
 	return NumVal(est)
 }
 
-// round4 ports jq's (add * 10000 | round) / 10000.
-func round4(f float64) float64 {
+// Round4 ports jq's (add * 10000 | round) / 10000.
+func Round4(f float64) float64 {
 	return math.Round(f*roundScale) / roundScale
 }
 

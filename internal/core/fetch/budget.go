@@ -312,7 +312,7 @@ func tierStats(recs []costRec, t string) tierStat {
 	st.meanVal = -1.0
 	if st.priced > 0 {
 		st.meanVal = sum / float64(st.priced)
-		st.mean = jq.Compact(round4(st.meanVal))
+		st.mean = jq.Compact(readcommon.Round4(st.meanVal))
 	}
 	slices.Sort(st.harness)
 	st.harness = slices.Compact(st.harness)

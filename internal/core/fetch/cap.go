@@ -3,7 +3,6 @@ package fetchcore
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -311,9 +310,4 @@ func restSplit(top fileSlice, rest []string, restBytes int64) any {
 	return jq.NewObj(
 		keyKind, "paths", keyFiles, files, keyEstimated, restBytes,
 		keySuggestion, suggestion)
-}
-
-// round4 ports jq's `((add / length * 10000 | round) / 10000)` mean.
-func round4(f float64) float64 {
-	return math.Floor(f*numRoundScale+roundHalf) / numRoundScale
 }

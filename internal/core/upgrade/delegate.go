@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // delegate prints the exact manager command, runs it without a prompt, and
@@ -68,5 +69,5 @@ func (req *Request) run(ctx context.Context, argv []string) (int, error) {
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exit.ExitCode(), nil
 	}
-	return 0, sealed("run "+argv[0], err)
+	return 0, jq.Sealed("run "+argv[0], err)
 }

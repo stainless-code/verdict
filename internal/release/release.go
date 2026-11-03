@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 	contract "github.com/stainless-code/verdict/release"
 )
 
@@ -160,15 +161,15 @@ func LatestVersion(ctx context.Context, client *http.Client, baseURL string) (st
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latest, nil)
 	if err != nil {
-		return "", sealed("latest "+latest, err)
+		return "", jq.Sealed("latest "+latest, err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return "", sealed("latest "+latest, err)
+		return "", jq.Sealed("latest "+latest, err)
 	}
 	defer func() { _ = resp.Body.Close() }() // read-only response; the status check owns the outcome
 	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, redirectBodyCap)); err != nil {
-		return "", sealed("latest body", err)
+		return "", jq.Sealed("latest body", err)
 	}
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
@@ -178,7 +179,7 @@ func LatestVersion(ctx context.Context, client *http.Client, baseURL string) (st
 	}
 	loc, err := url.Parse(resp.Header.Get("Location"))
 	if err != nil {
-		return "", sealed("latest redirect", err)
+		return "", jq.Sealed("latest redirect", err)
 	}
 	version := strings.TrimPrefix(path.Base(loc.Path), "v")
 	if !ValidVersion(version) {
@@ -259,7 +260,7 @@ func prepareDirs(req *Request) (dirs, *core.RefusalError) {
 	}
 	for _, dir := range []string{d.download, d.stage} {
 		if err := os.MkdirAll(dir, filePermExec); err != nil {
-			return dirs{}, refuse(codeFetchFailed, sealed("create "+dir, err).Error())
+			return dirs{}, refuse(codeFetchFailed, jq.Sealed("create "+dir, err).Error())
 		}
 	}
 	return d, nil
@@ -406,7 +407,7 @@ func runCosign(ctx context.Context, req *Request, cosign string, args []string) 
 	cmd.WaitDelay = commandWaitDelay
 	out, err := cmd.Output()
 	if err != nil {
-		return []byte(stderr.String()), sealed("cosign", err)
+		return []byte(stderr.String()), jq.Sealed("cosign", err)
 	}
 	return out, nil
 }
@@ -433,11 +434,11 @@ func binaryName(goos string) string {
 func download(ctx context.Context, client *http.Client, rawURL, dst string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return sealed("GET "+rawURL, err)
+		return jq.Sealed("GET "+rawURL, err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return sealed("GET "+rawURL, err)
+		return jq.Sealed("GET "+rawURL, err)
 	}
 	defer func() { _ = resp.Body.Close() }() // the body's fate is the copy below
 	if resp.StatusCode != http.StatusOK {
@@ -446,15 +447,15 @@ func download(ctx context.Context, client *http.Client, rawURL, dst string) erro
 	body := io.LimitReader(resp.Body, maxAssetBytes+1)
 	file, err := os.Create(dst)
 	if err != nil {
-		return sealed("create "+dst, err)
+		return jq.Sealed("create "+dst, err)
 	}
 	written, copyErr := io.Copy(file, body)
 	closeErr := file.Close()
 	if copyErr != nil {
-		return sealed("write "+dst, copyErr)
+		return jq.Sealed("write "+dst, copyErr)
 	}
 	if closeErr != nil {
-		return sealed("write "+dst, closeErr)
+		return jq.Sealed("write "+dst, closeErr)
 	}
 	if written > maxAssetBytes {
 		_ = os.Remove(dst) // oversize cleanup; the size error rules
@@ -467,7 +468,7 @@ func download(ctx context.Context, client *http.Client, rawURL, dst string) erro
 func expectedSum(checksumsPath, name string) (string, error) {
 	raw, err := os.ReadFile(checksumsPath)
 	if err != nil {
-		return "", sealed("read checksums", err)
+		return "", jq.Sealed("read checksums", err)
 	}
 	return sumFor(string(raw), name)
 }
@@ -503,12 +504,12 @@ func sumFromLine(line, name string) (string, bool, error) {
 func fileSHA256(archivePath string) (string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
-		return "", sealed("open "+archivePath, err)
+		return "", jq.Sealed("open "+archivePath, err)
 	}
 	defer func() { _ = file.Close() }() // read-only handle; the hash error rules
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return "", sealed("hash "+archivePath, err)
+		return "", jq.Sealed("hash "+archivePath, err)
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
@@ -543,12 +544,12 @@ func checkMember(name string, members []string, regular bool) error {
 func extractTarGz(archivePath, stageDir, binary string, members []string) (string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
-		return "", sealed("open archive", err)
+		return "", jq.Sealed("open archive", err)
 	}
 	defer func() { _ = file.Close() }() // read-only handle; extraction errors rule
 	gz, err := gzip.NewReader(file)
 	if err != nil {
-		return "", sealed("not a valid tar.gz archive", err)
+		return "", jq.Sealed("not a valid tar.gz archive", err)
 	}
 	defer func() { _ = gz.Close() }() // gzip reader has no recovery path; extraction owns the outcome
 	dst := filepath.Join(stageDir, binary)
@@ -573,7 +574,7 @@ func walkTar(tr *tar.Reader, dst, binary string, members []string) (bool, error)
 			return found, nil
 		}
 		if err != nil {
-			return false, sealed("read archive", err)
+			return false, jq.Sealed("read archive", err)
 		}
 		if err := consumeTarMember(tr, hdr, dst, binary, members); err != nil {
 			return false, err
@@ -599,7 +600,7 @@ func consumeTarMember(tr *tar.Reader, hdr *tar.Header, dst, binary string, membe
 func extractZip(archivePath, stageDir, binary string, members []string) (string, error) {
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return "", sealed("not a valid zip archive", err)
+		return "", jq.Sealed("not a valid zip archive", err)
 	}
 	defer func() { _ = zr.Close() }() // read-only archive; extraction owns the outcome
 	dst := filepath.Join(stageDir, binary)
@@ -638,7 +639,7 @@ func consumeZipMember(member *zip.File, dst, binary string, members []string) (b
 	}
 	src, err := member.Open()
 	if err != nil {
-		return false, sealed("read archive member", err)
+		return false, jq.Sealed("read archive member", err)
 	}
 	err = writeMember(dst, src)
 	_ = src.Close() // the member read is done; writeMember's error rules
@@ -652,18 +653,18 @@ func consumeZipMember(member *zip.File, dst, binary string, members []string) (b
 func writeMember(dst string, src io.Reader) error {
 	file, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, filePermExec)
 	if err != nil {
-		return sealed("create "+dst, err)
+		return jq.Sealed("create "+dst, err)
 	}
 	if _, err := io.Copy(file, io.LimitReader(src, maxAssetBytes)); err != nil {
 		_ = file.Close() // copy error rules; close adds nothing
-		return sealed("extract "+dst, err)
+		return jq.Sealed("extract "+dst, err)
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close() // sync error rules
-		return sealed("sync "+dst, err)
+		return jq.Sealed("sync "+dst, err)
 	}
 	if err := file.Close(); err != nil {
-		return sealed("close "+dst, err)
+		return jq.Sealed("close "+dst, err)
 	}
 	return nil
 }
@@ -727,10 +728,4 @@ func newErr(msg string) error {
 // newErrf builds a locally owned formatted error.
 func newErrf(format string, args ...any) error {
 	return fmt.Errorf(format, args...) //nolint:wrapcheck // locally constructed message, not an external error
-}
-
-// sealed annotates err without exposing it (GO-ERRORS-03).
-func sealed(op string, err error) error {
-	//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-	return fmt.Errorf("%s: %v", op, err)
 }

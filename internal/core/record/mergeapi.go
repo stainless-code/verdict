@@ -88,7 +88,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		reviewFile:   in.ReviewFile,
 		root:         in.Root,
 		headFull:     in.HeadFull,
-		headShort:    shortSHA(in.HeadFull),
+		headShort:    readcommon.ShortSHA(in.HeadFull),
 		prov:         in.Prov,
 		dryRun:       in.DryRun,
 		controls:     in.Controls,
@@ -317,14 +317,6 @@ func removeBestEffort(path string) {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-// shortSHA ports ${head_full:0:7}.
-func shortSHA(head string) string {
-	if len(head) > shortSHALen {
-		return head[:shortSHALen]
-	}
-	return head
 }
 
 // sigPrefix renders the 8-char sig prefix for the human table.

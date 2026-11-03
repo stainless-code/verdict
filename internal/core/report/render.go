@@ -117,13 +117,13 @@ func envelopeItem(item readcommon.Ranked) core.FindingItem {
 	}
 	if m, ok := item.Entry.(*jq.Obj); ok && m != nil {
 		f.Raw = m
-		if s, ok := fieldOf(item.Entry, "sig").(string); ok {
+		if s, ok := readcommon.FieldOf(item.Entry, "sig").(string); ok {
 			f.Sig = s
 		}
-		if s, ok := fieldOf(item.Entry, "status").(string); ok {
+		if s, ok := readcommon.FieldOf(item.Entry, "status").(string); ok {
 			f.Status = s
 		}
-		f.Anchored = fieldOf(item.Entry, "anchored")
+		f.Anchored = readcommon.FieldOf(item.Entry, "anchored")
 	}
 	return f
 }
@@ -258,7 +258,7 @@ func buildHuman(st *state) []string {
 		st.dir, len(st.ranked), st.nOpen, readcommon.ShortSHA(st.headSHA))}
 	for _, item := range st.ranked {
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
-			item.Rank, jq.Str(fieldOf(item.Entry, "status")),
+			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
 	}
 	if st.flags.Cost {
@@ -276,10 +276,10 @@ func buildHuman(st *state) []string {
 // sigHuman ports \(.sig[0:8]) for human lines: string sigs slice to 8
 // codepoints, everything else renders jq-style ("null" for missing).
 func sigHuman(entry any) string {
-	if sig, ok := fieldOf(entry, "sig").(string); ok {
+	if sig, ok := readcommon.FieldOf(entry, "sig").(string); ok {
 		return readcommon.Prefix(sig)
 	}
-	return jq.Str(fieldOf(entry, "sig"))
+	return jq.Str(readcommon.FieldOf(entry, "sig"))
 }
 
 // costHuman ports the human cost rollup block.

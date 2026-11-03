@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // rigors lists the evidence ladder in Basis order.
@@ -285,7 +286,7 @@ func ValidateEvidenceLinks(body, sha, linkable string) []string {
 	}
 	for _, s := range mismatchedSHAs(shas, sha, linkable) {
 		warns = append(warns, fmt.Sprintf("evidence link SHA '%s' differs from the reviewed SHA '%s' — keeping "+
-			"body as-is (links stay pinned to the reviewed commit, never live HEAD)", s, shortSHA(sha)))
+			"body as-is (links stay pinned to the reviewed commit, never live HEAD)", s, readcommon.ShortSHA(sha)))
 	}
 	if longQuoteOutsideDetails(body) {
 		warns = append(warns, "code quote longer than 3 lines outside collapsed details — keeping body as-is "+
@@ -339,14 +340,6 @@ func bodySHAs(body string) []string {
 	// but not guaranteed — sort for fidelity.
 	sortHex(shas)
 	return shas
-}
-
-// shortSHA abbreviates a SHA for warnings.
-func shortSHA(sha string) string {
-	if len(sha) > shortSHALen {
-		return sha[:shortSHALen]
-	}
-	return sha
 }
 
 // sortHex sorts hex strings in byte order (LC_ALL=C sort -u).

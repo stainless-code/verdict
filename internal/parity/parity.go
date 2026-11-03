@@ -24,6 +24,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -44,6 +45,10 @@ const (
 
 // osWindows names the Windows GOOS value (avoiding repeated literals).
 const osWindows = "windows"
+
+// pathSep is the forward slash the harness mixes with [filepath.ToSlash],
+// so keys and messages stay identical on every OS.
+const pathSep = "/"
 
 // Harness carries the built binary, stub tooling, and repo root.
 type Harness struct {
@@ -67,8 +72,7 @@ func Build() (*Harness, error) {
 	}
 	tmp, err := os.MkdirTemp("", "verdict-parity-root")
 	if err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return nil, fmt.Errorf("parity temp root: %v", err)
+		return nil, jq.Sealed("parity temp root", err)
 	}
 	if err := buildBinary(repoRoot, tmp); err != nil {
 		os.RemoveAll(tmp)
@@ -103,8 +107,7 @@ func buildShim(repoRoot, dir string) (string, error) {
 	build := exec.CommandContext(context.Background(), "go", "build", "-o", shim, "./internal/parity/stubshim")
 	build.Dir = repoRoot
 	if out, err := build.CombinedOutput(); err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return "", fmt.Errorf("build stub shim: %v\n%s", err, out)
+		return "", jq.Sealed("build stub shim", errors.New(err.Error()+"\n"+string(out)))
 	}
 	return shim, nil
 }
@@ -118,8 +121,7 @@ func buildBinary(repoRoot, dir string) error {
 	build := exec.CommandContext(context.Background(), "go", "build", "-o", bin, "./cmd/verdict")
 	build.Dir = repoRoot
 	if out, err := build.CombinedOutput(); err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("build binary: %v\n%s", err, out)
+		return jq.Sealed("build binary", errors.New(err.Error()+"\n"+string(out)))
 	}
 	return nil
 }
@@ -130,8 +132,7 @@ func buildBinary(repoRoot, dir string) error {
 func copyProvenance(repoRoot, tmp string) error {
 	for _, f := range []string{"package.json", "SKILL.md"} {
 		if err := copyFile(filepath.Join(repoRoot, f), filepath.Join(tmp, f)); err != nil {
-			//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-			return fmt.Errorf("provenance %s: %v", f, err)
+			return jq.Sealed("provenance "+f, err)
 		}
 	}
 	for _, dir := range []string{"prompts", "scripts"} {
@@ -145,21 +146,18 @@ func copyProvenance(repoRoot, tmp string) error {
 // copyProvenanceDir copies the flat files of one provenance directory.
 func copyProvenanceDir(repoRoot, tmp, dir string) error {
 	if err := os.MkdirAll(filepath.Join(tmp, dir), dirPerm); err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("provenance dir %s: %v", dir, err)
+		return jq.Sealed("provenance dir "+dir, err)
 	}
 	entries, err := os.ReadDir(filepath.Join(repoRoot, dir))
 	if err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("provenance dir %s: %v", dir, err)
+		return jq.Sealed("provenance dir "+dir, err)
 	}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		if err := copyFile(filepath.Join(repoRoot, dir, e.Name()), filepath.Join(tmp, dir, e.Name())); err != nil {
-			//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-			return fmt.Errorf("provenance %s/%s: %v", dir, e.Name(), err)
+			return jq.Sealed("provenance "+dir+pathSep+e.Name(), err)
 		}
 	}
 	return nil
@@ -209,8 +207,7 @@ var fetchStubScripts = map[string]string{
 func (h *Harness) writeStubs() error {
 	stubBin, err := os.MkdirTemp("", "verdict-parity-stub")
 	if err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("stub temp dir: %v", err)
+		return jq.Sealed("stub temp dir", err)
 	}
 	h.StubBin = stubBin
 	stubs := append([]stubDef{{name: "gh", script: stubScript}}, allStubs()...)
@@ -258,15 +255,13 @@ func (h *Harness) WriteStub(name, script string) error {
 // the shared stub directory.
 func (h *Harness) WriteStubAt(dir, name, script string) error {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), stubPerm); err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("write %s stub: %v", name, err)
+		return jq.Sealed("write "+name+" stub", err)
 	}
 	if h.shim == "" {
 		return nil
 	}
 	if err := copyFile(h.shim, filepath.Join(dir, name+".exe")); err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("write %s exe stub: %v", name, err)
+		return jq.Sealed("write "+name+" exe stub", err)
 	}
 	return nil
 }
@@ -303,13 +298,11 @@ func findRepoRoot() (string, error) {
 func copyFile(src, dst string) error {
 	raw, err := os.ReadFile(src)
 	if err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("read %s: %v", src, err)
+		return jq.Sealed("read "+src, err)
 	}
 	//nolint:gosec // G703: dst is Join()s of the harness temp dir and repo-listed names; no external input reaches it.
 	if err := os.WriteFile(dst, raw, filePerm); err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("write %s: %v", dst, err)
+		return jq.Sealed("write "+dst, err)
 	}
 	return nil
 }
@@ -405,7 +398,7 @@ func scrubRoots(s string, roots []string) string {
 			continue
 		}
 		s = strings.ReplaceAll(s, r, "ROOT")
-		if slash := strings.ReplaceAll(r, `\`, "/"); slash != r {
+		if slash := strings.ReplaceAll(r, `\`, pathSep); slash != r {
 			s = strings.ReplaceAll(s, slash, "ROOT")
 		}
 	}
@@ -501,22 +494,20 @@ func snapshotVisit(tag, root string, out map[string]string) filepath.WalkFunc {
 func snapshotFile(tag, root string, out map[string]string, p string) error {
 	raw, err := os.ReadFile(p)
 	if err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("snapshot %s: %v", p, err)
+		return jq.Sealed("snapshot "+p, err)
 	}
 	rel, err := filepath.Rel(root, p)
 	if err != nil {
-		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return fmt.Errorf("rel %s: %v", p, err)
+		return jq.Sealed("rel "+p, err)
 	}
-	out[tag+"/"+filepath.ToSlash(rel)] = string(raw)
+	out[tag+pathSep+filepath.ToSlash(rel)] = string(raw)
 	return nil
 }
 
 // isGitPath skips .git internals (hashes and timestamps, never graded;
 // the evals grade worktree files, not the object store).
 func isGitPath(p string) bool {
-	return slices.Contains(strings.Split(filepath.ToSlash(p), "/"), ".git")
+	return slices.Contains(strings.Split(filepath.ToSlash(p), pathSep), ".git")
 }
 
 // mergeMaps unions two file maps.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // HelperCommand is the hidden argv[0] the new binary runs as the Windows
@@ -132,7 +133,7 @@ func parseHandoff(args []string) (Handoff, error) {
 	version := fs.String("version", "", "")
 	result := fs.String("result", "", "")
 	if err := fs.Parse(args); err != nil {
-		return Handoff{}, sealed("parse helper flags", err)
+		return Handoff{}, jq.Sealed("parse helper flags", err)
 	}
 	h := Handoff{
 		ParentPID: *parent, Target: *target, New: *newPath,
@@ -168,7 +169,7 @@ func spawnHandoff(ctx context.Context, req *Request, helper string, h *Handoff) 
 	logPath := h.ResultPath + ".log"
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return "", sealed("create helper log", err)
+		return "", jq.Sealed("create helper log", err)
 	}
 	argv := append([]string{helper, helperCommand}, h.argv()...)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // G204: staged new binary plus fixed helper flags
@@ -178,7 +179,7 @@ func spawnHandoff(ctx context.Context, req *Request, helper string, h *Handoff) 
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close() // start error rules
-		return "", sealed("start helper", err)
+		return "", jq.Sealed("start helper", err)
 	}
 	_ = logFile.Close()       // the child holds its own handles
 	_ = cmd.Process.Release() //nolint:errcheck // detach: the helper outlives this process

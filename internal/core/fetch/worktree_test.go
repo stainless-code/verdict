@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // worktreeTestHead and worktreeTestStash are the canned commits for the
@@ -315,7 +316,7 @@ func TestRunLocalWorktreeAddFails(t *testing.T) {
 	var streamed []string
 	_, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed))
 	ref := requireRefusal(t, err, codeWorktreeFailed)
-	if !strings.Contains(ref.Message, worktreeTestStash[:numShortSHA]) {
+	if !strings.Contains(ref.Message, readcommon.ShortSHA(worktreeTestStash)) {
 		t.Errorf("refusal misses the short target: %q", ref.Message)
 	}
 	if got := human.String(); strings.Contains(got, "worktree:") {

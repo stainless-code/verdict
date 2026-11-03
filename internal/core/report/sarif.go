@@ -67,7 +67,7 @@ func sarifKinds(ranked []readcommon.Ranked) []string {
 
 // sarifKind ports ("verdict/" + (.kind // "unknown"))'s kind half.
 func sarifKind(entry any) string {
-	if kind, ok := fieldOf(entry, "kind").(string); ok {
+	if kind, ok := readcommon.FieldOf(entry, "kind").(string); ok {
 		return kind
 	}
 	return "unknown"
@@ -78,22 +78,22 @@ func sarifKind(entry any) string {
 func sarifResult(entry any) *jq.Obj {
 	message := sarifMessage(entry)
 	region := jq.NewObj()
-	if line := fieldOf(entry, "line"); line != nil && line != false {
+	if line := readcommon.FieldOf(entry, "line"); line != nil && line != false {
 		region.Set("startLine", line)
 	}
-	path := fieldOf(entry, "path")
+	path := readcommon.FieldOf(entry, "path")
 	if path == nil {
 		path = "PR"
 	}
 	return jq.NewObj(
 		"ruleId", "verdict/"+sarifKind(entry),
-		"level", sarifLevel(fieldOf(entry, "severity")),
+		"level", sarifLevel(readcommon.FieldOf(entry, "severity")),
 		"message", jq.NewObj("text", message),
 		"locations", []any{jq.NewObj("physicalLocation", jq.NewObj(
 			"artifactLocation", jq.NewObj("uri", path),
 			"region", region,
 		))},
-		"partialFingerprints", jq.NewObj("verdict/sig", fieldOf(entry, "sig")),
+		"partialFingerprints", jq.NewObj("verdict/sig", readcommon.FieldOf(entry, "sig")),
 	)
 }
 
@@ -101,12 +101,12 @@ func sarifResult(entry any) *jq.Obj {
 // body reading "" when the entry carries none.
 func sarifMessage(entry any) string {
 	message := ""
-	if heading := fieldOf(entry, "heading"); heading != nil && heading != false {
+	if heading := readcommon.FieldOf(entry, "heading"); heading != nil && heading != false {
 		if s, ok := heading.(string); ok {
 			message = "[" + s + "] "
 		}
 	}
-	body, ok := fieldOf(entry, "body").(string)
+	body, ok := readcommon.FieldOf(entry, "body").(string)
 	if !ok {
 		body = ""
 	}

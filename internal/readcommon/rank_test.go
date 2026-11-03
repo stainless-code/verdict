@@ -118,6 +118,55 @@ func TestRankNullEntry(t *testing.T) {
 	}
 }
 
+// TestFieldOfNullEntries checks the shared entry-field read on entries that
+// are not objects: a null, a non-object, and a typed nil pointer all read
+// nil, which is what the calibrate and report callers rely on (decoded agent
+// arrays may hold nulls).
+func TestFieldOfNullEntries(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		entry any
+		name  string
+	}{
+		{nil, "null entry"},
+		{"text", "non-object entry"},
+		{(*jq.Obj)(nil), "typed nil pointer"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := readcommon.FieldOf(tc.entry, "sig"); got != nil {
+				t.Errorf("FieldOf(%v, sig) = %v; want nil", tc.entry, got)
+			}
+		})
+	}
+}
+
+// TestFieldOfFields checks the shared entry-field read on a decoded entry:
+// an absent key reads nil, and a present key hands back the raw value
+// whatever its JSON type.
+func TestFieldOfFields(t *testing.T) {
+	t.Parallel()
+	entry := mustEntries(t, `[{"sig":"abc","anchored":true,"body":null}]`)[0]
+	cases := []struct {
+		key  string
+		want string
+	}{
+		{"missing", "null"},
+		{"sig", `"abc"`},
+		{"anchored", "true"},
+		{"body", "null"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Parallel()
+			if got := jq.Compact(readcommon.FieldOf(entry, tc.key)); got != tc.want {
+				t.Errorf("FieldOf(entry, %q) = %s; want %s", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestLocator checks the ranked locator: path[:line] when the path is
 // truthy, else the heading fallback. Zero is truthy in jq, so only a
 // missing line drops the suffix.

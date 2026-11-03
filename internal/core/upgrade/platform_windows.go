@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // errInvalidParameter is ERROR_INVALID_PARAMETER: OpenProcess on a PID
@@ -38,7 +40,7 @@ func removePathMarker(ctx context.Context, _ map[string]string, installDir strin
 		if errors.As(err, &exit) && exit.ExitCode() == 3 {
 			return "user PATH", false, nil
 		}
-		return "", false, sealed("update user PATH", err)
+		return "", false, jq.Sealed("update user PATH", err)
 	}
 	return "user PATH", true, nil
 }
@@ -52,13 +54,13 @@ func waitProcess(ctx context.Context, pid int) error {
 		if errors.Is(err, errInvalidParameter) {
 			return nil
 		}
-		return sealed("open parent process", err)
+		return jq.Sealed("open parent process", err)
 	}
 	defer func() { _ = syscall.CloseHandle(handle) }() //nolint:errcheck // handle cleanup; the wait outcome rules
 	for {
 		event, err := syscall.WaitForSingleObject(handle, 100)
 		if err != nil {
-			return sealed("wait for parent", err)
+			return jq.Sealed("wait for parent", err)
 		}
 		if event == syscall.WAIT_OBJECT_0 {
 			return nil

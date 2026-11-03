@@ -196,24 +196,24 @@ func rankedLines(st *state) []string {
 // rankedLine renders one ranked line.
 func rankedLine(_ *state, item readcommon.Ranked, linkable bool) string {
 	locator := readcommon.Locator(item.Entry)
-	if linkable && fieldOf(item.Entry, "path") != nil && fieldOf(item.Entry, "line") != nil {
+	if linkable && readcommon.FieldOf(item.Entry, "path") != nil && readcommon.FieldOf(item.Entry, "line") != nil {
 		locator = "[" + locator + "][ev-" + strconv.Itoa(item.Rank) + "]"
 	}
-	return strconv.Itoa(item.Rank) + ". [" + jq.Str(fieldOf(item.Entry, "status")) + "] " + locator +
+	return strconv.Itoa(item.Rank) + ". [" + jq.Str(readcommon.FieldOf(item.Entry, "status")) + "] " + locator +
 		" (" + sigOutput(item.Entry) + ", " + rigorOutput(item.Entry) + ") — " + bodyOutput(item.Entry)
 }
 
 // sigOutput ports \(.sig[0:8]) for output lines.
 func sigOutput(entry any) string {
-	if sig, ok := fieldOf(entry, "sig").(string); ok {
+	if sig, ok := readcommon.FieldOf(entry, "sig").(string); ok {
 		return readcommon.Prefix(sig)
 	}
-	return jq.Str(fieldOf(entry, "sig"))
+	return jq.Str(readcommon.FieldOf(entry, "sig"))
 }
 
 // rigorOutput ports \(.rigor // "?") for output lines.
 func rigorOutput(entry any) string {
-	rigor := fieldOf(entry, "rigor")
+	rigor := readcommon.FieldOf(entry, "rigor")
 	if rigor == nil || rigor == false {
 		return "?"
 	}
@@ -222,7 +222,7 @@ func rigorOutput(entry any) string {
 
 // bodyOutput ports (.body // "" | gsub("\n"; " ") | .[0:200]).
 func bodyOutput(entry any) string {
-	body, ok := fieldOf(entry, "body").(string)
+	body, ok := readcommon.FieldOf(entry, "body").(string)
 	if !ok {
 		body = ""
 	}
@@ -241,8 +241,8 @@ func linkDefs(st *state) []string {
 	base := provenance.EvidenceBaseURL(st.dir, st.req.Repo)
 	var defs []string
 	for _, item := range st.ranked {
-		path := fieldOf(item.Entry, "path")
-		line := fieldOf(item.Entry, "line")
+		path := readcommon.FieldOf(item.Entry, "path")
+		line := readcommon.FieldOf(item.Entry, "line")
 		if path == nil || line == nil {
 			continue
 		}

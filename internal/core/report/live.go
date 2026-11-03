@@ -198,13 +198,3 @@ func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	}
 	return fmt.Sprintf("verdict fetch %s %s", req.Repo, req.Pr)
 }
-
-// fieldOf reads one entry field (nil-safe for null entries).
-func fieldOf(entry any, key string) any {
-	m, ok := entry.(*jq.Obj)
-	if !ok || m == nil {
-		return nil
-	}
-	v, _ := m.Get(key)
-	return v
-}

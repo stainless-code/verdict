@@ -14,17 +14,6 @@ import (
 // providerGitHub is the default provider marker.
 const providerGitHub = "github"
 
-// shortSHALen is the abbreviated commit width (${head:0:7}).
-const shortSHALen = 7
-
-// shortSHA ports ${head:0:7}.
-func shortSHA(head string) string {
-	if len(head) > shortSHALen {
-		return head[:shortSHALen]
-	}
-	return head
-}
-
 // sigSumOf seals the payload hash for the duplicate guard.
 func sigSumOf(b []byte) string { return sig.Sum(b) }
 

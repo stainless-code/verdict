@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // isolation is one fetch-local --worktree checkout: a temporary detached
@@ -46,8 +47,9 @@ func setupIsolation(ctx context.Context, s *session, slug string, mode *localMod
 		}
 		scrubIsolation(ctx, s, dir)
 		return nil, false, &core.RefusalError{
-			Code:    codeWorktreeFailed,
-			Message: fmt.Sprintf("could not check out isolated worktree at %s: %s", shortSHA(target), headBytes(res.Stderr, numExcerpt)),
+			Code: codeWorktreeFailed,
+			Message: fmt.Sprintf("could not check out isolated worktree at %s: %s",
+				readcommon.ShortSHA(strings.TrimSpace(target)), headBytes(res.Stderr, numExcerpt)),
 		}
 	}
 	return &isolation{dir: dir, base: isolationBase(mode), head: target}, true, nil
@@ -199,13 +201,4 @@ func (s *session) git(ctx context.Context, args ...string) (core.Result, error) 
 		args = append([]string{gitDashC, s.iso.dir}, args...)
 	}
 	return s.run(ctx, binGit, args...)
-}
-
-// shortSHA trims a commit id to the 7-char form the refusal hints use.
-func shortSHA(sha string) string {
-	sha = strings.TrimSpace(sha)
-	if len(sha) > numShortSHA {
-		return sha[:numShortSHA]
-	}
-	return sha
 }

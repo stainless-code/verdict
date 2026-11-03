@@ -145,8 +145,6 @@ const (
 	numExcerpt          = 200
 	numExcerptShort     = 120
 	threadBodyExcerpt   = 400
-	numRoundScale       = 10000
-	numShortSHA         = 7
 	numShownHits        = 5
 	numShownPaths       = 10
 	numSlugMax          = 48
@@ -171,6 +169,5 @@ const (
 	stashRefPrefix = "stash@{"
 	spaceSep       = " "
 	schemaV1       = "1"
-	roundHalf      = 0.5
 	diffSuffix     = ".diff"
 )

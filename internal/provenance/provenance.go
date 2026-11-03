@@ -145,7 +145,7 @@ func Spend(dir string) (tier, cost string) {
 	if n == 0 {
 		return tier, unrecorded
 	}
-	return tier, "$" + jqTostring(round4(sum))
+	return tier, "$" + jqTostring(readcommon.Round4(sum))
 }
 
 // costRecords reads the cost log as a record list (an oversized store reads
@@ -288,7 +288,7 @@ func fileWords(n int) string {
 func HeadShort(dir string) string {
 	if _, err := os.Stat(filepath.Join(dir, prFile)); err == nil {
 		if hs := prHead(dir); hs != "" {
-			return shortSHA(hs)
+			return readcommon.ShortSHA(hs)
 		}
 		return unknown
 	}
@@ -310,7 +310,7 @@ func sourceHeadShort(dir string) string {
 		return unknown
 	}
 	if hs := jq.StrOf(m["head_sha"]); hs != "" {
-		return shortSHA(hs)
+		return readcommon.ShortSHA(hs)
 	}
 	// The shell reads `jq -r '.dirty // false'` and compares to "true", so a
 	// JSON string "true" counts as dirty just like boolean true (R() mirrors
@@ -489,9 +489,4 @@ func numVal(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// round4 rounds to 4 decimal places like jq's (add * 10000 | round) / 10000.
-func round4(f float64) float64 {
-	return math.Round(f*roundScale) / roundScale
 }

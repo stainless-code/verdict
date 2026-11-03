@@ -282,6 +282,20 @@ func postCommentKeys(comments []any) string {
 	return strings.Join(m.Keys, ",")
 }
 
+// previewDryRun prints the human dry-run preview in the shell's order: the
+// payload summary, the footer preview when one renders, and the diagram line
+// unless the diagram is absent.
+func (st *state) previewDryRun(footerText string) {
+	st.human("dry-run: payload NOT posted. body chars: " +
+		strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
+	if footerText != "" {
+		st.human("footer preview:\n" + footerText)
+	}
+	if st.diagram.State != "absent" {
+		st.human("diagram: " + st.diagram.State + " — " + st.diagram.Detail)
+	}
+}
+
 // dryRunResponse ports the dry-run exit: the payload preview on the human
 // stream, or the dry-run envelope inputs (payload hash, footer and diagram
 // disposition included). Nothing posts, nothing arms. Both modes report the
@@ -302,13 +316,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	if st.req.JSONMode {
 		payloadHash = st.phash
 	} else {
-		st.human("dry-run: payload NOT posted. body chars: " + strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
-		if footerText != "" {
-			st.human("footer preview:\n" + footerText)
-		}
-		if st.diagram.State != "absent" {
-			st.human("diagram: " + st.diagram.State + " — " + st.diagram.Detail)
-		}
+		st.previewDryRun(footerText)
 	}
 	nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)
 	data := &core.PostData{

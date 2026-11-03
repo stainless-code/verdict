@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -100,7 +101,7 @@ func (st *state) liveAlreadyPosted() *core.RefusalError {
 			postedAt = unknownTime
 		}
 		return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
-			shortSHA(st.commitID), postedAt, st.req.Repo, st.req.Pr, shortSHA(st.commitID))}
+			readcommon.ShortSHA(st.commitID), postedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.commitID))}
 	}
 	return nil
 }

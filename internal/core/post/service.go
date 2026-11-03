@@ -12,6 +12,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Commander is the exec seam every post spawn goes through: the live-SHA
@@ -291,7 +292,7 @@ func (st *state) checkDrift(ctx context.Context) {
 	st.liveSHA = live
 	if live != "" && st.fetchedSHA != "" && live != st.fetchedSHA {
 		st.driftStale = true
-		fetched, liveShort := shortSHA(st.fetchedSHA), shortSHA(live)
+		fetched, liveShort := readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(live)
 		st.warn(fmt.Sprintf(msgDriftMoved, fetched, liveShort, st.req.Repo, st.req.Pr, fetched))
 		st.body = fmt.Sprintf(msgDriftNote, fetched, liveShort,
 			st.req.Repo, st.req.Pr, fetched) + "\n\n" + st.body
@@ -392,12 +393,12 @@ func (st *state) approveGate() *core.RefusalError {
 		st.event = "APPROVE"
 		return nil
 	}
-	st.warn(fmt.Sprintf(msgStaleDowngrade, shortSHA(st.fetchedSHA), shortSHA(st.liveSHA),
-		st.req.Repo, st.req.Pr, shortSHA(st.fetchedSHA)))
+	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
+		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
 	// The shell's downgrade note is a real newline plus a literal
 	// backslash-n (a two-line source string ending in `\n`), kept
 	// byte-identical here.
-	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, shortSHA(st.fetchedSHA)) + "\n\\n" + st.body
+	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\\n" + st.body
 	st.event = eventComment
 	return nil
 }
@@ -460,13 +461,13 @@ func (st *state) preflight() {
 	nDeferred := recordcore.CountStatus(res.Entries, "deferred")
 	nAddressed := recordcore.CountStatus(res.Entries, "addressed")
 	nTerminal := recordcore.CountStatus(res.Entries, "wont-fix") + recordcore.CountStatus(res.Entries, "false-positive")
-	commit := shortSHA(st.commitID)
+	commit := readcommon.ShortSHA(st.commitID)
 	st.human(fmt.Sprintf("preflight: body=%s (%d chars) | anchors: %d inline, %d moved | "+
 		"findings: %d open, %d deferred, %d addressed, %d terminal | hunks indexed: %d | event=%s sha=%s",
 		res.Marker, len(st.body), res.NKept, res.NMoved, nOpen, nDeferred, nAddressed, nTerminal, res.HunkN, st.event, commit))
 	switch {
-	case nOpen > 0 && shortSHA(st.commitID) != "":
-		st.human(fmt.Sprintf("next: address open threads, then fetch --base-sha %s for the delta", shortSHA(st.commitID)))
+	case nOpen > 0 && readcommon.ShortSHA(st.commitID) != "":
+		st.human(fmt.Sprintf("next: address open threads, then fetch --base-sha %s for the delta", readcommon.ShortSHA(st.commitID)))
 	case nOpen > 0:
 		st.human("next: address open threads")
 	default:
@@ -516,7 +517,7 @@ func (st *state) finalizerGuard() *core.RefusalError {
 		case storedHead == st.commitID:
 			storedAt := postTime(st.dir + "/post.json")
 			return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
-				shortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, shortSHA(storedHead))}
+				readcommon.ShortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(storedHead))}
 		}
 	}
 	return st.liveAlreadyPosted()

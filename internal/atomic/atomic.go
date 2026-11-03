@@ -6,9 +6,10 @@
 package atomic
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // storeFileMode is the shell's umask-022 default for store files.
@@ -46,7 +47,7 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".tmp-*")
 	if err != nil {
-		return sealed(opWrite+path, err)
+		return jq.Sealed(opWrite+path, err)
 	}
 	tmpName := tmp.Name()
 	// Best-effort temp cleanup: the rename already replaced the target, or
@@ -54,29 +55,23 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 	defer func() { _ = os.Remove(tmpName) }() // cleanup has no recovery path; the write error rules
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close() // write error already rules; close adds nothing
-		return sealed(opWrite+path, err)
+		return jq.Sealed(opWrite+path, err)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close() // sync error already rules; close adds nothing
-		return sealed(opWrite+path, err)
+		return jq.Sealed(opWrite+path, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return sealed(opWrite+path, err)
+		return jq.Sealed(opWrite+path, err)
 	}
 	if err := os.Chmod(tmpName, mode); err != nil {
-		return sealed(opWrite+path, err)
+		return jq.Sealed(opWrite+path, err)
 	}
 	if err := replaceFile(tmpName, path); err != nil {
-		return sealed(opWrite+path, err)
+		return jq.Sealed(opWrite+path, err)
 	}
 	fsyncDir(dir)
 	return nil
-}
-
-// sealed annotates err without exposing it, per GO-ERRORS-03 (see jq.Sealed).
-func sealed(op string, err error) error {
-	//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-	return fmt.Errorf("%s: %v", op, err)
 }
 
 // fsyncDir persists the rename itself. Best effort: a directory that cannot
