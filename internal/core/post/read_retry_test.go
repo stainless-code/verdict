@@ -187,7 +187,7 @@ type cancelRetryCommander struct {
 func (c *cancelRetryCommander) Run(context.Context, core.Command) (core.Result, error) {
 	c.calls++
 	c.cancel()
-	return core.Result{Stderr: c.stderr}, errors.New("exit 1")
+	return core.Result{Stderr: c.stderr, ExitCode: 1}, nil
 }
 
 // LookPath reports every tool present.
