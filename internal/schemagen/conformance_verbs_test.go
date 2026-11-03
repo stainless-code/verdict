@@ -47,6 +47,10 @@ func TestRuntimeTriageEnvelopeValidates(t *testing.T) {
 		t.Fatalf("triage refusal: %v", ref)
 	}
 	data := resp.Data.Wire()
+	assertWireFields(t, data, map[string]any{
+		"sig":    "c111111111111111111111111111111111111111",
+		"status": "addressed",
+	})
 	assertEnvelope(t, doc, "triage", "4251", resp.At, resp.Next, resp.Warnings, data)
 }
 
@@ -69,6 +73,12 @@ func TestRuntimeAdoptEnvelopeValidates(t *testing.T) {
 		t.Fatalf("adopt refusal: %v", ref)
 	}
 	data := resp.Data.Wire()
+	assertWireFields(t, data, map[string]any{
+		"dir":     ".review/4311",
+		"from":    "adopt1",
+		"adopted": json.Number("1"),
+		"open":    json.Number("1"),
+	})
 	assertEnvelope(t, doc, "adopt", "4311", resp.At, resp.Next, resp.Warnings, data)
 }
 
@@ -99,6 +109,37 @@ func wireMap(t *testing.T, wire any) map[string]any {
 	var out map[string]any
 	unmarshalWire(t, wire, &out)
 	return out
+}
+
+// assertWireFields asserts top-level wire data fields against literals.
+func assertWireFields(t *testing.T, data any, want map[string]any) {
+	t.Helper()
+	got := wireMap(t, data)
+	for key, wantVal := range want {
+		if !reflect.DeepEqual(got[key], wantVal) {
+			t.Errorf("data.%s = %#v, want %#v", key, got[key], wantVal)
+		}
+	}
+}
+
+// wireSubMap returns one nested object from the wire data.
+func wireSubMap(t *testing.T, data any, key string) map[string]any {
+	t.Helper()
+	sub, ok := wireMap(t, data)[key].(map[string]any)
+	if !ok {
+		t.Fatalf("data.%s is not an object", key)
+	}
+	return sub
+}
+
+// wireList returns one array from the wire data.
+func wireList(t *testing.T, data any, key string) []any {
+	t.Helper()
+	list, ok := wireMap(t, data)[key].([]any)
+	if !ok {
+		t.Fatalf("data.%s is not an array", key)
+	}
+	return list
 }
 
 // fixtureDiff is the patch both adopt fixtures share.
@@ -239,6 +280,21 @@ func TestRuntimeReadyEnvelopeValidates(t *testing.T) {
 	}
 	data := resp.Data.Wire()
 	assertServiceEnvelope(t, doc, "ready", "acme/app", "5101", resp.At, resp.Next, resp.Warnings, data)
+	assertWireFields(t, data, map[string]any{
+		"ready":            true,
+		"recommendation":   "review",
+		"state":            "OPEN",
+		"draft":            false,
+		"mergeable":        "MERGEABLE",
+		"mergeStateStatus": "CLEAN",
+		"threads_open":     json.Number("0"),
+		// 73-char description plus the newline bodyLength appends.
+		"description_chars": json.Number("74"),
+	})
+	ci := wireSubMap(t, data, "ci")
+	if ci["failing"] != json.Number("0") || ci["total"] != json.Number("1") {
+		t.Errorf("ready ci = %v, want 0 failing of 1", ci)
+	}
 }
 
 // TestRuntimeTrendEnvelopeValidates proves the trend response envelope
@@ -265,6 +321,14 @@ func TestRuntimeTrendEnvelopeValidates(t *testing.T) {
 	}
 	data := resp.Data.Wire()
 	assertServiceEnvelope(t, doc, "trend", "acme/app", "", resp.At, resp.Next, resp.Warnings, data)
+	assertWireFields(t, data, map[string]any{
+		"bundles":  json.Number("1"),
+		"findings": json.Number("1"),
+		"open":     json.Number("1"),
+	})
+	if rows := wireList(t, data, "per_bundle"); len(rows) != 1 {
+		t.Errorf("trend per_bundle rows = %d, want 1", len(rows))
+	}
 	var modeled Envelope
 	unmarshalWire(t, core.RenderEnvelope("trend", "acme/app", "", resp.At, resp.Next,
 		resp.Warnings, data, nil), &modeled)
@@ -323,6 +387,18 @@ func TestRuntimeCalibrateLiveEnvelopeValidates(t *testing.T) {
 	}
 	data := resp.Data.Wire()
 	assertServiceEnvelope(t, doc, "calibrate", "acme/app", "5101", resp.At, resp.Next, resp.Warnings, data)
+	assertWireFields(t, data, map[string]any{"review_id": json.Number("424242")})
+	precision := wireSubMap(t, data, "precision")
+	if precision["resolved_unfixed"] != json.Number("1") {
+		t.Errorf("calibrate precision = %v, want resolved_unfixed=1", precision)
+	}
+	if outcomes := wireList(t, data, "outcomes"); len(outcomes) != 1 {
+		t.Errorf("calibrate outcomes = %d, want 1", len(outcomes))
+	}
+	head := wireSubMap(t, data, "head")
+	if head["reviewed"] != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Errorf("calibrate head = %v", head)
+	}
 }
 
 // calibrateLiveFinding renders the settled join fixture: an open inline
@@ -361,6 +437,16 @@ func TestRuntimeCalibrateProbeEnvelopeValidates(t *testing.T) {
 	}
 	data := resp.Data.Wire()
 	assertServiceEnvelope(t, doc, "calibrate", "acme/app", "5101", resp.At, resp.Next, resp.Warnings, data)
+	counts := wireSubMap(t, data, "counts")
+	assertWireFields(t, counts, map[string]any{
+		"findings": json.Number("3"),
+		"real":     json.Number("1"),
+		"false":    json.Number("1"),
+		"unknown":  json.Number("1"),
+	})
+	if grades := wireList(t, data, "grades"); len(grades) != 3 {
+		t.Errorf("calibrate grades = %d, want 3", len(grades))
+	}
 }
 
 // calibrateProbeFinding renders one probe finding with the triage baseline
@@ -425,4 +511,8 @@ func TestRuntimeCheckTreeEnvelopeValidates(t *testing.T) {
 	}
 	data := resp.Data.Wire()
 	assertServiceEnvelope(t, doc, "check-tree", "", "", resp.At, resp.Next, resp.Warnings, data)
+	assertWireFields(t, data, map[string]any{
+		"clean":                true,
+		"ignored_review_lines": json.Number("0"),
+	})
 }
