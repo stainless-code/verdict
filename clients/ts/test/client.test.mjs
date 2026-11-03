@@ -283,20 +283,39 @@ function writeFindings(dir, pr) {
   );
 }
 
-// haveBinary is decided at load (before any skip option is read): the
-// gate always runs `make build` first, so integration runs there; a bare
-// checkout without a binary skips loudly instead of failing.
+// haveBinary is decided at load (before any skip option is read): the gate
+// always runs `make build` first, so integration runs there. A bare checkout
+// without a binary may skip loudly, but an explicit VERDICT_BIN or CI run
+// must fail: silently skipping 5 integration tests is a green gate that
+// graded nothing.
+const explicitBin = process.env["VERDICT_BIN"] !== undefined;
+const ciRun =
+  process.env["CI"] !== undefined &&
+  process.env["CI"] !== "" &&
+  process.env["CI"] !== "false";
+const requireBinary = explicitBin || ciRun;
 let haveBinary = false;
 try {
   accessSync(REAL_BIN, constants.X_OK);
   haveBinary = true;
 } catch {
   process.stderr.write(
-    `ts-client tests: no binary at ${REAL_BIN}, skipping integration\n`,
+    `ts-client tests: no binary at ${REAL_BIN}, ` +
+      (requireBinary ? "failing integration\n" : "skipping integration\n"),
   );
 }
 
 describe("integration: real binary", () => {
+  it(
+    "requires an executable binary",
+    { skip: haveBinary || !requireBinary },
+    () => {
+      assert.fail(
+        `ts-client integration requires an executable binary at ${REAL_BIN}; run make build first`,
+      );
+    },
+  );
+
   it(
     "report success envelope over a temp bundle",
     { skip: !haveBinary },
