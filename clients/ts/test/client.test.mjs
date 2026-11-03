@@ -224,6 +224,22 @@ const REAL_BIN =
     ? join(REPO_ROOT, "bin", "verdict.exe")
     : join(REPO_ROOT, "bin", "verdict"));
 
+// seedControls stamps the bundle's controls snapshot the way fetch does
+// (post and record refuse a bundle without one); the head policy stands in
+// for fetch's base read, which needs a repository.
+function seedControls(bundle, base) {
+  writeFileSync(
+    join(bundle, "controls.json"),
+    JSON.stringify({
+      schema_version: "1",
+      policy: "head",
+      base_sha: base,
+      sha: "",
+      files: [],
+    }),
+  );
+}
+
 function mkBundle(pr) {
   const dir = mkdtempSync(join(tmpdir(), "verdict-ts-"));
   const bundle = join(dir, ".review", String(pr));
@@ -236,6 +252,7 @@ function mkBundle(pr) {
     join(bundle, "full.diff"),
     "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n",
   );
+  seedControls(bundle, "b".repeat(40));
   return dir;
 }
 
@@ -306,8 +323,9 @@ describe("integration: real binary", () => {
       mkdirSync(bundle, { recursive: true });
       writeFileSync(
         join(bundle, "source.json"),
-        '{"state":"LOCAL","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
+        '{"state":"LOCAL","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}',
       );
+      seedControls(bundle, "b".repeat(40));
       writeFileSync(
         join(bundle, "full.diff"),
         "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n",
