@@ -545,9 +545,8 @@ with `--live strict` (or accept the loudly-skipped local verdict with
 ### Doctor preflight
 
 `doctor` preflights the harness with no repo/PR args and no writes: `gh-cli`,
-`gh-auth`, `jq`, `shasum`, and `storage-writable` hard-fail the run (exit 1);
-`jq` needs >= 1.7 (older releases crash on refusal envelopes, so they warn on
-a `jq-version` row); `token-scopes`, `ps`, `git`, and `api-reachable` warn only and never fail it.
+`gh-auth`, and `storage-writable` hard-fail the run (exit 1); `token-scopes`,
+`ps`, `git`, and `api-reachable` warn only and never fail it.
 The scope rows reuse the single existing `gh api user` scopes-header read —
 no new network calls. Grants below the baseline (`repo`/`public_repo` for the
 reads the tool performs) warn on the `token-scopes` row; grants above it warn

@@ -4,10 +4,9 @@
 # Grades (all hermetic — real `npm pack` into the sandbox, fake HOME, stub gh):
 #   R1  registry copy carries the skill payload: the packed tarball unpacks
 #       to a skill dir holding SKILL.md + prompts/ + remaining scripts/ (no
-#       scripts/review.sh — the CLI is the `verdict` binary, which the
-#       skill install path ships again in ticket 12). The binary under test
-#       installs the payload into repo and home scopes (byte-identical,
-#       receipted), and a re-run reads keep.
+#       scripts/review.sh — the CLI is the `verdict` binary). The binary's
+#       embedded `skill install` writes the same payload into repo and home
+#       scopes (byte-identical, receipted), and a re-run reads keep.
 #   R2  cwd owns .review: the binary's `init` writes .review/ controls
 #       into the cwd target repo, never beside the tool.
 #   R3  README routes honestly: the registry block says install.sh is not
@@ -18,7 +17,10 @@
 #       installed copy layout, not just the checkout.
 #   R5  install-skill.sh is checkout-only: it refuses outside a git checkout
 #       with a typed hint, and --list still passes inside the checkout.
-#   R6  offline: zero stub-gh intercepts across every leg.
+#   R6  the install-skill.sh doctor gate passes on a PATH without jq/shasum:
+#       those tools were never needed by the Go binary.
+#   R7  offline: zero stub-gh intercepts across every route leg (the doctor
+#       preflight excluded; it necessarily probes gh).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -62,37 +64,44 @@ OLD_HOME="$HOME"
 export HOME="$EVAL_SANDBOX/fakehome-install"
 TARGET="$EVAL_SANDBOX/target"
 mkdir -p "$TARGET/.agents/skills" "$HOME/.agents/skills"
-set +e
-(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" install --yes </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
-install_status=$?
-set -e
+install_status=0
+for dir in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
+  set +e
+  (cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" skill install --dir "$dir" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+  st=$?
+  set -e
+  if [ "$st" -ne 0 ]; then install_status=$st; fi
+done
 if [ "$install_status" -eq 0 ]; then
-  good "verdict install applies the payload (exit 0)"
+  good "verdict skill install applies the embedded payload (exit 0)"
 else
-  bad "verdict install exits $install_status"
+  bad "verdict skill install exits $install_status"
 fi
 copy_ok="true"
 for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
-  # The installed payload matches the packed registry copy (the unpacked
-  # tarball is the install source of record, not the checkout).
-  cmp -s "$PKG/SKILL.md" "$root/verdict/SKILL.md" || copy_ok="false"
-  diff -r -q "$PKG/prompts" "$root/verdict/prompts" >/dev/null 2>&1 || copy_ok="false"
-  diff -r -q "$PKG/scripts" "$root/verdict/scripts" >/dev/null 2>&1 || copy_ok="false"
+  # Every embedded payload file matches the packed registry copy (the
+  # unpacked tarball is the source of record, not the checkout), and the
+  # receipt names the same tool version.
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    cmp -s "$PKG/$rel" "$root/verdict/$rel" || copy_ok="false"
+  done < <("$EVAL_CLI" skill files)
   [ "$(jq -r '.tool // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "verdict" ] || copy_ok="false"
+  [ "$(jq -r '.version // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] || copy_ok="false"
 done
 if [ "$copy_ok" = "true" ]; then
-  good "installed copy payload (SKILL.md + prompts/ + scripts/) byte-identical with receipts"
+  good "embedded payload (SKILL.md + prompts/ + schemas/ + scripts/verdict) byte-identical with receipts"
 else
-  bad "installed copy payload differs from the registry copy"
+  bad "installed payload differs from the registry copy"
 fi
 set +e
-(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" install </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+(cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" skill install --dir "$TARGET/.agents/skills" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
 rerun_status=$?
 set -e
-if [ "$rerun_status" -eq 0 ] && grep -q "already up to date" "$EVAL_OUT"; then
-  good "re-run without --yes reads keep (exit 0)"
+if [ "$rerun_status" -eq 0 ] && grep -q "(keep)" "$EVAL_OUT"; then
+  good "re-run reads keep (exit 0)"
 else
-  bad "installed copy's CLI re-run exits $rerun_status"
+  bad "skill install re-run exits $rerun_status"
 fi
 
 # --- R2: .review/ lands in cwd, never beside the tool ---
@@ -165,17 +174,44 @@ else
   bad "install-skill.sh --list exits $list_status in the checkout"
 fi
 
-# --- R6: offline across every leg ---
-if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
-  good "zero stub-gh intercepts across route legs (offline)"
+# --- R6: install-skill.sh doctor gate needs no jq/shasum ---
+# A minimal PATH keeps only the tools doctor probes (gh/git/ps) plus the
+# shell helpers install-skill.sh uses; jq and shasum are absent. The source
+# install route must still pass its doctor gate.
+route_intercepts="$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))"
+MINBIN="$EVAL_SANDBOX/minbin"
+mkdir -p "$MINBIN"
+for tool in bash dirname git ps readlink; do
+  ln -s "$(command -v "$tool")" "$MINBIN/$tool"
+done
+ln -s "$EVAL_STUBBIN/gh" "$MINBIN/gh"
+MINHOME="$EVAL_SANDBOX/fakehome-minbin"
+MINLINKS="$EVAL_SANDBOX/minbin-skills"
+mkdir -p "$MINHOME" "$MINLINKS"
+ln -s "$EVAL_ROOT" "$MINLINKS/verdict"
+set +e
+(cd "$EVAL_SANDBOX" && HOME="$MINHOME" PATH="$MINBIN" GH_STUB_DOCTOR=repo \
+  bash "$EVAL_ROOT/install-skill.sh" --check --dir "$MINLINKS" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
+minpath_status=$?
+set -e
+if [ "$minpath_status" -eq 0 ] && grep -q "check: scope ok" "$EVAL_OUT"; then
+  good "install-skill.sh doctor gate passes without jq/shasum (exit 0)"
 else
-  bad "stub gh intercepted calls during route legs"
+  bad "install-skill.sh without jq/shasum exits $minpath_status: $(head -c 240 "$EVAL_ERR")"
+fi
+
+# --- R7: offline across every route leg (doctor preflight excluded) ---
+if [ "$route_intercepts" = "0" ]; then
+  good "zero stub-gh intercepts across route legs (doctor preflight excluded)"
+else
+  bad "stub gh intercepted $route_intercepts call(s) during route legs"
 fi
 
 # --- restore: fake HOME and sandbox dirs stay out of the repo ---
 export HOME="$OLD_HOME"
 rm -rf "$NOGIT_BASE"
-rm -rf "$EVAL_SANDBOX/fakehome-install" "$EVAL_SANDBOX/target" \
+rm -rf "$EVAL_SANDBOX/fakehome-install" "$EVAL_SANDBOX/fakehome-minbin" \
+  "$EVAL_SANDBOX/target" "$EVAL_SANDBOX/minbin" "$EVAL_SANDBOX/minbin-skills" \
   "$EVAL_SANDBOX/regunpack" "$EVAL_SANDBOX"/install-routes-pack.txt "$EVAL_SANDBOX"/readme-registry.txt
 rm -f "$EVAL_SANDBOX"/*.tgz
 

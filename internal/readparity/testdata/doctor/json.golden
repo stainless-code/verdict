@@ -32,18 +32,6 @@ exit: 1
         "detail": "no scopes header — fine-grained token, scopes proven at post time"
       },
       {
-        "name": "jq",
-        "severity": "fail",
-        "ok": true,
-        "detail": "jq-1.8.2"
-      },
-      {
-        "name": "shasum",
-        "severity": "fail",
-        "ok": true,
-        "detail": "sig hashing available"
-      },
-      {
         "name": "ps",
         "severity": "warn",
         "ok": true,
@@ -75,8 +63,6 @@ exit: 1
 ok   gh-cli — 
 FAIL gh-auth — run gh auth login
 ok   token-scopes — no scopes header — fine-grained token, scopes proven at post time
-ok   jq — jq-1.8.2
-ok   shasum — sig hashing available
 ok   ps — verify timeout enforced
 ok   git — check-tree/verify available
 WARN api-reachable — cannot reach api.github.com with this token

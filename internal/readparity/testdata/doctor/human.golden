@@ -4,13 +4,11 @@ doctor @ 0000-00-00T00:00:00Z
 ok   gh-cli — 
 FAIL gh-auth — run gh auth login
 ok   token-scopes — no scopes header — fine-grained token, scopes proven at post time
-ok   jq — jq-1.8.2
-ok   shasum — sig hashing available
 ok   ps — verify timeout enforced
 ok   git — check-tree/verify available
 WARN api-reachable — cannot reach api.github.com with this token
 ok   storage-writable — cwd writable — .review/ created on first fetch
-Summary: unhealthy — 7 ok, 1 warn, 1 fail
+Summary: unhealthy — 5 ok, 1 warn, 1 fail
 --- stderr ---
 
 --- files ---

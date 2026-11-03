@@ -17,6 +17,8 @@
 #   D1  text mode opens with the `doctor @ <utc>` run stamp
 #   D2  text mode closes with the Summary line and its word agrees with the
 #       exit code (dead stub → unhealthy, exit 1)
+#   D3  a minimal PATH holding only gh/git/ps is healthy: the doctor rows have
+#       no jq/shasum requirement, because the Go binary never spawns them
 #   S6  doctor writes nothing to the sandbox (tree-clean: no .review/ dir)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -27,10 +29,10 @@ fails=0
 good() { echo "  ok: $1"; }
 bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 
-snap_tree() { # sandbox tree minus harness-owned capture files (content changes, not the tree)
+snap_tree() { # sandbox tree minus harness-owned capture/minimal-PATH files (content changes, not the tree)
   # A per-case sandbox starts empty, so grep -v can see zero lines; tolerate
   # that instead of letting pipefail abort the case before it prints anything.
-  (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' | sort) || true
+  (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' -e './minbin' | sort) || true
 }
 pre_tree="$(snap_tree)"
 
@@ -156,6 +158,30 @@ if printf '%s' "$summary" | grep -Eq '^Summary: (healthy|unhealthy) — [0-9]+ o
   fi
 else
   bad "D2 last line: $(printf '%s' "$summary" | head -c 120)"
+fi
+
+# --- D3: no jq/shasum on PATH is healthy (the Go binary never spawns them) ---
+# The old doctor hard-failed on both tools; a minimal PATH keeps gh/git/ps
+# (the only tools the binary and its watchdog run) and drops jq/shasum.
+MINBIN="$EVAL_SANDBOX/minbin"
+mkdir -p "$MINBIN"
+for tool in bash dirname git ps readlink; do
+  ln -s "$(command -v "$tool")" "$MINBIN/$tool"
+done
+ln -s "$EVAL_STUBBIN/gh" "$MINBIN/gh"
+export GH_STUB_DOCTOR="repo"
+set +e
+( cd "$EVAL_SANDBOX" && PATH="$MINBIN" "$EVAL_CLI" doctor --json >"$EVAL_OUT" 2>"$EVAL_ERR" )
+st=$?
+set -e
+unset GH_STUB_DOCTOR
+if [ "$st" -eq 0 ] \
+  && jq -e '.data.healthy == true
+    and ([.data.checks[].name] | index("jq") == null)
+    and ([.data.checks[].name] | index("shasum") == null)' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "D3 minimal PATH without jq/shasum is healthy (no phantom rows, exit 0)"
+else
+  bad "D3 minimal PATH exits $st: $(head -c 300 "$EVAL_OUT")"
 fi
 
 # --- S6: doctor writes nothing (tree-clean: sandbox tree identical) ---

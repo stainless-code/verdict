@@ -1,9 +1,9 @@
 // Package doctorcore is the doctor verb's domain service: the harness
-// preflight (gh auth, jq, shasum hard-fail the run; scopes, git, ps, API
-// reachability warn only; storage writability hard-fails). No repo/PR
-// args, no writes, no network beyond the gh reads through the injected
-// commander. internal/doctor owns argv parsing, progress routing, envelope
-// rendering, and exit mapping.
+// preflight (gh auth and storage writability hard-fail the run; scopes,
+// git, ps, and API reachability warn only). No repo/PR args, no writes, no
+// network beyond the gh reads through the injected commander.
+// internal/doctor owns argv parsing, progress routing, envelope rendering,
+// and exit mapping.
 package doctorcore
 
 import (
@@ -144,10 +144,8 @@ func (st *state) examine(ctx context.Context) {
 	if scopes != "" {
 		st.checkTokenExcess(scopes)
 	}
-	st.checkTool(ctx, "jq", "jq --version", "missing — install jq")
-	st.checkTool(ctx, "shasum", "", "sig hashing hard-requires shasum (startup gate)")
-	st.checkTool(ctx, "ps", "", "verify runs without timeout enforcement")
-	st.checkTool(ctx, "git", "", "check-tree and verify degraded without git")
+	st.checkTool("ps", "verify runs without timeout enforcement")
+	st.checkTool("git", "check-tree and verify degraded without git")
 	st.checkAPIReachable(ctx)
 	st.checkStorage()
 }
@@ -253,44 +251,21 @@ func (st *state) checkTokenExcess(scopes string) {
 	st.add("token-scopes-excess", severityWarn, false, excessMsg)
 }
 
-// checkTool ports the jq/shasum/ps/git rows: presence gates the detail.
-func (st *state) checkTool(ctx context.Context, name, _ string, missing string) {
+// checkTool ports the ps/git rows: presence gates the detail. Both warn only;
+// the Go binary needs neither to read a bundle.
+func (st *state) checkTool(name, missing string) {
 	present := true
 	if _, err := exec.LookPath(name); err != nil {
 		present = false
 	}
 	detail := missing
-	okDetail := map[string]string{
-		"shasum": "sig hashing available",
-		"ps":     "verify timeout enforced",
-		"git":    "check-tree/verify available",
-	}
 	if present {
-		detail = okDetail[name]
-		if name == "jq" {
-			detail = st.jqVersion(ctx)
-		}
+		detail = map[string]string{
+			"ps":  "verify timeout enforced",
+			"git": "check-tree/verify available",
+		}[name]
 	}
-	severity := severityFail
-	if name == "ps" || name == "git" {
-		severity = severityWarn
-	}
-	st.add(name, severity, present, detail)
-}
-
-// jqVersion runs `jq --version` through the injected commander, returning
-// stdout with trailing newlines stripped like the shell's command
-// substitution.
-func (st *state) jqVersion(ctx context.Context) string {
-	cmdr := st.commander()
-	if cmdr == nil {
-		return ""
-	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: []string{"jq", "--version"}})
-	if err != nil || res.ExitCode != 0 {
-		return ""
-	}
-	return strings.TrimRight(res.Stdout, newline)
+	st.add(name, severityWarn, present, detail)
 }
 
 // checkAPIReachable ports the api-reachable row.

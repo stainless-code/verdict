@@ -7,9 +7,10 @@ in `scripts/`, and GitHub workflows (`ci.yml`, `release.yml`,
 
 ## Development setup
 
-Prerequisites: Go (see `go.mod`), `gh` (authed, `repo` scope),
-`jq` (>= 1.7), `shasum`, `git`, and `bun` (frozen-lockfile installs
-for the root and `apps/docs`, same as CI's `.github/actions/setup`).
+Prerequisites: Go (see `go.mod`), `gh` (authed, `repo` scope), `git`,
+and `bun` (frozen-lockfile installs for the root and `apps/docs`, same
+as CI's `.github/actions/setup`). The eval harness also needs `jq`
+(>= 1.7) and `shasum`; `install.sh` needs `shasum` or `sha256sum`.
 
 ```bash
 bun install --frozen-lockfile

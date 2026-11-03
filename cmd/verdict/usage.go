@@ -116,13 +116,11 @@ func usageText() string {
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
 		"    verify-credential-read, and verify-repo-escape.\n" +
 		"  doctor [--json]\n" +
-		"    preflight the harness: gh auth, jq (>= 1.7), shasum hard-fail the run; scopes, git,\n" +
-		"    ps, API reachability warn only (never fail); .review storage writability\n" +
-		"    hard-fails. A token granting more than runs need warns on a\n" +
-		"    token-scopes-excess row naming the excess scopes. jq below 1.7 warns on a\n" +
-		"    jq-version row. Exit 0 unless a hard\n" +
-		"    check fails. No repo/PR args, no writes, no network beyond the existing\n" +
-		"    gh reads.\n" +
+		"    preflight the harness: gh auth and .review storage writability hard-fail\n" +
+		"    the run; scopes, git, ps, and API reachability warn only (never fail). A\n" +
+		"    token granting more than runs need warns on a token-scopes-excess row\n" +
+		"    naming the excess scopes. Exit 0 unless a hard check fails. No repo/PR\n" +
+		"    args, no writes, no network beyond the existing gh reads.\n" +
 		"  calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
 		"    join findings against live ground truth (thread states + files changed since the\n" +
 		"    review head). Read-only; reports outcomes + tier precision, never auto-tunes.\n" +
