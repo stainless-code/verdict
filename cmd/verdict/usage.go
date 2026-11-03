@@ -200,7 +200,7 @@ func usageText() string {
 		"    remove an installer-managed verdict plus its receipt; only with --remove-path\n" +
 		"    also remove the marked PATH line. npm/brew/project-local/skill copies refuse\n" +
 		"    with the owning removal command.\n" +
-		"  mcp [--read-only] (experimental)\n" +
+		"  mcp [--read-only | --operator] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json] (experimental)\n" +

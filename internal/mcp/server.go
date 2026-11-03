@@ -60,6 +60,7 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 	Warnings   []string
 	Root       string
 	ReadOnly   bool
+	Operator   bool
 	Stderr     io.Writer
 	Commanders map[string]core.Commander
 }
@@ -98,7 +99,7 @@ func New(cfg *Config) *Server {
 	if cfg.Stderr == nil {
 		cfg.Stderr = io.Discard
 	}
-	tools := allTools(cfg.ReadOnly)
+	tools := allTools(cfg.ReadOnly, cfg.Operator)
 	byName := make(map[string]*tool, len(tools))
 	for _, t := range tools {
 		byName[t.name] = t

@@ -508,17 +508,20 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
 `learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `trend`,
-`verify`. `upgrade` and `skill` are distribution surfaces, never
-tools; `triage` is operator-only and stays a CLI verb, so an agent proposes
-status changes through `triage[]` in `review.json` instead. Input schemas are
-generated from the Go request structs, so they cannot drift from the core
-contract; `repo`/`pr` plus verb fields are the arguments. `post` writes a
-review and calls GitHub, so it is not exposed under `--read-only`.
+`verify`. That is 17 tools. `upgrade` and `skill` are distribution surfaces,
+never tools; `triage` is human-owned and joins the surface only with
+`--operator`, so an agent proposes status changes through `triage[]` in
+`review.json` instead. Input schemas are generated from the Go request structs,
+so they cannot drift from the core contract; `repo`/`pr` plus verb fields are
+the arguments. `post` writes a review and calls GitHub, so it is not exposed
+under `--read-only`.
 
 `--read-only` exposes only the non-writing tools (`report`, `next`, `show`,
-`trend`, `ready`, `doctor`, `check-tree`); every review verb except the
-operator-only `triage` is exposed by default because the host already
-authorizes the binary and its credentials. Each
+`trend`, `ready`, `doctor`, `check-tree`) and is mutually exclusive with
+`--operator`. Every review verb except the human-owned `triage` is exposed by
+default because the host already authorizes the binary and its credentials.
+`--operator` adds `triage` (18 tools) for an operator's own assistant that is
+allowed to flip statuses; it is never the default. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
 `{code, message, hint}` in both places. A malformed call is a JSON-RPC
@@ -559,7 +562,9 @@ entry by hand and re-run.
 
 Use `--read-only` in review-only hosts by editing the entry to
 `{"command":"verdict","args":["mcp","--read-only"]}` (or the TOML
-`args = ["mcp", "--read-only"]`). `mcp config --write` refuses that entry on a
+`args = ["mcp", "--read-only"]`). An operator's own assistant opts into the
+human-owned verbs the same way with `args = ["mcp", "--operator"]`; never
+combine the two flags. `mcp config --write` refuses either edited entry on a
 later run because its argv differs; that is intentional, since silently
 rewriting it would widen the host's permissions.
 

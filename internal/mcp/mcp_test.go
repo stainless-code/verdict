@@ -104,7 +104,7 @@ func decodeFrames(t *testing.T, raw []byte) map[string]frame {
 //nolint:revive,gocognit,cyclop // the matrix reads as one assertion block
 func TestToolSchemas(t *testing.T) {
 	t.Parallel()
-	tools := allTools(false)
+	tools := allTools(false, false)
 	if len(tools) != 17 {
 		t.Fatalf("tools = %d, want 17", len(tools))
 	}
@@ -342,7 +342,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig()
 	cfg.ReadOnly = true
-	readOnly := allTools(true)
+	readOnly := allTools(true, false)
 	if len(readOnly) == 0 {
 		t.Fatal("no read-only tools")
 	}
@@ -528,7 +528,7 @@ func TestArgsDecode(t *testing.T) {
 // findTool returns one registered tool.
 func findTool(t *testing.T, name string) *tool {
 	t.Helper()
-	for _, tool := range allTools(false) {
+	for _, tool := range allTools(false, false) {
 		if tool.name == name {
 			return tool
 		}
@@ -537,22 +537,66 @@ func findTool(t *testing.T, name string) *tool {
 	return nil
 }
 
-// TestTriageNotExposed proves the operator-only triage verb stays off the
-// MCP surface (SKILL.md tells agents never to call it) while the CLI verb
-// remains.
-func TestTriageNotExposed(t *testing.T) {
+// TestOperatorSurface proves the human-owned triage verb stays off the
+// default and read-only surfaces and appears only with --operator. A call
+// without the flag is an unknown tool; with it, the call reaches the
+// service (a typed refusal here is still a tool result, not -32602).
+//
+//nolint:revive // the surface matrix reads as one assertion block
+func TestOperatorSurface(t *testing.T) {
 	t.Parallel()
-	for _, tool := range allTools(false) {
-		if tool.name == "triage" {
-			t.Fatal("triage is exposed over MCP")
-		}
+	if hasTriage(allTools(false, false)) {
+		t.Fatal("triage leaked onto the default surface")
+	}
+	if hasTriage(allTools(true, false)) {
+		t.Fatal("triage leaked onto the --read-only surface")
+	}
+	if hasTriage(allTools(true, true)) {
+		t.Fatal("triage leaked when --read-only and --operator are combined")
+	}
+	if !hasTriage(allTools(false, true)) {
+		t.Fatal("--operator does not expose triage")
 	}
 	cfg := testConfig()
 	frames := serve(t, &cfg,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1"}}}`)
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1","sig":"deadbeef","status":"wont-fix","rationale":"operator-only test rationale here","dryRun":true}}}`)
 	if frames["1"].Error == nil || frames["1"].Error.Code != codeInvalidParams {
-		t.Fatalf("triage call = %+v, want -32602 unknown tool", frames["1"].Error)
+		t.Fatalf("triage call without --operator = %+v, want -32602", frames["1"].Error)
 	}
+	cfg.Operator = true
+	frames = serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1","sig":"deadbeef","status":"wont-fix","rationale":"operator-only test rationale here","dryRun":true}}}`)
+	var list toolsListResult
+	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
+		t.Fatal(err)
+	}
+	if !listHasTriage(list.Tools) {
+		t.Fatal("--operator tools/list misses triage")
+	}
+	if frames["2"].Error != nil {
+		t.Fatalf("triage call with --operator = %+v, want a tool result", frames["2"].Error)
+	}
+}
+
+// hasTriage reports whether the registry contains the operator tool.
+func hasTriage(tools []*tool) bool {
+	for _, tool := range tools {
+		if tool.name == "triage" {
+			return true
+		}
+	}
+	return false
+}
+
+// listHasTriage reports whether a wire tool list contains the operator tool.
+func listHasTriage(tools []toolDescriptor) bool {
+	for _, tool := range tools {
+		if tool.Name == "triage" {
+			return true
+		}
+	}
+	return false
 }
 
 // TestEmptyInputExits proves stdin closure ends the session cleanly.
@@ -604,7 +648,7 @@ func TestCancellation(t *testing.T) {
 func TestSchemaNamesSorted(t *testing.T) {
 	t.Parallel()
 	names := make([]string, 0)
-	for _, tool := range allTools(false) {
+	for _, tool := range allTools(false, false) {
 		names = append(names, tool.name)
 	}
 	if !sort.StringsAreSorted(names) {

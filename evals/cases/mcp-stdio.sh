@@ -17,6 +17,8 @@
 #   M7  stdout is protocol frames only and stdin close exits 0.
 #   M8  the post tool dry-runs behind a smart gh stub: the envelope data comes
 #       back with no reviews POST and a bad approve is a typed refusal.
+#   M9  --operator adds triage (18 tools) and reaches the service; combining it
+#       with --read-only is a usage error before the server starts.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -170,6 +172,31 @@ if jq -e 'select(.id == 4).error.code == -32602' <"$MCP_OUT" >/dev/null; then
   good "--read-only rejects record as unknown tool"
 else
   bad "--read-only did not reject record"
+fi
+
+# --- M9: operator surface ---
+cat >"$FRAMES" <<'EOF'
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list"}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"deadbeef","status":"wont-fix","rationale":"eval operator surface rationale","dryRun":true}}}
+EOF
+run_mcp_input "$FRAMES" --operator --read-only
+if [ "$EVAL_STATUS" -eq 2 ] && [ ! -s "$MCP_OUT" ]; then
+  good "--operator with --read-only is a usage error before serving"
+else
+  bad "--operator --read-only exit $EVAL_STATUS (want 2, empty stdout)"
+fi
+run_mcp_input "$FRAMES" --operator
+if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
+if jq -e 'select(.id == 2).result.tools | (length == 18) and (map(.name) | index("triage") != null)' <"$MCP_OUT" >/dev/null; then
+  good "--operator exposes 18 tools including triage"
+else
+  bad "--operator tool list drifted"
+fi
+if jq -e 'select(.id == 3) | (has("result") and (.error == null))' <"$MCP_OUT" >/dev/null; then
+  good "--operator triage reaches the service"
+else
+  bad "--operator triage did not reach the service"
 fi
 
 # --- M8: post dry run (smart gh stub; the reviews POST must never fire) ---

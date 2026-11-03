@@ -22,6 +22,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
+	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -46,18 +47,22 @@ var (
 // tool is one MCP tool: the core request type it decodes into, the field
 // policy that hides adapter-owned members, and the service call it maps to.
 type tool struct { //nolint:govet // the grouping documents the descriptor; alignment is irrelevant
-	name        string
-	description string
-	request     reflect.Type
-	omit        map[string]bool
-	required    []string
-	readOnly    bool
-	invoke      func(context.Context, any) (*jq.Obj, *core.RefusalError)
+	name         string
+	description  string
+	request      reflect.Type
+	omit         map[string]bool
+	required     []string
+	readOnly     bool
+	operatorOnly bool
+	invoke       func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
-// allTools returns the registered tool set. upgrade/skill are distribution
+// allTools returns the registered tool set for one surface. readOnly keeps
+// only non-writing tools; operator adds the human-owned verbs. The CLI
+// refuses the two together, and the filter order here makes that impossible
+// to violate from the library either. upgrade/skill are distribution
 // surfaces, never review tools.
-func allTools(readOnly bool) []*tool {
+func allTools(readOnly, operator bool) []*tool {
 	tools := []*tool{
 		dataTool("adopt", "Copy findings from a local bundle into the target PR bundle and re-anchor them.",
 			reflect.TypeFor[adoptcore.Request](), nil, []string{argRepo, argPr, "from"}, false, adoptcore.Run),
@@ -109,19 +114,28 @@ func allTools(readOnly bool) []*tool {
 		},
 		dataTool("trend", "Roll up review outcomes across fetched bundles.",
 			reflect.TypeFor[trendcore.Request](), map[string]bool{fieldPr: true}, []string{argRepo}, true, trendcore.Run),
+		operatorTool(dataTool("triage", "Operator-only: flip one finding's status (or preview with dryRun).",
+			reflect.TypeFor[triagecore.Request](), nil, []string{argRepo, argPr, "sig", "status"}, false, triagecore.Run)),
 		dataTool("verify", "Run the recorded verifyCmd with the watchdog and record the proof.",
 			reflect.TypeFor[core.VerifyRequest](), nil, requiredRepoPr, false, verifycore.Run),
 	}
-	if !readOnly {
-		return tools
-	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
-		if t.readOnly {
-			kept = append(kept, t)
+		if readOnly && !t.readOnly {
+			continue
 		}
+		if t.operatorOnly && (readOnly || !operator) {
+			continue
+		}
+		kept = append(kept, t)
 	}
 	return kept
+}
+
+// operatorTool marks one tool as part of the opt-in operator surface.
+func operatorTool(t *tool) *tool {
+	t.operatorOnly = true
+	return t
 }
 
 // dataTool builds a tool whose service returns a response carrying a Data

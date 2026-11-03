@@ -14,17 +14,19 @@ import (
 // lists the experimental entry points; this remains the transport's full
 // flag reference.
 func mcpUsageText() string {
-	return "usage: verdict mcp [--read-only]\n" +
+	return "usage: verdict mcp [--read-only | --operator]\n" +
 		"       verdict mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json]\n" +
 		"  Serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"  stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
 		"  notifications/cancelled. The process exits when stdin closes: no daemon, no HTTP.\n" + //nolint:misspell // MCP method name
 		"  --read-only  expose only non-writing tools (report, next, show, trend, ready, doctor, check-tree)\n" +
+		"  --operator   also expose the human-owned `triage` tool; mutually exclusive with --read-only\n" +
 		"\n" +
-		"  Tools: adopt, calibrate, check-tree, doctor, fetch, fetch-local, fix, init, learn,\n" +
-		"  next, post, ready, record, report, show, trend, verify. The operator-only `triage`\n" +
-		"  verb stays on the CLI and is never exposed here.\n" +
+		"  Default tools (17): adopt, calibrate, check-tree, doctor, fetch, fetch-local, fix, init,\n" +
+		"  learn, next, post, ready, record, report, show, trend, verify. `triage` joins them only\n" +
+		"  with --operator: status flips are human-owned, and agents propose `triage[]` in\n" +
+		"  review.json instead.\n" +
 		"  Each tool takes the core request shape: repo/pr plus verb fields; schemas are generated\n" +
 		"  from those structs. Success data matches the CLI --json envelope's data; typed refusals\n" +
 		"  return isError=true with code/message/hint.\n" +
@@ -38,7 +40,7 @@ func mcpUsageText() string {
 // runMCP starts the stdio MCP server. It is the only caller of Serve in the
 // binary; the transport owns no CLI state beyond resolved prefs.
 //
-//nolint:revive // the hidden transport dispatch and its flag loop read as one entry point
+//nolint:revive,cyclop // the hidden transport dispatch and its flag loop read as one entry point
 func runMCP(
 	args []string, stdout, stderr *os.File,
 	getenv func(string) string, readFile func(string) ([]byte, error),
@@ -47,6 +49,7 @@ func runMCP(
 		return runMCPConfig(args[1:], stdout, stderr, getenv)
 	}
 	readOnly := false
+	operator := false
 	for _, arg := range args {
 		switch arg {
 		case "-h", "--help":
@@ -54,10 +57,16 @@ func runMCP(
 			return cli.ExitOK
 		case "--read-only":
 			readOnly = true
+		case "--operator":
+			operator = true
 		default:
-			fmt.Fprintf(stderr, "unknown flag '%s' for mcp (want --read-only)\n", arg)
+			fmt.Fprintf(stderr, "unknown flag '%s' for mcp (want --read-only or --operator)\n", arg)
 			return cli.ExitUsage
 		}
+	}
+	if readOnly && operator {
+		fmt.Fprintln(stderr, "--read-only and --operator are mutually exclusive")
+		return cli.ExitUsage
 	}
 	root := exeRoot()
 	env := envMap(getenv)
@@ -78,6 +87,7 @@ func runMCP(
 		Warnings:  append([]string{}, runner.Warnings...),
 		Root:      root,
 		ReadOnly:  readOnly,
+		Operator:  operator,
 		Stderr:    stderr,
 	})
 	if err := server.Serve(context.Background(), os.Stdin, stdout); err != nil {
