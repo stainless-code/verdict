@@ -169,6 +169,13 @@ func allTools(readOnly, operator bool) []*tool {
 			required: []string{argRepo, argPr, "sig"}, readOnly: true, idempotent: true,
 			invoke: invokeShow,
 		},
+		dataTool("threads", "Refresh the normalized review-thread feed "+
+			"(.review/<pr>/threads.json) from the host. Call after pushing fixes to re-read "+
+			"resolution state before a re-review or merge readiness. Reads the host; writes "+
+			"threads.json only.",
+			reflect.TypeFor[fetchcore.ThreadsRequest](), nil, requiredRepoPr,
+			toolMeta{title: "Refresh review threads", readOnly: true, idempotent: true, openWorld: true},
+			fetchcore.RunThreads),
 		dataTool("trend", "Roll up review outcomes across fetched bundles. Call for a cross-PR "+
 			"summary. Reads local bundles; writes nothing.",
 			reflect.TypeFor[trendcore.Request](), map[string]bool{fieldPr: true}, []string{argRepo},

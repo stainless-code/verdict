@@ -14,7 +14,7 @@ package main
 // -h/--help (exit 0) and to stderr by the arity gate (exit 2).
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|threads|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -141,6 +141,12 @@ func usageText() string {
 		"    --check opts into gating (same output, machine exits): 0 ready, 1 blockers\n" +
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
+		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
+		"    refresh .review/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
+		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
+		"    conversation. fetch writes the same feed beside the bundle; this verb re-reads\n" +
+		"    it after replies/resolutions so a re-review sees current state. Writes only\n" +
+		"    threads.json and needs an existing bundle (fetch first).\n" +
 		"  trend <owner/repo> [--overlap] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +

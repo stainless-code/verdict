@@ -37,6 +37,9 @@ var wantAnnotations = map[string]toolAnnotations{
 	"record": {Title: "Record review", IdempotentHint: true},
 	"report": {Title: "Render report", ReadOnlyHint: true, IdempotentHint: true},
 	"show":   {Title: "Show finding", ReadOnlyHint: true, IdempotentHint: true},
+	"threads": {
+		Title: "Refresh review threads", ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: true,
+	},
 	"trend":  {Title: "Review trend", ReadOnlyHint: true, IdempotentHint: true},
 	"triage": {Title: "Triage finding", DestructiveHint: true},
 	"verify": {
@@ -83,8 +86,8 @@ func TestToolsListSnapshot(t *testing.T) {
 	}
 }
 
-// TestSurfaceSets pins the three tool sets: default 17, read-only 7, and
-// operator 18 (the default plus triage).
+// TestSurfaceSets pins the three tool sets: default 19, read-only 8, and
+// operator 20 (the default plus triage).
 func TestSurfaceSets(t *testing.T) {
 	t.Parallel()
 	names := func(tools []*tool) []string {
@@ -98,18 +101,18 @@ func TestSurfaceSets(t *testing.T) {
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "doctor", "fetch", "fetch-local", "fix",
 		"init", "learn", "next", "post", "ready", "record", "report", "show",
-		"trend", "verify",
+		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "doctor", "next", "ready", "report", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "doctor", "next", "ready", "report", "show", "threads", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}
 	operator := names(allTools(false, true))
-	wantOperator := append(append([]string{}, wantDefaults[:16]...), "triage", "verify")
+	wantOperator := append(append([]string{}, wantDefaults[:17]...), "triage", "verify")
 	if !reflect.DeepEqual(operator, wantOperator) {
 		t.Errorf("operator tools = %v, want %v", operator, wantOperator)
 	}

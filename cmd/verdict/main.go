@@ -31,6 +31,7 @@ import (
 	"github.com/stainless-code/verdict/internal/record"
 	"github.com/stainless-code/verdict/internal/report"
 	"github.com/stainless-code/verdict/internal/scaffold"
+	"github.com/stainless-code/verdict/internal/threads"
 	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
 	"github.com/stainless-code/verdict/internal/verify"
@@ -160,6 +161,7 @@ var readVerbs = map[string]readHandler{
 	"next":       report.RunNext,
 	cmdShow:      report.RunShow,
 	"ready":      ready.Run,
+	"threads":    threads.Run,
 	cmdTrend:     trend.Run,
 	"calibrate":  calibrate.Run,
 	"doctor":     doctor.Run,

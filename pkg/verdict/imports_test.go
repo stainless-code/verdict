@@ -34,6 +34,7 @@ var allowedDeps = map[string]bool{
 	"internal/core/ready":     true,
 	"internal/core/record":    true,
 	"internal/core/report":    true,
+	"internal/core/threads":   true,
 	"internal/core/trend":     true,
 	"internal/core/triage":    true,
 	"internal/core/verify":    true,

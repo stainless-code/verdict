@@ -18,7 +18,7 @@
 #   M7  stdout is protocol frames only and stdin close exits 0.
 #   M8  the post tool dry-runs behind a smart gh stub: the envelope data comes
 #       back with no reviews POST and a bad approve is a typed refusal.
-#   M9  --operator adds triage (18 tools) and reaches the service; combining it
+#   M9  --operator adds triage (19 tools) and reaches the service; combining it
 #       with --read-only is a usage error before the server starts.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -87,7 +87,7 @@ if jq -e 'select(.id == 1).result.instructions | (type == "string") and (contain
 else
   bad "initialize instructions are missing or thin"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 17' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result.tools | length == 18' <"$MCP_OUT" >/dev/null; then
   good "tools/list carries 17 core tools (triage is operator-only)"
 else
   bad "tools/list count is not 17"
@@ -179,8 +179,8 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 7) and (map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
-  good "--read-only exposes only the 7 non-writing tools"
+if jq -e 'select(.id == 2).result.tools | (length == 8) and (map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+  good "--read-only exposes only the 8 non-writing tools"
 else
   bad "--read-only tool list drifted"
 fi
@@ -209,8 +209,8 @@ else
 fi
 run_mcp_input "$FRAMES" --operator
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 18) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 18 tools including triage with its status enum"
+if jq -e 'select(.id == 2).result.tools | (length == 19) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
+  good "--operator exposes 19 tools including triage with its status enum"
 else
   bad "--operator tool list drifted"
 fi

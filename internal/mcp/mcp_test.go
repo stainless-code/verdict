@@ -15,6 +15,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -105,13 +106,13 @@ func decodeFrames(t *testing.T, raw []byte) map[string]frame {
 func TestToolSchemas(t *testing.T) {
 	t.Parallel()
 	tools := allTools(false, false)
-	if len(tools) != 17 {
-		t.Fatalf("tools = %d, want 17", len(tools))
+	if len(tools) != 18 {
+		t.Fatalf("tools = %d, want 18", len(tools))
 	}
 	wantNames := []string{
 		"adopt", "calibrate", "check-tree", "doctor", "fetch", "fetch-local", "fix",
 		"init", "learn", "next", "post", "ready", "record", "report", "show",
-		"trend", "verify",
+		"threads", "trend", "verify",
 	}
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -406,7 +407,7 @@ func TestServeLifecycle(t *testing.T) {
 	if err := json.Unmarshal(frames["2"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 17 {
+	if len(list.Tools) != 18 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
 	// Success.
@@ -652,5 +653,71 @@ func TestSchemaNamesSorted(t *testing.T) {
 	}
 	if !sort.StringsAreSorted(names) {
 		t.Errorf("tool names are not sorted: %v", names)
+	}
+}
+
+// threadsCommander answers the refresh's GraphQL page.
+type threadsCommander struct {
+	t    *testing.T
+	page string
+}
+
+// Run replays the one scripted page.
+func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
+		return core.Result{Stdout: c.page}, nil
+	}
+	c.t.Errorf("unexpected threads argv: %q", cmd.Argv)
+	return core.Result{}, errors.New("unexpected argv")
+}
+
+// LookPath reports every tool present.
+func (c *threadsCommander) LookPath(string) error { return nil }
+
+// TestThreadsTool proves the MCP threads tool is read-only/open-world, maps
+// into the refresh service, and returns the same data profile as the CLI.
+//
+//nolint:revive // the registry/refresh matrix reads as one assertion block
+func TestThreadsTool(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeFile(t, ".review/7/PR.json",
+		`{"state":"OPEN","headRefOid":"`+strings.Repeat("a", 40)+`"}`)
+	var registered *tool
+	for _, candidate := range allTools(false, false) {
+		if candidate.name == "threads" {
+			registered = candidate
+			break
+		}
+	}
+	if registered == nil {
+		t.Fatal("threads tool is not registered")
+	}
+	if !registered.readOnly || !registered.openWorld || !registered.idempotent {
+		t.Errorf("threads annotations = %+v", registered)
+	}
+	page := `{"data":{"repository":{"pullRequest":{"reviewThreads":{` +
+		`"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[` +
+		`{"id":"t1","isResolved":false,"isOutdated":false,"path":"a.go","line":2,"diffSide":"RIGHT",` +
+		`"comments":{"totalCount":1,"nodes":[{"id":"c1","databaseId":9,` +
+		`"author":{"__typename":"User","login":"ana"},"body":"nit","createdAt":"2026-11-01T00:00:00Z"}]}}]}}}}}`
+	cmdr := &threadsCommander{t: t, page: page}
+	req := &fetchcore.ThreadsRequest{}
+	req.ReadRequest = core.ReadRequest{
+		Runtime: &core.Runtime{Env: map[string]string{}, Now: func() time.Time { return fixedNow }, Commander: cmdr},
+		Repo:    "o/r", Pr: "7",
+	}
+	data, ref := registered.invoke(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("threads invoke refusal: %v", ref)
+	}
+	threadsVal, _ := data.Get("threads")
+	if got, ok := jq.IntOf(threadsVal); !ok || got != 1 {
+		t.Errorf("data.threads = %v", threadsVal)
+	}
+	if got, _ := data.Get("provider"); got != "github" {
+		t.Errorf("data.provider = %v", got)
+	}
+	if _, err := os.Stat(".review/7/threads.json"); err != nil {
+		t.Errorf("refresh wrote no feed: %v", err)
 	}
 }

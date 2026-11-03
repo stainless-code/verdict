@@ -182,8 +182,18 @@ unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
 and normalize `PR.json` to one schema. Every provider bundle also writes
 `threads.json` (`schema_version: "1"`, published as
 [`schemas/threads.schema.json`](../schemas/threads.schema.json)): the raw
-files stay as-is, and the feed flattens each host's root comments to one
-`{id, path, line, side, resolved, outdated, author, kind, body}` shape.
+files stay as-is, and the feed is the authoritative PR conversation. Review
+threads come from each host's native source — GitHub GraphQL `reviewThreads`
+(REST has no resolution), GitLab discussions (`resolved`/`resolvable`), Azure
+thread `status`, Forgejo review-comment `resolver`/position, Bitbucket
+`resolution` + `inline.outdated`, GitCafe's comment flags. Each thread carries
+`id`, `path`/`line`/`start_line`/`side`, `resolved`/`outdated`, `url` when
+cheap, root `author`/`author_kind` (`human|bot|verdict`), optional
+`finding_sig`, `kind`, and `comments[]` (`id`, `author`, `author_kind`, body
+capped at 8 KiB with a `truncated` flag, `created_at`). Top level: `provider`,
+`pr`, `head_sha`, `fetched_at`, `truncated`. `verdict threads owner/repo N
+[--provider …]` re-reads only the thread surface and rewrites only this file,
+so a re-review after pushing fixes sees current resolution state.
 `post.json` and `record.json` carry `schema_version: "1"`.
 
 ### Bundle namespace (core files vs `x-*`)
@@ -325,11 +335,15 @@ control you use), then commit.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
-counts, patch passthrough, optional `--output` markdown with machine-header markers,
+non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.review/<pr>/threads.json` from the host (all six
+hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
+never refetches the diff, so it is the cheap re-read after replies,
+resolutions, or a push. `report` is the pure offline reader over the store
+(ranked items, verdict, counts, patch passthrough, optional `--output` markdown
+with machine-header markers,
 optional `--sarif` for scanners/CI). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
 `unrecorded`/`not assessed` when the run recorded neither) and, on clean
@@ -513,8 +527,8 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
-`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `trend`,
-`verify`. That is 17 tools. `upgrade` and `skill` are distribution surfaces,
+`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `threads`,
+`trend`, `verify`. That is 18 tools. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -1325,7 +1339,7 @@ writes a review.
 
 | Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list` + changes API                                                               | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused)                                  |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused)                                  |
 | `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships |
 | `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                            |
 | `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                         |
@@ -1449,6 +1463,14 @@ verbs and features ship in the release changelog.
   or `null` reads unknown, never zero); `report --cost` rolls them into a
   top-level `cached_input_tokens` scalar while `total_tokens` stays
   `input_tokens + output_tokens` exactly.
+- Added: per-provider `threads.json` — the normalized PR-conversation feed
+  (`schema_version: "1"`, published as `schemas/threads.schema.json`): root
+  threads with host id, anchor/state, author kind, optional `finding_sig`, and
+  capped comments[]. Every posted inline comment now carries the hidden
+  final-line marker `<!-- verdict-finding sig=<sig> -->`, so the next
+  `fetch`/`threads` read links a verdict-authored thread back to its finding;
+  older comments without the marker read `finding_sig: null` (backward
+  compatible, never a different bot's marker).
 - Added: review provenance on `post.json`/`record.json` (`tool_version`,
   `prompts_hash`, `model` — model from the latest cost record when one names
   it, else `null`); `calibrate`/`trend` surface it so mixed-version histories
@@ -1467,6 +1489,7 @@ The shapes agents write and operators parse are pinned in `schemas/`
 (the resolved base-owned controls snapshot), `usage.schema.json` (the
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `post.schema.json` and `record.schema.json` (completed post/record captures),
+`threads.schema.json` (the normalized PR conversation),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
 `data` for `report`, `post`, `record`, and `show`, plus fetch's additive
 estimate). `schemas/validate.sh` is the
