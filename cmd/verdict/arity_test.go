@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -107,6 +108,22 @@ func TestUnknownCmdMessage(t *testing.T) {
 	want := "unknown cmd 'bogus' (want " + verbsHint + ")"
 	if got := unknownCmdMessage("bogus"); got != want {
 		t.Fatalf("unknownCmdMessage = %q, want %q", got, want)
+	}
+}
+
+// TestVerbsHintMatchesUsage keeps the unknown-cmd hint and the usage
+// synopsis naming the same verbs, so a new verb cannot reach one and not the
+// other.
+func TestVerbsHintMatchesUsage(t *testing.T) {
+	t.Parallel()
+	synopsis, _, _ := strings.Cut(usageText(), "\n")
+	synopsis = strings.TrimSuffix(strings.TrimPrefix(synopsis, "usage: verdict "), " [opts]")
+	want := strings.Split(synopsis, "|")
+	got := strings.Split(verbsHint, "|")
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("verbsHint verbs = %v, usage synopsis verbs = %v", got, want)
 	}
 }
 

@@ -50,9 +50,10 @@ const envHome = "HOME"
 // tables.
 const verbSkill = "skill"
 
-// verbsHint lists the verbs the CLI owns, in the frozen unknown-cmd order.
+// verbsHint lists the verbs the CLI owns for the unknown-cmd message. It
+// names the same set as the usage synopsis (TestVerbsHintMatchesUsage).
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|trend|learn|init|skill|upgrade|uninstall"
+	"check-tree|verify|doctor|calibrate|ready|threads|trend|learn|init|skill|upgrade|uninstall|mcp"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
