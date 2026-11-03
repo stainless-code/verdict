@@ -39,7 +39,7 @@ type VerifyResponse struct { //nolint:govet // field grouping documents the resp
 }
 
 // VerifyData is the verify verb's --json data profile. Field order is the
-// shell's jq construction order.
+// published order.
 type VerifyData struct { //nolint:govet // field order is the published property order
 	Exit       int    `json:"exit"`
 	TimedOut   bool   `json:"timedOut"`

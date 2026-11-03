@@ -51,7 +51,7 @@ func overviewLines(block string) []string {
 	return strings.Split(block, newline)
 }
 
-// confidenceLead ports the confidence lead: review-level confidence and
+// confidenceLead owns the confidence lead: review-level confidence and
 // safety from the first existing completed-post/machine record; absent or
 // unparsable records read neutral, never fail.
 func confidenceLead(st *state) string {
@@ -107,12 +107,12 @@ func jsonRaw(path, field string) string {
 	return jq.R(v)
 }
 
-// basisOutputLine ports basis_line over the whole findings store.
+// basisOutputLine derives the Basis line from the whole findings store.
 func basisOutputLine(entries []any) string {
 	return "> Basis: " + basisCounts(entries)
 }
 
-// basisCounts ports basis_counts: rigor rung counts in evidence order,
+// basisCounts counts the rigor rungs in evidence order,
 // distinct cited kb rule ids, addressed (verified-fixed) findings. Null
 // entries count as pointed (their rigor reads null); cited ids dedupe in
 // jq order across mixed types.
@@ -183,7 +183,7 @@ func dedupeValues(vals []any) []any {
 	return out
 }
 
-// rankedLines ports the ranked report lines, with permalink reference
+// rankedLines owns the ranked report lines, with permalink reference
 // links for linkable GitHub bundles.
 func rankedLines(st *state) []string {
 	linkable := provenance.EvidenceLinkable(st.dir, st.headSHA) == strTrue
@@ -204,7 +204,7 @@ func rankedLine(_ *state, item readcommon.Ranked, linkable bool) string {
 		" (" + sigOutput(item.Entry) + ", " + rigorOutput(item.Entry) + ") — " + bodyOutput(item.Entry)
 }
 
-// sigOutput ports \(.sig[0:8]) for output lines.
+// sigOutput shortens a sig to its 8-character prefix for output lines.
 func sigOutput(entry any) string {
 	if sig, ok := readcommon.FieldOf(entry, "sig").(string); ok {
 		return readcommon.Prefix(sig)
@@ -212,7 +212,7 @@ func sigOutput(entry any) string {
 	return jq.Str(readcommon.FieldOf(entry, "sig"))
 }
 
-// rigorOutput ports \(.rigor // "?") for output lines.
+// rigorOutput renders the rigor rung for output lines ("?" when absent).
 func rigorOutput(entry any) string {
 	rigor := readcommon.FieldOf(entry, "rigor")
 	if rigor == nil || rigor == false {
@@ -221,7 +221,7 @@ func rigorOutput(entry any) string {
 	return jq.Str(rigor)
 }
 
-// bodyOutput ports (.body // "" | gsub("\n"; " ") | .[0:200]).
+// bodyOutput renders the body on one line, capped at 200 bytes.
 func bodyOutput(entry any) string {
 	body, ok := readcommon.FieldOf(entry, "body").(string)
 	if !ok {
@@ -234,7 +234,7 @@ func bodyOutput(entry any) string {
 // bodyRunes caps output body excerpts.
 const bodyRunes = 200
 
-// linkDefs ports the permalink definition list for linkable bundles.
+// linkDefs owns the permalink definition list for linkable bundles.
 func linkDefs(st *state) []string {
 	if provenance.EvidenceLinkable(st.dir, st.headSHA) != strTrue {
 		return nil
@@ -252,7 +252,7 @@ func linkDefs(st *state) []string {
 	return defs
 }
 
-// checkedBlock ports the bounded coverage list on clean reports: up to 7
+// checkedBlock owns the bounded coverage list on clean reports: up to 7
 // files from the stored bundle, with the preamble-fragment heading when
 // one is pinned.
 func checkedBlock(st *state) []string {
@@ -295,7 +295,7 @@ func truncateLines(lines []string, maxShown int) []string {
 	return lines
 }
 
-// checkedHeading ports the preamble-fragment heading: the substituted
+// checkedHeading owns the preamble-fragment heading: the substituted
 // fragment split into lines when pinned (nothing when the fragment is
 // empty, suppressing the heading but keeping the bullets), or the default
 // heading when no fragment exists.
@@ -312,7 +312,7 @@ func checkedHeading(st *state) []string {
 // checkedShown caps the coverage list.
 const checkedShown = 7
 
-// checkedFiles ports the stored file list: PR.json files first, else diff
+// checkedFiles owns the stored file list: PR.json files first, else diff
 // headers stripped to b-side paths.
 func checkedFiles(dir string) string {
 	if isRegular(dir + prJSONSuffix) {
@@ -375,7 +375,7 @@ func diffFileLines(diff string) string {
 	return strings.Join(lines, newline)
 }
 
-// preambleHeading ports the clean-review preamble heading: the substituted
+// preambleHeading owns the clean-review preamble heading: the substituted
 // fragment when pinned (possibly empty, suppressing the heading but keeping
 // the bullets), or the default heading when no fragment exists.
 func preambleHeading(st *state) (string, bool) {
@@ -386,12 +386,12 @@ func preambleHeading(st *state) (string, bool) {
 	if err != nil {
 		return "", true
 	}
-	// The shell captures the fragment through $(...) which strips trailing
-	// newlines, so trim them here too before the caller splits into lines.
+	// A fragment's trailing newlines are trimmed before the caller splits it
+	// into lines.
 	return substitutePlaceholders(strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), newline), st), true
 }
 
-// substitutePlaceholders ports substitute_override_placeholders for the
+// substitutePlaceholders substitutes the override placeholders for the
 // preamble fragment and the attribution text.
 func substitutePlaceholders(text string, st *state) string {
 	tier, cost := provenance.Spend(st.dir)
@@ -408,7 +408,7 @@ func substitutePlaceholders(text string, st *state) string {
 	return overrides.Substitute(text, vals)
 }
 
-// renderFooter ports the footer block for the report file.
+// renderFooter owns the footer block for the report file.
 func renderFooter(st *state) string {
 	eff := st.req.Effective
 	attrSet := st.req.ForcesOrEmpty().PublishAttributionTextSet

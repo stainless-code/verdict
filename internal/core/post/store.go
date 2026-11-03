@@ -55,7 +55,7 @@ func strOrNilPost(v any) *string {
 	return nil
 }
 
-// postDiagramValue ports the dry-run diagram disposition: null when the body
+// postDiagramValue owns the dry-run diagram disposition: null when the body
 // carried no candidates, else the validated shape with null keyword/note.
 func postDiagramValue(dstat *diagram.Status) any {
 	if dstat.State == "absent" {

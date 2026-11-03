@@ -17,9 +17,9 @@ import (
 	"github.com/stainless-code/verdict/internal/retry"
 )
 
-// CodeFetchFailed is the typed refusal for every fetch-internal failure:
-// the moved bodies return it wherever the shell's `fail` paths carried no
-// narrower code. The adapter maps unknown errors to it as well.
+// CodeFetchFailed is the typed refusal for every fetch-internal failure
+// that carries no narrower code. The adapter maps unknown errors to it as
+// well.
 const CodeFetchFailed = "fetch-failed"
 
 // codeCanceled names the cancel refusal the adapter exits 3 on.
@@ -335,8 +335,9 @@ func (s *session) Warn(msg string) {
 	}
 }
 
-// needTool ports `need`: a missing tool refuses with the missing-tool kind
-// (the adapter prints the frozen `missing: <tool>` line with no envelope).
+// needTool requires the tool on PATH: a missing tool refuses with the
+// missing-tool kind (the adapter prints the frozen `missing: <tool>` line
+// with no envelope).
 func (s *session) needTool(tool string) error {
 	//nolint:wrapcheck // the seam error passes through by design; the adapter maps its kinds
 	return s.commander.LookPath(tool)

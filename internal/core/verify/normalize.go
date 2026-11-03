@@ -8,7 +8,7 @@ import (
 )
 
 // gateText carries the normalized verifyCmd texts every arm matches
-// against. Built once per Check call, mirroring the shell pipeline:
+// against. Built once per Check call:
 // flat (whitespace-collapsed), lc (ASCII-lowercased), scan (obfuscation
 // folds), bare (quote-completed words, backticks spaced), csbare (the
 // case-preserved twin for upload flags), and adj (sentinel-marked
@@ -34,7 +34,8 @@ func normalize(raw string) *gateText {
 	return g
 }
 
-// flatOf ports `tr '\n\t\r' ' ' | tr -s ' ' | sed 's/^ //; s/ $//'`.
+// flatOf collapses newlines, tabs, and carriage returns to spaces, squeezes
+// runs, and trims the ends.
 func flatOf(raw string) string {
 	var sb strings.Builder
 	sb.Grow(len(raw))
@@ -71,7 +72,7 @@ func lastByte(sb *strings.Builder) (byte, bool) {
 	return s[len(s)-1], true
 }
 
-// scanOf ports the scan pipeline: @@null@@ for the discard sink, =op for
+// scanOf owns the scan pipeline: @@null@@ for the discard sink, =op for
 // the [[ =~ ]] operator, backslash stripping, IFS folding, and $@/$*/$N
 // deletion.
 func scanOf(lc string) string {
@@ -88,7 +89,7 @@ func scanOf(lc string) string {
 	return s
 }
 
-// bareOf ports the bare/csbare pipeline: backslash deletion (csbare reads
+// bareOf owns the bare/csbare pipeline: backslash deletion (csbare reads
 // $flat, which still carries them; bare reads $scan, already stripped, so
 // the deletion is a no-op there), unwrap $'..' and $"..", delete remaining
 // quotes, space-fold backticks, squeeze spaces. upper selects the
@@ -122,7 +123,7 @@ func squeezeSpaces(s string) string {
 	return reSpaces.ReplaceAllString(s, spaceStr)
 }
 
-// adjOf ports the adj pipeline: quote handling like bare (backticks kept),
+// adjOf owns the adj pipeline: quote handling like bare (backticks kept),
 // then sentinel replacement of innermost $(…), ${…}, $VAR, and `…` spans.
 func adjOf(scan string) string {
 	s := reLocaleSingle.ReplaceAllString(scan, groupRef)
@@ -148,7 +149,7 @@ func adjOf(scan string) string {
 	return s
 }
 
-// markStr is the substitution sentinel (the shell's $'\001').
+// markStr is the substitution sentinel.
 const markStr = "\x01"
 
 // spaceStr is the single space folded/squeezed separators use.
@@ -160,17 +161,16 @@ const groupRef = "$1"
 // maxSentinelPasses bounds the nested-span replacement loops.
 const maxSentinelPasses = 8
 
-// grepO ports `grep -E -m1 -o -e PAT`: every non-overlapping match on the
-// (single-line) input, joined by newlines. The shell's -m1 stops after the
-// first matching line, and -o prints each match on its own line, so
-// alternations matching twice yield a multiline fragment (e.g.
-// protocol.ext.allow plus ext::). First-match-only ports silently drop the
-// later matches and their bytes diverge.
+// grepO reports every non-overlapping match on the (single-line) input,
+// joined by newlines. Only the first matching line counts, and each match
+// lands on its own line, so an alternation matching twice yields a multiline
+// fragment (e.g. protocol.ext.allow plus ext::). A first-match-only scan
+// would silently drop the later matches.
 func grepO(re *regexp.Regexp, s string) string {
 	return strings.Join(re.FindAllString(s, -1), "\n")
 }
 
-// Normalization patterns, transliterated from the shell seds.
+// Normalization patterns for the collapsed text.
 var (
 	reTildeOp      = regexp.MustCompile(`=~[[:space:]][[:space:]]*`)
 	reIfsVar       = regexp.MustCompile(`\$ifs([^a-z0-9_]|$)`)

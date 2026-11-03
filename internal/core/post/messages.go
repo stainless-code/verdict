@@ -5,8 +5,8 @@
 // stdio, or exit codes.
 package postcore
 
-// Post refusal/warning formats. The rendered bytes are byte-identical to the
-// shell's; only the source layout is split for the line-length gate.
+// Post refusal/warning formats. The source layout is split for the
+// line-length gate; the rendered bytes are the contract.
 const (
 	msgNoPRTarget = "post needs a PR bundle (fetch owner/repo N first); local bundles record + report, they never post"
 
@@ -45,7 +45,7 @@ const (
 // Frozen store keys and codes the post path reads. The merge owns the
 // canonical copies in internal/core/record; these mirrors keep the post
 // service compiling without widening the core API (every value is pinned by
-// the parity goldens).
+// the goldens).
 const (
 	fieldPath       = "path"
 	fieldLine       = "line"

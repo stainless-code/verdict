@@ -25,7 +25,7 @@ type fetchCap struct {
 	maxBytes int64
 }
 
-// resolveFetchCap ports resolve_fetch_cap: REVIEW_MAX_BYTES wins, else the
+// resolveFetchCap resolves the byte cap: REVIEW_MAX_BYTES wins, else the
 // first usable line of .review/max_bytes, else the 512000 default. A set cap
 // prints the » cap line and arms the envelope summary; garbage refuses typed.
 func resolveFetchCap(r *session) (fetchCap, error) {
@@ -93,7 +93,7 @@ type chunkOptIn struct {
 	active bool
 }
 
-// resolveChunkOptIn ports resolve_chunk_opt_in: an overridden cap wins
+// resolveChunkOptIn reads the chunk opt-in: an overridden cap wins
 // outright (chunking disabled), else explicit --chunk wins, else the first
 // usable line of .review/chunk, else off. Garbage refuses typed.
 func resolveChunkOptIn(r *session, chunkFlag bool, capSource string) (chunkOptIn, error) {
@@ -119,7 +119,7 @@ func resolveChunkOptIn(r *session, chunkFlag bool, capSource string) (chunkOptIn
 	}
 }
 
-// checkDiffSize ports check_diff_size: empty diffs warn-and-proceed; diffs
+// checkDiffSize applies the byte cap: empty diffs warn-and-proceed; diffs
 // over the cap arm chunking on the opted-in path (refusing only the
 // single-file degenerate), else refuse diff-too-large with the advisory
 // split candidates riding the envelope. The chunk knob is consulted only on
@@ -172,7 +172,7 @@ func overCap(r *session, fullDiff string, total int64, lim fetchCap, chunkFlag b
 	return false, refusal
 }
 
-// printSplitCandidates ports the candidates block: one dash line per
+// printSplitCandidates owns the candidates block: one dash line per
 // split scope on stderr (`>&2`), owned by the refusal.
 func printSplitCandidates(r *session, cands []any) {
 	if len(cands) == 0 {
@@ -195,7 +195,7 @@ type fileSlice struct {
 	size int64
 }
 
-// chunkFileTable ports chunk_file_table: per-file byte sizes in diff order,
+// chunkFileTable measures per-file byte sizes in diff order,
 // where each header line counts its own trailing newline.
 func chunkFileTable(fullDiff string) []fileSlice {
 	raw, err := os.ReadFile(fullDiff)
@@ -210,7 +210,7 @@ func chunkFileTable(fullDiff string) []fileSlice {
 	return out
 }
 
-// chunkPlanOK ports chunk_plan_ok: every file slice fits the cap.
+// chunkPlanOK reports whether every file slice fits the cap.
 func chunkPlanOK(fullDiff string, maxBytes int64) bool {
 	table := chunkFileTable(fullDiff)
 	if len(table) == 0 {
@@ -224,7 +224,7 @@ func chunkPlanOK(fullDiff string, maxBytes int64) bool {
 	return true
 }
 
-// suggestSplits ports suggest_splits: the largest file alone,
+// suggestSplits offers the largest file alone,
 // everything-but-largest (up to 10 files named), and a range half-split,
 // with byte estimates. Empty when the diff holds no parseable slices.
 func suggestSplits(fullDiff string, total int64) []any {
@@ -233,9 +233,8 @@ func suggestSplits(fullDiff string, total int64) []any {
 		return []any{}
 	}
 	sorted := append([]fileSlice{}, table...)
-	// The shell sorts with `sort -k1,1rn` (no -s): numeric reverse on the
-	// size, whole-line comparison breaking ties — equal sizes order by
-	// path bytes ascending.
+	// Largest first: numeric reverse on the size, whole-line comparison
+	// breaking ties — equal sizes order by path bytes ascending.
 	slices.SortFunc(sorted, compareFileSlices)
 	top := sorted[0]
 	restBytes := max(total-top.size, 0)
@@ -258,7 +257,7 @@ func suggestSplits(fullDiff string, total int64) []any {
 	return out
 }
 
-// compareFileSlices ports the `sort -k1,1rn` order: numeric reverse on
+// compareFileSlices owns the `sort -k1,1rn` order: numeric reverse on
 // size, path bytes breaking ties.
 func compareFileSlices(a, b fileSlice) int {
 	if a.size != b.size {
@@ -267,7 +266,7 @@ func compareFileSlices(a, b fileSlice) int {
 	return strings.Compare(a.path, b.path)
 }
 
-// restSplit ports the excluding-top candidate: the first 10 named when
+// restSplit owns the excluding-top candidate: the first 10 named when
 // the tail is long, else the whole tail summarized.
 func restSplit(top fileSlice, rest []string, restBytes int64) any {
 	shown := rest

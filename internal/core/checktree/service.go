@@ -39,7 +39,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 }
 
 // Data is the check-tree verb's --json data profile. Only the outcome's
-// keys render (Wire branches on Kind), mirroring the shell's per-path
+// keys render (Wire branches on Kind), one entry per path.
 // objects.
 type Data struct { //nolint:govet // field order is the published property order
 	Kind    string
@@ -76,7 +76,7 @@ func (d *Data) Wire() *jq.Obj {
 	}
 }
 
-// stringLines ports the files/unexpected values: non-empty lines, never
+// stringLines owns the files/unexpected values: non-empty lines, never
 // null.
 func stringLines(lines []string) []any {
 	var out []any
@@ -171,7 +171,7 @@ const (
 	newline          = "\n"
 )
 
-// runCheck ports the check-tree gate over `git status --porcelain`.
+// runCheck owns the check-tree gate over `git status --porcelain`.
 func (st *state) runCheck(ctx context.Context) *Response {
 	out, ok := st.gitPorcelain(ctx)
 	if !ok {
@@ -192,7 +192,7 @@ func (st *state) runCheck(ctx context.Context) *Response {
 }
 
 // gitPorcelain runs git status --porcelain through the injected commander,
-// discarding stderr exactly like the shell's 2>/dev/null.
+// discarding stderr.
 func (st *state) gitPorcelain(ctx context.Context) (string, bool) {
 	cmdr := st.commander()
 	if cmdr == nil {
@@ -228,14 +228,14 @@ func porcelainLinesRaw(porcelain string) []string {
 	return slices.Collect(strings.SplitSeq(porcelain, newline))
 }
 
-// isScratchLine ports ^.. \.review/: any two status columns, a space,
+// isScratchLine matches ^.. \.review/: any two status columns, a space,
 // then .review/.
 func isScratchLine(line string) bool {
 	return len(line) >= porcelainMinLen && line[porcelainSpaceAt] == ' ' &&
 		strings.HasPrefix(line[porcelainPathAt:], ".review/")
 }
 
-// notARepo ports the not-a-git-repo refusal.
+// notARepo owns the not-a-git-repo refusal.
 func (st *state) notARepo() *Response {
 	st.diag("check-tree: not a git repo")
 	return st.response("run inside a git repository",
@@ -244,14 +244,14 @@ func (st *state) notARepo() *Response {
 		1)
 }
 
-// cleanTree ports the clean path.
+// cleanTree owns the clean path.
 func (st *state) cleanTree(scratch string, own int) *Response {
 	msg := "check-tree: clean" + scratch
 	st.human(msg)
 	return st.response(msg, &Data{Kind: kindClean, Clean: true, Ignored: own}, nil, 0)
 }
 
-// dirtyTree ports the dirty path without an --expect allowlist.
+// dirtyTree owns the dirty path without an --expect allowlist.
 func (st *state) dirtyTree(porcelain string) *Response {
 	msg := "check-tree: dirty worktree — commit or stash first:"
 	st.human(msg)
@@ -259,7 +259,7 @@ func (st *state) dirtyTree(porcelain string) *Response {
 	return st.response(msg, &Data{Kind: kindDirty, Lines: porcelainLinesRaw(porcelain)}, nil, 1)
 }
 
-// expectGate ports the --expect allowlist: stray paths fail, covered dirt
+// expectGate owns the --expect allowlist: stray paths fail, covered dirt
 // passes.
 func (st *state) expectGate(porcelain, expect string) *Response {
 	if stray := unexpectedPaths(porcelain, splitPrefixes(expect)); len(stray) > 0 {
@@ -270,7 +270,7 @@ func (st *state) expectGate(porcelain, expect string) *Response {
 	return st.response(msg, &Data{Kind: kindExpected, Clean: true}, nil, 0)
 }
 
-// unexpectedPaths ports the stray scan: rename lines match on the
+// unexpectedPaths owns the stray scan: rename lines match on the
 // post-arrow path.
 func unexpectedPaths(porcelain string, prefixes []string) []string {
 	var stray []string
@@ -290,7 +290,7 @@ func stripStatus(line string) string {
 	return ""
 }
 
-// renameTarget ports ${f##* -> }: the post-arrow path on renames.
+// renameTarget returns the post-arrow path on renames.
 func renameTarget(file string) string {
 	if _, after, ok := strings.CutLast(file, renameSep); ok {
 		return after
@@ -307,7 +307,7 @@ func splitPrefixes(expect string) []string {
 	return out
 }
 
-// matchesPrefix ports [[ "$f" == "$p"* ]]: an empty prefix matches
+// matchesPrefix applies a byte prefix test: an empty prefix matches
 // everything.
 func matchesPrefix(file string, prefixes []string) bool {
 	for _, p := range prefixes {
@@ -318,7 +318,7 @@ func matchesPrefix(file string, prefixes []string) bool {
 	return false
 }
 
-// unexpectedDirt ports the unexpected-dirt failure.
+// unexpectedDirt owns the unexpected-dirt failure.
 func (st *state) unexpectedDirt(stray []string) *Response {
 	msg := "check-tree: unexpected dirt:"
 	st.human(msg)

@@ -15,7 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/kb"
 )
 
-// writeKBRecall ports write_kb_recall: scoped rules recalled onto a bundle
+// writeKBRecall writes the scoped rules recalled onto a bundle
 // as advisory context (kb.txt plus the kb-recall.json machine manifest,
 // rank-ordered top 3). No match, no store, or unreadable store: both files
 // removed, no failure.
@@ -27,8 +27,7 @@ func writeKBRecall(r *session, dir, extra string) {
 		return
 	}
 	ids, note := renderKBNote(ranked)
-	// The shell stages through .tmp files; the atomic path writes the same
-	// bytes (only the bytes are graded).
+	// The atomic write is the one path: a reader never sees a torn note.
 	if err := atomic.WriteFile(mf, []byte(note)); err != nil {
 		r.Warn(fmt.Sprintf("could not write %s: %v", mf, err))
 		return
@@ -45,7 +44,7 @@ func clearKBRecall(mf, mfj string) {
 	_ = os.Remove(mfj)
 }
 
-// recallRanked ports the recall pipeline: store read, file set, active
+// recallRanked owns the recall pipeline: store read, file set, active
 // rules, scope matching, and the top-N rank.
 func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
 	raw, ok := r.readControl(kb.File)
@@ -67,7 +66,7 @@ func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
 	return ranked, true
 }
 
-// renderKBNote ports the kb.txt body, returning the cited ids in rank order.
+// renderKBNote owns the kb.txt body, returning the cited ids in rank order.
 func renderKBNote(ranked []recallCand) ([]string, string) {
 	var note strings.Builder
 	note.WriteString("# kb recall — context, never orders. Cited rules inform the review; evidence still decides.\n")
@@ -79,7 +78,7 @@ func renderKBNote(ranked []recallCand) ([]string, string) {
 	return ids, note.String()
 }
 
-// writeKBManifest ports the kb-recall.json write, warning and dropping it on
+// writeKBManifest owns the kb-recall.json write, warning and dropping it on
 // failure while keeping kb.txt.
 func writeKBManifest(r *session, mfj, mf string, ranked []recallCand) bool {
 	parts := make([]string, len(ranked))
@@ -94,7 +93,7 @@ func writeKBManifest(r *session, mfj, mf string, ranked []recallCand) bool {
 	return true
 }
 
-// recallFiles ports the recall file list: extra paths plus the diff b-side
+// recallFiles owns the recall file list: extra paths plus the diff b-side
 // paths, trimmed, deduped, sorted.
 func recallFiles(dir, extra string) []string {
 	var files []string
@@ -114,7 +113,7 @@ func recallFiles(dir, extra string) []string {
 	return dedupeSorted(out)
 }
 
-// recallDiffFiles ports the diff scan for usable b-side paths: the shared
+// recallDiffFiles owns the diff scan for usable b-side paths: the shared
 // section index, empty and /dev/null headers dropped.
 func recallDiffFiles(dir string) []string {
 	raw, err := os.ReadFile(dir + suffixFullDiff)
@@ -140,7 +139,7 @@ type recallRule struct {
 	judged int
 }
 
-// recallRules ports the active-row slurp: unreadable store warns and reads
+// recallRules owns the active-row slurp: unreadable store warns and reads
 // absent (callers remove both files).
 func recallRules(r *session, raw []byte) ([]recallRule, bool) {
 	docs, err := kb.ParseRows(raw)
@@ -170,8 +169,8 @@ func recallRules(r *session, raw []byte) ([]recallRule, bool) {
 	return out, true
 }
 
-// atoOrZero parses a rendered JSON number, reading 0 on garbage (the
-// shell's `tonumber? // 0` posture for malformed store values).
+// atoOrZero parses a rendered JSON number, reading 0 on garbage so a
+// malformed store value never blocks the recall.
 func atoOrZero(s string) int {
 	n, err := strconv.Atoi(s)
 	if err != nil {
@@ -204,7 +203,7 @@ type recallCand struct {
 	score float64
 }
 
-// matchRules ports the scope-glob gate: a rule matches when any of its
+// matchRules owns the scope-glob gate: a rule matches when any of its
 // comma-separated scope globs matches any file.
 func matchRules(rules []recallRule, files []string) []recallCand {
 	var out []recallCand
@@ -220,7 +219,7 @@ func matchRules(rules []recallRule, files []string) []recallCand {
 	return out
 }
 
-// ruleHit ports the nested scope/file loop with shell case-pattern matching.
+// ruleHit owns the nested scope/file loop with shell case-pattern matching.
 func ruleHit(scope string, files []string) bool {
 	for g := range strings.SplitSeq(scope, ",") {
 		if globHitsFiles(strings.TrimSpace(g), files) {
@@ -230,7 +229,7 @@ func ruleHit(scope string, files []string) bool {
 	return false
 }
 
-// globHitsFiles ports one scope glob against the file set.
+// globHitsFiles handles one scope glob against the file set.
 func globHitsFiles(g string, files []string) bool {
 	if g == "" {
 		return false
@@ -243,7 +242,7 @@ func globHitsFiles(g string, files []string) bool {
 	return false
 }
 
-// rankCands ports the single ranker: score desc, judged desc, id asc
+// rankCands owns the single ranker: score desc, judged desc, id asc
 // (jq sort_by is stable; ties keep candidate order).
 func rankCands(cands []recallCand) []recallCand {
 	slices.SortStableFunc(cands, func(a, b recallCand) int {
@@ -258,7 +257,7 @@ func rankCands(cands []recallCand) []recallCand {
 	return cands
 }
 
-// scopeMatch ports shell `case "$f" in $g)` pattern matching: `*` crosses
+// scopeMatch applies glob-scope pattern matching: `*` crosses
 // separators, `?` matches one char, `[...]` matches a class, and `\`
 // quotes the next char.
 // globState carries one scopeMatch run: the classic wildcard matcher
@@ -300,7 +299,7 @@ func (g *globState) step() bool {
 	return g.matchBacktrack()
 }
 
-// escape ports the backslash escape: a backslash matching the input
+// escape owns the backslash escape: a backslash matching the input
 // byte consumes both.
 func (g *globState) matchEscape() bool {
 	if g.px < len(g.pattern) && g.pattern[g.px] == '\\' && g.px+1 < len(g.pattern) && g.pattern[g.px+1] == g.s[g.sx] {
@@ -311,7 +310,7 @@ func (g *globState) matchEscape() bool {
 	return false
 }
 
-// star ports the star record: the star position and input mark park
+// star owns the star record: the star position and input mark park
 // for later backtracking.
 func (g *globState) matchStar() bool {
 	if g.px < len(g.pattern) && g.pattern[g.px] == '*' {
@@ -321,7 +320,7 @@ func (g *globState) matchStar() bool {
 	return false
 }
 
-// consume ports the literal match: `?`, a class, or the equal byte.
+// consume owns the literal match: `?`, a class, or the equal byte.
 func (g *globState) matchConsume() bool {
 	if g.px >= len(g.pattern) {
 		return false
@@ -348,7 +347,7 @@ func (g *globState) matchConsume() bool {
 	}
 }
 
-// backtrack ports the mismatch fork: a pending `*` advances over one
+// backtrack owns the mismatch fork: a pending `*` advances over one
 // more input char, else the match fails.
 func (g *globState) matchBacktrack() bool {
 	if g.star == -1 || g.mark >= len(g.s) {

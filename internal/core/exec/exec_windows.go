@@ -18,7 +18,7 @@ import (
 // the job, so a timeout (or the post-exit sweep) terminates the whole tree
 // even though Windows has no negative-pgid kill. TerminateProcess records a
 // generic exit status, so timeoutExitCode maps a killed tree back to the
-// shell's 137 (GO-EXEC-01/05).
+// shared 137 (GO-EXEC-01/05).
 const (
 	// jobObjectExtendedLimitInformation is JOBOBJECTINFOCLASS 9.
 	jobObjectExtendedLimitInformation = 9
@@ -229,7 +229,7 @@ func processAlive(_ context.Context, cmd *osexec.Cmd) bool {
 	return r != 0 && code == stillActive
 }
 
-// sweepOrphans ports the post-reap sweep: after the parent exits, a job
+// sweepOrphans owns the post-reap sweep: after the parent exits, a job
 // that still holds processes gets a grace period, then the survivors are
 // terminated and the decoy exit reported.
 func sweepOrphans(cmd *osexec.Cmd) bool {
@@ -247,7 +247,7 @@ func sweepOrphans(cmd *osexec.Cmd) bool {
 
 // TrimTail matches shell command substitution under Git Bash: native
 // Windows commands write CRLF through the Go-opened output handle, and the
-// shell's recorded tail has both bytes stripped, so strip the pair here too.
+// recorded tail has both bytes stripped, so strip the pair here too.
 func TrimTail(s string) string {
 	return strings.TrimRight(s, "\r\n")
 }
@@ -283,7 +283,7 @@ func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	return waitStatus{status: exitErr.ProcessState.ExitCode()}, true
 }
 
-// timeoutExitCode maps a terminated tree to the shell's SIGKILL wait code;
+// timeoutExitCode maps a terminated tree to the SIGKILL wait code;
 // TerminateJobObject itself records a generic exit status.
 func timeoutExitCode() (int, bool) {
 	return sigkillExit, true

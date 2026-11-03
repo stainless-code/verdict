@@ -25,8 +25,7 @@ type Runtime struct {
 	Commander Commander
 }
 
-// TimeUTC formats the injected clock like the shell's
-// date -u +%Y-%m-%dT%H:%M:%SZ.
+// TimeUTC formats the injected clock as UTC to the second.
 func (r Runtime) TimeUTC() string {
 	return NowUTC(r.now())
 }
@@ -120,7 +119,7 @@ func (q ReadRequest) Diag(line string) {
 	}
 }
 
-// NowUTC formats t like the shell's date -u +%Y-%m-%dT%H:%M:%SZ.
+// NowUTC formats t as UTC to the second.
 func NowUTC(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04:05Z")
 }

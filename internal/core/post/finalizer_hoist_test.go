@@ -22,7 +22,7 @@ func hoistPostRecord(t *testing.T) {
 
 // TestRunAlreadyPostedZeroNetwork proves the same-SHA finalizer guard runs
 // before drift's live lookup: a repeat post refuses typed with zero Commander
-// calls and zero warnings from the skipped network reads (BL05).
+// calls and zero warnings from the skipped network reads.
 func TestRunAlreadyPostedZeroNetwork(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -37,7 +37,7 @@ func TestRunAlreadyPostedZeroNetwork(t *testing.T) {
 
 // TestRunLiveAlreadyPostedZeroNetwork proves the fetched-reviews leg keeps
 // the same hoist: a fresh bundle (no post.json) refuses from reviews.json
-// before drift's live lookup, with zero Commander calls (BL05).
+// before drift's live lookup, with zero Commander calls.
 func TestRunLiveAlreadyPostedZeroNetwork(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

@@ -18,7 +18,7 @@ import (
 
 // runLocal mirrors the fetch-local block: worktree/staged/range/branch/
 // stash diff modes sharing the cap/chunk/budget/prompt planes.
-// runLocalTail ports the fetch-local block: worktree/staged/range/branch/
+// runLocalTail owns the fetch-local block: worktree/staged/range/branch/
 // stash diff modes sharing the cap/chunk/budget/prompt planes, returning
 // the envelope data and next step for the adapter to render.
 func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest) (*core.FetchData, string, error) {
@@ -44,7 +44,7 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRe
 	return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
 }
 
-// runLocalBuild ports the fetch-local build after setup: budget, diff,
+// runLocalBuild owns the fetch-local build after setup: budget, diff,
 // cap, stats, stores, and the finish tail.
 func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
@@ -74,7 +74,7 @@ func runLocalBuild(
 	return localFinish(ctx, ctx2, req, f, r, dir, &budget, fc, chunkActive, mode, listed, total, adds, dels, diffSHA)
 }
 
-// localSlugGate ports the fetch-local name gate: empty, numeric, and
+// localSlugGate owns the fetch-local name gate: empty, numeric, and
 // local-prefixed names refuse typed.
 func localSlugGate(pr, slug string) *core.RefusalError {
 	if slug == "" || slug == "local" {
@@ -107,7 +107,7 @@ func localModeCount(f *core.FetchLocalFlags) int {
 	return modes
 }
 
-// localSetup ports the fetch-local preamble: slug gate, worktree check,
+// localSetup owns the fetch-local preamble: slug gate, worktree check,
 // mode resolution, and the bundle directory.
 func localSetup(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
@@ -133,7 +133,7 @@ func localSetup(
 	return mode, dir, slug, nil
 }
 
-// localBudget ports the fetch-local budget preamble: resolution, gate,
+// localBudget owns the fetch-local budget preamble: resolution, gate,
 // directory, and receipt.
 func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, error) {
 	budget, err := resolveBudget(r.env, r)
@@ -150,7 +150,7 @@ func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, 
 	return budget, nil
 }
 
-// localDiff ports the fetch-local diff read: the mode diff runs with its
+// localDiff owns the fetch-local diff read: the mode diff runs with its
 // stderr sidecar, and full.diff lands (empty on failure, like `>`). Under
 // an isolated checkout the explicit commit pair replaces the mode's
 // live-tree refs, so the bytes come from the checkout, not the worktree.
@@ -172,7 +172,7 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 	return nil
 }
 
-// localDiffFail ports the failed-diff fork: the empty truncation lands
+// localDiffFail owns the failed-diff fork: the empty truncation lands
 // first, then the typed refusal carries gh's excerpt.
 func localDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
@@ -181,7 +181,7 @@ func localDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: "diff-failed", Message: "git diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
-// localCap ports the fetch-local cap gate: resolution and the over-cap
+// localCap owns the fetch-local cap gate: resolution and the over-cap
 // fork (chunks armed or typed refusal with split candidates).
 func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
 	fc, ref := resolveFetchCap(r)
@@ -195,7 +195,7 @@ func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
 	return fc, chunkActive, nil
 }
 
-// localStats ports the fetch-local measurements: hunks, the binary/warn
+// localStats owns the fetch-local measurements: hunks, the binary/warn
 // lines, the file stats, and the counts.
 func localStats(
 	ctx context.Context, r *session, dir string, mode *localMode, paths []string,
@@ -219,7 +219,7 @@ func localStats(
 	return listed, numstat, total, adds, dels, diffSHA, nil
 }
 
-// localStores ports the fetch-local bundle stores: TOC, roles, context,
+// localStores owns the fetch-local bundle stores: TOC, roles, context,
 // claim store, sensitive manifest, and recall.
 func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat string) error {
 	if err := writeLocalTOC(ctx2, slug, listed, numstat); err != nil {
@@ -242,7 +242,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 	return nil
 }
 
-// localFinish ports the fetch-local tail: source.json, the done/next
+// localFinish owns the fetch-local tail: source.json, the done/next
 // lines, the opt-in chunks, and the typed data for the adapter's envelope.
 func localFinish(
 	_ context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
@@ -266,7 +266,7 @@ func localFinish(
 	return fetchTailLocal(ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
 }
 
-// localSlug ports the fetch-local slug pipeline on bytes: ASCII-lowercase,
+// localSlug owns the fetch-local slug pipeline on bytes: ASCII-lowercase,
 // non-[a-z0-9-] runs to one dash, trim dashes, first 48 bytes.
 func localSlug(pr string) string {
 	lower := readcommon.ASCIILower(pr)
@@ -292,7 +292,7 @@ func localSlug(pr string) string {
 	return slug
 }
 
-// slugKeep ports the slug character class: ASCII alnum and dash survive.
+// slugKeep owns the slug character class: ASCII alnum and dash survive.
 func slugKeep(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-'
 }
@@ -307,7 +307,7 @@ type localMode struct {
 	dirty    bool
 }
 
-// diffArgs ports the per-kind diff argv (paths appended by the caller).
+// diffArgs owns the per-kind diff argv (paths appended by the caller).
 func (m *localMode) diffArgs() []string {
 	switch m.kind {
 	case modeStash:
@@ -315,7 +315,7 @@ func (m *localMode) diffArgs() []string {
 	case modeRange:
 		return []string{gitCmdDiff, m.baseSHA, m.headSHA}
 	case modeBranch:
-		// `git diff $mb HEAD` — the shell resolves HEAD late; the stored
+		// `git diff <base> HEAD` — HEAD resolves at run time; the stored
 		// head SHA equals it, so the bytes match.
 		return []string{gitCmdDiff, m.baseSHA, gitHeadRef}
 	case modeStaged:
@@ -325,7 +325,7 @@ func (m *localMode) diffArgs() []string {
 	}
 }
 
-// resolveLocalMode ports the fetch-local mode resolution.
+// resolveLocalMode owns the fetch-local mode resolution.
 func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, branch string) (localMode, error) {
 	switch {
 	case f.HasStash:
@@ -341,7 +341,7 @@ func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, 
 	}
 }
 
-// resolveStashMode ports the stash mode: the stash ref must verify, then
+// resolveStashMode owns the stash mode: the stash ref must verify, then
 // its commit and parent bound the diff.
 func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) (localMode, error) {
 	if _, err := s.run(ctx, binGit, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
@@ -356,7 +356,7 @@ func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) 
 	return localMode{kind: modeStash, baseSHA: base, headSHA: head, headRef: ref, rangeVal: ref}, nil
 }
 
-// resolveBaseMode ports the base mode: the merge-base with HEAD bounds a
+// resolveBaseMode owns the base mode: the merge-base with HEAD bounds a
 // branch-style diff.
 func resolveBaseMode(ctx context.Context, s *session, f *core.FetchLocalFlags, branch string) (localMode, error) {
 	mb, err := s.gitLine(ctx, "merge-base", f.BaseRef, gitHeadRef)
@@ -371,14 +371,14 @@ func resolveBaseMode(ctx context.Context, s *session, f *core.FetchLocalFlags, b
 	return localMode{kind: modeBranch, baseSHA: mb, headSHA: head, headRef: headRef, rangeVal: f.BaseRef + "...HEAD"}, nil
 }
 
-// resolveStagedMode ports the staged mode: HEAD bounds the index diff.
+// resolveStagedMode owns the staged mode: HEAD bounds the index diff.
 func resolveStagedMode(ctx context.Context, s *session) (localMode, error) {
 	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
 	head := s.gitLineOrEmpty(ctx, "write-tree")
 	return localMode{kind: modeStaged, baseSHA: base, headSHA: head, headRef: keyIndex, rangeVal: "HEAD:index"}, nil
 }
 
-// resolveWorktreeMode ports the default worktree mode: uncommitted HEAD
+// resolveWorktreeMode owns the default worktree mode: uncommitted HEAD
 // changes with the branch (or worktree) as head ref.
 func resolveWorktreeMode(ctx context.Context, s *session, branch string) localMode {
 	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
@@ -389,7 +389,7 @@ func resolveWorktreeMode(ctx context.Context, s *session, branch string) localMo
 	return localMode{kind: "worktree", baseSHA: base, headRef: headRef, rangeVal: "HEAD:worktree", dirty: true}
 }
 
-// resolveRangeMode ports the range split: three-dot wins when present,
+// resolveRangeMode owns the range split: three-dot wins when present,
 // merging at the merge-base; otherwise a straight two-sided diff.
 func resolveRangeMode(ctx context.Context, s *session, spec string) (localMode, error) {
 	if strings.Contains(spec, gitRange3) {
@@ -398,7 +398,7 @@ func resolveRangeMode(ctx context.Context, s *session, spec string) (localMode, 
 	return resolveTwoDot(ctx, s, spec)
 }
 
-// resolveThreeDot ports the three-dot range: the merge-base bounds the
+// resolveThreeDot owns the three-dot range: the merge-base bounds the
 // diff, with both ends resolving.
 func resolveThreeDot(ctx context.Context, s *session, spec string) (localMode, error) {
 	ra, _, _ := strings.Cut(spec, gitRange3)
@@ -420,7 +420,7 @@ func resolveThreeDot(ctx context.Context, s *session, spec string) (localMode, e
 	return localMode{kind: modeRange, baseSHA: mb, headSHA: head, headRef: rb, rangeVal: spec}, nil
 }
 
-// resolveTwoDot ports the two-dot range: a straight two-sided diff, with
+// resolveTwoDot owns the two-dot range: a straight two-sided diff, with
 // both ends resolving.
 func resolveTwoDot(ctx context.Context, s *session, spec string) (localMode, error) {
 	ra, rb := spec, spec
@@ -440,7 +440,7 @@ func resolveTwoDot(ctx context.Context, s *session, spec string) (localMode, err
 }
 
 // gitLine runs git, returning stdout stripped of trailing newlines. Stderr
-// is discarded, like the shell's 2>/dev/null guards.
+// is discarded.
 func (s *session) gitLine(ctx context.Context, args ...string) (string, error) {
 	res, err := s.run(ctx, binGit, args...)
 	if err != nil {
@@ -449,8 +449,7 @@ func (s *session) gitLine(ctx context.Context, args ...string) (string, error) {
 	return strings.TrimRight(res.Stdout, newline), nil
 }
 
-// gitLineOrEmpty runs git, reading "" on failure (the shell's `|| true`
-// with captured output).
+// gitLineOrEmpty runs git, reading "" on failure with stdout captured.
 func (s *session) gitLineOrEmpty(ctx context.Context, args ...string) string {
 	line, err := s.gitLine(ctx, args...)
 	if err != nil {
@@ -459,9 +458,9 @@ func (s *session) gitLineOrEmpty(ctx context.Context, args ...string) string {
 	return line
 }
 
-// truncateEmpty ports the shell's `> file` truncation before a guarded
-// failure: the empty residue lands first so bundles match through every
-// gate. A write error itself refuses (unreachable on a writable bundle).
+// truncateEmpty empties the file before a guarded failure: the empty residue
+// lands first so a bundle reads the same through every gate. A write error
+// itself refuses (unreachable on a writable bundle).
 func truncateEmpty(path string) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte{}); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", path, err)}
@@ -469,7 +468,7 @@ func truncateEmpty(path string) *core.RefusalError {
 	return nil
 }
 
-// localFileStats ports the file-list and numstat reads for the mode. Under
+// localFileStats owns the file-list and numstat reads for the mode. Under
 // an isolated checkout the explicit commit pair replaces every mode's
 // live-tree refs (a three-dot A...B list is its merge-base-to-head pair,
 // so the file sets match the classic refs exactly).
@@ -524,7 +523,7 @@ func (m *localMode) rangeBaseRef() string {
 	return m.rangeVal
 }
 
-// localCounts ports the total/adds/dels derivation.
+// localCounts owns the total/adds/dels derivation.
 func localCounts(listed, numstat string) (total, adds, dels int) {
 	total = countNonEmptyLines(listed)
 	for _, line := range splitLines(numstat) {
@@ -538,7 +537,7 @@ func localCounts(listed, numstat string) (total, adds, dels int) {
 	return total, adds, dels
 }
 
-// countNonEmptyLines ports `grep -c .`.
+// countNonEmptyLines counts the non-empty lines.
 func countNonEmptyLines(s string) int {
 	n := 0
 	for _, line := range splitLines(s) {
@@ -549,7 +548,7 @@ func countNonEmptyLines(s string) int {
 	return n
 }
 
-// intOrZero ports the numstat awk: plain-digit fields sum, anything else
+// intOrZero owns the numstat awk: plain-digit fields sum, anything else
 // reads zero. An overflow reads zero too, never a wrapped negative count.
 func intOrZero(s string) int {
 	if !readcommon.IsDigits(s) {
@@ -562,7 +561,7 @@ func intOrZero(s string) int {
 	return n
 }
 
-// hasNonEmptyLine ports `grep -q .`.
+// hasNonEmptyLine reports whether any line is non-empty.
 func hasNonEmptyLine(s string) bool {
 	for _, line := range splitLines(s) {
 		if line != "" {
@@ -572,7 +571,7 @@ func hasNonEmptyLine(s string) bool {
 	return false
 }
 
-// writeLocalUntrackedWarns ports the untracked-files advisory warning.
+// writeLocalUntrackedWarns owns the untracked-files advisory warning.
 func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 	args := []string{"ls-files", "--others", "--exclude-standard"}
 	if len(paths) > 0 {
@@ -596,7 +595,7 @@ func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 	}
 }
 
-// untrackedKept ports the untracked filter: blanks and the bundle
+// untrackedKept owns the untracked filter: blanks and the bundle
 // directory never warn.
 func untrackedKept(stdout string) []string {
 	var kept []string
@@ -609,8 +608,8 @@ func untrackedKept(stdout string) []string {
 	return kept
 }
 
-// untrackedShown ports the five-path display cap: words counted before
-// each append, like the shell's wc -w gate.
+// untrackedShown owns the five-path display cap: words counted before
+// each append.
 func untrackedShown(kept []string) string {
 	shown := ""
 	for _, k := range kept {
@@ -622,7 +621,7 @@ func untrackedShown(kept []string) string {
 	return shown
 }
 
-// writeLocalBinaryWarns ports the binary-files advisory warning.
+// writeLocalBinaryWarns owns the binary-files advisory warning.
 func writeLocalBinaryWarns(r *session, numstat string) {
 	kept := binaryKept(numstat)
 	if len(kept) == 0 {
@@ -636,7 +635,7 @@ func writeLocalBinaryWarns(r *session, numstat string) {
 	}
 }
 
-// binarySkipped ports the numstat dash-dash scan: binary files have no
+// binarySkipped owns the numstat dash-dash scan: binary files have no
 // hunks and leave the anchors unchecked.
 func binarySkipped(numstat string) []string {
 	var skipped []string
@@ -649,8 +648,7 @@ func binarySkipped(numstat string) []string {
 	return skipped
 }
 
-// binaryKept ports the non-empty filter: the shell counts `grep -c .`
-// over the skipped list.
+// binaryKept drops empty entries from the skipped list.
 func binaryKept(numstat string) []string {
 	var kept []string
 	for _, s := range binarySkipped(numstat) {
@@ -661,7 +659,7 @@ func binaryKept(numstat string) []string {
 	return kept
 }
 
-// writeLocalTOC ports the fetch-local toc.txt: the local title line, the
+// writeLocalTOC owns the fetch-local toc.txt: the local title line, the
 // numstat stat block, and the coverage manifest over file_list.
 func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	withHunks, derr := diffFiles(ctx2.dir+suffixFullDiff, ctx2.dir)
@@ -693,7 +691,7 @@ func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	return atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()))
 }
 
-// omittedLocal ports the local omitted computation: file_list paths absent
+// omittedLocal owns the local omitted computation: file_list paths absent
 // from the hunked set (blank lines skipped).
 func omittedLocal(listed string, withHunks []string) []string {
 	inHunks := map[string]bool{}
@@ -712,7 +710,7 @@ func omittedLocal(listed string, withHunks []string) []string {
 	return out
 }
 
-// writeSourceJSON ports the source.json writer: the local bundle record.
+// writeSourceJSON owns the source.json writer: the local bundle record.
 func writeSourceJSON(
 	dir, repo string, mode *localMode, slug, diffSHA string,
 	total, adds, dels int, toolVersion, model, now string,
@@ -760,7 +758,7 @@ func (m *localMode) baseRef() string {
 	return m.rangeBaseRef()
 }
 
-// sha256Hex ports `shasum -a 256 | cut -d' ' -f1`.
+// sha256Hex renders the lowercase hex SHA-256 of data.
 func sha256Hex(path string) string {
 	raw, err := os.ReadFile(path)
 	if err != nil {

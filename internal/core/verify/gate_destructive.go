@@ -13,8 +13,8 @@ const cmdPosBuilds = "command substitution in command position builds a "
 // segWordIdx selects the first-word capture in the segWords pattern.
 const segWordIdx = 4
 
-// checkSentinel ports the mid-word substitution arm: a sentinel glued to a
-// word character means the shell concatenates it into a hidden tool word.
+// checkSentinel owns the mid-word substitution arm: a sentinel glued to a
+// word character hides a tool name behind a concatenation.
 func checkSentinel(g *gateText) *core.RefusalError {
 	if !reSentinel.MatchString(g.adj) {
 		return nil
@@ -26,7 +26,7 @@ func checkSentinel(g *gateText) *core.RefusalError {
 	return refuse(codeDestructive, frag, "mid-word substitution concatenates into a hidden tool word — write the tool word plainly")
 }
 
-// checkCommandPosition ports the command-position substitution arms: a
+// checkCommandPosition owns the command-position substitution arms: a
 // $(…)/${…}/backtick span at segment start executes with the body's tool
 // word as argv[0].
 func checkCommandPosition(g *gateText) *core.RefusalError {
@@ -53,7 +53,7 @@ func checkCommandPosition(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGlobFragment ports the glob/brace fragmentation arm: the first word
+// checkGlobFragment owns the glob/brace fragmentation arm: the first word
 // of each ;-separated segment (past time/command prefixes and VAR=
 // assignments) refuses when it carries ? * [ {.
 func checkGlobFragment(g *gateText) *core.RefusalError {
@@ -103,8 +103,7 @@ func isBareBracket(w string) bool {
 	return w == "[" || w == "[[" || w == "{"
 }
 
-// segWords ports the segw pipeline: split on ;|& and take the first word
-// past prefixes, exactly like the shell sed.
+// segWords splits on ;|& and takes the first word past the known prefixes.
 func segWords(bare string) []string {
 	parts := strings.Split(bare, ";")
 	var segs []string
@@ -140,7 +139,7 @@ func checkDestructive(g *gateText) *core.RefusalError {
 	return checkDestructiveGit(g)
 }
 
-// checkDestructiveWords ports the rm/find/mkfs/shred/dd/forkbomb/chmod
+// checkDestructiveWords owns the rm/find/mkfs/shred/dd/forkbomb/chmod
 // arms plus the git-clean shape.
 func checkDestructiveWords(g *gateText) *core.RefusalError {
 	if ref := checkRmFind(g); ref != nil {
@@ -155,7 +154,7 @@ func checkDestructiveWords(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkRmFind ports the rm/find destructive arms.
+// checkRmFind owns the rm/find destructive arms.
 func checkRmFind(g *gateText) *core.RefusalError {
 	if frag := grepO(reRmRecursive, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "rm with a recursive flag destroys without recovery")
@@ -169,7 +168,7 @@ func checkRmFind(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkDeviceWipe ports the mkfs/shred/dd/forkbomb arms.
+// checkDeviceWipe owns the mkfs/shred/dd/forkbomb arms.
 func checkDeviceWipe(g *gateText) *core.RefusalError {
 	if frag := grepO(reMkfs, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "mkfs destroys filesystems")
@@ -186,7 +185,7 @@ func checkDeviceWipe(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkChmodClean ports the chmod/chown and git-clean arms.
+// checkChmodClean owns the chmod/chown and git-clean arms.
 func checkChmodClean(g *gateText) *core.RefusalError {
 	if frag := grepO(reChmodRecursive, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "recursive chmod/chown refuses regardless of target — fail closed")
@@ -206,7 +205,7 @@ func gitCleanDestructive(seg string) bool {
 		strings.Contains(seg, "$home") || strings.Contains(seg, " /"))
 }
 
-// checkDestructiveExec ports the privilege/eval/exec arms.
+// checkDestructiveExec owns the privilege/eval/exec arms.
 func checkDestructiveExec(g *gateText) *core.RefusalError {
 	if frag := grepO(reSudo, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "privilege change refuses regardless of payload")
@@ -226,7 +225,7 @@ func checkDestructiveExec(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkDestructiveEnv ports the loader-hook and NODE_OPTIONS arms.
+// checkDestructiveEnv owns the loader-hook and NODE_OPTIONS arms.
 func checkDestructiveEnv(g *gateText) *core.RefusalError {
 	if frag := grepO(reLoaderHook, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
@@ -241,7 +240,7 @@ func checkDestructiveEnv(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// Destructive-class patterns, transliterated from the shell grep arms.
+// Destructive-class patterns.
 var (
 	reSentinel     = regexp.MustCompile("[\x01][a-z0-9_]|[a-z0-9_][\x01]")
 	reSentinelFrag = regexp.MustCompile(".{0,10}\x01.{0,10}")

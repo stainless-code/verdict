@@ -35,7 +35,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 }
 
 // Data is the doctor verb's --json data profile. Field order is the
-// shell's jq construction order.
+// published order.
 type Data struct { //nolint:govet // field order is the published property order
 	Healthy bool
 	Checks  []Check
@@ -102,7 +102,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	}, nil
 }
 
-// allHealthy ports the fail-row scan: any failing check fails the run.
+// allHealthy owns the fail-row scan: any failing check fails the run.
 func allHealthy(checks []Check) bool {
 	for _, c := range checks {
 		if c.Severity == severityFail && !c.OK {
@@ -112,7 +112,7 @@ func allHealthy(checks []Check) bool {
 	return true
 }
 
-// check severities, mirroring the shell's fail|warn column.
+// check severities (the fail|warn column).
 const (
 	severityFail = "fail"
 	severityWarn = "warn"
@@ -124,7 +124,7 @@ const newline = "\n"
 // checkStorageWritable names the storage row.
 const checkStorageWritable = "storage-writable"
 
-// anyWrite matches the shell's -w test where the process owns the file:
+// anyWrite applies the write test where the process owns the file:
 // any write bit reads writable.
 const anyWrite = 0o222
 
@@ -136,7 +136,7 @@ type state struct {
 	checks   []Check
 }
 
-// examine ports the doctor check sequence, printing human lines as it goes.
+// examine owns the doctor check sequence, printing human lines as it goes.
 func (st *state) examine(ctx context.Context) {
 	st.checkGhCLI(ctx)
 	st.checkGhAuth(ctx)
@@ -150,7 +150,7 @@ func (st *state) examine(ctx context.Context) {
 	st.checkStorage()
 }
 
-// add ports add(): the human line plus the warnings accumulation.
+// add appends one check: the human line plus the warnings accumulation.
 func (st *state) add(name, severity string, ok bool, detail string) {
 	st.checks = append(st.checks, Check{Name: name, Severity: severity, OK: ok, Detail: detail})
 	switch {
@@ -185,7 +185,7 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-// checkGhCLI ports the gh-cli row.
+// checkGhCLI owns the gh-cli row.
 func (st *state) checkGhCLI(ctx context.Context) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		st.add("gh-cli", severityFail, false, "missing — install github.com/cli/cli")
@@ -198,7 +198,7 @@ func (st *state) checkGhCLI(ctx context.Context) {
 	st.add("gh-cli", severityFail, true, version)
 }
 
-// checkGhAuth ports the gh-auth row.
+// checkGhAuth owns the gh-auth row.
 func (st *state) checkGhAuth(ctx context.Context) {
 	if _, _, ok := coreexec.Gh(ctx, st.commander(), "auth", "status"); !ok {
 		st.add("gh-auth", severityFail, false, "run gh auth login")
@@ -207,8 +207,8 @@ func (st *state) checkGhAuth(ctx context.Context) {
 	st.add("gh-auth", severityFail, true, "authenticated")
 }
 
-// checkTokenScopes ports the token-scopes row, returning the raw header
-// line ("" when the lookup fails, matching the shell's || true).
+// checkTokenScopes owns the token-scopes row, returning the raw header
+// line ("" when the lookup fails).
 func (st *state) checkTokenScopes(ctx context.Context) string {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "api", "user", "--include")
 	scopes := ""
@@ -226,7 +226,7 @@ func (st *state) checkTokenScopes(ctx context.Context) string {
 	return scopes
 }
 
-// checkTokenExcess ports the token-scope excess audit: granted scopes
+// checkTokenExcess owns the token-scope excess audit: granted scopes
 // beyond the repo family plus read:* warn on a token-scopes-excess row.
 func (st *state) checkTokenExcess(scopes string) {
 	value := scopes
@@ -251,7 +251,7 @@ func (st *state) checkTokenExcess(scopes string) {
 	st.add("token-scopes-excess", severityWarn, false, excessMsg)
 }
 
-// checkTool ports the ps/git rows: presence gates the detail. Both warn only;
+// checkTool owns the ps/git rows: presence gates the detail. Both warn only;
 // the Go binary needs neither to read a bundle.
 func (st *state) checkTool(name, missing string) {
 	present := true
@@ -268,7 +268,7 @@ func (st *state) checkTool(name, missing string) {
 	st.add(name, severityWarn, present, detail)
 }
 
-// checkAPIReachable ports the api-reachable row.
+// checkAPIReachable owns the api-reachable row.
 func (st *state) checkAPIReachable(ctx context.Context) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "api", "rate_limit", "--jq", ".resources.core.remaining")
 	remaining := ""
@@ -282,8 +282,8 @@ func (st *state) checkAPIReachable(ctx context.Context) {
 	st.add("api-reachable", severityWarn, false, "cannot reach api.github.com with this token")
 }
 
-// checkStorage ports the storage-writability row over the .review bundle
-// dir or the cwd. Writability reads permission bits (the shell's -w test
+// checkStorage owns the storage-writability row over the .review bundle
+// dir or the cwd. Writability reads permission bits (the write test
 // via access(2) agrees wherever tests run as the file owner); no probe
 // files are written, so the read-only discipline holds.
 func (st *state) checkStorage() {
@@ -312,7 +312,7 @@ func writable(path string) bool {
 	return fi.Mode().Perm()&anyWrite != 0
 }
 
-// firstLine ports `head -n 1`: the first output line.
+// firstLine returns the first output line.
 func firstLine(s string) string {
 	if before, _, ok := strings.Cut(s, newline); ok {
 		return before
@@ -328,8 +328,8 @@ func dropScopeSpace(r rune) rune {
 	return r
 }
 
-// headerLine ports the scopes header read: the first case-insensitive
-// x-oauth-scopes line, kept raw like the shell's grep|head pipeline.
+// headerLine owns the scopes header read: the first case-insensitive
+// x-oauth-scopes line, kept raw.
 func headerLine(stdout string) string {
 	for line := range strings.SplitSeq(stdout, newline) {
 		if len(line) >= len("x-oauth-scopes:") && strings.EqualFold(line[:len("x-oauth-scopes:")], "x-oauth-scopes:") {

@@ -6,9 +6,8 @@
 // CLI/MCP adapters parse, call, write bytes, and map exit codes.
 package core
 
-// Boolean-valued settings travel as "true"/"false" strings (the shell's
-// idiom); FlagOn/FlagOff name the two spellings for cross-package knob
-// comparisons.
+// Boolean-valued settings travel as "true"/"false" strings; FlagOn/FlagOff
+// name the two spellings for cross-package knob comparisons.
 const (
 	FlagOn  = "true"
 	FlagOff = "false"
@@ -30,7 +29,7 @@ const (
 	AttributionFull    = "full"
 )
 
-// Product/maker constants mirror the shell's frozen footer strings.
+// Product/maker constants are the frozen footer strings.
 const (
 	DefaultProductURL = "https://stainless-code.com/verdict"
 	DefaultMakerURL   = "https://stainless-code.com"
@@ -44,7 +43,7 @@ const (
 const VersionUnknown = "0.0.0-unknown"
 
 // Effective holds the resolved presentation knobs as "true"/"false"/enum
-// strings, mirroring the shell's EFFECTIVE_* globals.
+// strings.
 type Effective struct {
 	Compact                string
 	Color                  string
@@ -60,7 +59,7 @@ type Effective struct {
 	DiagramsExpanded       string
 }
 
-// Defaults mirrors the shell's global initializers.
+// Defaults returns the knob values every verb starts from.
 func Defaults() Effective {
 	return Effective{
 		Compact:                FlagOff,

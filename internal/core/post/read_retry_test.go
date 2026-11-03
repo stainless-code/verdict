@@ -108,7 +108,7 @@ func TestReadRetryRecheck(t *testing.T) {
 }
 
 // TestReadRetryFailsFast proves a plain 403 (no rate-limit signal) never
-// retries: the first failure is the result, like the shell.
+// retries: the first failure is the result.
 func TestReadRetryFailsFast(t *testing.T) {
 	t.Parallel()
 	cmdr := &retryCommander{t: t, results: []retryResult{

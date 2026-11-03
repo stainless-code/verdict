@@ -369,7 +369,7 @@ func decodeEntries(raw []byte) ([]any, error) {
 	return arr, nil
 }
 
-// prInfo ports the advisory readiness PR fragment.
+// prInfo owns the advisory readiness PR fragment.
 func prInfo(dir string) string {
 	if !readcommon.IsFile(dir + suffixPRJSON) {
 		return "n/a (local bundle, PR check skipped)"
@@ -381,7 +381,7 @@ func prInfo(dir string) string {
 	return info
 }
 
-// draftOf ports `[[ "$(jq -r '.draft // false' ...)" == "true" ]]`.
+// draftOf reads the draft flag: only the literal true counts.
 func draftOf(dir string) bool {
 	raw, err := os.ReadFile(dir + suffixPRJSON)
 	if err != nil {
@@ -398,7 +398,7 @@ func draftOf(dir string) bool {
 	return jq.R(m[fieldDraft]) == litTrue
 }
 
-// gitLsFilesUnmerged ports the conflicted-tree gate: unmerged entries, or an
+// gitLsFilesUnmerged owns the conflicted-tree gate: unmerged entries, or an
 // error when the cwd is not a worktree.
 func (st *state) gitLsFilesUnmerged(ctx context.Context) (string, error) {
 	res, err := st.runGit(ctx, "git", "ls-files", "-u")
@@ -424,7 +424,7 @@ func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error
 	return res, nil
 }
 
-// storedThreads ports the advisory stored-thread counts.
+// storedThreads owns the advisory stored-thread counts.
 func storedThreads(dir string) string {
 	nr := jsonLen(dir + suffixReviews)
 	ni := jsonLen(dir + suffixInline)
@@ -527,7 +527,7 @@ type ledgerDoc struct {
 	obj *jq.Obj
 }
 
-// loadLedger ports the ledger init: missing files are created with an empty
+// loadLedger owns the ledger init: missing files are created with an empty
 // store; unreadable ones warn and start fresh.
 func (st *state) loadLedger(path string) (*ledgerDoc, *core.RefusalError) {
 	if !readcommon.Exists(path) {
@@ -575,7 +575,7 @@ func (st *state) ledgerWithSigs(path string, m *jq.Obj) *ledgerDoc {
 		sigs = sm
 	case hasSigs && sigsRaw != nil:
 		// A corrupt sigs table (present but not an object) reads fresh
-		// with a warning, matching the shell's unreadable-ledger path;
+		// with a warning, the unreadable-ledger path;
 		// an explicit null reads as the empty store with no warning.
 		st.warn(fmt.Sprintf(msgLedgerUnreadable, path))
 	default:
@@ -676,7 +676,7 @@ func fixedCount(entries []any) int {
 	return n
 }
 
-// ceilingStop ports the 3-pass ceiling: tombstone once, refuse typed.
+// ceilingStop owns the 3-pass ceiling: tombstone once, refuse typed.
 func (st *state) ceilingStop(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -717,7 +717,7 @@ func numOf(v any) (int, bool) {
 	return jq.IntOf(v)
 }
 
-// scopeEscape ports the scope-escape audit: worktree files outside the anchor
+// scopeEscape owns the scope-escape audit: worktree files outside the anchor
 // that appeared since the baseline stop the loop.
 func (st *state) scopeEscape(
 	ctx context.Context,
@@ -783,7 +783,7 @@ func baselineKept(store *ledgerDoc, sig string) ([]string, bool) {
 	return out, true
 }
 
-// scopeStop ports the scope-escape tombstone and refusal.
+// scopeStop owns the scope-escape tombstone and refusal.
 func (st *state) scopeStop(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -851,7 +851,7 @@ func stringsOf(in []string) []any {
 	return out
 }
 
-// worktreeFiles ports fix_worktree_files: sorted unique worktree-changed
+// worktreeFiles collects the sorted unique worktree-changed
 // paths, renames contributing both sides, own .review/ included here (the
 // anchor audit filters it).
 func (st *state) worktreeFiles(ctx context.Context) []string {
@@ -918,7 +918,7 @@ func isRename(rec string) bool {
 		strings.HasPrefix(st, statusCopy)
 }
 
-// passOutput ports the pass print plus the typed machine summary.
+// passOutput owns the pass print plus the typed machine summary.
 func (st *state) passOutput(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -1008,7 +1008,7 @@ func (st *state) printKbAndInstructions(dir, anchor string) {
 		"run record to land it, then re-run fix\n", anchor)
 }
 
-// locatorOf ports the locator render (path:line or heading fallback).
+// locatorOf owns the locator render (path:line or heading fallback).
 func locatorOf(m *jq.Obj) string {
 	pv, _ := m.Get(keyPath)
 	if jq.Falsey(pv) {
@@ -1023,7 +1023,7 @@ func locatorOf(m *jq.Obj) string {
 	return locator
 }
 
-// completeRun ports terminal completion: no open inline sigs remain.
+// completeRun reports terminal completion: no open inline sigs remain.
 func (st *state) completeRun(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -1147,7 +1147,7 @@ const (
 	prClosed = "closed"
 	// prMerged refuses merged bundle PRs.
 	prMerged = "merged"
-	// litTrue matches the shell true literal.
+	// litTrue is the true literal.
 	litTrue = "true"
 	// litUnknown renders missing line numbers.
 	litUnknown = "?"
@@ -1187,7 +1187,7 @@ const (
 	opDecodeFindings = "decode findings"
 )
 
-// Long human messages kept byte-identical to the shell port.
+// Long human messages, kept byte-identical to the frozen output.
 const (
 	// instructionsFmt guides the next manual pass.
 	instructionsFmt = "instructions: patch the anchor file (%s), " +

@@ -269,7 +269,7 @@ func (st *state) readAnswer() string {
 	return st.req.ReadAnswer()
 }
 
-// isYes matches the shell's accepted confirmation words.
+// isYes reports the accepted confirmation words.
 func isYes(ans string) bool {
 	switch ans {
 	case "y", "Y", "yes", "YES":
@@ -400,7 +400,7 @@ func targetStatus(t, want string) string {
 	return "overwrite"
 }
 
-// validateScaffold ports the scaffolded-file validation.
+// validateScaffold owns the scaffolded-file validation.
 func validateScaffold() *core.RefusalError {
 	if ref := checkBudget(); ref != nil {
 		return ref
@@ -481,7 +481,7 @@ func countObjects(vals []any) int {
 	return objects
 }
 
-// firstUsableLine ports the budget-line read: first non-comment non-blank
+// firstUsableLine owns the budget-line read: first non-comment non-blank
 // line, trimmed, with one leading $ stripped.
 func firstUsableLine(content string) string {
 	for ln := range strings.SplitSeq(content, newlineStr) {
@@ -494,7 +494,7 @@ func firstUsableLine(content string) string {
 	return ""
 }
 
-// checkTree ports the init check-tree validation: own .review/ scratch
+// checkTree owns the init check-tree validation: own .review/ scratch
 // ignored, everything else is dirt. The git failure path reads "not a git
 // repo".
 func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest string) {

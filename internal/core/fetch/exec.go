@@ -9,8 +9,7 @@ import (
 )
 
 // writeErrFile plants an owner-only .err sidecar with the call's stderr,
-// creating it empty on success: the shell's `cmd 2>file` truncates the file
-// either way.
+// creating it empty on success: a sidecar is truncated either way.
 func writeErrFile(path, stderr string) error {
 	if err := atomic.WriteErrSidecar(path, []byte(stderr)); err != nil {
 		return &fetchWriteError{path: path, err: err}
@@ -35,9 +34,9 @@ func (e *fetchWriteError) Unwrap() error {
 	return e.err
 }
 
-// internalError seals a fetch-internal failure (disk/decoder edges the
-// shell never guards): the message keeps the shell-visible text and the
-// verb maps it to a typed fetch-failed refusal at the boundary.
+// internalError seals a fetch-internal failure at a disk or decoder edge:
+// the message keeps the host's text and the verb maps it to a typed
+// fetch-failed refusal at the boundary.
 type internalError struct{ msg string }
 
 // Error implements error.
@@ -48,7 +47,7 @@ func internalErrorf(format string, args ...any) *internalError {
 	return &internalError{msg: fmt.Sprintf(format, args...)}
 }
 
-// headBytes ports `$(head -c N file)`: the first N bytes with trailing
+// headBytes reads the first N bytes of file, dropping trailing
 // newlines stripped (command-substitution semantics, no tr — unlike the
 // post recheck reason, the fetch excerpts keep interior newlines).
 func headBytes(s string, n int) string {

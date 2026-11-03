@@ -52,7 +52,7 @@ type overlapRollup struct {
 	measuredBundles   int
 }
 
-// overlapAudit ports the --overlap audit: the offline join of recalled x
+// overlapAudit owns the --overlap audit: the offline join of recalled x
 // cited x outcomes. Missing manifests read unmeasured (never zero); the
 // outcome split still counts cited findings from unmeasured bundles.
 func overlapAudit(st *state, rows []row) *overlapRollup {
@@ -87,7 +87,7 @@ func readJoins(st *state) []any {
 	return joins
 }
 
-// overlapRowFor ports one per-bundle overlap row.
+// overlapRowFor handles one per-bundle overlap row.
 func overlapRowFor(st *state, row *row, joins []any) overlapRow {
 	recalled, measured := recallManifest(st, row.bundle)
 	cited := citedIDs(row.findings)
@@ -117,7 +117,7 @@ func overlapRowFor(st *state, row *row, joins []any) overlapRow {
 	return out
 }
 
-// tallyOutcome ports one cited finding's outcome split.
+// tallyOutcome handles one cited finding's outcome split.
 func tallyOutcome(out *overlapRow, status string) {
 	switch status {
 	case statusAddressed:
@@ -131,7 +131,7 @@ func tallyOutcome(out *overlapRow, status string) {
 	}
 }
 
-// recallManifest ports the kb-recall.json manifest read: missing manifests
+// recallManifest owns the kb-recall.json manifest read: missing manifests
 // read unmeasured, unreadable ones warn and read unmeasured.
 func recallManifest(st *state, bundle string) ([]any, bool) {
 	path := ".review/" + bundle + "/kb-recall.json"
@@ -153,13 +153,13 @@ func recallManifest(st *state, bundle string) ([]any, bool) {
 	return manifestIDs(list), true
 }
 
-// warnManifest ports the unreadable-manifest warn-and-unmeasured read.
+// warnManifest owns the unreadable-manifest warn-and-unmeasured read.
 func warnManifest(st *state, bundle string) ([]any, bool) {
 	st.warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
 	return []any{}, false
 }
 
-// manifestIDs ports the manifest id extraction: non-object entries skip,
+// manifestIDs owns the manifest id extraction: non-object entries skip,
 // non-string ids skip.
 func manifestIDs(list []any) []any {
 	var ids []any
@@ -178,7 +178,7 @@ func manifestIDs(list []any) []any {
 	return ids
 }
 
-// citedIDs ports the cited set: unique raw string kb ids.
+// citedIDs owns the cited set: unique raw string kb ids.
 func citedIDs(findings []any) []any {
 	var ids []any
 	for _, e := range findings {
@@ -206,7 +206,7 @@ func appendCitedIDs(ids []any, e any) []any {
 	return ids
 }
 
-// citedFindingSet ports the cited-finding set: findings whose kb reads
+// citedFindingSet owns the cited-finding set: findings whose kb reads
 // non-empty (jq length semantics: booleans read 0, numbers read absolute,
 // strings read codepoints).
 func citedFindingSet(findings []any) []any {
@@ -232,7 +232,7 @@ func kbOf(entry any) any {
 	return kb
 }
 
-// kbLength ports jq length over kb values.
+// kbLength counts kb entries (booleans and objects read 0).
 func kbLength(kb any) float64 {
 	switch t := kb.(type) {
 	case nil:
@@ -258,7 +258,7 @@ func kbLength(kb any) float64 {
 	}
 }
 
-// arrayOverlap ports the overlap trick: recalled minus (recalled minus
+// arrayOverlap owns the overlap trick: recalled minus (recalled minus
 // cited), with jq array-minus semantics (every element matching the right
 // side drops).
 func arrayOverlap(recalled, cited []any) []any {
@@ -289,7 +289,7 @@ func containsValue(list []any, v any) bool {
 	return false
 }
 
-// ratio ports the agreement division (null when the sample is empty is
+// ratio owns the agreement division (null when the sample is empty is
 // handled by callers leaving the value nil).
 func ratio(n, d int) any {
 	if d == 0 {
@@ -313,7 +313,7 @@ func countJoins(joins []any, bundle string) int {
 	return n
 }
 
-// calibrateEligible ports the calibrate_eligible flag: a posted review id
+// calibrateEligible owns the calibrate_eligible flag: a posted review id
 // plus head on a non-local bundle.
 func calibrateEligible(bundle string) bool {
 	if len(bundle) >= len("local-") && bundle[:len("local-")] == "local-" {
@@ -329,7 +329,7 @@ func calibrateEligible(bundle string) bool {
 	return joinIDPresent(dir)
 }
 
-// joinIDPresent ports the review.id presence check.
+// joinIDPresent owns the review.id presence check.
 func joinIDPresent(dir string) bool {
 	return reviewIDPresent(dir)
 }
@@ -352,7 +352,7 @@ func reviewIDPresent(dir string) bool {
 	return jq.R(id) != ""
 }
 
-// rollOverlapTotals ports the portfolio-level overlap rollup.
+// rollOverlapTotals owns the portfolio-level overlap rollup.
 func rollOverlapTotals(out *overlapRollup, joins []any) {
 	var recAll, citAll []any
 	for i := range out.perBundle {
@@ -396,7 +396,7 @@ func accumulateRowCounts(out *overlapRollup, row *overlapRow) {
 	}
 }
 
-// tallyJoins ports the joins outcome split.
+// tallyJoins owns the joins outcome split.
 func tallyJoins(out *overlapRollup, joins []any) {
 	out.joinsRows = len(joins)
 	for _, j := range joins {
@@ -422,7 +422,7 @@ func tallyJoin(out *overlapRollup, j any) {
 	}
 }
 
-// emitOverlapHuman ports the overlap human lines.
+// emitOverlapHuman owns the overlap human lines.
 func (st *state) emitOverlapHuman(out *overlapRollup) {
 	st.human(fmt.Sprintf("overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)",
 		out.measuredBundles, out.unmeasuredBundles, numOrNA(out.precision), numOrNA(out.coverage),

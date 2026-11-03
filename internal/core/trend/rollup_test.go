@@ -155,7 +155,7 @@ func TestPeriodizeSameDay(t *testing.T) {
 	}
 }
 
-// TestRollupDocKeys checks the envelope fragment carries the shell key
+// TestRollupDocKeys checks the envelope fragment carries the documented key
 // order and the per-bundle rows.
 func TestRollupDocKeys(t *testing.T) {
 	t.Parallel()

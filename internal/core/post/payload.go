@@ -15,13 +15,13 @@ import (
 	sigsum "github.com/stainless-code/verdict/internal/sig"
 )
 
-// buildPayloads ports the payload construction: only GitHub-known comment
+// buildPayloads owns the payload construction: only GitHub-known comment
 // keys ship (triage fields stay in findings.json), and suggestions render as
 // fenced blocks inside body. The first payload carries the review (event,
 // commit, inline comments); each follow-up carries one over-limit body part
 // as a COMMENT with no inline comments.
-// Pretty-printed like the shell's `jq -n` (insertion order, 2-space
-// indent, no trailing newline — the command substitution strips it).
+// Pretty-printed in insertion order with a 2-space indent and no trailing
+// newline.
 // The stub-log comparison covers these bytes exactly.
 func (st *state) buildPayloads() {
 	st.comments = buildPostComments(st.merged.Kept, st.merged.KeptSigs)
@@ -44,7 +44,7 @@ func (st *state) buildPayloads() {
 	st.payload = st.payloads[0]
 }
 
-// postPayload renders one reviews-POST payload in the shell's wire shape.
+// postPayload renders one reviews-POST payload in the wire shape.
 func postPayload(body, event string, commitID any, comments []any) string {
 	return jq.NewObj(
 		"body", body,
@@ -60,7 +60,8 @@ func (st *state) payloadBytes() []byte {
 	return []byte(strings.Join(st.payloads, "\n"))
 }
 
-// commitIDValue ports `commit_id:(if $commit=="" then null else $commit end)`.
+// commitIDValue renders commit_id: an empty value reads null, anything else
+// rides through.
 func commitIDValue(commitID string) any {
 	if commitID == "" {
 		return nil
@@ -70,12 +71,12 @@ func commitIDValue(commitID string) any {
 
 // hostingBodyLimit caps one posted review body: GitHub rejects review
 // bodies past 65,536 characters wholesale (422), so the Go port splits an
-// over-limit body across follow-up review comments (audit 02) instead of
+// over-limit body across follow-up review comments instead of
 // submitting a doomed review.
 const hostingBodyLimit = 65536
 
 // maxSplitParts bounds the continuation-note reserve: the 32 MiB
-// agent-input cap (R3) fits at most ~500 hosting-sized parts, so three
+// agent-input cap fits at most ~500 hosting-sized parts, so three
 // digits always suffice.
 const maxSplitParts = 999
 
@@ -203,9 +204,9 @@ func fitRunes(s string, space int) int {
 	return cut
 }
 
-// buildPostComments ports the post_comments projection: only GitHub-known
+// buildPostComments owns the post_comments projection: only GitHub-known
 // comment keys ship, suggestions render as fenced blocks inside body, and
-// null-valued keys drop (false values ship, like the shell's with_entries).
+// null-valued keys drop; false values ship.
 // Each inline comment also carries verdict's hidden finding marker (its sig
 // as the final line), which links the posted thread back to the finding on
 // the next threads.json read.
@@ -245,7 +246,7 @@ func projectComment(m *jq.Obj, sig string) *jq.Obj {
 	return out
 }
 
-// countEmbedded ports the embedded-suggestion count over kept comments.
+// countEmbedded owns the embedded-suggestion count over kept comments.
 func countEmbedded(kept []any) int {
 	n := 0
 	for _, c := range kept {
@@ -270,7 +271,7 @@ func splitNote(st *state) string {
 	return fmt.Sprintf(" (split into %d review comments at the hosting limit)", len(st.payloads))
 }
 
-// postCommentKeys ports the dry-run comment-keys summary: the first
+// postCommentKeys owns the dry-run comment-keys summary: the first
 // comment's unsorted keys joined by commas ("" when no comments posted).
 func postCommentKeys(comments []any) string {
 	if len(comments) == 0 {
@@ -283,7 +284,7 @@ func postCommentKeys(comments []any) string {
 	return strings.Join(m.Keys, ",")
 }
 
-// previewDryRun prints the human dry-run preview in the shell's order: the
+// previewDryRun prints the human dry-run preview in wire order: the
 // payload summary, the footer preview when one renders, and the diagram line
 // unless the diagram is absent.
 func (st *state) previewDryRun(footerText string) {
@@ -297,7 +298,7 @@ func (st *state) previewDryRun(footerText string) {
 	}
 }
 
-// dryRunResponse ports the dry-run exit: the payload preview on the human
+// dryRunResponse owns the dry-run exit: the payload preview on the human
 // stream, or the dry-run envelope inputs (payload hash, footer and diagram
 // disposition included). Nothing posts, nothing arms. Both modes report the
 // same envelope; only the human preview lines and the payload hash differ.

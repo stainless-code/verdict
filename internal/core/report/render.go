@@ -38,7 +38,7 @@ func reportNext(st *state) string {
 	return "none open — nothing to address"
 }
 
-// buildData ports the --json data block: ranked items, counts, panel,
+// buildData owns the --json data block: ranked items, counts, panel,
 // patch, cost, and completeness in shell key order.
 func buildData(st *state) *core.ReportData {
 	data := &core.ReportData{
@@ -50,8 +50,8 @@ func buildData(st *state) *core.ReportData {
 			Live:    nil,
 			Stale:   false,
 		},
-		// The verdict tallies the displayed (filtered) ranking like the
-		// shell's $items counts, not the whole store.
+		// The verdict tallies the displayed (filtered) ranking, not the
+		// whole store.
 		Verdict: core.ReportVerdict{
 			Open:      countStatus(rankedEntries(st), statusOpen),
 			Deferred:  countStatus(rankedEntries(st), "deferred"),
@@ -83,7 +83,7 @@ func outputVal(output string) *string {
 	return &output
 }
 
-// panelValue ports the panel envelope value.
+// panelValue owns the panel envelope value.
 func panelValue(st *state) core.ReportPanel {
 	var src *string
 	if st.panelSrc != "" {
@@ -224,7 +224,7 @@ func jqVal(obj *jq.Obj, key string) any {
 	return v
 }
 
-// buildHuman ports the human summary: the report line, ranked lines, and
+// buildHuman owns the human summary: the report line, ranked lines, and
 // the optional cost block, then the output/next line.
 func buildHuman(st *state) []string {
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
@@ -246,7 +246,7 @@ func buildHuman(st *state) []string {
 	return append(lines, "next: none open — nothing to address")
 }
 
-// sigHuman ports \(.sig[0:8]) for human lines: string sigs slice to 8
+// sigHuman shortens a sig to its 8-character prefix for human lines:
 // codepoints, everything else renders jq-style ("null" for missing).
 func sigHuman(entry any) string {
 	if sig, ok := readcommon.FieldOf(entry, "sig").(string); ok {
@@ -255,7 +255,7 @@ func sigHuman(entry any) string {
 	return jq.Str(readcommon.FieldOf(entry, "sig"))
 }
 
-// costHuman ports the human cost rollup block.
+// costHuman owns the human cost rollup block.
 func costHuman(st *state) []string {
 	cost := st.cost
 	if cost == nil {
@@ -345,7 +345,7 @@ func receiptFieldFromObj(latest any, key string) string {
 	return jq.Str(v)
 }
 
-// gateTail ports the gate tail: the tier, completeness, and live-thread
+// gateTail owns the gate tail: the tier, completeness, and live-thread
 // dimensions emit check lines; any failing dimension fails the gate.
 func gateTail(st *state) (bool, []string) {
 	var lines []string
@@ -429,7 +429,7 @@ func tierHits(entries []any, tier string) int {
 // meets any tier.
 const sevRankUntagged = 3
 
-// sevRankOf ports the gate severity rank (untagged reads 3, never meeting
+// sevRankOf owns the gate severity rank (untagged reads 3, never meeting
 // a tier).
 func sevRankOf(entry any) int {
 	m, ok := entry.(*jq.Obj)

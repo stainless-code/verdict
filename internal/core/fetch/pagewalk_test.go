@@ -364,7 +364,7 @@ func TestAzureChangesPages(t *testing.T) {
 }
 
 // TestGitLabProjectIDHasNoNewline proves the project-id path escapes only
-// the repo: the bash-parity newline sent `%0A`, which GitLab does not trim.
+// the repo: an encoded newline sent `%0A`, which GitLab does not trim.
 func TestGitLabProjectIDHasNoNewline(t *testing.T) {
 	t.Parallel()
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{

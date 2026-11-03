@@ -23,8 +23,8 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 		Status:   statusF,
 		Warnings: req.Warnings,
 	}
-	// next validates --status like report does: a missing value reads open
-	// (the shell's ${2:-open}), and an invalid value fails closed — the
+	// next validates --status like report does: a missing value reads open,
+	// and an invalid value fails closed — the
 	// parent reports the store unreadable (exit 1), never an empty ranking.
 	if !validStatus(statusF) {
 		resp.StoreUnreadable = true
@@ -52,7 +52,7 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 	return resp, nil
 }
 
-// nextTopLine ports the top-finding human line.
+// nextTopLine owns the top-finding human line.
 func nextTopLine(top *core.FindingItem) string {
 	locator := top.Locator
 	if locator == "" {
@@ -62,7 +62,7 @@ func nextTopLine(top *core.FindingItem) string {
 		sigOf(top), statusOf(top), locator)
 }
 
-// sigOf ports \(.sig[0:8]) for next's human line.
+// sigOf shortens a sig to its 8-character prefix for next's human line.
 func sigOf(top *core.FindingItem) string {
 	if top.Raw == nil {
 		return jq.Str(top.Sig)
@@ -73,7 +73,7 @@ func sigOf(top *core.FindingItem) string {
 	return jq.Str(readcommon.FieldOf(top.Raw, "sig"))
 }
 
-// statusOf renders the item status like the shell's jq interpolation.
+// statusOf renders the item status.
 func statusOf(top *core.FindingItem) string {
 	if top.Raw == nil {
 		return jq.Str(top.Status)

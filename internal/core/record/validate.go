@@ -8,11 +8,10 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// validateInputs ports validate_review_input + validate_prior_findings: every
-// shape jq would crash on downstream refuses here as a typed refusal, before
-// any merge output is written. Order mirrors the shell (comments, resolved,
-// triage, sections, verification claims, prior store) so the first refusal
-// matches byte-for-byte.
+// validateInputs validates review input and prior findings: every shape the
+// merge cannot read refuses here as a typed refusal, before any merge output
+// is written. The order is fixed (comments, resolved, triage, sections,
+// verification claims, prior store) so the first refusal is deterministic.
 func (st *state) validateInputs() error {
 	if err := checkCommentsShape(st.review); err != nil {
 		return err
@@ -64,8 +63,8 @@ func checkCommentsShape(review *jq.Obj) error {
 
 // checkCommentScalars validates the string-concatenated comment fields: path,
 // body, and suggestion must be strings when present (absent, null, and false
-// read as absent, matching jq //). Numbers, booleans, and containers would
-// crash the shell's string concatenation, so they refuse here.
+// read as absent). Numbers, booleans, and containers would corrupt the
+// rendered body, so they refuse here.
 func checkCommentScalars(m *jq.Obj) error {
 	for _, key := range []string{fieldPath, fieldBody, fieldSuggestion} {
 		v, has := m.Get(key)
@@ -122,7 +121,7 @@ func checkSectionsShape(review *jq.Obj) error {
 }
 
 // checkVerificationShape validates the verification.json claims: an absent or
-// unparsable file reads as no claims (matching the shell's silent skip), but
+// unparsable file reads as no claims, but
 // a present file must hold an array of claim objects.
 func checkVerificationShape(dir string) error {
 	raw, err := readAgentFile(dir + "/verification.json")
@@ -142,7 +141,7 @@ func checkVerificationClaims(raw []byte) error {
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		//nolint:nilerr // undecodable evidence reads as "no claims" (never a refusal), matching the shell
+		//nolint:nilerr // undecodable evidence reads as "no claims", never a refusal
 		return nil
 	}
 	items, ok := doc.([]any)
@@ -165,10 +164,10 @@ func checkClaimItems(items []any) error {
 // checkPriorShape validates the prior findings store: absent, empty, null,
 // false, or a JSON list read as (no) prior; anything else refuses as
 // corrupt-store — the run never starts fresh over history. Every present
-// element must be an object passing the store shape (entries_guard): exotic
-// elements crashed the merge jq with exit 5 and no envelope, so they refuse
-// typed here instead (R1). Null reads as no prior for the read verbs, but
-// the merge indexes elements by sig, so the write path refuses null too.
+// element must be an object passing the store shape: exotic elements refuse
+// typed here instead of corrupting the store. Null reads as no prior for the
+// read verbs, but the merge indexes elements by sig, so the write path
+// refuses null too.
 func checkPriorShape(dir string) error {
 	path := dir + "/findings.json"
 	raw, ok := ReadOptional(path)

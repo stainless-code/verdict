@@ -2,7 +2,7 @@
 // advisory over live PR state (checks, threads, draft/conflict,
 // description). Advisory runs exit 0; --check gates for hooks and CI. All
 // gh reads go through the injected commander; the probe stderr stages
-// beside the bundle like the shell's 2> redirect. internal/ready owns argv
+// beside the bundle as an owner-only sidecar. internal/ready owns argv
 // parsing, progress routing, envelope rendering, and exit mapping.
 package readycore
 
@@ -43,7 +43,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 	GateFailed bool
 }
 
-// Data is the ready verb's --json data profile. Field order is the shell's
+// Data is the ready verb's --json data profile. Field order is the published
 // jq construction order.
 type Data struct { //nolint:govet // field order is the published property order
 	Ready            bool
@@ -191,7 +191,7 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-// finish ports the advisory emit plus the --check gate.
+// finish owns the advisory emit plus the --check gate.
 func (st *state) finish() *Response {
 	st.emitHuman()
 	next := "nudge the author instead of reviewing"
@@ -277,7 +277,7 @@ func isRegular(path string) bool {
 }
 
 // loadLive reads the live PR state, staging gh's stderr beside the bundle
-// exactly like the shell's 2> redirect (the file stays: empty on success).
+// (the file stays: empty on success).
 func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	stdout, stderr, ok := coreexec.Gh(ctx, st.commander(), "pr", "view", st.pr, "--repo", st.repo,
 		"--json", "isDraft,mergeable,mergeStateStatus,body,state,headRefOid")
@@ -318,7 +318,7 @@ func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 const probeStagePerm = 0o600
 
 // writeErrFile stages probe stderr beside the bundle through the shared
-// atomic path. The write is best-effort like the shell's 2> redirect, so a
+// atomic path. The write is best-effort, so a
 // failure warns instead of refusing: the file is a debug side channel and
 // the run must not fail over garnish.
 func writeErrFile(st *state, path, stderr string) {
@@ -328,7 +328,7 @@ func writeErrFile(st *state, path, stderr string) {
 	}
 }
 
-// firstLine ports `head -c 200 | tr '\n' ' '`: the first 200 bytes with
+// firstLine renders the first 200 bytes with newlines as spaces,
 // newlines flattened.
 func firstLine(s string) string {
 	if len(s) > errHeadBytes {
@@ -367,7 +367,7 @@ func liveBody(live map[string]any) string {
 	return jq.R(v)
 }
 
-// bodyLength ports the description completeness measure: HTML-comment spans
+// bodyLength owns the description completeness measure: HTML-comment spans
 // stripped (multiline-aware), whitespace runs squeezed, byte count.
 func bodyLength(body string) int {
 	var out strings.Builder
@@ -380,7 +380,7 @@ func bodyLength(body string) int {
 }
 
 // stripComments removes <!-- --> spans from one line, carrying the
-// in-comment state across lines like the shell's awk.
+// in-comment state across lines.
 func stripComments(line string, inComment *bool) string {
 	var kept strings.Builder
 	rest := line
@@ -416,7 +416,7 @@ func takePlainSegment(rest string, inComment *bool, kept *strings.Builder) strin
 	return ""
 }
 
-// squeezeSpace ports `tr -s '[:space:]' ' '`: whitespace runs collapse to
+// squeezeSpace collapses whitespace runs to one space and trims
 // one space (C-locale set: space, tab, newline, vertical tab, form feed,
 // carriage return).
 func squeezeSpace(s string) string {
@@ -482,7 +482,7 @@ func loadChecks(ctx context.Context, st *state) {
 	}
 }
 
-// countFailBucket ports one checks element: fail buckets bump the failing
+// countFailBucket handles one checks element: fail buckets bump the failing
 // count and name list, every other bucket reads skipped.
 func countFailBucket(st *state, m map[string]any, failNames []string) []string {
 	bucket, ok := m["bucket"].(string)
@@ -493,7 +493,7 @@ func countFailBucket(st *state, m map[string]any, failNames []string) []string {
 	return append(failNames, checkName(m))
 }
 
-// checkElements ports `[.[]] | length` over the checks payload: arrays
+// checkElements counts elements in the checks payload: arrays
 // pass through, objects contribute values, null reads empty, anything
 // else reads empty.
 func checkElements(raw string) []any {
@@ -554,7 +554,7 @@ func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 	return nil
 }
 
-// computeReadiness ports the ready/rec decision plus the draft, conflict,
+// computeReadiness owns the ready/rec decision plus the draft, conflict,
 // and description-thin blockers.
 func computeReadiness(st *state) {
 	appendDraftBlocker(st)
@@ -577,7 +577,7 @@ func computeReadiness(st *state) {
 	}
 }
 
-// appendDraftBlocker ports the draft blocker.
+// appendDraftBlocker owns the draft blocker.
 func appendDraftBlocker(st *state) {
 	if st.draft {
 		st.blockers = append(st.blockers, Blocker{
@@ -588,7 +588,7 @@ func appendDraftBlocker(st *state) {
 	}
 }
 
-// appendConflictBlocker ports the merge-conflict blocker.
+// appendConflictBlocker owns the merge-conflict blocker.
 func appendConflictBlocker(st *state) {
 	if st.mergeable == "CONFLICTING" || st.mergeState == "DIRTY" {
 		st.blockers = append(st.blockers, Blocker{
@@ -599,7 +599,7 @@ func appendConflictBlocker(st *state) {
 	}
 }
 
-// appendDescriptionBlocker ports the description-thin blocker.
+// appendDescriptionBlocker owns the description-thin blocker.
 func appendDescriptionBlocker(st *state) {
 	if st.bodyLen < descriptionThin {
 		st.blockers = append(st.blockers, Blocker{
@@ -613,7 +613,7 @@ func appendDescriptionBlocker(st *state) {
 // descriptionThin is the description completeness floor.
 const descriptionThin = 50
 
-// emitHuman ports the advisory lines plus the recommendation.
+// emitHuman owns the advisory lines plus the recommendation.
 func (st *state) emitHuman() {
 	if st.ready {
 		st.human("ready: yes — " + st.repo + hashSep + st.pr + " looks reviewable " +

@@ -206,7 +206,7 @@ func checkRecordRefusal(t *testing.T, setup func(t *testing.T), pr, code string)
 }
 
 // TestRunRecordKBCite proves a live kb cite attaches to the fresh entry and
-// an unknown cite warns the run like the shell.
+// an unknown cite warns the run.
 func TestRunRecordKBCite(t *testing.T) {
 	bundle(t, "local-kb", reviewJSON(`,"kb":["rec-rule"]`))
 	writeFile(t, ".review/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")

@@ -10,7 +10,7 @@ import (
 
 // sarifArtifact builds the --sarif block: the SARIF 2.1.0 finding export
 // with the sig as the partial fingerprint. PrettyOrdered carries the
-// trailing newline like the shell's jq redirect.
+// trailing newline the file contract expects.
 func sarifArtifact(st *state) *core.FileArtifact {
 	if st.flags.Sarif == "" {
 		return nil
@@ -48,7 +48,7 @@ func sarifDoc(st *state) *jq.Obj {
 	)
 }
 
-// sarifKinds ports the unique-kind rule list: the coalesced kinds
+// sarifKinds owns the unique-kind rule list: the coalesced kinds
 // (null reads unknown, mirroring the null-safe kind concat) sorted in jq
 // order.
 func sarifKinds(ranked []readcommon.Ranked) []string {
@@ -65,7 +65,8 @@ func sarifKinds(ranked []readcommon.Ranked) []string {
 	return kinds
 }
 
-// sarifKind ports ("verdict/" + (.kind // "unknown"))'s kind half.
+// sarifKind renders the kind half of a SARIF rule id ("unknown" when
+// absent).
 func sarifKind(entry any) string {
 	if kind, ok := readcommon.FieldOf(entry, "kind").(string); ok {
 		return kind
@@ -73,7 +74,7 @@ func sarifKind(entry any) string {
 	return "unknown"
 }
 
-// sarifResult ports one SARIF result: the tier level, heading-led message,
+// sarifResult handles one SARIF result: the tier level, heading-led message,
 // path/line location, and sig fingerprint.
 func sarifResult(entry any) *jq.Obj {
 	message := sarifMessage(entry)
@@ -97,7 +98,7 @@ func sarifResult(entry any) *jq.Obj {
 	)
 }
 
-// sarifMessage ports the heading-led message: "[heading] body", with the
+// sarifMessage owns the heading-led message: "[heading] body", with the
 // body reading "" when the entry carries none.
 func sarifMessage(entry any) string {
 	message := ""
@@ -113,7 +114,7 @@ func sarifMessage(entry any) string {
 	return message + body
 }
 
-// sarifLevel ports the severity-to-level map: untagged severities read note.
+// sarifLevel owns the severity-to-level map: untagged severities read note.
 func sarifLevel(sev any) string {
 	if s, ok := sev.(string); ok {
 		switch s {

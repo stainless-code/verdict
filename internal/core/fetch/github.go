@@ -15,15 +15,15 @@ import (
 )
 
 // cliFileCap is the hosting CLI's file-list cap: a list arriving exactly
-// here triggers provider paging (audit 18).
+// here triggers provider paging.
 const cliFileCap = 100
 
 // providerFileCeiling is the provider listing ceiling the paged fetch
-// serves (audit 18).
+// serves.
 const providerFileCeiling = 3000
 
 // upstreamFileLimit is the host's own diff refusal threshold in files:
-// diffs over this count are refused upstream, never rendered (audit 20).
+// diffs over this count are refused upstream, never rendered.
 const upstreamFileLimit = 300
 
 // runGitHub mirrors the GitHub fetch path.
@@ -55,7 +55,7 @@ func runGitHub(
 	return fetchTail(ctx2, req, f, budget, &fc, chunkJSON, incBase)
 }
 
-// githubFetch ports the GitHub view/diff/file-list reads: PR.json, the
+// githubFetch owns the GitHub view/diff/file-list reads: PR.json, the
 // full diff with its API fallback, and the audit-18 paged file listing.
 func githubFetch(ctx context.Context, ctx2 *fetchRunCtx, r *session, dir, repo, pr string) error {
 	if ref := githubView(ctx, r, dir, repo, pr); ref != nil {
@@ -67,7 +67,7 @@ func githubFetch(ctx context.Context, ctx2 *fetchRunCtx, r *session, dir, repo, 
 	return pageFileList(ctx, ctx2, dir, repo, pr)
 }
 
-// githubView ports the `gh pr view` read: PR.json lands beside the
+// githubView owns the `gh pr view` read: PR.json lands beside the
 // bundle, and gh's own stderr reaches the terminal (no redirect).
 func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
 	fmt.Fprintf(r.Human, "» gh pr view %s#%s\n", repo, pr)
@@ -88,7 +88,7 @@ func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 	return nil
 }
 
-// githubDiff ports the diff read with its API fallback: the CLI diff
+// githubDiff owns the diff read with its API fallback: the CLI diff
 // first, then the API diff, refusing only when both fail.
 func githubDiff(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
 	fmt.Fprintf(r.Human, "» gh pr diff -> %s/full.diff\n", dir)
@@ -103,7 +103,7 @@ func githubDiff(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 	return nil
 }
 
-// githubAPIDiff ports the API diff fallback after a CLI diff failure.
+// githubAPIDiff owns the API diff fallback after a CLI diff failure.
 func githubAPIDiff(ctx context.Context, r *session, dir, repo, pr, cliStderr string) *core.RefusalError {
 	fmt.Fprintln(r.Human, "gh pr diff failed, trying API diff")
 	apiRes, apiErr := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/pulls/"+pr, flagH, "Accept: application/vnd.github.diff")
@@ -124,7 +124,7 @@ func githubAPIDiff(ctx context.Context, r *session, dir, repo, pr, cliStderr str
 	return nil
 }
 
-// githubBundle ports the post-cap bundle derivation: hunks, TOC/roles,
+// githubBundle owns the post-cap bundle derivation: hunks, TOC/roles,
 // context, store, sensitive manifest, recall, review threads, chunks, and
 // the incremental diff. Returns the envelope chunk summary and base.
 func githubBundle(
@@ -153,7 +153,7 @@ func githubBundle(
 	return chunkJSON, incBase, nil
 }
 
-// githubMiddle ports the bundle middle: context lines, the claim store,
+// githubMiddle owns the bundle middle: context lines, the claim store,
 // the sensitive manifest, recall, and the review threads.
 func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) error {
 	r := ctx2.runner
@@ -174,7 +174,7 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	return nil
 }
 
-// githubReviews ports the review reads: reviews.json and inline.json land as
+// githubReviews owns the review reads: reviews.json and inline.json land as
 // raw API bodies, and threads.json comes from the authoritative GraphQL
 // reviewThreads read (REST carries no resolution). A failed read writes []
 // but warns: a silent empty list would read as "no prior threads" on a
@@ -208,7 +208,7 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 		truncated || feedTruncated, feed)
 }
 
-// githubIncremental ports the --base-sha compare: the incremental diff
+// githubIncremental owns the --base-sha compare: the incremental diff
 // and its note land beside the bundle, or the run continues without one.
 func githubIncremental(ctx context.Context, r *session, dir, repo string, f core.FetchFlags) (string, error) {
 	incBase := nullStr
@@ -234,7 +234,7 @@ func githubIncremental(ctx context.Context, r *session, dir, repo string, f core
 	return f.BaseSHA, nil
 }
 
-// githubIncrementalFail ports the failed-compare fork: the stderr
+// githubIncrementalFail owns the failed-compare fork: the stderr
 // sidecar lands, then the unavailability note names the cause.
 func githubIncrementalFail(r *session, dir, stderr string) error {
 	if werr := writeErrFile(dir+"/.compare.err", stderr); werr != nil {
@@ -246,7 +246,7 @@ func githubIncrementalFail(r *session, dir, stderr string) error {
 	return nil
 }
 
-// githubIncrementalNote ports the failed-compare note: the first 300
+// githubIncrementalNote owns the failed-compare note: the first 300
 // stderr bytes (command substitution, no tr) name the unavailability.
 func githubIncrementalNote(r *session, dir, stderr string) *core.RefusalError {
 	head := stderr
@@ -262,7 +262,7 @@ func githubIncrementalNote(r *session, dir, stderr string) *core.RefusalError {
 	return nil
 }
 
-// writeGitHubTOC ports the GitHub write_toc_roles call: the PR title line,
+// writeGitHubTOC owns the GitHub write_toc_roles call: the PR title line,
 // the gh files stat, and the coverage manifest.
 func writeGitHubTOC(ctx context.Context, ctx2 *fetchRunCtx) error {
 	total, statLines := githubStat(ctx, ctx2)
@@ -275,7 +275,7 @@ func writeGitHubTOC(ctx context.Context, ctx2 *fetchRunCtx) error {
 	return writeTocRolesGitHub(ctx2, total, statLines, withHunks, omitted)
 }
 
-// githubStat ports the toc stat block: total plus the gh files stat lines
+// githubStat owns the toc stat block: total plus the gh files stat lines
 // (a failing gh call degrades to no stat lines, like `|| true`).
 func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	total := "?"
@@ -297,9 +297,9 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	return total, lines
 }
 
-// prExtraPaths ports `jq -r '.files[] | .path, (.previous_filename //
-// empty)'` for the sensitive/recall extra inputs.
-// fetchPrepare ports the fetch preamble: budget resolution and gate,
+// prExtraPaths lists every changed path plus each `previous_filename`, for
+// the sensitive and kb-recall extra inputs.
+// fetchPrepare owns the fetch preamble: budget resolution and gate,
 // the bundle directory, and the budget receipt.
 func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
 	budget, ref := resolveBudget(ctx2.env, ctx2.runner)
@@ -338,7 +338,7 @@ func prExtraPaths(prJSON string) string {
 	return strings.Join(out, newline)
 }
 
-// extraPathsOf ports the per-file extra-path read: the path plus any
+// extraPathsOf owns the per-file extra-path read: the path plus any
 // previous filename (renames), skipped when the entry is not an object.
 func extraPathsOf(f any) []string {
 	fm, ok := f.(map[string]any)
@@ -352,13 +352,14 @@ func extraPathsOf(f any) []string {
 	return out
 }
 
-// upstreamRefusalRe matches the host's own over-file-count diff refusal
-// (audit 20): the upstream will not render the diff at all, distinct from
-// the tool's byte cap. The 300-file upstream limit rides in the message the
+// upstreamRefusalRe matches the host's own over-file-count diff refusal:
+// the upstream will not render the diff at all, distinct from the tool's
+// byte cap. The 300-file upstream limit rides in the message the
 // caller reports.
 var upstreamRefusalRe = regexp.MustCompile(`(?i)too large|not rendered|300 files?|maximum.*?files?`)
 
-// upstreamDiffRefusal ports audit 20: when both diff reads fail and the
+// upstreamDiffRefusal names an upstream the host refused: when both diff
+// reads fail and the
 // host names its own refusal, surface the typed upstream refusal with the
 // range-narrowing recovery hint — never the byte-cap refusal and never a
 // generic fetch failure. Anything else reads nil (the caller refuses

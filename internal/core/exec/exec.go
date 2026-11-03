@@ -82,9 +82,9 @@ func watchdogBudget(ctx context.Context) (int, bool) {
 // captured to a bounded tail, returning the command, its wait channel, and
 // the capture (read after the wait).
 func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan error, *boundedBuffer, error) {
-	//nolint:gosec // G204: argv is the operator's own verify command (like the shell's bash -c), not external input.
+	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
-	// Inherit the binary's cwd (the shell spawns the same way, so relative
+	// Inherit the binary's cwd (verify runs where the caller ran, so relative
 	// verifyCmds resolve identically); nil stdin and env inherit too.
 	setGroup(proc)
 	proc.Cancel = func() error { return killGroup(proc) }
@@ -103,7 +103,7 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 	return proc, waitDone, out, nil
 }
 
-// pollTimeout ports the polling watchdog: while the main pid reads alive
+// pollTimeout owns the polling watchdog: while the main pid reads alive
 // (kill -0 plus the ps zombie arm) and the budget holds, sleep one second;
 // on expiry SIGKILL the group and record the timeout. The wait result is
 // never consumed here: the channel is buffered so the waiter never blocks,
@@ -147,9 +147,9 @@ func waitPollSecond(ctx context.Context) bool {
 	return ctx.Err() != nil
 }
 
-// waitExit drains the wait result and maps it to the shell `wait` code:
+// waitExit drains the wait result and maps it to the wait code:
 // 128+signo for signaled processes, the exit status otherwise. A
-// timeout-killed tree reads 137 (SIGKILL), matching the shell.
+// timeout-killed tree reads 137 (SIGKILL).
 func waitExit(waitDone chan error, timedOut bool) int {
 	err := <-waitDone
 	if err == nil {
@@ -169,7 +169,7 @@ func waitExit(waitDone chan error, timedOut bool) int {
 	return 1
 }
 
-// waitStatusCode maps a decoded wait status to the shell `wait` code:
+// waitStatusCode maps a decoded wait status to the wait code:
 // 128+signo for signaled processes, the exit status otherwise. An
 // undecodable status reads 1, or 137 on a timed-out tree.
 func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
@@ -191,8 +191,8 @@ func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
 	return ws.status
 }
 
-// sigkillExit is the shell `wait` code for a SIGKILLed command.
+// sigkillExit is the wait code for a SIGKILLed command.
 const sigkillExit = 137
 
-// sigOffset maps a fatal signal to the shell `wait` code (128+signo).
+// sigOffset maps a fatal signal to the wait code (128+signo).
 const sigOffset = 128

@@ -17,8 +17,8 @@ import (
 )
 
 // postJQFilter is the reviews-POST response projection, byte-identical to
-// the shell's --jq argument (the stub logs argv verbatim, so the parity
-// harness compares these bytes).
+// the --jq argument the gh stub logs verbatim (the goldens compare these
+// bytes).
 const postJQFilter = "{id, state, html_url, submitted_at}"
 
 // ghArgv spells the forge CLI surface the post seam shells through (the
@@ -29,9 +29,9 @@ const (
 	flagJQ = "--jq"
 )
 
-// queryLiveCount is live_open_thread_count's resolution-only read,
-// byte-identical to the shell's -f query= argument (indentation included:
-// the eval stub logs argv verbatim, so the parity harness compares these
+// queryLiveCount is the live-open-thread resolution-only read,
+// byte-identical to the -f query= argument (indentation included: the eval
+// stub logs argv verbatim, so the goldens compare these
 // bytes between implementations).
 const queryLiveCount = `
       query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
@@ -65,7 +65,7 @@ func splitOwner(repo string) (owner, name string) {
 // a 403/429 secondary rate-limit response honors the retry-after hint or the
 // reset marker, an unhinted transient falls back to the attempt-based sleep,
 // and the host's internal-error note retries like the original post path.
-// Plain failures return their first error, like the shell. The final result
+// Plain failures return their first error. The final result
 // and error are what callers write into their sidecars and degrade from, so a
 // retried read keeps today's warn-or-downgrade posture.
 //
@@ -101,8 +101,8 @@ func awaitRead(ctx context.Context, wait time.Duration) error {
 	return ctx.Err() //nolint:wrapcheck // the context error is the cancellation signal
 }
 
-// ghLiveSHA ports the live-SHA lookup: the fetched PR head, or an error
-// when the lookup fails (stderr is discarded, like the shell's 2>/dev/null;
+// ghLiveSHA owns the live-SHA lookup: the fetched PR head, or an error
+// when the lookup fails (stderr is discarded;
 // callers warn and proceed on the fetched hunks). Secondary rate limits and
 // transient host errors retry within the shared bound first.
 func ghLiveSHA(ctx context.Context, cmdr Commander, repo, pr string) (string, error) {
@@ -116,7 +116,7 @@ func ghLiveSHA(ctx context.Context, cmdr Commander, repo, pr string) (string, er
 	return strings.TrimRight(res.Stdout, newline), nil
 }
 
-// ghSelfLogin ports the authorship lookup: the authenticated login, or an
+// ghSelfLogin owns the authorship lookup: the authenticated login, or an
 // error when it cannot be determined (callers warn and proceed). Secondary
 // rate limits and transient host errors retry within the shared bound first.
 func ghSelfLogin(ctx context.Context, cmdr Commander) (string, error) {
@@ -139,8 +139,8 @@ type commanderError string
 // Error implements error.
 func (e commanderError) Error() string { return string(e) }
 
-// errRecheckShape seals recheck slurp failures: the shell's jq chain errors
-// here (no envelope from jq itself), and the post path maps every such
+// errRecheckShape seals recheck slurp failures: an unreadable node chain
+// errors here, and the post path maps every such
 // failure to the COMMENT downgrade.
 var errRecheckShape = shapeError("recheck threads unreadable")
 
@@ -150,8 +150,8 @@ type shapeError string
 // Error implements error.
 func (e shapeError) Error() string { return string(e) }
 
-// postRecheck ports live_open_thread_count with the shell's exact failure
-// semantics: the gh stderr lands in .recheck.err (empty on success), a gh
+// postRecheck counts the live open threads with exact failure semantics:
+// the gh stderr lands in .recheck.err (empty on success), a gh
 // failure or an unnavigable payload errors (callers downgrade to COMMENT
 // with the file's head as the reason), and the open count follows jq's
 // `select(.isResolved == false)` — missing isResolved never counts, and a
@@ -184,7 +184,7 @@ func postRecheck(ctx context.Context, cmdr Commander, repo, pr, dir string) (int
 	return count, "", nil
 }
 
-// firstReason ports `head -c 120 file | tr '\n' ' '`: the first 120 bytes
+// firstReason renders the first 120 bytes of file with newlines as spaces
 // with newlines flattened, byte-exact (no rune-boundary rounding).
 func firstReason(stderr string) string {
 	b := []byte(stderr)
@@ -207,10 +207,10 @@ func bytesReplaceNewline(b []byte) []byte {
 	return out
 }
 
-// slurpRecheckNodes ports the paginated `jq -s` navigation: concatenated
+// slurpRecheckNodes owns the paginated `jq -s` navigation: concatenated
 // docs (one per gh --paginate page), every page navigating to its
-// reviewThreads nodes. A missing node list anywhere errors, like the
-// shell's `null[]` — even one unnavigable page downgrades the run.
+// reviewThreads nodes. A missing node list anywhere errors: even one
+// unnavigable page downgrades the run.
 func slurpRecheckNodes(stdout string) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(stdout))
 	if err != nil {
@@ -252,8 +252,8 @@ func recheckPageNodes(doc any) ([]any, bool) {
 	return nodes, true
 }
 
-// navField ports one jq field step: null (or a missing key) reads null, and
-// any other non-object errors the chain, like the shell.
+// navField handles one field step: null (or a missing key) reads null, and
+// any other non-object errors the chain.
 func navField(v any, key string) (any, bool) {
 	if v == nil {
 		return nil, true
@@ -265,7 +265,7 @@ func navField(v any, key string) (any, bool) {
 	return m[key], true
 }
 
-// countRecheckOpen ports `[.[] | select(.isResolved == false)] | length`:
+// countRecheckOpen counts the unresolved threads:
 // only an explicit false counts; a non-object node errors the read.
 func countRecheckOpen(nodes []any) (int, error) {
 	n := 0
@@ -285,8 +285,7 @@ func countRecheckOpen(nodes []any) (int, error) {
 const recheckReasonBytes = 120
 
 // postOnce runs one reviews-POST attempt: the payload plus one newline on
-// stdin (exactly what the shell's `echo "$payload" | gh ... --input -`
-// pipes), gh stderr truncated into .post.err either way.
+// stdin, gh stderr truncated into .post.err either way.
 func postOnce(ctx context.Context, cmdr Commander, repo, pr, dir, payload string) (posted, errText string, ok bool) {
 	if cmdr == nil {
 		if werr := atomic.WriteErrSidecar(dir+"/.post.err", []byte("no commander in runtime")); werr != nil {
@@ -337,7 +336,7 @@ func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalE
 	return st.successResponse(obj, posted), nil
 }
 
-// postWithRetry ports the retry loop: the first part posts as the review,
+// postWithRetry owns the retry loop: the first part posts as the review,
 // each follow-up posts as a COMMENT review, up to 3 attempts per part with
 // a warning before each wait. A follow-up failure refuses typed, naming the
 // landed first review so the operator can finish the remainder by hand.
@@ -356,7 +355,7 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 	return posted, nil
 }
 
-// postOneWithRetry ports one part's retry loop: up to retry.MaxAttempts
+// postOneWithRetry handles one part's retry loop: up to retry.MaxAttempts
 // attempts, warning before each wait, then a typed post-failed carrying the
 // last attempt's head.
 //
@@ -419,7 +418,7 @@ func (st *state) followPosted(k, n int, part string) {
 	st.human(fmt.Sprintf("posted follow-up part %d/%d", k, n))
 }
 
-// followRefusal ports the partial-post failure: the first review already
+// followRefusal owns the partial-post failure: the first review already
 // landed, so the refusal names it and says how to finish — the marker stays
 // unarmed (failures never arm), and a re-run reposts every part.
 func (st *state) followRefusal(k, n int, posted, retryAt string) *core.RefusalError {
@@ -443,7 +442,7 @@ func reviewID(posted string) string {
 	return jq.Interp(id)
 }
 
-// headReason ports `$(head -c 300 "$dir/.post.err" | tr '\n' ' ')`: the last
+// headReason renders the last 300 bytes of .post.err with newlines as
 // attempt's head with newlines flattened.
 func headReason(dir string) string {
 	raw, err := readOptionalPost(dir + "/.post.err")
@@ -459,10 +458,10 @@ func headReason(dir string) string {
 // postErrHeadBytes caps the post-failed reason, like `head -c 300`.
 const postErrHeadBytes = 300
 
-// writePostReceipt ports the post.json writer: the review GitHub accepted,
+// writePostReceipt owns the post.json writer: the review GitHub accepted,
 // the reviewed head, timestamps, confidence, and the provenance triple —
 // through the shared atomic path, so an interrupted write keeps the last
-// good receipt byte-identical (audit 19).
+// good receipt byte-identical.
 //
 //nolint:gocognit,revive // the receipt assembles the fixed wire order plus the provenance triple in one place
 func writePostReceipt(st *state, obj *jq.Obj) error {
@@ -501,7 +500,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	return nil
 }
 
-// successResponse ports the real-post exit: the accepted review on the human
+// successResponse owns the real-post exit: the accepted review on the human
 // stream, or the post envelope inputs in --json mode.
 func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse {
 	nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)

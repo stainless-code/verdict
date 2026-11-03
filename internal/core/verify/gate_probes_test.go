@@ -1,8 +1,8 @@
 // Package verifycore_test holds the gate battery: the V1-V40 regression
 // probes, the standing fuzz corpus, and generated quoting/case/prefix
 // mutations. Every row carries a literal verdict, and the checked-in golden
-// is a Go-gate snapshot beside that oracle — a change detector, not a parity
-// record (the extracted-shell differential retired with the shell).
+// is a Go-gate snapshot beside that oracle — a change detector, not a second
+// implementation of the gate.
 package verifycore_test
 
 // probeCase is one allowlist regression leg: the command plus whether the

@@ -6,7 +6,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// checkNetworked ports the verify-networked arms in shell order.
+// checkNetworked owns the verify-networked arms in shell order.
 func checkNetworked(g *gateText) *core.RefusalError {
 	if ref := checkPipeToShell(g); ref != nil {
 		return ref
@@ -23,7 +23,7 @@ func checkNetworked(g *gateText) *core.RefusalError {
 	return checkSubstFetch(g)
 }
 
-// checkPipeToShell ports the pipe-to-shell, coproc, parallel, curl
+// checkPipeToShell owns the pipe-to-shell, coproc, parallel, curl
 // download, upload-flag, scheme, and wget arms.
 func checkPipeToShell(g *gateText) *core.RefusalError {
 	if ref := checkFetchPipe(g); ref != nil {
@@ -38,7 +38,7 @@ func checkPipeToShell(g *gateText) *core.RefusalError {
 	return checkWgetShapes(g)
 }
 
-// checkFetchPipe ports the pipe-to-shell and output-procsub arms.
+// checkFetchPipe owns the pipe-to-shell and output-procsub arms.
 func checkFetchPipe(g *gateText) *core.RefusalError {
 	if !reFetchWord.MatchString(g.bare) {
 		return nil
@@ -53,7 +53,7 @@ func checkFetchPipe(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkCoprocParallel ports the coproc and parallel-driver arms.
+// checkCoprocParallel owns the coproc and parallel-driver arms.
 func checkCoprocParallel(g *gateText) *core.RefusalError {
 	if frag := grepO(reCoproc, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "coproc spawns a background shell — fetch-execution shape")
@@ -68,7 +68,7 @@ func checkCoprocParallel(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkCurlShapes ports the curl download, upload-flag, and scheme arms.
+// checkCurlShapes owns the curl download, upload-flag, and scheme arms.
 func checkCurlShapes(g *gateText) *core.RefusalError {
 	if frag := grepO(reCurlDownload, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "curl exfil/download-to-file shape — fetch fixtures first, run offline")
@@ -82,7 +82,7 @@ func checkCurlShapes(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkWgetShapes ports the wget and transfer-client arms.
+// checkWgetShapes owns the wget and transfer-client arms.
 func checkWgetShapes(g *gateText) *core.RefusalError {
 	if frag := grepO(reWgetPost, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "wget download/post shape — fetch fixtures first, run offline")
@@ -96,7 +96,7 @@ func checkWgetShapes(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkFetchClients ports the gh-write, openssl, and ping arms.
+// checkFetchClients owns the gh-write, openssl, and ping arms.
 func checkFetchClients(g *gateText) *core.RefusalError {
 	if ref := checkGhWrite(g); ref != nil {
 		return ref
@@ -110,7 +110,7 @@ func checkFetchClients(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGhWrite ports the gh upload and write-method arms.
+// checkGhWrite owns the gh upload and write-method arms.
 func checkGhWrite(g *gateText) *core.RefusalError {
 	if !reGhWord.MatchString(g.bare) {
 		return nil
@@ -133,7 +133,7 @@ func checkGhWrite(g *gateText) *core.RefusalError {
 	return checkGhAPIFile(g)
 }
 
-// checkGhAPIFile ports the gh api file-inclusion arm.
+// checkGhAPIFile owns the gh api file-inclusion arm.
 func checkGhAPIFile(g *gateText) *core.RefusalError {
 	if !reGhAPISeg.MatchString(g.bare) {
 		return nil
@@ -144,7 +144,7 @@ func checkGhAPIFile(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkRemoteInstall ports the URL-install, runner, and redirector arms.
+// checkRemoteInstall owns the URL-install, runner, and redirector arms.
 func checkRemoteInstall(g *gateText) *core.RefusalError {
 	if frag := grepO(rePkgURLInstall, g.bare); frag != "" {
 		return refuse(codeNetworked, frag,
@@ -178,7 +178,7 @@ func checkRemoteInstall(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkContainersNet ports the container-image, netcat, ssh, and rsync arms.
+// checkContainersNet owns the container-image, netcat, ssh, and rsync arms.
 func checkContainersNet(g *gateText) *core.RefusalError {
 	if ref := checkContainerShapes(g); ref != nil {
 		return ref
@@ -186,7 +186,7 @@ func checkContainersNet(g *gateText) *core.RefusalError {
 	return checkRsyncNetcat(g)
 }
 
-// checkContainerShapes ports the container pull/build/run arms.
+// checkContainerShapes owns the container pull/build/run arms.
 func checkContainerShapes(g *gateText) *core.RefusalError {
 	if frag := grepO(reContainerPull, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "container image pull/push fetches remote code — vendor the fixture, run offline")
@@ -203,7 +203,7 @@ func checkContainerShapes(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkRsyncNetcat ports the netcat, ssh, and rsync arms.
+// checkRsyncNetcat owns the netcat, ssh, and rsync arms.
 func checkRsyncNetcat(g *gateText) *core.RefusalError {
 	if frag := grepO(reNetcat, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "netcat connect/listen shape")
@@ -223,7 +223,7 @@ func checkRsyncNetcat(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkSubstFetch ports the substitution-over-fetch, process-substitution,
+// checkSubstFetch owns the substitution-over-fetch, process-substitution,
 // and xargs-shell arms.
 func checkSubstFetch(g *gateText) *core.RefusalError {
 	if frag := grepO(reSubstFetch, g.bare); frag != "" {
@@ -243,7 +243,7 @@ func checkSubstFetch(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// Networked-class patterns, transliterated from the shell grep arms.
+// Networked-class patterns.
 var (
 	rePipeToShell = regexp.MustCompile(`\|[[:space:]]*(\{|\()?([[:space:]]*)(sudo[[:space:]]+)?((busybox|command|` +
 		`env|nice|nohup|stdbuf|timeout|exec)([[:space:]]+[^[:space:];|&(){}]+)*[[:space:]]+)?` +

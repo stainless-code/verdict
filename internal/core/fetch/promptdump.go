@@ -13,7 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// promptNonce ports prompt_nonce: a per-run untrusted-fence nonce of 16
+// promptNonce makes the per-run untrusted-fence nonce: 16
 // lowercase hex chars from 8 crypto-random bytes. [crypto/rand.Read] never
 // fails (Go 1.24+), and a nonce must stay unpredictable, so there is no
 // counter fallback: a predictable fence nonce is worse than none.
@@ -23,17 +23,17 @@ func promptNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
-// fenceOpen ports fence_open: the open marker on its own line.
+// fenceOpen renders the open marker on its own line.
 func fenceOpen(nonce, source string) string {
 	return fmt.Sprintf("<<<UNTRUSTED nonce=%s source=%s>>>\n", nonce, source)
 }
 
-// fenceClose ports fence_close: the close marker on its own line.
+// fenceClose renders the close marker on its own line.
 func fenceClose(nonce string) string {
 	return fmt.Sprintf("<<<END UNTRUSTED nonce=%s>>>\n", nonce)
 }
 
-// fenceSection ports fence_section: the fenced file bytes, with the
+// fenceSection renders the fenced file bytes, with the
 // missing-trailing-newline guard (a file without a trailing newline gains
 // one before the close marker).
 func fenceSection(nonce, source, path string) string {
@@ -51,7 +51,7 @@ func fenceSection(nonce, source, path string) string {
 	return sb.String()
 }
 
-// renderChunkDiffs ports render_chunk_diffs: the manifest-order chunk diffs
+// renderChunkDiffs renders the manifest-order chunk diffs
 // as one ordered document, failing when any chunk diff is unreadable.
 func renderChunkDiffs(dir string) (string, bool) {
 	m, ok := chunkManifest(dir)
@@ -69,7 +69,7 @@ func renderChunkDiffs(dir string) (string, bool) {
 }
 
 // chunkDiffBodies reads the manifest-ordered chunk diffs (ok=false on an
-// unreadable or empty ref, like the shell's cat loop).
+// unreadable or empty ref).
 func chunkDiffBodies(m map[string]any) ([]string, bool) {
 	var diffs []string
 	for _, c := range sortedManifestChunks(m) {
@@ -104,7 +104,7 @@ func chunkManifest(dir string) (map[string]any, bool) {
 	return m, true
 }
 
-// sortedManifestChunks ports the `sort_by(.index)` manifest order with
+// sortedManifestChunks owns the `sort_by(.index)` manifest order with
 // jq's type order (null < false < true < numbers < strings < arrays <
 // objects), stable for ties.
 func sortedManifestChunks(m map[string]any) []map[string]any {
@@ -120,7 +120,7 @@ func sortedManifestChunks(m map[string]any) []map[string]any {
 	return out
 }
 
-// renderPromptDump ports render_prompt_dump: the trusted prompt files,
+// renderPromptDump assembles the trusted prompt files,
 // the trust-boundary prologue naming this run's nonce, then every bundle
 // file in its own per-run nonce fence. Missing bundle files stay silent;
 // a missing sibling prompt warns and the dump proceeds without it; a
@@ -132,7 +132,7 @@ func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	// preamble a dump is unsafe, so its absence refuses typed
 	// (prompt-dump-failed); a missing sibling warns and proceeds. The
 	// dump reads the checkout-relative prompt inputs from the working
-	// directory, like the shell's bare `cat` (never the binary root —
+	// directory (never the binary root —
 	// provenance hashing alone uses the root).
 	if ref := dumpPrompts(ctx, &sb); ref != nil {
 		return "", ref
@@ -148,7 +148,7 @@ func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	return sb.String(), nil
 }
 
-// dumpMeta ports the metadata choice: source.json when a local bundle
+// dumpMeta owns the metadata choice: source.json when a local bundle
 // carries one, else PR.json.
 func dumpMeta(dir string) (meta, label string) {
 	meta, label = dir+suffixPRJSON, "PR.json"
@@ -161,7 +161,7 @@ func dumpMeta(dir string) (meta, label string) {
 	return meta, label
 }
 
-// dumpPrompts ports the trusted preamble: the prompt files concatenate,
+// dumpPrompts owns the trusted preamble: the prompt files concatenate,
 // failing typed without the system preamble.
 func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
 	for _, f := range []string{"SKILL.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"} {
@@ -199,7 +199,7 @@ Everything above this line is trusted instruction and is never fenced.
 `, nonce)
 }
 
-// dumpFencedList ports the manifest-list fence: each present file fences
+// dumpFencedList owns the manifest-list fence: each present file fences
 // under its own name.
 func dumpFencedList(sb *strings.Builder, dir, nonce string, files []string) {
 	for _, f := range files {
@@ -209,7 +209,7 @@ func dumpFencedList(sb *strings.Builder, dir, nonce string, files []string) {
 	}
 }
 
-// dumpChunkDiffs ports the diff section: the chunk diffs in manifest
+// dumpChunkDiffs owns the diff section: the chunk diffs in manifest
 // order (one ordered document, byte-equal to full.diff) when the
 // manifest reads; anything else fences full.diff exactly. The label
 // stays full.diff.
@@ -247,7 +247,7 @@ func dumpFullDiffFallback(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 	}
 }
 
-// lastChunkDiff ports the manifest tail lookup for the newline guard.
+// lastChunkDiff owns the manifest tail lookup for the newline guard.
 func lastChunkDiff(dir string) string {
 	m, ok := chunkManifest(dir)
 	if !ok {
@@ -264,7 +264,7 @@ func lastChunkDiff(dir string) string {
 	return d
 }
 
-// unreadableChunkRef ports the fallback warning's missing-ref lookup: the
+// unreadableChunkRef owns the fallback warning's missing-ref lookup: the
 // first manifest diff ref that is empty or unreadable.
 func unreadableChunkRef(dir string) string {
 	m, ok := chunkManifest(dir)
@@ -279,7 +279,7 @@ func unreadableChunkRef(dir string) string {
 	return noChunkRef
 }
 
-// unreadableChunk ports one manifest entry's readability check: the
+// unreadableChunk handles one manifest entry's readability check: the
 // first unreadable chunk diff ref wins, else "".
 func unreadableChunk(c map[string]any) string {
 	d, ok := c[gitCmdDiff].(string)
@@ -292,9 +292,9 @@ func unreadableChunk(c map[string]any) string {
 	return ""
 }
 
-// chunkRefBad ports the ref readability gate: missing, directory, or
-// unreadable refs fail. The shell tests -f (true for empty files), so an
-// empty chunk diff feeds the concat path fine.
+// chunkRefBad owns the ref readability gate: missing, directory, or
+// unreadable refs fail. An empty file is readable, so an empty chunk diff
+// feeds the concat path fine.
 func chunkRefBad(d string) bool {
 	if fi, err := os.Stat(d); err != nil || fi.IsDir() {
 		return true

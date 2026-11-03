@@ -11,14 +11,14 @@ import (
 )
 
 // Runner runs one process with separated stdout/stderr capture for the read,
-// fetch, post, fix, init, and threads verbs: the shell's `$(gh ...)` reads
+// fetch, post, fix, init, and threads verbs: the `gh` reads
 // stdout while probe stderr stages beside the bundle, so the two streams must
 // not mix the way the [Watchdog]'s combined proof capture does. Stdout keeps
 // its head (callers parse it as a complete document) and stderr keeps its tail
 // (the real error survives), both bounded by the runner's cap.
 //
 // Spawn failures come back as errors; completed processes — any exit code —
-// come back as results with the shell `wait` code, so callers map non-zero
+// come back as results with the wait code, so callers map non-zero
 // exits to their verb's warn-or-refuse posture instead of unpacking an error
 // (GO-EXEC-05). An over-cap stdout returns [core.OutputCappedError]: the
 // captured head cannot stand in for the whole document.
@@ -50,7 +50,7 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	if err := r.precheck(cmd.Argv[0]); err != nil {
 		return core.Result{}, err
 	}
-	//nolint:gosec // G204: argv is the operator's own gh/git plumbing (like the shell port), not external input.
+	//nolint:gosec // G204: argv is the operator's own gh/git plumbing, not external input.
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
 	limit := r.captureCap(cmd)
 	stdout := newBoundedBuffer(limit, captureHead)
@@ -108,7 +108,7 @@ func (r Runner) captureCap(cmd core.Command) int {
 // LookPath reports whether tool resolves, returning
 // [core.MissingToolError] when it does not. Fetch calls it before its
 // first spawn so the missing-tool line precedes any progress output,
-// exactly like the shell's `need` gate.
+// like every other tool gate.
 func (Runner) LookPath(tool string) error {
 	if _, err := osexec.LookPath(tool); err != nil {
 		return &core.MissingToolError{Tool: tool}

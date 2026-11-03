@@ -66,7 +66,7 @@ const (
 )
 
 // agentNames is the supported `--agent` vocabulary (the installer's nine plus
-// Codex, which keeps a project skills dir the shell linker did not).
+// Codex, which keeps a project skills dir of its own).
 var agentNames = []string{
 	agentShared, "claude", "codex", "cursor", agentOpencode,
 	"copilot", "gemini", agentGoose, "qwen", agentWindsurf,

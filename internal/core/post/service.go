@@ -243,8 +243,8 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	if st.flags.DryRun {
 		return st.dryRunResponse()
 	}
-	// Plain progress line, not a warning: the shell echoes it verbatim with
-	// no `warn: ` prefix and no envelope entry.
+	// Plain progress line, not a warning: it carries no `warn: ` prefix and
+	// no envelope entry.
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
 	}
@@ -254,7 +254,7 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	return st.submit(ctx)
 }
 
-// checkBundle ports the post bundle gates: local bundles never post, only
+// checkBundle owns the post bundle gates: local bundles never post, only
 // hosts whose declared capabilities allow posting do, then the store marker
 // and the required files.
 func (st *state) checkBundle() *core.RefusalError {
@@ -299,7 +299,7 @@ func (st *state) loadReview() *core.RefusalError {
 	return nil
 }
 
-// checkDrift ports the stale-SHA guard: anchors validate against the
+// checkDrift owns the stale-SHA guard: anchors validate against the
 // fetch-time snapshot, and a moved live HEAD only adds drift context (plus a
 // body note) — it never moves the validation target. Lookup failure degrades
 // to a warning, never a refusal.
@@ -338,7 +338,7 @@ func (st *state) commanderOrNil() Commander {
 	return cmdr
 }
 
-// applyApprovedFlag ports the approved-flag merge: the CLI flag wins, and a
+// applyApprovedFlag owns the approved-flag merge: the CLI flag wins, and a
 // true review.json approval upgrades a false flag.
 func (st *state) applyApprovedFlag() {
 	approvedRaw, _ := st.review.Get("approved")
@@ -348,7 +348,7 @@ func (st *state) applyApprovedFlag() {
 }
 
 // merge runs the shared validate_and_merge core over the drift-annotated
-// body, persisting the findings file and staging KB credit like the shell.
+// body, persisting the findings file and staging KB credit.
 func (st *state) merge() *core.RefusalError {
 	rt := st.mergeRuntime()
 	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
@@ -368,7 +368,7 @@ func (st *state) merge() *core.RefusalError {
 	return nil
 }
 
-// bindGate ports the binding gate: binding verdicts need --bind (else
+// bindGate owns the binding gate: binding verdicts need --bind (else
 // COMMENT); APPROVE needs zero open AND zero deferred findings unless
 // --force, plus a review that covers live HEAD (known drift downgrades to
 // COMMENT — re-fetch the delta to bind). Self-authored binding verdicts
@@ -390,7 +390,7 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 	return st.authorGate(ctx)
 }
 
-// unbound ports the non-binding path: without --bind every binding verdict
+// unbound owns the non-binding path: without --bind every binding verdict
 // lands as COMMENT with a warning, and anything else proceeds untouched.
 func (st *state) unbound() bool {
 	wantBind := st.flags.Approve == approveTrue || st.flags.RequestChanges
@@ -400,7 +400,7 @@ func (st *state) unbound() bool {
 	return !wantBind || !st.flags.Bind
 }
 
-// approveGate ports the APPROVE binding checks: no open or deferred findings
+// approveGate owns the APPROVE binding checks: no open or deferred findings
 // unless --force, and a review that covers live HEAD (known drift downgrades
 // to COMMENT — re-fetch the delta to bind, never a silent APPROVE).
 func (st *state) approveGate() *core.RefusalError {
@@ -415,7 +415,7 @@ func (st *state) approveGate() *core.RefusalError {
 	}
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
 		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
-	// The shell's downgrade note is a real newline plus a literal
+	// The downgrade note is a real newline plus a literal
 	// backslash-n (a two-line source string ending in `\n`), kept
 	// byte-identical here.
 	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\\n" + st.body
@@ -423,7 +423,7 @@ func (st *state) approveGate() *core.RefusalError {
 	return nil
 }
 
-// authorGate ports the self-authored binding check: GitHub refuses
+// authorGate owns the self-authored binding check: GitHub refuses
 // self-approvals, so a binding verdict on the author's own PR downgrades to
 // COMMENT; an unreadable login warns and proceeds (GitHub may still refuse).
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
@@ -442,7 +442,7 @@ func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	return nil
 }
 
-// recheckGate ports the live open-thread recheck on the APPROVE path only:
+// recheckGate owns the live open-thread recheck on the APPROVE path only:
 // more live opens than local opens refuses APPROVE, and an unreachable
 // lookup downgrades to COMMENT — never a silent APPROVE, never a failure.
 func (st *state) recheckGate(ctx context.Context) *core.RefusalError {
@@ -474,7 +474,7 @@ func (st *state) probeRecheck(ctx context.Context) (int, bool) {
 	return 0, true
 }
 
-// preflight ports the fail-closed preflight block plus the next-step line.
+// preflight owns the fail-closed preflight block plus the next-step line.
 func (st *state) preflight() {
 	res := st.merged
 	nOpen := recordcore.CountStatus(res.Entries, statusOpen)
@@ -495,7 +495,7 @@ func (st *state) preflight() {
 	}
 }
 
-// eventLine ports the `» event=` progress line.
+// eventLine owns the `» event=` progress line.
 func (st *state) eventLine() {
 	resolved := 0
 	if rv, ok := st.review.Get("resolved"); ok {
@@ -505,7 +505,7 @@ func (st *state) eventLine() {
 		st.event, st.merged.NKept, st.embedded, resolved))
 }
 
-// duplicateGuard ports the double-post guard: exact payload replays refuse
+// duplicateGuard owns the double-post guard: exact payload replays refuse
 // unless --force. It checks the local dot-marker and the fetched reviews;
 // the marker covers every posted part and is touched only after a successful
 // submit, so legit re-reviews hash differently and pass.
@@ -519,12 +519,12 @@ func (st *state) duplicateGuard() *core.RefusalError {
 	return st.liveDuplicatePayload()
 }
 
-// finalizerGuard ports the single-review finality: a completed post on the
+// finalizerGuard owns the single-review finality: a completed post on the
 // same reviewed SHA refuses unless --force; a new SHA proceeds and refreshes
 // the record. The local post.json is the fast path, the fetched reviews the
 // fresh-bundle fallback. Unreadable records warn and proceed.
 //
-// Precedence (BL05, operator decision OP-03): this guard runs inside prepare,
+// Precedence: this guard runs inside prepare,
 // before drift's live reads, the hunks snapshot, and the merge, so it wins
 // over every later refusal except review-load. Concretely: a same-SHA bundle
 // whose review.json is semantically invalid reports already-posted, not the

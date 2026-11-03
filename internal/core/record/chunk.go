@@ -13,7 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// validateChunkMerge ports validate_chunk_merge: chunked bundles pin anchors
+// validateChunkMerge validates a chunked merge: chunked bundles pin anchors
 // to the per-chunk snapshots and gate attested-but-partial coverage.
 // Non-chunked bundles validate exactly as today. It returns the hunks file
 // the anchor validation reads.
@@ -35,8 +35,8 @@ func (st *state) validateChunkMerge() (string, error) {
 	if ref != nil {
 		return "", ref
 	}
-	// The shell builds .chunk-hunks.tsv incrementally and leaves it behind
-	// on later failures; write it now so residues match through every gate.
+	// .chunk-hunks.tsv is written up front, not built incrementally: a later
+	// failure then leaves the same residue through every gate.
 	if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
 		return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
 	}
@@ -241,8 +241,8 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 		}
 	}
 	if len(missingDescs) > 0 {
-		// The shell removes the derived snapshot before refusing partial
-		// coverage; a residue here would linger past the refusal (I3).
+		// The derived snapshot is removed before refusing partial coverage,
+		// so no residue lingers past the refusal.
 		removeBestEffort(chunkHunks)
 		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
 			msgChunkCoverage, len(names)-nMiss, len(names), strings.Join(missingDescs, ", "), refetch)}

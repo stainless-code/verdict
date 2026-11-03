@@ -132,7 +132,7 @@ func postTestState(dir, commitID string, flags core.PostFlags, warnings *[]strin
 	return &state{req: req, warnings: *warnings, dir: dir, commitID: commitID, flags: flags}
 }
 
-// refusalCode recovers the typed refusal code with [errors.As] (R4).
+// refusalCode recovers the typed refusal code with [errors.As].
 func refusalCode(err error) (string, bool) {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref.Code, true

@@ -33,7 +33,7 @@ type budgetState struct {
 	receiptNeeded bool
 }
 
-// resolveBudget ports resolve_budget: REVIEW_BUDGET_USD wins, else the
+// resolveBudget reads the budget: REVIEW_BUDGET_USD wins, else the
 // first usable line of .review/budget (a leading $ is stripped). Unset
 // disables the whole plane.
 func resolveBudget(env map[string]string, r *session) (budgetState, error) {
@@ -56,7 +56,7 @@ func resolveBudget(env map[string]string, r *session) (budgetState, error) {
 	return st, nil
 }
 
-// isBudgetNumber ports the knob regex `^[0-9]+(\.[0-9]+)?$`: digits
+// isBudgetNumber owns the knob regex `^[0-9]+(\.[0-9]+)?$`: digits
 // with an optional decimal fraction (a bare "1." or "." never matches).
 func isBudgetNumber(s string) bool {
 	intPart, fracPart, hasDot := strings.Cut(s, ".")
@@ -72,7 +72,7 @@ func isBudgetNumber(s string) bool {
 	return true
 }
 
-// budgetGate ports budget_gate: with a budget set, print the estimate line,
+// budgetGate gates a run on the budget: with one set, print the estimate line,
 // arm the envelope summaries, and refuse over-budget runs without consent.
 func budgetGate(r *session, st *budgetState, consent bool) error {
 	if !st.hasBudget {
@@ -131,7 +131,7 @@ func (st *budgetState) basisNote() string {
 	}
 }
 
-// costEstimate ports cost_estimate: the mean est_usd of the most-run effort
+// costEstimate averages est_usd over the most-run effort
 // tier across every .review/*/cost.json record (ties break toward the
 // deeper tier). Unknown history reads unknown, never blocking. Handed usage
 // records price the runs they bracket; a broken handoff refuses typed.
@@ -199,7 +199,7 @@ type costRec struct {
 	has         bool
 }
 
-// readCostRecs ports the per-file jq record reader: arrays iterate,
+// readCostRecs owns the per-file jq record reader: arrays iterate,
 // single docs read as one; malformed files report unreadable.
 func readCostRecs(path string) ([]costRec, bool) {
 	raw, err := os.ReadFile(path)
@@ -223,10 +223,10 @@ func readCostRecs(path string) ([]costRec, bool) {
 	return out, true
 }
 
-// costRecord ports one cost record: the tier from effort (standard when
+// costRecord handles one cost record: the tier from effort (standard when
 // absent or unknown) and the priced usd when est_usd is numeric.
-// Non-object records still count (the shell's filter reads .effort as
-// null → standard with no priced usd).
+// Non-object records still count: an unreadable effort reads as standard
+// with no priced usd.
 func costRecord(it any) costRec {
 	m, _ := jq.AsMap(it)
 	tier := tierStandard
@@ -251,8 +251,8 @@ func costRecord(it any) costRec {
 	return rec
 }
 
-// estNumber ports `(if (.est_usd | type) == keyNumber then .est_usd else
-// null end)`, rendering the jq number literal.
+// estNumber renders est_usd as a jq number literal when it is a number,
+// and null otherwise.
 func estNumber(v any) (string, bool) {
 	switch t := v.(type) {
 	case jq.Number:
@@ -279,7 +279,7 @@ type tierStat struct {
 	measured int
 }
 
-// pickEstimateTier ports the jq summary: most runs wins, ties break toward
+// pickEstimateTier owns the jq summary: most runs wins, ties break toward
 // the deeper (costlier) tier — first strictly-greater over
 // [deep standard cheap] keeps the deeper tier on ties. Empty input reads
 // no-pick, like max_by over an empty array.
@@ -298,7 +298,7 @@ func pickEstimateTier(recs []costRec) (tier string, tierRuns int, stat tierStat,
 	return tier, tierRuns, stat, ok
 }
 
-// tierStats ports one tier's accumulation: the run count plus the priced
+// tierStats handles one tier's accumulation: the run count plus the priced
 // mean (-1 with no priced runs, so unpriced tiers still compete on runs).
 // A handed usage record prices that run and names its source.
 func tierStats(recs []costRec, t string) tierStat {
@@ -319,9 +319,8 @@ func tierStats(recs []costRec, t string) tierStat {
 	return st
 }
 
-// estimateRecs ports the cost-history sweep: every readable record
-// accumulates, while unreadable files warn once (the shell accumulates
-// "$bad$f " per file, trailing space included).
+// estimateRecs owns the cost-history sweep: every readable record
+// accumulates, while unreadable files warn once naming every one.
 func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	var recs []costRec
 	var bad []string
@@ -352,7 +351,7 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 // VERDICT_USAGE. A broken handoff refuses typed at the gate; no handoff
 // simply leaves the self-reported record in charge.
 func measuredUsage(r *session) ([]readcommon.ContractUsage, error) {
-	//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message (R4)
+	//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message
 	return readcommon.ReadContractUsage(r.env)
 }
 
@@ -387,7 +386,7 @@ func addTierSample(r costRec, sum float64, st tierStat) (float64, tierStat) {
 	return sum, st
 }
 
-// tierPriced ports one priced record: the handed usage cost wins,
+// tierPriced handles one priced record: the handed usage cost wins,
 // else the self-reported usd parses into the sum.
 func tierPriced(r costRec, sum float64, priced int) (float64, int) {
 	if r.measured != nil {
@@ -401,7 +400,7 @@ func tierPriced(r costRec, sum float64, priced int) (float64, int) {
 	return sum, priced
 }
 
-// overBudget ports the awk `p > b` float comparison.
+// overBudget owns the awk `p > b` float comparison.
 func overBudget(projected, budget string) bool {
 	p, err1 := strconv.ParseFloat(projected, numBitSize)
 	b, err2 := strconv.ParseFloat(budget, numBitSize)
@@ -411,7 +410,7 @@ func overBudget(projected, budget string) bool {
 	return p > b
 }
 
-// jsonNumber renders a validated budget literal for --argjson parity: jq
+// jsonNumber renders a validated budget literal for the jq argument: jq
 // preserves plain-decimal literals verbatim (0.50 stays 0.50), so the
 // literal rides through untouched (budget strings never carry exponents
 // — the knob regex forbids them).
@@ -420,7 +419,7 @@ func jsonNumber(lit string) any {
 }
 
 // jsonFloat renders a computed mean/est literal ("" reads null). Computed
-// values print canonically on both sides.
+// values print in canonical jq form.
 func jsonFloat(lit string) any {
 	if lit == "" {
 		return nil
@@ -428,7 +427,7 @@ func jsonFloat(lit string) any {
 	return jq.Number(lit)
 }
 
-// writeBudgetReceipt ports write_budget_receipt: a consented over-budget
+// writeBudgetReceipt records a consented over-budget
 // run appends one receipt to the bundle's budget.json ledger.
 func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 	if !st.receiptNeeded {
@@ -453,9 +452,9 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 		dir, st.estUSD, st.estTier, st.budgetUSD)
 }
 
-// budgetLedger ports the receipt ledger merge: the new receipt appends
-// to the stored array (old receipts keep their stored key order, like
-// the shell's jq pass-through), or starts a fresh `[$rc]` ledger,
+// budgetLedger owns the receipt ledger merge: the new receipt appends
+// to the stored array (old receipts keep their stored key order), or
+// starts a fresh `[$rc]` ledger,
 // warning when the stored ledger is unreadable.
 func budgetLedger(r *session, dir string, rc *jq.Obj) string {
 	merged := "[" + rc.MarshalPretty() + "]"

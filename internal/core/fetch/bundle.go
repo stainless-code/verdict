@@ -13,7 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// buildHunksTSV ports build_hunks_tsv via the shared hunk index: identical
+// buildHunksTSV writes the hunk index through the shared parser: identical
 // rows (the one degenerate "@@ "-with-no-ranges line reads empty in Go and
 // a 0/0 row pair in awk — unreachable from real diffs).
 func buildHunksTSV(fullDiff, out string) error {
@@ -27,7 +27,7 @@ func buildHunksTSV(fullDiff, out string) error {
 	return nil
 }
 
-// diffFiles ports the toc coverage-manifest file scan: paths with hunks in
+// diffFiles owns the toc coverage-manifest file scan: paths with hunks in
 // diff order, sorted unique; the manifest file lands beside the bundle.
 func diffFiles(fullDiff, dir string) ([]string, error) {
 	raw, err := os.ReadFile(fullDiff)
@@ -36,7 +36,7 @@ func diffFiles(fullDiff, dir string) ([]string, error) {
 	}
 	files := diffHunkFiles(string(raw))
 	slices.Sort(files)
-	// The shell pipes through `sort -u`; identical contents dedupe here.
+	// Identical contents dedupe after the byte-order sort.
 	files = dedupeSorted(files)
 	var sb strings.Builder
 	for _, f := range files {
@@ -48,8 +48,8 @@ func diffFiles(fullDiff, dir string) ([]string, error) {
 	return files, nil
 }
 
-// diffHunkFiles ports the header/hunk scan: the paths whose section carries
-// a hunk line, in diff order (the shell's grep -B pipeline).
+// diffHunkFiles owns the header/hunk scan: the paths whose section carries
+// a hunk line, in diff order.
 func diffHunkFiles(raw string) []string {
 	sections := hunks.Files(raw)
 	var files []string
@@ -72,7 +72,7 @@ func dedupeSorted(in []string) []string {
 	return out
 }
 
-// toJSONArray ports to_json_array: newline-separated input to a JSON array
+// toJSONArray turns newline-separated input into a JSON array
 // (empty reads []).
 func toJSONArray(s string) []any {
 	var out []any
@@ -89,7 +89,7 @@ func toJSONArray(s string) []any {
 	return out
 }
 
-// writeTocRolesGitHub ports write_toc_roles on the GitHub path: the PR
+// writeTocRolesGitHub writes the TOC and roles on the GitHub path: the PR
 // title line, the grep -n diff header index, the gh files stat, and the
 // coverage manifest with the omitted list.
 func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, withHunks []string, omitted []string) error {
@@ -147,7 +147,7 @@ func prFilePaths(prJSON string) []string {
 	return out
 }
 
-// diffHeaderIndex ports `grep -n "^diff --git" file || echo "(no diff
+// diffHeaderIndex numbers the `diff --git` headers of file, or reports
 // headers — empty diff?)"`: numbered header lines or the fallback sentence.
 func diffHeaderIndex(fullDiff string) string {
 	raw, err := os.ReadFile(fullDiff)
@@ -180,7 +180,7 @@ func statNum(v any) string {
 	return jq.Str(v)
 }
 
-// omittedPaths ports the omitted computation: PR file-list paths absent
+// omittedPaths owns the omitted computation: PR file-list paths absent
 // from the hunked set.
 func omittedPaths(listed, withHunks []string) []string {
 	inHunks := map[string]bool{}
@@ -201,9 +201,9 @@ func joinLines(paths []string) string {
 	return strings.Join(paths, newline)
 }
 
-// emitContext ports emit_context: REVIEW_PANEL wins, else .review/panel;
-// the member list lands in $dir/panel. Compact mode skips the advisory
-// notices. Sets panelSrc/panelList on the run context.
+// emitContext resolves the review controls: REVIEW_PANEL wins, else the
+// .review/panel file; the member list lands in $dir/panel. Compact mode skips
+// the advisory notices. Sets panelSrc/panelList on the run context.
 func emitContext(ctx *fetchRunCtx) *core.RefusalError {
 	panelList, panelSrc := resolvePanel(ctx.env, ctx.runner)
 	ctx.panelSrc, ctx.panelList = panelSrc, panelList
@@ -213,7 +213,7 @@ func emitContext(ctx *fetchRunCtx) *core.RefusalError {
 	return emitLearnings(ctx)
 }
 
-// emitPanel ports the panel notice: the pinned list writes and prints,
+// emitPanel owns the panel notice: the pinned list writes and prints,
 // else the none-pinned line prints outside compact mode.
 func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.RefusalError {
 	if len(panelList) > 0 {
@@ -231,7 +231,7 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 	return nil
 }
 
-// emitLearnings ports the learnings notice: the line count prints outside
+// emitLearnings owns the learnings notice: the line count prints outside
 // compact mode when the file reads.
 func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	if ctx.runner.Effective.Compact != strTrue {
@@ -244,7 +244,7 @@ func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	return nil
 }
 
-// resolvePanel ports the REVIEW_PANEL / .review/panel precedence: env wins
+// resolvePanel owns the REVIEW_PANEL / .review/panel precedence: env wins
 // (comma/space split), else the file (comments and blanks skipped).
 func resolvePanel(env map[string]string, r *session) ([]string, string) {
 	if v, ok := env["REVIEW_PANEL"]; ok && v != "" {
@@ -257,7 +257,7 @@ func resolvePanel(env map[string]string, r *session) ([]string, string) {
 	return panelFileLines(string(raw))
 }
 
-// panelFileLines ports the panel file scan: comments and blanks skipped,
+// panelFileLines owns the panel file scan: comments and blanks skipped,
 // empty reading absent.
 func panelFileLines(raw string) ([]string, string) {
 	var out []string
@@ -274,7 +274,7 @@ func panelFileLines(raw string) ([]string, string) {
 	return out, ".review/panel"
 }
 
-// splitPanelList ports `tr ', ' '\n'` plus trim and blank-drop.
+// splitPanelList splits on commas and whitespace, dropping blanks.
 func splitPanelList(s string) []string {
 	var out []string
 	for _, p := range strings.FieldsFunc(s, func(c rune) bool { return c == ',' || c == ' ' }) {
@@ -286,7 +286,7 @@ func splitPanelList(s string) []string {
 	return out
 }
 
-// ensureStore ports ensure_store: backfill the store marker when absent.
+// ensureStore backfills the store marker when absent.
 func ensureStore(dir string) error {
 	if _, err := os.Stat(dir + "/store.json"); err == nil {
 		return nil
@@ -294,9 +294,9 @@ func ensureStore(dir string) error {
 	return atomic.WriteFile(dir+"/store.json", []byte("{\n  \"schema_version\": \"1\"\n}\n"))
 }
 
-// rolesForPaths ports roles_for_paths: grouped triage roles over the
-// newline-separated path list. The shell pipelines through `sort` (byte
-// order under LC_ALL=C); roles sort by group then path via the same key.
+// rolesForPaths assigns the grouped triage roles over the
+// newline-separated path list, byte-ordered (LC_ALL=C collation); roles
+// sort by group then path via the same key.
 // roleRow is one sortable path with its heuristic role.
 type roleRow struct {
 	role string
@@ -344,14 +344,14 @@ func (w *roleWriter) visit(r roleRow) {
 	w.sb.WriteString("- " + r.path + newline)
 }
 
-// rolesForPathsText ports the `printf '%s\n' "$text" | roles_for_paths`
+// rolesForPathsText owns the `printf '%s\n' "$text" | roles_for_paths`
 // pipeline: the text plus its trailing newline feeds the sorter, so an
 // empty text still feeds one empty line (the degenerate "## source" block).
 func rolesForPathsText(text string) string {
 	return rolesForPaths(strings.Split(text, newline))
 }
 
-// rolesTextEmpty ports the `jq -r '.files[].path' | roles_for_paths`
+// rolesTextEmpty owns the `jq -r '.files[].path' | roles_for_paths`
 // pipeline: zero rows feed zero lines, so an empty file list renders the
 // empty roles file.
 func rolesTextEmpty(paths []string) string {
@@ -361,8 +361,8 @@ func rolesTextEmpty(paths []string) string {
 	return rolesForPaths(paths)
 }
 
-// splitLines ports the shell line iteration (awk/grep/sed), yielding one
-// entry per input line, dropping only the final empty field of a
+// splitLines splits one entry per input line, dropping only the final
+// empty field of a
 // newline-terminated input. Carriage returns stay (unlike [strings.Lines]),
 // and an empty input yields no lines.
 func splitLines(s string) []string {
@@ -379,7 +379,7 @@ func splitLines(s string) []string {
 // noDiffHeaders is the toc header-index fallback for a diff with no headers.
 const noDiffHeaders = "(no diff headers — empty diff?)\n"
 
-// countNewlines ports `wc -l`: the number of newline bytes.
+// countNewlines counts the newline bytes.
 func countNewlines(s string) int {
 	return strings.Count(s, newline)
 }

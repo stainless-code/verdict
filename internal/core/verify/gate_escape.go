@@ -9,7 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// checkRepoEscape ports the verify-repo-escape arms: device/proc/sys
+// checkRepoEscape owns the verify-repo-escape arms: device/proc/sys
 // access, dot-dot traversal, tilde/home targets, and absolute paths
 // outside the repo (and /tmp scratch).
 func checkRepoEscape(g *gateText) *core.RefusalError {
@@ -19,7 +19,7 @@ func checkRepoEscape(g *gateText) *core.RefusalError {
 	return checkAbsPaths(g)
 }
 
-// checkEscapeWords ports the device, traversal, and home-target arms.
+// checkEscapeWords owns the device, traversal, and home-target arms.
 func checkEscapeWords(g *gateText) *core.RefusalError {
 	if frag := grepO(reDevProcSys, g.bare); frag != "" {
 		return refuse(codeRepoEscape, frag, "/dev|/proc|/sys access escapes the repo")
@@ -36,7 +36,7 @@ func checkEscapeWords(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkAbsPaths ports the absolute-path arm: paths under /tmp or the
+// checkAbsPaths owns the absolute-path arm: paths under /tmp or the
 // invocation root pass, the rest refuse.
 func checkAbsPaths(g *gateText) *core.RefusalError {
 	barepaths := rePathPlumb.ReplaceAllString(" "+g.bare, " varpath")
@@ -75,7 +75,7 @@ func normAbsPath(c, lroot string) (string, bool) {
 	return c, lroot != "" && lroot != "/" && (c == lroot || strings.HasPrefix(c, lroot+"/"))
 }
 
-// Repo-escape patterns, transliterated from the shell grep arms.
+// Repo-escape patterns.
 var (
 	reDevProcSys = regexp.MustCompile(`/(dev|proc|sys)([^a-z0-9_]|$)`)
 	reDotDot     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])\.\.([[:space:];|&(){}"=,/]|$)`)

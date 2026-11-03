@@ -22,7 +22,7 @@ type Command struct {
 }
 
 // Result is one completed process: the captured streams plus the wait
-// status. ExitCode follows the shell `wait` code (128+signo for signaled
+// status. ExitCode follows the wait convention (128+signo for signaled
 // processes). TimedOut reports the watchdog: the budget fired or the
 // post-exit sweep found an orphaned tree, so the proof is refused even
 // when the exit reads 0. Decoy refines it: the parent finished while its

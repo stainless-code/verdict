@@ -33,7 +33,7 @@ var sensExtSet = map[string]bool{
 	"keystore": true, "jks": true, "ppk": true,
 }
 
-// sensPathReasons ports sens_path_reasons: filename/extension reasons for
+// sensPathReasons collects the filename/extension reasons for
 // one path, in shell order (filename first).
 func sensPathReasons(path string) []string {
 	base := path
@@ -47,7 +47,7 @@ func sensPathReasons(path string) []string {
 	return append(sensNameReason(lb), sensExtReason(lb)...)
 }
 
-// sensNameReason ports the basename rule: an exact secret-adjacent name or a
+// sensNameReason owns the basename rule: an exact secret-adjacent name or a
 // non-exempt .env.* suffix.
 func sensNameReason(lb string) []string {
 	if sensNameSet[lb] {
@@ -59,7 +59,7 @@ func sensNameReason(lb string) []string {
 	return nil
 }
 
-// sensExtReason ports the extension rule: the last dot's suffix.
+// sensExtReason owns the extension rule: the last dot's suffix.
 func sensExtReason(lb string) []string {
 	if !strings.Contains(lb, ".") {
 		return nil
@@ -70,7 +70,7 @@ func sensExtReason(lb string) []string {
 	return nil
 }
 
-// sensContentRe ports sens_content_hit: added-line secret shapes.
+// sensContentRe holds the added-line secret shapes.
 var sensContentRe = regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----` +
 	`|(AKIA|ASIA)[A-Za-z0-9]{16}` +
 	`|gh[pousr]_[A-Za-z0-9]{36,}` +
@@ -87,7 +87,7 @@ type sensHit struct {
 	reason string
 }
 
-// sensEmitSection ports sens_emit_section: filename/extension reasons for
+// sensEmitSection writes the filename/extension reasons for
 // the section's old/new paths plus the content reason on the new path when
 // an added line carries a secret shape.
 func sensEmitSection(lines []string, f *hunks.File, last int) []sensHit {
@@ -107,7 +107,7 @@ func sensEmitSection(lines []string, f *hunks.File, last int) []sensHit {
 	return out
 }
 
-// sensPathHits ports the header-path scan: every reason for each usable
+// sensPathHits owns the header-path scan: every reason for each usable
 // path (empty and /dev/null headers never flag).
 func sensPathHits(p string) []sensHit {
 	var out []sensHit
@@ -120,7 +120,7 @@ func sensPathHits(p string) []sensHit {
 	return out
 }
 
-// sensContentHit ports the added-line scan: added lines joined and
+// sensContentHit owns the added-line scan: added lines joined and
 // matched once, flagging the new path on a content hit.
 func sensContentHit(lines []string, first, last int, newP string) (sensHit, bool) {
 	hi := min(last, len(lines))
@@ -136,7 +136,7 @@ func sensContentHit(lines []string, first, last int, newP string) (sensHit, bool
 	return sensHit{}, false
 }
 
-// sensExtraHits ports the extra-paths scan: every reason for each
+// sensExtraHits owns the extra-paths scan: every reason for each
 // non-empty extra path.
 func sensExtraHits(extra string) []sensHit {
 	var hits []sensHit
@@ -149,7 +149,7 @@ func sensExtraHits(extra string) []sensHit {
 	return hits
 }
 
-// writeSensitiveManifest ports write_sensitive_manifest: the advisory
+// writeSensitiveManifest writes the advisory
 // flagged-path list with a stderr warning naming the first few. No hits:
 // no file, no warning.
 func writeSensitiveManifest(r *session, dir, extra string) *core.RefusalError {
@@ -179,7 +179,7 @@ func writeSensitiveManifest(r *session, dir, extra string) *core.RefusalError {
 	return nil
 }
 
-// sensAllHits ports the section walk: extra paths first, then each section's
+// sensAllHits owns the section walk: extra paths first, then each section's
 // path and content reasons, with the trailing section ending at EOF.
 func sensAllHits(raw, extra string) []sensHit {
 	lines := splitLines(raw)
@@ -195,7 +195,7 @@ func sensAllHits(raw, extra string) []sensHit {
 	return hits
 }
 
-// warnSensitive ports the capped advisory line naming the flagged paths.
+// warnSensitive owns the capped advisory line naming the flagged paths.
 func warnSensitive(r *session, dir string, flagged []string) {
 	shown := flagged
 	more := ""
@@ -206,7 +206,7 @@ func warnSensitive(r *session, dir string, flagged []string) {
 	r.Warn(fmt.Sprintf("sensitive paths in bundle (see %s/sensitive.txt): %s%s", dir, strings.Join(shown, ", "), more))
 }
 
-// dedupeHits ports the manifest awk: one `path (r1,r2)` line per path with
+// dedupeHits owns the manifest awk: one `path (r1,r2)` line per path with
 // first-seen reason order, sorted byte-wise. Lines with empty or /dev/null
 // paths never occur (callers skip them); hits with empty reasons cannot
 // occur either.

@@ -63,7 +63,7 @@ func stripMarker(raw string) (string, bool) {
 	return strings.Join(kept, "\n"), true
 }
 
-// profilePath picks the shell profile the installer would have edited.
+// profilePath picks the shell profile the installer edits.
 func profilePath(env map[string]string) string {
 	home := homeDir(env)
 	if home == "" {

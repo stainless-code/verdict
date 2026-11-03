@@ -9,7 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Status and tier names, matching the shell's fixed-key rollup objects.
+// Status and tier names, the fixed keys of the rollup objects.
 const (
 	statusOpen          = "open"
 	statusAddressed     = "addressed"
@@ -49,7 +49,7 @@ type period struct {
 	hasName   bool
 }
 
-// rollupRows ports the rollup filter over bundle rows.
+// rollupRows owns the rollup filter over bundle rows.
 func rollupRows(rows []row) rollup {
 	out := rollup{
 		byStatus: map[string]int{
@@ -92,7 +92,7 @@ func provField(prov *jq.Obj, key string) any {
 	return v
 }
 
-// periodize ports the periods grouping: rows bucketed by at[0:10] (null
+// periodize owns the periods grouping: rows bucketed by at[0:10] (null
 // stays null), nulls sorting last.
 func periodize(rows []row) []period {
 	sorted := append([]row{}, rows...)
@@ -121,7 +121,7 @@ func periodize(rows []row) []period {
 	return periods
 }
 
-// periodName ports `if .at == null then null else .at[0:10] end`.
+// periodName renders the day prefix of an instant, null when absent.
 func periodName(r *row) string {
 	if !r.hasAt {
 		return ""
@@ -197,7 +197,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 	)
 }
 
-// tierDoc renders a by_tier fragment in shell key order.
+// tierDoc renders a by_tier fragment in wire key order.
 func tierDoc(counts map[string]int) *jq.Obj {
 	return jq.NewObj(
 		tierCritical, counts[tierCritical],
@@ -215,7 +215,7 @@ func anyList(vals []any) []any {
 	return vals
 }
 
-// rowDoc renders one per-bundle row in shell key order.
+// rowDoc renders one per-bundle row in wire key order.
 func rowDoc(r *row) *jq.Obj {
 	var at any
 	if r.hasAt {
@@ -242,7 +242,7 @@ func rowDoc(r *row) *jq.Obj {
 	)
 }
 
-// emitHuman ports the human rollup lines.
+// emitHuman owns the human rollup lines.
 func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRollup) {
 	st.emitRollupHuman(out)
 	if overlap != nil {
@@ -280,7 +280,7 @@ func (st *state) emitRollupHuman(out *rollup) {
 	}
 }
 
-// provenanceLine ports the provenance summary line.
+// provenanceLine owns the provenance summary line.
 func provenanceLine(out *rollup) string {
 	tools := unmarkedList(out.tools)
 	models := unmarkedList(out.models)
@@ -308,7 +308,7 @@ func provenanceLine(out *rollup) string {
 		" prompts=" + strconv.Itoa(unique) + " unique" + suffix
 }
 
-// unmarkedList ports `[(.[] | (. // "unmarked"))] | unique | join(",")`.
+// unmarkedList renders the sorted unique unmarked values, comma-joined.
 func unmarkedList(vals []any) []string {
 	mapped := make([]string, 0, len(vals))
 	for _, v := range vals {
@@ -318,7 +318,7 @@ func unmarkedList(vals []any) []string {
 	return uniqueStrings(mapped)
 }
 
-// unmarkedValue ports `(. // "unmarked")`.
+// unmarkedValue renders a value, or "unmarked" when absent.
 func unmarkedValue(v any) string {
 	if v == nil || v == false {
 		return "unmarked"
@@ -326,7 +326,7 @@ func unmarkedValue(v any) string {
 	return jq.Str(v)
 }
 
-// uniqueStrings ports `unique` over a sorted list.
+// uniqueStrings drops duplicates from a sorted list.
 func uniqueStrings(sorted []string) []string {
 	var out []string
 	for i, s := range sorted {

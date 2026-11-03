@@ -6,7 +6,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// checkCredential ports the verify-credential-read arms: credential-path
+// checkCredential owns the verify-credential-read arms: credential-path
 // reads, env piped into the network, identity/recon substitution in
 // networked commands, and DNS-query substitution.
 func checkCredential(g *gateText) *core.RefusalError {
@@ -22,7 +22,7 @@ func checkCredential(g *gateText) *core.RefusalError {
 	return checkDNSSubst(g)
 }
 
-// checkCredPath ports the credential-path read arm.
+// checkCredPath owns the credential-path read arm.
 func checkCredPath(g *gateText) *core.RefusalError {
 	if frag := grepO(reCredPath, g.bare); frag != "" {
 		return refuse(codeCredential, frag, "credential-path read")
@@ -30,7 +30,7 @@ func checkCredPath(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkEnvPipe ports the env-piped-into-network arm.
+// checkEnvPipe owns the env-piped-into-network arm.
 func checkEnvPipe(g *gateText) *core.RefusalError {
 	if !reEnvWord.MatchString(g.bare) {
 		return nil
@@ -41,7 +41,7 @@ func checkEnvPipe(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkFetchSubst ports the env/recon/identity substitution arms inside
+// checkFetchSubst owns the env/recon/identity substitution arms inside
 // networked commands.
 func checkFetchSubst(g *gateText) *core.RefusalError {
 	if !reFetchWord.MatchString(g.bare) {
@@ -56,7 +56,7 @@ func checkFetchSubst(g *gateText) *core.RefusalError {
 	return checkReconSubst(g)
 }
 
-// checkReconSubst ports the recon-identity substitution and variable arms.
+// checkReconSubst owns the recon-identity substitution and variable arms.
 func checkReconSubst(g *gateText) *core.RefusalError {
 	if frag := grepO(reReconSubst, g.bare); frag != "" {
 		return refuse(codeCredential, frag, "identity/recon output embedded in a networked command exfils credentials")
@@ -75,7 +75,7 @@ func checkReconSubst(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkDNSSubst ports the DNS-query substitution arms.
+// checkDNSSubst owns the DNS-query substitution arms.
 func checkDNSSubst(g *gateText) *core.RefusalError {
 	if frag := grepO(reDNSSubst, g.bare); frag != "" {
 		return refuse(codeCredential, frag, "command substitution in a DNS query exfils through resolver labels")
@@ -86,7 +86,7 @@ func checkDNSSubst(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// Credential-class patterns, transliterated from the shell grep arms.
+// Credential-class patterns.
 var (
 	reCredPath   = regexp.MustCompile(`/\.(ssh|aws|gnupg|pki)|\.config/gh|/\.netrc|\.docker/config\.json`)
 	reEnvWord    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(env|printenv)([[:space:];|&]|$)`)

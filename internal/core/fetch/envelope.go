@@ -13,7 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// fetchTail ports fetch_tail: the human done/next lines plus the typed
+// fetchTail writes the human done/next lines plus the typed
 // data for the adapter's envelope. incBase is nullStr or the incremental
 // base SHA. The dump rides in Data.PromptDump for the adapter to own on
 // stdout (human mode) or in the envelope (JSON mode).
@@ -45,7 +45,7 @@ func fetchTail(
 	return data, next, nil
 }
 
-// writeFetchTailJSON ports the --json tail: the staged dump, the progress
+// writeFetchTailJSON owns the --json tail: the staged dump, the progress
 // lines, and the typed data for the adapter's envelope.
 func writeFetchTailJSON(
 	ctx2 *fetchRunCtx, f core.FetchFlags, budget *budgetState,
@@ -70,7 +70,7 @@ func writeFetchTailJSON(
 }
 
 // stageDump renders the prompt dump before progress, so a dump refusal
-// precedes the done/next lines like the shell's temp-file stage.
+// precedes the done/next lines.
 func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 	if !show {
 		return "", false, nil
@@ -82,7 +82,7 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 	return d, true, nil
 }
 
-// writeFetchDone ports the human done/next lines.
+// writeFetchDone owns the human done/next lines.
 func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
@@ -122,7 +122,7 @@ type fetchStats struct {
 }
 
 // readFetchStats reads the tail measurements, refusing fetch-failed when
-// the record is undecodable (the shell's jq dies here with no envelope —
+// the record is undecodable (no envelope can be built —
 // the typed refusal is the documented divergence).
 func readFetchStats(dir string) (fetchStats, error) {
 	var st fetchStats
@@ -158,8 +158,8 @@ func readFetchStats(dir string) (fetchStats, error) {
 	return st, nil
 }
 
-// envelopeNum ports `--argjson` for top-level stats: numbers pass, null
-// and false read 0, anything else fails the envelope like the shell's jq.
+// envelopeNum shapes one top-level stat field: numbers pass, null
+// and false read 0, and anything else refuses the envelope.
 func envelopeNum(v any) (any, bool) {
 	if v == nil || v == false {
 		return 0, true
@@ -194,7 +194,7 @@ func prPaths(m map[string]any) []string {
 	return out
 }
 
-// countHunkLines ports `{ grep '^@@' ...; } | wc -l`.
+// countHunkLines counts the `@@` hunk headers in the diff.
 func countHunkLines(fullDiff string) int {
 	sections := hunks.Files(readOptional(fullDiff))
 	n := 0
@@ -204,7 +204,7 @@ func countHunkLines(fullDiff string) int {
 	return n
 }
 
-// panelVal ports the envelope's panel summary.
+// panelVal owns the envelope's panel summary.
 func panelVal(ctx2 *fetchRunCtx) core.FetchPanel {
 	panel := core.FetchPanel{Members: append([]string{}, ctx2.panelList...)}
 	if ctx2.panelSrc != "" {
@@ -214,7 +214,7 @@ func panelVal(ctx2 *fetchRunCtx) core.FetchPanel {
 	return panel
 }
 
-// sensitiveVal ports the sensitive.txt artifact (path or null).
+// sensitiveVal owns the sensitive.txt artifact (path or null).
 func sensitiveVal(dir string) any {
 	if _, err := os.Stat(dir + "/sensitive.txt"); err == nil {
 		return dir + "/sensitive.txt"
@@ -267,7 +267,7 @@ func fetchData(
 	return data
 }
 
-// incrementalVal ports the incremental.diff artifact (path or null).
+// incrementalVal owns the incremental.diff artifact (path or null).
 func incrementalVal(dir, incBase string) any {
 	if incBase == nullStr {
 		return nil
@@ -275,9 +275,8 @@ func incrementalVal(dir, incBase string) any {
 	return dir + "/incremental.diff"
 }
 
-// statFiles ports the file-count read: an array counts, a missing or
-// null list reads zero, and a non-array list refuses (the shell's jq
-// shape gate).
+// statFiles owns the file-count read: an array counts, a missing or
+// null list reads zero, and a non-array list refuses (the shape gate).
 func statFiles(st *fetchStats, dir string, m map[string]any) error {
 	filesVal, hasFiles := m[keyFiles]
 	if arr, ok := filesVal.([]any); hasFiles && filesVal != nil && ok {
@@ -292,7 +291,7 @@ func statFiles(st *fetchStats, dir string, m map[string]any) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 }
 
-// addFetchExtras ports the conditional estimate/budget/cap/chunk keys.
+// addFetchExtras owns the conditional estimate/budget/cap/chunk keys.
 func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, chunkJSON any) {
 	if budget.hasBudget {
 		data.Estimate = budget.estimateJSON
@@ -319,7 +318,7 @@ func readDiffHunks(dir string) []string {
 	return out
 }
 
-// localFetchData ports the local envelope's data block.
+// localFetchData owns the local envelope's data block.
 func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, adds, dels int, dump *string) *core.FetchData {
 	dir := ctx2.dir
 	withHunks := readDiffHunks(dir)
@@ -347,8 +346,8 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 	}
 }
 
-// localArtifacts ports the local artifact map, adding the recall stores
-// only when present (fixed key order, like the shell's jq object).
+// localArtifacts owns the local artifact map, adding the recall stores
+// only when present (fixed key order).
 func localArtifacts(dir string) *jq.Obj {
 	artifacts := jq.NewObj(
 		"source.json", dir+"/source.json",
@@ -369,7 +368,7 @@ func addArtifactIfPresent(obj *jq.Obj, dir, key, suffix string) {
 	}
 }
 
-// fetchTailLocal ports the fetch-local tail: the typed data (carrying
+// fetchTailLocal owns the fetch-local tail: the typed data (carrying
 // kind instead of incremental_base) and the next step for the adapter to
 // render. Human lines already streamed from localFinish; the dump rides in
 // Data.PromptDump for the adapter to own on stdout (human mode) or in the

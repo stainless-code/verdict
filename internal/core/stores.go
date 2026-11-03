@@ -145,8 +145,8 @@ type Record struct { //nolint:govet // field order is the published property ord
 	ConfidenceRaw   any     `json:"-"`
 }
 
-// Wire renders one finding entry in wire order: the shell's jq construction
-// order for fresh entries (section entries carry kb after rationale, inline
+// Wire renders one finding entry in wire order: the fixed construction order
+// for fresh entries (section entries carry kb after rationale, inline
 // entries carry it after suggestion), then any unknown keys in file order.
 func (e *FindingEntry) Wire() *jq.Obj {
 	var o *jq.Obj
@@ -226,8 +226,8 @@ func (e *FindingEntry) wireInline() *jq.Obj {
 	)
 }
 
-// Wire renders one history event in wire order: the shell's jq construction
-// order for fresh events. Actor, note, and sha travel together (every coded
+// Wire renders one history event in wire order: the fixed construction order
+// for fresh events. Actor, note, and sha travel together (every coded
 // event sets all three; the reported event sets none), so any one present
 // emits all three, preserving an explicitly empty note.
 func (e *HistoryEvent) Wire() *jq.Obj {

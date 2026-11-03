@@ -167,7 +167,7 @@ func (st *state) countModes() int {
 	return modes
 }
 
-// runStatus ports `learn --status`: rules with precision, human or envelope.
+// runStatus renders `learn --status`: rules with precision, human or envelope.
 func (st *state) runStatus() *core.RefusalError {
 	rows, ref := st.readStatusRows()
 	if ref != nil {
@@ -221,7 +221,7 @@ func (st *state) printStatusRow(row any) {
 	)
 }
 
-// withPrecision ports the precision render: "n/a" when judged is the
+// withPrecision owns the precision render: "n/a" when judged is the
 // number 0 (jq's `== 0` is type-strict — a string "0" reads judged), else
 // "hits/judged" with `// 0` fallbacks.
 func withPrecision(row *jq.Obj) *jq.Obj {
@@ -234,7 +234,7 @@ func withPrecision(row *jq.Obj) *jq.Obj {
 	return row
 }
 
-// isNumberZero ports `(.judged // 0) == 0`: only the number 0 reads zero
+// isNumberZero reports whether a value is the number 0: absent or null
 // (null and missing fall back to 0 via `//`; every other value — including
 // the string "0" — reads judged).
 func isNumberZero(v any) bool {
@@ -269,7 +269,7 @@ func numOrZero(v any) string {
 	}
 }
 
-// runAppend ports the --rule append: validation, duplicate/id gates, then
+// runAppend owns the --rule append: validation, duplicate/id gates, then
 // the compact row write.
 func (st *state) runAppend() *core.RefusalError {
 	validated, ref := st.validateAppend()
@@ -390,7 +390,7 @@ func appendRowDoc(in *appendInput) *jq.Obj {
 	)
 }
 
-// runRetire ports `learn --retire`: the tombstone write with a reason.
+// runRetire applies `learn --retire`: the tombstone write with a reason.
 func (st *state) runRetire() *core.RefusalError {
 	id := st.req.Retire
 	if !kb.ValidID(id) {
@@ -416,7 +416,7 @@ func (st *state) runRetire() *core.RefusalError {
 	return nil
 }
 
-// runRestore ports `learn --restore`: reactivation with history kept.
+// runRestore applies `learn --restore`: reactivation with history kept.
 func (st *state) runRestore() *core.RefusalError {
 	id := st.req.Restore
 	if !kb.ValidID(id) {
@@ -456,7 +456,7 @@ func (st *state) loadVetoRow(id string) ([]*jq.Obj, *jq.Obj, *core.RefusalError)
 	return rows, cur, nil
 }
 
-// tombstoneRetire stamps the retire tombstone, mirroring the shell's jq map.
+// tombstoneRetire stamps the retire tombstone as one map write.
 func (st *state) tombstoneRetire(cur *jq.Obj) {
 	cur.Set(fieldStatus, statusRetired)
 	cur.Set(fieldRetiredAt, st.now)
@@ -531,9 +531,9 @@ func (st *state) corruptStore() *core.RefusalError {
 const (
 	// kbFile is the KB store path, mirroring $KB_FILE.
 	kbFile = reviewDir + "/kb.jsonl"
-	// reviewDir is the store directory, mirroring the shell's .review dir.
+	// reviewDir is the store directory (the bundle root).
 	reviewDir = ".review"
-	// reviewDirPerm mirrors the shell's mkdir mode for the store dir.
+	// reviewDirPerm is the mode the store dir is created with.
 	reviewDirPerm = 0o777
 	// reasonMin is the veto-reason floor (characters, like ${#}).
 	reasonMin = 30
@@ -601,7 +601,7 @@ const (
 )
 
 // Refusal and usage message formats. Split for the line-length gate; the
-// rendered bytes are byte-identical to the shell's.
+// rendered bytes are the contract.
 const (
 	msgCanceled        = "canceled before learn completed"
 	msgNeedOneMode     = "learn needs exactly one of --rule <text>, --status, --retire <id>, --restore <id>"

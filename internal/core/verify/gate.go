@@ -13,8 +13,8 @@ import (
 )
 
 // Check runs the pre-exec allowlist gate over the raw verifyCmd, returning
-// the typed refusal on the first hostile match and nil when clean. Arm
-// order mirrors the shell: mid-word substitution, command-position
+// the typed refusal on the first hostile match and nil when clean. The arm
+// order is fixed: mid-word substitution, command-position
 // substitution, glob/brace fragmentation, then destructive, credential, and
 // networked classes, then repo escape. The normalized texts are built once
 // and shared by every section.
@@ -44,7 +44,7 @@ func Check(raw string) *core.RefusalError {
 	return nil
 }
 
-// Gate refusal codes, mirroring the shell's fail() call sites.
+// Gate refusal codes, one per hostile arm.
 const (
 	codeDestructive = "verify-destructive"
 	codeNetworked   = "verify-networked"

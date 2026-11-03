@@ -275,7 +275,7 @@ func mustRead(path string) []byte {
 }
 
 // flipEntry applies the status flip plus the triage history event in place,
-// mirroring the shell's jq map (updated keys keep position, triagedAt/By
+// as one map write (updated keys keep position, triagedAt/By
 // append after history).
 func flipEntry(entries []any, sig, status, rationale, now string, credited []any) {
 	for _, e := range entries {

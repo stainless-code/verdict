@@ -11,10 +11,10 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// applyVerification ports the verification-gated flip: addressed requires
+// applyVerification owns the verification-gated flip: addressed requires
 // verification.json evidence with verdict VERIFIED and a matching resultHead.
-// A missing or unparsable verification.json means "no claims" (matching the
-// shell's silent skip); shapes are validated upfront.
+// A missing or unparsable verification.json means "no claims"; shapes are
+// validated upfront.
 func (st *state) applyVerification() error {
 	raw, err := readAgentFile(st.dir + "/verification.json")
 	if err != nil {
@@ -31,7 +31,7 @@ func (st *state) applyVerification() error {
 }
 
 // decodeVerifyClaims decodes verification.json claims: an unparsable or
-// non-list document reads as no claims (matching the shell's silent skip);
+// non-list document reads as no claims;
 // shapes are validated upfront, so non-objects here are unreachable.
 func decodeVerifyClaims(raw []byte) []*jq.Obj {
 	doc, err := jq.DecodeOrdered(raw)
@@ -51,7 +51,7 @@ func decodeVerifyClaims(raw []byte) []*jq.Obj {
 	return out
 }
 
-// applyVerificationClaim ports one verification.json claim: VERIFIED with a
+// applyVerificationClaim handles one verification.json claim: VERIFIED with a
 // matching resultHead flips to addressed (with KB credit); NOT VERIFIED
 // reopens addressed entries; anything else only logs a revalidation event.
 // Field rendering mirrors `jq -r` (pretty containers) via jq.R.
@@ -111,9 +111,8 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 			fieldNote, vcmd, fieldSHA, st.headShort,
 		)))
 	}
-	// The joins verb is the record verb itself ($cmd in the shell), never the
-	// verify command (C5). Dry runs stage nothing (the shell's kb_apply_credit
-	// calls sit behind the dryrun-filename guard), so flips stay credit-free.
+	// The joins verb is the record verb itself, never the verify command.
+	// Dry runs stage nothing, so flips stay credit-free.
 	if !st.dryRun {
 		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
@@ -146,7 +145,7 @@ func (st *state) recordRevalidation(target *jq.Obj, claim verifyClaim) {
 	)))
 }
 
-// checkVerifyContradiction ports the machine-verify contradiction warns: a
+// checkVerifyContradiction owns the machine-verify contradiction warns: a
 // VERIFIED claim that contradicts patch.json's exit lands loudly but the
 // flip stands.
 func (st *state) checkVerifyContradiction(full string) {
@@ -160,7 +159,7 @@ func (st *state) checkVerifyContradiction(full string) {
 	}
 }
 
-// applyTriage ports the triage[] claims: the unified {sig, status, rationale}
+// applyTriage owns the triage[] claims: the unified {sig, status, rationale}
 // shape. Unknown statuses refuse the run; unknown sigs and short rationales
 // warn and keep the prior status. One bad claim never fails. Shapes are
 // validated upfront; non-objects here are unreachable and skipped.
@@ -245,7 +244,7 @@ func isTriageStatus(s string) bool {
 
 // applyTriageFlip flips one resolved triage claim and credits addressed ones.
 // applyTriageFlip flips one resolved triage claim and credits addressed ones.
-// Dry runs stage nothing, mirroring the shell's dryrun-filename guard.
+// Dry runs stage nothing.
 func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim) {
 	target.Set(fieldStatus, claim.status)
 	target.Set("rationale", claim.reason)
@@ -293,8 +292,7 @@ func stampCredit(st *state, target *jq.Obj) {
 	last.Set("kb_credit", credited)
 }
 
-// hasPrefix reports whether s starts with prefix (byte-based, like the
-// shell's case pattern).
+// hasPrefix reports whether s starts with prefix (byte-based).
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// pageFileList ports audit 18 as structure: a file list arriving exactly
+// pageFileList fills in a truncated file list: a list arriving exactly
 // at the hosting CLI cap pages the provider's pull-request file listing
 // (up to the provider ceiling), and the bundle notes which ceiling
 // applied. Coverage inputs downstream read PR.json, so the paged list
@@ -140,7 +140,7 @@ func mapFileEntry(e any) any {
 }
 
 // setFileStatus keeps the provider status when it is a non-empty string,
-// rendering anything else through jq (the shell's `// empty` select).
+// rendering anything else through jq.
 func setFileStatus(obj *jq.Obj, m map[string]any) {
 	status, ok := m[keyStatus]
 	if !ok || status == nil {
@@ -168,7 +168,7 @@ func setFilePrevName(obj *jq.Obj, m map[string]any) {
 
 // objOrMap normalizes a decoded JSON value to a plain field map: plain
 // objects pass through, ordered objects flatten, and anything else reads
-// nil (the shell's object-selecting filters drop non-objects the same way).
+// nil.
 func objOrMap(e any) map[string]any {
 	if m, ok := e.(map[string]any); ok {
 		return m

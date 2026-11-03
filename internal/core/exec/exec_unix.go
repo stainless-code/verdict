@@ -32,7 +32,7 @@ func killGroup(cmd *osexec.Cmd) error {
 	return nil
 }
 
-// processAlive ports the poll liveness check: kill -0 succeeds and ps does
+// processAlive owns the poll liveness check: kill -0 succeeds and ps does
 // not report a zombie (a reaped-but-unwaited child reads alive under
 // kill -0; without the ps arm a fast exit could false-fire the timeout).
 func processAlive(ctx context.Context, cmd *osexec.Cmd) bool {
@@ -50,7 +50,7 @@ func processAlive(ctx context.Context, cmd *osexec.Cmd) bool {
 	return !strings.Contains(string(out), "Z")
 }
 
-// sweepOrphans ports the post-reap sweep: a parent that exits fast can leave
+// sweepOrphans owns the post-reap sweep: a parent that exits fast can leave
 // the tree running (decoy exit), which the poll loop never sees. If the
 // group outlives the parent, a grace period lets legitimate stragglers
 // finish; survivors are killed and reported.
@@ -75,7 +75,7 @@ func sweepOrphans(cmd *osexec.Cmd) bool {
 }
 
 // waitStatusOf extracts the wait status from an exit error, reporting the
-// signal and status the way the shell `wait` builtin does.
+// signal and status the way a shell `wait` builtin does.
 func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	ws, ok := exitErr.Sys().(syscall.WaitStatus)
 	if !ok {

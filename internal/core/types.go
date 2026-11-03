@@ -56,7 +56,7 @@ type FindingsCounts struct {
 
 // FindingItem is one ranked or merged finding locator. Raw is the ordered
 // store record (unknown keys included); the locator and rank are appended by
-// [FindingItem.Wire], matching the shell's jq merge order.
+// [FindingItem.Wire], matching the merge order.
 type FindingItem struct {
 	Raw      *jq.Obj `json:"-"`
 	Sig      string  `json:"sig"`
@@ -67,7 +67,7 @@ type FindingItem struct {
 }
 
 // Wire renders the item in wire order: the store record's keys first, then
-// locator and rank (the shell's clone-and-set order).
+// locator and rank.
 func (f *FindingItem) Wire() *jq.Obj {
 	if f.Raw == nil {
 		return jq.NewObj("locator", f.Locator, "rank", f.Rank)
@@ -157,7 +157,7 @@ type ReportCompleteness struct { //nolint:govet // field order is the published 
 }
 
 // ReportData is the report verb's typed --json data profile. Field order is
-// the shell's jq.NewObj insertion order; CostRaw carries the ordered rollup
+// the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
 type ReportData struct { //nolint:govet // field order is the published property order
 	GeneratedAt  string              `format:"date-time"            json:"generated_at"`
@@ -315,8 +315,8 @@ func fieldTag(field *reflect.StructField) (name string, skip, omit bool) {
 	return name, false, omit
 }
 
-// emptyValue ports encoding/json's omitempty test for the kinds wire shapes
-// use (pointers, interfaces, slices, maps, strings, bools, numbers).
+// emptyValue mirrors encoding/json's omitempty test for the kinds the wire
+// shapes use (pointers, interfaces, slices, maps, strings, bools, numbers).
 func emptyValue(rv reflect.Value) bool {
 	switch rv.Kind() {
 	case reflect.Pointer, reflect.Interface:
@@ -377,8 +377,8 @@ func StringValues(in []string) []any {
 	return out
 }
 
-// PrJSON ports `($p|tonumber? // null)`: a valid JSON number literal reads
-// as a number, everything else reads null.
+// PrJSON reads a PR positional: a valid JSON number literal reads as a
+// number, everything else reads null.
 func PrJSON(pr string) any {
 	if isJSONNumber(pr) {
 		return jq.Number(pr)

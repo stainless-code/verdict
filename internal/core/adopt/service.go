@@ -232,7 +232,7 @@ func adoptEntries(entries []any, shortSHA, now, from string, hs []hunks.Hunk) []
 	return entries
 }
 
-// anchorHolds ports the re-anchor loop: entries without a numeric path+line
+// anchorHolds owns the re-anchor loop: entries without a numeric path+line
 // keep their anchor; the rest hold only when a PR hunk covers the range on
 // the entry's side (LEFT reads OLD, else NEW).
 func anchorHolds(m *jq.Obj, hs []hunks.Hunk) bool {
@@ -316,7 +316,7 @@ func anchorKey(path string) string {
 }
 
 // numVal reads a JSON number as an int (decoded stores hold [json.Number];
-// the shell's arithmetic contexts only see validated digit strings).
+// the arithmetic paths only ever see validated digit strings).
 func numVal(v any) (int, bool) {
 	if n, ok := jq.IntOf(v); ok {
 		return n, true
@@ -375,7 +375,7 @@ func bundleProvider(dir string) string {
 	return providerGitHub
 }
 
-// ensureStore ports ensure_store: backfill the store marker when absent.
+// ensureStore backfills the store marker when absent.
 func ensureStore(dir string) error {
 	if readcommon.Exists(dir + storeSuffix) {
 		return nil
@@ -383,7 +383,7 @@ func ensureStore(dir string) error {
 	return atomic.WriteFile(dir+storeSuffix, []byte("{\n  \"schema_version\": \"1\"\n}\n"))
 }
 
-// ensureHunks ports ensure_hunks_snapshot: rebuild from full.diff when the
+// ensureHunks rebuilds the hunk index from full.diff when the
 // fetch-time snapshot is missing, warning that validation is best-effort.
 func (st *state) ensureHunks(dir string) *core.RefusalError {
 	if readcommon.Exists(dir + hunksSuffix) {

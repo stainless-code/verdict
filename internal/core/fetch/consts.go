@@ -1,8 +1,8 @@
 package fetchcore
 
-// Shared literals for the fetch port: jq wire keys, bundle path suffixes,
-// provider argv tokens, refusal codes, and numeric gates. The shell repeats
-// these inline; Go names them once (revive add-constant, goconst).
+// Shared literals for the fetch verbs: jq wire keys, bundle path suffixes,
+// provider argv tokens, refusal codes, and numeric gates, each named once so
+// no call site repeats a literal (revive add-constant, goconst).
 const (
 	// JSON wire keys (jq object fields).
 	keyAdds        = "adds"

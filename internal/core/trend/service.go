@@ -39,7 +39,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 
 // Data is the trend verb's --json data profile: the generated_at stamp,
 // the portfolio rollup keys, the per-bundle rows, the optional overlap
-// join, and the optional corpus measurement. Field order is the shell's
+// join, and the optional corpus measurement. Field order is the published
 // envelope construction order.
 type Data struct { //nolint:govet // field order is the published property order
 	GeneratedAt string
@@ -134,7 +134,7 @@ type row struct {
 	hasAt    bool
 }
 
-// collectRows ports the per-bundle scan: every .review/*/ carrying a
+// collectRows owns the per-bundle scan: every .review/*/ carrying a
 // findings array is one point in time; unreadable stores warn and skip,
 // never fail.
 func collectRows(st *state) []row {
@@ -155,7 +155,7 @@ func collectRows(st *state) []row {
 	return rows
 }
 
-// readBundleRow ports one bundle's read: non-dirs and unreadable or
+// readBundleRow handles one bundle's read: non-dirs and unreadable or
 // misshapen stores warn and skip.
 func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 	if !e.IsDir() {
@@ -197,7 +197,7 @@ func buildRow(bundle, name string, findings []any) row {
 	}
 }
 
-// bundleTime ports the bundle timestamp: post.json posted_at, else
+// bundleTime owns the bundle timestamp: post.json posted_at, else
 // record.json recorded_at, else undated.
 func bundleTime(bundle string) (string, bool) {
 	if isRegular(bundle + "post.json") {
@@ -213,7 +213,7 @@ func bundleTime(bundle string) (string, bool) {
 	return "", false
 }
 
-// bundleModels ports the per-bundle model list (unique, invalid reads []).
+// bundleModels owns the per-bundle model list (unique, invalid reads []).
 func bundleModels(bundle string) []any {
 	costs := readcommon.CostRecords(bundle)
 	if costs == nil {
@@ -260,7 +260,7 @@ func appendModelName(names []any, mm any) ([]any, bool) {
 	return append(names, name), true
 }
 
-// bundleEfforts ports the per-bundle effort list (unique, invalid reads []).
+// bundleEfforts owns the per-bundle effort list (unique, invalid reads []).
 func bundleEfforts(bundle string) []any {
 	costs := readcommon.CostRecords(bundle)
 	if costs == nil {
@@ -291,7 +291,7 @@ func appendTier(efforts []any, seen map[string]bool, tier string) []any {
 	return efforts
 }
 
-// bundleProvenance ports the per-bundle provenance triple: the post
+// bundleProvenance owns the per-bundle provenance triple: the post
 // receipt first, then the calibration record; old receipts read unmarked.
 func bundleProvenance(bundle string) *jq.Obj {
 	for _, rec := range []string{bundle + "post.json", bundle + "record.json"} {
@@ -356,7 +356,7 @@ func tierCounts(findings []any) map[string]int {
 	return counts
 }
 
-// tierOf ports the trend tier: the raw severity or untagged.
+// tierOf owns the trend tier: the raw severity or untagged.
 func tierOf(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {

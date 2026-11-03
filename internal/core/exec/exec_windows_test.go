@@ -15,7 +15,7 @@ import (
 
 // TestExecuteTimeoutKillsTree proves the Windows watchdog: a command that
 // ignores TERM and leaves a sleeping child behind is killed as a tree,
-// recording the shell's SIGKILL code with the timeout flag set (no decoy).
+// recording the SIGKILL wait code with the timeout flag set (no decoy).
 // The child reports its pid, so a parent-only kill cannot pass.
 func TestExecuteTimeoutKillsTree(t *testing.T) {
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "grandchild.pid"))

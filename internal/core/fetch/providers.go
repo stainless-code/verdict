@@ -46,7 +46,7 @@ func runProvider(
 	return fetchTail(ctx2, req, f, budget, &fc, chunkJSON, nullStr)
 }
 
-// providerCap ports the provider cap gate and hunk index write.
+// providerCap owns the provider cap gate and hunk index write.
 func providerCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
 	fc, ref := resolveFetchCap(r)
 	if ref != nil {
@@ -62,7 +62,7 @@ func providerCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error)
 	return fc, chunkActive, nil
 }
 
-// writeProviderBundle ports the shared bundle stores after the diff gates.
+// writeProviderBundle owns the shared bundle stores after the diff gates.
 func writeProviderBundle(ctx2 *fetchRunCtx) error {
 	r, dir := ctx2.runner, ctx2.dir
 	if err := writeProviderTOC(ctx2); err != nil {
@@ -129,7 +129,7 @@ func fetchGitLab(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest)
 	return writePRJSON(dir, "GitLab MR", pr, doc, normErr)
 }
 
-// gitlabReads ports the GitLab view and changes reads: the MR metadata, the
+// gitlabReads owns the GitLab view and changes reads: the MR metadata, the
 // diffs-or-changes payload (empty on total failure), and the project id the
 // thread read pages by.
 func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, changes, pid string, err error) {
@@ -158,8 +158,8 @@ func gitlabProjectID(ctx context.Context, r *session, repo string) (string, erro
 	return strings.TrimRight(pidRes.Stdout, newline), nil
 }
 
-// gitlabChanges ports the diffs-or-changes read: diffs first, then
-// changes, then the empty object the shell defaults to.
+// gitlabChanges owns the diffs-or-changes read: diffs first, then
+// changes, then an empty changes list.
 func gitlabChanges(ctx context.Context, r *session, _, pr, pid string) string {
 	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/diffs", flagPaginate); err == nil {
 		return res.Stdout
@@ -170,7 +170,7 @@ func gitlabChanges(ctx context.Context, r *session, _, pr, pid string) string {
 	return "{\"changes\":[]}\n"
 }
 
-// gitlabDiff ports the `glab mr diff` read with its raw flag.
+// gitlabDiff owns the `glab mr diff` read with its raw flag.
 func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
 	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", dir)
 	diffRes, err := r.cliFetch(ctx, binGlab, "mr", gitCmdDiff, pr, flagRepo, repo, "--raw")
@@ -186,7 +186,7 @@ func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
 	return nil
 }
 
-// gitlabDiffFail ports the failed-diff fork: the empty truncation lands
+// gitlabDiffFail owns the failed-diff fork: the empty truncation lands
 // first, then the typed refusal carries glab's excerpt.
 func gitlabDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
@@ -195,7 +195,7 @@ func gitlabDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: "glab mr diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
-// gitlabThreads ports the paged note-list read, the DiffNote split, and the
+// gitlabThreads owns the paged note-list read, the DiffNote split, and the
 // authoritative discussions read the feed is built from.
 func gitlabThreads(ctx context.Context, r *session, dir, pid, pr, head string) error {
 	notes, truncated := gitlabNotes(ctx, r, pid, pr)
@@ -233,9 +233,9 @@ func gitlabNotes(ctx context.Context, r *session, pid, pr string) (string, bool)
 	return body, err != nil || truncated
 }
 
-// splitGitLabNotes ports the DiffNote/non-DiffNote thread split. A scalar
-// element fails the shell's jq outright (both files read []); nulls and
-// objects split normally.
+// splitGitLabNotes splits DiffNote from non-DiffNote notes. A scalar
+// element fails the shape gate (both files read []); nulls and objects
+// split normally.
 func splitGitLabNotes(notes string) (inline, reviews any) {
 	list, ok := gitlabNoteList(notes)
 	if !ok {
@@ -258,9 +258,9 @@ func splitGitLabNotes(notes string) (inline, reviews any) {
 	return in, rev
 }
 
-// gitlabNoteList ports the note-list shape gate: arrays pass, maps read
+// gitlabNoteList owns the note-list shape gate: arrays pass, maps read
 // their notes (or discussions) member, and anything else — including a
-// scalar element, which fails the shell's jq the same way — reads failure.
+// scalar element — reads failure.
 func gitlabNoteList(notes string) ([]any, bool) {
 	doc, err := jq.Decode([]byte(notes))
 	if err != nil {
@@ -278,7 +278,7 @@ func gitlabNoteList(notes string) ([]any, bool) {
 	return nil, false
 }
 
-// gitlabNoteMember ports the notes-then-discussions envelope read.
+// gitlabNoteMember owns the notes-then-discussions envelope read.
 func gitlabNoteMember(m map[string]any) ([]any, bool) {
 	if n, has := m["notes"]; has {
 		return jq.Elements(n), true
@@ -289,8 +289,8 @@ func gitlabNoteMember(m map[string]any) ([]any, bool) {
 	return nil, false
 }
 
-// noteArrayValid ports the note-array shape gate: nulls and objects pass,
-// a scalar fails the shell's jq.
+// noteArrayValid gates the note-array shape: nulls and objects pass, a
+// scalar fails.
 func noteArrayValid(arr []any) bool {
 	for _, e := range arr {
 		if e == nil {
@@ -303,7 +303,7 @@ func noteArrayValid(arr []any) bool {
 	return true
 }
 
-// isDiffNote ports `.type == noteKindDiff or any(.notes[]?; .type ==
+// isDiffNote reads `.type == noteKindDiff or any(.notes[]?; .type ==
 // noteKindDiff)`.
 func isDiffNote(e any) bool {
 	m := objOrMap(e)
@@ -316,7 +316,7 @@ func isDiffNote(e any) bool {
 	return slices.ContainsFunc(jq.Elements(m["notes"]), noteTypeDiff)
 }
 
-// noteTypeDiff ports one nested note's type test (plain or ordered object).
+// noteTypeDiff handles one nested note's type test (plain or ordered object).
 func noteTypeDiff(n any) bool {
 	if nm, ok := n.(map[string]any); ok && jq.StrOf(nm["type"]) == noteKindDiff {
 		return true
@@ -329,7 +329,7 @@ func noteTypeDiff(n any) bool {
 	return false
 }
 
-// diffNumstatMap ports diff_numstat_map: `git apply --numstat` parsed into
+// diffNumstatMap parses `git apply --numstat` output into
 // a path → {adds, dels} map (rename/binary edges approximate; the API file
 // list stays authoritative).
 func diffNumstatMap(ctx context.Context, s *session, fullDiff string) map[string]map[string]int64 {
@@ -348,7 +348,7 @@ func diffNumstatMap(ctx context.Context, s *session, fullDiff string) map[string
 	return out
 }
 
-// numOrZero ports `($1=="-"||$1=="")?0:$1` with `tonumber? // 0`: a
+// numOrZero reads a count, mapping a dash or empty field to 0: a
 // plain-digit field parses, anything else (including an overflow) reads zero.
 func numOrZero(s string) int64 {
 	if s == "" || s == "-" {
@@ -394,7 +394,7 @@ func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	return writePRJSON(dir, "GitCafe PR", pr, doc, normErr)
 }
 
-// cafeMeta ports the `cafe pr view` read with its stderr sidecar.
+// cafeMeta owns the `cafe pr view` read with its stderr sidecar.
 func cafeMeta(ctx context.Context, r *session, dir, repo, pr string) (core.Result, error) {
 	metaRes, err := r.cliFetch(ctx, providerCafe, ghCmdPR, "view", pr, flagRepo, repo, flagJSON)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
@@ -407,7 +407,7 @@ func cafeMeta(ctx context.Context, r *session, dir, repo, pr string) (core.Resul
 	return metaRes, nil
 }
 
-// cafeDiff ports the `cafe pr diff` read: the joined full.diff lands,
+// cafeDiff owns the `cafe pr diff` read: the joined full.diff lands,
 // warning when structured hunks go unrendered or no hunks index.
 func cafeDiff(ctx context.Context, r *session, dir, repo, pr string) (core.Result, error) {
 	itemsRes, err := r.cliFetch(ctx, providerCafe, ghCmdPR, gitCmdDiff, pr, flagRepo, repo, "--patch", flagJSON)
@@ -459,7 +459,7 @@ func cafeCommentsPage(ctx context.Context, r *session, repo, pr string) func(str
 	}
 }
 
-// cafeItems ports the items normalization: arrays pass, envelopes read
+// cafeItems owns the items normalization: arrays pass, envelopes read
 // .data.items // .items, anything else reads empty.
 func cafeItems(stdout string) []any {
 	doc, err := jq.Decode([]byte(stdout))
@@ -477,7 +477,7 @@ func cafeItems(stdout string) []any {
 	return []any{}
 }
 
-// envelopeItems ports `.data.items // .items`: the first present member at
+// envelopeItems reads `.data.items // .items`: the first present member at
 // either depth.
 func envelopeItems(m map[string]any) ([]any, bool) {
 	if d, has := m[keyData]; has {
@@ -500,7 +500,7 @@ func itemList(v any) ([]any, bool) {
 	return nil, false
 }
 
-// cafeFullDiff ports the cafe full.diff join: one `diff --git` header per
+// cafeFullDiff owns the cafe full.diff join: one `diff --git` header per
 // file plus the patch when it carries hunks, joined without a trailing
 // newline.
 func cafeFullDiff(items []any) string {
@@ -522,7 +522,7 @@ func cafeFullDiff(items []any) string {
 	return strings.Join(parts, newline)
 }
 
-// cafeUnhandledHunks ports the structured-hunks count: patch without @@
+// cafeUnhandledHunks owns the structured-hunks count: patch without @@
 // but a non-null hunks field.
 func cafeUnhandledHunks(items []any) int {
 	n := 0
@@ -547,7 +547,7 @@ func patchOf(m map[string]any) string {
 	return ""
 }
 
-// hasHunkHeader ports `grep -q '^@@'` over the diff.
+// hasHunkHeader reports whether the diff carries a `@@` hunk header.
 func hasHunkHeader(diff string) bool {
 	for _, line := range splitLines(diff) {
 		if strings.HasPrefix(line, "@@") {
@@ -557,10 +557,10 @@ func hasHunkHeader(diff string) bool {
 	return false
 }
 
-// fetchCafePages ports the 20-page cursor loop: items accumulate across
+// fetchCafePages owns the 20-page cursor loop: items accumulate across
 // pages and render jq-pretty without a trailing newline (printf %s). A
 // failed call feeds '{}'; undecodable output breaks the loop leaving the
-// accumulator empty, like the shell's failed --argjson.
+// accumulator empty.
 func fetchCafePages(call func(cursor string) (core.Result, error)) string {
 	acc, ok := cafeAccumulate(call)
 	if !ok {
@@ -572,7 +572,7 @@ func fetchCafePages(call func(cursor string) (core.Result, error)) string {
 	return strings.TrimSuffix(jq.Pretty(plainAll(acc)), newline)
 }
 
-// cafeAccumulate ports the cursor walk; ok=false on an undecodable page.
+// cafeAccumulate owns the cursor walk; ok=false on an undecodable page.
 func cafeAccumulate(call func(cursor string) (core.Result, error)) ([]any, bool) {
 	var acc []any
 	cursor := ""
@@ -590,7 +590,7 @@ func cafeAccumulate(call func(cursor string) (core.Result, error)) ([]any, bool)
 	return acc, true
 }
 
-// cafePage ports one page read: a failed call feeds '{}'.
+// cafePage handles one page read: a failed call feeds '{}'.
 func cafePage(call func(cursor string) (core.Result, error), cursor string) string {
 	if res, err := call(cursor); err == nil {
 		return res.Stdout
@@ -598,7 +598,7 @@ func cafePage(call func(cursor string) (core.Result, error), cursor string) stri
 	return "{}"
 }
 
-// cafePageItems ports `jq '.data.items // .items // []'`: the page items,
+// cafePageItems reads `.data.items // .items // []`: the page items,
 // or ok=false when the page is not valid JSON.
 func cafePageItems(page string) ([]any, bool) {
 	doc, err := jq.Decode([]byte(page))
@@ -625,7 +625,7 @@ func plainAll(in []any) []any {
 	return out
 }
 
-// cafeCursor ports `jq -r '.data.next // .next // empty'`: the cursor, or
+// cafeCursor reads `.data.next // .next // empty`: the cursor, or
 // "" when absent.
 func cafeCursor(stdout string) string {
 	doc, err := jq.Decode([]byte(stdout))
@@ -642,7 +642,7 @@ func cafeCursor(stdout string) string {
 	return ""
 }
 
-// cursorNext ports `.data.next // .next // empty`.
+// cursorNext reads `.data.next // .next // empty`.
 func cursorNext(m map[string]any) (string, bool) {
 	if d, has := m[keyData]; has {
 		if dm, ok := jq.AsMap(d); ok {
@@ -654,7 +654,7 @@ func cursorNext(m map[string]any) (string, bool) {
 	return cafeNext(m)
 }
 
-// cafeNext ports the cursor-member read: a string passes through, any
+// cafeNext owns the cursor-member read: a string passes through, any
 // other non-null value renders, and a missing member reads absent.
 func cafeNext(m map[string]any) (string, bool) {
 	n, has := m["next"]
@@ -706,7 +706,7 @@ func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	return writePRJSON(dir, "Forgejo PR", pr, doc, normErr)
 }
 
-// forgejoAuth ports the host/token gate: both set, or a typed refusal
+// forgejoAuth owns the host/token gate: both set, or a typed refusal
 // naming the missing piece.
 func forgejoAuth(ctx2 *fetchRunCtx) (auth []string, api string, err error) {
 	return forgejoAuthFor(ctx2.env, ctx2.repo, ctx2.pr)
@@ -726,7 +726,7 @@ func forgejoAuthFor(env map[string]string, repo, pr string) (auth []string, api 
 	return []string{flagH, "Authorization: token " + token}, host + "/api/v1/repos/" + repo + "/pulls/" + pr, nil
 }
 
-// forgejoMeta ports the PR read with its stderr sidecar.
+// forgejoMeta owns the PR read with its stderr sidecar.
 func forgejoMeta(ctx context.Context, r *session, dir string, auth []string, api string) (core.Result, error) {
 	metaRes, err := r.curlFetch(ctx, curlArgs(auth, api)...)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
@@ -739,7 +739,7 @@ func forgejoMeta(ctx context.Context, r *session, dir string, auth []string, api
 	return metaRes, nil
 }
 
-// forgejoDiff ports the diff read: the .diff endpoint first, then the
+// forgejoDiff owns the diff read: the .diff endpoint first, then the
 // metadata diff_url fallback.
 func forgejoDiff(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
 	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", dir)
@@ -753,7 +753,7 @@ func forgejoDiff(ctx context.Context, r *session, dir string, auth []string, api
 	return nil
 }
 
-// forgejoDiffURL ports the diff_url read: the metadata fallback URL,
+// forgejoDiffURL owns the diff_url read: the metadata fallback URL,
 // empty when absent (curl then fails the same way).
 func forgejoDiffURL(metaStdout string) string {
 	doc, derr := jq.Decode([]byte(metaStdout))
@@ -774,7 +774,7 @@ func forgejoDiffURL(metaStdout string) string {
 	return ""
 }
 
-// forgejoDiffFallback ports the metadata-URL fallback with its stderr
+// forgejoDiffFallback owns the metadata-URL fallback with its stderr
 // sidecar and empty-diff truncation on total failure.
 func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
 	diffURL := forgejoDiffURL(metaStdout)
@@ -797,7 +797,7 @@ func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []str
 	return nil
 }
 
-// forgejoFiles ports the paged file-list read, defaulting to [] on failure.
+// forgejoFiles owns the paged file-list read, defaulting to [] on failure.
 func forgejoFiles(ctx context.Context, r *session, auth []string, api string) string {
 	return forgejoList(ctx, r, auth, api+"/files", "file list")
 }
@@ -828,7 +828,7 @@ func forgejoListRead(
 		})
 }
 
-// forgejoThreads ports the review-thread reads: reviews page fully and the
+// forgejoThreads owns the review-thread reads: reviews page fully and the
 // per-review comments concatenate, defaulting to [] (with a warning) on
 // failure.
 func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api, pr, meta string) error {
@@ -853,15 +853,15 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, 
 	return nil
 }
 
-// forgejoInline ports the per-review comments concat: each review id's
+// forgejoInline owns the per-review comments concat: each review id's
 // comments fetched and `jq -s 'add // []'`-merged (pretty, trailing
 // newline). complete=false when a piece failed to fetch or decode, so the
-// caller warns; undecodable reviews still merge to [] like the shell.
+// caller warns; undecodable reviews still merge to [].
 func forgejoInline(ctx context.Context, r *session, api string, auth []string, revs string) (string, bool) {
 	doc, err := jq.Decode([]byte(revs))
 	if err != nil {
 		// Undecodable revs feed no ids; the empty stream still merges
-		// to [], like the shell's `jq -s 'add // []'` over no input.
+		// to [].
 		return jq.Pretty([]any{}), true
 	}
 	var ids []string
@@ -876,7 +876,7 @@ func forgejoInline(ctx context.Context, r *session, api string, auth []string, r
 	return jq.Pretty(merged), complete
 }
 
-// forgejoItems ports the `.[]` read: array elements pass through and
+// forgejoItems owns the `.[]` read: array elements pass through and
 // object values iterate in sorted-key order, like jq.
 func forgejoItems(doc any) []any {
 	switch t := doc.(type) {
@@ -897,7 +897,7 @@ func forgejoItems(doc any) []any {
 	return nil
 }
 
-// forgejoCommentDocs ports the per-review comments concat: each review
+// forgejoCommentDocs owns the per-review comments concat: each review
 // id's comments decode and merge; complete=false when a read failed (the
 // other reviews' comments still merge), false-and-nil on garbage.
 func forgejoCommentDocs(ctx context.Context, r *session, api string, auth, ids []string) ([]any, bool) {
@@ -919,7 +919,7 @@ func forgejoCommentDocs(ctx context.Context, r *session, api string, auth, ids [
 	return docs, complete
 }
 
-// forgejoID ports `jq -r '.[].id'`: the review id rendered for the URL.
+// forgejoID renders a review id for the URL.
 func forgejoID(e any) string {
 	if m, ok := e.(map[string]any); ok {
 		if id, has := m[keyID]; has {
@@ -950,7 +950,7 @@ func jsonArrayOrEmpty(raw string) []any {
 	return arr
 }
 
-// forgejoState ports the state fold: merged wins, open/closed pass, and
+// forgejoState owns the state fold: merged wins, open/closed pass, and
 // anything else reads unknown.
 func forgejoState(meta map[string]any) string {
 	merged := false
@@ -968,7 +968,7 @@ func forgejoState(meta map[string]any) string {
 	}
 }
 
-// forgejoDraft ports the draft read: the member wins, else the WIP title
+// forgejoDraft owns the draft read: the member wins, else the WIP title
 // markers decide.
 func forgejoDraft(meta map[string]any) any {
 	draft := meta[keyDraft]
@@ -979,9 +979,8 @@ func forgejoDraft(meta map[string]any) any {
 	return draft
 }
 
-// mergeAdd ports `jq -s 'add // []'`: arrays concatenate across pieces;
-// an empty stream reads []. Anything else fails the filter (the shell
-// falls back to "[]"), because jq's add errors on mixed shapes.
+// mergeAdd concatenates arrays across pieces; an empty stream reads [].
+// Anything else fails the fold, because a mixed-shape add has no meaning.
 func mergeAdd(docs []any) (any, bool) {
 	if len(docs) == 0 {
 		return []any{}, true
@@ -1026,7 +1025,7 @@ func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchReque
 	return writePRJSON(dir, "Bitbucket PR", pr, doc, normErr)
 }
 
-// bitbucketAuth ports the token/user-password gate.
+// bitbucketAuth owns the token/user-password gate.
 func bitbucketAuth(ctx2 *fetchRunCtx) ([]string, *core.RefusalError) {
 	return bitbucketAuthFor(ctx2.env)
 }
@@ -1050,7 +1049,7 @@ func bitbucketAuthFor(env map[string]string) ([]string, *core.RefusalError) {
 	}
 }
 
-// bitbucketMeta ports the PR read with its stderr sidecar.
+// bitbucketMeta owns the PR read with its stderr sidecar.
 func bitbucketMeta(ctx context.Context, r *session, dir string, auth []string, base string) (string, *core.RefusalError) {
 	metaRes, err := r.curlFetch(ctx, append(append([]string{flagCurlFail}, auth...), base)...)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
@@ -1063,7 +1062,7 @@ func bitbucketMeta(ctx context.Context, r *session, dir string, auth []string, b
 	return metaRes.Stdout, nil
 }
 
-// bitbucketDiff ports the diff read: stderr sidecar, empty truncation, and
+// bitbucketDiff owns the diff read: stderr sidecar, empty truncation, and
 // the full.diff write.
 func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, base string) *core.RefusalError {
 	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", dir)
@@ -1083,7 +1082,7 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, b
 	return nil
 }
 
-// bitbucketThreads ports the diffstat/comments reads and the split writes,
+// bitbucketThreads owns the diffstat/comments reads and the split writes,
 // returning the diffstat entries for normalization.
 func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base, pr, head string) ([]any, *core.RefusalError) {
 	ds, _, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
@@ -1108,7 +1107,7 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 	return ds, nil
 }
 
-// bitbucketPages ports the pagelen loop: `curl -sfL` pages decoded with
+// bitbucketPages owns the pagelen loop: `curl -sfL` pages decoded with
 // `.values // []`, concatenated; failed pages feed '{}' and `.next // empty`
 // ends the walk. Each server-supplied `next` stays on the API origin (the
 // bearer rides every page) and the walk is capped.
@@ -1161,7 +1160,7 @@ func bitbucketPage(ctx context.Context, r *session, auth []string, u string) (ma
 	return m, true
 }
 
-// bitbucketNext ports `.next // empty` over a decoded page.
+// bitbucketNext reads `.next // empty` from a decoded page.
 func bitbucketNext(m map[string]any) string {
 	if next, has := m["next"]; has && next != nil {
 		if s := jq.R(next); s != nullStr {
@@ -1171,8 +1170,8 @@ func bitbucketNext(m map[string]any) string {
 	return ""
 }
 
-// splitBitbucketComments ports the inline/non-inline comment split. A
-// scalar element fails the shell's jq outright (both files read []).
+// splitBitbucketComments splits inline from non-inline comments. A scalar
+// element fails the shape gate (both files read []).
 func splitBitbucketComments(cm []any) (inline, reviews []any) {
 	if !noteObjectsValid(cm) {
 		return []any{}, []any{}
@@ -1194,8 +1193,8 @@ func splitBitbucketComments(cm []any) (inline, reviews []any) {
 	return in, rev
 }
 
-// noteObjectsValid ports the element shape gate: a non-object element
-// fails the shell's jq the same way, reading both files empty.
+// noteObjectsValid gates the element shape: a non-object element reads
+// both files empty.
 func noteObjectsValid(list []any) bool {
 	for _, e := range list {
 		if e == nil {
@@ -1212,7 +1211,7 @@ func noteObjectsValid(list []any) bool {
 	return true
 }
 
-// bitbucketInline ports the inline-thread test: an `inline` member set.
+// bitbucketInline owns the inline-thread test: an `inline` member set.
 func bitbucketInline(e any) bool {
 	m := objOrMap(e)
 	if m == nil {
@@ -1259,7 +1258,7 @@ func fetchAzure(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) 
 	return writePRJSON(dir, "Azure PR", pr, doc, normErr)
 }
 
-// azureSetup ports the Azure preamble: org gate, metadata read,
+// azureSetup owns the Azure preamble: org gate, metadata read,
 // merge-ref gate, and token resolution.
 func azureSetup(ctx context.Context, ctx2 *fetchRunCtx, repo, pr string) (azureConn, error) {
 	r, dir := ctx2.runner, ctx2.dir
@@ -1299,13 +1298,13 @@ func azureSetup(ctx context.Context, ctx2 *fetchRunCtx, repo, pr string) (azureC
 	return azureConn{org: org, project: project, rname: rname, tok: tok, meta: metaRes.Stdout}, nil
 }
 
-// azureMergeMissing ports the merge-ref gate: all three present, or the
+// azureMergeMissing owns the merge-ref gate: all three present, or the
 // PR has nothing to fetch.
 func azureMergeMissing(remote, hs, bs string) bool {
 	return remote == "" || hs == "" || bs == ""
 }
 
-// azureToken ports the token resolution: the PAT env wins, else the az
+// azureToken owns the token resolution: the PAT env wins, else the az
 // login token, else a typed refusal.
 func azureToken(ctx context.Context, r *session, ctx2 *fetchRunCtx) (string, error) {
 	tok, _ := ctx2.env["AZURE_DEVOPS_EXT_PAT"]
@@ -1323,7 +1322,7 @@ func azureToken(ctx context.Context, r *session, ctx2 *fetchRunCtx) (string, err
 	return tok, nil
 }
 
-// azureCloneInit ports the temp clone setup: init plus the Basic-auth
+// azureCloneInit owns the temp clone setup: init plus the Basic-auth
 // config header, failing typed when the clone cannot start.
 func azureCloneInit(ctx context.Context, r *session) (string, error) {
 	tmp, err := os.MkdirTemp("", "verdict-azure")
@@ -1338,7 +1337,7 @@ func azureCloneInit(ctx context.Context, r *session) (string, error) {
 	return tmp, nil
 }
 
-// azureCloneAuth ports the clone auth header: the PAT as a Basic header
+// azureCloneAuth owns the clone auth header: the PAT as a Basic header
 // appended to the temp clone config.
 func azureCloneAuth(tmp, tok string) error {
 	enc := base64Token(tok)
@@ -1354,7 +1353,7 @@ func azureCloneAuth(tmp, tok string) error {
 	return nil
 }
 
-// azureCloneDiff ports the clone fetch and diff: the remote heads land,
+// azureCloneDiff owns the clone fetch and diff: the remote heads land,
 // then the merge-base diff becomes full.diff.
 func azureCloneDiff(ctx context.Context, r *session, dir, tmp string, conn *azureConn) error {
 	if err := azureCloneAuth(tmp, conn.tok); err != nil {
@@ -1378,7 +1377,7 @@ func azureCloneDiff(ctx context.Context, r *session, dir, tmp string, conn *azur
 	return nil
 }
 
-// azureDiffFail ports the failed-diff fork: the empty truncation lands
+// azureDiffFail owns the failed-diff fork: the empty truncation lands
 // first, then the typed refusal.
 func azureDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
@@ -1397,7 +1396,7 @@ func azureAPI(org, project, rname, pr, path, query, format string) []string {
 	}
 }
 
-// azureThreads ports the thread read and split: threads land as inline
+// azureThreads owns the thread read and split: threads land as inline
 // and review files, with a warning when the read fails.
 func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, pr string) error {
 	raw := emptyJSONArray
@@ -1423,7 +1422,7 @@ func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, 
 	return nil
 }
 
-// azureChanges ports the paged iteration-changes read: the latest iteration
+// azureChanges owns the paged iteration-changes read: the latest iteration
 // id selects the change entries (`$top`/`$skip`, stop on a short page),
 // defaulting to [] (with a warning) on a failed page or at the page cap.
 func azureChanges(ctx context.Context, r *session, conn *azureConn, pr string) string {
@@ -1478,7 +1477,7 @@ func azureChangePage(
 	return list, strconv.Itoa(skip + azureChangePageSize), nil
 }
 
-// azureMergeRef ports the merge-commit/remote read: empty when absent.
+// azureMergeRef owns the merge-commit/remote read: empty when absent.
 func azureMergeRef(meta string) (remote, hs, bs string) {
 	doc, err := jq.Decode([]byte(meta))
 	if err != nil {
@@ -1511,13 +1510,13 @@ func nestedStr(m map[string]any, outer, inner string) string {
 	return ""
 }
 
-// base64Token ports `printf ':%s' | base64 | tr -d '\n'`.
+// base64Token encodes ":token" as one unpadded base64 line.
 func base64Token(tok string) string {
 	return base64.StdEncoding.EncodeToString([]byte(":" + tok))
 }
 
-// splitAzureThreads ports the threadContext split (null reads the reviews
-// file). A scalar element fails the shell's jq outright (both read []).
+// splitAzureThreads owns the threadContext split (null reads the reviews
+// file). A scalar element fails the shape gate (both read []).
 func splitAzureThreads(raw string) (inline, reviews []any) {
 	doc, err := jq.Decode([]byte(raw))
 	if err != nil {
@@ -1544,7 +1543,7 @@ func splitAzureThreads(raw string) (inline, reviews []any) {
 	return in, rev
 }
 
-// azureInline ports the inline-thread test: a `threadContext` member set.
+// azureInline owns the inline-thread test: a `threadContext` member set.
 func azureInline(e any) bool {
 	m := objOrMap(e)
 	if m == nil {
@@ -1554,7 +1553,7 @@ func azureInline(e any) bool {
 	return ok && v != nil
 }
 
-// writePRJSON ports the `normalize_* > PR.json` step: the normalized
+// writePRJSON owns the `normalize_* > PR.json` step: the normalized
 // record rendered jq-pretty with a trailing newline. A normalization
 // failure refuses fetch-failed, naming the PR (or MR for GitLab).
 func writePRJSON(dir, kind, pr string, doc *jq.Obj, err error) error {
@@ -1567,7 +1566,7 @@ func writePRJSON(dir, kind, pr string, doc *jq.Obj, err error) error {
 	return nil
 }
 
-// writeProviderTOC ports the provider write_toc_roles call.
+// writeProviderTOC owns the provider write_toc_roles call.
 func writeProviderTOC(ctx2 *fetchRunCtx) error {
 	total, statLines := providerStat(ctx2.dir + suffixPRJSON)
 	withHunks, derr := diffFiles(ctx2.dir+suffixFullDiff, ctx2.dir)
@@ -1600,7 +1599,7 @@ func providerName(dir string) string {
 	return providerGitHub
 }
 
-// providerStat ports the provider stat block: total plus the
+// providerStat owns the provider stat block: total plus the
 // `path (+adds/-dels)` lines with `// 0` defaults.
 func providerStat(prJSON string) (string, []string) {
 	total := "?"
@@ -1646,7 +1645,7 @@ func numOrEmpty(v any) any {
 	}
 }
 
-// writeTocRoles ports write_toc_roles with an explicit title line: the
+// writeTocRoles writes the TOC and roles with an explicit title line: the
 // diff header index, the stat block, and the coverage manifest, then the
 // roles file with the `» roles` notice.
 func writeTocRoles(ctx2 *fetchRunCtx, title, total string, statLines []string, withHunks, omitted []string) error {
@@ -1678,8 +1677,7 @@ func writeTocRoles(ctx2 *fetchRunCtx, title, total string, statLines []string, w
 	return nil
 }
 
-// normDoc decodes a normalizer input, refusing fetch-failed on garbage
-// (the shell's normalize jq fails the same way).
+// normDoc decodes a normalizer input, refusing fetch-failed on garbage.
 func normDoc(raw string) (map[string]any, error) {
 	doc, err := jq.Decode([]byte(raw))
 	if err != nil {
@@ -1693,7 +1691,7 @@ func normDoc(raw string) (map[string]any, error) {
 }
 
 // normStr reads a string field with fallbacks ("" when absent or
-// non-string; the shell keeps exotic scalars, but hosts send strings).
+// non-string; hosts send strings, so exotic scalars read empty).
 func normStr(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if v, has := m[k]; has {
@@ -1799,8 +1797,8 @@ func prFileRow(path string, status, additions, deletions any) *jq.Obj {
 		keyAdditions, additions, keyDeletions, deletions)
 }
 
-// fileRows normalizes a provider file list: non-object entries drop (the
-// shell's object filter) and an empty list stays [].
+// fileRows normalizes a provider file list: non-object entries drop and an
+// empty list stays [].
 func fileRows(entries []any, row func(map[string]any) *jq.Obj) []any {
 	files := make([]any, 0, len(entries))
 	for _, e := range entries {
@@ -1828,7 +1826,7 @@ var providerStates = map[string]map[string]string{
 }
 
 // providerState folds a provider's wire state through providerStates; an
-// unknown state reads "unknown" like the shell's fallback.
+// unknown state reads "unknown".
 func providerState(provider, state string) string {
 	if mapped, ok := providerStates[provider][state]; ok {
 		return mapped
@@ -1845,7 +1843,7 @@ func statusOrModified(v any) any {
 	return v
 }
 
-// normalizeGitLab ports normalize_gitlab.
+// normalizeGitLab folds the GitLab reads into the shared PR shape.
 func normalizeGitLab(metaRaw, changesRaw string, ns map[string]map[string]int64) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
@@ -1887,7 +1885,7 @@ func gitlabFileRows(changesRaw string, ns map[string]map[string]int64) []any {
 	})
 }
 
-// gitlabFileRow ports one normalized file row: path, status, and the
+// gitlabFileRow handles one normalized file row: path, status, and the
 // numstat counts keyed by new (then old) path.
 func gitlabFileRow(fm map[string]any, ns map[string]map[string]int64) *jq.Obj {
 	newPath := strOrEmpty(fm, "new_path")
@@ -1914,7 +1912,7 @@ func gitlabFileRow(fm map[string]any, ns map[string]map[string]int64) *jq.Obj {
 	return prFileRow(path, status, adds, dels)
 }
 
-// strOrEmpty reads a string field, defaulting to "" (the shell's `// ""`).
+// strOrEmpty reads a string field, defaulting to "".
 func strOrEmpty(m map[string]any, key string) string {
 	if s, ok := m[key].(string); ok {
 		return s
@@ -1922,7 +1920,7 @@ func strOrEmpty(m map[string]any, key string) string {
 	return ""
 }
 
-// firstPresent ports `a // b` for values (null/missing/false fall
+// firstPresent reads `a // b` for values (null/missing/false fall
 // through, matching the record port's Alt).
 func firstPresent(vals ...any) any {
 	for _, v := range vals {
@@ -1933,7 +1931,7 @@ func firstPresent(vals ...any) any {
 	return nil
 }
 
-// normalizeGitCafe ports normalize_gitcafe.
+// normalizeGitCafe folds the Git Cafe reads into the shared PR shape.
 func normalizeGitCafe(metaRaw, itemsRaw string) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
@@ -1951,7 +1949,7 @@ func normalizeGitCafe(metaRaw, itemsRaw string) (*jq.Obj, error) {
 	}), nil
 }
 
-// cafeItemsList ports the items shape gate: arrays pass, maps read
+// cafeItemsList owns the items shape gate: arrays pass, maps read
 // .data.items (even when empty) then the top .items member, and anything
 // else reads empty.
 func cafeItemsList(itemsRaw string) []any {
@@ -1975,7 +1973,7 @@ func cafeItemsList(itemsRaw string) []any {
 	return []any{}
 }
 
-// cafeResource ports the resource shape gate: .data (or .data.resource)
+// cafeResource owns the resource shape gate: .data (or .data.resource)
 // unwraps to the record, else the top object wins.
 func cafeResource(meta map[string]any) map[string]any {
 	res := nestedMap(meta, keyData)
@@ -1993,7 +1991,7 @@ func cafeResource(meta map[string]any) map[string]any {
 	return res
 }
 
-// cafeAuthor ports the author handle chain: the resource's handle-ish fields
+// cafeAuthor owns the author handle chain: the resource's handle-ish fields
 // first, then the nested author object.
 func cafeAuthor(res map[string]any) string {
 	for _, m := range []map[string]any{res, objOrMap(res[keyAuthor])} {
@@ -2006,7 +2004,7 @@ func cafeAuthor(res map[string]any) string {
 	return ""
 }
 
-// cafeURL ports `($m.data.url // $r.url // null)`.
+// cafeURL reads `$m.data.url // $r.url // null`.
 func cafeURL(meta, res map[string]any) any {
 	if d, ok := meta[keyData].(map[string]any); ok && d[keyURL] != nil {
 		return d[keyURL]
@@ -2014,7 +2012,7 @@ func cafeURL(meta, res map[string]any) any {
 	return res[keyURL]
 }
 
-// normalizeForgejo ports normalize_forgejo.
+// normalizeForgejo folds the Forgejo reads into the shared PR shape.
 func normalizeForgejo(metaRaw, filesRaw string) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
@@ -2038,7 +2036,7 @@ func entryFileRow(m map[string]any, pathKey string) *jq.Obj {
 		numOrEmpty(m[keyAdditions]), numOrEmpty(m[keyDeletions]))
 }
 
-// normalizeBitbucket ports normalize_bitbucket.
+// normalizeBitbucket folds the Bitbucket reads into the shared PR shape.
 func normalizeBitbucket(metaRaw string, ds []any) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
@@ -2054,8 +2052,8 @@ func normalizeBitbucket(metaRaw string, ds []any) (*jq.Obj, error) {
 		Title: normStr(meta, keyTitle), Body: body,
 		BaseRef: normStr(nestedMap(dest, modeBranch), "name"), HeadRef: normStr(nestedMap(src, modeBranch), "name"),
 		BaseSHA: normStr(nestedMap(dest, "commit"), "hash"), HeadSHA: normStr(nestedMap(src, "commit"), "hash"),
-		// The shell's `//` chain stops at the first string (even ""), so
-		// nickname is authoritative and display_name never wins.
+		// The key chain stops at the first string (even ""), so nickname is
+		// authoritative and display_name never wins.
 		Author: normStr(nestedMap(meta, keyAuthor), "nickname"),
 		URL:    normStr(nestedMap(nestedMap(meta, "links"), "html"), "href"),
 		State:  providerState(providerBitbucket, normStr(meta, keyState)),
@@ -2074,7 +2072,7 @@ func bitbucketFileRow(m map[string]any) *jq.Obj {
 		numOrEmpty(m["lines_added"]), numOrEmpty(m["lines_removed"]))
 }
 
-// normalizeAzure ports normalize_azure.
+// normalizeAzure folds the Azure reads into the shared PR shape.
 func normalizeAzure(metaRaw, changesRaw string, ns map[string]map[string]int64) (*jq.Obj, error) {
 	meta, err := normDoc(metaRaw)
 	if err != nil {
@@ -2088,16 +2086,16 @@ func normalizeAzure(metaRaw, changesRaw string, ns map[string]map[string]int64) 
 		HeadRef: strings.TrimPrefix(normStr(meta, "sourceRefName"), "refs/heads/"),
 		BaseSHA: normStr(nestedMap(meta, "lastMergeTargetCommit"), keyCommitID),
 		HeadSHA: normStr(nestedMap(meta, "lastMergeSourceCommit"), keyCommitID),
-		// The shell's `//` chain stops at the first string (even ""), so
-		// uniqueName is authoritative and displayName never wins.
+		// The key chain stops at the first string (even ""), so uniqueName is
+		// authoritative and displayName never wins.
 		Author: normStr(nestedMap(meta, "createdBy"), "uniqueName"), URL: normStr(meta, keyURL),
 		State: providerState(providerAzure, normStr(meta, keyStatus)),
 		Draft: meta["isDraft"], Files: files,
 	}), nil
 }
 
-// azureFileRow ports one change entry: item.path with numstat counts; a
-// null changeType stays null (the shell preserves it).
+// azureFileRow handles one change entry: item.path with numstat counts; a
+// null changeType stays null.
 func azureFileRow(m map[string]any, ns map[string]map[string]int64) *jq.Obj {
 	p := strings.TrimPrefix(normStr(nestedMap(m, "item"), keyPath), pathSep)
 	var adds, dels int64

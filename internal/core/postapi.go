@@ -96,7 +96,7 @@ type Post struct { //nolint:govet // field order is the published property order
 }
 
 // Wire renders the post data object in wire order. The dry-run wire swaps
-// confidence/security before items (the shell's jq construction order);
+// confidence/security before items (the published order);
 // the real-post wire carries items before confidence plus the accepted
 // review before provenance. ItemsRaw wins over the typed items so the
 // envelope re-emits the ordered summaries verbatim; ReviewRaw wins over the

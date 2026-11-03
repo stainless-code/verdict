@@ -82,7 +82,7 @@ type liveState struct {
 	open   int
 }
 
-// live statuses, mirroring the shell's live_status values.
+// live statuses (the values the live-thread read reports).
 const (
 	liveUnset         = "unset"
 	liveFail          = "fail"
@@ -114,7 +114,7 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	return buildResponse(st), nil
 }
 
-// normalizeFlags applies the shell's flag defaults to a resolved request.
+// normalizeFlags applies the flag defaults to a resolved request.
 func normalizeFlags(req *core.ReportRequest) Flags {
 	flags := req.Flags
 	flags.Status = orDefault(flags.Status, statusAll)
@@ -187,7 +187,7 @@ func loadRefusal(err error) *core.RefusalError {
 }
 
 // loadStateCost fills the cost rollup when --cost is set, warning on
-// partial receipts like the shell's cost_rollup warns.
+// partial receipts.
 func loadStateCost(st *state) {
 	if !st.flags.Cost {
 		return
@@ -209,7 +209,7 @@ func loadStateCompleteness(st *state) {
 	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA)
 }
 
-// storeCounts ports the counts object over the whole findings store.
+// storeCounts owns the counts object over the whole findings store.
 func storeCounts(entries []any) core.ReportCounts {
 	return core.ReportCounts{
 		Inline:     countKind(entries, kindInline),
@@ -291,10 +291,9 @@ func bundlePanel(dir string) ([]any, string) {
 }
 
 // bundlePatch reads the patch record; the caller checks isRegular first, so
-// a missing store never reaches here. R1: an unreadable patch store refuses
+// a missing store never reaches here. An unreadable patch store refuses
 // typed corrupt-store instead of dying in the envelope jq. The record
-// decodes ordered: the envelope re-emits it in file key order like the
-// shell's --argjson passthrough (R2).
+// decodes ordered: the envelope re-emits it in file key order.
 func bundlePatch(dir string) (any, *core.RefusalError) {
 	raw, err := readFile(dir + patchSuffix)
 	if err != nil {

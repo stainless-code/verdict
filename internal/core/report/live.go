@@ -27,7 +27,7 @@ func isRegular(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// runLiveProbe ports the live-thread probe: the network-backed first half
+// runLiveProbe owns the live-thread probe: the network-backed first half
 // of the gate's third dimension. Advisory runs (no gate flag) skip it with
 // zero network; --live skip warns and stays neutral; structural skips
 // (local bundles, non-GitHub providers) warn neutral; unreachable lookups
@@ -114,7 +114,7 @@ func probeUnreachable(st *state, stderr string) {
 	st.live.status = liveUnknown
 }
 
-// firstLine ports `head -c 120 | tr '\n' ' '`: the first 120 bytes with
+// firstLine renders the first 120 bytes with newlines as spaces,
 // newlines flattened to spaces.
 func firstLine(s string) string {
 	if len(s) > errHeadBytes {
@@ -128,8 +128,8 @@ const errHeadBytes = 120
 
 // writeErrFile stages owner-only probe stderr beside the bundle through the
 // shared atomic path (removed after the probe either way, so readers stay
-// side-effect free). The write is best-effort like the shell's 2>
-// redirect, so a failure warns instead of refusing: the file is a debug
+// side-effect free). The write is best-effort — a failure warns instead of
+// refusing — because the file is a debug
 // side channel and the run must not fail over garnish.
 func writeErrFile(st *state, path, stderr string) {
 	if err := atomic.WriteErrSidecar(path, []byte(stderr)); err != nil {
@@ -143,7 +143,7 @@ func removeErrFile(path string) {
 	_ = os.Remove(path)
 }
 
-// completeness ports the HEAD-reviewed dimension: pass iff a completed post
+// completeness owns the HEAD-reviewed dimension: pass iff a completed post
 // record exists, parses, and carries the fetched HEAD. Stays nil without
 // the flag.
 func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) {
@@ -163,7 +163,7 @@ func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) 
 	return comp, reviewed, posted
 }
 
-// refetchCommand ports the re-fetch recovery command for the gate tail.
+// refetchCommand owns the re-fetch recovery command for the gate tail.
 func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	prov := ""
 	if isRegular(dir + "/PR.json") {

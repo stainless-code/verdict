@@ -24,7 +24,7 @@ type chunkEntry struct {
 	estSize int64
 }
 
-// maybeWriteChunks ports maybe_write_chunks: greedy next-fit packing of
+// maybeWriteChunks plans the greedy next-fit packing of
 // the diff-order file table into cap-sized chunks, per-chunk diff slices
 // concatenating byte-identically to full.diff, per-chunk checklists and
 // roles, and the versioned manifest. The chunked notice owns stderr in
@@ -58,7 +58,7 @@ func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive b
 	return writeChunkManifest(human, dir, plan, maxBytes, total, n, headSHA, baseSHA, capSrc)
 }
 
-// slicePlan ports the plan slice with its typed failure: a missing chunk
+// slicePlan owns the plan slice with its typed failure: a missing chunk
 // diff refuses chunk-write-failed, anything else passes through.
 func slicePlan(fullDiff, cdir string, plan []chunkEntry) error {
 	if serr := sliceChunks(fullDiff, cdir, plan); serr != nil {
@@ -72,7 +72,7 @@ func slicePlan(fullDiff, cdir string, plan []chunkEntry) error {
 	return nil
 }
 
-// writeChunkManifest ports the manifest write: the versioned JSON lands
+// writeChunkManifest owns the manifest write: the versioned JSON lands
 // and the chunked notice owns stderr.
 func writeChunkManifest(
 	human io.Writer, dir string, plan []chunkEntry, maxBytes, total int64,
@@ -107,7 +107,7 @@ func writeChunkManifest(
 	return jq.NewObj("count", n, "manifest", dir+suffixChunkManifest, "total_bytes", total), nil
 }
 
-// packChunks ports the greedy next-fit pack in diff order: seal the chunk
+// packChunks owns the greedy next-fit pack in diff order: seal the chunk
 // when the next file would not fit. Deterministic: the same diff bytes
 // always yield the same chunk map.
 func packChunks(table []fileSlice, maxBytes int64) []chunkEntry {
@@ -128,7 +128,7 @@ func packChunks(table []fileSlice, maxBytes int64) []chunkEntry {
 	return plan
 }
 
-// sliceChunks ports the awk slice: contiguous file runs in diff order,
+// sliceChunks owns the awk slice: contiguous file runs in diff order,
 // each output line newline-terminated (awk print semantics, so a final
 // unterminated source line gains its newline in the chunk).
 func sliceChunks(fullDiff, cdir string, plan []chunkEntry) error {
@@ -157,7 +157,7 @@ func chunkIndex(plan []chunkEntry) map[string]int {
 	return chunkOf
 }
 
-// sliceLines ports the awk slice: diff lines dealt into per-chunk runs,
+// sliceLines owns the awk slice: diff lines dealt into per-chunk runs,
 // switching runs on header lines the plan knows. It stays line-based (not
 // section-based) so pre-header lines keep their chunk.
 func sliceLines(raw string, chunkOf map[string]int, n int) [][]string {
@@ -200,7 +200,7 @@ type chunkWriteError struct {
 // Error implements error.
 func (e *chunkWriteError) Error() string { return "chunk " + e.name + " missing" }
 
-// writeChunkFiles ports the per-chunk checklist and roles files.
+// writeChunkFiles owns the per-chunk checklist and roles files.
 func writeChunkFiles(dir, cdir string, i, n int, ch chunkEntry) error {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Chunk %d/%d for %s — read ranges as coverage checklist\n\n", i, n, dirBase(dir))
@@ -221,8 +221,8 @@ func writeChunkFiles(dir, cdir string, i, n int, ch chunkEntry) error {
 	return atomic.WriteFile(cdir+pathSep+ch.name+".roles.txt", []byte(rolesForPaths(paths)))
 }
 
-// chunkHeaderLines ports `grep -n "^diff --git" chunk.diff || echo "(no
-// diff headers?)"`.
+// chunkHeaderLines numbers the `diff --git` headers of a chunk diff, or
+// reports the fallback line.
 func chunkHeaderLines(path string) []string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -242,7 +242,7 @@ func chunkHeaderLines(path string) []string {
 // noChunkHeaders is the per-chunk header-index fallback.
 const noChunkHeaders = "(no diff headers?)"
 
-// dirBase ports `$(basename "$dir")`.
+// dirBase returns the last path element of dir.
 func dirBase(dir string) string {
 	if _, after, ok := strings.CutLast(dir, pathSep); ok {
 		return after
@@ -250,7 +250,7 @@ func dirBase(dir string) string {
 	return dir
 }
 
-// chunksJSON ports the manifest chunk entries in index order.
+// chunksJSON owns the manifest chunk entries in index order.
 func chunksJSON(dir string, plan []chunkEntry) []any {
 	out := make([]any, 0, len(plan))
 	for i, ch := range plan {
@@ -272,7 +272,7 @@ func chunksJSON(dir string, plan []chunkEntry) []any {
 	return out
 }
 
-// chunkActualBytes ports `wc -c` on the sliced chunk diff.
+// chunkActualBytes counts the bytes of the sliced chunk diff.
 func chunkActualBytes(dir, name string) int64 {
 	fi, err := os.Stat(dir + suffixChunks + name + diffSuffix)
 	if err != nil {

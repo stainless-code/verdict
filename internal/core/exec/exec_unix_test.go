@@ -129,7 +129,7 @@ func TestRunnerStreamsStaySeparate(t *testing.T) {
 	}
 }
 
-// TestRunnerStdin documents the one stdin divergence: a command that carries
+// TestRunnerStdin documents the one stdin quirk: a command that carries
 // a reader uses it (post's payload), and a nil command reader falls back to
 // the runner's Stdin, which itself defaults to inheriting this process's.
 func TestRunnerStdin(t *testing.T) {

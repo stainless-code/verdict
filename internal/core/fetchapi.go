@@ -114,7 +114,7 @@ func (p FetchPanel) Wire() *jq.Obj {
 // is open (fetch has no published data schema; only the envelope is
 // schema-bound), but the scalars are typed and the conditional summaries
 // (estimate, budget, cap, chunk, artifacts, prompt dump) ride as raw
-// ordered passthrough. Field order is the shell's jq construction order:
+// ordered passthrough. Field order is the published order:
 // the local verb emits kind second and no incremental_base, while fetch
 // emits incremental_base last among the fixed keys.
 type FetchData struct { //nolint:govet // field order is the published property order

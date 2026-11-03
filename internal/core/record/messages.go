@@ -1,7 +1,8 @@
 package recordcore
 
-// Long refusal/warning formats, split for the line-length gate. The rendered
-// bytes are byte-identical to the shell's; only the source layout differs.
+// Long refusal/warning formats, split for the line-length gate. The source
+// layout is the only thing the split changes: the rendered bytes are the
+// contract.
 const (
 	msgChunkDrifted = "chunk snapshots drifted from %s/full.diff (commits landed mid-review?) — " +
 		"validating anchors against the pinned chunk snapshots; re-fetch with --chunk to re-pin"

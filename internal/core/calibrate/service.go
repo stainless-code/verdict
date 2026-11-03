@@ -17,7 +17,7 @@ import (
 )
 
 // Refusal codes, outcome and status vocabularies, and store keys shared by
-// the live join and the probe, byte-identical to the shell.
+// the live join and the probe, frozen as the wire contract.
 const (
 	codeNoThreads             = "no-threads"
 	codeProviderUnimplemented = "provider-unimplemented"

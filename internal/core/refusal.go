@@ -26,9 +26,8 @@ type RefusalError struct {
 // Error implements error.
 func (e *RefusalError) Error() string { return e.Code + ": " + e.Message }
 
-// ValidateAttributionPlaceholders ports validate_attribution_placeholders:
-// every {name} placeholder in text must come from the v1 inventory, scanned
-// in appearance order.
+// ValidateAttributionPlaceholders requires every {name} placeholder in text
+// to come from the v1 inventory, scanned in appearance order.
 func ValidateAttributionPlaceholders(text, source string) *RefusalError {
 	for _, ph := range placeholderRe.FindAllString(text, -1) {
 		switch ph {

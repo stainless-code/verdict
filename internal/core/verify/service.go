@@ -225,8 +225,8 @@ func (st *state) childEnv() []string {
 }
 
 // readVerifyCmd reads patch.json's verifyCmd with `jq -r` semantics: a
-// missing or null verifyCmd reads empty (refusing no-verify-cmd, exactly
-// like the shell's `// empty` fallback on corrupt stores per R1); any other
+// missing or null verifyCmd reads empty (refusing no-verify-cmd, the
+// fallback a corrupt store gets); any other
 // non-string renders the way jq -r would print it.
 func readVerifyCmd(dir string) (string, *core.RefusalError) {
 	raw, err := os.ReadFile(patchPath(dir))
@@ -252,7 +252,7 @@ func readVerifyCmd(dir string) (string, *core.RefusalError) {
 	return vcmd, nil
 }
 
-// parseTimeout ports the timeout gate: positive integers only, refusing an
+// parseTimeout owns the timeout gate: positive integers only, refusing an
 // overflow instead of wrapping into a negative budget.
 func parseTimeout(s string) (int, bool) {
 	if !jq.Digits(s) {
@@ -265,8 +265,8 @@ func parseTimeout(s string) (int, bool) {
 	return n, true
 }
 
-// recordOutcome merges the watchdog result into patch.json, preserving the
-// shell's key order (existing keys keep position, new keys append).
+// recordOutcome merges the watchdog result into patch.json, preserving key
+// order (existing keys keep position, new keys append).
 func recordOutcome(dir, now string, exit int, timedOut bool, tail string) *core.RefusalError {
 	raw, err := os.ReadFile(patchPath(dir))
 	if err != nil {
@@ -291,7 +291,7 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string) *core.
 }
 
 // truncateOutputs empties the watchdog outputs before a run through the
-// shared atomic path, mirroring the shell's `: >` truncations.
+// shared atomic path.
 func truncateOutputs(paths ...string) error {
 	for _, p := range paths {
 		if err := atomic.WriteFile(p, nil); err != nil {
@@ -309,8 +309,7 @@ func writeOutputs(outPath, combined string) error {
 }
 
 // recordTimeoutMarker writes the timeout marker for a timed-out run through
-// the shared atomic path (the clean path leaves the truncated file empty,
-// like the shell).
+// the shared atomic path (a clean path leaves the truncated file empty).
 func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
 	if marker == "" {
 		return nil
@@ -351,7 +350,7 @@ func lastBytes(s string, n int) string {
 	return s
 }
 
-// redactSecrets ports the known-secret redaction of the recorded tail:
+// redactSecrets owns the known-secret redaction of the recorded tail:
 // every snapshot variable whose name matches the secret suffix list
 // (case-insensitive, trailing rotation digits/underscores stripped) has
 // its value — when 8+ chars — replaced literally. The full .verify.out
@@ -382,14 +381,14 @@ func secretNames(environ []string) []string {
 	return out
 }
 
-// isSecretName ports the nocasematch suffix match with trailing
+// isSecretName owns the nocasematch suffix match with trailing
 // rotation-digit/underscore stripping. The classifier lives in envsecret so
 // the test harnesses drop the same names this redactor rewrites.
 func isSecretName(name string) bool {
 	return envsecret.IsSecret(name)
 }
 
-// secretMinLen skips empty and short (<8 char) values, like the shell.
+// secretMinLen skips empty and short (<8 char) values.
 const secretMinLen = 8
 
 // redacted is the tail replacement marker.

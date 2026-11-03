@@ -170,14 +170,14 @@ func LoadReview(path string) (*jq.Obj, error) {
 	return review, nil
 }
 
-// reviewBodyOf reads the review body for the merge, mirroring the shell's
-// `jq -r '.body // ""'` (containers pretty-print via jq.R).
+// reviewBodyOf reads the review body for the merge: an absent or null body
+// reads "", a string reads raw, and a container pretty-prints (via jq.R).
 func reviewBodyOf(review *jq.Obj) string {
 	bodyRaw, _ := review.Get("body")
 	return jq.R(jq.Alt(bodyRaw, ""))
 }
 
-// EnsureStore ports ensure_store: backfill the store marker when absent.
+// EnsureStore backfills the store marker when absent.
 func EnsureStore(dir string) error {
 	if exists(dir + "/store.json") {
 		return nil
@@ -185,9 +185,8 @@ func EnsureStore(dir string) error {
 	return atomic.WriteFile(dir+"/store.json", []byte("{\n  \"schema_version\": \"1\"\n}\n"))
 }
 
-// EnsureHunksSnapshot ports ensure_hunks_snapshot: rebuild from full.diff
-// when the fetch-time snapshot is missing, warning that validation is
-// best-effort.
+// EnsureHunksSnapshot rebuilds the hunk index from full.diff when the
+// fetch-time snapshot is missing, warning that validation is best-effort.
 func EnsureHunksSnapshot(rt core.Runtime, dir string) error {
 	if exists(dir + "/hunks.tsv") {
 		return nil
@@ -224,10 +223,9 @@ func ReadOptional(path string) ([]byte, bool) {
 }
 
 // maxAgentBytes caps one agent-written input (review.json,
-// verification.json, chunk manifest) at 32 MiB. Go-only defense-in-depth
-// (R3): the Go binary is the only reader, so a bounded read keeps a hostile
-// bundle from exhausting memory. Unknown keys are never rejected — decoding
-// stays open.
+// verification.json, chunk manifest) at 32 MiB. The binary is the only
+// reader, so a bounded read keeps a hostile bundle from exhausting memory.
+// Unknown keys are never rejected — decoding stays open.
 const maxAgentBytes = 32 << 20
 
 // readAgentFile reads one agent-written input through a limiting reader, so
@@ -240,7 +238,7 @@ const maxAgentBytes = 32 << 20
 func readAgentFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		// Sealed at the layer boundary (GO-ERRORS-03, R4); callers only
+		// Sealed at the layer boundary (GO-ERRORS-03); callers only
 		// distinguish over-cap refusals via errors.As.
 		return nil, jq.Sealed("read agent file", err)
 	}
@@ -274,8 +272,8 @@ func agentRefusal(err error) error {
 
 // removeDerivedSnapshot deletes the per-chunk pinned hunks: a derived
 // snapshot for one run only, while the fetch-time artifacts stay
-// authoritative. The post verb calls this right after the merge (like the
-// shell's validate_and_merge tail), so refusals never leave it behind.
+// authoritative. The post verb calls this right after the merge, so a
+// refusal never leaves the snapshot behind.
 func removeDerivedSnapshot(st *state) {
 	// The per-chunk pinned hunks are a derived snapshot for this run only;
 	// the fetch-time artifacts stay authoritative.
@@ -298,7 +296,7 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// checkDegenerate ports the degenerate-body guard: a verdict marker exempts
+// checkDegenerate owns the degenerate-body guard: a verdict marker exempts
 // any body; otherwise short bodies refuse, and short placeholder-looking
 // bodies refuse too.
 func checkDegenerate(body string) error {
