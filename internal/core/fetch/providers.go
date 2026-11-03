@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
@@ -97,26 +96,10 @@ func fetchProviderBundle(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetch
 	}
 }
 
-// cliFetch runs a provider CLI with the bounded secondary rate-limit retry
-// (audit 21, same contract as the gh reads).
-// cliFetch runs a provider CLI with the bounded secondary rate-limit retry
-// (audit 21, same contract as the gh reads).
+// cliFetch runs a provider CLI through the shared bounded transient retry
+// (the same contract as the gh reads).
 func (s *session) cliFetch(ctx context.Context, bin string, args ...string) (core.Result, error) {
-	var res core.Result
-	var err error
-	for attempt := range maxFetchRetries {
-		res, err = s.run(ctx, bin, args...)
-		if err == nil {
-			return res, nil
-		}
-		wait, retry := retryDelay(res.Stderr, attempt)
-		if !retry || attempt >= maxFetchRetries-1 {
-			break
-		}
-		s.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
-		time.Sleep(wait)
-	}
-	return res, err
+	return s.fetchWithRetry(ctx, bin, args)
 }
 
 // fetchGitLab mirrors the gitlab backend.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/retry"
 )
 
 // CodeFetchFailed is the typed refusal for every fetch-internal failure:
@@ -300,33 +301,38 @@ func (s *session) run(ctx context.Context, bin string, args ...string) (core.Res
 	return s.commander.Run(ctx, core.Command{Argv: append([]string{bin}, args...)})
 }
 
-// ghFetch runs gh with exactly the given argv and a bounded secondary
-// rate-limit retry (audit 21): unhinted failures run up to 3 attempts with
-// the attempt-based sleep; only rate-limit signals retry, everything else
-// fails fast like the shell. The caller owns the error sidecars and the
+// ghFetch runs gh with exactly the given argv and the shared bounded
+// transient retry. The caller owns the error sidecars and the
 // warn-or-refuse posture.
 func (s *session) ghFetch(ctx context.Context, args ...string) (core.Result, error) {
-	return s.fetchWithRetry(ctx, "transient GitHub error — retry %d/2, bundle untouched", "gh", args)
+	return s.fetchWithRetry(ctx, "gh", args)
 }
 
 // curlFetch runs curl with exactly the given argv and the same bounded
-// secondary rate-limit retry as gh (providers share the backoff contract).
+// transient retry as gh (providers share one backoff contract).
 func (s *session) curlFetch(ctx context.Context, args ...string) (core.Result, error) {
-	return s.fetchWithRetry(ctx, "transient GitHub error — retry %d/2, bundle untouched", "curl", args)
+	return s.fetchWithRetry(ctx, "curl", args)
 }
 
-// fetchWithRetry runs one tool with the bounded secondary rate-limit retry:
-// unhinted failures run up to 3 attempts with the attempt-based sleep. A
-// missing binary never retries. Only failed calls retry, so a retry can
-// never double-write (the bundle lands only after a success).
-func (s *session) fetchWithRetry(ctx context.Context, retryMsg, bin string, args []string) (core.Result, error) {
+// fetchWithRetry runs one tool with the shared bounded transient retry:
+// secondary rate limits and the host's internal-error retry note run up to
+// retry.MaxAttempts attempts with the attempt-based sleep. A missing binary
+// never retries. Only failed calls retry, so a retry can never double-write
+// (the bundle lands only after a success).
+func (s *session) fetchWithRetry(ctx context.Context, bin string, args []string) (core.Result, error) {
 	var res core.Result
 	var err error
-	for attempt := range maxFetchRetries {
+	for attempt := range retry.MaxAttempts {
 		res, err = s.run(ctx, bin, args...)
-		if err == nil || s.missing(err) || !s.scheduleRetry(res.Stderr, attempt, retryMsg) {
+		if err == nil || s.missing(err) {
 			break
 		}
+		wait, ok := retry.Delay(res.Stderr, attempt)
+		if !ok || attempt >= retry.MaxAttempts-1 {
+			break
+		}
+		s.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
+		time.Sleep(wait)
 	}
 	return res, err
 }
@@ -336,16 +342,4 @@ func (s *session) fetchWithRetry(ctx context.Context, retryMsg, bin string, args
 func (s *session) missing(err error) bool {
 	_, ok := errors.AsType[*core.MissingToolError](err)
 	return ok
-}
-
-// scheduleRetry waits out one bounded retry, reporting whether another
-// attempt may run.
-func (s *session) scheduleRetry(stderr string, attempt int, retryMsg string) bool {
-	wait, retry := retryDelay(stderr, attempt)
-	if !retry || attempt >= maxFetchRetries-1 {
-		return false
-	}
-	s.Warn(fmt.Sprintf(retryMsg, attempt+1))
-	time.Sleep(wait)
-	return true
 }

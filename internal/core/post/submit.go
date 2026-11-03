@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/retry"
 )
 
 // postJQFilter is the reviews-POST response projection, byte-identical to
@@ -61,29 +61,23 @@ func splitOwner(repo string) (owner, name string) {
 	return repo, ""
 }
 
-// readMaxRetries caps one idempotent read attempt count, mirroring the
-// fetch and post bounds (3 attempts). Reads retry only failures carrying a
-// transient signal (secondary rate limit or the host's internal-error
-// retry note), so a retry can never duplicate a write.
-const readMaxRetries = 3
-
-// runReadRetry runs one idempotent gh read with the bounded backoff shared
-// with fetch and post submit (audit 21): a 403/429 secondary rate-limit
-// response honors the retry-after hint or the reset marker, and an unhinted
-// transient failure falls back to the attempt-based sleep. Plain failures
-// return their first error, like the shell. The final result and error are
-// what callers write into their sidecars and degrade from, so a retried
-// read keeps today's warn-or-downgrade posture.
+// runReadRetry runs one idempotent gh read with the shared bounded backoff:
+// a 403/429 secondary rate-limit response honors the retry-after hint or the
+// reset marker, an unhinted transient falls back to the attempt-based sleep,
+// and the host's internal-error note retries like the original post path.
+// Plain failures return their first error, like the shell. The final result
+// and error are what callers write into their sidecars and degrade from, so a
+// retried read keeps today's warn-or-downgrade posture.
 func runReadRetry(ctx context.Context, cmdr Commander, cmd core.Command) (core.Result, error) {
 	var res core.Result
 	var err error
-	for attempt := range readMaxRetries {
+	for attempt := range retry.MaxAttempts {
 		res, err = cmdr.Run(ctx, cmd)
 		if err == nil {
 			return res, nil
 		}
-		wait, retry := retryDelay(res.Stderr, attempt)
-		if !retry || attempt >= readMaxRetries-1 {
+		wait, ok := retry.Delay(res.Stderr, attempt)
+		if !ok || attempt >= retry.MaxAttempts-1 {
 			break
 		}
 		time.Sleep(wait)
@@ -161,7 +155,7 @@ func postRecheck(ctx context.Context, cmdr Commander, repo, pr, dir string) (int
 		res, err = runReadRetry(ctx, cmdr, core.Command{Argv: append([]string{toolGH}, threadsArgv(owner, name, pr)...)})
 	}
 	if werr := atomic.WriteErrSidecar(dir+"/.recheck.err", []byte(res.Stderr)); werr != nil {
-		return 0, "", werr
+		return 0, "", jq.Sealed("write .recheck.err", werr)
 	}
 	if err != nil {
 		return 0, firstReason(res.Stderr), err
@@ -274,122 +268,8 @@ func countRecheckOpen(nodes []any) (int, error) {
 	return n, nil
 }
 
-// maxBackoff caps one retry sleep: retries stay bounded (3 attempts, 60s
-// each) so a rate-limited run waits its turn instead of dying, without ever
-// hanging the operator.
-const maxBackoff = 60 * time.Second
-
 // recheckReasonBytes caps the downgrade reason, like `head -c 120`.
 const recheckReasonBytes = 120
-
-// retryAfterRe matches a Retry-After hint (`Retry-After: 12`) and the loose
-// `retry after 12 seconds` wording, case-insensitively.
-var retryAfterRe = regexp.MustCompile(`(?i)retry-after[\s:="]+(\d+)|retry\s+after\s+(\d+)`)
-
-// resetEpochRe matches a rate-limit reset marker with its epoch.
-var resetEpochRe = regexp.MustCompile(`(?i)(?:x-)?rate-?limit-reset[\s:="]+(\d+)`)
-
-// retryDelay ports the bounded transient retry and folds audit 21 in as
-// structure: the shell's exact internal-error retry (2 retries, 1s/2s,
-// same warning), plus secondary rate-limit responses (403/429 with a
-// rate-limit signal) honoring the retry-after hint or the reset marker.
-// Only failed calls retry, so a retry can never publish twice (the
-// double-post guard holds: the marker lands only after a success).
-func retryDelay(stderr string, attempt int) (time.Duration, bool) {
-	base := time.Duration(attempt+1) * time.Second
-	lower := strings.ToLower(stderr)
-	if strings.Contains(lower, "internal error occurred, please try again") {
-		return base, true
-	}
-	wait, hinted, ok := rateLimitWait(stderr, lower)
-	if !ok {
-		return 0, false
-	}
-	if !hinted {
-		wait = base
-	}
-	return min(wait, maxBackoff), true
-}
-
-// rateLimitWait detects a secondary rate-limit response and its wait: the
-// retry-after hint wins, else the reset epoch, else no hint (callers fall
-// back to the attempt-based sleep).
-func rateLimitWait(stderr, lower string) (wait time.Duration, hinted, ok bool) {
-	if !isRateLimited(lower) {
-		return 0, false, false
-	}
-	if secs, found := parseRetryAfter(stderr); found {
-		return time.Duration(secs) * time.Second, true, true
-	}
-	if epoch, found := parseResetEpoch(stderr); found {
-		wait := max(time.Until(time.Unix(epoch, 0)), 0)
-		return wait, true, true
-	}
-	return 0, false, true
-}
-
-// isRateLimited reports whether gh stderr carries a retryable rate-limit
-// signal: an explicit secondary-limit note, a retry hint, or a 403/429
-// naming the rate limit. Plain auth or validation 403s never match.
-func isRateLimited(lower string) bool {
-	norm := strings.Map(keepLetters, lower)
-	if strings.Contains(norm, "secondaryratelimit") {
-		return true
-	}
-	if strings.Contains(norm, "retryafter") {
-		return true
-	}
-	if strings.Contains(norm, "ratelimitreset") {
-		return true
-	}
-	if strings.Contains(norm, "ratelimit") && (strings.Contains(norm, "429") || strings.Contains(norm, "403")) {
-		return true
-	}
-	return false
-}
-
-// keepLetters drops everything but lowercase letters for signal matching
-// (`rate limit`, `rate-limit`, and `ratelimit` read identically).
-func keepLetters(c rune) rune {
-	if c >= 'a' && c <= 'z' {
-		return c
-	}
-	if c >= '0' && c <= '9' {
-		return c
-	}
-	return -1
-}
-
-// parseRetryAfter reads a retry-after wait in seconds.
-func parseRetryAfter(stderr string) (int64, bool) {
-	m := retryAfterRe.FindStringSubmatch(stderr)
-	if len(m) == 0 {
-		return 0, false
-	}
-	for _, g := range m[1:] {
-		if g == "" {
-			continue
-		}
-		var secs int64
-		if _, err := fmt.Sscanf(g, "%d", &secs); err == nil {
-			return secs, true
-		}
-	}
-	return 0, false
-}
-
-// parseResetEpoch reads a rate-limit reset epoch.
-func parseResetEpoch(stderr string) (int64, bool) {
-	m := resetEpochRe.FindStringSubmatch(stderr)
-	if len(m) < 2 || m[1] == "" {
-		return 0, false
-	}
-	var epoch int64
-	if _, err := fmt.Sscanf(m[1], "%d", &epoch); err != nil {
-		return 0, false
-	}
-	return epoch, true
-}
 
 // postOnce runs one reviews-POST attempt: the payload plus one newline on
 // stdin (exactly what the shell's `echo "$payload" | gh ... --input -`
@@ -463,22 +343,20 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 	return posted, nil
 }
 
-// postOneWithRetry ports one part's retry loop: up to 3 attempts, warning
-// before each wait, then a typed post-failed carrying the last attempt's
-// head.
+// postOneWithRetry ports one part's retry loop: up to retry.MaxAttempts
+// attempts, warning before each wait, then a typed post-failed carrying the
+// last attempt's head.
 func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload string) (string, *core.RefusalError) {
-	attempt := 0
-	for {
+	for attempt := range retry.MaxAttempts {
 		posted, errText, ok := postOnce(ctx, cmdr, st.req.Repo, st.req.Pr, st.dir, payload)
 		if ok {
 			return posted, nil
 		}
-		wait, retry := retryDelay(errText, attempt)
-		if !retry || attempt >= postMaxRetries-1 {
+		wait, canRetry := retry.Delay(errText, attempt)
+		if !canRetry || attempt >= retry.MaxAttempts-1 {
 			break
 		}
-		attempt++
-		st.warn(fmt.Sprintf("transient GitHub error — retry %d/2, comments untouched", attempt))
+		st.warn(fmt.Sprintf("transient GitHub error — retry %d/2, comments untouched", attempt+1))
 		time.Sleep(wait)
 	}
 	return "", &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf(msgPostFailed, headReason(st.dir))}
@@ -516,9 +394,6 @@ func reviewID(posted string) string {
 	id, _ := obj.Get("id")
 	return jq.Interp(id)
 }
-
-// postMaxRetries caps POST attempts (the shell's `while (( attempt < 3 ))`).
-const postMaxRetries = 3
 
 // headReason ports `$(head -c 300 "$dir/.post.err" | tr '\n' ' ')`: the last
 // attempt's head with newlines flattened.

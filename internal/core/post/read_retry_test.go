@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/retry"
 )
 
 // retryResult is one canned read attempt: the streams plus the failure flag.
@@ -129,7 +130,7 @@ func TestReadRetryBounded(t *testing.T) {
 	if _, err := ghLiveSHA(context.Background(), cmdr, "acme/app", "7"); err == nil {
 		t.Fatal("exhausted retry proceeded")
 	}
-	assertRetryCalls(t, cmdr, readMaxRetries,
+	assertRetryCalls(t, cmdr, retry.MaxAttempts,
 		[]string{"gh", "api", "repos/acme/app/pulls/7", "--jq", ".head.sha"})
 }
 
