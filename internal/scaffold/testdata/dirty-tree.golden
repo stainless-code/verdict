@@ -45,7 +45,3 @@ MAX_FP_RATE=0.5
 # One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
 # Replace these placeholders with real slugs; same panel every run keeps verdicts comparable.
 main
---- file C/dirty.txt ---
-dirty
---- file C/probe.txt ---
-probe

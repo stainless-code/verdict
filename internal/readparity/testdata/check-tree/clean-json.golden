@@ -17,5 +17,3 @@ exit: 0
 --- stderr ---
 check-tree: clean
 --- files ---
---- file C/notes.txt ---
-line1

@@ -8,45 +8,8 @@ warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebui
 warn: chunked bundle .review/local-ch/chunks/manifest.json lists 2 chunk(s) but the review carries no chunks attestation — validating as unattested (exit 0); an unattested partial synthesis posts as complete, so re-synthesize across all chunks and stamp every manifest chunk name in top-level "chunks"
 warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
 --- files ---
---- file C/.review/local-ch/chunks/a.diff ---
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old1
-+new1
---- file C/.review/local-ch/chunks/b.diff ---
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old2
-+new2
---- file C/.review/local-ch/chunks/manifest.json ---
-{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".review/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".review/local-ch/chunks/b.diff","files":["c1.txt"]}]}
 --- file C/.review/local-ch/findings.json ---
 []
---- file C/.review/local-ch/full.diff ---
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old1
-+new1
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old2
-+new2
 --- file C/.review/local-ch/hunks.tsv ---
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
@@ -67,10 +30,6 @@ c1.txt	NEW	1	2
   "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
   "model": null
 }
---- file C/.review/local-ch/review.json ---
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}
---- file C/.review/local-ch/source.json ---
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 --- file C/.review/local-ch/store.json ---
 {
   "schema_version": "1"

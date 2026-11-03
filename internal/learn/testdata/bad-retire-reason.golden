@@ -6,6 +6,3 @@ error: learn --retire needs --reason with 30+ chars (human veto, on the record)
 try: re-run with one of the valid values named above
 re-enter: verdict learn --retire ...
 --- files ---
---- file C/.review/kb.jsonl ---
-{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":3,"false_hits":1,"judged":4,"status":"active"}
-{"id":"no-secrets","rule":"Never log secrets in error paths","scope":"src/*.go","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}

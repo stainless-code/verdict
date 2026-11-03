@@ -17,7 +17,3 @@ exit: 0
 --- stderr ---
 check-tree: only expected files dirty
 --- files ---
---- file C/notes.txt ---
-line1
---- file C/scratch.txt ---
-scratch

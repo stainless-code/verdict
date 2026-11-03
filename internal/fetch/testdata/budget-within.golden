@@ -99,8 +99,6 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4705 -f query=
           }
         }
       }
---- file C/.review/1/cost.json ---
-[{"effort":"standard","est_usd":2.00,"models":[]},{"effort":"standard","est_usd":4.00,"models":[]}]
 --- file C/.review/4705/.difffiles ---
 notes.txt
 --- file C/.review/4705/PR.json ---
@@ -282,37 +280,3 @@ notes.txt (+3/-1)
 ## coverage manifest
 files in PR: 1 | files with diff hunks: 1
 omitted: (none)
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/canned/full.diff ---
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
---- file C/canned/gh-threads.json ---
-{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"notes.txt","line":2,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":2,"nodes":[{"id":"PRRC_1","databaseId":101,"author":{"__typename":"Bot","login":"verdict[bot]"},"body":"Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/101"},{"id":"PRRC_2","databaseId":102,"author":{"__typename":"User","login":"mate"},"body":"Done.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/102"}]}},{"id":"PRRT_2","isResolved":true,"isOutdated":true,"path":"notes.txt","line":null,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":1,"nodes":[{"id":"PRRC_3","databaseId":103,"author":{"__typename":"User","login":"ana"},"body":"Old anchor.","createdAt":"0000-00-00T00:00:00Z","url":"https://example.invalid/c/103"}]}}]}}}}}
---- file C/canned/inc.diff ---
-diff --git a/notes.txt b/notes.txt
-index 2222222..3333333 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
-+new line
-+newer line
- bottom
---- file C/canned/pr.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
---- file C/canned/stat.txt ---
-notes.txt (+3/-1)
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

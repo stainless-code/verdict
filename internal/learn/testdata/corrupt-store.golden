@@ -17,5 +17,3 @@ exit: 1
 --- stderr ---
 re-enter: verdict learn --status --json
 --- files ---
---- file C/.review/kb.jsonl ---
-{"id":"broken"

@@ -17,5 +17,3 @@ exit: 1
 --- stderr ---
 re-enter: verdict init --preset bogus --yes --json
 --- files ---
---- file C/probe.txt ---
-probe

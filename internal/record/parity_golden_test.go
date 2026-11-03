@@ -67,15 +67,23 @@ func goldenBothEnv(
 // own run and render the captured outputs here.
 func pinGolden(t *testing.T, name, dir string, out parity.Outputs) {
 	t.Helper()
-	files := make(map[string]string, len(out.Files))
-	for k, v := range out.Files {
+	parity.Check(t, name, parity.Render(parity.Outputs{
+		Status: out.Status, Stdout: out.Stdout, Stderr: out.Stderr,
+		Before: graded(out.Before), Files: graded(out.Files),
+	}, []string{dir}))
+}
+
+// graded drops the seeded-controls snapshots from a file map, keeping both
+// sides of the comparison filtered alike: filtering only the after side would
+// render every dropped key as a deletion.
+func graded(files map[string]string) map[string]string {
+	kept := make(map[string]string, len(files))
+	for k, v := range files {
 		if !seededControls(k) {
-			files[k] = v
+			kept[k] = v
 		}
 	}
-	parity.Check(t, name, parity.Render(parity.Outputs{
-		Status: out.Status, Stdout: out.Stdout, Stderr: out.Stderr, Files: files,
-	}, []string{dir}))
+	return kept
 }
 
 // seededControls reports the seeded controls snapshots (bundle controls.json

@@ -7,43 +7,11 @@ error: refusing record: chunk snapshot(s) missing: b (pinned chunk diff unreadab
 try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
 re-enter: verdict record acme/app local-ch
 --- files ---
---- file C/.review/local-ch/chunks/a.diff ---
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old1
-+new1
---- file C/.review/local-ch/chunks/manifest.json ---
-{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".review/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".review/local-ch/chunks/b.diff","files":["c1.txt"]}]}
---- file C/.review/local-ch/full.diff ---
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old1
-+new1
-diff --git a/c1.txt b/c1.txt
-index 1111111..2222222 100644
---- a/c1.txt
-+++ b/c1.txt
-@@ -1,2 +1,2 @@
- a
--old2
-+new2
 --- file C/.review/local-ch/hunks.tsv ---
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
---- file C/.review/local-ch/review.json ---
-{"schema_version":"1","chunks":["a","b"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"c1.txt","line":2,"side":"RIGHT","body":"Chunk comment.","rigor":"walked"}]}
---- file C/.review/local-ch/source.json ---
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 --- file C/.review/local-ch/store.json ---
 {
   "schema_version": "1"

@@ -5,7 +5,3 @@ check-tree: unexpected dirt:
 --- stderr ---
 
 --- files ---
---- file C/notes.txt ---
-line1
---- file C/scratch.txt ---
-scratch

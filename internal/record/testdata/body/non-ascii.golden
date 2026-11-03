@@ -72,36 +72,6 @@ recorded: .review/local-dg/findings.json (1 open) + .review/local-dg/record.json
     ]
   }
 ]
---- file C/.review/local-dg/full.diff ---
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,7 +1,7 @@
- ctx 1
- ctx 2
- ctx 3
- ctx 4
- ctx 5
- ctx 6
- ctx 7
-@@ -11,7 +11,7 @@
- ctx 11
- ctx 12
- ctx 13
- ctx 14
- ctx 15
- ctx 16
- ctx 17
-diff --git a/other.txt b/other.txt
-index 3333333..4444444 100644
---- a/other.txt
-+++ b/other.txt
-@@ -1,3 +1,3 @@
- top
--old
-+new
- bottom
 --- file C/.review/local-dg/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
@@ -124,10 +94,6 @@ other.txt	NEW	1	3
   "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
   "model": null
 }
---- file C/.review/local-dg/review.json ---
-{"schema_version":"1","body":"> ✅ ünïcodé marker plus enough length to pass.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"🎉 fix the thïng with a non-breaking space."}]}
---- file C/.review/local-dg/source.json ---
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 --- file C/.review/local-dg/store.json ---
 {
   "schema_version": "1"

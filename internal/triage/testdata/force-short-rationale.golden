@@ -17,8 +17,6 @@ exit: 0
 --- stderr ---
 triaged 01234567 -> wont-fix
 --- files ---
---- file C/.review/4251/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
 --- file C/.review/4251/findings.json ---
 [
   {
@@ -73,15 +71,3 @@ triaged 01234567 -> wont-fix
     "history": []
   }
 ]
---- file C/.review/4251/full.diff ---
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
---- file C/.review/kb.jsonl ---
-{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}

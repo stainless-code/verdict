@@ -44,5 +44,3 @@ MAX_FP_RATE=0.7
 # One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
 # Replace these comments with real slugs to pin a formation; empty (all comments)
 # means the operator picks per run.
---- file C/probe.txt ---
-probe

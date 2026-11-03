@@ -20,7 +20,3 @@ exit: 1
 check-tree: dirty worktree — commit or stash first:
 ?? scratch.txt
 --- files ---
---- file C/notes.txt ---
-line1
---- file C/scratch.txt ---
-scratch

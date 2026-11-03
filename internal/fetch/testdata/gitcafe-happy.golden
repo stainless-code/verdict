@@ -279,19 +279,3 @@ a.txt (+1/-1)
 ## coverage manifest
 files in PR: 1 | files with diff hunks: 1
 omitted: (none)
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/canned/cafe-cmt1.json ---
-{"data":{"items":[{"id":"c1","path":"a.txt","line":1,"side":"RIGHT","body":"Nit","author":{"handle":"ana"},"createdAt":"0000-00-00T00:00:00Z","resolved":true}]}}
---- file C/canned/cafe-items.json ---
-[{"path":"a.txt","patch":"@@ -1 +1 @@\n-a\n+b\n","status":"modified","additions":1,"deletions":1}]
---- file C/canned/cafe-meta.json ---
-{"data":{"resource":{"number":7,"title":"PR seven","description":"body","targetBranch":"main","sourceBranch":"feat","observedBaseOid":"488310afbc29fb48fbd84cf16c89d3726158a444","sourceOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","author":{"handle":"mate"},"state":"open","draft":false},"url":"https://example.invalid/7"}}
---- file C/canned/cafe-rev1.json ---
-{"data":{"items":[{"id":"r1","body":"Summary note","author":{"handle":"rev"},"createdAt":"0000-00-00T00:00:00Z"}]}}
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

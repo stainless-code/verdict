@@ -305,19 +305,3 @@ a.txt (+1/-1)
 ## coverage manifest
 files in PR: 1 | files with diff hunks: 1
 omitted: (none)
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/canned/az-changes.json ---
-[{"item":{"path":"/a.txt"},"changeType":"edit"}]
---- file C/canned/az-meta.json ---
-{"pullRequestId":16,"title":"PR sixteen","description":"body","targetRefName":"refs/heads/main","sourceRefName":"refs/heads/feat","lastMergeTargetCommit":{"commitId":"c4d827b6a20aa8f3200cb15d134772e8471130da"},"lastMergeSourceCommit":{"commitId":"e516722ce9ce0870538023ae1e062b7f1a11e504"},"createdBy":{"uniqueName":"mate"},"url":"https://example.invalid/16","status":"active","isDraft":false,"repository":{"remoteUrl":"https://example.invalid/r.git"}}
---- file C/canned/az-threads.json ---
-[{"id":9,"status":"fixed","threadContext":{"filePath":"/a.txt","rightFileStart":{"line":1},"rightFileEnd":{"line":1}},"comments":[{"id":1,"content":"system","commentType":"system","publishedDate":"0000-00-00T00:00:00Z"},{"id":2,"content":"Nit","author":{"displayName":"ana"},"publishedDate":"0000-00-00T00:00:00Z"}]},{"id":10,"status":"active","comments":[{"id":3,"content":"Question","author":{"displayName":"bo"},"publishedDate":"0000-00-00T00:00:00Z"}]}]
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)
---- file C/remote/a.txt ---
-two

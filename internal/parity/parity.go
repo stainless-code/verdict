@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -404,8 +405,11 @@ func scrubRoots(s string, roots []string) string {
 	return s
 }
 
-// Outputs captures one implementation run.
+// Outputs captures one implementation run. Before is the sandbox+home
+// snapshot taken immediately before the child ran: the goldens pin what the
+// run created, changed, or deleted, never the fixtures it was handed.
 type Outputs struct {
+	Before map[string]string
 	Files  map[string]string
 	Stdout string
 	Stderr string
@@ -447,7 +451,11 @@ func (h *Harness) Run(t *testing.T, dir, home string, extraEnv map[string]string
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	out := Outputs{Status: 0, Files: map[string]string{}}
+	out := Outputs{
+		Status: 0,
+		Before: mergeMaps(snapshotTree(t, "C", dir), snapshotTree(t, "H", home)),
+		Files:  map[string]string{},
+	}
 	if err := cmd.Run(); err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			out.Status = exitErr.ExitCode()
@@ -482,17 +490,34 @@ func snapshotVisit(tag, root string, out map[string]string) filepath.WalkFunc {
 			//nolint:errorlint // %v seals the boundary by design (GO-ERRORS-03)
 			return fmt.Errorf("walk %s: %v", p, err)
 		}
-		if fi.IsDir() || isGitPath(p) {
-			return nil
-		}
-		return snapshotFile(tag, root, out, p)
+		return visitEntry(tag, root, out, p, fi)
 	}
+}
+
+// visitEntry records one walked entry, skipping directories and every path
+// inside .git. A directory named .git is skipped outright: isGitPath already
+// keeps its entries out of the snapshot, and a live repository's own
+// maintenance locks come and go while the walk runs.
+func visitEntry(tag, root string, out map[string]string, p string, fi os.FileInfo) error {
+	switch {
+	case fi.IsDir() && fi.Name() == ".git":
+		return filepath.SkipDir
+	case fi.IsDir(), isGitPath(p):
+		return nil
+	}
+	return snapshotFile(tag, root, out, p)
 }
 
 // snapshotFile records one file's bytes into out.
 func snapshotFile(tag, root string, out map[string]string, p string) error {
 	raw, err := os.ReadFile(p)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			// The file vanished between the walk's listing and this read (a
+			// concurrent tool's transient lock, say), so there are no bytes
+			// left to grade. Failing here would make an unrelated case flaky.
+			return nil
+		}
 		return jq.Sealed("snapshot "+p, err)
 	}
 	rel, err := filepath.Rel(root, p)

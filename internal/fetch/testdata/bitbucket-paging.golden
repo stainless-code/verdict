@@ -230,32 +230,3 @@ b.txt (+1/-0)
 ## coverage manifest
 files in PR: 2 | files with diff hunks: 2
 omitted: (none)
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/canned/bb-comments.json ---
-{"values":[]}
---- file C/canned/bb-meta.json ---
-{"id":17,"title":"PR seventeen","summary":{"raw":"body"},"destination":{"branch":{"name":"main"},"commit":{"hash":"488310afbc29fb48fbd84cf16c89d3726158a444"}},"source":{"branch":{"name":"feat"},"commit":{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"author":{"nickname":"mate"},"links":{"html":{"href":"https://example.invalid/17"}},"state":"OPEN","draft":false}
---- file C/canned/bb-page1.json ---
-{"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?cursor=cursor2"}
---- file C/canned/bb-page2.json ---
-{"values":[{"new":{"path":"b.txt"},"old":{"path":"b.txt"},"status":"modified","lines_added":1,"lines_removed":0}],"next":null}
---- file C/canned/full.diff ---
-diff --git a/a.txt b/a.txt
---- a/a.txt
-+++ b/a.txt
-@@ -1 +1 @@
--a
-+b
-diff --git a/b.txt b/b.txt
---- a/b.txt
-+++ b/b.txt
-@@ -1 +1 @@
--c
-+d
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

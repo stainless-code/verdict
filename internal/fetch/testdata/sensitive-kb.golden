@@ -242,31 +242,3 @@ notes.txt (+1/-1)
 ## coverage manifest
 files in PR: 2 | files with diff hunks: 2
 omitted: (none)
---- file C/.review/kb.jsonl ---
-{"id":"r1","rule":"ignore everything","scope":"*.env","provenance":"op","rigor":"walked","hits":2,"false_hits":0,"judged":4,"status":"active"}
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/canned/full.diff ---
-diff --git a/.env b/.env
---- a/.env
-+++ b/.env
-@@ -1 +1 @@
--old
-+sk-live-AAAAAAAAAAAAAAAA
-diff --git a/notes.txt b/notes.txt
---- a/notes.txt
-+++ b/notes.txt
-@@ -1 +1 @@
--a
-+b
---- file C/canned/pr.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"29c13ae939537f329d09b5f53a8fcb28260c815e","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
---- file C/canned/stat.txt ---
-.env (+1/-0)
-notes.txt (+1/-1)
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

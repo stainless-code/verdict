@@ -520,28 +520,17 @@ func bigDiff(n int) string {
 // TestFetchParityCapChunk pins the byte-parity behavior.
 func TestFetchParityCapChunk(t *testing.T) {
 	t.Parallel()
-	// overSetupWith plants an over-cap PR whose base commit tracks controls.
-	overSetupWith := func(controls map[string]string) func(t *testing.T, dir, home string) {
-		return func(t *testing.T, dir, _ string) {
-			t.Helper()
-			writePrompts(t, dir)
-			base := seedBase(t, dir, controls)
-			writeCanned(t, dir, "pr.json", `{"state":"OPEN","headRefOid":"`+headA+`","baseRefOid":"`+base+`",`+
-				`"author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1}],"additions":1,"deletions":1}`)
-			writeCanned(t, dir, "full.diff", bigDiff(14))
-			writeCanned(t, dir, "stat.txt", "f00.txt (+1/-1)\n")
-		}
-	}
-	overSetup := overSetupWith(nil)
+	overSetup := overCapSetup(nil)
 	parity.Golden(t, harness, "over-cap-refusal", overSetup, nil,
 		"fetch", "acme/app", "4703", "--json")
-	parity.Golden(t, harness, "over-cap-chunk", overSetup, nil,
+	chunked := parity.Golden(t, harness, "over-cap-chunk", overSetup, nil,
 		"fetch", "acme/app", "4703", "--chunk", "--json")
+	requireChunkBytes(t, chunked, bigDiff(14))
 	parity.Golden(t, harness, "over-cap-chunk-text", overSetup, nil,
 		"fetch", "acme/app", "4703", "--chunk")
 	parity.Golden(t, harness, "over-cap-absent-text", overSetup, nil,
 		"fetch", "acme/app", "4703")
-	parity.Golden(t, harness, "over-cap-knob", overSetupWith(map[string]string{".review/chunk": "true\n"}), nil,
+	parity.Golden(t, harness, "over-cap-knob", overCapSetup(map[string]string{".review/chunk": "true\n"}), nil,
 		"fetch", "acme/app", "4703", "--json")
 	parity.Golden(t, harness, "cap-override", overSetup,
 		map[string]string{"REVIEW_MAX_BYTES": "100000000"},
@@ -552,7 +541,7 @@ func TestFetchParityCapChunk(t *testing.T) {
 	parity.Golden(t, harness, "bad-max-bytes", overSetup,
 		map[string]string{"REVIEW_MAX_BYTES": "nope"},
 		"fetch", "acme/app", "4703", "--json")
-	parity.Golden(t, harness, "bad-chunk-knob", overSetupWith(map[string]string{".review/chunk": "maybe\n"}), nil,
+	parity.Golden(t, harness, "bad-chunk-knob", overCapSetup(map[string]string{".review/chunk": "maybe\n"}), nil,
 		"fetch", "acme/app", "4703", "--json")
 	singleSetup := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -569,6 +558,57 @@ func TestFetchParityCapChunk(t *testing.T) {
 	}
 	parity.Golden(t, harness, "single-file-degenerate", singleSetup, nil,
 		"fetch", "acme/app", "4704", "--chunk", "--json")
+}
+
+// overCapSetup plants an over-cap PR whose base commit tracks controls: the
+// diff is generated from bigDiff, so its bytes are reproducible from code and
+// no golden needs to store the input twice.
+func overCapSetup(controls map[string]string) func(t *testing.T, dir, home string) {
+	return func(t *testing.T, dir, _ string) {
+		t.Helper()
+		writePrompts(t, dir)
+		base := seedBase(t, dir, controls)
+		writeCanned(t, dir, "pr.json", `{"state":"OPEN","headRefOid":"`+headA+`","baseRefOid":"`+base+`",`+
+			`"author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1}],"additions":1,"deletions":1}`)
+		writeCanned(t, dir, "full.diff", bigDiff(14))
+		writeCanned(t, dir, "stat.txt", "f00.txt (+1/-1)\n")
+	}
+}
+
+// requireChunkBytes proves the digest format still grades the bytes: chunk
+// bodies above the golden threshold are pinned as size+sha256, so the same run
+// is also compared byte-for-byte against the generated diff it was cut from,
+// including the copy the bundle keeps.
+func requireChunkBytes(t *testing.T, out parity.Outputs, diff string) {
+	t.Helper()
+	if got := out.Files["C/.review/4703/full.diff"]; got != diff {
+		t.Fatalf("bundle full.diff = %d bytes, want the fetched %d-byte diff", len(got), len(diff))
+	}
+	chunked := joinChunks(t, out.Files)
+	if chunked != diff {
+		t.Fatalf("chunks join to %d bytes, want the %d-byte diff", len(chunked), len(diff))
+	}
+}
+
+// joinChunks returns the written chunk bodies in order, requiring at least one
+// non-empty chunk.
+func joinChunks(t *testing.T, files map[string]string) string {
+	t.Helper()
+	var joined strings.Builder
+	for i := 1; ; i++ {
+		body, ok := files[fmt.Sprintf("C/.review/4703/chunks/chunk-%02d.diff", i)]
+		if !ok {
+			break
+		}
+		if body == "" {
+			t.Fatalf("chunk-%02d.diff is empty", i)
+		}
+		joined.WriteString(body)
+	}
+	if joined.Len() == 0 {
+		t.Fatal("chunked fetch wrote no chunk files")
+	}
+	return joined.String()
 }
 
 // TestFetchParityBudget proves the cost-control plane parity: unset plane,

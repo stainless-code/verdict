@@ -48,5 +48,3 @@ MAX_FP_RATE=0.3
 lead
 lens-1
 lens-2
---- file C/probe.txt ---
-probe

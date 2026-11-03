@@ -17,14 +17,3 @@ exit: 1
 --- stderr ---
 re-enter: verdict fix acme/app local-empty --json
 --- files ---
---- file C/app.txt ---
-alpha
-beta
-gamma
---- file C/notes.txt ---
-line1
-line2
-line3
---- file C/other.txt ---
-other1
-other2

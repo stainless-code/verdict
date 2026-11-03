@@ -35,7 +35,3 @@ MAX_FP_RATE=0.7
 {"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
 re-enter: verdict init --preset chill --json
 --- files ---
---- file C/.review/budget ---
-9.99
---- file C/probe.txt ---
-probe

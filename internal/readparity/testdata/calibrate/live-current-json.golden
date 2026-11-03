@@ -102,19 +102,3 @@ f6666666 [unknown] ? — body section — not a thread comment kb:f6666666666666
 precision: fixed=0 resolved-unfixed=1 open=1 unknown=2 (judged 2)
 provenance: tool v0.0.1-test prompts abc123def456 model m
 --- files ---
---- file C/.review/5101/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
---- file C/.review/5101/findings.json ---
-[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Fixed body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"kb":["r-a1"]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Open body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"b222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"kb":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Unseen body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","sig":"d444444444444444444444444444444444444444","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[],"kb":["r-a2"]},{"kind":"section","path":null,"side":null,"line":null,"anchored":false,"body":"Section body here with enough substance.","suggestion":null,"inBounds":false,"rigor":"pointed","severity":"informational","sig":"f666666666666666666666666666666666666666","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
---- file C/.review/5101/full.diff ---
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
---- file C/.review/5101/post.json ---
-{"schema_version":"1","review":{"id":424242},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"0000-00-00T00:00:00Z","confidence":null,"security_summary":null,"tool_version":"0.0.1-test","prompts_hash":"abc123def456","model":"m"}

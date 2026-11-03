@@ -25,17 +25,3 @@ CALL: pr diff 4714 --repo acme/app
 not json{{{
 --- file C/.review/4714/full.diff ---
 diff --git a/a b/b
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/canned/full.diff ---
-diff --git a/a b/b
---- file C/canned/pr.json ---
-not json{{{
---- file C/canned/stat.txt ---
-
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

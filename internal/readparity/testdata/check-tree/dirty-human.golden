@@ -5,7 +5,3 @@ check-tree: dirty worktree — commit or stash first:
 --- stderr ---
 
 --- files ---
---- file C/notes.txt ---
-line1
---- file C/scratch.txt ---
-scratch

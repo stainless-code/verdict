@@ -1,9 +1,12 @@
 package parity
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -144,5 +147,87 @@ func TestCaseEnvAt(t *testing.T) {
 	own := &Case{Env: map[string]string{"TMPDIR": "/elsewhere"}, TmpInSandbox: true}
 	if got := own.envAt("/sandbox"); got["TMPDIR"] != "/elsewhere" {
 		t.Fatalf("explicit TMPDIR = %q, want /elsewhere", got["TMPDIR"])
+	}
+}
+
+// TestRenderPinsOnlyTouched proves the golden stores product output, not
+// fixture input: a seeded file the run left alone never reaches the golden
+// (its bytes are the setup's, reproducible from code), while a created,
+// changed, or deleted file is still pinned.
+func TestRenderPinsOnlyTouched(t *testing.T) {
+	t.Parallel()
+
+	before := map[string]string{
+		"C/canned/full.diff": "fixture input\n",
+		"C/keep.txt":         "untouched\n",
+		"C/changed.txt":      "old\n",
+		"C/gone.txt":         "seeded then deleted\n",
+	}
+	files := map[string]string{
+		"C/canned/full.diff":        "fixture input\n",
+		"C/keep.txt":                "untouched\n",
+		"C/changed.txt":             "new\n",
+		"C/.review/1/findings.json": "[]\n",
+	}
+	want := "exit: 0\n" +
+		"--- stdout ---\n\n" +
+		"--- stderr ---\n\n" +
+		"--- files ---\n" +
+		"--- file C/.review/1/findings.json ---\n[]\n" +
+		"--- file C/changed.txt ---\nnew\n" +
+		"--- file C/gone.txt (deleted) ---\n"
+	if got := Render(Outputs{Before: before, Files: files}, nil); got != want {
+		t.Fatalf("Render() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestRenderDigestForLargePayload proves a payload above the threshold pins
+// size+sha256 of the exact bytes the full form would have held, for files and
+// streams alike; the digest is what makes a one-byte change fail while the
+// golden stays reviewable.
+func TestRenderDigestForLargePayload(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Repeat("p", largeFileBytes+1)
+	sum := sha256.Sum256([]byte(body + newline))
+	wantDigest := hex.EncodeToString(sum[:])
+
+	got := Render(Outputs{Files: map[string]string{"C/big.diff": body}, Stdout: body}, nil)
+	wantFile := fmt.Sprintf("--- file C/big.diff (size=%d sha256=%s) ---\n", len(body)+1, wantDigest)
+	if !strings.Contains(got, wantFile) {
+		t.Fatalf("file line missing from\n%s\nwant %s", got, wantFile)
+	}
+	wantStream := fmt.Sprintf("--- stdout (size=%d sha256=%s) ---\n", len(body)+1, wantDigest)
+	if !strings.Contains(got, wantStream) {
+		t.Fatalf("stream line missing from\n%s\nwant %s", got, wantStream)
+	}
+	if strings.Contains(got, body) {
+		t.Fatal("large body leaked into the golden instead of its digest")
+	}
+}
+
+// TestDivergenceBounded proves a mismatched multi-megabyte golden reports a
+// bounded window instead of printing both sides: the failing line is named,
+// with only its neighborhood rendered.
+func TestDivergenceBounded(t *testing.T) {
+	t.Parallel()
+
+	lines := make([]string, 0, 5000)
+	for i := range 5000 {
+		lines = append(lines, fmt.Sprintf("line %05d", i))
+	}
+	want := strings.Join(lines, newline)
+	lines[4000] = "line 04000 changed"
+	got := strings.Join(lines, newline)
+
+	report := divergence(want, got)
+	if n := strings.Count(report, newline); n > 2*diffLines+6 {
+		t.Fatalf("report has %d lines, want at most %d", n, 2*diffLines+6)
+	}
+	if !strings.Contains(report, "want (line 4001 of 5000)") || !strings.Contains(report, "got (line 4001 of 5000)") {
+		t.Fatalf("report does not name the first divergence:\n%s", report)
+	}
+	if !strings.Contains(report, "more lines") {
+		t.Fatalf("report does not truncate:\n%s", report)
 	}
 }

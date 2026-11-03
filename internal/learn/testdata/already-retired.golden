@@ -6,5 +6,3 @@ error: learn: rule 'old-rule' is already retired
 try: check the rule status with learn --status, then re-run
 re-enter: verdict learn --retire ...
 --- files ---
---- file C/.review/kb.jsonl ---
-{"id":"old-rule","rule":"An outdated rule kept for the record","scope":"*","provenance":"manual","rigor":"walked","hits":1,"false_hits":0,"judged":1,"status":"retired","retiredAt":"0000-00-00T00:00:00Z","retireReason":"the rule stopped matching how this repo writes code","history":[{"at":"0000-00-00T00:00:00Z","event":"retired","actor":"human","note":"the rule stopped matching how this repo writes code"}]}

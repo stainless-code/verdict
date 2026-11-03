@@ -4,5 +4,3 @@ check-tree: clean
 --- stderr ---
 
 --- files ---
---- file C/notes.txt ---
-line1

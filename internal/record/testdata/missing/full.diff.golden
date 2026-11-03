@@ -6,7 +6,3 @@ error: missing .review/local-mf/full.diff (run fetch-local / fetch --provider fi
 try: run the fetch/record step named above first, then re-run
 re-enter: verdict record acme/app local-mf
 --- files ---
---- file C/.review/local-mf/review.json ---
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}
---- file C/.review/local-mf/source.json ---
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}

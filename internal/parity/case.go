@@ -62,17 +62,13 @@ func (c *Case) Run(t *testing.T, h *Harness) Outputs {
 		// say), so the overlay is read only after the fixtures exist.
 		env = c.envAt(dir)
 	}
-	var before map[string]string
-	if c.ReadOnly {
-		before = mergeMaps(snapshotTree(t, "C", dir), snapshotTree(t, "H", home))
-	}
 	out := h.Run(t, dir, home, env, c.Args...)
 	Check(t, c.Name, Render(Outputs{
 		Status: out.Status, Stdout: out.Stdout, Stderr: out.Stderr,
-		Files: c.pinned(out.Files),
+		Before: c.pinned(out.Before), Files: c.pinned(out.Files),
 	}, []string{dir, home}))
 	if c.ReadOnly {
-		assertNoWrites(t, before, out.Files, c.AllowWrites)
+		assertNoWrites(t, out.Before, out.Files, c.AllowWrites)
 	}
 	return out
 }

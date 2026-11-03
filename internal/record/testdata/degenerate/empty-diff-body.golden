@@ -104,8 +104,6 @@ recorded: .review/local-dg/findings.json (2 open) + .review/local-dg/record.json
     ]
   }
 ]
---- file C/.review/local-dg/full.diff ---
-
 --- file C/.review/local-dg/hunks.tsv ---
 
 --- file C/.review/local-dg/record.json ---
@@ -123,10 +121,6 @@ recorded: .review/local-dg/findings.json (2 open) + .review/local-dg/record.json
   "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
   "model": null
 }
---- file C/.review/local-dg/review.json ---
-{"schema_version":"1","body":"> ℹ️ note with marker and enough length to pass.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Anchors unchecked.","rigor":"pointed"}]}
---- file C/.review/local-dg/source.json ---
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
 --- file C/.review/local-dg/store.json ---
 {
   "schema_version": "1"

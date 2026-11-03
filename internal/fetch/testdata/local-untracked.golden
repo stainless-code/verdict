@@ -177,17 +177,3 @@ notes.txt (+1/-1)
 ## coverage manifest
 files changed: 1 | files with diff hunks: 1
 omitted: (none)
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/new1.txt ---
-untracked
---- file C/notes.txt ---
-top
-new line
-bottom
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

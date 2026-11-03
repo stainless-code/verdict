@@ -4,7 +4,3 @@ check-tree: clean (1 .review/ scratch line(s) ignored)
 --- stderr ---
 
 --- files ---
---- file C/.review/5101/findings.json ---
-[]
---- file C/notes.txt ---
-line1

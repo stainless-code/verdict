@@ -20,5 +20,3 @@ exit: 1
 --- stderr ---
 check-tree: not a git repo
 --- files ---
---- file C/notes.txt ---
-line1

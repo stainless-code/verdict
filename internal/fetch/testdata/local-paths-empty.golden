@@ -88,15 +88,3 @@ Use '--' to separate paths from revisions, like this:
 }
 --- file C/.review/local-demo/full.diff ---
 
---- file C/SKILL.md ---
-# verdict skill (parity fixture)
---- file C/notes.txt ---
-top
-old line
-bottom
---- file C/prompts/diagrams.md ---
-# diagrams (parity fixture)
---- file C/prompts/review.md ---
-# review (parity fixture)
---- file C/prompts/system.md ---
-# system (parity fixture)

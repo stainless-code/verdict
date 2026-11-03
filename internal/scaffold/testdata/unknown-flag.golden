@@ -4,5 +4,3 @@ exit: 2
 --- stderr ---
 unknown flag '--bogus' for init (want --preset <chill|standard|strict>, --yes, --force, --json)
 --- files ---
---- file C/probe.txt ---
-probe
