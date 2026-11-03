@@ -9,15 +9,15 @@ import (
 )
 
 // mustEntries decodes a findings array for the rank tests.
-func mustEntries(t *testing.T, doc string) []any {
-	t.Helper()
+func mustEntries(tb testing.TB, doc string) []any {
+	tb.Helper()
 	v, err := jq.DecodeOrdered([]byte(doc))
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	entries, ok := v.([]any)
 	if !ok {
-		t.Fatal("fixture is not an array")
+		tb.Fatal("fixture is not an array")
 	}
 	return entries
 }
@@ -144,5 +144,166 @@ func TestLocator(t *testing.T) {
 	}
 	if got := readcommon.Prefix("c11111111"); got != "c1111111" {
 		t.Errorf("Prefix() = %q; want the 8-codepoint head", got)
+	}
+}
+
+// rankFixture is one finding's ranked fields, varied one at a time.
+type rankFixture struct {
+	sig      string
+	status   string
+	severity string
+	rigor    string
+	path     string
+	line     int
+	anchored bool
+	inBounds bool
+}
+
+// json renders the fixture as a findings-store entry.
+func (f *rankFixture) json() string {
+	return fmt.Sprintf(`{"kind":"inline","path":%q,"side":"RIGHT","line":%d,`+
+		`"anchored":%t,"body":"Body here with enough substance.","suggestion":null,`+
+		`"inBounds":%t,"rigor":%q,"severity":%q,"sig":%q,"sig_version":"1",`+
+		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":%q,"rationale":"","history":[]}`,
+		f.path, f.line, f.anchored, f.inBounds, f.rigor, f.severity, f.sig, f.status)
+}
+
+// rankVariant renders one fixture from the common base, mutating one key.
+func rankVariant(sig string, mutate func(*rankFixture)) string {
+	f := rankFixture{
+		sig:      sig,
+		status:   "open",
+		severity: "important",
+		rigor:    "walked",
+		path:     "notes.txt",
+		line:     2,
+		anchored: true,
+		inBounds: true,
+	}
+	mutate(&f)
+	return f.json()
+}
+
+// assertRankFirst proves a wins over b in both store orders.
+func assertRankFirst(t *testing.T, name, a, b string) {
+	t.Helper()
+	for _, doc := range []string{"[" + a + "," + b + "]", "[" + b + "," + a + "]"} {
+		ranked := readcommon.Rank(mustEntries(t, doc), readcommon.StatusAll, readcommon.KindAll)
+		if got := rankSigs(ranked); len(got) != 2 || got[0] != "a" {
+			t.Errorf("Rank(%s)[0] = %v; want a", name, got)
+		}
+	}
+}
+
+// TestRankKeyOrder pins each of the eight ranked sort keys in precedence
+// order, in both store orders, so a comparator rewrite cannot silently
+// reorder report, next, or fix.
+func TestRankKeyOrder(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		a    string
+		b    string
+	}{
+		{
+			"status", rankVariant("a", func(f *rankFixture) { f.status = "open" }),
+			rankVariant("b", func(f *rankFixture) { f.status = "deferred" }),
+		},
+		{
+			"severity", rankVariant("a", func(f *rankFixture) { f.severity = "critical" }),
+			rankVariant("b", func(f *rankFixture) { f.severity = "informational" }),
+		},
+		{
+			"rigor", rankVariant("a", func(f *rankFixture) { f.rigor = "reproduced" }),
+			rankVariant("b", func(f *rankFixture) { f.rigor = "said" }),
+		},
+		{
+			"anchored", rankVariant("a", func(f *rankFixture) { f.anchored = true }),
+			rankVariant("b", func(f *rankFixture) { f.anchored = false }),
+		},
+		{
+			"inBounds", rankVariant("a", func(f *rankFixture) { f.inBounds = true }),
+			rankVariant("b", func(f *rankFixture) { f.inBounds = false }),
+		},
+		{
+			"path", rankVariant("a", func(f *rankFixture) { f.path = "a.txt" }),
+			rankVariant("b", func(f *rankFixture) { f.path = "b.txt" }),
+		},
+		{
+			"line", rankVariant("a", func(f *rankFixture) { f.line = 2 }),
+			rankVariant("b", func(f *rankFixture) { f.line = 10 }),
+		},
+		{
+			"sig", rankVariant("a", func(*rankFixture) {}),
+			rankVariant("b", func(*rankFixture) {}),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertRankFirst(t, tc.name, tc.a, tc.b)
+		})
+	}
+}
+
+// TestTopOpenInlineMatchesRank proves fix's default pick is the first
+// open-inline item of the shared ranking, not a second comparator.
+func TestTopOpenInlineMatchesRank(t *testing.T) {
+	t.Parallel()
+	entries := mustEntries(t, "["+
+		rankVariant("deferred", func(f *rankFixture) { f.status = "deferred" })+","+
+		rankVariant("section", func(f *rankFixture) { f.status = "open" })+","+
+		`{"kind":"section","path":"notes.txt","line":2,"severity":"critical",`+
+		`"rigor":"reproduced","anchored":true,"inBounds":true,"sig":"section",`+
+		`"status":"open"}`+","+
+		rankVariant("found", func(f *rankFixture) { f.rigor = "reproduced" })+"]")
+	sig, picked := readcommon.TopOpenInline(entries)
+	if sig != "found" {
+		t.Errorf("TopOpenInline() sig = %q; want found", sig)
+	}
+	ranked := readcommon.Rank(entries, readcommon.StatusOpen, readcommon.KindInline)
+	if len(ranked) == 0 || ranked[0].Entry != picked || rankSigs(ranked)[0] != sig {
+		t.Errorf("TopOpenInline() = %q, %v; want the first open-inline Rank entry", sig, picked)
+	}
+}
+
+// rankEntriesN builds n valid findings for the allocation and benchmark
+// checks (setup runs outside the measured region).
+func rankEntriesN(tb testing.TB, n int) []any {
+	tb.Helper()
+	out := make([]any, 0, n)
+	for i := range n {
+		entry := rankEntry(fmt.Sprintf("%040d", i), "open", "important", "walked", "inline", i+1)
+		out = append(out, mustEntries(tb, "["+entry+"]")[0])
+	}
+	return out
+}
+
+// rankAllocEntries is the acceptance benchmark size.
+const rankAllocEntries = 500
+
+// maxRankAllocs bounds per-run allocations: the decorate-sort-undecorate
+// shape allocates O(n) slices once, never one key slice per comparison.
+const maxRankAllocs = 8
+
+// TestRankAllocations pins the allocation shape: for 500 entries Rank stays
+// at a handful of allocations instead of the old per-comparison key slices.
+func TestRankAllocations(t *testing.T) {
+	entries := rankEntriesN(t, rankAllocEntries)
+	allocs := testing.AllocsPerRun(5, func() {
+		_ = readcommon.Rank(entries, readcommon.StatusAll, readcommon.KindAll)
+	})
+	if allocs > maxRankAllocs {
+		t.Errorf("Rank(%d entries) = %.0f allocs/op; want <= %d",
+			rankAllocEntries, allocs, maxRankAllocs)
+	}
+}
+
+// BenchmarkRank500 reports the ranked-sort cost at the acceptance size.
+func BenchmarkRank500(b *testing.B) {
+	entries := rankEntriesN(b, rankAllocEntries)
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = readcommon.Rank(entries, readcommon.StatusAll, readcommon.KindAll)
 	}
 }

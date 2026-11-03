@@ -1,6 +1,6 @@
 // Package fixcore is the fix verb's domain service: one pass of the bounded
 // verify-gated fix loop over a local bundle. It picks the top open inline sig
-// (severity critical first, path-asc tiebreak) unless --sig names one,
+// with the same eight-key ranking next and report use unless --sig names one,
 // enforces the 3-pass ceiling and the scope-escape audit against the ledger
 // fix.json, prints the finding context with the kb recall, and reports
 // terminal completion when no open inline sig remains. Fix writes only the
@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/bundle"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Request carries the resolved fix invocation: the shared runtime (env,
@@ -292,15 +293,23 @@ func (st *state) resolveExplicit(entries []any) (string, *jq.Obj, *core.RefusalE
 	return full, rec, nil
 }
 
-// resolveTop resolves the default top pick to its entry.
+// resolveTop resolves the default top pick to its entry through the same
+// eight-key ranking next and report use, so the three verbs cannot target
+// different open inline findings.
 func (st *state) resolveTop(entries []any, dir string) (string, *jq.Obj, *core.RefusalError) {
-	full := topSig(entries)
+	full, picked := readcommon.TopOpenInline(entries)
 	if full == "" {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline count disagrees with the store "+
 				"(re-run record to rebuild %s/findings.json)", dir))
 	}
-	return full, findEntry(entries, full), nil
+	rec, ok := picked.(*jq.Obj)
+	if !ok || rec == nil {
+		return "", nil, st.refuse("report-failed", fmt.Sprintf(
+			"fix: open-inline pick is not a finding object "+
+				"(re-run record to rebuild %s/findings.json)", dir))
+	}
+	return full, rec, nil
 }
 
 // runPass enforces ceiling and scope, writes the ledger, and prints.
@@ -533,105 +542,6 @@ func openFlags(e any) (bool, bool) {
 	}
 	return true, kindOf(m) == kindInline
 }
-
-// topSig ports the default pick: severity critical first, then path asc,
-// line, sig.
-func topSig(entries []any) string {
-	cands := collectOpenInline(entries)
-	if len(cands) == 0 {
-		return ""
-	}
-	slices.SortStableFunc(cands, compareFinding)
-	return sigOf(cands[0])
-}
-
-// collectOpenInline gathers open inline candidates in store order.
-func collectOpenInline(entries []any) []*jq.Obj {
-	var cands []*jq.Obj
-	for _, e := range entries {
-		m, ok := e.(*jq.Obj)
-		if !ok || m == nil {
-			continue
-		}
-		if statusOf(m) != statusOpen || kindOf(m) != kindInline {
-			continue
-		}
-		cands = append(cands, m)
-	}
-	return cands
-}
-
-// sigOf reads an entry sig, returning "" when missing or non-string.
-func sigOf(m *jq.Obj) string {
-	if m == nil {
-		return ""
-	}
-	sv, _ := m.Get(keySig)
-	s, ok := sv.(string)
-	if !ok {
-		return ""
-	}
-	return s
-}
-
-// compareFinding ports the sort_by comparator: severity, path, line, sig.
-func compareFinding(a, b *jq.Obj) int {
-	if sa, sb := sevRank(a), sevRank(b); sa != sb {
-		return sa - sb
-	}
-	pa, pb := interpOf(a, keyPath), interpOf(b, keyPath)
-	if pa != pb {
-		if pa < pb {
-			return -1
-		}
-		return 1
-	}
-	if la, lb := lineNum(a), lineNum(b); la != lb {
-		return la - lb
-	}
-	sa, sb := interpOf(a, keySig), interpOf(b, keySig)
-	switch {
-	case sa < sb:
-		return -1
-	case sa > sb:
-		return 1
-	default:
-		return 0
-	}
-}
-
-// sevRank ports the severity map (critical 0, important 1, informational 2,
-// else 3).
-func sevRank(m *jq.Obj) int {
-	switch interpOf(m, keySeverity) {
-	case sevCritical:
-		return 0
-	case sevImportant:
-		return 1
-	case sevInformational:
-		return 2
-	default:
-		return sevRankOther
-	}
-}
-
-// lineNum ports `.line // 0` for the tiebreak: numbers read numerically,
-// missing reads 0, and non-numeric values sort after every number (jq's
-// total order puts strings/containers above numbers; only numbers and
-// missing occur in validated stores).
-func lineNum(m *jq.Obj) int {
-	v, _ := m.Get(keyLine)
-	if v == nil {
-		return 0
-	}
-	if n, ok := jq.IntOf(v); ok {
-		return n
-	}
-	return maxLineNum
-}
-
-// maxLineNum sorts non-numeric lines after every number.
-const maxLineNum = int(^uint(0) >> 1)
 
 // ledgerDoc is the fix.json store: {"sigs": {...}}.
 type ledgerDoc struct {
@@ -1196,8 +1106,6 @@ const (
 	sigPrefixLen = 8
 	// sigPrefixMsgLen is the prefix width shown in sig error messages.
 	sigPrefixMsgLen = 12
-	// sevRankOther ranks unknown severities after every known one.
-	sevRankOther = 3
 	// porcelainPathOff is the byte offset of the path in porcelain -z records.
 	porcelainPathOff = 3
 	// porcelainStatusLen is the status field width in porcelain records.
@@ -1298,12 +1206,6 @@ const (
 	statusRename = "R"
 	// statusCopy marks copied porcelain entries.
 	statusCopy = "C"
-	// sevCritical ranks first in the default pick.
-	sevCritical = "critical"
-	// sevImportant ranks second in the default pick.
-	sevImportant = "important"
-	// sevInformational ranks third in the default pick.
-	sevInformational = "informational"
 	// sevUntagged renders missing severities.
 	sevUntagged = "untagged"
 	// sideRight defaults missing sides.

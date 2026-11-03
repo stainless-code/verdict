@@ -12,6 +12,7 @@ const (
 	StatusOpen     = "open"
 	StatusDeferred = "deferred"
 	KindAll        = "all"
+	KindInline     = "inline"
 )
 
 // statusRank ports the sk rank: open first, deferred second, rest last.
@@ -43,9 +44,10 @@ func sevRank(sev any) int {
 // rigorOrder is the rigor rung rank order; unknown rungs sort first (null).
 var rigorOrder = []string{"reproduced", "ran", "walked", "pointed", "said"}
 
-// rigorKey ports (4 - rw[.rigor // "said"]): known rungs descend from
-// reproduced to said, unknown rungs read null and sort first.
-func rigorKey(rigor any) any {
+// rigorRank ports (4 - rw[.rigor // "said"]): known rungs descend from
+// reproduced to said. Unknown rungs read null in the shell and sort first,
+// which the -1 sentinel preserves without a per-comparison value allocation.
+func rigorRank(rigor any) int {
 	r, ok := rigor.(string)
 	if !ok {
 		r = ""
@@ -56,7 +58,7 @@ func rigorKey(rigor any) any {
 	if i := slices.Index(rigorOrder, r); i >= 0 {
 		return i
 	}
-	return nil
+	return -1
 }
 
 // boolRank ports (if .flag then 0 else 1 end): true first, everything else
@@ -104,19 +106,58 @@ type Ranked struct {
 // open-first severity-rigor-anchor-path-line-sig sort (stable, like jq's
 // sort_by), then 1-based ranks. Null entries flow through like the shell's
 // (their filters read null and their keys sort first).
+//
+// The comparator is shared with [TopOpenInline] and decorates the entries
+// once, so the sort no longer rebuilds its eight keys on every comparison.
 func Rank(entries []any, statusF, kindF string) []Ranked {
-	filtered := filterEntries(entries, statusF, kindF)
-	slices.SortStableFunc(filtered, compareEntries)
-	out := make([]Ranked, 0, len(filtered))
-	for i, e := range filtered {
-		out = append(out, Ranked{Entry: e, Rank: i + 1})
+	decorated := decorateEntries(entries, statusF, kindF)
+	slices.SortStableFunc(decorated, compareDecorated)
+	out := make([]Ranked, 0, len(decorated))
+	for i := range decorated {
+		out = append(out, Ranked{Entry: decorated[i].entry, Rank: i + 1})
 	}
 	return out
 }
 
-// filterEntries ports the status/kind display filters.
-func filterEntries(entries []any, statusF, kindF string) []any {
-	filtered := make([]any, 0, len(entries))
+// TopOpenInline selects the highest-ranked open inline finding with the
+// same eight-key order the report and next rankings use. It returns the
+// entry's full sig ("" when the sig is missing or non-string, which callers
+// keep refusing on) and the entry, or ("", nil) when no open inline finding
+// exists. This is the one default-pick rule the fix verb shares with next.
+func TopOpenInline(entries []any) (string, any) {
+	decorated := decorateEntries(entries, StatusOpen, KindInline)
+	slices.SortStableFunc(decorated, compareDecorated)
+	if len(decorated) == 0 {
+		return "", nil
+	}
+	entry := decorated[0].entry
+	sig, _ := entrySig(entry)
+	return sig, entry
+}
+
+// rankKeys is one entry's precomputed eight-key sort tuple: status,
+// severity, rigor, anchored, inBounds, path, line, sig.
+type rankKeys struct {
+	path     any
+	line     any
+	sig      any
+	status   int
+	severity int
+	rigor    int
+	anchored int
+	inBounds int
+}
+
+// decoratedEntry pairs one entry with its precomputed sort keys.
+type decoratedEntry struct {
+	entry any
+	keys  rankKeys
+}
+
+// decorateEntries applies the status/kind display filters and computes each
+// surviving entry's keys exactly once.
+func decorateEntries(entries []any, statusF, kindF string) []decoratedEntry {
+	out := make([]decoratedEntry, 0, len(entries))
 	for _, e := range entries {
 		if statusF != StatusAll && StatusOf(e) != statusF {
 			continue
@@ -124,24 +165,50 @@ func filterEntries(entries []any, statusF, kindF string) []any {
 		if kindF != KindAll && KindOf(e) != kindF {
 			continue
 		}
-		filtered = append(filtered, e)
+		out = append(out, decoratedEntry{entry: e, keys: sortKeys(e)})
 	}
-	return filtered
+	return out
 }
 
-// compareEntries orders two entries by the ranked sort keys.
-func compareEntries(a, b any) int {
-	ka, kb := sortKeys(a), sortKeys(b)
-	for i := range ka {
-		if c := Cmp(ka[i], kb[i]); c != 0 {
-			return c
-		}
+// compareDecorated orders two decorated entries by their precomputed keys.
+//
+//nolint:gocritic // value params keep the sort allocation-free; a pointer key table would allocate per entry.
+func compareDecorated(a, b decoratedEntry) int {
+	return compareRankKeys(a.keys, b.keys)
+}
+
+// compareRankKeys orders two key tuples by the ranked sort order. The
+// key precedence is the published contract: changing it changes report,
+// next, and fix together.
+//
+//nolint:gocritic // value params keep the sort allocation-free; a pointer key table would allocate per entry.
+func compareRankKeys(a, b rankKeys) int {
+	if c := cmpInt(a.status, b.status); c != 0 {
+		return c
 	}
-	return 0
+	if c := cmpInt(a.severity, b.severity); c != 0 {
+		return c
+	}
+	if c := cmpInt(a.rigor, b.rigor); c != 0 {
+		return c
+	}
+	if c := cmpInt(a.anchored, b.anchored); c != 0 {
+		return c
+	}
+	if c := cmpInt(a.inBounds, b.inBounds); c != 0 {
+		return c
+	}
+	if c := Cmp(a.path, b.path); c != 0 {
+		return c
+	}
+	if c := Cmp(a.line, b.line); c != 0 {
+		return c
+	}
+	return Cmp(a.sig, b.sig)
 }
 
 // sortKeys builds the eight ranked sort keys for one entry.
-func sortKeys(e any) []any {
+func sortKeys(e any) rankKeys {
 	path := fieldOf(e, "path")
 	if path == nil || path == false {
 		path = ""
@@ -150,15 +217,15 @@ func sortKeys(e any) []any {
 	if line == nil || line == false {
 		line = 0
 	}
-	return []any{
-		statusRank(StatusOf(e)),
-		sevRank(fieldOf(e, "severity")),
-		rigorKey(fieldOf(e, "rigor")),
-		boolRank(fieldOf(e, "anchored")),
-		boolRank(fieldOf(e, "inBounds")),
-		path,
-		line,
-		fieldOf(e, "sig"),
+	return rankKeys{
+		status:   statusRank(StatusOf(e)),
+		severity: sevRank(fieldOf(e, "severity")),
+		rigor:    rigorRank(fieldOf(e, "rigor")),
+		anchored: boolRank(fieldOf(e, "anchored")),
+		inBounds: boolRank(fieldOf(e, "inBounds")),
+		path:     path,
+		line:     line,
+		sig:      fieldOf(e, "sig"),
 	}
 }
 
