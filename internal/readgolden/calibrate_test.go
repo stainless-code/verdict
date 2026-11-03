@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"fmt"
@@ -70,11 +70,11 @@ func calibrateLive(t *testing.T, dir string) {
 	})
 }
 
-// TestCalibrateLiveParity proves the live join matches bash across the
+// TestCalibrateLiveGolden pins the live join across the
 // stale/current heads, the downed compare, and the bundle-gate refusals
 // (missing post, no review id, dead threads read, local bundles,
 // non-GitHub providers, corrupt stores). All legs prove no writes.
-func TestCalibrateLiveParity(t *testing.T) {
+func TestCalibrateLiveGolden(t *testing.T) {
 	t.Parallel()
 
 	stub := func(extra map[string]string) map[string]string {
@@ -173,10 +173,10 @@ func probeFindings() string {
 	)
 }
 
-// TestCalibrateProbeParity proves the offline probe matches bash: the
-// grade write (byte-exact kb-grades.jsonl on both sides), sticky priors,
+// TestCalibrateProbeGolden pins the offline probe: the grade write
+// (byte-exact kb-grades.jsonl), sticky priors,
 // agent judgments, and the judgment refusals.
-func TestCalibrateProbeParity(t *testing.T) {
+func TestCalibrateProbeGolden(t *testing.T) {
 	t.Parallel()
 
 	probe := func(t *testing.T, dir, _ string) {

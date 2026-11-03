@@ -35,8 +35,8 @@ func kbReview(cite string) string {
 	return `{"schema_version":"1","body":"> [!IMPORTANT]\n> KB record check.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Cited finding here.","rigor":"walked","severity":"important"` + kbFrag + `}]}`
 }
 
-// TestParityKBCitations checks KB citations attach identically.
-func TestParityKBCitations(t *testing.T) {
+// TestGoldenKBCitations checks KB citations attach identically.
+func TestGoldenKBCitations(t *testing.T) {
 	active := `{"id":"rec-rule","status":"active"}`
 	retired := `{"id":"old-rule","status":"retired"}`
 	cases := []struct {
@@ -66,7 +66,7 @@ func TestParityKBCitations(t *testing.T) {
 	}
 }
 
-// sequenced runs phase 1 on both sides, applies mutate to both bundles,
+// sequenced runs phase 1 twice over, applies mutate to both bundles,
 // then compares phase 2 — the shape re-review, uncite, and credit flows need.
 // sequencedSlug is the bundle slug for the claims-sequence cases.
 const sequencedSlug = "local-kb"
@@ -120,8 +120,8 @@ func sigOfEntry(e any) (string, bool) {
 	return s, ok
 }
 
-// TestParityClaimsSequence checks verify-claim re-reviews match.
-func TestParityClaimsSequence(t *testing.T) {
+// TestGoldenClaimsSequence checks verify-claim re-reviews match.
+func TestGoldenClaimsSequence(t *testing.T) {
 	active := `{"id":"rec-rule","status":"active"}`
 	sequenced(t, "claims/verify-triage-resolved", func(t *testing.T, dir string) {
 		t.Helper()
@@ -160,8 +160,8 @@ func TestParityClaimsSequence(t *testing.T) {
 	}, "--json")
 }
 
-// TestParityUnciteSequence checks rule retirement matches.
-func TestParityUnciteSequence(t *testing.T) {
+// TestGoldenUnciteSequence checks rule retirement matches.
+func TestGoldenUnciteSequence(t *testing.T) {
 	active := `{"id":"uncite-r","status":"active"}`
 	for _, tc := range []struct {
 		name string
@@ -184,8 +184,8 @@ func TestParityUnciteSequence(t *testing.T) {
 	}
 }
 
-// TestParityBadTriageStatus checks bad triage statuses refuse identically.
-func TestParityBadTriageStatus(t *testing.T) {
+// TestGoldenBadTriageStatus checks bad triage statuses refuse identically.
+func TestGoldenBadTriageStatus(t *testing.T) {
 	sequenced(t, "claims/bad-triage-status", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
@@ -210,8 +210,8 @@ func TestParityBadTriageStatus(t *testing.T) {
 	}, "--json")
 }
 
-// TestParityIncrementalReopen checks delta-touch reopening matches.
-func TestParityIncrementalReopen(t *testing.T) {
+// TestGoldenIncrementalReopen checks delta-touch reopening matches.
+func TestGoldenIncrementalReopen(t *testing.T) {
 	sequenced(t, "incremental/reopen", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(``), nil)
@@ -257,8 +257,8 @@ func flipToAddressed(entries []any) bool {
 	return false
 }
 
-// TestParityOverrides checks fragment overrides behave identically.
-func TestParityOverrides(t *testing.T) {
+// TestGoldenOverrides checks fragment overrides behave identically.
+func TestGoldenOverrides(t *testing.T) {
 	good := map[string]string{
 		".review/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-ov/full.diff":   genDiff(2),

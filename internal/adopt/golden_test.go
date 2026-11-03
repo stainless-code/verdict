@@ -10,14 +10,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/golden"
 )
 
-var harness *parity.Harness
+var harness *golden.Harness
 
-// TestMain builds the Go binary once and runs the parity suite.
+// TestMain builds the Go binary once and runs the golden suite.
 func TestMain(m *testing.M) {
-	os.Exit(parity.RunMain(m, &harness))
+	os.Exit(golden.RunMain(m, &harness))
 }
 
 // fixtureDiff is the shared bundle patch both target and source carry.
@@ -131,9 +131,9 @@ func setupCorruptFrom(t *testing.T, dir, _ string) {
 	mkLocal(t, dir, `[{"kind":"inline","sig":"nope"`)
 }
 
-// TestAdoptParity proves byte parity across the happy handoff, human mode,
+// TestAdoptGolden proves byte parity across the happy handoff, human mode,
 // every typed refusal, and the hunk-snapshot rebuild warning.
-func TestAdoptParity(t *testing.T) {
+func TestAdoptGolden(t *testing.T) {
 	cases := []struct {
 		name  string
 		setup func(t *testing.T, dir, home string)
@@ -153,7 +153,7 @@ func TestAdoptParity(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			parity.Golden(t, harness, tc.name, tc.setup, nil, tc.args...)
+			golden.Pin(t, harness, tc.name, tc.setup, nil, tc.args...)
 		})
 	}
 }

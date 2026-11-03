@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"testing"
@@ -41,12 +41,12 @@ func kitchenSink(t *testing.T, dir, pr string) {
 	})
 }
 
-// TestReportParity proves the report verb matches bash across the human
+// TestReportGolden pins the report verb across the human
 // and machine surfaces, the filter flags, the cost rollup (top, chunk,
 // cache splits, receipts), the requested output artifacts, and the gate
 // flags (tier, freshness, live-thread skip/unreachable). Readers write
 // nothing: every leg carries the no-write proof.
-func TestReportParity(t *testing.T) {
+func TestReportGolden(t *testing.T) {
 	t.Parallel()
 
 	mixed := func(t *testing.T, dir, _ string) {

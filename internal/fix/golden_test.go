@@ -1,8 +1,7 @@
 // Package fix_test holds the golden contract for the Go fix verb: the
 // shared harness runs the Go binary on hermetic local bundles inside a
 // scratch git worktree and pins exit codes, stdout/stderr, the ledger, and
-// every written file against checked-in goldens (go-port 08: the bash
-// comparison retired with the shell).
+// every written file against checked-in goldens.
 package fix_test
 
 import (
@@ -11,15 +10,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
-var harness *parity.Harness
+var harness *golden.Harness
 
-// TestMain builds the Go binary once and runs the parity suite.
+// TestMain builds the Go binary once and runs the golden suite.
 func TestMain(m *testing.M) {
-	os.Exit(parity.RunMain(m, &harness))
+	os.Exit(golden.RunMain(m, &harness))
 }
 
 // Finding sigs shared by the fix fixtures.
@@ -178,9 +177,9 @@ func setupMissing(t *testing.T, dir, _ string) {
 	}
 }
 
-// TestFixParity proves byte parity across the default pick, explicit sigs,
+// TestFixGolden proves byte parity across the default pick, explicit sigs,
 // the completion and ledger gate exits, and every typed refusal.
-func TestFixParity(t *testing.T) {
+func TestFixGolden(t *testing.T) {
 	t.Run("pick", testFixPick)
 	t.Run("refusals", testFixRefusals)
 	t.Run("gates", testFixGates)
@@ -189,40 +188,40 @@ func TestFixParity(t *testing.T) {
 // testFixPick covers the default pick, tiebreak, and completion.
 func testFixPick(t *testing.T) {
 	t.Helper()
-	parity.Golden(t, harness, "pass-json", setupPass, nil,
+	golden.Pin(t, harness, "pass-json", setupPass, nil,
 		"fix", "acme/app", "local-pass", "--json")
-	parity.Golden(t, harness, "pass-human", setupPass, nil,
+	golden.Pin(t, harness, "pass-human", setupPass, nil,
 		"fix", "acme/app", "local-pass")
-	parity.Golden(t, harness, "explicit-sig-json", setupPass, nil,
+	golden.Pin(t, harness, "explicit-sig-json", setupPass, nil,
 		"fix", "acme/app", "local-pass", "--sig", sigInfo, "--json")
-	parity.Golden(t, harness, "tiebreak-json", setupOrder, nil,
+	golden.Pin(t, harness, "tiebreak-json", setupOrder, nil,
 		"fix", "acme/app", "local-order", "--json")
-	parity.Golden(t, harness, "complete-json", setupDone, nil,
+	golden.Pin(t, harness, "complete-json", setupDone, nil,
 		"fix", "acme/app", "local-done", "--json")
-	parity.Golden(t, harness, "complete-human", setupDone, nil,
+	golden.Pin(t, harness, "complete-human", setupDone, nil,
 		"fix", "acme/app", "local-done")
 }
 
 // testFixRefusals covers the sig and bundle refusals plus usage.
 func testFixRefusals(t *testing.T) {
 	t.Helper()
-	parity.Golden(t, harness, "bad-sig-status", setupBadSig, nil,
+	golden.Pin(t, harness, "bad-sig-status", setupBadSig, nil,
 		"fix", "acme/app", "local-bad", "--sig", sigDone, "--json")
-	parity.Golden(t, harness, "bad-sig-unknown", setupBadSig, nil,
+	golden.Pin(t, harness, "bad-sig-unknown", setupBadSig, nil,
 		"fix", "acme/app", "local-bad", "--sig", "deadbeef", "--json")
-	parity.Golden(t, harness, "not-local", setupNotLocal, nil,
+	golden.Pin(t, harness, "not-local", setupNotLocal, nil,
 		"fix", "acme/app", "4291", "--json")
-	parity.Golden(t, harness, "missing-findings", setupMissing, nil,
+	golden.Pin(t, harness, "missing-findings", setupMissing, nil,
 		"fix", "acme/app", "local-empty", "--json")
-	parity.Golden(t, harness, "unknown-flag", setupPass, nil,
+	golden.Pin(t, harness, "unknown-flag", setupPass, nil,
 		"fix", "acme/app", "local-pass", "--bogus")
 }
 
 // testFixGates covers the ceiling and scope-escape gate exits.
 func testFixGates(t *testing.T) {
 	t.Helper()
-	parity.Golden(t, harness, "ceiling", setupCeiling, nil,
+	golden.Pin(t, harness, "ceiling", setupCeiling, nil,
 		"fix", "acme/app", "local-ceil", "--json")
-	parity.Golden(t, harness, "scope-escape", setupScope, nil,
+	golden.Pin(t, harness, "scope-escape", setupScope, nil,
 		"fix", "acme/app", "local-scope", "--json")
 }

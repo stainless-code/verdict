@@ -18,7 +18,7 @@ claiming done. Each rung is a command CI runs.
 3. **Unit** — `go test ./internal/<pkg>/...` while iterating; `make test-race`
    (`go test -race -count=1 ./...`) before done.
 4. **Goldens** — files under `testdata/` are the contract. Regenerate with
-   `go test ./<pkg>/ -update` (`internal/parity` and `internal/core/verify`
+   `go test ./<pkg>/ -update` (`internal/golden` and `internal/core/verify`
    register the flag), then read the diff: a golden you cannot explain is a
    red flag, not a green gate.
 5. **Evals** — `make evals` builds `bin/verdict` and runs `evals/run.sh`;

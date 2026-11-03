@@ -48,7 +48,7 @@ this repo, and the repo files stay the truth for what is gated:
 - No shell for agent-supplied commands; argv only (GO-EXEC-03). — partly: every command verdict issues is argv. The one exception is by design: `verify` runs the agent's own `verifyCmd` through `bash -c`. Analyzer candidate, map §2.
 - Scrub child env (allowlist); cap output ~1 MiB/stream; `ExitCode()` for status (GO-EXEC-04/05). — partly: capture caps and `ExitCode` in `internal/core/exec` (`VerifyOutputCap` 1 MiB); `internal/testenv` scrubs test children. `gh`/`git` inherit on purpose — see `SECURITY.md` § Child process environment.
 - Strict capped JSON entry (`DisallowUnknownFields`, `UseNumber`, size caps) (GO-JSON-01). — partly: `test` reject-cases; analyzer candidate, map §2.
-- Preserve unknown store fields via `RawMessage` maps, never struct round-trips (GO-JSON-02). — partly: store byte-parity goldens in `internal/record`.
+- Preserve unknown store fields via `RawMessage` maps, never struct round-trips (GO-JSON-02). — partly: byte-exact store goldens in `internal/record`.
 - No `encoding/json/v2` or `jsontext` imports until stable (GO-JSON-05). — enforced: `lint:depguard`.
 - Stores: temp-file + fsync + rename + dir-fsync; never truncate in place (GO-ATOMIC-01). — partly: `internal/atomic` owns store writes (temp file + fsync + rename + dir fsync), exercised by tests.
 - Secrets at `0600`; scratch via `MkdirTemp` + deferred cleanup (GO-FS-02). — partly: `lint:gosec` (permission literals) + `internal/testenv` writes its config `0600`.
@@ -74,7 +74,7 @@ this repo, and the repo files stay the truth for what is gated:
 - Consumer-side minimal interfaces; concrete returns; compile-time compliance asserts (GO-IFACE-01/02/03). — review-only (the compiler is the gate for the asserts).
 - Zero-value-ready types; `make` for refs; generics on the third copy, containers first (GO-TYPES-01/03). — review-only.
 - Nil-over-empty slices; `slices`/`maps`/`cmp` over hand loops; sorted snapshot iteration (GO-COLLECT-01/03/04). — partly: `lint:modernize,usestdlibvars` + `forbidigo` (`sort.`, `reflect.DeepEqual`).
-- Table tests with `ErrorIs`; `t.Helper` + `t.Cleanup`; goldens with `-update` (GO-TEST-01/02/04). — partly: `lint:testifylint,thelper,usetesting`; the `-update` flag lives in `internal/parity`.
+- Table tests with `ErrorIs`; `t.Helper` + `t.Cleanup`; goldens with `-update` (GO-TEST-01/02/04). — partly: `lint:testifylint,thelper,usetesting`; the `-update` flag lives in `internal/golden`.
 - Fuzz parsers (`-fuzztime=30s` in CI); `B.Loop` + `benchstat` (GO-TEST-05/06). — review-only (no fuzz targets and no CI fuzz job yet).
 - `t.Context`/`t.Chdir`; testscript txtar for CLI e2e; build-tagged integration (GO-TEST-08). — partly: `lint:usetesting`; CLI e2e is the bash `evals` suite (this repo has no `testscript` dependency).
 - Doc every export name-first; runnable Examples; document sharp edges (GO-DOCS-01/02). — partly: `lint:godoclint,godot,misspell`.
@@ -108,6 +108,6 @@ Recorded here so a later reader does not "fix" them by accident. Each is a
 decision with a reason, not an oversight.
 
 - **GO-EXEC-03/04 (shell, env):** `verify` executes the agent's own command through `bash -c` with the environment snapshot the caller handed it, and the fixed `gh`/`git` argv inherits the developer's environment. Both are the product contract; see `SECURITY.md` § Child process environment.
-- **GO-LOG-01 (slog):** the CLI writes frozen `warn:`/`error:` lines and one JSON envelope instead of `slog` records, because byte-identical stdout/stderr is the parity contract.
+- **GO-LOG-01 (slog):** the CLI writes frozen `warn:`/`error:` lines and one JSON envelope instead of `slog` records, because byte-identical stdout/stderr is the output contract.
 - **GO-SEC-01 (os.Root):** bundle paths are operator-supplied (G304 excluded in `.golangci.yml`), not agent-supplied.
 - **GO-CRYPTO-02 (SHA-1):** `sig_version "1"` identifiers stay on SHA-1, confined to `internal/sig` by a scoped `depguard` exception; FIPS-only is documented as unsupported rather than tested.

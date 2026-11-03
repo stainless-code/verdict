@@ -6,7 +6,7 @@ import (
 )
 
 // refuseFixture writes a local bundle with the given review body and extra
-// files, for the typed-refusal parity legs (C6/I2).
+// files, for the typed-refusal legs.
 func refuseFixture(t *testing.T, dir, review string, extra map[string]string) {
 	t.Helper()
 	files := map[string]string{
@@ -22,9 +22,9 @@ func refuseFixture(t *testing.T, dir, review string, extra map[string]string) {
 
 const refuseBody = `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`
 
-// TestParityRefusals checks every Commit-A typed refusal matches byte-for-byte:
+// TestGoldenRefusals checks every Commit-A typed refusal matches byte-for-byte:
 // codes, messages, exit codes, and no merge artifacts on either side.
-func TestParityRefusals(t *testing.T) {
+func TestGoldenRefusals(t *testing.T) {
 	comment := func(path, body, sugg string) string {
 		return `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":` +
 			path + `,"line":2,"side":"RIGHT","body":` + body + `,"suggestion":` + sugg + `}]}`
@@ -54,7 +54,7 @@ func TestParityRefusals(t *testing.T) {
 	refuse("corrupt-prior", refuseBody, map[string]string{"findings.json": `{broken`})
 	refuse("non-list-prior", refuseBody, map[string]string{"findings.json": `{"sig":"x"}`})
 	refuse("true-prior", refuseBody, map[string]string{"findings.json": `true`})
-	// Absence-shaped priors read as no prior on both sides (success).
+	// Absence-shaped priors read as no prior (success).
 	refuse("null-prior", refuseBody, map[string]string{"findings.json": `null`})
 	refuse("false-prior", refuseBody, map[string]string{"findings.json": `false`})
 	refuse("empty-prior", refuseBody, map[string]string{"findings.json": ``})
@@ -62,9 +62,9 @@ func TestParityRefusals(t *testing.T) {
 	refuse("invalid-utf8-review", "{\"schema_version\":\"1\",\"body\":\"> ✅ marker plus enough length to pass the guard ok.\",\"approved\":false,\"comments\":[{\"path\":\"notes.txt\",\"line\":2,\"side\":\"RIGHT\",\"body\":\"bad \xff byte here with enough substance.\"}]}", nil)
 }
 
-// TestParitySourceShapes checks corrupt/dirty source.json and corrupt PR.json.
-func TestParitySourceShapes(t *testing.T) {
-	// Corrupt source.json degrades to the dirty-head path on both sides.
+// TestGoldenSourceShapes checks corrupt/dirty source.json and corrupt PR.json.
+func TestGoldenSourceShapes(t *testing.T) {
+	// Corrupt source.json degrades to the dirty-head path.
 	goldenBoth(t, "source/corrupt", "local-rf", func(t *testing.T, dir string) {
 		t.Helper()
 		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{oops`})
@@ -79,7 +79,7 @@ func TestParitySourceShapes(t *testing.T) {
 		t.Helper()
 		refuseFixture(t, dir, refuseBody, map[string]string{"source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","dirty":"true"}`})
 	}, "--json")
-	// Corrupt PR.json on a provider bundle refuses not-local on both sides.
+	// Corrupt PR.json on a provider bundle refuses not-local.
 	goldenBoth(t, "source/corrupt-pr", "4251", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{

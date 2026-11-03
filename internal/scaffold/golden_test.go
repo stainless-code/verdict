@@ -1,7 +1,7 @@
 // Package scaffold_test holds the golden contract for the Go init verb:
 // the shared harness runs the Go binary on hermetic fixtures and pins
 // exit codes, stdout/stderr, and every written file against checked-in
-// goldens (go-port 08: the bash comparison retired with the shell),
+// goldens,
 // including the preset matrix, the overwrite guard, and the check-tree
 // validation.
 package scaffold_test
@@ -13,22 +13,22 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
-var harness *parity.Harness
+var harness *golden.Harness
 
-// TestMain builds the Go binary once and runs the parity suite.
+// TestMain builds the Go binary once and runs the golden suite.
 func TestMain(m *testing.M) {
-	os.Exit(parity.RunMain(m, &harness))
+	os.Exit(golden.RunMain(m, &harness))
 }
 
 // initBoth runs one init case with dispatch-faithful args.
 func initBoth(t *testing.T, name string, setup func(t *testing.T, dir, home string), args ...string) {
 	t.Helper()
 	bashArgs := append([]string{args[0]}, args[3:]...)
-	parity.Golden(t, harness, name, setup, nil, bashArgs...)
+	golden.Pin(t, harness, name, setup, nil, bashArgs...)
 }
 
 // mkRepo initializes a clean git repo sandbox.
@@ -130,9 +130,9 @@ func notARepo(t *testing.T, dir, _ string) {
 	}
 }
 
-// TestInitParity proves byte parity across presets, the overwrite guard,
+// TestInitGolden proves byte parity across presets, the overwrite guard,
 // idempotency, and validation edges.
-func TestInitParity(t *testing.T) {
+func TestInitGolden(t *testing.T) {
 	testPresetMatrix(t)
 	testOverwriteGuard(t)
 	testTreeEdges(t)

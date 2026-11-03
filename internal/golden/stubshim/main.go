@@ -1,8 +1,8 @@
-// Command stubshim launches the extensionless bash stub beside it. The parity
-// harness copies it to <name>.exe on Windows, where [exec.LookPath] resolves
-// only PATHEXT names: the shim forwards its argv to bash verbatim (a .cmd
-// shim would re-parse quotes and pipes through cmd.exe) and exits with the
-// script's status.
+// Command stubshim launches the extensionless bash stub beside it. The
+// golden harness copies it to <name>.exe on Windows, where [exec.LookPath]
+// resolves only PATHEXT names: the shim forwards its argv to bash verbatim (a
+// .cmd shim would re-parse quotes and pipes through cmd.exe) and exits with
+// the script's status.
 package main
 
 import (

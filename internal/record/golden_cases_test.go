@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/parity"
 )
 
 func writeFiles(t *testing.T, dir string, files map[string]string) {
@@ -183,15 +183,15 @@ func compareRuns(t *testing.T, name, dirA, dirB, slug string, args []string) {
 	full := append([]string{"record", "acme/app", slug}, args...)
 	a := runOne(t, dirA, t.TempDir(), full...)
 	b := runOne(t, dirB, t.TempDir(), full...)
-	if a.Status != b.Status || parity.Scrub(a.Stdout) != parity.Scrub(b.Stdout) ||
-		parity.Scrub(a.Stderr) != parity.Scrub(b.Stderr) {
+	if a.Status != b.Status || golden.Scrub(a.Stdout) != golden.Scrub(b.Stdout) ||
+		golden.Scrub(a.Stderr) != golden.Scrub(b.Stderr) {
 		t.Fatalf("same fixtures diverge:\n%s\n%s", a.Stderr, b.Stderr)
 	}
 	pinGolden(t, name, dirB, b)
 }
 
-// TestParityMatrix checks the N-comment matrix on both passes.
-func TestParityMatrix(t *testing.T) {
+// TestGoldenMatrix checks the N-comment matrix on both passes.
+func TestGoldenMatrix(t *testing.T) {
 	for _, n := range []int{10, 50, 200} {
 		t.Run(fmt.Sprintf("n%d", n), func(t *testing.T) {
 			t.Helper()
@@ -228,8 +228,8 @@ func matrixRereview(t *testing.T, n int) {
 	compareRuns(t, fmt.Sprintf("matrix/n%d/rereview", n), dirA, dirB, "local-mx", []string{"--json"})
 }
 
-// TestParityDegenerateInputs checks degenerate bodies refuse identically.
-func TestParityDegenerateInputs(t *testing.T) {
+// TestGoldenDegenerateInputs checks degenerate bodies refuse identically.
+func TestGoldenDegenerateInputs(t *testing.T) {
 	base := map[string]string{
 		".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-dg/full.diff":   genDiff(4),
@@ -276,8 +276,8 @@ func TestParityDegenerateInputs(t *testing.T) {
 	}
 }
 
-// TestParityMissingFiles checks missing bundle files refuse identically.
-func TestParityMissingFiles(t *testing.T) {
+// TestGoldenMissingFiles checks missing bundle files refuse identically.
+func TestGoldenMissingFiles(t *testing.T) {
 	full := map[string]string{
 		".review/local-mf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		".review/local-mf/full.diff":   genDiff(2),
@@ -309,8 +309,8 @@ func TestParityMissingFiles(t *testing.T) {
 	})
 }
 
-// TestParityChunked checks chunked bundles merge identically.
-func TestParityChunked(t *testing.T) {
+// TestGoldenChunked checks chunked bundles merge identically.
+func TestGoldenChunked(t *testing.T) {
 	chunkDiff := func(body string) string {
 		return "diff --git a/c1.txt b/c1.txt\nindex 1111111..2222222 100644\n--- a/c1.txt\n+++ b/c1.txt\n@@ -1,2 +1,2 @@\n a\n" + body + "\n"
 	}

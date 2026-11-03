@@ -1,4 +1,4 @@
-package parity
+package golden
 
 // One harness contract for every golden suite: a case is a sandboxed run of
 // the built binary plus the assertion that its scrubbed output and every
@@ -103,10 +103,10 @@ func (c *Case) pinned(files map[string]string) map[string]string {
 	return kept
 }
 
-// Golden runs one case in a fresh sandbox and home and pins it. setup writes
-// identical fixtures per run; extraEnv overlays variables; args are the
-// direct CLI argv.
-func Golden(
+// Pin runs one case in a fresh sandbox and home and pins it against its
+// golden. setup writes identical fixtures per run; extraEnv overlays
+// variables; args are the direct CLI argv.
+func Pin(
 	t *testing.T, h *Harness, name string,
 	setup func(t *testing.T, dir, home string),
 	extraEnv map[string]string, args ...string,
@@ -115,10 +115,10 @@ func Golden(
 	return (&Case{Name: name, Setup: setup, Env: extraEnv, Args: args}).Run(t, h)
 }
 
-// GoldenRead is Golden plus the read-only proof: the verb may write only the
+// PinRead is Pin plus the read-only proof: the verb may write only the
 // artifacts in allowed, and nothing may be deleted. It runs as a parallel
 // subtest, since independent read legs share no state.
-func GoldenRead(
+func PinRead(
 	t *testing.T, h *Harness, name string,
 	setup func(t *testing.T, dir, home string),
 	env map[string]string, allowed map[string]bool, args ...string,
@@ -140,7 +140,7 @@ func GoldenRead(
 // exit code. A suite's TestMain is one line, including the suites that adjust
 // the shared stubs before any leg runs:
 //
-//	func TestMain(m *testing.M) { os.Exit(parity.RunMain(m, &harness, installStubs)) }
+//	func TestMain(m *testing.M) { os.Exit(golden.RunMain(m, &harness, installStubs)) }
 func RunMain(m *testing.M, dst **Harness, hooks ...func(*Harness) error) int {
 	h, err := Build()
 	if err != nil {

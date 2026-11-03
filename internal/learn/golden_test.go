@@ -1,7 +1,7 @@
 // Package learn_test holds the golden contract for the Go learn verb: the
 // shared harness runs the Go binary on hermetic .review/kb.jsonl stores and
 // pins exit codes, stdout/stderr, and every written file against checked-in
-// goldens (go-port 08: the bash comparison retired with the shell).
+// goldens.
 package learn_test
 
 import (
@@ -9,14 +9,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/golden"
 )
 
-var harness *parity.Harness
+var harness *golden.Harness
 
-// TestMain builds the Go binary once and runs the parity suite.
+// TestMain builds the Go binary once and runs the golden suite.
 func TestMain(m *testing.M) {
-	os.Exit(parity.RunMain(m, &harness))
+	os.Exit(golden.RunMain(m, &harness))
 }
 
 // kbSeed is the two-row store the read cases share: one judged rule and one
@@ -58,9 +58,9 @@ func seedCorrupt(t *testing.T, dir, _ string) {
 // emptyDir is the no-store fixture.
 func emptyDir(t *testing.T, _ string, _ string) { t.Helper() }
 
-// TestLearnParity proves byte parity across the append, status, retire, and
+// TestLearnGolden proves byte parity across the append, status, retire, and
 // restore modes plus every typed refusal.
-func TestLearnParity(t *testing.T) {
+func TestLearnGolden(t *testing.T) {
 	t.Run("append", testLearnAppend)
 	t.Run("status", testLearnStatus)
 	t.Run("veto", testLearnVeto)
@@ -70,9 +70,9 @@ func TestLearnParity(t *testing.T) {
 // testLearnAppend covers the --rule append in both render modes.
 func testLearnAppend(t *testing.T) {
 	t.Helper()
-	parity.Golden(t, harness, "append-human", emptyDir, nil,
+	golden.Pin(t, harness, "append-human", emptyDir, nil,
 		"learn", "--rule", "Never log secrets in error paths", "--scope", "src/*.ts")
-	parity.Golden(t, harness, "append-json", emptyDir, nil,
+	golden.Pin(t, harness, "append-json", emptyDir, nil,
 		"learn", "--rule", "Never log secrets in error paths", "--scope", "src/*.ts",
 		"--id", "no-secret-logs", "--provenance", "manual", "--rigor", "walked", "--json")
 }
@@ -80,22 +80,22 @@ func testLearnAppend(t *testing.T) {
 // testLearnStatus covers the --status listing and precision render.
 func testLearnStatus(t *testing.T) {
 	t.Helper()
-	parity.Golden(t, harness, "status-human", seedStatus, nil, "learn", "--status")
-	parity.Golden(t, harness, "status-json", seedStatus, nil, "learn", "--status", "--json")
-	parity.Golden(t, harness, "status-empty", emptyDir, nil, "learn", "--status")
+	golden.Pin(t, harness, "status-human", seedStatus, nil, "learn", "--status")
+	golden.Pin(t, harness, "status-json", seedStatus, nil, "learn", "--status", "--json")
+	golden.Pin(t, harness, "status-empty", emptyDir, nil, "learn", "--status")
 }
 
 // testLearnVeto covers the retire/restore tombstones in both modes.
 func testLearnVeto(t *testing.T) {
 	t.Helper()
 	const reason = "the rule stopped matching how this repo writes code"
-	parity.Golden(t, harness, "retire-json", seedActive, nil,
+	golden.Pin(t, harness, "retire-json", seedActive, nil,
 		"learn", "--retire", "await-err", "--reason", reason, "--json")
-	parity.Golden(t, harness, "retire-human", seedActive, nil,
+	golden.Pin(t, harness, "retire-human", seedActive, nil,
 		"learn", "--retire", "await-err", "--reason", reason)
-	parity.Golden(t, harness, "restore-json", seedRetired, nil,
+	golden.Pin(t, harness, "restore-json", seedRetired, nil,
 		"learn", "--restore", "old-rule", "--reason", reason, "--json")
-	parity.Golden(t, harness, "restore-human", seedRetired, nil,
+	golden.Pin(t, harness, "restore-human", seedRetired, nil,
 		"learn", "--restore", "old-rule", "--reason", reason)
 }
 
@@ -103,27 +103,27 @@ func testLearnVeto(t *testing.T) {
 func testLearnRefusals(t *testing.T) {
 	t.Helper()
 	const reason = "the rule stopped matching how this repo writes code"
-	parity.Golden(t, harness, "need-one-mode", emptyDir, nil, "learn")
-	parity.Golden(t, harness, "scope-needs-rule", emptyDir, nil,
+	golden.Pin(t, harness, "need-one-mode", emptyDir, nil, "learn")
+	golden.Pin(t, harness, "scope-needs-rule", emptyDir, nil,
 		"learn", "--scope", "src/*.ts")
-	parity.Golden(t, harness, "reason-needs-veto", emptyDir, nil,
+	golden.Pin(t, harness, "reason-needs-veto", emptyDir, nil,
 		"learn", "--reason", reason)
-	parity.Golden(t, harness, "bad-rigor", emptyDir, nil,
+	golden.Pin(t, harness, "bad-rigor", emptyDir, nil,
 		"learn", "--rule", "A rule", "--scope", "*", "--rigor", "bogus")
-	parity.Golden(t, harness, "bad-id", emptyDir, nil,
+	golden.Pin(t, harness, "bad-id", emptyDir, nil,
 		"learn", "--rule", "A rule", "--scope", "*", "--id", "Bad_ID")
-	parity.Golden(t, harness, "already-learned", seedActive, nil,
+	golden.Pin(t, harness, "already-learned", seedActive, nil,
 		"learn", "--rule", "Check error paths on every await", "--scope", "src/*.ts")
-	parity.Golden(t, harness, "id-taken", seedActive, nil,
+	golden.Pin(t, harness, "id-taken", seedActive, nil,
 		"learn", "--rule", "A brand new rule", "--scope", "*", "--id", "await-err")
-	parity.Golden(t, harness, "unknown-rule", emptyDir, nil,
+	golden.Pin(t, harness, "unknown-rule", emptyDir, nil,
 		"learn", "--retire", "nope", "--reason", reason)
-	parity.Golden(t, harness, "already-retired", seedRetired, nil,
+	golden.Pin(t, harness, "already-retired", seedRetired, nil,
 		"learn", "--retire", "old-rule", "--reason", reason)
-	parity.Golden(t, harness, "not-retired", seedActive, nil,
+	golden.Pin(t, harness, "not-retired", seedActive, nil,
 		"learn", "--restore", "await-err", "--reason", reason)
-	parity.Golden(t, harness, "bad-retire-reason", seedActive, nil,
+	golden.Pin(t, harness, "bad-retire-reason", seedActive, nil,
 		"learn", "--retire", "await-err", "--reason", "too short")
-	parity.Golden(t, harness, "corrupt-store", seedCorrupt, nil, "learn", "--status", "--json")
-	parity.Golden(t, harness, "unknown-flag", emptyDir, nil, "learn", "--bogus")
+	golden.Pin(t, harness, "corrupt-store", seedCorrupt, nil, "learn", "--status", "--json")
+	golden.Pin(t, harness, "unknown-flag", emptyDir, nil, "learn", "--bogus")
 }

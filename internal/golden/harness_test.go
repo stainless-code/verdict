@@ -1,4 +1,4 @@
-package parity
+package golden
 
 import (
 	"crypto/sha256"

@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"os"
@@ -9,10 +9,9 @@ import (
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
-// TestDoctorParity proves the doctor verb matches bash with the
-// network-dead harness stub (every gh read fails identically on both
-// sides). Pure read: every leg carries the no-write proof.
-func TestDoctorParity(t *testing.T) {
+// TestDoctorGolden pins the doctor verb over the network-dead harness stub
+// (every gh read fails). Pure read: every leg carries the no-write proof.
+func TestDoctorGolden(t *testing.T) {
 	t.Parallel()
 
 	empty := func(t *testing.T, _, _ string) {
@@ -54,10 +53,10 @@ func gitRepo(t *testing.T, dir string) {
 	gitRun(t, dir, "commit", "-qm", "seed")
 }
 
-// TestCheckTreeParity proves the check-tree verb matches bash: the clean
+// TestCheckTreeGolden pins the check-tree verb: the clean
 // tree, the dirty tree, the --expect allowlist (covered and stray), the
 // human and machine surfaces, and the non-repo refusal.
-func TestCheckTreeParity(t *testing.T) {
+func TestCheckTreeGolden(t *testing.T) {
 	t.Parallel()
 
 	clean := func(t *testing.T, dir, _ string) {

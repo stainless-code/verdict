@@ -1,12 +1,11 @@
-// Package parity provides the Go golden-test harness shared by the verb
-// ports: it builds the Go binary once, runs it on hermetic fixtures, and
+// Package golden provides the golden-test harness shared by the verb
+// suites: it builds the Go binary once, runs it on hermetic fixtures, and
 // pins everything observable — exit codes, stdout/stderr, and every file
 // written anywhere (bundle, .review/ stores, kb files, HOME skill trees),
-// plus artifact presence (R6) — against checked-in golden files (go-port
-// 08: the bash comparison retired with the shell). A normalizer that hides
-// real diffs is a defect, so the only scrubs are timestamps, the prompt
-// nonce, and curl's connection timing.
-package parity
+// plus artifact presence — against checked-in golden files. A normalizer
+// that hides real diffs is a defect, so the only scrubs are timestamps, the
+// prompt nonce, and curl's connection timing.
+package golden
 
 import (
 	"context"
@@ -71,9 +70,9 @@ func Build() (*Harness, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmp, err := os.MkdirTemp("", "verdict-parity-root")
+	tmp, err := os.MkdirTemp("", "verdict-golden-root")
 	if err != nil {
-		return nil, jq.Sealed("parity temp root", err)
+		return nil, jq.Sealed("golden temp root", err)
 	}
 	if err := buildBinary(repoRoot, tmp); err != nil {
 		os.RemoveAll(tmp)
@@ -105,7 +104,7 @@ func buildShim(repoRoot, dir string) (string, error) {
 		return "", nil
 	}
 	shim := filepath.Join(dir, "stubshim.exe")
-	build := exec.CommandContext(context.Background(), "go", "build", "-o", shim, "./internal/parity/stubshim")
+	build := exec.CommandContext(context.Background(), "go", "build", "-o", shim, "./internal/golden/stubshim")
 	build.Dir = repoRoot
 	if out, err := build.CombinedOutput(); err != nil {
 		return "", jq.Sealed("build stub shim", errors.New(err.Error()+"\n"+string(out)))
@@ -165,7 +164,7 @@ func copyProvenanceDir(repoRoot, tmp, dir string) error {
 }
 
 // stubScript is the network-dead gh stub: it logs and fails every call,
-// so the parity runs never touch the network.
+// so the harness runs never touch the network.
 const stubScript = "#!/usr/bin/env bash\necho \"stub-gh $*\" >> \"${EVAL_STUBLOG:-/dev/null}\"\n" +
 	"echo \"evals-stub-gh: network disabled ($*)\" >&2\nexit 1\n"
 
@@ -181,10 +180,10 @@ var toolStubNames = []string{
 	"parallel", "pip", "pip3", "pnpm", "rustc", "rustup", "yarn",
 }
 
-// toolStubScript records the invocation on stdout and exits 0: the gate
-// decision (execute) and the recorded proof stay graded byte-identical on
-// both sides without running real toolchains. All current probes pass
-// these tools static argv, so the record is deterministic by construction.
+// toolStubScript records the invocation on stdout and exits 0, so a gate's
+// decision (execute) and its recorded proof grade byte-identically without
+// running real toolchains. All current probes pass these tools static argv,
+// so the record is deterministic by construction.
 const toolStubScript = "#!/usr/bin/env bash\necho \"stub-${0##*/} $*\"\nexit 0\n"
 
 // fetchStubNames are the loopback fetch clients with their own stub shape:
@@ -206,7 +205,7 @@ var fetchStubScripts = map[string]string{
 // plus the deterministic toolchain stubs, all through [Harness.WriteStub] so
 // every OS resolves the same stubs first on PATH.
 func (h *Harness) writeStubs() error {
-	stubBin, err := os.MkdirTemp("", "verdict-parity-stub")
+	stubBin, err := os.MkdirTemp("", "verdict-golden-stub")
 	if err != nil {
 		return jq.Sealed("stub temp dir", err)
 	}
@@ -312,9 +311,8 @@ func copyFile(src, dst string) error {
 var tsRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
 
 // curlMsRe zeroes the elapsed milliseconds in curl's connect-failure
-// line, which no run can reproduce byte-exactly. The shell's job-control
-// kill notice needs no scrub: the shell is gone, and a timeout stays
-// proven by the 137 exit, the timedOut flag, and the timeout marker.
+// line, which no run can reproduce byte-exactly. A timeout needs no scrub:
+// the 137 exit, the timedOut flag, and the timeout marker prove it.
 var curlMsRe = regexp.MustCompile(`(Failed to connect to \S+ port \d+ after )\d+( ms)`)
 
 // versionScrub replaces the manifest version with a placeholder so goldens
@@ -360,8 +358,8 @@ func repoRoot() string {
 }
 
 // Scrub normalizes timestamps, prompt nonces, the manifest version, and
-// curl's connection timing (R6: the sanctioned scrub, extended only for
-// tool-runtime metadata that differs by construction). Everything else
+// curl's connection timing: the sanctioned scrub, extended only for
+// tool-runtime metadata that differs by construction. Everything else
 // compares byte-exact, and a suite that needs to compare two runs of its own
 // shares this scrub instead of forking a weaker one.
 func Scrub(s string) string {
@@ -417,10 +415,10 @@ type Outputs struct {
 }
 
 // childEnv builds the hermetic environment every case shares: testenv.Base
-// drops the developer shell's credentials and harness knobs and pins git's
-// configuration, then the isolated HOME and the network-dead gh stub go
-// first on PATH. extraEnv overlays test variables (and can override the
-// pinned git config).
+// drops the developer's credential-shaped variables and harness knobs and
+// pins git's configuration, then the isolated HOME and the network-dead gh
+// stub go first on PATH. extraEnv overlays test variables (and can override
+// the pinned git config).
 func childEnv(home string, extraEnv map[string]string, stubBin string) []string {
 	merged := maps.Clone(extraEnv)
 	if merged == nil {

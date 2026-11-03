@@ -79,9 +79,9 @@ func firstShared(s string, seen map[string]int) string {
 // maxPrefixLen bounds the ambiguous-prefix search depth.
 const maxPrefixLen = 3
 
-// TestParityVerifyMatrix checks the full verification-claim matrix (I6).
+// TestGoldenVerifyMatrix checks the full verification-claim matrix.
 // verifyLeg is one verification-claim matrix leg: phase 1 records, phase 2
-// applies mutate, then both sides are compared.
+// applies mutate, then the two runs are compared.
 type verifyLeg struct {
 	setup  func(t *testing.T, dir string)
 	mutate func(t *testing.T, dir string)
@@ -104,7 +104,7 @@ func mutateClaims(verdict, head, cmd string) func(t *testing.T, dir string) {
 	}
 }
 
-// verifyLegs lists the I6 matrix legs.
+// verifyLegs lists the verification-claim matrix legs.
 func verifyLegs() []verifyLeg {
 	return []verifyLeg{
 		{claimsSetup, mutateClaims("VERIFIED", "bbbbbbb", "make check"), "verify/bad-head"},
@@ -181,8 +181,8 @@ func mutateAmbiguous(t *testing.T, dir string) {
 	})
 }
 
-// TestParityVerifyMatrix checks the full verification-claim matrix (I6).
-func TestParityVerifyMatrix(t *testing.T) {
+// TestGoldenVerifyMatrix checks the full verification-claim matrix.
+func TestGoldenVerifyMatrix(t *testing.T) {
 	for _, leg := range verifyLegs() {
 		sequenced(t, leg.name, leg.setup, leg.mutate, "--json")
 	}
@@ -239,13 +239,13 @@ func kbLegs() []kbLeg {
 	}
 }
 
-// TestParityKBMatrix checks the KB end-to-end legs: false-positive credit,
+// TestGoldenKBMatrix checks the KB end-to-end legs: false-positive credit,
 // joins idempotency, counter arithmetic, and invalid policy values.
-func TestParityKBMatrix(t *testing.T) {
+func TestGoldenKBMatrix(t *testing.T) {
 	for _, leg := range kbLegs() {
 		sequenced(t, leg.name, leg.setup, leg.mutate, "--json")
 	}
-	// Invalid policy file values warn and fall back on both sides.
+	// Invalid policy file values warn and fall back.
 	goldenBoth(t, "kb/bad-policy-file", "local-kb", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
@@ -253,7 +253,7 @@ func TestParityKBMatrix(t *testing.T) {
 			".review/kb-policy": "MIN_JUDGED=abc\nMAX_FP_RATE=zzz\n",
 		})
 	}, "--json")
-	// Invalid policy env knobs warn and fall back on both sides.
+	// Invalid policy env knobs warn and fall back.
 	goldenBothEnv(t, "kb/bad-policy-env", "local-kb", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
@@ -284,9 +284,9 @@ func stripSigVersion(t *testing.T, dir string) {
 	writeFiles(t, dir, map[string]string{".review/local-kb/findings.json": string(out)})
 }
 
-// TestParityLegacyMerge checks legacy stores merge identically: missing
+// TestGoldenLegacyMerge checks legacy stores merge identically: missing
 // sig_version backfills, unknown keys pass through.
-func TestParityLegacyMerge(t *testing.T) {
+func TestGoldenLegacyMerge(t *testing.T) {
 	sequenced(t, "legacy/backfill-passthrough", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(``), nil)
@@ -299,9 +299,9 @@ func TestParityLegacyMerge(t *testing.T) {
 	}, "--json")
 }
 
-// TestParityIncrementalStill checks a delta that touches other paths reopens
+// TestGoldenIncrementalStill checks a delta that touches other paths reopens
 // nothing (the auto-reopen negative leg).
-func TestParityIncrementalStill(t *testing.T) {
+func TestGoldenIncrementalStill(t *testing.T) {
 	sequenced(t, "incremental/non-touching", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(``), nil)

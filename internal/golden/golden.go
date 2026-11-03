@@ -1,10 +1,9 @@
-package parity
+package golden
 
-// Golden-file runner for the Go CLI contract (go-port 08): every converted
-// parity case runs the built binary on its hermetic fixtures and pins the
-// scrubbed exit code, stdout, stderr, and written files against a
-// checked-in golden under testdata/. Regenerate with -update, then review
-// the testdata diff like code.
+// Golden-file runner for the Go CLI contract: every case runs the built
+// binary on its hermetic fixtures and pins the scrubbed exit code, stdout,
+// stderr, and written files against a checked-in golden under testdata/.
+// Regenerate with -update, then review the testdata diff like code.
 
 import (
 	"crypto/sha256"
@@ -157,7 +156,7 @@ func Check(t *testing.T, name, got string) {
 }
 
 // divergence reports the first differing line with its neighborhood, capped
-// at diffLines per side. parity.Check is the only place a golden mismatch is
+// at diffLines per side. golden.Check is the only place a golden mismatch is
 // printed, so bounding it here keeps a multi-megabyte golden from flooding
 // the test log while still naming the line that moved.
 func divergence(want, got string) string {

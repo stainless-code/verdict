@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"testing"
@@ -22,10 +22,10 @@ func showBundle(t *testing.T, dir, pr string) {
 	})
 }
 
-// TestNextParity proves the next verb matches bash: the top-ranked
+// TestNextGolden pins the next verb: the top-ranked
 // finding, the empty store, the status filter, and the corrupt-store
 // replay (a failed sub-report reads as unreadable, byte-exact).
-func TestNextParity(t *testing.T) {
+func TestNextGolden(t *testing.T) {
 	t.Parallel()
 
 	mixed := func(t *testing.T, dir, _ string) {
@@ -81,10 +81,10 @@ func TestNextParity(t *testing.T) {
 	goldenRead(t, "next/bad-status-json", mixed, nil, nil, goArgs...)
 }
 
-// TestShowParity proves the show verb matches bash: the full record, the
+// TestShowGolden pins the show verb: the full record, the
 // unknown and ambiguous prefixes, the missing flag, the corrupt store,
 // and the null-sig guard (a null sig never matches, never kills).
-func TestShowParity(t *testing.T) {
+func TestShowGolden(t *testing.T) {
 	t.Parallel()
 
 	show := func(t *testing.T, dir, _ string) {

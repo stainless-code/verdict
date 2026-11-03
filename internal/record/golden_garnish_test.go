@@ -16,10 +16,10 @@ func ovGood() map[string]string {
 	}
 }
 
-// TestParityOverridesExtra checks the remaining override branches: a
+// TestGoldenOverridesExtra checks the remaining override branches: a
 // directory in place of a fragment, duplicate keys, the `=` threshold form,
 // and a locked-block marker variant.
-func TestParityOverridesExtra(t *testing.T) {
+func TestGoldenOverridesExtra(t *testing.T) {
 	goldenBoth(t, "overrides/dir-as-fragment", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, ovGood())
@@ -49,9 +49,9 @@ func TestParityOverridesExtra(t *testing.T) {
 	})
 }
 
-// TestParityBodies checks body-shape garnish parity: non-ASCII content,
+// TestGoldenBodies checks body-shape garnish parity: non-ASCII content,
 // a carried rendered footer, and an agent mermaid block.
-func TestParityBodies(t *testing.T) {
+func TestGoldenBodies(t *testing.T) {
 	goldenBoth(t, "body/non-ascii", "local-dg", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
@@ -78,8 +78,8 @@ func TestParityBodies(t *testing.T) {
 	}, "--json")
 }
 
-// TestParityChunkDrift checks the pinned-snapshot drift warning (exit 0).
-func TestParityChunkDrift(t *testing.T) {
+// TestGoldenChunkDrift checks the pinned-snapshot drift warning (exit 0).
+func TestGoldenChunkDrift(t *testing.T) {
 	chunkDiff := func(body string) string {
 		return "diff --git a/c1.txt b/c1.txt\nindex 1111111..2222222 100644\n--- a/c1.txt\n+++ b/c1.txt\n@@ -1,2 +1,2 @@\n a\n" + body + "\n"
 	}

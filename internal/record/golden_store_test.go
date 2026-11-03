@@ -1,8 +1,7 @@
 // Package record_test holds the golden contract for the Go record core: the
 // shared harness runs the Go binary on hermetic fixture bundles and pins exit
 // codes, stdout envelopes, findings.json, record.json, and every other
-// store side effect against checked-in goldens (go-port 08: the bash
-// comparison retired with the shell).
+// store side effect against checked-in goldens.
 package record_test
 
 import (
@@ -10,21 +9,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/golden"
 )
 
-var harness *parity.Harness
+var harness *golden.Harness
 
-// TestMain builds the Go binary once and runs the record parity suite.
+// TestMain builds the Go binary once and runs the record golden suite.
 func TestMain(m *testing.M) {
-	os.Exit(parity.RunMain(m, &harness))
+	os.Exit(golden.RunMain(m, &harness))
 }
 
 // runOne runs the Go binary on fixtures already written under dir and returns
 // the run's streams, exit code, and file tree. Controls are seeded first, and
 // TMPDIR stays inside the sandbox so the store's atomic-write temp files
 // never escape the snapshot.
-func runOne(t *testing.T, dir, home string, args ...string) parity.Outputs {
+func runOne(t *testing.T, dir, home string, args ...string) golden.Outputs {
 	t.Helper()
 	seedControls(t, dir)
 	return harness.Run(t, dir, home, map[string]string{"TMPDIR": dir}, args...)
@@ -47,7 +46,7 @@ func goldenBothEnv(
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		t.Helper()
-		(&parity.Case{
+		(&golden.Case{
 			Name: name,
 			Setup: func(t *testing.T, dir, _ string) {
 				t.Helper()
@@ -65,9 +64,9 @@ func goldenBothEnv(
 // pinGolden pins a run already executed by runOne against testdata/<name>.
 // The determinism legs run twice and pin one side, so they bypass Case's
 // own run and render the captured outputs here.
-func pinGolden(t *testing.T, name, dir string, out parity.Outputs) {
+func pinGolden(t *testing.T, name, dir string, out golden.Outputs) {
 	t.Helper()
-	parity.Check(t, name, parity.Render(parity.Outputs{
+	golden.Check(t, name, golden.Render(golden.Outputs{
 		Status: out.Status, Stdout: out.Stdout, Stderr: out.Stderr,
 		Before: graded(out.Before), Files: graded(out.Files),
 	}, []string{dir}))

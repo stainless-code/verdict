@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"testing"
@@ -59,11 +59,11 @@ func numericSigEntry() string {
 		`"status":"open","rationale":"","history":[]}`
 }
 
-// TestTrendParity proves the trend verb matches bash: the empty store,
+// TestTrendGolden pins the trend verb: the empty store,
 // the dated rollup (periods, tiers, provenance), the overlap audit, the
 // corrupt-bundle skip, and the unreadable-joins warn. Pure read: every
 // leg carries the no-write proof.
-func TestTrendParity(t *testing.T) {
+func TestTrendGolden(t *testing.T) {
 	t.Parallel()
 
 	empty := func(t *testing.T, _, _ string) {

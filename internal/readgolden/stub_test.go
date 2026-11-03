@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"os"

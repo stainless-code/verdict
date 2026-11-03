@@ -1,16 +1,15 @@
-// Package readparity_test holds the golden contract for the Go read
+// Package readgolden_test holds the golden contract for the Go read
 // verbs (report, next, show, ready, trend, calibrate, doctor, check-tree).
 // The shared harness runs the Go binary on hermetic fixtures and pins exit
-// codes, stdout/stderr, and every written file against checked-in goldens
-// (go-port 08: the bash comparison retired with the shell). Readers are
-// read-only by contract, so each leg additionally proves NO file is written
-// or changed — except the explicitly requested artifacts
+// codes, stdout/stderr, and every written file against checked-in goldens.
+// Readers are read-only by contract, so each leg additionally proves NO file
+// is written or changed — except the explicitly requested artifacts
 // (--output/--sarif targets, calibrate's kb-grades.jsonl, ready's probe
-// err file), which still compare byte-exact across the two sides. Gate
-// flags (--check tiers, freshness, live-thread skip/unreachable), --json
-// envelopes, and the corrupt-store typed refusals all have legs. Every leg
-// runs parallel with per-case temp dirs.
-package readparity_test
+// err file), which the golden still pins byte-exact. Gate flags (--check
+// tiers, freshness, live-thread skip/unreachable), --json envelopes, and the
+// corrupt-store typed refusals all have legs. Every leg runs parallel with
+// per-case temp dirs.
+package readgolden_test
 
 import (
 	"fmt"
@@ -19,14 +18,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/parity"
+	"github.com/stainless-code/verdict/internal/golden"
 )
 
-var harness *parity.Harness
+var harness *golden.Harness
 
-// TestMain builds the Go binary once and runs the parity suite.
+// TestMain builds the Go binary once and runs the golden suite.
 func TestMain(m *testing.M) {
-	os.Exit(parity.RunMain(m, &harness))
+	os.Exit(golden.RunMain(m, &harness))
 }
 
 // goldenRead pins one read leg against testdata/<name>.golden and proves the
@@ -40,7 +39,7 @@ func goldenRead(
 	args ...string,
 ) {
 	t.Helper()
-	parity.GoldenRead(t, harness, name, setup, extraEnv, allowedWrites, args...)
+	golden.PinRead(t, harness, name, setup, extraEnv, allowedWrites, args...)
 }
 
 // splitRepo builds argv for verbs taking repo+pr positionals. Every leg

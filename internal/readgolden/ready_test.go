@@ -1,4 +1,4 @@
-package readparity_test
+package readgolden_test
 
 import (
 	"maps"
@@ -33,7 +33,7 @@ exit 1
 `
 
 // writeStub writes an executable gh stub with the given script, returning
-// extraEnv that puts it first on PATH for both sides. The stub goes through
+// extraEnv that puts it first on PATH. The stub goes through
 // harness.WriteStubAt so Windows gets the .exe launcher beside the script
 // (exec.LookPath resolves only PATHEXT names there), and PATH joins with the
 // host separator.
@@ -57,11 +57,11 @@ func readyBundle(t *testing.T, dir, pr string) {
 	})
 }
 
-// TestReadyParity proves the ready verb matches bash: the dead-gh
+// TestReadyGolden pins the ready verb: the dead-gh
 // refusal (exit 1 advisory, exit 3 under --check), the advisory and gate
 // over stubbed live state, the local/provider/missing-bundle refusals,
-// and the staged probe err file (written on both sides, byte-exact).
-func TestReadyParity(t *testing.T) {
+// and the staged probe err file (byte-exact).
+func TestReadyGolden(t *testing.T) {
 	t.Parallel()
 
 	dead := func(t *testing.T, dir, _ string) {
