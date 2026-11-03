@@ -75,6 +75,10 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if done := handleMetaFlags(args, stdout, readFile); done {
 		return cli.ExitOK
 	}
+	if block, ok := verbHelp(args); ok {
+		fmt.Fprint(stdout, block)
+		return cli.ExitOK
+	}
 	root := exeRoot()
 	cmd, repo, pr, args := splitCommand(args)
 	// The arity gate runs before any settings, store, or network read:
