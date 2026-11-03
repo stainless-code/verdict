@@ -39,7 +39,10 @@ switch (mode) {
   }
   case "record-args": {
     const { writeFileSync } = await import("node:fs");
-    writeFileSync(process.env["FAKE_ARGV_FILE"], JSON.stringify(process.argv.slice(2)));
+    writeFileSync(
+      process.env["FAKE_ARGV_FILE"],
+      JSON.stringify(process.argv.slice(2)),
+    );
     emit(envelope());
     break;
   }
@@ -54,7 +57,9 @@ switch (mode) {
     break;
   }
   case "usage": {
-    process.stderr.write("usage: verdict fetch|post|triage|report|next|show [opts]\n");
+    process.stderr.write(
+      "usage: verdict fetch|post|triage|report|next|show [opts]\n",
+    );
     process.exitCode = 2;
     break;
   }
