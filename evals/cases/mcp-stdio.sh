@@ -79,13 +79,13 @@ if jq -e 'select(.id == 1).result | (.protocolVersion == "2025-06-18") and (.ser
 else
   bad "initialize result is missing the revision/experimental marker"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 18' <"$MCP_OUT" >/dev/null; then
-  good "tools/list carries 18 core tools"
+if jq -e 'select(.id == 2).result.tools | length == 17' <"$MCP_OUT" >/dev/null; then
+  good "tools/list carries 17 core tools (triage is operator-only)"
 else
   bad "tools/list count is not 17"
 fi
-if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("install") == null)' <"$MCP_OUT" >/dev/null; then
-  good "tool names follow the core surface (install is never a tool)"
+if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("install") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
+  good "tool names follow the core surface (install and triage are never tools)"
 else
   bad "tool names drifted"
 fi

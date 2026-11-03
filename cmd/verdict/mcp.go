@@ -23,7 +23,8 @@ func mcpUsageText() string {
 		"  --read-only  expose only non-writing tools (report, next, show, trend, ready, doctor, check-tree)\n" +
 		"\n" +
 		"  Tools: adopt, calibrate, check-tree, doctor, fetch, fetch-local, fix, init, learn,\n" +
-		"  next, post, ready, record, report, show, trend, triage, verify.\n" +
+		"  next, post, ready, record, report, show, trend, verify. The operator-only `triage`\n" +
+		"  verb stays on the CLI and is never exposed here.\n" +
 		"  Each tool takes the core request shape: repo/pr plus verb fields; schemas are generated\n" +
 		"  from those structs. Success data matches the CLI --json envelope's data; typed refusals\n" +
 		"  return isError=true with code/message/hint.\n" +

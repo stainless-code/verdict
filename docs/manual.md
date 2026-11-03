@@ -503,12 +503,13 @@ bytes stay frozen) but `verdict mcp --help` documents it.
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
-`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `trend`, `triage`,
+`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `trend`,
 `verify`. `upgrade` and `skill` are distribution surfaces, never
-tools. Input schemas are generated from the Go request structs, so they cannot
-drift from the core contract; `repo`/`pr` plus verb fields are the arguments.
-`post` writes a review and calls GitHub, so it is not exposed under
-`--read-only`.
+tools; `triage` is operator-only and stays a CLI verb, so an agent proposes
+status changes through `triage[]` in `review.json` instead. Input schemas are
+generated from the Go request structs, so they cannot drift from the core
+contract; `repo`/`pr` plus verb fields are the arguments. `post` writes a
+review and calls GitHub, so it is not exposed under `--read-only`.
 
 `--read-only` exposes only the non-writing tools (`report`, `next`, `show`,
 `trend`, `ready`, `doctor`, `check-tree`); every verb is exposed by default

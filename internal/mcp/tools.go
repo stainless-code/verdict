@@ -22,7 +22,6 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
-	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -110,8 +109,6 @@ func allTools(readOnly bool) []*tool {
 		},
 		dataTool("trend", "Roll up review outcomes across fetched bundles.",
 			reflect.TypeFor[trendcore.Request](), map[string]bool{fieldPr: true}, []string{argRepo}, true, trendcore.Run),
-		dataTool("triage", "Flip one finding's status (or preview the flip with dryRun).",
-			reflect.TypeFor[triagecore.Request](), nil, []string{argRepo, argPr, "sig", "status"}, false, triagecore.Run),
 		dataTool("verify", "Run the recorded verifyCmd with the watchdog and record the proof.",
 			reflect.TypeFor[core.VerifyRequest](), nil, requiredRepoPr, false, verifycore.Run),
 	}

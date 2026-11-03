@@ -16,7 +16,6 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
-	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -106,13 +105,13 @@ func decodeFrames(t *testing.T, raw []byte) map[string]frame {
 func TestToolSchemas(t *testing.T) {
 	t.Parallel()
 	tools := allTools(false)
-	if len(tools) != 18 {
-		t.Fatalf("tools = %d, want 18", len(tools))
+	if len(tools) != 17 {
+		t.Fatalf("tools = %d, want 17", len(tools))
 	}
 	wantNames := []string{
 		"adopt", "calibrate", "check-tree", "doctor", "fetch", "fetch-local", "fix",
 		"init", "learn", "next", "post", "ready", "record", "report", "show",
-		"trend", "triage", "verify",
+		"trend", "verify",
 	}
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -198,30 +197,23 @@ func checkSchema(t *testing.T, tool string, node map[string]any) {
 // the response's Data field) reaches a service beyond the report family.
 func TestDataToolCall(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeFile(t, ".review/5101/PR.json",
-		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`)
-	writeFile(t, ".review/5101/findings.json", `[{"kind":"inline","path":"notes.txt",`+
-		`"side":"RIGHT","line":2,"anchored":true,"body":"Usable body.","suggestion":null,`+
-		`"inBounds":true,"rigor":"walked","severity":"critical",`+
-		`"sig":"c111111111111111111111111111111111111111","sig_version":"1",`+
-		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]`)
 	cfg := testConfig()
 	frames := serve(t, &cfg,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"c1111111","status":"addressed","force":true,"dryRun":true}}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"learn","arguments":{"status":true}}}`,
 	)
 	var result callToolResult
 	if err := json.Unmarshal(frames["1"].Result, &result); err != nil {
 		t.Fatal(err)
 	}
 	if result.IsError {
-		t.Fatalf("triage refused: %s", result.Content[0].Text)
+		t.Fatalf("learn refused: %s", result.Content[0].Text)
 	}
 	var data map[string]any
 	if err := json.Unmarshal(result.StructuredContent, &data); err != nil {
 		t.Fatal(err)
 	}
-	if data["status"] != "addressed" || data["dry_run"] != true {
-		t.Errorf("triage data = %v", data)
+	if rules, ok := data["rules"].([]any); !ok || len(rules) != 0 {
+		t.Errorf("learn data = %v", data)
 	}
 }
 
@@ -415,7 +407,7 @@ func TestServeLifecycle(t *testing.T) {
 	if err := json.Unmarshal(frames["2"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 18 {
+	if len(list.Tools) != 17 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
 	// Success.
@@ -519,20 +511,8 @@ func TestArgsDecode(t *testing.T) {
 	if req.Flags.Status != "open" || !req.Flags.Cost {
 		t.Fatalf("flags = %+v", req.Flags)
 	}
-	triage := findTool(t, "triage")
-	decoded, err := decodeArgs(triage, json.RawMessage(`{"repo":"a/b","pr":"1","sig":"abc","status":"addressed","dryRun":true}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	triageReq, ok := decoded.(*triagecore.Request)
-	if !ok {
-		t.Fatalf("decoded type = %T", decoded)
-	}
-	if !triageReq.DryRun || triageReq.Sig != "abc" {
-		t.Fatalf("triage = %+v", triageReq)
-	}
 	learn := findTool(t, "learn")
-	decoded, err = decodeArgs(learn, json.RawMessage(`{"id":"x","rule":"r","scope":"repo"}`))
+	decoded, err := decodeArgs(learn, json.RawMessage(`{"id":"x","rule":"r","scope":"repo"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,6 +535,24 @@ func findTool(t *testing.T, name string) *tool {
 	}
 	t.Fatalf("tool %q not registered", name)
 	return nil
+}
+
+// TestTriageNotExposed proves the operator-only triage verb stays off the
+// MCP surface (SKILL.md tells agents never to call it) while the CLI verb
+// remains.
+func TestTriageNotExposed(t *testing.T) {
+	t.Parallel()
+	for _, tool := range allTools(false) {
+		if tool.name == "triage" {
+			t.Fatal("triage is exposed over MCP")
+		}
+	}
+	cfg := testConfig()
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1"}}}`)
+	if frames["1"].Error == nil || frames["1"].Error.Code != codeInvalidParams {
+		t.Fatalf("triage call = %+v, want -32602 unknown tool", frames["1"].Error)
+	}
 }
 
 // TestEmptyInputExits proves stdin closure ends the session cleanly.
