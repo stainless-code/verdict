@@ -325,16 +325,27 @@ func TestSensPathReasons(t *testing.T) {
 	}
 }
 
-// TestParseDiffHeader exercises the fetch helper.
+// TestParseDiffHeader exercises the shared quote/space-safe header parser:
+// unquoted spaces and C-quoted unicode must yield the real paths so the
+// sensitive manifest and the hunk index agree.
 func TestParseDiffHeader(t *testing.T) {
 	t.Parallel()
-	oldP, newP := parseDiffHeader("diff --git a/old.txt b/new.txt")
-	if oldP != "old.txt" || newP != "new.txt" {
-		t.Fatalf("unquoted = %q %q", oldP, newP)
+	tests := []struct {
+		name, header, old, new string
+	}{
+		{"plain", "diff --git a/old.txt b/new.txt", "old.txt", "new.txt"},
+		{"quoted spaces", `diff --git "a/my old.txt" "b/my new.txt"`, "my old.txt", "my new.txt"},
+		{"unquoted spaces", "diff --git a/my file.txt b/my file.txt", "my file.txt", "my file.txt"},
+		{"quoted unicode", `diff --git "a/h\303\251llo.txt" "b/h\303\251llo.txt"`, "héllo.txt", "héllo.txt"},
 	}
-	oldP, newP = parseDiffHeader(`diff --git "a/my old.txt" "b/my new.txt"`)
-	if oldP != "my old.txt" || newP != "my new.txt" {
-		t.Fatalf("quoted = %q %q", oldP, newP)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			oldP, newP := parseDiffHeader(tt.header)
+			if oldP != tt.old || newP != tt.new {
+				t.Fatalf("parseDiffHeader(%q) = %q %q, want %q %q", tt.header, oldP, newP, tt.old, tt.new)
+			}
+		})
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -159,46 +160,11 @@ func sensSectionStarts(lines []string) []int {
 	return starts
 }
 
-// parseDiffHeader ports the sens_emit_section header parse: quoted headers
-// split on the quote-space boundary, unquoted on the first space.
+// parseDiffHeader delegates the header parse to the shared quote/space-safe
+// parser used by internal/hunks, so the sensitive manifest and the anchor
+// index agree on quoted, spaced, and renamed paths.
 func parseDiffHeader(hline string) (oldPath, newPath string) {
-	hdr := strings.TrimPrefix(hline, "diff --git ")
-	if after, ok := strings.CutPrefix(hdr, dblQuote); ok {
-		return parseQuotedHeader(after)
-	}
-	return parseUnquotedHeader(hdr)
-}
-
-// parseQuotedHeader splits a quoted `"a/x" "b/y"` header at quote-space.
-func parseQuotedHeader(tmp string) (oldPath, newPath string) {
-	oldPath = tmp
-	if before, _, ok := strings.Cut(tmp, dblQuote); ok {
-		oldPath = before
-	}
-	oldPath = strings.TrimPrefix(oldPath, "a/")
-	rest := tmp
-	if _, after, ok := strings.Cut(tmp, "\" "); ok {
-		rest = after
-	}
-	rest = strings.TrimPrefix(rest, dblQuote)
-	if before, _, ok := strings.CutLast(rest, dblQuote); ok {
-		rest = before
-	}
-	return oldPath, strings.TrimPrefix(rest, "b/")
-}
-
-// parseUnquotedHeader splits a plain `a/x b/y` header at the first space.
-func parseUnquotedHeader(hdr string) (oldPath, newPath string) {
-	oldPath = hdr
-	if before, _, ok := strings.Cut(hdr, " "); ok {
-		oldPath = before
-	}
-	oldPath = strings.TrimPrefix(oldPath, "a/")
-	rest := hdr
-	if _, after, ok := strings.Cut(hdr, " "); ok {
-		rest = after
-	}
-	return oldPath, strings.TrimPrefix(rest, "b/")
+	return hunks.HeaderPaths(hline)
 }
 
 // writeSensitiveManifest ports write_sensitive_manifest: the advisory

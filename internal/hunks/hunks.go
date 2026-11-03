@@ -26,34 +26,23 @@ func (h Hunk) Row() string {
 }
 
 // Parse indexes diffText the way build_hunks_tsv's awk does: `diff --git`
-// headers name the file (greedy through the last " b/"), `rename to` headers
-// rename it, and `@@` headers contribute OLD/NEW ranges. Zero-count sides
-// contribute nothing.
+// headers name the file through the shared quote/space-safe parser, `rename
+// to` headers rename it, and `@@` headers contribute OLD/NEW ranges.
+// Zero-count sides contribute nothing.
 func Parse(diffText string) []Hunk {
 	var out []Hunk
 	file := ""
 	for ln := range strings.SplitSeq(diffText, "\n") {
 		switch {
 		case strings.HasPrefix(ln, "diff --git "):
-			file = diffFile(ln)
+			_, file = HeaderPaths(ln)
 		case strings.HasPrefix(ln, "rename to "):
-			file = strings.TrimPrefix(ln, "rename to ")
+			file = UnquotePath(strings.TrimPrefix(ln, "rename to "))
 		case strings.HasPrefix(ln, "@@ "):
 			out = append(out, hunkRows(file, ln)...)
 		}
 	}
 	return out
-}
-
-// diffFile strips the `diff --git a/... b/` prefix greedily through the last
-// " b/", exactly like the awk sub(). Quoted paths keep their trailing quote,
-// same as the shell (bug-for-bug: validation keys match the same mangling).
-func diffFile(line string) string {
-	rest := strings.TrimPrefix(line, "diff --git ")
-	if _, after, ok := strings.CutLast(rest, gitBPrefix); ok {
-		return after
-	}
-	return rest
 }
 
 // hunkRows parses one @@ header into OLD/NEW rows.
@@ -123,6 +112,4 @@ func Format(hunks []Hunk) string {
 const (
 	// minHeaderFields is the minimum @@-header field count.
 	minHeaderFields = 3
-	// gitBPrefix is the " b/" separator in `diff --git` lines.
-	gitBPrefix = " b/"
 )
