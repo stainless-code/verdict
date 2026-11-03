@@ -127,7 +127,10 @@ func runCapture(t *testing.T, args []string) (int, string, string) {
 	drain := func(r *os.File) <-chan []byte {
 		ch := make(chan []byte, 1)
 		go func() {
-			raw, _ := io.ReadAll(r)
+			raw, rerr := io.ReadAll(r)
+			if rerr != nil {
+				t.Errorf("read captured stdio: %v", rerr)
+			}
 			ch <- raw
 		}()
 		return ch
