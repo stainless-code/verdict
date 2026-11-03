@@ -300,7 +300,7 @@ func DecodeSlurp(r io.Reader) ([]any, error) {
 // (encoding/json sorts map keys, which matches for UTF-8), no HTML escaping,
 // trailing newline.
 func Pretty(v any) string {
-	return CompactIndent(v, "", "  ") + "\n"
+	return compactIndent(v, "", "  ") + "\n"
 }
 
 // PrettyOrdered renders v like `jq '.'` with stored key order for *Obj
@@ -325,9 +325,10 @@ func Compact(v any) string {
 	return strings.TrimSuffix(buf.String(), newline)
 }
 
-// CompactIndent renders v with the given prefix/indent and no HTML escaping.
-// [Number] renders as its raw literal (see Compact).
-func CompactIndent(v any, prefix, indent string) string {
+// compactIndent renders v with the given prefix/indent and no HTML escaping.
+// [Number] renders as its raw literal (see Compact). It is package-private:
+// [Pretty] is the only renderer the CLI uses.
+func compactIndent(v any, prefix, indent string) string {
 	if n, ok := v.(Number); ok {
 		return n.String()
 	}
