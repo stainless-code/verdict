@@ -26,6 +26,7 @@ var forbiddenMCPDeps = []string{
 	"/internal/fix",
 	"/internal/learn",
 	"/internal/ready",
+	"/internal/threads",
 	"/internal/trend",
 	"/internal/calibrate",
 	"/internal/doctor",

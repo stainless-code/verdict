@@ -111,3 +111,47 @@ func hasGoSources(t *testing.T, dir string) bool {
 	}
 	return false
 }
+
+// TestVerbAdapterGuardCoverage keeps the forbidden list in step with the verb
+// adapters under internal/: a thin internal/<name> adapter that wraps a
+// same-named core service must be registered as forbidden to core. It names
+// every unclassified adapter rather than stopping at the first.
+func TestVerbAdapterGuardCoverage(t *testing.T) {
+	entries, err := os.ReadDir("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range verbAdapters(t, entries) {
+		if !slices.Contains(forbiddenDeps, "/internal/"+name) {
+			t.Errorf("verb adapter internal/%s is not covered by forbiddenDeps", name)
+		}
+	}
+}
+
+// verbAdapters returns the thin internal/<name> adapters that wrap a
+// same-named core service.
+func verbAdapters(t *testing.T, entries []os.DirEntry) []string {
+	t.Helper()
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() || !hasCoreService(t, e.Name()) {
+			continue
+		}
+		if hasGoSources(t, "../"+e.Name()) {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// hasCoreService reports whether internal/core/<name> is a Go package.
+func hasCoreService(t *testing.T, name string) bool {
+	t.Helper()
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+		t.Fatal(err)
+	}
+	return hasGoSources(t, name)
+}
