@@ -134,3 +134,15 @@ type Post = core.Post
 
 // Record is core's completed-record artifact.
 type Record = core.Record
+
+// FetchEstimate is the fetch verb's optional data.estimate object: the
+// projected per-run cost plus, when a local harness measurement priced a
+// comparable run, the measured basis it was built from.
+type FetchEstimate struct { //nolint:govet // field order is the published property order
+	Tier           *string  `json:"tier"`
+	ProjectedUSD   *float64 `json:"projected_usd"`
+	ComparableRuns int      `json:"comparable_runs"`
+	Basis          string   `json:"basis"           optional:"true"`
+	Harness        []string `json:"harness"         optional:"true"`
+	MeasuredRuns   int      `json:"measured_runs"   optional:"true"`
+}

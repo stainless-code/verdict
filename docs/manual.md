@@ -583,6 +583,38 @@ scalar (shown as `cached=N` on the human line) while totals stay
 `input + output` exactly; the script never prices cached tokens (`est_usd`
 remains the agent's own math, as today).
 
+#### Measured usage (local harness files)
+
+When a local agent-harness session file is available, the budget gate prices
+comparable runs from it instead of the self-reported `est_usd` — read locally,
+never over the network. Two shapes are supported:
+
+- **Claude Code transcripts** — `$CLAUDE_CONFIG_DIR/projects/<slug>/*.jsonl`
+  (or `~/.claude/projects/<slug>/`). The last `cost-state` entry's
+  `totalCostUSD` is the measured session total; without one, deduplicated
+  per-request `costUSD` entries sum.
+- **opencode exports** — one `opencode export <session>` JSON file (an `info`
+  object carrying `cost`/`time` plus `messages`) named by
+  `VERDICT_HARNESS_USAGE` (a file, a directory of `*.json`/`*.jsonl`, or a
+  path list).
+
+A session is joined to a `.review/*/cost.json` record only when its window
+brackets that record's mtime, so a transcript from another checkout — or an
+unrelated coding session — never prices a review. The measured USD replaces
+the self-reported `est_usd` for that run; records without a measured twin keep
+their self-report. Tokens without a priced total are never converted to USD
+(the tool never prices tokens).
+
+The estimate names its basis whenever a measurement contributed:
+`data.estimate.basis` is `measured` (every priced sample in the projected tier
+came from a harness) or `mixed`, with `harness[]` naming the sources and
+`measured_runs` counting them; the human estimate line and an over-budget
+refusal carry `[measured from N harness session(s)]`. Those keys are absent —
+and the legacy output stays byte-identical — when no harness data exists, so a
+self-reported estimate is never silently labeled as measured. Other formats
+(telemetry spans, generic runner logs) are not parsed yet: export them to one
+of the two shapes above.
+
 ## Onboarding (scaffolder + prefs file + skill installer)
 
 New operators onboard in one offline command — no network, ever:

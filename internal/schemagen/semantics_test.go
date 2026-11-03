@@ -15,8 +15,10 @@ import (
 // change updates this map in its own ticket (audit-24 drift rule); a mere
 // reformat of schemas/*.schema.json must not change it.
 var publishedSemantics = map[string]string{
-	"cost.schema.json":     "30031615315e1a60fac58a9b978b2e2ec30142001c92a78dbd25e7e34c46d217",
-	"envelope.schema.json": "63dc3b6596372e6015c102fd8f152f5d86ede299c10e3a5e509c3259df32fe56",
+	"cost.schema.json": "30031615315e1a60fac58a9b978b2e2ec30142001c92a78dbd25e7e34c46d217",
+	// 08: additive fetchEstimate $defs entry (measured-usage basis fields);
+	// no existing property, required key, or type changed.
+	"envelope.schema.json": "3cf90e95e28fbb24006823109ace0ecd387261be1083f6f8365e85d1b23fc8c8",
 	"findings.schema.json": "2ee11aaeb826ef09afcca6a675e7c5780ef05576c654e6f833545441921c2a26",
 	"post.schema.json":     "f706cc28f621eb668c8d621b03013f65f706a352d0ddc4da8b64068f98a3f100",
 	"record.schema.json":   "6e14c660471d31aa6a88e0cff787860a6ecdd0302cdc527eb511dde8542767fc",

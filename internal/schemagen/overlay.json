@@ -11,7 +11,7 @@
   },
   "envelope": {
     "descriptions": {
-      "": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly) — the remaining verbs keep the generic object shape until their data stabilizes.",
+      "": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly), fetch publishes its optional estimate object as fetchEstimate, and the remaining verbs keep the generic object shape until their data stabilizes.",
       "/properties/pr": "Numeric PR, else null (local slugs never coerce).",
       "/$defs/error": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
       "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
@@ -21,7 +21,11 @@
       "/$defs/reportCost/properties/cached_input_tokens": "Summed per-model cache_read_input_tokens plus cache_creation_input_tokens; totals stay input + output exactly.",
       "/$defs/postData": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
       "/$defs/postData/properties/review": "Real-post only: the accepted GitHub review object.",
-      "/$defs/recordData": "record --json data: the local-bundle merge (post stays refused, no PR target)."
+      "/$defs/recordData": "record --json data: the local-bundle merge (post stays refused, no PR target).",
+      "/$defs/fetchEstimate": "fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did.",
+      "/$defs/fetchEstimate/properties/basis": "measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed.",
+      "/$defs/fetchEstimate/properties/harness": "Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis.",
+      "/$defs/fetchEstimate/properties/measured_runs": "How many priced samples in the projected tier came from a harness session; absent with basis."
     }
   },
   "findings": {

@@ -128,9 +128,9 @@ func TestPickEstimateTier(t *testing.T) {
 		{tier: "cheap", usd: "3.00", has: true},
 		{tier: "standard", usd: "0.50", has: true},
 	}
-	tier, runs, mean, ok := pickEstimateTier(recs)
-	if !ok || tier != "cheap" || runs != 2 || mean != "2" {
-		t.Fatalf("pick = %s/%d/%s/%v, want cheap/2/2/true", tier, runs, mean, ok)
+	tier, runs, stat, ok := pickEstimateTier(recs)
+	if !ok || tier != "cheap" || runs != 2 || stat.mean != "2" {
+		t.Fatalf("pick = %s/%d/%s/%v, want cheap/2/2/true", tier, runs, stat.mean, ok)
 	}
 	// Ties break toward the deeper tier.
 	tied := []costRec{{tier: "cheap", usd: "1", has: true}, {tier: "deep", usd: "9", has: true}}
@@ -140,12 +140,73 @@ func TestPickEstimateTier(t *testing.T) {
 	}
 	// Unpriced tier reads unknown.
 	unpriced := []costRec{{tier: "standard"}}
-	_, _, mean, ok = pickEstimateTier(unpriced)
-	if !ok || mean != "" {
-		t.Fatalf("unpriced = %q/%v, want empty/true", mean, ok)
+	_, _, stat, ok = pickEstimateTier(unpriced)
+	if !ok || stat.mean != "" {
+		t.Fatalf("unpriced = %q/%v, want empty/true", stat.mean, ok)
 	}
 	if _, _, _, ok := pickEstimateTier(nil); ok {
 		t.Fatal("empty records read ok")
+	}
+}
+
+// TestPickEstimateTierMeasured proves a joined harness measurement prices
+// the run and names its session source, while the self-reported value stays
+// the fallback for runs with no measured twin.
+func TestPickEstimateTierMeasured(t *testing.T) {
+	t.Parallel()
+	measured := 0.75
+	recs := []costRec{
+		{tier: "standard", usd: "5.00", has: true, measured: &measured, usageSource: "claude-code"},
+		{tier: "standard", usd: "0.25", has: true},
+	}
+	tier, runs, stat, ok := pickEstimateTier(recs)
+	if !ok || tier != "standard" || runs != 2 {
+		t.Fatalf("pick = %s/%d/%v", tier, runs, ok)
+	}
+	if stat.mean != "0.5" || stat.priced != 2 || stat.measured != 1 {
+		t.Fatalf("stat = %+v, want mean 0.5 with 1 measured of 2 priced", stat)
+	}
+	if len(stat.harness) != 1 || stat.harness[0] != "claude-code" {
+		t.Fatalf("harness = %v", stat.harness)
+	}
+}
+
+// TestEstimateObjectBasis proves the measured basis keys are additive-only:
+// a self-reported estimate keeps the legacy object, a measured one names its
+// source, and a partial split reads mixed.
+func TestEstimateObjectBasis(t *testing.T) {
+	t.Parallel()
+	st := &budgetState{estUSD: "1.5", estRuns: 2}
+	obj := estimateObject(st, "standard")
+	for _, key := range []string{"basis", "harness", "measured_runs"} {
+		if obj.Has(key) {
+			t.Fatalf("self-reported estimate carries %q", key)
+		}
+	}
+	st.recordBasis(tierStat{measured: 2, priced: 2, harness: []string{"claude-code"}})
+	obj = estimateObject(st, "standard")
+	if got, _ := obj.Get("basis"); got != "measured" {
+		t.Fatalf("basis = %v, want measured", got)
+	}
+	if !obj.Has("harness") || !obj.Has("measured_runs") {
+		t.Fatalf("measured estimate misses harness/measured_runs: %s", obj.MarshalCompact())
+	}
+	if !strings.Contains(st.basisNote(), "measured from 2 harness session(s)") {
+		t.Fatalf("basisNote = %q", st.basisNote())
+	}
+}
+
+// TestRecordBasisMixed proves a partly measured tier reads mixed, never
+// measured.
+func TestRecordBasisMixed(t *testing.T) {
+	t.Parallel()
+	st := &budgetState{}
+	st.recordBasis(tierStat{measured: 1, priced: 2, harness: []string{"opencode"}})
+	if st.estBasis != "mixed" {
+		t.Fatalf("partial basis = %q, want mixed", st.estBasis)
+	}
+	if !strings.Contains(st.basisNote(), "partly measured") {
+		t.Fatalf("mixed basisNote = %q", st.basisNote())
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // budgetState carries the cost-control plane: the operator spend budget,
@@ -23,7 +24,10 @@ type budgetState struct {
 	budgetSrc     string
 	estTier       string
 	estUSD        string
+	estBasis      string
+	estHarness    []string
 	estRuns       int
+	measuredRuns  int
 	tierRuns      int
 	hasBudget     bool
 	receiptNeeded bool
@@ -94,7 +98,7 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 	if st.estTier != "" {
 		tierVal = st.estTier
 	}
-	st.estimateJSON = jq.NewObj("tier", tierVal, "projected_usd", jsonFloat(st.estUSD), "comparable_runs", st.estRuns)
+	st.estimateJSON = estimateObject(st, tierVal)
 	if st.estUSD == "" {
 		return nil
 	}
@@ -104,10 +108,39 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 			return nil
 		}
 		return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
-			"projected %s run ~$%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
-			st.estTier, st.estUSD, st.budgetUSD, st.budgetSrc, st.estRuns)}
+			"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
+			st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
 	}
 	return nil
+}
+
+// estimateObject renders the estimate summary. The basis/harness/measured_runs
+// keys appear only when a harness measurement contributed, so the legacy
+// self-reported estimate keeps its exact bytes.
+func estimateObject(st *budgetState, tierVal any) *jq.Obj {
+	o := jq.NewObj("tier", tierVal, "projected_usd", jsonFloat(st.estUSD), "comparable_runs", st.estRuns)
+	if st.measuredRuns == 0 {
+		return o
+	}
+	o.Set("basis", st.estBasis)
+	if len(st.estHarness) > 0 {
+		o.Set("harness", st.estHarness)
+	}
+	o.Set("measured_runs", st.measuredRuns)
+	return o
+}
+
+// basisNote renders the measured-basis clause appended to human estimates
+// and refusals; empty when the projection is purely self-reported.
+func (st *budgetState) basisNote() string {
+	switch {
+	case st.measuredRuns == 0:
+		return ""
+	case st.estBasis == "measured":
+		return fmt.Sprintf(" [measured from %d harness session(s)]", st.measuredRuns)
+	default:
+		return fmt.Sprintf(" [partly measured: %d harness session(s)]", st.measuredRuns)
+	}
 }
 
 // costEstimate ports cost_estimate: the mean est_usd of the most-run effort
@@ -120,7 +153,7 @@ func costEstimate(r *session, st *budgetState) {
 		fmt.Fprintln(r.Human, "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)")
 		return
 	}
-	tier, tierRuns, mean, ok := pickEstimateTier(recs)
+	tier, tierRuns, stat, ok := pickEstimateTier(recs)
 	st.estRuns = len(recs)
 	if !ok {
 		fmt.Fprintln(r.Human, "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)")
@@ -128,27 +161,48 @@ func costEstimate(r *session, st *budgetState) {
 		return
 	}
 	st.estTier, st.tierRuns = tier, tierRuns
-	if mean == "" {
+	st.recordBasis(stat)
+	if stat.mean == "" {
 		fmt.Fprintf(r.Human, "» estimate: tier %s from %d comparable run(s) — projected cost unknown "+
 			"(none reported est_usd); budget $%s (%s) unenforced on unknown\n",
 			tier, tierRuns, st.budgetUSD, st.budgetSrc)
 		return
 	}
-	st.estUSD = mean
-	if overBudget(mean, st.budgetUSD) {
-		fmt.Fprintf(r.Human, "» estimate: tier %s ~$%s/run from %d comparable run(s) — OVER budget $%s (%s)\n",
-			tier, mean, st.estRuns, st.budgetUSD, st.budgetSrc)
+	st.estUSD = stat.mean
+	line := fmt.Sprintf("» estimate: tier %s ~$%s/run from %d comparable run(s) — ", tier, stat.mean, st.estRuns)
+	if overBudget(stat.mean, st.budgetUSD) {
+		line += fmt.Sprintf("OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 	} else {
-		fmt.Fprintf(r.Human, "» estimate: tier %s ~$%s/run from %d comparable run(s) — within budget $%s (%s)\n",
-			tier, mean, st.estRuns, st.budgetUSD, st.budgetSrc)
+		line += fmt.Sprintf("within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 	}
+	fmt.Fprintln(r.Human, line+st.basisNote())
+}
+
+// recordBasis carries the measured split of the picked tier into the gate's
+// estimate provenance. A picked tier with no measured sample leaves the
+// legacy output untouched.
+func (st *budgetState) recordBasis(stat tierStat) {
+	if stat.measured == 0 {
+		return
+	}
+	st.measuredRuns = stat.measured
+	st.estHarness = stat.harness
+	if stat.priced > 0 && stat.measured == stat.priced {
+		st.estBasis = "measured"
+		return
+	}
+	st.estBasis = "mixed"
 }
 
 // costRec is one normalized cost record: effort tier plus optional est_usd.
+// measured carries the joined harness session cost for the run that wrote
+// this file (the last record of an array), which wins over the self-report.
 type costRec struct {
-	tier string
-	usd  string
-	has  bool
+	measured    *float64
+	tier        string
+	usageSource string
+	usd         string
+	has         bool
 }
 
 // readCostRecs ports the per-file jq record reader: arrays iterate,
@@ -220,43 +274,55 @@ func estNumber(v any) (string, bool) {
 	}
 }
 
+// tierStat accumulates one tier's run count and priced mean plus the
+// measured-sample split behind it.
+type tierStat struct {
+	mean     string
+	harness  []string
+	meanVal  float64
+	runs     int
+	priced   int
+	measured int
+}
+
 // pickEstimateTier ports the jq summary: most runs wins, ties break toward
 // the deeper (costlier) tier — first strictly-greater over
 // [deep standard cheap] keeps the deeper tier on ties. Empty input reads
 // no-pick, like max_by over an empty array.
-func pickEstimateTier(recs []costRec) (tier string, tierRuns int, mean string, ok bool) {
+func pickEstimateTier(recs []costRec) (tier string, tierRuns int, stat tierStat, ok bool) {
 	if len(recs) == 0 {
-		return "", 0, "", false
+		return "", 0, tierStat{}, false
 	}
 	best := [2]float64{-1, -1}
 	for _, t := range []string{"deep", tierStandard, "cheap"} {
-		runs, meanVal, tierMean := tierStats(recs, t)
-		if float64(runs) > best[0] || (float64(runs) == best[0] && meanVal > best[1]) {
-			best = [2]float64{float64(runs), meanVal}
-			tier, tierRuns, mean, ok = t, runs, tierMean, true
+		s := tierStats(recs, t)
+		if float64(s.runs) > best[0] || (float64(s.runs) == best[0] && s.meanVal > best[1]) {
+			best = [2]float64{float64(s.runs), s.meanVal}
+			tier, tierRuns, stat, ok = t, s.runs, s, true
 		}
 	}
-	return tier, tierRuns, mean, ok
+	return tier, tierRuns, stat, ok
 }
 
 // tierStats ports one tier's accumulation: the run count plus the priced
 // mean (-1 with no priced runs, so unpriced tiers still compete on runs).
-func tierStats(recs []costRec, t string) (runs int, meanVal float64, mean string) {
+// A joined harness measurement prices that run and names its source.
+func tierStats(recs []costRec, t string) tierStat {
+	var st tierStat
 	var sum float64
-	priced := 0
 	for _, r := range recs {
-		if r.tier != t {
-			continue
+		if r.tier == t {
+			sum, st = addTierSample(r, sum, st)
 		}
-		runs++
-		sum, priced = tierPriced(r, sum, priced)
 	}
-	meanVal = -1.0
-	if priced > 0 {
-		meanVal = sum / float64(priced)
-		mean = jq.Compact(round4(meanVal))
+	st.meanVal = -1.0
+	if st.priced > 0 {
+		st.meanVal = sum / float64(st.priced)
+		st.mean = jq.Compact(round4(st.meanVal))
 	}
-	return runs, meanVal, mean
+	slices.Sort(st.harness)
+	st.harness = slices.Compact(st.harness)
+	return st
 }
 
 // estimateRecs ports the cost-history sweep: every readable record
@@ -270,13 +336,15 @@ func estimateRecs(r *session) []costRec {
 		files = nil
 	}
 	slices.Sort(files)
+	usage := measuredUsage(r)
 	for _, f := range files {
-		rec, ok := readCostRecs(f)
+		fileRecs, ok := readCostRecs(f)
 		if !ok {
 			bad = append(bad, f)
 			continue
 		}
-		recs = append(recs, rec...)
+		joinMeasured(fileRecs, usage, f)
+		recs = append(recs, fileRecs...)
 	}
 	if len(bad) > 0 {
 		r.Warn(fmt.Sprintf("cost history unreadable — skipped from estimate: %s ", strings.Join(bad, " ")))
@@ -284,8 +352,54 @@ func estimateRecs(r *session) []costRec {
 	return recs
 }
 
-// tierPriced ports one priced record: the usd parses into the sum.
+// measuredUsage reads the local harness sessions for this checkout. A read
+// failure is not a gate failure: no measurement simply leaves the
+// self-reported record in charge.
+func measuredUsage(r *session) []readcommon.HarnessUsage {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	return readcommon.ReadHarnessUsage(cwd, r.env)
+}
+
+// joinMeasured attaches the harness session that brackets the cost file's
+// mtime to the run that wrote it (the last record of a re-review array).
+// Absent measurement leaves every record untouched.
+func joinMeasured(fileRecs []costRec, usage []readcommon.HarnessUsage, path string) {
+	info, err := os.Stat(path)
+	if err != nil || len(fileRecs) == 0 {
+		return
+	}
+	match := readcommon.MatchHarnessUsage(usage, info.ModTime())
+	if match == nil || match.USD == nil {
+		return
+	}
+	last := len(fileRecs) - 1
+	fileRecs[last].measured = match.USD
+	fileRecs[last].usageSource = match.Source
+}
+
+// addTierSample folds one same-tier record into the accumulator.
+func addTierSample(r costRec, sum float64, st tierStat) (float64, tierStat) {
+	st.runs++
+	sum, st.priced = tierPriced(r, sum, st.priced)
+	if r.measured == nil {
+		return sum, st
+	}
+	st.measured++
+	if r.usageSource != "" {
+		st.harness = append(st.harness, r.usageSource)
+	}
+	return sum, st
+}
+
+// tierPriced ports one priced record: the joined harness measurement wins,
+// else the self-reported usd parses into the sum.
 func tierPriced(r costRec, sum float64, priced int) (float64, int) {
+	if r.measured != nil {
+		return sum + *r.measured, priced + 1
+	}
 	if r.has {
 		if f, err := strconv.ParseFloat(r.usd, numBitSize); err == nil {
 			return sum + f, priced + 1
@@ -330,8 +444,13 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 	rc := jq.NewObj(
 		"at", st2at(now), "budget_usd", jsonNumber(st.budgetUSD), "budget_src", st.budgetSrc,
 		"projected_tier", st.estTier, "projected_usd", jsonFloat(st.estUSD),
-		"comparable_runs", st.estRuns, "consent", "--consent-over-budget",
+		"comparable_runs", st.estRuns,
 	)
+	if st.measuredRuns > 0 {
+		rc.Set("basis", st.estBasis)
+		rc.Set("measured_runs", st.measuredRuns)
+	}
+	rc.Set("consent", "--consent-over-budget")
 	merged := budgetLedger(r, dir, rc)
 	if err := atomic.WriteFile(dir+"/budget.json", []byte(merged+newline)); err != nil {
 		r.Warn(fmt.Sprintf("could not write %s/budget.json: %v", dir, err))

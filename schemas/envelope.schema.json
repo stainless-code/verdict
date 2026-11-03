@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly) — the remaining verbs keep the generic object shape until their data stabilizes.",
+  "description": "Every --json stdout is exactly one envelope with these eight keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from json_redirect/fail and every verb's jq -n emitter in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; only report, post and record carry a pinned data shape here ($defs, validated explicitly), fetch publishes its optional estimate object as fetchEstimate, and the remaining verbs keep the generic object shape until their data stabilizes.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -362,6 +362,30 @@
         "security_summary",
         "items"
       ],
+      "additionalProperties": true
+    },
+    "fetchEstimate": {
+      "description": "fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did.",
+      "type": "object",
+      "properties": {
+        "tier": { "type": ["string", "null"] },
+        "projected_usd": { "type": ["number", "null"] },
+        "comparable_runs": { "type": "integer" },
+        "basis": {
+          "description": "measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed.",
+          "type": "string"
+        },
+        "harness": {
+          "description": "Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "measured_runs": {
+          "description": "How many priced samples in the projected tier came from a harness session; absent with basis.",
+          "type": "integer"
+        }
+      },
+      "required": ["tier", "projected_usd", "comparable_runs"],
       "additionalProperties": true
     }
   }
