@@ -314,6 +314,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Setup Bun and install (the dry run builds the TS client)
+        uses: ./.github/actions/setup
+
       - name: Setup Node (npm tree + pack checks)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -325,9 +328,9 @@ jobs:
           GOBIN="${{ runner.temp }}/grbin" go install "github.com/goreleaser/goreleaser/v2@v2.19.0"
           echo "${{ runner.temp }}/grbin" >> "$GITHUB_PATH"
 
-      # Snapshot archives, the npm tree (fake npm records argv, publishes
-      # nothing), the tap formula, `npm pack` content checks, and the
-      # contract tests. Uploads nothing; needs no secrets.
+      # Snapshot archives, the TS client build, the npm tree (fake npm records
+      # argv, publishes nothing), the tap formula, `npm pack` content checks,
+      # and the contract tests. Uploads nothing; needs no secrets.
       - name: Snapshot the whole release train (publishes nothing)
         shell: bash
         run: make release-dry-run

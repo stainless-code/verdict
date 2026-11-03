@@ -21,6 +21,9 @@ import { fileURLToPath } from "node:url";
 export const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = dirname(SCRIPTS_DIR);
 
+// Flags take no value; everything else needs one (--key value).
+const BOOLEAN_FLAGS = new Set(["dry-run", "require-client"]);
+
 export function loadContract() {
   const path = join(REPO_ROOT, "release", "contract.json");
   return JSON.parse(readFileSync(path, "utf8"));
@@ -46,7 +49,7 @@ function parseArgs(argv) {
       fail(`unexpected argument: ${arg}`);
     }
     const key = arg.slice(2);
-    if (key === "dry-run") {
+    if (BOOLEAN_FLAGS.has(key)) {
       out[key] = true;
       continue;
     }
@@ -199,15 +202,22 @@ export function generateNpmTree(options) {
   const wrapperDir = join(out, shortName(contract.npm.wrapper));
   // TypeScript client (ticket 21): the wrapper ships the built client as a
   // subpath export, so one install carries both the binary and the client.
-  // Best-effort by design: the Go contract tests invoke this generator
-  // without a built client, and snapshot runs without node_modules skip it.
-  // Real releases build it first (scripts/release.sh runs tsc).
-  const clientDist = join(REPO_ROOT, "clients", "ts", "dist");
+  // Best-effort by default: the Go contract tests invoke this generator
+  // without a built client. Real releases pass --require-client (and build it
+  // first in scripts/release.sh), so a release can never ship a wrapper
+  // without the ./client export.
+  const clientDist =
+    options.clientDist ?? join(REPO_ROOT, "clients", "ts", "dist");
   const clientFiles = [];
-  if (
+  const hasClient =
     existsSync(join(clientDist, "index.js")) &&
-    existsSync(join(clientDist, "index.d.ts"))
-  ) {
+    existsSync(join(clientDist, "index.d.ts"));
+  if (options.requireClient === true && !hasClient) {
+    fail(
+      `no built client in ${clientDist}: run tsc -p clients/ts/tsconfig.json before generating the npm tree`,
+    );
+  }
+  if (hasClient) {
     const clientDir = join(wrapperDir, "client");
     mkdirSync(clientDir, { recursive: true });
     for (const entry of readdirSync(clientDist)) {
@@ -265,6 +275,8 @@ function main(argv) {
     out: args.out,
     bins: args.bins,
     version: args.version,
+    clientDist: args["client-dist"],
+    requireClient: args["require-client"],
   });
   process.stdout.write(
     `npm: wrote ${tree.staged.length} platform packages + wrapper v${tree.version}\n`,

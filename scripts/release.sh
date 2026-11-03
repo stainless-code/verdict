@@ -14,6 +14,10 @@
 # Release (an interrupted upload): that release is deleted and rebuilt, since
 # GoReleaser cannot publish over it.
 #
+# `run_all` builds the TS client (and checks its generated types) before the
+# tag stage, and the npm stage publishes with --require-client, so a tagged
+# release can never ship a wrapper without its ./client export.
+#
 #   scripts/release.sh            all four stages (what changesets runs)
 #   scripts/release.sh tag        only the tag stage, etc.
 #
@@ -48,6 +52,16 @@ trap cleanup EXIT
 die() {
   echo "release: $*" >&2
   exit 1
+}
+
+# build_client — compile the TS client the npm wrapper bundles as its ./client
+# subpath export, after checking the generated types are current. A published
+# version cannot gain the client later, so run_all builds it before the tag.
+build_client() {
+  [ -x node_modules/.bin/tsc ] ||
+    die "node_modules/.bin/tsc missing: run bun install (the release must prove the client before tagging)"
+  node clients/ts/scripts/gen-ts-types.mjs --check
+  node_modules/.bin/tsc -p clients/ts/tsconfig.json
 }
 
 # stage_tag — `changeset git-tag` already skips versions with a local or
@@ -217,10 +231,10 @@ stage_npm() {
   fi
   echo "release: npm is missing:$missing"
   ensure_release_archives
-  # The wrapper bundles the TS client (subpath export ./client): build it
-  # first so generate-npm.mjs finds clients/ts/dist.
-  node_modules/.bin/tsc -p clients/ts/tsconfig.json
-  node scripts/publish-npm.mjs --skip-existing
+  # The wrapper bundles the TS client (subpath export ./client): build it and
+  # make publish-npm refuse a wrapper without it.
+  build_client
+  node scripts/publish-npm.mjs --skip-existing --require-client
 }
 
 # ensure_checksums — the formula renders from dist/checksums.txt; fetch it
@@ -278,6 +292,8 @@ stage_tap() {
 run_all() {
   # Static check first: fail before tagging when the config is invalid.
   goreleaser check
+  # Prove the client the wrapper will carry before anything is tagged.
+  build_client
   stage_tag
   stage_goreleaser
   stage_npm

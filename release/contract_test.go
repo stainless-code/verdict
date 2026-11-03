@@ -885,3 +885,71 @@ func TestInstallersMatchContract(t *testing.T) {
 		"$allowed = " + membersArray(windows.Members),
 	})
 }
+
+// TestWrapperShipsBuiltClient proves the npm wrapper carries the built TS
+// client as a ./client subpath export, and that --require-client (what
+// scripts/release.sh publishes under) refuses a tree that has no client.
+func TestWrapperShipsBuiltClient(t *testing.T) {
+	node := nodeBin(t)
+	doc := loadContract(t)
+	bins := t.TempDir()
+	stageBins(t, &doc, bins)
+	clientDist := t.TempDir()
+	for _, name := range []string{"index.js", "index.d.ts", "index.js.map"} {
+		if err := os.WriteFile(filepath.Join(clientDist, name), []byte("// stub\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(t.TempDir(), "npm")
+	got, code := runNode(t, nil, node, "../scripts/generate-npm.mjs",
+		"--bins", bins, "--out", out, "--version", "1.2.3",
+		"--client-dist", clientDist, "--require-client")
+	if code != 0 {
+		t.Fatalf("generate-npm.mjs --require-client exit %d:\n%s", code, got)
+	}
+	checkClientExport(t, filepath.Join(out, "verdict"))
+	got, code = runNode(t, nil, node, "../scripts/generate-npm.mjs",
+		"--bins", bins, "--out", filepath.Join(t.TempDir(), "npm"), "--version", "1.2.3",
+		"--client-dist", t.TempDir(), "--require-client")
+	if code == 0 {
+		t.Fatalf("generate-npm.mjs accepted a wrapper without the built client:\n%s", got)
+	}
+}
+
+// checkClientExport validates the wrapper's ./client subpath export and the
+// files it points at.
+func checkClientExport(t *testing.T, wrapperDir string) {
+	t.Helper()
+	wrapper := readManifest(t, wrapperDir)
+	if !strings.Contains(toJSON(t, wrapper["files"]), `"client/"`) {
+		t.Errorf("wrapper files lack the client dir: %v", wrapper["files"])
+	}
+	exports, ok := wrapper["exports"].(map[string]any)
+	if !ok {
+		t.Fatalf("wrapper has no exports map: %v", wrapper["exports"])
+	}
+	entry, ok := exports["./client"].(map[string]any)
+	if !ok {
+		t.Fatalf("wrapper exports lack ./client: %v", exports)
+	}
+	if entry["types"] != "./client/index.d.ts" || entry["default"] != "./client/index.js" {
+		t.Errorf("wrapper ./client export = %v", entry)
+	}
+	checkClientDir(t, filepath.Join(wrapperDir, "client"))
+}
+
+// checkClientDir validates the copied client subtree.
+func checkClientDir(t *testing.T, clientDir string) {
+	t.Helper()
+	for _, name := range []string{"index.js", "index.d.ts", "package.json"} {
+		if _, err := os.Stat(filepath.Join(clientDir, name)); err != nil {
+			t.Errorf("client build missing %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(clientDir, "index.js.map")); err == nil {
+		t.Error("client dir carries a source map; only .js/.d.ts ship")
+	}
+	if manifest := readManifest(t, clientDir); manifest["type"] != "module" {
+		t.Errorf("client/package.json type = %v; want module", manifest["type"])
+	}
+}

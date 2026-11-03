@@ -2,6 +2,9 @@
 // Publish the npm tree: regenerate it, then `npm publish` each platform
 // package in contract order and the wrapper last. --dry-run (or
 // PUBLISH_DRY_RUN=1) appends --dry-run so nothing reaches the registry.
+// --require-client (or PUBLISH_REQUIRE_CLIENT=1) refuses to generate a wrapper
+// without the built TS client, which is what scripts/release.sh passes: a
+// published version cannot be fixed by a later build.
 // --skip-existing makes a re-run after a partial publish resume: versions the
 // registry already serves are skipped, the rest keep the same order.
 import { spawnSync } from "node:child_process";
@@ -19,6 +22,8 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (arg === "--dry-run") {
       out.dryRun = true;
+    } else if (arg === "--require-client") {
+      out.requireClient = true;
     } else if (arg === "--skip-existing") {
       out.skipExisting = true;
     } else if (arg.startsWith("--dist=")) {
@@ -60,6 +65,8 @@ function npmPublished(name, version) {
 function main(argv) {
   const args = parseArgs(argv);
   const dryRun = args.dryRun === true || process.env.PUBLISH_DRY_RUN === "1";
+  const requireClient =
+    args.requireClient === true || process.env.PUBLISH_REQUIRE_CLIENT === "1";
   const dist = args.dist ?? join(REPO_ROOT, "dist");
   const out = args.out ?? join(dist, "npm");
   const contract = loadContract();
@@ -68,6 +75,7 @@ function main(argv) {
     out,
     bins: args.bins,
     version: args.version,
+    requireClient,
   });
   // --bins stages explicit binaries; there is no dist archive version to
   // compare against (dry runs and the contract test use this path).

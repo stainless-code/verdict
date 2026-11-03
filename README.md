@@ -272,6 +272,11 @@ installs work), and the same run renders `dist/verdict.rb` for the
 `stainless-code/tap` Homebrew tap
 (`brew install stainless-code/tap/verdict`).
 
+The wrapper also carries the TypeScript client as its `./client` subpath
+export, so one install brings both. `scripts/release.sh` builds and
+checks that client before it tags (a published version cannot gain it later)
+and publishes with `--require-client`, which refuses a wrapper without it.
+
 Artifact names are frozen in [`release/contract.json`](release/contract.json);
 `.goreleaser.yml`, the npm scripts, the formula generator, and the archive
 allowlist both installers carry must match it (the contract tests fail

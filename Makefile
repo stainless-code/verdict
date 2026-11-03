@@ -89,19 +89,23 @@ formula-audit:
 	sh scripts/brew-audit.sh dist/verdict.rb
 
 # release-dry-run proves the whole release train without publishing
-# anything: snapshot archives, the npm tree, the tap formula (rendered and
-# brew-audited), `npm pack` content checks per package, and the contract
-# tests (shim resolution included). No tag, no cosign, no attestation, no
-# registry, no tap push.
+# anything: snapshot archives, the TS client build the wrapper bundles, the
+# npm tree, the tap formula (rendered and brew-audited), `npm pack` content
+# checks per package, and the contract tests (shim resolution included). No
+# tag, no cosign, no attestation, no registry, no tap push. Needs `bun
+# install` (the client build) and node for the npm scripts.
 .PHONY: release-dry-run
 release-dry-run:
+	@[ -x node_modules/.bin/tsc ] || { echo "release-dry-run: node_modules/.bin/tsc missing: run bun install first" >&2; exit 1; }
 	$(GORELEASER) check
 	rm -rf dist
 	$(GORELEASER) release --snapshot --clean --skip=sign,sbom
 	mkdir -p dist/fakebin
 	cp scripts/fake-npm.sh dist/fakebin/npm
 	chmod +x dist/fakebin/npm
-	PATH="$(CURDIR)/dist/fakebin:$(PATH)" node scripts/publish-npm.mjs --dry-run
+	node clients/ts/scripts/gen-ts-types.mjs --check
+	node_modules/.bin/tsc -p clients/ts/tsconfig.json
+	PATH="$(CURDIR)/dist/fakebin:$(PATH)" node scripts/publish-npm.mjs --dry-run --require-client
 	node scripts/generate-formula.mjs --dist dist --out dist/verdict.rb
 	sh scripts/brew-audit.sh dist/verdict.rb
 	for d in dist/npm/*/; do (cd "$$d" && npm pack --dry-run > /dev/null); done
