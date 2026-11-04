@@ -263,7 +263,12 @@ try {
   } else {
     Bad "no skill next step: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
   }
-  if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog $contract.cosign.identityRegexp) `
+  # cmd.exe re-parses the arguments of a .cmd stub and eats a leading '^', so the
+  # log carries the contract pattern without its anchor. install.ps1's own source is
+  # asserted above to carry the anchored value, so the tail has to match exactly
+  # here; comparing the anchored string would fail on a correct installer.
+  $loggedPattern = $contract.cosign.identityRegexp.TrimStart('^')
+  if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog $loggedPattern) `
       -and (File-Contains $CosignLog '--certificate-oidc-issuer') -and (File-Contains $CosignLog $contract.cosign.issuer)) {
     Good 'cosign is invoked with the contract identity and issuer'
   } else {
