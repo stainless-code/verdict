@@ -115,9 +115,6 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
 	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
-	if err := truncateOutputs(outPath, timeoutPath); err != nil {
-		return nil, st.withWarnings(failed(err))
-	}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, st.childEnv())
 	if ctx.Err() != nil {
@@ -268,23 +265,11 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string) *core.
 	return nil
 }
 
-func truncateOutputs(paths ...string) error {
-	for _, p := range paths {
-		if err := atomic.WriteFile(p, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func writeOutputs(outPath, combined string) error {
 	return atomic.WriteFile(outPath, []byte(combined))
 }
 
 func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
-	if marker == "" {
-		return nil
-	}
 	if err := atomic.WriteFile(timeoutPath, []byte(marker)); err != nil {
 		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 	}
