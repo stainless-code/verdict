@@ -3,6 +3,10 @@
 # under skills/verdict/prompts/ (CONTRIBUTING ## Formatting).
 set -euo pipefail
 
+# git exports GIT_DIR for its hooks; the archtest and go vet child processes
+# would then resolve git against this checkout instead of their own -C target.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 # @latest would lint workflows against a version no one reviewed; pin it.
 actionlint_pin=github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 

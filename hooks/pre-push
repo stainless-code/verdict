@@ -2,6 +2,11 @@
 # The Go bar CI runs, before the push. Escape hatch: SKIP_PRE_PUSH=1.
 set -euo pipefail
 
+# git exports GIT_DIR for its hooks; without this the tests' own `git -C <tmp>`
+# calls ignore -C and inspect this checkout instead. Every command below runs
+# from the worktree root, so discovery finds the repo on its own.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 if [ "${SKIP_PRE_PUSH:-0}" = 1 ]; then
   echo "pre-push: SKIP_PRE_PUSH=1 — Go gates skipped (CI still runs them)"
   exit 0
