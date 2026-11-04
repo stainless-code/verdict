@@ -25,7 +25,7 @@ $RepoBase = 'https://github.com/stainless-code/verdict/releases/download'
 $LatestUrl = 'https://github.com/stainless-code/verdict/releases/latest'
 $ChecksumsName = 'checksums.txt'
 $BundleName = 'checksums.txt.sigstore.json'
-$IdentityRegexp = '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+.*$'
+$IdentityRegexp = '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$'
 $Issuer = 'https://token.actions.githubusercontent.com'
 
 if ($env:VERDICT_NO_MODIFY_PATH -eq '1') { $NoModifyPath = $true }

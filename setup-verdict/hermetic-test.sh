@@ -53,7 +53,12 @@ case "$receipt" in
   *'"version":"'"$GOOD"'"'*) good "receipt pins $GOOD" ;;
   *) bad "receipt wrong: $receipt" ;;
 esac
+# The identity must be the ref the Release workflow actually fires on: a tag
+# identity never matches a real certificate, so a green run here would hide a
+# broken action.
 grep -q 'certificate-identity-regexp' "$FAKE_COSIGN_LOG" \
+  && grep -q "refs/heads/main" "$FAKE_COSIGN_LOG" \
+  && ! grep -q 'refs/tags/' "$FAKE_COSIGN_LOG" \
   && grep -q 'token.actions.githubusercontent' "$FAKE_COSIGN_LOG" \
   && good "fake cosign got the contract identity/issuer" \
   || bad "fake cosign argv wrong"

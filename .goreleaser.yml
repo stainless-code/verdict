@@ -53,9 +53,10 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-# Keyless cosign over checksums.txt. Verify with the workflow identity
-# (.../release.yml@refs/tags/v*) and the token issuer in
-# release/contract.json, then sha256sum --check.
+# Keyless cosign over checksums.txt. Verify with the workflow identity the
+# release run actually mints — release.yml is triggered by a push to main, so
+# the certificate SAN is .../release.yml@refs/heads/main, not a tag ref — and
+# the token issuer in release/contract.json, then sha256sum --check.
 signs:
   - id: cosign-checksums
     cmd: cosign

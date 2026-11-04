@@ -101,6 +101,7 @@ contract="$EVAL_ROOT/release/contract.json"
 if grep -Fq "CHECKSUMS='$(jq -r .checksums "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "BUNDLE='$(jq -r .signatureBundle "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_ISSUER='$(jq -r .cosign.issuer "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq "COSIGN_IDENTITY_RE='$(jq -r .cosign.identityRegexp "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq 'https://github.com/stainless-code/verdict/releases/latest' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'verdict_${VERSION}_${os}_${arch}.tar.gz' "$EVAL_ROOT/install.sh"; then
   good "install.sh names the contract checksums, bundle, archive shape, and issuer"
@@ -163,8 +164,7 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
     bad "$want_os/$want_arch did not request contract archive $archive"
   fi
   if grep -Fq -- '--certificate-identity-regexp' "$COSIGN_LOG" \
-    && grep -Fq 'stainless-code/verdict/' "$COSIGN_LOG" \
-    && grep -Fq -- "refs/tags/v" "$COSIGN_LOG" \
+    && grep -Fq -- "$(jq -r .cosign.identityRegexp "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG" \
     && grep -Fq -- '--certificate-oidc-issuer' "$COSIGN_LOG" \
     && grep -Fq "$(jq -r .cosign.issuer "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG"; then
     good "$want_os/$want_arch verifies the bundle with the contract identity/issuer"

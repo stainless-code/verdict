@@ -13,9 +13,10 @@ REPO_BASE='https://github.com/stainless-code/verdict/releases/download'
 LATEST_URL='https://github.com/stainless-code/verdict/releases/latest'
 CHECKSUMS='checksums.txt'
 BUNDLE='checksums.txt.sigstore.json'
-COSIGN_IDENTITY='https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/tags/v*'
-# The contract identity above is a tag wildcard; cosign takes a regexp.
-COSIGN_IDENTITY_RE='^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+.*$'
+COSIGN_IDENTITY='https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/heads/main'
+# The SAN above is exact, not a pattern: cosign takes a regexp, and the
+# identity must stay anchored on it so no other run can sign this artifact.
+COSIGN_IDENTITY_RE='^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$'
 COSIGN_ISSUER='https://token.actions.githubusercontent.com'
 MARKER='# verdict installer'
 MODE=install; ARCHIVE=''; REMOVE_PATH=0; TMP=''; STAGE=''

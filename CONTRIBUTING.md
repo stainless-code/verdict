@@ -152,10 +152,15 @@ To verify a release by hand, download `checksums.txt` and
 
 ```bash
 cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+.*$' \
+  --certificate-identity-regexp '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 ```
+
+The certificate identity is the `main` push that signed the release, not the
+tag: the Release workflow triggers on `on: push: branches: [main]`, so GitHub
+mints `.../release.yml@refs/heads/main`. The certificate's workflow-SHA claim
+is the commit the tag points at.
 
 Then compare the archive's SHA-256 with its line in `checksums.txt`.
 
@@ -200,7 +205,7 @@ Use the issue templates (bug reports name the verb and paste the
 the PR template checklist. Verbs are: `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
 `fetch-local`, `record`, `adopt`, `fix`, `check-tree`, `ready`,
-`trend`, `learn`, `init`, `install`, `skill`, `upgrade`, `uninstall`
+`trend`, `learn`, `init`, `threads`, `skill`, `upgrade`, `uninstall`
 — plus the hidden `mcp` stdio transport. If your change adds or
 renames one, the templates, the manual, and `cmd/verdict/usage.go`
 must agree.

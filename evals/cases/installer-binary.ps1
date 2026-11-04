@@ -164,7 +164,7 @@ try {
   $expectedArchive = $row.file.Replace('{version}', '1.2.3')
   $source = [System.IO.File]::ReadAllText($Installer)
   if ($source.Contains($contract.checksums) -and $source.Contains($contract.signatureBundle) `
-      -and $source.Contains($contract.cosign.issuer) -and $source.Contains('refs/tags/v') `
+      -and $source.Contains($contract.cosign.issuer) -and $source.Contains($contract.cosign.identityRegexp) `
       -and $source.Contains('https://github.com/stainless-code/verdict/releases/latest')) {
     Good 'install.ps1 names the contract checksums, bundle, and cosign issuer'
   } else {
@@ -263,7 +263,7 @@ try {
   } else {
     Bad "no skill next step: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
   }
-  if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog 'refs/tags/v') `
+  if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog $contract.cosign.identityRegexp) `
       -and (File-Contains $CosignLog '--certificate-oidc-issuer') -and (File-Contains $CosignLog $contract.cosign.issuer)) {
     Good 'cosign is invoked with the contract identity and issuer'
   } else {

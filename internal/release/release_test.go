@@ -234,14 +234,13 @@ func TestFetchVerifySignature(t *testing.T) {
 	if result.Signature != "verified" {
 		t.Errorf("signature = %q; want verified", result.Signature)
 	}
+	policy := contractCosign(t)
+	exact := "--certificate-identity-regexp " + policy.IdentityRegexp + " --certificate-oidc-issuer " + policy.Issuer
 	joined := strings.Join(argv, " ")
-	for _, want := range []string{"verify-blob", "--bundle", "--certificate-identity-regexp", "--certificate-oidc-issuer", "checksums.txt"} {
+	for _, want := range []string{"verify-blob", "--bundle", "checksums.txt", exact} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("cosign argv %q misses %q", joined, want)
 		}
-	}
-	if !strings.Contains(joined, "stainless-code/verdict/") || !strings.Contains(joined, "refs/tags/v") {
-		t.Errorf("cosign argv %q misses the contract identity", joined)
 	}
 }
 
