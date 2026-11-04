@@ -1,0 +1,1153 @@
+{
+  "schema_version": "1",
+  "run_id": "2026-11-04-fixture-good-pilot",
+  "generated_at": "2026-11-04T23:12:24Z",
+  "internal": true,
+  "citable": false,
+  "citable_reason": "internal pilot",
+  "corpus": {
+    "commit": "d2dd5ce49e3f731480ede9b8e719871b39ed85fe",
+    "dirty": false,
+    "cases": 8,
+    "case_ids": [
+      "auth-bypass",
+      "missing-error-check",
+      "nil-deref",
+      "off-by-one",
+      "panic-index",
+      "path-traversal",
+      "race-close",
+      "sql-injection"
+    ]
+  },
+  "agent": {
+    "command": "sh \"$VERDICT_BENCH_ROOT/bench/agents/fixture.sh\"",
+    "model": "fixture-good",
+    "runs": 3,
+    "timeout_seconds": 900
+  },
+  "panel": ["bench-fixture-good"],
+  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
+  "prompt_sha256": {
+    "auth-bypass": "037be492659cb2cb79eb42e0a868577f07c545f97eeacbc50677f876b9f566c9",
+    "missing-error-check": "3679f1d9adb559a4eb5769800b94ff6d528cc7a40fd44aace239074382c96717",
+    "nil-deref": "398dabf86fbce291fd98ecdf94a8744ada5e257332a61d894a377abe90f2d3a5",
+    "off-by-one": "1b0bc58c671c3e643c57379ab35fdeb803f1e594e8c0dc710bf5e1760178617d",
+    "panic-index": "064650d432a9a668883e0ea23d6632f88e269018b8fb3556438351a45714c834",
+    "path-traversal": "c653f72e559ad4340d4b0d6a622b102c346159f5afa4289138983db418b2e7b8",
+    "race-close": "eabd561c560fbaaf830e7ab5a61756baa48d1c3011b3fb3d506e026e54738f7a",
+    "sql-injection": "c69e16f97f53402e209ced8c1bd1d85de4c1da2b39516cc7146eee6819e2e973"
+  },
+  "samples": 24,
+  "cases": [
+    {
+      "case": "auth-bypass",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "case": "missing-error-check",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "case": "nil-deref",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "case": "off-by-one",
+      "runs": 3,
+      "precision": {
+        "median": 0.6667,
+        "min": 0.6667,
+        "max": 0.6667
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0.3333,
+        "min": 0.3333,
+        "max": 0.3333
+      }
+    },
+    {
+      "case": "panic-index",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "case": "path-traversal",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "case": "race-close",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "case": "sql-injection",
+      "runs": 3,
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      }
+    }
+  ],
+  "bundles": [
+    {
+      "slug": "corpus-auth-bypass-fixture-good-run1",
+      "case": "auth-bypass",
+      "run": 1,
+      "wall_seconds": 1.005,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-auth-bypass-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-auth-bypass-fixture-good-run1",
+        "case": "auth-bypass",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "9476ce24f2a38e852807dcacc7fa7fc2e1d060f6",
+            "path": "middleware.go",
+            "line": 52,
+            "result": "true-positive",
+            "matched_line": 52
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-auth-bypass-fixture-good-run2",
+      "case": "auth-bypass",
+      "run": 2,
+      "wall_seconds": 1.006,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-auth-bypass-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-auth-bypass-fixture-good-run2",
+        "case": "auth-bypass",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "9476ce24f2a38e852807dcacc7fa7fc2e1d060f6",
+            "path": "middleware.go",
+            "line": 52,
+            "result": "true-positive",
+            "matched_line": 52
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-auth-bypass-fixture-good-run3",
+      "case": "auth-bypass",
+      "run": 3,
+      "wall_seconds": 1.01,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-auth-bypass-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-auth-bypass-fixture-good-run3",
+        "case": "auth-bypass",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "9476ce24f2a38e852807dcacc7fa7fc2e1d060f6",
+            "path": "middleware.go",
+            "line": 52,
+            "result": "true-positive",
+            "matched_line": 52
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-missing-error-check-fixture-good-run1",
+      "case": "missing-error-check",
+      "run": 1,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-missing-error-check-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-missing-error-check-fixture-good-run1",
+        "case": "missing-error-check",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "67a18fa8fb81cf8bd513bad83f270d15f41675fb",
+            "path": "upload.go",
+            "line": 24,
+            "result": "true-positive",
+            "matched_line": 24
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-missing-error-check-fixture-good-run2",
+      "case": "missing-error-check",
+      "run": 2,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-missing-error-check-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-missing-error-check-fixture-good-run2",
+        "case": "missing-error-check",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "67a18fa8fb81cf8bd513bad83f270d15f41675fb",
+            "path": "upload.go",
+            "line": 24,
+            "result": "true-positive",
+            "matched_line": 24
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-missing-error-check-fixture-good-run3",
+      "case": "missing-error-check",
+      "run": 3,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-missing-error-check-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-missing-error-check-fixture-good-run3",
+        "case": "missing-error-check",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "67a18fa8fb81cf8bd513bad83f270d15f41675fb",
+            "path": "upload.go",
+            "line": 24,
+            "result": "true-positive",
+            "matched_line": 24
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-nil-deref-fixture-good-run1",
+      "case": "nil-deref",
+      "run": 1,
+      "wall_seconds": 1.009,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-nil-deref-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-nil-deref-fixture-good-run1",
+        "case": "nil-deref",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "91a3639958dc32da5ff709a480a95126428a8939",
+            "path": "session.go",
+            "line": 31,
+            "result": "true-positive",
+            "matched_line": 31
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-nil-deref-fixture-good-run2",
+      "case": "nil-deref",
+      "run": 2,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-nil-deref-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-nil-deref-fixture-good-run2",
+        "case": "nil-deref",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "91a3639958dc32da5ff709a480a95126428a8939",
+            "path": "session.go",
+            "line": 31,
+            "result": "true-positive",
+            "matched_line": 31
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-nil-deref-fixture-good-run3",
+      "case": "nil-deref",
+      "run": 3,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-nil-deref-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-nil-deref-fixture-good-run3",
+        "case": "nil-deref",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "91a3639958dc32da5ff709a480a95126428a8939",
+            "path": "session.go",
+            "line": 31,
+            "result": "true-positive",
+            "matched_line": 31
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-off-by-one-fixture-good-run1",
+      "case": "off-by-one",
+      "run": 1,
+      "wall_seconds": 1.009,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-off-by-one-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-off-by-one-fixture-good-run1",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 2,
+        "reported": 3,
+        "matched": 2,
+        "false_positives": 1,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_positive_rate": 0.3333,
+        "outcomes": [
+          {
+            "sig": "49d74c8e98076267d9d04adcbf2c73aa2dc6b54f",
+            "path": "pagination.go",
+            "line": 10,
+            "result": "false-positive",
+            "matched_line": null
+          },
+          {
+            "sig": "bfd34553aacdc14dfce5297ebee718f1c8795149",
+            "path": "pagination.go",
+            "line": 42,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "5feaf873e5056518f2928a52236b5812e0b8917c",
+            "path": "pagination.go",
+            "line": 58,
+            "result": "true-positive",
+            "matched_line": 58
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-off-by-one-fixture-good-run2",
+      "case": "off-by-one",
+      "run": 2,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-off-by-one-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-off-by-one-fixture-good-run2",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 2,
+        "reported": 3,
+        "matched": 2,
+        "false_positives": 1,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_positive_rate": 0.3333,
+        "outcomes": [
+          {
+            "sig": "49d74c8e98076267d9d04adcbf2c73aa2dc6b54f",
+            "path": "pagination.go",
+            "line": 10,
+            "result": "false-positive",
+            "matched_line": null
+          },
+          {
+            "sig": "bfd34553aacdc14dfce5297ebee718f1c8795149",
+            "path": "pagination.go",
+            "line": 42,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "5feaf873e5056518f2928a52236b5812e0b8917c",
+            "path": "pagination.go",
+            "line": 58,
+            "result": "true-positive",
+            "matched_line": 58
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-off-by-one-fixture-good-run3",
+      "case": "off-by-one",
+      "run": 3,
+      "wall_seconds": 1.006,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-off-by-one-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-off-by-one-fixture-good-run3",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 2,
+        "reported": 3,
+        "matched": 2,
+        "false_positives": 1,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_positive_rate": 0.3333,
+        "outcomes": [
+          {
+            "sig": "49d74c8e98076267d9d04adcbf2c73aa2dc6b54f",
+            "path": "pagination.go",
+            "line": 10,
+            "result": "false-positive",
+            "matched_line": null
+          },
+          {
+            "sig": "bfd34553aacdc14dfce5297ebee718f1c8795149",
+            "path": "pagination.go",
+            "line": 42,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "5feaf873e5056518f2928a52236b5812e0b8917c",
+            "path": "pagination.go",
+            "line": 58,
+            "result": "true-positive",
+            "matched_line": 58
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-panic-index-fixture-good-run1",
+      "case": "panic-index",
+      "run": 1,
+      "wall_seconds": 1.006,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-panic-index-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-panic-index-fixture-good-run1",
+        "case": "panic-index",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "3a7dad1b90f116715506979a403ea79d07206b7c",
+            "path": "parse.go",
+            "line": 13,
+            "result": "true-positive",
+            "matched_line": 13
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-panic-index-fixture-good-run2",
+      "case": "panic-index",
+      "run": 2,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-panic-index-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-panic-index-fixture-good-run2",
+        "case": "panic-index",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "3a7dad1b90f116715506979a403ea79d07206b7c",
+            "path": "parse.go",
+            "line": 13,
+            "result": "true-positive",
+            "matched_line": 13
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-panic-index-fixture-good-run3",
+      "case": "panic-index",
+      "run": 3,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-panic-index-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-panic-index-fixture-good-run3",
+        "case": "panic-index",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "3a7dad1b90f116715506979a403ea79d07206b7c",
+            "path": "parse.go",
+            "line": 13,
+            "result": "true-positive",
+            "matched_line": 13
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-path-traversal-fixture-good-run1",
+      "case": "path-traversal",
+      "run": 1,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-path-traversal-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-path-traversal-fixture-good-run1",
+        "case": "path-traversal",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "1ad40a6764f648ca247df02f9d68ff36140454e7",
+            "path": "files.go",
+            "line": 16,
+            "result": "true-positive",
+            "matched_line": 16
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-path-traversal-fixture-good-run2",
+      "case": "path-traversal",
+      "run": 2,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-path-traversal-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-path-traversal-fixture-good-run2",
+        "case": "path-traversal",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "1ad40a6764f648ca247df02f9d68ff36140454e7",
+            "path": "files.go",
+            "line": 16,
+            "result": "true-positive",
+            "matched_line": 16
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-path-traversal-fixture-good-run3",
+      "case": "path-traversal",
+      "run": 3,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-path-traversal-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-path-traversal-fixture-good-run3",
+        "case": "path-traversal",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "1ad40a6764f648ca247df02f9d68ff36140454e7",
+            "path": "files.go",
+            "line": 16,
+            "result": "true-positive",
+            "matched_line": 16
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-race-close-fixture-good-run1",
+      "case": "race-close",
+      "run": 1,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-race-close-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-race-close-fixture-good-run1",
+        "case": "race-close",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "e9855662cf9f56105ae68110965115e3c6ddd1aa",
+            "path": "pool.go",
+            "line": 88,
+            "result": "true-positive",
+            "matched_line": 88
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-race-close-fixture-good-run2",
+      "case": "race-close",
+      "run": 2,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-race-close-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-race-close-fixture-good-run2",
+        "case": "race-close",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "e9855662cf9f56105ae68110965115e3c6ddd1aa",
+            "path": "pool.go",
+            "line": 88,
+            "result": "true-positive",
+            "matched_line": 88
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-race-close-fixture-good-run3",
+      "case": "race-close",
+      "run": 3,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-race-close-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-race-close-fixture-good-run3",
+        "case": "race-close",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "e9855662cf9f56105ae68110965115e3c6ddd1aa",
+            "path": "pool.go",
+            "line": 88,
+            "result": "true-positive",
+            "matched_line": 88
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-sql-injection-fixture-good-run1",
+      "case": "sql-injection",
+      "run": 1,
+      "wall_seconds": 1.008,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-sql-injection-fixture-good-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-sql-injection-fixture-good-run1",
+        "case": "sql-injection",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "be9b714d9b4f81b2c26e7107c1496796e4e396d9",
+            "path": "query.go",
+            "line": 77,
+            "result": "true-positive",
+            "matched_line": 77
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-sql-injection-fixture-good-run2",
+      "case": "sql-injection",
+      "run": 2,
+      "wall_seconds": 1.006,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-sql-injection-fixture-good-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-sql-injection-fixture-good-run2",
+        "case": "sql-injection",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "be9b714d9b4f81b2c26e7107c1496796e4e396d9",
+            "path": "query.go",
+            "line": 77,
+            "result": "true-positive",
+            "matched_line": 77
+          }
+        ],
+        "missed_bugs": []
+      }
+    },
+    {
+      "slug": "corpus-sql-injection-fixture-good-run3",
+      "case": "sql-injection",
+      "run": 3,
+      "wall_seconds": 1.007,
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-sql-injection-fixture-good-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-sql-injection-fixture-good-run3",
+        "case": "sql-injection",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["bench-fixture-good"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "be9b714d9b4f81b2c26e7107c1496796e4e396d9",
+            "path": "query.go",
+            "line": 77,
+            "result": "true-positive",
+            "matched_line": 77
+          }
+        ],
+        "missed_bugs": []
+      }
+    }
+  ],
+  "trend_corpus": {
+    "cases": 8,
+    "bundles": 24,
+    "ground_truth": 27,
+    "reported": 30,
+    "matched": 27,
+    "false_positives": 3,
+    "missed": 0,
+    "precision": 0.9,
+    "recall": 1,
+    "false_positive_rate": 0.1,
+    "by_model": [
+      {
+        "model": "fixture-good",
+        "bundles": 24,
+        "ground_truth": 27,
+        "reported": 30,
+        "matched": 27,
+        "false_positives": 3,
+        "missed": 0,
+        "precision": 0.9,
+        "recall": 1,
+        "false_positive_rate": 0.1
+      }
+    ],
+    "by_panel": [
+      {
+        "panel": "bench-fixture-good",
+        "bundles": 24,
+        "ground_truth": 27,
+        "reported": 30,
+        "matched": 27,
+        "false_positives": 3,
+        "missed": 0,
+        "precision": 0.9,
+        "recall": 1,
+        "false_positive_rate": 0.1
+      }
+    ]
+  },
+  "cost": {
+    "bundles": 24,
+    "bundles_with_estimate": 0,
+    "measured_usd": 0,
+    "measured": false
+  },
+  "failures": [],
+  "elapsed_seconds": 27.049,
+  "tolerance_points": 5
+}
