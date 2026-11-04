@@ -253,6 +253,42 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	return resultPtr(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
+// ThreadsRequest carries the threads refresh options: the provider override
+// ("" reads GitHub, like the CLI).
+type ThreadsRequest struct {
+	Invocation
+	Provider string
+}
+
+// ThreadsResponse carries the threads envelope plus the refreshed feed tally.
+// Data is the `threads` profile byte-for-byte; the typed fields mirror it.
+type ThreadsResponse struct { //nolint:govet // field order is the public API surface
+	Result
+	Dir, File, Provider, HeadSHA, FetchedAt string
+	Threads, Open, Outdated, Verdict        int
+	Truncated                               bool
+}
+
+// Threads re-reads one provider's review conversations and rewrites only
+// .review/<pr>/threads.json. Human progress streams through Options.Progress.
+func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, error) {
+	resp, ref := fetchcore.RunThreads(ctx, &fetchcore.ThreadsRequest{
+		ReadRequest: c.readWith(c.fetch, req.Repo, req.PR),
+		Provider:    req.Provider,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &ThreadsResponse{
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
+		Dir:    resp.Data.Dir, File: resp.Data.File, Provider: resp.Data.Provider,
+		HeadSHA: resp.Data.HeadSHA, FetchedAt: resp.Data.FetchedAt,
+		Threads: resp.Data.Threads, Open: resp.Data.Open,
+		Outdated: resp.Data.Outdated, Verdict: resp.Data.Verdict,
+		Truncated: resp.Data.Truncated,
+	}, nil
+}
+
 // ReadyRequest gates on merge readiness.
 type ReadyRequest struct {
 	Invocation

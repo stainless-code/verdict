@@ -259,8 +259,9 @@ structured results without writing a wrapper.
   `tools/list` schemas, or wants `--read-only` to hide writing verbs.
 - Use **spawning** for a library, a script, a CI step, or any program that
   needs one call and no protocol session. A JSON client does not need MCP.
-- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `threads`,
-  `trend`, `ready`, `doctor`, and `check-tree`.
+- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `trend`,
+  `ready`, `doctor`, and `check-tree`. `threads` never joins that set: it
+  rewrites `.review/<pr>/threads.json` from the host.
 - Success results are the CLI envelope's `data`; typed refusals return
   `isError: true` with `{code, message, hint}` intact. Malformed calls are
   JSON-RPC `-32602`, not refusals. stdout is the protocol channel; progress and

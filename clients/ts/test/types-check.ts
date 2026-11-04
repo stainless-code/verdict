@@ -118,6 +118,15 @@ export async function typeChecks(): Promise<void> {
   const exactThreads: Exact<DataFor["threads"], ThreadsData> = true;
   void exactThreads;
 
+  const threads: Envelope<ThreadsData> = await client.threads([
+    "acme/app",
+    "4243",
+    "--provider",
+    "gitlab",
+  ]);
+  const openThreads: number = threads.data.open;
+  void openThreads;
+
   const verify: Envelope<VerifyData> = await client.verify([]);
   const exit: number = verify.data.exit;
   void exit;
