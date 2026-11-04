@@ -69,6 +69,14 @@ jobs:
       # Opens/updates the Version PR when `.changeset/*.md` exist. When there are none, the action
       # can still run `publish` so a just-merged Version PR ships.
       # `prepack` (package.json) asserts no secrets in the tarball on every publish.
+      # No `make size` gate stands in front of the publish below. `make size`
+      # rebuilds all six shipped targets to measure them, so a step here would
+      # compile every target twice per release, and GoReleaser's one hook point
+      # (`before.hooks`) fires inside scripts/release.sh after stage_tag has
+      # pushed the tag: a budget failure there strands a tag with no release, and
+      # the next run refuses that tag instead of finishing the train. The budget
+      # is still consulted on this exact commit by ci.yml's required cross lane,
+      # which runs `make size` on every main push.
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
