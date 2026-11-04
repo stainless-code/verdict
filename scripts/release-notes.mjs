@@ -17,7 +17,10 @@ if (!version) {
   process.exit(2);
 }
 
-const source = await readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+const source = await readFile(
+  new URL("../CHANGELOG.md", import.meta.url),
+  "utf8",
+);
 const lines = source.split("\n");
 const start = lines.findIndex((line) => line.trim() === `## ${version}`);
 if (start === -1) {
