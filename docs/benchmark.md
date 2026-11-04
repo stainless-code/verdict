@@ -166,6 +166,12 @@ For seeded cases, skip `fetch` and use the checked-in `full.diff` and
 `agents/<model>.json` review body. Keep the checked-in corpus immutable;
 runs live only under `.review/`.
 
+The runner in [`bench/runner`](../bench/README.md) automates this section:
+`-agent` is the model's command line, and each sample gets its own bundle
+(`corpus-<case>-<model>-run<n>`), a copied prompt set, and its `record`,
+`calibrate`, and `trend` calls. The recipe above stays the reference for what
+it does, and for a bundle it cannot assemble.
+
 ### 3. Cost estimate per model
 
 The corpus reruns the same review prompt over N cases. Pilot one case per
@@ -218,7 +224,8 @@ Publish a checked-in JSON next to the corpus (for example
 - the per-model cost estimate and whether it is measured or projected;
 - the three-run spread and the ±5-point tolerance.
 
-Then link that file from the model comparison page.
+`bench/runner` writes this file when it is run without `-internal`; then link
+it from the model comparison page.
 
 ## What the comparison page may cite
 
