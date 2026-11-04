@@ -11,3 +11,7 @@ failed page, an unreadable page, or the 20-page cap — keeps the pages it alrea
 read, warns, and marks `threads.json` `truncated: true` instead of quietly
 under-covering the conversation; Forgejo's review list does the same at the
 provider cap. Hosts with no failures read exactly as before.
+A failed or unreadable Bitbucket diffstat/comments page, a GitLab changed-file
+payload that is not a diff list, and a failed Azure iteration read no longer
+pass as an empty list: each warns, and the Bitbucket threads feed is marked
+`truncated: true`.

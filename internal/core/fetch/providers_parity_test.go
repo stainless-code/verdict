@@ -162,6 +162,9 @@ func TestGitLabMultiPageDiffsKeepEveryFile(t *testing.T) {
 		{"single page", pageA, []string{"a.go:modified:1:1"}},
 		{"two pages", pageA + pageB, []string{"a.go:modified:1:1", "b.go:modified:2:1"}},
 		{"changes envelope", `{"changes":` + pageA + `}`, []string{"a.go:modified:1:1"}},
+		{"newline between pages", pageA + "\n" + pageB + "\n", []string{"a.go:modified:1:1", "b.go:modified:2:1"}},
+		{"empty page between", pageA + `[]` + pageB, []string{"a.go:modified:1:1", "b.go:modified:2:1"}},
+		{"empty merge request", `[]`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -349,13 +352,28 @@ func assertCafePagingIncomplete(t *testing.T, out map[string]scriptResult) {
 }
 
 // TestGitCafeFailedPageKeepsReadPages proves the walk keeps what it read: a
-// failed second page must not collapse the feed to nothing.
+// failed or unreadable second page must not collapse the feed to nothing.
 func TestGitCafeFailedPageKeepsReadPages(t *testing.T) {
 	t.Parallel()
+	for name, second := range map[string]scriptResult{
+		"failed call": {stderr: "cafe: 500 upstream unavailable", fail: true},
+		"unreadable":  {stdout: "cafe: not json at all"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assertCafeKeepsFirstReview(t, second)
+		})
+	}
+}
+
+// assertCafeKeepsFirstReview runs a walk whose second page is the given
+// result and checks the first page's review survives into threads.json.
+func assertCafeKeepsFirstReview(t *testing.T, second scriptResult) {
+	t.Helper()
 	dir := t.TempDir()
 	cafeFetch(t, dir, map[string]scriptResult{
 		cafeReviewCall(""):   cafeReviewPage([]string{"r1"}, "c2"),
-		cafeReviewCall("c2"): {stderr: "cafe: 500 upstream unavailable", fail: true},
+		cafeReviewCall("c2"): second,
 	})
 	threads := jq.Elements(hostGet(t, dir+suffixThreadsJSON, "threads"))
 	if len(threads) == 0 {
@@ -590,4 +608,106 @@ func TestForgejoStateAndDraft(t *testing.T) {
 			assertPR(t, pr, map[string]string{keyState: tc.state, keyDraft: tc.draft}, nil)
 		})
 	}
+}
+
+// TestGitLabUnreadableChangedFilePayloadWarns proves a changed-file read that
+// exits 0 with a body that is not a diff list is visible: it must not read as
+// a merge request that touched no files.
+func TestGitLabUnreadableChangedFilePayloadWarns(t *testing.T) {
+	t.Parallel()
+	for name, payload := range map[string]string{
+		"html error page":      `<html>502 Bad Gateway</html>`,
+		"trailing data":        `[{"old_path":"a.go","new_path":"a.go"}] oops`,
+		"scalar between pages": `[{"old_path":"a.go","new_path":"a.go"}]7[]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			ctx := hostCtx(t, &scriptCommander{t: t, out: gitlabScripts(dir, payload)}, dir)
+			if err := fetchGitLab(context.Background(), ctx, hostRequest()); err != nil {
+				t.Fatalf("fetchGitLab: %v", err)
+			}
+			assertWarning(t, *ctx.runner.warnings, "changed-file payload unreadable")
+		})
+	}
+}
+
+// bitbucketNextURL is the second diffstat/comments page the host names.
+const bitbucketNextURL = testBitbucketFirst + "&cursor=2"
+
+// TestBitbucketFailedPageWarnsAndTruncates proves a failed Bitbucket page is
+// not read as an empty one: a first-page failure and a later-page failure both
+// warn and report truncation, and the later failure keeps the page it read.
+func TestBitbucketFailedPageWarnsAndTruncates(t *testing.T) {
+	t.Parallel()
+	failed := scriptResult{stderr: "curl: (22) The requested URL returned error: 500", fail: true}
+	for _, tc := range []struct {
+		out   map[string]scriptResult
+		name  string
+		items int
+	}{
+		{map[string]scriptResult{bitbucketCall(testBitbucketFirst): failed}, "first page fails", 0},
+		{map[string]scriptResult{
+			bitbucketCall(testBitbucketFirst): {stdout: `{"values":[{"id":1}],"next":"` + bitbucketNextURL + `"}`},
+			bitbucketCall(bitbucketNextURL):   failed,
+		}, "second page fails", 1},
+		{map[string]scriptResult{bitbucketCall(testBitbucketFirst): {stdout: `[]`}}, "page is not an object", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertBitbucketPartial(t, tc.out, tc.items)
+		})
+	}
+}
+
+// assertBitbucketPartial walks one scripted page list and checks it kept the
+// expected items, reported truncation, and warned.
+func assertBitbucketPartial(t *testing.T, out map[string]scriptResult, items int) {
+	t.Helper()
+	s, warns := newTestSession(&scriptCommander{t: t, out: out})
+	got, truncated, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	if ref != nil {
+		t.Fatalf("refusal = %v, want a warning path", ref)
+	}
+	if len(got) != items {
+		t.Errorf("items = %d, want %d", len(got), items)
+	}
+	if !truncated {
+		t.Error("truncated = false, want true")
+	}
+	assertWarning(t, *warns, "bitbucket paging stopped on an unreadable page")
+}
+
+// TestBitbucketFailedCommentsMarkThreadsTruncated proves the failure reaches
+// threads.json, the artifact a re-review trusts, not only the envelope.
+func TestBitbucketFailedCommentsMarkThreadsTruncated(t *testing.T) {
+	t.Parallel()
+	const base = "https://api.bitbucket.org/2.0/repos/o/r/pullrequests/7"
+	dir := t.TempDir()
+	s, _ := newTestSession(&scriptCommander{t: t, out: map[string]scriptResult{
+		bitbucketCall(base + "/diffstat?pagelen=100"): {stdout: `{"values":[]}`},
+		bitbucketCall(base + "/comments?pagelen=100"): {stderr: "curl: (22) 500", fail: true},
+	}})
+	if _, ref := bitbucketThreads(context.Background(), s, dir, bitbucketBearer(), base, hostPR, "head111"); ref != nil {
+		t.Fatalf("bitbucketThreads: %v", ref)
+	}
+	if got := hostTruncated(t, dir); got != "true" {
+		t.Errorf("threads.json truncated = %s, want true", got)
+	}
+}
+
+// TestAzureIterationFailureWarns proves a failed iteration read is visible
+// instead of leaving a PR.json that reads like a file-less pull request.
+func TestAzureIterationFailureWarns(t *testing.T) {
+	t.Parallel()
+	conn := &azureConn{org: "https://example.invalid", project: "acme", rname: "app"}
+	iter := "az\x00rest\x00--method\x00get\x00--url\x00https://example.invalid/acme/_apis/git/repositories/app" +
+		"/pullRequests/7/iterations?api-version=7.1\x00--query\x00max_by(value, &id).id\x00-o\x00tsv"
+	s, warns := newTestSession(&scriptCommander{t: t, out: map[string]scriptResult{
+		iter: {stderr: "az: 401 Unauthorized", fail: true},
+	}})
+	if raw := azureChanges(context.Background(), s, conn, "7"); raw != emptyJSONArray {
+		t.Errorf("changes = %q, want the empty array", raw)
+	}
+	assertWarning(t, *warns, "azure iteration read failed")
 }

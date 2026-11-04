@@ -163,13 +163,23 @@ func gitlabProjectID(ctx context.Context, r *session, repo string) (string, erro
 // never looks like a PR that touched no files.
 func gitlabChanges(ctx context.Context, r *session, _, pr, pid string) string {
 	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/diffs", flagPaginate); err == nil {
-		return res.Stdout
+		return gitlabReadable(r, res.Stdout)
 	}
 	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/changes", flagPaginate); err == nil {
-		return res.Stdout
+		return gitlabReadable(r, res.Stdout)
 	}
 	r.Warn("gitlab changed-file read failed (diffs and changes) — PR.json carries no file list; the bundle may under-cover")
 	return "{\"changes\":[]}\n"
+}
+
+// gitlabReadable passes a changed-file payload through, warning when it holds
+// no readable diff list: a 200 with a body that is neither one JSON document
+// nor adjacent page arrays must not read as a merge request with no files.
+func gitlabReadable(r *session, payload string) string {
+	if _, ok := gitlabChangeEntries(payload); !ok {
+		r.Warn("gitlab changed-file payload unreadable — PR.json carries no file list; the bundle may under-cover")
+	}
+	return payload
 }
 
 // gitlabDiff owns the `glab mr diff` read with its raw flag.
@@ -1122,8 +1132,9 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 }
 
 // bitbucketPages owns the pagelen loop: `curl -sfL` pages decoded with
-// `.values // []`, concatenated; failed pages feed '{}' and `.next // empty`
-// ends the walk. Each server-supplied `next` stays on the API origin (the
+// `.values // []`, concatenated; a failed or unreadable page ends the walk
+// with a warning and a truncated read, and `.next // empty` ends it normally.
+// Each server-supplied `next` stays on the API origin (the
 // bearer rides every page) and the walk is capped.
 func bitbucketPages(ctx context.Context, r *session, auth []string, first string) ([]any, bool, *core.RefusalError) {
 	out, truncated, _, err := pageWalk(ctx, first, providerMaxPages,
@@ -1132,9 +1143,9 @@ func bitbucketPages(ctx context.Context, r *session, auth []string, first string
 			if !ok {
 				return nil, "", offOriginRefusal(providerBitbucket, u)
 			}
-			m, ok := bitbucketPage(ctx, r, auth, target)
-			if !ok {
-				return nil, "", internalErrorf("bitbucket page unreadable")
+			m, perr := bitbucketPage(ctx, r, auth, target)
+			if perr != nil {
+				return nil, "", internalErrorf("bitbucket page unreadable: %v", perr)
 			}
 			return jq.Elements(m["values"]), bitbucketNext(m), nil
 		})
@@ -1160,18 +1171,24 @@ func bitbucketWarnPaging(r *session, err error, truncated bool) {
 	}
 }
 
-// bitbucketPage fetches and decodes one page (ok=false on bad JSON).
-func bitbucketPage(ctx context.Context, r *session, auth []string, u string) (map[string]any, bool) {
-	page := "{}"
-	if res, err := r.curlFetch(ctx, append(append([]string{"-sfL"}, auth...), u)...); err == nil {
-		page = res.Stdout
-	}
-	doc, err := jq.Decode([]byte(page))
+// bitbucketPage fetches and decodes one page. A failed call or a body that is
+// not a JSON object is an error, never an empty page: the walk then stops with
+// the pages it has and the caller warns and marks the read truncated, instead
+// of reading a failed diffstat or comment list as "no files" / "no threads".
+func bitbucketPage(ctx context.Context, r *session, auth []string, u string) (map[string]any, error) {
+	res, err := r.curlFetch(ctx, append(append([]string{"-sfL"}, auth...), u)...)
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
-	m, _ := jq.AsMap(doc)
-	return m, true
+	doc, err := jq.Decode([]byte(res.Stdout))
+	if err != nil {
+		return nil, internalErrorf("page is not JSON: %v", err)
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return nil, internalErrorf("page is not a JSON object")
+	}
+	return m, nil
 }
 
 // bitbucketNext reads `.next // empty` from a decoded page.
@@ -1442,6 +1459,7 @@ func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, 
 func azureChanges(ctx context.Context, r *session, conn *azureConn, pr string) string {
 	iid := azureIterationID(ctx, r, conn, pr)
 	if iid == "" {
+		r.Warn("azure iteration read failed — PR.json carries no file list; the bundle may under-cover")
 		return emptyJSONArray
 	}
 	items, truncated, _, err := pageWalk(ctx, "0", providerMaxPages,
