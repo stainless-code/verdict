@@ -18,6 +18,9 @@
 //   - Git's own location variables (GIT_DIR and friends) are dropped too.
 //     Git exports them to hooks, so a suite launched from a pre-push hook would
 //     otherwise retarget every fixture command at the developer's checkout.
+//   - Waits poll through [Until] under one fixed bound, so a child that never
+//     reaches the awaited state fails the test instead of the suite's global
+//     timeout.
 package testenv
 
 import (

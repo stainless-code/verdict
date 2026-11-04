@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/release"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestWindowsHandoffStagesHelperBesideTarget pins where the helper image
@@ -58,16 +58,16 @@ func TestWindowsHandoffStagesHelperBesideTarget(t *testing.T) {
 
 func waitForArgv(t *testing.T, path string) []string {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	var argv []string
+	testenv.Until(t, func() bool {
 		raw, err := os.ReadFile(path)
-		if err == nil && len(raw) > 0 {
-			return strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+		if err != nil || len(raw) == 0 {
+			return false
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("the helper never recorded its argv at %s", path)
-	return nil
+		argv = strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+		return true
+	})
+	return argv
 }
 
 func argValue(t *testing.T, argv []string, flag string) string {

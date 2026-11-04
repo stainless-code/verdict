@@ -100,11 +100,12 @@ Every PR must clear all of these; CI enforces each one:
 1. **Evals green.** `make evals` builds `bin/verdict` and runs the
    full hermetic suite against it. While iterating, run only the
    affected cases (`./evals/one.sh <case>`).
-2. **Go green.** `go test -race ./...` (CI also gates `go vet ./...`,
-   `go mod verify`, `gofmt -l .` empty, and `govulncheck` via
-   `make ci-go`). `make cross` builds and vets every `GOOS/GOARCH` pair
-   `release/contract.json` ships, so a windows/arm64-only break fails here
-   instead of in the release job.
+2. **Go green.** `make test-race` (`-race -shuffle=on -count=1`; CI also
+   gates `go vet ./...`, `go mod verify`, `gofmt -l .` empty, and
+   `govulncheck` via `make ci-go`). `make cross` builds and vets every
+   `GOOS/GOARCH` pair `release/contract.json` ships, so a windows/arm64-only
+   break fails here instead of in the release job. The nightly schedule also
+   runs `make fuzz`; no pull request pays for it.
 3. **Linter-clean.** `golangci-lint run ./...` with the repo's
    `.golangci.yml` (CI runs the pinned action; zero issues, no new
    `//nolint`).
@@ -120,6 +121,11 @@ plus every push to `main` — runs the whole bar above. The macOS legs of the
 Go, eval, and installer lanes are the exception, running only on pushes to
 `main`, the nightly schedule, and `workflow_dispatch`, because GitHub caps
 concurrent macOS jobs per org.
+
+Two rules no ladder rung covers live in
+[`docs/ci-and-tests.md`](docs/ci-and-tests.md): the commit-message skip-token
+ban and test determinism (poll with `testenv.Until`; a timed-out test has a
+race to fix, never a timeout to raise).
 
 ## Golden tests
 
@@ -225,7 +231,8 @@ One focused commit per change: `<area>: <imperative summary>` (≤72
 chars), blank line, 1–3 lines saying what changed and why. Areas
 match the tree (`core`, `mcp`, `pkg`, `client`, `skill`, `upgrade`,
 `action`, `ci`, `docs`, `evals`). No trailers, no merge commits on
-feature branches, never touch `main` directly.
+feature branches, never touch `main` directly, and never a CI-skip directive
+in the message ([`docs/ci-and-tests.md`](docs/ci-and-tests.md)).
 
 ## Issues and pull requests
 

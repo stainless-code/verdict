@@ -79,7 +79,7 @@ func TestCancelKillsGrandchildSpawnedAtStart(t *testing.T) {
 		res, err := Watchdog{}.Run(ctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
 		done <- outcome{err: err, res: res}
 	}()
-	readPid(t, pidFile, time.Now().Add(60*time.Second))
+	readPid(t, pidFile)
 	cancel()
 	select {
 	case o := <-done:

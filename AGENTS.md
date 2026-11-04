@@ -17,7 +17,7 @@ claiming done. Each rung is a command CI runs.
 2. **Vet** — `make vet` (`go vet ./...`, then `go mod verify`), and `make cross`
    for every `GOOS/GOARCH` the release ships (`release/contract.json`).
 3. **Unit** — `go test ./internal/<pkg>/...` while iterating; `make test-race`
-   (`go test -race -count=1 ./...`) before done.
+   (`go test -race -shuffle=on -count=1 ./...`) before done.
 4. **Goldens** — files under `testdata/` are the contract. Regenerate with
    `go test ./<pkg>/ -update` (`internal/golden` and `internal/core/verify`
    register the flag), then read the diff: a golden you cannot explain is a
@@ -31,8 +31,8 @@ claiming done. Each rung is a command CI runs.
 
 `docs/go-rules.md` carries the adopted Go rules: one line per rule with its
 `GO-<TOPIC>-<NN>` KB ID and an honest enforcement marker (gated versus
-review-only), plus the accepted deviations. Read it before writing or
-reviewing Go here.
+review-only), plus the accepted deviations; `docs/ci-and-tests.md` holds the
+skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 ## Hazards
 

@@ -22,7 +22,7 @@ const fastPathCondition = "    if: needs.changes.outputs.full == 'true'"
 var fastPathGated = []string{
 	"lint", "installer", "installers", "installers-macos", "installers-windows",
 	"go", "go-macos", "go-windows", "cross", "evals", "evals-macos",
-	"release-dry-run", "ts-client",
+	"release-dry-run", "ts-client", "fuzz",
 }
 
 // fastPathFree lanes run for every change, docs-only included.

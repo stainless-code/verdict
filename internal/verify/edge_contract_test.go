@@ -20,6 +20,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/testenv"
 	"github.com/stainless-code/verdict/internal/verify"
 )
 
@@ -119,17 +120,12 @@ func requireProcessGone(t *testing.T, pid int) {
 	if err != nil {
 		t.Fatalf("find pid %d: %v", pid, err)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			return
-		}
-		if time.Now().After(deadline) {
-			_ = proc.Kill() //nolint:errcheck // best-effort cleanup before the failure
-			t.Fatalf("pid %d survived the verify tree kill", pid)
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
+	t.Cleanup(func() {
+		_ = proc.Kill() //nolint:errcheck // best-effort cleanup of a survivor after the failure
+	})
+	testenv.Until(t, func() bool {
+		return proc.Signal(syscall.Signal(0)) != nil
+	})
 }
 
 // verifyMarker reads the recorded .verify.timeout marker.

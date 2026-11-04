@@ -46,7 +46,32 @@ cross:
 
 .PHONY: test-race
 test-race:
-	$(GO) test -race -count=1 ./...
+	$(GO) test -race -shuffle=on -count=1 ./...
+
+# fuzz runs every fuzz target for FUZZTIME each; the nightly ci.yml lane calls
+# it. An internal/archtest guard fails when a target in the tree is missing
+# here, or when an entry names a package that does not declare it.
+FUZZTIME ?= 30s
+FUZZ_TARGETS := \
+	./internal/core/threads:FuzzProviderMappers \
+	./internal/hunks:FuzzFiles \
+	./internal/hunks:FuzzHeaderPaths \
+	./internal/hunks:FuzzParse \
+	./internal/jq:FuzzDecodeJSONLOrdered \
+	./internal/jq:FuzzDecodeOrdered \
+	./internal/mcp:FuzzServeFrames \
+	./internal/mcpconfig:FuzzMergeJSON \
+	./internal/mcpconfig:FuzzMergeTOML \
+	./internal/release:FuzzExtractTarGz \
+	./internal/release:FuzzExtractZip
+
+.PHONY: fuzz
+fuzz:
+	@set -eu; for target in $(FUZZ_TARGETS); do \
+		pkg=$${target%%:*}; fn=$${target##*:}; \
+		echo "fuzz: $$fn in $$pkg for $(FUZZTIME)"; \
+		$(GO) test -run='^$$' -fuzz="^$$fn$$" -fuzztime=$(FUZZTIME) "$$pkg"; \
+	done
 
 .PHONY: vuln
 vuln:

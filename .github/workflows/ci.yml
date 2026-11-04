@@ -363,6 +363,34 @@ jobs:
         shell: bash
         run: make cross
 
+  fuzz:
+    name: 🎲 Fuzz (nightly)
+    needs: changes
+    # Schedule-only: every target at FUZZTIME each is half an hour of runner
+    # time a pull request does not pay for. Advisory in the gate rather than
+    # required, because a schedule-only lane reports `skipped` on the pushes
+    # the gate also grades.
+    if: needs.changes.outputs.full == 'true' && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Fuzz every target (FUZZTIME each)
+        shell: bash
+        run: make fuzz
+        # internal/archtest fails when a fuzz target in the tree is missing
+        # from FUZZ_TARGETS, so a new parser cannot wait for someone to
+        # remember this lane exists.
+
   evals:
     name: 🧪 Evals (ubuntu-latest)
     needs: changes
@@ -402,6 +430,15 @@ jobs:
         # against it via $EVAL_CLI. Same hermeticity locally and here
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
         # assertion).
+
+      - name: Upload the eval summary (kept on a failed run)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: evals-summary-${{ runner.os }}
+          path: evals/results/
+          if-no-files-found: warn
+          retention-days: 7
 
   evals-macos:
     name: 🧪 Evals (macos-latest)
@@ -444,6 +481,15 @@ jobs:
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
         # assertion). macOS runners shell out with bash 3.2, which doubles
         # as the suite's 3.2-compat bar.
+
+      - name: Upload the eval summary (kept on a failed run)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: evals-summary-${{ runner.os }}
+          path: evals/results/
+          if-no-files-found: warn
+          retention-days: 7
 
   docs:
     name: 📖 Docs site
@@ -606,12 +652,12 @@ jobs:
     # those legs are never scheduled. GitHub caps concurrent macOS jobs per
     # org, so MACOS_JOBS run on main pushes, the nightly schedule, and
     # `workflow_dispatch` only, and stay required on those events.
-    # ADVISORY_JOBS is empty today; the gate below reads an empty list as
-    # "no advisory lanes".
+    # ADVISORY_JOBS are reported but never block: a schedule-only lane reports
+    # `skipped` on a pull request, and a skip is not a pass.
     env:
       REQUIRED_JOBS: changes format lint installer installers installers-macos installers-windows go go-macos go-windows cross evals evals-macos docs ts-client audit release-dry-run
       MACOS_JOBS: installers-macos go-macos evals-macos
-      ADVISORY_JOBS: ""
+      ADVISORY_JOBS: fuzz
     needs:
       [
         changes,
@@ -631,6 +677,7 @@ jobs:
         ts-client,
         audit,
         release-dry-run,
+        fuzz,
       ]
     if: always()
     runs-on: ubuntu-latest
