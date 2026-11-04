@@ -366,6 +366,10 @@ jobs:
       - name: Ratchet the release binary and the module graph
         shell: bash
         run: make size
+        # Unfiltered outside a pull request, so the nightly schedule runs this
+        # ratchet too: the budget is checked in a week with no PR traffic
+        # instead of waiting for the next pull request (internal/archtest pins
+        # the lane against an event gate that would drop the schedule).
 
   fuzz:
     name: 🎲 Fuzz (nightly)
@@ -394,6 +398,43 @@ jobs:
         # internal/archtest fails when a fuzz target in the tree is missing
         # from FUZZ_TARGETS, so a new parser cannot wait for someone to
         # remember this lane exists.
+
+  bench:
+    name: ⏱️ Bench (nightly)
+    needs: changes
+    # Schedule-only, like fuzz: five runs of every benchmark in the tree is
+    # runner time a pull request does not pay for. Advisory in the gate rather
+    # than required, because a schedule-only lane reports `skipped` on the
+    # pushes the gate also grades.
+    if: needs.changes.outputs.full == 'true' && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run every benchmark (BENCHTIME each, BENCHCOUNT runs)
+        shell: bash
+        run: make bench 2>&1 | tee bench.txt
+        # internal/archtest fails when `make bench` stops scanning ./... with
+        # -bench=., so a new benchmark cannot wait for someone to remember this
+        # lane exists.
+
+      - name: Upload the benchmark output (kept on a failed run)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-${{ runner.os }}
+          path: bench.txt
+          if-no-files-found: warn
+          retention-days: 30
 
   evals:
     name: 🧪 Evals (ubuntu-latest)
@@ -666,7 +707,7 @@ jobs:
       REQUIRED_JOBS: changes format lint installer installers installers-macos installers-windows go go-macos go-windows cross evals evals-macos docs ts-client audit release-dry-run
       MACOS_JOBS: installers-macos go-macos evals-macos
       MACOS_ADVISORY_EVENTS: push workflow_dispatch
-      ADVISORY_JOBS: fuzz
+      ADVISORY_JOBS: fuzz bench
     needs:
       [
         changes,
@@ -687,6 +728,7 @@ jobs:
         audit,
         release-dry-run,
         fuzz,
+        bench,
       ]
     if: always()
     runs-on: ubuntu-latest
