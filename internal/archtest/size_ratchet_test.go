@@ -156,3 +156,24 @@ func readRepoFile(t *testing.T, root, rel string) string {
 	}
 	return string(raw)
 }
+
+// TestSizeRatchetRunsOnTheNightly pins the ratchet to the schedule as well as
+// to pull requests: the cross lane is the only lane that measures the shipped
+// binaries, and it is unfiltered outside a pull request, so a nightly reaches
+// it. It may carry the shared `full` gate and no event gate of its own — a lane
+// narrowed to pull requests alone would leave the budget unchecked in a week
+// with no PR traffic, which is the week the ratchet exists for.
+func TestSizeRatchetRunsOnTheNightly(t *testing.T) {
+	jobs := workflowJobs(t, "ci.yml", readCIWorkflow(t))
+	block, ok := jobs["cross"]
+	if !ok {
+		t.Fatal("ci.yml has no cross job: no lane would run `make size`")
+	}
+	joined := strings.Join(block, "\n")
+	if !strings.Contains(joined, "    if: needs.changes.outputs.full == 'true'") {
+		t.Errorf("the cross lane lost its diff gate: a docs-only pull request would buy six cross builds")
+	}
+	if strings.Contains(joined, "github.event_name") {
+		t.Errorf("the cross lane carries an event gate: the nightly schedule would skip `make size`")
+	}
+}

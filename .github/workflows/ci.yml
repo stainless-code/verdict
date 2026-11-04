@@ -366,6 +366,10 @@ jobs:
       - name: Ratchet the release binary and the module graph
         shell: bash
         run: make size
+        # Unfiltered outside a pull request, so the nightly schedule runs this
+        # ratchet too: the budget is checked in a week with no PR traffic
+        # instead of waiting for the next pull request (internal/archtest pins
+        # the lane against an event gate that would drop the schedule).
 
   fuzz:
     name: 🎲 Fuzz (nightly)
