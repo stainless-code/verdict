@@ -38,7 +38,7 @@ const agents = ["claude", "cursor", "codex", "opencode", "copilot", "gemini", "g
           <CopyCommand command="verdict skill install --detect" />
         </div>
         <p class="mt-3 text-sm text-muted-foreground leading-relaxed">
-          Installs into every agent that already has a skills directory. Target one with{" "}
+          Installs into every agent whose skills directory already exists and is non-empty. Target one with{" "}
           <code class="font-mono text-foreground">--agent &lt;name&gt;</code>, where the name is{" "}
           {
             agents.map((agent, i) => (
