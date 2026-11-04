@@ -56,6 +56,35 @@ func TestWindowsHandoffStagesHelperBesideTarget(t *testing.T) {
 	}
 }
 
+// TestWindowsHandoffSpawnFailureRemovesHelper pins that a failed helper spawn
+// leaves no <target>.new file in the install dir.
+func TestWindowsHandoffSpawnFailureRemovesHelper(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the staged helper is a POSIX artifact that must fail to exec")
+	}
+	installDir := t.TempDir()
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TEMP", os.Getenv("TMPDIR"))
+	staged := filepath.Join(t.TempDir(), "verdict")
+	if err := os.WriteFile(staged, []byte("not an executable image\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(installDir, "verdict")
+	det := &detection{
+		InstallDir: installDir,
+		Receipt:    filepath.Join(installDir, ".verdict-installer"),
+		exe:        target,
+	}
+	req := &Request{GOOS: "windows", EnvSlice: []string{"PATH=/usr/bin:/bin"}}
+	_, ref := windowsHandoff(context.Background(), req, det, &release.Result{Binary: staged, SHA256: "abc"}, "1.2.3")
+	if ref == nil || !strings.Contains(ref.Message, "cannot start the upgrade helper") {
+		t.Fatalf("windowsHandoff refusal = %v, want a spawn failure", ref)
+	}
+	if _, err := os.Stat(target + ".new"); !os.IsNotExist(err) {
+		t.Errorf("failed spawn left %s.new behind (err = %v); uninstall cannot rmdir the install dir", target, err)
+	}
+}
+
 func waitForArgv(t *testing.T, path string) []string {
 	t.Helper()
 	var argv []string
