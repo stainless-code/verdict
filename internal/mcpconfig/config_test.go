@@ -315,3 +315,102 @@ func TestTOMLRefusals(t *testing.T) {
 		}
 	}
 }
+
+// seedCodex writes body into a fresh CODEX_HOME config.toml, the path a Codex
+// merge reads and rewrites.
+func seedCodex(t *testing.T, body string) (*Request, string) {
+	t.Helper()
+	req := testRequest(t, AgentCodex, true)
+	req.Env["CODEX_HOME"] = req.Cwd
+	path := filepath.Join(req.Cwd, "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return req, path
+}
+
+// TestTOMLMultiLineString proves a table header spelled inside a TOML
+// multi-line string is never merged into: the line-based scan cannot tell it
+// from a real header, so the run refuses and leaves the file untouched.
+//
+//nolint:revive // the refusal matrix reads as one assertion block
+func TestTOMLMultiLineString(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"single-quoted literal", "note = '''\n[mcp_servers.verdict]\n'''\n"},
+		{"double-quoted literal", "note = \"\"\"\n[mcp_servers.verdict]\n\"\"\"\n"},
+		{"literal before the table", "note = '''\ntext\n'''\n\n[mcp_servers.verdict]\nstartup_timeout_sec = 20\n"},
+		{"literal inside the table", "[mcp_servers.verdict]\nnote = '''\ntext\n'''\n"},
+	} {
+		req, path := seedCodex(t, tc.body)
+		_, ref := Run(req)
+		if ref == nil || ref.Code != CodeUnmergeable {
+			t.Fatalf("%s: ref = %v, want %s", tc.name, ref, CodeUnmergeable)
+		}
+		if !strings.Contains(ref.Message, "multi-line string") {
+			t.Errorf("%s: message = %q; want it to name the multi-line string", tc.name, ref.Message)
+		}
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != tc.body {
+			t.Errorf("%s: file changed to %q", tc.name, raw)
+		}
+	}
+}
+
+// TestTOMLMultiLineStringElsewhere proves a literal in another table neither
+// blocks the append nor blocks the keep of an already-configured host: only a
+// literal at or before the verdict table hides a header from the scan.
+//
+//nolint:revive // the append/keep sequence reads as one assertion block
+func TestTOMLMultiLineStringElsewhere(t *testing.T) {
+	t.Parallel()
+	body := "developer_instructions = \"\"\"\nbe careful\n\"\"\"\n\n[other]\nkey = 1\n"
+	req, path := seedCodex(t, body)
+	if res, ref := Run(req); ref != nil {
+		t.Fatalf("append beside a literal: %v", ref)
+	} else if res.Status == StatusKeep {
+		t.Errorf("status = %q; want the table appended", res.Status)
+	}
+	stored, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"developer_instructions = \"\"\"", "[mcp_servers.verdict]", `args = ["mcp"]`} {
+		if !strings.Contains(string(stored), want) {
+			t.Errorf("appended TOML misses %q:\n%s", want, stored)
+		}
+	}
+	again, ref := Run(req)
+	if ref != nil || again.Status != StatusKeep {
+		t.Fatalf("keep beside a literal: %+v %v", again, ref)
+	}
+	if raw, err := os.ReadFile(path); err != nil || !bytes.Equal(raw, stored) {
+		t.Errorf("keep rewrote the file to %q", raw)
+	}
+}
+
+// TestTOMLMultiLineStringAfterTheTable proves the scan bound stops at the next
+// table: a literal in a following table cannot hide this table's own header,
+// so the missing keys are still filled in.
+func TestTOMLMultiLineStringAfterTheTable(t *testing.T) {
+	t.Parallel()
+	seed := "[mcp_servers.verdict]\nstartup_timeout_sec = 20\n\n[other]\nnote = '''\ntext\n'''\n"
+	req, path := seedCodex(t, seed)
+	if _, ref := Run(req); ref != nil {
+		t.Fatalf("fill beside a later literal: %v", ref)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`args = ["mcp"]`, "note = '''\n"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("filled TOML misses %q:\n%s", want, raw)
+		}
+	}
+	if strings.Count(string(raw), "[mcp_servers.verdict]") != 1 {
+		t.Errorf("duplicate table:\n%s", raw)
+	}
+}

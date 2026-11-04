@@ -71,3 +71,9 @@ Numbers in machine output render the way jq 1.8 renders them. A literal such as
 `9.223372036854775808e18` now prints as `9223372036854775808` on every
 architecture, where arm64 used to saturate at `9223372036854775807` and amd64
 wrap to `-9223372036854775808`.
+
+`verdict mcp install` no longer corrupts a Codex `config.toml` that uses a TOML
+multi-line string: a `[mcp_servers.verdict]` header spelled inside a `'''` or
+`"""` literal used to be merged into as if it were real, and the merge now
+refuses `mcp-config-unmergeable` (file untouched, add the table by hand)
+instead of guessing.

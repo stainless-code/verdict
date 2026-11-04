@@ -58,6 +58,8 @@ const (
 	newline        = "\n"
 	openBracket    = "["
 	closeBracket   = "]"
+	tripleSingle   = "'''"
+	tripleDouble   = `"""`
 )
 
 // Request is one `mcp config` invocation. Cwd is the project root Claude and
@@ -292,6 +294,15 @@ func mergeTOML(old []byte, path string) ([]byte, bool, *core.RefusalError) {
 	if hasCommand && hasArgs {
 		return nil, false, nil
 	}
+	if ref := multiLineRefusal(lines[:end], path); ref != nil {
+		return nil, false, ref
+	}
+	return []byte(strings.Join(fillTable(lines, start, hasCommand, hasArgs), newline)), true, nil
+}
+
+// fillTable inserts the missing canonical keys directly under the table header,
+// so the rest of the body keeps its order and comments.
+func fillTable(lines []string, start int, hasCommand, hasArgs bool) []string {
 	insert := make([]string, 0, len(lines)+2)
 	insert = append(insert, lines[:start+1]...)
 	if !hasCommand {
@@ -300,8 +311,7 @@ func mergeTOML(old []byte, path string) ([]byte, bool, *core.RefusalError) {
 	if !hasArgs {
 		insert = append(insert, keyArgs+` = ["`+mcpArg+`"]`)
 	}
-	insert = append(insert, lines[start+1:]...)
-	return []byte(strings.Join(insert, newline)), true, nil
+	return append(insert, lines[start+1:]...)
 }
 
 // findTable reports the canonical verdict table's line range, refusing any
@@ -361,6 +371,30 @@ func tableKeys(body []string, path string) (bool, bool, *core.RefusalError) {
 		}
 	}
 	return hasCommand, hasArgs, nil
+}
+
+// multiLineRefusal explains why a file using multi-line strings cannot be
+// merged: the scan cannot tell a header inside one from a real header.
+func multiLineRefusal(lines []string, path string) *core.RefusalError {
+	if !hasMultiLineString(lines) {
+		return nil
+	}
+	return refuse(CodeUnmergeable, path+" uses a TOML multi-line string ("+
+		tripleSingle+" or "+tripleDouble+") at or before ["+tomlName+
+		"], so a table header cannot be told apart from text inside it; add the table by hand")
+}
+
+// hasMultiLineString reports whether any of these lines opens a TOML
+// multi-line string. The scan is deliberately plain: it does not track quoting
+// state, because a line-based merge cannot tell a header inside a literal from
+// a real one, so the caller refuses instead of guessing.
+func hasMultiLineString(lines []string) bool {
+	for _, line := range lines {
+		if strings.Contains(line, tripleSingle) || strings.Contains(line, tripleDouble) {
+			return true
+		}
+	}
+	return false
 }
 
 // tomlPair splits one `key = value` line, dropping any trailing comment.
