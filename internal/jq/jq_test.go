@@ -37,6 +37,8 @@ func TestStr(t *testing.T) {
 		{"false", false, "false"},
 		{"int literal", jq.Number("2"), "2"},
 		{"integral float literal", jq.Number("2.0"), "2"},
+		{"untyped float", 1.5, "1.5"},
+		{"untyped integral float", 2.0, "2"},
 		{"object", map[string]any{"a": 1}, `{"a":1}`},
 	}
 	for _, tt := range tests {
@@ -67,6 +69,8 @@ func TestCanonNumber(t *testing.T) {
 		{"1.5", "1.5"},
 		{"99999999999999999999", "99999999999999999999"},
 		{"1e999", "1e999"},
+		{"1e7", "10000000"},
+		{"-1e7", "-10000000"},
 		{"abc", "abc"},
 	}
 	for _, tt := range tests {
@@ -103,6 +107,9 @@ func TestR(t *testing.T) {
 	}
 	if got := jq.R(jq.Number("2.0")); got != "2" {
 		t.Errorf("R(2.0) = %q; want 2", got)
+	}
+	if got := jq.R(1.5); got != "1.5" {
+		t.Errorf("R(1.5) = %q; want 1.5", got)
 	}
 }
 
