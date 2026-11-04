@@ -549,7 +549,7 @@ A call to a tool the flags hide is a JSON-RPC `-32602` error whose message and
 `--read-only`, `triage` without `--operator`), so a hidden verb is never
 reported as an unknown one; a truly unknown name still answers
 `unknown tool`.
-`--operator` adds `triage` (18 tools) for an operator's own assistant that is
+`--operator` adds `triage` (19 tools) for an operator's own assistant that is
 allowed to flip statuses; it is never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
@@ -815,16 +815,15 @@ prompt-dump destination, so the file exposes exactly four namespaces:
 - `layout.compact` (bool) suppresses advisory progress lines (the `panel:
 none pinned` and `learnings` notes); pinned-panel and warning lines stay.
 - `color.mode` (`auto`|`always`|`never`) controls ANSI on human progress
-  (warnings/errors); the tool emits no ANSI today, so `auto`/`never` read
-  plain and only `always` adds codes. Machine envelopes never carry codes.
+  (warnings/errors); the tool never colours on its own, so `auto`/`never` read
+  plain and only `always` colours warn/error. Machine envelopes never carry codes.
 
 Precedence is flags > file > env (`REVIEW_OUTPUT_FORMAT`,
 `REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`, plus `REVIEW_PUBLISH_FOOTER`,
 `REVIEW_PUBLISH_ATTRIBUTION` (`off`|`product`|`full`), `REVIEW_PUBLISH_ATTRIBUTION_TEXT`,
 `REVIEW_PUBLISH_COPYRIGHT`, `REVIEW_PUBLISH_LOGO`, `REVIEW_PUBLISH_LOGO_URL`
 for the footer below) > defaults; global flags
-`--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb
-(`--json` itself stays per-verb and already wins over a text default).
+`--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb.
 `NO_COLOR` applies only when color is otherwise unset. Any other top-level
 key (including server-shaped or `org.*` namespaces) refuses with typed
 `bad-settings`; any credential-shaped key at any depth (`token`/`key`/`auth`/
@@ -843,6 +842,13 @@ tool. The CLI is the `verdict` binary. Caller tracing, test checks, and
 `verify` all run repo-scoped in that directory, so reviewing another repo
 means running from its checkout (or accepting that the bundle lands wherever
 you stand).
+
+The shipped `verdict` is one static Go binary (`make build` writes
+`bin/verdict`) that needs no shell wrapper. `VERDICT_IMPL` — the retired v0
+shell dispatch's knob — is dead: nothing reads it. `VERDICT_BIN` is not the
+binary's: it is the skill shim's override (`skills/verdict/scripts/verdict`
+resolves it first, then `<skill>/bin/verdict`, then `verdict` on `PATH`), so
+a plain `verdict` call consults neither variable.
 
 - **Binary** (`install.sh` / `install.ps1`, the default): the script fetches
   one release archive, `checksums.txt`, and `checksums.txt.sigstore.json`,
@@ -1148,10 +1154,6 @@ resolved/verification/triage claims, writes `findings.json` + `record.json`.
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —
 record predictions locally, settle them after the upgrade below.
-
-The shipped `verdict` is a single static Go binary: `make build` writes
-`bin/verdict`. There is no shell leg and no `VERDICT_IMPL`/`VERDICT_BIN`
-dispatch.
 
 Two `post` guards (graded by `evals/cases/post-go-guards.sh`): secondary rate
 limits (a 403/429 with a rate-limit signal) retry within

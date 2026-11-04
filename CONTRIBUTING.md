@@ -107,8 +107,9 @@ Every PR must clear all of these; CI enforces each one:
 ## Golden tests
 
 Golden files under `testdata/` are the contract: if your change
-alters golden-covered output, regenerate with `go test ./... -update`
-and **review the diff** before committing. A regenerated golden you
+alters golden-covered output, regenerate with `go test ./<pkg>/ -update`
+(`internal/golden` and `internal/core/verify` register the flag) and
+**review the diff** before committing. A regenerated golden you
 cannot explain line-by-line is a red flag, not a green gate. Never
 commit a golden update alongside unrelated changes.
 

@@ -17,6 +17,7 @@ die() { echo "install: $*" >&2; exit 1; }
 
 next_step() {
   echo "Next: verdict skill install --detect   (adds the review skill to your coding agents)"
+  echo "      none detected? name one: verdict skill install --agent <name>"
 }
 
 usage() {
@@ -218,7 +219,8 @@ reported="$("$INSTALL/verdict" --version 2>/dev/null)" || reported=''
 echo "install: installed verdict $VERSION to $INSTALL/verdict (SHA-256 verified; reports $reported)"
 
 if [ "$NO_MODIFY_PATH" = 1 ]; then
-  echo "install: PATH not modified (VERDICT_NO_MODIFY_PATH). Add: export PATH=\"$INSTALL:\$PATH\""
+  if [ "${VERDICT_NO_MODIFY_PATH:-0}" = 1 ]; then no_path_knob='VERDICT_NO_MODIFY_PATH'; else no_path_knob='--no-modify-path'; fi
+  echo "install: PATH not modified ($no_path_knob). Add: export PATH=\"$INSTALL:\$PATH\""
   next_step
   exit 0
 fi

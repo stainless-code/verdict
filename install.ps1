@@ -209,6 +209,7 @@ try {
     Write-Host "install: $InstallDir is already on the user PATH"
   }
   Write-Host 'Next: verdict skill install --detect   (adds the review skill to your coding agents)'
+  Write-Host '      none detected? name one: verdict skill install --agent <name>'
 } finally {
   foreach ($item in @($Stage, $Tmp, $ArchivePath)) {
     if ($item -and (Test-Path -LiteralPath $item)) {
