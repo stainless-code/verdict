@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // Case is one golden leg: fixtures, environment, argv, and the assertions
@@ -132,13 +134,17 @@ func PinRead(
 	})
 }
 
-// RunMain builds the harness once, stores it in dst (the suite's package-level
-// harness variable), runs the case hooks in order, runs m, and returns the
-// exit code. A suite's TestMain is one line, including the suites that adjust
-// the shared stubs before any leg runs:
+// RunMain isolates the process git environment, builds the harness once,
+// stores it in dst (the suite's package-level harness variable), runs the case
+// hooks in order, runs m, and returns the exit code. A suite's TestMain is one
+// line, including the suites that adjust the shared stubs before any leg runs:
 //
 //	func TestMain(m *testing.M) { os.Exit(golden.RunMain(m, &harness, installStubs)) }
 func RunMain(m *testing.M, dst **Harness, hooks ...func(*Harness) error) int {
+	if err := testenv.Isolate(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
 	h, err := Build()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

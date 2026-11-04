@@ -40,12 +40,6 @@ func gitRun(t *testing.T, dir string, args ...string) {
 func gitRepo(t *testing.T, dir string) {
 	t.Helper()
 	gitRun(t, dir, "init", "-q")
-	gitRun(t, dir, "config", "user.email", "parity@test")
-	gitRun(t, dir, "config", "user.name", "parity")
-	// Background auto-maintenance writes .git/objects/maintenance.lock
-	// mid-snapshot, which flaked the file-presence comparison.
-	gitRun(t, dir, "config", "maintenance.auto", "false")
-	gitRun(t, dir, "config", "gc.auto", "0")
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("line1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

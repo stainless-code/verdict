@@ -30,6 +30,10 @@ testenv_scrub() {
     lower=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
     case "$name" in
       GH_* | GITHUB_* | AWS_* | REVIEW_* | GIT_CONFIG_* | XDG_CONFIG_HOME | NO_COLOR) ;;
+      GIT_DIR | GIT_WORK_TREE | GIT_INDEX_FILE | GIT_PREFIX | GIT_OBJECT_DIRECTORY) ;;
+      GIT_ALTERNATE_OBJECT_DIRECTORIES | GIT_COMMON_DIR) ;;
+      GIT_AUTHOR_DATE | GIT_COMMITTER_DATE) ;;
+      GIT_AUTHOR_NAME | GIT_AUTHOR_EMAIL | GIT_COMMITTER_NAME | GIT_COMMITTER_EMAIL) ;;
       *)
         if ! testenv_is_secret "$lower"; then continue; fi
         ;;
@@ -45,13 +49,15 @@ testenv_git_config() {
   export GIT_CONFIG_GLOBAL="$sandbox/gitconfig-empty"
   export GIT_CONFIG_NOSYSTEM=1
   set -- core.autocrlf false commit.gpgsign false tag.gpgsign false \
-    init.defaultBranch main core.longpaths true
+    init.defaultBranch main core.longpaths true maintenance.auto false gc.auto 0
   while [ "$#" -gt 0 ]; do
     export "GIT_CONFIG_KEY_$n=$1" "GIT_CONFIG_VALUE_$n=$2"
     n=$((n + 1))
     shift 2
   done
   export GIT_CONFIG_COUNT="$n"
+  export GIT_AUTHOR_NAME=verdict-test GIT_AUTHOR_EMAIL=test@verdict.invalid \
+    GIT_COMMITTER_NAME=verdict-test GIT_COMMITTER_EMAIL=test@verdict.invalid
 }
 
 testenv_init() {

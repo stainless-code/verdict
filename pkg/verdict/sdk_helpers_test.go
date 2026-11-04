@@ -15,6 +15,11 @@ import (
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
 
+// TestMain scrubs the git environment the launcher exported.
+func TestMain(m *testing.M) {
+	os.Exit(testenv.Main(m))
+}
+
 // sdkNow is the deterministic clock every SDK test injects.
 var sdkNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
@@ -279,8 +284,6 @@ func gitRun(t *testing.T, dir string, args ...string) {
 func sdkGitRepo(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 	gitRun(t, dir, "init", "-q")
-	gitRun(t, dir, "config", "maintenance.auto", "false")
-	gitRun(t, dir, "config", "gc.auto", "0")
 	for name, content := range files {
 		path := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

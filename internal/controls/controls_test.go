@@ -14,6 +14,11 @@ import (
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
+// TestMain scrubs the git environment the launcher exported.
+func TestMain(m *testing.M) {
+	os.Exit(testenv.Main(m))
+}
+
 // gitRun runs one git command in the current directory, failing on error.
 func gitRun(t *testing.T, args ...string) string {
 	t.Helper()

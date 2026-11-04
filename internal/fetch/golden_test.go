@@ -324,8 +324,6 @@ func gitSetup(files map[string]string) func(t *testing.T, dir, home string) {
 		t.Helper()
 		writePrompts(t, dir)
 		runGit(t, dir, "init", "-q", "-b", "main")
-		runGit(t, dir, "config", "user.email", "parity@example.invalid")
-		runGit(t, dir, "config", "user.name", "parity")
 		n := 0
 		for name, content := range files {
 			writeFile(t, dir, name, content)
@@ -1236,8 +1234,6 @@ func TestFetchGoldenAzureHappy(t *testing.T) {
 			t.Fatal(err)
 		}
 		runGit(t, remote, "init", "-q", "-b", "main")
-		runGit(t, remote, "config", "user.email", "parity@example.invalid")
-		runGit(t, remote, "config", "user.name", "parity")
 		writeFile(t, remote, "a.txt", "one\n")
 		runGit(t, remote, "add", "a.txt")
 		runGit(t, remote, "commit", "-qm", "one")
