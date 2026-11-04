@@ -2,6 +2,7 @@ package verifycore_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -102,5 +103,30 @@ func TestVerifyTimeoutIsSeconds(t *testing.T) {
 	}
 	if dc.left < 25*time.Second || dc.left > 30*time.Second {
 		t.Fatalf("deadline in %v, want within (25s, 30s]", dc.left)
+	}
+}
+
+// cancelThenFailCommander models a caller cancel that lands while the
+// command is starting: the spawn fails (as a Windows child killed between
+// CreateProcess and resume does) after the caller's context was canceled.
+type cancelThenFailCommander struct{ cancel context.CancelFunc }
+
+func (c *cancelThenFailCommander) Run(context.Context, core.Command) (core.Result, error) {
+	c.cancel()
+	return core.Result{}, errors.New("resume suspended verify process: access denied")
+}
+
+// TestVerifyCancelDuringStartRefusesCanceled pins GO-CLI-05 on the start
+// path: a spawn error caused by a caller cancel is a canceled refusal, not
+// a verify-failed one.
+func TestVerifyCancelDuringStartRefusesCanceled(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf x"}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := verifyRequest(&collector{}, &scriptCommander{}, "30", []string{"PATH=/bin"}, true)
+	req.Commander = &cancelThenFailCommander{cancel: cancel}
+	_, ref := verifycore.Run(ctx, req)
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("refusal = %v, want code canceled", ref)
 	}
 }

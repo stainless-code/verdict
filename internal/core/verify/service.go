@@ -133,14 +133,16 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, st.childEnv())
-	if ref != nil {
-		return nil, st.withWarnings(ref)
-	}
 	// A caller cancel (Ctrl-C, SIGTERM, a host cancel) killed the tree, but
 	// it is not the verify timeout: recording it would store a failed proof
 	// ("timed_out", exit 137, "timeout after Ns") for a run nobody let finish.
+	// It wins over a spawn error too, since the cancel can be what made the
+	// spawn fail (a child killed between start and resume on Windows).
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"})
+	}
+	if ref != nil {
+		return nil, st.withWarnings(ref)
 	}
 	return st.record(dir, now, outPath, timeoutPath, res)
 }
