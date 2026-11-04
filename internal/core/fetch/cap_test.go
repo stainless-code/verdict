@@ -218,7 +218,7 @@ func overDefaultCapDiff() string {
 	line := "+" + strings.Repeat("x", 998) + "\n"
 	var sb strings.Builder
 	sb.WriteString("diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n")
-	for sb.Len() <= defaultFetchCap {
+	for sb.Len() <= DefaultDiffCap {
 		sb.WriteString(line)
 	}
 	return sb.String()

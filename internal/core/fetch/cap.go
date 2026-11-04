@@ -13,9 +13,9 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// defaultFetchCap is the fetched-diff byte cap (512000 bytes, overridable
+// DefaultDiffCap is the fetched-diff byte cap (512000 bytes, overridable
 // for deliberate exceptions only).
-const defaultFetchCap = 512000
+const DefaultDiffCap = 512000
 
 // fetchCap carries the resolved diff cap and its provenance.
 type fetchCap struct {
@@ -30,7 +30,7 @@ type fetchCap struct {
 // prints the » cap line and arms the envelope summary; garbage refuses typed.
 func resolveFetchCap(r *session) (fetchCap, error) {
 	env := r.env
-	fc := fetchCap{maxBytes: defaultFetchCap}
+	fc := fetchCap{maxBytes: DefaultDiffCap}
 	raw, src := "", ""
 	if v, ok := env["REVIEW_MAX_BYTES"]; ok && v != "" {
 		raw, src = strings.TrimSpace(v), "REVIEW_MAX_BYTES"
