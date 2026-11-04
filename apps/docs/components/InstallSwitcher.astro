@@ -1,0 +1,494 @@
+---
+import Icon from "blume/components/Icon.astro";
+
+/**
+ * Install switcher: one tab per install route, one command box, one copy
+ * button. Used on the landing hero and in MDX (`<InstallSwitcher />`).
+ *
+ * Without JavaScript the npm panel renders and the tab strip hides; a
+ * `<noscript>` rule then stacks every panel under its own label, so no route
+ * is out of reach. Panels toggle `data-active`, not `hidden`, because the
+ * Tailwind preflight's layered `[hidden] !important` would beat that rule. With JavaScript the tabs work as an ARIA tablist (arrow
+ * keys, Home, End) and the choice persists in localStorage.
+ *
+ * Command sources: README.md "Install" and docs/manual.md "Install routes".
+ */
+interface Props {
+  /** Id prefix. Give each switcher on one page a different value. */
+  name?: string;
+}
+
+const { name = "install" } = Astro.props;
+
+const base = "https://github.com/stainless-code/verdict/releases/latest/download";
+
+interface Tab {
+  id: string;
+  label: string;
+  icon: string;
+  command: string;
+  /** Plain-text note under the box, with an optional inline command. */
+  note?: { before: string; code?: string; after?: string };
+  /** "View install script" link for the shell routes. */
+  script?: { href: string; label: string };
+}
+
+const tabs: Tab[] = [
+  {
+    id: "npm",
+    label: "npm",
+    icon: "package",
+    command: "npm i -g @stainless-code/verdict",
+    note: {
+      before: "Run once without installing:",
+      code: "npx @stainless-code/verdict --help",
+    },
+  },
+  {
+    id: "pnpm",
+    label: "pnpm",
+    icon: "package",
+    command: "pnpm add -g @stainless-code/verdict",
+  },
+  {
+    id: "bun",
+    label: "bun",
+    icon: "package",
+    command: "bun add -g @stainless-code/verdict",
+    note: {
+      before: "Run once without installing:",
+      code: "bunx @stainless-code/verdict --help",
+    },
+  },
+  {
+    id: "yarn",
+    label: "yarn",
+    icon: "package",
+    command: "yarn global add @stainless-code/verdict",
+  },
+  {
+    id: "brew",
+    label: "Homebrew",
+    icon: "beer",
+    command: "brew install stainless-code/tap/verdict",
+  },
+  {
+    id: "sh",
+    label: "macOS/Linux",
+    icon: "terminal",
+    command: "curl -fsSL https://stainless-code.com/verdict/install.sh | sh",
+    note: {
+      before:
+        "Checks the SHA-256 and, when cosign is installed, the signature. Installs to ~/.verdict/bin without root.",
+    },
+    script: { href: `${base}/install.sh`, label: "View install script" },
+  },
+  {
+    id: "ps",
+    label: "Windows",
+    icon: "monitor",
+    command: "irm https://stainless-code.com/verdict/install.ps1 | iex",
+    note: {
+      before:
+        "PowerShell. Checks the SHA-256 and, when cosign is installed, the signature. No admin rights needed.",
+    },
+    script: { href: `${base}/install.ps1`, label: "View install script" },
+  },
+];
+---
+
+<install-switcher class="install not-prose" data-storage-key="verdict-install">
+  <div class="install-tabs" role="tablist" aria-label="Install method">
+    {
+      tabs.map((tab, i) => (
+        <button
+          aria-controls={`${name}-panel-${tab.id}`}
+          aria-selected={i === 0 ? "true" : "false"}
+          class="install-tab"
+          data-tab={tab.id}
+          id={`${name}-tab-${tab.id}`}
+          role="tab"
+          tabindex={i === 0 ? 0 : -1}
+          type="button"
+        >
+          <Icon name={tab.icon} size={14} />
+          <span>{tab.label}</span>
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((tab, i) => (
+      <div
+        aria-labelledby={`${name}-tab-${tab.id}`}
+        class="install-panel"
+        data-active={i === 0 ? "true" : undefined}
+        data-panel={tab.id}
+        id={`${name}-panel-${tab.id}`}
+        role="tabpanel"
+        tabindex="0"
+      >
+        <p class="install-label">{tab.label}</p>
+        <div class="install-box">
+          <span aria-hidden="true" class="install-prompt">
+            $
+          </span>
+          <code class="install-command" data-command>
+            {tab.command}
+          </code>
+          <button
+            aria-label={`Copy: ${tab.command}`}
+            class="install-copy"
+            data-copy
+            hidden
+            type="button"
+          >
+            <span data-copy-idle>
+              <Icon name="copy" size={15} />
+            </span>
+            <span data-copy-done hidden>
+              <Icon name="check" size={15} />
+            </span>
+          </button>
+        </div>
+        {(tab.note || tab.script) && (
+          <p class="install-note">
+            {tab.note && (
+              <>
+                {tab.note.before}
+                {tab.note.code && (
+                  <>
+                    {" "}
+                    <code>{tab.note.code}</code>
+                  </>
+                )}
+                {tab.note.after}
+              </>
+            )}
+            {tab.script && (
+              <>
+                {tab.note && " "}
+                <a
+                  href={tab.script.href}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {tab.script.label}
+                  <span aria-hidden="true">{" ↗"}</span>
+                </a>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+    ))
+  }
+  <p aria-live="polite" class="install-status" data-status role="status"></p>
+</install-switcher>
+
+<noscript>
+  <style>
+    /* The component's own rules are scoped (higher specificity): win with !important. */
+    .install-tabs {
+      display: none !important;
+    }
+    .install-panel {
+      display: block !important;
+    }
+    .install-label {
+      display: block !important;
+    }
+  </style>
+</noscript>
+
+<style>
+  .install {
+    display: block;
+    width: 100%;
+    max-width: 40rem;
+    margin-inline: auto;
+    overflow: hidden;
+    text-align: left;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.75rem;
+    background: var(--landing-surface, var(--blume-background));
+  }
+
+  .install-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding-inline: 0.5rem;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--blume-border);
+    background: var(--blume-muted);
+    scrollbar-width: thin;
+  }
+
+  .install-tab {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: -1px;
+    padding: 0.625rem 0.5rem;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--blume-muted-foreground);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 120ms ease;
+  }
+
+  .install-tab:hover {
+    color: var(--blume-foreground);
+  }
+
+  .install-tab[aria-selected="true"] {
+    border-bottom-color: var(--blume-accent);
+    color: var(--blume-foreground);
+  }
+
+  .install-tab:focus-visible,
+  .install-copy:focus-visible,
+  .install-panel:focus-visible {
+    outline: 2px solid var(--blume-accent);
+    outline-offset: -2px;
+  }
+
+  .install-panel {
+    display: none;
+    padding: 0.875rem 0.75rem 0.875rem 1rem;
+  }
+
+  .install-panel[data-active] {
+    display: block;
+  }
+
+  .install-label {
+    display: none;
+    margin: 0 0 0.375rem;
+    color: var(--blume-muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .install-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .install-prompt {
+    color: var(--landing-faint, var(--blume-muted-foreground));
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    user-select: none;
+  }
+
+  .install-command {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    overflow-x: auto;
+    background: transparent;
+    color: var(--blume-foreground);
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    font-size: 0.9375rem;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .install-command::before,
+  .install-command::after {
+    content: none;
+  }
+
+  .install-copy {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: var(--blume-muted);
+    color: var(--blume-muted-foreground);
+    cursor: pointer;
+    transition: color 120ms ease;
+  }
+
+  .install-copy[hidden] {
+    display: none;
+  }
+
+  .install-copy:hover {
+    color: var(--blume-foreground);
+  }
+
+  .install-copy [hidden] {
+    display: none;
+  }
+
+  .install-copy span {
+    display: inline-flex;
+  }
+
+  .install-note {
+    margin: 0.625rem 0 0;
+    color: var(--blume-muted-foreground);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .install-note code {
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    font-size: 0.8125rem;
+    color: var(--blume-foreground);
+  }
+
+  .install-note a {
+    color: var(--blume-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    white-space: nowrap;
+  }
+
+  .install-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+</style>
+
+<script>
+  const CHANGE = "verdict-install-change";
+
+  class InstallSwitcher extends HTMLElement {
+    connectedCallback() {
+      const key = this.dataset.storageKey ?? "verdict-install";
+      const tabs = Array.from(
+        this.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+      );
+      const panels = Array.from(
+        this.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
+      );
+      const status = this.querySelector<HTMLElement>("[data-status]");
+      const ids = tabs.map((tab) => tab.dataset.tab ?? "");
+
+      const read = (): string | null => {
+        try {
+          const saved = localStorage.getItem(key);
+          return saved !== null && ids.includes(saved) ? saved : null;
+        } catch {
+          return null;
+        }
+      };
+      const write = (id: string) => {
+        try {
+          localStorage.setItem(key, id);
+        } catch {
+          // Storage can be blocked; the choice then lasts for this page only.
+        }
+      };
+
+      const select = (id: string, focus: boolean) => {
+        for (const tab of tabs) {
+          const on = tab.dataset.tab === id;
+          tab.setAttribute("aria-selected", on ? "true" : "false");
+          tab.tabIndex = on ? 0 : -1;
+          if (on && focus) tab.focus();
+        }
+        for (const panel of panels) {
+          if (panel.dataset.panel === id) panel.dataset.active = "true";
+          else delete panel.dataset.active;
+        }
+      };
+
+      const initial = read();
+      if (initial !== null) select(initial, false);
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+          const id = tab.dataset.tab ?? "";
+          select(id, false);
+          write(id);
+          window.dispatchEvent(new CustomEvent(CHANGE, { detail: id }));
+        });
+      }
+
+      this.querySelector('[role="tablist"]')?.addEventListener(
+        "keydown",
+        (event) => {
+          const e = event as KeyboardEvent;
+          const at = tabs.findIndex(
+            (tab) => tab.getAttribute("aria-selected") === "true",
+          );
+          let next = -1;
+          if (e.key === "ArrowRight") next = (at + 1) % tabs.length;
+          else if (e.key === "ArrowLeft")
+            next = (at - 1 + tabs.length) % tabs.length;
+          else if (e.key === "Home") next = 0;
+          else if (e.key === "End") next = tabs.length - 1;
+          if (next < 0) return;
+          e.preventDefault();
+          const id = ids[next] ?? "";
+          select(id, true);
+          write(id);
+          window.dispatchEvent(new CustomEvent(CHANGE, { detail: id }));
+        },
+      );
+
+      // Keep several switchers on one page (and other tabs) in step.
+      window.addEventListener(CHANGE, (event) => {
+        const id = (event as CustomEvent<string>).detail;
+        if (ids.includes(id)) select(id, false);
+      });
+      window.addEventListener("storage", (event) => {
+        if (event.key === key && event.newValue && ids.includes(event.newValue))
+          select(event.newValue, false);
+      });
+
+      for (const button of this.querySelectorAll<HTMLButtonElement>(
+        "[data-copy]",
+      )) {
+        button.hidden = false;
+        button.addEventListener("click", async () => {
+          const code = button
+            .closest(".install-box")
+            ?.querySelector<HTMLElement>("[data-command]");
+          if (!code) return;
+          try {
+            await navigator.clipboard.writeText(code.textContent?.trim() ?? "");
+          } catch {
+            // No clipboard access: select the command so Ctrl/Cmd+C works.
+            getSelection()?.selectAllChildren(code);
+            return;
+          }
+          const idle = button.querySelector<HTMLElement>("[data-copy-idle]");
+          const done = button.querySelector<HTMLElement>("[data-copy-done]");
+          if (idle) idle.hidden = true;
+          if (done) done.hidden = false;
+          if (status) status.textContent = "Copied to clipboard";
+          setTimeout(() => {
+            if (idle) idle.hidden = false;
+            if (done) done.hidden = true;
+            if (status) status.textContent = "";
+          }, 1500);
+        });
+      }
+    }
+  }
+
+  if (!customElements.get("install-switcher")) {
+    customElements.define("install-switcher", InstallSwitcher);
+  }
+</script>
