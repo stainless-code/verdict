@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # GitHub cannot dedupe a push against its own pull request, so agent
+  # branches are covered by the PR trigger alone; only main pushes here.
   push:
     branches:
       - main
-      - "agent/**"
   pull_request:
     branches:
       - main
@@ -17,6 +18,38 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  changes:
+    name: 🔍 Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.classify.outputs.full }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Classify the diff against the PR base
+        id: classify
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ] || [ -z "$BASE_SHA" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The merge commit already holds the PR's tree, so a depth-1 base
+          # fetch is enough to diff; a failed fetch falls back to the full
+          # suite instead of holding the merge gate shut.
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only --no-renames "$BASE_SHA" HEAD | scripts/ci-changes.sh >> "$GITHUB_OUTPUT"
+
   format:
     name: 💅 Format
     runs-on: ubuntu-latest
@@ -41,6 +74,8 @@ jobs:
 
   lint:
     name: 🕵 Lint
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -57,6 +92,8 @@ jobs:
 
   installer:
     name: 🔌 Skill installer smoke
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -84,6 +121,8 @@ jobs:
 
   installers:
     name: 📥 Installers (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +157,8 @@ jobs:
 
   installers-windows:
     name: 📥 Installers (windows)
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -136,6 +177,8 @@ jobs:
 
   go:
     name: 🐹 Go (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -185,6 +228,8 @@ jobs:
 
   go-windows:
     name: 🐹 Go Windows
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -229,6 +274,8 @@ jobs:
 
   cross:
     name: 🌍 Cross
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -248,6 +295,8 @@ jobs:
 
   evals:
     name: 🧪 Evals (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -329,6 +378,8 @@ jobs:
 
   release-dry-run:
     name: 📦 Release dry-run
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -365,6 +416,8 @@ jobs:
 
   ts-client:
     name: 📦 TS client
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -443,16 +496,18 @@ jobs:
     # appear in exactly one list (`internal/archtest` fails the build on
     # drift), and only a required lane can fail this gate: a required lane
     # must be literally `success` — a skip reports success to branch
-    # protection, so a skip fails here too — while an advisory lane just has
-    # to report its result. Both platform legs stay required: `go-windows` is
-    # green and deterministic, and demoting a platform is a policy decision,
-    # not a flake workaround. ADVISORY_JOBS is empty today; the gate below
-    # reads an empty list as "no advisory lanes".
+    # protection, so a skip fails here too — with one exception, the lane
+    # `changes` gated off on a diff it proved docs-only; `changes` itself is
+    # never accepted skipped. Both platform legs stay required: `go-windows`
+    # is green and deterministic, and demoting a platform is a policy
+    # decision, not a flake workaround. ADVISORY_JOBS is empty today; the gate
+    # below reads an empty list as "no advisory lanes".
     env:
-      REQUIRED_JOBS: format lint installer installers installers-windows go go-windows cross evals docs ts-client audit release-dry-run
+      REQUIRED_JOBS: changes format lint installer installers installers-windows go go-windows cross evals docs ts-client audit release-dry-run
       ADVISORY_JOBS: ""
     needs:
       [
+        changes,
         format,
         lint,
         installer,
@@ -475,10 +530,12 @@ jobs:
         shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
+          FULL: ${{ needs.changes.outputs.full }}
         run: |
           # One data-driven gate over the declaration above: report every
-          # lane, then fail only on a required lane that is not `success`, an
-          # advisory lane that never reported, or a job nobody declared.
+          # lane, then fail only on a required lane that is neither `success`
+          # nor a docs-only fast-path skip, an advisory lane that never
+          # reported, or a job nobody declared.
           printf '%s' "$NEEDS" | jq -r --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
             def lanes: split(" ") | map(select(length > 0));
             ($req | lanes) as $r | ($adv | lanes) as $a
@@ -487,7 +544,7 @@ jobs:
             | if ($r | index($k)) then "required \($k): \($res)"
               elif ($a | index($k)) then "advisory \($k): \($res) (never blocks)"
               else "undeclared \($k): \($res)" end'
-          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
+          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" --arg full "$FULL" '
             def lanes: split(" ") | map(select(length > 0));
             ($req | lanes) as $r | ($adv | lanes) as $a
             | [to_entries[].key] as $have
@@ -495,7 +552,9 @@ jobs:
               + [to_entries[]
                  | .key as $k | (.value.result // "") as $res
                  | if ($r | index($k)) then
-                     (if $res != "success" then "required but \($res): \($k)" else empty end)
+                     (if $res == "success" then empty
+                      elif $res == "skipped" and $full != "true" and $k != "changes" then empty
+                      else "required but \($res): \($k)" end)
                    elif ($a | index($k)) then
                      (if $res == "" then "advisory but silent: \($k)" else empty end)
                    else "undeclared in needs: \($k)" end]
