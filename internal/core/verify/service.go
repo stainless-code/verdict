@@ -136,6 +136,12 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	// A caller cancel (Ctrl-C, SIGTERM, a host cancel) killed the tree, but
+	// it is not the verify timeout: recording it would store a failed proof
+	// ("timed_out", exit 137, "timeout after Ns") for a run nobody let finish.
+	if ctx.Err() != nil {
+		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"})
+	}
 	return st.record(dir, now, outPath, timeoutPath, res)
 }
 
