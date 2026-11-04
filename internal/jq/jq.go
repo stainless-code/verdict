@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -84,7 +85,7 @@ func Str(v any) string {
 	case json.Number:
 		return CanonNumber(t.String())
 	case float64:
-		return CanonNumber(strconv.FormatFloat(t, 'g', -1, floatBits))
+		return Float(t)
 	default:
 		return Compact(t)
 	}
@@ -107,7 +108,7 @@ func R(v any) string {
 	case json.Number:
 		return CanonNumber(t.String())
 	case float64:
-		return CanonNumber(strconv.FormatFloat(t, 'g', -1, floatBits))
+		return Float(t)
 	}
 	return valuePretty(v, "", "  ")
 }
@@ -138,6 +139,71 @@ func CanonNumber(lit string) string {
 		return canon
 	}
 	return lit
+}
+
+// Float renders a Go float64 the way jq prints a computed double: the
+// shortest round-trip digits, plain notation unless the decimal point sits
+// more than fifteen places past the digits or four or more places before
+// them, and otherwise exponential with a signed two-digit-minimum exponent
+// (1e-05, 1e+16). It is the counterpart of [CanonNumber], which only knows
+// number literals: a double has no literal to preserve. NaN and the
+// infinities pass through as strconv spells them. No float64 is converted to
+// an integer, so the result cannot differ by architecture.
+func Float(f float64) string {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return strconv.FormatFloat(f, 'g', -1, floatBits)
+	}
+	if f == 0 {
+		return zeroLit // jq 1.7 prints a computed -0 as -0 and 1.8 as 0; the sign was never kept here
+	}
+	body := floatBody(math.Abs(f))
+	if math.Signbit(f) {
+		return minusSign + body
+	}
+	return body
+}
+
+// floatBody renders a positive finite double from its shortest digits.
+func floatBody(f float64) string {
+	mant, exp, _ := strings.Cut(strconv.FormatFloat(f, 'e', -1, floatBits), "e")
+	digits := strings.Replace(mant, ".", "", 1)
+	x, err := strconv.Atoi(exp)
+	if err != nil { // FormatFloat 'e' always writes a valid exponent
+		return strconv.FormatFloat(f, 'g', -1, floatBits)
+	}
+	decpt := x + 1
+	switch {
+	case decpt <= -floatPlainBelow || decpt > len(digits)+floatPlainAbove:
+		return exponential(digits, x)
+	case decpt > len(digits):
+		return digits + strings.Repeat(zeroLit, decpt-len(digits))
+	default:
+		return plainDecimal(digits, decpt-len(digits))
+	}
+}
+
+// exponential renders digits in the double notation jq uses: one leading
+// digit, the rest after a point, then e, an explicit sign and at least two
+// exponent digits.
+func exponential(digits string, exp int) string {
+	var b strings.Builder
+	b.WriteByte(digits[0])
+	if len(digits) > 1 {
+		b.WriteByte('.')
+		b.WriteString(digits[1:])
+	}
+	b.WriteByte('e')
+	if exp < 0 {
+		b.WriteString(minusSign)
+		exp = -exp
+	} else {
+		b.WriteByte('+')
+	}
+	if exp < minExponentDigits {
+		b.WriteString(zeroLit)
+	}
+	b.WriteString(strconv.Itoa(exp))
+	return b.String()
 }
 
 // canonLiteral re-renders one JSON number literal the way jq does: plain
@@ -517,6 +583,20 @@ const (
 	// minPlainAdjusted is the smallest adjusted exponent jq writes in plain
 	// notation; below it the literal renders as exponential.
 	minPlainAdjusted = -6
+	// floatPlainBelow is how many places before the digits jq's double
+	// printing still writes plain: a decimal point at or past -4 turns
+	// exponential (0.0001 stays plain, 0.00001 prints 1e-05).
+	floatPlainBelow = 4
+	// minExponentDigits is the exponent magnitude below which jq's double
+	// printing pads a leading zero (1e-05, not 1e-5).
+	minExponentDigits = 10
+	// zeroLit and minusSign are the digit and sign jq's number printing pads
+	// and prefixes with.
+	zeroLit   = "0"
+	minusSign = "-"
+	// floatPlainAbove is how many zeros jq's double printing appends to the
+	// digits before it turns exponential (1e15 plain, 1e16 prints 1e+16).
+	floatPlainAbove = 15
 	// newline terminates encoder output.
 	newline = "\n"
 	// opDecodeJSON names the JSON decode operation in sealed errors.

@@ -104,6 +104,56 @@ func TestCanonNumber(t *testing.T) {
 	}
 }
 
+// TestFloat checks a Go float64 renders the way jq prints a computed double.
+// Every want is jq's literal output, recorded with `jq -n '<give>+0*1'` on jq
+// 1.8.2 and identical on jq 1.7.1; routing the 'g' form through the literal
+// canonicalizer instead prints 1E+6 and 0.00001 here.
+func TestFloat(t *testing.T) {
+	tests := []struct{ give, want string }{
+		{"0.5", "0.5"},
+		{"2", "2"},
+		{"1e6", "1000000"},
+		{"-1e6", "-1000000"},
+		{"1e15", "1000000000000000"},
+		{"1e16", "1e+16"},
+		{"1e17", "1e+17"},
+		{"123456789012345678", "123456789012345680"},
+		{"9.223372036854775808e18", "9223372036854776000"},
+		{"-9.223372036854775808e18", "-9223372036854776000"},
+		{"1e21", "1e+21"},
+		{"0.0001", "0.0001"},
+		{"1e-5", "1e-05"},
+		{"-1e-5", "-1e-05"},
+		{"3e-5", "3e-05"},
+		{"1.5e-7", "1.5e-07"},
+		{"100.25", "100.25"},
+		{"12345.678", "12345.678"},
+		{"1e300", "1e+300"},
+		{"1.7976931348623157e308", "1.7976931348623157e+308"},
+		{"5e-324", "5e-324"},
+	}
+	for _, tt := range tests {
+		f, err := strconv.ParseFloat(tt.give, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkFloat(t, tt.give, f, tt.want)
+	}
+}
+
+// checkFloat fails unless every float renderer prints want for f.
+func checkFloat(t *testing.T, give string, f float64, want string) {
+	t.Helper()
+	renders := map[string]string{
+		"Float": jq.Float(f), "Str": jq.Str(f), "R": jq.R(f), "Interp": jq.Interp(f),
+	}
+	for name, got := range renders {
+		if got != want {
+			t.Errorf("%s(%s) = %q; want %q", name, give, got, want)
+		}
+	}
+}
+
 // TestNumberRaw checks jq.Number encodes as a raw JSON number everywhere.
 func TestNumberRaw(t *testing.T) {
 	o := jq.NewObj("pr", jq.Number("47"), "nested", jq.NewObj("n", jq.Number("3")))

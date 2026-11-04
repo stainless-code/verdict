@@ -257,7 +257,7 @@ func numOrZero(v any) string {
 	case json.Number:
 		return jq.CanonNumber(t.String())
 	case float64:
-		return jq.CanonNumber(fmt.Sprintf("%v", t))
+		return jq.Float(t)
 	case int:
 		return strconv.Itoa(t)
 	case string:
