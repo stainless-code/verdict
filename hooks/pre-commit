@@ -13,9 +13,11 @@ actionlint_pin=github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 fmt_files=() shell_files=() go_files=() wf_files=() mod_files=()
 while IFS= read -r f; do
   [ -n "$f" ] || continue
+  case "$f" in skills/verdict/prompts/*) continue ;; esac
   case "$f" in
-    skills/verdict/prompts/*) ;;
-    *.md|*.mdx|*.json|*.ts) fmt_files+=("$f") ;;
+    *.md|*.mdx|*.json|*.ts|*.js|*.mjs|*.cjs|*.css|*.html|*.yml|*.yaml|*.webmanifest) fmt_files+=("$f") ;;
+  esac
+  case "$f" in
     *.sh|hooks/pre-commit|hooks/pre-push) shell_files+=("$f") ;;
     *.go) go_files+=("$f") ;;
     .github/workflows/*.yml|.github/workflows/*.yaml) wf_files+=("$f") ;;

@@ -85,6 +85,8 @@ func TestGitConfigPinsRepositories(t *testing.T) {
 		"tag.gpgsign":        "false",
 		"init.defaultBranch": "main",
 		"core.longpaths":     "true",
+		"maintenance.auto":   "false",
+		"gc.auto":            "0",
 	}
 	for key, value := range want {
 		cmd := exec.CommandContext(t.Context(), "git", "config", "--get", key)

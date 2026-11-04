@@ -51,10 +51,11 @@ if [ "$JOBS" -lt 1 ]; then
   exit 2
 fi
 
-pre_status="$(git -C "$ROOT" status --short)"
-
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/verdict-evals.XXXXXX")"
 testenv_init "$SANDBOX"
+# Snapshot after the scrub so both reads of the repo ignore any GIT_DIR the
+# launcher exported (hooks do), instead of comparing two different checkouts.
+pre_status="$(git -C "$ROOT" status --short)"
 STUBBIN="$SANDBOX/stubbin"
 mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'EOF'

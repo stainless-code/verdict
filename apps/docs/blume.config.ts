@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "blume";
 import { orama } from "blume/search";
 import { custom, filesystem } from "blume/sources";
+import { docsPage } from "./docs-index.ts";
+import { sitePages } from "./navigation.ts";
 import { changelogSource } from "./sources/changelog.ts";
 import { manualSource } from "./sources/manual.ts";
 
@@ -15,6 +17,10 @@ const description =
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";
 const origin = "https://stainless-code.com";
+
+const manual = docsPage("manual.md");
+const manualUrl = `${origin}${deploymentBase}${manual.route}.md`;
+const manualSummary = manual.summary.replace(/\.$/u, "");
 
 // Prerendered pages skip transformIndexHtml, so append tags to dist after build.
 const webAppHeadIntegration = {
@@ -101,9 +107,8 @@ export default defineConfig({
     llmsTxt: {
       details: [
         "The two long-form references are left out of `llms-full.txt` for their size:",
-        `the operator manual at ${origin}${deploymentBase}/manual.md (envelope, exit codes,`,
-        "store files, refusal codes, control files, provider matrix), and the release",
-        `notes at ${origin}${deploymentBase}/changelog.`,
+        `the ${manual.title.toLowerCase()} at ${manualUrl} (${manualSummary}),`,
+        `and the release notes at ${origin}${deploymentBase}/changelog.`,
       ].join("\n"),
     },
   },
@@ -115,19 +120,7 @@ export default defineConfig({
   },
 
   navigation: {
-    // Order is the reader's path, not the repo's: install, see the loop, pick a
-    // surface, then argue about positioning and price. Roadmap before Changelog
-    // because the future is a shorter read than the log.
-    tabs: [
-      { label: "Quickstart", path: "/quickstart" },
-      { label: "How it reviews", path: "/how-it-reviews" },
-      { label: "Integrations", path: "/integrations" },
-      { label: "Why Verdict", path: "/why-verdict" },
-      { label: "Comparison", path: "/comparison" },
-      { label: "Roadmap", path: "/roadmap" },
-      { label: "Manual", path: "/manual" },
-      { label: "Changelog", path: "/changelog" },
-    ],
+    tabs: sitePages(manual).map(({ label, path }) => ({ label, path })),
     sidebar: { display: "flat" },
   },
 

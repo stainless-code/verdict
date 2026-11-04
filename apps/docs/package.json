@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "audit": "blume audit --fail-on error",
-    "build": "blume build && bun scripts/check-skill-names.ts && bun scripts/check-output.ts",
+    "build": "blume build && bun scripts/check-skill-names.ts && bun scripts/check-output.ts && bun scripts/check-docs.ts",
     "check": "blume check",
     "dev": "blume dev",
     "preview": "blume preview",
@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "blume": "^2.2.5"
+  },
+  "devDependencies": {
+    "github-slugger": "^2.0.0"
   },
   "engines": {
     "bun": ">=1.0.31",

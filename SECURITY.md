@@ -87,10 +87,13 @@ Do not "fix" the inherited side: it is the documented local posture.
 
 The hermetic counterpart for tests is `internal/testenv`: every harness that
 spawns `git`, `gh`, or the verdict binary builds its child environment there.
-It drops secret-shaped variables (`*_TOKEN`, `*_KEY`, `*_SECRET`, `AWS_*`) and
-harness knobs (`REVIEW_*`, `GH_*`, `GITHUB_*`, `GIT_CONFIG_*`), and pins git's
-configuration, so a test never inherits the runner's environment. Production
-inherits the operator's, tests never do — both are deliberate.
+It drops secret-shaped variables (`*_TOKEN`, `*_KEY`, `*_SECRET`, `AWS_*`),
+harness knobs (`REVIEW_*`, `GH_*`, `GITHUB_*`, `GIT_CONFIG_*`), and git's own
+location variables (`GIT_DIR` and friends, which git exports to hooks), then
+pins git's configuration and identity, so a test never inherits the runner's
+environment. Each git-running package's `TestMain` applies the same scrub to
+the process, so a suite launched from a hook writes only to its fixtures.
+Production inherits the operator's, tests never do — both are deliberate.
 
 ## Ground rules
 

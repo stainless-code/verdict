@@ -43,6 +43,12 @@ func writeBenchSection(sb *strings.Builder, i, files, budget int) {
 		body.WriteString(line)
 		lines++
 	}
+	if room := budget - len(head) - len(benchHunkHead(lines+1)) - body.Len(); room >= 2 {
+		body.WriteString(" ")
+		body.WriteString(strings.Repeat("x", room-2))
+		body.WriteString(newline)
+		lines++
+	}
 	sb.WriteString(head)
 	sb.WriteString(benchHunkHead(lines))
 	sb.WriteString(body.String())
@@ -78,8 +84,8 @@ func runOverviewBench(b *testing.B, files int) {
 	dir := b.TempDir()
 	b.Chdir(dir)
 	diff := benchOverviewDiff(files, fetchcore.DefaultDiffCap)
-	if len(diff) > fetchcore.DefaultDiffCap {
-		b.Fatalf("fixture is %d bytes, over the %d-byte cap fetch accepts",
+	if len(diff) != fetchcore.DefaultDiffCap {
+		b.Fatalf("fixture is %d bytes, want exactly the %d-byte cap fetch accepts",
 			len(diff), fetchcore.DefaultDiffCap)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(diff), 0o644); err != nil {

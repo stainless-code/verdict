@@ -1312,9 +1312,10 @@ environment, and the split is deliberate (the security rationale is in
 
 In tests the counterpart is `internal/testenv`: every harness that spawns
 `git`, `gh`, or `verdict` builds a fixed, secret-free child environment
-(secret-shaped names and harness knobs dropped, git configuration pinned) and
-never inherits the runner's. Production inherits the operator's environment on
-purpose; tests never do.
+(secret-shaped names, harness knobs, and git's hook-exported location
+variables dropped; git configuration and identity pinned) and never inherits
+the runner's. Production inherits the operator's environment on purpose; tests
+never do.
 
 ## Over-cap diffs (chunked fetch + manual recipe)
 
