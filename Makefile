@@ -116,7 +116,7 @@ release-dry-run:
 # the npm wrapper; generate-npm.mjs bundles clients/ts/dist when present.
 # Two gates: gen-ts-types.mjs --check covers the schema/codegen sources (Go
 # free, Node only), `go run ./cmd/tsgen` covers the refusal codes rendered
-# from the Go hint table.
+# from the Go refusal-code registry (internal/core/refusalcodes.go).
 .PHONY: clients-ts
 clients-ts: build
 	go run ./cmd/tsgen
