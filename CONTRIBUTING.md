@@ -100,11 +100,12 @@ Every PR must clear all of these; CI enforces each one:
 1. **Evals green.** `make evals` builds `bin/verdict` and runs the
    full hermetic suite against it. While iterating, run only the
    affected cases (`./evals/one.sh <case>`).
-2. **Go green.** `go test -race ./...` (CI also gates `go vet ./...`,
-   `go mod verify`, `gofmt -l .` empty, and `govulncheck` via
-   `make ci-go`). `make cross` builds and vets every `GOOS/GOARCH` pair
-   `release/contract.json` ships, so a windows/arm64-only break fails here
-   instead of in the release job.
+2. **Go green.** `make test-race` (`-race -shuffle=on -count=1`; CI also
+   gates `go vet ./...`, `go mod verify`, `gofmt -l .` empty, and
+   `govulncheck` via `make ci-go`). `make cross` builds and vets every
+   `GOOS/GOARCH` pair `release/contract.json` ships, so a windows/arm64-only
+   break fails here instead of in the release job. The nightly schedule also
+   runs `make fuzz`; no pull request pays for it.
 3. **Linter-clean.** `golangci-lint run ./...` with the repo's
    `.golangci.yml` (CI runs the pinned action; zero issues, no new
    `//nolint`).

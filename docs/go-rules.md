@@ -29,7 +29,7 @@ this repo, and the repo files stay the truth for what is gated:
 - Channels move ownership; mutexes guard state; maps are never shared unsynchronized (GO-CONC-03). — partly: `test -race`, `vet:copylock`.
 - `WaitGroup.Add` before `go`, same frame (GO-CONC-05). — enforced: `vet:waitgroup` (runs under `go test`).
 - Set `Cmd.WaitDelay` on every command with captured pipes (GO-CONC-06). — review-only (analyzer candidate, map §2).
-- `go test -race -shuffle=on -count=1 ./...` is green on 3 OSes (GO-CONC-07). — partly: `make test-race` on macOS + Ubuntu, plain `go test` on Windows; `-shuffle=on` is not set.
+- `go test -race -shuffle=on -count=1 ./...` is green on 3 OSes (GO-CONC-07). — partly: `make test-race` runs `-race -shuffle=on -count=1` on macOS + Ubuntu; Windows runs plain `go test`, so both flags are gated on two of the three OSes.
 - No `*io.Reader`; comma-ok every type assertion (GO-IFACE-04). — partly: `lint:forcetypeassert`.
 - Copy collections at trust boundaries (GO-COLLECT-02). — review-only.
 - `defer` cleanup at the acquisition site (GO-DEFER-01). — partly: `lint:bodyclose,sqlclosecheck,rowserrcheck`.
@@ -62,7 +62,7 @@ this repo, and the repo files stay the truth for what is gated:
 - No SHA-1 outside the one wire-compat package (scoped lint exception, not-a-security-boundary doc, explicit FIPS stance); suite runs once under `GODEBUG=fips140=only` (GO-CRYPTO-02). — partly: `lint:depguard` bans `crypto/sha1` outside `internal/sig`; the FIPS-only run is not a CI step.
 - Windows runs in CI, not just cross-compiles (GO-XPLAT-01). — enforced: `ci:go-windows`.
 - `default: none`-equivalent explicit lint set; `gofumpt` + `gci` formatting (GO-LINT-01/02). — partly: `.golangci.yml` pins an explicit enable list over `default: standard` plus the two formatters; `make gofmt-check` and CI gate plain `gofmt`; `golangci-lint fmt` is not a CI step.
-- CI: lint, vet, 3-OS test matrix, vuln, fuzz, build, tag-release (GO-CI-01/03). — partly: `ci.yml` runs format, lint, go (race + vet + vuln + golangci), go-windows, cross (every shipped `GOOS/GOARCH`, from `release/contract.json`), evals, docs, ts-client, audit, release dry-run — every lane except format/docs/audit on any diff that is not docs-only, and unfiltered on `main` pushes; there is no fuzz job, and tagging lives in `release.yml`.
+- CI: lint, vet, 3-OS test matrix, vuln, fuzz, build, tag-release (GO-CI-01/03). — partly: `ci.yml` runs format, lint, go (race + vet + vuln + golangci), go-windows, cross (every shipped `GOOS/GOARCH`, from `release/contract.json`), evals, docs, ts-client, audit, release dry-run — every lane except format/docs/audit on any diff that is not docs-only, and unfiltered on `main` pushes; `fuzz` is advisory and runs on the nightly schedule alone, and tagging lives in `release.yml`.
 - Releases via goreleaser: signed SBOMs + cosign bundles (GO-CI-04). — enforced: `.goreleaser.yml` (`sboms`, keyless `signs`) + `ci:release-dry-run`.
 
 ## SHOULD (fix or record a reason)
@@ -76,7 +76,7 @@ this repo, and the repo files stay the truth for what is gated:
 - Zero-value-ready types; `make` for refs; generics on the third copy, containers first (GO-TYPES-01/03). — review-only.
 - Nil-over-empty slices; `slices`/`maps`/`cmp` over hand loops; sorted snapshot iteration (GO-COLLECT-01/03/04). — partly: `lint:modernize,usestdlibvars` + `forbidigo` (`sort.`, `reflect.DeepEqual`).
 - Table tests with `ErrorIs`; `t.Helper` + `t.Cleanup`; goldens with `-update` (GO-TEST-01/02/04). — partly: `lint:testifylint,thelper,usetesting`; the `-update` flag lives in `internal/golden`.
-- Fuzz parsers (`-fuzztime=30s` in CI); `B.Loop` + `benchstat` (GO-TEST-05/06). — review-only (no fuzz targets and no CI fuzz job yet).
+- Fuzz parsers (`-fuzztime=30s` in CI); `B.Loop` + `benchstat` (GO-TEST-05/06). — partly: `make fuzz` runs all 11 targets for 30 s each in the nightly `fuzz` lane, and `internal/archtest` fails when a target in the tree is missing from `FUZZ_TARGETS`; `B.Loop` + `benchstat` stay review-only.
 - `t.Context`/`t.Chdir`; testscript txtar for CLI e2e; build-tagged integration (GO-TEST-08). — partly: `lint:usetesting`; CLI e2e is the bash `evals` suite (this repo has no `testscript` dependency).
 - Doc every export name-first; runnable Examples; document sharp edges (GO-DOCS-01/02). — partly: `lint:godoclint,godot,misspell`.
 - Evolve by addition; tidy minimal modules; tool directives; GODEBUG in go.mod (GO-API-03, GO-MOD-02/03/05). — partly: `lint:gomoddirectives` + `make vet` (`go mod verify`); `go mod tidy -diff` is not a CI step.
