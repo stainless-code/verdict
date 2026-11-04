@@ -129,6 +129,7 @@ func windowsHandoff(
 	}
 	logPath, err := spawnHandoff(ctx, req, helper, &handoff)
 	if err != nil {
+		_ = os.Remove(helper)
 		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot start the upgrade helper: " + err.Error()}
 	}
 	return Response{
