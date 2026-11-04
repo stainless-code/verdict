@@ -121,6 +121,11 @@ Go, eval, and installer lanes are the exception, running only on pushes to
 `main`, the nightly schedule, and `workflow_dispatch`, because GitHub caps
 concurrent macOS jobs per org.
 
+Two rules no ladder rung covers live in
+[`docs/ci-and-tests.md`](docs/ci-and-tests.md): the commit-message skip-token
+ban and test determinism (poll with `testenv.Until`; a timed-out test has a
+race to fix, never a timeout to raise).
+
 ## Golden tests
 
 Golden files under `testdata/` are the contract: if your change
@@ -225,7 +230,8 @@ One focused commit per change: `<area>: <imperative summary>` (≤72
 chars), blank line, 1–3 lines saying what changed and why. Areas
 match the tree (`core`, `mcp`, `pkg`, `client`, `skill`, `upgrade`,
 `action`, `ci`, `docs`, `evals`). No trailers, no merge commits on
-feature branches, never touch `main` directly.
+feature branches, never touch `main` directly, and never a CI-skip directive
+in the message ([`docs/ci-and-tests.md`](docs/ci-and-tests.md)).
 
 ## Issues and pull requests
 

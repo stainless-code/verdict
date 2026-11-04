@@ -21,6 +21,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -786,16 +787,10 @@ func runningWaitTool(running string) *tool {
 
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%s never appeared", path)
-		}
-		time.Sleep(time.Millisecond)
-	}
+	testenv.Until(t, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	})
 }
 
 // TestSchemaNamesSorted keeps the tool list stable for clients.

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const envMCPChild = "VERDICT_TEST_MCP_CHILD"
@@ -186,15 +187,13 @@ func assertCanceledCall(t *testing.T, stdout string) {
 
 func waitForMCPPID(t *testing.T, path string) int {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if pid, ok := readCompletePID(path); ok {
-			return pid
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("verifyCmd never reported its grandchild pid: %s missing", path)
-	return 0
+	var pid int
+	testenv.Until(t, func() bool {
+		var ok bool
+		pid, ok = readCompletePID(path)
+		return ok
+	})
+	return pid
 }
 
 func readCompletePID(path string) (int, bool) {
@@ -215,15 +214,10 @@ func requireMCPChildGone(t *testing.T, pid int) {
 	if err != nil {
 		t.Fatalf("find pid %d: %v", pid, err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			return
-		}
-		if time.Now().After(deadline) {
-			_ = proc.Kill() //nolint:errcheck // best-effort cleanup before the failure
-			t.Fatalf("pid %d survived the MCP shutdown, want the verify tree killed", pid)
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
+	t.Cleanup(func() {
+		_ = proc.Kill() //nolint:errcheck // best-effort cleanup of a survivor after the failure
+	})
+	testenv.Until(t, func() bool {
+		return proc.Signal(syscall.Signal(0)) != nil
+	})
 }

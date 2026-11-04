@@ -4,7 +4,7 @@
 // runner's) git config, credentials, and harness knobs never leak into a
 // hermetic child.
 //
-// Two rules live here:
+// Three rules live here:
 //
 //   - Git runs with a fixed configuration (core.autocrlf=false,
 //     commit.gpgsign=false, tag.gpgsign=false, init.defaultBranch=main,
@@ -14,6 +14,9 @@
 //   - Secret-shaped variables (*_TOKEN, *_KEY, *_SECRET, AWS_*) are dropped
 //     from the inherited environment. A child may still receive one through
 //     extra, which is how a test that *needs* an auth variable plants it.
+//   - Waits poll through [Until] under one fixed bound, so a child that never
+//     reaches the awaited state fails the test instead of the suite's global
+//     timeout.
 package testenv
 
 import (

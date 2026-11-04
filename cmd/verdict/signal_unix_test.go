@@ -10,7 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const envSignalChild = "VERDICT_TEST_SIGNAL_CHILD"
@@ -82,12 +83,8 @@ func signalMidFetch(t *testing.T, sig syscall.Signal) (int, string) {
 
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("stub gh never started: %s missing", path)
+	testenv.Until(t, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	})
 }

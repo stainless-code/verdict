@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestExecuteOrphanSweepKillsTree proves the post-exit sweep on every OS: the
@@ -35,27 +36,21 @@ func TestExecuteOrphanSweepKillsTree(t *testing.T) {
 
 func assertPidDead(t *testing.T, pidFile string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	pid := readPid(t, pidFile, deadline)
-	for time.Now().Before(deadline) {
-		if !pidAlive(pid) {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("child pid %d still alive after the tree kill", pid)
+	pid := readPid(t, pidFile)
+	testenv.Until(t, func() bool { return !pidAlive(pid) })
 }
 
-func readPid(t *testing.T, pidFile string, deadline time.Time) int {
+func readPid(t *testing.T, pidFile string) int {
 	t.Helper()
-	for time.Now().Before(deadline) {
-		if raw, err := os.ReadFile(pidFile); err == nil {
-			if pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw))); convErr == nil {
-				return pid
-			}
+	var pid int
+	testenv.Until(t, func() bool {
+		raw, err := os.ReadFile(pidFile)
+		if err != nil {
+			return false
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("child never wrote its pid to %s", pidFile)
-	return 0
+		var convErr error
+		pid, convErr = strconv.Atoi(strings.TrimSpace(string(raw)))
+		return convErr == nil
+	})
+	return pid
 }

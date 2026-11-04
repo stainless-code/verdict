@@ -6,4 +6,5 @@ rules; this file only points there, so the two cannot drift.
 
 The Go code rules are [`docs/go-rules.md`](docs/go-rules.md) (KB-ID tagged
 MUST/SHOULD with enforcement markers). The operator contract is
-[`docs/manual.md`](docs/manual.md).
+[`docs/manual.md`](docs/manual.md). The commit-message and test-determinism
+rules are [`docs/ci-and-tests.md`](docs/ci-and-tests.md).

@@ -31,8 +31,8 @@ claiming done. Each rung is a command CI runs.
 
 `docs/go-rules.md` carries the adopted Go rules: one line per rule with its
 `GO-<TOPIC>-<NN>` KB ID and an honest enforcement marker (gated versus
-review-only), plus the accepted deviations. Read it before writing or
-reviewing Go here.
+review-only), plus the accepted deviations; `docs/ci-and-tests.md` holds the
+skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 ## Hazards
 

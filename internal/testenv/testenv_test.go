@@ -227,3 +227,16 @@ func parseEnv(t *testing.T, out string) map[string]string {
 	}
 	return env
 }
+
+// TestUntilWaitsForTheCondition proves Until polls instead of sampling once.
+func TestUntilWaitsForTheCondition(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	testenv.Until(t, func() bool {
+		calls++
+		return calls >= 3
+	})
+	if calls < 3 {
+		t.Errorf("Until sampled the condition %d times; want at least 3", calls)
+	}
+}
