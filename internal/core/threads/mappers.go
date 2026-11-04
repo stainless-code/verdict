@@ -643,6 +643,9 @@ func finishThread(t *Thread) (Thread, bool) {
 // finding marker.
 func (t *Thread) foldRoot() {
 	if len(t.Comments) == 0 {
+		// No readable root comment: the author is unknown, which the feed
+		// still has to label (the same default AuthorKind gives an empty login).
+		t.AuthorKind = AuthorKind("", false, "")
 		return
 	}
 	root := t.Comments[0]

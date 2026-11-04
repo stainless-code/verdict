@@ -339,3 +339,30 @@ func TestFromGitCafe(t *testing.T) {
 		t.Errorf("outdated comment = %+v", threads[2])
 	}
 }
+
+// TestRootlessThreadStillLabelsItsAuthorKind pins that an anchored thread
+// whose comments the host did not return (empty nodes, or a payload with no
+// comments key) still carries a schema-valid author_kind. Found by
+// FuzzProviderMappers: the feed held author_kind "", which
+// schemas/threads.schema.json rejects.
+//
+// Break killed: deleting the AuthorKind assignment in foldRoot's no-comment
+// branch leaves author_kind "" in both rows.
+func TestRootlessThreadStillLabelsItsAuthorKind(t *testing.T) {
+	t.Parallel()
+	for name, node := range map[string]map[string]any{
+		"empty nodes": {"id": "T1", "path": "a.go", "comments": map[string]any{"totalCount": 0, "nodes": []any{}}},
+		"no comments": {"id": "T2", "path": "a.go"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			threads, _ := FromGitHubThreads([]any{node})
+			if len(threads) != 1 {
+				t.Fatalf("threads = %d, want the anchored thread kept", len(threads))
+			}
+			if got := threads[0].AuthorKind; got != AuthorHuman {
+				t.Fatalf("author_kind = %q, want %q", got, AuthorHuman)
+			}
+		})
+	}
+}
