@@ -99,9 +99,9 @@ node clients/ts/scripts/gen-ts-types.mjs          # rewrite
 node clients/ts/scripts/gen-ts-types.mjs --check  # drift gate (CI)
 ```
 
-`src/refusal-codes.gen.ts` is rendered from the Go refusal hint table in
-`internal/core/hint.go`, so a code added to a `hintRules` row cannot be
-missed by a source scrape:
+`src/refusal-codes.gen.ts` is rendered from the refusal-code registry in
+`internal/core/refusalcodes.go` — the same list the Go code refuses with, so a
+code the binary can emit is never missing from the union:
 
 ```sh
 go run ./cmd/tsgen -write  # rewrite (make tsgen)

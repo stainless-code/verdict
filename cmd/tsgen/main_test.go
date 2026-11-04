@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -29,7 +28,7 @@ func seed(t *testing.T, root, body string) {
 func TestRenderRefusalCodes(t *testing.T) {
 	t.Parallel()
 	got := string(renderRefusalCodes([]string{"zeta", "alpha"}))
-	want := "// GENERATED from internal/core/hint.go hintRules by cmd/tsgen. Do not edit.\n" +
+	want := "// GENERATED from the refusal-code registry (internal/core/refusalcodes.go) by cmd/tsgen. Do not edit.\n" +
 		"// Open families (missing-*, bad-*) accept any suffix; keep this union\n" +
 		"// exact and widen at the use site with ` | (string & {})`.\n" +
 		"export type RefusalCode =\n" +
@@ -86,7 +85,7 @@ func TestRunWritesThenChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := string(renderRefusalCodes(core.ExactRefusalCodes())); string(raw) != want {
+	if want := string(renderRefusalCodes(core.RefusalCodes())); string(raw) != want {
 		t.Errorf("written file is not the rendered union:\n%s", raw)
 	}
 	code, stdout, stderr := runCapture(t, "-root", root)
@@ -107,26 +106,5 @@ func TestRunRejectsStrayArguments(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "usage: tsgen") {
 		t.Errorf("stderr = %q; want the usage line", stderr.String())
-	}
-}
-
-// TestExactRefusalCodesIsSortedAndMatched proves the generator's input is
-// deduplicated, sorted, and every entry is answered by the hint table.
-func TestExactRefusalCodesIsSortedAndMatched(t *testing.T) {
-	t.Parallel()
-	codes := core.ExactRefusalCodes()
-	if len(codes) == 0 {
-		t.Fatal("ExactRefusalCodes returned nothing")
-	}
-	if !slices.IsSorted(codes) {
-		t.Error("ExactRefusalCodes is not sorted")
-	}
-	if compact := slices.Compact(slices.Clone(codes)); len(compact) != len(codes) {
-		t.Errorf("ExactRefusalCodes repeats a code: %v", codes)
-	}
-	for _, code := range codes {
-		if hint := core.HintFor(code); !strings.HasPrefix(hint, "try: ") {
-			t.Errorf("HintFor(%q) = %q; want a try: hint", code, hint)
-		}
 	}
 }

@@ -1,0 +1,158 @@
+package core
+
+import "slices"
+
+// refusalCodes is the closed set of refusal codes this build can emit: one
+// sorted entry per code refused anywhere in the tree.
+//
+// It is the single source of truth for the code *set*. Two readers depend on
+// it and neither may grow a second list:
+//
+//   - cmd/tsgen renders the TypeScript client's `RefusalCode` union from
+//     [RefusalCodes], so a TS consumer switching on the union cannot miss a
+//     code the binary emits.
+//   - internal/archtest refuses drift in both directions: a code sighted at an
+//     emission site (`Code: "..."`, `refuse("...", ...)`, or a `code*`/`Code*`
+//     constant feeding either) that is absent here, and an entry here that no
+//     emission site carries any more.
+//
+// Two adjacent lists are *not* this set, and collapsing them here would be
+// wrong: the hint table in hint.go explains a code (it holds prefixes for open
+// families, which are not codes), and refusal.go holds the wording. Add a code
+// here when you add a refusal, then run `go run ./cmd/tsgen -write`.
+var refusalCodes = []string{
+	"adopt-failed",
+	"already-adopted",
+	"already-learned",
+	"already-posted",
+	"already-retired",
+	"ambiguous-sig",
+	"approve-blocked",
+	"auth-missing",
+	"bad-approve",
+	"bad-attribution",
+	"bad-base",
+	"bad-budget",
+	"bad-chunk-knob",
+	"bad-color",
+	"bad-flags",
+	"bad-from",
+	"bad-id",
+	"bad-judgment",
+	"bad-max-bytes",
+	"bad-override",
+	"bad-preset",
+	"bad-provider",
+	"bad-range",
+	"bad-reason",
+	"bad-review-input",
+	"bad-review-schema",
+	"bad-rigor",
+	"bad-rule",
+	"bad-scope",
+	"bad-settings",
+	"bad-settings-credentials",
+	"bad-sig",
+	"bad-slug",
+	"bad-stash",
+	"bad-target",
+	"bad-timeout",
+	"bad-triage-status",
+	"bad-usage",
+	"budget-exceeded",
+	"calibrate-failed",
+	"canceled",
+	"chunk-write-failed",
+	"conflicted-tree",
+	"controls-stale",
+	"controls-too-large",
+	"controls-unavailable",
+	"corpus-invalid",
+	"corrupt-store",
+	"degenerate-body",
+	"diff-failed",
+	"diff-too-large",
+	"download-failed",
+	"duplicate-payload",
+	"fetch-failed",
+	"fix-ceiling",
+	"fix-failed",
+	"id-taken",
+	"init-failed",
+	"internal",
+	"learn-failed",
+	"manager-failed",
+	"manager-missing",
+	"mcp-config-backup-failed",
+	"mcp-config-foreign",
+	"mcp-config-no-home",
+	"mcp-config-read-failed",
+	"mcp-config-unknown-agent",
+	"mcp-config-unmergeable",
+	"mcp-config-unparseable",
+	"mcp-config-write-failed",
+	"missing-bundle",
+	"missing-chunk-coverage",
+	"missing-chunk-snapshot",
+	"missing-diff",
+	"missing-findings",
+	"missing-patch",
+	"missing-post",
+	"missing-review-file",
+	"missing-sig",
+	"missing-source",
+	"missing-tool",
+	"needs-confirm",
+	"no-pr-target",
+	"no-threads",
+	"no-verify-cmd",
+	"not-a-repo",
+	"not-local",
+	"not-retired",
+	"post-failed",
+	"pr-not-open",
+	"pr-read-failed",
+	"prompt-dump-failed",
+	"provider-unimplemented",
+	"rationale-required",
+	"record-failed",
+	"report-failed",
+	"scope-escape",
+	"skill-bad-dir",
+	"skill-dir-foreign",
+	"skill-foreign-conflict",
+	"skill-install-failed",
+	"skill-no-home",
+	"skill-read-failed",
+	"skill-target-file",
+	"skill-unknown-agent",
+	"threads-failed",
+	"triage-failed",
+	"uninstall-foreign",
+	"uninstall-no-receipt",
+	"unknown-judgment",
+	"unknown-rule",
+	"unknown-sig",
+	"unsupported-platform",
+	"upgrade-bad-method",
+	"upgrade-bad-version",
+	"upgrade-failed",
+	"upgrade-needs-privilege",
+	"upgrade-project-local",
+	"upgrade-skill-copy",
+	"upgrade-unidentified",
+	"upgrade-version-unsupported",
+	"upstream-diff-too-large",
+	"verify-credential-read",
+	"verify-destructive",
+	"verify-failed",
+	"verify-networked",
+	"verify-repo-escape",
+	"worktree-failed",
+}
+
+// RefusalCodes returns every refusal code the binary can emit, sorted, as a
+// fresh slice the caller may modify.
+func RefusalCodes() []string {
+	return slices.Clone(refusalCodes)
+}

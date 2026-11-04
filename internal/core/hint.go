@@ -111,8 +111,9 @@ func (r HintRule) matches(code string) bool {
 
 // ExactRefusalCodes returns every exact refusal code in the hint table,
 // sorted and deduplicated. Open families stay out: they are prefixes, not
-// codes. The TypeScript client's RefusalCode union is generated from this
-// list (cmd/tsgen), so the table is the one source of truth.
+// codes. The table defines hints, not the code set — [RefusalCodes] does that —
+// and internal/archtest keeps the two in step: a hint keyed on a code the
+// binary cannot refuse would never fire.
 func ExactRefusalCodes() []string {
 	codes := make([]string, 0, len(hintRules))
 	for _, rule := range hintRules {

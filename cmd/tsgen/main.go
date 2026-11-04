@@ -1,7 +1,7 @@
 // Command tsgen writes (or checks) the TypeScript client's Go-derived
-// sources: clients/ts/src/refusal-codes.gen.ts is rendered from the refusal
-// hint table in internal/core, so a code added to a hintRules row cannot be
-// missed by a source scrape. Run it through `make clients-ts` (check) or
+// sources: clients/ts/src/refusal-codes.gen.ts is the refusal-code registry in
+// internal/core rendered as a union, so a code the binary can refuse cannot be
+// missing from the client's types. Run it through `make clients-ts` (check) or
 // `make tsgen` (write); never edit the generated file by hand.
 package main
 
@@ -89,9 +89,9 @@ func fail(stderr io.Writer, err error) {
 
 // execute renders the generated sources, then writes or checks them.
 func execute(opts options, stdout io.Writer) error {
-	codes := core.ExactRefusalCodes()
+	codes := core.RefusalCodes()
 	if len(codes) == 0 {
-		return errorf("the refusal hint table carries no exact codes")
+		return errorf("the refusal-code registry carries no codes")
 	}
 	path := filepath.Join(opts.root, filepath.FromSlash(codesRelPath))
 	data := renderRefusalCodes(codes)
@@ -140,7 +140,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 // because the prefix families accept any suffix.
 func renderRefusalCodes(codes []string) []byte {
 	var out strings.Builder
-	out.WriteString("// GENERATED from internal/core/hint.go hintRules by cmd/tsgen. Do not edit.\n")
+	out.WriteString("// GENERATED from the refusal-code registry (internal/core/refusalcodes.go)" +
+		" by cmd/tsgen. Do not edit.\n")
 	out.WriteString("// Open families (missing-*, bad-*) accept any suffix; keep this union\n")
 	out.WriteString("// exact and widen at the use site with ` | (string & {})`.\n")
 	out.WriteString("export type RefusalCode =\n")

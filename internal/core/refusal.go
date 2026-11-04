@@ -34,11 +34,16 @@ func ValidateAttributionPlaceholders(text, source string) *RefusalError {
 		case "{version}", "{tier}", "{product_url}", "{files_reviewed}",
 			"{head_sha_short}", "{model}", "{cost}", "{attribution}":
 		default:
-			return &RefusalError{Code: "bad-settings", Message: fmt.Sprintf(msgPlaceholder, source, ph)}
+			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPlaceholder, source, ph)}
 		}
 	}
 	return nil
 }
+
+// codeBadSettings is the refusal code for a malformed settings file or an
+// unknown attribution placeholder. [refusalCodes] spells it out again because
+// the registry is data rendered into a client type, not a lookup table.
+const codeBadSettings = "bad-settings"
 
 // placeholderRe matches one {name} attribution placeholder.
 var placeholderRe = regexp.MustCompile(`\{[A-Za-z_][A-Za-z0-9_]*\}`)
