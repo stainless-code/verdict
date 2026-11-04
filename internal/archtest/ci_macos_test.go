@@ -1,0 +1,115 @@
+package archtest
+
+// Repository guard for the macOS runner policy: GitHub caps concurrent macOS
+// jobs per org, so the macOS legs of `go`, `evals` and `installers` run only on
+// a main push, the nightly schedule and `workflow_dispatch`. A macOS leg that
+// lost its event gate would put the queue back in front of every pull request,
+// and one that vanished would drop macOS coverage in silence; the step-parity
+// check keeps the copied macOS lane repeating the bar of the lane it twins.
+
+import (
+	"maps"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// macOSCondition is the one event gate a macOS lane may carry.
+const macOSCondition = "    if: needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'"
+
+// macOSTwin maps each macOS lane to the lane whose bar it repeats.
+var macOSTwin = map[string]string{
+	"installers-macos": "installers",
+	"go-macos":         "go",
+	"evals-macos":      "evals",
+}
+
+// TestCIMacOSLanesSkipPullRequests fails when a macOS leg would run on a pull
+// request, when one of the legs is gone, or when another lane takes a macOS
+// runner.
+func TestCIMacOSLanesSkipPullRequests(t *testing.T) {
+	jobs := workflowJobs(t, "ci.yml", readCIWorkflow(t))
+	checkMacOSLanes(t, jobs)
+	checkNoOtherLaneTakesMacOS(t, jobs)
+}
+
+// checkMacOSLanes pins each leg's event gate and its runner.
+func checkMacOSLanes(t *testing.T, jobs map[string][]string) {
+	t.Helper()
+	for _, lane := range slices.Sorted(maps.Keys(macOSTwin)) {
+		block, ok := jobs[lane]
+		if !ok {
+			t.Errorf("ci.yml has no %s job: macOS coverage would vanish", lane)
+			continue
+		}
+		joined := strings.Join(block, "\n")
+		if !strings.Contains(joined, macOSCondition) {
+			t.Errorf("%s lost %q: its runner would queue on every pull request",
+				lane, strings.TrimSpace(macOSCondition))
+		}
+		if !strings.Contains(joined, "    runs-on: macos-latest") {
+			t.Errorf("%s no longer runs on a macOS runner", lane)
+		}
+	}
+}
+
+// checkNoOtherLaneTakesMacOS fails when another lane picks a macOS runner, the
+// shortest way to put the queue back in front of every pull request.
+func checkNoOtherLaneTakesMacOS(t *testing.T, jobs map[string][]string) {
+	t.Helper()
+	for lane, block := range jobs {
+		if _, ok := macOSTwin[lane]; ok {
+			continue
+		}
+		if strings.Contains(strings.Join(block, "\n"), "macos-latest") {
+			t.Errorf("%s takes a macOS runner: only %v do", lane, slices.Sorted(maps.Keys(macOSTwin)))
+		}
+	}
+}
+
+// TestCINightlySchedule pins the triggers that give the macOS lanes their run
+// while pull requests stay off them.
+func TestCINightlySchedule(t *testing.T) {
+	workflow := readCIWorkflow(t)
+	triggers := topLevelBlock(strings.Split(workflow, "\n"), "on")
+	joined := strings.Join(triggers, "\n")
+	for _, want := range []string{"  schedule:\n    - cron: \"17 3 * * *\"", "  workflow_dispatch:"} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("ci.yml triggers lost %q: the macOS legs would run on main pushes alone",
+				strings.TrimSpace(want))
+		}
+	}
+	if !strings.Contains(joined, "pull_request:") {
+		t.Error("ci.yml no longer runs on pull_request: the merge bar lost its trigger")
+	}
+}
+
+// TestCIMacOSLaneStepsMatch pins each macOS lane to the step names of the lane
+// it repeats, so a gate added on one side cannot leave the other behind.
+func TestCIMacOSLaneStepsMatch(t *testing.T) {
+	workflow := readCIWorkflow(t)
+	jobs := workflowJobs(t, "ci.yml", workflow)
+	for _, macLane := range slices.Sorted(maps.Keys(macOSTwin)) {
+		baseLane := macOSTwin[macLane]
+		want, got := stepNames(jobs[baseLane]), stepNames(jobs[macLane])
+		if len(want) == 0 {
+			t.Errorf("%s declares no named step", baseLane)
+			continue
+		}
+		if !slices.Equal(want, got) {
+			t.Errorf("%s steps drifted from %s:\n %s: %v\n %s: %v",
+				macLane, baseLane, baseLane, want, macLane, got)
+		}
+	}
+}
+
+// stepNames lists a job's step names in order.
+func stepNames(block []string) []string {
+	var out []string
+	for _, line := range block {
+		if name, ok := strings.CutPrefix(line, "      - name: "); ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
