@@ -75,9 +75,9 @@ fi
 # --- D3: apply, payload bytes, receipt, and keep per target ---
 run_detect "$DETECT_HOME" skill install --detect
 assert_exit "detect applies" 0
-assert_file_eq "claude payload is the embedded SKILL.md" "$EVAL_ROOT/SKILL.md" \
+assert_file_eq "claude payload is the embedded SKILL.md" "$EVAL_SKILL/SKILL.md" \
   "$DETECT_HOME/.claude/skills/verdict/SKILL.md"
-assert_file_eq "codex payload is the embedded SKILL.md" "$EVAL_ROOT/SKILL.md" \
+assert_file_eq "codex payload is the embedded SKILL.md" "$EVAL_SKILL/SKILL.md" \
   "$DETECT_HOME/.codex/skills/verdict/SKILL.md"
 assert_eq "claude receipt version" "$(jq -r .version "$EVAL_ROOT/package.json")" \
   "$(jq -r .version "$DETECT_HOME/.claude/skills/verdict/.verdict-managed")"
@@ -135,7 +135,7 @@ assert_file_grep "the foreign file is untouched" "$FOREIGN_HOME/.claude/skills/v
   "foreign bytes" "-F"
 run_detect "$FOREIGN_HOME" skill install --detect --force
 assert_exit "force installs the whole detected set" 0
-assert_file_eq "force wrote the payload beside the foreign file" "$EVAL_ROOT/SKILL.md" \
+assert_file_eq "force wrote the payload beside the foreign file" "$EVAL_SKILL/SKILL.md" \
   "$FOREIGN_HOME/.claude/skills/verdict/SKILL.md"
 assert_file_grep "force spared the foreign file" "$FOREIGN_HOME/.claude/skills/verdict/keep.txt" \
   "foreign bytes" "-F"
