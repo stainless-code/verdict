@@ -38,11 +38,10 @@ func TestWriteThroughReplacesTheSymlinksTarget(t *testing.T) {
 	if err := atomic.WriteThrough(link, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := atomic.WriteThrough(link, []byte("newer\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	checkLink(t, link, target)
-	checkContent(t, target, "newer\n")
+	// Compare identity after ONE write, while the original's inode is still
+	// the only one freed: a second write's staged file may reuse that inode
+	// number (ext4, tmpfs, NTFS file ids), which would read as "rewritten in
+	// place".
 	after, err := os.Stat(target)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +49,11 @@ func TestWriteThroughReplacesTheSymlinksTarget(t *testing.T) {
 	if os.SameFile(before, after) {
 		t.Error("target was rewritten in place; want a staged file renamed over it")
 	}
+	if err := atomic.WriteThrough(link, []byte("newer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	checkLink(t, link, target)
+	checkContent(t, target, "newer\n")
 }
 
 // TestWriteThroughCreatesThroughADanglingLink checks a link whose target does
