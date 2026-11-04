@@ -33,6 +33,9 @@ process still holds its output pipe. Interrupting `verify` refuses
 `timeout after 300s` proof and exit 0. On Windows, `verdict upgrade` stages its
 helper beside the installed binary, so an install directory on another drive
 no longer makes the final move fail after the upgrade reported success.
+On Windows, `verify` starts its command suspended and puts it in its
+kill-on-close job object before it runs, so a grandchild spawned in the first
+instant can no longer escape a timeout or cancel kill.
 `threads.json` always labels a thread's author kind, including a thread with
 no readable comments, as the published schema requires. A cancel that lands
 inside a read verb's service (`ready`, `trend`, `threads`, `calibrate`,
