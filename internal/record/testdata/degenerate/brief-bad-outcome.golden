@@ -1,0 +1,106 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "record",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "report or triage the local bundle; post stays refused (no PR target)",
+  "warnings": [
+    "no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+    "brief outcome is 9 chars (want 10-500) — dropped the brief",
+    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+  ],
+  "data": {
+    "dir": ".review/local-dg",
+    "anchors": {
+      "kept": 1,
+      "moved": 0
+    },
+    "findings": {
+      "open": 1,
+      "deferred": 0,
+      "addressed": 0,
+      "file": ".review/local-dg/findings.json"
+    },
+    "confidence": null,
+    "security_summary": null,
+    "items": [
+      {
+        "sig": "5cc35690e9cb054245fddba9214ac1408281c904",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+» anchors: 1 inline, 0 moved to body
+warn: brief outcome is 9 chars (want 10-500) — dropped the brief
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+» findings: 1 sigs -> .review/local-dg/findings.json
+  5cc35690  open  true  notes.txt
+recorded: .review/local-dg/findings.json (1 open) + .review/local-dg/record.json — report/triage read it; post stays refused (no PR target)
+--- files ---
+--- file C/.review/local-dg/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 3,
+    "anchored": true,
+    "body": "Brief with a short outcome.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "pointed",
+    "severity": null,
+    "sig": "5cc35690e9cb054245fddba9214ac1408281c904",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  }
+]
+--- file C/.review/local-dg/hunks.tsv ---
+notes.txt	OLD	1	7
+notes.txt	NEW	1	7
+notes.txt	OLD	11	17
+notes.txt	NEW	11	17
+notes.txt	OLD	21	27
+notes.txt	NEW	21	27
+notes.txt	OLD	31	37
+notes.txt	NEW	31	37
+other.txt	OLD	1	3
+other.txt	NEW	1	3
+--- file C/.review/local-dg/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 1,
+  "open": 1,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
+  "model": null
+}
+--- file C/.review/local-dg/store.json ---
+{
+  "schema_version": "1"
+}

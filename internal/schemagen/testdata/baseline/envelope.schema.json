@@ -400,6 +400,10 @@
           "description": "The record's embedded suggestion body, or null when absent.",
           "type": ["string", "null"]
         },
+        "brief": {
+          "description": "The stored machine brief, read as stored without re-validation, or null when the finding has none.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
+        },
         "verify_hint": {
           "description": "The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verifyHint" }]
@@ -416,9 +420,36 @@
         "files",
         "locator",
         "suggestion",
+        "brief",
         "verify_hint",
         "caution"
       ],
+      "additionalProperties": true
+    },
+    "brief": {
+      "type": "object",
+      "properties": {
+        "sites": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/briefSite" }
+        },
+        "outcome": { "type": "string" },
+        "approach": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["outcome"],
+      "additionalProperties": true
+    },
+    "briefSite": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "line": { "type": ["integer", "null"] }
+      },
+      "required": ["path"],
       "additionalProperties": true
     },
     "verifyHint": {

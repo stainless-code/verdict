@@ -196,6 +196,14 @@ if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY 
 </details>
 `````
 
+Also stamp each inline comment with a machine-readable `brief` —
+`{sites: [{path, line?}], outcome, approach?, questions?}` — where `sites` names the
+other affected changed files (≤10; a line must sit inside a reviewed hunk or it drops
+with a warning), `outcome` is the required one-sentence 10–500 char goal, and the
+optional `approach`/`questions` mirror the block; keep `<details>Technical details</details>`
+as the human form rather than pasting the brief twice (a malformed part warns and drops,
+never fails the run).
+
 4-backtick fence keeps inner 3-backtick fences copyable. Skip optional sections when empty.
 Backtick-wrap identifiers — each `###` IS the issue.
 

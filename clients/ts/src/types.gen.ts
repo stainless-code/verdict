@@ -183,10 +183,33 @@ export interface ShowFix {
   locator: string;
   /** The record's embedded suggestion body, or null when absent. */
   suggestion: string | null;
+  /** The stored machine brief, read as stored without re-validation, or null when the finding has none. */
+  brief: Brief | null;
   /** The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
   verify_hint: VerifyHint | null;
   /** Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction. */
   caution: string;
+  [key: string]: unknown;
+}
+
+/** The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions. */
+export interface Brief {
+  /** Affected changed files with an optional reviewed line; a site outside every hunk warns and drops. */
+  sites?: Array<BriefSite>;
+  /** One sentence naming what the fix must achieve — required, 10–500 characters. */
+  outcome: string;
+  /** Optional suggested approach, 10–1,000 characters. */
+  approach?: string;
+  /** Optional questions for the human, at most 10 of 10–300 characters each. */
+  questions?: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface BriefSite {
+  /** A changed file path. */
+  path: string;
+  /** Reviewed line inside a hunk; absent means the whole file. */
+  line?: number | null;
   [key: string]: unknown;
 }
 

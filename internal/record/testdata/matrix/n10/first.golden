@@ -875,7 +875,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "608cd704e79aaafe78196fa6e566b00717bf00503c1d9071a01b3d4bbfee0ead",
+  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
   "model": null
 }
 --- file C/.review/local-mx/store.json ---

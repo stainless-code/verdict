@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -239,6 +240,15 @@ func TestFindingEntryWireOrder(t *testing.T) {
 	}
 	if got := inline.Wire().Keys; strings.Join(got, ",") != strings.Join(wantInline, ",") {
 		t.Errorf("inline keys = %v", got)
+	}
+	line := 3
+	inline.Brief = &core.Brief{
+		Sites:   []core.BriefSite{{Path: "notes.txt", Line: &line}},
+		Outcome: "Reject duplicate deliveries before anything is enqueued.",
+	}
+	wantBrief := slices.Insert(slices.Clone(wantInline), 11, "brief")
+	if got := inline.Wire().Keys; strings.Join(got, ",") != strings.Join(wantBrief, ",") {
+		t.Errorf("inline keys with brief = %v", got)
 	}
 	section := &core.FindingEntry{
 		Kind: "section", Heading: "### Watch", Anchored: "body", Body: "### Watch",

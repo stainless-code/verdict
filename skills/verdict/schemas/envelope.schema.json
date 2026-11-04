@@ -400,6 +400,10 @@
           "description": "The record's embedded suggestion body, or null when absent.",
           "type": ["string", "null"]
         },
+        "brief": {
+          "description": "The stored machine brief, read as stored without re-validation, or null when the finding has none.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
+        },
         "verify_hint": {
           "description": "The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verifyHint" }]
@@ -416,9 +420,48 @@
         "files",
         "locator",
         "suggestion",
+        "brief",
         "verify_hint",
         "caution"
       ],
+      "additionalProperties": true
+    },
+    "brief": {
+      "description": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",
+      "type": "object",
+      "properties": {
+        "sites": {
+          "description": "Affected changed files with an optional reviewed line; a site outside every hunk warns and drops.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/briefSite" }
+        },
+        "outcome": {
+          "description": "One sentence naming what the fix must achieve — required, 10–500 characters.",
+          "type": "string"
+        },
+        "approach": {
+          "description": "Optional suggested approach, 10–1,000 characters.",
+          "type": "string"
+        },
+        "questions": {
+          "description": "Optional questions for the human, at most 10 of 10–300 characters each.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["outcome"],
+      "additionalProperties": true
+    },
+    "briefSite": {
+      "type": "object",
+      "properties": {
+        "path": { "description": "A changed file path.", "type": "string" },
+        "line": {
+          "description": "Reviewed line inside a hunk; absent means the whole file.",
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["path"],
       "additionalProperties": true
     },
     "verifyHint": {

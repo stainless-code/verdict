@@ -4,6 +4,7 @@ const (
 	fieldAnchored   = "anchored"
 	fieldAt         = "at"
 	fieldBody       = "body"
+	fieldBrief      = "brief"
 	fieldDropReason = "dropReason"
 	fieldHeading    = "heading"
 	fieldHistory    = "history"

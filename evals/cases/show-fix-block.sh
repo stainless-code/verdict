@@ -32,7 +32,7 @@ check_fix() { # $1 = label, $2 = golden file
 
 mkdir -p "$EVAL_SANDBOX/.review/5201"
 cat > "$EVAL_SANDBOX/.review/5201/findings.json" <<'EOF'
-[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Consider clarifying this line.","suggestion":"Use a clearer name.","inBounds":true,"rigor":"pointed","severity":"important","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"related_files":["notes.txt","src/other.go"]}]
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Consider clarifying this line.","suggestion":"Use a clearer name.","brief":{"sites":[{"path":"notes.txt","line":2},{"path":"gone/file.go"}],"outcome":"Reject duplicate deliveries before anything is enqueued.","approach":"Track delivery ids in a bounded LRU checked at the top of the handler.","questions":["Should the dedupe window be 24 hours or 7 days?"]},"inBounds":true,"rigor":"pointed","severity":"important","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"related_files":["notes.txt","src/other.go"]}]
 EOF
 cat > "$EVAL_SANDBOX/.review/5201/patch.json" <<'EOF'
 {"sig":"c1111111","verifyCmd":"go test ./...","resultHead":"aaaaaaa","baseHead":"bbbbbbb"}
@@ -48,6 +48,13 @@ if [ "$(jq -r '.data | keys_unsorted | join(",")' <"$EVAL_OUT" 2>/dev/null)" = "
   good "data carries item then the additive fix key"
 else
   bad "data keys = $(jq -c '.data | keys_unsorted' <"$EVAL_OUT" 2>/dev/null)"
+fi
+if [ "$(jq -r '.data.fix.brief.outcome' <"$EVAL_OUT" 2>/dev/null)" = "Reject duplicate deliveries before anything is enqueued." ] \
+  && [ "$(jq -r '.data.fix.brief.sites | map(.path) | join(",")' <"$EVAL_OUT" 2>/dev/null)" = "notes.txt,gone/file.go" ] \
+  && [ "$(jq -r '.data.fix.brief.questions[0]' <"$EVAL_OUT" 2>/dev/null)" = "Should the dedupe window be 24 hours or 7 days?" ]; then
+  good "data.fix carries the stored brief verbatim, sites outside hunks included"
+else
+  bad "fix brief: $(jq -c '.data.fix.brief // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 check_fix "F1" "$GOLDENS/full.fix.golden"
 if [ "$(jq -c '.data.item' <"$EVAL_OUT" 2>/dev/null)" = "$(jq -c '.[0]' "$EVAL_SANDBOX/.review/5201/findings.json")" ]; then

@@ -34,11 +34,19 @@ var publishedSemantics = map[string]string{
 	// type changed.
 	// T3-10: additive retry_at on $defs/error (optional RFC 3339 property;
 	// no existing property, required key, or type changed).
-	"envelope.schema.json": "0604daa6b8da87d396fab698c6231ef1af5cacf68f5ed92e2ca7c4a9c0d993a5",
-	"findings.schema.json": "a1ec9ae1899a5c819fc4486367623e7d4db369de01d4408320330a1e758fb234",
+	// D30: additive $defs/brief + $defs/briefSite and a nullable showFix.brief
+	// (optional; no existing property, required key, or type changed). The
+	// same change gives both new defs the descriptions findings and review
+	// already carry.
+	"envelope.schema.json": "a61a0beea49ad69dc143d67613e45bd9459c71e4492b4399a1c55f1226893626",
+	// D30: additive $defs/brief + $defs/briefSite and a nullable entry.brief
+	// (optional; no existing property, required key, or type changed).
+	"findings.schema.json": "6ea646f31b6deae105d29f30f0ce892691c329509923a45f96b1b0538b27b4f4",
 	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
 	"record.schema.json":   "97647229b14efa63c43aca592aa8466b246065f858b28872c6ec1198c428d7b1",
-	"review.schema.json":   "893a2274064dd5782c5cf3c2274fc11601591248a1a60e2e002fbfbf0bd301a3",
+	// D30: additive $defs/brief + $defs/briefSite and a nullable comment.brief
+	// (optional; no existing property, required key, or type changed).
+	"review.schema.json": "4b7f8da519724188347957004d7c0b230ab5dba6f58d9c1191fb82a990131a7d",
 	// T3-04: additive threads.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

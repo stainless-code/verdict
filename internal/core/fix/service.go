@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -50,6 +51,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Locator    *string
 	Severity   *string
 	Body       *string
+	Brief      *core.Brief
 	Anchors    *Anchors
 	Pass       *int
 	MaxPasses  int
@@ -80,6 +82,11 @@ func (d *Data) Wire() *jq.Obj {
 		"severity", d.Severity,
 		"body", d.Body,
 	)
+	if d.Brief == nil {
+		o.Set("brief", nil)
+	} else {
+		o.Set("brief", d.Brief.Wire())
+	}
 	if d.Anchors != nil {
 		o.Set("anchors", jq.NewObj(
 			"path", d.Anchors.Path,
@@ -877,6 +884,8 @@ func (st *state) passOutput(
 	st.humanf("finding: %s\n", body)
 	st.humanf("anchors: %s:%s-%s side=%s anchored=%s\n",
 		anchor, sl, ln, side, an)
+	machineBrief := brief.FromRecord(rec)
+	printBrief(st, machineBrief)
 	kbVal := readKbValue(dir)
 	st.printKbAndInstructions(dir, anchor)
 	st.next = nextPass
@@ -887,6 +896,7 @@ func (st *state) passOutput(
 		Locator:    &locator,
 		Severity:   &sev,
 		Body:       &body,
+		Brief:      machineBrief,
 		Anchors:    &Anchors{Path: anchor, Line: ln, StartLine: sl, Side: side, Anchored: an},
 		Pass:       &pass,
 		MaxPasses:  maxPasses,
@@ -928,6 +938,42 @@ func (st *state) printKbAndInstructions(dir, anchor string) {
 	st.humanf("%s", budgetMsg)
 	st.humanf("next: patch %s, write verification.json, "+
 		"run record to land it, then re-run fix\n", anchor)
+}
+
+// printBrief writes the stored brief between the anchor line and the kb
+// recall: one block per finding, and nothing at all when none is stored.
+func printBrief(st *state, b *core.Brief) {
+	if b == nil {
+		return
+	}
+	st.humanf("brief:\n")
+	st.humanf("  outcome: %s\n", b.Outcome)
+	if len(b.Sites) > 0 {
+		st.humanf("  sites: %s\n", briefSites(b.Sites))
+	}
+	if b.Approach != "" {
+		st.humanf("  approach: %s\n", b.Approach)
+	}
+	if len(b.Questions) == 0 {
+		return
+	}
+	st.humanf("  questions:\n")
+	for _, q := range b.Questions {
+		st.humanf("    - %s\n", q)
+	}
+}
+
+// briefSites renders the sites one line: path[:line] joined by commas.
+func briefSites(sites []core.BriefSite) string {
+	out := make([]string, 0, len(sites))
+	for _, site := range sites {
+		if site.Line == nil {
+			out = append(out, site.Path)
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s:%d", site.Path, *site.Line))
+	}
+	return strings.Join(out, ", ")
 }
 
 func locatorOf(m *jq.Obj) string {
