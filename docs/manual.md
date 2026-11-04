@@ -236,10 +236,11 @@ one JSON object per line — `{id, rule, scope, provenance, rigor, hits,
 false_hits, judged, status}` (`id` matches `^[a-z0-9][a-z0-9-]{0,64}$`,
 `scope` is a non-empty comma-separated glob list, `rigor` is
 `said`/`pointed`/`walked`/`ran`/`reproduced`, counters are non-negative ints
-with `judged == hits+false_hits`, `status` is `active`/`retired`). Commit it;
-it compounds. This repo's `.gitignore` tracks the control files (`.review/*` with
-negations), so a plain `git add .review/kb.jsonl` works; an older checkout that ignores
-all of `.review/` needs the one-time `git add -f` of each control file.
+with `judged == hits+false_hits`, `status` is `active`/`retired`). Commit it and
+it compounds, in a repo whose `.gitignore` admits the file. `.review/` is run state:
+this checkout ignores the whole directory, so no review state is committed here.
+A repo that carries its controls in the base commit negates them in its own
+`.gitignore` instead, where `git add` can see them.
 
 `learn` manages it (no repo/PR args, no network):
 
@@ -329,9 +330,9 @@ used file. They refuse:
 
 `--allow-head-controls` on `fetch`/`fetch-local` is the only opt-out: it reads the
 worktree as before, warns once (human and JSON), and stamps `policy: "head"`.
-Track your controls once so the base commit carries them:
-`git add .review/kb.jsonl .review/learnings.md .review/panel` (and any other
-control you use), then commit.
+Track your controls once so the base commit carries them — in a repo whose
+`.gitignore` admits them, `git add .review/kb.jsonl .review/learnings.md
+.review/panel` (and any other control you use), then commit.
 
 ## Machine surface
 
