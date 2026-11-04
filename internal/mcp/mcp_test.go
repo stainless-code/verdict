@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -756,5 +758,48 @@ func TestThreadsTool(t *testing.T) {
 	}
 	if _, err := os.Stat(".review/7/threads.json"); err != nil {
 		t.Errorf("refresh wrote no feed: %v", err)
+	}
+}
+
+// TestConcurrentCallsAreIsolated drives many tool calls in flight at once
+// (Serve dispatches each on its own goroutine) and proves every response is
+// whole, correctly routed by id, and identical to the same call made alone.
+// Under -race it also covers the shared writer, the in-flight table, and the
+// read-only config the tools share.
+func TestConcurrentCallsAreIsolated(t *testing.T) {
+	fixture(t)
+	cfg := testConfig()
+	pr := func(i int) string {
+		if i%2 == 0 {
+			return "5101" // fixture bundle: success
+		}
+		return "9999" // no bundle: refusal
+	}
+	call := func(id int) string {
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":%q}}}`, id, pr(id))
+	}
+	// Baselines: each shape run alone.
+	alone := serve(t, &cfg, call(0), call(1))
+	const calls = 48
+	lines := make([]string, 0, calls)
+	for id := 100; id < 100+calls; id++ {
+		lines = append(lines, call(id))
+	}
+	frames := serve(t, &cfg, lines...)
+	if len(frames) != calls {
+		t.Fatalf("got %d response frames, want %d", len(frames), calls)
+	}
+	for id := 100; id < 100+calls; id++ {
+		got, ok := frames[strconv.Itoa(id)]
+		if !ok {
+			t.Fatalf("no response for id %d", id)
+		}
+		want := alone[strconv.Itoa(id%2)]
+		if !bytes.Equal(got.Result, want.Result) {
+			t.Errorf("id %d result differs from the same call alone:\n got  %s\n want %s", id, got.Result, want.Result)
+		}
+	}
+	if string(alone["0"].Result) == string(alone["1"].Result) {
+		t.Fatal("baseline success and refusal are identical; the test would not notice a mixed-up response")
 	}
 }
