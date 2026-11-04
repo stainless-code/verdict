@@ -5,6 +5,7 @@
 package hunks
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -36,22 +37,34 @@ func Parse(diffText string) []Hunk {
 	return out
 }
 
-// hunkRows parses one @@ header into OLD/NEW rows.
+// hunkRows parses one @@ header into OLD/NEW rows. A path carrying a tab,
+// newline or carriage return (git C-quotes them, the unquoting restores them)
+// yields no rows: written into hunks.tsv it would shift fields or forge whole
+// rows, and the keep-biased reading of an unindexed path is the safe one.
 func hunkRows(file, ln string) []Hunk {
 	f := strings.Fields(ln)
-	if len(f) < minHeaderFields {
+	if len(f) < minHeaderFields || strings.ContainsAny(file, "\t\r\n") {
 		return nil
 	}
 	oldStart, oldCount := parseRange(strings.TrimPrefix(f[1], "-"))
 	newStart, newCount := parseRange(strings.TrimPrefix(f[2], "+"))
 	var out []Hunk
 	if oldCount > 0 {
-		out = append(out, Hunk{File: file, Side: "OLD", Start: oldStart, End: oldStart + oldCount - 1})
+		out = append(out, Hunk{File: file, Side: "OLD", Start: oldStart, End: spanEnd(oldStart, oldCount)})
 	}
 	if newCount > 0 {
-		out = append(out, Hunk{File: file, Side: "NEW", Start: newStart, End: newStart + newCount - 1})
+		out = append(out, Hunk{File: file, Side: "NEW", Start: newStart, End: spanEnd(newStart, newCount)})
 	}
 	return out
+}
+
+// spanEnd is the inclusive end of a count-line span from start (count > 0),
+// saturating at the largest int instead of wrapping negative.
+func spanEnd(start, count int) int {
+	if start > math.MaxInt-count+1 {
+		return math.MaxInt
+	}
+	return start + count - 1
 }
 
 // parseRange splits "start[,count]": a missing count reads 1 (awk's

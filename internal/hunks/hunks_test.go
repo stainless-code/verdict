@@ -143,3 +143,53 @@ func splitLines(s string) []string {
 	}
 	return append(out, s[start:])
 }
+
+// TestParseHostilePathsCannotForgeTSVRows pins that a path git C-quotes
+// because it carries a tab, newline or carriage return never reaches
+// hunks.tsv: the restored control byte would shift the field split or open a
+// forged row (`x\nNEW\t1\t99999` reads back as two hunks for file "x"). Found
+// by FuzzParse. A clean file in the same diff keeps its rows.
+//
+// Break killed: removing the ContainsAny guard in hunkRows (the "tab", "nl"
+// and "cr" rows then produce rows whose fields shift or multiply).
+func TestParseHostilePathsCannotForgeTSVRows(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		path string // git's C-quoted spelling
+	}{
+		{"tab", `x\ty`},
+		{"nl", `x\n9\tNEW\t1\t99999`},
+		{"cr", `x\ry`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			diff := "diff --git \"a/" + tc.path + "\" \"b/" + tc.path + "\"\n@@ -1 +1 @@\n-a\n+b\n" +
+				"diff --git a/clean b/clean\n@@ -2 +2 @@\n-a\n+b\n"
+			if got, want := hunks.Format(hunks.Parse(diff)), "clean\tOLD\t2\t2\nclean\tNEW\t2\t2\n"; got != want {
+				t.Fatalf("hunks.tsv = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestParseSpanEndSaturates pins that a span whose end does not fit in an int
+// clamps to the largest int instead of wrapping negative (an inverted hunk
+// would make every anchor test against that file wrongly "outside").
+//
+// Break killed: replacing spanEnd's body with `start + count - 1` yields
+// End = -9223372036854775801 for the first row.
+func TestParseSpanEndSaturates(t *testing.T) {
+	t.Parallel()
+	const maxInt = 9223372036854775807
+	diff := "diff --git a/x b/x\n@@ -1,2 +9223372036854775807,9 @@\n"
+	want := []hunks.Hunk{
+		{File: "x", Side: "OLD", Start: 1, End: 2},
+		{File: "x", Side: "NEW", Start: maxInt, End: maxInt},
+	}
+	got := hunks.Parse(diff)
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("Parse = %+v, want %+v", got, want)
+	}
+}
