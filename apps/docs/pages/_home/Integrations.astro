@@ -1,0 +1,66 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Icon from "blume/components/Icon.astro";
+
+const rows = [
+  {
+    name: "Skill and CLI",
+    snippet: "verdict skill install --detect",
+    body: "Your agent loads the skill and runs the verbs. This is the default way to use Verdict.",
+  },
+  {
+    name: "MCP server",
+    snippet: "verdict mcp config --agent claude --write",
+    body: "verdict mcp serves the review verbs as tools over stdio. Experimental until 1.0.",
+  },
+  {
+    name: "Go SDK",
+    snippet: "github.com/stainless-code/verdict/pkg/verdict",
+    body: "Call the verbs in-process from Go. Experimental until 1.0.",
+  },
+  {
+    name: "TypeScript client",
+    snippet: "@stainless-code/verdict/client",
+    body: "A thin wrapper that spawns the binary and returns typed envelopes. Experimental until 1.0.",
+  },
+  {
+    name: "JSON schemas",
+    snippet: "schemas/envelope.schema.json",
+    body: "The envelope and the stores are published as JSON Schema. Generate a client in any language.",
+  },
+];
+---
+
+<section id="integrations" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
+  <div class="mx-auto max-w-2xl text-center">
+    <h2 class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[52px] sm:leading-[1.02]">
+      Five ways in.
+    </h2>
+    <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
+      Every surface runs the same review core and returns the same data as{" "}
+      <code class="font-mono text-base text-foreground">--json</code>.
+    </p>
+  </div>
+  <ul class="mt-12 border-border border-t">
+    {
+      rows.map((row) => (
+        <li class="grid gap-2 border-border border-b py-6 sm:grid-cols-[220px_1fr] sm:gap-8">
+          <span class="font-display font-semibold text-xl tracking-tight">{row.name}</span>
+          <div class="min-w-0">
+            <code class="block truncate font-mono text-sm text-accent">{row.snippet}</code>
+            <p class="mt-2 max-w-[65ch] text-muted-foreground">{row.body}</p>
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+  <div class="mt-8 text-center">
+    <a
+      class="inline-flex items-center gap-2 font-medium text-accent text-sm"
+      href={contentHref("/integrations")}
+    >
+      Integrations, with an example for each
+      <Icon name="arrow-right" size={14} />
+    </a>
+  </div>
+</section>

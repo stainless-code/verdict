@@ -8,15 +8,15 @@ const rungs = ["said", "pointed", "walked", "ran", "reproduced"];
       What a finding carries.
     </h2>
     <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
-      Every finding ships with proof attached, or it does not ship.
+      Each finding records how it was checked, and the record travels with it.
     </p>
   </div>
   <div class="mt-12 grid gap-4 sm:grid-cols-12">
     <div class="rounded-2xl border border-border p-8 sm:col-span-7">
       <h3 class="font-display font-semibold text-2xl tracking-tight">An evidence rung</h3>
       <p class="mt-2 max-w-[52ch] text-base text-muted-foreground">
-        Unproven claims are labeled, never posted as fact. The rung decides how far a
-        finding travels.
+        A finding that was only said is labeled unproven. It is never posted as fact. The
+        rung sets how far a finding travels.
       </p>
       <ol class="mt-6 space-y-2">
         {
@@ -36,22 +36,25 @@ const rungs = ["said", "pointed", "walked", "ran", "reproduced"];
     <div class="rounded-2xl border border-border p-8 sm:col-span-5">
       <h3 class="font-display font-semibold text-xl tracking-tight">Keep-biased machinery</h3>
       <p class="mt-2 text-base text-muted-foreground">
-        Partitioned anchor validation, stale-SHA and double-post guards, binding verdicts
-        behind --bind. One bad anchor never fails a post.
+        An anchor that might be valid is kept. Only a provably wrong anchor moves to the
+        review body. A stale-SHA check and a double-post guard sit before the submit, and
+        approving or requesting changes needs <code class="font-mono text-sm">--bind</code>.
       </p>
     </div>
     <div class="rounded-2xl border border-border p-8 sm:col-span-5">
       <h3 class="font-display font-semibold text-xl tracking-tight">Stable memory</h3>
       <p class="mt-2 text-base text-muted-foreground">
-        Line-number-free finding signatures with status and history, so re-reviews never
-        re-report and threads retire by rule, not by fiat.
+        Findings carry a signature that does not depend on line numbers, plus a status and
+        a history. A re-review does not report a recorded finding again.
       </p>
     </div>
     <div class="rounded-2xl border border-border p-8 sm:col-span-7">
       <h3 class="font-display font-semibold text-xl tracking-tight">A machine surface</h3>
       <p class="mt-2 text-base text-muted-foreground">
-        Every verb speaks --json envelopes. SARIF export feeds scanners. Calibrate joins
-        predictions against live ground truth.
+        Review verbs take <code class="font-mono text-sm">--json</code> and print one
+        envelope. <code class="font-mono text-sm">report --sarif</code> writes SARIF 2.1.0.{" "}
+        <code class="font-mono text-sm">calibrate</code> compares predictions with what
+        happened to the PR.
       </p>
     </div>
   </div>

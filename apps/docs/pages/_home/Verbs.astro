@@ -2,18 +2,23 @@
 const rows = [
   {
     verb: "fetch",
-    command: "./scripts/review.sh fetch owner/repo 123",
-    body: "Pulls the diff, metadata, threads, and file roles into one bundle. No clone needed.",
+    command: "verdict fetch owner/repo 123",
+    body: "Writes the diff, metadata, threads and file roles to .review/123/. On GitHub it needs no clone.",
   },
   {
     verb: "review",
-    command: "any agent + SKILL.md + prompts/",
-    body: "A synthesizer reads the whole diff first, then fans out read-only lens subagents, one falsifiable question each.",
+    command: "your agent + the verdict skill",
+    body: "The agent reads the whole diff first. It asks read-only lens subagents a falsifiable question only when the answer could change the verdict. It writes one review.json.",
   },
   {
     verb: "post",
-    command: "./scripts/review.sh post owner/repo 123",
-    body: "Anchors machine-checked against the diff hunks, suggestions embedded as real GitHub suggestion blocks.",
+    command: "verdict post owner/repo 123",
+    body: "Checks every anchor against the diff hunks, turns suggestions into GitHub suggestion blocks, and submits one review.",
+  },
+  {
+    verb: "no PR?",
+    command: "verdict fetch-local owner/repo work",
+    body: "Bundles your local changes the same way. Review them, then run verdict record owner/repo local-work. Nothing is posted.",
   },
 ];
 ---
@@ -21,11 +26,11 @@ const rows = [
 <section id="verbs" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
   <div class="mx-auto max-w-2xl text-center">
     <h2 class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[52px] sm:leading-[1.02]">
-      Three verbs do the whole job.
+      Fetch, review, post.
     </h2>
     <p class="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
-      Fetch the bundle, review with any agent, post exactly once. No PR? Same
-      shape against the worktree: fetch-local, review, record.
+      The verbs below are the whole first review. Other verbs read the store,
+      triage findings and gate CI.
     </p>
   </div>
   <ol class="mt-12 border-border border-t">
