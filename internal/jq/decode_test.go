@@ -87,7 +87,7 @@ func checkTrailingRefusal(t *testing.T, in, want string) {
 // refuses everything cannot pass the refusal rows: one document with
 // surrounding whitespace decodes, and a JSON scalar is a document too.
 //
-// Break killed: making requireEOF refuse every tail (returning errTrailingData
+// Break killed: making sealTail refuse every tail (returning errTrailingData
 // unconditionally) turns every row here red.
 func TestDecodeAcceptsOneDocument(t *testing.T) {
 	t.Parallel()
@@ -119,7 +119,7 @@ func TestDecodeObjectShape(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, in, want string }{
 		{"non-object", `[1,2]`, "decode json: want a JSON object"},
-		{"malformed", `{"a":`, "decode json:"},
+		{"malformed", `{"a":`, "decode json: unexpected EOF"},
 		{"trailing data", `{"a":1} {"b":2}`, "decode json: unexpected trailing data"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
