@@ -1,131 +1,140 @@
 ---
 title: Quickstart
-description: "First Verdict review in five minutes: install, fetch, review, post, read the report."
+description: "Install Verdict with npm, pnpm, bun, yarn, Homebrew or a script, add the skill to your agent, and review your first PR."
 search:
   tags: ["quickstart", "getting-started", "install"]
 ---
 
-Order matters, so follow the steps.
+Three steps: install the binary, add the skill, review a PR.
 
 <Callout type="info" title="Requirements">
-  `gh` (authed), `git`, and a token with `repo` scope. Verdict brings everything
-  else.
+  `git`, plus the CLI for your host. For GitHub that is `gh`, signed in (`gh
+  auth login`) with `repo` scope. Run `verdict doctor` after installing to check
+  your setup.
 </Callout>
 
 <Steps>
   <Step title="Install">
-    <Tabs>
-      <Tab title="Binary (verified)">
-        ```bash
-        curl -fsSL https://stainless-code.com/verdict/install.sh | sh
-        ```
-        macOS/Linux: installs `verdict` to `~/.verdict/bin` after verifying the
-        checksum (and the cosign bundle when cosign is present). Pin with
-        `VERDICT_VERSION=vX.Y.Z`, skip the
-        PATH edit with `--no-modify-path`, and uninstall with
-        `install.sh --uninstall --remove-path`. Windows:
-        `irm https://stainless-code.com/verdict/install.ps1 | iex`.
+    Pick your package manager or OS. Every route installs the same release
+    binary.
 
-        If the docs site is unreachable, or directly from GitHub Releases:
-        `https://github.com/stainless-code/verdict/releases/latest/download/install.sh`
-        (macOS/Linux) or
-        `https://github.com/stainless-code/verdict/releases/latest/download/install.ps1`
-        (Windows).
-      </Tab>
-      <Tab title="skills.sh">
-        ```bash
-        npx skills add stainless-code/verdict
-        ```
-      </Tab>
-      <Tab title="Clone">
-        ```bash
-        git clone https://github.com/stainless-code/verdict.git
-        cd verdict && make build && ./install-skill.sh
-        ```
-        `install-skill.sh` runs `doctor` first and symlinks the skill into your
-        agent's skills directory. `git pull` is the updater. (This script was
-        called `install.sh` before 0.4; that name is now the binary installer.)
-      </Tab>
-    </Tabs>
+    <InstallSwitcher />
+
+    The install scripts take `VERDICT_VERSION=vX.Y.Z` to pin a version — on the
+    script half of the pipe:
+    `curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=vX.Y.Z sh`
+    (Windows: `-Version vX.Y.Z`). Update later with `verdict upgrade`. It runs
+    only when you type it. In CI, the
+    [`setup-verdict` action](https://github.com/stainless-code/verdict#ci-setup-verdict-action)
+    installs a pinned, verified binary.
 
   </Step>
-  <Step title="Scaffold local defaults (optional)">
+  <Step title="Add the skill">
     ```bash
-    verdict init --preset standard
+    verdict skill install --detect
     ```
-    Writes starter `.review/` control files (budget, panel, KB policy and rules)
-    then runs check-tree validation. Pure-local and skippable: fetch works
-    without it.
+    This installs the skill into every agent whose skills directory already
+    exists and is non-empty. To target one agent, pass `--agent` with `claude`,
+    `cursor`, `codex`, `opencode`, `copilot`, `gemini`, `goose`, `qwen`,
+    `windsurf`, or `agents`.
+    The skill ships inside the binary, so it always matches your version.
+
+    You can also install it from the registry with
+    `npx skills add stainless-code/verdict`. Use one route per machine.
+
   </Step>
-  <Step title="Fetch the bundle">
+  <Step title="Review a PR">
+    Fetch the PR into a bundle:
+
     ```bash
     verdict fetch owner/repo 123
     ```
-    One command pulls the diff, metadata, threads, and file roles into `.review/123/`.
-    No clone needed. Done when the directory holds `PR.json`, `full.diff`, `toc.txt`,
-    and `roles.txt`.
-  </Step>
-  <Step title="Review with any agent">
-    The skill you installed in step 1 is the prompt: the agent discovers
-    `SKILL.md` in its skills directory and loads the mode file it names. A global
-    binary install can add it with `verdict skill install --agent <name>`. Point
-    the agent at `.review/123/` (the bundle from step 2); it reads the whole diff
-    first, fans out read-only lens subagents with one falsifiable question each,
-    and writes exactly one `.review/123/review.json`.
-  </Step>
-  <Step title="Post">
+
+    This writes `.review/123/` with the diff, metadata, threads, and file roles.
+    On GitHub it needs no clone.
+
+    Then ask your agent to review `.review/123/`. The skill tells it how: read
+    the whole diff first, ask read-only lens subagents one falsifiable question
+    each when the answer could change the verdict, and write exactly one
+    `.review/123/review.json`.
+
+    Post the review:
+
     ```bash
-    verdict post owner/repo 123 --approve=false
+    verdict post owner/repo 123
     ```
-    Anchors are machine-checked against the diff hunks, suggestions go in as real
-    GitHub suggestion blocks, and exactly one review lands. Done when one review
-    exists: one `review.json`, one post call.
+
+    This checks every anchor against the diff hunks, turns suggestions into real
+    GitHub suggestion blocks, and submits one review. Add `--dry-run` to
+    validate and preview the payload without posting.
+
   </Step>
   <Step title="Read the report">
     ```bash
     verdict report owner/repo 123
     ```
-    One offline read of the store: ranked open findings, the verdict, and counts.
-    `verdict next` names the top actionable finding and the command to act on it;
-    `report --json` is the same data for a script. Done when you have a ranked
-    list you can act on.
+    One offline read of the store: ranked open findings, the verdict, and
+    counts. `verdict next` names the top finding and the command to act on it.
+    `report --json` returns the same data for a script.
   </Step>
   <Step title="Re-review new commits">
     ```bash
     verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>
     ```
-    Then review with `prompts/incremental-review.md` instead of `prompts/review.md`.
-    Recorded findings are never re-reported. Threads retire by rule.
+    Then have your agent review with `prompts/incremental-review.md` instead of
+    `prompts/review.md`. Recorded findings are not reported again, and threads
+    retire by rule. Incremental fetch is GitHub-only.
   </Step>
-  <Step title="No PR? Review the worktree">
+  <Step title="Review local changes">
+    No PR yet? Bundle the working tree instead:
+
     ```bash
     verdict fetch-local owner/repo work
+    ```
+
+    Ask your agent to review `.review/local-work/`, then merge its findings:
+
+    ```bash
     verdict record owner/repo local-work
     ```
-    Same review, no GitHub object: bundle the worktree (`--staged`, `--range`,
-    `--base`, and `--stash` variants exist), review it the same way, and `record`
-    merges the findings store instead of posting. `adopt` carries the findings
-    into a PR fetch later.
+
+    Nothing is posted. Pick the diff with `--staged`, `--range A..B`,
+    `--base <ref>`, or `--stash`. When a PR exists later,
+    run `verdict fetch owner/repo 123`, then
+    `verdict adopt owner/repo 123 --from local-work` to carry the findings over.
+
   </Step>
 </Steps>
 
-## What you got
+## Optional: scaffold repo defaults
 
-A grounded first pass on the PR in minutes, with every claim carrying an evidence
-rung and every comment anchored to a real hunk. Humans spend their attention on the
-hard parts.
+```bash
+verdict init --preset standard
+```
+
+This writes starter control files under `.review/`: a budget, a panel, and
+knowledge-base rules. It then runs `check-tree` to validate them. Presets are
+`chill`, `standard`, and `strict`. Reviews work without it.
+
+## Other hosts
+
+`fetch --provider` also reads GitLab, GitCafe, Forgejo, Bitbucket, and Azure
+DevOps (`gitlab|gitcafe|forgejo|bitbucket|azure`). `record`, `report`,
+`triage`, `show`, and `next` work on those bundles. `post` and `calibrate`
+need a GitHub bundle. Each host's auth and gaps are in the
+[manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#providers-non-github-hosts).
 
 <CardGroup cols={3}>
+  <Card title="Integrations" href="/integrations">
+    MCP, the Go SDK, the TypeScript client, and the JSON schemas.
+  </Card>
+  <Card title="How it reviews" href="/how-it-reviews">
+    Evidence rungs, severity, and how re-reviews stay stable.
+  </Card>
   <Card
     title="Manual"
     href="https://github.com/stainless-code/verdict/blob/main/docs/manual.md"
   >
     Every verb, the store schema, and the doctrines.
-  </Card>
-  <Card title="Glossary" href="/glossary">
-    Lenses, panel, evidence rungs, keep-biased, and its sibling doctrines.
-  </Card>
-  <Card title="Why Verdict" href="/why-verdict">
-    The pains this solves and what it refuses to be.
   </Card>
 </CardGroup>

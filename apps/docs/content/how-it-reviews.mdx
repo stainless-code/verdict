@@ -1,68 +1,86 @@
 ---
 title: How it reviews
-description: "Evidence rungs, severity that decides, keep-biased machinery, stable memory."
+description: "How a Verdict review works: evidence rungs, severity that gates, anchors kept when the tool is unsure, and memory across re-reviews."
 search:
   tags: ["concepts", "evidence", "severity", "anchors", "memory"]
 ---
 
-Three mechanisms separate a Verdict review from confident prose: proof attached to
-every claim, machinery biased toward keeping good findings, and memory that survives
-re-reviews.
+Three things separate a Verdict review from confident prose. Every claim carries
+its proof. The machinery keeps good findings when it cannot tell. Memory
+survives re-reviews.
 
 ## Evidence rungs
 
-Every finding carries one rung: `said`, `pointed`, `walked`, `ran`, `reproduced`.
-The rung is the proof behind the claim, and it decides how far the finding travels.
-`said`-only findings ship labeled `unproven` or die in triage. Nothing posts as fact
-that was never shown.
+Every finding carries one rung: `said`, `pointed`, `walked`, `ran`, or
+`reproduced`. The rung is the proof behind the claim, and it decides how far the
+finding travels. A finding that was only `said` ships labeled `unproven` or is
+dropped in triage. Nothing posts as fact that was never shown.
 
 ## Severity that decides
 
-`critical`, `important`, `informational`: ranked, stored at write time, never parsed
-from prose. Severity maps to the author's next action, and machine rules gate the
-strong moves. Binding verdicts need `--bind`. Approval is refused with open findings.
-Self-verdicts downgrade. The review never blocks what it cannot justify.
+Severity is `critical`, `important`, or `informational`. It is stored when the
+finding is written and never parsed from prose. It maps to the author's next
+action, and machine rules gate the strong moves:
+
+- Approving or requesting changes needs `--bind`. Without it the review posts
+  as a comment.
+- `APPROVE` is refused while findings are open or deferred, unless you pass
+  `--force`.
+- Binding `APPROVE` rechecks live review threads first. Unresolved threads the
+  local store does not know about refuse the approval.
 
 ## Stated confidence
 
-Confidence 1–5 is the agent's "would I merge on this review" judgment,
-informed by evidence depth, coverage, and rule support. The scale never
-rescales, so past verdicts stay comparable. `report --output` computes its
-`Basis` line from the store — rigor rung counts, distinct cited rules,
-addressed findings as verified fixes — never from prose. A posted body's
-`Basis` is agent-written and validated against the review's own comments.
+Confidence runs from 1 to 5. It is the agent's answer to "would I merge on this
+review", informed by evidence depth, coverage, and rule support. The scale
+never changes, so past verdicts stay comparable. `report --output` computes its
+`Basis` line from the store: rigor rung counts, distinct cited rules, and
+addressed findings counted as verified fixes. A posted body's `Basis` is written
+by the agent and checked against the review's own comments.
 
 ## Keep-biased machinery
 
-Anchor validation is partitioned: ambiguity keeps a finding, only provably-outside
-anchors move to the body. Fetch-snapshot validation, stale-SHA and double-post
-guards, an APPROVE-path live-thread recheck, and a SHA-keyed single-review
-finalizer make re-runs safe.
-Suggestions render as real GitHub suggestion blocks, or the post refuses to fake them.
-One bad anchor never fails a post. The machinery is biased the way a good reviewer
-is: skeptical of its own doubts, strict about its claims.
+When the tool cannot prove an anchor wrong, it keeps the finding. Only an anchor
+that is provably outside the diff moves to the review body, as a named note with
+its reason. One bad anchor never fails a post.
+
+Anchors are validated against the diff snapshot taken at fetch time, so a push
+during the review does not move the target. A stale-SHA check and a double-post
+guard run before the submit. `post` refuses a second completed post on the same
+reviewed SHA unless you pass `--force`. A new commit re-arms it.
+
+Suggestions render as real GitHub suggestion blocks, or the post refuses to fake
+them. A review body past GitHub's 65,536-character limit splits: the first
+review keeps the footer, and the rest post as follow-up comment reviews.
 
 ## Stable memory
 
-Findings carry line-number-free signatures with status and append-only history, so a
-rebase never orphans them. Signatures are versioned (`sig_version`, specced in the
-manual) — the cross-run join key for deltas, calibration, and external policy tools.
-Incremental re-reviews dedupe by signature: recorded findings are not re-reported unless the delta changes them. Threads retire by rule
-(reformat is not addressed, human threads untouched). Deferred work is explicit,
-never silent. Scoped rules compound the same way: fetch recalls matching rules
-into the bundle as context, never orders, and each addressed/false-positive flip credits the cited rule
-— `addressed` a hit, `false-positive` a false hit. Retirement is data-driven:
-once a rule has enough judgments, a high false-hit rate retires it to a
-tombstone, never a deletion.
+Findings carry a signature with no line numbers in it, plus a status and an
+append-only history. A rebase does not orphan them. Signatures are versioned
+(`sig_version`, specified in the manual). They are the join key for deltas,
+calibration, and outside policy tools.
+
+Incremental re-reviews dedupe by signature, so a recorded finding is not
+reported again unless the delta changes it. Threads retire by rule: a reformat
+is not a fix, and human threads are left alone. Deferred work is explicit, never
+silent.
+
+Scoped rules compound the same way. `fetch` recalls matching rules into the
+bundle as context, never as orders. When a finding that cites a rule flips to
+`addressed`, the rule scores a hit. When it flips to `false-positive`, the rule
+scores a false hit. After enough judgments, a rule with a high false-hit rate
+retires to a tombstone. Nothing is deleted.
 
 ## Measured, not asserted
 
-`calibrate` joins predictions against live ground truth: merged status, follow-up
-fixes, human agreement. Accuracy is a number from your own history, not a claim on a
-landing page. That loop is also the product's moat: every calibration run voluntarily
-contributes tuning data no warehouse-bound SaaS can collect.
+`calibrate` compares predictions with what happened on the PR: whether the cited
+file changed, whether the thread was resolved, and the PR's merged state. It
+reads live threads through your host's CLI and joins them against your local
+store. Accuracy is a number from your own history, not a claim on a landing
+page. Nothing is sent to Verdict or anyone else.
 
-The full operator reference is the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md).
+Unfamiliar terms are in the [glossary](/glossary). The full operator reference is the
+[manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md).
 
 <CardGroup cols={2}>
   <Card title="Comparison" href="/comparison">

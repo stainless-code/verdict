@@ -8,7 +8,7 @@ import { filesystem, githubReleases } from "blume/sources";
 
 const title = "Verdict";
 const description =
-  "Local on-demand PR review for any coding agent. Evidence-graded findings, machine gates, zero install.";
+  "Local, on-demand PR review for any coding agent. Evidence-graded findings, machine gates, and one static binary to install.";
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";
@@ -80,7 +80,8 @@ export default defineConfig({
 
   changelog: {
     title: "Changelog",
-    description: "Every Verdict release, newest first.",
+    description:
+      "Every Verdict release, newest first, with the notes from each GitHub Release: what changed, what was added, and what was fixed.",
   },
 
   integrations: [webAppHeadIntegration],
@@ -95,7 +96,7 @@ export default defineConfig({
       { label: "Why Verdict", path: "/why-verdict" },
       { label: "Comparison", path: "/comparison" },
       { label: "How it reviews", path: "/how-it-reviews" },
-      { label: "Build a client", path: "/build-a-client" },
+      { label: "Integrations", path: "/integrations" },
       { label: "Changelog", path: "/changelog" },
     ],
     sidebar: { display: "flat" },
@@ -105,8 +106,12 @@ export default defineConfig({
     copyright: `© 2026 stainless-code, MIT licensed.`,
     links: [
       {
-        label: "Skill repo",
+        label: "GitHub repository",
         href: "https://github.com/stainless-code/verdict",
+      },
+      {
+        label: "Releases",
+        href: "https://github.com/stainless-code/verdict/releases",
       },
       {
         label: "MIT license",

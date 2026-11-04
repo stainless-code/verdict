@@ -11,10 +11,11 @@ stdout, and maps the exit code. Go starts in milliseconds, so the process
 boundary is the transport.
 
 This page is the contract for building a client in any language. The official
-TypeScript client is the reference implementation; the
+TypeScript client is the reference implementation, and the
 [Python example](https://github.com/stainless-code/verdict/tree/main/examples/python-client)
-is the codegen recipe. Python has **no official package** — generate types
-from the schemas and keep the wrapper thin.
+is the codegen recipe. Python has **no official package**. Generate types from
+the schemas and keep the wrapper thin. To use the TypeScript client, the Go
+SDK, or the MCP server as they are, see [Integrations](/integrations).
 
 ## The protocol in one command
 
@@ -36,7 +37,7 @@ verdict report acme/app 123 --json
 
 Every successful `--json` run prints one object with these nine keys, in this
 order. The
-[envelope schema](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)
+[envelope schema](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)
 is generated from the Go shape and is the machine-readable source of truth.
 
 | Key              | Type                      | Meaning                                                                 |
@@ -148,20 +149,21 @@ release version.
 - **A major change needs a new `schema_version` and a migration note.** A
   client must reject an unknown major instead of guessing. The schemas README
   (`make schemas`) remains the source of truth:
-  [schemas/README.md](https://github.com/stainless-code/verdict/blob/main/schemas/README.md).
-- **Clients and MCP tool shapes are experimental until 1.0.** Their ergonomics
-  may change without a major schema bump; the envelope contract does not.
+  [schemas/README.md](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/README.md).
+- **The clients, the Go SDK, and the MCP tool shapes are experimental until
+  1.0.** Their ergonomics may change without a major schema bump. The envelope
+  contract does not.
 
 Pin the binary, not just the client:
 
 ```bash
 # Installer (macOS/Linux): pin the release tag.
-curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=v0.3.1 sh
+curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=vX.Y.Z sh
 
-# npm wrapper: unpinned, tracks the latest release.
-npm i -g @stainless-code/verdict
+# npm wrapper: pin the exact version. Without a version it tracks the latest.
+npm i -g @stainless-code/verdict@X.Y.Z
 
-# Assert at client startup (prints e.g. 0.3.1, no leading v).
+# Assert at client startup (prints X.Y.Z, no leading v).
 verdict --version
 ```
 
@@ -172,11 +174,11 @@ Use `schema_version` for the wire. They are different numbers and both matter.
 
 The reference order, shared by the skill shim and the TS client:
 
-1. **`VERDICT_BIN`** — explicit override. If set but not executable, fail
+1. **`VERDICT_BIN`**: explicit override. If set but not executable, fail
    loudly; never silently fall through.
-2. **Bundled binary** — the platform package installed beside the wrapper
+2. **Bundled binary**: the platform package installed beside the wrapper
    (`@stainless-code/verdict-<os>-<arch>/bin/verdict`).
-3. **`PATH`** — the first executable `verdict`.
+3. **`PATH`**: the first executable `verdict`.
 
 A Python client has no bundled step, so it does `VERDICT_BIN` → `PATH`.
 Whatever the language, never invoke a shell: pass an argv array and set
@@ -205,33 +207,34 @@ Other rules that belong in every wrapper:
 is a `$defs` entry in the envelope schema and the generated models are worth
 using. Open means it is the generic object until that verb's data stabilizes.
 
-| Verb                                                                                                                                                                        | `data` profile                | Schema source                                                                                                                |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `report`                                                                                                                                                                    | pinned `reportData`           | [`envelope.schema.json#/$defs/reportData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json) |
-| `post`                                                                                                                                                                      | pinned `postData`             | [`envelope.schema.json#/$defs/postData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)   |
-| `record`                                                                                                                                                                    | pinned `recordData`           | [`envelope.schema.json#/$defs/recordData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json) |
-| `show`                                                                                                                                                                      | pinned `showData` / `showFix` | [`envelope.schema.json#/$defs/showData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)   |
-| `fetch`, `fetch-local`, `next`, `ready`, `trend`, `doctor`, `check-tree`, `calibrate`, `triage`, `adopt`, `fix`, `verify`, `learn`, `init`, `skill`, `upgrade`, `uninstall` | open object (generic)         | envelope's `data` allows additional properties                                                                               |
+| Verb                                                                                                                                                                                   | `data` profile                | Schema source                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `report`                                                                                                                                                                               | pinned `reportData`           | [`envelope.schema.json#/$defs/reportData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json) |
+| `post`                                                                                                                                                                                 | pinned `postData`             | [`envelope.schema.json#/$defs/postData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)   |
+| `record`                                                                                                                                                                               | pinned `recordData`           | [`envelope.schema.json#/$defs/recordData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json) |
+| `show`                                                                                                                                                                                 | pinned `showData` / `showFix` | [`envelope.schema.json#/$defs/showData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)   |
+| `fetch`, `fetch-local`, `next`, `ready`, `threads`, `trend`, `doctor`, `check-tree`, `calibrate`, `triage`, `adopt`, `fix`, `verify`, `learn`, `init`, `skill`, `upgrade`, `uninstall` | open object (generic)         | envelope's `data` allows additional properties                                                                                              |
 
-The schemas themselves are published under
-[`schemas/`](https://github.com/stainless-code/verdict/tree/main/schemas). The
-hosting question (raw repo URLs versus release assets) is still open; link the
-repo path until it settles. `verdict mcp` is a transport, not a CLI verb; it
-does not appear in this table.
+The schemas are published under
+[`skills/verdict/schemas/`](https://github.com/stainless-code/verdict/tree/main/skills/verdict/schemas). They
+also ship in the npm package and inside the binary. `verdict skill files` lists
+them. There is no hosted schema URL yet, so link the repo path.
+`verdict mcp` serves the verbs over stdio and has no `--json` envelope of its
+own, so it is not in this table.
 
 ## When to use MCP instead of spawning
 
 `verdict mcp` serves the same verbs as MCP tools over stdio:
-newline-delimited JSON-RPC 2.0, one frame per line. It is the right transport
-when the host already speaks MCP (Claude, Cursor, Codex) and wants tool
-discovery and structured results for free.
+newline-delimited JSON-RPC 2.0, one frame per line. Use it when the host
+already speaks MCP (Claude, Cursor, Codex) and you want tool discovery and
+structured results without writing a wrapper.
 
 - Use **MCP** for an agent host that already has an MCP client, wants
   `tools/list` schemas, or wants `--read-only` to hide writing verbs.
 - Use **spawning** for a library, a script, a CI step, or any program that
   needs one call and no protocol session. A JSON client does not need MCP.
-- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `trend`,
-  `ready`, `doctor`, and `check-tree`.
+- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `threads`,
+  `trend`, `ready`, `doctor`, and `check-tree`.
 - Success results are the CLI envelope's `data`; typed refusals return
   `isError: true` with `{code, message, hint}` intact. Malformed calls are
   JSON-RPC `-32602`, not refusals. stdout is the protocol channel; progress and
@@ -260,7 +263,7 @@ python3 -m venv .venv
 pip install -r examples/python-client/requirements-dev.txt
 
 datamodel-codegen \
-  --input schemas/envelope.schema.json \
+  --input skills/verdict/schemas/envelope.schema.json \
   --input-file-type jsonschema \
   --output examples/python-client/models.py \
   --output-model-type dataclasses.dataclass \
@@ -283,8 +286,8 @@ is deliberately not a Go/CI gate: tests never pip install.
 ### 2. The client
 
 This is
-[`verdict_client.py`](https://github.com/stainless-code/verdict/blob/main/examples/python-client/verdict_client.py)
-— spawn, validate the envelope, and map the frozen exit codes:
+[`verdict_client.py`](https://github.com/stainless-code/verdict/blob/main/examples/python-client/verdict_client.py).
+It spawns the binary, validates the envelope, and maps the frozen exit codes:
 
 ```python
 """Minimal Python client for the verdict `--json` protocol.
@@ -444,5 +447,5 @@ Checklist:
     a usage error, and a timeout.
 
 The official TS client and its generated types live in
-[`clients/ts/`](https://github.com/stainless-code/verdict/tree/main/clients/ts);
-the MCP transport is optional and not required for a language client.
+[`clients/ts/`](https://github.com/stainless-code/verdict/tree/main/clients/ts).
+The MCP transport is optional and not required for a language client.
