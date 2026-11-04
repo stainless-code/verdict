@@ -81,6 +81,7 @@ this repo, and the repo files stay the truth for what is gated:
 - Doc every export name-first; runnable Examples; document sharp edges (GO-DOCS-01/02). — partly: `lint:godoclint,godot,misspell`.
 - Evolve by addition; tidy minimal modules; tool directives; GODEBUG in go.mod (GO-API-03, GO-MOD-02/03/05). — partly: `lint:gomoddirectives` + `make vet` (`go mod verify`); `go mod tidy -diff` is not a CI step.
 - Measure before optimizing (`benchstat` + profiles) (GO-PERF-01/03). — review-only.
+- A benchmark's input is built from a byte budget the product accepts, and the benchmark asserts it: `b.SetBytes` reports a size, it never proves one (GO-PERF-01). — review-only.
 - `os.Root` confinement; `crypto/rand` secrets; validated edge input (GO-SEC-01/02/04). — partly: `lint:depguard` (`math/rand`), `lint:gosec`, `lint:nosprintfhostport`; `os.Root` is review-only, and operator-supplied bundle paths are exempt by decision.
 - Exit-code contract; `--json/--jq` exporters; generated completions/manpages (GO-CLI-02/06/07). — partly: exit codes are frozen constants in `internal/cli` with tests; no generated completions or manpages.
 - Start std-`flag` under a zero-dep policy; graduate to cobra when justified (GO-CLI-08). — partly: `go.mod` carries no third-party requirements; argv parsing is hand-rolled in `internal/cli` to keep the frozen contract byte-identical.
@@ -90,6 +91,10 @@ this repo, and the repo files stay the truth for what is gated:
 - Progress as stderr attrs + JSON error shapes; log after flag parsing (GO-OBS-01/02). — partly: envelope error-shape goldens.
 - Paginate defensively; keep proxy support on (GO-HTTP-04). — review-only.
 - Build-tagged OS splits; `AGENTS.md` + Makefile mirroring CI (GO-FS-03, GO-CI-06). — partly: `_unix`/`_windows` splits; `Makefile` mirrors `ci.yml` (`make ci-go`, `make evals`); `AGENTS.md` carries the ladder.
+
+## CONSIDER (evaluate per project)
+
+- Startup is a product surface: keep total package init under 1 ms, hoist a package-level `regexp.MustCompile` or any other parse behind `sync.OnceValue` when only one verb needs it, and paste `GODEBUG=inittrace=1 ./bin/verdict --version` in any PR that touches init (GO-PERF-04). — review-only.
 
 ## Review-only MUSTs worth a custom analyzer
 

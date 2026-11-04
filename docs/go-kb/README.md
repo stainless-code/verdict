@@ -1,6 +1,6 @@
 # Go KB — `knowledge-base.md`
 
-`knowledge-base.md` is the canonical Go knowledge base: 130 tiered cards (`GO-<TOPIC>-<NN>`,
+`knowledge-base.md` is the canonical Go knowledge base: 131 tiered cards (`GO-<TOPIC>-<NN>`,
 MUST/SHOULD/CONSIDER) with Rule / Why / Enforce / Since / Sources / Verified, the resolved
 decisions, and the `from A-…` source-ID map. Every ID that `docs/go-rules.md` cites exists here.
 

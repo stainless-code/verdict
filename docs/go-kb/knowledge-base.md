@@ -37,7 +37,7 @@ Card ID: `GO-<TOPIC>-<NN>`. Each card keeps its source IDs (e.g. `from A-ERRORS-
 | `GO-DOCS`    | Docs and godoc                      | 2                                                   |
 | `GO-API`     | API stability and versioning        | 4                                                   |
 | `GO-MOD`     | Modules and dependencies            | 5                                                   |
-| `GO-PERF`    | Performance                         | 3                                                   |
+| `GO-PERF`    | Performance                         | 4                                                   |
 | `GO-SEC`     | Security basics                     | 5                                                   |
 | `GO-CLI`     | CLI structure and UX                | 9                                                   |
 | `GO-CONFIG`  | Config and env precedence           | 3                                                   |
@@ -53,7 +53,7 @@ Card ID: `GO-<TOPIC>-<NN>`. Each card keeps its source IDs (e.g. `from A-ERRORS-
 | `GO-CI`      | CI and release                      | 7                                                   |
 | `GO-GOV`     | Contributor docs and governance     | none — governance lives in `GO-CI-07` and `GO-DOCS` |
 
-Total: **130 cards** — MUST: 61, SHOULD: 61, CONSIDER: 8.
+Total: **131 cards** — MUST: 61, SHOULD: 61, CONSIDER: 9.
 
 ---
 
@@ -746,8 +746,8 @@ return g.Wait()
 ### GO-PERF-01 — **SHOULD** — Measure first: benchmarks, benchstat, profiles
 
 - from A-PERFORMANCE-01
-- Rule: No optimization without a benchmark delta (`benchstat old.txt new.txt`) and a pprof/mutex/trace profile naming the hotspot.
-- Why: Intuition about hot paths is wrong more often than right; unmeasured "wins" usually trade readability for noise.
+- Rule: No optimization without a benchmark delta (`benchstat old.txt new.txt`) and a pprof/mutex/trace profile naming the hotspot. A benchmark's input is built from a byte budget the product actually accepts, and the benchmark asserts it before `b.SetBytes` — that call reports a size, it never proves one.
+- Why: Intuition about hot paths is wrong more often than right; unmeasured "wins" usually trade readability for noise, and a benchmark over an input the product refuses measures a code path no user reaches.
 - Enforce: `test` (`-benchmem`, `-cpuprofile`, trace FlightRecorder)
 - Sources: https://go.dev/blog/pgo-preview, https://go.dev/doc/go1.25
 
@@ -767,6 +767,15 @@ return g.Wait()
 - Why: Growth reallocations and reflection-based formatting dominate profiles of encode/serve loops; capacity hints are nearly free.
 - Enforce: `lint:prealloc` is OFF (FP on idiomatic append loops) — review-only; `lint:perfsprint` covers sprintf
 - Sources: https://github.com/uber-go/guide
+
+### GO-PERF-04 — **CONSIDER** — Startup is a product surface; keep package init under 1 ms
+
+- from A-PERFORMANCE-01
+- Rule: Keep total package init under 1 ms: no package-level `regexp.MustCompile` or any other parse when only one verb needs it — hoist it behind `sync.OnceValue` — and paste `GODEBUG=inittrace=1 ./bin/verdict --version` in any PR that touches init.
+- Why: Every invocation pays init before it prints help, a version, or a usage error, and agent paths shell out per verb; a package-level compile taxes exactly the runs that are too short to amortize it.
+- Enforce: review-only (the pasted `inittrace` output)
+- Since: Go 1.16 (`inittrace`); Go 1.21 (`sync.OnceValue`)
+- Sources: https://pkg.go.dev/runtime#hdr-Environment_Variables, https://pkg.go.dev/sync#OnceValue
 
 ---
 
