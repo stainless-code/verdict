@@ -363,6 +363,10 @@ jobs:
         shell: bash
         run: make cross
 
+      - name: Ratchet the release binary and the module graph
+        shell: bash
+        run: make size
+
   fuzz:
     name: 🎲 Fuzz (nightly)
     needs: changes

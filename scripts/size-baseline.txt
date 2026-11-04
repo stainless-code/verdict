@@ -1,0 +1,16 @@
+# Ceilings for the release binary and the module graph: `make size`
+# (scripts/size.sh) fails when a shipped target or the dependency count grows
+# past its line, when a target has no line, or when a line names a target the
+# release contract no longer ships.
+#
+# A deliberate growth raises the line in the same change, so the cost shows in
+# the diff next to the code that caused it. Measured off a GoReleaser-identical
+# build (see the script's flags), sized for the small drift a patch-level
+# toolchain bump can cause. Format: `<goos>/<goarch> <bytes>`, one `deps <n>`.
+deps 0
+darwin/amd64 11022000
+darwin/arm64 10160000
+linux/amd64 10823000
+linux/arm64 9903000
+windows/amd64 11136000
+windows/arm64 10053000
