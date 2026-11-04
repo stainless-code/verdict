@@ -26,6 +26,8 @@ func TestHeaderPaths(t *testing.T) {
 		{"tab separator", "diff --git \"a/x y\"\t\"b/x y\"", "x y", "x y"},
 		{"deleted to dev null", "diff --git a/gone.txt b/gone.txt", "gone.txt", "gone.txt"},
 		{"greedy b-side", "diff --git a/aa b/bb b/b", "aa b/bb", "b"},
+		{"single unquoted token", "diff --git a/x", "x", ""},
+		{"empty quoted b-side", `diff --git "a/x" ""`, "x", ""},
 		{"not a header", "--- a/x", "", ""},
 	}
 	for _, tt := range tests {
@@ -70,6 +72,10 @@ func TestUnquotePath(t *testing.T) {
 		{"plain.txt", "plain.txt"},
 		{`"spaced name.txt"`, "spaced name.txt"},
 		{`"h\303\251llo"`, "héllo"},
+		// A token strconv cannot decode keeps its literal bytes: dropping it
+		// would erase the path an anchor has to match.
+		{`"bad\q"`, `bad\q`},
+		{`""`, ""},
 	} {
 		if got := hunks.UnquotePath(tt.in); got != tt.want {
 			t.Errorf("UnquotePath(%q) = %q, want %q", tt.in, got, tt.want)
