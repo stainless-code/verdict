@@ -13,8 +13,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-ADDR="$EVAL_ROOT/prompts/address-reviews.md"
-FIXCI="$EVAL_ROOT/prompts/fix-ci.md"
+ADDR="$EVAL_SKILL/prompts/address-reviews.md"
+FIXCI="$EVAL_SKILL/prompts/fix-ci.md"
 
 # --- P1: untrusted-data preamble in address-reviews.md step 3 ---
 if grep -Fq 'untrusted review data' "$ADDR"; then

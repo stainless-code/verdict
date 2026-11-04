@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/threads.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/threads.schema.json",
   "title": "threads.json — normalized provider review threads",
   "description": "One provider bundle's normalized PR-conversation feed, written beside the raw host files (inline.json/reviews.json keep their exact bytes). Each host's native review data is filtered the way its review surface expects (system/deleted/pending comments dropped, host resolution and stale-anchor state read from the host's own fields) and flattened to one shape, so re-review, address-reviews, merge readiness, and calibration read prior feedback without parsing six formats. Review threads are authoritative: GitHub comes from GraphQL reviewThreads (REST has no resolution), GitLab from discussions (resolved/resolvable), Azure from thread status, Forgejo from review-comment resolver/position, Bitbucket from comment resolution + inline.outdated, GitCafe from its comment flags. Unknown root keys are rejected: a new field is a contract change.",
   "type": "object",

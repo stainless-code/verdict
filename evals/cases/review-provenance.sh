@@ -36,7 +36,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 BASEB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 EXPECTED_TV="$(jq -r .version "$EVAL_ROOT/package.json")"
-EXPECTED_PH="$(for f in SKILL.md prompts/diagrams.md prompts/review.md prompts/system.md; do printf '== %s ==\n' "$f"; cat "$EVAL_ROOT/$f"; printf '\n'; done | shasum -a 256 | cut -d' ' -f1)"
+EXPECTED_PH="$(for f in SKILL.md prompts/diagrams.md prompts/review.md prompts/system.md; do printf '== %s ==\n' "$f"; cat "$EVAL_SKILL/$f"; printf '\n'; done | shasum -a 256 | cut -d' ' -f1)"
 
 mklocal() { # $1 = slug (without the local- prefix)
   local dir="$EVAL_SANDBOX/.review/local-$1"

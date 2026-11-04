@@ -22,6 +22,9 @@ GORELEASER_VERSION ?= v2.19.0
 build:
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -trimpath -o $(BIN) ./cmd/verdict
+	@# The skill shim finds a binary at <skill>/bin/verdict; point a checkout's
+	@# skill dir at the build output (untracked, gitignored, never shipped).
+	ln -sfn ../../bin skills/verdict/bin
 
 .PHONY: gofmt-check
 gofmt-check:

@@ -1,5 +1,5 @@
 // The verdict --json envelope. EXPERIMENTAL until 1.0: the wire shape is
-// schemas/envelope.schema.json (generated from Go types); this generic is
+// skills/verdict/schemas/envelope.schema.json (generated from Go types); this generic is
 // the hand-written view over it with the per-verb data types filled in from
 // types.gen.ts. Verbs without a pinned data shape use unknown.
 import type {

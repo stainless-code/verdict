@@ -276,7 +276,7 @@ else
 fi
 
 # --- I4: the Incremental prompt pins the chunk composition ---
-PROMPT="$EVAL_ROOT/prompts/incremental-review.md"
+PROMPT="$EVAL_SKILL/prompts/incremental-review.md"
 if grep -q "chunks/manifest.json" "$PROMPT" \
   && grep -q "affected chunk" "$PROMPT"; then
   good "prompt scopes the delta to affected chunk diffs via the manifest"

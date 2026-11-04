@@ -1,4 +1,4 @@
-// GENERATED from schemas/envelope.schema.json ($defs) by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
+// GENERATED from skills/verdict/schemas/envelope.schema.json ($defs) by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
 /** Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal. */
 export interface RefusalErrorBody {
   code: string;

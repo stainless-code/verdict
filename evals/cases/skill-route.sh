@@ -29,7 +29,7 @@ SKILL="$SKILLS/verdict"
 
 # --- S1: serve the embedded skill, files, and the JSON inventory ---
 run_review skill
-if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$EVAL_OUT" "$EVAL_ROOT/SKILL.md"; then
+if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$EVAL_OUT" "$EVAL_SKILL/SKILL.md"; then
   good "skill prints the checked-in SKILL.md byte-for-byte"
 else
   bad "skill exits $EVAL_STATUS or differs from SKILL.md"
@@ -65,8 +65,8 @@ run_review skill install --dir "$SKILLS" --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.status' <"$EVAL_OUT")" = "create" ] \
   && [ "$(jq -r '.data.written' <"$EVAL_OUT")" -gt 0 ] \
-  && cmp -s "$SKILL/SKILL.md" "$EVAL_ROOT/SKILL.md" \
-  && cmp -s "$SKILL/prompts/review.md" "$EVAL_ROOT/prompts/review.md" \
+  && cmp -s "$SKILL/SKILL.md" "$EVAL_SKILL/SKILL.md" \
+  && cmp -s "$SKILL/prompts/review.md" "$EVAL_SKILL/prompts/review.md" \
   && [ -x "$SKILL/scripts/verdict" ] \
   && [ "$(jq -r '.tool' "$SKILL/.verdict-managed")" = "verdict" ] \
   && [ "$(jq -r '.version' "$SKILL/.verdict-managed")" = "$(jq -r .version "$EVAL_ROOT/package.json")" ]; then
@@ -82,7 +82,7 @@ else
 fi
 printf 'stale\n' >"$SKILL/SKILL.md"
 run_review skill install --dir "$SKILLS"
-if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$SKILL/SKILL.md" "$EVAL_ROOT/SKILL.md"; then
+if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$SKILL/SKILL.md" "$EVAL_SKILL/SKILL.md"; then
   good "byte drift updates the installed copy"
 else
   bad "update did not restore SKILL.md"

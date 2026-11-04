@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -13,39 +14,63 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 )
 
-// repoFiles is the checked-in payload set the embed must mirror exactly.
+// repoFiles lists every file the repository would ship under the skill
+// directory — tracked plus untracked-but-not-ignored, dotfiles included, no
+// matter whether it is embedded — as slash paths relative to it. This is what
+// the skills CLI copies to an agent from a clone, so it must equal the
+// embedded payload. Ignored dev state (a bootstrapped bin/) is not shipped
+// and not listed. Without git it falls back to every file on disk.
 func repoFiles(t *testing.T) []string {
 	t.Helper()
-	files := []string{skillfs.SkillMD}
-	files = append(files, dirFiles(t, "prompts")...)
-	files = append(files, dirFiles(t, "schemas")...)
-	files = append(files, "scripts/verdict")
+	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", skillfs.Dir).Output()
+	if err != nil {
+		return diskFiles(t)
+	}
+	var files []string
+	for name := range strings.SplitSeq(string(out), "\x00") {
+		if name == "" {
+			continue
+		}
+		files = append(files, strings.TrimPrefix(name, skillfs.Dir+"/"))
+	}
 	slices.Sort(files)
 	return files
 }
 
-// dirFiles lists every regular file under dir as a slash path.
-func dirFiles(t *testing.T, dir string) []string {
+// diskFiles lists every file under the skill directory, relative to it.
+func diskFiles(t *testing.T) []string {
 	t.Helper()
 	var files []string
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+	err := filepath.WalkDir(filepath.FromSlash(skillfs.Dir), func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() {
-			files = append(files, filepath.ToSlash(path))
+		if entry.IsDir() {
+			return nil
 		}
+		rel, err := filepath.Rel(filepath.FromSlash(skillfs.Dir), path)
+		if err != nil {
+			return err
+		}
+		files = append(files, filepath.ToSlash(rel))
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	slices.Sort(files)
 	return files
 }
 
+// onDisk is the checkout path of one payload file.
+func onDisk(path string) string {
+	return filepath.Join(filepath.FromSlash(skillfs.Dir), filepath.FromSlash(path))
+}
+
 // TestEmbedMatchesRepo is the drift guard: every embedded payload path has a
-// byte-identical checked-in file, every checked-in payload file is embedded,
-// and the executable bits agree.
+// byte-identical checked-in file, every file in the skill directory is
+// embedded (so nothing else would reach `npx skills add`), and the
+// executable bits agree.
 func TestEmbedMatchesRepo(t *testing.T) {
 	t.Parallel()
 	want := repoFiles(t)
@@ -54,7 +79,7 @@ func TestEmbedMatchesRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !slices.Equal(got, want) {
-		t.Fatalf("embedded paths = %v, want checked-in %v", got, want)
+		t.Fatalf("embedded paths = %v, want the files in %s: %v", got, skillfs.Dir, want)
 	}
 	for _, path := range want {
 		assertEmbeddedFile(t, path)
@@ -68,7 +93,7 @@ func TestEmbedMatchesRepo(t *testing.T) {
 func assertEmbeddedFile(t *testing.T, path string) {
 	t.Helper()
 	embedded := mustRead(t, path)
-	disk, err := os.ReadFile(filepath.FromSlash(path))
+	disk, err := os.ReadFile(onDisk(path))
 	if err != nil {
 		t.Fatalf("read checked-in %s: %v", path, err)
 	}
@@ -78,13 +103,42 @@ func assertEmbeddedFile(t *testing.T, path string) {
 	if runtime.GOOS == "windows" {
 		return // NTFS carries no executable bit: Linux and macOS CI pin the modes
 	}
-	info, err := os.Stat(filepath.FromSlash(path))
+	info, err := os.Stat(onDisk(path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantExec := info.Mode().Perm()&0o111 != 0
 	if gotExec := skillfs.Mode(path)&0o111 != 0; gotExec != wantExec {
 		t.Errorf("%s executable = %v, want %v", path, gotExec, wantExec)
+	}
+}
+
+// TestRegistryDiscovery pins the layout the skills CLI relies on. Its
+// discovery (github.com/vercel-labs/skills, discoverSkills) returns at once
+// when the repo root holds a SKILL.md and then copies the whole root; with no
+// root SKILL.md it walks skills/ and installs just the directory holding the
+// SKILL.md it finds. So the root must stay SKILL.md-free and skills/ must
+// hold exactly one skill.
+func TestRegistryDiscovery(t *testing.T) {
+	t.Parallel()
+	if _, err := os.Stat("SKILL.md"); !os.IsNotExist(err) {
+		t.Fatalf("a root SKILL.md makes `npx skills add` copy the whole repo; stat err = %v", err)
+	}
+	entries, err := os.ReadDir("skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dirs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirs = append(dirs, entry.Name())
+		}
+	}
+	if want := []string{"verdict"}; !slices.Equal(dirs, want) {
+		t.Fatalf("skills/ directories = %v, want %v (the CLI would offer or install each one)", dirs, want)
+	}
+	if _, err := os.Stat(onDisk(skillfs.SkillMD)); err != nil {
+		t.Fatalf("skill entry point missing: %v", err)
 	}
 }
 

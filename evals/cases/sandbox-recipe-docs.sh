@@ -17,7 +17,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 MANUAL="$EVAL_ROOT/docs/manual.md"
-SYSTEM="$EVAL_ROOT/prompts/system.md"
+SYSTEM="$EVAL_SKILL/prompts/system.md"
 
 # --- R1: bwrap one-liner + systemd-nspawn alternative + when-to-use ---
 if grep -q "bwrap" "$MANUAL" \

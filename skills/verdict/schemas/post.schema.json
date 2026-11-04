@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/post.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/post.schema.json",
   "title": "post.json — completed-post record (PR bundles)",
   "description": "Written only by the real-post path in the verdict CLI (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
   "type": "object",

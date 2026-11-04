@@ -130,25 +130,28 @@ func buildBinary(repoRoot, dir string) error {
 // binary resolves the repo root from its own directory; planted copies let
 // the harness run from worktrees and MAIN alike).
 func copyProvenance(repoRoot, tmp string) error {
+	skill := filepath.Join(repoRoot, "skills", "verdict")
 	for _, f := range []string{"package.json", "SKILL.md"} {
-		if err := copyFile(filepath.Join(repoRoot, f), filepath.Join(tmp, f)); err != nil {
+		src := filepath.Join(repoRoot, f)
+		if f == "SKILL.md" {
+			src = filepath.Join(skill, f) // the payload lives in skills/verdict
+		}
+		if err := copyFile(src, filepath.Join(tmp, f)); err != nil {
 			return jq.Sealed("provenance "+f, err)
 		}
 	}
-	for _, dir := range []string{"prompts", "scripts"} {
-		if err := copyProvenanceDir(repoRoot, tmp, dir); err != nil {
-			return err
-		}
+	if err := copyProvenanceDir(skill, tmp, "prompts"); err != nil {
+		return err
 	}
-	return nil
+	return copyProvenanceDir(repoRoot, tmp, "scripts")
 }
 
 // copyProvenanceDir copies the flat files of one provenance directory.
-func copyProvenanceDir(repoRoot, tmp, dir string) error {
+func copyProvenanceDir(srcRoot, tmp, dir string) error {
 	if err := os.MkdirAll(filepath.Join(tmp, dir), dirPerm); err != nil {
 		return jq.Sealed("provenance dir "+dir, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(repoRoot, dir))
+	entries, err := os.ReadDir(filepath.Join(srcRoot, dir))
 	if err != nil {
 		return jq.Sealed("provenance dir "+dir, err)
 	}
@@ -156,7 +159,7 @@ func copyProvenanceDir(repoRoot, tmp, dir string) error {
 		if e.IsDir() {
 			continue
 		}
-		if err := copyFile(filepath.Join(repoRoot, dir, e.Name()), filepath.Join(tmp, dir, e.Name())); err != nil {
+		if err := copyFile(filepath.Join(srcRoot, dir, e.Name()), filepath.Join(tmp, dir, e.Name())); err != nil {
 			return jq.Sealed("provenance "+dir+pathSep+e.Name(), err)
 		}
 	}

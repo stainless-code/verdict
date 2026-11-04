@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -165,7 +166,7 @@ func dumpMeta(dir string) (meta, label string) {
 // failing typed without the system preamble.
 func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
 	for _, f := range []string{"SKILL.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"} {
-		raw, err := os.ReadFile(f)
+		raw, err := readTrustedPrompt(f)
 		if err != nil {
 			if f == "prompts/system.md" {
 				return &core.RefusalError{
@@ -180,6 +181,23 @@ func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
 		sb.Write(raw)
 	}
 	return nil
+}
+
+// checkoutSkillDir is where a source checkout keeps the skill payload;
+// skillfs.Dir names the same path.
+const checkoutSkillDir = "skills/verdict"
+
+// readTrustedPrompt reads one prompt file relative to the current directory:
+// flat in a skill directory, else under the checkout's skills/verdict.
+func readTrustedPrompt(name string) ([]byte, error) {
+	raw, err := os.ReadFile(name)
+	if err == nil {
+		return raw, nil
+	}
+	if alt, altErr := os.ReadFile(filepath.Join(filepath.FromSlash(checkoutSkillDir), name)); altErr == nil {
+		return alt, nil
+	}
+	return nil, err //nolint:wrapcheck // the caller only reports the file as missing
 }
 
 // trustPreamble renders the trusted tool-generated boundary: the

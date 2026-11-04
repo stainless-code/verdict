@@ -20,7 +20,7 @@ func TestSchemasMatchGenerated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RepoRoot: %v", err)
 	}
-	dir := filepath.Join(root, "schemas")
+	dir := filepath.Join(root, "skills", "verdict", "schemas")
 	generated := make(map[string]bool, len(files))
 	for _, file := range files {
 		generated[file.Name] = true

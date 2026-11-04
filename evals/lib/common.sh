@@ -7,6 +7,7 @@
 #
 # Required environment (exported by evals/run.sh):
 #   EVAL_ROOT     absolute path of the repo checkout under test
+#                 (EVAL_SKILL, derived below, is its skills/verdict payload dir)
 #   EVAL_SANDBOX  absolute path of an empty temp dir used as the CLI cwd
 #   EVAL_STUBBIN  absolute path of a dir holding the network-dead `gh` stub
 #   EVAL_STUBLOG  file the stub appends each intercepted call to
@@ -17,6 +18,10 @@ set -euo pipefail
 : "${EVAL_SANDBOX:?run via evals/run.sh}"
 : "${EVAL_STUBBIN:?run via evals/run.sh}"
 : "${EVAL_STUBLOG:?run via evals/run.sh}"
+
+# The skill payload (SKILL.md, prompts/, schemas/, scripts/verdict) lives in
+# one directory, the one `npx skills add` installs.
+EVAL_SKILL="$EVAL_ROOT/skills/verdict"
 
 EVAL_OUT="$EVAL_SANDBOX/eval-out.bin"
 EVAL_ERR="$EVAL_SANDBOX/eval-err.txt"

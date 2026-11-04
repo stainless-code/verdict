@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/controls.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/controls.schema.json",
   "title": "controls.json — resolved review controls snapshot",
   "description": "The bundle's resolved review controls: fetch snapshots every control file at the PR base commit, and post/record refuse to trust the snapshot when its base or any used-file hash drifted. policy 'base' is the default; 'head' is the explicit --allow-head-controls opt-out.",
   "type": "object",

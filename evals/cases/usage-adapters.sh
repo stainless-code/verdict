@@ -26,8 +26,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 command -v jq >/dev/null 2>&1 || skip_case "jq missing — the converters need jq"
 
 AD="$EVAL_ROOT/examples/usage-adapters"
-VAL="$EVAL_ROOT/schemas/validate.sh"
-SCH="$EVAL_ROOT/schemas/usage.schema.json"
+VAL="$EVAL_SKILL/schemas/validate.sh"
+SCH="$EVAL_SKILL/schemas/usage.schema.json"
 WORK="$EVAL_SANDBOX/adapter-out"
 mkdir -p "$WORK"
 

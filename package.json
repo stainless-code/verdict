@@ -14,13 +14,11 @@
     "verdict"
   ],
   "files": [
-    "SKILL.md",
+    "skills/",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
-    "scripts/",
-    "prompts/",
-    "schemas/"
+    "scripts/"
   ],
   "scripts": {
     "changeset": "changeset",
