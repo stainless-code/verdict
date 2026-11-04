@@ -62,7 +62,7 @@ this repo, and the repo files stay the truth for what is gated:
 - No SHA-1 outside the one wire-compat package (scoped lint exception, not-a-security-boundary doc, explicit FIPS stance); suite runs once under `GODEBUG=fips140=only` (GO-CRYPTO-02). — partly: `lint:depguard` bans `crypto/sha1` outside `internal/sig`; the FIPS-only run is not a CI step.
 - Windows runs in CI, not just cross-compiles (GO-XPLAT-01). — enforced: `ci:go-windows`.
 - `default: none`-equivalent explicit lint set; `gofumpt` + `gci` formatting (GO-LINT-01/02). — partly: `.golangci.yml` pins an explicit enable list over `default: standard` plus the two formatters; `make gofmt-check` and CI gate plain `gofmt`; `golangci-lint fmt` is not a CI step.
-- CI: lint, vet, 3-OS test matrix, vuln, fuzz, build, tag-release (GO-CI-01/03). — partly: `ci.yml` runs format, lint, go (race + vet + vuln + golangci), go-windows, cross (every shipped `GOOS/GOARCH`, from `release/contract.json`), evals, docs, ts-client, audit, release dry-run; there is no fuzz job, and tagging lives in `release.yml`.
+- CI: lint, vet, 3-OS test matrix, vuln, fuzz, build, tag-release (GO-CI-01/03). — partly: `ci.yml` runs format, lint, go (race + vet + vuln + golangci), go-windows, cross (every shipped `GOOS/GOARCH`, from `release/contract.json`), evals, docs, ts-client, audit, release dry-run — every lane except format/docs/audit on any diff that is not docs-only, and unfiltered on `main` pushes; there is no fuzz job, and tagging lives in `release.yml`.
 - Releases via goreleaser: signed SBOMs + cosign bundles (GO-CI-04). — enforced: `.goreleaser.yml` (`sboms`, keyless `signs`) + `ci:release-dry-run`.
 
 ## SHOULD (fix or record a reason)

@@ -10,7 +10,6 @@ on:
   push:
     branches:
       - main
-      - "agent/**"
     paths:
       - setup-verdict/**
       - install.sh

@@ -106,6 +106,11 @@ Every PR must clear all of these; CI enforces each one:
 5. **A changeset when the repo's practice requires one.** See
    [Versioning](#versioning).
 
+A PR that touches only `apps/docs/`, `.changeset/`, `CHANGELOG.md`, or
+`.github/ISSUE_TEMPLATE/` runs the format, docs-site, and audit lanes; the
+fast path is decided from the diff against the PR base, and every other PR —
+plus every push to `main` — runs the whole bar above.
+
 ## Golden tests
 
 Golden files under `testdata/` are the contract: if your change
