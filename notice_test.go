@@ -38,44 +38,84 @@ const (
 // commit, and the payload's list matches the files it actually ships.
 func TestNoticeCoversAdaptedPaths(t *testing.T) {
 	t.Parallel()
-	rawRoot, err := os.ReadFile(noticeRoot)
+
+	root := readRootNotice(t)
+	payload := string(mustRead(t, noticePayload))
+
+	assertRootNoticeNamesPrompts(t, root)
+	for _, notice := range []struct{ name, body string }{
+		{noticeRoot, root},
+		{path.Join(skillfs.Dir, noticePayload), payload},
+	} {
+		assertNoticeCarriesLicense(t, notice.name, notice.body)
+	}
+	assertLicenseBlocksMatch(t, root, payload)
+	assertPayloadCoversShippedPaths(t, payload)
+}
+
+// readRootNotice reads the repo-root notice copy, which is not embedded.
+func readRootNotice(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(noticeRoot)
 	if err != nil {
 		t.Fatalf("read %s: %v", noticeRoot, err)
 	}
-	root := string(rawRoot)
-	payload := string(mustRead(t, noticePayload))
+	return string(raw)
+}
 
+// assertRootNoticeNamesPrompts checks the root copy says where the adapted
+// prompts live and where the payload copy that travels with the skill lives.
+func assertRootNoticeNamesPrompts(t *testing.T, root string) {
+	t.Helper()
 	if !strings.Contains(root, "`skills/verdict/prompts/`") {
 		t.Errorf("%s does not name the adapted prompts directory", noticeRoot)
 	}
 	if !strings.Contains(root, "`skills/verdict/NOTICE.md`") {
 		t.Errorf("%s does not point at the payload copy that travels with the skill", noticeRoot)
 	}
-	for _, notice := range []struct{ name, body string }{
-		{noticeRoot, root},
-		{path.Join(skillfs.Dir, noticePayload), payload},
-	} {
-		if !strings.Contains(notice.body, "`"+upstreamPin+"`") {
-			t.Errorf("%s does not pin upstream commit %s", notice.name, upstreamPin)
-		}
-		block, ok := licenseBlock(notice.body)
-		if !ok {
-			t.Errorf("%s has no %s/%s block", notice.name, licenseStart, licenseEnd)
-			continue
-		}
-		if !strings.Contains(block, copyrightLine) {
-			t.Errorf("%s license block lacks %q", notice.name, copyrightLine)
-		}
-		if !strings.Contains(block, permissionClause) {
-			t.Errorf("%s license block lacks the MIT permission clause", notice.name)
-		}
-	}
-	if rootBlock, ok := licenseBlock(root); ok {
-		if payloadBlock, ok := licenseBlock(payload); ok && rootBlock != payloadBlock {
-			t.Error("the root and payload license blocks differ; one copy was edited alone")
-		}
-	}
+}
 
+// assertNoticeCarriesLicense checks one copy pins the upstream commit, keeps
+// the marker block, and reproduces inside it the lines MIT requires.
+func assertNoticeCarriesLicense(t *testing.T, name, body string) {
+	t.Helper()
+	if !strings.Contains(body, "`"+upstreamPin+"`") {
+		t.Errorf("%s does not pin upstream commit %s", name, upstreamPin)
+	}
+	block, ok := licenseBlock(body)
+	if !ok {
+		t.Errorf("%s has no %s/%s block", name, licenseStart, licenseEnd)
+		return
+	}
+	if !strings.Contains(block, copyrightLine) {
+		t.Errorf("%s license block lacks %q", name, copyrightLine)
+	}
+	if !strings.Contains(block, permissionClause) {
+		t.Errorf("%s license block lacks the MIT permission clause", name)
+	}
+}
+
+// assertLicenseBlocksMatch fails when one copy's verbatim block was edited
+// alone, which the two notices cannot afford.
+func assertLicenseBlocksMatch(t *testing.T, root, payload string) {
+	t.Helper()
+	rootBlock, ok := licenseBlock(root)
+	if !ok {
+		return
+	}
+	payloadBlock, ok := licenseBlock(payload)
+	if !ok {
+		return
+	}
+	if rootBlock != payloadBlock {
+		t.Error("the root and payload license blocks differ; one copy was edited alone")
+	}
+}
+
+// assertPayloadCoversShippedPaths checks the payload lists exactly the prompts
+// it ships, and that no shipped top-level path arrives without a notice line.
+func assertPayloadCoversShippedPaths(t *testing.T, payload string) {
+	t.Helper()
 	files, err := skillfs.Paths()
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +147,7 @@ func licenseBlock(notice string) (string, bool) {
 // notice lists as adapted, in the order it lists them.
 func listedPrompts(notice string) []string {
 	var listed []string
-	for _, line := range strings.Split(notice, "\n") {
+	for line := range strings.SplitSeq(notice, "\n") {
 		entry, ok := strings.CutPrefix(strings.TrimSpace(line), "- `")
 		if !ok {
 			continue
