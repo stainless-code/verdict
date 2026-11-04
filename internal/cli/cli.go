@@ -98,20 +98,23 @@ func (r *Runner) Warn(msg string) {
 type RefusalError = core.RefusalError
 
 // Refuse renders a refusal and returns exit 1 (check_gate stays false on the
-// record path, so every refusal exits 1). The edge accepts error and
-// recovers the typed refusal with [errors.As]; non-refusal errors render as
-// internal failures, never silently.
+// record path, so every refusal exits 1): the one exception is a cancel,
+// which exits 3 wherever it is rendered (GO-CLI-05, see [Runner.RefuseExit]).
+// The edge accepts error and recovers the typed refusal with [errors.As];
+// non-refusal errors render as internal failures, never silently.
 func (r *Runner) Refuse(err error) int {
 	return r.RefuseExit(err, ExitRefused)
 }
 
-// RefuseExit renders a refusal with an explicit exit code. Only the
-// cancellation path (GO-CLI-05, exit 3) uses a non-1 code.
+// RefuseExit renders a refusal with an explicit exit code: the gate and
+// tool-failure paths pick 3, everything else 1. A `canceled` refusal always
+// exits 3 (GO-CLI-05) — see [ExitFor], the single place that rule lives.
 func (r *Runner) RefuseExit(err error, code int) int {
 	ref, ok := refusalOf(err)
 	if !ok {
 		ref = &RefusalError{Code: "internal", Message: err.Error()}
 	}
+	code = ExitFor(ref, code)
 	msg := ref.Message + "\n" + HintFor(ref.Code)
 	if r.JSONMode {
 		env := core.RenderEnvelope(r.Cmd, r.Repo, r.Pr, NowUTC(r.Now()), "",
@@ -126,6 +129,18 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	if r.Rentry != "" {
 		fmt.Fprintf(r.Diag, "re-enter: %s\n", r.Rentry)
+	}
+	return code
+}
+
+// ExitFor maps a refusal onto its exit code: a `canceled` refusal always
+// exits 3 (GO-CLI-05), because it means the verb never ran, and every other
+// refusal keeps the code its caller picked. Renderers that write their own
+// envelope (rather than calling [Runner.RefuseExit]) use this so the rule
+// lives once.
+func ExitFor(ref *RefusalError, code int) int {
+	if ref.Code == CodeCanceled {
+		return ExitBroke
 	}
 	return code
 }
@@ -157,17 +172,14 @@ func (r *Runner) RouteHuman() {
 }
 
 // RefuseTyped replays a typed refusal's accumulated warnings and candidates,
-// then renders it: a cancel exits 3 (GO-CLI-05) and anything else exits 1. A
-// nil Warnings keeps what the adapter already collected.
+// then renders it through [Runner.Refuse] (exit 1, or 3 for a cancel per
+// GO-CLI-05). A nil Warnings keeps what the adapter already collected.
 func (r *Runner) RefuseTyped(ref *RefusalError) int {
 	if ref.Candidates != nil {
 		r.Candidates = ref.Candidates
 	}
 	if ref.Warnings != nil {
 		r.Warnings = ref.Warnings
-	}
-	if ref.Code == CodeCanceled {
-		return r.RefuseExit(ref, ExitBroke)
 	}
 	return r.Refuse(ref)
 }

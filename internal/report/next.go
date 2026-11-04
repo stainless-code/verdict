@@ -77,11 +77,15 @@ func parseNextFlags(r *cli.Runner, args []string) (string, int, bool) {
 // report envelope renders from the classified refusal (nil means the
 // invalid-status path produced no report), else the fixed human line.
 func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {
+	ref := resp.ReportRefusal
+	code := cli.ExitRefused
+	if ref != nil {
+		code = cli.ExitFor(ref, code)
+	}
 	if !r.JSONMode {
 		fmt.Fprintln(r.Diag, "next: cannot read store (run post or record first)")
-		return cli.ExitRefused
+		return code
 	}
-	ref := resp.ReportRefusal
 	if ref == nil {
 		return r.Refuse(&cli.RefusalError{Code: "report-failed", Message: "next: report produced no output"})
 	}
@@ -91,5 +95,5 @@ func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {
 			Message: ref.Message + "\n" + cli.HintFor(ref.Code),
 		})
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	return cli.ExitRefused
+	return code
 }

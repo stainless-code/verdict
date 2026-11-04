@@ -123,3 +123,59 @@ func TestCanceled(t *testing.T) {
 		t.Errorf("stderr = %q; want the frozen cancel line", diag.String())
 	}
 }
+
+// refuseRenderCase is one refusal-rendering case: the entry point that renders
+// the refusal and the exit code GO-CLI-05 expects.
+type refuseRenderCase struct {
+	render func(*cli.Runner, *core.RefusalError) int
+	ref    *core.RefusalError
+	name   string
+	want   int
+}
+
+// TestRefuseMapsCancelToBroke pins GO-CLI-05 at the one renderer every
+// adapter shares: a `canceled` refusal exits 3 however it is rendered and
+// whichever code the caller picked, and a plain refusal keeps its code.
+func TestRefuseMapsCancelToBroke(t *testing.T) {
+	for _, tc := range []refuseRenderCase{
+		{
+			name:   "Refuse on a cancel exits 3",
+			ref:    &core.RefusalError{Code: cli.CodeCanceled, Message: "canceled before ready completed"},
+			render: func(r *cli.Runner, ref *core.RefusalError) int { return r.Refuse(ref) },
+			want:   cli.ExitBroke,
+		},
+		{
+			name:   "Refuse keeps 1 for a plain refusal",
+			ref:    &core.RefusalError{Code: "bad-bundle", Message: "boom"},
+			render: func(r *cli.Runner, ref *core.RefusalError) int { return r.Refuse(ref) },
+			want:   cli.ExitRefused,
+		},
+		{
+			name: "RefuseExit keeps the caller's code for a plain refusal",
+			ref:  &core.RefusalError{Code: "bad-bundle", Message: "boom"},
+			render: func(r *cli.Runner, ref *core.RefusalError) int {
+				return r.RefuseExit(ref, cli.ExitUsage)
+			},
+			want: cli.ExitUsage,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkRefuseCode(t, tc)
+		})
+	}
+}
+
+// checkRefuseCode renders one refusal and grades its exit code and that
+// nothing reached stdout.
+func checkRefuseCode(t *testing.T, tc refuseRenderCase) {
+	t.Helper()
+	var out, diag bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag}
+	if code := tc.render(r, tc.ref); code != tc.want {
+		t.Errorf("exit = %d; want %d", code, tc.want)
+	}
+	if out.Len() != 0 {
+		t.Errorf("stdout = %q; a refusal stays off stdout", out.String())
+	}
+}
