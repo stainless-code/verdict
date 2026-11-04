@@ -17,3 +17,5 @@ carrying a rate-limit signal retries within bounds, honoring `retry-after` or
 the reset marker and never publishing twice; when the last permitted attempt
 is still retryable, the refusal carries `retry_at` in RFC 3339 so an agent can
 wait for that instant.
+
+A stale-fetch downgrade note is now followed by a blank line, like the drift note, instead of a stray literal `\n` in the posted review body.

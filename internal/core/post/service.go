@@ -415,10 +415,9 @@ func (st *state) approveGate() *core.RefusalError {
 	}
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
 		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
-	// The downgrade note is a real newline plus a literal
-	// backslash-n (a two-line source string ending in `\n`), kept
-	// byte-identical here.
-	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\\n" + st.body
+	// A blank line separates the note from the review body, as with the
+	// drift note.
+	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\n" + st.body
 	st.event = eventComment
 	return nil
 }

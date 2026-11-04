@@ -174,6 +174,14 @@ func TestRunStaleApproveDowngrades(t *testing.T) {
 	if driftAt < len(staleNotePrefix) {
 		t.Fatalf("drift note (at %d) does not follow the downgrade note:\n%.600q", driftAt, body)
 	}
+	// One blank line separates the two notes, and no literal backslash-n
+	// leaks into the posted markdown.
+	if body[driftAt-2:driftAt] != "\n\n" || body[driftAt-3] == '\n' {
+		t.Errorf("downgrade and drift notes are not separated by exactly one blank line:\n%.600q", body)
+	}
+	if strings.Contains(body[:driftAt], `\n`) {
+		t.Errorf("downgrade note carries a literal backslash-n:\n%.600q", body)
+	}
 	if !strings.Contains(body[driftAt:], "> ✅ Ship it.") {
 		t.Errorf("review prose does not follow the drift note:\n%.600q", body)
 	}
