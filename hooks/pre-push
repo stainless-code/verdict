@@ -68,20 +68,24 @@ fi
 pinned="$(awk '/golangci-lint-action/ { found = 1 } found && /^[[:space:]]*version:/ {
   sub(/#.*/, ""); sub(/^[[:space:]]*version:[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); print; exit
 }' .github/workflows/ci.yml)"
+lint="$(command -v golangci-lint || true)"
+if [ -z "$lint" ] && [ -x "$(go env GOPATH)/bin/golangci-lint" ]; then
+  lint="$(go env GOPATH)/bin/golangci-lint"
+fi
 if [ -z "$pinned" ]; then
   echo "pre-push: no golangci-lint version pinned in .github/workflows/ci.yml — lint skipped"
-elif ! command -v golangci-lint >/dev/null 2>&1; then
+elif [ -z "$lint" ]; then
   echo "pre-push: golangci-lint $pinned not installed — lint skipped"
   echo "pre-push: install the pinned release binary (a go install build reports phantom revive findings):"
   echo "  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$pinned/install.sh | sh -s -- -b \"\$(go env GOPATH)/bin\" \"$pinned\""
 else
-  have="$(golangci-lint version --short 2>/dev/null | head -1 || true)"
+  have="$("$lint" version --short 2>/dev/null | head -1 || true)"
   if [ -z "$have" ]; then
-    have="$(golangci-lint --version 2>/dev/null | awk '{ print $NF }' || true)"
+    have="$("$lint" --version 2>/dev/null | awk '{ print $NF }' || true)"
   fi
   case "$have" in v*) ;; *) have="v$have" ;; esac
   if [ "$have" = "$pinned" ]; then
-    golangci-lint run --timeout=10m || fail "golangci-lint found issues"
+    "$lint" run --timeout=10m || fail "golangci-lint found issues"
   else
     echo "pre-push: golangci-lint $pinned pinned, found $have — lint skipped (versions disagree)"
     echo "pre-push: install the pinned release binary (a go install build reports phantom revive findings):"
