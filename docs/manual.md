@@ -827,7 +827,10 @@ Precedence is flags > file > env (`REVIEW_OUTPUT_FORMAT`,
 `REVIEW_PUBLISH_ATTRIBUTION` (`off`|`product`|`full`), `REVIEW_PUBLISH_ATTRIBUTION_TEXT`,
 `REVIEW_PUBLISH_COPYRIGHT`, `REVIEW_PUBLISH_LOGO`, `REVIEW_PUBLISH_LOGO_URL`
 for the footer below) > defaults; global flags
-`--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb.
+`--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb and
+in any position — before the verb, between the verb and the repo, or after the
+pr. A bare `--` ends positional parsing: every later token is a positional,
+never a flag.
 `NO_COLOR` applies only when color is otherwise unset. Any other top-level
 key (including server-shaped or `org.*` namespaces) refuses with typed
 `bad-settings`; any credential-shaped key at any depth (`token`/`key`/`auth`/
