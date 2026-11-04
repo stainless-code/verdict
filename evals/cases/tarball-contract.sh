@@ -1,26 +1,5 @@
 #!/usr/bin/env bash
-# Case tarball-contract: the published tarball ships the whole skill contract.
 #
-# Grades (all hermetic — `npm pack --dry-run` lists tarball contents locally,
-# writes nothing, needs no registry):
-#   P1  offline pack: `npm pack --dry-run --json --offline` exits 0 and
-#       writes no tarball or pack.log into the repo (pack destination is the
-#       sandbox, so even a non-dry-run accident lands outside the tree).
-#   P2  required set ships: every scripts/*.sh on disk (the completion
-#       script; no shell entry point), every prompts/*.md on disk, every
-#       published schema on disk, plus SKILL.md, README.md, LICENSE and
-#       package.json are all in the packed file list. The old
-#       scripts/review.sh must NOT ship (a stale manifest fails here).
-#   P3  no dangling references: every scripts/… or prompts/… path named in
-#       a SKILL.md code span exists on disk and ships in the tarball.
-#   P4  nothing forbidden ships: no .env, .review/, .scratch, evals/results,
-#       *.tgz, or node_modules/ entry in the packed list — and never the
-#       deleted shell entry point scripts/review.sh (a stale manifest fails
-#       here).
-#   P5  drift fails the build: the same comparator run against a packed
-#       list with one required file removed reports the gap, so a newly
-#       referenced file left out of package.json `files` breaks the suite.
-#   P6  offline: zero stub-gh intercepts across every leg.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -36,10 +15,6 @@ PACKED="$EVAL_SANDBOX/tarball-packed.txt"
 REQUIRED="$EVAL_SANDBOX/tarball-required.txt"
 TAMPERED="$EVAL_SANDBOX/tarball-tampered.txt"
 
-# --- P1: offline pack, nothing written into the repo ---
-# --dry-run lists without writing; --offline fails if a registry is needed
-# (proving hermeticity by construction); --pack-destination keeps even a
-# non-dry-run accident inside the sandbox, never in the repo.
 set +e
 (cd "$EVAL_ROOT" && npm pack --dry-run --json --offline \
   --pack-destination "$EVAL_SANDBOX" >"$PACK_JSON" 2>"$PACK_ERR")
@@ -62,10 +37,6 @@ else
   bad "pack left a tarball or pack.log in the repo"
 fi
 
-# --- P2: required set ships ---
-# The entry script plus every prompt on disk, every published schema on disk,
-# and the top-level docs the skill and both installers promise
-# (SKILL.md, README.md, LICENSE).
 {
   echo "skills/verdict/SKILL.md"
   echo "skills/verdict/scripts/verdict"
@@ -92,9 +63,6 @@ else
   bad "tarball missing required file(s): $(printf '%s' "$gaps" | tr '\n' ' ')"
 fi
 
-# --- P3: no dangling references ---
-# Every scripts/… or prompts/… path SKILL.md names must exist and ship, so a
-# renamed prompt without a shipped file fails here, not at an install.
 refs_ok="true"
 refs_seen=0
 while IFS= read -r ref; do
@@ -109,7 +77,6 @@ elif [ "$refs_seen" -eq 0 ]; then
   bad "SKILL.md names no scripts/ or prompts/ paths (reference parse broke?)"
 fi
 
-# --- P4: nothing forbidden ships ---
 if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.review/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' -e '^scripts/review\.sh$' "$PACKED" || true)" \
   && [ -z "$offenders" ]; then
   good "tarball holds no .env, .review, .scratch, evals results, tgz, node_modules, or review.sh"
@@ -117,10 +84,6 @@ else
   bad "tarball ships forbidden file(s): $(printf '%s' "$offenders" | tr '\n' ' ')"
 fi
 
-# --- P5: drift fails the build ---
-# Drop one required file from a copy of the packed list: the comparator must
-# report exactly that gap, proving a newly referenced file left out of
-# package.json `files` breaks the suite instead of an install.
 grep -v -x -F "skills/verdict/prompts/review.md" "$PACKED" > "$TAMPERED"
 if gaps="$(missing_from "$TAMPERED")"; then
   bad "comparator passed a packed list missing skills/verdict/prompts/review.md (drift would ship)"
@@ -131,18 +94,11 @@ else
   esac
 fi
 
-# --- P7: source-only files stay out of the tarball ---
-# install.sh/install.ps1 are the release-asset binary installers and
-# install-skill.sh links git checkouts (refuses elsewhere); hooks/ wires the
-# checkout's pre-commit. None is meaningful inside a registry copy, and the
-# README routes registry users to the bundled CLI instead. If a future change
-# ships them, the execution model must be re-settled, not drifted.
 assert_file_nogrep "install.sh stays out of the tarball (source-only by design)" "$PACKED" "install.sh" "-xF"
 assert_file_nogrep "install.ps1 stays out of the tarball" "$PACKED" "install.ps1" "-xF"
 assert_file_nogrep "install-skill.sh stays out of the tarball" "$PACKED" "install-skill.sh" "-xF"
 assert_file_nogrep "hooks/ stays out of the tarball" "$PACKED" "^hooks/"
 
-# --- P6: offline across every leg ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
   good "zero stub-gh intercepts across pack legs (offline)"
 else

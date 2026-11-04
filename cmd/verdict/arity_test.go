@@ -38,7 +38,6 @@ func TestDeletedInstallVerbIsUnknown(t *testing.T) {
 	}
 }
 
-// checkPositionalVerbs pins the repo/pr requirement matrix.
 func checkPositionalVerbs(t *testing.T, verbs []string) {
 	t.Helper()
 	for _, verb := range verbs {
@@ -49,7 +48,6 @@ func checkPositionalVerbs(t *testing.T, verbs []string) {
 	}
 }
 
-// checkBareVerbs pins that bare verbs never fail the arity gate.
 func checkBareVerbs(t *testing.T, verbs []string) {
 	t.Helper()
 	for _, verb := range verbs {
@@ -57,14 +55,12 @@ func checkBareVerbs(t *testing.T, verbs []string) {
 	}
 }
 
-// checkTrendArity pins trend's repo-only arity.
 func checkTrendArity(t *testing.T) {
 	t.Helper()
 	checkArity(t, "trend", "", "", true)
 	checkArity(t, "trend", "acme/app", "", false)
 }
 
-// checkUnknownArity pins the no-verb and unknown-verb fallbacks.
 func checkUnknownArity(t *testing.T) {
 	t.Helper()
 	checkArity(t, "", "", "", true)
@@ -72,7 +68,6 @@ func checkUnknownArity(t *testing.T) {
 	checkArity(t, "bogus", "acme/app", "1", false)
 }
 
-// checkArity asserts one arityUsage result.
 func checkArity(t *testing.T, verb, repo, pr string, want bool) {
 	t.Helper()
 	if got := arityUsage(verb, repo, pr); got != want {
@@ -91,7 +86,6 @@ func TestSplitCommandRest(t *testing.T) {
 	checkSplit(t, nil, "", "", "", 0)
 }
 
-// checkSplit asserts one positional/flag split.
 func checkSplit(t *testing.T, args []string, wantCmd, wantRepo, wantPR string, wantRest int) {
 	t.Helper()
 	cmd, repo, pr, rest := splitCommand(args)
@@ -159,8 +153,6 @@ func runCapture(t *testing.T, args []string) (int, string, string) {
 	return code, string(<-out), string(<-derr)
 }
 
-// hermeticEnv points every environment-read setting at empty temp dirs so
-// the ambient developer environment never leaks into the run.
 func hermeticEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -206,8 +198,6 @@ func TestUsageWinsOverCorruptSettings(t *testing.T) {
 	}
 }
 
-// writeCorruptSettings writes an unparsable settings.json into the
-// hermetic config dir.
 func writeCorruptSettings(t *testing.T) {
 	t.Helper()
 	bad := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "verdict")

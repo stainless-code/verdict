@@ -33,9 +33,6 @@ func TestExecuteOrphanSweepKillsTree(t *testing.T) {
 	assertPidDead(t, pidFile)
 }
 
-// assertPidDead polls the pid the child reported and fails unless it reads
-// dead: "killed the tree" is the claim under test, so the parent's exit code
-// and flags alone cannot pass it.
 func assertPidDead(t *testing.T, pidFile string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -49,7 +46,6 @@ func assertPidDead(t *testing.T, pidFile string) {
 	t.Fatalf("child pid %d still alive after the tree kill", pid)
 }
 
-// readPid polls until the child has written its pid.
 func readPid(t *testing.T, pidFile string, deadline time.Time) int {
 	t.Helper()
 	for time.Now().Before(deadline) {

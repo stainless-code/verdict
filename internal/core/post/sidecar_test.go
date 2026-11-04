@@ -33,8 +33,6 @@ func TestPostSidecarsOwnerOnly(t *testing.T) {
 	})
 }
 
-// assertSidecar proves one sidecar's bytes and, off Windows, its owner-only
-// mode (Windows does not model POSIX permission bits).
 func assertSidecar(t *testing.T, path, want string) {
 	t.Helper()
 	raw, err := os.ReadFile(path)

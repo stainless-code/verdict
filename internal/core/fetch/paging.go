@@ -13,14 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// pageFileList fills in a truncated file list: a list arriving exactly
-// at the hosting CLI cap pages the provider's pull-request file listing
-// (up to the provider ceiling), and the bundle notes which ceiling
-// applied. Coverage inputs downstream read PR.json, so the paged list
-// replaces the truncated files array in place; filesource.json records the
-// source and ceiling. Below the cap nothing changes: no extra calls, no
-// extra files, byte-identical bundles. A failed page warns loudly and
-// keeps the CLI list instead of covering silently.
 func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) error {
 	files, ordered, ok := prFilesOrdered(dir + suffixPRJSON)
 	if !ok || len(files) != cliFileCap {
@@ -61,8 +53,6 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	return nil
 }
 
-// prFilesOrdered reads PR.json's files with the decoded document preserved
-// for an in-place rewrite (ok=false when the record is unreadable).
 func prFilesOrdered(prJSON string) ([]any, *jq.Obj, bool) {
 	raw, err := os.ReadFile(prJSON)
 	if err != nil {
@@ -121,9 +111,6 @@ func appendFileEntries(out []any, arr []any) ([]any, bool) {
 	return out, false
 }
 
-// mapFileEntry maps one provider file-listing entry onto the PR.json file
-// shape: path from filename, numeric stats defaulting to zero, rename and
-// status context kept when the provider names them.
 func mapFileEntry(e any) any {
 	m := objOrMap(e)
 	if m == nil {
@@ -163,8 +150,6 @@ func setFilePrevName(obj *jq.Obj, m map[string]any) {
 		obj.Set("previous_filename", s)
 	}
 }
-
-// objFields flattens an ordered object into a plain map.
 
 // objOrMap normalizes a decoded JSON value to a plain field map: plain
 // objects pass through, ordered objects flatten, and anything else reads
@@ -212,8 +197,6 @@ func fileNumOf(v any) any {
 	}
 }
 
-// replaceFiles swaps the files array in place and recomputes the summed
-// stats from the paged list.
 func replaceFiles(ordered *jq.Obj, paged []any) {
 	ordered.Set(keyFiles, paged)
 	var adds, dels float64

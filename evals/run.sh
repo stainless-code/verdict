@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-# evals/run.sh — run the offline contract evals with one command.
-#
-#   ./evals/run.sh [--keep] [--help]
-#
-# Builds a temp sandbox, crafts hermetic PR bundles inside it (no network —
-# a stub `gh` that fails every call sits first on PATH and logs each
-# interception), runs evals/cases/*.sh against the built verdict binary
-# ($EVAL_CLI, from `make evals`), prints a PASS/FAIL tally, writes
-# evals/results/summary.json (gitignored), then removes the sandbox
-# (unless --keep). Exits 0 only when every case passes and the repo tree
-# is byte-identical before/after (fixtures never touch it).
-#
-# Cases run concurrently (default: one job per CPU; EVAL_JOBS=N overrides,
-# EVAL_JOBS=1 is the old serial run). Every case gets its own sandbox, stub
-# dir and stub log; each case's stdout/stderr is buffered and replayed in
-# sorted case order, so the report is deterministic. A case whose first ten
-# lines carry `# eval: serial` runs alone after the parallel batch (use it
-# for anything that genuinely cannot share the machine).
 set -euo pipefail
 
 KEEP="false"
@@ -51,8 +33,6 @@ for dep in jq shasum git; do
   command -v "$dep" >/dev/null 2>&1 || { echo "evals need $dep on PATH" >&2; exit 2; }
 done
 
-# Job limit: EVAL_JOBS wins; otherwise CPU count (getconf, then sysctl, then
-# 4). Validate before creating anything so a typo fails fast.
 if [ -n "${EVAL_JOBS:-}" ]; then
   JOBS="$EVAL_JOBS"
 else
@@ -74,21 +54,12 @@ fi
 pre_status="$(git -C "$ROOT" status --short)"
 
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/verdict-evals.XXXXXX")"
-# Hermetic by construction: no credential-shaped variable survives into a
-# case or its git/gh/verdict children, and git runs with the pinned config.
 testenv_init "$SANDBOX"
 STUBBIN="$SANDBOX/stubbin"
 mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# Network-dead gh stub for the offline contract evals: log and fail every call,
-# except the narrow opt-in affordances below (unset = fail, today's behavior).
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
-# doctor-scope-audit (verify-harden slice 02): shape the doctor verb's
-# pre-existing reads via GH_STUB_DOCTOR. Unset → fail like every other call.
-# Otherwise: `api user --include` emits the value as the x-oauth-scopes
-# header line (__NO_HEADER__ = 200 with no header: fine-grained token);
-# auth/rate_limit answer healthy so scope assertions own the exit code.
 if [[ -n "${GH_STUB_DOCTOR+x}" ]]; then
   case "$*" in
     "api user --include")
@@ -106,19 +77,12 @@ exit 1
 EOF
 chmod +x "$STUBBIN/gh"
 
-# Each case gets a private copy of the stub and its own log, so concurrent
-# cases never see each other's intercepts (several cases swap the stub out
-# and count calls). The template above is only the source.
 STUB_TEMPLATE="$STUBBIN/gh"
 CASES_DIR="$SANDBOX/cases"
 mkdir -p "$CASES_DIR"
 
 export EVAL_ROOT="$ROOT"
 
-# EVAL_CLI is the one CLI under test: the built verdict binary. make
-# evals builds it first; a direct ./evals/run.sh run needs a prior
-# `make build` (or `make evals`) and fails fast otherwise instead of
-# silently grading nothing.
 EVAL_CLI="${EVAL_CLI:-$ROOT/bin/verdict}"
 if [ ! -x "$EVAL_CLI" ]; then
   echo "evals need a built binary at $EVAL_CLI (run make evals) instead of silently grading nothing" >&2
@@ -141,15 +105,10 @@ echo "evals: sandbox $SANDBOX (fixtures live here, never in the repo)"
 echo "evals: running with $JOBS job(s) (EVAL_JOBS overrides)"
 echo "evals: scrubbed $TESTENV_SCRUBBED secret-shaped variable(s); git config pinned"
 
-# is_serial <case> — true when the case's header carries `# eval: serial`.
-# awk (not grep in a pipe) keeps this safe under `set -o pipefail`.
 is_serial() {
   awk 'NR <= 10 && /^# eval: serial[[:space:]]*$/ { found = 1 } END { exit(found ? 0 : 1) }' "$1"
 }
 
-# run_case <case> — set up the case's private sandbox/stub/log and run it.
-# The exit status lands in $dir/status even when the case fails; the function
-# itself returns 0 so `set -e` never aborts the runner mid-batch.
 run_case() {
   local c="$1" name dir st
   name="$(basename "$c" .sh)"
@@ -168,9 +127,6 @@ run_case() {
   printf '%s\n' "$st" >"$dir/status"
 }
 
-# report_case <case> — replay the buffered output in sorted order, then tally.
-# Three statuses: exit 0 PASS, exit 77 SKIP (the case reported a leg it could
-# not run), anything else FAIL. A skipped case is never counted as passed.
 report_case() {
   local c="$1" name dir st
   name="$(basename "$c" .sh)"
@@ -202,14 +158,11 @@ tally="$SANDBOX/case-results.txt"
 : >"$tally"
 
 if [ "$JOBS" -le 1 ]; then
-  # Serial run: identical to the old behaviour, one case at a time with its
-  # output printed as it finishes (each case still gets its own sandbox).
   for c in "$ROOT/evals/cases/"*.sh; do
     run_case "$c"
     report_case "$c"
   done
 else
-  # Parallel batch: throttled by the live job count (no `wait -n` on bash 3.2).
   for c in "$ROOT/evals/cases/"*.sh; do
     if is_serial "$c"; then continue; fi
     while [ "$(jobs -pr | wc -l | tr -d ' ')" -ge "$JOBS" ]; do
@@ -219,13 +172,11 @@ else
   done
   wait || true
 
-  # Serial-marked cases run one at a time after the parallel batch.
   for c in "$ROOT/evals/cases/"*.sh; do
     if ! is_serial "$c"; then continue; fi
     run_case "$c"
   done
 
-  # Replay every case in deterministic (glob/sorted) order.
   for c in "$ROOT/evals/cases/"*.sh; do
     report_case "$c"
   done
@@ -264,8 +215,6 @@ echo "evals: repo tree unchanged (fixtures stayed in the sandbox)"
 
 echo "evals: $pass passed, $fail failed, $skipped skipped"
 if [ "$fail" -ne 0 ]; then exit 1; fi
-# A skipped case is not a pass: a leg that did not run proves nothing, so the
-# run fails unless the operator accepts the gap explicitly (test-audit F1/F8).
 if [ "$skipped" -ne 0 ] && [ "${EVAL_ALLOW_SKIP:-0}" != "1" ]; then
   echo "evals FAIL: $skipped case(s) skipped — a skipped leg proves nothing." >&2
   echo "  Install the missing prerequisite, or re-run with EVAL_ALLOW_SKIP=1 to accept the gap." >&2

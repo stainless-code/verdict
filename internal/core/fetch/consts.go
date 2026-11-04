@@ -2,7 +2,7 @@ package fetchcore
 
 // Shared literals for the fetch verbs: jq wire keys, bundle path suffixes,
 // provider argv tokens, refusal codes, and numeric gates, each named once so
-// no call site repeats a literal (revive add-constant, goconst).
+// no call site repeats a literal.
 const (
 	// JSON wire keys (jq object fields).
 	keyAdds        = "adds"
@@ -43,7 +43,6 @@ const (
 	// fullDiffFile names the whole-diff artifact in next-step text and dumps.
 	fullDiffFile = "full.diff"
 
-	// Bundle path suffixes (dir + suffix, like record's prSuffix).
 	suffixChunks        = "/chunks/"
 	suffixChunkManifest = "/chunks/manifest.json"
 	suffixDiffErr       = "/.diff.err"
@@ -158,7 +157,6 @@ const (
 	gitConfigMode       = 0o644
 )
 
-// Additional argv and schema constants (revive add-constant).
 const (
 	ghCmdAPI       = "api"
 	apiReposPrefix = "repos/"

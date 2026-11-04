@@ -15,8 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// budgetState carries the cost-control plane: the operator spend budget,
-// the pre-run estimate, and the consent gate.
 type budgetState struct {
 	estimateJSON  any
 	budgetJSON    any
@@ -56,8 +54,6 @@ func resolveBudget(env map[string]string, r *session) (budgetState, error) {
 	return st, nil
 }
 
-// isBudgetNumber owns the knob regex `^[0-9]+(\.[0-9]+)?$`: digits
-// with an optional decimal fraction (a bare "1." or "." never matches).
 func isBudgetNumber(s string) bool {
 	intPart, fracPart, hasDot := strings.Cut(s, ".")
 	if hasDot && strings.Contains(fracPart, ".") {
@@ -102,9 +98,6 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 	return nil
 }
 
-// estimateObject renders the estimate summary. The basis/harness/measured_runs
-// keys appear only when a handed usage record priced a comparable run, so the
-// legacy self-reported estimate keeps its exact bytes.
 func estimateObject(st *budgetState, tierVal any) *jq.Obj {
 	o := jq.NewObj("tier", tierVal, "projected_usd", jsonFloat(st.estUSD), "comparable_runs", st.estRuns)
 	if st.measuredRuns == 0 {
@@ -188,9 +181,6 @@ func (st *budgetState) recordBasis(stat tierStat) {
 	st.estBasis = "mixed"
 }
 
-// costRec is one normalized cost record: effort tier plus optional est_usd.
-// measured carries the handed usage cost for the run that wrote this file
-// (the last record of an array), which wins over the self-report.
 type costRec struct {
 	measured    *float64
 	tier        string
@@ -199,8 +189,6 @@ type costRec struct {
 	has         bool
 }
 
-// readCostRecs owns the per-file jq record reader: arrays iterate,
-// single docs read as one; malformed files report unreadable.
 func readCostRecs(path string) ([]costRec, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -223,10 +211,6 @@ func readCostRecs(path string) ([]costRec, bool) {
 	return out, true
 }
 
-// costRecord handles one cost record: the tier from effort (standard when
-// absent or unknown) and the priced usd when est_usd is numeric.
-// Non-object records still count: an unreadable effort reads as standard
-// with no priced usd.
 func costRecord(it any) costRec {
 	m, _ := jq.AsMap(it)
 	tier := tierStandard
@@ -235,8 +219,6 @@ func costRecord(it any) costRec {
 		effort = m["effort"]
 	}
 	if s, ok := effort.(string); ok {
-		// jq ascii_downcase is Unicode-aware; tiers are
-		// ASCII in practice.
 		switch strings.ToLower(s) {
 		case "cheap", tierStandard, "deep":
 			tier = strings.ToLower(s)
@@ -279,9 +261,6 @@ type tierStat struct {
 	measured int
 }
 
-// pickEstimateTier owns the jq summary: most runs wins, ties break toward
-// the deeper (costlier) tier — first strictly-greater over
-// [deep standard cheap] keeps the deeper tier on ties. Empty input reads
 // no-pick, like max_by over an empty array.
 func pickEstimateTier(recs []costRec) (tier string, tierRuns int, stat tierStat, ok bool) {
 	if len(recs) == 0 {
@@ -400,7 +379,6 @@ func tierPriced(r costRec, sum float64, priced int) (float64, int) {
 	return sum, priced
 }
 
-// overBudget owns the awk `p > b` float comparison.
 func overBudget(projected, budget string) bool {
 	p, err1 := strconv.ParseFloat(projected, numBitSize)
 	b, err2 := strconv.ParseFloat(budget, numBitSize)
@@ -410,10 +388,6 @@ func overBudget(projected, budget string) bool {
 	return p > b
 }
 
-// jsonNumber renders a validated budget literal for the jq argument: jq
-// preserves plain-decimal literals verbatim (0.50 stays 0.50), so the
-// literal rides through untouched (budget strings never carry exponents
-// — the knob regex forbids them).
 func jsonNumber(lit string) any {
 	return jq.Number(lit)
 }
@@ -452,10 +426,6 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 		dir, st.estUSD, st.estTier, st.budgetUSD)
 }
 
-// budgetLedger owns the receipt ledger merge: the new receipt appends
-// to the stored array (old receipts keep their stored key order), or
-// starts a fresh `[$rc]` ledger,
-// warning when the stored ledger is unreadable.
 func budgetLedger(r *session, dir string, rc *jq.Obj) string {
 	merged := "[" + rc.MarshalPretty() + "]"
 	raw, err := os.ReadFile(dir + "/budget.json")

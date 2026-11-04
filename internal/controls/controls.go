@@ -104,7 +104,6 @@ func Resolve(ctx context.Context, cmd core.Commander, req Request) (*Snapshot, *
 	return snap, nil
 }
 
-// write lands the used files, then controls.json last (never half-complete).
 func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.RefusalError {
 	for _, path := range Inventory {
 		raw, ok := contents[path]
@@ -124,7 +123,6 @@ func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.Ref
 	return writeAt(filepath.Join(bundleDir, FileName), append(doc, '\n'))
 }
 
-// writeAt atomically writes one snapshot file, creating its directory.
 func writeAt(dest string, raw []byte) *core.RefusalError {
 	err := os.MkdirAll(filepath.Dir(dest), dirPerm)
 	if err == nil {
@@ -151,8 +149,6 @@ func Gate(bundleDir, bundleBase string) (*Snapshot, *core.RefusalError) {
 	return s, nil
 }
 
-// verify checks the manifest against the bundle's base and re-hashes every
-// used file.
 func (s *Snapshot) verify(bundleBase string) *core.RefusalError {
 	f := s.File
 	if bundleBase == "" || f.BaseSHA != bundleBase || (f.Policy == PolicyBase && f.SHA != bundleBase) {
@@ -166,7 +162,6 @@ func (s *Snapshot) verify(bundleBase string) *core.RefusalError {
 	return nil
 }
 
-// drifted reports a used entry whose bytes no longer match its record.
 func (s *Snapshot) drifted(e core.ControlsFileEntry) bool {
 	body, ok := s.ReadFile(e.Path)
 	return e.Status == statusUsed && (!ok || int64(len(body)) != e.Bytes || hash(body) != e.SHA256)
@@ -213,8 +208,6 @@ func (s *Snapshot) Used() int {
 	return n
 }
 
-// readWorktree reads every inventory file from the working directory: the
-// explicit opt-out path, as unguarded as the reads it replaces.
 func readWorktree(root string) (map[string][]byte, *core.RefusalError) {
 	contents, total := map[string][]byte{}, 0
 	for _, path := range Inventory {

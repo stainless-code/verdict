@@ -13,23 +13,14 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// chunkSchemaVersion is the manifest coverage-obligation version.
 const chunkSchemaVersion = "1"
 
-// chunkEntry is one packed chunk: member files in diff order with their
-// plan byte sizes.
 type chunkEntry struct {
 	name    string
 	members []fileSlice
 	estSize int64
 }
 
-// maybeWriteChunks plans the greedy next-fit packing of
-// the diff-order file table into cap-sized chunks, per-chunk diff slices
-// concatenating byte-identically to full.diff, per-chunk checklists and
-// roles, and the versioned manifest. The chunked notice owns stderr in
-// both modes (`>&2`). Returns the envelope chunk summary (nil when the
-// gate did not arm chunking).
 func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive bool, headSHA, baseSHA string, capSrc string) (any, error) {
 	if !chunkActive {
 		return nil, nil //nolint:nilnil // (nil, nil) is the gate-not-armed signal, never an error
@@ -128,9 +119,6 @@ func packChunks(table []fileSlice, maxBytes int64) []chunkEntry {
 	return plan
 }
 
-// sliceChunks owns the awk slice: contiguous file runs in diff order,
-// each output line newline-terminated (awk print semantics, so a final
-// unterminated source line gains its newline in the chunk).
 func sliceChunks(fullDiff, cdir string, plan []chunkEntry) error {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
@@ -157,9 +145,6 @@ func chunkIndex(plan []chunkEntry) map[string]int {
 	return chunkOf
 }
 
-// sliceLines owns the awk slice: diff lines dealt into per-chunk runs,
-// switching runs on header lines the plan knows. It stays line-based (not
-// section-based) so pre-header lines keep their chunk.
 func sliceLines(raw string, chunkOf map[string]int, n int) [][]string {
 	byChunk := make([][]string, n)
 	current := 0

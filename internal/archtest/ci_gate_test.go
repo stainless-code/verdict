@@ -36,9 +36,6 @@ func TestCICompleteGateDeclaration(t *testing.T) {
 	checkGateWiring(t, string(raw))
 }
 
-// checkGateCoverage proves `needs` is exactly the job graph: a job nobody
-// listed would be silently optional, and a listed lane the gate cannot see
-// would never be checked.
 func checkGateCoverage(t *testing.T, gate *ciGate) {
 	t.Helper()
 	if missing := diff(gate.jobs, gate.needs); len(missing) != 0 {
@@ -56,9 +53,6 @@ func checkGateCoverage(t *testing.T, gate *ciGate) {
 	}
 }
 
-// checkGateLanes proves every lane is declared once and that both platform
-// legs stay required: demoting one to advisory is a policy decision, so the
-// guard refuses a silent demotion.
 func checkGateLanes(t *testing.T, gate *ciGate) {
 	t.Helper()
 	if len(gate.required) == 0 {
@@ -120,7 +114,6 @@ func jobIDs(lines []string) []string {
 	return out
 }
 
-// endsJobsSection reports whether one line leaves the jobs mapping.
 func endsJobsSection(line string) bool {
 	return !strings.HasPrefix(line, " ") && strings.TrimSpace(line) != ""
 }
@@ -143,7 +136,6 @@ func ciCompleteSpan(t *testing.T, lines []string) (int, int) {
 	return start, len(lines)
 }
 
-// jobID reports whether one line declares a job (`  name:` at job indent).
 func jobID(line string) (string, bool) {
 	rest, ok := strings.CutPrefix(line, "  ")
 	if !ok || strings.HasPrefix(rest, " ") {
@@ -199,7 +191,6 @@ func parseDeclared(t *testing.T, block []string, key string) []string {
 	return nil
 }
 
-// bareNames splits one YAML line into bare names, dropping list punctuation.
 func bareNames(line string) []string {
 	var out []string
 	for field := range strings.FieldsSeq(line) {
@@ -210,7 +201,6 @@ func bareNames(line string) []string {
 	return out
 }
 
-// diff lists the entries of want missing from have.
 func diff(want, have []string) []string {
 	var out []string
 	for _, entry := range want {

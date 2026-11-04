@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
-# Case envelope-shape: every --json stdout is exactly one envelope with the
-# documented shape (schema_version "1", verb/repo/pr/at/next/warnings/data/
-# error), error null on success and {data null, error code} on refusal.
 #
-# Grades:
-#   E1  report --json success envelope: exact key set, schema_version "1",
-#       verb echo, numeric pr, error null, warnings array, open verdict of 1.
-#   E2  post --dry-run --json success envelope: same key set, verb post.
-#   E3  post refusal envelope: same key set, exactly one doc, data null,
-#       error.code present, non-zero exit.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# --- E1: report success envelope ---
 PR=4243
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -33,7 +23,6 @@ else
 fi
 assert_json_field "report envelope verdict counts the one open finding" 1 '.data.verdict.open'
 
-# --- E2: post success envelope ---
 PR=4244
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -49,7 +38,6 @@ else
   bad "post success envelope breaks the error contract"
 fi
 
-# --- E3: refusal envelope keeps the shape ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"placeholder","approved":false,"comments":[]}
 EOF

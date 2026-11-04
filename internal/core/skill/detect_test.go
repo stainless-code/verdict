@@ -266,11 +266,9 @@ func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {
 	xdg := filepath.Join(t.TempDir(), "xdg")
 	req.Env["CLAUDE_CONFIG_DIR"] = claudeCfg
 	req.Env["XDG_CONFIG_HOME"] = xdg
-	// A live default ~/.claude must be ignored while CLAUDE_CONFIG_DIR is set.
 	seedSkillsDir(t, home, ".claude")
 	seedSkillsDir(t, claudeCfg)
 	seedSkillsDir(t, xdg, "opencode")
-	// ~/.config/goose is not where XDG points, so it must not count.
 	seedSkillsDir(t, home, ".config", "goose")
 
 	det, ref := skill.InstallDetected(context.Background(), req)

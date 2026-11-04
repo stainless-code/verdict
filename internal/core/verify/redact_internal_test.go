@@ -70,25 +70,13 @@ func TestStripControlChars(t *testing.T) {
 		{name: "newline and tab kept", in: "a\tb\nc", want: "a\tb\nc"},
 		{name: "unicode kept", in: "exit=0 — ok\n", want: "exit=0 — ok\n"},
 		{name: "plain untouched", in: "line one\nline two\n", want: "line one\nline two\n"},
-		// Mutants killed by the rows below (gremlins, redact.go):
-		//   113:9 CONDITIONALS_NEGATION — control bytes alone, no
-		//   printable byte to trigger the rebuild, must still be dropped.
 		{name: "bel only", in: "\x07", want: ""},
 		{name: "nul only", in: "\x00\x01\x1f", want: ""},
-		//   113:47 CONDITIONALS_NEGATION (`c == delByte` -> `!=`) — DEL alone.
 		{name: "del only", in: "\x7f", want: ""},
-		//   143:11 CONDITIONALS_BOUNDARY — '@' (0x40) is the lowest CSI final
-		//   byte; if it were not final the strip would also eat the "x".
 		{name: "csi final at sign", in: "\x1b[1@x", want: "x"},
-		//   143:34 CONDITIONALS_BOUNDARY — '~' (0x7e) is the highest final
-		//   byte; if it were not final the strip would also eat the "o".
 		{name: "csi final tilde", in: "\x1b[3~ok", want: "ok"},
-		//   153:19 CONDITIONALS_BOUNDARY — scanning one byte past an OSC that
-		//   never closes panics (index out of range) instead of dropping it.
 		{name: "unterminated osc", in: "a\x1b]0;never closes", want: "a"},
 		{name: "lone escape", in: "a\x1b", want: "a"},
-		// An OSC terminated by ST is consumed through the backslash, and the
-		// text after it survives; BEL form likewise.
 		{name: "osc st then text", in: "\x1b]0;t\x1b\\after", want: "after"},
 		{name: "osc bel then text", in: "\x1b]0;t\x07after", want: "after"},
 	}

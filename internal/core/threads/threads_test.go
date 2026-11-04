@@ -71,7 +71,6 @@ func TestCapBody(t *testing.T) {
 	if !cut || len(got) != MaxCommentBytes {
 		t.Errorf("long body len=%d cut=%v", len(got), cut)
 	}
-	// Every byte of a three-byte rune cut at the boundary trims cleanly.
 	body := strings.Repeat("a", MaxCommentBytes-1) + "é" + "tail"
 	got, cut = CapBody(body)
 	if !cut || !strings.HasPrefix(got, strings.Repeat("a", 10)) {
@@ -361,7 +360,6 @@ func TestRootlessThreadStillLabelsItsAuthorKind(t *testing.T) {
 	}
 }
 
-// wantRootlessKind maps one comment-less GitHub node and checks its label.
 func wantRootlessKind(t *testing.T, node map[string]any) {
 	t.Helper()
 	threads, _ := FromGitHubThreads([]any{node})

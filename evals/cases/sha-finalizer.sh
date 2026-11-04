@@ -1,39 +1,5 @@
 #!/usr/bin/env bash
-# Case sha-finalizer: SHA-keyed single-review finality.
 #
-# Grades (hermetic — crafted bundles, smart gh stub, no network):
-#   F1  same-SHA repost refused: a second completed post on the same reviewed
-#       SHA (even with different content) exits 1 with the already-posted
-#       typed error naming --force, and posts nothing (no new network POST,
-#       post.json byte-identical).
-#   F2  new-SHA re-arms: retargeting the bundle at a new HEAD posts cleanly
-#       and refreshes the post.json head with no manual reset.
-#   F3  override: --force reposts on the wedged SHA (exit 0, record refreshed);
-#       the APPROVE path is finalizer-bound too (clear recheck, SHA refuses).
-#   F4  dry-run never arms: dry runs write no post.json on a fresh bundle, and
-#       stay advisory (never refused, record untouched) after a completed post.
-#   F5  failed post never arms: a POST failure writes no post.json, and the
-#       retry on the same SHA proceeds (nothing was armed to refuse it).
-#   F6  refusal names both exits: the already-posted stderr AND the --json
-#       error.message name the exact fetch --base-sha <short-head> advance
-#       command alongside the --force override.
-#   F7  completeness advance-form: stale-head on a bundle WITH a posted head
-#       names the --base-sha advance form; missing-post (no head to advance
-#       from) keeps the plain fetch with no --base-sha; provider bundles
-#       name the plain provider fetch (fetch --provider <name>, never
-#       --base-sha) on both the stale-head and missing-post paths.
-#   F8  mid-run-push nudge: a live HEAD newer than the fetch yields exit 0 +
-#       stderr warn + the > ⚠️ body note, both naming the exact
-#       fetch --base-sha <short-fetched-sha> advance command, on a COMMENT
-#       post; a binding APPROVE against known drift downgrades to COMMENT
-#       (exit 0, posted once, reason in stderr + body — never a silent
-#       APPROVE); an unreachable live lookup warns and proceeds (exit 0,
-#       posted once — never a refusal), including on the APPROVE path.
-#   F9  fresh bundle: with no post.json or .posted_ marker, the same post
-#       refuses already-posted from the bundle's fetched reviews.json (the
-#       hidden marker on the reviewed commit); the same marker on another
-#       commit refuses duplicate-payload; --force passes; every refusal
-#       makes zero network POSTs and names the stale-review re-fetch hint.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -42,10 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEADB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-# Overlay a smart gh stub: pulls/user answer locally, reviews POST succeeds,
-# graphql always clear (zero live opens). Touching $EVAL_SANDBOX/post-fail
-# flips the reviews POST to failure for the failed-post case. Restored on
-# exit so sibling cases keep the dead stub.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -74,7 +36,6 @@ exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
 
-# reviews_posts_since <mark> — reviews POST calls logged after <mark>.
 reviews_posts_since() {
   local n
   n=$(tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews" || true)
@@ -82,8 +43,6 @@ reviews_posts_since() {
 }
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 
-# run_review_in <cwd> <verdict args...> — run_review from another directory,
-# for the fresh-bundle leg (a different checkout of the same bundle).
 run_review_in() {
   local cwd="$1"
   shift
@@ -104,7 +63,6 @@ mk_comment() { # $1 = pr — clean bundle carrying a non-binding review
 EOF
 }
 
-# --- F4a: dry-run never arms (fresh bundle) ---
 PR=4295
 mk_comment "$PR"
 run_review post acme/app "$PR" --dry-run --json
@@ -114,7 +72,6 @@ else
   bad "dry run exits $EVAL_STATUS / post.json present"
 fi
 
-# --- F1: first post arms, same-SHA repost refused ---
 PR=4296
 mk_comment "$PR"
 cp "$EVAL_SANDBOX/.review/$PR/review.json" "$EVAL_SANDBOX/review-$PR.json"
@@ -135,7 +92,6 @@ else
   bad "first post made $(reviews_posts_since "$m") POST(s)"
 fi
 
-# Second post, different content, same SHA — the coarse guard refuses.
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — reworded body, same SHA.","approved":false,"comments":[]}
 EOF
@@ -161,10 +117,6 @@ else
   bad "refused repost posted or rewrote the record"
 fi
 
-# --- F9: fresh bundle refuses from the fetched live reviews, not local stores ---
-# Copy the bundle without post.json or the dot-marker, then synthesize the
-# reviews.json a re-fetch would have written: the body GitHub actually
-# received (captured above, hidden marker included) on the reviewed commit.
 FRESH="$EVAL_SANDBOX/fresh"
 rm -rf "$FRESH"
 mkdir -p "$FRESH/.review"
@@ -191,8 +143,6 @@ else
   bad "fresh-bundle refusal message: $(printf '%s' "$msg" | head -c 300)"
 fi
 
-# Same marker, different commit: the coarse guard passes and the fine guard
-# recognizes the payload hash.
 jq --arg h "$HEADB" '.[0].commit_id = $h' "$FRESH/.review/$PR/reviews.json" \
   >"$FRESH/.review/$PR/reviews.json.new"
 mv "$FRESH/.review/$PR/reviews.json.new" "$FRESH/.review/$PR/reviews.json"
@@ -213,7 +163,6 @@ else
   bad "fresh --force gave exit $EVAL_STATUS calls $(reviews_posts_since "$m"), want 0/1"
 fi
 
-# --- F6: refusal names the advance command + force override, both surfaces ---
 run_review post acme/app "$PR" --json
 msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] \
@@ -232,7 +181,6 @@ else
   bad "text refusal stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- F4b: dry run after a completed post stays advisory ---
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.review/$PR/post.json"; then
@@ -241,7 +189,6 @@ else
   bad "dry run after completed post exits $EVAL_STATUS"
 fi
 
-# --- F2: new SHA re-arms ---
 jq --arg h "$HEADB" '.headRefOid = $h' "$EVAL_SANDBOX/.review/$PR/PR.json" \
   > "$EVAL_SANDBOX/.review/$PR/PR.json.new"
 mv "$EVAL_SANDBOX/.review/$PR/PR.json.new" "$EVAL_SANDBOX/.review/$PR/PR.json"
@@ -253,7 +200,6 @@ else
   bad "new-SHA post exits $EVAL_STATUS / head not refreshed"
 fi
 
-# --- F3: --force overrides the wedged SHA ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — forced repost on the same SHA.","approved":false,"comments":[]}
 EOF
@@ -271,7 +217,6 @@ else
   bad "forced repost made $(reviews_posts_since "$m") POST(s)"
 fi
 
-# The APPROVE path is finalizer-bound too: clear recheck, same SHA refuses.
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}
 EOF
@@ -284,7 +229,6 @@ else
   bad "APPROVE repost gave exit $EVAL_STATUS code '$code' event '$event'"
 fi
 
-# --- F5: failed post never arms ---
 PR=4297
 mk_comment "$PR"
 touch "$EVAL_SANDBOX/post-fail"
@@ -305,7 +249,6 @@ else
   bad "retry after failure exits $EVAL_STATUS, want 0"
 fi
 
-# --- F7: completeness advance-form iff a posted head exists ---
 PR=4298
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -329,9 +272,6 @@ assert_file_grep "missing-post names the typed code" "$EVAL_ERR" "missing-post"
 assert_file_grep "missing-post names the plain fetch" "$EVAL_ERR" "fetch acme/app $PR"
 assert_stream_nogrep "missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
-# F7 provider: a stale-head on a provider bundle names the plain provider
-# fetch (no --base-sha — fetch refuses it for non-GitHub providers), and
-# missing-post does the same.
 PR=4307
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
@@ -358,11 +298,6 @@ assert_file_grep "provider missing-post names the typed code" "$EVAL_ERR" "missi
 assert_file_grep "provider missing-post names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"
 assert_stream_nogrep "provider missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
-# --- F8: mid-run-push nudge names the advance command; gh-down warns and proceeds ---
-# Overlay a stub whose pulls endpoint reports a NEWER live head (a push
-# landed after the fetch) and which saves the reviews POST payload when
-# asked (same EVAL_SAVE_PAYLOAD idiom as hunk-snapshot.sh). graphql stays
-# clear, user stays foreign.
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
@@ -411,8 +346,6 @@ else
   bad "posted payload: $(head -c 300 "$EVAL_SANDBOX/posted-4300.json" 2>/dev/null)"
 fi
 
-# F8b: stale-fetch + binding APPROVE downgrades to COMMENT (exit 0, posted
-# once — never a silent APPROVE against the stale SHA).
 PR=4306
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -443,7 +376,6 @@ else
   bad "downgraded payload: $(head -c 300 "$EVAL_SANDBOX/posted-4306.json" 2>/dev/null)"
 fi
 
-# gh-down: the live lookup fails — warn-and-proceed, never a refusal.
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
@@ -474,8 +406,6 @@ else
   bad "gh-down gave exit $EVAL_STATUS / stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# gh-down + binding APPROVE still warns and proceeds (live SHA unknown, so
-# no known drift to refuse — never fail closed on network).
 PR=4293
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'

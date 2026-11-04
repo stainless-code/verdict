@@ -6,7 +6,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// testRow builds one synthetic bundle row.
 func testRow(bundle, at string, hasAt bool, statuses, tiers map[string]int, prov *jq.Obj) row {
 	n := 0
 	for _, c := range statuses {
@@ -29,7 +28,6 @@ func testRow(bundle, at string, hasAt bool, statuses, tiers map[string]int, prov
 	}
 }
 
-// statusMap builds a by_status row map.
 func statusMap(open, addressed, wontFix, falsePositive, deferred int) map[string]int {
 	return map[string]int{
 		statusOpen: open, statusAddressed: addressed,
@@ -38,7 +36,6 @@ func statusMap(open, addressed, wontFix, falsePositive, deferred int) map[string
 	}
 }
 
-// tierMap builds a by_tier row map.
 func tierMap(critical, important, informational, untagged int) map[string]int {
 	return map[string]int{
 		tierCritical: critical, tierImportant: important,
@@ -66,7 +63,6 @@ func TestRollupRows(t *testing.T) {
 	checkRollupPeriods(t, &out)
 }
 
-// checkRollupTotals checks the portfolio counts and provenance dedupe.
 func checkRollupTotals(t *testing.T, out *rollup) {
 	t.Helper()
 	checkRollupCounts(t, out)
@@ -79,7 +75,6 @@ func checkRollupTotals(t *testing.T, out *rollup) {
 	checkRollupProvenance(t, out)
 }
 
-// checkRollupCounts checks the bundle/finding/open/addressed/closed sums.
 func checkRollupCounts(t *testing.T, out *rollup) {
 	t.Helper()
 	if out.bundles != 3 {
@@ -99,7 +94,6 @@ func checkRollupCounts(t *testing.T, out *rollup) {
 	}
 }
 
-// checkRollupProvenance checks the tool/model/hash dedupe.
 func checkRollupProvenance(t *testing.T, out *rollup) {
 	t.Helper()
 	if len(out.tools) != 2 {
@@ -110,13 +104,11 @@ func checkRollupProvenance(t *testing.T, out *rollup) {
 	}
 }
 
-// checkRollupPeriods checks the dated buckets sort before the undated one.
 func checkRollupPeriods(t *testing.T, out *rollup) {
 	t.Helper()
 	if len(out.periods) != 3 {
 		t.Fatalf("periods = %d; want 3 (two dated, one undated)", len(out.periods))
 	}
-	// Periods sort dated-first, undated last (jq nulls-last).
 	if out.periods[2].hasName {
 		t.Error("last period hasName = true; want false (undated sorts last)")
 	}

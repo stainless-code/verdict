@@ -1,8 +1,3 @@
-// Thin spawn wrapper over the verdict binary. EXPERIMENTAL until 1.0.
-// The binary is the only transport: every method shells nothing, starts no
-// server, and downloads nothing — it spawns `verdict <verb> … --json`,
-// reads exactly one envelope from stdout, and maps the frozen exit codes
-// (0/1/2/3) to typed errors. No runtime dependencies beyond Node builtins.
 import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { createRequire } from "node:module";
@@ -24,10 +19,8 @@ import {
 } from "./errors.js";
 import { PLATFORM_PACKAGES } from "./platforms.gen.js";
 
-// DEFAULT_TIMEOUT_MS bounds every run; the child is killed past it.
 export const DEFAULT_TIMEOUT_MS = 300_000;
 
-// DEFAULT_MAX_STDOUT bounds buffered stdout; envelopes are kilobytes.
 export const DEFAULT_MAX_STDOUT = 8 * 1024 * 1024;
 
 export interface RunOptions {
@@ -42,11 +35,6 @@ export interface ClientOptions extends RunOptions {
   bin?: string;
 }
 
-// resolveBin picks the binary without ever installing anything:
-// explicit opt > VERDICT_BIN > the wrapper's platform package > PATH. The
-// platform map is generated from release/contract.json (platforms.gen.ts),
-// the same rows the npm install shim resolves from, so the two cannot
-// disagree about which package ships a binary.
 export function resolveBin(explicit?: string): string {
   if (explicit) return explicit;
   const fromEnv = process.env["VERDICT_BIN"];
@@ -57,9 +45,7 @@ export function resolveBin(explicit?: string): string {
     for (const sub of [`${pkg}/bin/verdict`, `${pkg}/bin/verdict.exe`]) {
       try {
         return createRequire(`${pkg}/package.json`).resolve(sub);
-      } catch {
-        // Fall through to PATH like the shim does on a miss.
-      }
+      } catch {}
     }
   }
   const found = findOnPath();
@@ -70,7 +56,6 @@ export function resolveBin(explicit?: string): string {
   );
 }
 
-// findOnPath returns the first executable `verdict` on PATH, if any.
 function findOnPath(): string | undefined {
   const names =
     process.platform === "win32" ? ["verdict.exe", "verdict"] : ["verdict"];
@@ -82,15 +67,12 @@ function findOnPath(): string | undefined {
       try {
         accessSync(candidate, constants.X_OK);
         return candidate;
-      } catch {
-        // Not executable here; keep scanning.
-      }
+      } catch {}
     }
   }
   return undefined;
 }
 
-// ChildResult is the settled child: exit code or fatal spawn error.
 interface ChildResult {
   code: number | null;
   signal: string | null;
@@ -99,7 +81,6 @@ interface ChildResult {
   spawnCause?: string;
 }
 
-// spawnOnce runs the binary to settlement with a timeout and a stdout cap.
 function spawnOnce(
   bin: string,
   argv: string[],
@@ -132,9 +113,7 @@ function spawnOnce(
       const partialErr = stderr.toString("utf8");
       try {
         child.kill("SIGKILL");
-      } catch {
-        // Already gone; the close handler still settles below.
-      }
+      } catch {}
       finish({
         code: null,
         signal: "SIGKILL",
@@ -159,9 +138,7 @@ function spawnOnce(
       if (stdout.length > opts.maxStdoutBytes) {
         try {
           child.kill("SIGKILL");
-        } catch {
-          // Handled by the close path below.
-        }
+        } catch {}
         finish({
           code: null,
           signal: "SIGKILL",
@@ -187,7 +164,6 @@ function spawnOnce(
   });
 }
 
-// parseSingleEnvelope parses exactly one envelope document from stdout.
 function parseSingleEnvelope(stdout: string): unknown {
   const trimmed = stdout.trim();
   if (!trimmed) {
@@ -206,16 +182,12 @@ function parseSingleEnvelope(stdout: string): unknown {
   }
 }
 
-// throwForExit maps a settled child to its typed outcome.
 function throwForExit<T>(
   verb: string,
   result: ChildResult,
   stdout: string,
 ): Envelope<T> {
   if (result.spawnCause !== undefined) {
-    // Generic spawn failures (ENOENT, EACCES) are converted by the caller,
-    // which knows the resolved binary path; only timeouts and stdout caps
-    // are decided here.
     if (result.spawnCause.startsWith("timeout:")) {
       const timeoutMs = Number(result.spawnCause.slice("timeout:".length));
       throw new VerdictTimeoutError(timeoutMs, {
@@ -297,8 +269,6 @@ export interface VerdictClient {
   init(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
 }
 
-// createClient binds default options (bin resolution is lazy per run so
-// VERDICT_BIN can change between calls in tests).
 export function createClient(defaults: ClientOptions = {}): VerdictClient {
   async function run<T = unknown>(
     verb: string,
@@ -322,7 +292,6 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
         ? [verb, ...args]
         : [verb, ...args, "--json"];
     const result = await spawnOnce(bin, argv, merged);
-    // ENOENT-class spawn failures surface as a spawnCause, not an exit.
     if (
       result.spawnCause !== undefined &&
       !result.spawnCause.startsWith("timeout:") &&
@@ -360,7 +329,6 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
   return client;
 }
 
-// run is the one-shot form: resolve, spawn, parse, with no client to keep.
 export function run<T = unknown>(
   verb: string,
   args: string[] = [],

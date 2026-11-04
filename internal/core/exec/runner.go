@@ -62,9 +62,6 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 		proc.Stdin = r.Stdin
 	}
 	proc.Env = cmd.Env
-	// Without a delay, Wait blocks until every holder of the pipes closes
-	// them, so a killed child's surviving grandchild hangs the verb (and a
-	// Ctrl-C) for as long as that grandchild lives (GO-EXEC-05).
 	proc.WaitDelay = waitDelay
 	runErr := proc.Run()
 	res := core.Result{
@@ -76,12 +73,6 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	if exitErr, ok := errors.AsType[*osexec.ExitError](runErr); ok {
 		res.ExitCode = waitStatusCode(exitErr, false)
 	} else if runErr != nil && !errors.Is(runErr, osexec.ErrWaitDelay) {
-		// ErrWaitDelay means the command itself exited 0 while a helper kept
-		// the output pipe open past WaitDelay: a completed process whose
-		// captured output stands, like the watchdog's reading of it.
-		// A start/wait failure has no process status: the caller's own
-		// error path decides, with the binary named so the text still
-		// identifies the tool.
 		return res, fmt.Errorf("%s: %w", cmd.Argv[0], runErr) //nolint:wrapcheck // locally constructed spawn message, not an external error
 	}
 	if res.StdoutTruncated {
@@ -90,8 +81,6 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	return res, nil
 }
 
-// precheck is the opt-in missing-tool guard: argv[0] that does not resolve
-// becomes [core.MissingToolError] before any process starts.
 func (r Runner) precheck(bin string) error {
 	if !r.MissingTool {
 		return nil
@@ -102,8 +91,6 @@ func (r Runner) precheck(bin string) error {
 	return nil
 }
 
-// captureCap resolves the per-stream cap: the command's explicit override,
-// else the runner's, else the read default.
 func (r Runner) captureCap(cmd core.Command) int {
 	dflt := r.OutputCap
 	if dflt <= 0 {
@@ -138,5 +125,4 @@ func Gh(ctx context.Context, cmdr core.Commander, args ...string) (stdout, stder
 	return res.Stdout, res.Stderr, true
 }
 
-// ghBin is the GitHub CLI binary the read verbs shell out to.
 const ghBin = "gh"

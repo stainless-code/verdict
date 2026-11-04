@@ -21,7 +21,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// Scaffold refusal codes and paths.
 const (
 	codeInitFailed   = "init-failed"
 	codeBadSettings  = "bad-settings"
@@ -79,8 +78,6 @@ func (d *Data) Wire() *jq.Obj {
 	)
 }
 
-// fileValues converts status lines to a JSON array value the ordered printer
-// renders one entry per line (a []string would fall through to compact JSON).
 func fileValues(files []string) []any {
 	out := make([]any, 0, len(files))
 	for _, f := range files {
@@ -89,8 +86,6 @@ func fileValues(files []string) []any {
 	return out
 }
 
-// state carries one init run: the request, the accumulated warnings, the
-// envelope timestamp, and the completed summary.
 type state struct { //nolint:govet // init service state is allocated once per invocation
 	req      *Request
 	warnings []string
@@ -112,32 +107,27 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.response(), nil
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// refuse builds a typed refusal carrying the accumulated warnings.
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
 }
 
-// humanf writes one rendered human line to the adapter stream.
 func (st *state) humanf(format string, args ...any) {
 	if st.req.Human != nil {
 		fmt.Fprintf(st.req.Human, format, args...)
 	}
 }
 
-// diagf writes one diagnostic fragment to the adapter stream.
 func (st *state) diagf(format string, args ...any) {
 	if st.req.Diag != nil {
 		fmt.Fprintf(st.req.Diag, format, args...)
 	}
 }
 
-// response assembles the typed response after the scaffold.
 func (st *state) response() *Response {
 	return &Response{
 		At:       st.at,
@@ -148,7 +138,6 @@ func (st *state) response() *Response {
 	}
 }
 
-// presetVals carries the preset mapping.
 type presetVals struct {
 	budget string
 	kbMin  string
@@ -156,18 +145,14 @@ type presetVals struct {
 	panel  string
 }
 
-// presets maps preset names to their file values.
 var presets = map[string]presetVals{
 	"chill":    {budget: "2.00", kbMin: "10", kbRate: "0.7", panel: ""},
 	"standard": {budget: "0.50", kbMin: "5", kbRate: "0.5", panel: "main"},
 	"strict":   {budget: "0.10", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
 }
 
-// targets lists the scaffolded control files in order.
 var targets = []string{"budget", "panel", "kb-policy", "kb.jsonl"}
 
-// runInit mirrors the init block: preset mapping, preview, confirm gate,
-// writes, validation, check-tree, next.
 func (st *state) runInit(ctx context.Context) *core.RefusalError {
 	vals, ref := st.resolvePreset()
 	if ref != nil {
@@ -194,7 +179,6 @@ func (st *state) runInit(ctx context.Context) *core.RefusalError {
 	return nil
 }
 
-// writeWithConfirm runs the overwrite gate and writes controls.
 func (st *state) writeWithConfirm(wants map[string]string, needOverwrite bool) (int, bool, *core.RefusalError) {
 	if needOverwrite && !st.req.Yes {
 		code, ref := st.confirmOverwrite()
@@ -211,7 +195,6 @@ func (st *state) writeWithConfirm(wants map[string]string, needOverwrite bool) (
 	return 0, false, nil
 }
 
-// resolvePreset maps a preset name to values, refusing unknown names.
 func (st *state) resolvePreset() (presetVals, *core.RefusalError) {
 	vals, ok := presets[st.req.Preset]
 	if !ok {
@@ -221,7 +204,6 @@ func (st *state) resolvePreset() (presetVals, *core.RefusalError) {
 	return vals, nil
 }
 
-// collectStatuses classifies each control file and reports overwrites.
 func collectStatuses(wants map[string]string) ([]string, bool) {
 	statuses := make([]string, 0, len(targets))
 	needOverwrite := false
@@ -235,7 +217,6 @@ func collectStatuses(wants map[string]string) ([]string, bool) {
 	return statuses, needOverwrite
 }
 
-// previewScaffold prints the preset header and per-file previews.
 func (st *state) previewScaffold(wants map[string]string) {
 	st.humanf("init: preset %s (chill: unpinned/10/0.7, standard: "+
 		"1 member/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
@@ -245,7 +226,6 @@ func (st *state) previewScaffold(wants map[string]string) {
 	}
 }
 
-// confirmOverwrite prompts on a human TTY or refuses in machine mode.
 func (st *state) confirmOverwrite() (int, *core.RefusalError) {
 	if !st.req.Interactive {
 		return 0, st.refuse(codeNeedsConfirm,
@@ -261,7 +241,6 @@ func (st *state) confirmOverwrite() (int, *core.RefusalError) {
 	return 0, nil
 }
 
-// readAnswer reads one stdin line through the adapter seam.
 func (st *state) readAnswer() string {
 	if st.req.ReadAnswer == nil {
 		return ""
@@ -269,7 +248,6 @@ func (st *state) readAnswer() string {
 	return st.req.ReadAnswer()
 }
 
-// isYes reports the accepted confirmation words.
 func isYes(ans string) bool {
 	switch ans {
 	case "y", "Y", "yes", "YES":
@@ -279,7 +257,6 @@ func isYes(ans string) bool {
 	}
 }
 
-// writeControls writes every control file, keeping up-to-date ones.
 func (st *state) writeControls(wants map[string]string) *core.RefusalError {
 	for _, t := range targets {
 		if isCurrent(t, wants[t]) {
@@ -297,7 +274,6 @@ func (st *state) writeControls(wants map[string]string) *core.RefusalError {
 	return nil
 }
 
-// isCurrent reports whether the control file already holds want.
 func isCurrent(t, want string) bool {
 	cur, err := os.ReadFile(reviewDir + t)
 	if err != nil {
@@ -306,13 +282,11 @@ func isCurrent(t, want string) bool {
 	return string(cur) == want+newlineStr
 }
 
-// cannotWriteControl builds the control-file write refusal.
 func (st *state) cannotWriteControl(t string) *core.RefusalError {
 	return st.refuse(codeInitFailed,
 		fmt.Sprintf("init could not write .review/%s (storage writable?)", t))
 }
 
-// reportTree runs check-tree and prints its outcome, returning cleanliness.
 func (st *state) reportTree(ctx context.Context) bool {
 	treeOut, treeClean, rest := st.checkTree(ctx)
 	st.humanf("%s\n", treeOut)
@@ -326,7 +300,6 @@ func (st *state) reportTree(ctx context.Context) bool {
 	return treeClean
 }
 
-// reportNext prints the next steps and records the typed envelope data.
 func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool) {
 	st.humanf("next: replace panel placeholders with real slugs, " +
 		"tune .review/budget, then fetch\n")
@@ -342,8 +315,6 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool) 
 	}
 }
 
-// presetFiles renders the four control-file bodies (no trailing newline;
-// the write and preview append exactly one, matching `printf '%s\n'`).
 func presetFiles(preset string, vals presetVals) map[string]string {
 	budget := "# Verdict spend budget (USD) — written by `verdict init --preset " + preset + "`.\n" +
 		"# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.\n" + vals.budget
@@ -359,7 +330,6 @@ func presetFiles(preset string, vals presetVals) map[string]string {
 	}
 }
 
-// presetPanel renders the panel body for a preset.
 func presetPanel(preset, body string) string {
 	if body == "" {
 		return "# Verdict panel — written by `verdict init --preset " + preset + "`" +
@@ -374,7 +344,6 @@ func presetPanel(preset, body string) string {
 		"keeps verdicts comparable.\n" + body
 }
 
-// kbStarter returns the two-row starter kb.jsonl body (no trailing newline).
 func kbStarter() string {
 	first := `{"id":"check-error-paths",` +
 		`"rule":"Check error paths on every awaited call before approving",` +
@@ -388,7 +357,6 @@ func kbStarter() string {
 	return first + newlineStr + second
 }
 
-// targetStatus classifies one control file: create, keep, or overwrite.
 func targetStatus(t, want string) string {
 	cur, err := os.ReadFile(reviewDir + t)
 	if err != nil {
@@ -400,7 +368,6 @@ func targetStatus(t, want string) string {
 	return "overwrite"
 }
 
-// validateScaffold owns the scaffolded-file validation.
 func validateScaffold() *core.RefusalError {
 	if ref := checkBudget(); ref != nil {
 		return ref
@@ -411,7 +378,6 @@ func validateScaffold() *core.RefusalError {
 	return checkKB()
 }
 
-// checkBudget validates the scaffolded budget file.
 func checkBudget() *core.RefusalError {
 	raw, err := os.ReadFile(reviewDir + "budget")
 	if err != nil {
@@ -431,7 +397,6 @@ func checkBudget() *core.RefusalError {
 	return nil
 }
 
-// checkScaffoldFiles validates the scaffolded panel and kb-policy files.
 func checkScaffoldFiles() *core.RefusalError {
 	if !readcommon.IsFile(reviewDir + "panel") {
 		return &core.RefusalError{Code: codeInitFailed, Message: "scaffolded .review/panel missing after write"}
@@ -445,7 +410,6 @@ func checkScaffoldFiles() *core.RefusalError {
 	return nil
 }
 
-// checkKB validates the scaffolded kb.jsonl file.
 func checkKB() *core.RefusalError {
 	kbRaw, err := os.ReadFile(reviewDir + "kb.jsonl")
 	if err != nil {
@@ -470,7 +434,6 @@ func checkKB() *core.RefusalError {
 	return nil
 }
 
-// countObjects counts map rows in decoded JSONL values.
 func countObjects(vals []any) int {
 	objects := 0
 	for _, v := range vals {
@@ -481,8 +444,6 @@ func countObjects(vals []any) int {
 	return objects
 }
 
-// firstUsableLine owns the budget-line read: first non-comment non-blank
-// line, trimmed, with one leading $ stripped.
 func firstUsableLine(content string) string {
 	for ln := range strings.SplitSeq(content, newlineStr) {
 		trimmed := strings.Trim(ln, " \t\n\v\f\r")
@@ -494,9 +455,6 @@ func firstUsableLine(content string) string {
 	return ""
 }
 
-// checkTree owns the init check-tree validation: own .review/ scratch
-// ignored, everything else is dirt. The git failure path reads "not a git
-// repo".
 func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest string) {
 	raw, err := st.gitStatus(ctx)
 	if err != nil {
@@ -528,7 +486,6 @@ func (st *state) gitStatus(ctx context.Context) (string, error) {
 	return res.Stdout, nil
 }
 
-// trimTrailingBlanks drops trailing empty lines from git status output.
 func trimTrailingBlanks(lines []string) []string {
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
@@ -536,7 +493,6 @@ func trimTrailingBlanks(lines []string) []string {
 	return lines
 }
 
-// dirtLines returns status lines outside the owned .review/ scratch.
 func dirtLines(lines []string) []string {
 	var restLines []string
 	for _, ln := range lines {
@@ -548,17 +504,12 @@ func dirtLines(lines []string) []string {
 	return restLines
 }
 
-// budgetRe matches a plain USD number.
 var budgetRe = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 
-// ownRe matches own .review/ scratch lines (any 2-char status + space).
 var ownRe = regexp.MustCompile(`^.. \.review/`)
 
-// errNoCommander guards direct service calls that did not inject a commander.
 var errNoCommander = scaffoldError("no commander injected")
 
-// scaffoldError is a plain error value for seam failures.
 type scaffoldError string
 
-// Error implements error.
 func (e scaffoldError) Error() string { return string(e) }

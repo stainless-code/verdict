@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/mcpconfig"
 )
 
-// mcpConfigFlags is the parsed `mcp config` option set.
 type mcpConfigFlags struct {
 	agent string
 	write bool
@@ -19,8 +18,6 @@ type mcpConfigFlags struct {
 	json  bool
 }
 
-// runMCPConfig prints one host's MCP snippet or merges it into that host's
-// config. It never prompts and never starts the server.
 func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) string) int {
 	flags, code, done := parseMCPConfigFlags(args, stdout, stderr)
 	if done {
@@ -56,7 +53,6 @@ func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) st
 	return cli.ExitOK
 }
 
-// parseMCPConfigFlags parses the config grammar.
 //
 //nolint:revive // the flag switch is the parser; splitting it hides the grammar
 func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags, int, bool) {
@@ -93,7 +89,6 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 	return f, 0, false
 }
 
-// writeMCPConfigEnvelope prints exactly one envelope for a config call.
 func writeMCPConfigEnvelope(r *cli.Runner, res *mcpconfig.Result, f mcpConfigFlags) {
 	data := jq.NewObj(
 		"agent", res.Agent,
@@ -113,7 +108,6 @@ func writeMCPConfigEnvelope(r *cli.Runner, res *mcpconfig.Result, f mcpConfigFla
 	fmt.Fprintln(r.Out, env.MarshalPretty())
 }
 
-// mcpConfigUsageText is the `verdict mcp config` help block.
 func mcpConfigUsageText() string {
 	return "usage: verdict mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json]\n" +
 		"  Print the exact MCP server entry for the host (the default; --dry-run too).\n" +

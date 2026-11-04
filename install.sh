@@ -1,12 +1,4 @@
 #!/bin/sh
-# verdict binary installer (macOS/Linux): download one release archive, verify
-# the cosign signature over checksums.txt (when cosign is present) and the
-# archive SHA-256, extract only `verdict`, and atomically replace the target.
-# No root, no daemon, no eval of release metadata. Windows: use install.ps1.
-#
-#   curl -fsSL https://stainless-code.com/verdict/install.sh | sh
-#   sh install.sh ./verdict_1.2.3_linux_amd64.tar.gz   # offline/local
-#   sh install.sh --uninstall [--remove-path]
 set -eu
 
 REPO_BASE='https://github.com/stainless-code/verdict/releases/download'
@@ -23,8 +15,6 @@ MODE=install; ARCHIVE=''; REMOVE_PATH=0; TMP=''; STAGE=''
 
 die() { echo "install: $*" >&2; exit 1; }
 
-# next_step prints the one line that follows a successful install: the skill
-# command that adds the review skill to the agents already on this machine.
 next_step() {
   echo "Next: verdict skill install --detect   (adds the review skill to your coding agents)"
 }
@@ -102,7 +92,6 @@ uninstall() {
 [ "$MODE" = uninstall ] && { uninstall; exit 0; }
 [ "$REMOVE_PATH" = 1 ] && die "--remove-path is only valid with --uninstall"
 
-# --- platform detection (Rosetta 2 maps an arm64 shell to x86_64) ---
 os="$(uname -s)"
 case "$os" in
   Darwin) os=darwin ;;
@@ -127,7 +116,6 @@ if command -v shasum >/dev/null 2>&1; then SHA_CMD='shasum -a 256'
 elif command -v sha256sum >/dev/null 2>&1; then SHA_CMD='sha256sum'
 else die "need shasum or sha256sum to verify the download"; fi
 
-# fetch_file URL DEST: curl handles both https and file:// mirrors.
 fetch_file() { curl -fsSL "$1" -o "$2"; }
 
 if [ -n "$ARCHIVE" ]; then
@@ -179,7 +167,6 @@ else
     || die "download failed: $base/v$VERSION/$CHECKSUMS"
 fi
 
-# --- signature: verify checksums.txt before trusting any hash from it ---
 COSIGN=''
 if [ -n "${VERDICT_COSIGN:-}" ]; then
   [ -x "$VERDICT_COSIGN" ] && COSIGN="$VERDICT_COSIGN"
@@ -211,7 +198,6 @@ actual="$($SHA_CMD "$archive_path" | awk '{print $1}')"
 [ "$actual" = "$expected" ] \
   || die "SHA-256 mismatch for $archive_name (expected $expected, got $actual); nothing installed"
 
-# --- extract only the expected member; reject archives carrying anything else ---
 tar -tzf "$archive_path" > "$TMP/members" 2>/dev/null || die "not a valid tar.gz archive: $archive_name"
 bad="$(grep -Ev '^(verdict|LICENSE|README\.md|NOTICE\.md)$' "$TMP/members" || true)"
 [ -z "$bad" ] || die "archive has unexpected member(s): $bad"
@@ -227,8 +213,6 @@ sync 2>/dev/null || true
 mv -f "$STAGE/verdict" "$INSTALL/verdict" || die "atomic replace failed; the old binary is untouched"
 mv -f "$STAGE/receipt" "$RECEIPT" || die "installed the binary but could not write $RECEIPT"
 rm -rf "$STAGE"; STAGE=''
-# Smoke the new binary from its final path: that is what the shell will run,
-# so it proves the file we just moved in is executable where it landed.
 reported="$("$INSTALL/verdict" --version 2>/dev/null)" || reported=''
 [ -n "$reported" ] || die "installed $INSTALL/verdict but it does not answer --version; check the archive for this platform"
 echo "install: installed verdict $VERSION to $INSTALL/verdict (SHA-256 verified; reports $reported)"

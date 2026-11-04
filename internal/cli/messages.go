@@ -1,8 +1,5 @@
 package cli
 
-// Refusal and warning formats, split for the line-length gate. The source
-// layout is the only thing the split changes: the rendered bytes are the
-// contract.
 const (
 	msgCredKey = "settings file %s names a credential key " +
 		"(token/key/auth/secret/password/pat/credential/bearer) — credentials never live in the settings file (export them as env instead)"

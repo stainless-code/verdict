@@ -1,30 +1,10 @@
 #!/usr/bin/env bash
-# Case kb: structured local knowledge base end to end (offline).
 #
-# Grades (hermetic — crafted PR bundles plus a scratch git repo in the
-# sandbox; the network-dead gh stub stays first on PATH throughout):
-#   K1  learn appends a rule row (zeros + status active); exact-duplicate
-#       rule text refuses as already-learned; bad rigor refuses as bad-rigor;
-#       bad id refuses as bad-id; taken id refuses as id-taken.
-#   K2  citation warn-and-drop: unknown/malformed/retired ids warn per
-#       element and drop; the valid id normalizes into the findings entry
-#       (and stays out of the sig).
-#   K3  flip credits: human triage addressed/false-positive bumps hits/
-#       false_hits + judged, stamps kb_credit history, appends joins rows;
-#       re-flip is idempotent; --dry-run credits nothing.
-#   K4  retirement fires at the threshold (tombstone kept, warnings land);
-#       invalid threshold config warns and falls back to defaults.
-#   K5  recall: fetch-local writes kb.txt for matching diffs (+ artifacts
-#       entry); clean diffs leave no file; no kb.jsonl reads byte-identical
-#       (no kb.txt, no envelope key).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Scratch git repo for the fetch-local recall legs. Everything git runs in a
-# subshell pinned to the sandbox cwd — never the caller's cwd, never the
-# repo checkout under test (a stray `git add` there would stage the harness).
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q
@@ -38,7 +18,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
   git commit -qm init
 )
 
-# --- K1: learn append + refusals ---
 run_review learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked --id await-err --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "learn append exits 0"
@@ -85,7 +64,6 @@ else
   bad "refusals missing try: hints"
 fi
 
-# A retired rule for the citation-drop leg.
 run_review learn --rule "Docs need examples" --scope "docs/*.md" --id docs-ex --json >/dev/null
 run_review learn --retire docs-ex --reason "this rule fires on every docs touch and is pure noise now" --json >/dev/null
 if [ "$(jq -s -r '.[] | select(.id == "docs-ex") | .status' "$EVAL_SANDBOX/.review/kb.jsonl")" = "retired" ]; then
@@ -102,8 +80,6 @@ else
   bad "learn --status exit $EVAL_STATUS"
 fi
 
-# --- K2: citation warn-and-drop via post --dry-run (record refuses
-# GitHub-shaped bundles; dry-run still normalizes + warns, credits nothing) ---
 PR=4251
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -136,7 +112,6 @@ eval_write_findings "$PR" <<EOF
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Second comment, no cites at all.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"$sig2","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 
-# --- K3: flip credits, idempotency, dry-run ---
 run_review triage acme/app "$PR" --sig "$sig1" --status addressed --rationale "verified the await path now handles errors, fix confirmed" --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "triage addressed exits 0"
@@ -176,7 +151,6 @@ else
   bad "dry-run moved counters"
 fi
 
-# --- K4: retirement at threshold, invalid config falls back ---
 run_review learn --rule "Doom rule that always misfires" --scope "src/*" --id kb-doom --json >/dev/null
 PR=4252
 eval_mk_bundle "$PR"
@@ -218,7 +192,6 @@ else
   bad "invalid config handling broke (exit $EVAL_STATUS)"
 fi
 
-# --- K5: recall on fetch-local ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   echo "change" >> src/app.ts
@@ -237,7 +210,6 @@ if jq -e '.data.artifacts | has("kb.txt")' <"$EVAL_OUT" >/dev/null 2>&1; then
 else
   bad "envelope missing kb.txt artifact"
 fi
-# A diff touching nothing scoped leaves no file.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git add -A
@@ -254,7 +226,6 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.review/local-kbrecall2/kb.
 else
   bad "kbrecall2 exit $EVAL_STATUS (unexpected kb.txt?)"
 fi
-# No kb.jsonl reads byte-identical: no file, no envelope key.
 mv "$EVAL_SANDBOX/.review/kb.jsonl" "$EVAL_SANDBOX/.review/kb.jsonl.hold"
 eval_commit_controls
 run_review fetch-local acme/app kbrecall3 --json
@@ -267,8 +238,6 @@ else
 fi
 mv "$EVAL_SANDBOX/.review/kb.jsonl.hold" "$EVAL_SANDBOX/.review/kb.jsonl"
 
-# --- K6: record-path credit (verification + agent triage[] share
-# validate_and_merge with post) ---
 mkdir -p "$EVAL_SANDBOX/.review/local-k6"
 cat > "$EVAL_SANDBOX/.review/local-k6/source.json" <<'EOF'
 {"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
@@ -327,7 +296,6 @@ else
   bad "K6 joins rows: $k6rows"
 fi
 
-# --- K7: kb stays out of the sig ---
 eval_write_review 4251 <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Real issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Unhandled await error path here.","rigor":"walked","severity":"important"},{"path":"notes.txt","line":2,"side":"RIGHT","body":"Second comment, no cites at all.","rigor":"pointed","severity":"informational"}]}
 EOF
@@ -339,8 +307,6 @@ else
   bad "sig changed with kb: $sig1 vs $sig_nokb"
 fi
 
-# --- K8: neutral-prior ordering, top-3 cap, tiebreaks (isolated scope so
-# earlier legs' rules cannot match) ---
 run_review learn --rule "Order high precision rule" --scope "ord/*.ts" --id ord-a --json >/dev/null
 run_review learn --rule "Order unjudged rule bee" --scope "ord/*.ts" --id ord-b --json >/dev/null
 run_review learn --rule "Order unjudged rule cee" --scope "ord/*.ts" --id ord-c --json >/dev/null
@@ -381,7 +347,6 @@ else
   bad "kb.txt order: '$kb_order'"
 fi
 
-# --- K9: adopted twins credit once (cross-bundle idempotency) ---
 run_review learn --rule "Twin rule for adopted pairs" --scope "notes.txt" --id twin-r --json >/dev/null
 tsig="933456789abcdef0123456789abcdef012345678"
 for twin in 4260 4261; do
@@ -399,7 +364,6 @@ else
   bad "twin counters/joins: $(jq -s -r '.[] | select(.id == "twin-r") | "\(.hits)/\(.false_hits)/\(.judged)"' "$EVAL_SANDBOX/.review/kb.jsonl") / $(grep -c twin-r "$EVAL_SANDBOX/.review/kb-joins.jsonl" || true) rows"
 fi
 
-# --- K10: restore needs its rationale too ---
 run_review learn --restore docs-ex --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "bad-reason" ]; then
@@ -416,8 +380,6 @@ else
   bad "restore with reason gave exit $EVAL_STATUS"
 fi
 
-# --- K11: uncite semantics — absent kb keeps the prior cite, explicit []
-# clears it (record path shares validate_and_merge with post) ---
 run_review learn --rule "Uncite probe rule" --scope "notes.txt" --id uncite-r --json >/dev/null
 mkdir -p "$EVAL_SANDBOX/.review/local-uncite"
 cat > "$EVAL_SANDBOX/.review/local-uncite/source.json" <<'EOF'
@@ -491,8 +453,6 @@ else
   bad "malformed re-post: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.review/local-uncite/findings.json" 2>/dev/null)"
 fi
 
-# --- K12: joins rows carry bundle + review_id (all three credit paths share
-# the same commit function; human triage shown on both bundle kinds) ---
 cat > "$EVAL_SANDBOX/.review/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
 EOF

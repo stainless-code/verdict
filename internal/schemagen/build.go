@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// Schema keywords and JSON type names used across the generator.
 const (
 	keySchema               = "$schema"
 	keyID                   = "$id"
@@ -39,10 +38,8 @@ const (
 	inlineTrue              = "true"
 )
 
-// nodeKind is the JSON value kind of one schema node.
 type nodeKind int
 
-// The JSON value kinds a schema node can have.
 const (
 	kindObject nodeKind = iota
 	kindArray
@@ -75,24 +72,18 @@ func object(forceMulti bool, members ...member) *node {
 	return &node{kind: kindObject, members: members, forceMulti: forceMulti}
 }
 
-// array builds an array node.
 func array(elems ...*node) *node {
 	return &node{kind: kindArray, elems: elems}
 }
 
-// stringNode builds a string node.
 func stringNode(s string) *node { return &node{kind: kindString, text: s} }
 
-// numberNode builds a number node from its JSON literal.
 func numberNode(lit string) *node { return &node{kind: kindNumber, text: lit} }
 
-// boolNode builds a boolean node.
 func boolNode(b bool) *node { return &node{kind: kindBool, boolean: b} }
 
-// nullNode builds a JSON null node.
 func nullNode() *node { return &node{kind: kindNull} }
 
-// anyNode builds the empty schema, which accepts any value.
 func anyNode() *node { return object(false) }
 
 // definition registers one named struct type under a $defs name.
@@ -112,10 +103,8 @@ type document struct {
 	additionalProperties bool
 }
 
-// interfaceType is the [reflect.Type] of any.
 var interfaceType = reflect.TypeFor[any]()
 
-// definition names the shared $defs entries reused across documents.
 const defsRecord = "record"
 
 // documents returns every published schema, in filename order.
@@ -210,7 +199,6 @@ func documents() []document {
 	}
 }
 
-// envelopeDefs lists the envelope $defs in their published order.
 func envelopeDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[SchemaError](), name: "error"},
@@ -238,7 +226,6 @@ func envelopeDefs() []definition {
 	}
 }
 
-// reviewDefs lists the review input's definitions.
 func reviewDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[Comment](), name: "comment"},
@@ -247,12 +234,10 @@ func reviewDefs() []definition {
 	}
 }
 
-// builder reflects the model types for one document.
 type builder struct {
 	defNames map[reflect.Type]string
 }
 
-// newBuilder indexes the document's definitions by Go type.
 func newBuilder(defs []definition) *builder {
 	b := &builder{defNames: make(map[reflect.Type]string, len(defs))}
 	for _, def := range defs {
@@ -261,7 +246,6 @@ func newBuilder(defs []definition) *builder {
 	return b
 }
 
-// documentNode builds the complete schema document for doc.
 func (b *builder) documentNode(doc *document) (*node, error) {
 	content, err := b.rootNode(doc)
 	if err != nil {
@@ -283,8 +267,6 @@ func (b *builder) documentNode(doc *document) (*node, error) {
 	return object(true, members...), nil
 }
 
-// rootNode builds the root schema keywords (type/properties/required or
-// type/items or anyOf).
 func (b *builder) rootNode(doc *document) (*node, error) {
 	if len(doc.anyOf) > 0 {
 		return b.anyOfRoot(doc.anyOf)
@@ -295,7 +277,6 @@ func (b *builder) rootNode(doc *document) (*node, error) {
 	return b.typeNode(doc.root, "")
 }
 
-// anyOfRoot builds the root anyOf branches.
 func (b *builder) anyOfRoot(types []reflect.Type) (*node, error) {
 	branches := make([]*node, 0, len(types))
 	for _, typ := range types {
@@ -308,7 +289,6 @@ func (b *builder) anyOfRoot(types []reflect.Type) (*node, error) {
 	return object(true, member{keyAnyOf, array(branches...)}), nil
 }
 
-// defsNode builds the $defs container in registration order.
 func (b *builder) defsNode(defs []definition) (*node, error) {
 	members := make([]member, 0, len(defs))
 	for _, def := range defs {
@@ -321,7 +301,6 @@ func (b *builder) defsNode(defs []definition) (*node, error) {
 	return object(true, members...), nil
 }
 
-// structNode builds an object schema from a struct type.
 func (b *builder) structNode(typ reflect.Type, additional bool) (*node, error) {
 	if typ.Kind() != reflect.Struct {
 		return nil, errorf("%s is not a struct", typ)
@@ -338,7 +317,6 @@ func (b *builder) structNode(typ reflect.Type, additional bool) (*node, error) {
 	), nil
 }
 
-// fieldNodes builds the properties object and required list for a struct.
 func (b *builder) fieldNodes(typ reflect.Type) (*node, *node, error) {
 	props := object(true)
 	required := array()
@@ -353,7 +331,6 @@ func (b *builder) fieldNodes(typ reflect.Type) (*node, *node, error) {
 	return props, required, nil
 }
 
-// appendField adds one struct field to the properties and required nodes.
 func (b *builder) appendField(parent reflect.Type, field *reflect.StructField, props, required *node) error {
 	prop, isRequired, skip, err := b.fieldNode(parent, field)
 	if err != nil {
@@ -369,7 +346,6 @@ func (b *builder) appendField(parent reflect.Type, field *reflect.StructField, p
 	return nil
 }
 
-// fieldNode builds one property schema and its requiredness.
 func (b *builder) fieldNode(parent reflect.Type, field *reflect.StructField) (member, bool, bool, error) {
 	name, optional, err := jsonFieldName(field)
 	if err != nil {
@@ -385,7 +361,6 @@ func (b *builder) fieldNode(parent reflect.Type, field *reflect.StructField) (me
 	return member{name, schema}, !optional, false, nil
 }
 
-// jsonFieldName reads the JSON name and omitempty marker from a field tag.
 func jsonFieldName(field *reflect.StructField) (name string, optional bool, err error) {
 	tag := field.Tag.Get("json")
 	if tag == "-" {
@@ -407,7 +382,6 @@ func jsonFieldName(field *reflect.StructField) (name string, optional bool, err 
 	return name, optional, nil
 }
 
-// typeNode builds the schema for one Go type plus its struct tag keywords.
 func (b *builder) typeNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	if schema, ok, err := b.taggedNode(typ, tag); ok || err != nil {
 		return schema, err
@@ -415,7 +389,6 @@ func (b *builder) typeNode(typ reflect.Type, tag reflect.StructTag) (*node, erro
 	return b.plainNode(typ, tag)
 }
 
-// taggedNode handles fields whose tag overrides the Go type entirely.
 func (b *builder) taggedNode(typ reflect.Type, tag reflect.StructTag) (*node, bool, error) {
 	if enum := tag.Get(keyEnum); enum != "" {
 		return enumNode(enum), true, nil
@@ -437,7 +410,6 @@ func (b *builder) taggedNode(typ reflect.Type, tag reflect.StructTag) (*node, bo
 	return nil, false, nil
 }
 
-// inlineStructNode inlines a named struct instead of referencing a $def.
 func (b *builder) inlineStructNode(typ reflect.Type) (*node, error) {
 	base := typ
 	if base.Kind() == reflect.Pointer {
@@ -446,7 +418,6 @@ func (b *builder) inlineStructNode(typ reflect.Type) (*node, error) {
 	return b.structNode(base, true)
 }
 
-// anyOfNode builds the null-or-$ref union used by the envelope error field.
 func (b *builder) anyOfNode(typ reflect.Type, union string) (*node, error) {
 	if union != typeNull {
 		return nil, errorf("unsupported anyOf tag %q", union)
@@ -465,7 +436,6 @@ func (b *builder) anyOfNode(typ reflect.Type, union string) (*node, error) {
 	return object(false, member{keyAnyOf, array(object(false, member{keyType, stringNode(typeNull)}), ref)}), nil
 }
 
-// plainNode handles fields with no type-overriding tag.
 func (b *builder) plainNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	base := typ
 	nullable := false
@@ -487,7 +457,6 @@ func (b *builder) plainNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 	return schema, nil
 }
 
-// baseNode maps one non-pointer Go type to its schema node.
 func (b *builder) baseNode(typ reflect.Type) (*node, error) {
 	switch typ.Kind() {
 	case reflect.Interface:
@@ -517,7 +486,6 @@ func (b *builder) baseNode(typ reflect.Type) (*node, error) {
 	}
 }
 
-// sliceNode builds an array schema; []any carries no items.
 func (b *builder) sliceNode(typ reflect.Type) (*node, error) {
 	elem := typ.Elem()
 	if elem == interfaceType {
@@ -530,7 +498,6 @@ func (b *builder) sliceNode(typ reflect.Type) (*node, error) {
 	return object(true, member{keyType, stringNode(typeArray)}, member{keyItems, items}), nil
 }
 
-// mapNode builds an open object schema for map[string]any.
 func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 	if typ.Key().Kind() != reflect.String {
 		return nil, errorf("map key must be a string, got %s", typ.Key())
@@ -541,7 +508,6 @@ func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 	), nil
 }
 
-// refNode builds a $ref to a registered definition.
 func (b *builder) refNode(typ reflect.Type) (*node, error) {
 	name, ok := b.defNames[typ]
 	if !ok {
@@ -550,7 +516,6 @@ func (b *builder) refNode(typ reflect.Type) (*node, error) {
 	return object(false, member{keyRef, stringNode(defsPrefix + name)}), nil
 }
 
-// nullableNode widens a scalar/array/object type with JSON null.
 func nullableNode(schema *node, base reflect.Type) (*node, error) {
 	if base.Kind() == reflect.Struct {
 		return nil, errorf("nullable structs need an explicit anyOf tag")
@@ -572,7 +537,6 @@ func nullableNode(schema *node, base reflect.Type) (*node, error) {
 	return nil, errorf("%s has no type to widen", base)
 }
 
-// typeListNode turns "integer|string|null" into a type array.
 func typeListNode(spec string) *node {
 	parts := strings.Split(spec, "|")
 	elems := make([]*node, 0, len(parts))
@@ -582,7 +546,6 @@ func typeListNode(spec string) *node {
 	return object(false, member{keyType, array(elems...)})
 }
 
-// enumNode turns "a|b|null" into an enum keyword.
 func enumNode(spec string) *node {
 	parts := strings.Split(spec, "|")
 	elems := make([]*node, 0, len(parts))
@@ -596,7 +559,6 @@ func enumNode(spec string) *node {
 	return object(false, member{keyEnum, array(elems...)})
 }
 
-// appendKeywords adds min/max/format keywords to a leaf schema node.
 func appendKeywords(schema *node, tag reflect.StructTag) {
 	if value := tag.Get("min"); value != "" {
 		schema.members = append(schema.members, member{keyMinimum, numberNode(value)})

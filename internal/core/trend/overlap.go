@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// overlapRow is one per-bundle overlap audit row.
 type overlapRow struct {
 	coverage       any
 	precision      any
@@ -29,7 +28,6 @@ type overlapRow struct {
 	calibrateReady bool
 }
 
-// overlapRollup is the portfolio overlap audit.
 type overlapRollup struct {
 	precision         any
 	coverage          any
@@ -52,9 +50,6 @@ type overlapRollup struct {
 	measuredBundles   int
 }
 
-// overlapAudit owns the --overlap audit: the offline join of recalled x
-// cited x outcomes. Missing manifests read unmeasured (never zero); the
-// outcome split still counts cited findings from unmeasured bundles.
 func overlapAudit(st *state, rows []row) *overlapRollup {
 	joins := readJoins(st)
 	out := &overlapRollup{}
@@ -65,7 +60,6 @@ func overlapAudit(st *state, rows []row) *overlapRollup {
 	return out
 }
 
-// readJoins reads the KB joins manifest, warning when unreadable.
 func readJoins(st *state) []any {
 	raw, err := os.ReadFile(".review/kb-joins.jsonl")
 	if err != nil {
@@ -87,7 +81,6 @@ func readJoins(st *state) []any {
 	return joins
 }
 
-// overlapRowFor handles one per-bundle overlap row.
 func overlapRowFor(st *state, row *row, joins []any) overlapRow {
 	recalled, measured := recallManifest(st, row.bundle)
 	cited := citedIDs(row.findings)
@@ -117,7 +110,6 @@ func overlapRowFor(st *state, row *row, joins []any) overlapRow {
 	return out
 }
 
-// tallyOutcome handles one cited finding's outcome split.
 func tallyOutcome(out *overlapRow, status string) {
 	switch status {
 	case statusAddressed:
@@ -131,8 +123,6 @@ func tallyOutcome(out *overlapRow, status string) {
 	}
 }
 
-// recallManifest owns the kb-recall.json manifest read: missing manifests
-// read unmeasured, unreadable ones warn and read unmeasured.
 func recallManifest(st *state, bundle string) ([]any, bool) {
 	path := ".review/" + bundle + "/kb-recall.json"
 	if !isRegular(path) {
@@ -153,14 +143,11 @@ func recallManifest(st *state, bundle string) ([]any, bool) {
 	return manifestIDs(list), true
 }
 
-// warnManifest owns the unreadable-manifest warn-and-unmeasured read.
 func warnManifest(st *state, bundle string) ([]any, bool) {
 	st.warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
 	return []any{}, false
 }
 
-// manifestIDs owns the manifest id extraction: non-object entries skip,
-// non-string ids skip.
 func manifestIDs(list []any) []any {
 	var ids []any
 	for _, e := range list {
@@ -178,7 +165,6 @@ func manifestIDs(list []any) []any {
 	return ids
 }
 
-// citedIDs owns the cited set: unique raw string kb ids.
 func citedIDs(findings []any) []any {
 	var ids []any
 	for _, e := range findings {
@@ -187,7 +173,6 @@ func citedIDs(findings []any) []any {
 	return dedupeSorted(ids)
 }
 
-// appendCitedIDs folds one finding's string kb ids into the cited set.
 func appendCitedIDs(ids []any, e any) []any {
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
@@ -206,9 +191,6 @@ func appendCitedIDs(ids []any, e any) []any {
 	return ids
 }
 
-// citedFindingSet owns the cited-finding set: findings whose kb reads
-// non-empty (jq length semantics: booleans read 0, numbers read absolute,
-// strings read codepoints).
 func citedFindingSet(findings []any) []any {
 	var out []any
 	for _, e := range findings {
@@ -219,7 +201,6 @@ func citedFindingSet(findings []any) []any {
 	return out
 }
 
-// kbOf reads one entry's kb value (nil when absent).
 func kbOf(entry any) any {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -232,7 +213,6 @@ func kbOf(entry any) any {
 	return kb
 }
 
-// kbLength counts kb entries (booleans and objects read 0).
 func kbLength(kb any) float64 {
 	switch t := kb.(type) {
 	case nil:
@@ -258,14 +238,10 @@ func kbLength(kb any) float64 {
 	}
 }
 
-// arrayOverlap owns the overlap trick: recalled minus (recalled minus
-// cited), with jq array-minus semantics (every element matching the right
-// side drops).
 func arrayOverlap(recalled, cited []any) []any {
 	return arrayMinus(recalled, arrayMinus(recalled, cited))
 }
 
-// arrayMinus drops every element of a equal (jq ==) to any element of b.
 func arrayMinus(a, b []any) []any {
 	var out []any
 	for _, x := range a {
@@ -279,7 +255,6 @@ func arrayMinus(a, b []any) []any {
 	return out
 }
 
-// containsValue reports jq == membership.
 func containsValue(list []any, v any) bool {
 	for _, e := range list {
 		if readcommon.Cmp(e, v) == 0 {
@@ -289,8 +264,6 @@ func containsValue(list []any, v any) bool {
 	return false
 }
 
-// ratio owns the agreement division (null when the sample is empty is
-// handled by callers leaving the value nil).
 func ratio(n, d int) any {
 	if d == 0 {
 		return nil
@@ -298,7 +271,6 @@ func ratio(n, d int) any {
 	return float64(n) / float64(d)
 }
 
-// countJoins counts joins rows for one bundle.
 func countJoins(joins []any, bundle string) int {
 	n := 0
 	for _, j := range joins {
@@ -313,8 +285,6 @@ func countJoins(joins []any, bundle string) int {
 	return n
 }
 
-// calibrateEligible owns the calibrate_eligible flag: a posted review id
-// plus head on a non-local bundle.
 func calibrateEligible(bundle string) bool {
 	if len(bundle) >= len("local-") && bundle[:len("local-")] == "local-" {
 		return false
@@ -334,8 +304,6 @@ func joinIDPresent(dir string) bool {
 	return reviewIDPresent(dir)
 }
 
-// reviewIDPresent reads the nested review.id field from the shared capped
-// post-record read.
 func reviewIDPresent(dir string) bool {
 	m := readcommon.PostRecord(dir)
 	if m == nil {
@@ -352,7 +320,6 @@ func reviewIDPresent(dir string) bool {
 	return jq.R(id) != ""
 }
 
-// rollOverlapTotals owns the portfolio-level overlap rollup.
 func rollOverlapTotals(out *overlapRollup, joins []any) {
 	var recAll, citAll []any
 	for i := range out.perBundle {
@@ -384,7 +351,6 @@ func rollOverlapTotals(out *overlapRollup, joins []any) {
 	}
 }
 
-// accumulateRowCounts folds one per-bundle row's outcome counts.
 func accumulateRowCounts(out *overlapRollup, row *overlapRow) {
 	out.citedFindings += row.citedFindings
 	out.addressed += row.addressed
@@ -396,7 +362,6 @@ func accumulateRowCounts(out *overlapRollup, row *overlapRow) {
 	}
 }
 
-// tallyJoins owns the joins outcome split.
 func tallyJoins(out *overlapRollup, joins []any) {
 	out.joinsRows = len(joins)
 	for _, j := range joins {
@@ -404,7 +369,6 @@ func tallyJoins(out *overlapRollup, joins []any) {
 	}
 }
 
-// tallyJoin folds one joins row into the outcome split.
 func tallyJoin(out *overlapRollup, j any) {
 	m, ok := j.(map[string]any)
 	if !ok {
@@ -422,7 +386,6 @@ func tallyJoin(out *overlapRollup, j any) {
 	}
 }
 
-// emitOverlapHuman owns the overlap human lines.
 func (st *state) emitOverlapHuman(out *overlapRollup) {
 	st.human(fmt.Sprintf("overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)",
 		out.measuredBundles, out.unmeasuredBundles, numOrNA(out.precision), numOrNA(out.coverage),
@@ -440,7 +403,6 @@ func (st *state) emitOverlapHuman(out *overlapRollup) {
 	}
 }
 
-// numOrNA renders a ratio jq -r style, or n/a for null.
 func numOrNA(v any) string {
 	if v == nil {
 		return "n/a"
@@ -482,7 +444,6 @@ func overlapDoc(out *overlapRollup) *jq.Obj {
 	)
 }
 
-// overlapRowDoc renders one per-bundle overlap row.
 func overlapRowDoc(row *overlapRow) *jq.Obj {
 	return jq.NewObj(
 		"bundle", row.bundle,

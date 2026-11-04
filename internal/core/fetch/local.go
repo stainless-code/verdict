@@ -16,8 +16,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// runLocal mirrors the fetch-local block: worktree/staged/range/branch/
-// stash diff modes sharing the cap/chunk/budget/prompt planes.
 // runLocalTail owns the fetch-local block: worktree/staged/range/branch/
 // stash diff modes sharing the cap/chunk/budget/prompt planes, returning
 // the envelope data and next step for the adapter to render.
@@ -44,8 +42,6 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRe
 	return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
 }
 
-// runLocalBuild owns the fetch-local build after setup: budget, diff,
-// cap, stats, stores, and the finish tail.
 func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
 	r *session, dir, slug string, mode *localMode,
@@ -195,8 +191,6 @@ func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
 	return fc, chunkActive, nil
 }
 
-// localStats owns the fetch-local measurements: hunks, the binary/warn
-// lines, the file stats, and the counts.
 func localStats(
 	ctx context.Context, r *session, dir string, mode *localMode, paths []string,
 ) (listed, numstat string, total, adds, dels int, diffSHA string, err error) {
@@ -219,8 +213,6 @@ func localStats(
 	return listed, numstat, total, adds, dels, diffSHA, nil
 }
 
-// localStores owns the fetch-local bundle stores: TOC, roles, context,
-// claim store, sensitive manifest, and recall.
 func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat string) error {
 	if err := writeLocalTOC(ctx2, slug, listed, numstat); err != nil {
 		return err
@@ -341,8 +333,6 @@ func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, 
 	}
 }
 
-// resolveStashMode owns the stash mode: the stash ref must verify, then
-// its commit and parent bound the diff.
 func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) (localMode, error) {
 	if _, err := s.run(ctx, binGit, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
 		return localMode{}, &core.RefusalError{
@@ -371,15 +361,12 @@ func resolveBaseMode(ctx context.Context, s *session, f *core.FetchLocalFlags, b
 	return localMode{kind: modeBranch, baseSHA: mb, headSHA: head, headRef: headRef, rangeVal: f.BaseRef + "...HEAD"}, nil
 }
 
-// resolveStagedMode owns the staged mode: HEAD bounds the index diff.
 func resolveStagedMode(ctx context.Context, s *session) (localMode, error) {
 	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
 	head := s.gitLineOrEmpty(ctx, "write-tree")
 	return localMode{kind: modeStaged, baseSHA: base, headSHA: head, headRef: keyIndex, rangeVal: "HEAD:index"}, nil
 }
 
-// resolveWorktreeMode owns the default worktree mode: uncommitted HEAD
-// changes with the branch (or worktree) as head ref.
 func resolveWorktreeMode(ctx context.Context, s *session, branch string) localMode {
 	base := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
 	headRef := branch
@@ -548,8 +535,6 @@ func countNonEmptyLines(s string) int {
 	return n
 }
 
-// intOrZero owns the numstat awk: plain-digit fields sum, anything else
-// reads zero. An overflow reads zero too, never a wrapped negative count.
 func intOrZero(s string) int {
 	if !readcommon.IsDigits(s) {
 		return 0
@@ -595,8 +580,6 @@ func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 	}
 }
 
-// untrackedKept owns the untracked filter: blanks and the bundle
-// directory never warn.
 func untrackedKept(stdout string) []string {
 	var kept []string
 	for _, line := range splitLines(strings.TrimRight(stdout, newline)) {
@@ -608,8 +591,6 @@ func untrackedKept(stdout string) []string {
 	return kept
 }
 
-// untrackedShown owns the five-path display cap: words counted before
-// each append.
 func untrackedShown(kept []string) string {
 	shown := ""
 	for _, k := range kept {
@@ -635,8 +616,6 @@ func writeLocalBinaryWarns(r *session, numstat string) {
 	}
 }
 
-// binarySkipped owns the numstat dash-dash scan: binary files have no
-// hunks and leave the anchors unchecked.
 func binarySkipped(numstat string) []string {
 	var skipped []string
 	for _, line := range splitLines(numstat) {
@@ -659,8 +638,6 @@ func binaryKept(numstat string) []string {
 	return kept
 }
 
-// writeLocalTOC owns the fetch-local toc.txt: the local title line, the
-// numstat stat block, and the coverage manifest over file_list.
 func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	withHunks, derr := diffFiles(ctx2.dir+suffixFullDiff, ctx2.dir)
 	if derr != nil {

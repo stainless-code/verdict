@@ -16,12 +16,10 @@ import (
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
-// fixedNow is the injected clock for deterministic receipts.
 func fixedNow() time.Time {
 	return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 }
 
-// newRequest builds a hermetic request rooted in a fresh HOME.
 func newRequest(t *testing.T) *skill.Request {
 	t.Helper()
 	return &skill.Request{
@@ -30,7 +28,6 @@ func newRequest(t *testing.T) *skill.Request {
 	}
 }
 
-// listFiles reads the served inventory, failing the test on error.
 func listFiles(t *testing.T) skill.Inventory {
 	t.Helper()
 	inv, ref := skill.List(context.Background(), newRequest(t))
@@ -348,7 +345,6 @@ func TestInstallConflictRefusesBeforeWriting(t *testing.T) {
 	}
 }
 
-// readReceiptMap parses a receipt for assertions.
 func readReceiptMap(t *testing.T, path string) map[string]string {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -362,7 +358,6 @@ func readReceiptMap(t *testing.T, path string) map[string]string {
 	return doc
 }
 
-// writeReceiptVersion rewrites one installed receipt's version.
 func writeReceiptVersion(t *testing.T, target, version string) {
 	t.Helper()
 	path := filepath.Join(target, ".verdict-managed")
@@ -376,10 +371,6 @@ func writeReceiptVersion(t *testing.T, target, version string) {
 	}
 }
 
-// extraFiles lists files under root that the install plan did not write: any
-// extra file — an atomic temp leftover under whatever prefix it is renamed to,
-// or a stray write — fails the check, so it cannot go blind when the writer's
-// temp prefix changes (test-audit A8).
 func extraFiles(t *testing.T, root string, planned []string) []string {
 	t.Helper()
 	allowed := map[string]bool{skill.ReceiptName: true}
@@ -399,7 +390,6 @@ func extraFiles(t *testing.T, root string, planned []string) []string {
 	return extra
 }
 
-// walkFiles calls fn for every regular file under root.
 func walkFiles(t *testing.T, root string, fn func(path string)) {
 	t.Helper()
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {

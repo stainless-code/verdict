@@ -10,8 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/kb"
 )
 
-// writePaddedKB writes the row padded with JSON whitespace to exactly size
-// bytes in the learn store.
 func writePaddedKB(t *testing.T, row string, size int64) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(kbFile), 0o755); err != nil {
@@ -27,7 +25,6 @@ func writePaddedKB(t *testing.T, row string, size int64) {
 	}
 }
 
-// checkLearnReadsAtCap proves every read path accepts the store at the cap.
 func checkLearnReadsAtCap(t *testing.T) {
 	t.Helper()
 	st := &state{req: &Request{}}
@@ -42,8 +39,6 @@ func checkLearnReadsAtCap(t *testing.T) {
 	}
 }
 
-// checkLearnReadsOverCap proves every read path refuses typed corrupt-store
-// one byte over the cap.
 func checkLearnReadsOverCap(t *testing.T) {
 	t.Helper()
 	st := &state{req: &Request{}}

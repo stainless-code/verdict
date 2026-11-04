@@ -15,7 +15,6 @@ const (
 	KindInline     = "inline"
 )
 
-// statusRank owns the sk rank: open first, deferred second, rest last.
 func statusRank(status string) int {
 	switch status {
 	case StatusOpen:
@@ -27,11 +26,8 @@ func statusRank(status string) int {
 	}
 }
 
-// sevOrder is the severity tier rank order; unknown tiers sort last.
 var sevOrder = []string{"critical", "important", "informational"}
 
-// sevRank owns the sev rank: untagged severities read 3 and never meet a
-// tier gate.
 func sevRank(sev any) int {
 	if s, ok := sev.(string); ok {
 		if i := slices.Index(sevOrder, s); i >= 0 {
@@ -41,12 +37,8 @@ func sevRank(sev any) int {
 	return len(sevOrder)
 }
 
-// rigorOrder is the rigor rung rank order; unknown rungs sort first (null).
 var rigorOrder = []string{"reproduced", "ran", "walked", "pointed", "said"}
 
-// rigorRank renders (4 - rw[.rigor // "said"]): known rungs descend from
-// reproduced to said. Unknown rungs read null and sort first,
-// which the -1 sentinel preserves without a per-comparison value allocation.
 func rigorRank(rigor any) int {
 	r, ok := rigor.(string)
 	if !ok {
@@ -61,8 +53,6 @@ func rigorRank(rigor any) int {
 	return -1
 }
 
-// boolRank renders (if .flag then 0 else 1 end): true first, everything else
-// (false, null, missing, exotic) last.
 func boolRank(v any) int {
 	if v == true {
 		return 0
@@ -106,9 +96,6 @@ type Ranked struct {
 // open-first severity-rigor-anchor-path-line-sig sort (stable, like jq's
 // sort_by), then 1-based ranks. Null entries flow through the same way
 // (their filters read null and their keys sort first).
-//
-// The comparator is shared with [TopOpenInline] and decorates the entries
-// once, so the sort no longer rebuilds its eight keys on every comparison.
 func Rank(entries []any, statusF, kindF string) []Ranked {
 	decorated := decorateEntries(entries, statusF, kindF)
 	slices.SortStableFunc(decorated, compareDecorated)
@@ -135,8 +122,6 @@ func TopOpenInline(entries []any) (string, any) {
 	return sig, entry
 }
 
-// rankKeys is one entry's precomputed eight-key sort tuple: status,
-// severity, rigor, anchored, inBounds, path, line, sig.
 type rankKeys struct {
 	path     any
 	line     any
@@ -148,14 +133,11 @@ type rankKeys struct {
 	inBounds int
 }
 
-// decoratedEntry pairs one entry with its precomputed sort keys.
 type decoratedEntry struct {
 	entry any
 	keys  rankKeys
 }
 
-// decorateEntries applies the status/kind display filters and computes each
-// surviving entry's keys exactly once.
 func decorateEntries(entries []any, statusF, kindF string) []decoratedEntry {
 	out := make([]decoratedEntry, 0, len(entries))
 	for _, e := range entries {
@@ -170,14 +152,12 @@ func decorateEntries(entries []any, statusF, kindF string) []decoratedEntry {
 	return out
 }
 
-// compareDecorated orders two decorated entries by their precomputed keys.
 //
 //nolint:gocritic // value params keep the sort allocation-free; a pointer key table would allocate per entry.
 func compareDecorated(a, b decoratedEntry) int {
 	return compareRankKeys(a.keys, b.keys)
 }
 
-// compareRankKeys orders two key tuples by the ranked sort order. The
 // key precedence is the published contract: changing it changes report,
 // next, and fix together.
 //
@@ -207,7 +187,6 @@ func compareRankKeys(a, b rankKeys) int {
 	return Cmp(a.sig, b.sig)
 }
 
-// sortKeys builds the eight ranked sort keys for one entry.
 func sortKeys(e any) rankKeys {
 	path := FieldOf(e, "path")
 	if path == nil || path == false {
@@ -264,11 +243,8 @@ func PrefixN(s string, n int) string {
 	return prefixRunes(s, n)
 }
 
-// sigPrefixLen is the human-table sig prefix width.
 const sigPrefixLen = 8
 
-// prefixRunes takes the first n runes, mirroring jq's [0:8] codepoint
-// slice (sigs are hex, so bytes and runes agree).
 func prefixRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) > n {

@@ -17,8 +17,6 @@ func writeErrFile(path, stderr string) error {
 	return nil
 }
 
-// fetchWriteError seals a bundle-write failure (unreachable on a writable
-// bundle directory; callers refuse typed).
 type fetchWriteError struct {
 	err  error
 	path string
@@ -47,9 +45,6 @@ func internalErrorf(format string, args ...any) *internalError {
 	return &internalError{msg: fmt.Sprintf(format, args...)}
 }
 
-// headBytes reads the first N bytes of file, dropping trailing
-// newlines stripped (command-substitution semantics, no tr — unlike the
-// post recheck reason, the fetch excerpts keep interior newlines).
 func headBytes(s string, n int) string {
 	b := []byte(s)
 	if len(b) > n {
@@ -67,5 +62,4 @@ func readOptional(path string) string {
 	return string(raw)
 }
 
-// compareErrHeadBytes caps the incremental note, like `head -c 300`.
 const compareErrHeadBytes = 300

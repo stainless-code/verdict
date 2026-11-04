@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// opDecodeJSONSeq names the JSON-sequence decode operation in sealed errors.
 const opDecodeJSONSeq = "decode json sequence"
 
 // Obj is a JSON object that preserves key order across read-modify-write,
@@ -114,7 +113,6 @@ func writePretty(sb *strings.Builder, v any, depth int, prefix, indent string) {
 	}
 }
 
-// writePrettyMap writes a plain map with jq's codepoint-sorted key order.
 func writePrettyMap(sb *strings.Builder, t map[string]any, depth int, pad, childPad, prefix, indent string) {
 	keys := make([]string, 0, len(t))
 	for k := range t {
@@ -138,7 +136,6 @@ func writePrettyMap(sb *strings.Builder, t map[string]any, depth int, pad, child
 	sb.WriteString("\n" + pad + "}")
 }
 
-// writePrettyObj writes an object at depth with Go-encoder indentation.
 func writePrettyObj(sb *strings.Builder, t *Obj, depth int, pad, childPad, prefix, indent string) {
 	if len(t.Keys) == 0 {
 		sb.WriteString("{}")
@@ -157,7 +154,6 @@ func writePrettyObj(sb *strings.Builder, t *Obj, depth int, pad, childPad, prefi
 	sb.WriteString("\n" + pad + "}")
 }
 
-// writePrettyArr writes an array at depth with Go-encoder indentation.
 func writePrettyArr(sb *strings.Builder, t []any, depth int, pad, childPad, prefix, indent string) {
 	if len(t) == 0 {
 		sb.WriteString("[]")
@@ -215,7 +211,6 @@ func valueCompact(v any) string {
 	return Compact(v)
 }
 
-// arrayCompact renders an array compactly.
 func arrayCompact(a []any) string {
 	var sb strings.Builder
 	sb.WriteByte('[')
@@ -248,7 +243,6 @@ func DecodeJSONLOrdered(data []byte) ([]*Obj, error) {
 	return out, nil
 }
 
-// decodeSequence decodes every JSON value in data in order.
 func decodeSequence(data []byte) ([]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
@@ -272,7 +266,6 @@ func decodeSequence(data []byte) ([]any, error) {
 	return out, nil
 }
 
-// nextToken reads one token, sealing decoder errors.
 func nextToken(dec *json.Decoder) (json.Token, error) {
 	tok, err := dec.Token()
 	if err != nil {
@@ -281,7 +274,6 @@ func nextToken(dec *json.Decoder) (json.Token, error) {
 	return tok, nil
 }
 
-// closeValue consumes a value's closing delimiter.
 func closeValue(dec *json.Decoder) error {
 	if _, err := dec.Token(); err != nil {
 		return Sealed(opDecodeJSONSeq, err)
@@ -289,7 +281,6 @@ func closeValue(dec *json.Decoder) error {
 	return nil
 }
 
-// decodeTokenValue decodes one value whose opening token was already read.
 func decodeTokenValue(dec *json.Decoder, tok json.Token) (any, error) {
 	switch t := tok.(type) {
 	case json.Delim:
@@ -312,7 +303,6 @@ func decodeTokenValue(dec *json.Decoder, tok json.Token) (any, error) {
 	}
 }
 
-// decodeObject decodes the remainder of an object after `{`.
 func decodeObject(dec *json.Decoder) (*Obj, error) {
 	o := &Obj{Fields: map[string]any{}}
 	for dec.More() {
@@ -330,7 +320,6 @@ func decodeObject(dec *json.Decoder) (*Obj, error) {
 	return o, nil
 }
 
-// decodeKey reads one object key.
 func decodeKey(dec *json.Decoder) (string, error) {
 	keyTok, err := nextToken(dec)
 	if err != nil {
@@ -343,7 +332,6 @@ func decodeKey(dec *json.Decoder) (string, error) {
 	return key, nil
 }
 
-// decodeField decodes one object field value.
 func decodeField(dec *json.Decoder, o *Obj, key string) error {
 	valTok, err := nextToken(dec)
 	if err != nil {
@@ -357,7 +345,6 @@ func decodeField(dec *json.Decoder, o *Obj, key string) error {
 	return nil
 }
 
-// decodeArray decodes the remainder of an array after `[`.
 func decodeArray(dec *json.Decoder) ([]any, error) {
 	var out []any
 	for dec.More() {

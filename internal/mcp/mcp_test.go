@@ -23,10 +23,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// fixedNow is the deterministic clock every test injects.
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
-// testConfig builds a hermetic transport config rooted at the current cwd.
 func testConfig() Config {
 	return Config{
 		Version: "1.2.3",
@@ -36,7 +34,6 @@ func testConfig() Config {
 	}
 }
 
-// fixture writes a minimal hermetic PR bundle and changes into its root.
 func fixture(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
@@ -46,7 +43,6 @@ func fixture(t *testing.T) {
 	writeFile(t, ".review/5101/findings.json", `[]`)
 }
 
-// writeFile writes one fixture file, creating parents.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -57,7 +53,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// frame is one decoded JSON-RPC response.
 type frame struct { //nolint:govet // field order mirrors the decoded wire frame
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
@@ -65,7 +60,6 @@ type frame struct { //nolint:govet // field order mirrors the decoded wire frame
 	Error   *rpcError       `json:"error"`
 }
 
-// serve runs one scripted session and returns the decoded stdout frames.
 func serve(t *testing.T, cfg *Config, lines ...string) map[string]frame {
 	t.Helper()
 	var out bytes.Buffer
@@ -76,7 +70,6 @@ func serve(t *testing.T, cfg *Config, lines ...string) map[string]frame {
 	return decodeFrames(t, out.Bytes())
 }
 
-// decodeFrames proves stdout holds protocol frames only.
 //
 //nolint:revive // frame decoding asserts one line of protocol output
 func decodeFrames(t *testing.T, raw []byte) map[string]frame {
@@ -160,7 +153,6 @@ func TestToolSchemas(t *testing.T) {
 	}
 }
 
-// checkSchema walks the small JSON Schema subset the reflector emits.
 //
 //nolint:revive // the schema walk is one branch per JSON type
 func checkSchema(t *testing.T, tool string, node map[string]any) {
@@ -221,14 +213,11 @@ func TestDataToolCall(t *testing.T) {
 	}
 }
 
-// postCommander scripts post's reads (live SHA, authorship, empty threads)
-// and fails the test on any reviews POST.
 type postCommander struct {
 	t     *testing.T
 	calls []string
 }
 
-// Run replays one canned read; dry-run must never reach the reviews POST.
 func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	joined := strings.Join(cmd.Argv, " ")
 	c.calls = append(c.calls, joined)
@@ -248,7 +237,6 @@ func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, e
 	}
 }
 
-// postFixture writes the bundle post's dry run needs.
 func postFixture(t *testing.T) {
 	t.Helper()
 	writeFile(t, ".review/7/PR.json",
@@ -416,7 +404,6 @@ func TestServeLifecycle(t *testing.T) {
 	if len(list.Tools) != 18 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
-	// Success.
 	var ok callToolResult
 	if err := json.Unmarshal(frames["3"].Result, &ok); err != nil {
 		t.Fatalf("success result: %v", err)
@@ -434,7 +421,6 @@ func TestServeLifecycle(t *testing.T) {
 	if string(ok.StructuredContent) != ok.Content[0].Text {
 		t.Error("text and structuredContent diverged")
 	}
-	// Refusal.
 	var refused callToolResult
 	if err := json.Unmarshal(frames["4"].Result, &refused); err != nil {
 		t.Fatalf("refusal result: %v", err)
@@ -452,7 +438,6 @@ func TestServeLifecycle(t *testing.T) {
 	if refusal["hint"] == "" || !strings.Contains(refused.Content[0].Text, refusal["hint"]) {
 		t.Errorf("refusal hint = %q", refusal["hint"])
 	}
-	// Ping, unknown tool, unknown method, parse error.
 	if string(frames["5"].Result) != "{}" {
 		t.Errorf("ping result = %s", frames["5"].Result)
 	}
@@ -531,7 +516,6 @@ func TestArgsDecode(t *testing.T) {
 	}
 }
 
-// findTool returns one registered tool from the full surface.
 func findTool(t *testing.T, name string) *tool {
 	t.Helper()
 	for _, tool := range allTools(false, true) {
@@ -589,7 +573,6 @@ func TestOperatorSurface(t *testing.T) {
 	}
 }
 
-// hasTriage reports whether the registry contains the operator tool.
 func hasTriage(tools []*tool) bool {
 	for _, tool := range tools {
 		if tool.name == "triage" {
@@ -599,7 +582,6 @@ func hasTriage(tools []*tool) bool {
 	return false
 }
 
-// listHasTriage reports whether a wire tool list contains the operator tool.
 func listHasTriage(tools []toolDescriptor) bool {
 	for _, tool := range tools {
 		if tool.Name == "triage" {
@@ -698,8 +680,6 @@ func TestServeEndsOnContextCancelWithoutEOF(t *testing.T) {
 	}
 }
 
-// runningWaitTool is a tool that marks `running` on disk, then blocks until
-// its call context is canceled and refuses `canceled`.
 func runningWaitTool(running string) *tool {
 	return &tool{
 		name:    "wait",
@@ -714,7 +694,6 @@ func runningWaitTool(running string) *tool {
 	}
 }
 
-// waitForFile polls until path exists, failing the test at a 5s deadline.
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -771,13 +750,11 @@ func TestRefusalResultRetryAt(t *testing.T) {
 	}
 }
 
-// threadsCommander answers the refresh's GraphQL page.
 type threadsCommander struct {
 	t    *testing.T
 	page string
 }
 
-// Run replays the one scripted page.
 func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
 		return core.Result{Stdout: c.page}, nil
@@ -786,7 +763,6 @@ func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result
 	return core.Result{}, errors.New("unexpected argv")
 }
 
-// LookPath reports every tool present.
 func (c *threadsCommander) LookPath(string) error { return nil }
 
 // TestThreadsTool proves the MCP threads tool is read-only/open-world, maps
@@ -837,8 +813,6 @@ func TestThreadsTool(t *testing.T) {
 	}
 }
 
-// concurrentReport renders one report call; even ids hit the fixture bundle
-// (success), odd ids a PR with none (refusal).
 func concurrentReport(id int) string {
 	pr := "9999"
 	if id%2 == 0 {

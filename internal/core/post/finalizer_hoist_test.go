@@ -8,10 +8,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// hoistHead is the reviewed SHA the minimal bundle records.
 const hoistHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-// hoistPostRecord writes a completed-post record for hoistHead.
 func hoistPostRecord(t *testing.T) {
 	t.Helper()
 	if err := writeTestFile(".review/7/post.json",
@@ -93,8 +91,6 @@ func assertAlreadyPostedZeroCalls(t *testing.T, ref *core.RefusalError, cmdr *sc
 	}
 }
 
-// hoistBadSchemaReview is a same-SHA bundle whose review.json merge would
-// refuse as bad-review-schema (unknown schema_version).
 const hoistBadSchemaReview = `{"schema_version":"9","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`
 
 // TestRunSameSHAPrecedence pins the hoist's refusal precedence over the two
@@ -120,7 +116,6 @@ func TestRunSameSHAPrecedence(t *testing.T) {
 			} else {
 				hoistPostRecord(t)
 			}
-			// An empty script proves the refusal precedes every forge read.
 			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 			var warnings, human []string
 			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)

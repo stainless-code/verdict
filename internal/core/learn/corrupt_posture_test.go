@@ -19,8 +19,6 @@ func TestCorruptStorePostures(t *testing.T) {
 	checkLearnRefuses(t, findings)
 }
 
-// seedCorruptStore writes a malformed store and returns the findings path the
-// record-side commit would rewrite.
 func seedCorruptStore(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -39,8 +37,6 @@ func seedCorruptStore(t *testing.T) string {
 	return findings
 }
 
-// checkRecordWarnsAndDrops pins the record posture: warn, drop the staged
-// credit, keep the store.
 func checkRecordWarnsAndDrops(t *testing.T, findings string) {
 	t.Helper()
 	var warns []string
@@ -55,7 +51,6 @@ func checkRecordWarnsAndDrops(t *testing.T, findings string) {
 	}
 }
 
-// checkLearnRefuses pins the learn posture: a typed corrupt-store refusal.
 func checkLearnRefuses(t *testing.T, _ string) {
 	t.Helper()
 	st := &state{req: &Request{}}

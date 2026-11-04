@@ -1,29 +1,10 @@
 #!/usr/bin/env bash
-# Case post-refusals: typed refusals on the post path (R1: crashes become envelopes).
 #
-# Grades (hermetic — crafted bundles, smart gh stub, no network):
-#   P1  non-object prior findings elements refuse corrupt-store on the post
-#       path (exit 1, envelope) with the seeded findings.json byte-identical
-#       and no post.json — the merge never starts fresh over history. The
-#       same shape refuses identically on the record path.
-#   P2  a POST that returns garbage (exit 0, non-JSON) refuses post-failed
-#       typed (exit 1, envelope) with no marker file and no post.json —
-#       decoding it would crash jq with no envelope and wedge the bundle
-#       behind the touched marker.
-#   P3  a POST that returns empty (exit 0, no body) refuses post-failed typed
-#       with no marker file and no post.json.
-#   P4  a missing review.json refuses missing-review-file typed (exit 1)
-#       with nothing posted and no post.json.
-#   P5  a bad --approve value refuses bad-approve typed (exit 1) naming the value.
-#   P7  a local-<name> bundle refuses no-pr-target (exit 1) with no post.json and
-#       no POST, and --help keeps naming that code while trend --help makes no
-#       local-bundle refusal claim (trend rolls local bundles up).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# reviews_posts_since <mark> — reviews POST calls logged after <mark>.
 reviews_posts_since() {
   local n
   n=$(tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews" || true)
@@ -31,9 +12,6 @@ reviews_posts_since() {
 }
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 
-# Overlay a smart gh stub: pulls/user answer locally, the reviews POST
-# behavior follows $EVAL_SANDBOX/post-mode (garbage|empty, else success).
-# Restored on exit so sibling cases keep the dead stub.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -70,7 +48,6 @@ mk_clean() { # $1 = pr — clean bundle carrying a non-binding review
 EOF
 }
 
-# --- P1: non-object prior elements refuse corrupt-store, never start fresh ---
 PR=4311
 mk_clean "$PR"
 printf '%s' '[5]' > "$EVAL_SANDBOX/.review/$PR/findings.json"
@@ -92,7 +69,6 @@ else
   bad "refused post rewrote artifacts or posted"
 fi
 
-# The same shape refuses identically on the record path.
 LB="$EVAL_SANDBOX/.review/local-p1"
 rm -rf "$LB"; mkdir -p "$LB"
 cat > "$LB/source.json" <<'EOF'
@@ -123,9 +99,6 @@ else
   bad "record on [5] prior gave exit $EVAL_STATUS code '$code'"
 fi
 
-# Null elements refuse too: they read as no prior for the read verbs, but the
-# merge indexes elements by sig ($byNew[null] crashes), so the write path
-# refuses rather than silently starting fresh.
 mk_clean "$PR"
 printf '%s' '[null]' > "$EVAL_SANDBOX/.review/$PR/findings.json"
 run_review post acme/app "$PR" --json
@@ -136,7 +109,6 @@ else
   bad "null prior gave exit $EVAL_STATUS code '$code', want 1/corrupt-store"
 fi
 
-# --- P2: garbage POST response refuses typed, arms nothing ---
 PR=4312
 mk_clean "$PR"
 printf '%s' 'garbage' > "$EVAL_SANDBOX/post-mode"
@@ -162,7 +134,6 @@ else
   bad "garbage text stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- P3: empty POST response refuses typed, arms nothing ---
 PR=4313
 mk_clean "$PR"
 printf '%s' 'empty' > "$EVAL_SANDBOX/post-mode"
@@ -177,7 +148,6 @@ else
 fi
 rm -f "$EVAL_SANDBOX/post-mode"
 
-# --- P4: missing review.json refuses typed, posts nothing ---
 PR=4314
 eval_mk_bundle "$PR"
 m="$(mark)"
@@ -191,7 +161,6 @@ else
   bad "missing review gave exit $EVAL_STATUS code '$code'"
 fi
 
-# --- P5: bad --approve value refuses typed naming the value ---
 PR=4315
 mk_clean "$PR"
 run_review post acme/app "$PR" --approve=yes --json
@@ -204,10 +173,6 @@ else
   bad "bad --approve gave exit $EVAL_STATUS code '$code'"
 fi
 
-# --- P6: malformed live threads downgrade to COMMENT (never a silent APPROVE) ---
-# The probe err file carries jq's own stderr text (version-dependent), so
-# this grades the behavior only: exit 0, COMMENT, reason in warnings and in
-# the posted body, posted exactly once.
 PR=4316
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -253,10 +218,6 @@ else
   bad "downgrade stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- P7: a local bundle refuses no-pr-target (the code usage names) ---
-# post targets a GitHub PR; a local-<name> bundle has no PR to submit to, so it
-# refuses typed no-pr-target before any validation or POST. The --help block
-# names that code, so a drift to provider-unimplemented fails here.
 LB="$EVAL_SANDBOX/.review/local-p7"
 rm -rf "$LB"; mkdir -p "$LB"
 cat > "$LB/source.json" <<'EOF'

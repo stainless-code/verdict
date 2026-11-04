@@ -11,9 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// renderOverview renders the collapsed file-table plus
-// change-topology block for large diffs, or "" when gated off. Rendering
-// never fails (missing inputs read as absent).
 func renderOverview(st *state) string {
 	show, forced := overviewGate(st)
 	if !show {
@@ -32,10 +29,6 @@ func renderOverview(st *state) string {
 	return strings.Join(lines, newline)
 }
 
-// overviewGate owns the forced/toggle half of the overview gate: a forced
-// off always hides, a forced on always shows (skipping the size
-// thresholds), otherwise the publish toggle decides. It runs before any
-// input is read, so a hidden overview never opens a file.
 func overviewGate(st *state) (show, forced bool) {
 	switch forces := st.req.ForcesOrEmpty(); forces.PublishOverviewForce {
 	case strFalse:
@@ -46,10 +39,6 @@ func overviewGate(st *state) (show, forced bool) {
 	return st.req.Effective.PublishOverview == strTrue, false
 }
 
-// overviewInputs is the run's single read of the overview inputs: the diff
-// bytes every fallback scans, and the hunks.tsv NEW-side counts. Reading
-// them once per render keeps the file table linear in the diff size instead
-// of re-opening the same files per row.
 type overviewInputs struct {
 	diff     string
 	hunksTSV map[string]int
@@ -58,8 +47,6 @@ type overviewInputs struct {
 	hasTSV   bool
 }
 
-// loadOverviewInputs reads the diff and the hunks.tsv snapshot once, and
-// indexes the diff's sections once for every derived column.
 func loadOverviewInputs(dir string) *overviewInputs {
 	in := &overviewInputs{}
 	if raw, err := os.ReadFile(dir + fullDiffSuffix); err == nil {
@@ -70,15 +57,11 @@ func loadOverviewInputs(dir string) *overviewInputs {
 	return in
 }
 
-// gateOpen owns the size half of the overview gate: file and byte counts
-// against the walkthrough thresholds (defaults 8 files, 24576 bytes).
 func (in *overviewInputs) gateOpen(dir string) bool {
 	maxFiles, maxBytes := thresholdSizes()
 	return in.fileCount(dir) > maxFiles || len(in.diff) > maxBytes
 }
 
-// fileCount owns the file count: PR.json files length, else diff header
-// count.
 func (in *overviewInputs) fileCount(dir string) int {
 	if isRegular(dir + prJSONSuffix) {
 		if n, ok := prFilesLength(dir + prJSONSuffix); ok {
@@ -88,8 +71,6 @@ func (in *overviewInputs) fileCount(dir string) int {
 	return len(in.files)
 }
 
-// paths owns the paths.tsv build: PR.json files when the record names any,
-// else the diff scan.
 func (in *overviewInputs) paths(dir string) []overviewPath {
 	if isRegular(dir + prJSONSuffix) {
 		if rows, ok := prPathRows(dir + prJSONSuffix); ok {
@@ -102,8 +83,6 @@ func (in *overviewInputs) paths(dir string) []overviewPath {
 	return pathsFromFiles(in.files)
 }
 
-// hunkCounts resolves the table's Hunks column for every path at once:
-// hunks.tsv NEW-side rows when the snapshot exists, else one diff pass.
 func (in *overviewInputs) hunkCounts() map[string]int {
 	if in.hasTSV {
 		return in.hunksTSV
@@ -115,7 +94,6 @@ func (in *overviewInputs) hunkCounts() map[string]int {
 	return counts
 }
 
-// addedLines flattens the sections' added content lines into topology rows.
 func (in *overviewInputs) addedLines() [][2]string {
 	var rows [][2]string
 	for i := range in.files {
@@ -130,7 +108,6 @@ func (in *overviewInputs) addedLines() [][2]string {
 	return rows
 }
 
-// overviewFileRows numbers the path rows and attaches roles and hunk counts.
 func overviewFileRows(paths []overviewPath, roles map[string]string, hunksByPath map[string]int) []fileRowShape {
 	rows := make([]fileRowShape, 0, len(paths))
 	for i, p := range paths {
@@ -150,7 +127,6 @@ func overviewFileRows(paths []overviewPath, roles map[string]string, hunksByPath
 	return rows
 }
 
-// overviewTableLines owns the collapsed file-table block.
 func overviewTableLines(rows []fileRowShape) []string {
 	lines := []string{
 		"<details>", "<summary>Files changed (" + strconv.Itoa(len(rows)) + ")</summary>", "",
@@ -162,15 +138,12 @@ func overviewTableLines(rows []fileRowShape) []string {
 	return append(lines, "", "</details>", "")
 }
 
-// overviewTableRow renders one file-table row.
 func overviewTableRow(row fileRowShape) string {
 	return "| " + row.id + " | `" + sanitize(row.path) + "` | +" +
 		strconv.Itoa(row.adds) + "/-" + strconv.Itoa(row.dels) +
 		" | " + strconv.Itoa(row.hunks) + " | " + row.role + " |"
 }
 
-// overviewTopologyLines owns the change-topology block, or nil when the
-// structural-diagrams toggle is off.
 func overviewTopologyLines(st *state, rows []fileRowShape, edges []overviewEdge) []string {
 	if st.req.Effective.DiagramsStructural != strTrue {
 		return nil
@@ -190,8 +163,6 @@ func overviewTopologyLines(st *state, rows []fileRowShape, edges []overviewEdge)
 	return append(lines, "```", "", "</details>")
 }
 
-// thresholdSizes reads the walkthrough thresholds (validated earlier, so
-// errors degrade to defaults here).
 func thresholdSizes() (int, int) {
 	files, bytes, err := overrides.Thresholds()
 	if err != nil {
@@ -200,15 +171,11 @@ func thresholdSizes() (int, int) {
 	return files, bytes
 }
 
-// overview thresholds defaults.
 const (
 	defaultMaxFiles = 8
 	defaultMaxBytes = 24576
 )
 
-// prFilesLength counts the files array with a validity flag: a
-// boolean files value fails the length, so the caller takes the
-// diff-fallback path.
 func prFilesLength(path string) (int, bool) {
 	m, ok := prFilesMap(path)
 	if !ok {
@@ -221,8 +188,6 @@ func prFilesLength(path string) (int, bool) {
 	return filesLength(files)
 }
 
-// prFilesMap loads the PR.json record as a map, or false when the record is
-// missing or malformed.
 func prFilesMap(path string) (map[string]any, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -239,8 +204,6 @@ func prFilesMap(path string) (map[string]any, bool) {
 	return m, true
 }
 
-// filesLength owns the files length: arrays and objects count members,
-// strings count runes, and numbers read through NumVal.
 func filesLength(files any) (int, bool) {
 	switch t := files.(type) {
 	case []any:
@@ -256,8 +219,6 @@ func filesLength(files any) (int, bool) {
 	}
 }
 
-// numericFilesLength reads a numeric files value, keeping the magnitude on
-// degenerate counts.
 func numericFilesLength(files any) (int, bool) {
 	f, ok := readcommon.NumVal(files)
 	if !ok {
@@ -269,14 +230,11 @@ func numericFilesLength(files any) (int, bool) {
 	return int(f), true
 }
 
-// overviewPath is one paths.tsv row.
 type overviewPath struct {
 	path       string
 	adds, dels int
 }
 
-// filesDisposition tells prPathRows whether the files value names rows,
-// reads empty (fall back to the diff), or truncates (zero rows).
 type filesDisposition int
 
 const (
@@ -285,10 +243,6 @@ const (
 	filesTruncate
 )
 
-// prPathRows renders PR.json files as path rows. A non-empty files value
-// that is not an array, or a non-object entry, renders zero rows (the table
-// truncates); an empty files value
-// reports not-ok so the caller falls back to the diff.
 func prPathRows(path string) ([]overviewPath, bool) {
 	list, disposition := prFilesList(path)
 	switch disposition {
@@ -305,7 +259,6 @@ func prPathRows(path string) ([]overviewPath, bool) {
 	return nil, false
 }
 
-// prFilesList loads the PR.json files array with its disposition.
 func prFilesList(path string) ([]any, filesDisposition) {
 	m, ok := prFilesMap(path)
 	if !ok {
@@ -314,7 +267,6 @@ func prFilesList(path string) ([]any, filesDisposition) {
 	return filesDispositionOf(m)
 }
 
-// filesDispositionOf classifies the files value of a decoded PR.json record.
 func filesDispositionOf(m map[string]any) ([]any, filesDisposition) {
 	files, ok := m["files"]
 	if !ok || files == nil {
@@ -327,9 +279,6 @@ func filesDispositionOf(m map[string]any) ([]any, filesDisposition) {
 	return list, filesPresent
 }
 
-// nonArrayDisposition classifies a non-array files value: empty values count
-// as missing (the caller takes the diff-fallback path), anything else
-// truncates.
 func nonArrayDisposition(files any) filesDisposition {
 	if emptyFilesValue(files) {
 		return filesMissing
@@ -337,8 +286,6 @@ func nonArrayDisposition(files any) filesDisposition {
 	return filesTruncate
 }
 
-// buildPathRows renders one overview row per files entry. A non-object
-// entry truncates the whole table.
 func buildPathRows(list []any) ([]overviewPath, bool) {
 	var rows []overviewPath
 	for _, f := range list {
@@ -351,8 +298,6 @@ func buildPathRows(list []any) ([]overviewPath, bool) {
 	return rows, true
 }
 
-// prPathRow renders one files entry: objects read path and counts, null
-// entries read a null path, and anything else truncates.
 func prPathRow(f any) (overviewPath, bool) {
 	fm, ok := f.(map[string]any)
 	if !ok && f != nil {
@@ -368,8 +313,6 @@ func prPathRow(f any) (overviewPath, bool) {
 	}, true
 }
 
-// emptyFilesValue reports whether a non-array files value reads empty (the
-// caller takes the diff-fallback path instead of truncating).
 func emptyFilesValue(files any) bool {
 	switch t := files.(type) {
 	case string:
@@ -389,9 +332,6 @@ func emptyFilesValue(files any) bool {
 	}
 }
 
-// digitsOrZero owns the paths read loop: non-digit counts read 0. IsDigits
-// admits only ASCII digits, so Atoi fails solely on overflow; Atoi still
-// returns the clamped value then, which is kept.
 func digitsOrZero(s string) int {
 	if !readcommon.IsDigits(s) {
 		return 0
@@ -403,8 +343,6 @@ func digitsOrZero(s string) int {
 	return n
 }
 
-// overviewRoles owns the roles.map build: roles.txt first, else the batch
-// roles_for_paths fallback over every path.
 func overviewRoles(dir string, paths []overviewPath) map[string]string {
 	roles := map[string]string{}
 	if isRegular(dir + rolesTxtSuffix) {
@@ -420,7 +358,6 @@ func overviewRoles(dir string, paths []overviewPath) map[string]string {
 	return roles
 }
 
-// parseRolesMap parses "## role" headers and "- path" bullets.
 func parseRolesMap(text string, roles map[string]string) {
 	current := ""
 	for ln := range strings.SplitSeq(text, newline) {
@@ -428,8 +365,6 @@ func parseRolesMap(text string, roles map[string]string) {
 	}
 }
 
-// parseRolesLine consumes one roles.txt line: headers switch the current
-// role, bullets file the path under it.
 func parseRolesLine(ln string, roles map[string]string, current string) string {
 	if rest, ok := strings.CutPrefix(ln, hashSpace); ok {
 		if fields := strings.Fields(rest); len(fields) > 0 {
@@ -443,9 +378,6 @@ func parseRolesLine(ln string, roles map[string]string, current string) string {
 	return current
 }
 
-// overviewHunkCounts owns the hunks.tsv build for every path in one read:
-// NEW-side rows per file. A non-regular snapshot reports not-ok, so rows
-// fall back to the diff scan.
 func overviewHunkCounts(path string) (map[string]int, bool) {
 	if !isRegular(path) {
 		return nil, false
@@ -464,8 +396,6 @@ func overviewHunkCounts(path string) (map[string]int, bool) {
 	return counts, true
 }
 
-// pathsFromFiles owns the paths fallback: first-seen path order with the
-// added/removed line counts of every section naming it.
 func pathsFromFiles(files []hunks.File) []overviewPath {
 	var rows []overviewPath
 	index := map[string]int{}
@@ -486,14 +416,11 @@ func pathsFromFiles(files []hunks.File) []overviewPath {
 	return rows
 }
 
-// overviewEdge is one topology edge.
 type overviewEdge struct {
 	from, to string
 	label    string
 }
 
-// overviewEdges joins the topology edges: added-line mentions of another
-// changed file (basename, or full path when basenames collide).
 func overviewEdges(rows []fileRowShape, added [][2]string) []overviewEdge {
 	freq, index := edgeTargets(rows)
 	seen := map[[2]int]bool{}
@@ -508,7 +435,6 @@ func overviewEdges(rows []fileRowShape, added [][2]string) []overviewEdge {
 	return edges
 }
 
-// edgeTargets indexes rows by path and counts basename frequency.
 func edgeTargets(rows []fileRowShape) (map[string]int, map[string]int) {
 	freq := map[string]int{}
 	index := map[string]int{}
@@ -519,7 +445,6 @@ func edgeTargets(rows []fileRowShape) (map[string]int, map[string]int) {
 	return freq, index
 }
 
-// appendMentionEdges appends one edge per other file mentioned by line.
 func appendMentionEdges(
 	edges []overviewEdge, rows []fileRowShape, freq map[string]int,
 	seen map[[2]int]bool, cur int, line string,
@@ -530,8 +455,6 @@ func appendMentionEdges(
 	return edges
 }
 
-// appendMentionEdge appends the edge to row when line mentions it and the
-// pair is not linked yet.
 func appendMentionEdge(
 	edges []overviewEdge, rows []fileRowShape, freq map[string]int,
 	seen map[[2]int]bool, cur int, line string, j int, row fileRowShape,
@@ -550,9 +473,6 @@ func appendMentionEdge(
 	return append(edges, overviewEdge{from: rows[cur].id, to: row.id, label: edgeLabel(rows[cur], row, freq)})
 }
 
-// edgeLabel renders an edge label: the validating relation for test
-// and config sources, otherwise the uses relation, plus the basename when
-// unique and the full path when basenames collide.
 func edgeLabel(src, dst fileRowShape, freq map[string]int) string {
 	target := dst.path
 	if freq[baseName(dst.path)] == 1 {
@@ -565,15 +485,12 @@ func edgeLabel(src, dst fileRowShape, freq map[string]int) string {
 	return relation + target
 }
 
-// fileRowShape is one overview table row.
 type fileRowShape struct {
 	id, path, role string
 	adds, dels     int
 	hunks          int
 }
 
-// mentions owns the edge hit test: a bare basename mention (when unique),
-// or a full-path mention.
 func mentions(line, path string, uniqueBase bool) bool {
 	if uniqueBase && strings.Contains(line, baseName(path)) {
 		return true
@@ -581,7 +498,6 @@ func mentions(line, path string, uniqueBase bool) bool {
 	return strings.Contains(line, path)
 }
 
-// baseName returns the text after the last slash.
 func baseName(path string) string {
 	if _, after, ok := strings.CutLast(path, slashSep); ok {
 		return after
@@ -589,14 +505,12 @@ func baseName(path string) string {
 	return path
 }
 
-// sanitize makes label text safe for the diagram grammar.
 func sanitize(s string) string {
 	s = strings.ReplaceAll(s, quoteMark, "'")
 	s = strings.ReplaceAll(s, "|", ":")
 	return strings.ReplaceAll(s, "`", "'")
 }
 
-// prName owns the review/PR name for the topology head.
 func prName(slug string) string {
 	if slug == "" {
 		return "review"
@@ -609,7 +523,6 @@ func prName(slug string) string {
 	return "PR #" + slug
 }
 
-// sumAdds sums row additions.
 func sumAdds(rows []fileRowShape) int {
 	n := 0
 	for _, row := range rows {
@@ -618,7 +531,6 @@ func sumAdds(rows []fileRowShape) int {
 	return n
 }
 
-// sumDels sums row deletions.
 func sumDels(rows []fileRowShape) int {
 	n := 0
 	for _, row := range rows {

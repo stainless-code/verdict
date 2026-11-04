@@ -14,12 +14,9 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// helperPoll bounds the parent-PID poll interval.
 const helperPoll = 50 * time.Millisecond
 
-// writableDir reports whether the effective user may write to dir.
 func writableDir(dir string) bool {
-	// W_OK is 2; syscall.Access asks the kernel, so ACLs are honored.
 	return syscall.Access(dir, 2) == nil
 }
 
@@ -48,7 +45,6 @@ func removePathMarker(_ context.Context, env map[string]string, _ string) (strin
 	return profile, true, nil
 }
 
-// stripMarker drops every profile line carrying the installer marker.
 func stripMarker(raw string) (string, bool) {
 	lines := strings.Split(raw, "\n")
 	kept := make([]string, 0, len(lines))
@@ -63,7 +59,6 @@ func stripMarker(raw string) (string, bool) {
 	return strings.Join(kept, "\n"), true
 }
 
-// profilePath picks the shell profile the installer edits.
 func profilePath(env map[string]string) string {
 	home := homeDir(env)
 	if home == "" {
@@ -82,7 +77,6 @@ func profilePath(env map[string]string) string {
 	}
 }
 
-// bashProfile prefers the file bash actually reads on this machine.
 func bashProfile(home string) string {
 	for _, name := range []string{".bashrc", ".bash_profile"} {
 		if info, err := os.Stat(filepath.Join(home, name)); err == nil && !info.IsDir() {
@@ -92,7 +86,6 @@ func bashProfile(home string) string {
 	return filepath.Join(home, ".bashrc")
 }
 
-// waitProcess polls until pid exits (kill 0 reads ESRCH).
 func waitProcess(ctx context.Context, pid int) error {
 	ticker := time.NewTicker(helperPoll)
 	defer ticker.Stop()
@@ -112,7 +105,6 @@ func waitProcess(ctx context.Context, pid int) error {
 	}
 }
 
-// processGone reports ESRCH (the parent exited).
 func processGone(pid int) (bool, error) {
 	err := syscall.Kill(pid, 0)
 	if err == nil {

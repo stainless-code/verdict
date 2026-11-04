@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
-# Case usage-errors: the binary owns usage errors.
 #
-# Grades (all hermetic — no bundles, no network; the built binary is
-# invoked directly, never through a dispatcher):
-#   U1  no verb prints the full usage block on stderr, exit 2.
-#   U2  missing positionals print the full usage block on stderr, exit 2:
-#       one leg per verb; bare verbs (check-tree, doctor, learn, init,
-#       skill) never fail the gate; trend needs a repo.
-#   U3  usage wins over corrupt settings: a missing positional plus a
-#       corrupt settings file still prints usage/exit 2 with no settings
-#       read, while a complete invocation reads settings and refuses typed
-#       bad-settings.
-#   U4  unknown verbs: a bare unknown verb fails with the usage block and
-#       exit 2; an unknown verb with both positionals fails with the
-#       unknown-cmd message and exit 2.
-#   U5  the block names `verdict` (never review.sh) and still names --json,
-#       the four verify refusal codes, the token-scopes-excess row, and the
-#       experimental mcp/mcp config entry points.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -26,7 +9,6 @@ if [ -z "${EVAL_CLI:-}" ] || [ ! -x "$EVAL_CLI" ]; then
   bail "EVAL_CLI missing (run via evals/run.sh or evals/one.sh after make build)"
 fi
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_BUDGET_USD REVIEW_MODEL REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -43,8 +25,6 @@ else
   good "--help prints the usage block on stdout, exit 0"
 fi
 
-# usage_gate <label> -- <cli args...>: the run must exit 2 with exactly
-# the usage block on stderr and nothing on stdout.
 usage_gate() { # $1 = label, rest after -- = cli args
   local label="$1"; shift
   [ "${1:-}" = "--" ] && shift
@@ -61,10 +41,8 @@ usage_gate() { # $1 = label, rest after -- = cli args
   fi
 }
 
-# --- U1: no verb ---
 usage_gate "U1 no verb" --
 
-# --- U2: missing positionals, one leg per verb ---
 for verb in fetch fetch-local record adopt fix post triage report next show verify calibrate ready; do
   usage_gate "U2 $verb (no positionals)" -- "$verb"
   usage_gate "U2 $verb (repo only)" -- "$verb" acme/app
@@ -75,9 +53,6 @@ for verb in check-tree doctor learn init skill; do
   ( cd "$EVAL_SANDBOX" && XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty" "$EVAL_CLI" "$verb" </dev/null >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
   st=$?
   set -e
-  # Bare verbs never fail the ARITY gate: whatever the verb itself decides
-  # (needs-confirm, dirty tree, --json envelope), the stderr is not the
-  # full usage block.
   if ! cmp -s "$EVAL_SANDBOX/u-err.txt" "$USAGE"; then
     good "U2 $verb (bare) never fails the arity gate (exit $st)"
   else
@@ -85,7 +60,6 @@ for verb in check-tree doctor learn init skill; do
   fi
 done
 
-# --- U3: usage wins over corrupt settings ---
 mkdir -p "$EVAL_SANDBOX/xdg-bad/verdict"
 printf '{broken' > "$EVAL_SANDBOX/xdg-bad/verdict/settings.json"
 set +e
@@ -107,7 +81,6 @@ else
   bad "U3 complete invocation exits $st (want typed bad-settings)"
 fi
 
-# --- U4: unknown verbs ---
 usage_gate "U4 unknown verb (bare)" -- bogus
 set +e
 ( cd "$EVAL_SANDBOX" && "$EVAL_CLI" bogus acme/app 1 >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
@@ -119,7 +92,6 @@ else
   bad "U4 unknown verb with positionals exits $st"
 fi
 
-# --- U5: program name and anchor strings ---
 assert_file_grep "U5 block names verdict" "$USAGE" "usage: verdict "
 assert_stream_nogrep "U5 block never names review.sh" "$USAGE" "review\.sh"
 anchors_ok="true"

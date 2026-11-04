@@ -1,6 +1,3 @@
-// TS client tests: fake-binary unit coverage for every exit path plus
-// real-binary integration against temp .review fixtures. No network, no
-// real gh. Run after `make build` with VERDICT_BIN=bin/verdict (CI does).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -32,8 +29,6 @@ const {
 
 const FAKE = join(HERE, "fixtures", "fake-verdict.mjs");
 
-// The fake is directly executable (shebang + exec bit), so it plays the
-// role of the binary: argv is [verb, ...] exactly like the real thing.
 function runFake(mode, verb = "report", args = [], opts = {}, env = {}) {
   const client = createClient({ bin: FAKE, stderr: "pipe", ...opts });
   return client.run(verb, args, {
@@ -237,8 +232,6 @@ describe("unit: fake binary exit paths", () => {
   });
 });
 
-// --- integration: the real binary over temp .review fixtures ---
-
 const REPO_ROOT = join(HERE, "..", "..", "..");
 const REAL_BIN =
   process.env["VERDICT_BIN"] ??
@@ -246,9 +239,6 @@ const REAL_BIN =
     ? join(REPO_ROOT, "bin", "verdict.exe")
     : join(REPO_ROOT, "bin", "verdict"));
 
-// seedControls stamps the bundle's controls snapshot the way fetch does
-// (post and record refuse a bundle without one); the head policy stands in
-// for fetch's base read, which needs a repository.
 function seedControls(bundle, base) {
   writeFileSync(
     join(bundle, "controls.json"),
@@ -305,11 +295,6 @@ function writeFindings(dir, pr) {
   );
 }
 
-// haveBinary is decided at load (before any skip option is read): the gate
-// always runs `make build` first, so integration runs there. A bare checkout
-// without a binary may skip loudly, but an explicit VERDICT_BIN or CI run
-// must fail: silently skipping 5 integration tests is a green gate that
-// graded nothing.
 const explicitBin = process.env["VERDICT_BIN"] !== undefined;
 const ciRun =
   process.env["CI"] !== undefined &&

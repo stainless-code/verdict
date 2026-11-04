@@ -7,14 +7,10 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// cmdPosBuilds prefixes the command-position refusal details.
 const cmdPosBuilds = "command substitution in command position builds a "
 
-// segWordIdx selects the first-word capture in the segWords pattern.
 const segWordIdx = 4
 
-// checkSentinel owns the mid-word substitution arm: a sentinel glued to a
-// word character hides a tool name behind a concatenation.
 func checkSentinel(g *gateText) *core.RefusalError {
 	if g.deepSubst {
 		return refuse(codeDestructive, "nested-substitution",
@@ -34,9 +30,6 @@ func checkSentinel(g *gateText) *core.RefusalError {
 	return refuse(codeDestructive, frag, "mid-word substitution concatenates into a hidden tool word — write the tool word plainly")
 }
 
-// checkCommandPosition owns the command-position substitution arms: a
-// $(…)/${…}/backtick span at segment start executes with the body's tool
-// word as argv[0].
 func checkCommandPosition(g *gateText) *core.RefusalError {
 	if frag := grepO(reCmdPosDest, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
@@ -61,9 +54,6 @@ func checkCommandPosition(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGlobFragment owns the glob/brace fragmentation arm: the first word
-// of each ;-separated segment (past time/command prefixes and VAR=
-// assignments) refuses when it carries ? * [ {.
 func checkGlobFragment(g *gateText) *core.RefusalError {
 	segw := segWords(g.bare)
 	if !hasGlobWord(segw) {
@@ -77,8 +67,6 @@ func checkGlobFragment(g *gateText) *core.RefusalError {
 		"glob metacharacters in command position expand into a hidden tool word — write the tool word plainly")
 }
 
-// hasGlobWord reports whether any segment word (outside the exact
-// test/grouping forms) carries a glob metacharacter.
 func hasGlobWord(segw []string) bool {
 	for _, w := range segw {
 		if isBareBracket(w) {
@@ -91,7 +79,6 @@ func hasGlobWord(segw []string) bool {
 	return false
 }
 
-// globFrag returns the first glob-bearing word's matched fragment.
 func globFrag(segw []string) string {
 	for _, w := range segw {
 		if isBareBracket(w) {
@@ -104,14 +91,10 @@ func globFrag(segw []string) string {
 	return ""
 }
 
-// isBareBracket reports the exact `[`, `[[`, and `{` forms, which stay
-// allowed (test and grouping), unlike glob metacharacters in command
-// position.
 func isBareBracket(w string) bool {
 	return w == "[" || w == "[[" || w == "{"
 }
 
-// segWords splits on ;|& and takes the first word past the known prefixes.
 func segWords(bare string) []string {
 	parts := strings.Split(bare, ";")
 	var segs []string
@@ -133,7 +116,6 @@ func segWords(bare string) []string {
 	return out
 }
 
-// checkDestructive runs the destructive-class arms in shell order.
 func checkDestructive(g *gateText) *core.RefusalError {
 	if ref := checkDestructiveWords(g); ref != nil {
 		return ref
@@ -147,8 +129,6 @@ func checkDestructive(g *gateText) *core.RefusalError {
 	return checkDestructiveGit(g)
 }
 
-// checkDestructiveWords owns the rm/find/mkfs/shred/dd/forkbomb/chmod
-// arms plus the git-clean shape.
 func checkDestructiveWords(g *gateText) *core.RefusalError {
 	if ref := checkRmFind(g); ref != nil {
 		return ref
@@ -162,7 +142,6 @@ func checkDestructiveWords(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkRmFind owns the rm/find destructive arms.
 func checkRmFind(g *gateText) *core.RefusalError {
 	if frag := grepO(reRmRecursive, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "rm with a recursive flag destroys without recovery")
@@ -176,7 +155,6 @@ func checkRmFind(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkDeviceWipe owns the mkfs/shred/dd/forkbomb arms.
 func checkDeviceWipe(g *gateText) *core.RefusalError {
 	if frag := grepO(reMkfs, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "mkfs destroys filesystems")
@@ -193,7 +171,6 @@ func checkDeviceWipe(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkChmodClean owns the chmod/chown and git-clean arms.
 func checkChmodClean(g *gateText) *core.RefusalError {
 	if frag := grepO(reChmodRecursive, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "recursive chmod/chown refuses regardless of target — fail closed")
@@ -206,14 +183,11 @@ func checkChmodClean(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// gitCleanDestructive reports whether a git-clean segment forces removal
-// outside the repo.
 func gitCleanDestructive(seg string) bool {
 	return strings.Contains(seg, "-f") && (strings.Contains(seg, "~") ||
 		strings.Contains(seg, "$home") || strings.Contains(seg, " /"))
 }
 
-// checkDestructiveExec owns the privilege/eval/exec arms.
 func checkDestructiveExec(g *gateText) *core.RefusalError {
 	if frag := grepO(reSudo, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "privilege change refuses regardless of payload")
@@ -233,7 +207,6 @@ func checkDestructiveExec(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkDestructiveEnv owns the loader-hook and NODE_OPTIONS arms.
 func checkDestructiveEnv(g *gateText) *core.RefusalError {
 	if frag := grepO(reLoaderHook, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
@@ -248,7 +221,6 @@ func checkDestructiveEnv(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// Destructive-class patterns.
 var (
 	reSentinel     = regexp.MustCompile("[\x01][a-z0-9_]|[a-z0-9_][\x01]")
 	reSentinelFrag = regexp.MustCompile(".{0,10}\x01.{0,10}")

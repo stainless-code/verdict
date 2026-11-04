@@ -50,8 +50,6 @@ func (d *Data) Wire() *jq.Obj {
 	return jq.NewObj("dir", d.Dir, "from", d.From, "adopted", d.Adopted, "open", d.Open)
 }
 
-// state carries one adopt run: the request, the accumulated warnings, and
-// the completed handoff summary.
 type state struct { //nolint:govet // adopt service state is allocated once per invocation
 	req      *Request
 	warnings []string
@@ -71,18 +69,15 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.response(), nil
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// refuse builds a typed refusal carrying the accumulated warnings.
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
 }
 
-// response assembles the typed response after the store write.
 func (st *state) response() *Response {
 	return &Response{
 		At:       st.req.TimeUTC(),
@@ -93,8 +88,6 @@ func (st *state) response() *Response {
 	}
 }
 
-// runAdopt mirrors the adopt block: target gates, the verbatim copy with the
-// handoff stamp, and the PR-hunk re-anchor.
 func (st *state) runAdopt() *core.RefusalError {
 	dir, fromDir, ref := st.resolveAdoptDirs()
 	if ref != nil {
@@ -113,8 +106,6 @@ func (st *state) runAdopt() *core.RefusalError {
 	return st.finishAdopt(dir, fromDir, entries)
 }
 
-// resolveAdoptDirs resolves the target and source bundle dirs, refusing
-// local targets and empty --from values.
 func (st *state) resolveAdoptDirs() (string, string, *core.RefusalError) {
 	dir := reviewRoot + st.req.Pr
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
@@ -130,8 +121,6 @@ func (st *state) resolveAdoptDirs() (string, string, *core.RefusalError) {
 	return dir, fromDir, nil
 }
 
-// loadFromEntries reads and decodes the source findings array, refusing
-// missing or corrupt stores.
 func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
 	if !readcommon.IsFile(fromDir + findingsSuffix) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(msgMissingFindings, fromDir))
@@ -147,8 +136,6 @@ func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
 	return entries, nil
 }
 
-// checkAdoptTarget refuses missing diffs and non-GitHub targets, ensuring
-// the store marker exists.
 func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 	if !readcommon.IsFile(dir + fullDiffSuffix) {
 		return st.refuse("missing-diff", fmt.Sprintf(msgMissingDiff, dir))
@@ -162,7 +149,6 @@ func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 	return nil
 }
 
-// checkAdoptFresh refuses targets that already carry findings.
 func (st *state) checkAdoptFresh(dir string) *core.RefusalError {
 	if readcommon.Exists(dir + findingsSuffix) {
 		return st.refuse("already-adopted", fmt.Sprintf(msgAlreadyAdopted, dir))
@@ -170,8 +156,6 @@ func (st *state) checkAdoptFresh(dir string) *core.RefusalError {
 	return nil
 }
 
-// finishAdopt stamps the handoff, re-anchors, writes the store, and records
-// the human and JSON reports.
 func (st *state) finishAdopt(dir, fromDir string, entries []any) *core.RefusalError {
 	now := st.req.TimeUTC()
 	commitID := readcommon.PrField(dir, "head_sha")
@@ -194,7 +178,6 @@ func (st *state) finishAdopt(dir, fromDir string, entries []any) *core.RefusalEr
 	return nil
 }
 
-// decodeEntries parses findings.json as a JSON array, order-preserving.
 func decodeEntries(raw []byte) ([]any, error) {
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -208,8 +191,6 @@ func decodeEntries(raw []byte) ([]any, error) {
 	return arr, nil
 }
 
-// adoptEntries stamps the handoff (lastSeen + adopted history event) and
-// re-resolves anchors against the PR hunks, clearing drifted ones.
 func adoptEntries(entries []any, shortSHA, now, from string, hs []hunks.Hunk) []any {
 	for _, e := range entries {
 		m, ok := e.(*jq.Obj)
@@ -232,9 +213,6 @@ func adoptEntries(entries []any, shortSHA, now, from string, hs []hunks.Hunk) []
 	return entries
 }
 
-// anchorHolds owns the re-anchor loop: entries without a numeric path+line
-// keep their anchor; the rest hold only when a PR hunk covers the range on
-// the entry's side (LEFT reads OLD, else NEW).
 func anchorHolds(m *jq.Obj, hs []hunks.Hunk) bool {
 	path, line, ok := anchorPathLine(m)
 	if !ok {
@@ -248,8 +226,6 @@ func anchorHolds(m *jq.Obj, hs []hunks.Hunk) bool {
 	return hunks.Contains(hs, anchorKey(path), anchorWant(side), start, end)
 }
 
-// anchorPathLine reads the entry's path and line, reporting false when the
-// entry carries no numeric anchor (unanchored entries keep their anchor).
 func anchorPathLine(m *jq.Obj) (string, int, bool) {
 	pv, ok := m.Get("path")
 	if !ok {
@@ -270,7 +246,6 @@ func anchorPathLine(m *jq.Obj) (string, int, bool) {
 	return path, line, true
 }
 
-// anchorSide normalizes the entry's side, defaulting to RIGHT.
 func anchorSide(m *jq.Obj) string {
 	sv, ok := m.Get("side")
 	if !ok {
@@ -282,8 +257,6 @@ func anchorSide(m *jq.Obj) string {
 	return sideRight
 }
 
-// anchorRange resolves the entry's inclusive line range, swapping inverted
-// start/line pairs and reporting false for unreadable start_line values.
 func anchorRange(m *jq.Obj, line int) (int, int, bool) {
 	start := line
 	if sv, ok := m.Get("start_line"); ok && sv != nil {
@@ -299,7 +272,6 @@ func anchorRange(m *jq.Obj, line int) (int, int, bool) {
 	return start, line, true
 }
 
-// anchorWant maps an entry side to the hunk side it must match.
 func anchorWant(side string) string {
 	if side == sideLeft {
 		return sideOld
@@ -307,7 +279,6 @@ func anchorWant(side string) string {
 	return sideNew
 }
 
-// anchorKey strips diff path prefixes so bundle paths match hunk files.
 func anchorKey(path string) string {
 	if strings.HasPrefix(path, prefixA) || strings.HasPrefix(path, prefixB) {
 		return path[prefixLen:]
@@ -315,8 +286,6 @@ func anchorKey(path string) string {
 	return path
 }
 
-// numVal reads a JSON number as an int (decoded stores hold [json.Number];
-// the arithmetic paths only ever see validated digit strings).
 func numVal(v any) (int, bool) {
 	if n, ok := jq.IntOf(v); ok {
 		return n, true
@@ -332,7 +301,6 @@ func numVal(v any) (int, bool) {
 	return n, true
 }
 
-// historyOf reads the entry's history array (missing reads empty).
 func historyOf(m *jq.Obj) []any {
 	raw, ok := m.Get("history")
 	if !ok {
@@ -344,7 +312,6 @@ func historyOf(m *jq.Obj) []any {
 	return []any{}
 }
 
-// countStatus counts entries with status.
 func countStatus(entries []any, status string) int {
 	n := 0
 	for _, e := range entries {
@@ -355,7 +322,6 @@ func countStatus(entries []any, status string) int {
 	return n
 }
 
-// matchesStatus reports whether entry e carries status.
 func matchesStatus(e any, status string) bool {
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
@@ -365,9 +331,6 @@ func matchesStatus(e any, status string) bool {
 	return ok && s == status
 }
 
-// bundleProvider reads the bundle provider with adopt's github default: a
-// missing, unreadable, or markerless record is GitHub, and any present marker
-// routes on its rendered value.
 func bundleProvider(dir string) string {
 	if prov, present := readcommon.OpenBundle(dir).ProviderMarker(); present {
 		return prov
@@ -375,7 +338,6 @@ func bundleProvider(dir string) string {
 	return providerGitHub
 }
 
-// ensureStore backfills the store marker when absent.
 func ensureStore(dir string) error {
 	if readcommon.Exists(dir + storeSuffix) {
 		return nil
@@ -383,8 +345,6 @@ func ensureStore(dir string) error {
 	return atomic.WriteFile(dir+storeSuffix, []byte("{\n  \"schema_version\": \"1\"\n}\n"))
 }
 
-// ensureHunks rebuilds the hunk index from full.diff when the
-// fetch-time snapshot is missing, warning that validation is best-effort.
 func (st *state) ensureHunks(dir string) *core.RefusalError {
 	if readcommon.Exists(dir + hunksSuffix) {
 		return nil
@@ -400,8 +360,6 @@ func (st *state) ensureHunks(dir string) *core.RefusalError {
 	return nil
 }
 
-// readHunks parses hunks.tsv into the shared hunk index (tab-separated
-// file/side/start/end rows; malformed rows are skipped like the awk read).
 func readHunks(path string) []hunks.Hunk {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -416,8 +374,6 @@ func readHunks(path string) []hunks.Hunk {
 	return out
 }
 
-// parseHunkRow parses one hunks.tsv row, reporting false for blank or
-// malformed rows (mirroring the awk read's skips).
 func parseHunkRow(ln string) (hunks.Hunk, bool) {
 	if ln == "" {
 		return hunks.Hunk{}, false
@@ -435,24 +391,19 @@ func parseHunkRow(ln string) (hunks.Hunk, bool) {
 }
 
 const (
-	// reviewRoot prefixes bundle directories under the invocation cwd.
 	reviewRoot = ".review/"
 	// localPrefix marks local bundle slugs.
 	localPrefix = "local-"
 	// providerGitHub is the only adopt target provider.
 	providerGitHub = "github"
-	// findingsSuffix is the findings store filename suffix.
 	findingsSuffix = "/findings.json"
 	// fullDiffSuffix is the bundle diff path suffix.
 	fullDiffSuffix = "/full.diff"
 	// storeSuffix is the store marker path suffix.
 	storeSuffix = "/store.json"
-	// hunksSuffix is the hunk snapshot path suffix.
 	hunksSuffix = "/hunks.tsv"
-	// statusOpen selects open findings for the adopted count.
-	statusOpen = "open"
-	// newline joins rendered body lines.
-	newline = "\n"
+	statusOpen  = "open"
+	newline     = "\n"
 	// hunkSep separates hunks.tsv columns.
 	hunkSep = "\t"
 	// sideRight is the default comment side.
@@ -468,13 +419,11 @@ const (
 	// prefixB is the b/ diff path prefix.
 	prefixB = "b/"
 	// prefixLen strips the diff path prefixes.
-	prefixLen = 2
-	// hunkFieldCount is the hunks.tsv column count.
+	prefixLen      = 2
 	hunkFieldCount = 4
 	// hunkStartIdx indexes the hunks.tsv start column.
 	hunkStartIdx = 2
-	// hunkEndIdx indexes the hunks.tsv end column.
-	hunkEndIdx = 3
+	hunkEndIdx   = 3
 )
 
 const (
@@ -501,11 +450,8 @@ const (
 	msgAdopted = "» adopted %d findings from %s (open: %d) — post to publish, calibrate to settle"
 )
 
-// errNotArray is the corrupt-store signal for non-array findings.
 var errNotArray = valueError("not a findings array")
 
-// valueError is a plain error value for store-shape failures.
 type valueError string
 
-// Error implements error.
 func (e valueError) Error() string { return string(e) }

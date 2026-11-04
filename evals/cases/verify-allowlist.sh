@@ -1,19 +1,6 @@
 #!/usr/bin/env bash
-# Case verify-allowlist: pre-exec gate in the verify verb (slice 01).
 #
-# Grades one row per probe from evals/fixtures/verify-allowlist.tsv: `mode`
-# (refuse|exec), the refusal code a refuse row must carry, the PR number the
-# probe runs under, the exact verifyCmd string, and the label the report
-# prints. A refuse row must exit exactly 1 with that typed code, one-document
-# envelope, a message carrying a quoted fragment plus a `try:` hint, and a
-# byte-identical store with no `.verify.out`; an exec row must actually
-# execute (exit recorded, `.verify.out` written). The row's section comments
-# name the V-number each block grades, and the row count is the coverage.
 #
-# Safety notes: the fork-bomb probe omits the trailing invocation (defines
-# the function only — still matches the gate pattern, harmless if executed);
-# git clean runs with -n (dry-run); destructive targets are sandbox-relative
-# or nonexistent devices; networked targets point at the discard port.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -21,9 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 ROWS="$EVAL_ROOT/evals/fixtures/verify-allowlist.tsv"
 
-# /tmp scratch is part of the contract this case grades, but the paths below
-# are executed (not just quoted in refusals). A PID-suffixed namespace keeps
-# concurrent copies out of each other's files.
 WA_TMP="/tmp/verify-allowlist.$$"
 mkdir -p "$WA_TMP"
 trap 'rm -rf "$WA_TMP"' EXIT
@@ -36,8 +20,6 @@ refuse_probe() { # $1 = pr, $2 = want-code, $3 = label
   msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
   assert_exit "$label" 1
   assert_refusal "$label" "$want"
-  # Message shape: "refusing verifyCmd: matched 'FRAG' (detail)\ntry: hint" —
-  # the quoted fragment precedes the hint, so check the two arms separately.
   if [[ "$msg" == *"try:"* && "$msg" == *"'"* ]]; then
     good "$label message carries a try: hint plus a quoted fragment"
   else
@@ -63,8 +45,6 @@ exec_probe() { # $1 = pr, $2 = label
   fi
 }
 
-# Fixtures the V1/V27 rows need (a real target for the chmod probe, and a
-# local clone source for the "plain git clone still executes" guard).
 printf 'line1\n' > "$EVAL_SANDBOX/notes.txt"
 git init -q "$EVAL_SANDBOX/clone-src" 2>/dev/null || true
 
@@ -88,7 +68,6 @@ while IFS="$TAB" read -r mode code pr cmd label; do
 done <"$ROWS"
 rm -rf "$EVAL_SANDBOX/clone-src" "$EVAL_SANDBOX/clone-dst-ok"
 
-# --- V5: benign passthrough executes ---
 eval_mk_patch 5151 'printf ok'
 run_review verify acme/app 5151 --json --timeout 10
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(stdout_docs)" = "1" ] \
@@ -113,9 +92,6 @@ else
   bad "V5 .verify.out missing or wrong"
 fi
 
-# Benign battery: each must EXECUTE (patch.json mutated, envelope error
-# null) rather than refuse. Exit values vary (curl conn-refused, go with no
-# module) — execution, not the exit, is the assertion.
 printf '%s\n' 'printf ok | grep ok' 'FOO=1 printf ok' 'cd . && printf ok' \
   'git diff --stat' 'GOPROXY=off go test ./...' 'curl http://127.0.0.1:9/fixture' \
   "printf ok > $WA_TMP/probe && cat $WA_TMP/probe" > "$EVAL_SANDBOX/v5-battery.txt"
@@ -135,7 +111,6 @@ while IFS= read -r cmd; do
   fi
 done < "$EVAL_SANDBOX/v5-battery.txt"
 
-# --- V6: refusal envelope + text exit + record untouched ---
 eval_mk_patch 5199 'rm -rf ./text-probe'
 before="$(shasum -a 1 "$EVAL_SANDBOX/.review/5199/patch.json" | cut -d' ' -f1)"
 run_review verify acme/app 5199 --timeout 10
@@ -154,8 +129,6 @@ else
   bad "V6 text-mode refusal mutated the store"
 fi
 
-# D1: the gate lives in verify only — record stores a nasty verifyCmd claim
-# without refusing (record never executes; damage happens at execution).
 mkdir -p "$EVAL_SANDBOX/.review/local-vallow"
 cat > "$EVAL_SANDBOX/.review/local-vallow/source.json" <<'EOF'
 {"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}

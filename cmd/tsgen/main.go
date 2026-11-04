@@ -21,33 +21,27 @@ import (
 	"github.com/stainless-code/verdict/internal/schemagen"
 )
 
-// cliPrefix names the command in every user-facing failure.
 const cliPrefix = "tsgen:"
 
-// codesRelPath is the generated file, relative to the repository root.
 const codesRelPath = "clients/ts/src/refusal-codes.gen.ts"
 
-// options are the parsed command-line choices.
 type options struct {
 	root  string
 	write bool
 }
 
 // cliError is the command's sealed error type; it never leaks fmt/errors
-// values across the run boundary. The cause comes first so the GC scans the
-// fewest pointer bytes (govet fieldalignment).
+// values across the run boundary. The cause is the first field so the GC scans
+// the fewest pointer bytes; keep that order.
 type cliError struct {
 	cause error
 	msg   string
 }
 
-// Error implements error.
 func (e *cliError) Error() string { return e.msg }
 
-// Unwrap exposes the cause to [errors.Is]/[errors.As].
 func (e *cliError) Unwrap() error { return e.cause }
 
-// errorf builds a command error without a prefix (run adds it once).
 func errorf(format string, args ...any) error {
 	if len(args) == 0 {
 		return &cliError{msg: format}
@@ -55,7 +49,6 @@ func errorf(format string, args ...any) error {
 	return &cliError{msg: fmt.Sprintf(format, args...)}
 }
 
-// wrapError annotates a cause and keeps the chain.
 func wrapError(prefix string, cause error) error {
 	return &cliError{msg: prefix + ": " + cause.Error(), cause: cause}
 }
@@ -65,7 +58,6 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run executes one tsgen invocation and returns its exit code.
 func run(args []string, stdout, stderr io.Writer) int {
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
@@ -82,12 +74,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// fail prints one prefixed command failure.
 func fail(stderr io.Writer, err error) {
 	fmt.Fprintln(stderr, cliPrefix, err)
 }
 
-// execute renders the generated sources, then writes or checks them.
 func execute(opts options, stdout io.Writer) error {
 	codes := core.RefusalCodes()
 	if len(codes) == 0 {
@@ -113,7 +103,6 @@ func execute(opts options, stdout io.Writer) error {
 	return errorf("%s is stale; run `make tsgen` from the repo root", codesRelPath)
 }
 
-// parseFlags parses the command-line flags without exiting the process.
 func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs := flag.NewFlagSet("tsgen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -135,9 +124,6 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	return options{root: found, write: *write}, nil
 }
 
-// renderRefusalCodes renders refusal-codes.gen.ts for the given exact codes.
-// The union stays open at the use site (`| (string & {})` in errors.ts)
-// because the prefix families accept any suffix.
 func renderRefusalCodes(codes []string) []byte {
 	var out strings.Builder
 	out.WriteString("// GENERATED from the refusal-code registry (internal/core/refusalcodes.go)" +

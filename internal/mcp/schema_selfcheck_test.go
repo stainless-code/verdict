@@ -43,8 +43,6 @@ func TestSchemaSelfCheck(t *testing.T) {
 	}
 }
 
-// schemaAudit walks one request type's visible fields and checks each one
-// against the schema node the tool will serve at that level.
 //
 //nolint:revive // the audit is one branch per field shape
 func schemaAudit(t *testing.T, tool *tool, typ reflect.Type, omit map[string]bool, path string, node map[string]any) {
@@ -85,7 +83,6 @@ func schemaAudit(t *testing.T, tool *tool, typ reflect.Type, omit map[string]boo
 	}
 }
 
-// checkFieldTags proves the struct tags the schema promises actually landed.
 func checkFieldTags(t *testing.T, tool, field string, sf *reflect.StructField, node map[string]any) {
 	t.Helper()
 	checkEnumTag(t, tool, field, sf, node)
@@ -93,7 +90,6 @@ func checkFieldTags(t *testing.T, tool, field string, sf *reflect.StructField, n
 	checkBoundsTag(t, tool, field, schemaMaximum, tagMax, sf, node)
 }
 
-// checkEnumTag proves the enum tag became the schema's closed vocabulary.
 func checkEnumTag(t *testing.T, tool, field string, sf *reflect.StructField, node map[string]any) {
 	t.Helper()
 	spec := sf.Tag.Get(tagEnum)
@@ -109,7 +105,6 @@ func checkEnumTag(t *testing.T, tool, field string, sf *reflect.StructField, nod
 	}
 }
 
-// checkBoundsTag proves one min/max tag became its schema keyword.
 func checkBoundsTag(t *testing.T, tool, field, keyword, tag string, sf *reflect.StructField, node map[string]any) {
 	t.Helper()
 	if raw := sf.Tag.Get(tag); raw != "" {
@@ -119,7 +114,6 @@ func checkBoundsTag(t *testing.T, tool, field, keyword, tag string, sf *reflect.
 	}
 }
 
-// fieldNames lists the top-level visible field names of one request type.
 func fieldNames(typ reflect.Type) map[string]bool {
 	names := map[string]bool{}
 	fields := visibleFields(typ, nil)
@@ -129,8 +123,6 @@ func fieldNames(typ reflect.Type) map[string]bool {
 	return names
 }
 
-// collectFieldNames records every exported field name reachable from a request
-// type, including fields the transport hides.
 func collectFieldNames(typ reflect.Type, into map[string]bool, visited map[reflect.Type]bool) {
 	if visited[typ] {
 		return
@@ -172,7 +164,6 @@ func TestDecodeCoversSchema(t *testing.T) {
 	}
 }
 
-// schemaValue builds a type-correct argument value for a schema node.
 func schemaValue(node map[string]any) any {
 	switch node[schemaType] {
 	case typeString:
@@ -196,7 +187,6 @@ func schemaValue(node map[string]any) any {
 	}
 }
 
-// schemaObjectValue fills one nested object schema with synthetic values.
 func schemaObjectValue(node map[string]any) map[string]any {
 	props, ok := node[schemaProperties].(map[string]any)
 	if !ok {

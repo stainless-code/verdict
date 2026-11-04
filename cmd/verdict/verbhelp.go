@@ -2,12 +2,8 @@ package main
 
 import "strings"
 
-// ownHelpVerbs keep their own `--help` (a grammar the shared block cannot
-// carry); every other verb answers `<verb> --help` with just its block.
 var ownHelpVerbs = map[string]bool{verbSkill: true, "mcp": true}
 
-// verbUsage returns one verb's usage block: its header line(s) through the
-// indented continuation lines, "" when the verb has no entry.
 func verbUsage(verb string) string {
 	var out strings.Builder
 	in := false
@@ -25,8 +21,6 @@ func verbUsage(verb string) string {
 	return out.String()
 }
 
-// verbHelp reports a `<verb> -h|--help` invocation (the flag before any
-// `--`) and the block to print for it.
 func verbHelp(args []string) (string, bool) {
 	if len(args) < 2 || ownHelpVerbs[args[0]] {
 		return "", false

@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// testEnv builds a hermetic getenv over the given values.
 func testEnv(values map[string]string) func(string) string {
 	return func(key string) string { return values[key] }
 }

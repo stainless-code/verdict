@@ -1,28 +1,5 @@
 #!/usr/bin/env bash
-# Case completeness: opt-in HEAD-reviewed gate on the report verb.
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   C1  match-pass: post.json head == fetched HEAD -> --completeness exits 0
-#       with a "completeness passes" check: line; --json carries
-#       data.completeness {reviewed true, matching heads} with the envelope
-#       keys otherwise untouched.
-#   C2  mismatch-fail: post head != fetched HEAD -> exit 1, stderr names
-#       stale-head plus the --base-sha advance command; --json still reports
-#       reviewed false with both heads.
-#   C3  missing-post-fail: no post.json -> exit 1, stderr names missing-post
-#       plus the plain re-fetch command (no --base-sha: nothing to advance
-#       from).
-#   C4  corrupt/empty-post-fail: unparsable post.json and head-less post.json
-#       both exit 1 (a gate failure, never a tool exit 3).
-#   C5  combined: --check <tier> --completeness fails when EITHER dimension
-#       fails and passes only when both do.
-#   C6  absent-flag parity: without --completeness the same stale bundle is
-#       advisory (exit 0, no check: line, no data.completeness key), and
-#       --check alone never mentions completeness.
-#   C7  dry-run never satisfies: post --dry-run writes no post.json, so the
-#       gate still fails afterwards.
-#   C8  local bundle: source.json head_sha is the fetched HEAD when PR.json
-#       is absent.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -32,7 +9,6 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_C="cccccccccccccccccccccccccccccccccccccccc"
 HEAD_D="dddddddddddddddddddddddddddddddddddddddd"
 
-# comp_mk_post <pr> <head|CORRUPT> — craft a completed-post record.
 comp_mk_post() {
   local pr="$1" head="$2"
   local dir="$EVAL_SANDBOX/.review/$pr"
@@ -47,7 +23,6 @@ comp_mk_post() {
 
 CRIT_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Critical boundary bug here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
 
-# --- C1: match-pass ---
 PR=4261
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -80,7 +55,6 @@ else
   bad "--json envelope shape broke: $(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- C2: mismatch-fail ---
 PR=4262
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -106,7 +80,6 @@ else
   bad "mismatch --json: exit $EVAL_STATUS $(jq -c '.data.completeness // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- C3: missing-post-fail ---
 PR=4263
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -120,7 +93,6 @@ assert_file_grep "missing post names the typed code" "$EVAL_ERR" "missing-post"
 assert_file_grep "missing post names the plain re-fetch command" "$EVAL_ERR" "fetch acme/app 4263"
 assert_stream_nogrep "missing post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
-# --- C4: corrupt / empty-head post ---
 PR=4264
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -147,7 +119,6 @@ else
   bad "head-less post exits $EVAL_STATUS, want 1"
 fi
 
-# --- C5: combined tier + completeness ---
 PR=4266
 eval_mk_bundle "$PR"
 printf '%s' "$CRIT_FINDING" | eval_write_findings "$PR"
@@ -188,7 +159,6 @@ else
   bad "combined pass stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- C6: absent-flag parity ---
 run_review report acme/app 4262
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "same stale bundle without the flag stays advisory (exit 0)"
@@ -207,7 +177,6 @@ run_review report acme/app 4262 --check critical
 assert_exit "--check alone exits 0" 0
 assert_stream_nogrep "--check alone mentions no completeness" "$EVAL_ERR" "completeness"
 
-# --- C7: dry-run never satisfies ---
 PR=4267
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -227,7 +196,6 @@ else
   bad "gate after dry run exits $EVAL_STATUS"
 fi
 
-# --- C8: local bundle reads source.json head ---
 mkdir -p "$EVAL_SANDBOX/.review/local-compwork"
 cat > "$EVAL_SANDBOX/.review/local-compwork/source.json" <<EOF
 {"schema_version":"1","kind":"range","repo":"acme/app","slug":"compwork","base_ref":null,"head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"$HEAD_D","range":"v1..v2","dirty":false,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}

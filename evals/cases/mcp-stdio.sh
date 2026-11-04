@@ -1,27 +1,5 @@
 #!/usr/bin/env bash
-# Case mcp-stdio: `verdict mcp` is a JSON-RPC 2.0 MCP server over stdio.
 #
-# Grades (all hermetic; the network-dead gh stub stays first on PATH):
-#   M1  initialize negotiates the revision, advertises tools only, carries
-#       the experimental serverInfo marker, and sends the workflow doctrine.
-#   M2  tools/list exposes one tool per core verb (install is never a tool),
-#       with reflected input schemas, required keys that exist, complete
-#       title/behavior annotations, and the declared enums.
-#   M3  ping answers `{}`; an unknown method is -32601; malformed JSON is a
-#       -32700 frame with a null id.
-#   M4  tools/call report succeeds against a temp .review bundle: the text
-#       block is the same data as structuredContent and matches the CLI
-#       envelope's data shape.
-#   M5  a typed refusal is isError with the code/message/hint intact; an
-#       unknown tool and missing required args are -32602, not refusals; a
-#       known-but-hidden tool is -32602 naming the flag that exposes it.
-#   M6  --read-only filters the list and refuses a writing tool as hidden by
-#       --read-only, never as an unknown tool.
-#   M7  stdout is protocol frames only and stdin close exits 0.
-#   M8  the post tool dry-runs behind a smart gh stub: the envelope data comes
-#       back with no reviews POST and a bad approve is a typed refusal.
-#   M9  --operator adds triage (19 tools) and reaches the service; combining it
-#       with --read-only is a usage error before the server starts.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -31,7 +9,6 @@ MCP_OUT="$EVAL_SANDBOX/mcp-out.jsonl"
 MCP_ERR="$EVAL_SANDBOX/mcp-err.txt"
 FRAMES="$EVAL_SANDBOX/mcp-frames.jsonl"
 
-# run_mcp_input <frames> [mcp flags...] — feed canned frames and capture.
 run_mcp_input() { # $1 = frames file, rest = mcp flags
   local frames="$1"; shift
   set +e
@@ -43,7 +20,6 @@ run_mcp_input() { # $1 = frames file, rest = mcp flags
   set -e
 }
 
-# frame_count_proves_protocol — every stdout line is one JSON-RPC frame.
 check_stdout_frames() {
   local lines docs
   lines="$(wc -l <"$MCP_OUT" | tr -d ' ')"
@@ -63,7 +39,6 @@ check_stdout_frames() {
 eval_mk_bundle 5101
 printf '[]' | eval_write_findings 5101
 
-# --- M1-M3: lifecycle frames ---
 cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"eval","version":"1"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
@@ -136,7 +111,6 @@ else
   bad "malformed JSON did not return -32700"
 fi
 
-# --- M4-M5: success, refusal, usage errors ---
 cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":"5101"}}}
@@ -174,7 +148,6 @@ else
   bad "hidden triage did not name --operator"
 fi
 
-# --- M6: read-only policy ---
 cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
@@ -199,7 +172,6 @@ else
   bad "--read-only did not refuse record as a hidden tool"
 fi
 
-# --- M9: operator surface ---
 cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
@@ -224,7 +196,6 @@ else
   bad "--operator triage did not reach the service"
 fi
 
-# --- M8: post dry run (smart gh stub; the reviews POST must never fire) ---
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }

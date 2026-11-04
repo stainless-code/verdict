@@ -13,10 +13,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// fixedNow is the deterministic clock every test injects.
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
-// collector captures the human and warning streams in order.
 type collector struct {
 	human []string
 	warns []string
@@ -26,12 +24,10 @@ func (c *collector) Human(line string) { c.human = append(c.human, line) }
 func (c *collector) Warn(msg string)   { c.warns = append(c.warns, msg) }
 func (c *collector) Diag(string)       {}
 
-// testRuntime returns the injected test runtime with a stream collector.
 func testRuntime(c *collector) *core.Runtime {
 	return &core.Runtime{Now: func() time.Time { return fixedNow }, Progress: c}
 }
 
-// writeFile writes one fixture file, creating parents.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -42,7 +38,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// bundle writes a minimal local bundle into a temp cwd.
 func bundle(t *testing.T, slug, review string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -55,14 +50,12 @@ func bundle(t *testing.T, slug, review string) {
 	writeFile(t, ".review/"+slug+"/review.json", review)
 }
 
-// reviewJSON renders one valid review with a single inline comment.
 func reviewJSON(kbFrag string) string {
 	return `{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,` +
 		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Cited finding here with enough substance.",` +
 		`"rigor":"walked","severity":"important"` + kbFrag + `}]}`
 }
 
-// recordRequest builds the service request for slug.
 func recordRequest(t *testing.T, c *collector, slug string) *core.RecordRequest {
 	t.Helper()
 	seedControls(t, ".review/"+slug)
@@ -91,8 +84,6 @@ func TestRunRecordData(t *testing.T) {
 	checkRecordHuman(t, c.human)
 }
 
-// checkRecordResponse asserts the typed envelope: clock, key order, and the
-// one summarized finding.
 func checkRecordResponse(t *testing.T, resp *core.RecordResponse) {
 	t.Helper()
 	if resp.At != "2026-11-02T12:00:00Z" {
@@ -112,8 +103,6 @@ func checkRecordResponse(t *testing.T, resp *core.RecordResponse) {
 	}
 }
 
-// checkRecordStores asserts the record artifact: first key and full key
-// order in shell order.
 func checkRecordStores(t *testing.T) {
 	t.Helper()
 	raw, err := os.ReadFile(".review/local-rr/record.json")
@@ -140,7 +129,6 @@ func checkRecordStores(t *testing.T) {
 	}
 }
 
-// checkRecordHuman asserts the streamed human summary lines.
 func checkRecordHuman(t *testing.T, human []string) {
 	t.Helper()
 	joined := strings.Join(human, "\n")
@@ -181,8 +169,6 @@ func TestRunRecordRefusals(t *testing.T) {
 	}
 }
 
-// checkRecordRefusal runs one refusal case: the gate refuses typed, the
-// caller warning carries, and no findings store is written.
 func checkRecordRefusal(t *testing.T, setup func(t *testing.T), pr, code string) {
 	t.Helper()
 	bundle(t, "local-rf", reviewJSON(""))

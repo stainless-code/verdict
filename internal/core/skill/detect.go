@@ -9,7 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// codeNoDetected refuses a --detect run that found no agent to install into.
 const codeNoDetected = "skill-no-detected-agent"
 
 // Detection is one --detect install: the agents whose skills dir already
@@ -50,11 +49,6 @@ func InstallDetected(ctx context.Context, req *Request) (Detection, *core.Refusa
 	return det, nil
 }
 
-// applyDetected refuses before writing when any target would be blocked or
-// holds a path-shape conflict, so a --detect run never leaves a refused set
-// half-installed. A disk error while writing can still stop the run after
-// earlier targets finished; each target is complete on its own and a re-run
-// reads keep for them.
 func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 	for i := range plans {
 		if ref := checkDetected(req, &plans[i]); ref != nil {
@@ -69,8 +63,6 @@ func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 	return nil
 }
 
-// checkDetected refuses one planned target that cannot be written: blocked,
-// not a directory, or holding a path-shape conflict. A keep writes no payload.
 func checkDetected(req *Request, plan *Plan) *core.RefusalError {
 	if ref := checkApply(req, plan); ref != nil {
 		return ref
@@ -81,7 +73,6 @@ func checkDetected(req *Request, plan *Plan) *core.RefusalError {
 	return preflight(plan.Target, plan.Files)
 }
 
-// planDetected classifies every detected agent's target without writing.
 func planDetected(ctx context.Context, req *Request) (Detection, *core.RefusalError) {
 	files, ref := List(ctx, req)
 	if ref != nil {
@@ -98,9 +89,6 @@ func planDetected(ctx context.Context, req *Request) (Detection, *core.RefusalEr
 	return Detection{Name: files.Name, Version: files.Version, Agents: agents, Plans: plans}, nil
 }
 
-// detectAll plans every agent whose skills dir is live, in agent-table order.
-// resolvable reports whether any agent dir could be resolved at all, which
-// separates "no agents set up" from "no HOME to look under".
 func detectAll(files Inventory, req *Request) (agents []string, plans []Plan, resolvable bool, ref *core.RefusalError) {
 	for _, agent := range agentNames {
 		dir, _ := req.agentDir(agent)
@@ -120,8 +108,6 @@ func detectAll(files Inventory, req *Request) (agents []string, plans []Plan, re
 	return agents, plans, resolvable, nil
 }
 
-// detectTarget plans one agent's target when its skills dir already holds a
-// setup.
 func detectTarget(files Inventory, agent, dir string) (Plan, bool, *core.RefusalError) {
 	if !isLive(dir) {
 		return Plan{}, false, nil

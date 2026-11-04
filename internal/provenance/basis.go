@@ -14,7 +14,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// collectCited adds one entry's raw kb ids to the cited set.
 func collectCited(m *jq.Obj, cited map[string]bool) {
 	kbl, ok := m.Get("kb")
 	if !ok {
@@ -46,7 +45,6 @@ func ReviewBasisCounts(review *jq.Obj, entries []any, now string) string {
 	return renderBasis(counts, cited, runVerified(entries, now))
 }
 
-// reviewComments reads the review's comment list.
 func reviewComments(review *jq.Obj) []any {
 	if review == nil {
 		return nil
@@ -73,7 +71,6 @@ func commentRigor(m *jq.Obj) string {
 	return rigorPointed
 }
 
-// runVerified counts addressed entries flipped at now.
 func runVerified(entries []any, now string) int {
 	verified := 0
 	for _, e := range entries {
@@ -88,7 +85,6 @@ func runVerified(entries []any, now string) int {
 	return verified
 }
 
-// flippedAtNow reports whether the entry was addressed/triaged at now.
 func flippedAtNow(m *jq.Obj, now string) bool {
 	if st, _ := m.Get("status"); st != outcomeAddressed {
 		return false
@@ -106,8 +102,6 @@ func flippedAtNow(m *jq.Obj, now string) bool {
 	return false
 }
 
-// flipAtNow reports whether one history event is an addressed/triaged flip
-// at now.
 func flipAtNow(h any, now string) bool {
 	hm, ok := h.(*jq.Obj)
 	if !ok {
@@ -120,7 +114,6 @@ func flipAtNow(h any, now string) bool {
 	return ev == "addressed" || ev == "triaged"
 }
 
-// renderBasis renders the seven-count basis line.
 func renderBasis(counts map[string]int, cited map[string]bool, verified int) string {
 	parts := []string{
 		strconv.Itoa(counts["reproduced"]),
@@ -191,7 +184,6 @@ func EvidenceBaseURL(dir, repo string) string {
 	return ""
 }
 
-// providerRecord reads the bundle's PR record.
 func providerRecord(dir string) map[string]any {
 	raw, err := os.ReadFile(filepath.Join(dir, prFile))
 	if err != nil {

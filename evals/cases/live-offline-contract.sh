@@ -1,39 +1,10 @@
 #!/usr/bin/env bash
-# Case live-offline-contract: the explicit offline posture for the
-# report gate's live-thread dimension.
 #
-# Grades (all hermetic — crafted bundles, smart gh stub, no network):
-#   S1  strict-unreachable-clean: unreachable lookup on a clean bundle
-#       fails the gate (exit 1, never 3) with a typed check: line naming
-#       the strict posture plus the recovery (restore network or --live
-#       skip); the warn lands in the envelope warnings[] too; the store
-#       is unmutated (report never posts).
-#   S2  strict-unreachable-dirty: tier failure plus the live fail-closed
-#       line coexist, still exit 1.
-#   S3  strict-reachable: a reachable clear lookup passes exactly like
-#       auto (strict changes only the unreachable outcome).
-#   S4  strict-structural-skip: local bundles stay neutral in strict with
-#       zero network (no live GitHub state exists to verify).
-#   K1  skip-loud: --live skip on a bundle auto would fail (more live than
-#       local opens) exits 0 on the local dimensions, pays zero graphql
-#       calls, warns naming --live skip, prints a neutral skipped check:
-#       line, and carries the skip in the envelope warnings[].
-#   K2  skip --json: the skip rides warnings[] with the success-shaped
-#       envelope intact.
-#   K3  auto-explicit: an explicit --live auto matches the default exactly
-#       (unreachable stays neutral, exit 0) — stating the posture never
-#       inherits it silently.
-#   K4  bad-posture: an unknown --live value refuses with exit 2.
-#   K5  advisory-inert: --live with no gate flag makes zero network calls
-#       and reads exactly as today (the flag is only consulted on gates).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Overlay a smart gh stub: the threads (graphql) read follows
-# $EVAL_SANDBOX/recheck-mode (clear/open, else unreachable). Everything
-# else stays network-dead. Restored on exit so sibling cases keep theirs.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -54,7 +25,6 @@ exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
 
-# graphql_since <mark> — recheck (graphql) calls logged after <mark>.
 graphql_since() {
   local n
   n=$(tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "graphql" || true)
@@ -66,7 +36,6 @@ set_mode() { printf '%s' "$1" > "$EVAL_SANDBOX/recheck-mode"; }
 HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_D="dddddddddddddddddddddddddddddddddddddddd"
 
-# live_mk_post <pr> <head> — craft a completed-post record.
 live_mk_post() {
   local pr="$1" head="$2"
   jq -n --arg h "$head" \
@@ -76,7 +45,6 @@ live_mk_post() {
 
 CRIT_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Critical boundary bug here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
 
-# --- S1: strict fails closed on unreachable, clean bundle ---
 PR=4371
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -119,7 +87,6 @@ else
   bad "strict --json exits $EVAL_STATUS: $(jq -c '{error:.error,warnings:.warnings}' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- S2: strict unreachable on a tier-dirty bundle ---
 PR=4372
 eval_mk_bundle "$PR"
 printf '%s' "$CRIT_FINDING" | eval_write_findings "$PR"
@@ -137,7 +104,6 @@ else
   bad "strict dirty stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- S3: strict with a reachable clear lookup passes like auto ---
 PR=4373
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -155,7 +121,6 @@ else
   bad "strict reachable stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- S4: strict stays neutral on structural skips (local bundles) ---
 PR=4374
 mkdir -p "$EVAL_SANDBOX/.review/local-offlinec"
 cat > "$EVAL_SANDBOX/.review/local-offlinec/source.json" <<EOF
@@ -177,7 +142,6 @@ assert_file_grep "local skip warns structurally" "$EVAL_ERR" "live recheck skipp
 assert_stream_nogrep "local skip prints no fail-closed line" "$EVAL_ERR" "offline posture is strict"
 assert_eq "local skip pays zero graphql calls" "0" "$(graphql_since "$m")"
 
-# --- K1: --live skip is loud and network-free on a would-fail bundle ---
 PR=4375
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -201,7 +165,6 @@ else
   bad "auto on the open bundle exits $EVAL_STATUS, want 1"
 fi
 
-# --- K2: skip rides the --json envelope ---
 set_mode open
 run_review report acme/app "$PR" --check critical --completeness --live skip --json
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -211,7 +174,6 @@ else
   bad "skip --json exits $EVAL_STATUS: $(jq -c '{error:.error,warnings:.warnings}' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- K3: explicit --live auto matches the default ---
 PR=4376
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -226,7 +188,6 @@ fi
 assert_file_grep "explicit auto warns unreachable" "$EVAL_ERR" "live thread recheck unreachable"
 assert_stream_nogrep "explicit auto prints no live verdict" "$EVAL_ERR" "live open"
 
-# --- K4: unknown posture refuses with exit 2 ---
 run_review report acme/app "$PR" --check critical --live bogus
 if [ "$EVAL_STATUS" -eq 2 ] && grep -q "unknown --live posture 'bogus'" "$EVAL_ERR"; then
   good "unknown --live value refuses typed with exit 2"
@@ -234,7 +195,6 @@ else
   bad "bogus --live exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- K5: --live without a gate flag stays advisory and network-free ---
 PR=4377
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"

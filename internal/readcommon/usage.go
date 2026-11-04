@@ -115,8 +115,6 @@ func readUsageDir(dir string) ([]ContractUsage, error) {
 	return out, nil
 }
 
-// usageNames lists the usage files directly under a read directory in
-// stable order, ignoring subdirectories and non-usage entries.
 func usageNames(entries []os.DirEntry) []string {
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -192,8 +190,6 @@ func decodeUsageLines(raw []byte, path string) ([]ContractUsage, error) {
 	return validateUsageDocs(docs, path)
 }
 
-// decodeUsageValue decodes one JSON value strictly (no trailing data),
-// reporting mistyped fields as a usage refusal.
 func decodeUsageValue(raw []byte, path string, value any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(value); err != nil {
@@ -205,7 +201,6 @@ func decodeUsageValue(raw []byte, path string, value any) error {
 	return nil
 }
 
-// validateUsageDocs validates every decoded record in file order.
 func validateUsageDocs(docs []usageDoc, path string) ([]ContractUsage, error) {
 	out := make([]ContractUsage, 0, len(docs))
 	for i := range docs {
@@ -270,7 +265,6 @@ func parseUsageWindow(d *usageDoc, path string, index int) (time.Time, time.Time
 	return started, ended, nil
 }
 
-// checkPrice refuses a negative priced total.
 func checkPrice(d *usageDoc, path string, index int) error {
 	if d.USD != nil && *d.USD < 0 {
 		return usageRefusal(path, index, "usd must not be negative")
@@ -278,7 +272,6 @@ func checkPrice(d *usageDoc, path string, index int) error {
 	return nil
 }
 
-// countedUsage validates one record's tokens object, if present.
 func countedUsage(d *usageDoc, path string, index int) (ContractUsage, bool, error) {
 	if d.Tokens == nil {
 		return ContractUsage{}, false, nil
@@ -349,7 +342,6 @@ func MatchContractUsage(usage []ContractUsage, at time.Time) *ContractUsage {
 	return best
 }
 
-// contains reports whether at falls inside the session window.
 func (u *ContractUsage) contains(at time.Time) bool {
 	if u.Started.IsZero() || u.Ended.IsZero() {
 		return false
@@ -357,8 +349,6 @@ func (u *ContractUsage) contains(at time.Time) bool {
 	return !at.Before(u.Started) && !at.After(u.Ended)
 }
 
-// closer reports whether u should win a containment tie against best: the
-// session that ends nearest at wins, then the later start.
 func (u *ContractUsage) closer(at time.Time, best *ContractUsage) bool {
 	gap, bestGap := u.Ended.Sub(at), best.Ended.Sub(at)
 	if gap != bestGap {

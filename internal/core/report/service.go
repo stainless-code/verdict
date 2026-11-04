@@ -16,8 +16,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// Shared vocabulary: filter values, tier names, refusal codes, flags, and
-// bundle paths repeated across the report-family verbs.
 const (
 	statusAll         = "all"
 	statusOpen        = "open"
@@ -49,7 +47,6 @@ const (
 // Flags aliases core's resolved report options.
 type Flags = core.ReportFlags
 
-// state carries one loaded report run.
 type state struct { //nolint:govet // field grouping documents the loaded dimensions; alignment is irrelevant here
 	req        *core.ReportRequest
 	flags      Flags
@@ -75,14 +72,12 @@ type state struct { //nolint:govet // field grouping documents the loaded dimens
 	compOK     bool
 }
 
-// liveState carries the live-thread probe outcome.
 type liveState struct {
 	status string
 	err    string
 	open   int
 }
 
-// live statuses (the values the live-thread read reports).
 const (
 	liveUnset         = "unset"
 	liveFail          = "fail"
@@ -114,7 +109,6 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	return buildResponse(st), nil
 }
 
-// normalizeFlags applies the flag defaults to a resolved request.
 func normalizeFlags(req *core.ReportRequest) Flags {
 	flags := req.Flags
 	flags.Status = orDefault(flags.Status, statusAll)
@@ -123,8 +117,6 @@ func normalizeFlags(req *core.ReportRequest) Flags {
 	return flags
 }
 
-// orDefault mirrors ${2:-default}: a missing or empty value reads the
-// default.
 func orDefault(v, dflt string) string {
 	if v == "" {
 		return dflt
@@ -132,21 +124,16 @@ func orDefault(v, dflt string) string {
 	return v
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// withWarnings attaches the warnings accumulated so far to a refusal.
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	ref.Warnings = st.warnings
 	return ref
 }
 
-// loadState resolves the bundle, guards the store, and loads every local
-// dimension: heads, panel, patch, ranked findings, counts, cost, and the
-// completeness record.
 func loadState(st *state) *core.RefusalError {
 	st.dir = readcommon.ResolveBundleDir(st.req.Pr)
 	entries, err := readcommon.LoadFindings(st.dir)
@@ -176,9 +163,6 @@ func loadState(st *state) *core.RefusalError {
 	return nil
 }
 
-// loadRefusal recovers the typed refusal carried by a store-guard error.
-// LoadFindings and ValidateOverrides only fail typed, so the As-chain
-// always hits; the fallback is defensive and never fires in practice.
 func loadRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -186,8 +170,6 @@ func loadRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "internal", Message: err.Error()}
 }
 
-// loadStateCost fills the cost rollup when --cost is set, warning on
-// partial receipts.
 func loadStateCost(st *state) {
 	if !st.flags.Cost {
 		return
@@ -200,8 +182,6 @@ func loadStateCost(st *state) {
 	st.receipts = res.Receipts
 }
 
-// loadStateCompleteness fills the completeness record when --completeness
-// is set.
 func loadStateCompleteness(st *state) {
 	if !st.flags.Completeness {
 		return
@@ -209,7 +189,6 @@ func loadStateCompleteness(st *state) {
 	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA)
 }
 
-// storeCounts owns the counts object over the whole findings store.
 func storeCounts(entries []any) core.ReportCounts {
 	return core.ReportCounts{
 		Inline:     countKind(entries, kindInline),
@@ -219,22 +198,18 @@ func storeCounts(entries []any) core.ReportCounts {
 	}
 }
 
-// countKind counts entries of one kind.
 func countKind(entries []any, kind string) int {
 	return countWhere(entries, func(e any) bool { return readcommon.KindOf(e) == kind })
 }
 
-// countInlineAnchored counts anchored inline findings.
 func countInlineAnchored(entries []any) int {
 	return countWhere(entries, func(e any) bool { return inlineAnchored(e, true) })
 }
 
-// countInlineLoose counts unanchored inline findings.
 func countInlineLoose(entries []any) int {
 	return countWhere(entries, func(e any) bool { return inlineAnchored(e, false) })
 }
 
-// countWhere counts entries matching match.
 func countWhere(entries []any, match func(any) bool) int {
 	n := 0
 	for _, e := range entries {
@@ -245,8 +220,6 @@ func countWhere(entries []any, match func(any) bool) int {
 	return n
 }
 
-// inlineAnchored reports whether e is an inline finding whose anchored flag
-// equals want.
 func inlineAnchored(e any, want bool) bool {
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
@@ -259,7 +232,6 @@ func inlineAnchored(e any, want bool) bool {
 	return (anchored == true) == want
 }
 
-// bundleHeads reads the fetched/base heads from PR.json or source.json.
 func bundleHeads(dir string) (head, base string) {
 	if isRegular(dir + prJSONSuffix) {
 		return readcommon.PrField(dir, "head_sha"), readcommon.PrField(dir, "base_sha")
@@ -270,7 +242,6 @@ func bundleHeads(dir string) (head, base string) {
 	return "", ""
 }
 
-// bundlePanel reads the bundle panel members ([] when absent).
 func bundlePanel(dir string) ([]any, string) {
 	path := dir + "/panel"
 	if !isRegular(path) {
@@ -290,10 +261,6 @@ func bundlePanel(dir string) ([]any, string) {
 	return members, "panel"
 }
 
-// bundlePatch reads the patch record; the caller checks isRegular first, so
-// a missing store never reaches here. An unreadable patch store refuses
-// typed corrupt-store instead of dying in the envelope jq. The record
-// decodes ordered: the envelope re-emits it in file key order.
 func bundlePatch(dir string) (any, *core.RefusalError) {
 	raw, err := readFile(dir + patchSuffix)
 	if err != nil {
@@ -306,7 +273,6 @@ func bundlePatch(dir string) (any, *core.RefusalError) {
 	return doc, nil
 }
 
-// corruptPatch builds the patch-store refusal.
 func corruptPatch(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    "corrupt-store",

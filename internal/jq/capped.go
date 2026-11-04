@@ -13,18 +13,14 @@ import (
 // `missing-*`, ...).
 var ErrTooLarge = errors.New("input exceeds its size cap")
 
-// tooLargeError carries the cap that refused the input, and matches
-// [ErrTooLarge] through [errors.Is].
 type tooLargeError struct {
 	limit int64
 }
 
-// Error implements error.
 func (e *tooLargeError) Error() string {
 	return fmt.Sprintf("input exceeds its %d-byte cap", e.limit)
 }
 
-// Unwrap exposes [ErrTooLarge] to [errors.Is].
 func (e *tooLargeError) Unwrap() error {
 	//nolint:wrapcheck // returning the sentinel is the matching contract.
 	return ErrTooLarge
@@ -38,12 +34,9 @@ const (
 	// MaxFindingsBytes caps a findings.json store (the review bundle's
 	// derived findings document).
 	MaxFindingsBytes int64 = 8 << 20
-	// MaxPRBytes caps a PR.json provider record.
-	MaxPRBytes int64 = 8 << 20
-	// MaxKBBytes caps a kb.jsonl learning store.
-	MaxKBBytes int64 = 8 << 20
-	// MaxCostBytes caps a cost.json (or budget.json) accounting store.
-	MaxCostBytes int64 = 8 << 20
+	MaxPRBytes       int64 = 8 << 20
+	MaxKBBytes       int64 = 8 << 20
+	MaxCostBytes     int64 = 8 << 20
 )
 
 // Capped reads at most maxBytes bytes from r, returning [ErrTooLarge] when

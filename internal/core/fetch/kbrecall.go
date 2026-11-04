@@ -219,7 +219,6 @@ func matchRules(rules []recallRule, files []string) []recallCand {
 	return out
 }
 
-// ruleHit owns the nested scope/file loop with shell case-pattern matching.
 func ruleHit(scope string, files []string) bool {
 	for g := range strings.SplitSeq(scope, ",") {
 		if globHitsFiles(strings.TrimSpace(g), files) {
@@ -257,9 +256,6 @@ func rankCands(cands []recallCand) []recallCand {
 	return cands
 }
 
-// scopeMatch applies glob-scope pattern matching: `*` crosses
-// separators, `?` matches one char, `[...]` matches a class, and `\`
-// quotes the next char.
 // globState carries one scopeMatch run: the classic wildcard matcher
 // with a single pending star (backtracking over one more char per miss).
 type globState struct {
@@ -299,8 +295,6 @@ func (g *globState) step() bool {
 	return g.matchBacktrack()
 }
 
-// escape owns the backslash escape: a backslash matching the input
-// byte consumes both.
 func (g *globState) matchEscape() bool {
 	if g.px < len(g.pattern) && g.pattern[g.px] == '\\' && g.px+1 < len(g.pattern) && g.pattern[g.px+1] == g.s[g.sx] {
 		g.px += 2
@@ -310,8 +304,6 @@ func (g *globState) matchEscape() bool {
 	return false
 }
 
-// star owns the star record: the star position and input mark park
-// for later backtracking.
 func (g *globState) matchStar() bool {
 	if g.px < len(g.pattern) && g.pattern[g.px] == '*' {
 		g.star, g.mark, g.px = g.px, g.sx, g.px+1
@@ -320,7 +312,6 @@ func (g *globState) matchStar() bool {
 	return false
 }
 
-// consume owns the literal match: `?`, a class, or the equal byte.
 func (g *globState) matchConsume() bool {
 	if g.px >= len(g.pattern) {
 		return false
@@ -347,8 +338,6 @@ func (g *globState) matchConsume() bool {
 	}
 }
 
-// backtrack owns the mismatch fork: a pending `*` advances over one
-// more input char, else the match fails.
 func (g *globState) matchBacktrack() bool {
 	if g.star == -1 || g.mark >= len(g.s) {
 		return false

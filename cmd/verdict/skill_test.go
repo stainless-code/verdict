@@ -11,7 +11,6 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 )
 
-// setTestVersion pins the linked build version for deterministic envelopes.
 func setTestVersion(t *testing.T) {
 	t.Helper()
 	old := version
@@ -19,7 +18,6 @@ func setTestVersion(t *testing.T) {
 	t.Cleanup(func() { version = old })
 }
 
-// decodeSkillEnvelope parses exactly one envelope from stdout.
 func decodeSkillEnvelope(t *testing.T, out string) map[string]any {
 	t.Helper()
 	dec := json.NewDecoder(strings.NewReader(out))
@@ -33,7 +31,6 @@ func decodeSkillEnvelope(t *testing.T, out string) map[string]any {
 	return doc
 }
 
-// skillData returns the envelope's data object.
 func skillData(t *testing.T, doc map[string]any) map[string]any {
 	t.Helper()
 	data, ok := doc["data"].(map[string]any)

@@ -1,23 +1,10 @@
 #!/usr/bin/env bash
-# Case cost-cache-mix: cached vs fresh input-token split in the cost rollup
-# (report --cost).
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   C1  cache-carrying record: per-model cache_read/cache_creation fields
-#       roll up into a top-level cached_input_tokens scalar beside the
-#       existing in/out/total line, in both --json and human text.
-#   C2  legacy record (no cache keys): today's exact numbers — the scalar
-#       sums to 0 and by_tier gains no new keys.
-#   C3  explicit null cache fields: unknown, contribute nothing (scalar 0),
-#       totals untouched — no fabricated precision.
-#   C4  totals invariant: total == input + output on a mixed bundle (cached
-#       tokens are a subset of input, never added on top).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -26,7 +13,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
-# --- C1: cache-carrying record splits cached vs fresh ---
 eval_mk_bundle 4911
 printf '[]' > "$EVAL_SANDBOX/.review/4911/findings.json"
 cat > "$EVAL_SANDBOX/.review/4911/cost.json" <<'EOF'
@@ -51,7 +37,6 @@ else
   bad "human text exits $EVAL_STATUS: $(grep -h 'cost:' "$EVAL_OUT" || echo MISSING)"
 fi
 
-# --- C2: legacy record (no cache keys) keeps today's exact numbers ---
 eval_mk_bundle 4912
 printf '[]' > "$EVAL_SANDBOX/.review/4912/findings.json"
 cat > "$EVAL_SANDBOX/.review/4912/cost.json" <<'EOF'
@@ -69,7 +54,6 @@ else
   bad "legacy-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- C3: explicit null cache fields read unknown, contribute nothing ---
 eval_mk_bundle 4913
 printf '[]' > "$EVAL_SANDBOX/.review/4913/findings.json"
 cat > "$EVAL_SANDBOX/.review/4913/cost.json" <<'EOF'
@@ -84,7 +68,6 @@ else
   bad "null-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- C4: total == input + output on a mixed bundle (no double counting) ---
 eval_mk_bundle 4914
 printf '[]' > "$EVAL_SANDBOX/.review/4914/findings.json"
 cat > "$EVAL_SANDBOX/.review/4914/cost.json" <<'EOF'
@@ -102,7 +85,6 @@ else
   bad "invariant-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- cleanup: fixtures stay out of later cases, knob state goes ---
 rm -rf "$EVAL_SANDBOX/.review/4911" "$EVAL_SANDBOX/.review/4912" \
   "$EVAL_SANDBOX/.review/4913" "$EVAL_SANDBOX/.review/4914" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true

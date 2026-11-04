@@ -67,8 +67,6 @@ func (d *ThreadsData) Wire() *jq.Obj {
 	)
 }
 
-// threadsRun carries one refresh: the request, warnings, and the provider
-// feed source.
 type threadsRun struct {
 	req      *ThreadsRequest
 	warnings []string
@@ -159,7 +157,6 @@ func (st *threadsRun) write(
 	return data, nil
 }
 
-// summarizeThreads builds the data profile from the feed just written.
 func summarizeThreads(
 	dir, provider, head, at string, truncated bool, feed []threadscore.Thread,
 ) *ThreadsData {
@@ -181,7 +178,6 @@ func summarizeThreads(
 	return data
 }
 
-// threadsNext names the follow-up that fits the refreshed state.
 func threadsNext(open int) string {
 	if open == 0 {
 		return "no open threads — merge readiness no longer waits on review feedback"
@@ -304,7 +300,6 @@ func azureThreadsConn(env map[string]string, repo string) (*azureConn, error) {
 	return &azureConn{org: org, project: project, rname: rname}, nil
 }
 
-// azureThreadsRead reads the thread array, reporting a failed read.
 func azureThreadsRead(ctx context.Context, s *session, conn *azureConn, pr string) (string, bool, error) {
 	args := azureAPI(conn.org, conn.project, conn.rname, pr, "/threads?api-version=7.1", "value", keyJSON)
 	res, err := s.cliFetch(ctx, binAz, args...)
@@ -388,13 +383,11 @@ func (st *threadsRun) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	return ref
 }
 
-// fileExists reports whether path is a regular file.
 func fileExists(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// asRefusal recovers a typed refusal from a read error.
 func asRefusal(err error) (*core.RefusalError, bool) {
 	return errors.AsType[*core.RefusalError](err)
 }

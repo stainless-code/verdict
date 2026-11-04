@@ -8,7 +8,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// buildResponse assembles the typed response and its render inputs.
 func buildResponse(st *state) *core.ReportResponse {
 	resp := &core.ReportResponse{
 		Repo:     st.req.Repo,
@@ -27,7 +26,6 @@ func buildResponse(st *state) *core.ReportResponse {
 	return resp
 }
 
-// reportNext computes the envelope's next field.
 func reportNext(st *state) string {
 	if st.flags.Output != "" {
 		return "wrote " + st.flags.Output
@@ -38,8 +36,6 @@ func reportNext(st *state) string {
 	return "none open — nothing to address"
 }
 
-// buildData owns the --json data block: ranked items, counts, panel,
-// patch, cost, and completeness in shell key order.
 func buildData(st *state) *core.ReportData {
 	data := &core.ReportData{
 		GeneratedAt: st.now,
@@ -50,8 +46,6 @@ func buildData(st *state) *core.ReportData {
 			Live:    nil,
 			Stale:   false,
 		},
-		// The verdict tallies the displayed (filtered) ranking, not the
-		// whole store.
 		Verdict: core.ReportVerdict{
 			Open:      countStatus(rankedEntries(st), statusOpen),
 			Deferred:  countStatus(rankedEntries(st), "deferred"),
@@ -75,7 +69,6 @@ func buildData(st *state) *core.ReportData {
 	return data
 }
 
-// outputVal renders the output path (null when empty).
 func outputVal(output string) *string {
 	if output == "" {
 		return nil
@@ -83,7 +76,6 @@ func outputVal(output string) *string {
 	return &output
 }
 
-// panelValue owns the panel envelope value.
 func panelValue(st *state) core.ReportPanel {
 	var src *string
 	if st.panelSrc != "" {
@@ -97,8 +89,6 @@ func panelValue(st *state) core.ReportPanel {
 	return core.ReportPanel{Source: src, Members: members}
 }
 
-// envelopeItems builds the machine items: ranked entries with locator and
-// rank merged in, in shell key order.
 func envelopeItems(ranked []readcommon.Ranked) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(ranked))
 	for _, item := range ranked {
@@ -107,7 +97,6 @@ func envelopeItems(ranked []readcommon.Ranked) []core.FindingItem {
 	return items
 }
 
-// envelopeItem merges locator and rank into one ranked entry.
 func envelopeItem(item readcommon.Ranked) core.FindingItem {
 	f := core.FindingItem{
 		Locator: readcommon.Locator(item.Entry),
@@ -126,7 +115,6 @@ func envelopeItem(item readcommon.Ranked) core.FindingItem {
 	return f
 }
 
-// rankedEntries flattens the displayed ranking for the verdict tallies.
 func rankedEntries(st *state) []any {
 	entries := make([]any, 0, len(st.ranked))
 	for _, item := range st.ranked {
@@ -135,7 +123,6 @@ func rankedEntries(st *state) []any {
 	return entries
 }
 
-// countStatus counts entries with the given status.
 func countStatus(entries []any, status string) int {
 	n := 0
 	for _, e := range entries {
@@ -146,8 +133,6 @@ func countStatus(entries []any, status string) int {
 	return n
 }
 
-// countTerminal counts terminal findings (wont-fix and false-positive,
-// mirroring the verdict.terminal key).
 func countTerminal(entries []any) int {
 	n := 0
 	for _, e := range entries {
@@ -158,9 +143,6 @@ func countTerminal(entries []any) int {
 	return n
 }
 
-// costFromObj converts the ordered cost rollup into the modeled shape. The
-// raw object still renders (CostRaw); the typed copy is the schema
-// conformance target.
 func costFromObj(cost *jq.Obj) *core.ReportCost {
 	c := &core.ReportCost{
 		Runs:         jqInt(cost, keyRuns),
@@ -180,7 +162,6 @@ func costFromObj(cost *jq.Obj) *core.ReportCost {
 	return c
 }
 
-// costTiers converts the by_tier rollup.
 func costTiers(cost *jq.Obj) core.CostTiers {
 	byTier, _ := cost.Get("by_tier")
 	obj, ok := byTier.(*jq.Obj)
@@ -194,7 +175,6 @@ func costTiers(cost *jq.Obj) core.CostTiers {
 	}
 }
 
-// costTier converts one tier's rollup.
 func costTier(byTier *jq.Obj, tier string) core.CostTier {
 	raw, _ := byTier.Get(tier)
 	obj, ok := raw.(*jq.Obj)
@@ -212,20 +192,16 @@ func costTier(byTier *jq.Obj, tier string) core.CostTier {
 // keyRuns names the rollup's runs field (frozen wire key).
 const keyRuns = "runs"
 
-// jqInt reads one numeric rollup field as an int (absent reads 0).
 func jqInt(obj *jq.Obj, key string) int {
 	f, _ := readcommon.NumVal(jqVal(obj, key))
 	return int(f)
 }
 
-// jqVal reads one envelope value.
 func jqVal(obj *jq.Obj, key string) any {
 	v, _ := obj.Get(key)
 	return v
 }
 
-// buildHuman owns the human summary: the report line, ranked lines, and
-// the optional cost block, then the output/next line.
 func buildHuman(st *state) []string {
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
 		st.dir, len(st.ranked), st.nOpen, readcommon.ShortSHA(st.headSHA))}
@@ -246,8 +222,6 @@ func buildHuman(st *state) []string {
 	return append(lines, "next: none open — nothing to address")
 }
 
-// sigHuman shortens a sig to its 8-character prefix for human lines:
-// codepoints, everything else renders jq-style ("null" for missing).
 func sigHuman(entry any) string {
 	if sig, ok := readcommon.FieldOf(entry, "sig").(string); ok {
 		return readcommon.Prefix(sig)
@@ -255,7 +229,6 @@ func sigHuman(entry any) string {
 	return jq.Str(readcommon.FieldOf(entry, "sig"))
 }
 
-// costHuman owns the human cost rollup block.
 func costHuman(st *state) []string {
 	cost := st.cost
 	if cost == nil {
@@ -286,12 +259,10 @@ func costHuman(st *state) []string {
 	return lines
 }
 
-// jqStr renders one envelope value jq-style.
 func jqStr(obj *jq.Obj, key string) string {
 	return jq.Str(jqVal(obj, key))
 }
 
-// orNA renders a null estimate as n/a.
 func orNA(v any) string {
 	if v == nil {
 		return "n/a"
@@ -299,7 +270,6 @@ func orNA(v any) string {
 	return jq.Str(v)
 }
 
-// tierRuns reads one tier's run count.
 func tierRuns(byTier *jq.Obj, tier string) string {
 	if byTier == nil {
 		return "0"
@@ -315,7 +285,6 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 	return jqStr(obj, keyRuns)
 }
 
-// receiptField renders one receipt field jq-style ("?" when absent).
 func receiptField(latest any, key string) string {
 	if m, ok := latest.(map[string]any); ok {
 		return receiptFieldFromMap(m, key)
@@ -323,7 +292,6 @@ func receiptField(latest any, key string) string {
 	return receiptFieldFromObj(latest, key)
 }
 
-// receiptFieldFromMap renders one field from a decoded receipt map.
 func receiptFieldFromMap(m map[string]any, key string) string {
 	v, ok := m[key]
 	if !ok || v == nil || v == false {
@@ -332,7 +300,6 @@ func receiptFieldFromMap(m map[string]any, key string) string {
 	return jq.Str(v)
 }
 
-// receiptFieldFromObj renders one field from a receipt object.
 func receiptFieldFromObj(latest any, key string) string {
 	om, ok := latest.(*jq.Obj)
 	if !ok {
@@ -345,8 +312,6 @@ func receiptFieldFromObj(latest any, key string) string {
 	return jq.Str(v)
 }
 
-// gateTail owns the gate tail: the tier, completeness, and live-thread
-// dimensions emit check lines; any failing dimension fails the gate.
 func gateTail(st *state) (bool, []string) {
 	var lines []string
 	failed := false
@@ -366,8 +331,6 @@ func gateTail(st *state) (bool, []string) {
 	return failed, lines
 }
 
-// gateTierCheck renders the tier dimension check line, reporting whether
-// the dimension fails the gate.
 func gateTierCheck(st *state) (bool, []string) {
 	if n := tierHits(st.entries, st.flags.Check); n > 0 {
 		return true, []string{fmt.Sprintf("check: %d open finding(s) at-or-above %s — gate fails", n, st.flags.Check)}
@@ -375,8 +338,6 @@ func gateTierCheck(st *state) (bool, []string) {
 	return false, []string{fmt.Sprintf("check: no open findings at-or-above %s — gate passes", st.flags.Check)}
 }
 
-// gateCompletenessCheck renders the completeness dimension check line,
-// reporting whether the dimension fails the gate.
 func gateCompletenessCheck(st *state) (bool, []string) {
 	if st.compOK {
 		return false, []string{fmt.Sprintf("check: HEAD %s reviewed (post matches fetch) — completeness passes",
@@ -385,8 +346,6 @@ func gateCompletenessCheck(st *state) (bool, []string) {
 	return true, completenessFailLines(st)
 }
 
-// gateLiveCheck renders the live-thread verdict line, reporting whether the
-// dimension fails the gate.
 func gateLiveCheck(st *state) (bool, []string) {
 	switch st.live.status {
 	case liveFail:
@@ -410,7 +369,6 @@ func gateLiveCheck(st *state) (bool, []string) {
 	}
 }
 
-// tierHits counts whole-store open findings at-or-above the tier.
 func tierHits(entries []any, tier string) int {
 	threshold := map[string]int{tierCritical: 0, tierImportant: 1, tierInformational: 2}[tier]
 	n := 0
@@ -425,12 +383,8 @@ func tierHits(entries []any, tier string) int {
 	return n
 }
 
-// sevRankUntagged is the gate severity rank for untagged findings: it never
-// meets any tier.
 const sevRankUntagged = 3
 
-// sevRankOf owns the gate severity rank (untagged reads 3, never meeting
-// a tier).
 func sevRankOf(entry any) int {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -450,7 +404,6 @@ func sevRankOf(entry any) int {
 	return sevRankUntagged
 }
 
-// completenessFailLines renders the typed completeness failure line.
 func completenessFailLines(st *state) []string {
 	refetch := refetchCommand(st.dir, st.req.ReadRequest, st.compPosted)
 	short := readcommon.ShortSHA(st.headSHA)

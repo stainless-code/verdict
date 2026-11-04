@@ -231,8 +231,6 @@ func TestUnknownToolErrorUnchanged(t *testing.T) {
 	}
 }
 
-// hiddenCase is one hidden-tool error case: the surface flags, the call, and
-// the requirement the message and data must name.
 type hiddenCase struct { //nolint:govet // three small cases read clearer than a packed struct
 	readOnly bool
 	operator bool
@@ -240,7 +238,6 @@ type hiddenCase struct { //nolint:govet // three small cases read clearer than a
 	requires string
 }
 
-// assertHiddenToolError pins one hidden-tool error frame.
 func assertHiddenToolError(t *testing.T, got frame, call, requires string) {
 	t.Helper()
 	if got.Error == nil {

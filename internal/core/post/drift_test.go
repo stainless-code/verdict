@@ -10,10 +10,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// driftLive is the head the live lookup reports when the branch moved.
 const driftLive = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-// liveSHAArgv is the drift lookup's exact argv key.
 const liveSHAArgv = "gh\x00api\x00repos/acme/app/pulls/7\x00--jq\x00.head.sha"
 
 // postBundleCommander scripts the post happy path with a chosen live head, so
@@ -35,10 +33,6 @@ const driftNotePrefix = "> ⚠️ Note: commits landed after this review's fetch
 	"(fetched `aaaaaaa`, live `bbbbbbb`); treat line anchors as potentially stale. " +
 	"Run `verdict fetch acme/app 7 --base-sha aaaaaaa` and review the delta.\n\n"
 
-// staleNotePrefix is the binding refusal's body note up to the end of its
-// sentence. The separator production appends after it is deliberately not
-// pinned here: it currently renders a literal backslash-n into the posted
-// body (service.go approveGate), which the manual never specifies.
 const staleNotePrefix = "> ⚠️ Note: posting as COMMENT instead of APPROVE — commits " +
 	"landed after this review's fetch, so the review does not cover live HEAD; " +
 	"run `verdict fetch acme/app 7 --base-sha aaaaaaa` and review the delta."
@@ -165,8 +159,6 @@ func TestRunStaleApproveDowngrades(t *testing.T) {
 		t.Errorf("warnings = %q, want %q", resp.Warnings, want)
 	}
 	body := postedBody(t, cmdr)
-	// checkDrift prepends the drift note, then approveGate prepends the
-	// downgrade note in front of it.
 	if !strings.HasPrefix(body, staleNotePrefix) {
 		t.Fatalf("downgrade note does not front the body:\n%.300q", body)
 	}
@@ -174,8 +166,6 @@ func TestRunStaleApproveDowngrades(t *testing.T) {
 	if driftAt < len(staleNotePrefix) {
 		t.Fatalf("drift note (at %d) does not follow the downgrade note:\n%.600q", driftAt, body)
 	}
-	// One blank line separates the two notes, and no literal backslash-n
-	// leaks into the posted markdown.
 	if body[driftAt-2:driftAt] != "\n\n" || body[driftAt-3] == '\n' {
 		t.Errorf("downgrade and drift notes are not separated by exactly one blank line:\n%.600q", body)
 	}
@@ -247,8 +237,6 @@ func TestRunRecheckOnlyOnApprove(t *testing.T) {
 		postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
 		live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		cmdr := postBundleCommander(t, &live)
-		// A reviewer other than the PR author: a self-verdict downgrades to
-		// COMMENT before the recheck guard is ever reached.
 		cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
 		var warnings, human []string
 		req := postTestReq(cmdr, core.PostFlags{
@@ -319,8 +307,6 @@ func TestRunApproveLiveThreadBoundary(t *testing.T) {
 			live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			cmdr := postBundleCommander(t, &live)
 			cmdr.out[threadsArgvKey] = scriptResult{stdout: nodes(tc.live)}
-			// A reviewer other than the PR author: a self-verdict would
-			// downgrade before the live-thread gate runs.
 			cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
 			var warnings, human []string
 			req := postTestReq(cmdr, core.PostFlags{
@@ -371,8 +357,6 @@ func TestRunAnchorsUsePinnedSnapshot(t *testing.T) {
 			wantKept: 1,
 		},
 		{
-			// full.diff's hunk covers NEW 1-3, so anything that re-derived
-			// the snapshot from it would keep the anchor inline.
 			name:     "pinned-excludes-the-line",
 			snapshot: pinnedHunkRow("OLD", 10, 12) + pinnedHunkRow("NEW", 10, 12),
 			wantKept: 0,

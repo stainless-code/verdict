@@ -41,13 +41,11 @@ func mustSub() fs.FS {
 	return sub
 }
 
-// Payload install modes.
 const (
 	execMode = 0o755
 	fileMode = 0o644
 )
 
-// executable lists the payload files installed with the executable bit.
 var executable = map[string]bool{
 	"schemas/validate.sh": true,
 	"scripts/verdict":     true,

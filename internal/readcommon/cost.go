@@ -17,14 +17,12 @@ const (
 	warnBudgetUnreadable = "budget.json unreadable — receipts unlisted for this rollup"
 )
 
-// Effort tiers, the allowlist and tier rollups.
 const (
 	tierCheap    = "cheap"
 	tierStandard = "standard"
 	tierDeep     = "deep"
 )
 
-// Cost object keys.
 const (
 	keyRuns         = "runs"
 	keyInputTokens  = "input_tokens"
@@ -58,9 +56,6 @@ func CostRollup(dir string) CostResult {
 	}
 	merged := append(append([]any{}, top...), mergeChunkRecords(chunkFiles, &res)...)
 	if topPresent {
-		// The top-only assignment below never survives the merged
-		// overwrite, but its failure warning does: an unparseable
-		// top file warns even when the chunk merge succeeds.
 		if _, ok := rollupOne(top, topParsed); !ok {
 			res.Warns = append(res.Warns, warnCostUnreadable)
 		}
@@ -68,9 +63,6 @@ func CostRollup(dir string) CostResult {
 	if c := rollupRecords(merged); c != nil {
 		res.Cost = c
 	} else {
-		// A merged rollup over a shape-invalid
-		// streams (a chunk record the filter rejects); it now warns and
-		// keeps zeros like every other cost failure.
 		res.Warns = append(res.Warns, warnCostUnreadable)
 		res.Cost = costZeros()
 	}
@@ -78,8 +70,6 @@ func CostRollup(dir string) CostResult {
 	return res
 }
 
-// mergeChunkRecords reads the present, parsed chunk files into one record
-// stream. Absent files skip silently; unparseable files warn and skip.
 func mergeChunkRecords(chunkFiles []string, res *CostResult) []any {
 	var merged []any
 	for _, f := range chunkFiles {
@@ -96,7 +86,6 @@ func mergeChunkRecords(chunkFiles []string, res *CostResult) []any {
 	return merged
 }
 
-// rollupTop rolls the top-level file when no chunk files exist.
 func rollupTop(top []any, present, parsed bool, res *CostResult) *jq.Obj {
 	if !present {
 		return costZeros()
@@ -108,7 +97,6 @@ func rollupTop(top []any, present, parsed bool, res *CostResult) *jq.Obj {
 	return costZeros()
 }
 
-// rollupOne rolls parsed records, reporting whether the shape held.
 func rollupOne(recs []any, parsed bool) (*jq.Obj, bool) {
 	if !parsed {
 		return nil, false
@@ -120,7 +108,6 @@ func rollupOne(recs []any, parsed bool) (*jq.Obj, bool) {
 	return c, true
 }
 
-// chunkWarn renders the per-chunk unreadable warning.
 func chunkWarn(path string) string {
 	base := path
 	if _, after, ok := strings.CutLast(path, slash); ok {
@@ -187,8 +174,6 @@ func CostModels(rec any) ([]any, bool) {
 	return list, true
 }
 
-// coerceModelList accepts the two shapes jq's `.models[]` walks: an array
-// as-is, an object as its values in key order.
 func coerceModelList(raw any) ([]any, bool) {
 	switch t := raw.(type) {
 	case []any:
@@ -232,8 +217,6 @@ func readCostFile(path string) (recs []any, present, parsed bool) {
 	return []any{doc}, true, true
 }
 
-// chunkCostFiles owns the per-chunk file discovery: manifest names first,
-// then the on-disk chunk-*.cost.json glob, sorted and deduplicated.
 func chunkCostFiles(dir string) []string {
 	chunksDir := dir + "/chunks"
 	if !IsDir(chunksDir) {
@@ -246,8 +229,6 @@ func chunkCostFiles(dir string) []string {
 	return dedupeSorted(appendChunkGlob(chunksDir, files))
 }
 
-// appendChunkGlob appends the on-disk chunk-*.cost.json names (an
-// unreadable dir reads as manifest-only).
 func appendChunkGlob(chunksDir string, files []string) []string {
 	entries, err := os.ReadDir(chunksDir)
 	if err != nil {
@@ -287,7 +268,6 @@ func manifestChunkNames(path string) []string {
 	return names
 }
 
-// manifestChunkList reads the manifest's chunk entry list.
 func manifestChunkList(path string) ([]any, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -308,9 +288,6 @@ func manifestChunkList(path string) ([]any, bool) {
 	return list, true
 }
 
-// manifestChunkName validates one manifest chunk entry: non-objects and
-// non-scalar names invalidate the whole manifest: the name
-// error; null/false read empty and skip.
 func manifestChunkName(c any) (string, bool) {
 	cm, ok := c.(map[string]any)
 	if !ok {
@@ -342,27 +319,21 @@ func chunkName(v any) (string, bool) {
 	}
 }
 
-// dedupeSorted sorts and deduplicates file paths, mirroring `sort -u`.
 func dedupeSorted(files []string) []string {
 	slices.Sort(files)
 	return slices.Compact(files)
 }
 
-// tierAcc accumulates one tier's runs and tokens.
 type tierAcc struct {
 	runs          int
 	input, output float64
 }
 
-// costSums carries the running rollup totals.
 type costSums struct {
 	runs, withCost, estN          int
 	input, output, cached, estSum float64
 }
 
-// rollupRecords applies the shared cost rollup filter to merged records.
-// Nil marks a shape failure (a non-object record or model, mirroring the
-// shell filter's jq error); callers warn and substitute zeros.
 func rollupRecords(records []any) *jq.Obj {
 	tiers := []string{tierCheap, tierStandard, tierDeep}
 	acc := map[string]*tierAcc{}
@@ -405,8 +376,6 @@ func rollupRecords(records []any) *jq.Obj {
 	return obj
 }
 
-// foldRecord folds one cost record into the tier accumulators and running
-// totals, reporting shape failure.
 func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
 	sum.runs++
 	rm, ok := costRecordMap(rec)
@@ -437,8 +406,6 @@ func foldRecord(rec any, acc map[string]*tierAcc, sum *costSums) bool {
 	return true
 }
 
-// costRecordMap validates one cost record: null and objects read; anything
-// else fails the rollup.
 func costRecordMap(rec any) (map[string]any, bool) {
 	if rec == nil {
 		return map[string]any{}, true
@@ -450,8 +417,6 @@ func costRecordMap(rec any) (map[string]any, bool) {
 	return m, true
 }
 
-// allModelMaps reports whether every non-null models element is an object,
-// the shape gate for the models list.
 func allModelMaps(list []any) bool {
 	for _, mm := range list {
 		if mm == nil {
@@ -464,7 +429,6 @@ func allModelMaps(list []any) bool {
 	return true
 }
 
-// modelTokens sums one model's numeric input/output tokens.
 func modelTokens(mm any) (in, out float64) {
 	m, ok := mm.(map[string]any)
 	if !ok {
@@ -479,8 +443,6 @@ func modelTokens(mm any) (in, out float64) {
 	return in, out
 }
 
-// modelCached sums one model's numeric cache-split tokens (subsets of the
-// input tokens, rolled into the top-level cached scalar).
 func modelCached(mm any) float64 {
 	m, ok := mm.(map[string]any)
 	if !ok {
@@ -501,10 +463,8 @@ func Round4(f float64) float64 {
 	return math.Round(f*roundScale) / roundScale
 }
 
-// roundScale is the est_usd rounding factor.
 const roundScale = 10000
 
-// costZeros owns the zero rollup for absent or unreadable cost stores.
 func costZeros() *jq.Obj {
 	byTier := jq.NewObj()
 	for _, t := range []string{tierCheap, tierStandard, tierDeep} {
@@ -553,7 +513,6 @@ func attachReceipts(dir string, res *CostResult) {
 	res.Cost.Set("receipts", receiptsValue(res.Receipts))
 }
 
-// receiptsValue converts receipts to the envelope value.
 func receiptsValue(receipts []any) any {
 	out := make([]any, 0, len(receipts))
 	return append(out, receipts...)

@@ -15,7 +15,6 @@ const (
 	liveGuardHash  = "cccccccccccccccccccccccccccccccccccccccc"
 )
 
-// writeLiveReview writes one reviews.json page with a single review.
 func writeLiveReview(t *testing.T, dir, body, commitID string) {
 	t.Helper()
 	raw := fmt.Sprintf(`[{"id":1,"body":%s,"commit_id":%s,"submitted_at":"2026-01-01T00:00:00Z"}]`,
@@ -25,12 +24,10 @@ func writeLiveReview(t *testing.T, dir, body, commitID string) {
 	}
 }
 
-// postedMarker renders the hidden tail for guard tests.
 func postedMarker(hash, head string) string {
 	return fmt.Sprintf(reviewMarkerFormat, hash, head)
 }
 
-// markedReview is a verdict-posted body: prose plus the hidden marker.
 func markedReview(head string) string {
 	return "> ✅ Looks good.\n\n" + postedMarker(liveGuardHash, head)
 }

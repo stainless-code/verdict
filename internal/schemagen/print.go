@@ -9,17 +9,13 @@ import (
 // printWidth is the bun/Prettier print width the published JSON uses.
 const printWidth = 80
 
-// controlLimit is the first non-printable ASCII code point.
 const controlLimit = 0x20
 
-// Hex nibble extraction for \u00XX escapes.
 const (
 	hexShift = 4
 	hexMask  = 0xf
 )
 
-// printDocument renders one schema node as bun-stable JSON: two-space indent,
-// LF line endings, one trailing newline.
 func printDocument(root *node) []byte {
 	var b strings.Builder
 	renderNode(&b, root, 0, 0, 0)
@@ -46,7 +42,6 @@ func renderNode(b *strings.Builder, n *node, base, col, tail int) {
 	}
 }
 
-// renderObject writes an object one member per line.
 func renderObject(b *strings.Builder, n *node, base int) {
 	b.WriteString("{\n")
 	for i, m := range n.members {
@@ -64,7 +59,6 @@ func renderObject(b *strings.Builder, n *node, base int) {
 	b.WriteString("}")
 }
 
-// renderArray writes an array one element per line.
 func renderArray(b *strings.Builder, n *node, base int) {
 	b.WriteString("[\n")
 	for i, elem := range n.elems {
@@ -80,7 +74,6 @@ func renderArray(b *strings.Builder, n *node, base int) {
 	b.WriteString("]")
 }
 
-// writeSeparator writes the comma/newline between siblings.
 func writeSeparator(b *strings.Builder, index, count int) {
 	if index < count-1 {
 		b.WriteString(",\n")
@@ -102,7 +95,6 @@ func flattenable(n *node) bool {
 	return true
 }
 
-// membersFlattenable reports whether every member value can print flat.
 func membersFlattenable(members []member) bool {
 	for _, m := range members {
 		if !flattenable(m.value) {
@@ -112,7 +104,6 @@ func membersFlattenable(members []member) bool {
 	return true
 }
 
-// elemsFlattenable reports whether every array element can print flat.
 func elemsFlattenable(elems []*node) bool {
 	for _, elem := range elems {
 		if !flattenable(elem) {
@@ -142,7 +133,6 @@ func flatString(n *node) string {
 	return typeNull
 }
 
-// flatObject renders an object's single-line form.
 func flatObject(n *node) string {
 	if len(n.members) == 0 {
 		return "{}"
@@ -161,7 +151,6 @@ func flatObject(n *node) string {
 	return b.String()
 }
 
-// flatArray renders an array's single-line form.
 func flatArray(n *node) string {
 	if len(n.elems) == 0 {
 		return "[]"
@@ -178,7 +167,6 @@ func flatArray(n *node) string {
 	return b.String()
 }
 
-// indent returns n spaces.
 func indent(n int) string {
 	return strings.Repeat(" ", n)
 }
@@ -205,8 +193,6 @@ func quote(s string) string {
 	return b.String()
 }
 
-// writeEscape writes one escaped control or quote rune and reports whether
-// the rune needed escaping.
 func writeEscape(b *strings.Builder, r rune) bool {
 	switch r {
 	case '"':
@@ -229,7 +215,6 @@ func writeEscape(b *strings.Builder, r rune) bool {
 	return true
 }
 
-// writeControlEscape writes the \u00XX form for other control characters.
 func writeControlEscape(b *strings.Builder, r rune) bool {
 	if r >= controlLimit {
 		return false

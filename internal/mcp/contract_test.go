@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// wantAnnotations is the tools/list contract snapshot: every name, title,
-// and behavior hint. Update it only when a tool's real behavior changes.
 var wantAnnotations = map[string]toolAnnotations{
 	"adopt": {Title: "Adopt findings", IdempotentHint: true},
 	"calibrate": {

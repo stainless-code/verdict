@@ -62,8 +62,6 @@ func (d *Data) Wire() *jq.Obj {
 	return jq.NewObj("rules", d.Rules)
 }
 
-// state carries one learn run: the request, the accumulated warnings, the
-// invocation timestamp, and the completed summary.
 type state struct {
 	req      *Request
 	now      string
@@ -72,7 +70,6 @@ type state struct {
 	warnings []string
 }
 
-// appendInput carries a validated --rule append.
 type appendInput struct {
 	rule  string
 	scope string
@@ -93,14 +90,10 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.response(), nil
 }
 
-// refuse builds a typed refusal carrying the accumulated warnings.
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
 }
 
-// humanf streams one rendered human line unless the invocation is in JSON
-// mode (learn suppresses human output there). The progress contract adds the
-// line terminator, so a trailing newline from the frozen format is trimmed.
 func (st *state) humanf(format string, args ...any) {
 	if st.req.JSONMode {
 		return
@@ -108,7 +101,6 @@ func (st *state) humanf(format string, args ...any) {
 	st.req.Human(strings.TrimSuffix(fmt.Sprintf(format, args...), "\n"))
 }
 
-// response assembles the typed response after the mode completes.
 func (st *state) response() *Response {
 	return &Response{
 		At:       st.now,
@@ -118,7 +110,6 @@ func (st *state) response() *Response {
 	}
 }
 
-// runLearn mirrors the learn block: exactly one mode, then the mode body.
 func (st *state) runLearn() *core.RefusalError {
 	if ref := st.checkModes(); ref != nil {
 		return ref
@@ -135,7 +126,6 @@ func (st *state) runLearn() *core.RefusalError {
 	}
 }
 
-// checkModes enforces exactly-one-mode plus the flag pairing rules.
 func (st *state) checkModes() *core.RefusalError {
 	if st.countModes() != 1 {
 		return st.refuse(codeBadFlags, msgNeedOneMode)
@@ -149,7 +139,6 @@ func (st *state) checkModes() *core.RefusalError {
 	return nil
 }
 
-// countModes counts the selected learn modes.
 func (st *state) countModes() int {
 	modes := 0
 	if st.req.Rule != "" {
@@ -167,7 +156,6 @@ func (st *state) countModes() int {
 	return modes
 }
 
-// runStatus renders `learn --status`: rules with precision, human or envelope.
 func (st *state) runStatus() *core.RefusalError {
 	rows, ref := st.readStatusRows()
 	if ref != nil {
@@ -188,7 +176,6 @@ func (st *state) runStatus() *core.RefusalError {
 	return nil
 }
 
-// readStatusRows reads the store with precision, refusing corrupt stores.
 func (st *state) readStatusRows() ([]any, *core.RefusalError) {
 	decoded, err := kb.ReadRows()
 	if errors.Is(err, kb.ErrMissing) {
@@ -204,7 +191,6 @@ func (st *state) readStatusRows() ([]any, *core.RefusalError) {
 	return rows, nil
 }
 
-// printStatusRow prints one rule row of the human table.
 func (st *state) printStatusRow(row any) {
 	m, ok := row.(*jq.Obj)
 	if !ok || m == nil {
@@ -221,9 +207,6 @@ func (st *state) printStatusRow(row any) {
 	)
 }
 
-// withPrecision owns the precision render: "n/a" when judged is the
-// number 0 (jq's `== 0` is type-strict — a string "0" reads judged), else
-// "hits/judged" with `// 0` fallbacks.
 func withPrecision(row *jq.Obj) *jq.Obj {
 	judgedRaw := mustGet(row, fieldJudged)
 	precision := precisionNA
@@ -234,9 +217,6 @@ func withPrecision(row *jq.Obj) *jq.Obj {
 	return row
 }
 
-// isNumberZero reports whether a value is the number 0: absent or null
-// (null and missing fall back to 0 via `//`; every other value — including
-// the string "0" — reads judged).
 func isNumberZero(v any) bool {
 	if v == nil || v == false {
 		return true
@@ -245,8 +225,6 @@ func isNumberZero(v any) bool {
 	return ok && n == 0
 }
 
-// numOrZero renders a counter the `// 0` way: null, missing, and false read
-// 0; every other value renders as jq would interpolate it.
 func numOrZero(v any) string {
 	if v == nil || v == false {
 		return "0"
@@ -269,8 +247,6 @@ func numOrZero(v any) string {
 	}
 }
 
-// runAppend owns the --rule append: validation, duplicate/id gates, then
-// the compact row write.
 func (st *state) runAppend() *core.RefusalError {
 	validated, ref := st.validateAppend()
 	if ref != nil {
@@ -290,7 +266,6 @@ func (st *state) runAppend() *core.RefusalError {
 	return nil
 }
 
-// validateAppend trims and validates the append flags.
 func (st *state) validateAppend() (*appendInput, *core.RefusalError) {
 	ruleT := readcommon.TrimSpace(st.req.Rule)
 	if ruleT == "" {
@@ -306,7 +281,6 @@ func (st *state) validateAppend() (*appendInput, *core.RefusalError) {
 	return st.newAppendInput(ruleT, scopeT)
 }
 
-// checkScope trims and validates the scope glob list.
 func (st *state) checkScope() (string, *core.RefusalError) {
 	scopeT := readcommon.TrimSpace(st.req.Scope)
 	if scopeT == "" {
@@ -320,7 +294,6 @@ func (st *state) checkScope() (string, *core.RefusalError) {
 	return scopeT, nil
 }
 
-// checkRigor validates the rigor knob.
 func (st *state) checkRigor() *core.RefusalError {
 	switch st.req.Rigor {
 	case rigorSaid, rigorPointed, rigorWalked, rigorRan, rigorReproduced:
@@ -330,7 +303,6 @@ func (st *state) checkRigor() *core.RefusalError {
 	}
 }
 
-// newAppendInput resolves provenance and id for a validated append.
 func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.RefusalError) {
 	prov := st.req.Provenance
 	if prov == "" {
@@ -346,8 +318,6 @@ func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.Refus
 	return &appendInput{rule: ruleT, scope: scopeT, lid: lid, prov: prov, rigor: st.req.Rigor}, nil
 }
 
-// rejectAppendDup refuses duplicate rule text or a taken id, creating the
-// store dir first. A missing store reads no rows.
 func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
 	if err := os.MkdirAll(reviewDir, reviewDirPerm); err != nil {
 		return st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
@@ -362,7 +332,6 @@ func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
 	return st.checkDupRows(rows, ruleT, lid)
 }
 
-// checkDupRows refuses when the rule text or id already exists.
 func (st *state) checkDupRows(rows []*jq.Obj, ruleT, lid string) *core.RefusalError {
 	for _, row := range rows {
 		if ruleOf(row) == ruleT {
@@ -375,7 +344,6 @@ func (st *state) checkDupRows(rows []*jq.Obj, ruleT, lid string) *core.RefusalEr
 	return nil
 }
 
-// appendRowDoc builds the KB row for a validated append.
 func appendRowDoc(in *appendInput) *jq.Obj {
 	return jq.NewObj(
 		fieldID, in.lid,
@@ -390,7 +358,6 @@ func appendRowDoc(in *appendInput) *jq.Obj {
 	)
 }
 
-// runRetire applies `learn --retire`: the tombstone write with a reason.
 func (st *state) runRetire() *core.RefusalError {
 	id := st.req.Retire
 	if !kb.ValidID(id) {
@@ -416,7 +383,6 @@ func (st *state) runRetire() *core.RefusalError {
 	return nil
 }
 
-// runRestore applies `learn --restore`: reactivation with history kept.
 func (st *state) runRestore() *core.RefusalError {
 	id := st.req.Restore
 	if !kb.ValidID(id) {
@@ -443,7 +409,6 @@ func (st *state) runRestore() *core.RefusalError {
 	return nil
 }
 
-// loadVetoRow loads the store strictly and finds the rule row.
 func (st *state) loadVetoRow(id string) ([]*jq.Obj, *jq.Obj, *core.RefusalError) {
 	rows, ref := st.readRowsStrict(id)
 	if ref != nil {
@@ -456,7 +421,6 @@ func (st *state) loadVetoRow(id string) ([]*jq.Obj, *jq.Obj, *core.RefusalError)
 	return rows, cur, nil
 }
 
-// tombstoneRetire stamps the retire tombstone as one map write.
 func (st *state) tombstoneRetire(cur *jq.Obj) {
 	cur.Set(fieldStatus, statusRetired)
 	cur.Set(fieldRetiredAt, st.now)
@@ -464,15 +428,11 @@ func (st *state) tombstoneRetire(cur *jq.Obj) {
 	st.appendHistory(cur, eventRetired)
 }
 
-// appendHistory appends one history event (missing history reads empty).
 func (st *state) appendHistory(cur *jq.Obj, event string) {
 	kb.AppendHistory(cur, jq.NewObj(fieldAt, st.now, fieldEvent, event,
 		fieldActor, actorHuman, fieldNote, st.req.Reason))
 }
 
-// readRowsStrict reads the KB store, refusing when absent or corrupt. An
-// absent store refuses unknown-rule naming the missing store; a corrupt
-// store refuses corrupt-store.
 func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
 	rows, err := kb.ReadRows()
 	if errors.Is(err, kb.ErrMissing) {
@@ -484,7 +444,6 @@ func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
 	return rows, nil
 }
 
-// idOf reads a row id.
 func idOf(row *jq.Obj) string {
 	v, _ := row.Get(fieldID)
 	s, ok := v.(string)
@@ -494,7 +453,6 @@ func idOf(row *jq.Obj) string {
 	return s
 }
 
-// ruleOf reads a row rule.
 func ruleOf(row *jq.Obj) string {
 	v, _ := row.Get(fieldRule)
 	s, ok := v.(string)
@@ -504,7 +462,6 @@ func ruleOf(row *jq.Obj) string {
 	return s
 }
 
-// mustGet reads a field (nil when the row is nil).
 func mustGet(m *jq.Obj, key string) any {
 	if m == nil {
 		return nil
@@ -513,8 +470,6 @@ func mustGet(m *jq.Obj, key string) any {
 	return v
 }
 
-// writeRows rewrites the store compactly, mapping a write failure to the
-// frozen corrupt-store refusal.
 func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
 	if err := kb.WriteRows(rows); err != nil {
 		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, kbFile))
@@ -522,12 +477,10 @@ func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
 	return nil
 }
 
-// corruptStore refuses on an unreadable KB store.
 func (st *state) corruptStore() *core.RefusalError {
 	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, kbFile))
 }
 
-// Learn constants.
 const (
 	// kbFile is the KB store path, mirroring $KB_FILE.
 	kbFile = reviewDir + "/kb.jsonl"
@@ -543,7 +496,6 @@ const (
 	precisionNA = "n/a"
 )
 
-// Refusal codes for the learn verb.
 const (
 	codeCanceled       = "canceled"
 	codeLearnFailed    = "learn-failed"
@@ -561,7 +513,6 @@ const (
 	codeCorruptStore   = "corrupt-store"
 )
 
-// Envelope and row field names (jq object keys for the store and envelope).
 const (
 	fieldID           = "id"
 	fieldRule         = "rule"
@@ -582,7 +533,6 @@ const (
 	fieldNote         = "note"
 )
 
-// Envelope values and history actors shared by every learn mode.
 const (
 	statusActive  = "active"
 	statusRetired = "retired"
@@ -591,7 +541,6 @@ const (
 	actorHuman    = "human"
 )
 
-// Rigor knob values for the --rigor gate.
 const (
 	rigorSaid       = "said"
 	rigorPointed    = "pointed"
@@ -600,8 +549,6 @@ const (
 	rigorReproduced = "reproduced"
 )
 
-// Refusal and usage message formats. Split for the line-length gate; the
-// rendered bytes are the contract.
 const (
 	msgCanceled        = "canceled before learn completed"
 	msgNeedOneMode     = "learn needs exactly one of --rule <text>, --status, --retire <id>, --restore <id>"
@@ -627,7 +574,6 @@ const (
 	msgCorruptStore    = "kb store %s is unreadable (restore from backup or fix the bad line)"
 )
 
-// Machine-envelope next hints for every learn mode.
 const (
 	nextStatus  = "learn --rule ... to append; learn --retire/--restore to veto"
 	nextAppend  = "cite the rule id in review.json kb lists"
@@ -635,5 +581,4 @@ const (
 	nextRestore = "active rules recall again on scope match"
 )
 
-// jsonZero renders the zero counters as the number literal 0.
 var jsonZero = jq.Number("0")

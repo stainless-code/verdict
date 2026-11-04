@@ -1,16 +1,5 @@
 package main
 
-// Front-door usage and arity: the binary owns every verb, every usage
-// error, and the arity matrix. A missing verb or positional fails with the
-// full usage block on stderr and exit 2 before any settings, store, or
-// network read. Unknown verbs with positionals present print the unknown-cmd
-// message (exit 2).
-
-// usageText is the frozen CLI usage block, prose included: changing a line
-// is a contract change, not a copy edit. The two experimental
-// mcp lines are the operator-approved exception (2026-11-02): the transport
-// is discoverable but still tagged experimental. Printed to stdout by
-// -h/--help (exit 0) and to stderr by the arity gate (exit 2).
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|record|adopt|fix|check-tree|ready|threads|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
@@ -241,7 +230,6 @@ func usageText() string {
 		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"
 }
 
-// bareVerbs lists the verbs that take no repo/pr positionals.
 var bareVerbs = map[string]bool{
 	"check-tree": true,
 	"doctor":     true,
@@ -252,9 +240,6 @@ var bareVerbs = map[string]bool{
 	"uninstall":  true,
 }
 
-// arityUsage reports whether the invocation fails the positional-arity
-// gate: no verb, a missing repo for trend, or a missing repo/pr for
-// every other verb that takes them. Bare verbs never fail.
 func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {
 		return true
@@ -268,9 +253,6 @@ func arityUsage(cmd, repo, pr string) bool {
 	return repo == "" || pr == ""
 }
 
-// unknownCmdMessage owns the refusal for a verb dispatch does not know,
-// reached only when the arity gate passed (both positionals present, or the
-// verb is bare).
 func unknownCmdMessage(cmd string) string {
 	return "unknown cmd '" + cmd + "' (want " + verbsHint + ")"
 }

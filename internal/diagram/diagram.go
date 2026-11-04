@@ -75,8 +75,6 @@ func Validate(body string, behavioral, expanded bool, marker string) Result {
 	}
 	chk := &checker{cands: cands, regions: sc.regions, fenceInRegion: fenceInRegion, behavioral: behavioral, expanded: expanded, st: &st}
 	chk.run()
-	// Bodies with no candidates return untouched above; a rendered body
-	// loses its trailing newlines.
 	rendered := renderBody(bodyLines, marker, chk.dels, chk.notes, chk.dline, chk.dopen)
 	return Result{Body: strings.TrimRight(rendered, newline), Status: st, Warns: chk.warns}
 }
@@ -109,8 +107,6 @@ type region struct {
 	idx, start, end int
 }
 
-// scanner owns the awk pre-pass: it records fenced mermaid blocks and
-// marked regions with their details context.
 type scanner struct {
 	kw       string
 	fences   []fence
@@ -125,12 +121,10 @@ type scanner struct {
 	inRegion bool
 }
 
-// newScanner builds an empty scanner.
 func newScanner() *scanner {
 	return &scanner{}
 }
 
-// feed consumes one body line.
 func (sc *scanner) feed(n int, line string) {
 	t := strings.Trim(line, " \t")
 	switch {
@@ -147,14 +141,12 @@ func (sc *scanner) feed(n int, line string) {
 	}
 }
 
-// openRegion opens a marked region.
 func (sc *scanner) openRegion(n int) {
 	sc.inRegion = true
 	sc.regionN++
 	sc.rstart = n
 }
 
-// feedDetails consumes details open/close lines, reporting true when handled.
 func (sc *scanner) feedDetails(n int, line string) bool {
 	if sc.inFence {
 		return false
@@ -193,7 +185,6 @@ func (sc *scanner) openFence(n int, line string) {
 	sc.kw = ""
 }
 
-// feedFence consumes one line inside a fenced block.
 func (sc *scanner) feedFence(n int, line string) {
 	if fenceClose.MatchString(line) {
 		sc.closeFence(n)
@@ -206,7 +197,6 @@ func (sc *scanner) feedFence(n int, line string) {
 	}
 }
 
-// closeFence closes the open fenced block at line n (0 when unterminated).
 func (sc *scanner) closeFence(n int) {
 	if sc.kw == "" {
 		sc.kw = emptyKeyword
@@ -215,7 +205,6 @@ func (sc *scanner) closeFence(n int) {
 	sc.inFence = false
 }
 
-// finish closes trailing unterminated constructs.
 func (sc *scanner) finish() {
 	if sc.inFence {
 		sc.closeFence(0)
@@ -238,20 +227,16 @@ type cand struct {
 	dl      int
 }
 
-// fenceCand builds the candidate for one fenced block.
 func fenceCand(f fence) cand {
 	line := fmt.Sprintf("%d F %d %d %d %s %d", f.open, f.open, f.close, f.region, f.kw, f.details)
 	return cand{line: line, kind: "F", kw: f.kw, sortKey: f.open, o: f.open, c: f.close, rg: f.region, dl: f.details}
 }
 
-// regionCand builds the candidate for one bare marked region.
 func regionCand(r region) cand {
 	line := fmt.Sprintf("%d R %d %d", r.start, r.start, r.end)
 	return cand{line: line, kind: "R", kw: "", sortKey: r.start, o: r.start, c: r.end, rg: 0, dl: 0}
 }
 
-// buildCands assembles the sorted drop candidates from fences and bare
-// marked regions.
 func buildCands(fences []fence, regions []region) []cand {
 	var cands []cand
 	fenceInRegion := map[int]int{}
@@ -296,13 +281,11 @@ type checker struct {
 	keptOne       bool
 }
 
-// span is a deleted line range.
 type span struct{ s, e int }
 
 // hugeLine stands in for an unterminated block end.
 const hugeLine = 1000000000
 
-// run applies the gating.
 func (ck *checker) run() {
 	ck.allow = allowSet()
 	if !ck.behavioral {
@@ -312,7 +295,6 @@ func (ck *checker) run() {
 	ck.keepFirst()
 }
 
-// allowSet builds the allowed-keyword set.
 func allowSet() map[string]bool {
 	allow := map[string]bool{}
 	for w := range strings.FieldsSeq(Allowlist) {
@@ -321,7 +303,6 @@ func allowSet() map[string]bool {
 	return allow
 }
 
-// stripAll drops every candidate when behavioral diagrams are opted out.
 func (ck *checker) stripAll() {
 	for _, cd := range ck.cands {
 		s, e := ck.spanFor(cd.kind, cd.o, cd.c, cd.rg)
@@ -335,7 +316,6 @@ func (ck *checker) stripAll() {
 	ck.st.Detail = fmt.Sprintf("stripped %d block(s): publish.diagrams.behavioral is off", n)
 }
 
-// keepFirst walks the candidates, keeping the first valid block.
 func (ck *checker) keepFirst() {
 	n := 0
 	for _, cd := range ck.cands {
@@ -355,7 +335,6 @@ func (ck *checker) keepFirst() {
 	}
 }
 
-// dropCandidate drops one invalid candidate, reporting true when dropped.
 func (ck *checker) dropCandidate(cd *cand) bool {
 	switch {
 	case cd.kind == "R":
@@ -383,7 +362,6 @@ func (ck *checker) dropCandidate(cd *cand) bool {
 	}
 }
 
-// drop deletes one candidate with its note and warning.
 func (ck *checker) drop(cd *cand, reason, warning string) {
 	s, e := ck.spanFor(markerFenced, cd.o, cd.c, cd.rg)
 	ck.dels = append(ck.dels, span{s, e})
@@ -397,7 +375,6 @@ func (ck *checker) drop(cd *cand, reason, warning string) {
 	ck.warn(warning)
 }
 
-// keepCandidate keeps the first valid block.
 func (ck *checker) keepCandidate(cd *cand) {
 	ck.keptOne = true
 	ck.keyword = cd.kw
@@ -427,8 +404,6 @@ func (ck *checker) keepCandidate(cd *cand) {
 	}
 }
 
-// spanFor maps a candidate to its deletion span: lone fences in a singly
-// occupied region widen to the region.
 func (ck *checker) spanFor(kind string, o, c, rg int) (int, int) {
 	if kind == "F" && rg != 0 && ck.fenceInRegion[rg] == 1 {
 		if s, e, ok := ck.regionSpan(rg, c); ok {
@@ -438,7 +413,6 @@ func (ck *checker) spanFor(kind string, o, c, rg int) (int, int) {
 	return o, hugeIfZero(c)
 }
 
-// regionSpan widens a lone fence to its region span.
 func (ck *checker) regionSpan(rg, c int) (int, int, bool) {
 	for _, r := range ck.regions {
 		if r.idx == rg {
@@ -448,7 +422,6 @@ func (ck *checker) regionSpan(rg, c int) (int, int, bool) {
 	return 0, hugeIfZero(c), false
 }
 
-// hugeIfZero stands huge in for an unterminated end.
 func hugeIfZero(e int) int {
 	if e == 0 {
 		return hugeLine
@@ -456,12 +429,10 @@ func hugeIfZero(e int) int {
 	return e
 }
 
-// warn records a warning.
 func (ck *checker) warn(m string) {
 	ck.warns = append(ck.warns, m)
 }
 
-// renderBody deletes the dropped spans and plants the drop notes.
 func renderBody(bodyLines []string, marker string, dels []span, notes []string, dline, dopen int) string {
 	rb := &bodyRenderer{marker: marker, dels: dels, notes: notes, dline: dline, dopen: dopen}
 	for nr, line := range bodyLines {
@@ -470,7 +441,6 @@ func renderBody(bodyLines []string, marker string, dels []span, notes []string, 
 	return rb.finish()
 }
 
-// bodyRenderer rebuilds the body: dropped spans cut, notes planted.
 type bodyRenderer struct {
 	marker string
 	dels   []span
@@ -481,7 +451,6 @@ type bodyRenderer struct {
 	noted  bool
 }
 
-// feed consumes one body line.
 func (rb *bodyRenderer) feed(n int, line string) {
 	if inSpans(rb.dels, n) {
 		return
@@ -497,7 +466,6 @@ func (rb *bodyRenderer) feed(n int, line string) {
 	rb.out = append(rb.out, line)
 }
 
-// finish appends trailing notes and joins the body.
 func (rb *bodyRenderer) finish() string {
 	if !rb.noted {
 		rb.out = append(rb.out, rb.notes...)
@@ -505,7 +473,6 @@ func (rb *bodyRenderer) finish() string {
 	return strings.Join(rb.out, newline)
 }
 
-// detailsOpenTag renders the wrapper opening for the kept diagram.
 func detailsOpenTag(dopen int) string {
 	if dopen == 2 {
 		return "<details open>"
@@ -513,7 +480,6 @@ func detailsOpenTag(dopen int) string {
 	return "<details>"
 }
 
-// inSpans reports whether line n falls in a deletion span.
 func inSpans(dels []span, n int) bool {
 	for _, d := range dels {
 		if n >= d.s && n <= d.e {
@@ -523,14 +489,9 @@ func inSpans(dels []span, n int) bool {
 	return false
 }
 
-// Diagram scanning constants.
 const (
-	// maxFenceIndent is the CommonMark allowance for fenced blocks (0-3 spaces).
 	maxFenceIndent = 3
-	// markerFenced tags candidates found inside fenced blocks.
-	markerFenced = "F"
-	// emptyKeyword is the drop-note keyword for empty diagrams.
-	emptyKeyword = "EMPTY"
-	// newline joins rendered body lines.
-	newline = "\n"
+	markerFenced   = "F"
+	emptyKeyword   = "EMPTY"
+	newline        = "\n"
 )

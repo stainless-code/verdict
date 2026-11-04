@@ -172,13 +172,10 @@ func overCap(r *session, fullDiff string, total int64, lim fetchCap, chunkFlag b
 	return false, refusal
 }
 
-// printSplitCandidates owns the candidates block: one dash line per
-// split scope on stderr (`>&2`), owned by the refusal.
 func printSplitCandidates(r *session, cands []any) {
 	if len(cands) == 0 {
 		return
 	}
-	// The candidates block owns stderr in both modes (`>&2`).
 	fmt.Fprintln(r.Diag, "candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):")
 	for _, c := range cands {
 		if o, ok := c.(*jq.Obj); ok {
@@ -195,8 +192,6 @@ type fileSlice struct {
 	size int64
 }
 
-// chunkFileTable measures per-file byte sizes in diff order,
-// where each header line counts its own trailing newline.
 func chunkFileTable(fullDiff string) []fileSlice {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
@@ -257,8 +252,6 @@ func suggestSplits(fullDiff string, total int64) []any {
 	return out
 }
 
-// compareFileSlices owns the `sort -k1,1rn` order: numeric reverse on
-// size, path bytes breaking ties.
 func compareFileSlices(a, b fileSlice) int {
 	if a.size != b.size {
 		return cmp.Compare(b.size, a.size)
@@ -266,8 +259,6 @@ func compareFileSlices(a, b fileSlice) int {
 	return strings.Compare(a.path, b.path)
 }
 
-// restSplit owns the excluding-top candidate: the first 10 named when
-// the tail is long, else the whole tail summarized.
 func restSplit(top fileSlice, rest []string, restBytes int64) any {
 	shown := rest
 	if len(shown) > numShownPaths {

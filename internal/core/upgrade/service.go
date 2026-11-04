@@ -45,7 +45,6 @@ const (
 	ActionUninstall   = "uninstall"
 )
 
-// Refusal codes.
 const (
 	codeProjectLocal   = "upgrade-project-local"
 	codeSkillCopy      = "upgrade-skill-copy"
@@ -62,7 +61,6 @@ const (
 	codeNoReceipt      = "uninstall-no-receipt"
 )
 
-// Installer contract: the receipt and the install dir the installers write.
 const (
 	receiptName      = ".verdict-installer"
 	pathMarker       = "# verdict installer"
@@ -81,7 +79,6 @@ const (
 	filePermResult   = 0o644
 )
 
-// Manager update argv suffixes per channel.
 var managerPackages = map[string][]string{
 	ChannelNPM:  {"npm", "i", "-g"},
 	ChannelPNPM: {"pnpm", managerAdd, "-g"},
@@ -129,7 +126,6 @@ type Response struct {
 	PathLineRemoved bool
 }
 
-// detection is one channel classification plus any refusal it implies.
 type detection struct {
 	Channel    string
 	InstallDir string
@@ -161,8 +157,6 @@ func Run(ctx context.Context, req *Request) (Response, *core.RefusalError) {
 	return delegate(ctx, req, det)
 }
 
-// plan renders the dry-run response: the detected channel and the action
-// that would run, touching nothing (no download, no manager, no writes).
 func plan(req *Request, det *detection) Response {
 	resp := Response{
 		Channel: det.Channel,
@@ -193,8 +187,6 @@ func plan(req *Request, det *detection) Response {
 	return resp
 }
 
-// planBrew renders the Homebrew plan, refusing a version pin the formula
-// itself owns.
 func planBrew(req *Request, resp *Response) *Response {
 	if req.PinVersion != "" {
 		resp.Action = ActionRefuse
@@ -207,7 +199,6 @@ func planBrew(req *Request, resp *Response) *Response {
 	return resp
 }
 
-// managerUpdate builds the exact manager argv for a pin or latest.
 func managerUpdate(channel, pin string) []string {
 	base, ok := managerPackages[channel]
 	if !ok {
@@ -224,7 +215,6 @@ func managerUpdate(channel, pin string) []string {
 	return append(argv, target)
 }
 
-// detect resolves the executable and maps it to one install channel.
 func detect(req *Request) (*detection, *core.RefusalError) {
 	exe, err := resolveExecutable(req)
 	if err != nil || exe == "" {
@@ -243,21 +233,6 @@ func detect(req *Request) (*detection, *core.RefusalError) {
 	return applySafety(req, det)
 }
 
-// adoptInstallerDir re-points the install dir the environment names at the
-// directory the running binary actually sits in, when that directory carries
-// an installer receipt naming this binary. VERDICT_INSTALL says where the
-// next install goes, not where this one came from: an install made with it
-// (or moved since) is still installer-managed once the variable is gone from
-// the environment, and the upgrade must stage and write there. A binary with
-// no receipt beside it keeps the environment's answer, so a foreign verdict
-// still refuses as unknown and a renamed copy refuses too.
-//
-// A receipt is a plain file, so it is a hint, never an authority: a directory
-// a package manager, Homebrew, a project's node_modules or a skill copy
-// already owns keeps that channel, and the upgrade delegates or refuses
-// instead of writing over files the owner tracks. The explicit
-// VERDICT_INSTALL directory is unaffected, because that answer does not come
-// from this fallback.
 func adoptInstallerDir(req *Request, det *detection) {
 	dir := filepath.Dir(det.exe)
 	if dir == det.InstallDir {
@@ -274,7 +249,6 @@ func adoptInstallerDir(req *Request, det *detection) {
 	det.Receipt = receipt
 }
 
-// detectOverride honors the explicit test/operator override.
 func detectOverride(req *Request, det *detection, method string) (*detection, *core.RefusalError) {
 	channel, ok := overrideChannel(method)
 	if !ok {
@@ -293,7 +267,6 @@ func detectOverride(req *Request, det *detection, method string) (*detection, *c
 	return applySafety(req, det)
 }
 
-// overrideChannel maps the override names.
 func overrideChannel(method string) (string, bool) {
 	switch method {
 	case "installer", "installer-managed":
@@ -313,8 +286,6 @@ func overrideChannel(method string) (string, bool) {
 	}
 }
 
-// classify applies the channel table: explicit manager markers, the
-// installer receipt, then path heuristics.
 func classify(req *Request, det *detection) string {
 	if channel, ok := markerChannel(req); ok {
 		return channel
@@ -325,7 +296,6 @@ func classify(req *Request, det *detection) string {
 	return heuristicChannel(req, det.exe)
 }
 
-// markerChannel honors the explicit manager environment markers.
 func markerChannel(req *Request) (string, bool) {
 	if req.env("VERDICT_NPM_MANAGED") == "1" {
 		return ChannelNPM, true
@@ -336,7 +306,6 @@ func markerChannel(req *Request) (string, bool) {
 	return "", false
 }
 
-// heuristicChannel classifies by path alone.
 func heuristicChannel(req *Request, exe string) string {
 	if channel, ok := managerChannel(req, exe); ok {
 		return channel
@@ -353,8 +322,6 @@ func heuristicChannel(req *Request, exe string) string {
 	}
 }
 
-// applySafety turns unsafe channels into typed refusals: project-local,
-// skill, sudo/admin, unwritable installer dirs, and unidentifiable paths.
 func applySafety(req *Request, det *detection) (*detection, *core.RefusalError) {
 	if req.euid() == 0 {
 		det.Code = codeNeedsPrivilege
@@ -385,7 +352,6 @@ func applySafety(req *Request, det *detection) (*detection, *core.RefusalError) 
 			det.Reason = fmt.Sprintf("%s is not writable: reinstall without sudo using: %s", det.InstallDir, det.Command)
 		}
 	case ChannelNPM, ChannelPNPM, ChannelBun, ChannelYarn, ChannelBrew:
-		// The manager owns the write; a missing manager is refused at delegation.
 	case ChannelUnknown:
 		det.Code = codeUnidentified
 		det.Command = installerCommand()
@@ -394,7 +360,6 @@ func applySafety(req *Request, det *detection) (*detection, *core.RefusalError) 
 	return det, nil
 }
 
-// managerChannel matches the path against the known global roots.
 func managerChannel(req *Request, exe string) (string, bool) {
 	for _, candidate := range managerRoots(req.envMap()) {
 		if within(exe, candidate.path) {
@@ -404,13 +369,11 @@ func managerChannel(req *Request, exe string) (string, bool) {
 	return "", false
 }
 
-// root is one manager global root.
 type root struct {
 	channel string
 	path    string
 }
 
-// managerRoots builds the heuristic root table from the environment.
 func managerRoots(env map[string]string) []root {
 	home := homeDir(env)
 	roots := []root{}
@@ -439,7 +402,6 @@ func managerRoots(env map[string]string) []root {
 	return roots
 }
 
-// isBrewPath recognizes Cellar/Caskroom or the Homebrew prefix.
 func isBrewPath(req *Request, exe string) bool {
 	for _, marker := range []string{"/Cellar/", "/Caskroom/"} {
 		if strings.Contains(filepath.ToSlash(exe), marker) {
@@ -450,7 +412,6 @@ func isBrewPath(req *Request, exe string) bool {
 	return prefix != "" && within(exe, prefix)
 }
 
-// isSkillPath recognizes a binary under .../skills/<name>/.
 func isSkillPath(exe string) bool {
 	sawSkills := false
 	for part := range strings.SplitSeq(filepath.ToSlash(exe), "/") {
@@ -464,7 +425,6 @@ func isSkillPath(exe string) bool {
 	return false
 }
 
-// skillRoot returns the verdict/ dir two levels above the binary.
 func skillRoot(exe string) string {
 	dir := filepath.Dir(exe)
 	if filepath.Base(dir) == "bin" {
@@ -473,7 +433,6 @@ func skillRoot(exe string) string {
 	return dir
 }
 
-// projectRoot walks up to the nearest project manifest.
 func projectRoot(dir string) string {
 	for range projectWalkDepth {
 		if hasManifest(dir) {
@@ -488,7 +447,6 @@ func projectRoot(dir string) string {
 	return dir
 }
 
-// hasManifest reports whether dir carries a project manifest or lockfile.
 func hasManifest(dir string) bool {
 	for _, name := range []string{"package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"} {
 		if info, err := os.Stat(filepath.Join(dir, name)); err == nil && !info.IsDir() {
@@ -498,12 +456,10 @@ func hasManifest(dir string) bool {
 	return false
 }
 
-// installerCommand is the canonical no-root installer invocation.
 func installerCommand() string {
 	return "curl -fsSL https://github.com/stainless-code/verdict/releases/latest/download/install.sh | sh"
 }
 
-// resolveExecutable returns the symlink-resolved running binary.
 func resolveExecutable(req *Request) (string, error) {
 	if req.Executable != "" {
 		return filepath.Clean(req.Executable), nil
@@ -518,8 +474,6 @@ func resolveExecutable(req *Request) (string, error) {
 	return filepath.Clean(exe), nil
 }
 
-// installDir is the installer's install directory (VERDICT_INSTALL or the
-// ~/.verdict/bin default).
 func (req *Request) installDir() string {
 	dir := req.env("VERDICT_INSTALL")
 	if dir == "" {
@@ -532,7 +486,6 @@ func (req *Request) installDir() string {
 	return dir
 }
 
-// platform is the injected OS, defaulting to the runtime.
 func (req *Request) platform() string {
 	if req.GOOS != "" {
 		return req.GOOS
@@ -540,7 +493,6 @@ func (req *Request) platform() string {
 	return runtime.GOOS
 }
 
-// euid is the injected effective uid, defaulting to the process uid.
 func (req *Request) euid() int {
 	if req.EUID != nil {
 		return *req.EUID
@@ -548,12 +500,10 @@ func (req *Request) euid() int {
 	return os.Geteuid()
 }
 
-// env reads one injected environment value.
 func (req *Request) env(key string) string {
 	return req.envMap()[key]
 }
 
-// envMap returns the injected environment snapshot.
 func (req *Request) envMap() map[string]string {
 	if req.Runtime == nil {
 		return nil
@@ -561,21 +511,18 @@ func (req *Request) envMap() map[string]string {
 	return req.Env
 }
 
-// warn routes a loud warning line to the diagnostic stream.
 func (req *Request) warn(msg string) {
 	if req.Runtime != nil {
 		req.Diag("upgrade: " + msg)
 	}
 }
 
-// human routes one human line to the observer.
 func (req *Request) human(line string) {
 	if req.Runtime != nil {
 		req.Human(line)
 	}
 }
 
-// homeDir resolves HOME from the injected environment.
 func homeDir(env map[string]string) string {
 	if home := env["HOME"]; home != "" {
 		return home
@@ -587,29 +534,22 @@ func homeDir(env map[string]string) string {
 	return home
 }
 
-// receipt is the JSON body install.sh and install.ps1 write beside the
-// binary they installed.
 type receipt struct {
 	Binary      string `json:"binary"`
 	Version     string `json:"version"`
 	InstalledBy string `json:"installed_by"`
 }
 
-// validReceipt reports whether path is an installer receipt.
 func validReceipt(path string) bool {
 	_, ok := readReceipt(path)
 	return ok
 }
 
-// receiptNames is validReceipt plus the stronger claim the exe-dir fallback
-// needs: the receipt was written for this very file name, so a copy the
-// installer never placed is not adopted.
 func receiptNames(path, binary string) bool {
 	doc, ok := readReceipt(path)
 	return ok && doc.Binary == binary
 }
 
-// readReceipt parses an installer receipt.
 func readReceipt(path string) (receipt, bool) {
 	var doc receipt
 	raw, err := os.ReadFile(path)
@@ -625,7 +565,6 @@ func readReceipt(path string) (receipt, bool) {
 	return doc, doc.Version != "" && (doc.InstalledBy == defaultInstallBy || doc.InstalledBy == windowsInstallBy)
 }
 
-// receiptInstalledBy preserves the original installer identity.
 func receiptInstalledBy(path, goos string) string {
 	raw, err := os.ReadFile(path)
 	if err == nil {
@@ -642,13 +581,10 @@ func receiptInstalledBy(path, goos string) string {
 	return defaultInstallBy
 }
 
-// receiptBody renders the receipt bytes the installers write.
 func receiptBody(binary, version, installedBy string) string {
 	return fmt.Sprintf("{\"binary\":%q,\"version\":%q,\"installed_by\":%q}\n", binary, version, installedBy)
 }
 
-// within reports whether path is root or below it, resolving every
-// existing symlinked ancestor first (macOS /var → /private/var).
 func within(path, root string) bool {
 	if root == "" {
 		return false
@@ -660,8 +596,6 @@ func within(path, root string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// canonical resolves the nearest existing ancestor through symlinks and
-// rejoins the not-yet-existing suffix.
 func canonical(path string) string {
 	path = filepath.Clean(path)
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
@@ -674,12 +608,10 @@ func canonical(path string) string {
 	return filepath.Join(canonical(parent), filepath.Base(path))
 }
 
-// canceled is the context-cancellation refusal.
 func canceled(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeCanceled, Message: "canceled before upgrade completed: " + err.Error()}
 }
 
-// errText is a nil-safe error string.
 func errText(err error) string {
 	if err == nil {
 		return "unknown error"
