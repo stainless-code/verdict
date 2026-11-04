@@ -70,6 +70,7 @@ function toTS(node, defs) {
   if (Array.isArray(node.enum)) {
     return node.enum.map((v) => JSON.stringify(v)).join(" | ");
   }
+  if (Array.isArray(node.anyOf)) return anyOfTS(node.anyOf, defs);
   const types = Array.isArray(node.type) ? node.type : [node.type];
   const nullable = types.includes("null");
   const concrete = types.filter((t) => t !== "null" && t !== undefined);
@@ -84,6 +85,27 @@ function toTS(node, defs) {
 
 function paren(type) {
   return type.includes(" | ") ? `(${type})` : type;
+}
+
+// anyOf joins its variants into a union. A null variant renders the way a
+// `type: [..., "null"]` array does -- trailing ` | null` -- so both nullable
+// spellings produce one shape instead of `null | T` in one place and `T | null`
+// in another.
+function anyOfTS(variants, defs) {
+  const nullable = variants.some(isNullVariant);
+  const concrete = variants.filter((variant) => !isNullVariant(variant));
+  if (concrete.length === 0) return "null";
+  const base = concrete.map((variant) => toTS(variant, defs)).join(" | ");
+  return nullable ? `${paren(base)} | null` : base;
+}
+
+function isNullVariant(node) {
+  if (!node || typeof node !== "object" || node.$ref) return false;
+  if (Array.isArray(node.anyOf) || Array.isArray(node.enum)) return false;
+  if (node.const !== undefined) return node.const === null;
+  return Array.isArray(node.type)
+    ? node.type.length === 1 && node.type[0] === "null"
+    : node.type === "null";
 }
 
 function singleTS(type, node, defs) {

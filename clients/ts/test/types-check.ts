@@ -7,6 +7,14 @@ import {
   type PostData,
   type RecordData,
 } from "../src/index.js";
+import type { ShowFix, VerifyHint } from "../src/types.gen.js";
+
+// True only when A and B are the same type, so a widened union cannot pass.
+type Exact<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? true
+    : false;
+type IsAny<T> = 0 extends 1 & T ? true : false; // a bare `any` passes Exact
 
 export async function typeChecks(): Promise<void> {
   const client = createClient({ bin: "verdict", timeoutMs: 1000 });
@@ -41,6 +49,25 @@ export async function typeChecks(): Promise<void> {
   const show = await client.show(["acme/app", "4243", "--sig", "01234567"]);
   const unknownData: unknown = show.data;
   void unknownData;
+
+  // show --json fix.verify_hint is `VerifyHint | null` (an anyOf in
+  // envelope.schema.json). Every line below breaks the typecheck if the
+  // generator ever widens it back to `unknown` or `any`.
+  const fix = null as unknown as ShowFix;
+  const verifyHint: VerifyHint | null = fix.verify_hint;
+  void verifyHint;
+  const exactVerifyHint: Exact<ShowFix["verify_hint"], VerifyHint | null> =
+    true;
+  void exactVerifyHint;
+  const verifyHintNotAny: IsAny<ShowFix["verify_hint"]> = false;
+  void verifyHintNotAny;
+  if (fix.verify_hint !== null) {
+    const verifyCmd: string = fix.verify_hint.verifyCmd;
+    void verifyCmd;
+  }
+  // @ts-expect-error - verify_hint is VerifyHint | null, never a bare string
+  const badVerifyHint: string = fix.verify_hint;
+  void badVerifyHint;
   // @ts-expect-error - unknown data has no .verdict
   void show.data.verdict;
 
