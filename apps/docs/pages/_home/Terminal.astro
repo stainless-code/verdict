@@ -1,9 +1,12 @@
 ---
+import Inline from "./Inline.astro";
+
 /**
  * A terminal frame around output the binary actually printed. Lines hold
  * plain text, so the block reads the same without colour, and they wrap
- * instead of scrolling sideways. An elided stretch is a `gap` line, which
- * renders as `⋯`; nothing else in here is edited.
+ * instead of scrolling sideways. Each word is its own box, so a wrap lands
+ * between words, never inside `--check` or `local-work`. An elided stretch
+ * is a `gap` line, which renders as `⋯`; nothing else in here is edited.
  *
  * The run behind the homepage sample is recorded in `docs/landing-claims.md`.
  */
@@ -19,6 +22,9 @@ interface Props {
 }
 
 const { title, lines, caption } = Astro.props;
+
+/** Split on whitespace, keeping the runs so spacing is copied verbatim. */
+const words = (text: string) => text.split(/(\s+)/).filter(Boolean);
 
 const tone: Record<Line["kind"], string> = {
   cmd: "text-foreground",
@@ -38,9 +44,15 @@ const tone: Record<Line["kind"], string> = {
       class="m-0 px-5 py-5 font-mono text-[12.5px] leading-[1.75] sm:text-[13px]"
       tabindex="0"
       aria-label={title}
-    ><code>{lines.map((line) => <span class={`term-line block ${tone[line.kind]}`}>{line.kind === "cmd" && <span aria-hidden="true" class="prompt">$ </span>}{line.kind === "gap" && <span class="sr-only">Progress lines elided: </span>}{line.kind === "gap" ? "⋯" : line.text}</span>)}</code></pre>
+    ><code>{lines.map((line) => <span class={`term-line block ${tone[line.kind]}`}>{line.kind === "cmd" && <span aria-hidden="true" class="prompt">$ </span>}{line.kind === "gap" && <span class="sr-only">Progress lines elided: </span>}{line.kind === "gap" ? "⋯" : words(line.text ?? "").map((w) => (/^\s/.test(w) ? w : <span class="word">{w}</span>))}</span>)}</code></pre>
   </div>
-  {caption && <p class="mt-3 text-sm text-muted-foreground leading-relaxed">{caption}</p>}
+  {
+    caption && (
+      <p class="mt-3 text-sm text-muted-foreground leading-relaxed">
+        <Inline text={caption} />
+      </p>
+    )
+  }
 </figure>
 
 <style>
@@ -48,6 +60,12 @@ const tone: Record<Line["kind"], string> = {
   .term-line {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  /* A word wraps internally only when it is wider than the whole line. */
+  .word {
+    display: inline-block;
+    max-width: 100%;
   }
 
   .prompt {

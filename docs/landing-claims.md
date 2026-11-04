@@ -20,7 +20,7 @@ Line numbers are `docs/manual.md` unless stated.
 | Trust table: writes, runs, fetches, never                                            | writes manual:20-23, 948-955; `gh` and `git` manual:4; hosts manual:189, 1412; "posts only when `verdict post` runs" manual:25-27                         |
 | Exit codes `0`, `1`, `2`, `3`                                                        | `docs/build-a-client.mdx` § Exit codes; frozen in `internal/cli/cli.go`                                                                                   |
 | `REVIEW_BUDGET_USD` caps a projected run                                             | manual:689; `--consent-over-budget` in the same section                                                                                                   |
-| MIT licensed, no subscription, no seats, no per-review charge                        | `LICENSE`; no billing code exists                                                                                                                         |
+| MIT licensed, no subscription, no seats, no charge per review                        | `LICENSE`; no billing code exists                                                                                                                         |
 | Agent entry points (`llms.txt`, `agent-readability.json`, skill index, `{route}.md`) | generated into `apps/docs/dist/` by the Blume build; the first three are the footer's `For agents` column                                                 |
 | Vendor prices and the 2026-11-04 date                                                | `apps/docs/content/comparison.mdx`, the only page that carries them                                                                                       |
 
