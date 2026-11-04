@@ -166,6 +166,8 @@ func TestSkillUsageErrors(t *testing.T) {
 		{"skill", "bogus"},
 		{"skill", "install", "--dir"},
 		{"skill", "install", "--dir", "/tmp/x", "--agent", "claude"},
+		{"skill", "install", "--detect", "--dir", "/tmp/x"},
+		{"skill", "install", "--detect", "--agent", "claude"},
 		{"skill", "files", "--bogus"},
 		{"skill", "--format", "yaml"},
 	} {
@@ -177,6 +179,75 @@ func TestSkillUsageErrors(t *testing.T) {
 	code, out, _ := runCapture(t, []string{"skill", "--help"})
 	if code != 0 || !strings.Contains(out, "skill install") {
 		t.Fatalf("skill --help = exit %d out %q", code, out)
+	}
+}
+
+// TestSkillInstallDetectCommand pins the --detect command end to end: one
+// envelope listing each detected agent's result, only live skills dirs
+// targeted, the human line naming each agent, and the typed refusal when
+// nothing is present.
+//
+//nolint:cyclop,gocognit,revive // the test walks the detect command surface
+func TestSkillInstallDetectCommand(t *testing.T) {
+	hermeticEnv(t)
+	setTestVersion(t)
+	home := os.Getenv("HOME")
+	claude := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(claude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(claude, "existing.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cursor := filepath.Join(home, ".cursor", "skills")
+	if err := os.MkdirAll(cursor, 0o755); err != nil { // empty: not a live setup
+		t.Fatal(err)
+	}
+
+	code, out, derr := runCapture(t, []string{"skill", "install", "--detect", "--json"})
+	if code != 0 {
+		t.Fatalf("detect install = exit %d stderr %q\n%s", code, derr, out)
+	}
+	doc := decodeSkillEnvelope(t, out)
+	data := skillData(t, doc)
+	if agents, ok := data["agents"].([]any); !ok || !slices.Equal(agents, []any{"claude"}) {
+		t.Fatalf("detected agents = %v, want [claude]", data["agents"])
+	}
+	targets, ok := data["targets"].([]any)
+	if !ok || len(targets) != 1 {
+		t.Fatalf("targets = %v, want one", data["targets"])
+	}
+	first, ok := targets[0].(map[string]any)
+	if !ok {
+		t.Fatalf("target entry = %v", targets[0])
+	}
+	if first["agent"] != "claude" || first["status"] != "create" || first["target"] != filepath.Join(claude, "verdict") {
+		t.Fatalf("target entry = %v", first)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "verdict", "SKILL.md")); err != nil {
+		t.Fatalf("detected target was not installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cursor, "verdict")); !os.IsNotExist(err) {
+		t.Fatal("an empty skills dir was targeted")
+	}
+
+	code, out, _ = runCapture(t, []string{"skill", "install", "--detect", "--dry-run"})
+	if code != 0 || !strings.Contains(out, "skill install --detect:") ||
+		!strings.Contains(out, "claude") || !strings.Contains(out, "dry-run: nothing changed") {
+		t.Fatalf("human detect preview = exit %d\n%s", code, out)
+	}
+
+	empty := t.TempDir()
+	t.Setenv("HOME", empty)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, ".config"))
+	code, out, _ = runCapture(t, []string{"skill", "install", "--detect", "--json"})
+	doc = decodeSkillEnvelope(t, out)
+	errObj, ok := doc["error"].(map[string]any)
+	if code != 1 || !ok || errObj["code"] != "skill-no-detected-agent" {
+		t.Fatalf("none-detected = exit %d error %v", code, doc["error"])
+	}
+	if doc["data"] != nil {
+		t.Fatalf("refusal envelope carries data: %v", doc["data"])
 	}
 }
 

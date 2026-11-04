@@ -122,6 +122,7 @@ var refusalCodes = []string{
 	"skill-dir-foreign",
 	"skill-foreign-conflict",
 	"skill-install-failed",
+	"skill-no-detected-agent",
 	"skill-no-home",
 	"skill-read-failed",
 	"skill-target-file",

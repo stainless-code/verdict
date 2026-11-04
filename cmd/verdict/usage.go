@@ -182,7 +182,7 @@ func usageText() string {
 		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
 		"    Never touches network. Existing files print a preview and need\n" +
 		"    --yes/--force (or an interactive confirm) before overwrite.\n" +
-		"  skill [show|files|install] [--format md|json] [--dir <skills-dir>|--agent <name>]\n" +
+		"  skill [show|files|install] [--format md|json] [--dir <skills-dir>|--agent <name>|--detect]\n" +
 		"        [--force] [--dry-run] [--json]\n" +
 		"    serve or install the skill embedded in this binary (never a skew):\n" +
 		"    show prints SKILL.md (default --format md), --format json emits one\n" +
@@ -191,6 +191,9 @@ func usageText() string {
 		"    scripts/verdict plus a .verdict-managed receipt; it previews\n" +
 		"    create/update/keep/blocked, never prompts, and refuses a foreign\n" +
 		"    target unless --force (foreign files are never touched).\n" +
+		"    --detect installs into every known agent whose skills dir already\n" +
+		"    exists and is non-empty, and lists each target's result; with none\n" +
+		"    present it refuses typed and asks for --agent <name>.\n" +
 		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
 		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +

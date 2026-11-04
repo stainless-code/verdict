@@ -12,6 +12,10 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// keyFiles is the envelope key carrying the payload file list; the inventory
+// and both install builders report the same list under it.
+const keyFiles = "files"
+
 // runSkill dispatches `verdict skill [show|files|install]`.
 func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	r.Repo, r.Pr = "", ""
@@ -121,10 +125,11 @@ func runSkillFiles(ctx context.Context, r *cli.Runner, args []string, env map[st
 
 // skillInstallFlags is the parsed `skill install` option set.
 type skillInstallFlags struct {
-	dir   string
-	agent string
-	force bool
-	dry   bool
+	dir    string
+	agent  string
+	force  bool
+	dry    bool
+	detect bool
 }
 
 // runSkillInstall previews or applies the embedded payload.
@@ -133,30 +138,74 @@ func runSkillInstall(ctx context.Context, r *cli.Runner, args []string, env map[
 	if done {
 		return code
 	}
-	if flags.dir != "" && flags.agent != "" {
-		return r.ReportUsage(&cli.UsageError{Message: "--dir and --agent are mutually exclusive"})
+	if code, bad := skillInstallScope(r, flags); bad {
+		return code
 	}
-	r.Rentry = "verdict skill install"
+	base := "verdict skill install"
+	if flags.detect {
+		base += " --detect"
+	}
+	r.Rentry = base + skillInstallSuffix(r, flags)
+	return skillInstallRun(ctx, r, env, root, flags)
+}
+
+// skillInstallScope rejects a scope that names more than one target table.
+func skillInstallScope(r *cli.Runner, flags skillInstallFlags) (int, bool) {
+	switch {
+	case flags.dir != "" && flags.agent != "":
+		return r.ReportUsage(&cli.UsageError{Message: "--dir and --agent are mutually exclusive"}), true
+	case flags.detect && (flags.dir != "" || flags.agent != ""):
+		return r.ReportUsage(&cli.UsageError{Message: "--detect cannot be combined with --dir or --agent"}), true
+	default:
+		return 0, false
+	}
+}
+
+// skillInstallSuffix renders the recorded re-entry flags.
+func skillInstallSuffix(r *cli.Runner, flags skillInstallFlags) string {
+	suffix := ""
 	if flags.dry {
-		r.Rentry += entryDryRun
+		suffix += entryDryRun
 	}
 	if r.JSONMode {
-		r.Rentry += entryJSON
+		suffix += entryJSON
 	}
-	plan, ref := skill.Install(ctx, &skill.Request{
+	return suffix
+}
+
+// skillInstallRun dispatches one install or the whole detected agent set.
+func skillInstallRun(ctx context.Context, r *cli.Runner, env map[string]string, root string, flags skillInstallFlags) int {
+	req := &skill.Request{
 		Runtime: skillRuntime(r, env),
 		Version: skillVersion(root),
 		Dir:     flags.dir,
 		Agent:   flags.agent,
 		Force:   flags.force,
 		DryRun:  flags.dry,
-	})
+	}
+	if flags.detect {
+		return runSkillInstallDetect(ctx, r, req, flags)
+	}
+	plan, ref := skill.Install(ctx, req)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
 	printSkillPlan(r, &plan, flags.dry)
 	if r.JSONMode {
 		writeSkillEnvelope(r, skillInstallData(&plan, flags.dry, flags.force))
+	}
+	return cli.ExitOK
+}
+
+// runSkillInstallDetect installs into every already-present agent skills dir.
+func runSkillInstallDetect(ctx context.Context, r *cli.Runner, req *skill.Request, flags skillInstallFlags) int {
+	det, ref := skill.InstallDetected(ctx, req)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	printSkillDetect(r, &det, flags.dry)
+	if r.JSONMode {
+		writeSkillEnvelope(r, skillDetectData(&det, flags.dry, flags.force))
 	}
 	return cli.ExitOK
 }
@@ -184,6 +233,8 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 			f.agent = strings.TrimPrefix(arg, "--agent=")
 		case arg == "--force":
 			f.force = true
+		case arg == "--detect":
+			f.detect = true
 		case arg == flagDryRun:
 			f.dry = true
 		case arg == flagShortHelp || arg == flagHelp:
@@ -191,7 +242,7 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 			return f, cli.ExitOK, true
 		default:
 			return f, r.ReportUsage(&cli.UsageError{
-				Message: fmt.Sprintf("unknown flag '%s' for skill install (want --dir, --agent, --force, --dry-run, --json)", arg),
+				Message: fmt.Sprintf("unknown flag '%s' for skill install (want --dir, --agent, --detect, --force, --dry-run, --json)", arg),
 			}), true
 		}
 	}
@@ -202,6 +253,27 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 func printSkillPlan(r *cli.Runner, plan *skill.Plan, dry bool) {
 	fmt.Fprintf(r.Human, "skill install: %s v%s -> %s\n", plan.Name, plan.Version, plan.Target)
 	fmt.Fprintf(r.Human, "--- %s (%s) ---\n", plan.Target, plan.Status)
+	printSkillTarget(r, plan)
+	if dry {
+		fmt.Fprintln(r.Human, "dry-run: nothing changed")
+	}
+}
+
+// printSkillDetect renders one line per detected agent, then its outcome.
+func printSkillDetect(r *cli.Runner, det *skill.Detection, dry bool) {
+	fmt.Fprintf(r.Human, "skill install --detect: %s v%s -> %d agent(s): %s\n",
+		det.Name, det.Version, len(det.Plans), strings.Join(det.Agents, ", "))
+	for i := range det.Plans {
+		fmt.Fprintf(r.Human, "--- %s: %s (%s) ---\n", det.Plans[i].Agent, det.Plans[i].Target, det.Plans[i].Status)
+		printSkillTarget(r, &det.Plans[i])
+	}
+	if dry {
+		fmt.Fprintln(r.Human, "dry-run: nothing changed")
+	}
+}
+
+// printSkillTarget renders one target's changed paths and outcome.
+func printSkillTarget(r *cli.Runner, plan *skill.Plan) {
 	for _, rel := range plan.Changed {
 		fmt.Fprintf(r.Human, "  + %s\n", rel)
 	}
@@ -212,9 +284,6 @@ func printSkillPlan(r *cli.Runner, plan *skill.Plan, dry bool) {
 		printSkillBlocked(r, plan)
 	default:
 		printSkillWrote(r, plan)
-	}
-	if dry {
-		fmt.Fprintln(r.Human, "dry-run: nothing changed")
 	}
 }
 
@@ -272,7 +341,7 @@ func skillInventoryData(inv *skill.Inventory) *jq.Obj {
 	return jq.NewObj(
 		"name", inv.Name,
 		"version", inv.Version,
-		"files", core.StringValues(inv.Files),
+		keyFiles, core.StringValues(inv.Files),
 	)
 }
 
@@ -286,7 +355,39 @@ func skillInstallData(plan *skill.Plan, dry, force bool) *jq.Obj {
 		"dry_run", dry,
 		"force", force,
 		"written", plan.Written,
-		"files", core.StringValues(plan.Files),
+		keyFiles, core.StringValues(plan.Files),
+		"changed", core.StringValues(plan.Changed),
+	)
+	if plan.ReceiptVersion != "" {
+		data.Set("receipt_version", plan.ReceiptVersion)
+	}
+	return data
+}
+
+// skillDetectData builds the per-target install envelope data.
+func skillDetectData(det *skill.Detection, dry, force bool) *jq.Obj {
+	targets := make([]any, 0, len(det.Plans))
+	for i := range det.Plans {
+		targets = append(targets, skillTargetData(&det.Plans[i]))
+	}
+	return jq.NewObj(
+		"name", det.Name,
+		"version", det.Version,
+		"dry_run", dry,
+		"force", force,
+		"agents", core.StringValues(det.Agents),
+		"targets", targets,
+	)
+}
+
+// skillTargetData builds one detected agent's target object.
+func skillTargetData(plan *skill.Plan) *jq.Obj {
+	data := jq.NewObj(
+		"agent", plan.Agent,
+		"target", plan.Target,
+		"status", plan.Status,
+		"written", plan.Written,
+		keyFiles, core.StringValues(plan.Files),
 		"changed", core.StringValues(plan.Changed),
 	)
 	if plan.ReceiptVersion != "" {
@@ -308,9 +409,13 @@ func skillUsageText() string {
 		"  skill [show]              print SKILL.md (default --format md)\n" +
 		"  skill --format json       one envelope: {name, version, files}\n" +
 		"  skill files               list every embedded payload path\n" +
-		"  skill install [--dir <skills-dir>|--agent <name>] [--force] [--dry-run] [--json]\n" +
+		"  skill install [--dir <skills-dir>|--agent <name>|--detect] [--force] [--dry-run] [--json]\n" +
 		"      atomically write SKILL.md, prompts/, schemas/, and scripts/verdict plus\n" +
 		"      a .verdict-managed receipt. Previews create/update/keep/blocked;\n" +
+		"      --detect targets every agent below whose skills dir already exists and\n" +
+		"      is non-empty, and lists each target's result (nothing detected refuses\n" +
+		"      typed: name one with --agent). --detect cannot be combined with\n" +
+		"      --dir or --agent.\n" +
 		"      only --json is guaranteed non-interactive (this command never prompts).\n" +
 		"      A target without a verdict receipt refuses typed unless --force;\n" +
 		"      foreign files are never touched.\n" +

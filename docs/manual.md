@@ -16,7 +16,7 @@ verdict init --preset standard --yes
 verdict fetch owner/repo 123
 
 # 2. review with ANY agent (the installed skill is the prompt; add it with
-#    `verdict skill install --agent <name>` if it is missing):
+#    `verdict skill install --detect` if it is missing):
 #    Point the agent at .review/123/. It reads .review/123/full.diff fully via
 #    .review/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
 #    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
@@ -925,15 +925,21 @@ you stand).
   never skew from the binary. `verdict skill` prints `SKILL.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
-  `verdict skill install` (flags: `--dir <skills-dir>` or `--agent <name>`,
-  `--force`, `--dry-run`, `--json`) writes the payload plus a
+  `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
+  `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
   create/update/keep/blocked, refuses
   a target without a verdict receipt unless `--force`, never removes foreign
   files, never prompts, and makes no network call. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
   `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
-  shared `~/.agents/skills/verdict` slot.
+  shared `~/.agents/skills/verdict` slot. `--detect` installs into every one
+  of those agents whose skills dir already exists and holds a file, and names
+  each target's result; with none present it refuses typed
+  (`skill-no-detected-agent`) and asks for `--agent <name>`. It cannot be
+  combined with `--dir` or `--agent`, every target keeps the receipt and
+  `--force` rules above, and a blocked target refuses before any target is
+  written.
 
 ## Publish footer + attribution knobs
 
