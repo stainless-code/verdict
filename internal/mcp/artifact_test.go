@@ -3,6 +3,7 @@ package mcp
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 // artifact through the operator's path: a symlink survives and only its target
 // gains the bytes, with the target's own mode kept.
 func TestArtifactKeepsTheLinkAndTheMode(t *testing.T) {
+	skipWithoutPOSIXModes(t)
 	target, link := seedArtifactLink(t)
 	if ref := writeArtifact(&core.FileArtifact{Path: link, Content: []byte("# new\n")}); ref != nil {
 		t.Fatalf("writeArtifact(%s) = %q %q; want success", link, ref.Code, ref.Message)
@@ -24,6 +26,7 @@ func TestArtifactKeepsTheLinkAndTheMode(t *testing.T) {
 // TestArtifactRefusalKeepsTheOldFile checks a failed artifact write refuses
 // report-failed and leaves the previous file intact.
 func TestArtifactRefusalKeepsTheOldFile(t *testing.T) {
+	skipWithoutPOSIXModes(t)
 	path := seedUnwritableArtifact(t)
 	ref := writeArtifact(&core.FileArtifact{Path: path, Content: []byte("{}\n")})
 	if ref == nil {
@@ -36,6 +39,16 @@ func TestArtifactRefusalKeepsTheOldFile(t *testing.T) {
 		t.Errorf("message = %q; want it to name %s", ref.Message, path)
 	}
 	checkArtifactFile(t, path, "old\n", 0o644)
+}
+
+// skipWithoutPOSIXModes skips a test that reads or denies POSIX permission
+// bits, which Windows does not model (a directory mode cannot deny creation
+// and every file reports 0666).
+func skipWithoutPOSIXModes(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not model POSIX permission bits")
+	}
 }
 
 // seedArtifactLink writes a 0640 target and a symlink to it, as an operator

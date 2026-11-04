@@ -3,6 +3,7 @@ package report
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 // through the operator's path: a symlink survives and only its target gains
 // the new bytes, and the target's own mode is kept.
 func TestWriteArtifactKeepsTheLinkAndTheMode(t *testing.T) {
+	skipWithoutPOSIXModes(t)
 	target, link := seedLink(t)
 	if ref := writeArtifact(&core.FileArtifact{Path: link, Content: []byte("# new\n")}); ref != nil {
 		t.Fatalf("writeArtifact(%s) = %q %q; want success", link, ref.Code, ref.Message)
@@ -25,6 +27,7 @@ func TestWriteArtifactKeepsTheLinkAndTheMode(t *testing.T) {
 // typed report-failed refusal that leaves the previous report intact, so a
 // caller never reads a half-written file.
 func TestWriteArtifactRefusalKeepsTheOldFile(t *testing.T) {
+	skipWithoutPOSIXModes(t)
 	path := seedUnwritable(t)
 	ref := writeArtifact(&core.FileArtifact{Path: path, Content: []byte("new report\n")})
 	if ref == nil {
@@ -37,6 +40,16 @@ func TestWriteArtifactRefusalKeepsTheOldFile(t *testing.T) {
 		t.Errorf("message = %q; want it to name %s", ref.Message, path)
 	}
 	checkFile(t, path, "old\n", 0o644)
+}
+
+// skipWithoutPOSIXModes skips a test that reads or denies POSIX permission
+// bits, which Windows does not model (a directory mode cannot deny creation
+// and every file reports 0666).
+func skipWithoutPOSIXModes(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not model POSIX permission bits")
+	}
 }
 
 // seedLink writes a 0640 target and a symlink to it, as an operator who keeps

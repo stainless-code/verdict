@@ -3,6 +3,7 @@ package atomic_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -11,6 +12,7 @@ import (
 // TestWriteThroughKeepsTheExistingMode checks an overwrite keeps the mode the
 // operator's file already had instead of forcing the caller's default.
 func TestWriteThroughKeepsTheExistingMode(t *testing.T) {
+	skipWithoutPOSIXModes(t)
 	path := filepath.Join(t.TempDir(), "report.md")
 	if err := os.WriteFile(path, []byte("old\n"), 0o640); err != nil {
 		t.Fatal(err)
@@ -43,6 +45,7 @@ func TestWriteThroughReplacesTheSymlinksTarget(t *testing.T) {
 // not exist yet still gets its target created, with the link left alone and
 // the caller's mode on the new file.
 func TestWriteThroughCreatesThroughADanglingLink(t *testing.T) {
+	skipWithoutPOSIXModes(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, "review.md")
 	link := filepath.Join(dir, "out.md")
@@ -55,6 +58,16 @@ func TestWriteThroughCreatesThroughADanglingLink(t *testing.T) {
 	checkLink(t, link, target)
 	checkContent(t, target, "# new\n")
 	checkMode(t, target, 0o600)
+}
+
+// skipWithoutPOSIXModes skips a test that reads or denies POSIX permission
+// bits, which Windows does not model (a directory mode cannot deny creation
+// and every file reports 0666).
+func skipWithoutPOSIXModes(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not model POSIX permission bits")
+	}
 }
 
 // seedLink writes target with a distinctive 0640 mode and links link to it.
