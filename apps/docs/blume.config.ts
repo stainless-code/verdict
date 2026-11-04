@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "blume";
 import { orama } from "blume/search";
-import { filesystem, githubReleases } from "blume/sources";
+import { custom, filesystem } from "blume/sources";
+import { changelogSource } from "./sources/changelog.ts";
+import { manualSource } from "./sources/manual.ts";
 
 const title = "Verdict";
 const description =
@@ -12,6 +14,7 @@ const description =
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";
+const origin = "https://stainless-code.com";
 
 // Prerendered pages skip transformIndexHtml, so append tags to dist after build.
 const webAppHeadIntegration = {
@@ -70,11 +73,16 @@ export default defineConfig({
   content: {
     sources: [
       filesystem({ root: "content" }),
-      githubReleases({
-        owner: "stainless-code",
-        repo: "verdict",
-        prefix: "changelog",
-      }),
+      custom(
+        changelogSource({
+          name: "changelog",
+          owner: "stainless-code",
+          repo: "verdict",
+          prefix: "changelog",
+          site: origin,
+        }),
+      ),
+      custom(manualSource()),
     ],
   },
 
@@ -90,6 +98,14 @@ export default defineConfig({
   agents: {
     skillMd: false,
     skills: "./skills",
+    llmsTxt: {
+      details: [
+        "The two long-form references are left out of `llms-full.txt` for their size:",
+        `the operator manual at ${origin}${deploymentBase}/manual.md (envelope, exit codes,`,
+        "store files, refusal codes, control files, provider matrix), and the release",
+        `notes at ${origin}${deploymentBase}/changelog.`,
+      ].join("\n"),
+    },
   },
 
   integrations: [webAppHeadIntegration],
@@ -109,6 +125,7 @@ export default defineConfig({
       { label: "Why Verdict", path: "/why-verdict" },
       { label: "Comparison", path: "/comparison" },
       { label: "Roadmap", path: "/roadmap" },
+      { label: "Manual", path: "/manual" },
       { label: "Changelog", path: "/changelog" },
     ],
     sidebar: { display: "flat" },
@@ -148,7 +165,7 @@ export default defineConfig({
   },
 
   deployment: {
-    site: "https://stainless-code.com",
+    site: origin,
     base: deploymentBase,
   },
 });

@@ -120,6 +120,14 @@ alters golden-covered output, regenerate with `go test ./<pkg>/ -update`
 cannot explain line-by-line is a red flag, not a green gate. Never
 commit a golden update alongside unrelated changes.
 
+## Store schemas
+
+The Go store types are the source of truth and `make schemas` generates the
+published schemas from them. A slice that changes what the script reads or
+writes updates the matching schema plus the schema-contract fixtures in the
+same commit, so `evals/cases/schema-contract.sh` proves the new shape instead
+of a review finding it later.
+
 ## Versioning
 
 Add `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing notes)
@@ -138,11 +146,14 @@ within a major are additive only. The changelog is at the bottom of
 One merged Version PR ships everything. `changeset git-tag` tags the bumped
 version. GoReleaser builds six static binaries (`darwin`/`linux`/`windows` ×
 `amd64`/`arm64`), signs `checksums.txt` (cosign keyless bundle), emits
-per-archive SPDX SBOMs, and owns the GitHub Release. Then
-`scripts/publish-npm.mjs` publishes six `@stainless-code/verdict-<os>-<arch>`
-platform packages plus the wrapper (no postinstall, so `--ignore-scripts`
-installs work). The same run renders `dist/verdict.rb` for the
-`stainless-code/tap` Homebrew tap.
+per-archive SPDX SBOMs, and owns the GitHub Release. The release body is the
+`CHANGELOG.md` section for the tagged version — `scripts/release-notes.mjs`
+prints it without the changeset commit ids and `release.sh` passes it as
+`--release-notes` — so a release reads as the curated changeset entry, not a
+commit list. Then `scripts/publish-npm.mjs` publishes six
+`@stainless-code/verdict-<os>-<arch>` platform packages plus the wrapper (no
+postinstall, so `--ignore-scripts` installs work). The same run renders
+`dist/verdict.rb` for the `stainless-code/tap` Homebrew tap.
 
 The wrapper also carries the TypeScript client as its `./client` subpath
 export, so one install brings both. `scripts/release.sh` builds and checks

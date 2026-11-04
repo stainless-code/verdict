@@ -22,8 +22,10 @@ TAP_FORMULA="$(node -p "require('./release/contract.json').formula.path")"
 TAG="${TAG_PREFIX}${VERSION}"
 
 TAP_DIR=""
+NOTES_FILE=""
 cleanup() {
   if [ -n "$TAP_DIR" ]; then rm -rf "$TAP_DIR"; fi
+  if [ -n "$NOTES_FILE" ]; then rm -f "$NOTES_FILE"; fi
 }
 trap cleanup EXIT
 
@@ -146,7 +148,9 @@ stage_goreleaser() {
       ;;
     absent) ;;
   esac
-  goreleaser release --clean
+  NOTES_FILE="$(mktemp)"
+  node scripts/release-notes.mjs "$VERSION" > "$NOTES_FILE"
+  goreleaser release --clean --release-notes "$NOTES_FILE"
 }
 
 npm_packages() {

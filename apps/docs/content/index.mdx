@@ -1,0 +1,29 @@
+---
+title: Verdict
+description: "Code review with receipts: your agent reviews, Verdict grades every finding by how it was checked."
+---
+
+# Code review with receipts.
+
+Verdict splits code review into steps your agent runs on your machine: fetch,
+review, gate, post. The agent reviews, `gh` does GitHub I/O, and nothing leaves
+your machine.
+
+```bash
+npm i -g @stainless-code/verdict
+```
+
+## The loop
+
+1. `verdict fetch owner/repo 123` writes one bundle to `.review/123/`.
+2. Your agent reviews the bundle and writes `.review/123/review.json`.
+3. `verdict record owner/repo 123` validates the findings and grades each one
+   by how it was checked.
+4. `verdict report owner/repo 123` renders the review offline, and gates on
+   severity with `--check`.
+5. `verdict post owner/repo 123` files exactly one review, once the anchor and
+   duplicate guards pass.
+
+Every verb takes `--json` and a fixed exit code, so a script or a CI job runs
+the same steps your agent does. Start with the [quickstart](/quickstart) or
+[how it reviews](/how-it-reviews).

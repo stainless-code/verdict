@@ -181,7 +181,7 @@ whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
 and normalize `PR.json` to one schema. Every provider bundle also writes
 `threads.json` (`schema_version: "1"`, published as
-[`schemas/threads.schema.json`](../skills/verdict/schemas/threads.schema.json)): the raw
+[`schemas/threads.schema.json`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/threads.schema.json)): the raw
 files stay as-is, and the feed is the authoritative PR conversation. Review
 threads come from each host's native source — GitHub GraphQL `reviewThreads`
 (REST has no resolution), GitLab discussions (`resolved`/`resolvable`), Azure
@@ -1493,8 +1493,7 @@ quality — the prompts do.
 
 ## Store changelog (additive within schema_version "1" — renames never happen, only additions)
 
-Release versioning (changesets → Version PR → npm + GitHub Release) lives in
-`CONTRIBUTING.md ## Versioning`. This section tracks store-schema evolution only —
+This section tracks store-schema evolution only —
 verbs and features ship in the release changelog.
 
 - Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.
@@ -1568,8 +1567,4 @@ instead of a review.
 Drift rule: additive within `schema_version`/`sig_version` `"1"`, matching
 the changelog above — new optional keys pass through the stores and the
 schemas alike; renames, tighter types, and newly required keys never happen
-without a version bump, and a bump ships only by operator decision. Who
-updates: the slice that changes what the script reads or writes updates the
-matching schema plus the schema-contract fixtures in the same commit, so the
-eval proves the new shape. The Go implementation is the source of truth;
-`make schemas` generates the published schemas from its store types.
+without a version bump, and a bump ships only by operator decision.

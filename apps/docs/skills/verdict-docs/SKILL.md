@@ -21,9 +21,14 @@ pull request or a local branch; load this one to answer questions about Verdict.
 - [llms.txt](https://stainless-code.com/verdict/llms.txt): every page with a
   one-line summary. Start here to pick the page — the list is generated from the
   docs on every build, so it is the current map and this file does not repeat it.
-- [llms-full.txt](https://stainless-code.com/verdict/llms-full.txt): every page
-  in one file, for when you need all of it.
+- [llms-full.txt](https://stainless-code.com/verdict/llms-full.txt): the
+  narrative pages in one file, for when you need most of them at once.
+- [Manual](https://stainless-code.com/verdict/manual.md): the operator contract
+  — envelope, exit codes, store files, refusal codes, control files, provider
+  matrix. It and the release notes are too long for `llms-full.txt`, so fetch
+  them as their own Markdown.
 - [Page index](https://stainless-code.com/verdict/api/docs/pages.json): the JSON
   API's list of pages, each readable as JSON or Markdown.
 - [Changelog](https://stainless-code.com/verdict/changelog.md): release notes,
-  newest first.
+  newest first. Fetched per release as
+  https://stainless-code.com/verdict/changelog/<version>.md.
