@@ -1,13 +1,14 @@
 # Go rules
 
-Adopted from the Go knowledge base (STA-124). One rule per line, each with
+Adopted from the Go knowledge base. One rule per line, each with
 its `GO-<TOPIC>-<NN>` KB ID: the ID is the stable handle, the wording is
 not. Combined IDs (`GO-CONC-02/04`) are the draft's shorthand for sibling
 cards: every ID is present, none is merged or dropped. Every card's full text
-(Rule / Why / Enforce / Since / Sources) lives in the KB that the installed
-`go-write`, `go-test`, `go-review`, and `go-cli-hardening` skills embed; the
-rule → mechanism index is the
-[Go KB — lint enforcement map](https://linear.app/stainless-code/document/go-kb-lint-enforcement-map-a9f524ac1712).
+(Rule / Why / Enforce / Since / Sources) lives in
+[`docs/go-kb/knowledge-base.md`](go-kb/knowledge-base.md), the corpus the installed
+`go-write`, `go-test`, `go-review`, and `go-cli-hardening` skills are built from. Each
+card's `Enforce` field names the gate that holds it, and the markers below
+summarise that per rule.
 
 **Markers.** `— enforced:` means a machine gate fails on violation today.
 `— partly:` means the named gate covers part of the rule. `— review-only:`

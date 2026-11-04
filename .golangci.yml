@@ -1,5 +1,5 @@
-# Verdict Go lint profile (ticket 01): KB lint/golangci.yml with the verdict
-# application notes from .scratch/go-kb/README.md applied:
+# Verdict Go lint profile: KB lint/golangci.yml with the verdict
+# application notes from docs/go-kb/README.md applied:
 # - depguard crypto/sha1 ban scoped to allow exactly one wire-compat package
 #   (internal/sig, sig_version "1" identifiers — not a security boundary).
 # - tagliatelle dropped: store field names are frozen mixed snake_case /
