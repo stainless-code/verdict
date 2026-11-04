@@ -101,6 +101,7 @@ contract="$EVAL_ROOT/release/contract.json"
 if grep -Fq "CHECKSUMS='$(jq -r .checksums "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "BUNDLE='$(jq -r .signatureBundle "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_ISSUER='$(jq -r .cosign.issuer "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq "COSIGN_IDENTITY_RE='$(jq -r .cosign.identityRegexp "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq 'https://github.com/stainless-code/verdict/releases/latest' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'verdict_${VERSION}_${os}_${arch}.tar.gz' "$EVAL_ROOT/install.sh"; then
   good "install.sh names the contract checksums, bundle, archive shape, and issuer"
@@ -163,8 +164,7 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
     bad "$want_os/$want_arch did not request contract archive $archive"
   fi
   if grep -Fq -- '--certificate-identity-regexp' "$COSIGN_LOG" \
-    && grep -Fq 'stainless-code/verdict/' "$COSIGN_LOG" \
-    && grep -Fq -- "refs/tags/v" "$COSIGN_LOG" \
+    && grep -Fq -- "$(jq -r .cosign.identityRegexp "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG" \
     && grep -Fq -- '--certificate-oidc-issuer' "$COSIGN_LOG" \
     && grep -Fq "$(jq -r .cosign.issuer "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG"; then
     good "$want_os/$want_arch verifies the bundle with the contract identity/issuer"
@@ -178,6 +178,11 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
     good "$want_os/$want_arch smokes the installed binary with --version"
   else
     bad "$want_os/$want_arch has no --version smoke ($(head -c 200 "$EVAL_OUT"))"
+  fi
+  if grep -Fq 'Next: verdict skill install --detect' "$EVAL_OUT"; then
+    good "$want_os/$want_arch points at the skill next step"
+  else
+    bad "$want_os/$want_arch has no skill next step ($(head -c 200 "$EVAL_OUT"))"
   fi
 done
 
@@ -195,6 +200,7 @@ if [ "$EVAL_STATUS" -ne 0 ] && grep -q "SHA-256 mismatch" "$EVAL_ERR" \
 else
   bad "checksum mismatch exit $EVAL_STATUS (old binary changed?)"
 fi
+assert_stream_nogrep "a refused install prints no next step" "$EVAL_OUT" "Next:" "-F"
 fresh
 PIN=1.2.3; run_install
 cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
@@ -280,7 +286,11 @@ fresh
 TEST_SHELL=/bin/zsh; PIN=1.2.3; NO_PATH=0
 printf 'export KEEP_ME=1\n' > "$CASE_HOME/.zshrc"
 run_install
+assert_file_grep "a PATH-appending install ends with the skill next step" "$EVAL_OUT" \
+  'Next: verdict skill install --detect' "-F"
 run_install
+assert_file_grep "a PATH-already-set install ends with the skill next step" "$EVAL_OUT" \
+  'Next: verdict skill install --detect' "-F"
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(grep -c -F '# verdict installer' "$CASE_HOME/.zshrc")" = 1 ] \
   && grep -Fq "$INSTALL_DIR" "$CASE_HOME/.zshrc" && grep -Fq 'export KEEP_ME=1' "$CASE_HOME/.zshrc"; then
   good "PATH gets one marked line and preserves existing config"

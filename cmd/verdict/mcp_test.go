@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/mcp"
 )
 
 // mcpTempFiles returns stdout/stderr temp files for run() calls.
@@ -86,5 +90,32 @@ func TestMCPOperatorConflict(t *testing.T) {
 	}
 	if got := readOutput(t, errOut); !strings.Contains(got, "mutually exclusive") {
 		t.Errorf("stderr = %q", got)
+	}
+}
+
+// TestMCPHelpListsTheRegistry keeps the hand-written tool lists in
+// `verdict mcp --help` equal to what the server registers, so a new tool
+// cannot ship with a stale help count.
+func TestMCPHelpListsTheRegistry(t *testing.T) {
+	help := mcpUsageText()
+	def := mcp.ToolNames(false, false)
+	if want := fmt.Sprintf("Default tools (%d): ", len(def)); !strings.Contains(help, want) {
+		t.Errorf("help misses %q", want)
+	}
+	flat := strings.Join(strings.Fields(help), " ")
+	if !strings.Contains(flat, strings.Join(def, ", ")+".") {
+		t.Errorf("help default list != registry %v", def)
+	}
+	ro := mcp.ToolNames(true, false)
+	slices.Sort(ro)
+	_, rest, found := strings.Cut(flat, "--read-only expose only non-writing tools (")
+	list, _, closed := strings.Cut(rest, ")")
+	if !found || !closed {
+		t.Fatal("help misses the --read-only tool list")
+	}
+	got := strings.Split(list, ", ")
+	slices.Sort(got)
+	if !slices.Equal(got, ro) {
+		t.Errorf("help read-only list = %v, registry = %v", got, ro)
 	}
 }

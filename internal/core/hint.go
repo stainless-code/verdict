@@ -49,6 +49,8 @@ var hintRules = []HintRule{
 		codes: []string{"corrupt-store"},
 		hint:  "try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run",
 	},
+	{codes: []string{"skill-no-detected-agent"}, hint: "try: name the agent explicitly with " +
+		"'verdict skill install --agent <name>'"},
 	{codes: []string{"bad-timeout"}, hint: "try: pass --timeout <positive-seconds> (default 300)"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},

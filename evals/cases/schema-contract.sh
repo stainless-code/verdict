@@ -28,8 +28,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-VAL="$EVAL_ROOT/schemas/validate.sh"
-SCH="$EVAL_ROOT/schemas"
+VAL="$EVAL_SKILL/schemas/validate.sh"
+SCH="$EVAL_SKILL/schemas"
 ENV="$SCH/envelope.schema.json"
 DATA="$EVAL_SANDBOX/schema-data.json"
 

@@ -13,15 +13,18 @@ import (
 // hand-written files was a re-serialization: every key, type, required list,
 // enum and description had to stay identical. An intentional published-schema
 // change updates this map in its own ticket (audit-24 drift rule); a mere
-// reformat of schemas/*.schema.json must not change it.
+// reformat of schemas/*.schema.json must not change it. The relocation of the
+// schemas to skills/verdict/schemas/ (so the registry install ships only the
+// skill) re-pinned all ten hashes: only each $id URL moved; no property,
+// required key, enum, or type changed.
 var publishedSemantics = map[string]string{
 	// D1: additive controls.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed).
-	"controls.schema.json": "082e250d59c616ecf9b1a69493cd0ffc143b51e8279c1411d46320a776024f5a",
+	"controls.schema.json": "2ddd29802d75842d77b50e6af8b7a4701cf6076d2a52ce845d6a557a60eb349c",
 	// 06a: additive corpus.schema.json (new document; no existing schema
 	// property, required key, or type changed).
-	"corpus.schema.json": "99994b94c985b183118bc49d86751d70a868fa5b914c7579aeaf454bf0fc4a2b",
-	"cost.schema.json":   "30031615315e1a60fac58a9b978b2e2ec30142001c92a78dbd25e7e34c46d217",
+	"corpus.schema.json": "9541380bcc9a1250f65874d6586db128a543a960e563d0205c6bc5da62448c75",
+	"cost.schema.json":   "81e6a11f4731b7060f8975db80b01d595a3dd2e0f06bbf6372d1501810609be2",
 	// 08: additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
@@ -31,21 +34,21 @@ var publishedSemantics = map[string]string{
 	// type changed.
 	// T3-10: additive retry_at on $defs/error (optional RFC 3339 property;
 	// no existing property, required key, or type changed).
-	"envelope.schema.json": "3cad927b2d30da030dd3dc275b1744f72c51af839489d73b23a37cfe69316b5f",
-	"findings.schema.json": "2ee11aaeb826ef09afcca6a675e7c5780ef05576c654e6f833545441921c2a26",
-	"post.schema.json":     "f706cc28f621eb668c8d621b03013f65f706a352d0ddc4da8b64068f98a3f100",
-	"record.schema.json":   "6e14c660471d31aa6a88e0cff787860a6ecdd0302cdc527eb511dde8542767fc",
-	"review.schema.json":   "75471bb0d98ac1ddbc07be485ef00d7a2777501cb0756d50fbc100b2cb054423",
+	"envelope.schema.json": "0604daa6b8da87d396fab698c6231ef1af5cacf68f5ed92e2ca7c4a9c0d993a5",
+	"findings.schema.json": "a1ec9ae1899a5c819fc4486367623e7d4db369de01d4408320330a1e758fb234",
+	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
+	"record.schema.json":   "97647229b14efa63c43aca592aa8466b246065f858b28872c6ec1198c428d7b1",
+	"review.schema.json":   "893a2274064dd5782c5cf3c2274fc11601591248a1a60e2e002fbfbf0bd301a3",
 	// T3-04: additive threads.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
-	"threads.schema.json": "bc3fe1b3b7bcc06f2eddcc5383d01145451f56bd0058655c213b7eefe1e2160f",
+	"threads.schema.json": "0dfe2a58cc8e51beede189ccc676fee3446e847336e2b72270539eb4c4eed3bc",
 	// 08-redesign: additive usage.schema.json (new handoff document; no
 	// existing schema property, required key, or type changed — the
 	// envelope fetchEstimate entry from f3a22047 is untouched).
-	"usage.schema.json": "95da162703b04193308f8c55cef95affefb4ecd278cc09e5ea3801e061be999e",
+	"usage.schema.json": "143473d20d0e0d140432356d9254554b969b9c71290d61ec3f5ab821e2b6bc69",
 }
 
 // TestGeneratedSchemasPreservePublishedSemantics proves the generated files

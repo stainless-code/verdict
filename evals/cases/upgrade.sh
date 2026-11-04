@@ -18,6 +18,8 @@
 #       dry-run touches nothing, foreign channels refuse with the owner command.
 #   U8  signature policy: checksum-only warns loudly, VERDICT_REQUIRE_SIGNATURE=1
 #       fails closed without cosign.
+#   U9  receipt-only detection: the receipt beside the binary names the channel
+#       with VERDICT_INSTALL unset; a copy without one is still unknown.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -128,6 +130,23 @@ fi
 BASE_URL=""
 [ -z "$PORT" ] || BASE_URL="http://127.0.0.1:$PORT"
 
+# run_cli_bare <binary> [args...] runs with VERDICT_INSTALL unset, so the
+# channel has to come from the receipt beside the binary. No network: every
+# call here is a --dry-run plan.
+run_cli_bare() {
+  local bin="$1"
+  shift
+  set +e
+  (
+    cd "$EVAL_SANDBOX" || exit 99
+    env -u VERDICT_INSTALL HOME="$CASE_HOME" SHELL=/bin/zsh PATH="$CLEANBIN" \
+      VERDICT_DOWNLOAD_URL="" \
+      "$bin" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR"
+  )
+  EVAL_STATUS=$?
+  set -e
+}
+
 # run_cli <binary> <download-url-or-empty> [args...]
 run_cli() {
   local bin="$1" base="$2"
@@ -179,7 +198,7 @@ if [ -n "$PORT" ]; then
     bad "U1 the replaced binary is unchanged or mis-versioned"
   fi
   if grep -Fq -- '--certificate-identity-regexp' "$COSIGN_LOG" \
-    && grep -Fq 'stainless-code/verdict/' "$COSIGN_LOG" \
+    && grep -Fq -- "$(jq -r .cosign.identityRegexp "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG" \
     && grep -Fq -- '--certificate-oidc-issuer' "$COSIGN_LOG" \
     && grep -Fq "$(jq -r .cosign.issuer "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG"; then
     good "U1 cosign verifies the contract identity/issuer"
@@ -264,6 +283,29 @@ if [ -n "$PORT" ]; then
   else
     bad "U8 checksum-only fallback exit $st"
   fi
+fi
+
+# --- U9: the receipt beside the binary is enough; a copy without one is not ---
+fresh_install
+run_cli_bare "$INSTALL_DIR/verdict" upgrade --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(envelope_data .data.channel)" = "installer-managed" ] \
+  && [ "$(envelope_data .data.action)" = "self-replace" ]; then
+  good "U9 the receipt beside the binary identifies the channel with no VERDICT_INSTALL"
+else
+  bad "U9 receipt-only detection exit $EVAL_STATUS (data $(envelope_data .data.channel)/$(envelope_data .data.action))"
+fi
+FOREIGN_DIR="$EVAL_SANDBOX/foreign-bin"
+rm -rf "$FOREIGN_DIR"
+mkdir -p "$FOREIGN_DIR"
+cp "$EVAL_CLI" "$FOREIGN_DIR/verdict"
+run_cli_bare "$FOREIGN_DIR/verdict" upgrade --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(envelope_data .data.channel)" = "unknown" ] \
+  && [ "$(envelope_data .data.action)" = "refuse" ]; then
+  good "U9 a copy with no receipt stays unknown and refuses"
+else
+  bad "U9 foreign copy exit $EVAL_STATUS (data $(envelope_data .data.channel)/$(envelope_data .data.action))"
 fi
 
 # --- U5: npm delegation acts, streams, and propagates the exit code ---

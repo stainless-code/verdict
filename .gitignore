@@ -27,3 +27,9 @@ bin/
 
 # Python bytecode from examples/python-client.
 __pycache__/
+
+# The skill dir ships tracked files only. Dev state beside SKILL.md stays out:
+# `make build` links bin -> ../../bin (a symlink, which `bin/` above does not
+# match), and a bootstrapped copy writes bin/ and a receipt.
+skills/verdict/bin
+skills/verdict/.verdict-managed

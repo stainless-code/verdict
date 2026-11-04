@@ -164,7 +164,7 @@ try {
   $expectedArchive = $row.file.Replace('{version}', '1.2.3')
   $source = [System.IO.File]::ReadAllText($Installer)
   if ($source.Contains($contract.checksums) -and $source.Contains($contract.signatureBundle) `
-      -and $source.Contains($contract.cosign.issuer) -and $source.Contains('refs/tags/v') `
+      -and $source.Contains($contract.cosign.issuer) -and $source.Contains($contract.cosign.identityRegexp) `
       -and $source.Contains('https://github.com/stainless-code/verdict/releases/latest')) {
     Good 'install.ps1 names the contract checksums, bundle, and cosign issuer'
   } else {
@@ -258,7 +258,17 @@ try {
   } else {
     Bad "no post-verify --version smoke: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
   }
-  if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog 'refs/tags/v') `
+  if (Log-Contains 'Next: verdict skill install --detect') {
+    Good 'installer points at the skill next step'
+  } else {
+    Bad "no skill next step: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
+  }
+  # cmd.exe re-parses the arguments of a .cmd stub and eats a leading '^', so the
+  # log carries the contract pattern without its anchor. install.ps1's own source is
+  # asserted above to carry the anchored value, so the tail has to match exactly
+  # here; comparing the anchored string would fail on a correct installer.
+  $loggedPattern = $contract.cosign.identityRegexp.TrimStart('^')
+  if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog $loggedPattern) `
       -and (File-Contains $CosignLog '--certificate-oidc-issuer') -and (File-Contains $CosignLog $contract.cosign.issuer)) {
     Good 'cosign is invoked with the contract identity and issuer'
   } else {
@@ -273,6 +283,11 @@ try {
     Good 'checksum mismatch refuses and leaves the old binary'
   } else {
     Bad "checksum mismatch $(Status-Detail)"
+  }
+  if (Log-Contains 'Next:') {
+    Bad 'a refused install printed a next step'
+  } else {
+    Good 'a refused install prints no next step'
   }
   $script:Pin = '1.2.3'
   Invoke-Installer

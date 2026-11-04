@@ -23,6 +23,10 @@ import (
 // promptFiles lists the assembled agent prompt in hash order.
 var promptFiles = []string{"SKILL.md", "prompts/diagrams.md", "prompts/review.md", "prompts/system.md"}
 
+// checkoutSkillDir is where a source checkout keeps the skill payload (the
+// directory `npx skills add` installs); skillfs.Dir names the same path.
+const checkoutSkillDir = "skills/verdict"
+
 // buildVersion is the release version injected at link time (GoReleaser
 // -X main.version); empty for source builds, which read package.json.
 var buildVersion string
@@ -68,7 +72,7 @@ func ToolVersion(root string) string {
 func PromptsHash(root string) string {
 	h := sha256.New()
 	for _, f := range promptFiles {
-		raw, err := os.ReadFile(filepath.Join(root, f))
+		raw, err := readPromptFile(root, f)
 		if err != nil {
 			continue
 		}
@@ -77,6 +81,19 @@ func PromptsHash(root string) string {
 		h.Write([]byte("\n"))
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// readPromptFile reads one prompt-set file from root: flat when root is a
+// skill directory, else from the checkout's skills/verdict.
+func readPromptFile(root, name string) ([]byte, error) {
+	raw, err := os.ReadFile(filepath.Join(root, name))
+	if err == nil {
+		return raw, nil
+	}
+	if alt, altErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(checkoutSkillDir), name)); altErr == nil {
+		return alt, nil
+	}
+	return nil, err //nolint:wrapcheck // the caller only tests for failure
 }
 
 // CostModel returns the first model of the latest cost record, or "" when

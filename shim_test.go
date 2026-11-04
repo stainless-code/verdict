@@ -39,7 +39,7 @@ func shimEnv(t *testing.T, path string, extra map[string]string) []string {
 func skillCopy(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	body, err := os.ReadFile(filepath.Join("scripts", "verdict"))
+	body, err := os.ReadFile(filepath.Join("skills", "verdict", "scripts", "verdict"))
 	if err != nil {
 		t.Fatal(err)
 	}

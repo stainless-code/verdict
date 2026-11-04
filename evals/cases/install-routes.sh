@@ -50,7 +50,7 @@ fi
 mkdir -p "$EVAL_SANDBOX/regunpack"
 tar -xzf "$TARBALL" -C "$EVAL_SANDBOX/regunpack"
 PKG="$EVAL_SANDBOX/regunpack/package"
-if [ -f "$PKG/SKILL.md" ] && [ -f "$PKG/scripts/verdict-complete.sh" ] \
+if [ -f "$PKG/skills/verdict/SKILL.md" ] && [ -f "$PKG/scripts/verdict-complete.sh" ] \
   && [ ! -e "$PKG/scripts/review.sh" ]; then
   good "registry copy carries the payload (SKILL.md + remaining scripts, no review.sh)"
 else
@@ -95,7 +95,7 @@ for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
   # receipt names the same tool version.
   while IFS= read -r rel; do
     [ -n "$rel" ] || continue
-    cmp -s "$PKG/$rel" "$root/verdict/$rel" || copy_ok="false"
+    cmp -s "$PKG/skills/verdict/$rel" "$root/verdict/$rel" || copy_ok="false"
   done <<<"$inventory"
   [ "$(jq -r '.tool // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "verdict" ] || copy_ok="false"
   [ "$(jq -r '.version // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] || copy_ok="false"
@@ -128,8 +128,8 @@ fi
 
 # --- R3: README routes registry users away from install.sh ---
 REG_RANGE="$EVAL_SANDBOX/readme-registry.txt"
-awk '/registry route/,/source route/' "$EVAL_ROOT/README.md" >"$REG_RANGE"
-if grep -q -F "NOT shipped in the npm tarball" "$REG_RANGE"; then
+grep -F "registry route" "$EVAL_ROOT/README.md" >"$REG_RANGE" || true
+if grep -q -F "not shipped in the npm tarball" "$REG_RANGE"; then
   good "README says install.sh is not shipped in the registry route"
 else
   bad "README registry block lost the install.sh note"
@@ -137,8 +137,8 @@ fi
 assert_stream_nogrep "README never offers ./install.sh to registry users" "$REG_RANGE" "./install.sh" "-F"
 
 # --- R4: SKILL.md resolves from the installed copy, not just the checkout ---
-if grep -q "never beside the tool" "$EVAL_ROOT/SKILL.md" \
-  && grep -q 'installed `verdict/` skill dir' "$EVAL_ROOT/SKILL.md"; then
+if grep -q "never beside the tool" "$EVAL_SKILL/SKILL.md" \
+  && grep -q 'installed `verdict/` skill dir' "$EVAL_SKILL/SKILL.md"; then
   good "SKILL.md states the command-resolution rule"
 else
   bad "SKILL.md lost the where-commands-run block"
@@ -169,7 +169,9 @@ fi
 NOGIT_BASE="$(mktemp -d "${TMPDIR:-/tmp}/verdict-nogit.XXXXXX")"
 NOGIT="$NOGIT_BASE/nogit"
 mkdir -p "$NOGIT"
-cp "$EVAL_ROOT/install-skill.sh" "$EVAL_ROOT/SKILL.md" "$NOGIT/"
+cp "$EVAL_ROOT/install-skill.sh" "$NOGIT/"
+mkdir -p "$NOGIT/skills/verdict"
+cp "$EVAL_SKILL/SKILL.md" "$NOGIT/skills/verdict/"
 mkdir -p "$NOGIT/scripts"
 cp "$EVAL_ROOT"/scripts/*.sh "$NOGIT/scripts/"
 set +e
@@ -205,7 +207,7 @@ ln -s "$EVAL_STUBBIN/gh" "$MINBIN/gh"
 MINHOME="$EVAL_SANDBOX/fakehome-minbin"
 MINLINKS="$EVAL_SANDBOX/minbin-skills"
 mkdir -p "$MINHOME" "$MINLINKS"
-ln -s "$EVAL_ROOT" "$MINLINKS/verdict"
+ln -s "$EVAL_SKILL" "$MINLINKS/verdict"
 set +e
 (cd "$EVAL_SANDBOX" && HOME="$MINHOME" PATH="$MINBIN" GH_STUB_DOCTOR=repo \
   bash "$EVAL_ROOT/install-skill.sh" --check --dir "$MINLINKS" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")

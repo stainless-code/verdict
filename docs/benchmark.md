@@ -38,7 +38,7 @@ attributable per-model rates.
 ## Corpus format
 
 One case, one manifest, published as
-[`schemas/corpus.schema.json`](../schemas/corpus.schema.json):
+[`schemas/corpus.schema.json`](../skills/verdict/schemas/corpus.schema.json):
 
 ```json
 {

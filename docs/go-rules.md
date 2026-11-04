@@ -83,7 +83,7 @@ this repo, and the repo files stay the truth for what is gated:
 - `os.Root` confinement; `crypto/rand` secrets; validated edge input (GO-SEC-01/02/04). — partly: `lint:depguard` (`math/rand`), `lint:gosec`, `lint:nosprintfhostport`; `os.Root` is review-only, and operator-supplied bundle paths are exempt by decision.
 - Exit-code contract; `--json/--jq` exporters; generated completions/manpages (GO-CLI-02/06/07). — partly: exit codes are frozen constants in `internal/cli` with tests; no generated completions or manpages.
 - Start std-`flag` under a zero-dep policy; graduate to cobra when justified (GO-CLI-08). — partly: `go.mod` carries no third-party requirements; argv parsing is hand-rolled in `internal/cli` to keep the frozen contract byte-identical.
-- `embed` prompts; stamped `--version` + `-trimpath` builds (GO-CLI-09). — partly: `skillfs.go` embeds `SKILL.md`/`prompts`/`schemas`; `make build` and goreleaser pass `-trimpath`.
+- `embed` prompts; stamped `--version` + `-trimpath` builds (GO-CLI-09). — partly: `skillfs.go` embeds `skills/verdict/` (`SKILL.md`, `prompts`, `schemas`, `scripts/verdict`); `make build` and goreleaser pass `-trimpath`.
 - flags > env > file > defaults; report secret sources; lenient config reads (GO-CONFIG-01/02/03). — partly: `internal/cli` precedence + `internal/cli/flags_test.go`.
 - Advisory `flock` across read-modify-write; JSON schema libs where beyond `DisallowUnknownFields` (GO-ATOMIC-02, GO-JSON-04); tag linters apply to new types only, legacy wire fields frozen (GO-JSON-03). — partly: `lint:musttag,tagalign`; the rest is review-only.
 - Progress as stderr attrs + JSON error shapes; log after flag parsing (GO-OBS-01/02). — partly: envelope error-shape goldens.

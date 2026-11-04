@@ -67,13 +67,14 @@ fi
 # and the top-level docs the skill and both installers promise
 # (SKILL.md, README.md, LICENSE).
 {
-  echo "SKILL.md"
+  echo "skills/verdict/SKILL.md"
+  echo "skills/verdict/scripts/verdict"
   echo "README.md"
   echo "LICENSE"
   echo "package.json"
-  for f in "$EVAL_ROOT"/prompts/*.md; do echo "prompts/$(basename "$f")"; done
+  for f in "$EVAL_SKILL"/prompts/*.md; do echo "skills/verdict/prompts/$(basename "$f")"; done
   for f in "$EVAL_ROOT"/scripts/*.sh; do echo "scripts/$(basename "$f")"; done
-  for f in "$EVAL_ROOT"/schemas/*.schema.json; do echo "schemas/$(basename "$f")"; done
+  for f in "$EVAL_SKILL"/schemas/*.schema.json; do echo "skills/verdict/schemas/$(basename "$f")"; done
 } | LC_ALL=C sort -u > "$REQUIRED"
 
 missing_from() { # $1 = packed-list file; prints required entries absent there
@@ -99,9 +100,9 @@ refs_seen=0
 while IFS= read -r ref; do
   [ -n "$ref" ] || continue
   refs_seen=$((refs_seen + 1))
-  [ -f "$EVAL_ROOT/$ref" ] || { refs_ok="false"; bad "SKILL.md names $ref, missing on disk"; }
-  grep -q -x -F "$ref" "$PACKED" || { refs_ok="false"; bad "SKILL.md names $ref, missing from the tarball"; }
-done < <(grep -o -E '(scripts|prompts)/[A-Za-z0-9_.-]+' "$EVAL_ROOT/SKILL.md" | LC_ALL=C sort -u)
+  [ -f "$EVAL_SKILL/$ref" ] || { refs_ok="false"; bad "SKILL.md names $ref, missing on disk"; }
+  grep -q -x -F "skills/verdict/$ref" "$PACKED" || { refs_ok="false"; bad "SKILL.md names $ref, missing from the tarball"; }
+done < <(grep -o -E '(scripts|prompts)/[A-Za-z0-9_.-]+' "$EVAL_SKILL/SKILL.md" | LC_ALL=C sort -u)
 if [ "$refs_ok" = "true" ] && [ "$refs_seen" -gt 0 ]; then
   good "all $refs_seen SKILL.md script/prompt references resolve on disk and in the tarball"
 elif [ "$refs_seen" -eq 0 ]; then
@@ -120,12 +121,12 @@ fi
 # Drop one required file from a copy of the packed list: the comparator must
 # report exactly that gap, proving a newly referenced file left out of
 # package.json `files` breaks the suite instead of an install.
-grep -v -x -F "prompts/review.md" "$PACKED" > "$TAMPERED"
+grep -v -x -F "skills/verdict/prompts/review.md" "$PACKED" > "$TAMPERED"
 if gaps="$(missing_from "$TAMPERED")"; then
-  bad "comparator passed a packed list missing prompts/review.md (drift would ship)"
+  bad "comparator passed a packed list missing skills/verdict/prompts/review.md (drift would ship)"
 else
   case "$gaps" in
-    *prompts/review.md*) good "comparator flags a dropped file (prompts/review.md) as missing" ;;
+    *skills/verdict/prompts/review.md*) good "comparator flags a dropped file (skills/verdict/prompts/review.md) as missing" ;;
     *) bad "comparator flagged wrong gap: $gaps" ;;
   esac
 fi

@@ -16,7 +16,7 @@ verdict init --preset standard --yes
 verdict fetch owner/repo 123
 
 # 2. review with ANY agent (the installed skill is the prompt; add it with
-#    `verdict skill install --agent <name>` if it is missing):
+#    `verdict skill install --detect` if it is missing):
 #    Point the agent at .review/123/. It reads .review/123/full.diff fully via
 #    .review/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
 #    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
@@ -181,7 +181,7 @@ whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
 and normalize `PR.json` to one schema. Every provider bundle also writes
 `threads.json` (`schema_version: "1"`, published as
-[`schemas/threads.schema.json`](../schemas/threads.schema.json)): the raw
+[`schemas/threads.schema.json`](../skills/verdict/schemas/threads.schema.json)): the raw
 files stay as-is, and the feed is the authoritative PR conversation. Review
 threads come from each host's native source — GitHub GraphQL `reviewThreads`
 (REST has no resolution), GitLab discussions (`resolved`/`resolvable`), Azure
@@ -396,7 +396,7 @@ per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
 byte-identical. It reads the trusted prompts from the current directory, so
-run it from the skill/checkout carrying `SKILL.md` and `prompts/`. Missing
+run it from an installed skill dir or a checkout (it falls back to the checkout's `skills/verdict/`) carrying `SKILL.md` and `prompts/`. Missing
 bundle files skip silently, but missing trusted
 prompt files fail loudly: no `prompts/system.md` refuses typed
 (`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
@@ -873,12 +873,13 @@ you stand).
 - **Updating** (`verdict upgrade`): explicit only — no background check, no
   nag, no daemon, and the review path never calls it. The command resolves
   `os.Executable()` through symlinks and maps the result to one channel:
-  installer-managed (receipt in `~/.verdict/bin` / `VERDICT_INSTALL`) does a
-  verified self-replace (archive + `checksums.txt` + sigstore bundle; cosign
-  identity/issuer when cosign is present, loud checksum-only fallback, and
-  `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract only the
-  binary; `--version` smoke test; atomic replace with rollback). Global
-  npm/pnpm/bun/yarn installs run that manager's global update
+  installer-managed (a receipt beside the running binary that no package
+  manager or skill copy owns, in `~/.verdict/bin`, or in `VERDICT_INSTALL`)
+  does a verified self-replace (archive + `checksums.txt` + sigstore bundle;
+  cosign identity/issuer when cosign is present, loud checksum-only
+  fallback, and `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract
+  only the binary; `--version` smoke test; atomic replace with rollback).
+  Global npm/pnpm/bun/yarn installs run that manager's global update
   (`npm i -g @stainless-code/verdict@latest`, `pnpm add -g …`,
   `bun add -g …`, `yarn global add …`) after printing the exact command and
   with no prompt; Homebrew runs
@@ -915,25 +916,37 @@ you stand).
   `<skillsdir>/verdict/bin/verdict`. It is idempotent and offline afterwards;
   no review ever downloads. Refresh the skill with `npx skills update`.
 - **Source checkout** (`git clone` + `make build` + `./install-skill.sh`):
-  symlinks the checkout into the agent skill dirs (nine agents,
+  symlinks `skills/verdict` into the agent skill dirs (nine agents,
   `--detect`/`--all`, doctor-gated). Updates via `git pull`;
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only. (Before 0.4 this script was named
   `install.sh`; the name now belongs to the binary installer.)
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
   `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
-  never skew from the binary. `verdict skill` prints `SKILL.md` (default
+  never skew from the binary. In the repository they are the one
+  `skills/verdict/` directory, which holds nothing else. The skills CLI
+  (`npx skills add stainless-code/verdict`) copies that directory and no
+  more, so the registry install and `verdict skill install` write the same
+  files. `verdict skill` prints `SKILL.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
-  `verdict skill install` (flags: `--dir <skills-dir>` or `--agent <name>`,
-  `--force`, `--dry-run`, `--json`) writes the payload plus a
+  `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
+  `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
   create/update/keep/blocked, refuses
   a target without a verdict receipt unless `--force`, never removes foreign
   files, never prompts, and makes no network call. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
   `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
-  shared `~/.agents/skills/verdict` slot.
+  shared `~/.agents/skills/verdict` slot. `--detect` installs into every one
+  of those agents whose skills dir already exists and holds a file, and names
+  each target's result; with none present it refuses typed
+  (`skill-no-detected-agent`) and asks for `--agent <name>`. It cannot be
+  combined with `--dir` or `--agent`, every target keeps the receipt and
+  `--force` rules above, and a blocked or conflicting target refuses before any
+  target is written. It does not create a missing agent dir, and unlike
+  `install-skill.sh --detect` it skips `~/.agents/skills` when that dir is
+  absent or empty.
 
 ## Publish footer + attribution knobs
 
@@ -1471,7 +1484,7 @@ quality — the prompts do.
 ## Store changelog (additive within schema_version "1" — renames never happen, only additions)
 
 Release versioning (changesets → Version PR → npm + GitHub Release) lives in
-`README ## Versioning`. This section tracks store-schema evolution only —
+`CONTRIBUTING.md ## Versioning`. This section tracks store-schema evolution only —
 verbs and features ship in the release changelog.
 
 - Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.

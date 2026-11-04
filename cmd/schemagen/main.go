@@ -1,6 +1,6 @@
 // Command schemagen writes (or checks) the published schemas from the Go
 // shape types in internal/schemagen. Run it through `make schemas` or
-// `go generate ./...`; never edit schemas/*.schema.json by hand.
+// `go generate ./...`; never edit skills/verdict/schemas/*.schema.json by hand.
 package main
 
 import (
@@ -105,8 +105,8 @@ func execute(opts options, stdout, stderr io.Writer) error {
 func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs := flag.NewFlagSet("schemagen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	write := fs.Bool("write", false, "rewrite schemas/*.schema.json instead of checking them")
-	dir := fs.String("dir", "", "schemas directory (default: <repo>/schemas)")
+	write := fs.Bool("write", false, "rewrite skills/verdict/schemas/*.schema.json instead of checking them")
+	dir := fs.String("dir", "", "schemas directory (default: <repo>/skills/verdict/schemas)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, wrapError("parse flags", err)
 	}
@@ -125,7 +125,7 @@ func resolveDir(dir string) (string, error) {
 	if err != nil {
 		return "", wrapError("locate repository root", err)
 	}
-	return filepath.Join(root, "schemas"), nil
+	return filepath.Join(root, "skills", "verdict", "schemas"), nil
 }
 
 // writeAll writes every generated file below dir.

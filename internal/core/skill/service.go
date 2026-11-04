@@ -90,10 +90,12 @@ type Inventory struct {
 	Files   []string
 }
 
-// Plan is an install preview or outcome.
+// Plan is an install preview or outcome. Agent names the target's agent in a
+// --detect run and is empty for a single-target install.
 type Plan struct {
 	Name           string
 	Version        string
+	Agent          string
 	Target         string
 	Status         string
 	ReceiptVersion string
@@ -137,17 +139,26 @@ func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if req.DryRun {
 		return plan, nil
 	}
-	if plan.TargetFile {
-		return Plan{}, refuse(codeTargetFile, plan.Target+" exists and is not a directory; refusing to replace it")
-	}
-	if plan.Status == StatusBlocked && !req.Force {
-		return Plan{}, refuse(codeForeign, plan.Target+" is a non-verdict skill dir (no "+ReceiptName+
-			" receipt); re-run with --force to write only verdict's payload files")
+	if ref := checkApply(req, &plan); ref != nil {
+		return Plan{}, ref
 	}
 	if ref := apply(req, &plan); ref != nil {
 		return Plan{}, ref
 	}
 	return plan, nil
+}
+
+// checkApply refuses a planned target that must not be written: a slot that is
+// not a directory, or a foreign slot without --force.
+func checkApply(req *Request, plan *Plan) *core.RefusalError {
+	if plan.TargetFile {
+		return refuse(codeTargetFile, plan.Target+" exists and is not a directory; refusing to replace it")
+	}
+	if plan.Status == StatusBlocked && !req.Force {
+		return refuse(codeForeign, plan.Target+" is a non-verdict skill dir (no "+ReceiptName+
+			" receipt); re-run with --force to write only verdict's payload files")
+	}
+	return nil
 }
 
 // planInstall classifies the target without writing.
@@ -160,6 +171,11 @@ func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if ref != nil {
 		return Plan{}, ref
 	}
+	return planAt(files, target)
+}
+
+// planAt classifies one resolved target without writing.
+func planAt(files Inventory, target string) (Plan, *core.RefusalError) {
 	plan := Plan{
 		Name: files.Name, Version: files.Version, Target: target, Files: files.Files,
 	}

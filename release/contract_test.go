@@ -246,24 +246,82 @@ func checkContractMeta(t *testing.T, doc *contractDoc) {
 	if doc.Formula.Tap == "" || doc.Formula.Class == "" || doc.Formula.Homepage == "" {
 		t.Errorf("formula incomplete: %+v", doc.Formula)
 	}
-	checkCosignPolicy(t, &doc.Cosign)
+	checkCosignPolicy(t, doc)
 }
 
-// checkCosignPolicy validates the signing identity and its regexp form.
-func checkCosignPolicy(t *testing.T, cosign *cosignPolicy) {
+// releaseWorkflow is the workflow file whose OIDC token signs the release.
+const releaseWorkflow = ".github/workflows/release.yml"
+
+// checkCosignPolicy validates the signing identity against the trigger the
+// Release workflow actually runs under, and its exact regexp form.
+func checkCosignPolicy(t *testing.T, doc *contractDoc) {
 	t.Helper()
-	if !strings.Contains(cosign.Identity, "refs/tags/v*") || cosign.Issuer == "" {
-		t.Errorf("cosign incomplete: %+v", *cosign)
+	if doc.Cosign.Issuer == "" {
+		t.Error("cosign.issuer is empty")
 	}
-	if want := deriveIdentityRegexp(cosign.Identity); cosign.IdentityRegexp != want {
+	if want := releaseIdentity(t, doc); doc.Cosign.Identity != want {
+		t.Errorf("cosign.identity = %q; want the SAN a %s run mints = %q",
+			doc.Cosign.Identity, releaseWorkflow, want)
+	}
+	if want := deriveIdentityRegexp(doc.Cosign.Identity); doc.Cosign.IdentityRegexp != want {
 		t.Errorf("cosign.identityRegexp = %q; want the expansion of identity %q = %q",
-			cosign.IdentityRegexp, cosign.Identity, want)
+			doc.Cosign.IdentityRegexp, doc.Cosign.Identity, want)
 	}
+}
+
+// releaseIdentity is the certificate SAN the release run carries. GitHub sets
+// the OIDC `sub` claim to <repo>/<workflow>@<ref that fired the run>, and
+// release.yml fires on a branch push, so the ref is `refs/heads/<branch>` —
+// never the tag the release is later published under. Deriving it from the
+// workflow keeps the contract honest: change the trigger and this fails
+// instead of every signed install failing at verification time.
+func releaseIdentity(t *testing.T, doc *contractDoc) string {
+	t.Helper()
+	return "https://github.com/" + doc.Repo + "/" + releaseWorkflow +
+		"@refs/heads/" + releaseTriggerBranch(t)
+}
+
+// releaseTriggerBranch returns the single branch under `on.push.branches` in
+// the Release workflow. A tag trigger is rejected: GitHub reports the tag ref
+// for those runs, so the identity would have to change with it.
+func releaseTriggerBranch(t *testing.T) string {
+	t.Helper()
+	branches, tags := pushTriggers(repoFile(t, releaseWorkflow))
+	if tags {
+		t.Fatalf("%s also fires on a tag; the signing identity would change with the ref", releaseWorkflow)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("%s on.push.branches = %v; want exactly one branch", releaseWorkflow, branches)
+	}
+	return branches[0]
+}
+
+// pushTriggers reads the `on.push` block of a workflow body: its branch list
+// and whether it also filters tags. The block ends at the next top-level key.
+func pushTriggers(body string) (branches []string, tags bool) {
+	inPush := false
+	for line := range strings.SplitSeq(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		switch {
+		case trimmed == "":
+		case !inPush:
+			inPush = trimmed == "push:" && indent == 2
+		case indent <= 2:
+			return branches, tags
+		case strings.HasPrefix(trimmed, "tags:"):
+			tags = true
+		case strings.HasPrefix(trimmed, "- "):
+			branches = append(branches, strings.TrimPrefix(trimmed, "- "))
+		}
+	}
+	return branches, tags
 }
 
 // deriveIdentityRegexp is the independent oracle for cosign.identityRegexp:
-// the installers take a regexp, GoReleaser signs with the tag wildcard, and
-// the two representations must stay equivalent.
+// the installers take a regexp and the contract stores the SAN it must match,
+// so the two representations must stay equivalent. A `v*` suffix (the
+// tag-wildcard form) expands to a version pattern; anything else is exact.
 func deriveIdentityRegexp(identity string) string {
 	if prefix, ok := strings.CutSuffix(identity, "v*"); ok {
 		return "^" + regexp.QuoteMeta(prefix) + `v[0-9]+\.[0-9]+\.[0-9]+.*$`
@@ -888,6 +946,13 @@ func TestInstallersMatchContract(t *testing.T) {
 		"$ChecksumsName = '" + doc.Checksums + "'",
 		"$BundleName = '" + doc.SignatureBundle + "'",
 		"$allowed = " + membersArray(windows.Members),
+	})
+	// The by-hand verification command in the contributor docs is a third copy
+	// of the identity; a reader who runs it must reach the same verdict as the
+	// installers, so it drifts here too.
+	requireLiterals(t, "CONTRIBUTING.md", repoFile(t, "CONTRIBUTING.md"), []string{
+		"--certificate-identity-regexp '" + doc.Cosign.IdentityRegexp + "'",
+		"--certificate-oidc-issuer " + doc.Cosign.Issuer,
 	})
 }
 

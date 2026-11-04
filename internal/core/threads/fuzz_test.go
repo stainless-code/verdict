@@ -45,7 +45,7 @@ func FuzzProviderMappers(f *testing.F) {
 		f.Add([]byte(s))
 	}
 	seedThreadFixtures(f)
-	checker, err := schemacheck.Load("../../../schemas/threads.schema.json", "")
+	checker, err := schemacheck.Load("../../../skills/verdict/schemas/threads.schema.json", "")
 	if err != nil {
 		f.Fatal(err)
 	}

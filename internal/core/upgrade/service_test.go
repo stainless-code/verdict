@@ -377,6 +377,226 @@ func TestDetectInstaller(t *testing.T) {
 	}
 }
 
+// TestDetectInstallerWithoutEnvVar proves an install made with VERDICT_INSTALL
+// stays installer-managed once the variable is gone: the receipt beside the
+// running binary is the fact, not the environment. Before the directory was
+// adopted from the executable, this reported `unknown` and refused.
+func TestDetectInstallerWithoutEnvVar(t *testing.T) {
+	dir, target, _ := installerLayout(t)
+	req := baseRequest(t)
+	req.Executable = target
+	req.DryRun = true
+	resp, ref := upgrade.Run(context.Background(), &req)
+	if ref != nil {
+		t.Fatalf("dry-run refused: %+v", ref)
+	}
+	if resp.Channel != upgrade.ChannelInstaller || resp.Action != upgrade.ActionSelfReplace {
+		t.Fatalf("response = %s/%s; want installer-managed/self-replace", resp.Channel, resp.Action)
+	}
+	if resp.Reason != "" {
+		t.Errorf("reason = %q; want an unremarked installer plan", resp.Reason)
+	}
+	if resp.Target != target {
+		t.Errorf("target = %q; want %q", resp.Target, target)
+	}
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) != 2 {
+		t.Errorf("dry-run changed %s: %v", dir, entries)
+	}
+}
+
+// TestSelfReplaceWithoutEnvVar proves the derived directory is the one the
+// upgrade stages in and writes to, not the default ~/.verdict/bin.
+func TestSelfReplaceWithoutEnvVar(t *testing.T) {
+	dir, target, receipt := installerLayout(t)
+	server := releaseServer(t, "1.2.3", releaseFiles(t, "1.2.3", []byte("new-binary"), false), nil)
+	req := selfReplaceRequest(t, server, dir, target, "1.2.3")
+	delete(req.Env, "VERDICT_INSTALL")
+	resp, ref := upgrade.Run(context.Background(), &req)
+	if ref != nil {
+		t.Fatalf("Run refused: %+v", ref)
+	}
+	if resp.Channel != upgrade.ChannelInstaller || resp.Action != upgrade.ActionSelfReplace {
+		t.Fatalf("response = %s/%s; want installer-managed/self-replace", resp.Channel, resp.Action)
+	}
+	if raw := readFile(t, target); string(raw) != "new-binary" {
+		t.Errorf("target = %q; want new-binary", raw)
+	}
+	if raw := readFile(t, receipt); !strings.Contains(string(raw), `"version":"1.2.3"`) {
+		t.Errorf("receipt = %q; want 1.2.3", raw)
+	}
+	if _, err := os.Stat(filepath.Join(req.Env["HOME"], ".verdict")); !os.IsNotExist(err) {
+		t.Errorf("the default install dir was touched: %v", err)
+	}
+	assertNoStaging(t, dir)
+}
+
+// TestAdoptInstallerDirRefuses proves the fallback never widens the channel:
+// only a receipt that names the running file, in its own directory, counts.
+func TestAdoptInstallerDirRefuses(t *testing.T) {
+	cases := []struct {
+		prepare func(t *testing.T, dir string) string
+		name    string
+	}{
+		{name: "no receipt", prepare: writeForeignBinary},
+		{name: "receipt in a parent dir", prepare: writeOrphanReceipt},
+		{name: "receipt names another file", prepare: writeRenamedCopy},
+		{name: "receipt from a foreign installer", prepare: writeForeignInstallerReceipt},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertUnknownChannel(t, tc.prepare(t, resolvedTempDir(t)))
+		})
+	}
+}
+
+// assertUnknownChannel requires a dry-run plan that refuses as unknown.
+func assertUnknownChannel(t *testing.T, target string) {
+	t.Helper()
+	req := baseRequest(t)
+	req.Executable = target
+	req.DryRun = true
+	resp, ref := upgrade.Run(context.Background(), &req)
+	if ref != nil {
+		t.Fatalf("dry-run refused: %+v", ref)
+	}
+	if resp.Channel != upgrade.ChannelUnknown || resp.Action != upgrade.ActionRefuse {
+		t.Fatalf("response = %s/%s; want unknown/refuse for %s", resp.Channel, resp.Action, target)
+	}
+}
+
+// TestAdoptInstallerDirKeepsOwner proves the receipt is a hint, not an
+// authority: a valid receipt beside a binary inside a directory a package
+// manager, Homebrew, a project's node_modules or a skill copy owns leaves that
+// channel in place. Self-replacing there would write over files the owner
+// tracks (and `uninstall` would delete them), which is exactly what the
+// channel table promises never happens.
+func TestAdoptInstallerDirKeepsOwner(t *testing.T) {
+	home := resolvedTempDir(t)
+	cases := []struct {
+		name    string
+		exe     string
+		action  string
+		channel string
+	}{
+		{
+			name:    "npm global root",
+			channel: upgrade.ChannelNPM,
+			action:  upgrade.ActionDelegate,
+			exe: filepath.Join(home, ".npm-global", "lib", "node_modules", "@stainless-code",
+				"verdict", "bin", "platforms", "linux-amd64", "verdict"),
+		},
+		{
+			name:    "homebrew cellar",
+			channel: upgrade.ChannelBrew,
+			action:  upgrade.ActionDelegate,
+			exe:     filepath.Join(home, "homebrew", "Cellar", "verdict", "0.4.0", "bin", "verdict"),
+		},
+		{
+			name:    "project-local",
+			channel: upgrade.ChannelProject,
+			action:  upgrade.ActionRefuse,
+			exe:     filepath.Join(home, "proj", "node_modules", ".bin", "verdict"),
+		},
+		{
+			name:    "skill copy",
+			channel: upgrade.ChannelSkill,
+			action:  upgrade.ActionRefuse,
+			exe:     filepath.Join(home, ".agents", "skills", "verdict", "bin", "verdict"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertOwnerChannel(t, home, tc.exe, tc.channel, tc.action)
+		})
+	}
+}
+
+// assertOwnerChannel seeds a binary and an acceptable receipt into exe's
+// directory, so only the owner check can keep the manager's channel, and
+// requires that channel and action from a dry run.
+func assertOwnerChannel(t *testing.T, home, exe, channel, action string) {
+	t.Helper()
+	dir := filepath.Dir(exe)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := writeBinary(t, dir, filepath.Base(exe), "managed-elsewhere")
+	writeReceipt(t, dir, receiptBodyFor(filepath.Base(exe), "install.sh"))
+	req := baseRequest(t)
+	req.Env["HOME"] = home
+	req.Executable = target
+	req.DryRun = true
+	resp, ref := upgrade.Run(context.Background(), &req)
+	if ref != nil {
+		t.Fatalf("dry-run refused: %+v", ref)
+	}
+	if resp.Channel != channel || resp.Action != action {
+		t.Fatalf("response = %s/%s; want %s/%s for %s", resp.Channel, resp.Action, channel, action, target)
+	}
+}
+
+// receiptBodyFor renders an installer receipt for one binary and installer.
+func receiptBodyFor(binary, installedBy string) string {
+	return `{"binary":"` + binary + `","version":"0.1.0","installed_by":"` + installedBy + `"}` + "\n"
+}
+
+// writeBinary drops a file named name into dir and returns its path.
+func writeBinary(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// writeReceipt writes the installer receipt into dir.
+func writeReceipt(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, ".verdict-installer"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeForeignBinary is a binary the installer never placed.
+func writeForeignBinary(t *testing.T, dir string) string {
+	t.Helper()
+	return writeBinary(t, dir, "verdict", "foreign")
+}
+
+// writeOrphanReceipt puts the receipt one level above the binary.
+func writeOrphanReceipt(t *testing.T, dir string) string {
+	t.Helper()
+	bin := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeReceipt(t, dir, receiptBodyFor("verdict", "install.sh"))
+	return writeBinary(t, bin, "verdict", "copied")
+}
+
+// writeRenamedCopy keeps the receipt and adds a copy under another name.
+func writeRenamedCopy(t *testing.T, dir string) string {
+	t.Helper()
+	installerLayoutNamed(t, dir)
+	return writeBinary(t, dir, "verdict-copy", "copied")
+}
+
+// writeForeignInstallerReceipt writes a receipt from an unknown installer.
+func writeForeignInstallerReceipt(t *testing.T, dir string) string {
+	t.Helper()
+	writeReceipt(t, dir, receiptBodyFor("verdict", "manual"))
+	return writeBinary(t, dir, "verdict", "copied")
+}
+
+// installerLayoutNamed writes the standard install into an existing dir.
+func installerLayoutNamed(t *testing.T, dir string) (string, string, string) {
+	t.Helper()
+	target := writeBinary(t, dir, "verdict", "old-binary")
+	writeReceipt(t, dir, receiptBodyFor("verdict", "install.sh"))
+	return dir, target, filepath.Join(dir, ".verdict-installer")
+}
+
 // TestOverrideAndSafety covers the test override plus privilege refusals.
 //
 //nolint:revive // the subtests are the matrix

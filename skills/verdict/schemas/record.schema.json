@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/record.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/record.schema.json",
   "title": "record.json — completed-record (local bundles)",
   "description": "Written by the record verb in the verdict CLI for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
   "type": "object",

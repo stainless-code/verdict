@@ -34,7 +34,7 @@ const (
 	typeNull                = "null"
 	defsPrefix              = "#/$defs/"
 	draft2020               = "https://json-schema.org/draft/2020-12/schema"
-	idBase                  = "https://github.com/stainless-code/verdict/blob/main/schemas/"
+	idBase                  = "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/"
 	inlineTag               = "inline"
 	inlineTrue              = "true"
 )

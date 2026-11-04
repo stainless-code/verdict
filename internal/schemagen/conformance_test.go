@@ -131,7 +131,7 @@ func loadSchemaDocument(t *testing.T, name string) map[string]any {
 	if err != nil {
 		t.Fatalf("RepoRoot: %v", err)
 	}
-	raw, err := os.ReadFile(filepath.Join(root, "schemas", name))
+	raw, err := os.ReadFile(filepath.Join(root, "skills", "verdict", "schemas", name))
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}

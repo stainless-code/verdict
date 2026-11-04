@@ -23,7 +23,7 @@ fi
 
 gen() {
   datamodel-codegen \
-    --input "$ROOT/schemas/envelope.schema.json" \
+    --input "$ROOT/skills/verdict/schemas/envelope.schema.json" \
     --input-file-type jsonschema \
     --output "$1" \
     --output-model-type dataclasses.dataclass \

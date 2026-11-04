@@ -64,7 +64,7 @@ stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 schema_bad=0
 for case_dir in "$EVAL_ROOT"/bench/corpus/*/; do
   [ -f "$case_dir/case.json" ] || continue
-  if ! "$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/corpus.schema.json" "$case_dir/case.json" >/dev/null 2>&1; then
+  if ! "$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/corpus.schema.json" "$case_dir/case.json" >/dev/null 2>&1; then
     bad "corpus.schema.json rejects $case_dir/case.json"
     schema_bad=$((schema_bad + 1))
   fi

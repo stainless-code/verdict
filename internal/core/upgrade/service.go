@@ -235,11 +235,43 @@ func detect(req *Request) (*detection, *core.RefusalError) {
 	}
 	det := &detection{Channel: ChannelUnknown, exe: exe, InstallDir: req.installDir()}
 	det.Receipt = filepath.Join(det.InstallDir, receiptName)
+	adoptInstallerDir(req, det)
 	if method := req.env("VERDICT_INSTALL_METHOD"); method != "" {
 		return detectOverride(req, det, method)
 	}
 	det.Channel = classify(req, det)
 	return applySafety(req, det)
+}
+
+// adoptInstallerDir re-points the install dir the environment names at the
+// directory the running binary actually sits in, when that directory carries
+// an installer receipt naming this binary. VERDICT_INSTALL says where the
+// next install goes, not where this one came from: an install made with it
+// (or moved since) is still installer-managed once the variable is gone from
+// the environment, and the upgrade must stage and write there. A binary with
+// no receipt beside it keeps the environment's answer, so a foreign verdict
+// still refuses as unknown and a renamed copy refuses too.
+//
+// A receipt is a plain file, so it is a hint, never an authority: a directory
+// a package manager, Homebrew, a project's node_modules or a skill copy
+// already owns keeps that channel, and the upgrade delegates or refuses
+// instead of writing over files the owner tracks. The explicit
+// VERDICT_INSTALL directory is unaffected, because that answer does not come
+// from this fallback.
+func adoptInstallerDir(req *Request, det *detection) {
+	dir := filepath.Dir(det.exe)
+	if dir == det.InstallDir {
+		return
+	}
+	if heuristicChannel(req, det.exe) != ChannelUnknown {
+		return
+	}
+	receipt := filepath.Join(dir, receiptName)
+	if !receiptNames(receipt, filepath.Base(det.exe)) {
+		return
+	}
+	det.InstallDir = dir
+	det.Receipt = receipt
 }
 
 // detectOverride honors the explicit test/operator override.
@@ -555,24 +587,42 @@ func homeDir(env map[string]string) string {
 	return home
 }
 
+// receipt is the JSON body install.sh and install.ps1 write beside the
+// binary they installed.
+type receipt struct {
+	Binary      string `json:"binary"`
+	Version     string `json:"version"`
+	InstalledBy string `json:"installed_by"`
+}
+
 // validReceipt reports whether path is a ticket-10 installer receipt.
 func validReceipt(path string) bool {
+	_, ok := readReceipt(path)
+	return ok
+}
+
+// receiptNames is validReceipt plus the stronger claim the exe-dir fallback
+// needs: the receipt was written for this very file name, so a copy the
+// installer never placed is not adopted.
+func receiptNames(path, binary string) bool {
+	doc, ok := readReceipt(path)
+	return ok && doc.Binary == binary
+}
+
+// readReceipt parses a ticket-10 installer receipt.
+func readReceipt(path string) (receipt, bool) {
+	var doc receipt
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return false
-	}
-	var doc struct {
-		Binary      string `json:"binary"`
-		Version     string `json:"version"`
-		InstalledBy string `json:"installed_by"`
+		return doc, false
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return false
+		return doc, false
 	}
 	if doc.Binary != "verdict" && doc.Binary != "verdict.exe" {
-		return false
+		return doc, false
 	}
-	return doc.Version != "" && (doc.InstalledBy == defaultInstallBy || doc.InstalledBy == windowsInstallBy)
+	return doc, doc.Version != "" && (doc.InstalledBy == defaultInstallBy || doc.InstalledBy == windowsInstallBy)
 }
 
 // receiptInstalledBy preserves the original installer identity.

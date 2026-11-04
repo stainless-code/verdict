@@ -9,7 +9,10 @@
 # auto-updater by design. `git pull` keeps symlinked installs current.
 set -euo pipefail
 
-SRC="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+# The skill is one directory of the checkout, the same one the registry
+# installs; agents get a link to it, never to the whole checkout.
+SRC="$ROOT/skills/verdict"
 TAB="$(printf '\t')"
 
 usage() {
@@ -132,10 +135,10 @@ if [ "$DETECT" = 1 ]; then
   done
 fi
 
-[ "$MODE" = "list" ] || [ -f "$SRC/SKILL.md" ] || die "not a verdict checkout (no SKILL.md in $SRC)"
+[ "$MODE" = "list" ] || [ -f "$SRC/SKILL.md" ] || die "not a verdict checkout (no skills/verdict/SKILL.md under $ROOT)"
 if [ "$MODE" != "list" ]; then
-  git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-    || die "not a verdict git checkout ($SRC) — install-skill.sh links checkouts only; registry copies already carry the verdict CLI, nothing to link"
+  git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || die "not a verdict git checkout ($ROOT) — install-skill.sh links checkouts only; registry copies already carry the verdict CLI, nothing to link"
 fi
 
 scope_list() { # prints "label<TAB>dir" lines for names + raw dirs
@@ -170,12 +173,12 @@ if [ "$MODE" = "install" ] || [ "$MODE" = "check" ]; then
   # The doctor gate runs the checkout's binary: prefer a built bin/verdict,
   # else build in place (bin/ is gitignored, so the gate never depends on
   # a stale copy).
-  if [ -x "$SRC/bin/verdict" ]; then
-    "$SRC/bin/verdict" doctor || die "fix the FAIL lines above, then re-run"
+  if [ -x "$ROOT/bin/verdict" ]; then
+    "$ROOT/bin/verdict" doctor || die "fix the FAIL lines above, then re-run"
   elif command -v go >/dev/null 2>&1; then
-    (cd "$SRC" && go run ./cmd/verdict doctor) || die "fix the FAIL lines above, then re-run"
+    (cd "$ROOT" && go run ./cmd/verdict doctor) || die "fix the FAIL lines above, then re-run"
   else
-    die "doctor gate needs $SRC/bin/verdict (make build) or Go to build it"
+    die "doctor gate needs $ROOT/bin/verdict (make build) or Go to build it"
   fi
 fi
 
@@ -184,7 +187,7 @@ if [ "$MODE" = "uninstall" ]; then
   while IFS= read -r line; do
     label="${line%%$TAB*}"
     d="${line#*$TAB}"
-    if [ -L "$d/verdict" ] && [ "$(readlink "$d/verdict")" = "$SRC" ]; then
+    if [ -L "$d/verdict" ] && { [ "$(readlink "$d/verdict")" = "$SRC" ] || [ "$(readlink "$d/verdict")" = "$ROOT" ]; }; then
       rm "$d/verdict" && echo "removed: $label" && n=$((n + 1))
       rmdir "$d" 2>/dev/null || true
     else
@@ -222,6 +225,12 @@ link_into() { # $1 = label, $2 = dir
     linked=$((linked + 1))
     return 0
   fi
+  if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$ROOT" ]; then
+    # Older versions linked the whole checkout; the skill is skills/verdict now.
+    rm "$dest" && ln -s "$SRC" "$dest" && echo "relinked: $1 ($dest -> $SRC, was the checkout root)"
+    linked=$((linked + 1))
+    return 0
+  fi
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     if [ "$FORCE" = 1 ] && [ ! -d "$dest" ]; then
       rm "$dest" && ln -s "$SRC" "$dest" && echo "replaced: $1 ($dest)"
@@ -238,14 +247,14 @@ link_into() { # $1 = label, $2 = dir
 }
 
 wire_hooks() {
-  git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  cur="$(git -C "$SRC" config --local core.hooksPath 2>/dev/null || true)"
+  git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  cur="$(git -C "$ROOT" config --local core.hooksPath 2>/dev/null || true)"
   if [ -z "$cur" ]; then
-    git -C "$SRC" config core.hooksPath "$SRC/hooks" && echo "hooks: pre-commit wired ($SRC/hooks)"
-  elif [ "$cur" = "$SRC/hooks" ]; then
+    git -C "$ROOT" config core.hooksPath "$ROOT/hooks" && echo "hooks: pre-commit wired ($ROOT/hooks)"
+  elif [ "$cur" = "$ROOT/hooks" ]; then
     echo "hooks: already wired"
   elif [ "$FORCE" = 1 ]; then
-    git -C "$SRC" config core.hooksPath "$SRC/hooks" && echo "hooks: overridden (was $cur)"
+    git -C "$ROOT" config core.hooksPath "$ROOT/hooks" && echo "hooks: overridden (was $cur)"
   else
     echo "hooks: SKIP foreign hooksPath ($cur). Use --force to override"
   fi
@@ -257,4 +266,4 @@ while IFS= read -r line; do
   link_into "$label" "$d"
 done <<<"$(scope_list)"
 wire_hooks
-echo "done: $linked linked, $skipped skipped. update anytime: git -C \"$SRC\" pull (symlinks stay current)."
+echo "done: $linked linked, $skipped skipped. update anytime: git -C \"$ROOT\" pull (symlinks stay current)."

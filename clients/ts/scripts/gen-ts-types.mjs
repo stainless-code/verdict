@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generate the TS client's generated sources from the repo contracts:
-//   schemas/envelope.schema.json ($defs -> clients/ts/src/types.gen.ts)
+//   skills/verdict/schemas/envelope.schema.json ($defs -> clients/ts/src/types.gen.ts)
 //   release/contract.json (archives[] -> clients/ts/src/platforms.gen.ts and
 //     scripts/npm-shim/platforms.gen.json)
 // Refusal codes are not generated here: they come from the Go refusal-code
@@ -151,7 +151,10 @@ function objectTS(node, defs) {
 
 function genTypes() {
   const schema = JSON.parse(
-    readFileSync(join(REPO_ROOT, "schemas", "envelope.schema.json"), "utf8"),
+    readFileSync(
+      join(REPO_ROOT, "skills", "verdict", "schemas", "envelope.schema.json"),
+      "utf8",
+    ),
   );
   const defs = hoist(schema.$defs ?? {});
   const chunks = [];
@@ -168,7 +171,7 @@ function genTypes() {
       );
     }
   }
-  return `${header("schemas/envelope.schema.json ($defs)")}\n${chunks.join("\n\n")}\n`;
+  return `${header("skills/verdict/schemas/envelope.schema.json ($defs)")}\n${chunks.join("\n\n")}\n`;
 }
 
 // genPlatforms renders the platform -> npm package map twice from one source:
