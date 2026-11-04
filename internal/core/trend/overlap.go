@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 type overlapRow struct {
@@ -61,7 +63,7 @@ func overlapAudit(st *state, rows []row) *overlapRollup {
 }
 
 func readJoins(st *state) []any {
-	raw, err := os.ReadFile(".review/kb-joins.jsonl")
+	raw, err := os.ReadFile(filepath.Join(statedir.Resolve().Root, "kb-joins.jsonl"))
 	if err != nil {
 		return []any{}
 	}
@@ -124,7 +126,7 @@ func tallyOutcome(out *overlapRow, status string) {
 }
 
 func recallManifest(st *state, bundle string) ([]any, bool) {
-	path := ".review/" + bundle + "/kb-recall.json"
+	path := filepath.Join(statedir.Resolve().Root, bundle, "kb-recall.json")
 	if !isRegular(path) {
 		return []any{}, false
 	}
@@ -289,7 +291,7 @@ func calibrateEligible(bundle string) bool {
 	if len(bundle) >= len("local-") && bundle[:len("local-")] == "local-" {
 		return false
 	}
-	dir := ".review/" + bundle
+	dir := filepath.Join(statedir.Resolve().Root, bundle)
 	if !isRegular(dir + "/post.json") {
 		return false
 	}

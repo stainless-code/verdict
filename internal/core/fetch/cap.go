@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // DefaultDiffCap is the fetched-diff byte cap (512000 bytes, overridable
@@ -35,7 +36,7 @@ func resolveFetchCap(r *session) (fetchCap, error) {
 	if v, ok := env["REVIEW_MAX_BYTES"]; ok && v != "" {
 		raw, src = strings.TrimSpace(v), "REVIEW_MAX_BYTES"
 	} else if v, ok := readKnobFile(r, ".review/max_bytes"); ok {
-		raw, src = v, ".review/max_bytes"
+		raw, src = v, statedir.ControlsLabel("max_bytes")
 	}
 	if raw == "" {
 		return fc, nil
@@ -111,7 +112,7 @@ func resolveChunkOptIn(r *session, chunkFlag bool, capSource string) (chunkOptIn
 	case "", "false", "off", "0", "no":
 		return chunkOptIn{}, nil
 	case strTrue, "on", "1", "yes":
-		return chunkOptIn{active: true, source: ".review/chunk"}, nil
+		return chunkOptIn{active: true, source: statedir.ControlsLabel("chunk")}, nil
 	default:
 		return chunkOptIn{}, &core.RefusalError{Code: "bad-chunk-knob", Message: fmt.Sprintf(
 			"chunk knob '%s' from .review/chunk is not an opt-in flag (want true|false, on|off, 1|0, yes|no — "+

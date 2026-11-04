@@ -6,6 +6,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // resolveControls snapshots the review controls at the bundle's base commit
@@ -23,8 +24,14 @@ func resolveControls(
 		return ref //nolint:wrapcheck // the typed refusal passes through unchanged
 	}
 	r.controls = snap
+	for _, w := range snap.Warnings {
+		r.Warn(w)
+	}
 	if allowHead {
 		r.Warn("controls resolved from HEAD/worktree (explicit opt-out --allow-head-controls) — a PR can edit its judge")
+	}
+	if statedir.ControlsMode() == "local" {
+		r.Warn("controls resolved from local state (" + statedir.Resolve().ControlsDir() + ") — prototype VERDICT_PROTO_CONTROLS=local")
 	}
 	if budget == nil || ctx2.env["REVIEW_BUDGET_USD"] != "" {
 		return nil

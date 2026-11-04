@@ -267,7 +267,7 @@ func typedItems(entries []any) []core.FindingItem {
 }
 
 func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.RefusalError) {
-	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
+	if readcommon.IsLocalBundle(dir) {
 		return providerLocal, nil
 	}
 	switch prov := store.Provider(); prov {

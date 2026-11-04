@@ -2,14 +2,10 @@ package readcommon
 
 import (
 	"os"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
-
-const localPrefix = "local-"
-
-const corpusPrefix = "corpus-"
 
 const prSuffix = "/PR.json"
 
@@ -22,18 +18,16 @@ const (
 	fieldAuthor  = "author"
 )
 
-// ResolveBundleDir resolves the bundle dir: local-* and corpus-* slugs
-// resolve directly; bare slugs with a matching .review/local-* dir (and no
-// PR bundle) resolve local.
+// ResolveBundleDir resolves the bundle dir under the state root: local-* and
+// corpus-* slugs resolve directly; bare slugs with a matching local-* dir (and
+// no PR bundle) resolve local. The result is absolute (prototype: state root
+// from internal/statedir).
 func ResolveBundleDir(pr string) string {
-	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
-		return ".review/" + pr
-	}
-	if IsDir(".review/local-"+pr) && !Exists(".review/"+pr+prSuffix) {
-		return ".review/local-" + pr
-	}
-	return ".review/" + pr
+	return statedir.Resolve().BundleDir(pr)
 }
+
+// IsLocalBundle reports whether dir is a local or corpus bundle.
+func IsLocalBundle(dir string) bool { return statedir.IsLocalBundleDir(dir) }
 
 // Bundle is one bundle's decoded provider records. PR.json and post.json are
 // read and decoded at most once per Bundle, so a verb that needs the

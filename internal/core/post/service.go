@@ -177,7 +177,7 @@ func refusalOrFailed(err error) *core.RefusalError {
 }
 
 func (st *state) prepare(ctx context.Context) *core.RefusalError {
-	st.dir = ".review/" + st.req.Pr
+	st.dir = readcommon.ResolveBundleDir(st.req.Pr)
 	st.event = eventComment
 	if ref := st.checkBundle(); ref != nil {
 		return ref

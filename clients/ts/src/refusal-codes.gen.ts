@@ -108,6 +108,7 @@ export type RefusalCode =
   | "skill-read-failed"
   | "skill-target-file"
   | "skill-unknown-agent"
+  | "state-unwritable"
   | "threads-failed"
   | "triage-failed"
   | "uninstall-foreign"

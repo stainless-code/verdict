@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 type corpusPoint struct {
@@ -39,7 +41,7 @@ type corpusRollup struct {
 }
 
 func (st *state) readCorpus(e os.DirEntry) {
-	dir := ".review/" + e.Name()
+	dir := filepath.Join(statedir.Resolve().Root, e.Name())
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
 		st.warn("trend skips corpus bundle " + dir + "/ (" + ref.Message + ")")

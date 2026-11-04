@@ -387,22 +387,32 @@ func mapValue(rv reflect.Value) any {
 	return out
 }
 
+// StateWire, when installed, renders the top-level `state` key between `at`
+// and `next`. It is a prototype seam: the statedir package installs it from
+// main, so package unit tests keep rendering the historical envelope.
+var StateWire func() any
+
 // RenderEnvelope builds the frozen envelope object: schema_version, verb,
-// repo, pr, at, next, warnings, data, error, in that order. errObj is a
-// [*SchemaError] or an already-ordered [*jq.Obj] (the CLI refusal object,
-// which carries candidates); both render through the same wire walker.
+// repo, pr, at, [state], next, warnings, data, error, in that order. errObj
+// is a [*SchemaError] or an already-ordered [*jq.Obj] (the CLI refusal
+// object, which carries candidates); both render through the same wire
+// walker.
 func RenderEnvelope(verb, repo, pr, at, next string, warnings []string, data any, errObj any) *jq.Obj {
-	return jq.NewObj(
+	o := jq.NewObj(
 		"schema_version", "1",
 		"verb", verb,
 		"repo", repo,
 		"pr", PrJSON(pr),
 		"at", at,
-		"next", next,
-		"warnings", StringValues(warnings),
-		"data", data,
-		"error", wireValue(reflect.ValueOf(errObj)),
 	)
+	if StateWire != nil {
+		o.Set("state", StateWire())
+	}
+	o.Set("next", next)
+	o.Set("warnings", StringValues(warnings))
+	o.Set("data", data)
+	o.Set("error", wireValue(reflect.ValueOf(errObj)))
+	return o
 }
 
 // StringValues converts warnings to a non-nil []any JSON array.

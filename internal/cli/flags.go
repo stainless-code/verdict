@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // GlobalForces is core's flag-layer override set (alias of
@@ -160,15 +161,29 @@ func stripOne(st *stripState) (int, []string, *UsageError, error) {
 		return stripAttribution(args, i, g)
 	case a == "--logo-url":
 		return stripLogoURL(args, i, g)
+	case a == "--state-dir":
+		return stripStateDir(args, i)
 	case a == "--attribution-text":
 		return stripTextValue(st, "<text>", setAttributionText)
 	case a == "--copyright":
 		return stripTextValue(st, "<text>", setCopyright)
+	case strings.HasPrefix(a, "--state-dir="):
+		statedir.SetFlag(strings.TrimPrefix(a, "--state-dir="))
+		return 1, nil, nil, nil
 	case strings.Contains(a, "="):
 		return stripEq(a, g)
 	default:
 		return 0, nil, nil, nil
 	}
+}
+
+// stripStateDir records the prototype state-root override.
+func stripStateDir(args []string, i int) (int, []string, *UsageError, error) {
+	if i+1 >= len(args) {
+		return 0, nil, MissingValue(args[i], "<path>"), nil
+	}
+	statedir.SetFlag(args[i+1])
+	return 2, nil, nil, nil
 }
 
 func setLogoURL(v string, g *GlobalForces) {

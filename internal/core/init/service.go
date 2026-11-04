@@ -19,6 +19,15 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
+)
+
+var (
+	// reviewDir is the prototype controls directory; init still writes the
+	// per-file shape there, not verdict.toml.
+	reviewDir = statedir.Resolve().ControlsDir() + "/"
+	// reviewDot is the state root.
+	reviewDot = statedir.Resolve().Root
 )
 
 const (
@@ -27,10 +36,9 @@ const (
 	codeBadBudget    = "bad-budget"
 	codeBadPreset    = "bad-preset"
 	codeNeedsConfirm = "needs-confirm"
-	reviewDir        = ".review/"
-	reviewDot        = ".review"
-	newlineStr       = "\n"
-	scaffoldDirPerm  = 0o777
+
+	newlineStr      = "\n"
+	scaffoldDirPerm = 0o777
 )
 
 // Request carries the resolved init invocation: the shared runtime (env,
@@ -159,9 +167,12 @@ func (st *state) runInit(ctx context.Context) *core.RefusalError {
 		return ref
 	}
 	wants := presetFiles(st.req.Preset, vals)
-	if err := os.MkdirAll(reviewDot, scaffoldDirPerm); err != nil {
+	if err := statedir.Resolve().Ensure(); err != nil {
+		return st.refuse(codeInitFailed, fmt.Sprintf("init failed: %v", err))
+	}
+	if err := os.MkdirAll(statedir.Resolve().ControlsDir(), scaffoldDirPerm); err != nil {
 		return st.refuse(codeInitFailed,
-			fmt.Sprintf("init failed: init could not create .review (storage writable?): %v", err))
+			fmt.Sprintf("init failed: init could not create %s (storage writable?): %v", statedir.Resolve().ControlsDir(), err))
 	}
 	statuses, needOverwrite := collectStatuses(wants)
 	st.previewScaffold(wants)

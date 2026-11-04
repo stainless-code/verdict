@@ -10,6 +10,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // RunPost executes
@@ -19,7 +20,7 @@ import (
 // --json mode prints exactly one envelope to stdout.
 func RunPost(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
-	dir := ".review/" + req.Pr
+	dir := readcommon.ResolveBundleDir(req.Pr)
 	f, code, done := parsePostFlags(r, args, dir)
 	if done {
 		return code
@@ -133,7 +134,7 @@ func postRentry(repo, pr string, f core.PostFlags, jsonMode bool) string {
 	if f.Force {
 		sb.WriteString(" --force")
 	}
-	if f.ReviewFile != ".review/"+pr+"/review.json" {
+	if f.ReviewFile != readcommon.ResolveBundleDir(pr)+"/review.json" {
 		sb.WriteString(" --review-file " + f.ReviewFile)
 	}
 	if f.DryRun {

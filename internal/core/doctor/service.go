@@ -8,6 +8,7 @@ package doctorcore
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // Request wires a doctor run.
@@ -261,20 +263,23 @@ func (st *state) checkAPIReachable(ctx context.Context) {
 }
 
 func (st *state) checkStorage() {
-	if stat, err := os.Stat(".review"); err == nil && stat.IsDir() {
-		if writable(".review") {
-			st.add(checkStorageWritable, severityFail, true, ".review/ writable")
+	root := statedir.Resolve()
+	if stat, err := os.Stat(root.Root); err == nil && stat.IsDir() {
+		if writable(root.Root) {
+			st.add(checkStorageWritable, severityFail, true,
+				fmt.Sprintf("%s writable (scope %s, source %s)", root.Root, root.Scope, root.Source))
 		} else {
 			st.add(checkStorageWritable, severityFail, false,
-				".review/ not writable — fetch/record cannot write bundles here")
+				root.Root+" not writable — fetch/record cannot write bundles here")
 		}
 		return
 	}
-	if writable(".") {
-		st.add(checkStorageWritable, severityFail, true, "cwd writable — .review/ created on first fetch")
+	if writable(root.Base) {
+		st.add(checkStorageWritable, severityFail, true,
+			fmt.Sprintf("%s writable — %s created on first fetch", root.Base, root.Root))
 		return
 	}
-	st.add(checkStorageWritable, severityFail, false, "cwd not writable — fetch/record cannot create .review/ here")
+	st.add(checkStorageWritable, severityFail, false, root.Base+" not writable — fetch/record cannot create "+root.Root)
 }
 
 func writable(path string) bool {

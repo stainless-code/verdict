@@ -2,7 +2,7 @@ package calibratecore
 
 import (
 	"fmt"
-	"strings"
+	"path/filepath"
 
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
@@ -64,7 +64,7 @@ func (r *corpusResult) Wire() *jq.Obj {
 		panel = append(panel, p)
 	}
 	return jq.NewObj(
-		"bundle", strings.TrimPrefix(r.dir, ".review/"),
+		"bundle", filepath.Base(r.dir),
 		"case", rep.Case.ID,
 		"kind", rep.Case.Kind,
 		"model", r.model,
@@ -122,7 +122,7 @@ func corpusBugDoc(b *core.CorpusBug) *jq.Obj {
 func (st *state) emitCorpusHuman(r *corpusResult) {
 	rep := r.report
 	st.human(fmt.Sprintf("calibrate: corpus %s — %s (model %s, panel %s)",
-		rep.Case.ID, strings.TrimPrefix(r.dir, ".review/"), r.model, corpuscore.PanelLabel(r.panel)))
+		rep.Case.ID, filepath.Base(r.dir), r.model, corpuscore.PanelLabel(r.panel)))
 	tol := corpuscore.Tolerance(rep.Case)
 	for i := range rep.Outcomes {
 		o := &rep.Outcomes[i]

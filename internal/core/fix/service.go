@@ -21,7 +21,11 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
+
+// prefixReview filters state-owned paths from scope audits.
+func prefixReview() string { return statedir.Resolve().RelPrefix() }
 
 // Request carries the resolved fix invocation: the shared runtime (env,
 // clock, progress, commander) plus the --sig override and the adapter-routed
@@ -188,7 +192,7 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	dir := readcommon.ResolveBundleDir(st.req.Pr)
-	if !strings.HasPrefix(dir, prefixLocalReview) {
+	if !readcommon.IsLocalBundle(dir) {
 		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
 	}
 	return dir, nil
@@ -702,7 +706,7 @@ func isEscape(p, anchor string, baseSet map[string]bool) bool {
 	if baseSet[p] {
 		return false
 	}
-	if strings.HasPrefix(p, prefixReview) {
+	if strings.HasPrefix(p, prefixReview()) {
 		return false
 	}
 	return p != anchor
@@ -1098,10 +1102,6 @@ const (
 	suffixReviews = "/reviews.json"
 	// suffixInline is the stored inline file suffix.
 	suffixInline = "/inline.json"
-	// prefixLocalReview matches local bundle dirs.
-	prefixLocalReview = ".review/local-"
-	// prefixReview filters review-owned paths from scope audits.
-	prefixReview = ".review/"
 	// resolveNone reports no sig match.
 	resolveNone = "NONE"
 	// resolveMany reports an ambiguous sig prefix.

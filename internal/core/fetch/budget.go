@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 type budgetState struct {
@@ -40,7 +41,7 @@ func resolveBudget(env map[string]string, r *session) (budgetState, error) {
 	if v, ok := env["REVIEW_BUDGET_USD"]; ok && v != "" {
 		raw, src = strings.TrimSpace(v), "REVIEW_BUDGET_USD"
 	} else if v, ok := readKnobFile(r, ".review/budget"); ok {
-		raw, src = strings.TrimSpace(strings.TrimPrefix(v, "$")), ".review/budget"
+		raw, src = strings.TrimSpace(strings.TrimPrefix(v, "$")), statedir.ControlsLabel("budget")
 	}
 	if raw == "" {
 		return st, nil
@@ -303,7 +304,7 @@ func tierStats(recs []costRec, t string) tierStat {
 func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	var recs []costRec
 	var bad []string
-	files, gerr := filepath.Glob(".review/*/" + readcommon.CostFile)
+	files, gerr := filepath.Glob(filepath.Join(statedir.Resolve().Root, "*", readcommon.CostFile))
 	if gerr != nil {
 		files = nil
 	}

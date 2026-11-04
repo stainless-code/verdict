@@ -88,6 +88,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/readcommon":     true,
 	"internal/retry":          true,
 	"internal/sig":            true,
+	"internal/statedir":       true,
 	"pkg/verdict":             true,
 }
 

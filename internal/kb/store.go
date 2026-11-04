@@ -34,11 +34,11 @@ func ParseRows(raw []byte) ([]*jq.Obj, error) {
 // ErrCorrupt. Every verb that reads kb.jsonl goes through here, so the
 // decode and the size cap exist once.
 func ReadRows() ([]*jq.Obj, error) {
-	if !isFile(File) {
+	if !isFile(StorePath()) {
 		//nolint:wrapcheck // the package sentinel is the classification callers match
 		return nil, ErrMissing
 	}
-	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
+	raw, err := jq.CappedFile(StorePath(), jq.MaxKBBytes)
 	if err != nil {
 		//nolint:wrapcheck // the sentinel leads so callers can classify, the cause stays visible
 		return nil, fmt.Errorf("%w: %w", ErrCorrupt, err)
@@ -87,22 +87,22 @@ func WriteRows(rows []*jq.Obj) error {
 		sb.WriteString(row.MarshalCompact())
 		sb.WriteByte('\n')
 	}
-	return atomic.WriteFile(File, []byte(sb.String()))
+	return atomic.WriteFile(StorePath(), []byte(sb.String()))
 }
 
 // AppendRow appends one already-encoded row (the --rule path appends instead
 // of rewriting).
 func AppendRow(line string) error {
 	var prev []byte
-	if isFile(File) {
-		raw, err := jq.CappedFile(File, jq.MaxKBBytes)
+	if isFile(StorePath()) {
+		raw, err := jq.CappedFile(StorePath(), jq.MaxKBBytes)
 		if err != nil {
 			//nolint:wrapcheck // locally constructed read failure naming the store
-			return fmt.Errorf("read %s: %w", File, err)
+			return fmt.Errorf("read %s: %w", StorePath(), err)
 		}
 		prev = raw
 	}
-	return atomic.WriteFile(File, append(prev, line...))
+	return atomic.WriteFile(StorePath(), append(prev, line...))
 }
 
 // ValidID reports whether id matches the rule-id shape

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // isolation is one fetch-local --worktree checkout: a temporary detached
@@ -146,6 +147,10 @@ func dirtyTarget(ctx context.Context, s *session) (string, bool, error) {
 // is the atomic claim: a lost race refuses typed with git's own
 // already-exists excerpt instead of sharing a checkout.
 func resolveIsolationDir(slug string) (string, error) {
+	reviewDir := statedir.Resolve().Root
+	if err := statedir.Resolve().Ensure(); err != nil {
+		return "", &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+	}
 	if err := os.MkdirAll(reviewDir, dirPerm); err != nil {
 		return "", &core.RefusalError{
 			Code:    codeWorktreeFailed,

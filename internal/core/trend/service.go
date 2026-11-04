@@ -8,12 +8,14 @@ package trendcore
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // Request carries the resolved trend invocation: the shared read runtime
@@ -129,13 +131,14 @@ type row struct {
 }
 
 func collectRows(st *state) []row {
-	entries, err := os.ReadDir(".review")
+	root := statedir.Resolve().Root
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil
 	}
 	var rows []row
 	for _, e := range entries {
-		if corpuscore.IsDir(".review/" + e.Name()) {
+		if corpuscore.IsDir(filepath.Join(root, e.Name())) {
 			st.readCorpus(e)
 			continue
 		}
@@ -151,7 +154,7 @@ func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 		return row{}, false
 	}
 	name := e.Name()
-	bundle := ".review/" + name + "/"
+	bundle := statedir.Resolve().Root + "/" + name + "/"
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
 		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")

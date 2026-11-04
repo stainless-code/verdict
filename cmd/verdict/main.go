@@ -34,6 +34,7 @@ import (
 	"github.com/stainless-code/verdict/internal/report"
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
+	"github.com/stainless-code/verdict/internal/statedir"
 	"github.com/stainless-code/verdict/internal/threads"
 	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
@@ -76,6 +77,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	}
 	root := exeRoot()
 	stripped, forces, uerr, ref := cli.StripGlobal(args)
+	core.StateWire = statedir.Wire
 	failed := uerr != nil || ref != nil
 	cmd, repo, pr, rest := splitCommand(stripped)
 	if failed {

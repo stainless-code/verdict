@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 func buildHunksTSV(fullDiff, out string) error {
@@ -216,7 +217,7 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 		}
 		fmt.Fprintf(ctx.runner.Human, "» panel (%d from %s)\n", len(panelList), panelSrc)
 	} else if ctx.runner.Effective.Compact != strTrue {
-		fmt.Fprintln(ctx.runner.Human, "» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)")
+		fmt.Fprintln(ctx.runner.Human, "» panel: none pinned (set REVIEW_PANEL or "+statedir.ControlsLabel("panel")+" for comparable, cost-capped runs)")
 	}
 	return nil
 }
@@ -261,7 +262,7 @@ func panelFileLines(raw string) ([]string, string) {
 	if len(out) == 0 {
 		return nil, ""
 	}
-	return out, ".review/panel"
+	return out, statedir.ControlsLabel("panel")
 }
 
 // splitPanelList splits on commas and whitespace, dropping blanks.

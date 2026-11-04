@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -257,12 +258,12 @@ func (st *state) runAppend() *core.RefusalError {
 	}
 	row := appendRowDoc(validated)
 	if err := kb.AppendRow(row.MarshalCompact() + "\n"); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, kbFile, err))
+		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, kbFile(), err))
 	}
 	st.next = nextAppend
 	st.data = &Data{Rule: row}
 	st.humanf("learned %s -> %s (scope %s, rigor %s)\n",
-		validated.lid, kbFile, validated.scope, validated.rigor)
+		validated.lid, kbFile(), validated.scope, validated.rigor)
 	return nil
 }
 
@@ -319,10 +320,10 @@ func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.Refus
 }
 
 func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
-	if err := os.MkdirAll(reviewDir, reviewDirPerm); err != nil {
+	if err := os.MkdirAll(reviewDir(), reviewDirPerm); err != nil {
 		return st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
 	}
-	if !readcommon.IsFile(kbFile) {
+	if !readcommon.IsFile(kbFile()) {
 		return nil
 	}
 	rows, err := kb.ReadRows()
@@ -436,7 +437,7 @@ func (st *state) appendHistory(cur *jq.Obj, event string) {
 func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
 	rows, err := kb.ReadRows()
 	if errors.Is(err, kb.ErrMissing) {
-		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, kbFile))
+		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, kbFile()))
 	}
 	if err != nil {
 		return nil, st.corruptStore()
@@ -472,20 +473,16 @@ func mustGet(m *jq.Obj, key string) any {
 
 func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
 	if err := kb.WriteRows(rows); err != nil {
-		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, kbFile))
+		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, kbFile()))
 	}
 	return nil
 }
 
 func (st *state) corruptStore() *core.RefusalError {
-	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, kbFile))
+	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, kbFile()))
 }
 
 const (
-	// kbFile is the KB store path, mirroring $KB_FILE.
-	kbFile = reviewDir + "/kb.jsonl"
-	// reviewDir is the store directory (the bundle root).
-	reviewDir = ".review"
 	// reviewDirPerm is the mode the store dir is created with.
 	reviewDirPerm = 0o777
 	// reasonMin is the veto-reason floor (characters, like ${#}).
@@ -495,6 +492,12 @@ const (
 	// precisionNA renders when judged is the number 0.
 	precisionNA = "n/a"
 )
+
+// kbFile is the writable KB store path (worktree, per controls mode).
+func kbFile() string { return kb.StorePath() }
+
+// reviewDir is the store directory owning kbFile.
+func reviewDir() string { return filepath.Dir(kbFile()) }
 
 const (
 	codeCanceled       = "canceled"

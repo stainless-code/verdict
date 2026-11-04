@@ -7,11 +7,13 @@ package kb
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // File names relative to the working directory.
@@ -20,6 +22,16 @@ const (
 	Joins      = ".review/kb-joins.jsonl"
 	PolicyFile = ".review/kb-policy"
 )
+
+// StorePath is the writable worktree KB: verdict/kb.jsonl in committed
+// controls mode, <state>/controls/kb.jsonl in local mode. File stays the
+// bundle snapshot key every record/verify gate uses.
+func StorePath() string {
+	if statedir.ControlsMode() == "committed" {
+		return filepath.Join(statedir.Resolve().Base, "verdict", "kb.jsonl")
+	}
+	return filepath.Join(statedir.Resolve().ControlsDir(), "kb.jsonl")
+}
 
 // Policy carries the resolved retirement thresholds.
 type Policy struct {

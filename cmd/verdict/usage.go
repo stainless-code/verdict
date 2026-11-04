@@ -218,7 +218,8 @@ func usageText() string {
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
-		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
+		"  --color <auto|always|never>, --compact / --no-compact, --no-json,\n" +
+		"  --state-dir <path> (prototype: override the run-state root).\n" +
 		"  Global publish flags (same any-verb, any-position rule):\n" +
 		"  --footer / --no-footer, --attribution [off|product|full] / --no-attribution,\n" +
 		"  --attribution-text <text>, --copyright <text>, --logo / --no-logo,\n" +

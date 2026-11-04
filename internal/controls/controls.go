@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // Snapshot locations, caps (a control file is never truncated), refusal
@@ -74,10 +75,12 @@ type Request struct {
 	AllowHead bool
 }
 
-// Snapshot is one resolved control set plus its on-disk location.
+// Snapshot is one resolved control set plus its on-disk location. Warnings
+// carries prototype drift notices for the caller's envelope.
 type Snapshot struct {
-	Dir  string
-	File core.ControlsFile
+	Dir      string
+	File     core.ControlsFile
+	Warnings []string
 }
 
 // Resolve reads every inventory path from the PR base commit (or the
@@ -89,11 +92,26 @@ func Resolve(ctx context.Context, cmd core.Commander, req Request) (*Snapshot, *
 	}}
 	var contents map[string][]byte
 	var ref *core.RefusalError
-	if req.AllowHead {
+	mode := statedir.ControlsMode()
+	switch {
+	case req.AllowHead && mode == "committed":
 		snap.File.Policy, snap.File.SHA = PolicyHead, ""
-		contents, ref = readWorktree(req.Root)
-	} else {
-		contents, ref = readBase(ctx, cmd, req.Repo, req.BaseSHA)
+		contents = committedHead(req.Root)
+	case req.AllowHead:
+		snap.File.Policy, snap.File.SHA = PolicyHead, ""
+		contents, ref = readWorktree(statedir.Resolve().ControlsDir())
+	case mode == "committed":
+		var committed *committedControls
+		if committed, ref = readCommittedBase(ctx, cmd, req.BaseSHA, req.Root); ref == nil {
+			contents = committed.contents
+			snap.Warnings = committed.warnings
+		}
+	default:
+		// Prototype local mode: controls live in <state>/controls, so a run
+		// never depends on a commit. Stamped "head" so Gate does not
+		// re-verify base bytes.
+		snap.File.Policy, snap.File.SHA = PolicyHead, ""
+		contents, ref = readWorktree(statedir.Resolve().ControlsDir())
 	}
 	if ref == nil {
 		ref = snap.write(req.BundleDir, contents)
@@ -211,7 +229,7 @@ func (s *Snapshot) Used() int {
 func readWorktree(root string) (map[string][]byte, *core.RefusalError) {
 	contents, total := map[string][]byte{}, 0
 	for _, path := range Inventory {
-		full := filepath.Join(root, path)
+		full := filepath.Join(root, strings.TrimPrefix(path, ".review/"))
 		if fi, err := os.Stat(full); err != nil || fi.IsDir() {
 			continue // absent, or a directory squatting the name: no control
 		}

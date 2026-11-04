@@ -248,7 +248,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 const providerGitHub = "github"
 
 func isLocalDir(dir string) bool {
-	return strings.HasPrefix(dir, ".review/local-")
+	return readcommon.IsLocalBundle(dir)
 }
 
 func isRegular(path string) bool {

@@ -207,14 +207,14 @@ func (st *state) applyFlip(dir string, entries []any, full, now string) *core.Re
 }
 
 func (st *state) stageCredit(k *kb.Ctx, entries []any, full, now string) []any {
-	k.ResolvePolicy(st.req.Env, readcommon.Exists(kb.File))
-	if readcommon.IsFile(kb.File) {
-		if _, err := kb.ParseRows(mustRead(kb.File)); err != nil {
-			st.warn(fmt.Sprintf("kb store %s unreadable — no credit for this flip (fix the bad line)", kb.File))
+	k.ResolvePolicy(st.req.Env, readcommon.Exists(kb.StorePath()))
+	if readcommon.IsFile(kb.StorePath()) {
+		if _, err := kb.ParseRows(mustRead(kb.StorePath())); err != nil {
+			st.warn(fmt.Sprintf("kb store %s unreadable — no credit for this flip (fix the bad line)", kb.StorePath()))
 			k.Broken = true
 		}
 	}
-	k.ApplyCredit(entries, full, st.req.Status, "human", "triage", now, readcommon.Exists(kb.File))
+	k.ApplyCredit(entries, full, st.req.Status, "human", "triage", now, readcommon.Exists(kb.StorePath()))
 	if k.Credited == nil {
 		return []any{}
 	}

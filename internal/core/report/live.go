@@ -48,7 +48,7 @@ func runLiveProbe(ctx context.Context, st *state) {
 }
 
 func isLocalDir(dir string) bool {
-	return strings.HasPrefix(dir, ".review/local-")
+	return readcommon.IsLocalBundle(dir)
 }
 
 func providerName(dir string) string {

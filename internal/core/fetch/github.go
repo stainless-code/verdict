@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // cliFileCap is the hosting CLI's file-list cap: a list arriving exactly
@@ -295,8 +296,11 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	if err := budgetGate(ctx2.runner, &budget, f.BudgetConsent); err != nil {
 		return nil, "", err
 	}
-	dir := ".review/" + req.Pr
+	dir := statedir.Resolve().BundleDir(req.Pr)
 	ctx2.dir = dir
+	if err := statedir.Resolve().Ensure(); err != nil {
+		return nil, "", &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return nil, "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
 	}

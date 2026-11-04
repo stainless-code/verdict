@@ -12,7 +12,7 @@ import (
 
 func writePaddedKB(t *testing.T, row string, size int64) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(kbFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(kbFile()), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	data := make([]byte, size)
@@ -20,7 +20,7 @@ func writePaddedKB(t *testing.T, row string, size int64) {
 	for i := len(row); i < len(data); i++ {
 		data[i] = ' '
 	}
-	if err := os.WriteFile(kbFile, data, 0o600); err != nil {
+	if err := os.WriteFile(kbFile(), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -60,7 +60,7 @@ func TestKBStoreReadsRefuseOversizedInput(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writePaddedKB(t, `{"id":"r1","rule":"keep it small"}`, jq.MaxKBBytes)
 	checkLearnReadsAtCap(t)
-	if err := os.Truncate(kbFile, jq.MaxKBBytes+1); err != nil {
+	if err := os.Truncate(kbFile(), jq.MaxKBBytes+1); err != nil {
 		t.Fatal(err)
 	}
 	checkLearnReadsOverCap(t)

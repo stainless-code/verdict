@@ -3,6 +3,7 @@ package calibratecore
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -17,7 +18,7 @@ func (st *state) runProbe(dir string) *core.RefusalError {
 		return st.loadRefusal(err)
 	}
 	now := st.req.TimeUTC()
-	bname := strings.TrimPrefix(dir, ".review/")
+	bname := filepath.Base(dir)
 	known := knownSigs(entries)
 	fileJudgments, err := readJudgeFile(st.req.JudgeFile, known, dir)
 	if err != nil {

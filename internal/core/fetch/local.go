@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/statedir"
 )
 
 // runLocalTail owns the fetch-local block: worktree/staged/range/branch/
@@ -112,7 +113,10 @@ func localSetup(
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
 		return localMode{}, "", "", ref
 	}
-	dir := ".review/local-" + slug
+	if err := statedir.Resolve().Ensure(); err != nil {
+		return localMode{}, "", "", &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+	}
+	dir := statedir.Resolve().BundleDir("local-" + slug)
 	ctx2.dir = dir
 	if res, err := ctx2.runner.run(ctx, binGit, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res
@@ -138,6 +142,9 @@ func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, 
 	}
 	if err := budgetGate(r, &budget, f.BudgetConsent); err != nil {
 		return budget, err
+	}
+	if err := statedir.Resolve().Ensure(); err != nil {
+		return budget, &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
 	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return budget, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
@@ -583,7 +590,7 @@ func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 func untrackedKept(stdout string) []string {
 	var kept []string
 	for _, line := range splitLines(strings.TrimRight(stdout, newline)) {
-		if line == "" || strings.HasPrefix(line, ".review/") {
+		if line == "" || strings.HasPrefix(line, ".review/") || strings.HasPrefix(line, statedir.Resolve().RelPrefix()) {
 			continue
 		}
 		kept = append(kept, line)
