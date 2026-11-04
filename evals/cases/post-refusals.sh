@@ -15,6 +15,9 @@
 #   P4  a missing review.json refuses missing-review-file typed (exit 1)
 #       with nothing posted and no post.json.
 #   P5  a bad --approve value refuses bad-approve typed (exit 1) naming the value.
+#   P7  a local-<name> bundle refuses no-pr-target (exit 1) with no post.json and
+#       no POST, and --help keeps naming that code while trend --help makes no
+#       local-bundle refusal claim (trend rolls local bundles up).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -248,6 +251,52 @@ if grep -q "downgrading to COMMENT" "$EVAL_ERR" \
   good "downgrade warns with the recheck reason in stderr and posted body"
 else
   bad "downgrade stderr: $(head -c 300 "$EVAL_ERR")"
+fi
+
+# --- P7: a local bundle refuses no-pr-target (the code usage names) ---
+# post targets a GitHub PR; a local-<name> bundle has no PR to submit to, so it
+# refuses typed no-pr-target before any validation or POST. The --help block
+# names that code, so a drift to provider-unimplemented fails here.
+LB="$EVAL_SANDBOX/.review/local-p7"
+rm -rf "$LB"; mkdir -p "$LB"
+cat > "$LB/source.json" <<'EOF'
+{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
+EOF
+cat > "$LB/full.diff" <<'EOF'
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+EOF
+eval_write_review "local-p7" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}
+EOF
+m="$(mark)"
+run_review post acme/app local-p7 --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "no-pr-target" ] \
+  && [ ! -e "$LB/post.json" ] && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
+  good "post refuses a local bundle with no-pr-target (no post.json, no POST)"
+else
+  bad "post on a local bundle gave exit $EVAL_STATUS code '$code', want 1/no-pr-target"
+fi
+
+post_help="$("$EVAL_CLI" post --help 2>/dev/null || true)"
+trend_help="$("$EVAL_CLI" trend --help 2>/dev/null || true)"
+if printf '%s' "$post_help" | matches -q "local bundles refuse typed (no-pr-target)"; then
+  good "post --help names no-pr-target for local bundles"
+else
+  bad "post --help does not name no-pr-target for local bundles"
+fi
+if printf '%s' "$trend_help" | matches -q "local bundles and non-GitHub providers refuse"; then
+  bad "trend --help still claims local bundles refuse"
+else
+  good "trend --help makes no local-bundle refusal claim (it rolls them up)"
 fi
 
 eval_end

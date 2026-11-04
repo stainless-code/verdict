@@ -19,7 +19,8 @@ func usageText() string {
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate/adopt/ready\n" +
-		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented). Incremental re-review\n" +
+		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
+		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). Incremental re-review\n" +
 		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.\n" +
@@ -64,7 +65,8 @@ func usageText() string {
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
 		"    verification.json evidence (VERIFIED + resultHead matching HEAD).\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
-		"    GitHub PR bundles only: local bundles and non-GitHub providers refuse typed (provider-unimplemented).\n" +
+		"    GitHub PR bundles only: local bundles refuse typed (no-pr-target), non-GitHub providers\n" +
+		"    refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
@@ -159,7 +161,6 @@ func usageText() string {
 		"    (addressed vs false-positive); missing manifests read unmeasured (never\n" +
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
-		"    GitHub PR bundles only: local bundles and non-GitHub providers refuse typed (provider-unimplemented).\n" +
 		"  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]\n" +
 		"    append one rule to .review/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +
