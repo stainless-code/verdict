@@ -258,6 +258,11 @@ try {
   } else {
     Bad "no post-verify --version smoke: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
   }
+  if (Log-Contains 'Next: verdict skill install --detect') {
+    Good 'installer points at the skill next step'
+  } else {
+    Bad "no skill next step: $(Get-Content -Raw $InstallLog -ErrorAction SilentlyContinue)"
+  }
   if ((File-Contains $CosignLog '--certificate-identity-regexp') -and (File-Contains $CosignLog 'refs/tags/v') `
       -and (File-Contains $CosignLog '--certificate-oidc-issuer') -and (File-Contains $CosignLog $contract.cosign.issuer)) {
     Good 'cosign is invoked with the contract identity and issuer'
@@ -273,6 +278,11 @@ try {
     Good 'checksum mismatch refuses and leaves the old binary'
   } else {
     Bad "checksum mismatch $(Status-Detail)"
+  }
+  if (Log-Contains 'Next:') {
+    Bad 'a refused install printed a next step'
+  } else {
+    Good 'a refused install prints no next step'
   }
   $script:Pin = '1.2.3'
   Invoke-Installer

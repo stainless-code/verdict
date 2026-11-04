@@ -22,6 +22,12 @@ MODE=install; ARCHIVE=''; REMOVE_PATH=0; TMP=''; STAGE=''
 
 die() { echo "install: $*" >&2; exit 1; }
 
+# next_step prints the one line that follows a successful install: the skill
+# command that adds the review skill to the agents already on this machine.
+next_step() {
+  echo "Next: verdict skill install --detect   (adds the review skill to your coding agents)"
+}
+
 usage() {
   cat <<EOF
 usage: install.sh [ARCHIVE] [--no-modify-path] [--uninstall [--remove-path]] [--help]
@@ -228,6 +234,7 @@ echo "install: installed verdict $VERSION to $INSTALL/verdict (SHA-256 verified;
 
 if [ "$NO_MODIFY_PATH" = 1 ]; then
   echo "install: PATH not modified (VERDICT_NO_MODIFY_PATH). Add: export PATH=\"$INSTALL:\$PATH\""
+  next_step
   exit 0
 fi
 case ":$PATH:" in
@@ -242,4 +249,5 @@ case ":$PATH:" in
       echo "install: appended $INSTALL to PATH in $PROFILE (restart your shell)"
     fi ;;
 esac
+next_step
 exit 0

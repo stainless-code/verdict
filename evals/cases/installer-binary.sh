@@ -179,6 +179,11 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
   else
     bad "$want_os/$want_arch has no --version smoke ($(head -c 200 "$EVAL_OUT"))"
   fi
+  if grep -Fq 'Next: verdict skill install --detect' "$EVAL_OUT"; then
+    good "$want_os/$want_arch points at the skill next step"
+  else
+    bad "$want_os/$want_arch has no skill next step ($(head -c 200 "$EVAL_OUT"))"
+  fi
 done
 
 # --- B3: checksum mismatch / bad signature leave the old binary ---
@@ -195,6 +200,7 @@ if [ "$EVAL_STATUS" -ne 0 ] && grep -q "SHA-256 mismatch" "$EVAL_ERR" \
 else
   bad "checksum mismatch exit $EVAL_STATUS (old binary changed?)"
 fi
+assert_stream_nogrep "a refused install prints no next step" "$EVAL_OUT" "Next:" "-F"
 fresh
 PIN=1.2.3; run_install
 cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
