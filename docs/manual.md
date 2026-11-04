@@ -353,7 +353,7 @@ Track your controls once so the base commit carries them — in a repo whose
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.review/<pr>/threads.json` from the host (all six
@@ -528,13 +528,56 @@ open live; pick `skip` for air-gapped runs where the operator accepts the
 local-dimensions-only verdict on the record. `--live` without a gate flag
 is inert: advisory runs never touch the network regardless.
 
-Hook recipe (merge gate — findings AND freshness in one call):
+### `gate`: one composed exit code for CI
+
+`report --check` and `ready --check` answer one question each. `gate` asks all
+three gating questions in one call and returns one CI exit code — the verb a
+pipeline step uses when it wants "is this PR shippable" without composing three
+checks and three error branches itself:
 
 ```bash
-verdict report owner/repo 123 --check critical --completeness || exit 1
-# exit 0 only when no open critical+ findings stand AND the fetched HEAD
-# is the posted HEAD; exit 1 names which dimension failed on stderr.
+verdict gate owner/repo 123 --max-severity critical --require-head --live strict
+case $? in
+  0) echo "gate passed — every requested dimension is clean";;
+  1) echo "gate failed — the gate: lines name the dimensions and the next action";;
+  2) echo "usage error — check the invocation";;
+  *) echo "gate itself failed (auth/bundle/store) — inspect, then retry";;
+esac
 ```
+
+At least one dimension is required: `--max-severity critical|important|
+informational` (open findings at-or-above the tier; untagged findings never
+meet a tier), `--require-head` (a completed post for the fetched HEAD, the
+same record `report --completeness` reads), and `--live auto|strict|skip`
+(unresolved threads on the PR; the dimension runs only when another dimension
+asked for it, and `--live` alone is a usage error rather than a silent pass).
+A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
+`skip` (not requested, or unreachable under `auto`); only `fail` and `unknown`
+fail the gate, so a skip never turns a green run red. Exit codes mirror
+`report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool error.
+
+The human tail is one line per dimension plus the verdict and a single
+`try:` hint naming every failing dimension's recovery in order:
+
+```text
+gate: findings     fail    2 open finding(s) at-or-above critical
+gate: live_threads fail    3 live open thread(s) vs 2 local open finding(s)
+gate: FAIL (2 fail)
+try: address or triage the open findings, then resolve or reply to the live
+threads, then re-run gate
+```
+
+`--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
+in `findings, head, live_threads` order (`id`, `status`, `detail`, `count` —
+null where a dimension has no tally). A failed gate is a verdict, not a
+refusal: the envelope keeps `error: null` and the exit code carries the
+outcome. `gate` is read-only — no store writes, no `post.json`, no review
+submission — and it is not an MCP tool (the SDK and TS client reach it as a
+method): a local pass is not authority to merge, so the merge stays the
+human's call.
+
+Compose it where `report --check --completeness` used to go; the flag set is
+the same three dimensions, and the flagless form remains advisory `report`.
 
 ### MCP server (stdio, experimental until 1.0)
 
@@ -648,9 +691,9 @@ or an open critical fails locally instead of burning CI:
 
 ```bash
 #!/bin/sh
-verdict report owner/repo 123 --check critical --completeness || exit 1
+verdict gate owner/repo 123 --max-severity critical --require-head --live auto || exit 1
 # exit 0 only when no open critical+ findings stand AND the fetched HEAD
-# is the posted HEAD; exit 1 names which dimension failed on stderr.
+# is the posted HEAD; exit 1 names which dimension failed on stdout.
 ```
 
 Recovery lives where fetch behavior lives: the `stale-head`/`missing-post`

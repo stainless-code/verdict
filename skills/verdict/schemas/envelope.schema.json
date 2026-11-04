@@ -109,7 +109,7 @@
       "additionalProperties": true
     },
     "reportData": {
-      "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, receipt keys only when budget.json parses.",
+      "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set, receipt keys only when budget.json parses.",
       "type": "object",
       "properties": {
         "generated_at": { "type": "string", "format": "date-time" },
@@ -126,7 +126,10 @@
           "items": { "$ref": "#/$defs/findingItem" }
         },
         "cost": { "$ref": "#/$defs/reportCost" },
-        "completeness": { "$ref": "#/$defs/reportCompleteness" }
+        "completeness": { "$ref": "#/$defs/reportCompleteness" },
+        "gate": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
+        }
       },
       "required": [
         "generated_at",
@@ -255,6 +258,44 @@
         "posted_head": { "type": ["string", "null"] }
       },
       "required": ["reviewed", "fetched_head", "posted_head"],
+      "additionalProperties": true
+    },
+    "reportGate": {
+      "description": "Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
+      "type": "object",
+      "properties": {
+        "passed": {
+          "description": "The gate verdict the exit code follows: exit 0 when true, exit 1 when false.",
+          "type": "boolean"
+        },
+        "dimensions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gateDimension" }
+        }
+      },
+      "required": ["passed", "dimensions"],
+      "additionalProperties": true
+    },
+    "gateDimension": {
+      "description": "One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), or live_threads (unresolved threads on the PR under --live).",
+          "enum": ["findings", "head", "live_threads"]
+        },
+        "status": {
+          "description": "pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate.",
+          "enum": ["pass", "fail", "skip", "unknown"]
+        },
+        "detail": { "type": "string" },
+        "count": {
+          "description": "The dimension's own tally: offending findings for findings, versus-thread count for live_threads, null for head and for a skipped or unreachable live probe.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "required": ["id", "status", "detail", "count"],
       "additionalProperties": true
     },
     "postData": {

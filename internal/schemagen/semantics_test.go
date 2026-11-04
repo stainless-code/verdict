@@ -18,22 +18,21 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
-	// D1: additive controls.schema.json (new bundle document; no existing
-	// schema property, required key, or type changed).
-	"controls.schema.json": "2ddd29802d75842d77b50e6af8b7a4701cf6076d2a52ce845d6a557a60eb349c",
-	// 06a: additive corpus.schema.json (new document; no existing schema
+	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
+	"controls.schema.json": "2ddd29802d75842d77b50e6af8b7a4701cf6076d2a52ce845d6a557a60eb349c",
+	// additive corpus.schema.json (new document; no existing schema property,
+	// required key, or type changed).
 	"corpus.schema.json": "9541380bcc9a1250f65874d6586db128a543a960e563d0205c6bc5da62448c75",
 	"cost.schema.json":   "81e6a11f4731b7060f8975db80b01d595a3dd2e0f06bbf6372d1501810609be2",
-	// 08: additive fetchEstimate $defs entry (measured-usage basis fields).
+	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
 	// or type.
-	// T6: description prose corrected (nine keys; derived from
-	// RenderEnvelope; show listed as pinned). No property, required key, or
-	// type changed.
-	// T3-10: additive retry_at on $defs/error (optional RFC 3339 property;
-	// no existing property, required key, or type changed).
+	// description prose corrected (nine keys; derived from RenderEnvelope;
+	// show listed as pinned). No property, required key, or type changed.
+	// additive retry_at on $defs/error (optional RFC 3339 property; no existing
+	// property, required key, or type changed).
 	// data-profiles: additive $defs entries pinning the data profile of every
 	// verb that previously fell back to the open object (triage, ready, adopt,
 	// next, fix, learn, init, doctor, check-tree, verify, threads, trend,
@@ -43,7 +42,10 @@ var publishedSemantics = map[string]string{
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// showFix.brief, with the descriptions findings and review already carry
 	// (optional; no existing property, required key, or type changed).
-	"envelope.schema.json": "96c3b981a465e71e6134ffaf66d68cd099062c39e1e67b6f5f92cd8ffbaeb011",
+	// gate: an optional, nullable reportData.gate property plus the additive
+	// $defs/reportGate and $defs/gateDimension entries. No existing property,
+	// required key, enum, or type changed.
+	"envelope.schema.json": "644fb82935827a99228817590b7e9aa0d3ce36ece6652eb7dda1a364c48d2c0b",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -53,15 +55,15 @@ var publishedSemantics = map[string]string{
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed).
 	"review.schema.json": "4b7f8da519724188347957004d7c0b230ab5dba6f58d9c1191fb82a990131a7d",
-	// T3-04: additive threads.schema.json (new bundle document; no existing
-	// schema property, required key, or type changed). The PR-conversation
+	// additive threads.schema.json (new bundle document; no existing schema
+	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
 	"threads.schema.json": "0dfe2a58cc8e51beede189ccc676fee3446e847336e2b72270539eb4c4eed3bc",
-	// 08-redesign: additive usage.schema.json (new handoff document; no
-	// existing schema property, required key, or type changed — the
-	// envelope fetchEstimate entry from f3a22047 is untouched).
+	// additive usage.schema.json (new handoff document; no existing schema
+	// property, required key, or type changed — the envelope fetchEstimate entry
+	// from f3a22047 is untouched).
 	"usage.schema.json": "143473d20d0e0d140432356d9254554b969b9c71290d61ec3f5ab821e2b6bc69",
 }
 

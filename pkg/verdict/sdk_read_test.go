@@ -335,3 +335,70 @@ func assertReadyBlocker(t *testing.T, doc map[string]any) {
 		"action": "address or resolve open threads, then re-run ready",
 	})
 }
+
+// TestClientGate proves the composed gate through the SDK: the typed verdict,
+// the dimension order with its tallies, a failed gate that is not a refusal,
+// and the usage refusal when no dimension is requested.
+func TestClientGate(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writePRBundle(t, "6101")
+	writeFindings(t, "6101", sdkStore())
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	gate, err := c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), MaxSeverity: "important", Live: "skip",
+	})
+	requireNoError(t, err)
+	if gate.Passed {
+		t.Error("passed = true, want false with an open critical finding")
+	}
+	if gate.Repo != "acme/app" || gate.PR != "6101" || gate.At != sdkAt {
+		t.Errorf("envelope = repo %q pr %q at %q", gate.Repo, gate.PR, gate.At)
+	}
+	assertGateDimensions(t, gate.Dimensions)
+
+	clean, err := c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), MaxSeverity: "critical", RequireHead: true, Live: "skip",
+	})
+	requireNoError(t, err)
+	if clean.Passed {
+		t.Error("passed = true, want false with no completed post record")
+	}
+	if last := clean.Dimensions[len(clean.Dimensions)-1]; last.ID != "live_threads" || last.Status != "skip" {
+		t.Errorf("last dimension = %+v, want live_threads/skip", last)
+	}
+
+	_, err = c.Gate(context.Background(), &verdict.GateRequest{Invocation: sdkInvocation("6101")})
+	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
+}
+
+// wantDim is one expected gate dimension: the wire id and its status.
+type wantDim struct{ id, status string }
+
+// assertGateDimensions pins the composed gate's wire order and tallies.
+func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
+	t.Helper()
+	want := []wantDim{{"findings", "fail"}, {"live_threads", "skip"}}
+	if len(dims) != len(want) {
+		t.Fatalf("dimensions = %+v, want %d", dims, len(want))
+	}
+	for i, w := range want {
+		if !matchesDimension(dims[i], w) {
+			t.Errorf("dimension %d = %+v, want id %q, status %q, and a detail", i, dims[i], w.id, w.status)
+		}
+	}
+	findings, live := dims[0], dims[1]
+	if findings.Count == nil || *findings.Count != 2 {
+		t.Errorf("findings count = %v, want the store's two important+ findings", findings.Count)
+	}
+	if live.Count != nil {
+		t.Errorf("live count = %d, want null", *live.Count)
+	}
+}
+
+// matchesDimension reports whether dim carries want's id and status and says
+// what it checked.
+func matchesDimension(dim verdict.GateDimension, want wantDim) bool {
+	return dim.ID == want.id && dim.Status == want.status && dim.Detail != ""
+}

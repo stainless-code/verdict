@@ -51,8 +51,12 @@ case, not the only one.
 ## What it does not do
 
 Verdict is not a hosted merge gate or check-run publisher, a daemon or watcher, a model
-provider or proxy, or a dashboard or account system. `report --check` returns an exit
-code that a CI job can honor. Verdict never posts a check run and never merges for you.
+provider or proxy, or a dashboard or account system. `gate` composes the gating
+dimensions — an open finding at-or-above a tier, a stale HEAD, open threads — into one
+local exit code (`report --check` stays the narrower findings-only form), and a CI job
+honors it like any other step's. Verdict never posts a check run and never merges for
+you: the exit code is the whole integration.
+
 These limits keep setup to one binary and the blast radius to one post, and they keep
 the skill runnable on any model.
 

@@ -221,6 +221,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CostTiers](), name: "costTiers"},
 		{typ: reflect.TypeFor[CostTier](), name: "costTier"},
 		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
+		{typ: reflect.TypeFor[ReportGate](), name: "reportGate"},
+		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},

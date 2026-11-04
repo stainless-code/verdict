@@ -1,0 +1,38 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "gate",
+  "repo": "acme/app",
+  "pr": 5201,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "none — every requested dimension passed",
+  "warnings": [
+    "live recheck skipped (--live skip requested — gating on local dimensions only)"
+  ],
+  "data": {
+    "passed": true,
+    "dimensions": [
+      {
+        "id": "findings",
+        "status": "pass",
+        "detail": "no open findings at-or-above critical",
+        "count": 0
+      },
+      {
+        "id": "live_threads",
+        "status": "skip",
+        "detail": "live recheck skipped (--live skip)",
+        "count": null
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: live recheck skipped (--live skip requested — gating on local dimensions only)
+gate: findings     pass  no open findings at-or-above critical
+gate: live_threads skip  live recheck skipped (--live skip)
+gate: PASS
+gate: skipped live_threads
+--- files ---

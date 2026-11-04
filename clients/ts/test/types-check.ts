@@ -53,7 +53,8 @@ type Verb =
   | "adopt"
   | "fix"
   | "learn"
-  | "init";
+  | "init"
+  | "gate";
 
 export async function typeChecks(): Promise<void> {
   const client = createClient({ bin: "verdict", timeoutMs: 1000 });
@@ -70,6 +71,21 @@ export async function typeChecks(): Promise<void> {
   const sig: string = report.data.items[0]?.sig ?? "";
   void open;
   void sig;
+
+  const gate: Envelope<DataFor["gate"]> = await client.gate([
+    "acme/app",
+    "4243",
+    "--max-severity",
+    "critical",
+  ]);
+  const passed: boolean | undefined = gate.data.gate?.passed;
+  const gateStatus: "pass" | "fail" | "skip" | "unknown" | undefined =
+    gate.data.gate?.dimensions[0]?.status;
+  void passed;
+  void gateStatus;
+  // @ts-expect-error - dimension status is a closed vocabulary
+  const badStatus: "clean" | undefined = gate.data.gate?.dimensions[0]?.status;
+  void badStatus;
   // @ts-expect-error - verdict.open is a number, not a string
   const badOpen: string = report.data.verdict.open;
 

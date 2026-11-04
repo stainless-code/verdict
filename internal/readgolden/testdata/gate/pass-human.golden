@@ -1,0 +1,9 @@
+exit: 0
+--- stdout ---
+gate: findings     pass  no open findings at-or-above critical
+gate: live_threads skip  live recheck skipped (--live skip)
+gate: PASS
+gate: skipped live_threads
+--- stderr ---
+warn: live recheck skipped (--live skip requested — gating on local dimensions only)
+--- files ---

@@ -39,6 +39,7 @@ var forbiddenDeps = []string{
 	"internal/triage",
 	"internal/adopt",
 	"internal/fix",
+	"internal/gate",
 	"internal/learn",
 	"internal/ready",
 	"internal/threads",

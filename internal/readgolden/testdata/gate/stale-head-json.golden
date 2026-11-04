@@ -1,0 +1,45 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "gate",
+  "repo": "acme/app",
+  "pr": 5202,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "post a review for the fetched HEAD",
+  "warnings": [
+    "live recheck skipped (--live skip requested — gating on local dimensions only)"
+  ],
+  "data": {
+    "passed": false,
+    "dimensions": [
+      {
+        "id": "findings",
+        "status": "pass",
+        "detail": "no open findings at-or-above critical",
+        "count": 0
+      },
+      {
+        "id": "head",
+        "status": "fail",
+        "detail": "posted HEAD ccccccc != fetched HEAD aaaaaaa",
+        "count": null
+      },
+      {
+        "id": "live_threads",
+        "status": "skip",
+        "detail": "live recheck skipped (--live skip)",
+        "count": null
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: live recheck skipped (--live skip requested — gating on local dimensions only)
+gate: findings     pass  no open findings at-or-above critical
+gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa
+gate: live_threads skip  live recheck skipped (--live skip)
+gate: FAIL (1 fail, 1 pass, 1 skip)
+gate: skipped live_threads
+--- files ---

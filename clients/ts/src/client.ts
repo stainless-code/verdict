@@ -247,6 +247,7 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["report"]>>;
+  gate(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["gate"]>>;
   post(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["post"]>>;
   record(
     args?: string[],
@@ -345,6 +346,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     },
     run,
     report: (args, opts) => run<DataFor["report"]>("report", args, opts),
+    gate: (args, opts) => run<DataFor["gate"]>("gate", args, opts),
     post: (args, opts) => run<DataFor["post"]>("post", args, opts),
     record: (args, opts) => run<DataFor["record"]>("record", args, opts),
     next: (args, opts) => run<DataFor["next"]>("next", args, opts),

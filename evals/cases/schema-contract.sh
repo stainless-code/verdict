@@ -127,6 +127,52 @@ check "S3 report --cost envelope" "$ENV" "$EVAL_OUT"
 jq '.data' <"$EVAL_OUT" > "$DATA" 2>/dev/null || echo "null" > "$DATA"
 check "S3 report --cost data profile" "$ENV#/\$defs/reportData" "$DATA"
 
+# S3b: the gate verb publishes its own envelope, so the reportGate definition
+# is exercised by a live run, and a gating report carries it inside data.
+PR=4950
+eval_mk_bundle "$PR"
+eval_write_findings "$PR" <<'EOF'
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+EOF
+run_review gate acme/app "$PR" --max-severity critical --live skip --json
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.verb' <"$EVAL_OUT" 2>/dev/null)" = "gate" ]; then
+  good "S3b gate --json exits 1 on the open critical with a gate verb"
+else
+  bad "S3b gate --json exits $EVAL_STATUS: $(jq -c '{verb,error}' <"$EVAL_OUT" 2>/dev/null)"
+fi
+check "S3b gate envelope" "$ENV" "$EVAL_OUT"
+jq '.data' <"$EVAL_OUT" > "$DATA" 2>/dev/null || echo "null" > "$DATA"
+check "S3b gate data profile" "$ENV#/\$defs/reportGate" "$DATA"
+run_review report acme/app "$PR" --check critical --live skip --json
+jq '.data' <"$EVAL_OUT" > "$EVAL_SANDBOX/s3b-gaterpt.json" 2>/dev/null || echo "null" > "$EVAL_SANDBOX/s3b-gaterpt.json"
+if [ "$(jq -r '.gate.dimensions[0].id' <"$EVAL_SANDBOX/s3b-gaterpt.json" 2>/dev/null)" = "findings" ]; then
+  good "S3b report --check data carries the gate block"
+else
+  bad "S3b report --check data.gate: $(jq -c '.gate // "absent"' <"$EVAL_SANDBOX/s3b-gaterpt.json" 2>/dev/null)"
+fi
+check "S3b report gating profile with data.gate" "$ENV#/\$defs/reportData" "$EVAL_SANDBOX/s3b-gaterpt.json"
+jq -n '{"passed": true, "dimensions": [{"id": "findings", "status": "clean", "detail": "d", "count": 0}]}' \
+  > "$EVAL_SANDBOX/s3b-badstatus.json"
+must_fail "S3b gate off-enum status" "$ENV#/\$defs/reportGate" "$EVAL_SANDBOX/s3b-badstatus.json" "not one of"
+jq -n '{"passed": true, "dimensions": [{"id": "findings", "status": "pass", "detail": "d", "count": "one"}]}' \
+  > "$EVAL_SANDBOX/s3b-badcount.json"
+must_fail "S3b gate non-integer count" "$ENV#/\$defs/reportGate" "$EVAL_SANDBOX/s3b-badcount.json" "want type [\"integer\",\"null\"]"
+run_review report acme/app "$PR" --json
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$(jq -r 'has("gate")' <<<"$(jq -c '.data' <"$EVAL_OUT")" 2>/dev/null)" = "false" ]; then
+  good "S3b a default report carries no data.gate key"
+else
+  bad "S3b default report data keys: $(jq -c '.data | keys' <"$EVAL_OUT" 2>/dev/null)"
+fi
+run_review report acme/app "$PR" --check critical --live skip --json
+if [ "$EVAL_STATUS" -eq 1 ] \
+  && jq -e '.data.gate.passed == false' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && jq '.data' <"$EVAL_OUT" > "$DATA"; then
+  good "S3b report --check carries data.gate with passed false"
+  check "S3b report gating data profile" "$ENV#/\$defs/reportData" "$DATA"
+else
+  bad "S3b report --check exits $EVAL_STATUS: $(jq -c '.data.gate // "absent"' <"$EVAL_OUT" 2>/dev/null)"
+fi
+
 PR=4951
 stub_pre_post="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 eval_mk_bundle "$PR"
@@ -180,7 +226,7 @@ if [ "$(( stub_now - stub_pre_post ))" = "1" ] \
 else
   bad "S7 unexpected network attempts around the dry-run post leg"
 fi
-rm -rf "$LB" "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX"/s1-review.json \
-  "$EVAL_SANDBOX"/s5-post.json "$EVAL_SANDBOX"/s6-*.json "$DATA"
+rm -rf "$LB" "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX/.review/4950" "$EVAL_SANDBOX"/s1-review.json \
+  "$EVAL_SANDBOX"/s5-post.json "$EVAL_SANDBOX"/s6-*.json "$EVAL_SANDBOX"/s3b-*.json "$DATA"
 
 eval_end

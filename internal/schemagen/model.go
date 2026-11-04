@@ -108,6 +108,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Items        []FindingItem      `json:"items"`
 	Cost         ReportCost         `json:"cost"         optional:"true"`
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
+	Gate         *ReportGate        `anyOf:"null"        json:"gate"         optional:"true"`
 }
 
 // ReportHead is core's fetched/base/live head triple.
@@ -136,6 +137,12 @@ type CostTier = core.CostTier
 
 // ReportCompleteness is core's head comparison.
 type ReportCompleteness = core.ReportCompleteness
+
+// ReportGate is core's composed gate result on a gating report run.
+type ReportGate = core.ReportGate
+
+// GateDimension is core's one gate dimension verdict.
+type GateDimension = core.GateDimension
 
 // PostData is the post verb's --json data profile (dry-run and real post).
 type PostData = core.PostData

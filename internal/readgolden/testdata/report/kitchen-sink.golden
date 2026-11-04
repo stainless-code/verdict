@@ -216,6 +216,29 @@ exit: 1
       "reviewed": true,
       "fetched_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "posted_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gate": {
+      "passed": false,
+      "dimensions": [
+        {
+          "id": "findings",
+          "status": "fail",
+          "detail": "2 open finding(s) at-or-above important",
+          "count": 2
+        },
+        {
+          "id": "head",
+          "status": "pass",
+          "detail": "HEAD aaaaaaa reviewed (post matches fetch)",
+          "count": null
+        },
+        {
+          "id": "live_threads",
+          "status": "skip",
+          "detail": "live thread recheck unreachable — gating on local dimensions only",
+          "count": null
+        }
+      ]
     }
   },
   "error": null

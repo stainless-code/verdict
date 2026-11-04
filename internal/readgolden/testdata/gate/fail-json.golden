@@ -1,0 +1,38 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "gate",
+  "repo": "acme/app",
+  "pr": 5201,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "address or triage the open findings",
+  "warnings": [
+    "live recheck skipped (--live skip requested — gating on local dimensions only)"
+  ],
+  "data": {
+    "passed": false,
+    "dimensions": [
+      {
+        "id": "findings",
+        "status": "fail",
+        "detail": "1 open finding(s) at-or-above important",
+        "count": 1
+      },
+      {
+        "id": "live_threads",
+        "status": "skip",
+        "detail": "live recheck skipped (--live skip)",
+        "count": null
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: live recheck skipped (--live skip requested — gating on local dimensions only)
+gate: findings     fail  1 open finding(s) at-or-above important
+gate: live_threads skip  live recheck skipped (--live skip)
+gate: FAIL (1 fail, 1 skip)
+gate: skipped live_threads
+--- files ---

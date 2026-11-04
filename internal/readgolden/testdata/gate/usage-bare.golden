@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+gate needs at least one dimension (want --max-severity critical|important|informational or --require-head; --live only sets the offline posture)
+--- files ---

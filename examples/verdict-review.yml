@@ -72,6 +72,16 @@ jobs:
         run: |
           verdict post "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
 
-      - name: Merge gate (findings + freshness)
+      - name: Review summary (advisory, never gates)
         run: |
-          verdict report "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --check critical --completeness
+          # The ranked findings, for the human reading the job log. Without
+          # a gate flag report never sets an exit code on findings.
+          verdict report "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
+
+      - name: Merge gate (findings + freshness + live threads)
+        run: |
+          # One composed exit code: 0 pass, 1 fail-or-unknown, 2 usage,
+          # 3 tool error. --live auto keeps an unreachable lookup neutral;
+          # use --live strict to fail closed instead (see docs/ci-recipe.md).
+          verdict gate "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" \
+            --max-severity critical --require-head --live auto
