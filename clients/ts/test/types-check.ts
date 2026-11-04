@@ -49,6 +49,14 @@ export async function typeChecks(): Promise<void> {
   // @ts-expect-error - unknown data has no .verdict
   void show.data.verdict;
 
+  // adopt, fix, learn and init mirror the Go facade's verbs and stay unknown
+  // until a schema pins their data.
+  const learn = await client.learn(["--status"]);
+  const learnData: unknown = learn.data;
+  void learnData;
+  // @ts-expect-error - learn data is unknown, not a rules array
+  void learn.data.rules;
+
   // Generic run() infers the same shapes.
   const generic: Envelope<ReportData> = await run<ReportData>(
     "report",

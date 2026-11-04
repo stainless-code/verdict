@@ -84,6 +84,28 @@ describe("unit: fake binary exit paths", () => {
     assert.equal(argv.filter((a) => a === "--json").length, 1);
   });
 
+  it("adopt, fix, learn and init reach their own verbs", async () => {
+    for (const verb of ["adopt", "fix", "learn", "init"]) {
+      const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
+      const argvFile = join(dir, "argv.json");
+      const client = createClient({ bin: FAKE, stderr: "pipe" });
+      const env = await client[verb](["acme/app", "4243"], {
+        env: {
+          ...process.env,
+          FAKE_MODE: "record-args",
+          FAKE_ARGV_FILE: argvFile,
+        },
+      });
+      assert.equal(env.schema_version, "1");
+      assert.deepEqual(JSON.parse(readFileSync(argvFile, "utf8")), [
+        verb,
+        "acme/app",
+        "4243",
+        "--json",
+      ]);
+    }
+  });
+
   it("refusal throws VerdictRefusalError with code, message, hint", async () => {
     await assert.rejects(runFake("refusal"), (error) => {
       assert.ok(error instanceof VerdictRefusalError);
@@ -399,6 +421,37 @@ describe("integration: real binary", () => {
     assert.equal(env.error, null);
     assert.equal(env.data.dry_run, true);
   });
+
+  it("learn --status success envelope", { skip: !haveBinary }, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "verdict-ts-"));
+    const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
+    const env = await client.learn(["--status"]);
+    assert.equal(env.schema_version, "1");
+    assert.equal(env.verb, "learn");
+    assert.equal(env.error, null);
+    assert.deepEqual(env.data.rules, []);
+  });
+
+  it(
+    "init writes the preset control files",
+    { skip: !haveBinary },
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "verdict-ts-"));
+      const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
+      const env = await client.init(["--preset", "chill", "--yes"]);
+      assert.equal(env.verb, "init");
+      assert.equal(env.error, null);
+      assert.equal(env.data.preset, "chill");
+      assert.deepEqual(env.data.files, [
+        "budget:create",
+        "panel:create",
+        "kb-policy:create",
+        "kb.jsonl:create",
+      ]);
+      const budget = readFileSync(join(dir, ".review", "budget"), "utf8");
+      assert.ok(budget.includes("2.00"));
+    },
+  );
 
   it(
     "report refusal carries the typed code",

@@ -291,6 +291,10 @@ export interface VerdictClient {
   doctor(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
   calibrate(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
   trend(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
+  adopt(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
+  fix(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
+  learn(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
+  init(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
 }
 
 // createClient binds default options (bin resolution is lazy per run so
@@ -348,6 +352,10 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     doctor: (args, opts) => run("doctor", args, opts),
     calibrate: (args, opts) => run("calibrate", args, opts),
     trend: (args, opts) => run("trend", args, opts),
+    adopt: (args, opts) => run("adopt", args, opts),
+    fix: (args, opts) => run("fix", args, opts),
+    learn: (args, opts) => run("learn", args, opts),
+    init: (args, opts) => run("init", args, opts),
   };
   return client;
 }
