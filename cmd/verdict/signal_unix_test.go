@@ -4,10 +4,10 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -25,7 +25,6 @@ func TestSignalChild(t *testing.T) {
 		t.Skip("child half of TestShutdownSignalsCancelTheVerb")
 	}
 	code := run([]string{"fetch", "o/r", "1", "--json"}, os.Stdout, os.Stderr, os.Getenv, os.ReadFile)
-	//nolint:forbidigo // the re-executed child must exit with the verb's own code
 	os.Exit(code)
 }
 
@@ -35,52 +34,56 @@ func TestSignalChild(t *testing.T) {
 // used to kill the process outright, leaving a verify tree orphaned and no
 // envelope on stdout).
 func TestShutdownSignalsCancelTheVerb(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		sig  syscall.Signal
-	}{
-		{"SIGINT", syscall.SIGINT},
-		{"SIGTERM", syscall.SIGTERM},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			started := filepath.Join(dir, "gh.started")
-			stub := "#!/bin/sh\n: > '" + started + "'\nexec sleep 30\n"
-			bin := filepath.Join(dir, "bin")
-			if err := os.Mkdir(bin, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(stub), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSignalChild$")
-			cmd.Dir = dir
-			cmd.Env = []string{
-				envSignalChild + "=1",
-				"PATH=" + bin + ":/usr/bin:/bin",
-				"HOME=" + dir,
-				"XDG_CONFIG_HOME=" + dir,
-			}
-			var stdout bytes.Buffer
-			cmd.Stdout = &stdout
-			if err := cmd.Start(); err != nil {
-				t.Fatal(err)
-			}
-			waitForFile(t, started)
-			if err := cmd.Process.Signal(tc.sig); err != nil {
-				t.Fatal(err)
-			}
-			err := cmd.Wait()
-			exitErr, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || exitErr.ExitCode() != 3 {
-				t.Fatalf("Wait = %v (exit %v), want exit 3 for a cancelled verb\nstdout: %s", err, exitCode(exitErr), stdout.String())
-			}
-			if !bytes.Contains(stdout.Bytes(), []byte(`"code": "canceled"`)) {
-				t.Errorf("stdout lacks the canceled envelope:\n%s", stdout.String())
-			}
-		})
+	t.Run("SIGINT", func(t *testing.T) { t.Parallel(); assertSignalCancels(t, syscall.SIGINT) })
+	t.Run("SIGTERM", func(t *testing.T) { t.Parallel(); assertSignalCancels(t, syscall.SIGTERM) })
+}
+
+// assertSignalCancels pins exit 3 and the canceled envelope for one signal.
+func assertSignalCancels(t *testing.T, sig syscall.Signal) {
+	t.Helper()
+	code, stdout := signalMidFetch(t, sig)
+	if code != 3 {
+		t.Fatalf("exit = %d, want 3 for a canceled verb\nstdout: %s", code, stdout)
 	}
+	if !strings.Contains(stdout, `"code": "canceled"`) {
+		t.Errorf("stdout lacks the canceled envelope:\n%s", stdout)
+	}
+}
+
+// signalMidFetch starts the re-executed front door on a `fetch` whose gh
+// blocks, sends sig once gh is running, and returns the exit code (-1 for a
+// death by signal) and stdout.
+func signalMidFetch(t *testing.T, sig syscall.Signal) (int, string) {
+	t.Helper()
+	dir := t.TempDir()
+	started := filepath.Join(dir, "gh.started")
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\n: > '" + started + "'\nexec sleep 30\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSignalChild$")
+	cmd.Dir = dir
+	cmd.Env = []string{
+		envSignalChild + "=1",
+		"PATH=" + bin + ":/usr/bin:/bin",
+		"HOME=" + dir,
+		"XDG_CONFIG_HOME=" + dir,
+	}
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitForFile(t, started)
+	if err := cmd.Process.Signal(sig); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait() //nolint:errcheck // the exit code below carries the outcome; a non-zero exit is expected
+	return cmd.ProcessState.ExitCode(), stdout.String()
 }
 
 // waitForFile polls until the stub gh proves the verb is mid-flight.
@@ -94,12 +97,4 @@ func waitForFile(t *testing.T, path string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("stub gh never started: %s missing", path)
-}
-
-// exitCode renders an exit error's code for the failure message.
-func exitCode(e *exec.ExitError) int {
-	if e == nil {
-		return 0
-	}
-	return e.ExitCode()
 }

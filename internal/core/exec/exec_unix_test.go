@@ -259,7 +259,7 @@ func TestRunnerKeepsTwentyMiBDiff(t *testing.T) {
 // for the pipe to close fails the bound instead of passing slowly.
 const holdSeconds = "9"
 
-// returnBound is the longest a cancelled or exited runner may take: the
+// returnBound is the longest a canceled or exited runner may take: the
 // 2s WaitDelay plus scheduling slack, well under holdSeconds.
 const returnBound = 6 * time.Second
 
@@ -321,6 +321,6 @@ func killReportedPid(pidFile string) {
 		return
 	}
 	if pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw))); convErr == nil {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+		_ = syscall.Kill(pid, syscall.SIGKILL) //nolint:errcheck // best-effort reap; the helper may already be gone
 	}
 }

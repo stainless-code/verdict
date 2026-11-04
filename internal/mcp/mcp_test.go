@@ -761,6 +761,16 @@ func TestThreadsTool(t *testing.T) {
 	}
 }
 
+// concurrentReport renders one report call; even ids hit the fixture bundle
+// (success), odd ids a PR with none (refusal).
+func concurrentReport(id int) string {
+	pr := "9999"
+	if id%2 == 0 {
+		pr = "5101"
+	}
+	return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":%q}}}`, id, pr)
+}
+
 // TestConcurrentCallsAreIsolated drives many tool calls in flight at once
 // (Serve dispatches each on its own goroutine) and proves every response is
 // whole, correctly routed by id, and identical to the same call made alone.
@@ -769,37 +779,23 @@ func TestThreadsTool(t *testing.T) {
 func TestConcurrentCallsAreIsolated(t *testing.T) {
 	fixture(t)
 	cfg := testConfig()
-	pr := func(i int) string {
-		if i%2 == 0 {
-			return "5101" // fixture bundle: success
-		}
-		return "9999" // no bundle: refusal
+	alone := serve(t, &cfg, concurrentReport(0), concurrentReport(1))
+	if bytes.Equal(alone["0"].Result, alone["1"].Result) {
+		t.Fatal("baseline success and refusal are identical; the test would not notice a mixed-up response")
 	}
-	call := func(id int) string {
-		return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":%q}}}`, id, pr(id))
-	}
-	// Baselines: each shape run alone.
-	alone := serve(t, &cfg, call(0), call(1))
-	const calls = 48
+	const first, calls = 100, 48
 	lines := make([]string, 0, calls)
-	for id := 100; id < 100+calls; id++ {
-		lines = append(lines, call(id))
+	for id := first; id < first+calls; id++ {
+		lines = append(lines, concurrentReport(id))
 	}
 	frames := serve(t, &cfg, lines...)
 	if len(frames) != calls {
 		t.Fatalf("got %d response frames, want %d", len(frames), calls)
 	}
-	for id := 100; id < 100+calls; id++ {
-		got, ok := frames[strconv.Itoa(id)]
-		if !ok {
-			t.Fatalf("no response for id %d", id)
-		}
-		want := alone[strconv.Itoa(id%2)]
-		if !bytes.Equal(got.Result, want.Result) {
+	for id := first; id < first+calls; id++ {
+		got := frames[strconv.Itoa(id)]
+		if want := alone[strconv.Itoa(id%2)]; !bytes.Equal(got.Result, want.Result) {
 			t.Errorf("id %d result differs from the same call alone:\n got  %s\n want %s", id, got.Result, want.Result)
 		}
-	}
-	if string(alone["0"].Result) == string(alone["1"].Result) {
-		t.Fatal("baseline success and refusal are identical; the test would not notice a mixed-up response")
 	}
 }

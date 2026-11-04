@@ -15,7 +15,7 @@ import (
 // TestWindowsHandoffStagesHelperBesideTarget pins where the helper image
 // lands. The helper renames its own image over the target with a plain
 // MoveFileEx (os.Rename), which cannot cross volumes, so the image must sit in
-// the target's directory — not in os.TempDir(), which may be on another drive.
+// the target's directory — not in [os.TempDir], which may be on another drive.
 // The staged "binary" is a shell script that records the helper argv it was
 // started with, which carries the `--new` image path the helper will move.
 func TestWindowsHandoffStagesHelperBesideTarget(t *testing.T) {

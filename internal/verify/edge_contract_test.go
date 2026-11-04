@@ -390,8 +390,30 @@ func edgeCode(stdout string) string {
 // failed run — exit 137, timedOut true, "timeout after 300s" — and exit 0.
 func TestVerifyContractCancelIsNotATimeout(t *testing.T) {
 	dir := t.TempDir()
-	home := t.TempDir()
 	edgePatch(t, dir, `sleep 30 & echo $! > gc.pid; wait`)
+	code, stdout := runVerifyCanceledOnceUp(t, dir)
+	if code != cli.ExitBroke {
+		t.Fatalf("exit = %d, want %d (canceled)\nstdout: %s", code, cli.ExitBroke, stdout)
+	}
+	if !strings.Contains(stdout, `"code": "canceled"`) {
+		t.Errorf("stdout lacks the canceled refusal:\n%s", stdout)
+	}
+	bundle := filepath.Join(dir, ".review", "5201")
+	if marker, _ := os.ReadFile(filepath.Join(bundle, ".verify.timeout")); len(marker) > 0 { //nolint:errcheck // an absent marker is the passing case
+		t.Errorf(".verify.timeout = %q, want no timeout recorded for a cancel", marker)
+	}
+	patch := mustRead(t, filepath.Join(bundle, "patch.json"))
+	if strings.Contains(patch, "timedOut") || strings.Contains(patch, `"exit"`) {
+		t.Errorf("patch.json recorded a verify outcome for a canceled run: %s", patch)
+	}
+	requireProcessGone(t, readPID(t, filepath.Join(dir, "gc.pid")))
+}
+
+// runVerifyCanceledOnceUp runs verify in dir and cancels its context once the
+// command has reported its grandchild pid, so a live tree is what dies.
+func runVerifyCanceledOnceUp(t *testing.T, dir string) (int, string) {
+	t.Helper()
+	home := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", home)
 	var out, derr strings.Builder
@@ -404,8 +426,7 @@ func TestVerifyContractCancelIsNotATimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		// Cancel only once the tree is up, so the test cancels a live run.
-		for i := 0; i < 400; i++ {
+		for range 400 {
 			if raw, err := os.ReadFile(filepath.Join(dir, "gc.pid")); err == nil && strings.HasSuffix(string(raw), "\n") {
 				break
 			}
@@ -416,32 +437,15 @@ func TestVerifyContractCancelIsNotATimeout(t *testing.T) {
 	code := verify.Run(ctx, r, nil, verify.Request{
 		Env: map[string]string{"HOME": home}, Repo: "acme/app", Pr: "5201", Root: dir,
 	})
-	if code != cli.ExitBroke {
-		t.Fatalf("exit = %d, want %d (canceled)\nstdout: %s", code, cli.ExitBroke, out.String())
-	}
-	var env struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(out.String()), &env); err != nil {
-		t.Fatalf("envelope: %v\n%s", err, out.String())
-	}
-	if env.Error.Code != "canceled" {
-		t.Errorf("error.code = %q, want canceled\n%s", env.Error.Code, out.String())
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".review", "5201", ".verify.timeout")); err == nil {
-		raw, _ := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.timeout"))
-		if len(raw) > 0 {
-			t.Errorf(".verify.timeout = %q, want no timeout recorded for a cancel", raw)
-		}
-	}
-	patch, err := os.ReadFile(filepath.Join(dir, ".review", "5201", "patch.json"))
+	return code, out.String()
+}
+
+// mustRead returns a file's text, failing the test on any error.
+func mustRead(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(patch), "timedOut") || strings.Contains(string(patch), `"exit"`) {
-		t.Errorf("patch.json recorded a verify outcome for a cancelled run: %s", patch)
-	}
-	requireProcessGone(t, readPID(t, filepath.Join(dir, "gc.pid")))
+	return string(raw)
 }

@@ -42,7 +42,7 @@ this repo, and the repo files stay the truth for what is gated:
 - `govulncheck ./...` blocks on reachable vulns (GO-MOD-04). — enforced: `make vuln`, part of `make ci-go` in the CI go job.
 - `--json` prints exactly one envelope to stdout; everything else to stderr (GO-CLI-01). — partly: `evals` (`terminal-write`, `envelope-shape`) + `lint:forbidigo`; elsewhere review-only.
 - No prompt without a TTY; `--yes`-or-fail otherwise (GO-CLI-03). — partly: `test` (`internal/core/init` machine-mode refusal, `--yes`).
-- Root ctx from `signal.NotifyContext`; cancel kills children, exits 3 + JSON envelope (GO-CLI-05). — partly: `cmd/verdict/main.go` installs the root ctx and the exec watchdog group-kills on cancel; no automated interrupt test.
+- Root ctx from `signal.NotifyContext`; cancel kills children, exits 3 + JSON envelope (GO-CLI-05). — partly: `cmd/verdict/main.go` installs the root ctx and the exec watchdog group-kills on cancel; SIGINT and SIGTERM are pinned end to end by `TestShutdownSignalsCancelTheVerb`.
 - Kill process trees (pgid/Job Objects), never just the direct child (GO-EXEC-01). — partly: `internal/core/exec` (`setGroup`/`killGroup`, Windows Job objects) with tests.
 - `exec.CommandContext` + `WaitDelay`; timeouts read from `ctx.Err()`, not `err` (GO-EXEC-02). — partly: `internal/core/exec` sets `WaitDelay` on the watchdog; review-only elsewhere.
 - No shell for agent-supplied commands; argv only (GO-EXEC-03). — partly: every command verdict issues is argv. The one exception is by design: `verify` runs the agent's own `verifyCmd` through `bash -c`. Analyzer candidate, map §2.
