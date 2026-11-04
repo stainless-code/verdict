@@ -39,6 +39,13 @@ export const faq: Qa[] = [
     ],
   },
   {
+    q: "Can it review something other than a PR?",
+    a: [
+      "Yes. `fetch-local owner/repo work` builds a review bundle from git alone: a branch against a base (`--base main`), a commit range (`--range A..B`), staged changes (`--staged`), a stash entry (`--stash [n]`), or an isolated checkout (`--worktree`).",
+      "`record`, `report`, `triage`, `show` and `next` all run on the local bundle. Only `post` needs a GitHub PR, and it refuses a local bundle with `no-pr-target` instead of inventing a target.",
+    ],
+  },
+  {
     q: "Is my code sent anywhere?",
     a: [
       "Verdict has no server and no telemetry, and it never updates itself in the background. It reads your host with your credentials and posts only when `verdict post` runs.",
