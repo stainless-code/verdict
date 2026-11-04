@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -91,7 +90,18 @@ func runMCP(
 		Operator:  operator,
 		Stderr:    stderr,
 	})
-	if err := server.Serve(context.Background(), os.Stdin, stdout); err != nil {
+	// A shutdown signal must reach in-flight tool calls the same way it reaches
+	// a verb: their child process trees (a running `verify`) are killed, and the
+	// server returns once the handlers do. Stdin EOF keeps its own semantics.
+	ctx, stop := shutdownSignalContext()
+	defer stop()
+	err := server.Serve(ctx, os.Stdin, stdout)
+	if ctx.Err() != nil {
+		// Shutting down: a transport error here (a closed stdin, a hosted
+		// stdout pipe) is the symptom of the signal, not a failure to report.
+		return cli.ExitBroke
+	}
+	if err != nil {
 		fmt.Fprintf(stderr, "mcp: %v\n", err)
 		return cli.ExitRefused
 	}

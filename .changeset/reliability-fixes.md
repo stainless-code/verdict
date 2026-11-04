@@ -30,7 +30,10 @@ does: exit 3 with a `canceled` envelope, and child process groups are killed
 instead of orphaned. A cancelled verb returns promptly even when a grandchild
 process still holds its output pipe. Interrupting `verify` refuses
 `canceled` and records nothing, where it used to record a false
-`timeout after 300s` proof and exit 0. On Windows, `verdict upgrade` stages its
+`timeout after 300s` proof and exit 0. The `mcp` stdio server takes the same
+signal: SIGTERM cancels an in-flight tool call and kills its process tree
+instead of orphaning a running `verify` for the rest of the verify budget.
+On Windows, `verdict upgrade` stages its
 helper beside the installed binary, so an install directory on another drive
 no longer makes the final move fail after the upgrade reported success.
 On Windows, `verify` starts its command suspended and puts it in its

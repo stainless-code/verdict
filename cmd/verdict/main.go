@@ -188,15 +188,20 @@ var readVerbs = map[string]readHandler{
 	"check-tree": checktree.Run,
 }
 
+// shutdownSignalContext is the root context of every long-running entry point:
+// SIGINT and SIGTERM cancel it (GO-CLI-05). SIGKILL cannot be caught, so
+// SIGTERM (kill, docker stop, systemd) is the second catchable shutdown signal.
+func shutdownSignalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+}
+
 // dispatch runs the verb or reports it unknown.
 func dispatch(
 	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
 	forces *cli.GlobalForces, rest []string, stderr *os.File,
 ) int {
 	r.RouteHuman()
-	// SIGKILL cannot be caught, so SIGTERM (kill, docker stop, systemd) is the
-	// second catchable shutdown signal (GO-CLI-05).
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := shutdownSignalContext()
 	defer stop()
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{

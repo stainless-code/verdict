@@ -87,6 +87,9 @@ type Server struct { //nolint:govet // the grouping separates config, tools, and
 	inflight sync.WaitGroup
 	callMu   sync.Mutex
 	calls    map[string]context.CancelFunc
+	// closed is set under writeMu when Serve returns, so a read loop still
+	// holding a buffered line cannot write after the transport is done.
+	closed bool
 }
 
 // New builds a server for one session. Config values are normalized here so
@@ -169,35 +172,62 @@ func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander)
 	}
 }
 
-// Serve runs the newline-delimited JSON-RPC loop until stdin closes, then
-// cancels in-flight calls, waits for them, and returns. Stdout carries only
-// protocol frames.
+// Serve runs the newline-delimited JSON-RPC loop until stdin closes or ctx is
+// canceled, then cancels in-flight calls, waits for them, and returns. Stdout
+// carries only protocol frames.
+//
+// Both endings wait for in-flight calls, but they cancel at different moments.
+// A canceled ctx (SIGINT/SIGTERM in the binary) cancels the per-call contexts
+// immediately, so a running tool's child process tree dies before Serve
+// returns. Stdin closing lets already-dispatched calls finish first, because a
+// host may send one tool call and close its pipe.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	s.out = out
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	read := make(chan error, 1)
+	go func() { read <- s.readLoop(ctx, in) }()
+	var readErr error
+	select {
+	case readErr = <-read:
+	case <-ctx.Done():
+		// The read stays blocked on stdin, which this process closes when it
+		// exits; the readLoop ctx check stops it dispatching more work.
+	}
+	s.inflight.Wait()
+	cancel()
+	s.cancelAll()
+	s.writeMu.Lock()
+	s.closed = true
+	writeErr := s.writeErr
+	s.writeMu.Unlock()
+	if readErr != nil {
+		return readErr
+	}
+	return writeErr
+}
+
+// readLoop routes frames until stdin closes or ctx is canceled. A canceled ctx
+// returns no error: it is a shutdown, not a transport failure.
+func (s *Server) readLoop(ctx context.Context, in io.Reader) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, scannerInitialBytes), maxFrameBytes)
 	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
 		}
 		s.handleLine(ctx, line)
 	}
-	readErr := scanner.Err()
-	// stdin closing ends the session, but let already-dispatched calls finish:
-	// a host may send one tool call and close its pipe. Only then cancel.
-	s.inflight.Wait()
-	cancel()
-	s.cancelAll()
-	s.writeMu.Lock()
-	writeErr := s.writeErr
-	s.writeMu.Unlock()
-	if readErr != nil {
-		return &transportError{err: readErr}
+	if err := scanner.Err(); err != nil {
+		return &transportError{err: err}
 	}
-	return writeErr
+	return nil
 }
 
 // transportError seals a stdin read failure at the transport boundary.
@@ -695,6 +725,9 @@ func (s *Server) writeFrame(resp rpcResponse) {
 	raw = append(raw, '\n')
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.closed {
+		return
+	}
 	if _, err := s.out.Write(raw); err != nil {
 		if s.writeErr == nil {
 			s.writeErr = fmt.Errorf("write stdout: %w", err)
