@@ -1,6 +1,6 @@
 {
   "name": "@stainless-code/verdict",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Local on-demand PR review for any coding agent. Evidence-graded findings, machine gates, zero install.",
   "license": "MIT",
   "repository": {
