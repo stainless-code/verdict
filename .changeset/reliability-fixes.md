@@ -58,3 +58,16 @@ A failed or unreadable Bitbucket diffstat/comments page, a GitLab changed-file
 payload that is not a diff list, and a failed Azure iteration read no longer
 pass as an empty list: each warns, and the Bitbucket threads feed is marked
 `truncated: true`.
+
+Report artifacts survive a kill. `report --output`, `report --sarif`, and the
+MCP report artifact are staged beside the target and renamed into place, so a
+crash mid-write can no longer leave a truncated report behind. A symlinked
+`--output` path keeps the link and replaces only the file it names, an existing
+file keeps its own mode (a new one is still owner-only), and a device like
+`/dev/stdout` still receives the bytes directly. A failed write refuses
+`report-failed` and leaves the previous report intact.
+
+Numbers in machine output render the way jq 1.8 renders them. A literal such as
+`9.223372036854775808e18` now prints as `9223372036854775808` on every
+architecture, where arm64 used to saturate at `9223372036854775807` and amd64
+wrap to `-9223372036854775808`.

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -455,13 +455,15 @@ func commandRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "fetch-failed", Message: err.Error()}
 }
 
-// writeArtifact writes one requested report artifact (0600: reports can
-// carry reviewed-diff excerpts).
+// writeArtifact writes one requested report artifact atomically (0600 when it
+// creates the file: reports can carry reviewed-diff excerpts; an existing file
+// keeps its own mode). A symlink is resolved first so the link survives and
+// only its target is replaced; a device or FIFO keeps the direct write.
 func writeArtifact(a *core.FileArtifact) *core.RefusalError {
 	if a == nil {
 		return nil
 	}
-	if err := os.WriteFile(a.Path, a.Content, artifactPerm); err != nil {
+	if err := atomic.WriteThrough(a.Path, a.Content, artifactPerm); err != nil {
 		return &core.RefusalError{
 			Code:    "report-failed",
 			Message: fmt.Sprintf("could not write %s: %v", a.Path, err),

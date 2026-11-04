@@ -8,8 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -121,13 +121,15 @@ func readRequest(r *cli.Runner, req Request) core.ReadRequest {
 	return read
 }
 
-// writeArtifact writes one requested output file (0600: the report can
-// carry reviewed-diff excerpts).
+// writeArtifact writes one requested output file atomically (0600 when it
+// creates the file: the report can carry reviewed-diff excerpts; an existing
+// file keeps its own mode). A symlink is resolved first so the link survives
+// and only its target is replaced; a device or FIFO keeps the direct write.
 func writeArtifact(a *core.FileArtifact) *cli.RefusalError {
 	if a == nil {
 		return nil
 	}
-	if err := os.WriteFile(a.Path, a.Content, reportFilePerm); err != nil {
+	if err := atomic.WriteThrough(a.Path, a.Content, reportFilePerm); err != nil {
 		return &cli.RefusalError{
 			Code:    "report-failed",
 			Message: fmt.Sprintf("could not write %s: %v", a.Path, err),

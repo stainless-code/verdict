@@ -5,6 +5,8 @@
 package atomic
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -20,6 +22,9 @@ const errSidecarMode = 0o600
 
 // opWrite names the atomic-write operation in sealed errors.
 const opWrite = "atomic write "
+
+// opDirectWrite names the direct (non-atomic) write a device or FIFO needs.
+const opDirectWrite = "write "
 
 // WriteFile writes data to path atomically with mode 0o644 (the
 // umask-022 default for store files). The temp file lives in the target
@@ -89,3 +94,46 @@ func fsyncDir(dir string) {
 // denials an antivirus or indexer can hold on the destination, then gives
 // up. Callers stage on the destination filesystem first.
 func Replace(from, to string) error { return replaceFile(from, to) }
+
+// WriteThrough writes data atomically to a path the operator named, which may
+// be a symlink or a node that cannot be replaced. A regular file — or the
+// file a symlink chain ends at — gets the temp+rename path with its existing
+// mode kept, so the link survives and only its target changes; a device, FIFO,
+// socket, directory or dangling link keeps the direct write, because a rename
+// would replace the node itself instead of writing through it.
+func WriteThrough(path string, data []byte, mode os.FileMode) error {
+	target, perm, ok := replaceable(path)
+	if !ok {
+		if err := os.WriteFile(path, data, mode); err != nil {
+			return jq.Sealed(opDirectWrite+path, err)
+		}
+		return nil
+	}
+	if perm == 0 {
+		perm = mode
+	}
+	return writeFile(target, data, perm)
+}
+
+// replaceable reports the regular file a rename may replace: path itself, or
+// the file a symlink chain ends at. perm is that file's mode, or zero when the
+// path does not exist yet and the caller's mode applies. ok is false for
+// every node a rename must not replace and for a link that leads nowhere.
+func replaceable(path string) (target string, perm os.FileMode, ok bool) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return path, 0, errors.Is(err, fs.ErrNotExist)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		if path, err = filepath.EvalSymlinks(path); err != nil {
+			return "", 0, false
+		}
+		if fi, err = os.Stat(path); err != nil {
+			return "", 0, false
+		}
+	}
+	if !fi.Mode().IsRegular() {
+		return "", 0, false
+	}
+	return path, fi.Mode().Perm(), true
+}
