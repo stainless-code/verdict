@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready trend learn init skill upgrade uninstall
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready threads trend learn init skill upgrade uninstall
 }
 
 _verdict_flags() { # $1 = verb
@@ -17,6 +17,7 @@ _verdict_flags() { # $1 = verb
     check-tree) printf '%s\n' --expect;;
     verify) printf '%s\n' --timeout --json;;
     doctor|calibrate|record|trend) printf '%s\n' --json;;
+    threads) printf '%s\n' --provider --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --consent-over-budget --json;;
     learn) printf '%s\n' --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     adopt) printf '%s\n' --from --json;;
