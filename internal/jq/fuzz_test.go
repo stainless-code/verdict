@@ -191,25 +191,35 @@ func assertRendersValid(t *testing.T, objs []*jq.Obj) {
 	}
 }
 
-// stdlibObjectStream counts the values in a JSON stream with encoding/json;
-// ok is false for malformed streams and for any non-object value.
+// stdlibObjectStream counts the values in a JSON stream, decoding until
+// encoding/json reports a clean EOF — no sharing with the implementation's
+// More()/Token() bookkeeping. ok is false for malformed streams and for any
+// non-object value.
 func stdlibObjectStream(data []byte) (int, bool) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	n := 0
-	for dec.More() {
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
+	for {
+		ok, done := nextObject(dec)
+		if !ok {
 			return 0, false
 		}
-		if len(raw) == 0 || raw[0] != '{' {
-			return 0, false
+		if done {
+			return n, true
 		}
 		n++
 	}
-	// More() is false at EOF but also before a stray closer or inside a
-	// truncated value; only a clean EOF means the stream really ended.
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return 0, false
+}
+
+// nextObject decodes one value and reports whether it is an object; done
+// reports the stream ended, cleanly when ok is true.
+func nextObject(dec *json.Decoder) (ok, done bool) {
+	var raw json.RawMessage
+	err := dec.Decode(&raw)
+	if errors.Is(err, io.EOF) {
+		return true, true
 	}
-	return n, true
+	if err != nil {
+		return false, true
+	}
+	return len(raw) > 0 && raw[0] == '{', false
 }
