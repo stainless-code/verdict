@@ -29,7 +29,12 @@ func TestWindowsHandoffStagesHelperBesideTarget(t *testing.T) {
 	t.Setenv("TEMP", os.Getenv("TMPDIR"))
 	argvFile := filepath.Join(t.TempDir(), "helper.argv")
 	staged := filepath.Join(t.TempDir(), "verdict")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + argvFile + "'\n"
+	// The stub writes its argv to a sibling file and renames it into place:
+	// a shell `printf` to a redirect writes one write(2) per argument, so a
+	// reader polling the live file can catch a prefix of the argv list and
+	// see a handoff that never had --new. Rename is atomic, so the record is
+	// either absent or complete.
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + argvFile + ".tmp' && mv '" + argvFile + ".tmp' '" + argvFile + "'\n"
 	if err := os.WriteFile(staged, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +63,9 @@ func TestWindowsHandoffStagesHelperBesideTarget(t *testing.T) {
 	}
 }
 
-// waitForArgv polls for the detached helper's argv record.
+// waitForArgv polls for the detached helper's argv record. It returns as soon
+// as the record exists, which the stub's rename makes safe: a partial read is
+// impossible, and an empty file means the rename has not happened yet.
 func waitForArgv(t *testing.T, path string) []string {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
