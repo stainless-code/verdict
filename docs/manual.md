@@ -873,13 +873,13 @@ you stand).
 - **Updating** (`verdict upgrade`): explicit only — no background check, no
   nag, no daemon, and the review path never calls it. The command resolves
   `os.Executable()` through symlinks and maps the result to one channel:
-  installer-managed (a receipt beside the running binary, in
-  `~/.verdict/bin`, or in `VERDICT_INSTALL`) does a
-  verified self-replace (archive + `checksums.txt` + sigstore bundle; cosign
-  identity/issuer when cosign is present, loud checksum-only fallback, and
-  `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract only the
-  binary; `--version` smoke test; atomic replace with rollback). Global
-  npm/pnpm/bun/yarn installs run that manager's global update
+  installer-managed (a receipt beside the running binary that no package
+  manager or skill copy owns, in `~/.verdict/bin`, or in `VERDICT_INSTALL`)
+  does a verified self-replace (archive + `checksums.txt` + sigstore bundle;
+  cosign identity/issuer when cosign is present, loud checksum-only
+  fallback, and `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract
+  only the binary; `--version` smoke test; atomic replace with rollback).
+  Global npm/pnpm/bun/yarn installs run that manager's global update
   (`npm i -g @stainless-code/verdict@latest`, `pnpm add -g …`,
   `bun add -g …`, `yarn global add …`) after printing the exact command and
   with no prompt; Homebrew runs
