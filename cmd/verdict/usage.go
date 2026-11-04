@@ -204,9 +204,10 @@ func usageText() string {
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
-		"  Global presentation flags (any verb; stripped before verb parsing):\n" +
+		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
+		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
-		"  Global publish flags (any verb; stripped before verb parsing):\n" +
+		"  Global publish flags (same any-verb, any-position rule):\n" +
 		"  --footer / --no-footer, --attribution [off|product|full] / --no-attribution,\n" +
 		"  --attribution-text <text>, --copyright <text>, --logo / --no-logo,\n" +
 		"  --logo-url <url>, --overview / --no-overview,\n" +

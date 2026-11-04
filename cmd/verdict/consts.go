@@ -6,6 +6,7 @@ const (
 	flagJSON        = "--json"
 	flagHelp        = "--help"
 	flagShortHelp   = "-h"
+	flagSeparator   = "--"
 	flagDryRun      = "--dry-run"
 	formatJSONName  = "json"
 	entryDryRun     = " " + flagDryRun

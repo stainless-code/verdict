@@ -74,19 +74,23 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		return cli.ExitOK
 	}
 	root := exeRoot()
-	cmd, repo, pr, args := splitCommand(args)
-	if arityUsage(cmd, repo, pr) {
-		fmt.Fprint(stderr, usageText())
-		return cli.ExitUsage
+	stripped, forces, uerr, ref := cli.StripGlobal(args)
+	failed := uerr != nil || ref != nil
+	cmd, repo, pr, rest := splitCommand(stripped)
+	if failed {
+		cmd, repo, pr = envelopeTarget(args)
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	peekJSONMode(r, args)
 	env := envMap(getenv)
-	if code, done := resolveRunnerPrefs(r, env, readFile); done {
-		return code
+	if failed {
+		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	rest, forces, code, done := stripRunnerFlags(r, args)
-	if done {
+	if arityUsage(cmd, repo, pr) {
+		fmt.Fprint(stderr, usageText())
+		return cli.ExitUsage
+	}
+	if code, done := resolveRunnerPrefs(r, env, readFile); done {
 		return code
 	}
 	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
@@ -258,16 +262,20 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 }
 
 func splitPositionals(args []string) (repo, pr string, rest []string) {
-	if len(args) > 0 {
-		repo = args[0]
+	for i, a := range args {
+		if a == flagSeparator {
+			return repo, pr, append(rest, args[i:]...)
+		}
+		switch i {
+		case 0:
+			repo = a
+		case 1:
+			pr = a
+		default:
+			rest = append(rest, a)
+		}
 	}
-	if len(args) > 1 {
-		pr = args[1]
-	}
-	if len(args) >= 2 {
-		return repo, pr, args[2:]
-	}
-	return repo, pr, nil
+	return repo, pr, rest
 }
 
 func newRunner(cmd, repo, pr string, stdout, stderr *os.File, getenv func(string) string) *cli.Runner {
@@ -291,17 +299,32 @@ func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(stri
 	return 0, false
 }
 
-func stripRunnerFlags(r *cli.Runner, args []string) ([]string, *cli.GlobalForces, int, bool) {
-	rest, forces, uerr, ref := cli.StripGlobal(args)
+func reportStripFailure(
+	r *cli.Runner, env map[string]string, readFile func(string) ([]byte, error),
+	uerr *cli.UsageError, ref error,
+) int {
+	if code, done := resolveRunnerPrefs(r, env, readFile); done {
+		return code
+	}
+	r.RouteHuman()
 	if uerr != nil {
-		r.RouteHuman()
-		return nil, nil, r.ReportUsage(uerr), true
+		return r.ReportUsage(uerr)
 	}
-	if ref != nil {
-		r.RouteHuman()
-		return nil, nil, r.Refuse(ref), true
+	return r.Refuse(ref)
+}
+
+func envelopeTarget(args []string) (cmd, repo, pr string) {
+	cmd, repo, pr, _ = splitCommand(args)
+	if strings.HasPrefix(cmd, "-") {
+		return "", "", ""
 	}
-	return rest, forces, 0, false
+	if strings.HasPrefix(repo, "-") {
+		return cmd, "", ""
+	}
+	if strings.HasPrefix(pr, "-") {
+		return cmd, repo, ""
+	}
+	return cmd, repo, pr
 }
 
 func exeRoot() string {
