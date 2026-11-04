@@ -165,7 +165,9 @@ within a major are additive only. The changelog is at the bottom of
 One merged Version PR ships everything. `changeset git-tag` tags the bumped
 version. GoReleaser builds six static binaries (`darwin`/`linux`/`windows` ×
 `amd64`/`arm64`), signs `checksums.txt` (cosign keyless bundle), emits
-per-archive SPDX SBOMs, and owns the GitHub Release. The release body is the
+per-archive SPDX SBOMs, and owns the GitHub Release. Its goreleaser stage
+also uploads `commit.txt` — the tag's commit SHA — and refuses to report the
+release complete until GitHub serves it. The release body is the
 `CHANGELOG.md` section for the tagged version — `scripts/release-notes.mjs`
 prints it without the changeset commit ids and `release.sh` passes it as
 `--release-notes` — so a release reads as the curated changeset entry, not a
@@ -185,20 +187,22 @@ allowlist both installers carry must match it; the contract tests fail
 otherwise. `verdict --version` prints the tag in release binaries (ldflags
 `main.version`) and the `package.json` version for source builds.
 
-To verify a release by hand, download `checksums.txt` and
-`checksums.txt.sigstore.json` from the GitHub Release, then:
+To verify a release by hand, download `checksums.txt`,
+`checksums.txt.sigstore.json`, and `commit.txt` from the GitHub Release, then:
 
 ```bash
 cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-sha "$(cat commit.txt)" \
   checksums.txt
 ```
 
 The certificate identity is the `main` push that signed the release, not the
 tag: the Release workflow triggers on `on: push: branches: [main]`, so GitHub
 mints `.../release.yml@refs/heads/main`. The certificate's workflow-SHA claim
-is the commit the tag points at.
+is the commit the tag points at, and `commit.txt` publishes that commit so
+verification pins to this build instead of any run of the same workflow.
 
 Then compare the archive's SHA-256 with its line in `checksums.txt`.
 

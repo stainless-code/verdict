@@ -5,7 +5,8 @@
 #
 # Grades (mirrors evals/cases/installer-binary.sh B1/B3/B7, plus the action):
 #   A1  pinned install verifies (fake cosign invoked with the contract
-#       identity/issuer), installs verdict, writes a versioned receipt.
+#       identity/issuer and the release's published build commit), installs
+#       verdict, writes a versioned receipt.
 #   A2  `verdict --version` runs; the install dir is the action's
 #       RUNNER_TOOL_CACHE layout and PATH-ready (no rc files touched).
 #   A3  second invocation with the same version reuses the binary: the
@@ -13,6 +14,7 @@
 #       means zero new curl calls.
 #   A4  corrupt checksums fail closed; the previous binary is untouched.
 #   A5  require-signature=false without cosign installs checksum-only.
+#   A6  a release that publishes no commit.txt fails closed.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -27,11 +29,15 @@ bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 GOOD=0.0.0-test.1
 CORRUPT=0.0.0-test.2
 NOSIG=0.0.0-test.3
+NOPIN=0.0.0-test.4
+RELEASE_COMMIT=72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad
 
 # --- fixtures: one good, one corrupt, one for the checksum-only leg ---
 python3 "$HERE/test-fixtures/make-fake-release.py" --out "$SANDBOX/fake" --version "$GOOD"
 python3 "$HERE/test-fixtures/make-fake-release.py" --out "$SANDBOX/fake" --version "$CORRUPT" --corrupt
 python3 "$HERE/test-fixtures/make-fake-release.py" --out "$SANDBOX/fake" --version "$NOSIG" --no-shims
+python3 "$HERE/test-fixtures/make-fake-release.py" --out "$SANDBOX/fake" --version "$NOPIN"
+rm "$SANDBOX/fake/v$NOPIN/commit.txt"
 
 FAKEBIN="$SANDBOX/fake/fakebin"
 export FAKE_COSIGN_LOG="$SANDBOX/cosign.log" FAKE_COSIGN_STATUS=0
@@ -62,6 +68,9 @@ grep -q 'certificate-identity-regexp' "$FAKE_COSIGN_LOG" \
   && grep -q 'token.actions.githubusercontent' "$FAKE_COSIGN_LOG" \
   && good "fake cosign got the contract identity/issuer" \
   || bad "fake cosign argv wrong"
+grep -q "certificate-github-workflow-sha $RELEASE_COMMIT" "$FAKE_COSIGN_LOG" \
+  && good "fake cosign got the build-commit pin" \
+  || bad "fake cosign argv lacks the build-commit pin"
 grep -q "$GOOD" "$FAKE_CURL_LOG" && good "fetched the pinned archive" || bad "no fetch logged"
 
 # --- A2: smoke + PATH-readiness, no rc files ---
@@ -113,6 +122,21 @@ if VERDICT_VERSION="$NOSIG" sh "$ROOT/install.sh" >"$SANDBOX/nosig.log" 2>&1; th
 else
   bad "checksum-only install failed"
 fi
+
+# --- A6: a release without commit.txt fails closed ---
+export VERDICT_COSIGN="$FAKEBIN/cosign" VERDICT_REQUIRE_SIGNATURE=1
+PATH="$FAKEBIN:$PATH"
+export VERDICT_INSTALL="$SANDBOX/toolcache/setup-verdict/$NOPIN"
+if VERDICT_VERSION="$NOPIN" sh "$ROOT/install.sh" >"$SANDBOX/nopin.log" 2>&1; then
+  bad "a release without commit.txt installed"
+else
+  grep -q 'publishes no build commit' "$SANDBOX/nopin.log" \
+    && good "missing commit.txt refused as unpinned" \
+    || bad "refusal does not name the build commit"
+fi
+[ ! -e "$VERDICT_INSTALL/verdict" ] \
+  && good "nothing installed without a build commit" \
+  || bad "unpinned binary present"
 
 if [ "$fails" != 0 ]; then echo "$fails failure(s)"; exit 1; fi
 echo "setup-verdict hermetic test ok"

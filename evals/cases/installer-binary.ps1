@@ -1,9 +1,10 @@
 #requires -Version 5.1
 # Windows leg of the installer-binary eval: install.ps1 against locally built
 # fake release zips served from a loopback HTTP server (no real network).
-# Grades: contract archive name, signature argv + fail-closed, checksum
-# mismatch, wrong/unknown arch, version pin, latest redirect, PATH opt-outs,
-# idempotent re-install, uninstall/foreign refusal, checksum-only fallback.
+# Grades: contract archive name, signature argv + build-commit pin + fail-closed,
+# checksum mismatch, missing commit.txt, wrong/unknown arch, version pin, latest
+# redirect, PATH opt-outs, idempotent re-install, uninstall/foreign refusal,
+# checksum-only fallback.
 param(
   [string]$Installer = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'install.ps1')
 )
@@ -22,6 +23,7 @@ $CosignLog = Join-Path $Sandbox 'cosign.log'
 $InstallLog = Join-Path $Sandbox 'install.log'
 $script:Installer = $Installer
 $script:InstallDir = Join-Path $Sandbox 'install'
+$script:ReleaseSha = '72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad'
 $script:Pin = '1.2.3'
 $script:Status = 0
 $script:BaseUrl = ''
@@ -136,6 +138,7 @@ function Complete-FakeRelease {
   })
   Set-Content -Path (Join-Path $dir 'checksums.txt') -Value $lines -Encoding ASCII
   Set-Content -Path (Join-Path $dir 'checksums.txt.sigstore.json') -Value '{}' -Encoding ASCII
+  Set-Content -Path (Join-Path $dir 'commit.txt') -Value $script:ReleaseSha -Encoding ASCII
 }
 
 New-FakeRelease -Version '1.2.3' -Goos windows -Goarch amd64
@@ -146,6 +149,9 @@ New-FakeRelease -Version '3.0.0' -Goos windows -Goarch amd64
 Complete-FakeRelease '3.0.0'
 New-FakeRelease -Version '9.9.9' -Goos windows -Goarch amd64
 Complete-FakeRelease '9.9.9'
+New-FakeRelease -Version '4.0.0' -Goos windows -Goarch amd64
+Complete-FakeRelease '4.0.0'
+Remove-Item -LiteralPath (Join-Path $Release 'v4.0.0/commit.txt') -Force
 Set-Content -Path (Join-Path $Release 'v2.0.0/checksums.txt') `
   -Value (('0' * 64) + '  verdict_2.0.0_windows_amd64.zip') -Encoding ASCII
 
@@ -164,9 +170,10 @@ try {
   $expectedArchive = $row.file.Replace('{version}', '1.2.3')
   $source = [System.IO.File]::ReadAllText($Installer)
   if ($source.Contains($contract.checksums) -and $source.Contains($contract.signatureBundle) `
+      -and $source.Contains($contract.commit) -and $source.Contains('--certificate-github-workflow-sha') `
       -and $source.Contains($contract.cosign.issuer) -and $source.Contains($contract.cosign.identityRegexp) `
       -and $source.Contains('https://github.com/stainless-code/verdict/releases/latest')) {
-    Good 'install.ps1 names the contract checksums, bundle, and cosign issuer'
+    Good 'install.ps1 names the contract checksums, bundle, commit, cosign issuer, and commit pin'
   } else {
     Bad 'install.ps1 drifted from release/contract.json'
   }
@@ -274,6 +281,12 @@ try {
   } else {
     Bad "cosign argv missing identity/issuer: $(Get-Content -Raw $CosignLog -ErrorAction SilentlyContinue)"
   }
+  if (File-Contains $CosignLog "--certificate-github-workflow-sha $($script:ReleaseSha)" `
+      -and (Request-Seen '/v1.2.3/commit.txt')) {
+    Good 'cosign is pinned to the release build commit'
+  } else {
+    Bad "cosign argv missing the build-commit pin: $(Get-Content -Raw $CosignLog -ErrorAction SilentlyContinue)"
+  }
 
   # --- checksum and signature failures leave the old binary in place ---
   Copy-Item -LiteralPath $target -Destination (Join-Path $Sandbox 'old.exe')
@@ -305,6 +318,16 @@ try {
     Bad 'refused runs left a staging dir'
   } else {
     Good 'refused runs clean staging behind'
+  }
+
+  # --- a release without commit.txt fails closed ---
+  Reset-Install
+  Invoke-Installer -Version '4.0.0'
+  if ($script:Status -ne 0 -and (Log-Contains 'publishes no build commit') `
+      -and -not (Test-Path -LiteralPath (Join-Path $script:InstallDir 'verdict.exe'))) {
+    Good 'a release without commit.txt refuses unpinned'
+  } else {
+    Bad "missing commit.txt $(Status-Detail)"
   }
 
   # --- wrong and unknown architectures fail with the supported list ---

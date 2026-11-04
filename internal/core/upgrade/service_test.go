@@ -125,6 +125,7 @@ func releaseFiles(t *testing.T, version string, binary []byte, badChecksum bool)
 		name:                          buf.Bytes(),
 		"checksums.txt":               []byte(line),
 		"checksums.txt.sigstore.json": []byte("{}"),
+		"commit.txt":                  []byte("72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad\n"),
 	}
 }
 

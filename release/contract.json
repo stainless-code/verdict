@@ -68,6 +68,7 @@
   ],
   "checksums": "checksums.txt",
   "signatureBundle": "checksums.txt.sigstore.json",
+  "commit": "commit.txt",
   "sbomSuffix": ".sbom.json",
   "npm": {
     "wrapper": "@stainless-code/verdict",
@@ -81,7 +82,8 @@
     "releaseBase": "https://github.com/stainless-code/verdict/releases/download/v{version}",
     "archive": "https://github.com/stainless-code/verdict/releases/download/v{version}/verdict_{version}_{goos}_{goarch}.{ext}",
     "checksums": "https://github.com/stainless-code/verdict/releases/download/v{version}/checksums.txt",
-    "signatureBundle": "https://github.com/stainless-code/verdict/releases/download/v{version}/checksums.txt.sigstore.json"
+    "signatureBundle": "https://github.com/stainless-code/verdict/releases/download/v{version}/checksums.txt.sigstore.json",
+    "commit": "https://github.com/stainless-code/verdict/releases/download/v{version}/commit.txt"
   },
   "formula": {
     "tap": "stainless-code/tap",

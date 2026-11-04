@@ -11,6 +11,8 @@ CASE="$EVAL_SANDBOX/installer"
 REL="$CASE/release"
 FAKEBIN="$CASE/fakebin"
 BIN_SRC="$CASE/fake-verdict"
+RELEASE_SHA='72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad'
+OTHER_SHA='2ab1f4c9e0d7051a2f2e0c9d6e0c1c3f4a5b6c7d'
 mkdir -p "$REL" "$FAKEBIN" "$CASE"
 printf '#!/bin/sh\nprintf "fake-verdict %%s\\n" "$*"\n' > "$BIN_SRC"
 chmod +x "$BIN_SRC"
@@ -32,8 +34,17 @@ esac
 EOF
 cat > "$FAKEBIN/cosign" <<'EOF'
 #!/bin/sh
-for a in "$@"; do printf '%s ' "$a" >> "${FAKE_COSIGN_LOG:-/dev/null}"; done
+sha=''; prev=''
+for a in "$@"; do
+  printf '%s ' "$a" >> "${FAKE_COSIGN_LOG:-/dev/null}"
+  if [ "$prev" = '--certificate-github-workflow-sha' ]; then sha="$a"; fi
+  prev="$a"
+done
 printf '\n' >> "${FAKE_COSIGN_LOG:-/dev/null}"
+if [ -n "${FAKE_CERT_SHA:-}" ] && [ "$sha" != "$FAKE_CERT_SHA" ]; then
+  echo "Error: no matching CertificateIdentity found, reason: certificate's workflow sha claim does not match" >&2
+  exit 1
+fi
 exit "${FAKE_COSIGN_STATUS:-0}"
 EOF
 cat > "$FAKEBIN/curl" <<'EOF'
@@ -57,10 +68,11 @@ mk_release() { # <version> <goos> <goarch>
   (cd "$dir" && tar -czf "../verdict_${v}_${goos}_${goarch}.tar.gz" verdict LICENSE README.md NOTICE.md)
   rm -rf "$dir"
 }
-finish_release() { # <version>
+finish_release() { # <version> [no-commit]
   local dir="$REL/v$1"
   (cd "$dir" && shasum -a 256 verdict_*.tar.gz > checksums.txt)
   printf '{}\n' > "$dir/checksums.txt.sigstore.json"
+  [ "${2:-}" = no-commit ] || printf '%s\n' "$RELEASE_SHA" > "$dir/commit.txt"
 }
 
 for platform in "darwin amd64" "darwin arm64" "linux amd64" "linux arm64"; do
@@ -75,18 +87,22 @@ mk_release 3.0.0 linux amd64
 finish_release 3.0.0
 mk_release 9.9.9 linux amd64
 finish_release 9.9.9
+mk_release 5.0.0 linux amd64
+finish_release 5.0.0 no-commit
 (cd "$REL/v2.0.0" && printf '%064d  verdict_2.0.0_linux_amd64.tar.gz\n' 0 > checksums.txt)
 
 contract="$EVAL_ROOT/release/contract.json"
 if grep -Fq "CHECKSUMS='$(jq -r .checksums "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "BUNDLE='$(jq -r .signatureBundle "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq "COMMIT='$(jq -r .commit "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_ISSUER='$(jq -r .cosign.issuer "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_IDENTITY_RE='$(jq -r .cosign.identityRegexp "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq -- '--certificate-github-workflow-sha' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'https://github.com/stainless-code/verdict/releases/latest' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'verdict_${VERSION}_${os}_${arch}.tar.gz' "$EVAL_ROOT/install.sh"; then
-  good "install.sh names the contract checksums, bundle, archive shape, and issuer"
+  good "install.sh names the contract checksums, bundle, commit, archive shape, and issuer"
 else
-  bad "install.sh drifted from release/contract.json (checksums/bundle/archive/issuer)"
+  bad "install.sh drifted from release/contract.json (checksums/bundle/commit/archive/issuer)"
 fi
 
 INSTALL_DIR="$CASE/install"
@@ -109,6 +125,7 @@ run_install() {
       VERDICT_REQUIRE_SIGNATURE="$REQUIRE_SIG" \
       VERDICT_COSIGN="${COSIGN_OVERRIDE:-$FAKEBIN/cosign}" \
       FAKE_COSIGN_LOG="$COSIGN_LOG" FAKE_COSIGN_STATUS="${FAKE_COSIGN_STATUS:-0}" \
+      FAKE_CERT_SHA="${FAKE_CERT_SHA:-$RELEASE_SHA}" \
       FAKE_CURL_LOG="$CURL_LOG" FAKE_EFFECTIVE_URL="$EFFECTIVE_URL" \
       FAKE_UNAME_S="$uname_s" FAKE_UNAME_M="$PLAT_ARCH" \
       FAKE_PROC_TRANSLATED="$ROSETTA" \
@@ -149,6 +166,12 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
     good "$want_os/$want_arch verifies the bundle with the contract identity/issuer"
   else
     bad "$want_os/$want_arch cosign argv missing identity/issuer: $(cat "$COSIGN_LOG")"
+  fi
+  if grep -Fq -- "--certificate-github-workflow-sha $RELEASE_SHA" "$COSIGN_LOG" \
+    && grep -Fq "file://$REL/v1.2.3/commit.txt" "$CURL_LOG"; then
+    good "$want_os/$want_arch pins the signature to the published build commit"
+  else
+    bad "$want_os/$want_arch cosign argv lacks the build-commit pin: $(cat "$COSIGN_LOG")"
   fi
   if [ "$ROSETTA" = 1 ]; then
     if grep -q "Rosetta 2" "$EVAL_ERR"; then good "Rosetta note is printed"; else bad "Rosetta note missing"; fi
@@ -194,6 +217,35 @@ if find "$INSTALL_DIR" -name '.verdict-stage-*' -print | matches .; then
   bad "refused runs left a staging dir"
 else
   good "refused runs clean staging behind"
+fi
+
+fresh
+PIN=1.2.3; run_install
+cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
+: > "$COSIGN_LOG"
+PIN=5.0.0; run_install
+if [ "$EVAL_STATUS" -ne 0 ] && grep -q "publishes no build commit" "$EVAL_ERR" \
+  && cmp -s "$CASE/old-verdict" "$INSTALL_DIR/verdict" \
+  && [ ! -s "$COSIGN_LOG" ]; then
+  good "a release without commit.txt refuses unpinned before cosign runs"
+else
+  bad "missing commit.txt exit $EVAL_STATUS (cosign argv: $(cat "$COSIGN_LOG"))"
+fi
+fresh
+PIN=1.2.3; FAKE_CERT_SHA="$OTHER_SHA"; run_install
+if [ "$EVAL_STATUS" -ne 0 ] && grep -q "signature verification failed" "$EVAL_ERR" \
+  && [ ! -e "$INSTALL_DIR/verdict" ]; then
+  good "a signature minted for another build of the same workflow is refused"
+else
+  bad "cross-build signature exit $EVAL_STATUS"
+fi
+FAKE_CERT_SHA=''
+fresh
+run_install "$REL/v5.0.0/verdict_5.0.0_linux_amd64.tar.gz"
+if [ "$EVAL_STATUS" -ne 0 ] && grep -q "missing commit.txt beside the archive" "$EVAL_ERR"; then
+  good "a local archive without its sibling commit.txt refuses"
+else
+  bad "local archive without commit.txt exit $EVAL_STATUS"
 fi
 
 printf '#!/bin/sh\nexit 3\n' > "$BIN_SRC"

@@ -15,6 +15,8 @@ NPM_LOG="$CASE/npm.log"
 COSIGN_LOG="$CASE/cosign.log"
 REQ_LOG="$CASE/requests.log"
 BIN_SRC="$CASE/fake-verdict"
+RELEASE_SHA='72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad'
+OTHER_SHA='2ab1f4c9e0d7051a2f2e0c9d6e0c1c3f4a5b6c7d'
 VERSION=1.2.3
 mkdir -p "$REL/v$VERSION" "$FAKEBIN" "$CLEANBIN" "$CASE_HOME"
 : > "$NPM_LOG"
@@ -46,6 +48,7 @@ cp "$BIN_SRC" "$REL/v$VERSION/payload/verdict"
 rm -rf "$REL/v$VERSION/payload"
 (cd "$REL/v$VERSION" && shasum -a 256 "$archive" > checksums.txt)
 printf '{}\n' > "$REL/v$VERSION/checksums.txt.sigstore.json"
+printf '%s\n' "$RELEASE_SHA" > "$REL/v$VERSION/commit.txt"
 
 cat > "$FAKEBIN/npm" <<'EOF'
 #!/bin/sh
@@ -55,8 +58,17 @@ exit "${FAKE_NPM_STATUS:-0}"
 EOF
 cat > "$FAKEBIN/cosign" <<'EOF'
 #!/bin/sh
-for a in "$@"; do printf '%s ' "$a" >> "${FAKE_COSIGN_LOG:-/dev/null}"; done
+sha=''; prev=''
+for a in "$@"; do
+  printf '%s ' "$a" >> "${FAKE_COSIGN_LOG:-/dev/null}"
+  if [ "$prev" = '--certificate-github-workflow-sha' ]; then sha="$a"; fi
+  prev="$a"
+done
 printf '\n' >> "${FAKE_COSIGN_LOG:-/dev/null}"
+if [ -n "${FAKE_CERT_SHA:-}" ] && [ "$sha" != "$FAKE_CERT_SHA" ]; then
+  echo "Error: no matching CertificateIdentity found, reason: certificate's workflow sha claim does not match" >&2
+  exit 1
+fi
 exit "${FAKE_COSIGN_STATUS:-0}"
 EOF
 chmod +x "$FAKEBIN/npm" "$FAKEBIN/cosign"
@@ -129,6 +141,7 @@ run_cli() {
       VERDICT_COSIGN="$FAKEBIN/cosign" VERDICT_REQUIRE_SIGNATURE=0 \
       FAKE_NPM_LOG="$NPM_LOG" FAKE_NPM_STATUS="${FAKE_NPM_STATUS:-0}" \
       FAKE_COSIGN_LOG="$COSIGN_LOG" FAKE_COSIGN_STATUS="${FAKE_COSIGN_STATUS:-0}" \
+      FAKE_CERT_SHA="${FAKE_CERT_SHA:-$RELEASE_SHA}" \
       "$bin" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR"
   )
   EVAL_STATUS=$?
@@ -173,10 +186,46 @@ if [ -n "$PORT" ]; then
   else
     bad "U1 cosign argv missing the contract identity/issuer: $(cat "$COSIGN_LOG")"
   fi
+  if grep -Fq -- "--certificate-github-workflow-sha $RELEASE_SHA" "$COSIGN_LOG" \
+    && grep -qx "/v$VERSION/commit.txt" "$REQ_LOG"; then
+    good "U1 cosign pins the signature to the published build commit"
+  else
+    bad "U1 cosign argv lacks the build-commit pin: $(cat "$COSIGN_LOG")"
+  fi
   if find "$INSTALL_DIR" \( -name '.verdict-stage-*' -o -name 'previous-*' \) | matches .; then
     bad "U1 self-replace left staging artifacts"
   else
     good "U1 self-replace cleans its staging"
+  fi
+
+  fresh_install
+  cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
+  cp "$REL/v$VERSION/commit.txt" "$CASE/good-commit.txt"
+  rm "$REL/v$VERSION/commit.txt"
+  : > "$COSIGN_LOG"
+  run_cli "$INSTALL_DIR/verdict" "$BASE_URL" upgrade --version "$VERSION" --json
+  cp "$CASE/good-commit.txt" "$REL/v$VERSION/commit.txt"
+  if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "verify-failed" ] \
+    && jq -r '.error.message' "$EVAL_OUT" | matches -F 'does not publish its build commit' \
+    && cmp -s "$CASE/old-verdict" "$INSTALL_DIR/verdict" \
+    && grep -Fq '"version":"0.2.0"' "$INSTALL_DIR/.verdict-installer" \
+    && [ ! -s "$COSIGN_LOG" ]; then
+    good "U1 a release without commit.txt refuses typed before cosign and leaves the install"
+  else
+    bad "U1 missing commit.txt exit $EVAL_STATUS code $(envelope_code) (cosign argv: $(cat "$COSIGN_LOG"))"
+  fi
+
+  fresh_install
+  cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
+  FAKE_CERT_SHA="$OTHER_SHA"
+  run_cli "$INSTALL_DIR/verdict" "$BASE_URL" upgrade --version "$VERSION" --json
+  FAKE_CERT_SHA=''
+  if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "verify-failed" ] \
+    && jq -r '.error.message' "$EVAL_OUT" | matches -F 'signature verification failed' \
+    && cmp -s "$CASE/old-verdict" "$INSTALL_DIR/verdict"; then
+    good "U1 a signature minted for another build of the same workflow refuses typed"
+  else
+    bad "U1 cross-build signature exit $EVAL_STATUS code $(envelope_code)"
   fi
 
   fresh_install

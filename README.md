@@ -101,7 +101,7 @@ If the docs site is down, both installers are also release assets: `https://gith
 
 ### Verify the download
 
-Releases are built from tagged commits. `checksums.txt` is signed with cosign (keyless), and the installers check the signature when `cosign` is on your PATH, then the archive SHA-256 always. Set `VERDICT_REQUIRE_SIGNATURE=1` to fail instead of falling back to checksum-only. To check by hand, use the `cosign verify-blob` command in [Release train](CONTRIBUTING.md#release-train).
+Releases are built from tagged commits, and each release publishes `commit.txt` with the commit its signature was minted for. `checksums.txt` is signed with cosign (keyless), and the installers verify the signature — identity, issuer, and the workflow-SHA pin to that commit — when `cosign` is on your PATH, then the archive SHA-256 always. A release without `commit.txt` is refused rather than installed unpinned. Set `VERDICT_REQUIRE_SIGNATURE=1` to fail instead of falling back to checksum-only. To check by hand, use the `cosign verify-blob` command in [Release train](CONTRIBUTING.md#release-train).
 
 ### CI
 

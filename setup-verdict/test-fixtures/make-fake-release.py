@@ -2,12 +2,13 @@
 """Build fake verdict release assets for hermetic setup-verdict tests.
 
 Creates, for one version, the exact layout install.sh/install.ps1 fetch:
-<out>/v<version>/{archive, checksums.txt, checksums.txt.sigstore.json}.
-The fake binary prints "verdict <version>" for any argv (so `--version`
-smoke-tests pass). With --corrupt, checksums.txt carries a zeroed hash so
-verification must fail. Also writes fakebin/cosign (and curl on POSIX) shims
-that log their argv and exit a canned status, so no network or real Sigstore
-is ever touched.
+<out>/v<version>/{archive, checksums.txt, checksums.txt.sigstore.json,
+commit.txt}. The commit file carries RELEASE_COMMIT, the workflow-SHA claim
+the installers pin cosign to. The fake binary prints "verdict <version>" for
+any argv (so `--version` smoke-tests pass). With --corrupt, checksums.txt
+carries a zeroed hash so verification must fail. Also writes fakebin/cosign
+(and curl on POSIX) shims that log their argv and exit a canned status, so no
+network or real Sigstore is ever touched.
 
 Layout mirrors evals/cases/installer-binary.sh (B1/B3 grades).
 """
@@ -22,6 +23,7 @@ import tarfile
 import zipfile
 
 BUNDLE = "{}\n"
+RELEASE_COMMIT = "72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad"
 
 
 def host_platform():
@@ -100,6 +102,8 @@ def main():
         f.write("%s  %s\n" % (digest, archive_name))
     with open(os.path.join(rel, "checksums.txt.sigstore.json"), "w", newline="\n") as f:
         f.write(BUNDLE)
+    with open(os.path.join(rel, "commit.txt"), "w", newline="\n") as f:
+        f.write(RELEASE_COMMIT + "\n")
 
     if not args.no_shims:
         if goos == "windows":

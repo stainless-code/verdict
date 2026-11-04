@@ -5,6 +5,7 @@ REPO_BASE='https://github.com/stainless-code/verdict/releases/download'
 LATEST_URL='https://github.com/stainless-code/verdict/releases/latest'
 CHECKSUMS='checksums.txt'
 BUNDLE='checksums.txt.sigstore.json'
+COMMIT='commit.txt'
 COSIGN_IDENTITY='https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/heads/main'
 # The SAN above is exact, not a pattern: cosign takes a regexp, and the
 # identity must stay anchored on it so no other run can sign this artifact.
@@ -26,7 +27,7 @@ usage: install.sh [ARCHIVE] [--no-modify-path] [--uninstall [--remove-path]] [--
 
   (no args)         install the latest release for this OS/arch
   ARCHIVE           install a local verdict_<version>_<os>_<arch>.tar.gz
-                    (sibling checksums.txt and optional signature bundle)
+                    (sibling checksums.txt, signature bundle, and commit.txt)
   --uninstall       remove a binary installed by this script (no foreign files)
   --remove-path     with --uninstall, also remove the marked PATH line
   --no-modify-path  never edit shell config (same: VERDICT_NO_MODIFY_PATH=1)
@@ -158,14 +159,18 @@ trap 'cleanup; exit 1' 1 2 15
 if [ -n "$ARCHIVE" ]; then
   archive_path="$archive_dir/$archive_name"
   CHECKSUMS_PATH="$archive_dir/$CHECKSUMS"; BUNDLE_PATH="$archive_dir/$BUNDLE"
+  COMMIT_PATH="$archive_dir/$COMMIT"
 else
   archive_path="$TMP/$archive_name"
   CHECKSUMS_PATH="$TMP/$CHECKSUMS"; BUNDLE_PATH="$TMP/$BUNDLE"
+  COMMIT_PATH="$TMP/$COMMIT"
   echo "install: downloading verdict $VERSION ($os/$arch)" >&2
   fetch_file "$base/v$VERSION/$archive_name" "$archive_path" \
     || die "download failed: $base/v$VERSION/$archive_name (is $os/$arch published?)"
   fetch_file "$base/v$VERSION/$CHECKSUMS" "$CHECKSUMS_PATH" \
     || die "download failed: $base/v$VERSION/$CHECKSUMS"
+  fetch_file "$base/v$VERSION/$COMMIT" "$COMMIT_PATH" \
+    || die "download failed: $base/v$VERSION/$COMMIT (release $VERSION publishes no build commit; refusing an unpinned install)"
 fi
 
 COSIGN=''
@@ -175,6 +180,15 @@ else
   COSIGN="$(command -v cosign 2>/dev/null || true)"
 fi
 [ -f "$CHECKSUMS_PATH" ] || die "missing $CHECKSUMS beside the archive"
+[ -f "$COMMIT_PATH" ] \
+  || die "missing $COMMIT beside the archive: release $VERSION publishes no build commit, so this installer refuses an unpinned install"
+commit_sha="$(tr -d '[:space:]' < "$COMMIT_PATH")"
+case "$commit_sha" in
+  *[!0-9a-fA-F]*) die "$COMMIT is not a commit SHA: $commit_sha" ;;
+esac
+[ "${#commit_sha}" -eq 40 ] \
+  || die "$COMMIT is not a full 40-character commit SHA (got ${#commit_sha} characters): $commit_sha"
+commit_sha="$(printf '%s' "$commit_sha" | tr 'A-F' 'a-f')"
 bundle_ok=0; [ -f "$BUNDLE_PATH" ] && bundle_ok=1
 if [ "$bundle_ok" = 0 ] && [ -n "$ARCHIVE" ] && [ -f "$archive_dir/$BUNDLE" ]; then bundle_ok=1; fi
 if [ "$bundle_ok" = 0 ] && [ -z "$ARCHIVE" ]; then
@@ -185,7 +199,8 @@ if [ -n "$COSIGN" ]; then
   echo "install: verifying the sigstore bundle for $CHECKSUMS" >&2
   "$COSIGN" verify-blob --bundle "$BUNDLE_PATH" \
     --certificate-identity-regexp "$COSIGN_IDENTITY_RE" \
-    --certificate-oidc-issuer "$COSIGN_ISSUER" "$CHECKSUMS_PATH" >&2 \
+    --certificate-oidc-issuer "$COSIGN_ISSUER" \
+    --certificate-github-workflow-sha "$commit_sha" "$CHECKSUMS_PATH" >&2 \
     || die "signature verification failed; nothing installed"
 elif [ "$REQUIRE_SIGNATURE" = 1 ]; then
   die "VERDICT_REQUIRE_SIGNATURE=1 but cosign is not installed; nothing installed"
