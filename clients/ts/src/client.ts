@@ -252,21 +252,54 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["record"]>>;
-  next(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  show(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  ready(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  triage(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  fetch(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  fetchLocal(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  verify(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  checkTree(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  doctor(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  calibrate(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  trend(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  adopt(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  fix(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  learn(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
-  init(args?: string[], opts?: RunOptions): Promise<Envelope<unknown>>;
+  next(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["next"]>>;
+  show(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["show"]>>;
+  ready(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["ready"]>>;
+  triage(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["triage"]>>;
+  fetch(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["fetch"]>>;
+  fetchLocal(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["fetch-local"]>>;
+  verify(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["verify"]>>;
+  checkTree(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["check-tree"]>>;
+  doctor(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["doctor"]>>;
+  calibrate(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["calibrate"]>>;
+  trend(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["trend"]>>;
+  adopt(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["adopt"]>>;
+  fix(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["fix"]>>;
+  learn(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["learn"]>>;
+  init(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["init"]>>;
 }
 
 export function createClient(defaults: ClientOptions = {}): VerdictClient {
@@ -307,24 +340,27 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
       return defaults.bin ?? resolveBin();
     },
     run,
-    report: (args, opts) => run("report", args, opts),
-    post: (args, opts) => run("post", args, opts),
-    record: (args, opts) => run("record", args, opts),
-    next: (args, opts) => run("next", args, opts),
-    show: (args, opts) => run("show", args, opts),
-    ready: (args, opts) => run("ready", args, opts),
-    triage: (args, opts) => run("triage", args, opts),
-    fetch: (args, opts) => run("fetch", args, opts),
-    fetchLocal: (args, opts) => run("fetch-local", args, opts),
-    verify: (args, opts) => run("verify", args, opts),
-    checkTree: (args, opts) => run("check-tree", args, opts),
-    doctor: (args, opts) => run("doctor", args, opts),
-    calibrate: (args, opts) => run("calibrate", args, opts),
-    trend: (args, opts) => run("trend", args, opts),
-    adopt: (args, opts) => run("adopt", args, opts),
-    fix: (args, opts) => run("fix", args, opts),
-    learn: (args, opts) => run("learn", args, opts),
-    init: (args, opts) => run("init", args, opts),
+    report: (args, opts) => run<DataFor["report"]>("report", args, opts),
+    post: (args, opts) => run<DataFor["post"]>("post", args, opts),
+    record: (args, opts) => run<DataFor["record"]>("record", args, opts),
+    next: (args, opts) => run<DataFor["next"]>("next", args, opts),
+    show: (args, opts) => run<DataFor["show"]>("show", args, opts),
+    ready: (args, opts) => run<DataFor["ready"]>("ready", args, opts),
+    triage: (args, opts) => run<DataFor["triage"]>("triage", args, opts),
+    fetch: (args, opts) => run<DataFor["fetch"]>("fetch", args, opts),
+    fetchLocal: (args, opts) =>
+      run<DataFor["fetch-local"]>("fetch-local", args, opts),
+    verify: (args, opts) => run<DataFor["verify"]>("verify", args, opts),
+    checkTree: (args, opts) =>
+      run<DataFor["check-tree"]>("check-tree", args, opts),
+    doctor: (args, opts) => run<DataFor["doctor"]>("doctor", args, opts),
+    calibrate: (args, opts) =>
+      run<DataFor["calibrate"]>("calibrate", args, opts),
+    trend: (args, opts) => run<DataFor["trend"]>("trend", args, opts),
+    adopt: (args, opts) => run<DataFor["adopt"]>("adopt", args, opts),
+    fix: (args, opts) => run<DataFor["fix"]>("fix", args, opts),
+    learn: (args, opts) => run<DataFor["learn"]>("learn", args, opts),
+    init: (args, opts) => run<DataFor["init"]>("init", args, opts),
   };
   return client;
 }

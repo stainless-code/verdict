@@ -88,6 +88,7 @@ func assertEnvelope(t *testing.T, doc map[string]any, verb, pr, at, next string,
 	t.Helper()
 	env := core.RenderEnvelope(verb, "acme/app", pr, at, next, warnings, data, nil)
 	validateWire(t, doc, "$", doc, decodeWire(t, env))
+	validateDataProfile(t, doc, verb, data)
 
 	var modeled Envelope
 	unmarshalWire(t, env, &modeled)
@@ -100,6 +101,22 @@ func assertEnvelope(t *testing.T, doc map[string]any, verb, pr, at, next string,
 	if modeled.Data == nil || !reflect.DeepEqual(*modeled.Data, wireMap(t, data)) {
 		t.Errorf("envelope data = %v, want %v", modeled.Data, wireMap(t, data))
 	}
+}
+
+// validateDataProfile validates one verb's data block against its pinned
+// profile when the generated schema publishes one, so the runtime verbs pin
+// their published shape instead of only the envelope around it.
+func validateDataProfile(t *testing.T, doc map[string]any, verb string, data any) {
+	t.Helper()
+	defs, ok := doc["$defs"].(map[string]any)
+	if !ok || data == nil {
+		return
+	}
+	def, ok := defs[dataDefName(verb)]
+	if !ok {
+		return
+	}
+	validateWire(t, doc, verb+" data", def, decodeWire(t, data))
 }
 
 // wireMap decodes an ordered wire value into a plain map with number
@@ -237,6 +254,7 @@ func assertServiceEnvelope(t *testing.T, doc map[string]any, verb, repo, pr, at,
 	t.Helper()
 	env := core.RenderEnvelope(verb, repo, pr, at, next, warnings, data, nil)
 	validateWire(t, doc, "$", doc, decodeWire(t, env))
+	validateDataProfile(t, doc, verb, data)
 
 	var modeled Envelope
 	unmarshalWire(t, env, &modeled)

@@ -51,9 +51,24 @@ try {
 }
 ```
 
-Typed data shapes exist for `report`, `post`, and `record` (generated from
-`schemas/*.schema.json`); every other verb returns `Envelope<unknown>`.
-`client.run("show", [...])` reaches any verb, including future ones.
+Every verb method returns its own data profile, generated from the `$defs` in
+`envelope.schema.json` (`report` → `ReportData`, `ready` → `ReadyData`,
+`fetch-local` → `FetchLocalData`, …). `DataFor` maps each wire verb to its
+profile, so a helper can take `DataFor["trend"]` instead of restating the
+shape:
+
+```ts
+import type { DataFor } from "@stainless-code/verdict/client";
+
+function openFindings(data: DataFor["trend"]): number {
+  return data.by_status.open;
+}
+```
+
+Each profile allows extra properties, so a newer binary's additive key is
+readable without a client release. `client.run("upgrade", [...])` reaches any
+verb, including future ones, and returns `Envelope<unknown>` until that verb
+has a profile.
 
 Building a client in another language? The [Build a client guide](https://stainless-code.com/verdict/build-a-client) explains the same contract and walks through Python codegen; this client is the reference implementation.
 

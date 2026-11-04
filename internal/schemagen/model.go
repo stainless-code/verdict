@@ -2,6 +2,7 @@ package schemagen
 
 import (
 	"github.com/stainless-code/verdict/internal/core"
+	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/core/threads"
 )
 
@@ -167,6 +168,274 @@ type ShowData struct {
 	Fix  ShowFix `json:"fix"`
 }
 
+// TriageData is the triage verb's --json data profile: the flipped finding's
+// signature and new status, plus dry_run when the pass changed nothing.
+type TriageData struct {
+	Sig    string `json:"sig"`
+	Status string `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
+	DryRun bool   `json:"dry_run"                                         optional:"true"`
+}
+
+// ReadyData is the ready verb's --json data profile: the gate verdict, every
+// blocker with its recovery action, and the live PR state the gate read.
+type ReadyData struct { //nolint:govet // field order is the published property order
+	Ready            bool           `json:"ready"`
+	Recommendation   string         `json:"recommendation"`
+	Blockers         []ReadyBlocker `json:"blockers"`
+	State            string         `json:"state"`
+	Draft            bool           `json:"draft"`
+	Mergeable        string         `json:"mergeable"`
+	MergeState       string         `json:"mergeStateStatus"`
+	CI               ReadyCI        `json:"ci"`
+	ThreadsOpen      int            `json:"threads_open"      min:"0"`
+	DescriptionChars int            `json:"description_chars" min:"0"`
+}
+
+// ReadyBlocker is one readiness blocker and the action that clears it.
+type ReadyBlocker struct {
+	Kind   string `json:"kind"`
+	Detail string `json:"detail"`
+	Action string `json:"action"`
+}
+
+// ReadyCI is the live CI check tally the gate read.
+type ReadyCI struct {
+	Failing int `json:"failing" min:"0"`
+	Total   int `json:"total"   min:"0"`
+}
+
+// AdoptData is the adopt verb's --json data profile: the target directory,
+// where the findings came from, and the adopted and still-open counts.
+type AdoptData struct {
+	Dir     string `json:"dir"`
+	From    string `json:"from"`
+	Adopted int    `json:"adopted" min:"0"`
+	Open    int    `json:"open"    min:"0"`
+}
+
+// NextData is the next verb's --json data profile: the ranked finding to fix
+// next, or null when the store has nothing open.
+type NextData struct {
+	Item *FindingItem `anyOf:"null" json:"item"`
+}
+
+// FixData is the fix verb's --json data profile. The pass and completion
+// shapes share it: completion leaves the pass fields null and sets complete.
+type FixData struct { //nolint:govet // field order is the published property order
+	Dir        string      `json:"dir"`
+	Ledger     string      `json:"ledger"`
+	Sig        *string     `json:"sig"`
+	Locator    *string     `json:"locator"`
+	Severity   *string     `json:"severity"`
+	Body       *string     `json:"body"`
+	Anchors    *FixAnchors `anyOf:"null"       json:"anchors"`
+	Pass       *int        `json:"pass"`
+	MaxPasses  int         `json:"max_passes"  min:"0"`
+	KB         any         `json:"kb"`
+	OpenInline int         `json:"open_inline" min:"0"`
+	Fixed      int         `json:"fixed"       min:"0"`
+	Open       int         `json:"open"        min:"0"`
+	Stopped    int         `json:"stopped"     min:"0"`
+	Complete   bool        `json:"complete"`
+}
+
+// FixAnchors is the fix pass's anchor block, read verbatim from the record.
+type FixAnchors struct {
+	Path      string `json:"path"`
+	Line      string `json:"line"`
+	StartLine string `json:"start_line"`
+	Side      string `json:"side"`
+	Anchored  string `json:"anchored"`
+}
+
+// LearnData is the learn verb's --json data profile: one appended rule, or
+// the status listing of every rule in the knowledge base.
+type LearnData struct {
+	Rule  any   `json:"rule"  optional:"true"`
+	Rules []any `json:"rules" optional:"true"`
+}
+
+// InitData is the init verb's --json data profile: the applied preset values
+// and the files they were written to.
+type InitData struct { //nolint:govet // field order is the published property order
+	Preset         string   `json:"preset"`
+	BudgetUSD      string   `json:"budget_usd"`
+	KBMinJudged    float64  `json:"kb_min_judged"`
+	KBMaxFPRate    float64  `json:"kb_max_fp_rate"`
+	Files          []string `json:"files"`
+	CheckTreeClean bool     `json:"check_tree_clean"`
+}
+
+// DoctorData is the doctor verb's --json data profile: every preflight row
+// and the healthy verdict over them.
+type DoctorData struct { //nolint:govet // field order is the published property order
+	Healthy bool          `json:"healthy"`
+	Checks  []DoctorCheck `json:"checks"`
+}
+
+// DoctorCheck is one doctor preflight row.
+type DoctorCheck struct { //nolint:govet // field order is the published property order
+	Name     string `json:"name"`
+	Severity string `enum:"ok|warn|fail" json:"severity"`
+	OK       bool   `json:"ok"`
+	Detail   string `json:"detail"`
+}
+
+// CheckTreeData is the check-tree verb's --json data profile: the clean
+// verdict plus exactly one of the four shapes that explains it.
+type CheckTreeData struct { //nolint:govet // field order is the published property order
+	Clean      bool     `json:"clean"`
+	Ignored    int      `json:"ignored_review_lines" min:"0"         optional:"true"`
+	Files      []string `json:"files"                optional:"true"`
+	Expected   bool     `json:"expected_only"        optional:"true"`
+	Unexpected []string `json:"unexpected"           optional:"true"`
+}
+
+// ThreadsData is the threads verb's --json data profile: where the refreshed
+// feed was written plus a tally over it. The feed document itself is
+// threads.schema.json (ThreadsFile).
+type ThreadsData = fetchcore.ThreadsData
+
+// VerifyData is core's verify --json data profile: the command's exit status,
+// whether the watchdog timed it out, the redacted tail, and the patch read
+// back from the bundle.
+type VerifyData = core.VerifyData
+
+// TrendData is the trend verb's --json data profile: the portfolio rollup,
+// one row per reviewed bundle, and the opt-in overlap and corpus joins.
+type TrendData struct { //nolint:govet // field order is the published property order
+	GeneratedAt string           `format:"date-time" json:"generated_at"`
+	Bundles     int              `json:"bundles"     min:"0"`
+	Findings    int              `json:"findings"    min:"0"`
+	Open        int              `json:"open"        min:"0"`
+	Addressed   int              `json:"addressed"   min:"0"`
+	Closed      int              `json:"closed"      min:"0"`
+	ByStatus    TrendStatuses    `json:"by_status"`
+	ByTier      TrendTiers       `json:"by_tier"`
+	Provenance  TrendProvenance  `json:"provenance"`
+	Periods     []TrendPeriod    `json:"periods"`
+	PerBundle   []TrendBundleRow `json:"per_bundle"`
+	Overlap     any              `json:"overlap"     optional:"true"`
+	Corpus      any              `json:"corpus"      optional:"true"`
+}
+
+// TrendStatuses is a five-status finding tally; every key is always present.
+type TrendStatuses struct {
+	Open          int `json:"open"`
+	Addressed     int `json:"addressed"`
+	WontFix       int `json:"wont-fix"`
+	FalsePositive int `json:"false-positive"`
+	Deferred      int `json:"deferred"`
+}
+
+// TrendTiers is a four-tier finding tally; every key is always present.
+type TrendTiers struct {
+	Critical      int `json:"critical"`
+	Important     int `json:"important"`
+	Informational int `json:"informational"`
+	Untagged      int `json:"untagged"`
+}
+
+// TrendProvenance is the rollup's distinct tools, models, and prompt hashes;
+// a bundle that recorded none contributes a null entry.
+type TrendProvenance struct {
+	Tools         []any `json:"tools"`
+	Models        []any `json:"models"`
+	PromptsHashes []any `json:"prompts_hashes"`
+}
+
+// TrendPeriod is one time bucket of the rollup.
+type TrendPeriod struct {
+	Period    *string    `json:"period"`
+	Bundles   int        `json:"bundles"`
+	Findings  int        `json:"findings"`
+	Open      int        `json:"open"`
+	Addressed int        `json:"addressed"`
+	Closed    int        `json:"closed"`
+	ByTier    TrendTiers `json:"by_tier"`
+}
+
+// TrendBundleRow is one reviewed bundle's contribution to the rollup.
+type TrendBundleRow struct { //nolint:govet // field order is the published property order
+	Bundle     string           `json:"bundle"`
+	At         *string          `json:"at"`
+	Models     []string         `json:"models"`
+	Efforts    []string         `json:"efforts"`
+	Provenance ProvenanceTriple `json:"provenance"`
+	Findings   int              `json:"findings"`
+	Open       int              `json:"open"`
+	Addressed  int              `json:"addressed"`
+	Closed     int              `json:"closed"`
+	ByStatus   TrendStatuses    `json:"by_status"`
+	ByTier     TrendTiers       `json:"by_tier"`
+}
+
+// CalibrateData is the calibrate verb's --json data profile. The three modes
+// (live join, corpus join, probe) share one object, so every mode-specific key
+// is optional and a consumer narrows on the keys it asked for.
+type CalibrateData struct { //nolint:govet // field order is the published property order
+	ReviewID          any                `json:"review_id"           optional:"true"`
+	Head              *CalibrateHead     `anyOf:"null"               json:"head"       optional:"true"`
+	PR                *CalibratePR       `anyOf:"null"               json:"pr"         optional:"true"`
+	Outcomes          []any              `json:"outcomes"            optional:"true"`
+	Precision         any                `json:"precision"           optional:"true"`
+	Provenance        *ProvenanceTriple  `anyOf:"null"               json:"provenance" optional:"true"`
+	Bundle            string             `json:"bundle"              optional:"true"`
+	Case              string             `json:"case"                optional:"true"`
+	Kind              string             `json:"kind"                optional:"true"`
+	Model             string             `json:"model"               optional:"true"`
+	Panel             []string           `json:"panel"               optional:"true"`
+	LineTolerance     int                `json:"line_tolerance"      min:"0"           optional:"true"`
+	GroundTruth       int                `json:"ground_truth"        min:"0"           optional:"true"`
+	Reported          int                `json:"reported"            min:"0"           optional:"true"`
+	Matched           int                `json:"matched"             min:"0"           optional:"true"`
+	FalsePositives    int                `json:"false_positives"     min:"0"           optional:"true"`
+	Missed            int                `json:"missed"              min:"0"           optional:"true"`
+	Recall            *float64           `json:"recall"              min:"0"           optional:"true"`
+	FalsePositiveRate *float64           `json:"false_positive_rate" min:"0"           optional:"true"`
+	Grades            []any              `json:"grades"              optional:"true"`
+	Counts            *CalibrateCounts   `anyOf:"null"               json:"counts"     optional:"true"`
+	Judgment          *CalibrateJudgment `anyOf:"null"               json:"judgment"   optional:"true"`
+	MissedBugs        []any              `json:"missed_bugs"         optional:"true"`
+}
+
+// CalibrateHead is the reviewed and live head the live join compared.
+type CalibrateHead struct {
+	Reviewed string `json:"reviewed"`
+	Live     string `json:"live"`
+}
+
+// CalibratePR is the live PR state the join read.
+type CalibratePR struct { //nolint:govet // field order is the published property order
+	State    string  `json:"state"`
+	MergedAt *string `json:"merged_at"`
+}
+
+// ProvenanceTriple is the per-bundle tooling triple; any part the bundle never
+// recorded reads null rather than an empty string.
+type ProvenanceTriple struct {
+	ToolVersion *string `json:"tool_version"`
+	PromptsHash *string `json:"prompts_hash"`
+	Model       *string `json:"model"`
+}
+
+// CalibrateCounts is the probe's verdict tally over the bundle's findings.
+type CalibrateCounts struct {
+	Findings int `json:"findings"`
+	Real     int `json:"real"`
+	False    int `json:"false"`
+	Unknown  int `json:"unknown"`
+}
+
+// CalibrateJudgment is the probe's second-sample agreement tally.
+type CalibrateJudgment struct { //nolint:govet // field order is the published property order
+	Sampled       int      `json:"sampled"`
+	Judged        int      `json:"judged"`
+	Agreed        int      `json:"agreed"`
+	Disagreed     int      `json:"disagreed"`
+	AgreementRate *float64 `json:"agreement_rate"`
+}
+
 // FetchEstimate is the fetch verb's optional data.estimate object: the
 // projected per-run cost plus, when an explicitly handed usage record priced
 // a comparable run, the measured basis it was built from.
@@ -177,6 +446,62 @@ type FetchEstimate struct { //nolint:govet // field order is the published prope
 	Basis          string   `json:"basis"           optional:"true"`
 	Harness        []string `json:"harness"         optional:"true"`
 	MeasuredRuns   int      `json:"measured_runs"   optional:"true"`
+}
+
+// FetchData is the fetch verb's --json data profile: the bundle location, the
+// diff statistics the toc counted, and the conditional summaries the run
+// armed (estimate and budget, cap, chunk, prompt dump).
+type FetchData struct { //nolint:govet // field order is the published property order
+	Dir             string        `json:"dir"`
+	HeadSHA         string        `json:"head_sha"`
+	BaseSHA         string        `json:"base_sha"`
+	Files           int           `json:"files"            min:"0"`
+	Additions       int           `json:"additions"        min:"0"`
+	Deletions       int           `json:"deletions"        min:"0"`
+	Hunks           int           `json:"hunks"            min:"0"`
+	Omitted         []any         `json:"omitted"`
+	DiffBytes       int64         `json:"diff_bytes"       min:"0"`
+	Panel           FetchPanel    `json:"panel"`
+	Capabilities    any           `json:"capabilities"     optional:"true"`
+	Controls        any           `json:"controls"         optional:"true"`
+	Artifacts       any           `json:"artifacts"`
+	IncrementalBase *string       `json:"incremental_base"`
+	Estimate        FetchEstimate `json:"estimate"         optional:"true"`
+	Budget          any           `json:"budget"           optional:"true"`
+	Cap             any           `json:"cap"              optional:"true"`
+	Chunk           any           `json:"chunk"            optional:"true"`
+	PromptDump      *string       `json:"prompt_dump"      optional:"true"`
+}
+
+// FetchLocalData is the fetch-local verb's --json data profile: the same
+// statistics without a remote base, plus the worktree kind and no
+// incremental base.
+type FetchLocalData struct { //nolint:govet // field order is the published property order
+	Dir          string        `json:"dir"`
+	Kind         string        `json:"kind"`
+	HeadSHA      string        `json:"head_sha"`
+	BaseSHA      string        `json:"base_sha"`
+	Files        int           `json:"files"        min:"0"`
+	Additions    int           `json:"additions"    min:"0"`
+	Deletions    int           `json:"deletions"    min:"0"`
+	Hunks        int           `json:"hunks"        min:"0"`
+	Omitted      []any         `json:"omitted"`
+	DiffBytes    int64         `json:"diff_bytes"   min:"0"`
+	Panel        FetchPanel    `json:"panel"`
+	Capabilities any           `json:"capabilities" optional:"true"`
+	Controls     any           `json:"controls"     optional:"true"`
+	Artifacts    any           `json:"artifacts"`
+	Estimate     FetchEstimate `json:"estimate"     optional:"true"`
+	Budget       any           `json:"budget"       optional:"true"`
+	Cap          any           `json:"cap"          optional:"true"`
+	Chunk        any           `json:"chunk"        optional:"true"`
+	PromptDump   *string       `json:"prompt_dump"  optional:"true"`
+}
+
+// FetchPanel is the panel source and member list written into the bundle.
+type FetchPanel struct {
+	Source  *string  `json:"source"`
+	Members []string `json:"members"`
 }
 
 // Usage is one explicitly handed spend record (or one element of an array),

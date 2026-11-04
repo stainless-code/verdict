@@ -203,17 +203,43 @@ Other rules that belong in every wrapper:
 
 ## Verb and data profiles
 
-`data` is pinned for four verbs and open for the rest. Pinned means the shape
-is a `$defs` entry in the envelope schema and the generated models are worth
-using. Open means it is the generic object until that verb's data stabilizes.
+Every verb that renders a `--json` envelope publishes its `data` profile as a
+single `<verb>Data` `$defs` entry in the envelope schema, and the generated
+models bind each client method to it. A pinned profile is the shape the writer
+actually emits, including the keys it leaves null on one mode; it still allows
+additional properties, so a new key stays additive. The installer surfaces
+(`skill`, `upgrade`, `uninstall`, `mcp`) keep the generic open object.
 
-| Verb                                                                                                                                                                                   | `data` profile                | Schema source                                                                                                                               |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `report`                                                                                                                                                                               | pinned `reportData`           | [`envelope.schema.json#/$defs/reportData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json) |
-| `post`                                                                                                                                                                                 | pinned `postData`             | [`envelope.schema.json#/$defs/postData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)   |
-| `record`                                                                                                                                                                               | pinned `recordData`           | [`envelope.schema.json#/$defs/recordData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json) |
-| `show`                                                                                                                                                                                 | pinned `showData` / `showFix` | [`envelope.schema.json#/$defs/showData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)   |
-| `fetch`, `fetch-local`, `next`, `ready`, `threads`, `trend`, `doctor`, `check-tree`, `calibrate`, `triage`, `adopt`, `fix`, `verify`, `learn`, `init`, `skill`, `upgrade`, `uninstall` | open object (generic)         | envelope's `data` allows additional properties                                                                                              |
+| Verb          | `data` profile         |
+| ------------- | ---------------------- |
+| `report`      | `reportData`           |
+| `post`        | `postData`             |
+| `record`      | `recordData`           |
+| `show`        | `showData` / `showFix` |
+| `next`        | `nextData`             |
+| `ready`       | `readyData`            |
+| `triage`      | `triageData`           |
+| `fetch`       | `fetchData`            |
+| `fetch-local` | `fetchLocalData`       |
+| `threads`     | `threadsData`          |
+| `verify`      | `verifyData`           |
+| `check-tree`  | `checkTreeData`        |
+| `doctor`      | `doctorData`           |
+| `calibrate`   | `calibrateData`        |
+| `trend`       | `trendData`            |
+| `adopt`       | `adoptData`            |
+| `fix`         | `fixData`              |
+| `learn`       | `learnData`            |
+| `init`        | `initData`             |
+
+`calibrate` has three modes (live join, corpus join, probe) that share one
+object, so every mode-specific key is optional there; narrow on the keys you
+asked for. `fetch`'s estimate, budget, cap, chunk, and prompt dump appear only
+when the run armed them, and `fix` leaves the pass fields null in its completion
+shape.
+
+The profiles are `$defs` entries, not a `oneOf` on `data`: the envelope keeps
+one open `data` object so a client that does not know a verb can still read it.
 
 The schemas are published under
 [`skills/verdict/schemas/`](https://github.com/stainless-code/verdict/tree/main/skills/verdict/schemas). They
@@ -274,9 +300,9 @@ datamodel-codegen \
   --disable-timestamp
 ```
 
-`envelope.schema.json` carries the envelope plus `$defs` for `reportData`,
-`postData`, `recordData`, and `showData`/`showFix`, so one input file produces
-the envelope and all four pinned profiles. `examples/python-client/generate_models.sh` wraps the
+`envelope.schema.json` carries the envelope plus one `<verb>Data` `$defs` entry
+per verb (and the nested `$defs` they reference), so one input file produces
+the envelope and every pinned profile. `examples/python-client/generate_models.sh` wraps the
 exact command and supports `--check` for a drift gate.
 
 `models.py` is committed so the example runs offline and reads without a
