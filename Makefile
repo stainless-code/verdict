@@ -60,6 +60,7 @@ test-race:
 FUZZTIME ?= 30s
 FUZZ_TARGETS := \
 	./internal/core/threads:FuzzProviderMappers \
+	./internal/core/verify:FuzzGate \
 	./internal/hunks:FuzzFiles \
 	./internal/hunks:FuzzHeaderPaths \
 	./internal/hunks:FuzzParse \
