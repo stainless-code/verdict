@@ -1,39 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-coverage: post/record cross-chunk merge validation.
 #
-# Grades (all hermetic — crafted chunked bundles, stub gh, no network):
-#   C1  missing-chunk refusal (post): an attested synthesis omitting a
-#       manifest chunk is refused with typed missing-chunk-coverage naming
-#       the missing chunk plus the re-fetch remediation; nothing merges
-#       (no findings.json, no dry-run file, no post.json).
-#   C2  missing-chunk refusal (record): the same gate fires through record
-#       on a local chunked bundle (omitting the other chunk).
-#   C3  missing snapshot refusal: a manifest chunk whose pinned diff is
-#       gone is refused as its own typed state (missing-chunk-snapshot)
-#       naming the chunk with the re-fetch remediation, never a partial post.
-#   C4  drift surfaces pinned: a mid-review push rewriting full.diff warns
-#       of drift while anchors still validate against the pinned per-chunk
-#       snapshots (kept, never silently mis-anchored).
-#   C5  happy-path exactly-one-post + dedupe: a fully attested synthesis
-#       posts exactly one review (one reviews call, one payload, one
-#       envelope), merges exactly one findings file with today's sig dedupe
-#       (restated prior entry merges, new entry appends), and lands post.json.
-#   C6  unattested warn-and-keep: a review without the chunks claim on a
-#       chunked bundle still validates exactly as today (exit 0,
-#       keep-biased anchors, no basis warning) but now warns loudly naming
-#       the manifest, so silent partial synthesis is impossible; delta-scoped
-#       and single-anchor inputs keep their exits.
-# The agent loop itself is not executed here (no model in the harness): the
-# prompt attestation contract is pinned by chunk-synthesize S1-adjacent text
-# in prompts/review.md; C1-C6 grade the merge seam every synthesis passes
-# through. This case carries the dedicated missing-chunk refusal grade that
-# the incremental slice (chunk-incremental.sh) deferred to this slice.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -45,8 +16,6 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 BASEB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-# mkcovbundle <pr> — crafted two-chunk PR bundle (a.txt in chunk-01,
-# b.txt in chunk-02), same on-disk shape fetch --chunk writes.
 mkcovbundle() { # $1 = pr number
   local pr="$1" dir="$EVAL_SANDBOX/.review/$1"
   local total="" b1="" b2=""
@@ -152,7 +121,6 @@ EOF
     > "$dir/chunks/manifest.json"
 }
 
-# --- C1: attested-but-partial synthesis is refused on post ---
 mkcovbundle 4641
 eval_write_review 4641 <<'EOF'
 {"schema_version":"1","chunks":["chunk-01"],"body":"> ✅ Chunk-01 reviewed, one note.\n> Basis: 0 reproduced · 1 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational"}]}
@@ -179,7 +147,6 @@ else
   bad "refusal left store output behind"
 fi
 
-# --- C2: the same gate fires through record on a local bundle ---
 mkcovlocal covrec
 cat > "$EVAL_SANDBOX/.review/local-covrec/review.json" <<'EOF'
 {"schema_version":"1","chunks":["chunk-02"],"body":"> ✅ Chunk-02 reviewed, one note.\n> Basis: 0 reproduced · 0 ran · 1 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational"}]}
@@ -199,7 +166,6 @@ else
   bad "record refusal left store output behind"
 fi
 
-# --- C3: a missing pinned snapshot is its own typed refusal ---
 mkcovbundle 4642
 rm "$EVAL_SANDBOX/.review/4642/chunks/chunk-02.diff"
 eval_write_review 4642 <<'EOF'
@@ -221,10 +187,7 @@ else
   bad "snapshot refusal left store output behind"
 fi
 
-# --- C4: mid-review drift warns while anchors stay pinned ---
 mkcovbundle 4643
-# Simulate a push landing after the fetch: full.diff grows (a.txt hunk now
-# covers NEW 1-1 only), while the pinned chunk diffs still say NEW 1-2.
 {
   echo 'diff --git a/a.txt b/a.txt'
   echo 'index 1111111..2222222 100644'
@@ -252,10 +215,7 @@ else
   bad "drift warning missing: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- C5: a complete attested synthesis posts exactly once with sig dedupe ---
 mkcovbundle 4644
-# sig_of mirror (the CLI normalizes key whitespace, then sha1):
-# sigKey for an inline comment is path + "\n" + heading("") + "\n" + body.
 sig_for() { printf '%s\n%s\n%s' "$1" "" "$2" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
 ABODY="Prior note on file one still stands."
 BBODY="New note on file two from this synthesis."
@@ -269,7 +229,6 @@ jq -n --arg s "$SIGA" --arg b "$ABODY" \
 eval_write_review 4644 <<EOF
 {"schema_version":"1","chunks":["chunk-01","chunk-02"],"body":"> ✅ Both chunks reviewed, two notes.\n> Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"$ABODY","rigor":"pointed","severity":"informational"},{"path":"b.txt","line":2,"side":"RIGHT","body":"$BBODY","rigor":"pointed","severity":"informational"}]}
 EOF
-# Real post through a canned gh shim (payload saved, head reads fetched).
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -341,7 +300,6 @@ restore_stub
 trap - EXIT
 export EVAL_STUBLOG="$COVLOG_ORIG"
 
-# --- C6: unattested reviews warn loudly but validate as today ---
 eval_write_review 4641 <<'EOF'
 {"schema_version":"1","body":"> ✅ One note on chunk-01.\n> Basis: 0 reproduced · 1 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational"}]}
 EOF
@@ -361,7 +319,6 @@ else
   bad "envelope warnings miss the attestation warn: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- cleanup: probe state goes, fixtures stay out of later cases ---
 rm -rf "$EVAL_SANDBOX/.review/4641" "$EVAL_SANDBOX/.review/4642" \
   "$EVAL_SANDBOX/.review/4643" "$EVAL_SANDBOX/.review/4644" \
   "$EVAL_SANDBOX/.review/local-covrec" "$EVAL_SANDBOX/xdg-empty"

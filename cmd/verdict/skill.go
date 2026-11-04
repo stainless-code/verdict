@@ -12,11 +12,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// keyFiles is the envelope key carrying the payload file list; the inventory
-// and both install builders report the same list under it.
 const keyFiles = "files"
 
-// runSkill dispatches `verdict skill [show|files|install]`.
 func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	r.Repo, r.Pr = "", ""
 	sub := cmdShow
@@ -40,7 +37,6 @@ func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]
 	}
 }
 
-// runSkillShow prints SKILL.md, or the JSON inventory envelope.
 func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	format, code, done := parseSkillShowFlags(r, args)
 	if done {
@@ -63,7 +59,6 @@ func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[str
 	return cli.ExitOK
 }
 
-// parseSkillShowFlags parses the show format grammar.
 //
 //nolint:revive // the flag switch is the parser; splitting it hides the grammar
 func parseSkillShowFlags(r *cli.Runner, args []string) (string, int, bool) {
@@ -96,7 +91,6 @@ func parseSkillShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 	return format, 0, false
 }
 
-// runSkillFiles lists every embedded path (or the JSON inventory envelope).
 func runSkillFiles(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	for _, arg := range args {
 		switch arg {
@@ -123,7 +117,6 @@ func runSkillFiles(ctx context.Context, r *cli.Runner, args []string, env map[st
 	return cli.ExitOK
 }
 
-// skillInstallFlags is the parsed `skill install` option set.
 type skillInstallFlags struct {
 	dir    string
 	agent  string
@@ -132,7 +125,6 @@ type skillInstallFlags struct {
 	detect bool
 }
 
-// runSkillInstall previews or applies the embedded payload.
 func runSkillInstall(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	flags, code, done := parseSkillInstallFlags(r, args)
 	if done {
@@ -149,7 +141,6 @@ func runSkillInstall(ctx context.Context, r *cli.Runner, args []string, env map[
 	return skillInstallRun(ctx, r, env, root, flags)
 }
 
-// skillInstallScope rejects a scope that names more than one target table.
 func skillInstallScope(r *cli.Runner, flags skillInstallFlags) (int, bool) {
 	switch {
 	case flags.dir != "" && flags.agent != "":
@@ -161,7 +152,6 @@ func skillInstallScope(r *cli.Runner, flags skillInstallFlags) (int, bool) {
 	}
 }
 
-// skillInstallSuffix renders the recorded re-entry flags.
 func skillInstallSuffix(r *cli.Runner, flags skillInstallFlags) string {
 	suffix := ""
 	if flags.dry {
@@ -173,7 +163,6 @@ func skillInstallSuffix(r *cli.Runner, flags skillInstallFlags) string {
 	return suffix
 }
 
-// skillInstallRun dispatches one install or the whole detected agent set.
 func skillInstallRun(ctx context.Context, r *cli.Runner, env map[string]string, root string, flags skillInstallFlags) int {
 	req := &skill.Request{
 		Runtime: skillRuntime(r, env),
@@ -197,7 +186,6 @@ func skillInstallRun(ctx context.Context, r *cli.Runner, env map[string]string, 
 	return cli.ExitOK
 }
 
-// runSkillInstallDetect installs into every already-present agent skills dir.
 func runSkillInstallDetect(ctx context.Context, r *cli.Runner, req *skill.Request, flags skillInstallFlags) int {
 	det, ref := skill.InstallDetected(ctx, req)
 	if ref != nil {
@@ -210,7 +198,6 @@ func runSkillInstallDetect(ctx context.Context, r *cli.Runner, req *skill.Reques
 	return cli.ExitOK
 }
 
-// parseSkillInstallFlags strips install's flags, reporting unknown ones.
 //
 //nolint:cyclop,revive // the flag switch is the parser; splitting it hides the grammar
 func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, int, bool) {
@@ -249,7 +236,6 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 	return f, 0, false
 }
 
-// printSkillPlan renders the install preview/outcome in human mode.
 func printSkillPlan(r *cli.Runner, plan *skill.Plan, dry bool) {
 	fmt.Fprintf(r.Human, "skill install: %s v%s -> %s\n", plan.Name, plan.Version, plan.Target)
 	fmt.Fprintf(r.Human, "--- %s (%s) ---\n", plan.Target, plan.Status)
@@ -259,7 +245,6 @@ func printSkillPlan(r *cli.Runner, plan *skill.Plan, dry bool) {
 	}
 }
 
-// printSkillDetect renders one line per detected agent, then its outcome.
 func printSkillDetect(r *cli.Runner, det *skill.Detection, dry bool) {
 	fmt.Fprintf(r.Human, "skill install --detect: %s v%s -> %d agent(s): %s\n",
 		det.Name, det.Version, len(det.Plans), strings.Join(det.Agents, ", "))
@@ -272,7 +257,6 @@ func printSkillDetect(r *cli.Runner, det *skill.Detection, dry bool) {
 	}
 }
 
-// printSkillTarget renders one target's changed paths and outcome.
 func printSkillTarget(r *cli.Runner, plan *skill.Plan) {
 	for _, rel := range plan.Changed {
 		fmt.Fprintf(r.Human, "  + %s\n", rel)
@@ -287,7 +271,6 @@ func printSkillTarget(r *cli.Runner, plan *skill.Plan) {
 	}
 }
 
-// printSkillKeep renders a keep outcome (and a receipt refresh note).
 func printSkillKeep(r *cli.Runner, plan *skill.Plan) {
 	if plan.ReceiptUpdated {
 		fmt.Fprintf(r.Human, "install: keep (receipt refreshed to v%s)\n", plan.Version)
@@ -296,7 +279,6 @@ func printSkillKeep(r *cli.Runner, plan *skill.Plan) {
 	fmt.Fprintln(r.Human, "install: keep (already up to date)")
 }
 
-// printSkillBlocked renders the foreign-target preview/refusal context.
 func printSkillBlocked(r *cli.Runner, plan *skill.Plan) {
 	if plan.TargetFile {
 		fmt.Fprintf(r.Human, "install: blocked (%s is not a directory — left untouched)\n", plan.Target)
@@ -307,14 +289,12 @@ func printSkillBlocked(r *cli.Runner, plan *skill.Plan) {
 		skill.ReceiptName)
 }
 
-// printSkillWrote renders a create/update result.
 func printSkillWrote(r *cli.Runner, plan *skill.Plan) {
 	if plan.Written > 0 {
 		fmt.Fprintf(r.Human, "install: %d file(s) written (receipt v%s)\n", plan.Written, plan.ReceiptVersion)
 	}
 }
 
-// skillFormat is the JSON-forced default shared by skill read commands.
 func skillFormat(r *cli.Runner) string {
 	if r.JSONMode {
 		return formatJSONName
@@ -331,12 +311,10 @@ func skillVersion(root string) string {
 	return versionOf(root, os.ReadFile)
 }
 
-// skillRuntime builds the injected service runtime.
 func skillRuntime(r *cli.Runner, env map[string]string) *core.Runtime {
 	return &core.Runtime{Env: env, Now: r.Now, Progress: cli.Progress{R: r}}
 }
 
-// skillInventoryData builds the name/version/files envelope data.
 func skillInventoryData(inv *skill.Inventory) *jq.Obj {
 	return jq.NewObj(
 		"name", inv.Name,
@@ -345,7 +323,6 @@ func skillInventoryData(inv *skill.Inventory) *jq.Obj {
 	)
 }
 
-// skillInstallData builds the install envelope data.
 func skillInstallData(plan *skill.Plan, dry, force bool) *jq.Obj {
 	data := jq.NewObj(
 		"name", plan.Name,
@@ -364,7 +341,6 @@ func skillInstallData(plan *skill.Plan, dry, force bool) *jq.Obj {
 	return data
 }
 
-// skillDetectData builds the per-target install envelope data.
 func skillDetectData(det *skill.Detection, dry, force bool) *jq.Obj {
 	targets := make([]any, 0, len(det.Plans))
 	for i := range det.Plans {
@@ -380,7 +356,6 @@ func skillDetectData(det *skill.Detection, dry, force bool) *jq.Obj {
 	)
 }
 
-// skillTargetData builds one detected agent's target object.
 func skillTargetData(plan *skill.Plan) *jq.Obj {
 	data := jq.NewObj(
 		"agent", plan.Agent,
@@ -396,14 +371,12 @@ func skillTargetData(plan *skill.Plan) *jq.Obj {
 	return data
 }
 
-// writeSkillEnvelope prints exactly one standard envelope for a skill call.
 func writeSkillEnvelope(r *cli.Runner, data *jq.Obj) {
 	env := core.RenderEnvelope("skill", "", "", cli.NowUTC(r.Now()), "",
 		r.Warnings, data, nil)
 	fmt.Fprintln(r.Out, env.MarshalPretty())
 }
 
-// skillUsageText is the `verdict skill` help block.
 func skillUsageText() string {
 	return "usage: verdict skill [show|files|install] [opts]\n" +
 		"  skill [show]              print SKILL.md (default --format md)\n" +

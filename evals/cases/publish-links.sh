@@ -1,19 +1,5 @@
 #!/usr/bin/env bash
-# Case publish-links: permalink-first evidence links (P2).
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   L1  well-formed links on the script path: report --output on a GitHub
-#       bundle renders reference-style [path:line][ev-N] locators with
-#       blob/<reviewed-SHA> definitions pinned to the fetched HEAD.
-#   L2  quote cap warn-and-keep: a >3-line fence outside collapsed details
-#       exits 0 with a warning and keeps the body (footer still renders).
-#   L3  provider fallback: record/report on a gitlab bundle renders plain
-#       path:line text — never blob URLs.
-#   L4  local fallback: record/report on a local bundle renders plain text.
-#   L5  mismatch warn-and-keep: a blob link pinned to the wrong SHA exits 0
-#       with a store-counts-style warning; a correctly pinned link stays
-#       silent.
-#   M1  the manual carries the permalink paragraph.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -23,7 +9,6 @@ SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 SHA_F="ffffffffffffffffffffffffffffffffffffffff"
 
-# --- L1: well-formed SHA-pinned reference-style links on report --output ---
 PR=4521
 dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir"
@@ -51,7 +36,6 @@ else
   bad "footer missing from link report"
 fi
 
-# --- L2: quote cap warns and keeps, never fails ---
 PR=4522
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -66,7 +50,6 @@ else
   bad "quote-cap path gave exit $EVAL_STATUS"
 fi
 
-# --- L3: provider bundle degrades to plain path:line ---
 PR=4523
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
@@ -86,7 +69,6 @@ assert_exit "provider report renders" 0
 assert_file_grep "provider report renders plain path:line" "$EVAL_SANDBOX/out-4523.md" 'notes.txt:2' "-F"
 assert_file_nogrep "provider report carries no blob URLs" "$EVAL_SANDBOX/out-4523.md" 'blob/' "-F"
 
-# --- L4: local bundle degrades to plain path:line ---
 PR="local-t2"
 dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir"
@@ -118,7 +100,6 @@ assert_exit "local report renders" 0
 assert_file_grep "local report renders plain path:line" "$EVAL_SANDBOX/out-4524.md" 'notes.txt:2' "-F"
 assert_file_nogrep "local report carries no blob URLs" "$EVAL_SANDBOX/out-4524.md" 'blob/' "-F"
 
-# --- L5: mismatch warns and keeps; correct pin stays silent ---
 PR=4525
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<EOF
@@ -142,7 +123,6 @@ assert_exit "correctly pinned link succeeds" 0
 assert_stream_nogrep "correctly pinned link warns about no SHA drift" "$EVAL_ERR" "differs from the reviewed SHA"
 assert_stream_nogrep "correctly pinned link warns about no line overflow" "$EVAL_ERR" "longer than 3 lines"
 
-# --- M1: manual carries the permalink paragraph ---
 if grep -Fq 'pinned to the reviewed commit — never live HEAD' "$EVAL_ROOT/docs/manual.md"; then
   good "manual carries the permalink paragraph"
 else

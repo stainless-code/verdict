@@ -16,10 +16,6 @@ import (
 	"github.com/stainless-code/verdict/internal/release"
 )
 
-// selfReplace performs the installer-managed upgrade: resolve the version,
-// download and verify, smoke-test the staged binary, then atomically
-// replace the target with the old binary kept aside until the receipt is
-// written. Any failure restores or leaves the old binary in place.
 func selfReplace(ctx context.Context, req *Request, det *detection) (Response, *core.RefusalError) {
 	base := strings.TrimRight(req.env("VERDICT_DOWNLOAD_URL"), "/")
 	version, ref := resolveVersion(ctx, req, base)
@@ -77,7 +73,6 @@ func selfReplace(ctx context.Context, req *Request, det *detection) (Response, *
 	}, nil
 }
 
-// resolveVersion applies the pin or resolves latest through the redirect.
 func resolveVersion(ctx context.Context, req *Request, base string) (string, *core.RefusalError) {
 	pin := strings.TrimPrefix(req.PinVersion, "v")
 	if pin != "" {
@@ -93,8 +88,6 @@ func resolveVersion(ctx context.Context, req *Request, base string) (string, *co
 	return version, nil
 }
 
-// replaceInstalled swaps the staged binary in, keeping a copy of the old
-// binary until the receipt lands so any failure rolls back.
 func replaceInstalled(req *Request, det *detection, result *release.Result, version string) error {
 	backup := filepath.Join(filepath.Dir(result.Binary), "previous-"+filepath.Base(det.exe))
 	if err := copyFile(det.exe, backup); err != nil {
@@ -114,12 +107,6 @@ func replaceInstalled(req *Request, det *detection, result *release.Result, vers
 	return nil
 }
 
-// windowsHandoff copies the verified new binary beside the installed one and
-// spawns it as the replacement helper: the running exe is never overwritten.
-// The helper image sits in the install directory, not %TEMP%, because the
-// helper moves it over the target with a plain MoveFileEx, which fails across
-// volumes (a TEMP on another drive than VERDICT_INSTALL). The result and log
-// files stay in the temp dir.
 func windowsHandoff(
 	ctx context.Context, req *Request, det *detection, result *release.Result, version string,
 ) (Response, *core.RefusalError) {
@@ -156,10 +143,8 @@ func windowsHandoff(
 	}, nil
 }
 
-// helperImageSuffix names the staged helper image beside the target.
 const helperImageSuffix = ".new"
 
-// defaultSmoke runs `--version` on the staged binary and compares bytes.
 func defaultSmoke(ctx context.Context, path, version string) error {
 	cmd := exec.CommandContext(ctx, path, "--version")
 	cmd.WaitDelay = commandWaitDelay
@@ -173,7 +158,6 @@ func defaultSmoke(ctx context.Context, path, version string) error {
 	return nil
 }
 
-// copyFile copies src to dst preserving the executable mode.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {

@@ -58,7 +58,6 @@ func (Watchdog) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	}, nil
 }
 
-// errEmptyArgv is the spawn error for an empty argv.
 var errEmptyArgv = watchdogError("empty argv")
 
 // WatchdogEnforced reports whether the watchdog can poll and kill a tree.
@@ -68,8 +67,6 @@ func WatchdogEnforced() bool {
 	return havePS()
 }
 
-// watchdogBudget reads the watchdog budget in whole seconds from the
-// context deadline the service installed. Absent reads unbudgeted.
 func watchdogBudget(ctx context.Context) (int, bool) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -78,14 +75,9 @@ func watchdogBudget(ctx context.Context) (int, bool) {
 	return int(time.Until(deadline).Seconds()), true
 }
 
-// spawnWatched starts argv in its own process group with combined output
-// captured to a bounded tail, returning the command, its wait channel, and
-// the capture (read after the wait).
 func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan error, *boundedBuffer, error) {
 	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
-	// Inherit the binary's cwd (verify runs where the caller ran, so relative
-	// verifyCmds resolve identically); nil stdin and env inherit too.
 	setGroup(proc)
 	proc.Cancel = func() error { return killGroup(proc) }
 	proc.WaitDelay = waitDelay
@@ -98,8 +90,6 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 		releaseTree(proc)
 		return nil, nil, nil, watchdogError("start command: " + err.Error())
 	}
-	// Windows spawns suspended and only resumes once the child is inside
-	// its job object; a failure there has already killed and reaped it.
 	if err := armStarted(proc); err != nil {
 		releaseTree(proc)
 		return nil, nil, nil, err
@@ -109,11 +99,6 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 	return proc, waitDone, out, nil
 }
 
-// pollTimeout owns the polling watchdog: while the main pid reads alive
-// (kill -0 plus the ps zombie arm) and the budget holds, sleep one second;
-// on expiry SIGKILL the group and record the timeout. The wait result is
-// never consumed here: the channel is buffered so the waiter never blocks,
-// and waitExit takes the single receive (reaping before the orphan sweep).
 func pollTimeout(ctx context.Context, cmd *osexec.Cmd, timeoutSecs int) bool {
 	elapsed := 0
 	for {
@@ -131,10 +116,6 @@ func pollTimeout(ctx context.Context, cmd *osexec.Cmd, timeoutSecs int) bool {
 	return stopTimedOut(cmd)
 }
 
-// stopTimedOut SIGKILLs the expired group. The kill is best effort: the
-// process may have exited between the last liveness check and the kill,
-// in which case there is nothing left to stop. Either way the timeout
-// stands.
 func stopTimedOut(cmd *osexec.Cmd) bool {
 	if err := killGroup(cmd); err != nil {
 		return true
@@ -142,8 +123,6 @@ func stopTimedOut(cmd *osexec.Cmd) bool {
 	return true
 }
 
-// waitPollSecond sleeps one watchdog tick, reporting whether the
-// deadline context fired during the sleep.
 func waitPollSecond(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
@@ -153,9 +132,6 @@ func waitPollSecond(ctx context.Context) bool {
 	return ctx.Err() != nil
 }
 
-// waitExit drains the wait result and maps it to the wait code:
-// 128+signo for signaled processes, the exit status otherwise. A
-// timeout-killed tree reads 137 (SIGKILL).
 func waitExit(waitDone chan error, timedOut bool) int {
 	err := <-waitDone
 	if err == nil {
@@ -165,8 +141,6 @@ func waitExit(waitDone chan error, timedOut bool) int {
 		return waitStatusCode(exitErr, timedOut)
 	}
 	if errors.Is(err, osexec.ErrWaitDelay) {
-		// The command itself exited 0; an orphan held the output pipe past
-		// WaitDelay, which the orphan sweep reports through the decoy flag.
 		return 0
 	}
 	if timedOut {
@@ -175,9 +149,6 @@ func waitExit(waitDone chan error, timedOut bool) int {
 	return 1
 }
 
-// waitStatusCode maps a decoded wait status to the wait code:
-// 128+signo for signaled processes, the exit status otherwise. An
-// undecodable status reads 1, or 137 on a timed-out tree.
 func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
 	if timedOut {
 		if code, ok := timeoutExitCode(); ok {
@@ -197,8 +168,6 @@ func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
 	return ws.status
 }
 
-// sigkillExit is the wait code for a SIGKILLed command.
 const sigkillExit = 137
 
-// sigOffset maps a fatal signal to the wait code (128+signo).
 const sigOffset = 128

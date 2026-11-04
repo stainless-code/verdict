@@ -1,41 +1,5 @@
 #!/usr/bin/env bash
-# Case publish-footer: footer receipt + leveled attribution + logo + divider + confidence basis.
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   F1  footer fields on the script path: report --output carries the
-#       golden default line (product-linked logo + linked bold name with
-#       inline version + receipt fields), tier, summed cost, file count,
-#       and the review link when a completed post record carries it.
-#       No bracket/paren version anywhere (link-text collision guard).
-#   F2  degraded reads: absent cost/post records render "unrecorded" and omit
-#       the link (never blank, never fail); uncountable files read unrecorded.
-#   F3  knob-off: publish.footer=false removes the block; attribution "off"
-#       keeps the receipt without the sentence; --no-footer wins anywhere.
-#       The day-old P1 attribution bool is refused (enum migration).
-#   F4  precedence: flags beat file beat env on every publish knob.
-#   F5  unknown publish keys refuse typed bad-settings (06 idiom).
-#   F6  custom attribution_text ({version}/{tier}/{product_url} substituted)
-#       and copyright render; unknown placeholders refuse typed.
-#   A2  level matrix: off (receipt only) / product (default golden line,
-#       no maker) / full (appends the maker mention).
-#   A3  logo matrix: on (default asset) / off / custom URL / empty URL
-#       (text-only, never a broken image); --no-logo flag wins.
-#   A4  divider idempotency: machine comment separates content from footer;
-#       report twice is byte-identical; a stale rendered block is
-#       strip-and-replaced (same body chars as the clean body, one marker).
-#   B1  basis exactness on the script path: report --output Basis counts equal
-#       the findings-store derivation (rigor/cited/verified).
-#   B2  agent-path mismatch warns and keeps: a wrong Basis in review.json
-#       exits 0 with a store-counts warning; a right one stays silent.
-#   R1  repost guard (07): post.json head == bundle HEAD omits the review link
-#       (the stored id belongs to the review being superseded); head differs
-#       keeps today's link; absent post.json keeps today's unlinked render.
-#   M1  the manual carries the one-sentence confidence metric definition.
-#   P0  absent-file parity: no settings file keeps the gates byte-identical
-#       (degenerate-body still refuses marker-less shorts, marker-first still
-#       passes) while the rendered bytes gain the default footer block.
-# Parity choice (one line): the footer is a new default surface, so parity
-# means gate shape unchanged, not bytes — documented in docs/manual.md.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -50,7 +14,6 @@ unset REVIEW_PUBLISH_FOOTER REVIEW_PUBLISH_ATTRIBUTION || true
 unset REVIEW_PUBLISH_ATTRIBUTION_TEXT REVIEW_PUBLISH_COPYRIGHT || true
 unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 
-# --- F1 + B1: full store, exact footer and basis on the script path ---
 PR=4501
 dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir"
@@ -72,13 +35,9 @@ EOF
 cat > "$dir/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50}],"est_usd":0.05}
 EOF
-# post.json head differs from the PR HEAD below (new-commit post: the stored
-# review belongs to an earlier commit), so the golden footer keeps today's link.
-# A same-head post.json would now omit it (R1 repost guard).
 jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
   '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
   > "$dir/post.json"
-# sections carry no rigor key, so the store default (pointed) counts them too
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4501.md"
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "full-store report exits 0"
@@ -105,9 +64,6 @@ else
   bad "basis placement drifted"
 fi
 
-# --- R1: same-head repost omits the stale link, controls keep today's render ---
-# (a) post.json head == bundle HEAD: the stored id belongs to the review being
-# superseded, so the dry-run footer carries the receipt but no review link.
 PR=4524
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -122,7 +78,6 @@ printf '%s' "$repost_footer" > "$EVAL_SANDBOX/repost-footer.txt"
 assert_exit "same-head repost succeeds" 0
 assert_file_nogrep "same-head repost omits the stale link" "$EVAL_SANDBOX/repost-footer.txt" '[review' "-F"
 assert_file_grep "same-head repost keeps the receipt" "$EVAL_SANDBOX/repost-footer.txt" 'standard tier' "-F"
-# (b) post.json head != bundle HEAD: new-commit post keeps today's link.
 PR=4525
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -138,7 +93,6 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "head-differs control gave exit $EVAL_STATUS"
 fi
-# (c) absent post.json: fresh post keeps today's unlinked render.
 PR=4526
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -154,8 +108,6 @@ if [ "$absent_footer" = "$repost_footer" ]; then
 else
   bad "omit-branch footer differs from fresh render"
 fi
-# (d) same-head post.json without html_url: the plain-text no-URL fallback is
-# swallowed too, not just the linked form.
 PR=4527
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -175,7 +127,6 @@ fi
 printf '%s' "$nourl_footer" > "$EVAL_SANDBOX/nourl-footer.txt"
 assert_file_nogrep "same-head omit swallows the plain-text no-URL fallback too" "$EVAL_SANDBOX/nourl-footer.txt" 'review `' "-F"
 
-# --- F2: degraded reads (no cost, no post, no file list, no diff) ---
 PR=4502
 dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir"
@@ -186,7 +137,6 @@ assert_file_grep "absent records degrade the receipt" "$EVAL_SANDBOX/out-4502.md
 assert_file_nogrep "absent records carry no review link" "$EVAL_SANDBOX/out-4502.md" '[review' "-F"
 assert_file_grep "degraded footer keeps the exact basis line" "$EVAL_SANDBOX/out-4502.md" '> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes' "-F"
 
-# --- F3: knob-off (file) ---
 mkdir -p "$EVAL_SANDBOX/xdg-off/verdict"
 printf '{"publish":{"footer":false}}' > "$EVAL_SANDBOX/xdg-off/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-off"
@@ -215,7 +165,6 @@ run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4505.md" --no-footer
 assert_exit "--no-footer render succeeds" 0
 assert_file_nogrep "--no-footer flag kills the block with no file present" "$EVAL_SANDBOX/out-4505.md" '<!-- verdict-footer -->' "-F"
 
-# --- F4: precedence flags > file > env ---
 mkdir -p "$EVAL_SANDBOX/xdg-on/verdict"
 printf '{"publish":{"footer":true}}' > "$EVAL_SANDBOX/xdg-on/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-on"
@@ -237,7 +186,6 @@ assert_exit "env-off render succeeds" 0
 assert_file_nogrep "env false alone (no file) turns the footer off" "$EVAL_SANDBOX/out-4508.md" '<!-- verdict-footer -->' "-F"
 unset REVIEW_PUBLISH_FOOTER || true
 
-# --- F5: unknown publish keys refuse (06 idiom) ---
 mkdir -p "$EVAL_SANDBOX/xdg-bad/verdict"
 printf '{"publish":{"motto":"ship it"}}' > "$EVAL_SANDBOX/xdg-bad/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-bad"
@@ -250,7 +198,6 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- F6: custom attribution text + copyright ---
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4509.md" --attribution-text "Custom stamped {version} words" --copyright "Acme Corp"
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -Fq "Custom stamped $VER words" "$EVAL_SANDBOX/out-4509.md" \
@@ -284,7 +231,6 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- A2: level matrix (off / product / full) ---
 mkdir -p "$EVAL_SANDBOX/xdg-lvl/verdict"
 printf '{"publish":{"attribution":"product"}}' > "$EVAL_SANDBOX/xdg-lvl/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-lvl"
@@ -314,7 +260,6 @@ else
   bad "--attribution full gave exit $EVAL_STATUS"
 fi
 
-# --- A3: logo matrix (on / off / custom URL / empty URL) ---
 mkdir -p "$EVAL_SANDBOX/xdg-logo/verdict"
 printf '{"publish":{"logo":false}}' > "$EVAL_SANDBOX/xdg-logo/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-logo"
@@ -341,7 +286,6 @@ assert_exit "--no-logo render succeeds" 0
 assert_file_nogrep "--no-logo flag drops the image" "$EVAL_SANDBOX/out-4533.md" '<img' "-F"
 assert_file_grep "--no-logo keeps the linked sentence" "$EVAL_SANDBOX/out-4533.md" "$PRODUCT_LINK" "-F"
 
-# --- A4: divider idempotency (strip-and-replace, byte-identical re-render) ---
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4540a.md"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4540b.md"
 if cmp -s "$EVAL_SANDBOX/out-4540a.md" "$EVAL_SANDBOX/out-4540b.md" \
@@ -374,7 +318,6 @@ assert_file_grep "stale block is replaced with the fresh version" "$EVAL_OUT" "V
 assert_file_nogrep "stale block drops the old version" "$EVAL_OUT" 'Verdict 9.9.9' "-F"
 assert_file_grep "stale block warns it is replacing" "$EVAL_ERR" 'replacing it with the canonical block' "-F"
 
-# --- B2: agent-path mismatch warns and keeps, never fails ---
 PR=4510
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -397,11 +340,6 @@ run_review post acme/app "$PR" --dry-run --json
 assert_exit "right basis render succeeds" 0
 assert_stream_nogrep "right basis stays silent" "$EVAL_ERR" "basis"
 
-# --- B3: re-review with carried-over findings never warns on its own counts ---
-# Store holds 2 open pointed findings from a prior run; the current review
-# carries 1 pointed comment (rigor omitted, default pointed) with a matching
-# Basis line. The validator compares against the review's own comments, so the
-# carried-over pair stays silent. The control miscounts its own comment and warns.
 PR=4515
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -429,9 +367,6 @@ else
   bad "re-review control gave exit $EVAL_STATUS"
 fi
 
-# --- F7: hand-written footer (legacy + v2) warns and keeps, never stacks ---
-# Skip is observable in human dry-run preflight body-chars: skipped means the
-# payload body is byte-identical to the agent body, so chars equal printf length.
 L1='> ✅ Looks fine.'
 L2='> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes'
 PR=4513
@@ -465,10 +400,6 @@ else
   bad "legacy hand-written path gave exit $EVAL_STATUS"
 fi
 
-# --- B4: this-run flips (triage addressed + cited rule) count exactly ---
-# Store holds 1 open pointed finding; the review cites a kb rule and flips it
-# addressed via triage in the same run. Silence proves the ver branch (this-run
-# addressed history at now) and the distinct-cites path — not just the rigor row.
 PR=4517
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -481,14 +412,12 @@ run_review post acme/app "$PR" --dry-run --json
 assert_exit "triage-addressed flip succeeds" 0
 assert_stream_nogrep "triage-addressed + cited rule count exactly, no warn" "$EVAL_ERR" "basis line counts"
 
-# --- M1: manual carries the one-sentence metric definition ---
 if grep -Fq 'Confidence is the agent'"'"'s "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.' "$EVAL_ROOT/docs/manual.md"; then
   good "manual carries the confidence metric definition"
 else
   bad "metric definition missing from docs/manual.md"
 fi
 
-# --- P0: absent-file parity (gates identical, bytes gain the default block) ---
 unset XDG_CONFIG_HOME || true
 PR=4512
 eval_mk_bundle "$PR"
@@ -513,7 +442,6 @@ else
   bad "degenerate-body gate moved (exit $EVAL_STATUS)"
 fi
 
-# --- cleanup: no knob state leaks into later cases ---
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_FOOTER REVIEW_PUBLISH_ATTRIBUTION || true
 unset REVIEW_PUBLISH_ATTRIBUTION_TEXT REVIEW_PUBLISH_COPYRIGHT || true

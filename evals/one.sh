@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Single-case eval runner: ./evals/one.sh <case-name-without-.sh> [extra env...]
-# Mirrors evals/run.sh sandbox setup for one case only (fast iteration).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=evals/lib/testenv.sh
@@ -36,8 +34,6 @@ EOF
 chmod +x "$STUBBIN/gh"
 export EVAL_ROOT="$ROOT" EVAL_SANDBOX="$SANDBOX"
 export EVAL_STUBBIN="$STUBBIN" EVAL_STUBLOG="$STUBLOG"
-# Single-case runs use the same built binary as the full suite (make evals
-# builds it; one.sh only defaults it and fails fast when it is missing).
 EVAL_CLI="${EVAL_CLI:-$ROOT/bin/verdict}"
 if [ ! -x "$EVAL_CLI" ]; then
   echo "evals need a built binary at $EVAL_CLI (run make evals) instead of silently grading nothing" >&2

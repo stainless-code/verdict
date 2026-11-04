@@ -20,7 +20,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// promptFiles lists the assembled agent prompt in hash order.
 var promptFiles = []string{"SKILL.md", "prompts/diagrams.md", "prompts/review.md", "prompts/system.md"}
 
 // checkoutSkillDir is where a source checkout keeps the skill payload (the
@@ -83,8 +82,6 @@ func PromptsHash(root string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// readPromptFile reads one prompt-set file from root: flat when root is a
-// skill directory, else from the checkout's skills/verdict.
 func readPromptFile(root, name string) ([]byte, error) {
 	raw, err := os.ReadFile(filepath.Join(root, name))
 	if err == nil {
@@ -142,8 +139,6 @@ func Spend(dir string) (tier, cost string) {
 	return tier, "$" + jqTostring(readcommon.Round4(sum))
 }
 
-// sumEstimates sums the est_usd estimates, bailing to unrecorded on a
-// non-object record.
 func sumEstimates(records []any) (float64, int) {
 	sum, n := 0.0, 0
 	for _, r := range records {
@@ -181,7 +176,6 @@ func FileCount(dir string) string {
 	return "files unrecorded"
 }
 
-// prFileCount reads the PR record's file list length.
 func prFileCount(dir string) (int, bool) {
 	raw, err := os.ReadFile(filepath.Join(dir, prFile))
 	if err != nil {
@@ -202,7 +196,6 @@ func prFileCount(dir string) (int, bool) {
 	return len(files), true
 }
 
-// diffFileCount counts the diff's touched files.
 func diffFileCount(dir string) (int, bool) {
 	raw, err := os.ReadFile(filepath.Join(dir, "full.diff"))
 	if err != nil {
@@ -220,7 +213,6 @@ func diffFileCount(dir string) (int, bool) {
 	return n, true
 }
 
-// fileWords renders the file count words.
 func fileWords(n int) string {
 	if n == 1 {
 		return "1 file"
@@ -239,7 +231,6 @@ func HeadShort(dir string) string {
 	return sourceHeadShort(dir)
 }
 
-// sourceHeadShort reads the local bundle head from source.json.
 func sourceHeadShort(dir string) string {
 	raw, err := os.ReadFile(filepath.Join(dir, "source.json"))
 	if err != nil {
@@ -351,12 +342,10 @@ func ReviewLink(dir string) string {
 	return "review `" + id + "`"
 }
 
-// postRecord reads the posted-review record through the shared capped read.
 func postRecord(dir string) map[string]any {
 	return readcommon.PostRecord(dir)
 }
 
-// reviewRef reads the review id and URL, tolerating a missing review block.
 func reviewRef(rev map[string]any) (string, string) {
 	if rev == nil {
 		return "", ""
@@ -372,7 +361,6 @@ func reviewRef(rev map[string]any) (string, string) {
 	return id, url
 }
 
-// postedHeadMatches reports whether the posted head still matches the bundle.
 func postedHeadMatches(dir string, m map[string]any) bool {
 	posted := jq.StrOf(m["head"])
 	if posted == "" {
@@ -382,8 +370,6 @@ func postedHeadMatches(dir string, m map[string]any) bool {
 	return current != "" && posted == current
 }
 
-// bundleHead reads the bundle's current head from the provider record or
-// the local source.
 func bundleHead(dir string) string {
 	if _, err := os.Stat(filepath.Join(dir, prFile)); err == nil {
 		return prHead(dir)

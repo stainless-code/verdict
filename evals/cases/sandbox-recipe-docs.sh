@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
-# Case sandbox-recipe-docs: hostile-PR sandbox recipe docs presence (slice 03).
 #
-# Grades (all hermetic — docs-presence greps, no network, no model):
-#   R1  bwrap one-liner present (ro-bind /, rw-bind repo, --unshare-net
-#       variant noted) + systemd-nspawn alternative + when-to-use (untrusted
-#       diff + networked verifyCmd).
-#   R2  tmpfs + secret paths named (~/.aws, ~/.ssh, ~/.config/gh).
-#   R3  non-mandate line (recipe, not enforcement, K5) present.
-#   R4  system.md names the enforced gate (typed verify-* codes) while the
-#       untrusted-data preamble stays untouched.
-#   R5  recipe section pins the known-residuals subsection (string-scan
-#       ceiling + representative keywords).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -19,7 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 MANUAL="$EVAL_ROOT/docs/manual.md"
 SYSTEM="$EVAL_SKILL/prompts/system.md"
 
-# --- R1: bwrap one-liner + systemd-nspawn alternative + when-to-use ---
 if grep -q "bwrap" "$MANUAL" \
   && grep -q -- "--ro-bind / /" "$MANUAL" \
   && grep -q -- "--unshare-net" "$MANUAL" \
@@ -35,7 +23,6 @@ else
   bad "recipe misses the when-to-use line in docs/manual.md"
 fi
 
-# --- R2: tmpfs + secret paths ---
 if grep -q "tmpfs" "$MANUAL" \
   && grep -q "[~]/.aws" "$MANUAL" \
   && grep -q "[~]/.ssh" "$MANUAL" \
@@ -45,7 +32,6 @@ else
   bad "recipe misses tmpfs or secret paths in docs/manual.md"
 fi
 
-# --- R3: non-mandate line ---
 if grep -qi "recipe, not enforcement" "$MANUAL" \
   && grep -q "K5" "$MANUAL"; then
   good "non-mandate line present (recipe, not enforcement, per K5)"
@@ -53,7 +39,6 @@ else
   bad "recipe misses the non-mandate line in docs/manual.md"
 fi
 
-# --- R4: system.md names the enforced gate, preamble untouched ---
 if grep -q "verify-destructive" "$SYSTEM" \
   && grep -q "verify-networked" "$SYSTEM" \
   && grep -q "verify-credential-read" "$SYSTEM" \
@@ -70,7 +55,6 @@ else
   bad "system.md lost the untrusted-data preamble"
 fi
 
-# --- R5: known-residuals subsection pinned in the recipe section ---
 if awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "Known residuals (string-scan ceiling)" \
   && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "TOCTOU" \
   && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "PYTHONPATH" \

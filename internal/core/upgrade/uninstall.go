@@ -39,7 +39,6 @@ func Uninstall(ctx context.Context, req *Request) (Response, *core.RefusalError)
 	return resp, nil
 }
 
-// removePathEntry deletes the installer's PATH entry after the binary went.
 func removePathEntry(ctx context.Context, req *Request, det *detection, resp *Response) *core.RefusalError {
 	where, changed, err := removePathMarker(ctx, req.envMap(), det.InstallDir)
 	if err != nil {
@@ -55,7 +54,6 @@ func removePathEntry(ctx context.Context, req *Request, det *detection, resp *Re
 	return nil
 }
 
-// removeInstaller deletes the managed binary, receipt, and empty dir.
 func removeInstaller(det *detection, removed []string) (Response, *core.RefusalError) {
 	if err := os.Remove(det.exe); err != nil {
 		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot remove " + det.exe + ": " + err.Error()}
@@ -73,7 +71,6 @@ func removeInstaller(det *detection, removed []string) (Response, *core.RefusalE
 	}, nil
 }
 
-// uninstallRefusal picks the no-receipt or owning-command refusal.
 func uninstallRefusal(det *detection) *core.RefusalError {
 	if within(det.exe, det.InstallDir) && !validReceipt(det.Receipt) {
 		return &core.RefusalError{
@@ -89,7 +86,6 @@ func uninstallRefusal(det *detection) *core.RefusalError {
 	}
 }
 
-// uninstallCommand names the owning removal command per channel.
 func uninstallCommand(det *detection) string {
 	switch det.Channel {
 	case ChannelNPM:

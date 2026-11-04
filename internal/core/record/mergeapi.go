@@ -123,7 +123,6 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	}, nil
 }
 
-// reportFindings emits the human findings summary table.
 func reportFindings(st *state) {
 	st.human(fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile))
 	for _, e := range st.entries {
@@ -170,8 +169,6 @@ func LoadReview(path string) (*jq.Obj, error) {
 	return review, nil
 }
 
-// reviewBodyOf reads the review body for the merge: an absent or null body
-// reads "", a string reads raw, and a container pretty-prints (via jq.R).
 func reviewBodyOf(review *jq.Obj) string {
 	bodyRaw, _ := review.Get("body")
 	return jq.R(jq.Alt(bodyRaw, ""))
@@ -222,24 +219,11 @@ func ReadOptional(path string) ([]byte, bool) {
 	return raw, true
 }
 
-// maxAgentBytes caps one agent-written input (review.json,
-// verification.json, chunk manifest) at 32 MiB. The binary is the only
-// reader, so a bounded read keeps a hostile bundle from exhausting memory.
-// Unknown keys are never rejected — decoding stays open.
 const maxAgentBytes = 32 << 20
 
-// readAgentFile reads one agent-written input through a limiting reader, so
-// at most maxAgentBytes+1 bytes are ever allocated. Stat refuses an
-// obviously oversized file without reading it, but the limiter is the
-// contract: a file that grows after the stat still stops at the cap.
-// Missing/unreadable files report the sealed read error; over-cap files
-// report the same typed refusal as before (callers distinguish it with
-// [errors.As]).
 func readAgentFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		// Sealed at the layer boundary (GO-ERRORS-03); callers only
-		// distinguish over-cap refusals via errors.As.
 		return nil, jq.Sealed("read agent file", err)
 	}
 	defer func() { _ = f.Close() }() // read-only handle; the read error rules
@@ -256,13 +240,11 @@ func readAgentFile(path string) ([]byte, error) {
 	return raw, nil
 }
 
-// agentCapRefusal builds the frozen over-cap refusal for an agent input.
 func agentCapRefusal(path string) error {
 	return &core.RefusalError{Code: codeBadReviewInput, Message: path +
 		" exceeds the 32 MiB agent-input cap (shrink the review, then re-run)"}
 }
 
-// agentRefusal reports whether err is an over-cap refusal from readAgentFile.
 func agentRefusal(err error) error {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -270,35 +252,21 @@ func agentRefusal(err error) error {
 	return nil
 }
 
-// removeDerivedSnapshot deletes the per-chunk pinned hunks: a derived
-// snapshot for one run only, while the fetch-time artifacts stay
-// authoritative. The post verb calls this right after the merge, so a
-// refusal never leaves the snapshot behind.
 func removeDerivedSnapshot(st *state) {
-	// The per-chunk pinned hunks are a derived snapshot for this run only;
-	// the fetch-time artifacts stay authoritative.
 	if st.anchorHunks != st.dir+"/hunks.tsv" {
 		removeBestEffort(st.anchorHunks)
 	}
 }
 
-// removeBestEffort deletes a derived snapshot, ignoring failures: the file
-// is advisory (fetch-time artifacts stay authoritative) and a stale copy
-// only costs a rebuild.
 func removeBestEffort(path string) {
-	// Best-effort derived-file cleanup; stale copies rebuild.
 	_ = os.Remove(path)
 }
 
-// exists reports whether path exists.
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-// checkDegenerate owns the degenerate-body guard: a verdict marker exempts
-// any body; otherwise short bodies refuse, and short placeholder-looking
-// bodies refuse too.
 func checkDegenerate(body string) error {
 	if markerRe.MatchString(body) {
 		return nil
@@ -312,8 +280,6 @@ func checkDegenerate(body string) error {
 	return nil
 }
 
-// asciiContainsLower reports a case-insensitive ASCII match, mirroring grep
-// -i under the C locale.
 func asciiContainsLower(s string, re *regexp.Regexp) bool {
 	return re.MatchString(readcommon.ASCIILower(s))
 }

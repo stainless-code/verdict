@@ -10,8 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// sparseFile creates path with the given size without writing the data
-// (truncate keeps the read path bounded, not the test's disk).
 func sparseFile(t *testing.T, path string, size int64) {
 	t.Helper()
 	f, err := os.Create(path)
@@ -26,8 +24,6 @@ func sparseFile(t *testing.T, path string, size int64) {
 	}
 }
 
-// openFDCount reports the process's open file descriptors, or ok=false on
-// platforms without /dev/fd.
 func openFDCount(t *testing.T) (int, bool) {
 	t.Helper()
 	entries, err := os.ReadDir("/dev/fd")
@@ -37,7 +33,6 @@ func openFDCount(t *testing.T) (int, bool) {
 	return len(entries), true
 }
 
-// agentFileCase is one row of the readAgentFile size-boundary table.
 type agentFileCase struct {
 	name    string
 	path    string
@@ -46,7 +41,6 @@ type agentFileCase struct {
 	wantErr bool
 }
 
-// checkAgentFileCase asserts one row's read result and refusal shape.
 func checkAgentFileCase(t *testing.T, tc agentFileCase) {
 	t.Helper()
 	raw, err := readAgentFile(tc.path)

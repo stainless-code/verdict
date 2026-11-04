@@ -5,31 +5,34 @@ description: "Local on-demand PR review via gh CLI, any model. Triggers: review 
 
 # Local PR review workflow
 
-The agent does the review; `gh` does GitHub I/O. You bring `GH_TOKEN`;
-the model is whatever agent you invoke.
+The agent does the review; `gh` does GitHub I/O. `gh` must be authenticated —
+its own `gh auth login` or `GH_TOKEN`; `verdict doctor` checks. The model is
+whatever agent you invoke.
 
 ## Where commands run
 
-Run the CLI from the repo under review: `.review/` is created in the
-current directory, never beside the tool. The primary path is the GLOBAL
-`verdict` binary installed once (`curl -fsSL
+Run the CLI from the repo under review: `.review/` is created in the current
+directory, never beside the tool. The primary path is the GLOBAL `verdict`
+binary installed once (`curl -fsSL
 https://stainless-code.com/verdict/install.sh
 | sh`, `npm i -g @stainless-code/verdict`, or `brew install
 stainless-code/tap/verdict`); the installed `verdict/` skill dir is only the
-skill. A skill copy resolves the binary through `scripts/verdict`:
-`VERDICT_BIN`, then `<skill>/bin/verdict`, then `verdict` on `PATH`. When none
-exists, install the global binary (primary) or run the one-time verified
-`scripts/verdict bootstrap` (it fetches and verifies once, then works
-offline; a review never downloads). `npx skills` manages the skill copy only:
-`npx skills update` refreshes it. Below, `verdict` means the resolved binary.
+skill. Below, `verdict` means the resolved binary.
 
 ## Install or refresh this skill
 
 The binary carries its own skill, so a copy can never skew from the CLI:
 `verdict skill` prints this file, `verdict skill files` lists the payload, and
-`verdict skill install [--agent claude|codex|cursor|...]` (or `--dir
-<skills-dir>`) writes it atomically with a `.verdict-managed` receipt. Re-run
-it after upgrading the binary; `npx skills update` covers registry copies.
+`verdict skill install [--agent <name>]` (or `--dir <skills-dir>`) writes it
+atomically with a `.verdict-managed` receipt. Re-run it after upgrading the
+binary.
+
+A skill copy resolves the binary through `scripts/verdict`: `VERDICT_BIN`,
+then `<skill>/bin/verdict`, then `verdict` on `PATH`. When none exists, install
+the global binary (primary) or run the one-time verified `scripts/verdict
+bootstrap` — it fetches and verifies once, then works offline; a review never
+downloads. `npx skills` manages the skill copy only: `npx skills update`
+refreshes it.
 
 ## Workflow
 
@@ -46,14 +49,18 @@ verdict fetch owner/repo 123
 # chunks/manifest.json, and stamp top-level "chunks" naming every manifest
 # chunk in review.json.
 
-# 2. Review with any agent. Load prompts/system.md, then the one mode file
-#    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
+# 2. Review with any agent. Load `prompts/system.md`, then the one mode file
+#    from the router below, plus the bundle.
+#    Write exactly one `.review/N/review.json`; the mode file defines its shape
+#    (`body` and `comments[]` at minimum, plus optional `resolved` sigs and
+#    `triage[]` claims).
 #    Prior feedback lives in `.review/N/threads.json` (all six hosts): host-resolved
 #    state, anchors, authors, and `finding_sig` links. `verdict threads owner/repo N`
 #    refreshes it alone — no diff refetch — so run it after pushing fixes and before
 #    a re-review or merge gate.
 
-# 3. Post. Done when exactly one review lands — one review.json, one post call.
+# 3. Post: validates anchors, merges the findings store, submits. Done when
+#    exactly one review lands — one review.json, one post call.
 verdict post owner/repo 123 --approve=false
 ```
 
@@ -65,11 +72,11 @@ to `findings.json` — read with `report`, never `post` (no PR target).
 `adopt owner/repo 123 --from local-work` carries a local review into a fresh
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
-Between runs the operator may run `verdict triage …` (status changes), `report`
-(ranked read), `verdict threads …` (refresh the PR conversation feed),
-`calibrate` (predictions vs ground truth), or `fix` (one bounded
-verify-gated pass over a local bundle — prints the finding plus land instructions;
-agents never call `triage` — they propose via `triage[]`).
+Never call `triage` — propose status changes via `triage[]` in `review.json`.
+The operator's own reads between runs: `triage` (status changes), `report`
+(ranked read), `threads` (refresh the PR conversation feed), `calibrate`
+(predictions vs ground truth), and `fix` (one bounded verify-gated pass over a
+local bundle — prints the finding plus land instructions).
 
 Delta re-review: `verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
 then load `prompts/incremental-review.md` instead of `prompts/review.md`.
@@ -120,8 +127,8 @@ to write dispatches, lenses run under it.
 8. **Only posted output counts.** Raw assistant text exists in logs only. Posted output
    reads as a polished teammate's comment, never as thinking-out-loud.
 
-There is no server side: anything not in this folder or reachable via `gh` doesn't
-exist for this run — don't look for it.
+There is no server to consult: the bundle in `.review/N/` plus what `gh` returns
+are the whole evidence base for this run.
 
 ## Spend tracking (usage handoff, optional)
 
@@ -131,5 +138,6 @@ its path. The operator hands it to the next `fetch` via
 `VERDICT_USAGE=<file|dir>` so the spend budget prices from measured runs.
 Otherwise write nothing: the budget estimate stays self-reported, never
 guessed. Harness exports (Claude Code transcripts, opencode exports) are
-outside the binary — convert them with `examples/usage-adapters/` first;
+outside the binary — convert them with the repo's `examples/usage-adapters/`
+(not shipped in this skill) first;
 `verdict` never reads those files itself.

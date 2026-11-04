@@ -34,8 +34,6 @@ func TestFirstKeyDeterministic(t *testing.T) {
 	}
 }
 
-// assertFirstKeyStable runs firstKey repeatedly: map iteration order must not
-// change the key named in an unknown-argument error.
 func assertFirstKeyStable(t *testing.T, obj map[string]json.RawMessage, want string) {
 	t.Helper()
 	for range 1000 {

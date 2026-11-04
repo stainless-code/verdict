@@ -31,7 +31,6 @@ const (
 	StatusBlocked = "blocked"
 )
 
-// Refusal codes surfaced to the CLI edge.
 const (
 	codeBadDir     = "skill-bad-dir"
 	codeNoHome     = "skill-no-home"
@@ -45,20 +44,16 @@ const (
 	dirPerm        = 0o755
 )
 
-// Prompt and schema payload directories, relative to the payload root.
 const (
 	payloadPromptsDir = "prompts"
 	payloadSchemasDir = "schemas"
 	payloadScriptsDir = "scripts"
 )
 
-// skillsSlot is the shared skills-dir leaf under every agent root.
 const skillsSlot = "skills"
 
-// agentShared names the shared standard skills dir.
 const agentShared = "agents"
 
-// Agent names with more than two occurrences.
 const (
 	agentOpencode = "opencode"
 	agentGoose    = "goose"
@@ -148,8 +143,6 @@ func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	return plan, nil
 }
 
-// checkApply refuses a planned target that must not be written: a slot that is
-// not a directory, or a foreign slot without --force.
 func checkApply(req *Request, plan *Plan) *core.RefusalError {
 	if plan.TargetFile {
 		return refuse(codeTargetFile, plan.Target+" exists and is not a directory; refusing to replace it")
@@ -161,7 +154,6 @@ func checkApply(req *Request, plan *Plan) *core.RefusalError {
 	return nil
 }
 
-// planInstall classifies the target without writing.
 func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	files, ref := List(ctx, req)
 	if ref != nil {
@@ -174,7 +166,6 @@ func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	return planAt(files, target)
 }
 
-// planAt classifies one resolved target without writing.
 func planAt(files Inventory, target string) (Plan, *core.RefusalError) {
 	plan := Plan{
 		Name: files.Name, Version: files.Version, Target: target, Files: files.Files,
@@ -208,8 +199,6 @@ func planAt(files Inventory, target string) (Plan, *core.RefusalError) {
 	return plan, nil
 }
 
-// target resolves the skill slot: <dir>/verdict, <agent skills>/verdict, or
-// the shared ~/.agents/skills/verdict default.
 func (req *Request) target() (string, *core.RefusalError) {
 	if req.Dir != "" {
 		if !filepath.IsAbs(req.Dir) {
@@ -233,15 +222,11 @@ func (req *Request) target() (string, *core.RefusalError) {
 	return filepath.Join(dir, Name), nil
 }
 
-// agentLayout is one agent's base dir plus the path leaves under it.
 type agentLayout struct {
 	base  string
 	parts []string
 }
 
-// agentDir maps one agent name to its skills dir (env-aware like
-// install-skill.sh). The bool reports a known agent; an empty dir means the
-// environment cannot resolve it.
 func (req *Request) agentDir(agent string) (string, bool) {
 	home := req.env("HOME")
 	config := req.env("XDG_CONFIG_HOME")
@@ -267,7 +252,6 @@ func (req *Request) agentDir(agent string) (string, bool) {
 	return joinBase(layout.base, layout.parts...), true
 }
 
-// claudeBase honors CLAUDE_CONFIG_DIR before ~/.claude.
 func claudeBase(req *Request, home string) string {
 	if dir := req.env("CLAUDE_CONFIG_DIR"); dir != "" {
 		return dir
@@ -275,7 +259,6 @@ func claudeBase(req *Request, home string) string {
 	return joinBase(home, ".claude")
 }
 
-// codexBase honors CODEX_HOME before ~/.codex.
 func codexBase(req *Request, home string) string {
 	if dir := req.env("CODEX_HOME"); dir != "" {
 		return dir
@@ -283,7 +266,6 @@ func codexBase(req *Request, home string) string {
 	return joinBase(home, ".codex")
 }
 
-// joinBase joins an optional base with path parts ("" when base is empty).
 func joinBase(base string, parts ...string) string {
 	if base == "" {
 		return ""
@@ -291,8 +273,6 @@ func joinBase(base string, parts ...string) string {
 	return filepath.Join(append([]string{base}, parts...)...)
 }
 
-// apply writes the payload and the receipt last, so a completed dir always
-// carries a receipt naming the version that wrote it.
 func apply(req *Request, plan *Plan) *core.RefusalError {
 	if plan.Status == StatusKeep {
 		return refreshReceipt(req, plan)
@@ -316,8 +296,6 @@ func apply(req *Request, plan *Plan) *core.RefusalError {
 	return nil
 }
 
-// refreshReceipt updates an owned copy's skewing receipt without touching
-// payload bytes; a matching receipt is a true no-op.
 func refreshReceipt(req *Request, plan *Plan) *core.RefusalError {
 	if plan.ReceiptVersion == req.version() {
 		return nil
@@ -330,7 +308,6 @@ func refreshReceipt(req *Request, plan *Plan) *core.RefusalError {
 	return nil
 }
 
-// writePayload atomically writes one embedded file with its payload mode.
 func writePayload(target, rel string) *core.RefusalError {
 	body, err := skillfs.Read(rel)
 	if err != nil {
@@ -346,9 +323,6 @@ func writePayload(target, rel string) *core.RefusalError {
 	return nil
 }
 
-// preflight refuses path-shape conflicts before any byte is written: a
-// payload directory that is a file, or a payload file that is a directory.
-// Nothing foreign is ever removed, even under --force.
 func preflight(target string, files []string) *core.RefusalError {
 	if ref := preflightDirs(target); ref != nil {
 		return ref
@@ -356,7 +330,6 @@ func preflight(target string, files []string) *core.RefusalError {
 	return preflightFiles(target, files)
 }
 
-// preflightDirs guards the three payload directories.
 func preflightDirs(target string) *core.RefusalError {
 	for _, dir := range []string{payloadPromptsDir, payloadSchemasDir, payloadScriptsDir} {
 		path := filepath.Join(target, dir)
@@ -367,7 +340,6 @@ func preflightDirs(target string) *core.RefusalError {
 	return nil
 }
 
-// preflightFiles guards every payload file path.
 func preflightFiles(target string, files []string) *core.RefusalError {
 	for _, rel := range files {
 		path := filepath.Join(target, filepath.FromSlash(rel))
@@ -378,8 +350,6 @@ func preflightFiles(target string, files []string) *core.RefusalError {
 	return nil
 }
 
-// changedFiles lists payload paths whose installed bytes differ or are
-// missing.
 func changedFiles(target string, files []string) []string {
 	var changed []string
 	for _, rel := range files {
@@ -396,7 +366,6 @@ func changedFiles(target string, files []string) []string {
 	return changed
 }
 
-// readReceipt returns the receipt's version and whether it is verdict-owned.
 func readReceipt(path string) (string, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -409,13 +378,11 @@ func readReceipt(path string) (string, bool) {
 	return jq.StrOf(doc["version"]), true
 }
 
-// writeReceipt writes the installer receipt atomically (pretty, like jq -n).
 func writeReceipt(target, version, now string) error {
 	doc := jq.NewObj("tool", Name, "version", version, "installed_at", now)
 	return atomic.WriteFile(filepath.Join(target, ReceiptName), []byte(doc.MarshalPretty()+"\n"))
 }
 
-// version returns the served skill version with the shared unknown fallback.
 func (req *Request) version() string {
 	if req.Version == "" {
 		return core.VersionUnknown
@@ -423,7 +390,6 @@ func (req *Request) version() string {
 	return req.Version
 }
 
-// env reads one injected environment value.
 func (req *Request) env(key string) string {
 	if req.Runtime == nil {
 		return ""
@@ -431,7 +397,6 @@ func (req *Request) env(key string) string {
 	return req.Env[key]
 }
 
-// refuse builds the typed refusal.
 func refuse(code, message string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: message}
 }

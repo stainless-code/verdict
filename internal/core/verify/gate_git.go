@@ -7,9 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// checkDestructiveGit owns the git-config/hook arms: -c keys, env config
-// vectors, HOME overrides with git, ext transports, clone vectors, and the
-// core.pager narrowing.
 func checkDestructiveGit(g *gateText) *core.RefusalError {
 	if ref := checkGitHookKeys(g); ref != nil {
 		return ref
@@ -29,7 +26,6 @@ func checkDestructiveGit(g *gateText) *core.RefusalError {
 	return checkGitPager(g)
 }
 
-// checkGitHomeOverride owns the HOME/XDG_CONFIG_HOME-with-git arm.
 func checkGitHomeOverride(g *gateText) *core.RefusalError {
 	if !reGitWord.MatchString(g.bare) {
 		return nil
@@ -41,7 +37,6 @@ func checkGitHomeOverride(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGitExtTransport owns the protocol.ext.allow / ext:: transport arm.
 func checkGitExtTransport(g *gateText) *core.RefusalError {
 	if !reProtoExtAllow.MatchString(g.bare) &&
 		(!reGitWord.MatchString(g.bare) || !strings.Contains(g.bare, "ext::")) {
@@ -53,7 +48,6 @@ func checkGitExtTransport(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGitCloneVectors owns the --upload-pack / --config-env arms.
 func checkGitCloneVectors(g *gateText) *core.RefusalError {
 	if !reGitWord.MatchString(g.bare) {
 		return nil
@@ -67,8 +61,6 @@ func checkGitCloneVectors(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGitPager owns the core.pager narrowing: known-safe pagers pass,
-// anything else refuses.
 func checkGitPager(g *gateText) *core.RefusalError {
 	if !reCorePagerSet.MatchString(g.bare) {
 		return nil
@@ -83,7 +75,6 @@ func checkGitPager(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGitHookKeys owns the -c/space-form hook key arms.
 func checkGitHookKeys(g *gateText) *core.RefusalError {
 	if frag := grepO(reGitFsmonitor, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "git fsmonitor hook executes commands — set it in repo config, not -c")
@@ -100,7 +91,6 @@ func checkGitHookKeys(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkGitEnvConfig owns the GIT_* env config arms (refused outright).
 func checkGitEnvConfig(g *gateText) *core.RefusalError {
 	if frag := grepO(reGitConfigCount, g.bare); frag != "" {
 		return refuse(codeDestructive, frag,
@@ -126,8 +116,6 @@ func checkGitEnvConfig(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// lastPathElement returns the text after the final slash (empty when the
-// value is empty).
 func lastPathElement(pgval string) string {
 	if _, after, ok := strings.CutLast(pgval, "/"); ok {
 		return after
@@ -135,7 +123,6 @@ func lastPathElement(pgval string) string {
 	return pgval
 }
 
-// Git-hook patterns.
 var (
 	reGitFsmonitor    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.fsmonitor([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
 	reGitSSHCommand   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.sshcommand([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)

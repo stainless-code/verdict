@@ -29,8 +29,6 @@ func TestProgressRoutesLate(t *testing.T) {
 	}
 }
 
-// checkProgressRouting builds Progress before RouteHuman, then asserts which
-// stream the human line reached.
 func checkProgressRouting(t *testing.T, json bool, wantOut, wantDiag string) {
 	t.Helper()
 	out, diag := &bytes.Buffer{}, &bytes.Buffer{}
@@ -46,8 +44,6 @@ func checkProgressRouting(t *testing.T, json bool, wantOut, wantDiag string) {
 	}
 }
 
-// refusalCase is one typed-refusal case: the refusal, the warnings the
-// runner should carry afterwards, and its exit code.
 type refusalCase struct {
 	name     string
 	ref      *core.RefusalError
@@ -85,8 +81,6 @@ func TestRefuseTypedAdoptsWarnings(t *testing.T) {
 	}
 }
 
-// checkRefuseTyped renders one refusal and asserts the adopted warnings, the
-// exit code, and that nothing reached stdout.
 func checkRefuseTyped(t *testing.T, tc refusalCase) {
 	t.Helper()
 	var out, diag bytes.Buffer
@@ -124,8 +118,6 @@ func TestCanceled(t *testing.T) {
 	}
 }
 
-// refuseRenderCase is one refusal-rendering case: the entry point that renders
-// the refusal and the exit code GO-CLI-05 expects.
 type refuseRenderCase struct {
 	render func(*cli.Runner, *core.RefusalError) int
 	ref    *core.RefusalError
@@ -166,8 +158,6 @@ func TestRefuseMapsCancelToBroke(t *testing.T) {
 	}
 }
 
-// checkRefuseCode renders one refusal and grades its exit code and that
-// nothing reached stdout.
 func checkRefuseCode(t *testing.T, tc refuseRenderCase) {
 	t.Helper()
 	var out, diag bytes.Buffer

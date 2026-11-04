@@ -1,33 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-envelope: machine-envelope chunk summary (additive data.chunk)
-# + prompt-dump concatenation of chunk diffs in manifest order.
 #
-# Grades (all hermetic — sandbox git repo, stub gh unless a canned-gh leg
-# overrides it, no network):
-#   E1  additive envelope (fetch-local): --chunk --json on the multi-file
-#       over-cap fixture succeeds; the top-level key set is exactly the
-#       documented envelope; data.chunk carries exactly count/manifest/
-#       total_bytes with values matching the manifest and full.diff; error
-#       null; existing data fields keep parsing (parser-compat probe).
-#   E2  dump order (fetch-local): --chunk --show-prompts stdout equals the
-#       fenced assembly with chunk diffs in manifest order; the fenced diff
-#       section is byte-equal to the fenced full.diff assembly; the
-#       reverse-order control differs (the order grade is non-vacuous).
-#   E3  --json coexistence: --chunk --show-prompts --json carries both
-#       data.chunk and data.prompt_dump, the dump equal to the E2 bytes.
-#   E4  non-chunked parity: under-cap --show-prompts stdout equals the
-#       fenced full.diff assembly; plain --json carries no
-#       data.chunk key and no prompt_dump key; the absent-knob over-cap
-#       --json refusal stays {data null, diff-too-large} with no chunk key.
-#   E5  PR fetch path: canned-gh fetch --chunk --json keeps the envelope key
-#       set with additive data.chunk, and --show-prompts renders the fenced
-#       manifest-order assembly.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -36,9 +13,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
-# Scratch git repo at the sandbox root (run_review runs with cwd=sandbox).
-# Explicit adds only — earlier cases' fixtures stay untracked and out of
-# every diff; every fetch below names its paths explicitly.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -59,9 +33,6 @@ EOF
     awk -v f="$i" 'BEGIN{for(j=0;j<1500;j++) printf "base line %06d file%d padding padding padding padding\n", j, f}' > "cenv-f$i.txt"
   done
   printf 'tiny alpha\n' > cenv-small.txt
-  # Prompt files for the --show-prompts legs: the dump refuses typed without
-  # the preamble (F7), so the sandbox carries committed prompt files — the
-  # explicit-path fetches below keep them out of every diff.
   printf '# verdict skill (eval fixture)\n' > SKILL.md
   mkdir -p prompts
   printf '# system (eval fixture)\n' > prompts/system.md
@@ -86,15 +57,8 @@ if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
 fi
 MAN="$BUNDLE/chunks/manifest.json"
 
-# dump_nonce <file> — the first nonce=<16 hex> fence marker in a dump.
 dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
 
-# dump_expected_chunks <bundle-dir> <out> <nonce> — the documented dump
-# with the diff section built from chunk diffs in manifest order, built
-# independently of render_prompt_dump (missing/optional files skipped):
-# trusted prompts verbatim, the trust-boundary prologue naming <nonce>,
-# every present bundle file fenced with <nonce> (diff label stays
-# source=full.diff). Callers mine <nonce> from the actual dump first.
 dump_expected_chunks() {
   (
     cd "$EVAL_SANDBOX" || exit 99
@@ -148,8 +112,6 @@ EOF
   )
 }
 
-# dump_expected_full <bundle-dir> <out> <nonce> — the fenced assembly
-# with full.diff as the diff section, for the non-chunked parity contract.
 dump_expected_full() {
   (
     cd "$EVAL_SANDBOX" || exit 99
@@ -196,7 +158,6 @@ EOF
   )
 }
 
-# --- E1: additive envelope on the chunked fetch-local path ---
 # shellcheck disable=SC2086 # CENV_FILES is a validated space-separated path list
 run_review fetch-local acme/app cenvfix --chunk --json -- $CENV_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -223,7 +184,6 @@ else
   bad "chunk/manifest/data agreement broke"
 fi
 
-# --- E2: dump order on the chunked fetch-local path ---
 # shellcheck disable=SC2086 # CENV_FILES is a validated space-separated path list
 run_review fetch-local acme/app cenvfix --chunk --show-prompts -- $CENV_FILES
 if [ "$EVAL_STATUS" -eq 0 ]; then
@@ -237,15 +197,12 @@ if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cenv-expected.txt"; then
 else
   bad "chunked dump differs from the manifest-order fenced assembly"
 fi
-# Diff section of the dump is byte-equal to full.diff (chunks partition it).
 dump_expected_full ".review/local-cenvfix" "$EVAL_SANDBOX/cenv-fullconcat.txt" "$(dump_nonce "$EVAL_OUT")"
 if cmp -s "$EVAL_SANDBOX/cenv-expected.txt" "$EVAL_SANDBOX/cenv-fullconcat.txt"; then
   good "manifest-order chunk concat is byte-equal to the full.diff concatenation"
 else
   bad "chunk concat differs from full.diff bytes"
 fi
-# Reverse-order control: concat in reverse manifest order must differ, so the
-# order grade above is sensitive to ordering (non-vacuous with N >= 2).
 (
   cd "$EVAL_SANDBOX" || exit 99
   : > "$EVAL_SANDBOX/cenv-reversed.diff"
@@ -268,7 +225,6 @@ else
   bad "reverse-order concat matches forward (fixture has < 2 effective chunks?)"
 fi
 
-# --- E3: --json coexistence of both additives ---
 # shellcheck disable=SC2086 # CENV_FILES is a validated space-separated path list
 run_review fetch-local acme/app cenvfix --chunk --show-prompts --json -- $CENV_FILES
 dump_expected_chunks ".review/local-cenvfix" "$EVAL_SANDBOX/cenv-expected.txt" "$(dump_nonce "$EVAL_OUT")"
@@ -285,7 +241,6 @@ else
   bad "coexistence envelope keys broke: '$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)'"
 fi
 
-# --- E4: non-chunked parity ---
 run_review fetch-local acme/app cenvsmall --show-prompts -- cenv-small.txt
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "under-cap --show-prompts exits 0"
@@ -317,7 +272,6 @@ else
   bad "absent-knob --json refusal exits $EVAL_STATUS"
 fi
 
-# --- E5: PR fetch path via a canned gh shim ---
 # shellcheck disable=SC2086 # CENV_FILES is a validated space-separated path list
 (cd "$EVAL_SANDBOX" && git diff HEAD -- $CENV_FILES > "$EVAL_SANDBOX/cenv-canned.diff")
 CENV_FAKEBIN="$EVAL_SANDBOX/fakebin"
@@ -328,7 +282,6 @@ jq -n --argjson files "$(printf '%s\n' $CENV_FILES | jq -R . | jq -s 'map({path:
   > "$EVAL_SANDBOX/cenv-pr.json"
 cat > "$CENV_FAKEBIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# Case-local gh shim: serve the canned PR payload, log every interception.
 echo "fake-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat "$EVAL_SANDBOX/cenv-pr.json"; exit 0; fi
 if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then cat "$EVAL_SANDBOX/cenv-canned.diff"; exit 0; fi
@@ -369,7 +322,6 @@ else
   bad "PR-path chunked dump differs from the manifest-order concatenation"
 fi
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- cenv-f1.txt cenv-f2.txt cenv-f3.txt cenv-f4.txt cenv-f5.txt cenv-f6.txt cenv-small.txt 2>/dev/null || true

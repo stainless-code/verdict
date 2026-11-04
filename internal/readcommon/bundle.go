@@ -7,19 +7,14 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// localPrefix marks operator-local bundle slugs.
 const localPrefix = "local-"
 
-// corpusPrefix marks benchmark corpus bundle slugs.
 const corpusPrefix = "corpus-"
 
-// prSuffix is the provider record filename.
 const prSuffix = "/PR.json"
 
-// postSuffix is the completed-post receipt filename.
 const postSuffix = "/post.json"
 
-// PR field names shared by the GitHub and neutral readers.
 const (
 	fieldHeadSHA = "head_sha"
 	fieldBaseSHA = "base_sha"
@@ -167,7 +162,6 @@ func PostRecord(dir string) map[string]any {
 	return OpenBundle(dir).PostMap()
 }
 
-// prMap returns the decoded PR record, or nil when absent.
 func (b *Bundle) prMap() map[string]any {
 	if !b.loadPR() {
 		return nil
@@ -176,7 +170,6 @@ func (b *Bundle) prMap() map[string]any {
 	return m
 }
 
-// loadPR decodes PR.json once.
 func (b *Bundle) loadPR() bool {
 	if !b.prLoaded {
 		b.pr, b.prOK = decodeStore(b.dir+prSuffix, jq.MaxPRBytes)
@@ -185,7 +178,6 @@ func (b *Bundle) loadPR() bool {
 	return b.prOK
 }
 
-// loadPost decodes post.json once.
 func (b *Bundle) loadPost() bool {
 	if !b.postLoaded {
 		b.post, b.postOK = decodeStore(b.dir+postSuffix, jq.MaxPRBytes)
@@ -227,7 +219,6 @@ func ProviderOf(dir string) string {
 	return OpenBundle(dir).Provider()
 }
 
-// githubField reads the GitHub-shaped record field.
 func githubField(m map[string]any, field string) string {
 	switch field {
 	case fieldHeadSHA:
@@ -247,7 +238,6 @@ func githubField(m map[string]any, field string) string {
 	}
 }
 
-// neutralField reads the normalized non-GitHub record field.
 func neutralField(m map[string]any, field string) string {
 	switch field {
 	case fieldHeadSHA:
@@ -280,7 +270,6 @@ func ShortSHA(head string) string {
 	return head
 }
 
-// shortSHALen is the abbreviated SHA width.
 const shortSHALen = 7
 
 // Exists reports whether path exists (files or dirs), mirroring `[[ -e ]]`.

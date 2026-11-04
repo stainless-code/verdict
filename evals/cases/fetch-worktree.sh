@@ -1,24 +1,5 @@
 #!/usr/bin/env bash
-# Case fetch-worktree: fetch-local --worktree builds the bundle from a
-# temporary isolated checkout.
 #
-# Grades (all hermetic — sandbox git repo, real git, stub gh first on
-# PATH, no network):
-#   W1  dirty isolation: uncommitted changes land in the bundle, the
-#       human stream names the checkout location, and the run leaves no
-#       worktree behind, no stash entry, and the working tree undisturbed.
-#   W2  committed isolation: a --range bundle built with --worktree reads
-#       byte-identical to the committed endpoint diff even with live-tree
-#       dirt present, and the dirt survives untouched.
-#   W3  staged mode: --staged --worktree materializes the index tree and
-#       cleans up.
-#   W4  refusal hygiene: a bad range with --worktree refuses without
-#       creating a checkout or a bundle (mid-run failures are graded by
-#       the scripted-argv unit tests, which force the add and the diff to
-#       fail and assert the remove still fires).
-#   W5  default unchanged: without the flag no worktree line prints and
-#       no checkout is ever created, and the bundle reads identical bytes
-#       to the isolated run.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -45,7 +26,6 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 worktrees() { ( cd "$EVAL_SANDBOX" && git worktree list --porcelain 2>/dev/null | grep -c '^worktree ' || true ); }
 status_a() { ( cd "$EVAL_SANDBOX" && git status --porcelain -- a.txt || true ); }
 
-# --- W1: dirty isolation ---
 BEFORE="$(status_a)"
 run_review fetch-local acme/app wtdirty --worktree
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -65,7 +45,6 @@ else
   bad "dirty --worktree leaks state (worktrees: $(worktrees), status: $(status_a))"
 fi
 
-# --- W2: committed isolation with live-tree dirt present ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git add a.txt && git commit -qm second 2>/dev/null || true
@@ -92,7 +71,6 @@ else
   bad "range --worktree leaks state or disturbs the dirt"
 fi
 
-# --- W3: staged mode ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- a.txt 2>/dev/null || true
@@ -113,7 +91,6 @@ else
 fi
 ( cd "$EVAL_SANDBOX" && git reset -q 2>/dev/null || true )
 
-# --- W4: refusal hygiene ---
 run_review fetch-local acme/app wtbad --range deadbeef..cafef00 --worktree
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(worktrees)" = "1" ] \
@@ -124,7 +101,6 @@ else
   bad "bad range exits $EVAL_STATUS or leaks state"
 fi
 
-# --- W5: default behavior unchanged ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   printf 'line one\nline TWO\nline three\n' > a.txt
@@ -137,7 +113,6 @@ assert_stream_nogrep "without the flag stdout names no worktree" "$EVAL_OUT" "wo
 assert_file_eq "bundle bytes match the isolated run" "$EVAL_SANDBOX/wt-current-flag.diff" "$EVAL_SANDBOX/.review/local-wtdirty/full.diff"
 assert_eq "no extra checkout is created" "1" "$(worktrees)"
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- a.txt 2>/dev/null || true

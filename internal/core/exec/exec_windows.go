@@ -14,16 +14,6 @@ import (
 	"unsafe"
 )
 
-// The Windows watchdog uses a Job Object per verify run: descendants inherit
-// the job, so a timeout (or the post-exit sweep) terminates the whole tree
-// even though Windows has no negative-pgid kill. TerminateProcess records a
-// generic exit status, so timeoutExitCode maps a killed tree back to the
-// shared 137 (GO-EXEC-01/05).
-//
-// The child is spawned CREATE_SUSPENDED, assigned to the job while it cannot
-// run, then resumed (armStarted), so no descendant can ever be born outside
-// the job. Assigning later (the old first-poll-tick design) left a window in
-// which a fast child's grandchild escaped the job and survived the kill.
 const (
 	// createSuspended is CREATE_SUSPENDED: the primary thread starts
 	// suspended and runs no user-mode code until it is resumed.
@@ -52,8 +42,6 @@ const (
 	forcedExitCode = 1
 )
 
-// kernel32 entry points; syscall exports the process calls but not the job
-// object API.
 var (
 	procCreateJobObject         = syscall.NewLazyDLL("kernel32.dll").NewProc("CreateJobObjectW")
 	procSetInformationJobObject = syscall.NewLazyDLL("kernel32.dll").NewProc("SetInformationJobObject")
@@ -67,7 +55,6 @@ var (
 	procResumeThread            = syscall.NewLazyDLL("kernel32.dll").NewProc("ResumeThread")
 )
 
-// threadEntry mirrors THREADENTRY32 (28 bytes).
 type threadEntry struct {
 	Size           uint32
 	Usage          uint32
@@ -78,7 +65,6 @@ type threadEntry struct {
 	Flags          uint32
 }
 
-// jobExtendedLimit mirrors JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
 type jobExtendedLimit struct {
 	BasicLimit            jobBasicLimit
 	IOInfo                jobIOCounters
@@ -88,7 +74,6 @@ type jobExtendedLimit struct {
 	PeakJobMemoryUsed     uintptr
 }
 
-// jobBasicLimit mirrors JOBOBJECT_BASIC_LIMIT_INFORMATION.
 type jobBasicLimit struct {
 	PerProcessUserTimeLimit int64
 	PerJobUserTimeLimit     int64
@@ -101,7 +86,6 @@ type jobBasicLimit struct {
 	SchedulingClass         uint32
 }
 
-// jobIOCounters mirrors IO_COUNTERS.
 type jobIOCounters struct {
 	ReadOperationCount  uint64
 	WriteOperationCount uint64
@@ -111,7 +95,6 @@ type jobIOCounters struct {
 	OtherTransferCount  uint64
 }
 
-// jobAccounting mirrors JOBOBJECT_BASIC_ACCOUNTING_INFORMATION.
 type jobAccounting struct {
 	TotalUserTime             int64
 	TotalKernelTime           int64
@@ -123,26 +106,16 @@ type jobAccounting struct {
 	TotalTerminatedProcesses  uint32
 }
 
-// tree is the per-command job object. A nil/zero handle means the job could
-// not be created; the taskkill fallback still stops the tree.
 type tree struct {
-	mu       sync.Mutex
-	handle   syscall.Handle
-	attached bool
-	closed   bool
-	// suspended records that setGroup spawned the child CREATE_SUSPENDED,
-	// which only happens when the job exists to receive it.
+	mu        sync.Mutex
+	handle    syscall.Handle
+	attached  bool
+	closed    bool
 	suspended bool
 }
 
-// trees maps each verify command to its job object. setGroup runs before
-// Start and releaseTree after Wait, so the entry never outlives its command.
 var trees sync.Map
 
-// setGroup creates the job object before the child starts and, when it
-// exists, asks for the child to be spawned suspended so armStarted can assign
-// it before it runs. Without a job there is nothing to assign to, so the
-// child starts normally and the taskkill fallback covers the kill.
 func setGroup(cmd *osexec.Cmd) {
 	tr := &tree{}
 	handle, _, _ := procCreateJobObject.Call(0, 0)
@@ -167,15 +140,12 @@ func setGroup(cmd *osexec.Cmd) {
 	trees.Store(cmd, tr)
 }
 
-// treeFor returns the job object registered for cmd, or nil.
 func treeFor(cmd *osexec.Cmd) *tree {
 	v, _ := trees.Load(cmd)
 	tr, _ := v.(*tree)
 	return tr
 }
 
-// attach puts the started child into the job so descendants inherit it. It
-// is idempotent: nil means the child is in the job.
 func (tr *tree) attach(cmd *osexec.Cmd) error {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
@@ -201,12 +171,6 @@ func (tr *tree) attach(cmd *osexec.Cmd) error {
 	return nil
 }
 
-// armStarted runs right after Start on a child spawned suspended: it assigns
-// the child to the job while it cannot run, then resumes it, so every
-// descendant is born inside the job. If either step fails the child is
-// terminated and reaped here, never left suspended, and the error comes back
-// typed. A child spawned without a job (setGroup could not create one) was
-// not suspended and is left alone.
 func armStarted(cmd *osexec.Cmd) error {
 	tr := treeFor(cmd)
 	if tr == nil || !tr.suspended {
@@ -249,7 +213,6 @@ func resumeProcess(pid uint32) error {
 	return nil
 }
 
-// threadsOf lists the ids of pid's threads in a Toolhelp thread snapshot.
 func threadsOf(snap syscall.Handle, pid uint32) []uint32 {
 	var ids []uint32
 	entry := threadEntry{Size: uint32(unsafe.Sizeof(threadEntry{}))}
@@ -264,7 +227,6 @@ func threadsOf(snap syscall.Handle, pid uint32) []uint32 {
 	return ids
 }
 
-// resumeThread resumes one thread and reports whether the call succeeded.
 func resumeThread(id uint32) bool {
 	th, _, _ := procOpenThread.Call(threadSuspendResume, 0, uintptr(id))
 	if th == 0 {
@@ -275,7 +237,6 @@ func resumeThread(id uint32) bool {
 	return uint32(prev) != resumeFailed
 }
 
-// terminate kills every process in the job.
 func (tr *tree) terminate() bool {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
@@ -286,7 +247,6 @@ func (tr *tree) terminate() bool {
 	return r != 0
 }
 
-// active reports whether the job still holds a process.
 func (tr *tree) active() bool {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
@@ -301,8 +261,6 @@ func (tr *tree) active() bool {
 	return r != 0 && info.ActiveProcesses > 0
 }
 
-// killGroup terminates the child's whole tree: the job object when it could
-// be attached, else taskkill /T /F.
 func killGroup(cmd *osexec.Cmd) error {
 	if cmd.Process == nil {
 		return errNoProcess
@@ -313,8 +271,6 @@ func killGroup(cmd *osexec.Cmd) error {
 	return taskkillTree(cmd.Process.Pid)
 }
 
-// taskkillTree is the fallback tree kill when the job object could not be
-// used (creation or assignment failed).
 func taskkillTree(pid int) error {
 	kill := osexec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
 	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -325,8 +281,6 @@ func taskkillTree(pid int) error {
 	return nil
 }
 
-// processAlive polls the child's own exit code (not the job's population:
-// a surviving grandchild must not read as the parent still running).
 func processAlive(_ context.Context, cmd *osexec.Cmd) bool {
 	if cmd.Process == nil {
 		return false
@@ -341,9 +295,6 @@ func processAlive(_ context.Context, cmd *osexec.Cmd) bool {
 	return r != 0 && code == stillActive
 }
 
-// sweepOrphans owns the post-reap sweep: after the parent exits, a job
-// that still holds processes gets a grace period, then the survivors are
-// terminated and the decoy exit reported.
 func sweepOrphans(cmd *osexec.Cmd) bool {
 	tr := treeFor(cmd)
 	if tr == nil || !tr.active() {
@@ -357,15 +308,10 @@ func sweepOrphans(cmd *osexec.Cmd) bool {
 	return true
 }
 
-// TrimTail matches shell command substitution under Git Bash: native
-// Windows commands write CRLF through the Go-opened output handle, and the
-// recorded tail has both bytes stripped, so strip the pair here too.
 func TrimTail(s string) string {
 	return strings.TrimRight(s, "\r\n")
 }
 
-// releaseTree closes the job after the run: the kill-on-close limit stops
-// any process the sweep did not already terminate.
 func releaseTree(cmd *osexec.Cmd) {
 	v, ok := trees.LoadAndDelete(cmd)
 	if !ok {
@@ -387,7 +333,6 @@ func releaseTree(cmd *osexec.Cmd) {
 	}
 }
 
-// waitStatusOf extracts the wait status from an exit error.
 func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	if exitErr.ProcessState == nil {
 		return waitStatus{}, false
@@ -395,44 +340,30 @@ func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	return waitStatus{status: exitErr.ProcessState.ExitCode()}, true
 }
 
-// timeoutExitCode maps a terminated tree to the SIGKILL wait code;
-// TerminateJobObject itself records a generic exit status.
 func timeoutExitCode() (int, bool) {
 	return sigkillExit, true
 }
 
-// havePS reports whether the watchdog can poll and kill a tree. Windows has
-// no ps(1), but the job-object watchdog provides the same contract.
 func havePS() bool {
 	return true
 }
 
-// waitStatus carries the decoded process exit.
 type waitStatus struct {
 	signal   int
 	status   int
 	signaled bool
 }
 
-// errNoProcess is the kill-group error for a process that never started.
 var errNoProcess = watchdogError("no verify process")
 
-// errNoJob is the assignment error for a run whose job object is missing or
-// already closed.
 var errNoJob = watchdogError("no verify job object")
 
-// errResumeFailed is the start error when no thread of the suspended child
-// could be resumed.
 var errResumeFailed = watchdogError("resume suspended verify process: no thread resumed")
 
-// watchdogError is a plain error value for watchdog failures.
 type watchdogError string
 
-// Error implements error.
 func (e watchdogError) Error() string { return string(e) }
 
-// sweepGrace is the post-exit grace period for legitimate stragglers.
 const sweepGrace = 2 * time.Second
 
-// waitDelay lets stdio flush after a timeout kill (GO-EXEC-05).
 const waitDelay = 2 * time.Second

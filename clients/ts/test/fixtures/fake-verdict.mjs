@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// Fake verdict binary for the TS client unit tests: behaves per FAKE_MODE
-// (one envelope, no network, no fixtures) so every exit-code path is
-// covered without the real binary. Real-binary coverage lives in
-// test/client.test.mjs against bin/verdict.
 const mode = process.env["FAKE_MODE"] ?? "success";
 
 function envelope(overrides = {}) {

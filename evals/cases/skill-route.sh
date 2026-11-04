@@ -1,24 +1,5 @@
 #!/usr/bin/env bash
-# Case skill-route: the embedded skill, `verdict skill`, the install matrix,
-# the POSIX shim, and the one-time bootstrap.
 #
-# Grades (all hermetic — the binary's own embedded payload, temp skill dirs,
-# fake platform tools, and a file:// release mirror; no real network):
-#   S1  `verdict skill` prints the checked-in SKILL.md byte-for-byte;
-#       `skill files` lists the sorted payload; `--format json` is one
-#       standard envelope with name/version/files.
-#   S2  install matrix: --dry-run writes nothing; create writes SKILL.md +
-#       prompts/ + schemas/ + an executable scripts/verdict with a receipt;
-#       a re-run keeps; byte drift updates; a stale receipt refreshes on keep;
-#       a foreign dir refuses typed without --force, previews blocked on
-#       --dry-run, and --force writes only verdict's payload (foreign files
-#       intact).
-#   S3  shim resolution: VERDICT_BIN, then the bundled bin, then PATH; with
-#       none it exits typed missing-go-binary naming the bootstrap and never
-#       calls curl.
-#   S4  bootstrap: one file:// fetch of the pinned install.sh installs the
-#       verified archive into <skill>/bin/verdict, is idempotent with no
-#       second request, and a checksum mismatch leaves no partial binary.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -27,7 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SKILLS="$EVAL_SANDBOX/skills"
 SKILL="$SKILLS/verdict"
 
-# --- S1: serve the embedded skill, files, and the JSON inventory ---
 run_review skill
 if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$EVAL_OUT" "$EVAL_SKILL/SKILL.md"; then
   good "skill prints the checked-in SKILL.md byte-for-byte"
@@ -54,7 +34,6 @@ else
   bad "skill --format json envelope wrong (exit $EVAL_STATUS)"
 fi
 
-# --- S2: install matrix ---
 run_review skill install --dir "$SKILLS" --dry-run
 if [ "$EVAL_STATUS" -eq 0 ] && [ ! -e "$SKILL" ] && grep -q "(create)" "$EVAL_OUT"; then
   good "install --dry-run previews create and writes nothing"
@@ -113,8 +92,6 @@ else
   bad "--force exits $EVAL_STATUS or touched foreign files"
 fi
 
-# A stale receipt on a keep slot refreshes only the receipt (moved from the
-# deleted copy-installer case): the payload bytes stay untouched.
 jq '.version="0.0.0-stale"' "$SKILL/.verdict-managed" >"$EVAL_SANDBOX/rec.tmp"
 mv "$EVAL_SANDBOX/rec.tmp" "$SKILL/.verdict-managed"
 skill_sum="$(shasum "$SKILL/SKILL.md")"
@@ -128,7 +105,6 @@ else
   bad "stale receipt leg exits $EVAL_STATUS"
 fi
 
-# --- S3: shim resolution and the typed miss (no fetch) ---
 FAKEBIN="$EVAL_SANDBOX/fakebin"
 MISSBIN="$EVAL_SANDBOX/missbin"
 mkdir -p "$FAKEBIN" "$MISSBIN"
@@ -178,7 +154,6 @@ else
   bad "shim miss exits $st"
 fi
 
-# --- S4: one-time verified bootstrap through install.sh ---
 REL="$EVAL_SANDBOX/release"
 RELPAY="$EVAL_SANDBOX/release-payload"
 mkdir -p "$RELPAY"

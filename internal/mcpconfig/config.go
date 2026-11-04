@@ -85,7 +85,6 @@ type Result struct {
 	Changed bool
 }
 
-// host is one resolved config location.
 type host struct {
 	path   string
 	format string
@@ -123,8 +122,6 @@ func Run(req *Request) (Result, *core.RefusalError) {
 	return res, nil
 }
 
-// apply backs up the old file (when it had content) and atomically writes the
-// merged config.
 func apply(path string, old, merged []byte, existed bool, mode os.FileMode, res *Result) *core.RefusalError {
 	if existed && len(bytes.TrimSpace(old)) > 0 {
 		backup := path + BackupSuffix
@@ -147,7 +144,6 @@ func apply(path string, old, merged []byte, existed bool, mode os.FileMode, res 
 	return nil
 }
 
-// resolve maps the agent name to its documented config path.
 func resolve(req *Request) (host, *core.RefusalError) {
 	if req == nil {
 		return host{}, refuse(CodeUnknownAgent, "mcp config needs an agent")
@@ -173,7 +169,6 @@ func resolve(req *Request) (host, *core.RefusalError) {
 	}
 }
 
-// snippet renders the exact entry the host needs.
 func snippet(format string) string {
 	if format == FormatTOML {
 		return tomlTable()
@@ -181,7 +176,6 @@ func snippet(format string) string {
 	return jq.NewObj(jsonServersKey, jq.NewObj(serverName, entry())).MarshalPretty() + newline
 }
 
-// tomlTable renders the canonical TOML table block.
 func tomlTable() string {
 	return strings.Join([]string{
 		openBracket + tomlName + closeBracket,
@@ -190,10 +184,8 @@ func tomlTable() string {
 	}, newline) + newline
 }
 
-// entry is the JSON server object.
 func entry() *jq.Obj { return jq.NewObj(keyCommand, command, keyArgs, []any{mcpArg}) }
 
-// readConfig reads the existing file, treating absence as an empty new file.
 func readConfig(path string) ([]byte, bool, os.FileMode, *core.RefusalError) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -262,7 +254,6 @@ func mergeJSON(old []byte, path string) ([]byte, bool, *core.RefusalError) {
 	return []byte(root.MarshalPretty() + newline), true, nil
 }
 
-// matches proves the existing entry launches `verdict mcp`; extra keys stay.
 func matches(server *jq.Obj) bool {
 	cmd, ok := server.Get(keyCommand)
 	if !ok || cmd != command {
@@ -276,8 +267,6 @@ func matches(server *jq.Obj) bool {
 	return ok && len(args) == 1 && args[0] == mcpArg
 }
 
-// mergeTOML appends the verdict table, or fills a missing command/args pair in
-// an existing canonical table. Anything it cannot read confidently refuses.
 func mergeTOML(old []byte, path string) ([]byte, bool, *core.RefusalError) {
 	lines := strings.Split(string(old), newline)
 	start, end, ref := findTable(lines, path)
@@ -300,8 +289,6 @@ func mergeTOML(old []byte, path string) ([]byte, bool, *core.RefusalError) {
 	return []byte(strings.Join(fillTable(lines, start, hasCommand, hasArgs), newline)), true, nil
 }
 
-// fillTable inserts the missing canonical keys directly under the table header,
-// so the rest of the body keeps its order and comments.
 func fillTable(lines []string, start int, hasCommand, hasArgs bool) []string {
 	insert := make([]string, 0, len(lines)+2)
 	insert = append(insert, lines[:start+1]...)
@@ -346,8 +333,6 @@ func findTable(lines []string, path string) (int, int, *core.RefusalError) {
 	return -1, -1, nil
 }
 
-// tableKeys reads the canonical keys, refusing a value that differs or cannot
-// be read simply.
 //
 //nolint:revive // the two canonical keys read clearer inline than behind helpers
 func tableKeys(body []string, path string) (bool, bool, *core.RefusalError) {
@@ -373,8 +358,6 @@ func tableKeys(body []string, path string) (bool, bool, *core.RefusalError) {
 	return hasCommand, hasArgs, nil
 }
 
-// multiLineRefusal explains why a file using multi-line strings cannot be
-// merged: the scan cannot tell a header inside one from a real header.
 func multiLineRefusal(lines []string, path string) *core.RefusalError {
 	if !hasMultiLineString(lines) {
 		return nil
@@ -406,17 +389,14 @@ func tomlPair(line string) (string, string, bool) {
 	return strings.TrimSpace(key), strings.TrimSpace(value), true
 }
 
-// compactArgs normalizes the simple argv array the snippet ships.
 func compactArgs(value string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(value, " ", ""), "'", `"`)
 }
 
-// foreignTable refuses a table whose existing values differ.
 func foreignTable(path, key string) *core.RefusalError {
 	return refuse(CodeForeign, path+" already configures ["+tomlName+"]."+key+" differently; refusing to rewrite it")
 }
 
-// appendTable appends the canonical table, separating it from existing text.
 func appendTable(text string) []byte {
 	trimmed := strings.TrimRight(text, newline)
 	if trimmed != "" {
@@ -425,8 +405,6 @@ func appendTable(text string) []byte {
 	return []byte(trimmed + tomlTable())
 }
 
-// headerParts parses a table header into dotted key parts. Inline comments must
-// already be stripped.
 func headerParts(line string) ([]string, bool) {
 	if !strings.HasPrefix(line, openBracket) || strings.HasPrefix(line, "[[") || !strings.HasSuffix(line, closeBracket) {
 		return nil, false
@@ -446,8 +424,6 @@ func headerParts(line string) ([]string, bool) {
 	return parts, true
 }
 
-// stripComment removes a trailing # comment. Config-table strings are simple
-// enough that a plain cut is safe, and an exotic value refuses when unreadable.
 func stripComment(line string) string {
 	before, _, found := strings.Cut(line, "#")
 	if found {
@@ -456,7 +432,6 @@ func stripComment(line string) string {
 	return line
 }
 
-// refuse builds one typed refusal.
 func refuse(code, message string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: message}
 }

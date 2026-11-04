@@ -71,8 +71,6 @@ const (
     }`
 )
 
-// errGhFailed seals a gh call that could not run or exited nonzero. The
-// captured streams ride GhResult; callers only distinguish success.
 var errGhFailed = errors.New("gh call failed")
 
 // GhResult carries a gh call's captured streams.
@@ -163,7 +161,6 @@ func ThreadsPage(stdout string) (nodes []any, next string, more bool, err error)
 	return jq.Elements(threads["nodes"]), next, more, nil
 }
 
-// reviewThreadsNode navigates one decoded page to its reviewThreads object.
 func reviewThreadsNode(doc any) map[string]any {
 	m, ok := jq.AsMap(doc)
 	if !ok {
@@ -203,7 +200,6 @@ func SlurpThreads(stdout string) ([]any, error) {
 	return nodes, nil
 }
 
-// pageNodes navigates one page to its reviewThreads nodes.
 func pageNodes(doc any) []any {
 	m, ok := jq.AsMap(doc)
 	if !ok {
@@ -272,8 +268,6 @@ func ThreadResolved(node any) bool {
 	return resolved
 }
 
-// threadResolvedValue reads one node's isResolved flag, reporting whether
-// the node carried a readable bool.
 func threadResolvedValue(node any) (bool, bool) {
 	m, ok := node.(map[string]any)
 	if !ok {

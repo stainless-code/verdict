@@ -56,8 +56,6 @@ func (d *Data) Wire() *jq.Obj {
 	return o
 }
 
-// state carries one triage run: the request, the accumulated warnings, and
-// the completed flip summary.
 type state struct { //nolint:govet // triage service state is allocated once per invocation
 	req      *Request
 	warnings []string
@@ -78,18 +76,15 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.response(), nil
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// refuse builds a typed refusal carrying the accumulated warnings.
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
 }
 
-// response assembles the typed response after the flip (or dry run).
 func (st *state) response() *Response {
 	return &Response{
 		At:       st.req.TimeUTC(),
@@ -100,8 +95,6 @@ func (st *state) response() *Response {
 	}
 }
 
-// runTriage mirrors the triage block: bundle and status gates, sig
-// resolution, the rationale rule, then the flip (or the dry-run echo).
 func (st *state) runTriage() *core.RefusalError {
 	dir := readcommon.ResolveBundleDir(st.req.Pr)
 	if ref := requireFindingsFile(dir); ref != nil {
@@ -129,7 +122,6 @@ func (st *state) runTriage() *core.RefusalError {
 	return st.applyFlip(dir, entries, full, now)
 }
 
-// requireFindingsFile refuses when the bundle has no findings store.
 func requireFindingsFile(dir string) *core.RefusalError {
 	if !readcommon.IsFile(dir + findingsSuffix) {
 		return &core.RefusalError{
@@ -140,7 +132,6 @@ func requireFindingsFile(dir string) *core.RefusalError {
 	return nil
 }
 
-// checkStatus refuses unknown triage statuses.
 func checkStatus(status string) *core.RefusalError {
 	switch status {
 	case "open", "addressed", "wont-fix", "false-positive", "deferred":
@@ -154,7 +145,6 @@ func checkStatus(status string) *core.RefusalError {
 	}
 }
 
-// readFindings reads and decodes the findings store.
 func (st *state) readFindings(dir string) ([]any, *core.RefusalError) {
 	raw, err := os.ReadFile(dir + findingsSuffix)
 	if err != nil {
@@ -167,7 +157,6 @@ func (st *state) readFindings(dir string) ([]any, *core.RefusalError) {
 	return entries, nil
 }
 
-// corruptStore builds the corrupt-store refusal for dir.
 func corruptStore(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: "corrupt-store",
@@ -176,7 +165,6 @@ func corruptStore(dir string) *core.RefusalError {
 	}
 }
 
-// resolveSig resolves the sig prefix or refuses when unknown/ambiguous.
 func resolveSig(entries []any, prefix string) (string, *core.RefusalError) {
 	switch full := readcommon.ResolveSig(entries, prefix); full {
 	case "NONE":
@@ -188,7 +176,6 @@ func resolveSig(entries []any, prefix string) (string, *core.RefusalError) {
 	}
 }
 
-// requireRationale enforces the rationale floor unless forced.
 func (st *state) requireRationale() *core.RefusalError {
 	if utf8.RuneCountInString(st.req.Rationale) < rationaleMin && !st.req.Force {
 		return st.refuse("rationale-required",
@@ -197,7 +184,6 @@ func (st *state) requireRationale() *core.RefusalError {
 	return nil
 }
 
-// rationaleFor returns the stored rationale, stamping forced flips.
 func (st *state) rationaleFor() string {
 	if st.req.Rationale == "" && st.req.Force {
 		return forcedNote
@@ -205,8 +191,6 @@ func (st *state) rationaleFor() string {
 	return st.req.Rationale
 }
 
-// applyFlip stages credit, flips the entry, persists, and records the human
-// and JSON reports.
 func (st *state) applyFlip(dir string, entries []any, full, now string) *core.RefusalError {
 	ratOut := st.rationaleFor()
 	k := kb.New(st.warn)
@@ -222,7 +206,6 @@ func (st *state) applyFlip(dir string, entries []any, full, now string) *core.Re
 	return nil
 }
 
-// stageCredit computes KB credit for the flip, warning on broken stores.
 func (st *state) stageCredit(k *kb.Ctx, entries []any, full, now string) []any {
 	k.ResolvePolicy(st.req.Env, readcommon.Exists(kb.File))
 	if readcommon.IsFile(kb.File) {
@@ -238,12 +221,10 @@ func (st *state) stageCredit(k *kb.Ctx, entries []any, full, now string) []any {
 	return k.Credited
 }
 
-// writeFindings persists the flipped entries atomically.
 func writeFindings(dir string, entries []any) error {
 	return atomic.WriteFile(dir+findingsSuffix, []byte(jq.PrettyOrdered(entries)))
 }
 
-// dryRun records the --dry-run echo: no store is touched, no credit staged.
 func (st *state) dryRun(full string) {
 	st.human = fmt.Sprintf("triage --dry-run: would set %s -> %s (rationale %d chars, actor human)",
 		readcommon.Prefix(full), st.req.Status, utf8.RuneCountInString(st.req.Rationale))
@@ -251,7 +232,6 @@ func (st *state) dryRun(full string) {
 	st.data = &Data{Sig: full, Status: st.req.Status, DryRun: true}
 }
 
-// decodeEntries parses findings.json as a JSON array, order-preserving.
 func decodeEntries(raw []byte) ([]any, error) {
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -265,7 +245,6 @@ func decodeEntries(raw []byte) ([]any, error) {
 	return arr, nil
 }
 
-// mustRead reads a file known to exist (checked by the caller).
 func mustRead(path string) []byte {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -274,16 +253,12 @@ func mustRead(path string) []byte {
 	return raw
 }
 
-// flipEntry applies the status flip plus the triage history event in place,
-// as one map write (updated keys keep position, triagedAt/By
-// append after history).
 func flipEntry(entries []any, sig, status, rationale, now string, credited []any) {
 	for _, e := range entries {
 		flipOne(e, sig, status, rationale, now, credited)
 	}
 }
 
-// flipOne flips a single entry when its sig matches.
 func flipOne(e any, sig, status, rationale, now string, credited []any) {
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
@@ -315,7 +290,6 @@ func flipOne(e any, sig, status, rationale, now string, credited []any) {
 	m.Set("triagedBy", "human")
 }
 
-// historyOf reads the entry's history array (missing reads empty).
 func historyOf(m *jq.Obj) []any {
 	raw, _ := m.Get("history")
 	if arr, ok := raw.([]any); ok {
@@ -324,7 +298,6 @@ func historyOf(m *jq.Obj) []any {
 	return []any{}
 }
 
-// Refusal and message constants.
 const (
 	// rationaleMin is the human-rationale floor (characters, like ${#}).
 	rationaleMin = 30
@@ -334,11 +307,8 @@ const (
 	findingsSuffix = "/findings.json"
 )
 
-// errNotArray is the corrupt-store signal for non-array findings.
 var errNotArray = storeError("not a findings array")
 
-// storeError is a plain error value for store-shape failures.
 type storeError string
 
-// Error implements error.
 func (e storeError) Error() string { return string(e) }

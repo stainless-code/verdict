@@ -45,8 +45,6 @@ func resolveControls(
 // reads absent (fail closed); no fetch reader ever touches the worktree.
 func (s *session) readControl(rel string) ([]byte, bool) { return s.controls.ReadFile(rel) }
 
-// controlsWire renders the envelope's additive controls block; the full
-// detail lives in controls.json.
 func controlsWire(ctx2 *fetchRunCtx) *jq.Obj {
 	snap := ctx2.runner.controls
 	if snap == nil {

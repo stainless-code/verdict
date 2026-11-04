@@ -1,24 +1,5 @@
 #!/usr/bin/env bash
-# Case record-input-refusals: malformed agent input refuses typed.
 #
-# Grades (all hermetic — crafted local bundles in the temp sandbox,
-# network-dead stub gh, no registry):
-#   R1  corrupt review.json refuses bad-review-input (exit 1, envelope,
-#       nothing written) instead of dying mid-pipeline with no envelope.
-#   R2  non-object review.json refuses bad-review-schema.
-#   R3  non-object comments[] entries refuse bad-review-input.
-#   R4  non-string path/body/suggestion scalars refuse bad-review-input
-#       (they concatenate as strings downstream; jq would crash).
-#   R5  non-string resolved[] entries refuse bad-review-input.
-#   R6  non-object triage[] entries refuse bad-review-input.
-#   R7  malformed verification.json claims refuse bad-review-input
-#       (absent/unparsable files still read as no claims).
-#   R8  corrupt or non-list prior findings.json refuses corrupt-store —
-#       the run never starts fresh (seeded bytes stay byte-identical).
-#   R9  a corrupt source.json names no base commit, so the controls gate
-#       refuses controls-unavailable (no record.json is written).
-#   R10 the shared post path refuses a corrupt review.json typed too.
-#   R11 control: a valid review still records (exit 0, findings written).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -47,7 +28,6 @@ EOF
   cat > "$LB/review.json"
 }
 
-# kb_snapshot records the pre-run state (absence or sha) of the kb stores.
 kb_snapshot() {
   KB_BEFORE=""
   for f in "$EVAL_SANDBOX/.review/kb.jsonl" "$EVAL_SANDBOX/.review/kb-joins.jsonl"; do
@@ -61,7 +41,6 @@ kb_snapshot() {
   done
 }
 
-# kb_unchanged <label> — the kb stores match the kb_snapshot state.
 kb_unchanged() { # $1 = label
   local label="$1" f want have ok="true"
   while IFS= read -r line; do
@@ -81,8 +60,6 @@ kb_unchanged() { # $1 = label
   fi
 }
 
-# expect_refusal <label> <code> — run record --json, grade exit/envelope/
-# artifact-absence. The caller crafts $LB/review.json (plus extras) first.
 expect_refusal() { # $1 = label, $2 = code
   local label="$1" code="$2" got=""
   kb_snapshot
@@ -96,7 +73,6 @@ expect_refusal() { # $1 = label, $2 = code
   expect_no_artifacts "$label"
 }
 
-# expect_no_artifacts <label> — no merge outputs appear (findings/record/kb).
 expect_no_artifacts() { # $1 = label
   local label="$1"
   if [ -e "$LB/findings.json" ] || [ -e "$LB/record.json" ]; then
@@ -107,8 +83,6 @@ expect_no_artifacts() { # $1 = label
   kb_unchanged "$label"
 }
 
-# expect_refusal_keep <label> <code> <file> <sha> — like expect_refusal, but
-# the caller pre-seeded a findings file that must stay byte-identical.
 expect_refusal_keep() { # $1 = label, $2 = code, $3 = sha-before
   local label="$1" code="$2" before="$3" got="" after=""
   kb_snapshot
@@ -128,25 +102,21 @@ expect_refusal_keep() { # $1 = label, $2 = code, $3 = sha-before
   kb_unchanged "$label"
 }
 
-# --- R1: corrupt review.json ---
 mk_local <<'EOF'
 {"broken":
 EOF
 expect_refusal "R1 corrupt review.json" "bad-review-input"
 
-# --- R2: non-object review.json ---
 mk_local <<'EOF'
 [1,2]
 EOF
 expect_refusal "R2 non-object review.json" "bad-review-schema"
 
-# --- R3: non-object comments[] entries ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[5]}
 EOF
 expect_refusal "R3 non-object comments[] entry" "bad-review-input"
 
-# --- R4: non-string path/body/suggestion ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":5,"line":2,"side":"RIGHT","body":"x body with enough substance."}]}
 EOF
@@ -160,19 +130,16 @@ mk_local <<'EOF'
 EOF
 expect_refusal "R4 numeric suggestion" "bad-review-input"
 
-# --- R5: non-string resolved[] entries ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[],"resolved":[5]}
 EOF
 expect_refusal "R5 numeric resolved[] entry" "bad-review-input"
 
-# --- R6: non-object triage[] entries ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[],"triage":[5]}
 EOF
 expect_refusal "R6 non-object triage[] entry" "bad-review-input"
 
-# --- R7: malformed verification.json claims ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
 EOF
@@ -183,7 +150,6 @@ mk_local <<'EOF'
 EOF
 echo '[5]' > "$LB/verification.json"
 expect_refusal "R7 non-object verification.json claim" "bad-review-input"
-# Absent/unparsable verification.json still reads as no claims (exit 0).
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
 EOF
@@ -195,7 +161,6 @@ else
   bad "R7 unparsable verification.json exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- R8: corrupt / non-list prior findings refuse, never start fresh ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
 EOF
@@ -209,7 +174,6 @@ printf '%s' '{"sig":"x"}' > "$LB/findings.json"
 before="$(shasum -a 256 "$LB/findings.json" | cut -d' ' -f1)"
 expect_refusal_keep "R8 non-list prior findings.json" "corrupt-store" "$before"
 
-# --- R9: corrupt source.json leaves no base to verify the controls against ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
 EOF
@@ -222,7 +186,6 @@ else
   bad "R9 corrupt source.json exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- R10: the shared post path refuses typed too ---
 PR=4299
 eval_mk_bundle "$PR"
 printf '%s' '{broken' | eval_write_review "$PR"
@@ -234,7 +197,6 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.review/$PR"
 
-# --- R11: control — a valid review still records ---
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"x body with enough substance.","rigor":"pointed"}]}
 EOF

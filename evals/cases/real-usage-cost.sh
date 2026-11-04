@@ -1,37 +1,12 @@
 #!/usr/bin/env bash
-# Case real-usage-cost: the spend budget gates on explicitly handed usage
-# records (schemas/usage.schema.json via VERDICT_USAGE) with the
-# self-reported cost record as fallback. verdict never discovers harness
-# files on its own; only the operator's handoff is read.
 #
-# Grades (all hermetic — crafted bundles, canned gh, crafted usage files):
-#   U1  measured over budget while the self-report was under: the gate
-#       refuses, and the refusal names the measured basis (so a guessed
-#       number never silently blocks).
-#   U2  measured under budget while the self-report was over: the gate
-#       passes and data.estimate carries basis/harness/measured_runs
-#       (so a guessed number never silently blesses either).
-#   U3  no handed usage: today's byte-surface — no basis key, the legacy
-#       estimated line, and the self-reported decision.
-#   U4  a handed directory of usage records feeds the same join, naming the
-#       record's free-form source as the measured source.
-#   U5  an unpriced (tokens-only) record: honest fallback to the
-#       self-report, never reported as measured.
-#   U6  a consented over-budget measured run records the basis in the
-#       budget.json receipt.
-#   U7  a malformed handed file refuses typed (bad-usage) before the bundle
-#       is written — an explicit handoff never silently degrades.
-#   U8  a missing handed path refuses typed as well.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Normalize the sandbox path: mktemp can leave a double slash when TMPDIR
-# ends in one, while the CLI's cwd does not.
 EVAL_SANDBOX="$(cd "$EVAL_SANDBOX" && pwd -P)"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -40,8 +15,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_PANEL REVIEW_MODEL VERDICT_USAGE || true
 
-# Canned provider responses: the gate runs before any gh call, but the
-# within-budget legs continue into the normal fetch.
 cat > "$EVAL_SANDBOX/canned-PR.json" <<'EOF'
 {"number":4701,"title":"canned","body":"","baseRefName":"main","headRefName":"feat","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"url":"https://example.invalid/4701","commits":[{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","messageHeadline":"canned"}],"files":[{"path":"notes.txt","additions":1,"deletions":1}],"additions":1,"deletions":1,"isDraft":false,"reviewDecision":null,"state":"OPEN"}
 EOF
@@ -75,14 +48,11 @@ fetch_pr() { # $1 = PR number, rest = extra args
   EVAL_STUBBIN="$EVAL_SANDBOX/fakebin:$EVAL_STUBBIN" run_review fetch acme/app "$pr" "$@"
 }
 
-# The measured history anchor: one past run whose self-report stays low.
 mkdir -p "$EVAL_SANDBOX/.review/1"
 cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":0.10}
 EOF
 
-# Handed usage records in the contract shape. The window brackets every
-# cost.json mtime, so the join is deterministic.
 cat > "$EVAL_SANDBOX/usage.json" <<'EOF'
 {"schema_version":"1","source":"claude-code","model":"sonnet","tokens":{"input":3000,"output":170},"usd":2.50,"started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}
 EOF
@@ -94,7 +64,6 @@ cat > "$EVAL_SANDBOX/usage-tokens.json" <<'EOF'
 {"schema_version":"1","source":"bench-harness","tokens":{"input":5000,"output":200},"started_at":"2000-01-01T00:00:00Z","ended_at":"2099-01-01T00:00:00Z"}
 EOF
 
-# U1: self-report says $0.10, handed usage says $2.50, budget $1.
 export VERDICT_USAGE="$EVAL_SANDBOX/usage.json"
 export REVIEW_BUDGET_USD=1.00
 fetch_pr 4701 --json
@@ -108,7 +77,6 @@ else
   bad "measured refusal: exit $EVAL_STATUS msg=$(printf '%s' "$msg" | head -1) err=$(head -2 "$EVAL_ERR" | tr '\n' ' ')"
 fi
 
-# U2: self-report says $5.00, handed usage says $2.50, budget $4.
 cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":5.00}
 EOF
@@ -125,8 +93,6 @@ else
   bad "measured pass: exit $EVAL_STATUS estimate=$(jq -c '.data.estimate // "null"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# U3: no handed usage at all: the legacy estimated surface is byte-identical
-# (no basis/harness/measured_runs keys) and the self-report decides.
 cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":0.10}
 EOF
@@ -142,7 +108,6 @@ else
   bad "estimated fallback: exit $EVAL_STATUS estimate=$(jq -c '.data.estimate // "null"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# U4: a handed directory feeds the same join and names the free-form source.
 export VERDICT_USAGE="$EVAL_SANDBOX/usage-dir"
 export REVIEW_BUDGET_USD=4.00
 fetch_pr 4704 --json
@@ -154,7 +119,6 @@ else
   bad "directory join: exit $EVAL_STATUS estimate=$(jq -c '.data.estimate // "null"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# U5: tokens without a priced total fall back honestly, never as measured.
 export VERDICT_USAGE="$EVAL_SANDBOX/usage-tokens.json"
 export REVIEW_BUDGET_USD=1.00
 fetch_pr 4705 --json
@@ -166,7 +130,6 @@ else
   bad "tokens-only: exit $EVAL_STATUS estimate=$(jq -c '.data.estimate // "null"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# U6: consent over a measured projection records the measured basis.
 cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":0.10}
 EOF
@@ -182,7 +145,6 @@ else
   bad "receipt basis: exit $EVAL_STATUS receipt=$(jq -c '.' "$EVAL_SANDBOX/.review/4706/budget.json" 2>/dev/null || echo missing)"
 fi
 
-# U7: a malformed handed file refuses typed before the bundle is written.
 printf '{"schema_version":"1","source":"","usd":-2}' > "$EVAL_SANDBOX/usage-bad.json"
 export VERDICT_USAGE="$EVAL_SANDBOX/usage-bad.json"
 export REVIEW_BUDGET_USD=1.00
@@ -196,7 +158,6 @@ else
   bad "bad-usage refusal: exit $EVAL_STATUS code=$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# U8: a missing handed path refuses typed as well.
 export VERDICT_USAGE="$EVAL_SANDBOX/usage-absent.json"
 export REVIEW_BUDGET_USD=1.00
 fetch_pr 4708 --json

@@ -102,8 +102,6 @@ func (d *Data) Wire() *jq.Obj {
 	return o
 }
 
-// state carries one fix run: the request, the accumulated warnings, the
-// readiness timestamp, and the completed summary.
 type state struct { //nolint:govet // fix service state is allocated once per invocation
 	req      *Request
 	warnings []string
@@ -125,25 +123,21 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.response(), nil
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// refuse builds a typed refusal carrying the accumulated warnings.
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
 }
 
-// humanf writes one rendered human line to the adapter stream.
 func (st *state) humanf(format string, args ...any) {
 	if st.req.Human != nil {
 		fmt.Fprintf(st.req.Human, format, args...)
 	}
 }
 
-// response assembles the typed response after the pass or completion.
 func (st *state) response() *Response {
 	return &Response{
 		At:       st.at,
@@ -153,8 +147,6 @@ func (st *state) response() *Response {
 	}
 }
 
-// runFix mirrors the fix block: start gates, readiness, the ledger, sig
-// selection, ceiling and scope audits, then the pass output.
 func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	dir, ref := st.fixBundleDir()
 	if ref != nil {
@@ -187,7 +179,6 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 		fixOpen, fixOpenInline, now)
 }
 
-// fixBundleDir resolves the bundle dir, refusing non-local slugs.
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	dir := readcommon.ResolveBundleDir(st.req.Pr)
 	if !strings.HasPrefix(dir, prefixLocalReview) {
@@ -196,7 +187,6 @@ func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	return dir, nil
 }
 
-// checkPrGate refuses closed or merged bundle PRs.
 func (st *state) checkPrGate(dir string) *core.RefusalError {
 	if !readcommon.IsFile(dir + suffixPRJSON) {
 		return nil
@@ -209,7 +199,6 @@ func (st *state) checkPrGate(dir string) *core.RefusalError {
 	return nil
 }
 
-// checkTreeGate refuses when the worktree is not clean for the audit.
 func (st *state) checkTreeGate(ctx context.Context) *core.RefusalError {
 	out, err := st.gitLsFilesUnmerged(ctx)
 	if err != nil {
@@ -222,7 +211,6 @@ func (st *state) checkTreeGate(ctx context.Context) *core.RefusalError {
 	return nil
 }
 
-// loadFindings reads and decodes findings.json, refusing when missing.
 func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
 	if !readcommon.IsFile(dir + suffixFindings) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(
@@ -239,7 +227,6 @@ func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
 	return entries, nil
 }
 
-// printReadiness prints the readiness line and returns ledger inputs.
 func (st *state) printReadiness(dir string, entries []any) (string, int, int) {
 	now := st.req.TimeUTC()
 	st.at = now
@@ -250,7 +237,6 @@ func (st *state) printReadiness(dir string, entries []any) (string, int, int) {
 	return now, fixOpen, fixOpenInline
 }
 
-// selectRec resolves the sig to fix, or reports completion selection.
 func (st *state) selectRec(entries []any, fixOpenInline int, dir string) (string, *jq.Obj, *core.RefusalError) {
 	switch {
 	case st.req.Sig != "":
@@ -262,7 +248,6 @@ func (st *state) selectRec(entries []any, fixOpenInline int, dir string) (string
 	}
 }
 
-// resolveExplicit resolves an explicit --sig flag to its entry.
 func (st *state) resolveExplicit(entries []any) (string, *jq.Obj, *core.RefusalError) {
 	sigFlag := st.req.Sig
 	full := readcommon.ResolveSig(entries, sigFlag)
@@ -292,9 +277,6 @@ func (st *state) resolveExplicit(entries []any) (string, *jq.Obj, *core.RefusalE
 	return full, rec, nil
 }
 
-// resolveTop resolves the default top pick to its entry through the same
-// eight-key ranking next and report use, so the three verbs cannot target
-// different open inline findings.
 func (st *state) resolveTop(entries []any, dir string) (string, *jq.Obj, *core.RefusalError) {
 	full, picked := readcommon.TopOpenInline(entries)
 	if full == "" {
@@ -311,7 +293,6 @@ func (st *state) resolveTop(entries []any, dir string) (string, *jq.Obj, *core.R
 	return full, rec, nil
 }
 
-// runPass enforces ceiling and scope, writes the ledger, and prints.
 func (st *state) runPass(
 	ctx context.Context,
 	dir, ledgerPath string,
@@ -348,7 +329,6 @@ func (st *state) runPass(
 		anchor, pass, fixOpen, fixOpenInline)
 }
 
-// corruptStore refuses on an unreadable findings store.
 func (st *state) corruptStore(dir string) *core.RefusalError {
 	return st.refuse("corrupt-store", fmt.Sprintf(
 		"findings store %s/findings.json is unreadable or not a "+
@@ -356,7 +336,6 @@ func (st *state) corruptStore(dir string) *core.RefusalError {
 		dir))
 }
 
-// decodeEntries parses findings.json as a JSON array, order-preserving.
 func decodeEntries(raw []byte) ([]any, error) {
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -369,7 +348,6 @@ func decodeEntries(raw []byte) ([]any, error) {
 	return arr, nil
 }
 
-// prInfo owns the advisory readiness PR fragment.
 func prInfo(dir string) string {
 	if !readcommon.IsFile(dir + suffixPRJSON) {
 		return "n/a (local bundle, PR check skipped)"
@@ -381,7 +359,6 @@ func prInfo(dir string) string {
 	return info
 }
 
-// draftOf reads the draft flag: only the literal true counts.
 func draftOf(dir string) bool {
 	raw, err := os.ReadFile(dir + suffixPRJSON)
 	if err != nil {
@@ -398,8 +375,6 @@ func draftOf(dir string) bool {
 	return jq.R(m[fieldDraft]) == litTrue
 }
 
-// gitLsFilesUnmerged owns the conflicted-tree gate: unmerged entries, or an
-// error when the cwd is not a worktree.
 func (st *state) gitLsFilesUnmerged(ctx context.Context) (string, error) {
 	res, err := st.runGit(ctx, "git", "ls-files", "-u")
 	if err != nil {
@@ -408,7 +383,6 @@ func (st *state) gitLsFilesUnmerged(ctx context.Context) (string, error) {
 	return res.Stdout, nil
 }
 
-// runGit runs one git spawn through the commander seam.
 func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error) {
 	if st.req.Commander == nil {
 		return core.Result{}, errNoCommander
@@ -424,7 +398,6 @@ func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error
 	return res, nil
 }
 
-// storedThreads owns the advisory stored-thread counts.
 func storedThreads(dir string) string {
 	nr := jsonLen(dir + suffixReviews)
 	ni := jsonLen(dir + suffixInline)
@@ -434,7 +407,6 @@ func storedThreads(dir string) string {
 	return fmt.Sprintf("reviews.json=%d inline.json=%d", nr, ni)
 }
 
-// jsonLen reads an array length (missing/unreadable/non-array reads 0).
 func jsonLen(path string) int {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -451,7 +423,6 @@ func jsonLen(path string) int {
 	return len(arr)
 }
 
-// findEntry returns the findings entry with sig.
 func findEntry(entries []any, sig string) *jq.Obj {
 	for _, e := range entries {
 		m, ok := e.(*jq.Obj)
@@ -466,7 +437,6 @@ func findEntry(entries []any, sig string) *jq.Obj {
 	return nil
 }
 
-// statusOf reads an entry status.
 func statusOf(m *jq.Obj) string {
 	if m == nil {
 		return ""
@@ -474,7 +444,6 @@ func statusOf(m *jq.Obj) string {
 	return jq.Interp(mustGet(m, fieldStatus))
 }
 
-// kindOf reads an entry kind.
 func kindOf(m *jq.Obj) string {
 	if m == nil {
 		return ""
@@ -482,13 +451,11 @@ func kindOf(m *jq.Obj) string {
 	return jq.Interp(mustGet(m, fieldKind))
 }
 
-// mustGet reads a field (nil when the entry is nil).
 func mustGet(m *jq.Obj, key string) any {
 	v, _ := m.Get(key)
 	return v
 }
 
-// interpOf renders a field the jq-interpolation way (null reads "").
 func interpOf(m *jq.Obj, key string) string {
 	if m == nil {
 		return ""
@@ -496,7 +463,6 @@ func interpOf(m *jq.Obj, key string) string {
 	return jq.Interp(mustGet(m, key))
 }
 
-// countOpen counts open and open-inline findings.
 func countOpen(entries []any) (open, inline int) {
 	for _, e := range entries {
 		isOpen, isInline := openFlags(e)
@@ -510,7 +476,6 @@ func countOpen(entries []any) (open, inline int) {
 	return open, inline
 }
 
-// openFlags reports whether an entry counts as open and open-inline.
 func openFlags(e any) (bool, bool) {
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
@@ -522,13 +487,10 @@ func openFlags(e any) (bool, bool) {
 	return true, kindOf(m) == kindInline
 }
 
-// ledgerDoc is the fix.json store: {"sigs": {...}}.
 type ledgerDoc struct {
 	obj *jq.Obj
 }
 
-// loadLedger owns the ledger init: missing files are created with an empty
-// store; unreadable ones warn and start fresh.
 func (st *state) loadLedger(path string) (*ledgerDoc, *core.RefusalError) {
 	if !readcommon.Exists(path) {
 		return st.createLedger(path)
@@ -543,7 +505,6 @@ func (st *state) loadLedger(path string) (*ledgerDoc, *core.RefusalError) {
 	return freshLedger(), nil
 }
 
-// createLedger writes and returns an empty ledger for a missing path.
 func (st *state) createLedger(path string) (*ledgerDoc, *core.RefusalError) {
 	fresh := freshLedger()
 	if ref := writeLedger(path, fresh); ref != nil {
@@ -552,7 +513,6 @@ func (st *state) createLedger(path string) (*ledgerDoc, *core.RefusalError) {
 	return freshLedger(), nil
 }
 
-// decodeLedgerDoc decodes ledger bytes to an object, reporting validity.
 func decodeLedgerDoc(raw []byte) (*jq.Obj, bool) {
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -565,7 +525,6 @@ func decodeLedgerDoc(raw []byte) (*jq.Obj, bool) {
 	return m, true
 }
 
-// ledgerWithSigs extracts the sigs table, warning on corrupt tables.
 func (st *state) ledgerWithSigs(path string, m *jq.Obj) *ledgerDoc {
 	sigs := jq.NewObj()
 	sigsRaw, hasSigs := m.Get(keySigs)
@@ -574,21 +533,16 @@ func (st *state) ledgerWithSigs(path string, m *jq.Obj) *ledgerDoc {
 	case ok && sm != nil:
 		sigs = sm
 	case hasSigs && sigsRaw != nil:
-		// A corrupt sigs table (present but not an object) reads fresh
-		// with a warning, the unreadable-ledger path;
-		// an explicit null reads as the empty store with no warning.
 		st.warn(fmt.Sprintf(msgLedgerUnreadable, path))
 	default:
 	}
 	return &ledgerDoc{obj: jq.NewObj(keySigs, sigs)}
 }
 
-// freshLedger returns an empty ledger store.
 func freshLedger() *ledgerDoc {
 	return &ledgerDoc{obj: jq.NewObj(keySigs, jq.NewObj())}
 }
 
-// writeLedger persists the ledger (compact, trailing newline).
 func writeLedger(path string, store *ledgerDoc) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte(store.obj.MarshalCompact()+"\n")); err != nil {
 		return &core.RefusalError{
@@ -599,7 +553,6 @@ func writeLedger(path string, store *ledgerDoc) *core.RefusalError {
 	return nil
 }
 
-// sigStore returns the sig's ledger row, creating an empty view when absent.
 func sigStore(store *ledgerDoc, sig string) *jq.Obj {
 	sigs, _ := store.obj.Get(keySigs)
 	sm, ok := sigs.(*jq.Obj)
@@ -614,7 +567,6 @@ func sigStore(store *ledgerDoc, sig string) *jq.Obj {
 	return m
 }
 
-// ledgerPasses reads the sig's pass count (non-numeric reads 0).
 func ledgerPasses(store *ledgerDoc, sig string) int {
 	v, _ := sigStore(store, sig).Get(keyPasses)
 	if n, ok := jq.IntOf(v); ok {
@@ -623,7 +575,6 @@ func ledgerPasses(store *ledgerDoc, sig string) int {
 	return 0
 }
 
-// putSig writes the sig's ledger row back.
 func putSig(store *ledgerDoc, sig string, row *jq.Obj) {
 	sigs, _ := store.obj.Get(keySigs)
 	sm, ok := sigs.(*jq.Obj)
@@ -634,7 +585,6 @@ func putSig(store *ledgerDoc, sig string, row *jq.Obj) {
 	sm.Set(sig, row)
 }
 
-// stoppedCount counts sig rows carrying a stopped tombstone.
 func stoppedCount(store *ledgerDoc) int {
 	n := 0
 	sigs, _ := store.obj.Get(keySigs)
@@ -651,7 +601,6 @@ func stoppedCount(store *ledgerDoc) int {
 	return n
 }
 
-// isStoppedRow reports whether a ledger row carries a stopped tombstone.
 func isStoppedRow(raw any) bool {
 	m, ok := raw.(*jq.Obj)
 	if !ok || m == nil {
@@ -661,7 +610,6 @@ func isStoppedRow(raw any) bool {
 	return v != nil
 }
 
-// fixedCount counts addressed findings.
 func fixedCount(entries []any) int {
 	n := 0
 	for _, e := range entries {
@@ -676,7 +624,6 @@ func fixedCount(entries []any) int {
 	return n
 }
 
-// ceilingStop owns the 3-pass ceiling: tombstone once, refuse typed.
 func (st *state) ceilingStop(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -704,7 +651,6 @@ func (st *state) ceilingStop(
 			"(stopped: ceiling)", readcommon.Prefix(full), passes))
 }
 
-// ensurePasses backfills a missing non-numeric passes value.
 func ensurePasses(row *jq.Obj, passes int) {
 	p, _ := row.Get(keyPasses)
 	if _, ok := numOf(p); !ok {
@@ -712,13 +658,10 @@ func ensurePasses(row *jq.Obj, passes int) {
 	}
 }
 
-// numOf reads a numeric ledger value.
 func numOf(v any) (int, bool) {
 	return jq.IntOf(v)
 }
 
-// scopeEscape owns the scope-escape audit: worktree files outside the anchor
-// that appeared since the baseline stop the loop.
 func (st *state) scopeEscape(
 	ctx context.Context,
 	store *ledgerDoc,
@@ -740,7 +683,6 @@ func (st *state) scopeEscape(
 	return n > 0, first, n
 }
 
-// newPathSet builds a lookup set for baseline paths.
 func newPathSet(paths []string) map[string]bool {
 	set := make(map[string]bool, len(paths))
 	for _, p := range paths {
@@ -749,7 +691,6 @@ func newPathSet(paths []string) map[string]bool {
 	return set
 }
 
-// isEscape reports whether a worktree path escapes the anchor scope.
 func isEscape(p, anchor string, baseSet map[string]bool) bool {
 	if baseSet[p] {
 		return false
@@ -760,14 +701,11 @@ func isEscape(p, anchor string, baseSet map[string]bool) bool {
 	return p != anchor
 }
 
-// baselineOf reads the sig's recorded baseline (missing reads empty).
 func baselineOf(store *ledgerDoc, sig string) []string {
 	old, _ := baselineKept(store, sig)
 	return old
 }
 
-// baselineKept reads the sig's recorded baseline when one is stored: a
-// present array (even empty) is kept; missing or non-array snapshots anew.
 func baselineKept(store *ledgerDoc, sig string) ([]string, bool) {
 	v, _ := sigStore(store, sig).Get(keyBaseline)
 	arr, ok := v.([]any)
@@ -783,7 +721,6 @@ func baselineKept(store *ledgerDoc, sig string) ([]string, bool) {
 	return out, true
 }
 
-// scopeStop owns the scope-escape tombstone and refusal.
 func (st *state) scopeStop(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -821,10 +758,6 @@ func (st *state) scopeStop(
 			"— revert or stash it, then re-run fix", first, anchor))
 }
 
-// setPass records a successful pass, clearing a prior stopped flag and
-// snapshotting the baseline on the first pass. A recorded baseline (even an
-// empty one) is kept: only a missing/non-array baseline snapshots anew,
-// matching `.baseline // $base`.
 func setPass(
 	store *ledgerDoc,
 	sig string,
@@ -842,7 +775,6 @@ func setPass(
 	return store
 }
 
-// stringsOf converts paths to JSON strings.
 func stringsOf(in []string) []any {
 	out := make([]any, 0, len(in))
 	for _, s := range in {
@@ -851,9 +783,6 @@ func stringsOf(in []string) []any {
 	return out
 }
 
-// worktreeFiles collects the sorted unique worktree-changed paths, renames
-// contributing both their paths, own .review/ included here (the anchor
-// audit filters it).
 func (st *state) worktreeFiles(ctx context.Context) []string {
 	res, err := st.runGit(ctx, "git", "status", "--porcelain", "-z")
 	if err != nil {
@@ -865,7 +794,6 @@ func (st *state) worktreeFiles(ctx context.Context) []string {
 	return slices.Compact(paths)
 }
 
-// parsePorcelain extracts changed paths, renames contributing both paths.
 func parsePorcelain(recs []string) []string {
 	var paths []string
 	for i := 0; i < len(recs); {
@@ -881,7 +809,6 @@ func parsePorcelain(recs []string) []string {
 	return paths
 }
 
-// porcelainEntry parses one porcelain record and its rename follower.
 func porcelainEntry(recs []string, i int) (string, string, int) {
 	if i >= len(recs) {
 		return "", "", i + 1
@@ -900,7 +827,6 @@ func porcelainEntry(recs []string, i int) (string, string, int) {
 	return path, "", i + 1
 }
 
-// porcelainPath splits a porcelain record into its path, if well-formed.
 func porcelainPath(rec string) (string, bool) {
 	if len(rec) < porcelainPathOff {
 		return "", false
@@ -908,7 +834,6 @@ func porcelainPath(rec string) (string, bool) {
 	return rec[porcelainPathOff:], true
 }
 
-// isRename reports whether a porcelain status renames or copies.
 func isRename(rec string) bool {
 	if len(rec) < porcelainStatusLen {
 		return false
@@ -918,7 +843,6 @@ func isRename(rec string) bool {
 		strings.HasPrefix(st, statusCopy)
 }
 
-// passOutput owns the pass print plus the typed machine summary.
 func (st *state) passOutput(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -976,7 +900,6 @@ func (st *state) passOutput(
 	return nil
 }
 
-// readKbValue reads kb.txt context for the envelope, if present.
 func readKbValue(dir string) any {
 	if !readcommon.IsFile(dir + suffixKB) {
 		return nil
@@ -989,7 +912,6 @@ func readKbValue(dir string) any {
 	return jq.NewObj(keyFile, dir+suffixKB, keyContent, trimmed)
 }
 
-// printKbAndInstructions prints kb context plus the pass instructions.
 func (st *state) printKbAndInstructions(dir, anchor string) {
 	if readcommon.IsFile(dir + suffixKB) {
 		kbRaw, err := os.ReadFile(dir + suffixKB)
@@ -1008,7 +930,6 @@ func (st *state) printKbAndInstructions(dir, anchor string) {
 		"run record to land it, then re-run fix\n", anchor)
 }
 
-// locatorOf owns the locator render (path:line or heading fallback).
 func locatorOf(m *jq.Obj) string {
 	pv, _ := m.Get(keyPath)
 	if jq.Falsey(pv) {
@@ -1023,7 +944,6 @@ func locatorOf(m *jq.Obj) string {
 	return locator
 }
 
-// completeRun reports terminal completion: no open inline sigs remain.
 func (st *state) completeRun(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -1057,7 +977,6 @@ func (st *state) completeRun(
 	return nil
 }
 
-// Fix-loop constants.
 const (
 	// maxPasses is the hard-coded 3-pass ceiling per sig.
 	maxPasses = 3
@@ -1069,7 +988,6 @@ const (
 	porcelainStatusLen = 2
 )
 
-// Field and code constants.
 const (
 	// codeBadSig is the refusal code for unknown or non-inline sigs.
 	codeBadSig = "bad-sig"
@@ -1121,7 +1039,6 @@ const (
 	fieldDraft = "draft"
 )
 
-// Bundle path and git constants.
 const (
 	// suffixPRJSON is the bundle PR file suffix.
 	suffixPRJSON = "/PR.json"
@@ -1176,7 +1093,6 @@ const (
 	nextDoneShort = "done — no open findings"
 )
 
-// Message formats.
 const (
 	// msgLedgerUnreadable warns when the ledger reads fresh.
 	msgLedgerUnreadable = "fix ledger %s unreadable — starting fresh " +
@@ -1187,7 +1103,6 @@ const (
 	opDecodeFindings = "decode findings"
 )
 
-// Long human messages, kept byte-identical to the frozen output.
 const (
 	// instructionsFmt guides the next manual pass.
 	instructionsFmt = "instructions: patch the anchor file (%s), " +
@@ -1208,14 +1123,10 @@ const (
 		"REVIEW_BUDGET_USD or .review/budget (see docs/manual.md)\n"
 )
 
-// errNotArray is the corrupt-store signal for non-array findings.
 var errNotArray = storeError("not a findings array")
 
-// errNoCommander guards direct service calls that did not inject a commander.
 var errNoCommander = storeError("no commander injected")
 
-// storeError is a plain error value for store-shape failures.
 type storeError string
 
-// Error implements error.
 func (e storeError) Error() string { return string(e) }

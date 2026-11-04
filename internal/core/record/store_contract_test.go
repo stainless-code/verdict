@@ -11,37 +11,20 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// The store contract every test below asserts: findings.json is the artifact
-// `post`, `report` and `calibrate` trust (docs/manual.md § Findings store +
-// triage authority), schemas/findings.schema.json is its published shape, and
-// record.json is schemas/record.schema.json.
-
 const (
-	// storeHead and storeBase are the fetched/base SHAs the local bundle
-	// carries; storeShort is the abbreviated reviewed SHA the store stamps.
 	storeHead  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	storeBase  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	storeShort = "aaaaaaa"
 )
 
-// storeDiff is the one-hunk notes.txt diff every test writes. Lines 1-3 are
-// the NEW-side hunk, so a comment on line 2 is inside it.
 const storeDiff = "diff --git a/notes.txt b/notes.txt\n" +
 	"index 1111111..2222222 100644\n--- a/notes.txt\n+++ b/notes.txt\n" +
 	"@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
 
-// storeDiffSHA is `shasum -a 256` over storeDiff, an oracle outside the code
-// under test for record.json's diff_sha256.
 const storeDiffSHA = "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"
 
-// storeBody is a marker-led body long enough to clear the degenerate guard.
-// It carries no newline: these fixtures inline it in JSON, where a raw
-// newline would be invalid.
 const storeBody = "> [!IMPORTANT] Store contract fixture with enough substance."
 
-// writeStoreBundle writes a hermetic local bundle in a fresh temp cwd: the
-// source record controls seeding reads, the pinned diff, and the agent's
-// review.json.
 func writeStoreBundle(t *testing.T, slug, review string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
@@ -51,8 +34,6 @@ func writeStoreBundle(t *testing.T, slug, review string) {
 	writeFile(t, ".review/"+slug+"/review.json", review)
 }
 
-// storeEntries decodes a bundle's findings.json as written. Field order is
-// covered by checkRecordStores; these tests assert values and presence.
 func storeEntries(t *testing.T, slug string) []map[string]any {
 	t.Helper()
 	raw, err := os.ReadFile(".review/" + slug + "/findings.json")
@@ -81,8 +62,6 @@ func bySig(t *testing.T, entries []map[string]any) map[string]map[string]any {
 	return out
 }
 
-// entrySig returns one decoded store entry's sig, failing when absent: the
-// store is keyed by sig, so a missing one is a store bug, not fixture noise.
 func entrySig(t *testing.T, e map[string]any) string {
 	t.Helper()
 	sig, ok := e["sig"].(string)
@@ -92,7 +71,6 @@ func entrySig(t *testing.T, e map[string]any) string {
 	return sig
 }
 
-// historyOf returns one decoded store entry's history list.
 func historyOf(t *testing.T, entry map[string]any) []any {
 	t.Helper()
 	events, ok := entry["history"].([]any)
@@ -102,7 +80,6 @@ func historyOf(t *testing.T, entry map[string]any) []any {
 	return events
 }
 
-// anchoredFlag reads one store entry's anchored flag.
 func anchoredFlag(t *testing.T, entry map[string]any) bool {
 	t.Helper()
 	anchored, ok := entry["anchored"].(bool)
@@ -112,7 +89,6 @@ func anchoredFlag(t *testing.T, entry map[string]any) bool {
 	return anchored
 }
 
-// hasWarning reports whether any streamed warning contains want.
 func hasWarning(warns []string, want string) bool {
 	for _, w := range warns {
 		if strings.Contains(w, want) {
@@ -130,8 +106,6 @@ func hasWarning(warns []string, want string) bool {
 //
 //nolint:revive // the table is the refusal matrix; each row names its gate
 func TestRunRecordInputShapeRefusals(t *testing.T) {
-	// comment builds one inline comment object; the second row's first
-	// comment is well-formed so the scalar check has to reach comment two.
 	comment := func(extra string) string {
 		return `{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."` + extra + `}`
 	}
@@ -162,10 +136,6 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 		})
 	}
 
-	// The side-input rows write a valid review.json plus the file under test.
-	// The prior-store rows also cover the per-entry shape gate: a store whose
-	// entries carry non-string scalars or container-valued maps is corrupt,
-	// never silently coerced.
 	fileTests := []struct {
 		name    string
 		path    string
@@ -184,11 +154,7 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			writeStoreBundle(t, "local-shape", valid+`}`)
 			writeFile(t, ".review/local-shape/"+tc.path, tc.content)
-			// A findings.json fixture legitimately exists before the run;
-			// every other row must leave that artifact unwritten.
 			checkShapeRefusal(t, "local-shape", tc.code, tc.wantErr, tc.path == "findings.json")
-			// A corrupt-store refusal restores from backup instead of
-			// starting fresh, so the operator's bytes must survive the run.
 			kept, err := os.ReadFile(".review/local-shape/" + tc.path)
 			if err != nil || string(kept) != tc.content {
 				t.Errorf("%s = %q (err %v); refusal must not rewrite it", tc.path, kept, err)
@@ -232,8 +198,6 @@ func checkShapeRefusal(t *testing.T, slug, code, wantErr string, priorStore bool
 func TestRunRecordRefusesOversizeVerification(t *testing.T) {
 	writeStoreBundle(t, "local-cap",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
-	// A valid (empty) claim list padded past the cap: only the cap can
-	// refuse it, so a pass here means the cap was never applied.
 	padded := "[" + strings.Repeat(" ", 32<<20) + "]"
 	writeFile(t, ".review/local-cap/verification.json", padded)
 	checkShapeRefusal(t, "local-cap", "bad-review-input", "32 MiB agent-input cap", false)
@@ -275,7 +239,6 @@ func TestRunRecordArtifactValues(t *testing.T) {
 			t.Errorf("record.json %s = %#v, want %#v", key, got, wantVal)
 		}
 	}
-	// Provenance is generated, so the assertion is presence, not a value.
 	for _, key := range []string{"tool_version", "prompts_hash"} {
 		v, okStr := rec[key].(string)
 		if !okStr || v == "" {
@@ -283,8 +246,6 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		}
 	}
 
-	// The envelope carries the same confidence, and one item per finding
-	// with its locator: an empty items[] hides the store from --json.
 	if resp.Data.Confidence == nil || *resp.Data.Confidence != 3 {
 		t.Errorf("data.confidence = %v, want 3", resp.Data.Confidence)
 	}
@@ -299,8 +260,6 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		t.Errorf("item locator = %v, want notes.txt:2", loc)
 	}
 
-	// hunks.tsv exists, so the merge indexes one hunk: the "no hunks
-	// indexed" warning is a false positive on a healthy bundle.
 	if hasWarning(c.warns, "no hunks indexed") {
 		t.Errorf("warnings = %v; hunks were indexed", c.warns)
 	}
@@ -363,7 +322,6 @@ func TestRunRecordSigContract(t *testing.T) {
 	}
 }
 
-// sigsOf lists a store's sigs for failure messages.
 func sigsOf(entries map[string]map[string]any) []string {
 	out := make([]string, 0, len(entries))
 	for sig := range entries {
@@ -549,7 +507,6 @@ func TestRunRecordFenceDemotion(t *testing.T) {
 	}
 }
 
-// mustJSON renders one string as a JSON literal for a fixture.
 func mustJSON(t *testing.T, s string) string {
 	t.Helper()
 	raw, err := json.Marshal(s)
@@ -681,7 +638,6 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 	}
 }
 
-// lastHistory returns the event and note of the newest history entry.
 func lastHistory(t *testing.T, events []any) (string, string) {
 	t.Helper()
 	if len(events) == 0 {
@@ -895,8 +851,6 @@ func TestRunRecordAnchorNormalization(t *testing.T) {
 			order = append(order, entrySig(t, e))
 		}
 	}
-	// Kept comments first (review order), then the moved ones: the store
-	// order cannot be the review order.
 	want := []string{nonNumericSig, insideSig, reversedSig, zeroSig}
 	if strings.Join(order, ",") != strings.Join(want, ",") {
 		t.Errorf("comment order = %v, want kept-then-moved %v", order, want)
@@ -915,8 +869,6 @@ func TestRunRecordAnchorNormalization(t *testing.T) {
 			t.Errorf("%s anchored = %v, want false (outside the reviewed hunks)", sig, got[sig]["anchored"])
 		}
 	}
-	// The moved comments carry no anchor warning: a normalized span that
-	// sits outside is provably outside, not ambiguous.
 	for _, banned := range []string{"kept despite non-numeric anchor: notes.txt 3-5", "kept despite non-numeric anchor: notes.txt 0-0"} {
 		if hasWarning(c.warns, banned) {
 			t.Errorf("warnings = %v; %q must not warn", c.warns, banned)

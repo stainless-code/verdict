@@ -19,13 +19,6 @@ import (
 	"github.com/stainless-code/verdict/internal/sig"
 )
 
-// state carries the validate_and_merge globals for one record run. Findings
-// entries are *jq.Obj in construction order: ordered objects preserve
-// insertion order, so the wire needs the same field sequence, not sorted
-// keys.
-// Fresh entries are built as [core.FindingEntry] values (field order is
-// wire order) and converted with Wire; merged priors stay ordered objects
-// so prior key order and unknown keys survive byte-identically.
 type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
 	confidence   any
 	security     any
@@ -61,7 +54,6 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	warnings     []string
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	if st.progress != nil {
@@ -69,18 +61,12 @@ func (st *state) warn(msg string) {
 	}
 }
 
-// human streams one human output line.
 func (st *state) human(line string) {
 	if st.progress != nil {
 		st.progress.Human(line)
 	}
 }
 
-// validateAndMerge runs the whole merge end to end, returning the
-// curated body (move section, diagram strips, and the rendered footer
-// appended) plus the diagram disposition for the dry-run envelope, or a
-// typed refusal for any fail-closed gate. The record verb discards the body
-// and keeps the warnings; the post verb posts the curated body.
 func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.kb = kb.New(st.warn)
 	st.kb.ReadFile = st.controls.ReadFile
@@ -115,17 +101,12 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	if err != nil {
 		return "", diagram.Status{}, err
 	}
-	// The verdict marker and hunk count read the curated body at the end of
-	// the merge; the derived per-chunk snapshot is removed here too, so
-	// refusals below never leave it behind.
 	st.setMarker(curated)
 	st.countHunks()
 	removeDerivedSnapshot(st)
 	return curated, dstat, nil
 }
 
-// mergeEntries owns the re-post merge tail: prior overlay, backfill, and
-// delta-run auto-reopen.
 func (st *state) mergeEntries() error {
 	if err := st.mergePrior(); err != nil {
 		return err
@@ -135,10 +116,6 @@ func (st *state) mergeEntries() error {
 	return nil
 }
 
-// applyClaims owns the authority and garnish tail: bare resolved proposals,
-// verification-gated flips, triage claims, then the garnish checks. It
-// returns the curated body (the record verb discards it; the post verb
-// posts it) with the diagram disposition.
 func (st *state) applyClaims(body string) (string, diagram.Status, error) {
 	st.applyResolved()
 	if err := st.applyVerification(); err != nil {
@@ -150,8 +127,6 @@ func (st *state) applyClaims(body string) (string, diagram.Status, error) {
 	return st.garnishChecks(body)
 }
 
-// loadKB reads the KB store, marking it broken (citations ignored) when the
-// file exists but does not parse.
 func (st *state) loadKB() {
 	if !st.controls.Has(kb.File) {
 		return
@@ -163,8 +138,6 @@ func (st *state) loadKB() {
 	}
 }
 
-// reportMoves emits the human anchor table: kept/moved counts plus one line
-// per moved comment with its drop reason.
 func (st *state) reportMoves() {
 	st.nKept = len(st.kept)
 	st.nMoved = len(st.moved)
@@ -184,12 +157,6 @@ func (st *state) reportMoves() {
 	}
 }
 
-// garnishChecks runs the post-merge validators: basis counts, evidence
-// links, diagrams, the footer receipt, and the override fragments. It
-// returns the curated body: the record verb discards it (persisting only
-// findings, the record artifact, and the KB stores), while the post verb
-// carries it into the payload. The footer receipt is appended exactly once:
-// a re-render strips the previous one first.
 func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	for _, w := range provenance.ValidateBasisLine(
 		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body) {
@@ -201,9 +168,6 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	}
 	dr := st.applyDiagram(body)
 	body = dr.Body
-	// The post hosting-limit guard splits here: after the diagram strips
-	// (entries already derive from the full body) and before the footer
-	// receipt, so the appended block always survives intact.
 	if st.preFooter != nil {
 		body = st.preFooter(body)
 	}
@@ -216,8 +180,6 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 	return body, dr.Status, nil
 }
 
-// applyDiagram validates behavioral diagrams, surfaces its warnings, and
-// returns the validated body with its disposition for the dry-run envelope.
 func (st *state) applyDiagram(body string) diagram.Result {
 	dr := diagram.Validate(body,
 		st.effective.DiagramsBehavioral == core.FlagOn,
@@ -229,7 +191,6 @@ func (st *state) applyDiagram(body string) diagram.Result {
 	return dr
 }
 
-// anchorLoc renders the stderr table's path locator.
 func anchorLoc(m *jq.Obj) string {
 	p, _ := m.Get(fieldPath)
 	line, _ := m.Get(fieldLine)
@@ -237,7 +198,6 @@ func anchorLoc(m *jq.Obj) string {
 	return fmt.Sprintf("%s:%s-%s", jq.Interp(p), jq.Interp(jq.Alt(start, line)), jq.Interp(line))
 }
 
-// entryBody renders the table body: strings raw, everything else -r style.
 func entryBody(m *jq.Obj) string {
 	b, _ := m.Get(fieldBody)
 	if b == nil || b == false {
@@ -249,8 +209,6 @@ func entryBody(m *jq.Obj) string {
 	return jq.Str(b)
 }
 
-// validJSON reports whether raw holds complete JSON documents (an empty
-// file reads valid, mirroring `jq empty`, which consumes a whole sequence).
 func validJSON(raw []byte) bool {
 	if len(strings.TrimSpace(string(raw))) == 0 {
 		return true
@@ -259,8 +217,6 @@ func validJSON(raw []byte) bool {
 	return err == nil
 }
 
-// checkReviewSchema owns the schema_version gate: absent warns (grandfathered
-// agents), "1" passes, anything else refuses.
 func checkReviewSchema(warn func(string), review *jq.Obj) error {
 	rv, has := review.Get("schema_version")
 	if review == nil || !has || rv == nil || rv == false {
@@ -273,8 +229,6 @@ func checkReviewSchema(warn func(string), review *jq.Obj) error {
 	return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
 }
 
-// parseConfidence owns the review-level confidence + security summary
-// parsing: absent stays null, out-of-range warns and drops.
 func (st *state) parseConfidence() error {
 	st.confidence = nil
 	st.security = nil
@@ -282,7 +236,6 @@ func (st *state) parseConfidence() error {
 	return st.parseSecuritySummary()
 }
 
-// parseConfidenceLevel owns the confidence integer parsing.
 func (st *state) parseConfidenceLevel() {
 	conf, ok := st.review.Get("confidence")
 	if !ok || conf == nil || conf == false {
@@ -295,7 +248,6 @@ func (st *state) parseConfidenceLevel() {
 	}
 }
 
-// isConfidenceLevel reports whether s is a valid review confidence level.
 func isConfidenceLevel(s string) bool {
 	switch s {
 	case "1", "2", "3", "4", "5":
@@ -305,7 +257,6 @@ func isConfidenceLevel(s string) bool {
 	}
 }
 
-// parseSecuritySummary owns the security_summary string parsing.
 func (st *state) parseSecuritySummary() error {
 	sec, has := st.review.Get("security_summary")
 	if !has || sec == nil {
@@ -322,8 +273,6 @@ func (st *state) parseSecuritySummary() error {
 	return nil
 }
 
-// validateAnchors owns the partitioned keep-biased anchor validation,
-// returning the unchanged body (anchors never rewrite prose).
 func (st *state) validateAnchors(body string) string {
 	st.kept = []any{}
 	st.moved = []any{}
@@ -331,8 +280,6 @@ func (st *state) validateAnchors(body string) string {
 	if c, ok := st.review.Get("comments"); ok {
 		comments = jq.Elements(c)
 	}
-	// The hunk index converts to the shared shape once per run: classifying
-	// a comment only scans it, never rebuilds it.
 	hs := loadHunkRows(st.anchorHunks)
 	for _, c := range comments {
 		m, ok := c.(*jq.Obj)
@@ -344,11 +291,6 @@ func (st *state) validateAnchors(body string) string {
 	return body
 }
 
-// classifyComment keeps or moves one review comment by its diff anchoring.
-// A path outside the diff index moves into the body section: GitHub would
-// reject the inline anchor, so the point survives as an unanchored
-// observation instead of dying at submit. Ambiguity still keeps the run
-// green with a warning — the comment is moved, never dropped.
 func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {
 	p, _ := m.Get(fieldPath)
 	path := jq.Str(p)
@@ -376,9 +318,6 @@ func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {
 	st.moved = append(st.moved, moved)
 }
 
-// moveUnknownPath moves one review comment whose path is absent from the
-// diff index into the body section, reusing the move-section rendering the
-// out-of-hunk anchors already use.
 func (st *state) moveUnknownPath(m *jq.Obj, path string) {
 	moved := m.Clone()
 	moved.Set(fieldDropReason, fmt.Sprintf("path not in diff index (%s) — posted here instead of inline", path))
@@ -386,7 +325,6 @@ func (st *state) moveUnknownPath(m *jq.Obj, path string) {
 	st.warn("moved to body: unknown path (not in diff index): " + path)
 }
 
-// stripDiffPrefix drops the a//b/ diff-path prefix for index lookup.
 func stripDiffPrefix(path string) string {
 	if strings.HasPrefix(path, "a/") || strings.HasPrefix(path, "b/") {
 		return path[2:]
@@ -394,9 +332,6 @@ func stripDiffPrefix(path string) string {
 	return path
 }
 
-// anchorRange reads the comment's line span and side, returning lo < 0 when
-// the anchors are non-numeric or do not fit in an int (a 20-digit line must
-// refuse like any other non-numeric anchor, never wrap into a nonsense span).
 func anchorRange(m *jq.Obj) (lo, hi int, side string) {
 	line, _ := m.Get(fieldLine)
 	start, _ := m.Get(fieldStartLine)
@@ -420,7 +355,6 @@ func anchorRange(m *jq.Obj) (lo, hi int, side string) {
 	return lo, hi, side
 }
 
-// anchorSpan renders the span for the non-numeric-anchor warning.
 func anchorSpan(m *jq.Obj) string {
 	line, _ := m.Get(fieldLine)
 	start, _ := m.Get(fieldStartLine)
@@ -431,9 +365,6 @@ func anchorSpan(m *jq.Obj) string {
 	return ss + "-" + ls
 }
 
-// jqLine renders .line/.start_line the way `jq -r '.line // empty'` does:
-// null/false/missing read "", everything else renders raw (containers
-// pretty, via jq.R).
 func jqLine(v any) string {
 	if v == nil || v == false {
 		return ""
@@ -441,8 +372,6 @@ func jqLine(v any) string {
 	return jq.R(v)
 }
 
-// loadHunkRows parses a hunks.tsv snapshot, tolerating malformed rows the
-// way awk's numeric coercion does.
 func loadHunkRows(path string) []hunks.Hunk {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -464,8 +393,6 @@ func loadHunkRows(path string) []hunks.Hunk {
 	return out
 }
 
-// demoteFences owns the suggestion-fence demotion: comments whose suggestion
-// contains a fence move to the body with a fixed dropReason.
 func (st *state) demoteFences(body string) string {
 	kept := st.kept[:0:0]
 	var fenced []any
@@ -491,9 +418,6 @@ func (st *state) demoteFences(body string) string {
 	return body
 }
 
-// hasSuggestionFence reports whether the comment's suggestion carries a
-// fence. A non-string suggestion counts as unfenced: the run keeps going
-// instead of aborting on the type.
 func hasSuggestionFence(m *jq.Obj) bool {
 	s, _ := m.Get(fieldSuggestion)
 	if s == nil || s == false {
@@ -503,8 +427,6 @@ func hasSuggestionFence(m *jq.Obj) bool {
 	return ok && strings.Contains(ss, "```")
 }
 
-// appendMoveSection owns the unanchored-observations section appended when
-// comments moved to the body.
 func appendMoveSection(body string, moved []any) string {
 	if len(moved) == 0 {
 		return body
@@ -520,16 +442,13 @@ func appendMoveSection(body string, moved []any) string {
 	return body + "\n\n" + moveSection(lines)
 }
 
-// moveSection renders the unanchored-observations section header.
 func moveSection(lines []string) string {
 	return moveSectionHead + strings.Join(lines, newline)
 }
 
-// moveSectionHead is the unanchored-observations section header.
 const moveSectionHead = "### ℹ️ Unanchored observations\n\nThe following points fell outside " +
 	"the diff hunks for the reviewed SHA, so they post here instead of inline:\n"
 
-// moveLine renders one moved comment as a body bullet.
 func moveLine(m *jq.Obj) string {
 	p, _ := m.Get(fieldPath)
 	line, _ := m.Get(fieldLine)
@@ -540,8 +459,6 @@ func moveLine(m *jq.Obj) string {
 	return fmt.Sprintf("- `%s` — %s (%s)", loc, entryBody(m), reason)
 }
 
-// runeSlice renders `\(.body // "" | .[0:200])`: jq slices strings by
-// codepoint.
 func runeSlice(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) > n {
@@ -550,11 +467,6 @@ func runeSlice(s string, n int) string {
 	return s
 }
 
-// buildEntries owns the new-entries construction plus the sig loop: sigs
-// are line-number-free (comments carry lines, findings do not), and every
-// comment cite normalizes through the KB policy. Fresh entries are built as
-// typed values (field order is wire order); the merge downstream keeps them
-// as ordered objects.
 func (st *state) buildEntries(body string) {
 	var secs []any
 	if s, ok := st.review.Get("sections"); ok {
@@ -569,15 +481,11 @@ func (st *state) buildEntries(body string) {
 	}
 }
 
-// freshEntry is one fresh finding plus its raw kb cite for normalization.
 type freshEntry struct {
 	entry *core.FindingEntry
 	kbRaw any
 }
 
-// freshInlineSigs reads the fresh inline entries' sigs in kept order. The
-// entries slice starts with freshInline output (kept first, then moved), so
-// the first len(kept) entries pair with the comments post sends inline.
 func freshInlineSigs(entries []any, kept int) []string {
 	if kept > len(entries) {
 		kept = len(entries)
@@ -593,7 +501,6 @@ func freshInlineSigs(entries []any, kept int) []string {
 	return out
 }
 
-// freshInline builds the inline entries from kept/moved comments.
 func freshInline(kept, moved []any) []freshEntry {
 	var fresh []freshEntry
 	comments := append(append([]any{}, kept...), moved...)
@@ -607,7 +514,6 @@ func freshInline(kept, moved []any) []freshEntry {
 	return fresh
 }
 
-// freshSections builds the section entries from body headings.
 func freshSections(body string, secs []any) []freshEntry {
 	var fresh []freshEntry
 	for h := range strings.SplitSeq(body, newline) {
@@ -619,7 +525,6 @@ func freshSections(body string, secs []any) []freshEntry {
 	return fresh
 }
 
-// buildInline owns the inline-entry construction for one kept/moved comment.
 func buildInline(m *jq.Obj) freshEntry {
 	inBounds, ok := m.Get("in-bounds")
 	if !ok || inBounds == nil {
@@ -652,7 +557,6 @@ func buildInline(m *jq.Obj) freshEntry {
 	}
 }
 
-// sectionSeverity matches a body section heading to its review severity.
 func sectionSeverity(secs []any, h string) any {
 	for _, s := range secs {
 		sm, ok := s.(*jq.Obj)
@@ -667,7 +571,6 @@ func sectionSeverity(secs []any, h string) any {
 	return nil
 }
 
-// buildSection owns the section-entry construction for one body heading.
 func buildSection(h string, sev any) *core.FindingEntry {
 	return &core.FindingEntry{
 		Kind:     "section",
@@ -678,7 +581,6 @@ func buildSection(h string, sev any) *core.FindingEntry {
 	}
 }
 
-// optString renders an optional string (nil reads null).
 func optString(v any) *string {
 	if v == nil {
 		return nil
@@ -689,8 +591,6 @@ func optString(v any) *string {
 	return nil
 }
 
-// stampEntry stamps one fresh entry with its sig, status, KB normalization,
-// and initial history.
 func stampEntry(st *state, e *core.FindingEntry, kbRaw any, kbExists bool) *core.FindingEntry {
 	key := sigKeyPart(e.Path) + newline + sigKeyPart(e.Heading) + newline + sigBody(e.Body)
 	norm := st.kb.NormalizeEntry(jq.NewObj(fieldKB, kbRaw), kbExists)
@@ -705,8 +605,6 @@ func stampEntry(st *state, e *core.FindingEntry, kbRaw any, kbExists bool) *core
 	return e
 }
 
-// kbStrings converts a normalized kb id list: absent reads nil (the
-// backfill turns it into []), present reads the id strings.
 func kbStrings(norm any) *[]string {
 	if norm == nil {
 		return nil
@@ -724,9 +622,6 @@ func kbStrings(norm any) *[]string {
 	return &out
 }
 
-// sigKeyPart renders a sig-key path/heading segment: null/false/missing read
-// "" (via //), everything else renders -r style. A non-string segment would
-// fail a naive concatenation; the sig key coerces instead.
 func sigKeyPart(v any) string {
 	if v == nil || v == false {
 		return ""
@@ -737,7 +632,6 @@ func sigKeyPart(v any) string {
 	return jq.Str(v)
 }
 
-// sigBody renders the sig-key body segment the same way.
 func sigBody(v any) string {
 	return sigKeyPart(v)
 }
@@ -747,7 +641,6 @@ var (
 	sevAllow   = []string{"critical", "important", "informational"}
 )
 
-// pick owns the jq allowlist pick: membership wins, else the default.
 func pick(v any, allowed []string, dflt any) any {
 	s, ok := v.(string)
 	if !ok {
@@ -759,9 +652,6 @@ func pick(v any, allowed []string, dflt any) any {
 	return dflt
 }
 
-// mergePrior owns the re-post merge: explicit null kb keeps the prior cite,
-// explicit [] clears it, present arrays overwrite; everything else from the
-// new entry wins except status/history/identity fields.
 func (st *state) mergePrior() error {
 	old, err := loadPrior(st.dir)
 	if err != nil {
@@ -790,7 +680,6 @@ func (st *state) mergePrior() error {
 	return nil
 }
 
-// appendFresh appends fresh entries whose sigs are absent from the prior store.
 func appendFresh(merged, entries []any, oldSigs map[string]bool) []any {
 	for _, n := range entries {
 		if m, ok := n.(*jq.Obj); ok && isFreshSig(m, oldSigs) {
@@ -800,9 +689,6 @@ func appendFresh(merged, entries []any, oldSigs map[string]bool) []any {
 	return merged
 }
 
-// loadPrior reads the prior findings store: missing, empty, null, or false
-// read as no prior; a list reads as the prior
-// entries; anything else refuses as corrupt-store (never start fresh).
 func loadPrior(dir string) ([]any, error) {
 	path := dir + "/findings.json"
 	raw, ok := ReadOptional(path)
@@ -825,7 +711,6 @@ func loadPrior(dir string) ([]any, error) {
 	return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
 }
 
-// indexBySig indexes entries by their string sig.
 func indexBySig(entries []any) map[string]*jq.Obj {
 	bySig := map[string]*jq.Obj{}
 	for _, e := range entries {
@@ -840,7 +725,6 @@ func indexBySig(entries []any) map[string]*jq.Obj {
 	return bySig
 }
 
-// sigString reads an entry's string sig.
 func sigString(m *jq.Obj) (string, bool) {
 	s, _ := m.Get(fieldSig)
 	if s == nil {
@@ -850,7 +734,6 @@ func sigString(m *jq.Obj) (string, bool) {
 	return ss, ok
 }
 
-// isFreshSig reports whether m carries a sig absent from the prior store.
 func isFreshSig(m *jq.Obj, oldSigs map[string]bool) bool {
 	s, _ := m.Get(fieldSig)
 	if s == nil {
@@ -860,8 +743,6 @@ func isFreshSig(m *jq.Obj, oldSigs map[string]bool) bool {
 	return ok && !oldSigs[ss]
 }
 
-// mergeOne merges one prior entry against its fresh twin. It records the
-// prior sig and reports ok=false when the prior stands alone.
 func mergeOne(st *state, byNew map[string]*jq.Obj, oldSigs map[string]bool, pm *jq.Obj) (any, bool) {
 	psig, _ := pm.Get(fieldSig)
 	ps := jq.StrOf(psig)
@@ -873,7 +754,6 @@ func mergeOne(st *state, byNew map[string]*jq.Obj, oldSigs map[string]bool, pm *
 	return mergeFields(st, pm, n), true
 }
 
-// mergeFields overlays the fresh entry's fields on a clone of the prior.
 func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	m := pm.Clone()
 	m.Set(fieldLastSeen, st.headShort)
@@ -899,15 +779,12 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	return m
 }
 
-// overlayAlt sets field from the fresh entry, falling back to the prior.
 func overlayAlt(m, n, pm *jq.Obj, field string) {
 	nv, _ := n.Get(field)
 	pv, _ := pm.Get(field)
 	m.Set(field, jq.Alt(nv, pv))
 }
 
-// backfill owns the sig_version/kb backfill: entries that predate versioning
-// get "1" (never clobbering), and null/false kb reads [].
 func (st *state) backfill() {
 	for _, e := range st.entries {
 		m, ok := e.(*jq.Obj)
@@ -923,8 +800,6 @@ func (st *state) backfill() {
 	}
 }
 
-// autoReopen owns the delta-run auto-reopen: addressed entries on a path the
-// incremental diff touches go back to open.
 func (st *state) autoReopen() {
 	raw, err := os.ReadFile(st.dir + "/incremental.diff")
 	if err != nil {
@@ -938,7 +813,6 @@ func (st *state) autoReopen() {
 	}
 }
 
-// touchedPaths parses the incremental diff's touched file set.
 func touchedPaths(raw string) map[string]bool {
 	sections := hunks.Files(raw)
 	files := map[string]bool{}
@@ -948,7 +822,6 @@ func touchedPaths(raw string) map[string]bool {
 	return files
 }
 
-// maybeReopen reopens one addressed entry whose path the delta touched.
 func (st *state) maybeReopen(m *jq.Obj, files map[string]bool) {
 	if stt, _ := m.Get(fieldStatus); stt != outcomeAddressed {
 		return
@@ -967,7 +840,6 @@ func (st *state) maybeReopen(m *jq.Obj, files map[string]bool) {
 	)))
 }
 
-// appendHistory appends an event to an entry's history, returning the array.
 func appendHistory(m *jq.Obj, ev *jq.Obj) []any {
 	h, _ := m.Get(fieldHistory)
 	hist, ok := h.([]any)
@@ -977,17 +849,12 @@ func appendHistory(m *jq.Obj, ev *jq.Obj) []any {
 	return append(hist, ev)
 }
 
-// applyResolved owns the authority step: bare resolved[] sigs are proposals
-// (history only, never a flip). Shapes are validated upfront; non-strings
-// here are unreachable and skipped.
 func (st *state) applyResolved() {
 	for _, s := range resolvedItems(st.review) {
 		st.recordResolvedClaim(s)
 	}
 }
 
-// resolvedItems reads the bare resolved sig proposals. Shapes are validated
-// upfront, so non-arrays and non-strings here are unreachable and skipped.
 func resolvedItems(review *jq.Obj) []string {
 	var items []any
 	if rv, ok := review.Get("resolved"); ok {
@@ -1004,7 +871,6 @@ func resolvedItems(review *jq.Obj) []string {
 	return out
 }
 
-// recordResolvedClaim records one bare resolved sig as a history-only claim.
 func (st *state) recordResolvedClaim(s string) {
 	full, code := resolveSig(st.entries, s)
 	switch code {
@@ -1021,8 +887,6 @@ func (st *state) recordResolvedClaim(s string) {
 	}
 }
 
-// resolveSig resolves a sig prefix to the unique full sig, or the NONE/MANY
-// sentinels. Non-string sigs never match: they are skipped, never fatal.
 func resolveSig(entries []any, prefix string) (string, string) {
 	var match string
 	n := 0
@@ -1049,7 +913,6 @@ func resolveSig(entries []any, prefix string) (string, string) {
 	}
 }
 
-// findEntry returns the entry with the full sig.
 func findEntry(entries []any, full string) *jq.Obj {
 	for _, e := range entries {
 		if m, ok := e.(*jq.Obj); ok {

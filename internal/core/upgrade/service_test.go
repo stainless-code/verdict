@@ -24,13 +24,11 @@ import (
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 )
 
-// nonRoot is the injected effective uid for tests (never refuse as root).
 func nonRoot() *int {
 	uid := 1000
 	return &uid
 }
 
-// baseRequest builds a hermetic request rooted in a temp HOME.
 func baseRequest(t *testing.T) upgrade.Request {
 	t.Helper()
 	home := t.TempDir()
@@ -44,7 +42,6 @@ func baseRequest(t *testing.T) upgrade.Request {
 	}
 }
 
-// readFile reads a test fixture, failing on any error.
 func readFile(t *testing.T, path string) []byte {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -54,7 +51,6 @@ func readFile(t *testing.T, path string) []byte {
 	return raw
 }
 
-// resolvedTempDir returns a symlink-resolved temp dir (macOS /var).
 func resolvedTempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -64,7 +60,6 @@ func resolvedTempDir(t *testing.T) string {
 	return dir
 }
 
-// installerLayout creates an installer-owned install: binary plus receipt.
 func installerLayout(t *testing.T) (dir, target, receipt string) {
 	t.Helper()
 	dir = resolvedTempDir(t)
@@ -80,8 +75,6 @@ func installerLayout(t *testing.T) (dir, target, receipt string) {
 	return dir, target, receipt
 }
 
-// fakeCosign creates an existing file so the verifier takes the cosign
-// branch; the injected RunCosign supplies the result.
 func fakeCosign(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "cosign")
@@ -135,7 +128,6 @@ func releaseFiles(t *testing.T, version string, binary []byte, badChecksum bool)
 	}
 }
 
-// releaseServer serves /v<version>/<file> and a /latest redirect.
 //
 //nolint:revive // the handler switch is the fixture
 func releaseServer(t *testing.T, version string, files map[string][]byte, calls *int) *httptest.Server {
@@ -168,7 +160,6 @@ func releaseServer(t *testing.T, version string, files map[string][]byte, calls 
 	return server
 }
 
-// selfReplaceRequest wires the installer layout and the fake release.
 func selfReplaceRequest(t *testing.T, server *httptest.Server, dir, target, version string) upgrade.Request {
 	t.Helper()
 	req := baseRequest(t)
@@ -301,7 +292,6 @@ func TestDryRunTouchesNothing(t *testing.T) {
 	}
 }
 
-// assertNoStaging proves no .verdict-stage dir or backup survived.
 func assertNoStaging(t *testing.T, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -449,7 +439,6 @@ func TestAdoptInstallerDirRefuses(t *testing.T) {
 	}
 }
 
-// assertUnknownChannel requires a dry-run plan that refuses as unknown.
 func assertUnknownChannel(t *testing.T, target string) {
 	t.Helper()
 	req := baseRequest(t)
@@ -511,9 +500,6 @@ func TestAdoptInstallerDirKeepsOwner(t *testing.T) {
 	}
 }
 
-// assertOwnerChannel seeds a binary and an acceptable receipt into exe's
-// directory, so only the owner check can keep the manager's channel, and
-// requires that channel and action from a dry run.
 func assertOwnerChannel(t *testing.T, home, exe, channel, action string) {
 	t.Helper()
 	dir := filepath.Dir(exe)
@@ -535,12 +521,10 @@ func assertOwnerChannel(t *testing.T, home, exe, channel, action string) {
 	}
 }
 
-// receiptBodyFor renders an installer receipt for one binary and installer.
 func receiptBodyFor(binary, installedBy string) string {
 	return `{"binary":"` + binary + `","version":"0.1.0","installed_by":"` + installedBy + `"}` + "\n"
 }
 
-// writeBinary drops a file named name into dir and returns its path.
 func writeBinary(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -550,7 +534,6 @@ func writeBinary(t *testing.T, dir, name, body string) string {
 	return path
 }
 
-// writeReceipt writes the installer receipt into dir.
 func writeReceipt(t *testing.T, dir, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, ".verdict-installer"), []byte(body), 0o644); err != nil {
@@ -558,13 +541,11 @@ func writeReceipt(t *testing.T, dir, body string) {
 	}
 }
 
-// writeForeignBinary is a binary the installer never placed.
 func writeForeignBinary(t *testing.T, dir string) string {
 	t.Helper()
 	return writeBinary(t, dir, "verdict", "foreign")
 }
 
-// writeOrphanReceipt puts the receipt one level above the binary.
 func writeOrphanReceipt(t *testing.T, dir string) string {
 	t.Helper()
 	bin := filepath.Join(dir, "bin")
@@ -575,21 +556,18 @@ func writeOrphanReceipt(t *testing.T, dir string) string {
 	return writeBinary(t, bin, "verdict", "copied")
 }
 
-// writeRenamedCopy keeps the receipt and adds a copy under another name.
 func writeRenamedCopy(t *testing.T, dir string) string {
 	t.Helper()
 	installerLayoutNamed(t, dir)
 	return writeBinary(t, dir, "verdict-copy", "copied")
 }
 
-// writeForeignInstallerReceipt writes a receipt from an unknown installer.
 func writeForeignInstallerReceipt(t *testing.T, dir string) string {
 	t.Helper()
 	writeReceipt(t, dir, receiptBodyFor("verdict", "manual"))
 	return writeBinary(t, dir, "verdict", "copied")
 }
 
-// installerLayoutNamed writes the standard install into an existing dir.
 func installerLayoutNamed(t *testing.T, dir string) (string, string, string) {
 	t.Helper()
 	target := writeBinary(t, dir, "verdict", "old-binary")

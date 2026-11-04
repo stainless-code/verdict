@@ -1,34 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-incremental: incremental re-review composed over chunks.
 #
-# Grades (all hermetic — sandbox git repo, stub gh, no network, no model):
-#   I1  delta-scoped re-read: an over-cap fixture fetched --chunk yields a
-#       manifest; a one-file delta maps to a strict subset of manifest chunks;
-#       the affected chunk diff carries the delta lines while unaffected
-#       chunks name no delta file.
-#   I2  prior-sig dedupe + delta reopen through the same merge: seeded open +
-#       addressed findings merge by sig via record (the same validate_and_merge
-#       post uses) — a restated open finding dedupes to one entry, a
-#       delta-touched addressed finding reopens, and the new delta finding
-#       appends.
-#   I3  gate-still-applies with no extra code: the chunk-scoped incremental
-#       review records through the unchanged verb (no chunk flags, exit 0); a
-#       provably out-of-hunk anchor moves to the body under the keep-biased
-#       rule; exactly one record.json lands beside the merged findings.json.
-#   I4  prompt pins: incremental-review.md scopes the delta to affected chunk
-#       diffs (unaffected chunks out of scope), dedupes by line-number-free
-#       sig, carries evidence rungs + calibration over unchanged, and routes
-#       the synthesis through the same post path under the cross-chunk
-#       coverage gate.
-# The agent loop itself is not executed here (no model in the harness): I4
-# pins the contract text, I1-I3 grade the machine-readable bundle surface
-# and the merge seam every incremental synthesis passes through.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -37,9 +13,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
-# Scratch git repo at the sandbox root (run_review runs with cwd=sandbox).
-# Explicit adds only — sibling cases' fixtures stay untracked and out of
-# every diff; every diff below names its paths explicitly.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -77,7 +50,6 @@ if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
   bad "fixture diff $FULL_DIFF_BYTES bytes is not over the 512000 cap"
 fi
 
-# Chunked fetch: the over-cap "first review" bundle.
 # shellcheck disable=SC2086 # CINC_FILES is a validated space-separated path list
 run_review fetch-local acme/app cinc --chunk -- $CINC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$BUNDLE/chunks/manifest.json" ]; then
@@ -87,9 +59,6 @@ else
 fi
 MAN="$BUNDLE/chunks/manifest.json"
 
-# The "new commits" delta: file six changes again after the first review.
-# Crafted as a one-file slice of the diff, exactly what fetch --base-sha
-# writes when new commits touch one path (compare output, diff --git headers).
 (cd "$EVAL_SANDBOX" && git diff HEAD -- cinc-f6.txt > "$BUNDLE/incremental.diff")
 if [ -s "$BUNDLE/incremental.diff" ] \
   && [ "$(grep -c '^diff --git' "$BUNDLE/incremental.diff")" = "1" ]; then
@@ -98,7 +67,6 @@ else
   bad "incremental.diff missing or not one file"
 fi
 
-# --- I1: the delta scopes to a strict subset of manifest chunks ---
 N="$(jq -r '.chunk_count' <"$MAN" 2>/dev/null || echo 0)"
 if [ "$N" -ge 2 ] 2>/dev/null; then
   good "manifest lists $N chunks (scoping is non-vacuous)"
@@ -153,7 +121,6 @@ else
   bad "$stray unaffected-chunk reference(s) to the delta file"
 fi
 
-# NEW-side anchor lines for the record legs (first NEW hunk start per file).
 new_start() { # $1 = path; prints the NEW start of its first hunk
   awk -v f="$1" '
     /^diff --git /{cur=$0; sub(/.* b\//, "", cur); next}
@@ -168,8 +135,6 @@ else
   bad "anchor lines unresolved (f1:'$F1L' f6:'$F6L')"
 fi
 
-# sig_of mirror (the CLI normalizes key whitespace, then sha1):
-# sigKey for an inline comment is path + "\n" + heading("") + "\n" + body.
 sig_for() { printf '%s\n%s\n%s' "$1" "" "$2" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
 F1B="Prior note still stands on file one."
 F6B="Prior addressed note on file six."
@@ -188,7 +153,6 @@ jq -n --arg s1 "$SIG1" --arg b1 "$F1B" --argjson l1 "$F1L" \
       status:"addressed",rationale:"fixed earlier",history:[{at:"2026-01-01T00:00:00Z",event:"reported"}]}]' \
   > "$BUNDLE/findings.json"
 
-# --- I2: restated + new delta findings merge by sig through record ---
 cat > "$BUNDLE/review.json" <<EOF
 {"schema_version":"1","body":"> \u2139\ufe0f One minor delta note; prior open finding restated.\n\n- Reworked the file six helper.\n\n> Basis: 0 reproduced \u00b7 0 ran \u00b7 0 walked \u00b7 2 pointed \u00b7 0 said \u00b7 0 rules cited \u00b7 0 verified fixes","approved":false,"comments":[{"path":"cinc-f1.txt","line":$F1L,"side":"RIGHT","body":"$F1B","rigor":"pointed","severity":"informational"},{"path":"cinc-f6.txt","line":$F6L,"side":"RIGHT","body":"$NEWB","rigor":"pointed","severity":"informational"}]}
 EOF
@@ -237,7 +201,6 @@ else
   bad "unexpected findings.dryrun.json"
 fi
 
-# --- I3: same-path gate, no extra code (separate bundle, out-of-hunk anchor) ---
 GBUNDLE="$EVAL_SANDBOX/.review/local-cincgate"
 # shellcheck disable=SC2086 # CINC_FILES is a validated space-separated path list
 run_review fetch-local acme/app cincgate --chunk -- $CINC_FILES
@@ -275,7 +238,6 @@ else
   bad "terminal-write discipline broke on the gate bundle"
 fi
 
-# --- I4: the Incremental prompt pins the chunk composition ---
 PROMPT="$EVAL_SKILL/prompts/incremental-review.md"
 if grep -q "chunks/manifest.json" "$PROMPT" \
   && grep -q "affected chunk" "$PROMPT"; then
@@ -305,7 +267,6 @@ else
   bad "prompt missing same-path + coverage-gate pins"
 fi
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   # shellcheck disable=SC2086 # CINC_FILES is a validated space-separated path list

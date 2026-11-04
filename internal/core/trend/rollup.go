@@ -9,7 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Status and tier names, the fixed keys of the rollup objects.
 const (
 	statusOpen          = "open"
 	statusAddressed     = "addressed"
@@ -22,7 +21,6 @@ const (
 	tierUntagged        = "untagged"
 )
 
-// rollup is the portfolio rollup over bundle rows.
 type rollup struct {
 	byStatus  map[string]int
 	byTier    map[string]int
@@ -37,7 +35,6 @@ type rollup struct {
 	closed    int
 }
 
-// period is one time-bucketed rollup point.
 type period struct {
 	byTier    map[string]int
 	name      string
@@ -49,7 +46,6 @@ type period struct {
 	hasName   bool
 }
 
-// rollupRows owns the rollup filter over bundle rows.
 func rollupRows(rows []row) rollup {
 	out := rollup{
 		byStatus: map[string]int{
@@ -83,7 +79,6 @@ func rollupRows(rows []row) rollup {
 	return out
 }
 
-// provField reads one provenance field (nil when absent).
 func provField(prov *jq.Obj, key string) any {
 	if prov == nil {
 		return nil
@@ -92,8 +87,6 @@ func provField(prov *jq.Obj, key string) any {
 	return v
 }
 
-// periodize owns the periods grouping: rows bucketed by at[0:10] (null
-// stays null), nulls sorting last.
 func periodize(rows []row) []period {
 	sorted := append([]row{}, rows...)
 	slices.SortStableFunc(sorted, func(a, b row) int {
@@ -121,7 +114,6 @@ func periodize(rows []row) []period {
 	return periods
 }
 
-// periodName renders the day prefix of an instant, null when absent.
 func periodName(r *row) string {
 	if !r.hasAt {
 		return ""
@@ -129,10 +121,8 @@ func periodName(r *row) string {
 	return string(prefixRunes(r.at, periodRunes))
 }
 
-// periodRunes caps period names.
 const periodRunes = 10
 
-// prefixRunes takes the first n runes.
 func prefixRunes(s string, n int) []rune {
 	runes := []rune(s)
 	if len(runes) > n {
@@ -141,7 +131,6 @@ func prefixRunes(s string, n int) []rune {
 	return runes
 }
 
-// periodCmp orders periods with nulls last (jq's sort_by with "~").
 func periodCmp(a, b string) int {
 	if a == b {
 		return 0
@@ -197,7 +186,6 @@ func rollupDoc(out *rollup) *jq.Obj {
 	)
 }
 
-// tierDoc renders a by_tier fragment in wire key order.
 func tierDoc(counts map[string]int) *jq.Obj {
 	return jq.NewObj(
 		tierCritical, counts[tierCritical],
@@ -207,7 +195,6 @@ func tierDoc(counts map[string]int) *jq.Obj {
 	)
 }
 
-// anyList converts a value slice to the envelope list.
 func anyList(vals []any) []any {
 	if vals == nil {
 		return []any{}
@@ -215,7 +202,6 @@ func anyList(vals []any) []any {
 	return vals
 }
 
-// rowDoc renders one per-bundle row in wire key order.
 func rowDoc(r *row) *jq.Obj {
 	var at any
 	if r.hasAt {
@@ -242,7 +228,6 @@ func rowDoc(r *row) *jq.Obj {
 	)
 }
 
-// emitHuman owns the human rollup lines.
 func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRollup) {
 	st.emitRollupHuman(out)
 	if overlap != nil {
@@ -253,7 +238,6 @@ func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRo
 	}
 }
 
-// emitRollupHuman prints the ordinary portfolio section.
 func (st *state) emitRollupHuman(out *rollup) {
 	if out.bundles == 0 {
 		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .review/*/findings.json yet)")
@@ -280,7 +264,6 @@ func (st *state) emitRollupHuman(out *rollup) {
 	}
 }
 
-// provenanceLine owns the provenance summary line.
 func provenanceLine(out *rollup) string {
 	tools := unmarkedList(out.tools)
 	models := unmarkedList(out.models)
@@ -308,7 +291,6 @@ func provenanceLine(out *rollup) string {
 		" prompts=" + strconv.Itoa(unique) + " unique" + suffix
 }
 
-// unmarkedList renders the sorted unique unmarked values, comma-joined.
 func unmarkedList(vals []any) []string {
 	mapped := make([]string, 0, len(vals))
 	for _, v := range vals {
@@ -318,7 +300,6 @@ func unmarkedList(vals []any) []string {
 	return uniqueStrings(mapped)
 }
 
-// unmarkedValue renders a value, or "unmarked" when absent.
 func unmarkedValue(v any) string {
 	if v == nil || v == false {
 		return "unmarked"
@@ -326,7 +307,6 @@ func unmarkedValue(v any) string {
 	return jq.Str(v)
 }
 
-// uniqueStrings drops duplicates from a sorted list.
 func uniqueStrings(sorted []string) []string {
 	var out []string
 	for i, s := range sorted {

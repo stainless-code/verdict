@@ -1,6 +1,5 @@
 package recordcore
 
-// Finding-field names (jq object keys for findings.json entries).
 const (
 	fieldAnchored   = "anchored"
 	fieldAt         = "at"
@@ -27,23 +26,15 @@ const (
 	fieldOutcome    = "outcome"
 )
 
-// Schema and rendering constants.
 const (
-	// schemaVersion1 is the review.json schema this port understands.
-	schemaVersion1 = "1"
-	// sigVersion1 stamps newly computed finding signatures.
-	sigVersion1 = "1"
-	// newline joins rendered body lines.
-	newline = "\n"
-	// prSuffix is the bundle PR-record path suffix.
-	prSuffix = "/PR.json"
-	// Provider codes.
-	providerLocal = "local"
-	localPrefix   = "local-"
-	corpusPrefix  = "corpus-"
-	// statusOpen is the open finding status.
-	statusOpen = "open"
-	// Refusal codes.
+	schemaVersion1        = "1"
+	sigVersion1           = "1"
+	newline               = "\n"
+	prSuffix              = "/PR.json"
+	providerLocal         = "local"
+	localPrefix           = "local-"
+	corpusPrefix          = "corpus-"
+	statusOpen            = "open"
 	codeRecordFailed      = "record-failed"
 	codePostFailed        = "post-failed"
 	codeNotLocal          = "not-local"
@@ -56,37 +47,23 @@ const (
 	codeMissingChunkSnap  = "missing-chunk-snapshot"
 	codeBadTriageStatus   = "bad-triage-status"
 	codeMissingChunkCov   = "missing-chunk-coverage"
-	// Sig-resolution outcomes.
-	sigNone = "NONE"
-	sigMany = "MANY"
-	// chunkHunksSuffix is the derived per-chunk snapshot filename.
-	chunkHunksSuffix = "/.chunk-hunks.tsv"
-	// revalidatorForced is the actor tag for forced revalidation.
-	revalidatorForced = "revalidator"
-	// fieldEvent and fieldSHA are history-entry keys.
-	fieldEvent = "event"
-	fieldSHA   = "sha"
-	// fieldStartLine is the comment anchor start key.
-	fieldStartLine = "start_line"
-	// outcomeAddressed is the refreshed-triage status.
-	outcomeAddressed = "addressed"
+	sigNone               = "NONE"
+	sigMany               = "MANY"
+	chunkHunksSuffix      = "/.chunk-hunks.tsv"
+	revalidatorForced     = "revalidator"
+	fieldEvent            = "event"
+	fieldSHA              = "sha"
+	fieldStartLine        = "start_line"
+	outcomeAddressed      = "addressed"
 )
 
-// Numeric parsing/rendering constants.
 const (
-	// shortSHALen is the abbreviated commit width.
-	shortSHALen = 7
-	// maxBodyRunes caps the human `record` finding preview.
-	maxBodyRunes = 200
-	// minRationaleRunes is the triage-claim rationale floor.
+	shortSHALen       = 7
+	maxBodyRunes      = 200
 	minRationaleRunes = 30
-	// hunkFieldCount is the minimum @@-line field count.
-	hunkFieldCount = 4
-	// hunkStartIdx and hunkEndIdx index the @@ start/end fields.
-	hunkStartIdx = 2
-	hunkEndIdx   = 3
-	// degenerateFloor is the minimum body length for real reviews.
-	degenerateFloor = 20
-	// placeholderFloor is the body length below which placeholder text refuses.
-	placeholderFloor = 50
+	hunkFieldCount    = 4
+	hunkStartIdx      = 2
+	hunkEndIdx        = 3
+	degenerateFloor   = 20
+	placeholderFloor  = 50
 )

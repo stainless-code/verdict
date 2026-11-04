@@ -7,9 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// resolvePublishEnv owns the env half of resolve_publish: flags > file >
-// env > defaults, so the env layer applies even with no settings file. It
-// only warns; invalid values fall back to defaults.
 func resolvePublishEnv(env map[string]string, eff *Effective, warn func(string)) {
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL", &eff.DiagramsStructural, warn)
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL", &eff.DiagramsBehavioral, warn)
@@ -29,7 +26,6 @@ func resolvePublishEnv(env map[string]string, eff *Effective, warn func(string))
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_OVERVIEW", &eff.PublishOverview, warn)
 }
 
-// resolveOnOffEnv handles one true|false env knob.
 func resolveOnOffEnv(env map[string]string, key string, dst *string, warn func(string)) {
 	switch v := env[key]; v {
 	case "":
@@ -40,8 +36,6 @@ func resolveOnOffEnv(env map[string]string, key string, dst *string, warn func(s
 	}
 }
 
-// resolveAttributionEnv owns the REVIEW_PUBLISH_ATTRIBUTION knob with its
-// P1-bool migration.
 func resolveAttributionEnv(env map[string]string, eff *Effective, warn func(string)) {
 	switch v := env["REVIEW_PUBLISH_ATTRIBUTION"]; v {
 	case "":
@@ -58,9 +52,6 @@ func resolveAttributionEnv(env map[string]string, eff *Effective, warn func(stri
 	}
 }
 
-// resolvePublishFile owns the settings-file half of resolve_publish plus
-// resolve_publish_diagrams. A missing file or a file without a publish key
-// keeps the env layer and only validates the attribution placeholders.
 func resolvePublishFile(path string, obj map[string]any, eff *Effective) error {
 	raw, hasPublish := obj["publish"]
 	if !hasPublish {
@@ -76,7 +67,6 @@ func resolvePublishFile(path string, obj map[string]any, eff *Effective) error {
 	return resolvePublishKeys(path, pub, eff)
 }
 
-// publishKey maps one scalar publish key to its destination.
 type publishKey struct {
 	dst  *string
 	key  string
@@ -84,7 +74,6 @@ type publishKey struct {
 	bool bool
 }
 
-// publishKeys lists the scalar publish keys with their destinations.
 func publishKeys(eff *Effective) []publishKey {
 	return []publishKey{
 		{dst: &eff.PublishAttributionText, key: "attribution_text"},
@@ -95,7 +84,6 @@ func publishKeys(eff *Effective) []publishKey {
 	}
 }
 
-// resolvePublishKeys applies the scalar publish keys, then diagrams.
 func resolvePublishKeys(path string, pub map[string]any, eff *Effective) error {
 	for _, step := range publishSteps(path, pub, eff) {
 		if ref := step(); ref != nil {
@@ -110,7 +98,6 @@ func resolvePublishKeys(path string, pub map[string]any, eff *Effective) error {
 	return validateAttributionText(path, eff)
 }
 
-// publishSteps lists the scalar publish-key appliers in shell order.
 func publishSteps(path string, pub map[string]any, eff *Effective) []func() error {
 	return []func() error{
 		func() error { return resolveFooterKey(path, pub, eff) },
@@ -119,7 +106,6 @@ func publishSteps(path string, pub map[string]any, eff *Effective) []func() erro
 	}
 }
 
-// applyPublishKeys applies every scalar publish key in the table.
 func applyPublishKeys(path string, pub map[string]any, eff *Effective) error {
 	for _, k := range publishKeys(eff) {
 		if ref := applyPublishKey(path, pub, k); ref != nil {
@@ -129,7 +115,6 @@ func applyPublishKeys(path string, pub map[string]any, eff *Effective) error {
 	return nil
 }
 
-// applyPublishKey applies one scalar publish key.
 func applyPublishKey(path string, pub map[string]any, k publishKey) error {
 	if k.bool {
 		return resolveBoolKey(path, pub, k.key, k.dst)
@@ -137,12 +122,10 @@ func applyPublishKey(path string, pub map[string]any, k publishKey) error {
 	return resolveTextKey(path, pub, k.key, k.hint, k.dst)
 }
 
-// validateAttributionText gates the attribution_text placeholders.
 func validateAttributionText(path string, eff *Effective) error {
 	return ValidateAttributionPlaceholders(eff.PublishAttributionText, "settings file "+path+": publish.attribution_text")
 }
 
-// checkPublishKeys rejects unknown publish keys.
 func checkPublishKeys(path string, pub map[string]any) error {
 	for _, k := range SortedKeys(pub) {
 		switch k {
@@ -154,7 +137,6 @@ func checkPublishKeys(path string, pub map[string]any) error {
 	return nil
 }
 
-// publishBoolKey reads one boolean publish key.
 func publishBoolKey(path string, pub map[string]any, key, want string) (string, error) {
 	raw, ok := pub[key]
 	if !ok {
@@ -170,7 +152,6 @@ func publishBoolKey(path string, pub map[string]any, key, want string) (string, 
 	return FlagOff, nil
 }
 
-// resolveBoolKey applies one boolean publish key to its destination.
 func resolveBoolKey(path string, pub map[string]any, key string, dst *string) error {
 	if _, ok := pub[key]; !ok {
 		return nil
@@ -183,7 +164,6 @@ func resolveBoolKey(path string, pub map[string]any, key string, dst *string) er
 	return nil
 }
 
-// resolveFooterKey applies the publish.footer key.
 func resolveFooterKey(path string, pub map[string]any, eff *Effective) error {
 	if _, ok := pub["footer"]; !ok {
 		return nil
@@ -196,7 +176,6 @@ func resolveFooterKey(path string, pub map[string]any, eff *Effective) error {
 	return nil
 }
 
-// resolveAttributionKey applies the publish.attribution tier key.
 func resolveAttributionKey(path string, pub map[string]any, eff *Effective) error {
 	raw, ok := pub["attribution"]
 	if !ok {
@@ -218,8 +197,6 @@ func resolveAttributionKey(path string, pub map[string]any, eff *Effective) erro
 	return nil
 }
 
-// resolveTextKey applies one string publish key to its destination; hint
-// appends to the type error (the logo_url empty-means-text-only note).
 func resolveTextKey(path string, pub map[string]any, key, hint string, dst *string) error {
 	raw, ok := pub[key]
 	if !ok {
@@ -233,7 +210,6 @@ func resolveTextKey(path string, pub map[string]any, key, hint string, dst *stri
 	return nil
 }
 
-// resolveDiagrams resolves the diagram knobs (flag > file > env).
 func resolveDiagrams(path string, raw any, eff *Effective) error {
 	d, ok := jq.AsMap(raw)
 	if !ok {
@@ -261,7 +237,6 @@ func resolveDiagrams(path string, raw any, eff *Effective) error {
 	return nil
 }
 
-// setDiagramBool applies one boolean diagrams key.
 func setDiagramBool(path string, d map[string]any, key string, dst *string) error {
 	raw, ok := d[key]
 	if !ok {

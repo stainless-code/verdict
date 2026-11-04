@@ -39,8 +39,6 @@ func RunShow(_ context.Context, req *core.ShowRequest) (*core.ShowResponse, *cor
 	return resp, nil
 }
 
-// findRecord selects the full-sig record (nil when no entry matches, which
-// only happens for unreachable sigs).
 func findRecord(entries []any, full string) *jq.Obj {
 	for _, e := range entries {
 		m, ok := e.(*jq.Obj)

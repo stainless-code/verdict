@@ -18,12 +18,13 @@ import (
 	"testing"
 )
 
-// Golden-file constants (revive add-constant: no literals in production
-// code).
+// Golden-file constants the helpers share: separators, permissions, and the
+// size gate.
 const (
 	// newline terminates every rendered golden line.
 	newline = "\n"
-	// goldenPerm keeps regenerated goldens owner read/write, per gosec G306.
+	// goldenPerm keeps regenerated goldens owner read/write. gosec G306 wants
+	// 0600 or stricter, so a wider mode stays off.
 	goldenPerm = 0o600
 	// largeFileBytes is the payload above which a golden pins size+sha256
 	// instead of the body. A generated 800 KB diff is reproducible from the
@@ -32,13 +33,10 @@ const (
 	largeFileBytes = 64 << 10
 	// diffLines bounds each side of a mismatch report: a multi-megabyte
 	// golden must never dump want and got into the test log.
-	diffLines = 80
-	// diffContext is how many matching lines precede the first divergence,
-	// so a failure shows where it happened instead of only what it was.
+	diffLines   = 80
 	diffContext = 3
 )
 
-// updateGolden regenerates testdata goldens instead of comparing.
 var updateGolden = flag.Bool("update", false, "regenerate testdata golden files")
 
 // Render scrubs one run into the golden file shape: exit, stdout, stderr,
@@ -124,7 +122,6 @@ func touchedKeys(out Outputs) []string {
 	return keys
 }
 
-// digest is the hex sha256 of a rendered body.
 func digest(body string) string {
 	sum := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(sum[:])
@@ -180,7 +177,6 @@ func divergence(want, got string) string {
 	return sb.String()
 }
 
-// firstDivergence returns the index of the first line that differs.
 func firstDivergence(want, got []string) int {
 	for i, line := range want {
 		if i >= len(got) || line != got[i] {

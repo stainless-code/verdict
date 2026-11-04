@@ -12,10 +12,8 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
-// fixedNow is the deterministic clock every test injects.
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
-// collector captures the human and warning streams in order.
 type collector struct {
 	human []string
 	warns []string
@@ -25,8 +23,6 @@ func (c *collector) Human(line string) { c.human = append(c.human, line) }
 func (c *collector) Warn(msg string)   { c.warns = append(c.warns, msg) }
 func (c *collector) Diag(string)       {}
 
-// scriptCommander is the injected command seam: every spawn is scripted,
-// none reaches the host.
 type scriptCommander struct {
 	got []core.Command
 	err error
@@ -41,7 +37,6 @@ func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result,
 	return s.res, nil
 }
 
-// writeFile writes one fixture file, creating parents.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -52,7 +47,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// bundle writes a minimal bundle carrying patch.json into a temp cwd.
 func bundle(t *testing.T, patch string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -60,7 +54,6 @@ func bundle(t *testing.T, patch string) {
 	writeFile(t, ".review/5201/patch.json", patch)
 }
 
-// verifyRequest builds the service request with a scripted commander.
 func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ []string, jsonMode bool) *core.VerifyRequest {
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -93,8 +86,6 @@ func TestVerifySuccess(t *testing.T) {
 	checkVerifyStores(t)
 }
 
-// checkVerifySpawn asserts the one watchdog spawn: bash -c with the patch's
-// verifyCmd.
 func checkVerifySpawn(t *testing.T, cmdr *scriptCommander) {
 	t.Helper()
 	if len(cmdr.got) != 1 {
@@ -105,8 +96,6 @@ func checkVerifySpawn(t *testing.T, cmdr *scriptCommander) {
 	}
 }
 
-// checkVerifyResponse asserts the typed response and the streamed human
-// lines.
 func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) {
 	t.Helper()
 	if resp.Exit != 0 || resp.TimedOut || resp.Tail != "ok" {
@@ -123,8 +112,6 @@ func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) 
 	}
 }
 
-// checkVerifyStores asserts the patch artifact key order and the raw
-// combined output.
 func checkVerifyStores(t *testing.T) {
 	t.Helper()
 	raw, err := os.ReadFile(".review/5201/patch.json")
@@ -164,7 +151,6 @@ func TestVerifyNoColor(t *testing.T) {
 	}
 }
 
-// checkNoColor runs one child-env case and asserts the NO_COLOR default.
 func checkNoColor(t *testing.T, environ []string, want string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf ok"}`)
@@ -267,8 +253,6 @@ func TestVerifyRefusals(t *testing.T) {
 	}
 }
 
-// checkVerifyRefusal runs one refusal case: the gate refuses typed, the
-// caller warning carries, nothing spawns, and no outcome is written.
 func checkVerifyRefusal(t *testing.T, name, patch, timeout, code string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf ok"}`)

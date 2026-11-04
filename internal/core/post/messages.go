@@ -5,8 +5,6 @@
 // stdio, or exit codes.
 package postcore
 
-// Post refusal/warning formats. The source layout is split for the
-// line-length gate; the rendered bytes are the contract.
 const (
 	msgNoPRTarget = "post needs a PR bundle (fetch owner/repo N first); local bundles record + report, they never post"
 
@@ -42,10 +40,6 @@ const (
 	msgPostFailed = "post failed: %s — narrow the cause (anchor drift? body size?) — do not drop comments blindly."
 )
 
-// Frozen store keys and codes the post path reads. The merge owns the
-// canonical copies in internal/core/record; these mirrors keep the post
-// service compiling without widening the core API (every value is pinned by
-// the goldens).
 const (
 	fieldPath       = "path"
 	fieldLine       = "line"
@@ -64,10 +58,6 @@ const (
 	approveFalse    = "false"
 )
 
-// msgReviewMissing mirrors the shared loader's missing-file message (the
-// checkBundle existence gate must refuse before the full.diff gate, exactly
-// like record).
 const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
 
-// codeMissingReviewFile mirrors the shared loader's missing-file code.
 const codeMissingReviewFile = "missing-review-file"

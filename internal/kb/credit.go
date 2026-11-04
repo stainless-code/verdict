@@ -42,7 +42,6 @@ func (c *Ctx) ApplyCredit(entries []any, sig, outcome, actor, verb, now string, 
 	c.stageCites(entry, kbList, sig, outcome, actor, verb, now, joins)
 }
 
-// stageCites stages one credit op per cited rule not already credited.
 func (c *Ctx) stageCites(entry *jq.Obj, kbList []any, sig, outcome, actor, verb, now string, joins []*jq.Obj) {
 	for _, item := range kbList {
 		rid := jq.Str(item)
@@ -69,7 +68,6 @@ func (c *Ctx) stageCite(sig, rid, outcome, actor, verb, now string) {
 	c.Credited = append(c.Credited, map[string]any{fieldRule: rid, "to": outcome})
 }
 
-// findEntry returns the findings entry with sig.
 func findEntry(entries []any, sig string) *jq.Obj {
 	for _, e := range entries {
 		if m, ok := e.(*jq.Obj); ok {
@@ -81,7 +79,6 @@ func findEntry(entries []any, sig string) *jq.Obj {
 	return nil
 }
 
-// joinHas reports whether the joins log already carries (sig, rule, outcome).
 func joinHas(joins []*jq.Obj, sig, rid, outcome string) bool {
 	for _, j := range joins {
 		s, _ := j.Get(fieldSig)
@@ -94,8 +91,6 @@ func joinHas(joins []*jq.Obj, sig, rid, outcome string) bool {
 	return false
 }
 
-// historyHas owns the in-memory idempotency check: any history event on the
-// entry carrying a kb_credit object with matching rule and to.
 func historyHas(entry *jq.Obj, rid, outcome string) bool {
 	histRaw, _ := entry.Get("history")
 	hist, ok := histRaw.([]any)
@@ -110,7 +105,6 @@ func historyHas(entry *jq.Obj, rid, outcome string) bool {
 	return false
 }
 
-// historyCredits reads one history event's kb_credit array.
 func historyCredits(h any) []any {
 	switch hm := h.(type) {
 	case *jq.Obj:
@@ -126,7 +120,6 @@ func historyCredits(h any) []any {
 	return nil
 }
 
-// creditsMatch reports whether any credit stamps the rule+outcome flip.
 func creditsMatch(credits []any, rid, outcome string) bool {
 	for _, cr := range credits {
 		if rule, to, ok := creditRef(cr); ok && rule == rid && to == outcome {
@@ -136,7 +129,6 @@ func creditsMatch(credits []any, rid, outcome string) bool {
 	return false
 }
 
-// creditRef reads one credit stamp's rule and to.
 func creditRef(cr any) (string, string, bool) {
 	switch cm := cr.(type) {
 	case *jq.Obj:
@@ -201,8 +193,6 @@ func (c *Ctx) CommitStaged(findingsFile, now string) {
 	c.Staged = nil
 }
 
-// loadStore reads the KB store for the commit, dropping staged credit with
-// a loud warning when unreadable.
 func (c *Ctx) loadStore(findingsFile string) ([]*jq.Obj, bool) {
 	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
 	rows, derr := ParseRows(raw)
@@ -215,7 +205,6 @@ func (c *Ctx) loadStore(findingsFile string) ([]*jq.Obj, bool) {
 	return rows, true
 }
 
-// filterLive drops staged ops already present in the joins log.
 func filterLive(staged []map[string]any, joins []*jq.Obj) []map[string]any {
 	live := make([]map[string]any, 0, len(staged))
 	for _, op := range staged {
@@ -252,8 +241,6 @@ func (c *Ctx) rewriteCounters(rows []*jq.Obj, live []map[string]any, findingsFil
 	return true
 }
 
-// bumpCounters applies the staged tallies to the decoded rows, reporting
-// false when any touched counter is non-numeric.
 func bumpCounters(rows []*jq.Obj, hits, fps map[string]int) bool {
 	for _, row := range rows {
 		if !bumpRow(row, hits, fps) {
@@ -290,7 +277,6 @@ func bumpRow(row *jq.Obj, hits, fps map[string]int) bool {
 	return true
 }
 
-// tallyOutcomes splits live ops into addressed hits and other outcomes.
 func tallyOutcomes(live []map[string]any) (hits, fps map[string]int) {
 	hits = map[string]int{}
 	fps = map[string]int{}
@@ -324,7 +310,6 @@ func (c *Ctx) appendJoins(findingsFile string, live []map[string]any) {
 	}
 }
 
-// unionRules lists the touched rules, hits first.
 func unionRules(live []map[string]any) []string {
 	seen := map[string]bool{}
 	var rules []string
@@ -339,8 +324,6 @@ func unionRules(live []map[string]any) []string {
 	return rules
 }
 
-// reviewIDOf reads post.json's review.id for the joins audit scope (null
-// when the bundle is local or the record is unreadable).
 func reviewIDOf(postPath string) any {
 	raw, err := os.ReadFile(postPath)
 	if err != nil {
@@ -415,10 +398,8 @@ func addCounter(lit string, n int) (any, bool) {
 	return jsonNumber(f + n), true
 }
 
-// jsonNumber renders n as a JSON number literal.
 func jsonNumber(n int) jq.Number {
 	return jq.Number(strconv.Itoa(n))
 }
 
-// storeFileMode is the umask-022 default for KB store files.
 const storeFileMode = 0o644

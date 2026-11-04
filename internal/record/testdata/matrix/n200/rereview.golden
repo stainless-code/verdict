@@ -1469,6 +1469,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
+  "prompts_hash": "556bbe3476db16a7e7cb3fc0be7b33919a8fb113fcb6161ef0761ef6d7a38ef0",
   "model": null
 }

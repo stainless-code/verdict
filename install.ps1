@@ -1,14 +1,3 @@
-# verdict binary installer (Windows). Downloads one release zip, verifies the
-# cosign signature over checksums.txt (when cosign is present) and the archive
-# SHA-256, extracts only verdict.exe, and replaces the target atomically.
-# No admin/root required, no eval of release metadata.
-#
-#   irm https://stainless-code.com/verdict/install.ps1 | iex
-#   ./install.ps1 -Version 1.2.3 -InstallDir C:\tools\verdict
-#   ./install.ps1 -Uninstall [-RemovePath]
-#
-# Env equivalents: VERDICT_VERSION, VERDICT_INSTALL, VERDICT_DOWNLOAD_URL,
-# VERDICT_NO_MODIFY_PATH=1, VERDICT_REQUIRE_SIGNATURE=1, VERDICT_COSIGN.
 [CmdletBinding()]
 param(
   [string]$Version = $env:VERDICT_VERSION,
@@ -193,8 +182,6 @@ try {
   else { [System.IO.File]::Move($staged, $target) }
   $receipt = '{"binary":"verdict.exe","version":"' + $Version + '","installed_by":"install.ps1"}'
   [System.IO.File]::WriteAllText($ReceiptPath, $receipt, [System.Text.Encoding]::ASCII)
-  # Smoke the new binary from its final path: that is what the user runs, so
-  # it proves the file we just moved in is executable where it landed.
   # Drain the whole output before reading the exit code: `Select-Object -First`
   # stops the pipeline early, which can kill the child or leave $LASTEXITCODE
   # stale on Windows PowerShell 5.1. Stderr is discarded under 'Continue' so a
@@ -221,9 +208,8 @@ try {
   } else {
     Write-Host "install: $InstallDir is already on the user PATH"
   }
-  # The one line that follows a successful install: add the review skill to the
-  # coding agents already on this machine.
   Write-Host 'Next: verdict skill install --detect   (adds the review skill to your coding agents)'
+  Write-Host '      none detected? name one: verdict skill install --agent <name>'
 } finally {
   foreach ($item in @($Stage, $Tmp, $ArchivePath)) {
     if ($item -and (Test-Path -LiteralPath $item)) {

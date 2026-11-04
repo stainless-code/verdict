@@ -44,15 +44,10 @@ import (
 // package.json at runtime instead (see versionOf).
 var version string
 
-// envHome is the HOME fallback key for hermetic test runs.
 const envHome = "HOME"
 
-// verbSkill is the skill verb name, shared by the dispatch, arity, and help
-// tables.
 const verbSkill = "skill"
 
-// verbsHint lists the verbs the CLI owns for the unknown-cmd message. It
-// names the same set as the usage synopsis (TestVerbsHintMatchesUsage).
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|threads|trend|learn|init|skill|upgrade|uninstall|mcp"
 
@@ -61,22 +56,13 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Getenv, os.ReadFile))
 }
 
-// run executes the CLI with injected I/O and environment for testability,
-// returning the process exit code.
 //
 //nolint:revive // the hidden transport dispatch adds one branch to the front door
 func run(args []string, stdout, stderr *os.File, getenv func(string) string, readFile func(string) ([]byte, error)) int {
-	// Hidden transport verbs run before usage/arity/prefs and never appear
-	// in the usage block.
 	if code, ok := dispatchHidden(args, stderr); ok {
 		return code
 	}
-	// Installed binaries ship no package.json: the linked release version
-	// (if any) owns the footer before any flag handling runs.
 	provenance.SetBuildVersion(strings.TrimPrefix(version, "v"))
-	// `mcp` keeps its own flag grammar, so it is dispatched before the
-	// review arity gate; the top-level usage block documents the
-	// experimental entry points without routing through splitCommand.
 	if len(args) > 0 && args[0] == "mcp" {
 		return runMCP(args[1:], stdout, stderr, getenv, readFile)
 	}
@@ -88,22 +74,23 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		return cli.ExitOK
 	}
 	root := exeRoot()
-	cmd, repo, pr, args := splitCommand(args)
-	// The arity gate runs before any settings, store, or network read:
-	// a missing verb or positional is a usage error (exit 2) even when
-	// the settings file is corrupt or the network is dead.
-	if arityUsage(cmd, repo, pr) {
-		fmt.Fprint(stderr, usageText())
-		return cli.ExitUsage
+	stripped, forces, uerr, ref := cli.StripGlobal(args)
+	failed := uerr != nil || ref != nil
+	cmd, repo, pr, rest := splitCommand(stripped)
+	if failed {
+		cmd, repo, pr = envelopeTarget(args)
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	peekJSONMode(r, args)
 	env := envMap(getenv)
-	if code, done := resolveRunnerPrefs(r, env, readFile); done {
-		return code
+	if failed {
+		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	rest, forces, code, done := stripRunnerFlags(r, args)
-	if done {
+	if arityUsage(cmd, repo, pr) {
+		fmt.Fprint(stderr, usageText())
+		return cli.ExitUsage
+	}
+	if code, done := resolveRunnerPrefs(r, env, readFile); done {
 		return code
 	}
 	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
@@ -113,7 +100,6 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	return dispatch(cmd, r, repo, pr, root, env, forces, rest, stderr)
 }
 
-// handleMetaFlags handles -h/--help and --version.
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
 	if len(args) > 0 && (args[0] == flagShortHelp || args[0] == flagHelp) {
 		fmt.Fprint(stdout, usageText())
@@ -131,7 +117,6 @@ func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]by
 	return false
 }
 
-// peekJSONMode enables JSON mode when --json precedes any `--`.
 func peekJSONMode(r *cli.Runner, args []string) {
 	r.JSONPeeked = cli.PeekJSON(args)
 	if r.JSONPeeked {
@@ -139,9 +124,6 @@ func peekJSONMode(r *cli.Runner, args []string) {
 	}
 }
 
-// noColorForFallback resolves the NO_COLOR convention for the color
-// fallback: an explicitly set (even empty) NO_COLOR is respected; in --json
-// mode an unset NO_COLOR defaults on (machine output never carries color).
 func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 	if r.EnvNoColor {
 		return true
@@ -152,9 +134,6 @@ func noColorForFallback(r *cli.Runner, env map[string]string) bool {
 	return false
 }
 
-// dispatchHidden runs the transport-only verbs: the Windows replacement helper
-// and the schema checker behind `schemas/validate.sh`. ok is false for a real
-// verb, which then goes through usage, arity, and the normal dispatch.
 func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
 	if len(args) == 0 {
 		return 0, false
@@ -169,13 +148,10 @@ func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
 	}
 }
 
-// readHandler is the shared signature of the read-only verbs.
 type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
 
-// cmdTrend names the trend verb (revive goconst: no repeated literals).
 const cmdTrend = "trend"
 
-// readVerbs maps each read-only verb to its handler.
 var readVerbs = map[string]readHandler{
 	"report":     report.Run,
 	"next":       report.RunNext,
@@ -195,7 +171,6 @@ func shutdownSignalContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
-// dispatch runs the verb or reports it unknown.
 func dispatch(
 	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
 	forces *cli.GlobalForces, rest []string, stderr *os.File,
@@ -216,7 +191,6 @@ func dispatch(
 	return cli.ExitUsage
 }
 
-// dispatchMutating runs a store-writing verb; ok is false for unknown verbs.
 //
 //nolint:cyclop // the verb table grows one branch per verb by design
 func dispatchMutating(
@@ -254,7 +228,6 @@ func dispatchMutating(
 	}
 }
 
-// dispatchFetch runs the bundle-builder verbs; ok is false for other verbs.
 func dispatchFetch(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
 	env map[string]string, rest []string,
@@ -270,10 +243,6 @@ func dispatchFetch(
 	}
 }
 
-// splitCommand separates the verb and repo/pr positionals from flags.
-// Bare verbs (check-tree, doctor, learn, init, install) take no
-// positionals, so every arg after the verb is flags. trend takes only a
-// repo. Every other verb takes repo plus pr.
 func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	if len(args) == 0 {
 		return "", "", "", args
@@ -292,21 +261,23 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	return cmd, repo, pr, rest
 }
 
-// splitPositionals separates repo/pr positionals from flags.
 func splitPositionals(args []string) (repo, pr string, rest []string) {
-	if len(args) > 0 {
-		repo = args[0]
+	for i, a := range args {
+		if a == flagSeparator {
+			return repo, pr, append(rest, args[i:]...)
+		}
+		switch i {
+		case 0:
+			repo = a
+		case 1:
+			pr = a
+		default:
+			rest = append(rest, a)
+		}
 	}
-	if len(args) > 1 {
-		pr = args[1]
-	}
-	if len(args) >= 2 {
-		return repo, pr, args[2:]
-	}
-	return repo, pr, nil
+	return repo, pr, rest
 }
 
-// newRunner builds the runner with environment-derived fields.
 func newRunner(cmd, repo, pr string, stdout, stderr *os.File, getenv func(string) string) *cli.Runner {
 	return &cli.Runner{
 		Cmd: cmd, Repo: repo, Pr: pr,
@@ -317,7 +288,6 @@ func newRunner(cmd, repo, pr string, stdout, stderr *os.File, getenv func(string
 	}
 }
 
-// resolveRunnerPrefs resolves prefs, refusing with defaults on failure.
 func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(string) ([]byte, error)) (int, bool) {
 	prefs, ref := cli.ResolvePrefs(r, env, readFile)
 	if ref != nil {
@@ -329,26 +299,34 @@ func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(stri
 	return 0, false
 }
 
-// stripRunnerFlags strips global flags, reporting usage/refusal failures.
-func stripRunnerFlags(r *cli.Runner, args []string) ([]string, *cli.GlobalForces, int, bool) {
-	rest, forces, uerr, ref := cli.StripGlobal(args)
+func reportStripFailure(
+	r *cli.Runner, env map[string]string, readFile func(string) ([]byte, error),
+	uerr *cli.UsageError, ref error,
+) int {
+	if code, done := resolveRunnerPrefs(r, env, readFile); done {
+		return code
+	}
+	r.RouteHuman()
 	if uerr != nil {
-		r.RouteHuman()
-		return nil, nil, r.ReportUsage(uerr), true
+		return r.ReportUsage(uerr)
 	}
-	if ref != nil {
-		r.RouteHuman()
-		return nil, nil, r.Refuse(ref), true
-	}
-	return rest, forces, 0, false
+	return r.Refuse(ref)
 }
 
-// exeRoot resolves the checkout root from the directory holding this binary,
-// walking up to the checkout carrying package.json so a conventional
-// bin/verdict build (see the Makefile) still finds package.json at the checkout
-// root and, through the provenance fallback, the prompts under skills/verdict.
-// A relocated binary with no checkout above it keeps the binary directory, so
-// hermetic harnesses can plant the provenance inputs beside it.
+func envelopeTarget(args []string) (cmd, repo, pr string) {
+	cmd, repo, pr, _ = splitCommand(args)
+	if strings.HasPrefix(cmd, "-") {
+		return "", "", ""
+	}
+	if strings.HasPrefix(repo, "-") {
+		return cmd, "", ""
+	}
+	if strings.HasPrefix(pr, "-") {
+		return cmd, repo, ""
+	}
+	return cmd, repo, pr
+}
+
 func exeRoot() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -360,11 +338,8 @@ func exeRoot() string {
 	return checkoutRoot(filepath.Dir(exe))
 }
 
-// checkoutDepth caps the walk-up from the binary directory to the checkout.
 const checkoutDepth = 5
 
-// checkoutRoot walks up from dir to the checkout carrying
-// package.json, falling back to dir when none is found.
 func checkoutRoot(dir string) string {
 	root := dir
 	for range checkoutDepth {
@@ -380,10 +355,6 @@ func checkoutRoot(dir string) string {
 	return dir
 }
 
-// envMap snapshots the process environment names the CLI reads. Presence
-// tracks LookupEnv so `export X=` reads the same as unset everywhere the
-// shell tests `-n` (all knobs), while HOME falls back to the cwd like
-// `${HOME:-$PWD}`.
 func envMap(getenv func(string) string) map[string]string {
 	keys := []string{
 		"HOME", "XDG_CONFIG_HOME", "NO_COLOR",
@@ -423,7 +394,6 @@ func envMap(getenv func(string) string) map[string]string {
 	return env
 }
 
-// versionOf reads the tool version beside the binary root.
 func versionOf(root string, readFile func(string) ([]byte, error)) string {
 	raw, err := readFile(filepath.Join(root, "package.json"))
 	if err != nil {

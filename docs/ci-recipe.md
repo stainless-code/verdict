@@ -23,8 +23,8 @@ into your repo as `.github/workflows/verdict-review.yml`.
    `comments[]`, optional `resolved[]`/`triage[]`).
 5. **Post** — `verdict post <repo> <pr>` validates anchors, merges
    `findings.json`, and submits exactly one review.
-6. **Merge gate** — `verdict report <repo> <pr> --check critical
---completeness` exits 0 only when no open `critical` findings stand AND
+6. **Merge gate** — `verdict report <repo> <pr> --check critical --completeness`
+   exits 0 only when no open `critical` findings stand AND
    the fetched HEAD is the posted HEAD. Require this job in branch
    protection: the readiness gate saves tokens before the review, the
    findings gate blocks the merge after it.

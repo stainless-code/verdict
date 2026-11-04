@@ -22,9 +22,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Protocol constants: the JSON-RPC version, the MCP revisions this server
-// negotiates, the transport's frame cap, and the JSON-RPC error codes the
-// subset uses.
 const (
 	jsonRPCVersion = "2.0"
 	latestProtocol = "2025-06-18"
@@ -76,8 +73,6 @@ type Server struct { //nolint:govet // the grouping separates config, tools, and
 	cfg    Config
 	tools  []*tool
 	byName map[string]*tool
-	// hidden names the registered tools this surface filters out, so a call
-	// can say why the tool is absent instead of answering "unknown tool".
 	hidden map[string]hiddenTool
 
 	out      io.Writer
@@ -87,13 +82,8 @@ type Server struct { //nolint:govet // the grouping separates config, tools, and
 	inflight sync.WaitGroup
 	callMu   sync.Mutex
 	calls    map[string]context.CancelFunc
-	// stopping is set under callMu before Serve waits for the handlers. A call
-	// the read loop dispatches after that is refused, so inflight.Go never races
-	// inflight.Wait and no handler outlives the wait.
 	stopping bool
-	// closed is set under writeMu when Serve returns, so a read loop still
-	// holding a buffered line cannot write after the transport is done.
-	closed bool
+	closed   bool
 }
 
 // New builds a server for one session. Config values are normalized here so
@@ -129,19 +119,10 @@ func New(cfg *Config) *Server {
 	}
 }
 
-// hiddenTool is one registered tool that this surface does not expose, plus
-// the flag combination that would expose it.
-//
-// A call to a hidden tool is a protocol error, not a refusal: the tool exists,
-// so the answer names the tool and the server shape it needs instead of
-// pretending the name is unknown.
 type hiddenTool struct {
 	requires string
 }
 
-// hiddenTools returns the registry entries the surface filter removed. (The
-// full surface is the only one that exposes every tool, so it is the
-// difference set.)
 func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
 	out := map[string]hiddenTool{}
 	for _, t := range allTools(false, true) {
@@ -153,8 +134,6 @@ func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
 	return out
 }
 
-// toolRequires names the server shape a hidden tool needs, in the words the
-// error message and its machine-readable data both use.
 func toolRequires(t *tool, readOnly bool) string {
 	switch {
 	case t.operatorOnly && readOnly:
@@ -166,8 +145,6 @@ func toolRequires(t *tool, readOnly bool) string {
 	}
 }
 
-// applyCommanderOverrides replaces a tool's production runner with a test
-// fake. Production deps come from the registry, not from this map.
 func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander) {
 	for _, t := range tools {
 		if commander, ok := overrides[t.name]; ok {
@@ -179,12 +156,6 @@ func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander)
 // Serve runs the newline-delimited JSON-RPC loop until stdin closes or ctx is
 // canceled, then cancels in-flight calls, waits for them, and returns. Stdout
 // carries only protocol frames.
-//
-// Both endings wait for in-flight calls, but they cancel at different moments.
-// A canceled ctx (SIGINT/SIGTERM in the binary) cancels the per-call contexts
-// immediately, so a running tool's child process tree dies before Serve
-// returns. Stdin closing lets already-dispatched calls finish first, because a
-// host may send one tool call and close its pipe.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	s.out = out
 	ctx, cancel := context.WithCancel(ctx)
@@ -195,8 +166,6 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	select {
 	case readErr = <-read:
 	case <-ctx.Done():
-		// The read stays blocked on stdin, which this process closes when it
-		// exits; the readLoop ctx check stops it dispatching more work.
 	}
 	s.callMu.Lock()
 	s.stopping = true
@@ -214,8 +183,6 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	return writeErr
 }
 
-// readLoop routes frames until stdin closes or ctx is canceled. A canceled ctx
-// returns no error: it is a shutdown, not a transport failure.
 func (s *Server) readLoop(ctx context.Context, in io.Reader) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, scannerInitialBytes), maxFrameBytes)
@@ -237,20 +204,14 @@ func (s *Server) readLoop(ctx context.Context, in io.Reader) error {
 	return nil
 }
 
-// transportError seals a stdin read failure at the transport boundary.
 type transportError struct {
 	err error
 }
 
-// Error implements error.
 func (e *transportError) Error() string { return "read stdin: " + e.err.Error() }
 
-// Unwrap exposes the cause to [errors.Is].
 func (e *transportError) Unwrap() error { return e.err }
 
-// handleLine parses and dispatches one frame. The frame is decoded once: a
-// syntax error is a parse error, while a shape error is an invalid request.
-// Both get a null id; notification-shaped garbage gets no response.
 func (s *Server) handleLine(ctx context.Context, line []byte) {
 	var req rpcRequest
 	if err := json.Unmarshal(line, &req); err != nil {
@@ -271,8 +232,6 @@ func (s *Server) handleLine(ctx context.Context, line []byte) {
 	s.dispatch(ctx, &req)
 }
 
-// dispatch routes one request or notification. Methods outside the subset
-// are method-not-found; notifications never receive a response.
 func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 	switch req.Method {
 	case methodInitialize:
@@ -295,7 +254,6 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 	}
 }
 
-// handleInitialize negotiates the MCP revision and advertises tools only.
 func (s *Server) handleInitialize(req *rpcRequest) {
 	if len(req.ID) == 0 {
 		return
@@ -317,9 +275,6 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 	})
 }
 
-// instructions is the one doctrine block every host sees before its first
-// tool call: the review loop, the single terminal write, and the operator
-// boundary that the tool list alone cannot state.
 func (s *Server) instructions() string {
 	lines := []string{
 		"Review one pull request at a time: fetch, read .review/<pr>, write exactly one review.json, then post.",
@@ -335,8 +290,6 @@ func (s *Server) instructions() string {
 		"triage is not on this surface; it is available only when the server starts with --operator."), lineBreak)
 }
 
-// handleToolsCall validates the call envelope, then runs the tool on its
-// own goroutine so the cancel notification can arrive while it works.
 func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 	if len(req.ID) == 0 {
 		return
@@ -375,9 +328,6 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 	})
 }
 
-// decodeCall decodes one call's arguments into the tool's typed request once,
-// before dispatch, so the worker goroutine never parses params again. A
-// hand-built tool (tests) carries no decoder and owns its request shape.
 func (s *Server) decodeCall(t *tool, id, raw json.RawMessage) (any, bool) {
 	if t.decode == nil {
 		return nil, true
@@ -390,8 +340,6 @@ func (s *Server) decodeCall(t *tool, id, raw json.RawMessage) (any, bool) {
 	return request, true
 }
 
-// call injects the runtime into the already-decoded request and translates
-// the core refusal/success contract into a tool result.
 func (s *Server) call(ctx context.Context, t *tool, request any) any {
 	if t.wire != nil {
 		t.wire(s.bindings(t), request)
@@ -403,11 +351,6 @@ func (s *Server) call(ctx context.Context, t *tool, request any) any {
 	return successResult(t.name, data)
 }
 
-// writeHiddenToolError answers a call to a tool this surface filters out. The
-// MCP spec models an unavailable tool name as a protocol error with -32602
-// (the code it shows for an unknown tool), so the distinction rides in the
-// message and in the error's data, and a truly unknown name keeps the old
-// "unknown tool" answer unchanged.
 func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 	hidden, known := s.hidden[name]
 	if !known {
@@ -419,7 +362,6 @@ func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 		hiddenToolContent{Tool: name, Hidden: true, Requires: hidden.requires})
 }
 
-// bindings snapshots the session runtime a tool's wire function injects.
 func (s *Server) bindings(t *tool) *bindings {
 	return &bindings{
 		env:       s.cfg.Env,
@@ -434,8 +376,6 @@ func (s *Server) bindings(t *tool) *bindings {
 	}
 }
 
-// handleCancelled maps the cancel notification onto the in-flight call's
-// context. Unknown ids are ignored.
 func (s *Server) handleCancelled(req *rpcRequest) {
 	params, ok := decodeParams[cancelParams](req.Params)
 	if !ok || len(params.RequestID) == 0 {
@@ -449,7 +389,6 @@ func (s *Server) handleCancelled(req *rpcRequest) {
 	}
 }
 
-// cancelAll cancels every in-flight call at stdin close.
 func (s *Server) cancelAll() {
 	s.callMu.Lock()
 	defer s.callMu.Unlock()
@@ -458,7 +397,6 @@ func (s *Server) cancelAll() {
 	}
 }
 
-// listTools renders the policy-filtered tool list with reflected schemas.
 func (s *Server) listTools() toolsListResult {
 	out := make([]toolDescriptor, 0, len(s.tools))
 	for _, t := range s.tools {
@@ -478,22 +416,16 @@ func (s *Server) listTools() toolsListResult {
 	return toolsListResult{Tools: out}
 }
 
-// stderrProgress routes core's human/warn/diag observations to stderr; a
-// protocol frame never carries them.
 type stderrProgress struct {
 	w io.Writer
 }
 
-// Human writes one human line.
 func (p stderrProgress) Human(line string) { fmt.Fprintln(p.w, line) }
 
-// Warn writes one warning line.
 func (p stderrProgress) Warn(msg string) { fmt.Fprintf(p.w, "warn: %s\n", msg) }
 
-// Diag writes one raw diagnostic line.
 func (p stderrProgress) Diag(line string) { fmt.Fprintln(p.w, line) }
 
-// negotiate picks the client's revision when supported, else the latest.
 func negotiate(requested string) string {
 	if slices.Contains(supportedProtocols, requested) {
 		return requested
@@ -501,8 +433,6 @@ func negotiate(requested string) string {
 	return latestProtocol
 }
 
-// decodeParams decodes one method's params object; absent or null params
-// leave the zero value, and a false result means malformed params.
 func decodeParams[T any](raw json.RawMessage) (T, bool) {
 	var params T
 	if len(raw) == 0 || string(raw) == jsonNull {
@@ -514,7 +444,6 @@ func decodeParams[T any](raw json.RawMessage) (T, bool) {
 	return params, true
 }
 
-// parseCallParams validates the tools/call params object.
 func parseCallParams(raw json.RawMessage) (callParams, error) {
 	var params callParams
 	if len(raw) == 0 || string(raw) == jsonNull {
@@ -529,10 +458,6 @@ func parseCallParams(raw json.RawMessage) (callParams, error) {
 	return params, nil
 }
 
-// successResult builds the MCP tool result: the CLI envelope's data as one
-// compact text block plus structuredContent. An oversized result keeps its
-// structuredContent whole but swaps the text for an explicit truncation
-// summary, so one huge report cannot silently eat the agent's context.
 func successResult(tool string, data *jq.Obj) callToolResult {
 	raw := rawMarshal(data)
 	if len(raw) <= maxResultTextBytes {
@@ -549,10 +474,6 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 	}
 }
 
-// truncationSummary is the small text block an oversized result carries: the
-// marker, the measured size, the on-disk artifact when the verb reports one,
-// and what to call next. It is JSON so a host can branch on `truncated`
-// without parsing prose.
 func truncationSummary(tool string, data *jq.Obj, size int) string {
 	pairs := []any{
 		"truncated", true,
@@ -574,9 +495,6 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 	return jq.NewObj(pairs...).MarshalCompact()
 }
 
-// refusalResult builds a typed refusal result: isError true, text
-// `code: message\nhint`, and the same fields as structured content, plus
-// `retry_at` when the refusal is retryable.
 func refusalResult(ref *core.RefusalError) callToolResult {
 	hint := core.HintFor(ref.Code)
 	text := ref.Code + ": " + ref.Message + lineBreak + hint
@@ -596,7 +514,6 @@ func refusalResult(ref *core.RefusalError) callToolResult {
 	}
 }
 
-// rpcRequest is one JSON-RPC request or notification frame.
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
@@ -604,7 +521,6 @@ type rpcRequest struct {
 	Params  json.RawMessage `json:"params"`
 }
 
-// rpcResponse is one JSON-RPC result or error frame.
 type rpcResponse struct { //nolint:govet // field order mirrors the wire frame
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
@@ -612,29 +528,23 @@ type rpcResponse struct { //nolint:govet // field order mirrors the wire frame
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
-// rpcError is the JSON-RPC error object. Data is the spec's escape hatch for
-// machine-readable detail; absent data leaves the frame byte-identical to the
-// subset this server has always written.
 type rpcError struct { //nolint:govet // field order mirrors the wire frame
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"`
 }
 
-// hiddenToolContent is the data of a hidden-tool protocol error.
 type hiddenToolContent struct { //nolint:govet // field order mirrors the wire frame
 	Tool     string `json:"tool"`
 	Hidden   bool   `json:"hidden"`
 	Requires string `json:"requires"`
 }
 
-// callParams is the tools/call params subset.
 type callParams struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 }
 
-// initializeParams is the initialize params subset.
 type initializeParams struct {
 	ProtocolVersion string `json:"protocolVersion"`
 }
@@ -646,7 +556,6 @@ type cancelParams struct {
 	RequestID json.RawMessage `json:"requestId"`
 }
 
-// toolDescriptor is one tools/list entry.
 type toolDescriptor struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
@@ -654,8 +563,6 @@ type toolDescriptor struct {
 	Annotations toolAnnotations `json:"annotations"`
 }
 
-// toolAnnotations is the MCP hint block. Every field is always emitted, so a
-// host never has to infer a protocol default.
 type toolAnnotations struct {
 	Title           string `json:"title"`
 	ReadOnlyHint    bool   `json:"readOnlyHint"`
@@ -664,25 +571,21 @@ type toolAnnotations struct {
 	OpenWorldHint   bool   `json:"openWorldHint"`
 }
 
-// toolsListResult is the tools/list result.
 type toolsListResult struct {
 	Tools []toolDescriptor `json:"tools"`
 }
 
-// contentBlock is one MCP text content block.
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
 
-// callToolResult is the tools/call result.
 type callToolResult struct {
 	Content           []contentBlock  `json:"content"`
 	StructuredContent json.RawMessage `json:"structuredContent,omitempty"`
 	IsError           bool            `json:"isError"`
 }
 
-// refusalContent is the refusal's structured content.
 type refusalContent struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -690,7 +593,6 @@ type refusalContent struct {
 	RetryAt string `json:"retry_at,omitempty"`
 }
 
-// initializeResult is the initialize result.
 type initializeResult struct { //nolint:govet // field order mirrors the wire frame
 	ProtocolVersion string         `json:"protocolVersion"`
 	Capabilities    map[string]any `json:"capabilities"`
@@ -705,17 +607,14 @@ type serverInfo struct {
 	Experimental bool   `json:"experimental"`
 }
 
-// writeResult emits a JSON-RPC result frame.
 func (s *Server) writeResult(id json.RawMessage, result any) {
 	s.writeFrame(rpcResponse{JSONRPC: jsonRPCVersion, ID: id, Result: result})
 }
 
-// writeError emits a JSON-RPC error frame.
 func (s *Server) writeError(id json.RawMessage, code int, message string) {
 	s.writeFrame(rpcResponse{JSONRPC: jsonRPCVersion, ID: id, Error: &rpcError{Code: code, Message: message}})
 }
 
-// writeErrorData emits a JSON-RPC error frame with structured detail.
 func (s *Server) writeErrorData(id json.RawMessage, code int, message string, data any) {
 	s.writeFrame(rpcResponse{JSONRPC: jsonRPCVersion, ID: id, Error: &rpcError{Code: code, Message: message, Data: data}})
 }
@@ -746,7 +645,6 @@ func (s *Server) writeFrame(resp rpcResponse) {
 	}
 }
 
-// logf writes a diagnostic to stderr, never stdout.
 func (s *Server) logf(format string, args ...any) {
 	fmt.Fprintf(s.cfg.Stderr, "mcp: "+format+"\n", args...)
 }

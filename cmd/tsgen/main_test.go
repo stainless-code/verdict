@@ -10,8 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// seed writes the generated file under a temp repository root, creating the
-// parent directories execute expects.
 func seed(t *testing.T, root, body string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(codesRelPath))
@@ -49,7 +47,6 @@ func TestRenderRefusalCodesQuotesSafely(t *testing.T) {
 	}
 }
 
-// runCapture runs one invocation and collects its streams.
 func runCapture(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errs bytes.Buffer

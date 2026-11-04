@@ -9,9 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// checkRepoEscape owns the verify-repo-escape arms: device/proc/sys
-// access, dot-dot traversal, tilde/home targets, and absolute paths
-// outside the repo (and /tmp scratch).
 func checkRepoEscape(g *gateText) *core.RefusalError {
 	if ref := checkEscapeWords(g); ref != nil {
 		return ref
@@ -19,7 +16,6 @@ func checkRepoEscape(g *gateText) *core.RefusalError {
 	return checkAbsPaths(g)
 }
 
-// checkEscapeWords owns the device, traversal, and home-target arms.
 func checkEscapeWords(g *gateText) *core.RefusalError {
 	if frag := grepO(reDevProcSys, g.bare); frag != "" {
 		return refuse(codeRepoEscape, frag, "/dev|/proc|/sys access escapes the repo")
@@ -36,8 +32,6 @@ func checkEscapeWords(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// checkAbsPaths owns the absolute-path arm: paths under /tmp or the
-// invocation root pass, the rest refuse.
 func checkAbsPaths(g *gateText) *core.RefusalError {
 	barepaths := rePathPlumb.ReplaceAllString(" "+g.bare, " varpath")
 	cands := reAbsPath.FindAllString(barepaths, -1)
@@ -59,9 +53,6 @@ func checkAbsPaths(g *gateText) *core.RefusalError {
 	return nil
 }
 
-// normAbsPath strips the separator prefix from an absolute-path candidate
-// and reports whether it stays inside the allowed roots (/tmp scratch or
-// the invocation root).
 func normAbsPath(c, lroot string) (string, bool) {
 	if c == "" {
 		return "", true
@@ -75,7 +66,6 @@ func normAbsPath(c, lroot string) (string, bool) {
 	return c, lroot != "" && lroot != "/" && (c == lroot || strings.HasPrefix(c, lroot+"/"))
 }
 
-// Repo-escape patterns.
 var (
 	reDevProcSys = regexp.MustCompile(`/(dev|proc|sys)([^a-z0-9_]|$)`)
 	reDotDot     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])\.\.([[:space:];|&(){}"=,/]|$)`)

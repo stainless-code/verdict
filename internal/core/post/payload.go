@@ -15,14 +15,6 @@ import (
 	sigsum "github.com/stainless-code/verdict/internal/sig"
 )
 
-// buildPayloads owns the payload construction: only GitHub-known comment
-// keys ship (triage fields stay in findings.json), and suggestions render as
-// fenced blocks inside body. The first payload carries the review (event,
-// commit, inline comments); each follow-up carries one over-limit body part
-// as a COMMENT with no inline comments.
-// Pretty-printed in insertion order with a 2-space indent and no trailing
-// newline.
-// The stub-log comparison covers these bytes exactly.
 func (st *state) buildPayloads() {
 	st.comments = buildPostComments(st.merged.Kept, st.merged.KeptSigs)
 	st.embedded = countEmbedded(st.merged.Kept)
@@ -32,10 +24,6 @@ func (st *state) buildPayloads() {
 		st.payloads = append(st.payloads, postPayload(
 			splitFollowHead(i+2, n)+extra, eventComment, commitIDValue(st.commitID), []any{}))
 	}
-	// Hash the marker-less payload, then append the hidden marker carrying
-	// that hash and the reviewed SHA: a re-post can then be recognized from
-	// the live review without hashing a body that contains its own hash.
-	// Dry runs stay marker-free and report the same hash a real post arms.
 	st.phash = sigsum.Sum(st.payloadBytes())
 	if !st.flags.DryRun {
 		st.body += "\n\n" + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
@@ -44,7 +32,6 @@ func (st *state) buildPayloads() {
 	st.payload = st.payloads[0]
 }
 
-// postPayload renders one reviews-POST payload in the wire shape.
 func postPayload(body, event string, commitID any, comments []any) string {
 	return jq.NewObj(
 		"body", body,
@@ -54,14 +41,10 @@ func postPayload(body, event string, commitID any, comments []any) string {
 	).MarshalPretty()
 }
 
-// payloadBytes joins every posted payload for the duplicate guard: a single
-// part joins to itself, so the marker stays byte-identical there.
 func (st *state) payloadBytes() []byte {
 	return []byte(strings.Join(st.payloads, "\n"))
 }
 
-// commitIDValue renders commit_id: an empty value reads null, anything else
-// rides through.
 func commitIDValue(commitID string) any {
 	if commitID == "" {
 		return nil
@@ -75,38 +58,22 @@ func commitIDValue(commitID string) any {
 // submitting a doomed review.
 const hostingBodyLimit = 65536
 
-// maxSplitParts bounds the continuation-note reserve: the 32 MiB
-// agent-input cap fits at most ~500 hosting-sized parts, so three
-// digits always suffice.
 const maxSplitParts = 999
 
-// splitNoteReserve caps any continuation note, so the split budget needs no
-// second pass: the first part always has room for its note, and follow-ups
-// always have room for their headers.
 var splitNoteReserve = max(len(splitFirstNote(maxSplitParts+1)), len(splitFollowHead(maxSplitParts, maxSplitParts)))
 
-// paraSep splits body parts on paragraph boundaries.
 const paraSep = "\n\n"
 
-// splitFirstNote tells the reader the review continues in follow-ups.
 func splitFirstNote(n int) string {
 	return fmt.Sprintf("\n\n> ⚠️ Note: this review continues in %d follow-up "+
 		"comment(s) below (split at the 65,536-char hosting limit).", n-1)
 }
 
-// splitFollowHead opens each follow-up part.
 func splitFollowHead(k, n int) string {
 	return fmt.Sprintf("> ℹ️ Note: review body continued (part %d/%d — split "+
 		"at the 65,536-char hosting limit; see findings.json for the full text).\n\n", k, n)
 }
 
-// splitPreFooter enforces the hosting body limit as the shared merge's
-// pre-footer hook: it runs after the diagram strips (entries already derive
-// from the full body) and before the footer receipt, reserving the footer
-// block plus its separator so the appended receipt always survives intact.
-// An over-limit body splits into hosting-sized parts: the first part returns
-// here (the footer still appends to it) and the rest stash for follow-up
-// review POSTs. A body that fits with its footer passes through untouched.
 func (st *state) splitPreFooter(body string) string {
 	block, ferr := provenance.RenderFooter(recordcore.FooterOpts(
 		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
@@ -117,8 +84,6 @@ func (st *state) splitPreFooter(body string) string {
 	if block != "" {
 		sep = "\n\n"
 	}
-	// Reserve the hidden marker too: post appends it after the footer once
-	// the payload hash exists, and the posted body must still fit.
 	reserve := len(sep) + len(block) + reviewMarkerReserve
 	if len(body)+reserve <= hostingBodyLimit {
 		return body
@@ -135,9 +100,6 @@ func (st *state) splitPreFooter(body string) string {
 	return head
 }
 
-// splitBody chunks text into parts of at most budget bytes: over-long
-// paragraphs split on rune boundaries first, then chunks pack greedily
-// onto parts, so every part stays valid UTF-8.
 func splitBody(text string, budget int) []string {
 	budget = max(budget, 1)
 	if len(text) <= budget {
@@ -164,8 +126,6 @@ func splitBody(text string, budget int) []string {
 	return parts
 }
 
-// bodyChunks splits text into paragraph chunks of at most budget bytes,
-// cutting over-long paragraphs on rune boundaries.
 func bodyChunks(text string, budget int) []string {
 	var out []string
 	for para := range strings.SplitSeq(text, paraSep) {
@@ -174,8 +134,6 @@ func bodyChunks(text string, budget int) []string {
 	return out
 }
 
-// runeChunks cuts one paragraph into chunks of at most budget bytes on
-// rune boundaries.
 func runeChunks(para string, budget int) []string {
 	var out []string
 	for len(para) > 0 {
@@ -186,9 +144,6 @@ func runeChunks(para string, budget int) []string {
 	return out
 }
 
-// fitRunes returns the longest byte prefix of s that fits space and ends on
-// a rune boundary. Callers keep space at or above the widest rune, so the
-// walk-back below always lands.
 func fitRunes(s string, space int) int {
 	if len(s) <= space {
 		return len(s)
@@ -204,12 +159,6 @@ func fitRunes(s string, space int) int {
 	return cut
 }
 
-// buildPostComments owns the post_comments projection: only GitHub-known
-// comment keys ship, suggestions render as fenced blocks inside body, and
-// null-valued keys drop; false values ship.
-// Each inline comment also carries verdict's hidden finding marker (its sig
-// as the final line), which links the posted thread back to the finding on
-// the next threads.json read.
 func buildPostComments(kept []any, sigs []string) []any {
 	out := make([]any, 0, len(kept))
 	for i, c := range kept {
@@ -226,7 +175,6 @@ func buildPostComments(kept []any, sigs []string) []any {
 	return out
 }
 
-// projectComment projects one kept comment onto the posted keys.
 func projectComment(m *jq.Obj, sig string) *jq.Obj {
 	out := jq.NewObj()
 	for _, k := range []string{fieldPath, fieldLine, "side", fieldBody, fieldStartLine} {
@@ -246,7 +194,6 @@ func projectComment(m *jq.Obj, sig string) *jq.Obj {
 	return out
 }
 
-// countEmbedded owns the embedded-suggestion count over kept comments.
 func countEmbedded(kept []any) int {
 	n := 0
 	for _, c := range kept {
@@ -262,8 +209,6 @@ func countEmbedded(kept []any) int {
 	return n
 }
 
-// splitNote names the follow-up count on the dry-run preview, empty when
-// the review posts as one part.
 func splitNote(st *state) string {
 	if len(st.payloads) <= 1 {
 		return ""
@@ -271,8 +216,6 @@ func splitNote(st *state) string {
 	return fmt.Sprintf(" (split into %d review comments at the hosting limit)", len(st.payloads))
 }
 
-// postCommentKeys owns the dry-run comment-keys summary: the first
-// comment's unsorted keys joined by commas ("" when no comments posted).
 func postCommentKeys(comments []any) string {
 	if len(comments) == 0 {
 		return ""
@@ -284,9 +227,6 @@ func postCommentKeys(comments []any) string {
 	return strings.Join(m.Keys, ",")
 }
 
-// previewDryRun prints the human dry-run preview in wire order: the
-// payload summary, the footer preview when one renders, and the diagram line
-// unless the diagram is absent.
 func (st *state) previewDryRun(footerText string) {
 	st.human("dry-run: payload NOT posted. body chars: " +
 		strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
@@ -298,10 +238,6 @@ func (st *state) previewDryRun(footerText string) {
 	}
 }
 
-// dryRunResponse owns the dry-run exit: the payload preview on the human
-// stream, or the dry-run envelope inputs (payload hash, footer and diagram
-// disposition included). Nothing posts, nothing arms. Both modes report the
-// same envelope; only the human preview lines and the payload hash differ.
 func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	footerText, ferr := provenance.RenderFooter(recordcore.FooterOpts(
 		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
@@ -312,8 +248,6 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	if footerText != "" {
 		footerVal = footerText
 	}
-	// Human mode previews the payload instead of reporting its hash; a real
-	// post is the only path that arms it, so the human envelope carries "".
 	payloadHash := ""
 	if st.req.JSONMode {
 		payloadHash = st.phash

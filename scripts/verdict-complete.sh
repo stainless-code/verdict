@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
-# Completion for the verdict CLI — bash + zsh, offline-safe.
-# Static verb/flag/value lists only: sourcing or completing never runs gh,
-# git, jq, or the network, so this keeps working when offline.
 #
-# bash:  source scripts/verdict-complete.sh   (completes `verdict`)
-# zsh:   source scripts/verdict-complete.sh   (registers via compdef; under
-#        bashcompinit the bash completer below is reused instead)
 #
-# Lists mirror the unknown-flag lines in the CLI usage text; update both together.
 
-# Verbs, one per line (printf keeps this free of arrays and word-splitting
-# quirks, which differ between bash and zsh).
 _verdict_verbs() {
   printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready trend learn init skill upgrade uninstall
 }
 
-# Flags for a verb, one per line.
 _verdict_flags() { # $1 = verb
   case "$1" in
     fetch) printf '%s\n' --base-sha --since --provider --consent-over-budget --json;;
@@ -40,9 +30,6 @@ _verdict_flags() { # $1 = verb
   esac
 }
 
-# Static values for value-flags, one per line. Path/sha-like flags (repo, pr,
-# --range, --sig, ...) are intentionally absent: their values are dynamic and
-# completing them would need gh/git reads.
 _verdict_values() { # $1 = verb, $2 = flag
   case "$2" in
     --provider) printf '%s\n' github gitlab gitcafe forgejo bitbucket azure;;
@@ -69,7 +56,6 @@ _verdict_values() { # $1 = verb, $2 = flag
   esac
 }
 
-# True when $1 is a known verb (printf avoids pattern-quoting pitfalls).
 _verdict_is_verb() {
   local w="$1" v
   while IFS= read -r v; do
@@ -141,7 +127,6 @@ _verdict_zsh_complete() {
   return 0
 }
 
-# Registration is additive and silent: unknown shells get nothing.
 if [[ -n "${BASH_VERSION:-}" ]]; then
   complete -F _verdict_bash_complete verdict 2>/dev/null || true
 elif [[ -n "${ZSH_VERSION:-}" ]]; then

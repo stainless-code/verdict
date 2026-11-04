@@ -47,7 +47,6 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	return st.finalize(dir, prov, headFull, now, &res)
 }
 
-// bundle resolves the bundle dir, provider, store, head, and clock.
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {
 	req := st.req
 	dir = readcommon.ResolveBundleDir(req.Pr)
@@ -64,8 +63,6 @@ func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError
 	return dir, prov, resolveHead(dir, st.store, prov), req.TimeUTC(), nil
 }
 
-// loadInputs snapshots hunks and loads the review, mapping core errors to
-// typed refusals.
 func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
 	if err := EnsureHunksSnapshot(st.runtime(), dir); err != nil {
 		return nil, refusalOrFailed(err)
@@ -77,7 +74,6 @@ func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
 	return review, nil
 }
 
-// merge runs the shared validate_and_merge core for the record verb.
 func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
 	req := st.req
 	rt := st.runtime()
@@ -103,8 +99,6 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 	return res, nil
 }
 
-// refusalOrFailed passes typed core refusals through and wraps anything
-// else as a record-failed edge error.
 func refusalOrFailed(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -112,8 +106,6 @@ func refusalOrFailed(err error) *core.RefusalError {
 	return recordFailed(err)
 }
 
-// svc carries one record run: the request, the decoded bundle store, and
-// the warnings accumulated before the response or refusal.
 type svc struct {
 	req      *core.RecordRequest
 	controls *controls.Snapshot
@@ -137,8 +129,6 @@ func BundleBase(dir string, store *readcommon.Bundle) string {
 	return store.StrField("base_sha")
 }
 
-// runtime builds the injected runtime for the merge: the request's env,
-// clock, and a warning-collecting progress observer.
 func (st *svc) runtime() core.Runtime {
 	var rt core.Runtime
 	if st.req.Runtime != nil {
@@ -148,21 +138,17 @@ func (st *svc) runtime() core.Runtime {
 	return rt
 }
 
-// warnCollector forwards progress observations to the adapter while
-// accumulating every warning for the envelope.
 type warnCollector struct {
 	inner    core.Progress
 	warnings *[]string
 }
 
-// Human forwards one human output line.
 func (w warnCollector) Human(line string) {
 	if w.inner != nil {
 		w.inner.Human(line)
 	}
 }
 
-// Warn records and forwards one warning.
 func (w warnCollector) Warn(msg string) {
 	*w.warnings = append(*w.warnings, msg)
 	if w.inner != nil {
@@ -170,27 +156,21 @@ func (w warnCollector) Warn(msg string) {
 	}
 }
 
-// Diag forwards one raw diagnostic line.
 func (w warnCollector) Diag(line string) {
 	if w.inner != nil {
 		w.inner.Diag(line)
 	}
 }
 
-// withWarnings attaches the accumulated warnings to a refusal so the
-// adapter's envelope stays byte-identical to a success run's warning list.
 func (st *svc) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	ref.Warnings = st.warnings
 	return ref
 }
 
-// recordFailed wraps a non-refusal failure for the edge to render.
 func recordFailed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("record failed: %v", err)}
 }
 
-// finalize writes the record artifact, streams the summary, and builds the
-// typed response.
 func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*core.RecordResponse, *core.RefusalError) {
 	nOpen := CountStatus(res.Entries, statusOpen)
 	nDeferred := CountStatus(res.Entries, "deferred")
@@ -239,8 +219,6 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 	}, nil
 }
 
-// intOrNil reads an agent confidence as an int (nil when absent or exotic;
-// the raw value still renders through ConfidenceRaw).
 func intOrNil(v any) *int {
 	if v == nil {
 		return nil
@@ -251,7 +229,6 @@ func intOrNil(v any) *int {
 	return nil
 }
 
-// strOrNil reads an agent security summary as a string (nil when absent).
 func strOrNil(v any) *string {
 	if v == nil {
 		return nil
@@ -262,7 +239,6 @@ func strOrNil(v any) *string {
 	return nil
 }
 
-// modelOrNil reads the provenance model (nil when unrecorded).
 func modelOrNil(model string) *string {
 	if model == "" {
 		return nil
@@ -270,8 +246,6 @@ func modelOrNil(model string) *string {
 	return &model
 }
 
-// typedItems builds the typed envelope summaries alongside the ordered
-// items the wire renders verbatim.
 func typedItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {
@@ -292,12 +266,8 @@ func typedItems(entries []any) []core.FindingItem {
 	return items
 }
 
-// resolveProvider maps the bundle dir to its provider, refusing non-bundles.
 func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.RefusalError) {
 	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
-		// Corpus bundles are marked, local-shaped runs: record merges their
-		// reviewed output exactly like a local bundle, while post/ready keep
-		// refusing them (they have no PR target).
 		return providerLocal, nil
 	}
 	switch prov := store.Provider(); prov {
@@ -310,7 +280,6 @@ func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.Refusa
 	}
 }
 
-// checkBundleFiles refuses when the bundle's required files are absent.
 func checkBundleFiles(dir, prov string) *core.RefusalError {
 	files := []struct {
 		path string
@@ -337,7 +306,6 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 	return nil
 }
 
-// resolveHead reads the reviewed SHA, defaulting per provider.
 func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 	if prov == providerLocal {
 		if headFull := readcommon.JSONStr(dir+"/source.json", "head_sha"); headFull != "" {
@@ -351,7 +319,6 @@ func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 	return "unknown"
 }
 
-// sha256File streams full.diff into sha256, like shasum -a 256.
 func sha256File(path string) string {
 	raw, err := os.ReadFile(path)
 	if err != nil {

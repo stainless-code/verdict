@@ -42,7 +42,6 @@ func CanonFloat(f float64) string {
 	return strconv.FormatFloat(f, 'g', -1, floatBits)
 }
 
-// floatBits is the float precision for rendering and parsing.
 const floatBits = 64
 
 // NumVal extracts a numeric value: JSON numbers (either decoder spelling),
@@ -74,7 +73,6 @@ func NumOr(v any) float64 {
 	return f
 }
 
-// parseJSONFloat parses one JSON number literal.
 func parseJSONFloat(lit string) (float64, bool) {
 	f, err := strconv.ParseFloat(lit, floatBits)
 	if err != nil {
@@ -83,8 +81,6 @@ func parseJSONFloat(lit string) (float64, bool) {
 	return f, true
 }
 
-// Type ranks for jq's total value order: null < false < true < numbers <
-// strings < arrays < objects.
 const (
 	rankNull   = 0
 	rankFalse  = 1
@@ -149,7 +145,6 @@ func asString(v any) string {
 	return jq.Str(v)
 }
 
-// cmpInt orders integers.
 func cmpInt(a, b int) int {
 	switch {
 	case a < b:
@@ -161,7 +156,6 @@ func cmpInt(a, b int) int {
 	}
 }
 
-// cmpBool orders booleans (false before true).
 func cmpBool(a, b bool) int {
 	switch {
 	case a == b:
@@ -173,7 +167,6 @@ func cmpBool(a, b bool) int {
 	}
 }
 
-// cmpFloat orders floats.
 func cmpFloat(a, b float64) int {
 	switch {
 	case a < b:
@@ -200,8 +193,6 @@ func EffortTier(eff any) string {
 	}
 }
 
-// jsonFieldAt decodes path (capped) and returns one field of its top-level
-// object, reporting whether the document and the field are usable.
 func jsonFieldAt(path, field string) (any, bool) {
 	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {

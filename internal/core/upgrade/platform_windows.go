@@ -16,9 +16,6 @@ import (
 // that has already exited.
 const errInvalidParameter syscall.Errno = 87
 
-// writableDir reports whether the install directory looks usable. Windows
-// ACLs are not portable to stat, so the real staging write reports the
-// actionable error.
 func writableDir(dir string) bool {
 	info, err := os.Stat(dir)
 	return err == nil && info.IsDir()
@@ -45,12 +42,9 @@ func removePathMarker(ctx context.Context, _ map[string]string, installDir strin
 	return "user PATH", true, nil
 }
 
-// waitProcess opens the parent PID with SYNCHRONIZE and blocks until it
-// exits, so the helper never renames the running image early.
 func waitProcess(ctx context.Context, pid int) error {
 	handle, err := syscall.OpenProcess(syscall.SYNCHRONIZE, false, uint32(pid))
 	if err != nil {
-		// The parent already exited (invalid parameter) is the success case.
 		if errors.Is(err, errInvalidParameter) {
 			return nil
 		}

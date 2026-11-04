@@ -13,9 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// buildHunksTSV writes the hunk index through the shared parser: identical
-// rows (the one degenerate "@@ "-with-no-ranges line reads empty in Go and
-// a 0/0 row pair in awk — unreachable from real diffs).
 func buildHunksTSV(fullDiff, out string) error {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
@@ -27,8 +24,6 @@ func buildHunksTSV(fullDiff, out string) error {
 	return nil
 }
 
-// diffFiles owns the toc coverage-manifest file scan: paths with hunks in
-// diff order, sorted unique; the manifest file lands beside the bundle.
 func diffFiles(fullDiff, dir string) ([]string, error) {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
@@ -89,9 +84,6 @@ func toJSONArray(s string) []any {
 	return out
 }
 
-// writeTocRolesGitHub writes the TOC and roles on the GitHub path: the PR
-// title line, the grep -n diff header index, the gh files stat, and the
-// coverage manifest with the omitted list.
 func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, withHunks []string, omitted []string) error {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# TOC for PR #%s (%s) — read ranges as coverage checklist\n\n", ctx.pr, ctx.repo)
@@ -213,8 +205,6 @@ func emitContext(ctx *fetchRunCtx) *core.RefusalError {
 	return emitLearnings(ctx)
 }
 
-// emitPanel owns the panel notice: the pinned list writes and prints,
-// else the none-pinned line prints outside compact mode.
 func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.RefusalError {
 	if len(panelList) > 0 {
 		var sb strings.Builder
@@ -294,9 +284,6 @@ func ensureStore(dir string) error {
 	return atomic.WriteFile(dir+"/store.json", []byte("{\n  \"schema_version\": \"1\"\n}\n"))
 }
 
-// rolesForPaths assigns the grouped triage roles over the
-// newline-separated path list, byte-ordered (LC_ALL=C collation); roles
-// sort by group then path via the same key.
 // roleRow is one sortable path with its heuristic role.
 type roleRow struct {
 	role string
@@ -344,16 +331,10 @@ func (w *roleWriter) visit(r roleRow) {
 	w.sb.WriteString("- " + r.path + newline)
 }
 
-// rolesForPathsText owns the `printf '%s\n' "$text" | roles_for_paths`
-// pipeline: the text plus its trailing newline feeds the sorter, so an
-// empty text still feeds one empty line (the degenerate "## source" block).
 func rolesForPathsText(text string) string {
 	return rolesForPaths(strings.Split(text, newline))
 }
 
-// rolesTextEmpty owns the `jq -r '.files[].path' | roles_for_paths`
-// pipeline: zero rows feed zero lines, so an empty file list renders the
-// empty roles file.
 func rolesTextEmpty(paths []string) string {
 	if len(paths) == 0 {
 		return ""
@@ -361,10 +342,6 @@ func rolesTextEmpty(paths []string) string {
 	return rolesForPaths(paths)
 }
 
-// splitLines splits one entry per input line, dropping only the final
-// empty field of a
-// newline-terminated input. Carriage returns stay (unlike [strings.Lines]),
-// and an empty input yields no lines.
 func splitLines(s string) []string {
 	if s == "" {
 		return nil

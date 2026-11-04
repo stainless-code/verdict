@@ -56,8 +56,6 @@ func Run(ctx context.Context, req *core.FetchRequest) (*core.FetchResponse, erro
 	return st.dispatch(ctx, s, req)
 }
 
-// dispatch validates the provider, runs the bundle preamble, and drives
-// the GitHub or provider backend.
 func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchRequest) (*core.FetchResponse, error) {
 	f, ref := st.provider(req.Flags)
 	if ref != nil {
@@ -79,8 +77,6 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	return st.response(req, data, next), nil
 }
 
-// provider validates the provider name, defaulting to GitHub like the
-// flag parser.
 func (st *state) provider(f core.FetchFlags) (core.FetchFlags, *core.RefusalError) {
 	if f.Provider == "" {
 		f.Provider = providerGitHub
@@ -94,7 +90,6 @@ func (st *state) provider(f core.FetchFlags) (core.FetchFlags, *core.RefusalErro
 	}
 }
 
-// backend drives the GitHub or provider backend for a validated request.
 func (st *state) backend(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
 ) (*core.FetchData, string, error) {
@@ -286,12 +281,6 @@ func discardNil(w io.Writer) io.Writer {
 	return w
 }
 
-// session is the service's runner: the adapter's streams plus the warning
-// accumulation and exec seam the moved bodies thread through. The iso
-// field carries the fetch-local --worktree checkout (nil on every other
-// path); the local bundle readers check it instead of branching on flags.
-// Method names mirror the old *cli.Runner surface so the moved bodies stay
-// byte-identical.
 type session struct {
 	Human     io.Writer
 	Diag      io.Writer
@@ -326,8 +315,6 @@ func (s *session) retryTime(wait time.Duration) string {
 	return retry.At(now, wait)
 }
 
-// Warn records a warning and streams it through the progress observer,
-// exactly like the CLI runner (the observer owns the `warn: ` prefix).
 func (s *session) Warn(msg string) {
 	*s.warnings = append(*s.warnings, msg)
 	if s.progress != nil {

@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
-# Case terminal-write: exactly-one terminal write + the no-review-note rule.
 #
-# Grades:
-#   T1  doctrine pins: SKILL.md names exactly one terminal write per router row,
-#       and the delta row resolves to "one review OR no-review note".
-#   T2  no-review-note rule, enforced: a degenerate body (short, no verdict
-#       marker) is refused with degenerate-body and writes no findings file —
-#       an empty review never ships.
-#   T3  exactly-one terminal write, behavioral: a valid review via
-#       post --dry-run --json emits exactly one JSON doc on stdout carrying a
-#       single event, and records exactly one findings file.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# --- T1: doctrine pins ---
 if grep -q "Exactly one terminal write" "$EVAL_SKILL/SKILL.md"; then
   good "SKILL.md pins exactly-one terminal write"
 else
@@ -36,7 +25,6 @@ fi
 PR=4241
 eval_mk_bundle "$PR"
 
-# --- T2: degenerate bodies never ship ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"hi","approved":false,"comments":[]}
 EOF
@@ -58,7 +46,6 @@ else
   bad "refused review still wrote findings.dryrun.json"
 fi
 
-# --- T3: one valid review in, one terminal write out ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"pointed","severity":"informational"}]}
 EOF

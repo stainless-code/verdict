@@ -64,7 +64,6 @@ func (c *Ctx) ResolvePolicy(env map[string]string, kbExists bool) {
 	c.resolveMaxFPRate(env)
 }
 
-// resolveMinJudged resolves the revalidate quorum from env, then file.
 func (c *Ctx) resolveMinJudged(env map[string]string) {
 	if raw, ok := env[envMinJudged]; ok && raw != "" {
 		v := strings.TrimSpace(raw)
@@ -82,7 +81,6 @@ func (c *Ctx) resolveMinJudged(env map[string]string) {
 	}
 }
 
-// resolveMinJudgedFile resolves the quorum from the policy file.
 func (c *Ctx) resolveMinJudgedFile() {
 	raw := c.policyLine(PolicyFile, envMinJudged, "MIN_JUDGED")
 	if raw == "" {
@@ -95,7 +93,6 @@ func (c *Ctx) resolveMinJudgedFile() {
 	}
 }
 
-// resolveMaxFPRate resolves the retire ceiling from env, then file.
 func (c *Ctx) resolveMaxFPRate(env map[string]string) {
 	if raw, ok := env[envMaxFPRate]; ok && raw != "" {
 		v := strings.TrimSpace(raw)
@@ -110,7 +107,6 @@ func (c *Ctx) resolveMaxFPRate(env map[string]string) {
 	}
 }
 
-// resolveMaxFPRateFile resolves the ceiling from the policy file.
 func (c *Ctx) resolveMaxFPRateFile() {
 	raw := c.policyLine(PolicyFile, envMaxFPRate, "MAX_FP_RATE")
 	if raw == "" {
@@ -123,8 +119,6 @@ func (c *Ctx) resolveMaxFPRateFile() {
 	}
 }
 
-// policyLine reads the last matching KEY= line from the policy file,
-// trimmed. Missing/unreadable files read empty.
 func (c *Ctx) policyLine(path, k1, k2 string) string {
 	raw, ok := c.ReadFile(path)
 	if !ok {
@@ -149,8 +143,6 @@ func isPositiveInt(s string) bool {
 	return ok
 }
 
-// positiveInt parses a strict positive integer, refusing a value that
-// overflows an int instead of wrapping it negative.
 func positiveInt(s string) (int, bool) {
 	if !jq.Digits(s) {
 		return 0, false
@@ -172,7 +164,6 @@ func isRate(s string) bool {
 	return err == nil && f >= 0 && f <= 1
 }
 
-// scanRate validates the rate shape, returning the digit count.
 func scanRate(s string) (int, bool) {
 	if s == "" {
 		return 0, false
@@ -218,7 +209,6 @@ func (c *Ctx) NormalizeEntry(entry *jq.Obj, kbExists bool) any {
 	return norm.out
 }
 
-// normalizer accumulates normalized kb ids with warn-and-drop.
 type normalizer struct {
 	c        *Ctx
 	seen     map[string]bool
@@ -227,7 +217,6 @@ type normalizer struct {
 	kbExists bool
 }
 
-// add normalizes one kb id element.
 func (n *normalizer) add(item any) {
 	s, isStr := item.(string)
 	if !isStr {
@@ -283,8 +272,6 @@ func (n *normalizer) live(s string) bool {
 	return false
 }
 
-// readRows slurps the decision store order-preserving. ok is false when the
-// file is missing, oversized, or does not parse.
 func (c *Ctx) readRows() ([]*jq.Obj, bool) {
 	raw, ok := c.ReadFile(File)
 	if !ok {
@@ -297,9 +284,6 @@ func (c *Ctx) readRows() ([]*jq.Obj, bool) {
 	return rows, true
 }
 
-// readJoins slurps the joins log; the second return is false when the file
-// exists but does not parse (an oversized log reads as no joins, like any
-// other unreadable store).
 func readJoins() ([]*jq.Obj, bool) {
 	raw, err := jq.CappedFile(Joins, jq.MaxKBBytes)
 	if err != nil {
@@ -312,17 +296,11 @@ func readJoins() ([]*jq.Obj, bool) {
 	return rows, true
 }
 
-// Policy defaults and parsing constants.
 const (
-	// defaultMinJudged is the revalidate quorum when no knob is set.
 	defaultMinJudged = 5
-	// defaultMaxFPRate is the retire ceiling when no knob is set.
 	defaultMaxFPRate = "0.5"
-	// floatBits is the precision for threshold rate parsing.
-	floatBits = 64
-	// kbListCap caps the human `kb list` rendering.
-	kbListCap = 5
-	// envMinJudged and envMaxFPRate are the policy environment knobs.
-	envMinJudged = "REVIEW_KB_MIN_JUDGED"
-	envMaxFPRate = "REVIEW_KB_MAX_FP_RATE"
+	floatBits        = 64
+	kbListCap        = 5
+	envMinJudged     = "REVIEW_KB_MIN_JUDGED"
+	envMaxFPRate     = "REVIEW_KB_MAX_FP_RATE"
 )

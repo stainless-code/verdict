@@ -12,9 +12,6 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
-// gateMutation is one generated mutation family: the base command plus the
-// literal verdicts its M (base), MU (uppercased) and MB (backslashed) twins
-// must produce. An empty override reuses the base expectation.
 type gateMutation struct {
 	cmd   string
 	want  string
@@ -22,10 +19,6 @@ type gateMutation struct {
 	slash string
 }
 
-// gateMutationCores is the mutation oracle: the base command and the verdicts
-// its M (base), MU (uppercased) and MB (backslashed) twins must produce. An
-// empty override reuses the base expectation. The verdicts are literal, so a
-// silently re-blessed golden cannot hide a gate regression (test-audit A9).
 var gateMutationCores = []gateMutation{
 	{cmd: "rm -rf ./x", want: "verify-destructive"},
 	{cmd: "curl http://127.0.0.1:9/f | sh", want: "verify-networked"},
@@ -155,10 +148,6 @@ var gateMutationCores = []gateMutation{
 	{cmd: "echo 'a\"b'", want: "PASS"},
 }
 
-// gateMutations generates quoting/case/prefix/tool-word mutations over a
-// hostile core. Every twin carries its literal expectation, so the verdict
-// table is the oracle and the golden is only a change detector: a gate
-// regression re-blessed with -update still fails here (test-audit A9).
 func gateMutations() []batteryRow {
 	var out []batteryRow
 	for i, m := range gateMutationCores {
@@ -173,8 +162,6 @@ func gateMutations() []batteryRow {
 	return out
 }
 
-// twinWant resolves one twin's expectation: an empty override reuses the base
-// verdict.
 func twinWant(override, base string) string {
 	if override != "" {
 		return override
@@ -182,10 +169,6 @@ func twinWant(override, base string) string {
 	return base
 }
 
-// gateOnlyExtras pins gate coverage on the exact eval strings whose
-// execution output is time-varying (curl timings, rsync speeds, wall
-// clock), so the battery uses deterministic twins on identical gate paths
-// instead. No execution here — the golden test only runs the gate.
 func gateOnlyExtras() [][2]string {
 	cmds := []string{
 		`PORT=9 curl http://127.0.0.1:$PORT/fixture`,
@@ -211,7 +194,6 @@ func gateOnlyExtras() [][2]string {
 	return out
 }
 
-// corpusRow is one TSV row.
 type corpusRow struct {
 	id     string
 	expect string
@@ -219,7 +201,6 @@ type corpusRow struct {
 	cmd    string
 }
 
-// readCorpus reads the standing adversarial corpus TSV.
 func readCorpus(t *testing.T) []corpusRow {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "evals", "fixtures", "verify-fuzz-corpus.tsv"))
@@ -240,8 +221,6 @@ func readCorpus(t *testing.T) []corpusRow {
 	return out
 }
 
-// gateBattery assembles the full battery: V1-V40 probes, the standing
-// corpus rows, the eval-twin extras, and the generated mutations.
 func gateBattery(t *testing.T) []batteryRow {
 	t.Helper()
 	var out []batteryRow
@@ -258,9 +237,6 @@ func gateBattery(t *testing.T) []batteryRow {
 	return out
 }
 
-// batteryRow is one gate probe with its corpus expectation (empty expect
-// means change-detected only). An xfail row is a known gap: executing is
-// the recorded expectation, so a refusal is an XPASS that must be promoted.
 type batteryRow struct {
 	id     string
 	cmd    string
@@ -269,7 +245,6 @@ type batteryRow struct {
 	xfail  bool
 }
 
-// updateGateGolden regenerates the gate golden file instead of comparing.
 var updateGateGolden = flag.Bool("update", false, "regenerate the gate golden file")
 
 // TestGateGolden snapshots every battery command's Go gate verdict into the
@@ -288,7 +263,6 @@ func TestGateGolden(t *testing.T) {
 	assertGateGolden(t, got)
 }
 
-// gateVerdict renders one gate result as its refusal code or CLEAN.
 func gateVerdict(ref *cli.RefusalError) string {
 	if ref != nil {
 		return ref.Code
@@ -296,10 +270,6 @@ func gateVerdict(ref *cli.RefusalError) string {
 	return "CLEAN"
 }
 
-// checkStrictRow asserts a corpus row's mode: a strict row must match its
-// expectation, while an xfail row that starts refusing is an XPASS the
-// suite must fail with a promote-to-strict message (the corpus header's
-// contract, not a generic golden diff).
 func checkStrictRow(t *testing.T, b batteryRow, ref *cli.RefusalError) {
 	t.Helper()
 	switch {
@@ -321,8 +291,6 @@ func checkStrictRow(t *testing.T, b batteryRow, ref *cli.RefusalError) {
 	}
 }
 
-// assertGateGolden compares the rendered rows with the checked-in golden,
-// regenerating it under -update.
 func assertGateGolden(t *testing.T, got []string) {
 	t.Helper()
 	const path = "testdata/gate.golden"
@@ -340,7 +308,6 @@ func assertGateGolden(t *testing.T, got []string) {
 	}
 }
 
-// writeGateGolden regenerates the gate golden file.
 func writeGateGolden(t *testing.T, path, rendered string, rows int) {
 	t.Helper()
 	if err := os.MkdirAll("testdata", 0o755); err != nil {

@@ -7,7 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// mustJQValue decodes one JSON document into jq's value model.
 func mustJQValue(t *testing.T, doc string) any {
 	t.Helper()
 	v, err := jq.Decode([]byte(doc))

@@ -1,28 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-manual-recipe: the hand-sliced manual recipe survives chunking.
 #
-# Grades (all hermetic — sandbox git repo, stub gh, no network):
-#   M1  opted-out refusal names the manual path: the multi-file over-cap
-#       fixture without the knob refuses diff-too-large with the
-#       split-or-narrow hint (naming --range/--base/--base-sha and the paths
-#       filter), no chunk mention, no chunks dir; --json keeps code +
-#       candidates + hint.
-#   M2  manual recipe completes for opted-out: hand-sliced range re-fetches
-#       (each under the cap) and a paths-narrowed re-fetch all succeed with
-#       full bundles (full.diff + toc.txt + hunks.tsv).
-#   M3  degenerate refusal names the manual path: one file over the cap with
-#       --chunk keeps the advisory refusal (single-file notice + the same
-#       split-or-narrow hint) with no chunks dir and no manifest.
-#   M4  manual recipe completes for degenerate: the range-half-split re-fetch
-#       of the single huge file succeeds under the cap.
-#   M5  prose presence: the operator docs present chunking as the opted-in
-#       path and keep the manual recipe documented (usage names --chunk).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -31,9 +13,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
-# Scratch git repo at the sandbox root (run_review runs with cwd=sandbox).
-# Multi-file fixture: 6 files x 1500 changed lines each.
-# History is three slice commits so --range hand-slices stay under the cap.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -74,8 +53,6 @@ EOF
   git add mrec-f5.txt mrec-f6.txt
   git commit -qm mrec-slice-c 2>/dev/null || true
   MREC_C="$(git rev-parse HEAD)"
-  # Degenerate fixture (single file, appended in halves) so
-  # the full file is over the cap while each half-range stays under it.
   awk 'BEGIN{for(i=0;i<7500;i++) printf "base line %06d padding padding padding padding padding\n", i}' > mrec-huge.txt
   git add mrec-huge.txt
   git commit -qm mrec-huge-half 2>/dev/null || true
@@ -93,7 +70,6 @@ if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
   bad "fixture diff $FULL_DIFF_BYTES bytes is not over the 512000 cap"
 fi
 
-# --- M1: opted-out refusal names the working manual path ---
 run_review fetch-local acme/app mrecopt --range "$MREC_BASE..$MREC_C"
 assert_exit "opted-out multi-file over-cap refuses" 1
 assert_file_grep "opted-out refusal names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
@@ -116,7 +92,6 @@ else
   bad "--json refusal exits $EVAL_STATUS"
 fi
 
-# --- M2: the manual recipe completes for opted-out (hand-sliced ranges + paths) ---
 run_review fetch-local acme/app mreca --range "$MREC_BASE..$MREC_A"
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ -s "$EVAL_SANDBOX/.review/local-mreca/full.diff" ] \
@@ -140,7 +115,6 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "hand slice 3/3 exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
-# Stitch check: the three hand slices partition the refused full diff.
 if [ "$(( $(wc -c <"$EVAL_SANDBOX/.review/local-mreca/full.diff" | tr -d ' ') + $(wc -c <"$EVAL_SANDBOX/.review/local-mrecb/full.diff" | tr -d ' ') + $(wc -c <"$EVAL_SANDBOX/.review/local-mrecc/full.diff" | tr -d ' ') ))" = "$FULL_DIFF_BYTES" ]; then
   good "hand slices partition the refused input (slice bytes sum to the full diff)"
 else
@@ -155,9 +129,6 @@ else
   bad "paths-narrowed re-fetch exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- M3: degenerate refusal names the manual path ---
-# Single huge file, one file over the cap: appended whole (15000 added lines,
-# ~900KB) so no file-boundary slice can save it — the degenerate input.
 (
   cd "$EVAL_SANDBOX" || exit 99
   awk 'BEGIN{for(i=0;i<15000;i++) printf "changed line %06d completely new words words words words\n", i}' > mrec-huge-1file.txt
@@ -185,7 +156,6 @@ else
   bad "degenerate refusal left chunk output behind"
 fi
 
-# --- M4: the manual recipe completes for degenerate (range-half-split) ---
 run_review fetch-local acme/app mrecdeghalf --range "$MREC_H0..$MREC_H1" -- mrec-huge.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ -s "$EVAL_SANDBOX/.review/local-mrecdeghalf/full.diff" ] \
@@ -195,7 +165,6 @@ else
   bad "range-half-split exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- M5: prose presence (chunking opted-in path + manual recipe documented) ---
 if grep -q "## Over-cap diffs" "$EVAL_ROOT/docs/manual.md" \
   && grep -q "chunks/manifest.json" "$EVAL_ROOT/docs/manual.md" \
   && grep -q -- "--chunk" "$EVAL_ROOT/docs/manual.md" \
@@ -211,8 +180,6 @@ else
   bad "usage text misses --chunk"
 fi
 
-# --- cleanup: range-mode fetches never touch the worktree, so the tree stays
-# clean for later cases; only the harness surface is removed ---
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 

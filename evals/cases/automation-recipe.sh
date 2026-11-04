@@ -1,21 +1,5 @@
 #!/usr/bin/env bash
-# Case automation-recipe: the first-party CI automation recipe with merge
-# gating.
 #
-# Grades (all hermetic — doc/workflow greps plus a sandbox git repo with
-# real git and the stub gh, no network):
-#   D1  the recipe page exists and names every stage: install via the
-#       setup-verdict action, fetch, the agent review writing review.json,
-#       record/post, and the report --check / ready --check merge gate
-#       (plus permissions and the SHA pin policy).
-#   D2  the example workflow is pin-clean: every `uses:` pins a full
-#       40-hex commit SHA (no floating tags), and the recipe's gate steps
-#       (setup-verdict, fetch, post, report --check, ready --check) are
-#       all present, so the recipe cannot rot unnoticed.
-#   B1  the gate mechanics the recipe promises work end to end: fetch-local
-#       → review.json → record → `report --check critical` fails (exit 1)
-#       on an open critical and passes (exit 0) when only informational
-#       findings stand.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -24,7 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 RECIPE="$EVAL_ROOT/docs/ci-recipe.md"
 WORKFLOW="$EVAL_ROOT/examples/verdict-review.yml"
 
-# --- D1: the recipe page names every stage ---
 if [ -f "$RECIPE" ]; then
   good "docs/ci-recipe.md exists"
 else
@@ -38,7 +21,6 @@ for anchor in "setup-verdict" "verdict fetch" "review.json" "verdict post" "repo
   fi
 done
 
-# --- D2: the example workflow is pin-clean and gate-complete ---
 if [ -f "$WORKFLOW" ]; then
   good "examples/verdict-review.yml exists"
 else
@@ -62,7 +44,6 @@ for anchor in "setup-verdict" "verdict fetch" "verdict post" "verdict report" "v
   fi
 done
 
-# --- B1: the promised gate mechanics, end to end ---
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -119,7 +100,6 @@ else
   bad "green gate exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- notes.txt 2>/dev/null || true

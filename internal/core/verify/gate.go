@@ -44,22 +44,15 @@ func Check(raw string) *core.RefusalError {
 	return nil
 }
 
-// Gate refusal codes, one per hostile arm.
 const (
 	codeDestructive = "verify-destructive"
 	codeNetworked   = "verify-networked"
 	codeRepoEscape  = "verify-repo-escape"
 )
 
-// codeCredential is the credential-read refusal code (a gate code, not a
-// secret).
-//
 //nolint:gosec // G101: refusal code, not a credential.
 const codeCredential = "verify-credential-read"
 
-// refuse builds the typed gate refusal: the message quotes the matched
-// fragment exactly as grep -o printed it (byte-identical), and the try:
-// hint rides the shared hint table.
 func refuse(code, frag, detail string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: "refusing verifyCmd: matched '" + frag + "' (" + detail + ")"}
 }

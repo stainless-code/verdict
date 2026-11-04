@@ -1,18 +1,5 @@
 #!/usr/bin/env bash
-# Case version-source: package.json is the single version source.
 #
-# Grades (all hermetic — repo itself as fixture, stub gh, no network):
-#   V1  `verdict --version` stdout equals `jq -r .version package.json`.
-#   V2  the rendered footer resolves `{version}` to the same string on a
-#       healthy tree (report --output carries `Verdict <version>`, never
-#       the degrade `0.0.0-unknown`); no second version source exists (no
-#       VERSION file at the root, the version is read from package.json at
-#       runtime, every `.version` read targets package.json).
-#   V3  degrade path: with package.json unreadable, `--version` reads
-#       `0.0.0-unknown` and the footer renders `Verdict 0.0.0-unknown`
-#       (the same string; never a failure).
-#   D1  docs: CONTRIBUTING ## Versioning states the changeset rule; the manual
-#       points at it rather than duplicating it.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -20,7 +7,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 VER="$(jq -r .version "$EVAL_ROOT/package.json")"
 
-# --- V1: --version is single-sourced on package.json ---
 run_review --version
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(tr -d '\n' <"$EVAL_OUT")" = "$VER" ]; then
   good "--version equals package.json ($VER)"
@@ -28,7 +14,6 @@ else
   bad "--version gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_OUT")"
 fi
 
-# --- V2: footer carries the same version on a healthy tree ---
 PR=4601
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -67,9 +52,6 @@ else
   good "the only version literal in the Go sources is the 0.0.0-unknown degrade fallback"
 fi
 
-# --- V3: degrade path with package.json unreadable ---
-# A copied binary with no checkout above it: the version lookup and the
-# footer must degrade, never fail.
 FAKE="$EVAL_SANDBOX/fake-root"
 mkdir -p "$FAKE/fakebin"
 cp "$EVAL_CLI" "$FAKE/fakebin/verdict"
@@ -93,8 +75,6 @@ EOF
 set +e
 (
   cd "$EVAL_SANDBOX" || exit 99
-  # V3 grades the binary degrade path: the fake root holds no package.json
-  # above the copied binary, so the footer degrades without failing.
   PATH="$EVAL_STUBBIN:$PATH" "$FAKE/fakebin/verdict" report acme/app "$PR" \
     --output "$EVAL_SANDBOX/out-4602.md" >"$EVAL_SANDBOX/fake-report.txt" 2>/dev/null
 )
@@ -107,7 +87,6 @@ else
 fi
 rm -rf "$FAKE"
 
-# --- D1: CONTRIBUTING canonical, manual points rather than duplicates ---
 if grep -Fq '## Versioning' "$EVAL_ROOT/CONTRIBUTING.md" \
   && grep -Fq '.changeset/' "$EVAL_ROOT/CONTRIBUTING.md"; then
   good "CONTRIBUTING ## Versioning states the changeset rule"

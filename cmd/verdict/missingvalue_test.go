@@ -64,7 +64,6 @@ func TestVerbMissingValue(t *testing.T) {
 	}
 }
 
-// checkUsageMessage asserts args is a usage error whose stderr is exactly want.
 func checkUsageMessage(t *testing.T, args []string, want string) {
 	t.Helper()
 	code, out, derr := runCapture(t, args)

@@ -210,7 +210,6 @@ func Evaluate(c *core.CorpusCase, entries []any) *Report {
 	return rep
 }
 
-// grade matches one finding to the first unused bug inside the window.
 func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
 	out := Outcome{Result: ResultFalsePositive}
 	m, ok := e.(*jq.Obj)
@@ -231,7 +230,6 @@ func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
 	return out, -1
 }
 
-// readAnchor fills path and line from one finding object.
 func readAnchor(m *jq.Obj, out *Outcome) bool {
 	path, ok := m.Get("path")
 	if !ok || path == nil {
@@ -262,7 +260,6 @@ func matchBug(path string, line int, bugs []core.CorpusBug, used []bool, tol int
 	return -1
 }
 
-// abs returns the absolute value of n.
 func abs(n int) int {
 	if n < 0 {
 		return -n
@@ -298,10 +295,8 @@ func RateText(rate any) string {
 	return strconv.FormatFloat(f, 'f', RateDecimals, rateBits)
 }
 
-// rateBits is the float width RateText renders.
 const rateBits = 64
 
-// rateScale keeps published rates stable at four decimals.
 const rateScale = 10000
 
 // ModelOf reads the run's model from the latest cost record. Empty

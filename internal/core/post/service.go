@@ -28,10 +28,8 @@ type Commander interface {
 // CodePostFailed is the typed refusal for every post-internal failure.
 const CodePostFailed = codePostFailed
 
-// codeCanceled names the cancel refusal the adapter exits 3 on.
 const codeCanceled = "canceled"
 
-// msgCanceledPost is the frozen pre/post-cancel refusal message.
 const msgCanceledPost = "canceled before post completed"
 
 // Run executes `post <owner/repo> <pr>`: bundle gates, drift, the shared
@@ -60,8 +58,6 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	return st.publish(ctx)
 }
 
-// state carries one post run: the request, the warnings accumulated before
-// the response or refusal, and the merge outputs the payload needs.
 type state struct { //nolint:govet // field grouping documents the post run state
 	req          *core.PostRequest
 	warnings     []string
@@ -91,15 +87,11 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	liveLoaded   bool
 }
 
-// withWarnings attaches the accumulated warnings to a refusal so the
-// adapter's envelope stays byte-identical to a success run's warning list.
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	ref.Warnings = st.warnings
 	return ref
 }
 
-// store returns the run's decoded bundle records, opening them on first use
-// so PR.json and post.json are read once per run instead of once per field.
 func (st *state) store() *readcommon.Bundle {
 	if st.bundle == nil {
 		st.bundle = readcommon.OpenBundle(st.dir)
@@ -107,9 +99,6 @@ func (st *state) store() *readcommon.Bundle {
 	return st.bundle
 }
 
-// provider reads the bundle provider with post's github default: a bundle
-// with no provider marker is GitHub, and any present marker routes on its
-// rendered value (an empty or non-string marker is not a post target).
 func (st *state) provider() string {
 	if prov, present := st.store().ProviderMarker(); present {
 		return prov
@@ -117,21 +106,17 @@ func (st *state) provider() string {
 	return providerGitHub
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// human streams one human output line.
 func (st *state) human(line string) {
 	if st.req != nil && st.req.Runtime != nil {
 		st.req.Human(line)
 	}
 }
 
-// commander resolves the injected commander, refusing when the caller set
-// none.
 func (st *state) commander() (Commander, *core.RefusalError) {
 	var rt *core.Runtime
 	if st.req != nil {
@@ -151,7 +136,6 @@ func (st *state) commander() (Commander, *core.RefusalError) {
 	return cmdr, nil
 }
 
-// mergeRuntime builds the injected runtime for the shared merge.
 func (st *state) mergeRuntime() core.Runtime {
 	var rt core.Runtime
 	if st.req.Runtime != nil {
@@ -161,21 +145,17 @@ func (st *state) mergeRuntime() core.Runtime {
 	return rt
 }
 
-// warnCollector forwards progress observations to the adapter while
-// accumulating every warning for the envelope.
 type warnCollector struct {
 	inner    core.Progress
 	warnings *[]string
 }
 
-// Human forwards one human output line.
 func (w warnCollector) Human(line string) {
 	if w.inner != nil {
 		w.inner.Human(line)
 	}
 }
 
-// Warn records and forwards one warning.
 func (w warnCollector) Warn(msg string) {
 	*w.warnings = append(*w.warnings, msg)
 	if w.inner != nil {
@@ -183,15 +163,12 @@ func (w warnCollector) Warn(msg string) {
 	}
 }
 
-// Diag forwards one raw diagnostic line.
 func (w warnCollector) Diag(line string) {
 	if w.inner != nil {
 		w.inner.Diag(line)
 	}
 }
 
-// refusalOrFailed passes typed core refusals through and wraps anything
-// else as a post-failed edge error.
 func refusalOrFailed(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -199,8 +176,6 @@ func refusalOrFailed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("post failed: %v", err)}
 }
 
-// prepare runs the bundle gates, review load, the local same-SHA finalizer
-// guard, drift, hunks, and the shared merge.
 func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	st.dir = ".review/" + st.req.Pr
 	st.event = eventComment
@@ -210,11 +185,6 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if ref := st.loadReview(); ref != nil {
 		return ref
 	}
-	// The finalizer guard reads only local stores (PR.json, post.json), so
-	// it runs before drift's live lookup: a repeat post on an already-posted
-	// SHA refuses without paying for any network round-trip, and the
-	// deterministic local refusal wins over the nondeterministic reads that
-	// follow. Dry runs stay advisory exactly as before, so they skip it.
 	st.commitID = st.store().Head()
 	if !st.flags.DryRun {
 		if ref := st.finalizerGuard(); ref != nil {
@@ -234,8 +204,6 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	return st.merge()
 }
 
-// publish prints preflight and payload, then drives the dry-run, guards,
-// and submit tail.
 func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
 	st.preflight()
 	st.buildPayloads()
@@ -243,8 +211,6 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	if st.flags.DryRun {
 		return st.dryRunResponse()
 	}
-	// Plain progress line, not a warning: it carries no `warn: ` prefix and
-	// no envelope entry.
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
 	}
@@ -254,9 +220,6 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	return st.submit(ctx)
 }
 
-// checkBundle owns the post bundle gates: local bundles never post, only
-// hosts whose declared capabilities allow posting do, then the store marker
-// and the required files.
 func (st *state) checkBundle() *core.RefusalError {
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
@@ -280,15 +243,11 @@ func (st *state) checkBundle() *core.RefusalError {
 	default:
 		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState)}
 	}
-	// Last gate: the controls snapshot must match the bundle before any read.
 	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir, st.store()))
 	st.controls = snap
 	return ref
 }
 
-// loadReview reads and gates the review.json through the shared loader (a
-// GitHub target is already established, so no local-bundle provider checks).
-// The degenerate-body bar matches post exactly.
 func (st *state) loadReview() *core.RefusalError {
 	review, err := recordcore.LoadReview(st.flags.ReviewFile)
 	if err != nil {
@@ -299,10 +258,6 @@ func (st *state) loadReview() *core.RefusalError {
 	return nil
 }
 
-// checkDrift owns the stale-SHA guard: anchors validate against the
-// fetch-time snapshot, and a moved live HEAD only adds drift context (plus a
-// body note) — it never moves the validation target. Lookup failure degrades
-// to a warning, never a refusal.
 func (st *state) checkDrift(ctx context.Context) {
 	st.fetchedSHA = st.store().Head()
 	live, err := ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
@@ -321,8 +276,6 @@ func (st *state) checkDrift(ctx context.Context) {
 	}
 }
 
-// commanderOrNil returns the injected commander or nil when unset (drift
-// and authorship degrade to warnings, never refusals).
 func (st *state) commanderOrNil() Commander {
 	var rt *core.Runtime
 	if st.req != nil {
@@ -338,8 +291,6 @@ func (st *state) commanderOrNil() Commander {
 	return cmdr
 }
 
-// applyApprovedFlag owns the approved-flag merge: the CLI flag wins, and a
-// true review.json approval upgrades a false flag.
 func (st *state) applyApprovedFlag() {
 	approvedRaw, _ := st.review.Get("approved")
 	if st.flags.Approve == approveFalse && jq.R(jq.Alt(approvedRaw, false)) == approveTrue {
@@ -347,8 +298,6 @@ func (st *state) applyApprovedFlag() {
 	}
 }
 
-// merge runs the shared validate_and_merge core over the drift-annotated
-// body, persisting the findings file and staging KB credit.
 func (st *state) merge() *core.RefusalError {
 	rt := st.mergeRuntime()
 	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
@@ -368,11 +317,6 @@ func (st *state) merge() *core.RefusalError {
 	return nil
 }
 
-// bindGate owns the binding gate: binding verdicts need --bind (else
-// COMMENT); APPROVE needs zero open AND zero deferred findings unless
-// --force, plus a review that covers live HEAD (known drift downgrades to
-// COMMENT — re-fetch the delta to bind). Self-authored binding verdicts
-// downgrade too, since GitHub refuses self-approvals.
 func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 	if st.unbound() {
 		return nil
@@ -390,8 +334,6 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 	return st.authorGate(ctx)
 }
 
-// unbound owns the non-binding path: without --bind every binding verdict
-// lands as COMMENT with a warning, and anything else proceeds untouched.
 func (st *state) unbound() bool {
 	wantBind := st.flags.Approve == approveTrue || st.flags.RequestChanges
 	if wantBind && !st.flags.Bind {
@@ -400,9 +342,6 @@ func (st *state) unbound() bool {
 	return !wantBind || !st.flags.Bind
 }
 
-// approveGate owns the APPROVE binding checks: no open or deferred findings
-// unless --force, and a review that covers live HEAD (known drift downgrades
-// to COMMENT — re-fetch the delta to bind, never a silent APPROVE).
 func (st *state) approveGate() *core.RefusalError {
 	nOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
 	nDeferred := recordcore.CountStatus(st.merged.Entries, "deferred")
@@ -415,16 +354,11 @@ func (st *state) approveGate() *core.RefusalError {
 	}
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
 		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
-	// A blank line separates the note from the review body, as with the
-	// drift note.
 	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\n" + st.body
 	st.event = eventComment
 	return nil
 }
 
-// authorGate owns the self-authored binding check: GitHub refuses
-// self-approvals, so a binding verdict on the author's own PR downgrades to
-// COMMENT; an unreadable login warns and proceeds (GitHub may still refuse).
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	author := st.store().Author()
 	me, rerr := ghSelfLogin(ctx, st.commanderOrNil())
@@ -441,9 +375,6 @@ func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	return nil
 }
 
-// recheckGate owns the live open-thread recheck on the APPROVE path only:
-// more live opens than local opens refuses APPROVE, and an unreachable
-// lookup downgrades to COMMENT — never a silent APPROVE, never a failure.
 func (st *state) recheckGate(ctx context.Context) *core.RefusalError {
 	if st.event != "APPROVE" || st.flags.DryRun {
 		return nil
@@ -459,9 +390,6 @@ func (st *state) recheckGate(ctx context.Context) *core.RefusalError {
 	return nil
 }
 
-// probeRecheck runs the live open-thread probe, downgrading to COMMENT when
-// the lookup fails. It reports the open count and whether the run was
-// downgraded.
 func (st *state) probeRecheck(ctx context.Context) (int, bool) {
 	liveOpen, reason, err := postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
 	if err == nil {
@@ -473,7 +401,6 @@ func (st *state) probeRecheck(ctx context.Context) (int, bool) {
 	return 0, true
 }
 
-// preflight owns the fail-closed preflight block plus the next-step line.
 func (st *state) preflight() {
 	res := st.merged
 	nOpen := recordcore.CountStatus(res.Entries, statusOpen)
@@ -494,7 +421,6 @@ func (st *state) preflight() {
 	}
 }
 
-// eventLine owns the `» event=` progress line.
 func (st *state) eventLine() {
 	resolved := 0
 	if rv, ok := st.review.Get("resolved"); ok {
@@ -504,10 +430,6 @@ func (st *state) eventLine() {
 		st.event, st.merged.NKept, st.embedded, resolved))
 }
 
-// duplicateGuard owns the double-post guard: exact payload replays refuse
-// unless --force. It checks the local dot-marker and the fetched reviews;
-// the marker covers every posted part and is touched only after a successful
-// submit, so legit re-reviews hash differently and pass.
 func (st *state) duplicateGuard() *core.RefusalError {
 	if st.flags.Force {
 		return nil
@@ -518,19 +440,6 @@ func (st *state) duplicateGuard() *core.RefusalError {
 	return st.liveDuplicatePayload()
 }
 
-// finalizerGuard owns the single-review finality: a completed post on the
-// same reviewed SHA refuses unless --force; a new SHA proceeds and refreshes
-// the record. The local post.json is the fast path, the fetched reviews the
-// fresh-bundle fallback. Unreadable records warn and proceed.
-//
-// Precedence: this guard runs inside prepare,
-// before drift's live reads, the hunks snapshot, and the merge, so it wins
-// over every later refusal except review-load. Concretely: a same-SHA bundle
-// whose review.json is semantically invalid reports already-posted, not the
-// validation error; and a literal re-post reports already-posted, not the
-// later duplicateGuard's duplicate-payload. The zero-network win is the
-// reason: a repeat post on a known SHA pays no forge call and no findings
-// rewrite. --force bypasses both guards and falls through to validation.
 func (st *state) finalizerGuard() *core.RefusalError {
 	if st.commitID == "" || st.flags.Force {
 		return nil
@@ -551,8 +460,6 @@ func (st *state) finalizerGuard() *core.RefusalError {
 	return st.liveAlreadyPosted()
 }
 
-// postedAt reads the recorded post time, defaulting to the frozen
-// "unknown time" placeholder when the receipt carries none.
 func (st *state) postedAt() string {
 	at, present := st.store().PostedAt()
 	if !present {
@@ -561,7 +468,6 @@ func (st *state) postedAt() string {
 	return at
 }
 
-// exists reports whether path exists.
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil

@@ -14,13 +14,11 @@ import (
 )
 
 const (
-	// reviewMarkerFormat carries the payload hash and reviewed SHA.
 	reviewMarkerFormat  = "<!-- verdict-review payload=%s head=%s -->"
 	markerHashLen       = 40
 	reviewMarkerReserve = len(reviewMarkerFormat) + 2*markerHashLen + 2
 )
 
-// reviewMarkerRe matches only the body's final line (mid-body quotes skip).
 var reviewMarkerRe = regexp.MustCompile(`^<!-- verdict-review payload=([0-9a-f]{40}) head=([0-9a-f]{0,40}) -->$`)
 
 func reviewMarker(body string) (payloadHash, head string, ok bool) {
@@ -36,12 +34,10 @@ func reviewMarker(body string) (payloadHash, head string, ok bool) {
 	return m[1], m[2], true
 }
 
-// liveReview is the reviews.json subset the repeat guards need.
 type liveReview struct {
 	body, commitID, submittedAt string
 }
 
-// liveReviews loads the fetched reviews once; unreadable input reads as none.
 func (st *state) liveReviews() []liveReview {
 	if st.liveLoaded {
 		return st.live
@@ -66,7 +62,6 @@ func (st *state) liveReviews() []liveReview {
 	return st.live
 }
 
-// parseReviewPage extracts the guard fields from one reviews page.
 func parseReviewPage(items []any) []liveReview {
 	var out []liveReview
 	for _, el := range items {
@@ -80,8 +75,6 @@ func parseReviewPage(items []any) []liveReview {
 	return out
 }
 
-// liveAlreadyPosted reports a verdict-marked review on the reviewed commit.
-//
 //nolint:revive // marker fallback keeps the head read in one place
 func (st *state) liveAlreadyPosted() *core.RefusalError {
 	for _, rev := range st.liveReviews() {
@@ -106,7 +99,6 @@ func (st *state) liveAlreadyPosted() *core.RefusalError {
 	return nil
 }
 
-// liveDuplicatePayload reports a verdict-marked review with the same hash.
 func (st *state) liveDuplicatePayload() *core.RefusalError {
 	for _, rev := range st.liveReviews() {
 		if hash, _, ok := reviewMarker(rev.body); ok && hash == st.phash {

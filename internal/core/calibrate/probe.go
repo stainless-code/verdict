@@ -11,9 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// runProbe owns the self-grading probe: baseline grades regenerated from
-// findings.json every run, agent judgments merged sticky, kb-grades.jsonl
-// rewritten deterministically.
 func (st *state) runProbe(dir string) *core.RefusalError {
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
@@ -40,15 +37,12 @@ func (st *state) runProbe(dir string) *core.RefusalError {
 	return nil
 }
 
-// judge is one agent judgment.
 type judge struct {
 	helpful any
 	sig     string
 	verdict string
 }
 
-// knownSigs owns the known-sigs array: every entry's raw sig (strings
-// and nulls alike, like `jq -c '[.[].sig]'`).
 func knownSigs(entries []any) []any {
 	known := make([]any, 0, len(entries))
 	for _, e := range entries {
@@ -63,15 +57,12 @@ func knownSigs(entries []any) []any {
 	return known
 }
 
-// judgeUnreadable owns the missing-or-unreadable judge file refusal.
 func judgeUnreadable(path string) *core.RefusalError {
 	return &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
 		"judge file '%s' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} "+
 			"object per line, or a JSON array of them)", path)}
 }
 
-// readJudgeFile owns the --judge-file fragment: a JSON array or JSONL of
-// judgment objects, validated against the known sigs.
 func readJudgeFile(path string, known []any, dir string) ([]judge, error) {
 	if path == "" {
 		return nil, nil
@@ -91,7 +82,6 @@ func readJudgeFile(path string, known []any, dir string) ([]judge, error) {
 	return checkJudgeDocs(path, out, known, dir)
 }
 
-// readJudgeDocs owns the fragment file read and decode.
 func readJudgeDocs(path string) ([]any, error) {
 	if !isRegular(path) || !readable(path) {
 		return nil, judgeUnreadable(path)
@@ -103,7 +93,6 @@ func readJudgeDocs(path string) ([]any, error) {
 	return slurpJudgeDocs(path, raw)
 }
 
-// checkJudgeDocs validates the fragment entries against the known sigs.
 func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge, error) {
 	if unknown := firstUnknown(out, known); unknown != "" {
 		return nil, &core.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
@@ -112,8 +101,6 @@ func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge,
 	return out, nil
 }
 
-// slurpJudgeDocs owns the fragment decode: a single JSON array unwraps to
-// its elements, otherwise one judgment per JSONL row.
 func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(string(raw)))
 	if err != nil {
@@ -128,7 +115,6 @@ func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
 	return docs, nil
 }
 
-// readable reports whether path can be opened for reading.
 func readable(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -138,7 +124,6 @@ func readable(path string) bool {
 	return true
 }
 
-// checkJudgeEntry validates one fragment entry.
 func checkJudgeEntry(path string, i int, doc any) (judge, error) {
 	fail := func(detail string) (judge, error) {
 		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf("judge file '%s' entry %d: %s", path, i, detail)}
@@ -162,19 +147,16 @@ func checkJudgeEntry(path string, i int, doc any) (judge, error) {
 	return judge{sig: sig, verdict: verdict, helpful: helpful}, nil
 }
 
-// judgeSig owns the sig gate: a non-empty string.
 func judgeSig(m map[string]any) (string, bool) {
 	sig, ok := m[keySig].(string)
 	return sig, ok && sig != ""
 }
 
-// judgeVerdict owns the agent_verdict gate.
 func judgeVerdict(m map[string]any) (string, bool) {
 	verdict, ok := m[keyAgentVerdict].(string)
 	return verdict, ok && (verdict == verdictReal || verdict == verdictFalse || verdict == verdictUnknown)
 }
 
-// judgeHelpful owns the agent_helpful gate: missing reads null.
 func judgeHelpful(m map[string]any) (any, bool) {
 	helpful, ok := m[keyAgentHelpful]
 	if !ok || helpful == nil {
@@ -183,7 +165,6 @@ func judgeHelpful(m map[string]any) (any, bool) {
 	return helpful, helpful == true || helpful == false
 }
 
-// firstUnknown returns the first judgment sig outside the known set.
 func firstUnknown(judgments []judge, known []any) string {
 	for _, j := range judgments {
 		if !containsSig(known, j.sig) {
@@ -193,7 +174,6 @@ func firstUnknown(judgments []judge, known []any) string {
 	return ""
 }
 
-// containsSig reports jq == membership for sigs.
 func containsSig(known []any, sig string) bool {
 	for _, k := range known {
 		if s, ok := k.(string); ok && s == sig {
@@ -203,7 +183,6 @@ func containsSig(known []any, sig string) bool {
 	return false
 }
 
-// parseJudgeSpecs validates --judge specs against the known sigs, in order.
 func parseJudgeSpecs(specs []string, known []any, dir string) ([]judge, error) {
 	var out []judge
 	for _, spec := range specs {
@@ -216,7 +195,6 @@ func parseJudgeSpecs(specs []string, known []any, dir string) ([]judge, error) {
 	return out, nil
 }
 
-// checkJudgeSpec validates one --judge SIG:VERDICT[:HELPFUL] spec.
 func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 	bad := func(detail string) (judge, error) {
 		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: detail}
@@ -239,8 +217,6 @@ func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 	return buildSpecJudge(sig, verdict, helpful), nil
 }
 
-// splitVerdict owns the VERDICT[:HELPFUL] split: a missing helpful reads
-// null.
 func splitVerdict(rest string) (string, string) {
 	verdict, helpful, _ := strings.Cut(rest, ":")
 	if helpful == "" {
@@ -249,7 +225,6 @@ func splitVerdict(rest string) (string, string) {
 	return verdict, helpful
 }
 
-// buildSpecJudge owns the validated spec assembly.
 func buildSpecJudge(sig, verdict, helpful string) judge {
 	var helpfulVal any
 	switch helpful {
@@ -261,9 +236,6 @@ func buildSpecJudge(sig, verdict, helpful string) judge {
 	return judge{sig: sig, verdict: verdict, helpful: helpfulVal}
 }
 
-// priorJudgments owns the sticky prior judgments from kb-grades.jsonl:
-// object rows with a string sig and a valid agent verdict; agent_helpful
-// passes through unvalidated. Invalid files read as no priors.
 func priorJudgments(dir string) []judge {
 	raw, err := os.ReadFile(dir + "/kb-grades.jsonl")
 	if err != nil {
@@ -282,8 +254,6 @@ func priorJudgments(dir string) []judge {
 	return out
 }
 
-// priorJudge handles one sticky prior: objects with a string sig and a valid
-// agent verdict; agent_helpful passes through unvalidated.
 func priorJudge(doc any) (judge, bool) {
 	m, ok := doc.(map[string]any)
 	if !ok {
@@ -304,7 +274,6 @@ func priorJudge(doc any) (judge, bool) {
 	return judge{sig: sig, verdict: verdict, helpful: helpful}, true
 }
 
-// mergeJudgments merges priors with new judgments: later wins per sig.
 func mergeJudgments(prior, latest []judge) map[string]judge {
 	merged := map[string]judge{}
 	for _, j := range prior {
@@ -316,7 +285,6 @@ func mergeJudgments(prior, latest []judge) map[string]judge {
 	return merged
 }
 
-// buildGrades owns the grades computation over findings in store order.
 func buildGrades(entries []any, bname, now string, merged map[string]judge) []*jq.Obj {
 	grades := make([]*jq.Obj, 0, len(entries))
 	for _, e := range entries {
@@ -325,7 +293,6 @@ func buildGrades(entries []any, bname, now string, merged map[string]judge) []*j
 	return grades
 }
 
-// buildGrade handles one grade row.
 func buildGrade(entry any, bname, now string, merged map[string]judge) *jq.Obj {
 	cited := citedStrings(entry)
 	baseline := baselineVerdict(entry)
@@ -361,9 +328,6 @@ func buildGrade(entry any, bname, now string, merged map[string]judge) *jq.Obj {
 	)
 }
 
-// gradeAgent folds the merged judgment and baseline agreement for one sig.
-// agent_helpful defaults to null: false reads null
-// (jq's // replaces false as well as null), true passes through.
 func gradeAgent(merged map[string]judge, sigKey, baseline string) (agentVerdict, agentHelpful, agreement any) {
 	j, judged := merged[sigKey]
 	if !judged {
@@ -380,7 +344,6 @@ func gradeAgent(merged map[string]judge, sigKey, baseline string) (agentVerdict,
 	return agentVerdict, agentHelpful, agreement
 }
 
-// entrySig reads one entry's raw sig (nil for non-objects).
 func entrySig(entry any) any {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -390,8 +353,6 @@ func entrySig(entry any) any {
 	return sig
 }
 
-// citedStrings owns the baseline cite extraction: string ids from array
-// kb values, nothing otherwise.
 func citedStrings(entry any) []string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -411,8 +372,6 @@ func citedStrings(entry any) []string {
 	return out
 }
 
-// baselineVerdict owns the triage baseline: addressed reads real,
-// false-positive reads false, everything else reads unknown.
 func baselineVerdict(entry any) string {
 	switch readcommon.StatusOf(entry) {
 	case statusAddressed:
@@ -424,13 +383,8 @@ func baselineVerdict(entry any) string {
 	}
 }
 
-// gradesFilePerm stages the probe output readable by the owner: the rows
-// carry no secrets, but 0644 is never needed.
 const gradesFilePerm = 0o600
 
-// writeGrades rewrites kb-grades.jsonl deterministically through the shared
-// atomic path: one compact row per grade plus a trailing newline, so an
-// interrupted write keeps the last good grades byte-identical.
 func writeGrades(dir string, grades []*jq.Obj) error {
 	var sb strings.Builder
 	for _, g := range grades {
@@ -443,14 +397,12 @@ func writeGrades(dir string, grades []*jq.Obj) error {
 	return nil
 }
 
-// probeCounts carries the probe tallies.
 type probeCounts struct {
 	rate                                any
 	real, falseVerdicts, unknown, total int
 	sampled, judged, agreed, disagreed  int
 }
 
-// countGrades tallies the grades.
 func countGrades(grades []*jq.Obj) probeCounts {
 	var c probeCounts
 	c.total = len(grades)
@@ -472,7 +424,6 @@ func countGrades(grades []*jq.Obj) probeCounts {
 	return c
 }
 
-// tallyGradeAgent folds one grade's agent verdict and agreement.
 func tallyGradeAgent(c *probeCounts, g *jq.Obj, verdict any) {
 	agent, _ := g.Get(keyAgentVerdict)
 	av, ok := agent.(string)
@@ -485,13 +436,11 @@ func tallyGradeAgent(c *probeCounts, g *jq.Obj, verdict any) {
 	}
 }
 
-// agreementOf reads the agreement flag (nil when absent).
 func agreementOf(g *jq.Obj) any {
 	agreement, _ := g.Get("agreement")
 	return agreement
 }
 
-// tallyAgreement folds a sampled grade's agreement.
 func tallyAgreement(c *probeCounts, av string, verdict, agreement any) {
 	if (av == verdictReal || av == verdictFalse) && (verdict == verdictReal || verdict == verdictFalse) {
 		c.judged++
@@ -503,15 +452,12 @@ func tallyAgreement(c *probeCounts, av string, verdict, agreement any) {
 	}
 }
 
-// probeResult carries the completed probe for the typed data profile.
 type probeResult struct {
 	bundle string
 	grades []*jq.Obj
 	counts probeCounts
 }
 
-// nextProbe owns the probe next step: scored pairs feed the evidence
-// gate, else nothing weighs.
 func nextProbe(c *probeCounts) string {
 	next := "no real findings graded — nothing to weigh"
 	if c.real > 0 {
@@ -546,7 +492,6 @@ func (r *probeResult) Wire() *jq.Obj {
 	)
 }
 
-// emitProbeHuman owns the probe human lines.
 func (st *state) emitProbeHuman(dir, bname string, grades []*jq.Obj) {
 	c := countGrades(grades)
 	judgeText := ""
@@ -567,7 +512,6 @@ func (st *state) emitProbeHuman(dir, bname string, grades []*jq.Obj) {
 	}
 }
 
-// gradeLine handles one per-grade line.
 func gradeLine(g *jq.Obj) string {
 	sig, _ := g.Get(keySig)
 	verdict, _ := g.Get("verdict")
@@ -595,7 +539,6 @@ func gradeLine(g *jq.Obj) string {
 	return line
 }
 
-// sigString renders a sig for prefixing (missing reads jq-style).
 func sigString(sig any) string {
 	if s, ok := sig.(string); ok {
 		return s
@@ -603,7 +546,6 @@ func sigString(sig any) string {
 	return jq.Str(sig)
 }
 
-// isRegular reports whether path is a regular file.
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()

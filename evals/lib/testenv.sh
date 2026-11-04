@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
-# evals/lib/testenv.sh — deterministic, secret-free environment for the
-# offline contract evals. Sourced by evals/run.sh and evals/one.sh.
 #
-# This is the shell twin of internal/testenv: both sides pin the same git
-# configuration and drop the same credential-shaped variables, so a developer
-# shell or CI runner cannot change what a fixture commit does or hand a
-# "hermetic" case a live token.
 #
-#   testenv_init <sandbox>  scrub the environment, then export GIT_CONFIG_*
-#                           (the empty global config lives in <sandbox>).
-#   TESTENV_SCRUBBED        number of variables removed, for the runner log.
 set -euo pipefail
 
 TESTENV_SCRUBBED=0
 
-# testenv_is_secret <lowercased-name> — the suffix rule from
-# internal/envsecret: strip trailing rotation digits/underscores, then match.
 testenv_is_secret() {
   local norm="$1"
   while :; do
@@ -33,9 +22,6 @@ testenv_is_secret() {
   esac
 }
 
-# testenv_scrub drops harness knobs and credential-shaped variables from the
-# exported environment. GIT_CONFIG_* is dropped here and re-exported by
-# testenv_git_config, so an inherited GIT_CONFIG_COUNT cannot shadow ours.
 testenv_scrub() {
   local line name lower
   while IFS= read -r line; do
@@ -53,9 +39,6 @@ testenv_scrub() {
   done < <(env)
 }
 
-# testenv_git_config exports the fixed repository configuration: no system
-# config, an empty global config in the sandbox, and command-scope keys that
-# beat any repo-local setting.
 testenv_git_config() {
   local sandbox="$1" n=0
   : >"$sandbox/gitconfig-empty"
@@ -71,8 +54,6 @@ testenv_git_config() {
   export GIT_CONFIG_COUNT="$n"
 }
 
-# testenv_init <sandbox> — both halves, in the order that matters: scrub
-# first, then export our own git config.
 testenv_init() {
   local sandbox="$1"
   [ -d "$sandbox" ] || {

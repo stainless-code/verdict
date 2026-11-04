@@ -11,8 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// fixedClock is the injected clock every rendering test uses, so `at` is a
-// literal instead of wall time.
 func fixedClock() time.Time {
 	return time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
 }
@@ -165,8 +163,6 @@ func TestRefuseHumanLine(t *testing.T) {
 	}
 }
 
-// checkHumanRefusal renders one human refusal in color mode and asserts the
-// whole diagnostic block, plus that stdout stays empty.
 func checkHumanRefusal(t *testing.T, color, want string) {
 	t.Helper()
 	var out, diag bytes.Buffer
@@ -279,9 +275,6 @@ func TestWarnStreamsAndAccumulates(t *testing.T) {
 	}
 }
 
-// checkWarnStreams writes one warning through Runner.Warn and a second through
-// Progress.Warn, with a raw Progress.Diag line between them, and asserts the
-// rendered diagnostics and the accumulated list.
 func checkWarnStreams(t *testing.T, color, want string) {
 	t.Helper()
 	var diag bytes.Buffer

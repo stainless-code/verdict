@@ -13,17 +13,12 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// storeFileMode is the umask-022 default for store files.
 const storeFileMode = 0o644
 
-// errSidecarMode marks command-stderr debug sidecars owner-only: their bytes
-// can carry token-adjacent forge diagnostics (GO-FS-02).
 const errSidecarMode = 0o600
 
-// opWrite names the atomic-write operation in sealed errors.
 const opWrite = "atomic write "
 
-// opDirectWrite names the direct (non-atomic) write a device or FIFO needs.
 const opDirectWrite = "write "
 
 // WriteFile writes data to path atomically with mode 0o644 (the
@@ -46,7 +41,6 @@ func WriteErrSidecar(path string, data []byte) error {
 	return writeFile(path, data, errSidecarMode)
 }
 
-// writeFile is the shared temp+fsync+rename+dir-fsync path.
 func writeFile(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".tmp-*")
@@ -54,8 +48,6 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 		return jq.Sealed(opWrite+path, err)
 	}
 	tmpName := tmp.Name()
-	// Best-effort temp cleanup: the rename already replaced the target, or
-	// the write below failed and its error carries the outcome.
 	defer func() { _ = os.Remove(tmpName) }() // cleanup has no recovery path; the write error rules
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close() // write error already rules; close adds nothing
@@ -78,8 +70,6 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 	return nil
 }
 
-// fsyncDir persists the rename itself. Best effort: a directory that cannot
-// be opened (permissions, exotic filesystems) must not fail the write.
 func fsyncDir(dir string) {
 	d, err := os.Open(dir)
 	if err != nil {

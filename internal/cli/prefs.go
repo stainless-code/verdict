@@ -57,7 +57,6 @@ func ResolvePrefs(r *Runner, env map[string]string, readFile func(string) ([]byt
 	return resolveSettingsFile(r, path, obj, doc, &eff)
 }
 
-// resolveOutputEnv owns the REVIEW_OUTPUT_FORMAT knob.
 func resolveOutputEnv(r *Runner, env map[string]string, warn func(string)) {
 	switch v := env["REVIEW_OUTPUT_FORMAT"]; v {
 	case "":
@@ -71,7 +70,6 @@ func resolveOutputEnv(r *Runner, env map[string]string, warn func(string)) {
 	}
 }
 
-// resolveCompactEnv owns the REVIEW_LAYOUT_COMPACT knob.
 func resolveCompactEnv(env map[string]string, eff *Effective, warn func(string)) {
 	switch c := env["REVIEW_LAYOUT_COMPACT"]; c {
 	case "":
@@ -82,7 +80,6 @@ func resolveCompactEnv(env map[string]string, eff *Effective, warn func(string))
 	}
 }
 
-// resolveColorEnv owns the REVIEW_COLOR_MODE knob.
 func resolveColorEnv(env map[string]string, eff *Effective, warn func(string)) {
 	switch c := env["REVIEW_COLOR_MODE"]; c {
 	case "":
@@ -93,8 +90,6 @@ func resolveColorEnv(env map[string]string, eff *Effective, warn func(string)) {
 	}
 }
 
-// gateMissingFile handles the absent-settings path: the attribution-text env
-// knob still gates before defaults win.
 func gateMissingFile(eff *Effective, path string) (*PrefsResult, error) {
 	if ref := ValidateAttributionPlaceholders(eff.PublishAttributionText, "publish.attribution_text"); ref != nil {
 		return nil, ref
@@ -102,8 +97,6 @@ func gateMissingFile(eff *Effective, path string) (*PrefsResult, error) {
 	return &PrefsResult{Effective: *eff, Path: path}, nil
 }
 
-// resolveSettingsFile validates the decoded settings object section by
-// section.
 func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, eff *Effective) (*PrefsResult, error) {
 	if n := countCredKeys(doc); n > 0 {
 		return nil, &RefusalError{Code: "bad-settings-credentials", Message: fmt.Sprintf(msgCredKey, path)}
@@ -129,7 +122,6 @@ func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, ef
 	return &PrefsResult{Effective: *eff, Path: path}, nil
 }
 
-// checkTopKeys rejects unknown top-level settings keys.
 func checkTopKeys(path string, obj map[string]any) error {
 	for _, k := range SortedKeys(obj) {
 		switch k {
@@ -141,7 +133,6 @@ func checkTopKeys(path string, obj map[string]any) error {
 	return nil
 }
 
-// checkSchemaKey validates the $schema hint key.
 func checkSchemaKey(path string, obj map[string]any) error {
 	if _, ok := obj["$schema"]; ok {
 		if _, isStr := obj["$schema"].(string); !isStr {
@@ -151,7 +142,6 @@ func checkSchemaKey(path string, obj map[string]any) error {
 	return nil
 }
 
-// resolveOutputFile owns the output.format file knob.
 func resolveOutputFile(r *Runner, path string, obj map[string]any) error {
 	v, ok := obj["output"]
 	if !ok {
@@ -173,7 +163,6 @@ func resolveOutputFile(r *Runner, path string, obj map[string]any) error {
 	return applyOutputFormat(r, path, f)
 }
 
-// applyOutputFormat applies the output.format value.
 func applyOutputFormat(r *Runner, path string, f any) error {
 	fs, isStr := f.(string)
 	if !isStr {
@@ -189,7 +178,6 @@ func applyOutputFormat(r *Runner, path string, f any) error {
 	}
 }
 
-// resolveLayoutFile owns the layout.compact file knob.
 func resolveLayoutFile(path string, obj map[string]any, eff *Effective) error {
 	v, ok := obj["layout"]
 	if !ok {
@@ -210,7 +198,6 @@ func resolveLayoutFile(path string, obj map[string]any, eff *Effective) error {
 	return nil
 }
 
-// applyCompact applies the layout.compact value.
 func applyCompact(path string, c any, eff *Effective) error {
 	b, isBool := c.(bool)
 	if !isBool {
@@ -224,7 +211,6 @@ func applyCompact(path string, c any, eff *Effective) error {
 	return nil
 }
 
-// resolveColorFile owns the color.mode file knob.
 func resolveColorFile(r *Runner, path string, obj map[string]any, eff *Effective) error {
 	v, ok := obj["color"]
 	if !ok {
@@ -245,7 +231,6 @@ func resolveColorFile(r *Runner, path string, obj map[string]any, eff *Effective
 	return nil
 }
 
-// applyColorMode applies the color.mode value.
 func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 	ms, isStr := m.(string)
 	if !isStr {
@@ -261,21 +246,16 @@ func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 	}
 }
 
-// countCredKeys counts object keys anywhere in doc whose ASCII-lowercased
-// form matches the credential pattern
-// (`[.. | objects | keys[] | ascii_downcase] | map(select(test(...)))`).
 func countCredKeys(doc any) int {
 	w := &credWalker{}
 	w.walk(doc)
 	return w.n
 }
 
-// credWalker counts credential-like keys anywhere in the settings document.
 type credWalker struct {
 	n int
 }
 
-// walk counts credential keys under v.
 func (w *credWalker) walk(v any) {
 	switch t := v.(type) {
 	case map[string]any:
@@ -287,7 +267,6 @@ func (w *credWalker) walk(v any) {
 	}
 }
 
-// walkMap counts credential keys in one object.
 func (w *credWalker) walkMap(t map[string]any) {
 	for k, child := range t {
 		if credRe.MatchString(readcommon.ASCIILower(k)) {

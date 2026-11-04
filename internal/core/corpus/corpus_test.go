@@ -34,7 +34,6 @@ func TestCheckedInCorpusCases(t *testing.T) {
 	}
 }
 
-// checkCase validates one case directory and each of its fake agents.
 func checkCase(t *testing.T, root, name string) {
 	t.Helper()
 	dir := filepath.Join(root, name)
@@ -62,8 +61,6 @@ func checkCase(t *testing.T, root, name string) {
 	}
 }
 
-// agentOutput mirrors the checked-in fake agent fixture shape.
-//
 //nolint:govet // the field order mirrors the JSON fixture, not memory layout
 type agentOutput struct {
 	Model  string   `json:"model"`
@@ -77,7 +74,6 @@ type agentOutput struct {
 	} `json:"review"`
 }
 
-// checkAgent validates one fake agent fixture against the case diff.
 func checkAgent(t *testing.T, path string, index []hunks.Hunk) {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -100,7 +96,6 @@ func checkAgent(t *testing.T, path string, index []hunks.Hunk) {
 	}
 }
 
-// checkComment validates one fake finding's anchor and uniqueness.
 func checkComment(t *testing.T, agent, path string, line int, body string, bodies map[string]bool, index []hunks.Hunk) {
 	t.Helper()
 	if path == "" || line < 1 || strings.TrimSpace(body) == "" {
@@ -115,7 +110,6 @@ func checkComment(t *testing.T, agent, path string, line int, body string, bodie
 	}
 }
 
-// loadCase loads one checked-in case.json through the bundle convention.
 func loadCase(t *testing.T, path string) (*core.CorpusCase, *core.RefusalError) {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -176,8 +170,6 @@ func TestEvaluateMatching(t *testing.T) {
 				t.Fatalf("got matched=%d fp=%d missed=%d, want %d/%d/%d",
 					rep.Matched, rep.FalsePositives, len(rep.Missed), tc.matched, tc.fp, tc.missed)
 			}
-			// True and false positives partition the reported set: every
-			// entry is graded exactly once, so nothing is silently dropped.
 			if rep.Matched+rep.FalsePositives != rep.Reported || len(rep.Outcomes) != rep.Reported {
 				t.Fatalf("matched=%d fp=%d graded=%d, reported=%d",
 					rep.Matched, rep.FalsePositives, len(rep.Outcomes), rep.Reported)
@@ -186,7 +178,6 @@ func TestEvaluateMatching(t *testing.T) {
 	}
 }
 
-// entry builds one minimal findings entry.
 func entry(path string, line int) *jq.Obj {
 	return jq.NewObj("path", path, "line", line, "sig", "s")
 }

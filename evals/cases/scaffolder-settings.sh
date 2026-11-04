@@ -1,28 +1,5 @@
 #!/usr/bin/env bash
-# Case scaffolder-settings: one-command onboarding (init) + minimal prefs file.
 #
-# Grades (all hermetic — crafted bundles, stub gh, sandbox git worktree):
-#   I1  scaffold-then-validate round-trip: init writes the four control
-#       files with the documented preset contents, starter kb.jsonl passes
-#       learn --status, check-tree validation runs (clean in a fresh repo,
-#       advisory-dirty in the shared sandbox), zero new gh intercepts.
-#   I2  presets map to panel strictness + kb-policy thresholds
-#       (chill unpinned/10/0.7, standard 1 member/5/0.5, strict lead+2/3/0.3).
-#   I3  overwrite guard: existing different files without --yes on a non-tty
-#       refuse as needs-confirm (nothing overwritten); --yes overwrites;
-#       identical re-runs read keep and exit 0 without --yes.
-#   P1  absent parity: report stdout/status/stderr byte-identical with no
-#       settings file vs a file holding only defaults.
-#   P2  flag-wins matrix: file format=json defaults to the envelope;
-#       --no-json forces human; file text wins over env json; env json alone
-#       defaults to the envelope.
-#   P3  layout/color: compact suppresses the panel advisory; --no-compact
-#       wins over the file; color always adds codes on the warn path while
-#       never stays plain; --color wins over the file; file wins over NO_COLOR.
-#   P4  credentials refuse: token/key/auth-shaped keys fail typed
-#       bad-settings-credentials (never written, never read).
-#   P5  unknown keys refuse: server-shaped or org.* namespaces fail typed
-#       bad-settings.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -30,14 +7,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
-# --- sandbox root controls: back up whatever earlier cases left ---
 for _f in budget panel kb-policy kb.jsonl kb-joins.jsonl learnings.md max_bytes; do
   if [ -f "$EVAL_SANDBOX/.review/$_f" ]; then
     cp "$EVAL_SANDBOX/.review/$_f" "$EVAL_SANDBOX/.review/$_f.hold-06"
   fi
 done
 
-# --- I1: scaffold-then-validate round-trip in a fresh repo (clean tree) ---
 mkdir -p "$EVAL_SANDBOX/initrepo"
 (
   cd "$EVAL_SANDBOX/initrepo" || exit 99
@@ -84,7 +59,6 @@ else
   bad "learn --status on starter exits $st"
 fi
 
-# --- I2: preset mapping (panel strictness + kb-policy thresholds) ---
 st=0
 (cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill --yes >/dev/null 2>&1) || st=$?
 if [ "$st" -eq 0 ] \
@@ -108,7 +82,6 @@ else
   bad "strict mapping drifted (exit $st)"
 fi
 
-# --- I3: overwrite guard (non-tty stdin: no prompt possible) ---
 st=0
 (cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill </dev/null >"$EVAL_SANDBOX/init-needs.txt" 2>"$EVAL_SANDBOX/init-needs-err.txt") || st=$?
 if [ "$st" -ne 0 ] \
@@ -133,7 +106,6 @@ else
   bad "idempotent re-run exits $st"
 fi
 
-# --- P1: absent parity (report on a crafted bundle) ---
 PR=4401
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -157,7 +129,6 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- P2: flag-wins matrix on output.format ---
 mkdir -p "$EVAL_SANDBOX/xdg-json/verdict" "$EVAL_SANDBOX/xdg-text/verdict" "$EVAL_SANDBOX/xdg-empty/verdict"
 printf '{"output":{"format":"json"}}' > "$EVAL_SANDBOX/xdg-json/verdict/settings.json"
 printf '{"output":{"format":"text"}}' > "$EVAL_SANDBOX/xdg-text/verdict/settings.json"
@@ -199,7 +170,6 @@ fi
 unset REVIEW_OUTPUT_FORMAT || true
 unset XDG_CONFIG_HOME || true
 
-# --- P3: layout compact + color mode (fetch-local human legs) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -262,7 +232,6 @@ unset NO_COLOR || true
 unset XDG_CONFIG_HOME || true
 mv "$EVAL_SANDBOX/.review/panel.hold-06" "$EVAL_SANDBOX/.review/panel" 2>/dev/null || true
 
-# --- P4: credentials refuse (typed, nothing written) ---
 mkdir -p "$EVAL_SANDBOX/xdg-cred/verdict"
 printf '{"output":{"format":"text"},"gh_token":"x"}' > "$EVAL_SANDBOX/xdg-cred/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-cred"
@@ -283,7 +252,6 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- P5: unknown namespaces refuse ---
 mkdir -p "$EVAL_SANDBOX/xdg-org/verdict"
 printf '{"org":{"mode":"strict"}}' > "$EVAL_SANDBOX/xdg-org/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-org"
@@ -304,7 +272,6 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- restore sandbox root controls ---
 for _f in budget panel kb-policy kb.jsonl kb-joins.jsonl learnings.md max_bytes; do
   if [ -f "$EVAL_SANDBOX/.review/$_f.hold-06" ]; then
     mv "$EVAL_SANDBOX/.review/$_f.hold-06" "$EVAL_SANDBOX/.review/$_f"
@@ -316,7 +283,6 @@ rm -rf "$EVAL_SANDBOX/initrepo" "$EVAL_SANDBOX/xdg-defaults" "$EVAL_SANDBOX/xdg-
   "$EVAL_SANDBOX/xdg-text" "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-compact" \
   "$EVAL_SANDBOX/xdg-color" "$EVAL_SANDBOX/xdg-cred" "$EVAL_SANDBOX/xdg-org"
 
-# --- P6: network never touched across every leg above ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
   good "zero stub-gh intercepts across init + prefs legs (offline)"
 else

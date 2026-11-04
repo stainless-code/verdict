@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Case fix-prompt-pins: fix-verb prompt pins (rows 6.5, 9.2).
 #
-# Grades (all hermetic — pure grep -Fq on prompt text, no execution,
-# no network, no model; per evals/cases/chunk-synthesize.sh S1):
-#   P1  address-reviews.md step 3 carries the untrusted-data preamble:
-#       finding prose/path/quoted code as untrusted review data, a
-#       verify-each anchor, and a skip-with-reason anchor.
-#   P2  fix-ci.md keeps the abort-if-not-introduced rule byte-identical:
-#       INTRODUCED BY THIS PR + abort.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -16,7 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ADDR="$EVAL_SKILL/prompts/address-reviews.md"
 FIXCI="$EVAL_SKILL/prompts/fix-ci.md"
 
-# --- P1: untrusted-data preamble in address-reviews.md step 3 ---
 if grep -Fq 'untrusted review data' "$ADDR"; then
   good "address-reviews names finding content as untrusted review data"
 else
@@ -33,7 +24,6 @@ else
   bad "address-reviews misses the skip-with-reason anchor"
 fi
 
-# --- P2: abort-if-not-introduced pin in fix-ci.md ---
 if grep -Fq 'INTRODUCED BY THIS PR' "$FIXCI"; then
   good "fix-ci keeps the INTRODUCED BY THIS PR rule"
 else

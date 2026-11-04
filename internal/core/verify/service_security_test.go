@@ -25,9 +25,6 @@ func TestVerifyRedactsSecretsAtTheLengthBoundary(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	// The 8-byte value is replaced wherever it occurs (including inside the
-	// 9-byte string that merely starts with it); the 7-byte value is below the
-	// documented floor and stays.
 	want := "a=***REDACTED*** b=abcd123 c=***REDACTED***5"
 	if resp.Tail != want {
 		t.Fatalf("tail = %q, want %q", resp.Tail, want)
@@ -56,7 +53,6 @@ func TestVerifyTimedOutZeroExitIsNotProof(t *testing.T) {
 	}
 }
 
-// wantNext runs verify against a scripted result and asserts the next hint.
 func wantNext(t *testing.T, res core.Result, want string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf x"}`)
@@ -70,7 +66,6 @@ func wantNext(t *testing.T, res core.Result, want string) {
 	}
 }
 
-// deadlineCommander records the deadline the watchdog context carries.
 type deadlineCommander struct {
 	left time.Duration
 	has  bool
@@ -106,9 +101,6 @@ func TestVerifyTimeoutIsSeconds(t *testing.T) {
 	}
 }
 
-// cancelThenFailCommander models a caller cancel that lands while the
-// command is starting: the spawn fails (as a Windows child killed between
-// CreateProcess and resume does) after the caller's context was canceled.
 type cancelThenFailCommander struct{ cancel context.CancelFunc }
 
 func (c *cancelThenFailCommander) Run(context.Context, core.Command) (core.Result, error) {

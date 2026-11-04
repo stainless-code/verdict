@@ -1,36 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-synthesize: Review-mode chunk loop + synthesize + Basis sum.
 #
-# Grades (all hermetic — crafted chunked bundle, stub gh, no network, no model):
-#   S1  prompt contract pins: prompts/review.md names the chunk loop
-#       (manifest-first, each chunk diff end-to-end against its own toc),
-#       unread-chunk visibility, lens chunk-path naming with the lens
-#       contract unchanged, exactly one review document across all chunks,
-#       Basis rung counts summed across chunks with keep-on-mismatch, and
-#       evidence rungs unchanged.
-#   S2  coverage obligation: a crafted two-chunk bundle carries manifest
-#       schema 1 with fetched SHAs, cap bytes + source, and totals; the
-#       ordered chunk diffs concatenate byte-identically to full.diff; every
-#       manifest diff/toc/roles reference resolves to a non-empty file; each
-#       chunk toc names its member files.
-#   S3  Basis sums: a synthesized review with per-chunk comments (ran on
-#       chunk-01, walked on chunk-02, two distinct kb rules) and the summed
-#       Basis line passes post --dry-run --json with no basis warning.
-#   S4  mismatch warn-and-keep: the same comments under a wrong Basis line
-#       still exit 0, warn naming the review's own counts, and keep the
-#       footer (garnish never fails the run).
-#   S5  exactly-one-doc: one synthesized review in yields exactly one stdout
-#       JSON envelope with a single event, exactly one findings file, and no
-#       per-chunk review files.
-# The agent loop itself is not executed here (no model in the harness): S1
-# pins the contract text, S2-S5 grade the machine-readable bundle surface
-# and the validation seam every synthesized document passes through.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -41,7 +15,6 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
 PROMPT="$EVAL_SKILL/prompts/review.md"
 
-# --- S1: prompt contract pins ---
 if grep -Fq 'chunks/manifest.json' "$PROMPT"; then
   good "prompt names the chunk manifest as the loop entry point"
 else
@@ -81,7 +54,6 @@ else
   bad "prompt misses the rungs-unchanged pin"
 fi
 
-# --- S2: crafted two-chunk bundle (same on-disk shape fetch writes) ---
 PR=4631
 dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir/chunks"
@@ -106,7 +78,6 @@ index 3333333..4444444 100644
  top
 +line-b
 EOF
-# Split on the file boundary: chunk-01 carries a.txt, chunk-02 carries b.txt.
 head -n 7 "$dir/full.diff" > "$dir/chunks/chunk-01.diff"
 tail -n +8 "$dir/full.diff" > "$dir/chunks/chunk-02.diff"
 cat > "$dir/chunks/chunk-01.toc.txt" <<'EOF'
@@ -180,7 +151,6 @@ else
   bad "chunk tocs miss their member files"
 fi
 
-# --- S3: summed Basis passes silent ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Two chunks reviewed, one minor note each.\n> Basis: 0 reproduced · 1 ran · 1 walked · 0 pointed · 0 said · 2 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational","kb":["synth-rule-one"]},{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational","kb":["synth-rule-two"]}]}
 EOF
@@ -188,7 +158,6 @@ run_review post acme/app "$PR" --dry-run --json
 assert_exit "summed Basis post succeeds" 0
 assert_stream_nogrep "summed Basis (1 ran + 1 walked, 2 rules) passes with no warning" "$EVAL_ERR" "basis line counts"
 
-# --- S4: wrong Basis warns and keeps, never fails ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Two chunks reviewed, one minor note each.\n> Basis: 9 reproduced · 9 ran · 9 walked · 9 pointed · 9 said · 9 rules cited · 9 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational","kb":["synth-rule-one"]},{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational","kb":["synth-rule-two"]}]}
 EOF
@@ -201,7 +170,6 @@ else
   bad "mismatch path gave exit $EVAL_STATUS"
 fi
 
-# --- S5: exactly one terminal write for the synthesis ---
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Two chunks reviewed, one minor note each.\n> Basis: 0 reproduced · 1 ran · 1 walked · 0 pointed · 0 said · 2 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational","kb":["synth-rule-one"]},{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational","kb":["synth-rule-two"]}]}
 EOF
@@ -223,7 +191,6 @@ else
   bad "findings file or per-chunk review files wrong"
 fi
 
-# --- cleanup: no knob state leaks into later cases ---
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 rm -f "$EVAL_SANDBOX/synth-concat.diff"
 unset XDG_CONFIG_HOME || true

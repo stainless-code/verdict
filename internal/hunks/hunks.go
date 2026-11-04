@@ -112,8 +112,6 @@ func Format(hunks []Hunk) string {
 	return sb.String()
 }
 
-// Hunk header parsing constants.
 const (
-	// minHeaderFields is the minimum @@-header field count.
 	minHeaderFields = 3
 )

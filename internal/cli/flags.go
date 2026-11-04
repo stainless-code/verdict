@@ -24,13 +24,11 @@ func ApplyGlobalForces(r *Runner, g *GlobalForces, noColorSet bool) error {
 	return nil
 }
 
-// forceOverlay maps one force string onto its destination.
 type forceOverlay struct {
 	dst   *string
 	force string
 }
 
-// applyStringForces overlays the non-empty flag layer onto the runner.
 func applyStringForces(r *Runner, eff *Effective, g *GlobalForces) {
 	if g.OutputForce != "" {
 		r.Output = g.OutputForce
@@ -62,15 +60,12 @@ func applyStringForces(r *Runner, eff *Effective, g *GlobalForces) {
 	}
 }
 
-// applyColorFallback owns the no-color rule: an explicit --no-color wins
-// unless the color mode is forced or configured.
 func applyColorFallback(r *Runner, eff *Effective, g *GlobalForces, noColorSet bool) {
 	if noColorSet && g.ColorForce != colorAlways && r.EnvReviewColorMode == "" && !r.PrefColorSet {
 		eff.Color = colorNever
 	}
 }
 
-// applyJSONMode derives JSONMode from the output layer.
 func applyJSONMode(r *Runner, g *GlobalForces) {
 	if g.OutputForce == formatText {
 		r.JSONMode = false
@@ -99,7 +94,6 @@ func StripGlobal(args []string) (rest []string, g *GlobalForces, uerr *UsageErro
 	return rest, g, nil, nil
 }
 
-// stripState carries the StripGlobal scan position.
 type stripState struct {
 	g    *GlobalForces
 	args []string
@@ -107,8 +101,6 @@ type stripState struct {
 	seen bool
 }
 
-// step consumes one arg, returning passthrough rest and whether the arg was
-// consumed as a flag.
 func (st *stripState) step() ([]string, *UsageError, bool, error) {
 	a := st.args[st.i]
 	if st.seen {
@@ -130,7 +122,6 @@ func (st *stripState) step() ([]string, *UsageError, bool, error) {
 	return r, nil, false, nil
 }
 
-// boolFlags maps boolean global flags to their setters.
 var boolFlags = map[string]func(*GlobalForces){
 	"--compact":               func(g *GlobalForces) { g.CompactForce = FlagOn },
 	"--no-compact":            func(g *GlobalForces) { g.CompactForce = FlagOff },
@@ -151,16 +142,11 @@ var boolFlags = map[string]func(*GlobalForces){
 	"--no-attribution":        func(g *GlobalForces) { g.PublishAttributionForce = AttributionOff },
 }
 
-// matchToggle matches a boolean global flag.
 func matchToggle(a string) (func(*GlobalForces), bool) {
 	set, ok := boolFlags[a]
 	return set, ok
 }
 
-// stripOne consumes one value-taking global flag at the scan position. It
-// returns the consumed arg count, passthrough rest args, and any
-// usage/refusal error; a zero count means a is not a value flag (boolean
-// toggles and passthrough are handled by the caller).
 func stripOne(st *stripState) (int, []string, *UsageError, error) {
 	args, i, g := st.args, st.i, st.g
 	a := args[i]
@@ -185,13 +171,11 @@ func stripOne(st *stripState) (int, []string, *UsageError, error) {
 	}
 }
 
-// setLogoURL records a logo URL force.
 func setLogoURL(v string, g *GlobalForces) {
 	g.PublishLogoURLForce = v
 	g.PublishLogoURLSet = true
 }
 
-// setAttributionText records an attribution text force.
 func setAttributionText(v string, g *GlobalForces) {
 	g.PublishAttributionText = v
 	g.PublishAttributionTextSet = true
@@ -225,7 +209,6 @@ func FlagValue(args []string, i int, flag, want string) (value string, next int,
 	return args[i+1], i + 1, nil
 }
 
-// stripColor consumes the --color flag.
 func stripColor(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 >= len(args) {
 		return 0, nil, MissingValue(args[i], "auto|always|never"), nil
@@ -236,7 +219,6 @@ func stripColor(args []string, i int, g *GlobalForces) (int, []string, *UsageErr
 	return 2, nil, nil, nil
 }
 
-// setColor validates one color value.
 func setColor(v string, g *GlobalForces) error {
 	switch v {
 	case colorAuto, colorAlways, colorNever:
@@ -247,7 +229,6 @@ func setColor(v string, g *GlobalForces) error {
 	}
 }
 
-// stripAttributionEq consumes the --attribution=value form.
 func stripAttributionEq(a string, g *GlobalForces) (int, []string, *UsageError, error) {
 	v := strings.TrimPrefix(a, "--attribution=")
 	if !isAttributionTier(v) {
@@ -258,7 +239,6 @@ func stripAttributionEq(a string, g *GlobalForces) (int, []string, *UsageError, 
 	return 1, nil, nil, nil
 }
 
-// stripLogoURL consumes the --logo-url value flag.
 func stripLogoURL(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 >= len(args) {
 		return 0, nil, MissingValue(args[i], "<url>"), nil
@@ -267,7 +247,6 @@ func stripLogoURL(args []string, i int, g *GlobalForces) (int, []string, *UsageE
 	return 2, nil, nil, nil
 }
 
-// stripAttribution consumes the --attribution flag (bare means product).
 func stripAttribution(args []string, i int, g *GlobalForces) (int, []string, *UsageError, error) {
 	if i+1 < len(args) && isAttributionTier(args[i+1]) {
 		g.PublishAttributionForce = args[i+1]
@@ -277,7 +256,6 @@ func stripAttribution(args []string, i int, g *GlobalForces) (int, []string, *Us
 	return 1, nil, nil, nil
 }
 
-// isAttributionTier reports whether v is a valid attribution tier.
 func isAttributionTier(v string) bool {
 	switch v {
 	case AttributionOff, AttributionProduct, AttributionFull:
@@ -300,7 +278,6 @@ func PeekJSON(args []string) bool {
 	return false
 }
 
-// stripTextValue consumes a --flag <text> value flag.
 func stripTextValue(st *stripState, want string, set func(string, *GlobalForces)) (int, []string, *UsageError, error) {
 	args, i := st.args, st.i
 	a := args[i]
@@ -311,7 +288,6 @@ func stripTextValue(st *stripState, want string, set func(string, *GlobalForces)
 	return 2, nil, nil, nil
 }
 
-// stripEq consumes the --flag=value forms.
 func stripEq(a string, g *GlobalForces) (int, []string, *UsageError, error) {
 	switch {
 	case strings.HasPrefix(a, "--color="):

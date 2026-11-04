@@ -715,7 +715,7 @@ func TestFetchGoldenLocal(t *testing.T) {
 	}, nil, "fetch-local", "acme/app", "demo", "--json")
 	golden.Pin(t, harness, "local-slug-number", base, nil,
 		"fetch-local", "acme/app", "4351")
-	// local-slug-empty pins the typed refusal: `fetch-local acme/app --`
+	// local-slug-empty pins the typed refusal: `fetch-local acme/app .`
 	// sanitizes to nothing and refuses bad-slug. The retired script agreed
 	// on GNU sed but kept the dashes on macOS BSD sed — a platform-dependent
 	// quirk, so a cross-implementation case could never pin it. The typed
@@ -728,7 +728,7 @@ func TestFetchGoldenLocal(t *testing.T) {
 			t.Fatal(err)
 		}
 		base(t, dir, "")
-		b := goldenRun(t, harness, "local-slug-empty", base, nil, "fetch-local", "acme/app", "--", "--json")
+		b := goldenRun(t, harness, "local-slug-empty", base, nil, "fetch-local", "acme/app", ".", "--json")
 		if b.Status != 1 {
 			t.Fatalf("exit = %d, want 1", b.Status)
 		}

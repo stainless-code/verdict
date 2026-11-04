@@ -1,32 +1,11 @@
 #!/usr/bin/env bash
-# Case chunk-cost: cost rollup across chunk runs (report --cost).
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   C1  rolled-up totals: a bundle with a top-level cost record plus two
-#       per-chunk records (one an array of two runs) reports one whole-review
-#       figure — summed tokens, summed est_usd, summed runs — stratified by
-#       the existing effort tiers, in both --json and human text.
-#   C2  absent-record zeros: manifest chunks without a cost file contribute
-#       zeros silently (exit 0, totals equal the present records, no warning).
-#   C3  unreadable-record zeros: a corrupt per-chunk record warns, reads
-#       zeros, and never fails; a chunk-only bundle (no top-level cost.json)
-#       still rolls its valid chunks.
-#   C4  non-chunked parity: a bundle with no per-chunk records reports exactly
-#       today's rollup (unknown/missing effort still reads standard, a record
-#       without models still counts as a run but not a with-cost run), and
-#       report without --cost carries no cost key.
-#   C5  manifest-unreadable fallback: a corrupt manifest still rolls the
-#       on-disk per-chunk records via the glob (exit 0).
 #
-# Per-chunk convention (defined here, additive read-path only):
-# <dir>/chunks/<name>.cost.json holds one cost record (or an array), same
-# shape as cost.json, keyed by the manifest chunk name.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -49,7 +28,6 @@ mkcost() { # $1 = bundle dir; stdin = manifest chunk-name list (one per line)
   rm -f "$names"
 }
 
-# --- C1: top-level record + two chunk records (one a two-run array) ---
 eval_mk_bundle 4901
 printf '[]' > "$EVAL_SANDBOX/.review/4901/findings.json"
 cat > "$EVAL_SANDBOX/.review/4901/cost.json" <<'EOF'
@@ -92,7 +70,6 @@ else
   bad "human text exits $EVAL_STATUS: $(grep -h 'cost:\|tiers:' "$EVAL_OUT" || echo MISSING)"
 fi
 
-# --- C2: absent per-chunk records read zeros, silently ---
 eval_mk_bundle 4902
 printf '[]' > "$EVAL_SANDBOX/.review/4902/findings.json"
 cat > "$EVAL_SANDBOX/.review/4902/cost.json" <<'EOF'
@@ -113,7 +90,6 @@ assert_json_field "absent-grade sums total tokens" "165" '.data.cost.total_token
 assert_json_field "absent-grade estimates usd" "0.06" '.data.cost.est_usd'
 assert_stream_nogrep "absent-grade warns about no chunk cost" "$EVAL_ERR" "chunk cost"
 
-# --- C3: unreadable chunk record warns, reads zeros, never fails ---
 eval_mk_bundle 4903
 printf '[]' > "$EVAL_SANDBOX/.review/4903/findings.json"
 mkcost "$EVAL_SANDBOX/.review/4903" "chunk-01
@@ -135,7 +111,6 @@ else
   bad "unreadable-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- C4: non-chunked parity (no per-chunk records, legacy shapes) ---
 eval_mk_bundle 4904
 printf '[]' > "$EVAL_SANDBOX/.review/4904/findings.json"
 cat > "$EVAL_SANDBOX/.review/4904/cost.json" <<'EOF'
@@ -162,7 +137,6 @@ else
   bad "no-cost-flag exits $EVAL_STATUS"
 fi
 
-# --- C5: corrupt manifest falls back to the on-disk glob ---
 eval_mk_bundle 4905
 printf '[]' > "$EVAL_SANDBOX/.review/4905/findings.json"
 mkdir -p "$EVAL_SANDBOX/.review/4905/chunks"
@@ -180,7 +154,6 @@ else
   bad "manifest-fallback exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- cleanup: fixtures stay out of later cases, knob state goes ---
 rm -rf "$EVAL_SANDBOX/.review/4901" "$EVAL_SANDBOX/.review/4902" \
   "$EVAL_SANDBOX/.review/4903" "$EVAL_SANDBOX/.review/4904" \
   "$EVAL_SANDBOX/.review/4905" "$EVAL_SANDBOX/xdg-empty"

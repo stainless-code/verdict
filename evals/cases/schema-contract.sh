@@ -1,28 +1,5 @@
 #!/usr/bin/env bash
-# Case schema-contract: published schemas validate real fixture outputs.
 #
-# Grades (all hermetic — crafted bundles in the temp sandbox, network-dead
-# stub gh, no registry):
-#   S1  review.json (agent-written, every optional key the manual names)
-#       validates against schemas/review.schema.json.
-#   S2  record on a crafted local bundle writes findings.json + record.json
-#       for real, plus one --json envelope: findings validate as a findings
-#       store, record.json against schemas/record.schema.json (provenance triple
-#       pinned: model from the cost record), the envelope
-#       against schemas/envelope.schema.json and its data against the
-#       recordData profile.
-#   S3  report --json and report --cost --json on that bundle validate
-#       (envelope plus the reportData profile, cost rollup with the
-#       cached_input_tokens scalar included).
-#   S4  post --dry-run --json on a PR bundle validates (envelope plus the
-#       postData profile, data.provenance pinned); the findings.dryrun.json
-#       it writes validates as a findings store.
-#   S5  a representative post.json (the real post needs network, so its shape
-#       is pinned from the writer, provenance triple included) and the
-#       prompts-shaped cost.json validate.
-#   S6  the checker has teeth: one broken doc per negative (missing body,
-#       off-enum status, extra envelope key, bad date-time) fails validation.
-#   S7  offline: zero stub-gh intercepts across every validation leg.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -59,7 +36,6 @@ must_fail() { # $1 = label, $2 = schema[#ptr], $3 = doc, $4 = expected stderr ru
   fi
 }
 
-# --- S1: agent-written review input, every optional key ---
 cat > "$EVAL_SANDBOX/s1-review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.\n\n**Reviewed changes**\n\n- Touched notes.\n\n### ⚠️ Watch the wording\n\nBody section.","approved":false,
 "comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"walked","severity":"informational","in-bounds":true,"kb":["rule-one"]},
@@ -70,7 +46,6 @@ cat > "$EVAL_SANDBOX/s1-review.json" <<'EOF'
 EOF
 check "S1 review.json (full)" "$SCH/review.schema.json" "$EVAL_SANDBOX/s1-review.json"
 
-# --- S2: record a crafted local bundle for real ---
 LB="$EVAL_SANDBOX/.review/local-schematest"
 mkdir -p "$LB"
 cat > "$LB/source.json" <<'EOF'
@@ -101,9 +76,6 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "S2 record exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
-# Second pass with agent triage + verification evidence, so the stored
-# shapes beyond open/unmerged get pinned too (triaged/wont-fix status,
-# rationale, triagedAt/triagedBy, addressed flip, multi-event history).
 SIG="$(jq -r '.[0].sig' "$LB/findings.json" 2>/dev/null || true)"
 cat > "$LB/review.json" <<EOF
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[],
@@ -113,8 +85,6 @@ cat > "$LB/verification.json" <<EOF
 [{"sig":"$SIG","verdict":"VERIFIED","verifyCmd":"true","resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
 EOF
 run_review record acme/app local-schematest --json
-# Verification flips open->addressed first, then the same run's triage claim
-# moves it to wont-fix: the merge keeps both history events either way.
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.[0].status' "$LB/findings.json" 2>/dev/null)" = "wont-fix" ]; then
   good "S2 re-record merges triage + verification (wont-fix, history kept)"
@@ -136,7 +106,6 @@ check "S2 record envelope" "$ENV" "$EVAL_OUT"
 jq '.data' <"$EVAL_OUT" > "$DATA" 2>/dev/null || echo "null" > "$DATA"
 check "S2 record data profile" "$ENV#/\$defs/recordData" "$DATA"
 
-# --- S3: report reads over that bundle ---
 run_review report acme/app local-schematest --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "S3 report --json exits 0"
@@ -158,7 +127,6 @@ check "S3 report --cost envelope" "$ENV" "$EVAL_OUT"
 jq '.data' <"$EVAL_OUT" > "$DATA" 2>/dev/null || echo "null" > "$DATA"
 check "S3 report --cost data profile" "$ENV#/\$defs/reportData" "$DATA"
 
-# --- S4: post dry-run on a PR bundle ---
 PR=4951
 stub_pre_post="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 eval_mk_bundle "$PR"
@@ -182,8 +150,6 @@ else
 fi
 check "S4 findings.dryrun.json" "$SCH/findings.schema.json" "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json"
 
-# --- S5: representative post.json (real post needs network) + cost shape ---
-# post.json is written only by the real-post path, so no hermetic run can
 # mint one; this pins the writer's shape instead (review passthrough stays open
 # for GitHub's object, provenance rides the same triple the record writer and
 # both post envelopes emit).
@@ -193,7 +159,6 @@ EOF
 check "S5 post.json (representative)" "$SCH/post.schema.json" "$EVAL_SANDBOX/s5-post.json"
 check "S5 cost.json (prompts shape)" "$SCH/cost.schema.json" "$LB/cost.json"
 
-# --- S6: the checker has teeth ---
 printf '{"schema_version":"1","comments":[]}' > "$EVAL_SANDBOX/s6-nobody.json"
 must_fail "S6 review without body" "$SCH/review.schema.json" "$EVAL_SANDBOX/s6-nobody.json" "missing required key(s): body"
 printf '[{"sig":"x","sig_version":"1","kind":"inline","status":"maybe","firstSeen":"a","lastSeen":"b","history":[]}]' > "$EVAL_SANDBOX/s6-badstatus.json"
@@ -203,10 +168,6 @@ must_fail "S6 envelope extra top-level key" "$ENV" "$EVAL_SANDBOX/s6-extrakey.js
 printf '{"schema_version":"1","status":"local","head":"h","diff_sha256":"d","recorded_at":"not-a-time","findings":0,"open":0}' > "$EVAL_SANDBOX/s6-badtime.json"
 must_fail "S6 record bad date-time" "$SCH/record.schema.json" "$EVAL_SANDBOX/s6-badtime.json" "not a date-time"
 
-# --- S7: offline across every leg + cleanup ---
-# record/report never touch the network; the dry-run post attempts one
-# live-SHA lookup that the stub fails into the warn-and-proceed path, so
-# pin that single expected interception instead of pretending zero.
 if [ "$(( stub_pre_post - stub_before ))" = "0" ]; then
   good "S7 zero stub-gh intercepts across the record/report legs (offline)"
 else

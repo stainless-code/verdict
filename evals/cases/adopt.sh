@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
-# Case adopt: local-to-PR finding adoption (offline).
 #
-# Grades (hermetic — crafted local + PR bundles in the sandbox, stub gh):
-#   A1  happy path: findings copy verbatim with the handoff stamp
-#       (lastSeen + adopted history), open count, human line, --json
-#       envelope shape with the adopt data keys.
-#   A2  re-anchor: covered anchors stay, drifted anchors clear to false.
-#   A3  refusals: bad-target (local pr), bad-from, missing-findings,
-#       missing-diff, provider-unimplemented, already-adopted, corrupt
-#       from-store — all typed with try: hints, nothing written.
-#   A4  offline: zero stub-gh intercepts across every leg.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -37,7 +27,6 @@ EOF
   cat > "$dir/findings.json"
 }
 
-# --- A1: happy path ---
 PR=4311
 eval_mk_bundle "$PR"
 mk_local_findings adopt1 <<'EOF'
@@ -72,7 +61,6 @@ else
   bad "handoff stamp missing"
 fi
 
-# --- A2: re-anchor keeps covered, clears drifted ---
 if [ "$(jq -r '.[0].anchored' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "true" ] \
   && [ "$(jq -r '.[1].anchored' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "false" ]; then
   good "covered anchor kept, drifted anchor cleared"
@@ -80,7 +68,6 @@ else
   bad "anchors: $(jq -c 'map(.anchored)' "$EVAL_SANDBOX/.review/$PR/findings.json")"
 fi
 
-# --- A3: refusals ---
 run_review adopt acme/app local-foo --from adopt1 --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "bad-target" ]; then
@@ -126,7 +113,6 @@ if [ "$before_sum" = "$after_sum" ] && [ ! -e "$EVAL_SANDBOX/.review/$PR/finding
 else
   bad "refused adopt mutated the target"
 fi
-# already-adopted: the A1 target now carries findings.
 run_review adopt acme/app 4311 --from adopt1 --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "already-adopted" ]; then
@@ -134,7 +120,6 @@ if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "already-adopted" ]; then
 else
   bad "second adopt gave exit $EVAL_STATUS code '$code'"
 fi
-# corrupt from-store refuses typed instead of dying in jq.
 mk_local_findings adoptbad <<'EOF'
 [{"kind":"inline","sig":"nope"
 EOF
@@ -147,7 +132,6 @@ else
   bad "corrupt from-store gave exit $EVAL_STATUS code '$code'"
 fi
 
-# --- A4: offline across every leg ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
   good "zero stub-gh intercepts across adopt legs (offline)"
 else

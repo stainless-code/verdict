@@ -11,9 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// delegate prints the exact manager command, runs it without a prompt, and
-// streams its output. A manager failure propagates its exit code through
-// Response.ExitCode so the edge can exit with it.
 func delegate(ctx context.Context, req *Request, det *detection) (Response, *core.RefusalError) {
 	if det.Channel == ChannelBrew && req.PinVersion != "" {
 		return Response{}, &core.RefusalError{
@@ -52,7 +49,6 @@ func delegate(ctx context.Context, req *Request, det *detection) (Response, *cor
 	return resp, nil
 }
 
-// run executes one manager argv with the injected streams and environment.
 func (req *Request) run(ctx context.Context, argv []string) (int, error) {
 	if req.Exec != nil {
 		return req.Exec(ctx, argv, req.EnvSlice, req.Stdout, req.Stderr)

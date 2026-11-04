@@ -184,7 +184,7 @@ export interface ShowFix {
   /** The record's embedded suggestion body, or null when absent. */
   suggestion: string | null;
   /** The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
-  verify_hint: unknown;
+  verify_hint: VerifyHint | null;
   /** Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction. */
   caution: string;
   [key: string]: unknown;

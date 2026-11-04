@@ -10,11 +10,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// inertCommander refuses every spawn, so a fuzzed tools/call can reach the
-// request decoders and the service layer but never start a process.
 type inertCommander struct{}
 
-// Run implements core.Commander.
 func (inertCommander) Run(context.Context, core.Command) (core.Result, error) {
 	return core.Result{}, context.Canceled
 }
@@ -62,7 +59,6 @@ func FuzzServeFrames(f *testing.F) {
 	})
 }
 
-// assertTransportContract checks the response stream against the input.
 func assertTransportContract(t *testing.T, input, output []byte) {
 	t.Helper()
 	ids, lines := inputIDs(input)
@@ -79,8 +75,6 @@ func assertTransportContract(t *testing.T, input, output []byte) {
 	}
 }
 
-// assertFrame checks one stdout line is a well-formed JSON-RPC response whose
-// id was sent by the client (or is null).
 func assertFrame(t *testing.T, resp string, ids map[string]bool, input []byte) {
 	t.Helper()
 	var raw map[string]json.RawMessage
@@ -97,8 +91,6 @@ func assertFrame(t *testing.T, resp string, ids map[string]bool, input []byte) {
 	}
 }
 
-// inputIDs collects the compacted id of every input line that decodes as a
-// JSON object, and counts the non-blank lines.
 func inputIDs(input []byte) (map[string]bool, int) {
 	ids := map[string]bool{}
 	lines := 0
@@ -115,7 +107,6 @@ func inputIDs(input []byte) (map[string]bool, int) {
 	return ids, lines
 }
 
-// compactID returns the compacted "id" member of a JSON object line.
 func compactID(line []byte) (string, bool) {
 	var obj struct {
 		ID json.RawMessage `json:"id"`

@@ -10,21 +10,8 @@ import (
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
-// The gate contract these tests assert is docs/manual.md § report --check:
-// exit 0 for no open findings at-or-above the tier, 1 for findings at-or-above
-// it (only `open` findings count, untagged findings never meet a tier), the
-// completeness dimension (HEAD reviewed iff the completed post record carries
-// the fetched HEAD, with typed missing-post/corrupt-post/stale-head lines),
-// and the third live-thread dimension that reads neutral when skipped, fails
-// when more threads stand open live than the store holds open, and fails
-// closed only under --live strict.
-
-// storeHeadSHA is the fetched HEAD the fixtures pin.
 const storeHeadSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-// entryJSON renders one findings.json entry carrying the fields the gate and
-// the counts read. severity and anchored are JSON literals, so a case can pin
-// an untagged finding (null) or a section entry ("body").
 func entryJSON(sig, kind, status, severity, anchored string) string {
 	path, line, heading := `"notes.txt"`, `3`, "null"
 	if kind == "section" {
@@ -38,11 +25,6 @@ func entryJSON(sig, kind, status, severity, anchored string) string {
 		`"rationale":"","history":[]}`
 }
 
-// severityTiers is the mixed store the tier gate counts: one open critical,
-// two open important (a tie the tier must count twice), one open
-// informational, and three decoys — an untagged open finding (never meets a
-// tier), an addressed critical, and a deferred critical. Store order is not
-// rank order, so a count that depends on position cannot pass.
 var severityTiers = "[" + strings.Join([]string{
 	entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"informational"`, "true"),
 	entryJSON("2222222222222222222222222222222222222222", "inline", "open", `"critical"`, "true"),
@@ -67,13 +49,10 @@ func TestRunReportCheckTierGate(t *testing.T) {
 		wantFail bool
 	}{
 		{
-			// One open critical; the addressed and deferred criticals are
-			// dispositioned, so they stay human and never count.
 			name: "critical", findings: severityTiers, check: "critical", wantFail: true,
 			wantLine: "check: 1 open finding(s) at-or-above critical — gate fails",
 		},
 		{
-			// Both open important findings count, the tie included.
 			name: "important", findings: severityTiers, check: "important", wantFail: true,
 			wantLine: "check: 3 open finding(s) at-or-above important — gate fails",
 		},
@@ -82,8 +61,6 @@ func TestRunReportCheckTierGate(t *testing.T) {
 			wantLine: "check: 4 open finding(s) at-or-above informational — gate fails",
 		},
 		{
-			// An untagged open finding never meets any tier, and the only
-			// tiered findings are dispositioned: the gate passes.
 			name: "untagged-and-dispositioned-pass",
 			findings: "[" + strings.Join([]string{
 				entryJSON("8888888888888888888888888888888888888888", "inline", "open", "null", "true"),
@@ -134,8 +111,6 @@ func TestRunReportCompletenessGate(t *testing.T) {
 			wantSubs: []string{"check: HEAD aaaaaaa reviewed (post matches fetch) — completeness passes"},
 		},
 		{
-			// Nothing posted yet: the recovery is a plain fetch (no posted
-			// head to advance from).
 			name: "missing-post-fails", wantFail: true,
 			wantSubs: []string{"missing-post", "verdict fetch acme/app 5101"},
 		},
@@ -144,7 +119,6 @@ func TestRunReportCompletenessGate(t *testing.T) {
 			wantSubs: []string{"corrupt-post"},
 		},
 		{
-			// A post recorded at another SHA: the recovery advances from it.
 			name: "stale-post-fails", post: `{"head":"` + strings.Repeat("c", 40) + `"}`, postSet: true,
 			wantPosted: strings.Repeat("c", 40), wantFail: true,
 			wantSubs: []string{"stale-head", "HEAD aaaaaaa != posted ccccccc", "--base-sha ccccccc"},
@@ -172,8 +146,6 @@ func TestRunReportCompletenessGate(t *testing.T) {
 					t.Errorf("CheckLines = %q, want it to contain %q", joined, sub)
 				}
 			}
-			// The envelope carries the same dimension: the fetched HEAD is
-			// always present, the posted HEAD only when a post recorded one.
 			comp := resp.Data.Completeness
 			if comp == nil {
 				t.Fatal("data.completeness is nil under --completeness")
@@ -194,8 +166,6 @@ func TestRunReportCompletenessGate(t *testing.T) {
 		})
 	}
 
-	// Combined dimensions: the tier passes and completeness fails, so the
-	// gate fails and both lines render in dimension order.
 	t.Run("combined-fails-on-either", func(t *testing.T) {
 		req := fixture(t, "[]")
 		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
@@ -220,9 +190,6 @@ func TestRunReportCompletenessGate(t *testing.T) {
 	})
 }
 
-// threadCommander is a hermetic Commander for the live probe: every argv
-// gets the canned streams, and the call count proves the probe ran (or did
-// not) without a real `gh`.
 type threadCommander struct {
 	stdout string
 	stderr string
@@ -230,7 +197,6 @@ type threadCommander struct {
 	calls  int
 }
 
-// Run records the call and replays the canned result.
 func (c *threadCommander) Run(_ context.Context, _ core.Command) (core.Result, error) {
 	c.calls++
 	res := core.Result{Stdout: c.stdout, Stderr: c.stderr}
@@ -240,8 +206,6 @@ func (c *threadCommander) Run(_ context.Context, _ core.Command) (core.Result, e
 	return res, nil
 }
 
-// threadsPage renders a GraphQL thread page with open unresolved threads and
-// resolved ones, the shape the probe's slurp reads.
 func threadsPage(open, resolved int) string {
 	nodes := make([]string, 0, open+resolved)
 	for range open {
@@ -263,7 +227,6 @@ func threadsPage(open, resolved int) string {
 //
 //nolint:gocognit,cyclop,revive // the live matrix asserts calls, lines, warns, and the exit inline
 func TestRunReportLiveGate(t *testing.T) {
-	// oneOpen is a single open local finding, so the probe compares against 1.
 	oneOpen := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true") + "]"
 
 	tests := []struct {
@@ -286,22 +249,17 @@ func TestRunReportLiveGate(t *testing.T) {
 				"(fetch + triage them, then re-check)"},
 		},
 		{
-			// One live open vs one local open: not more, so the dimension
-			// passes. The tie is what the comparison boundary turns on.
 			name: "equal-count-passes", findings: oneOpen, gate: true,
 			page: threadsPage(1, 1), wantCalls: 1, wantFail: false,
 			wantLines: []string{"check: 1 live open thread(s) vs 1 local open finding(s) — live recheck passes"},
 		},
 		{
-			// Resolved threads never count as open.
 			name: "resolved-threads-ignored", findings: oneOpen, gate: true,
 			page: threadsPage(0, 3), wantCalls: 1, wantFail: false,
 			wantLines: []string{"check: 0 live open thread(s) vs 1 local open finding(s) — live recheck passes"},
 			noWarns:   []string{"malformed thread node"},
 		},
 		{
-			// A thread whose resolution state cannot be read counts as open
-			// (fail-closed) and says so, so the verdict is explainable.
 			name: "malformed-thread-counts-open", findings: oneOpen, gate: true,
 			page:      `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":"yes"}]}}}}}`,
 			wantCalls: 1, wantFail: false,
@@ -321,16 +279,12 @@ func TestRunReportLiveGate(t *testing.T) {
 				"restore the network or re-run with --live skip, then re-check)"},
 		},
 		{
-			// --live skip pays zero network and says so in both the warn
-			// stream and a neutral check line.
 			name: "skip-explicit-neutral", findings: oneOpen, live: "skip", gate: true,
 			page: threadsPage(9, 0), wantCalls: 0, wantFail: false,
 			wantLines: []string{"check: live recheck skipped (--live skip) — gating on local dimensions only"},
 			wantWarns: []string{"live recheck skipped (--live skip requested — gating on local dimensions only)"},
 		},
 		{
-			// An advisory run (no gate flag) never probes, even with a
-			// commander available and --live auto.
 			name: "advisory-never-probes", findings: oneOpen, gate: false,
 			page: threadsPage(9, 0), wantCalls: 0, wantFail: false,
 			noWarns: []string{"live recheck", "live thread recheck"},
@@ -343,8 +297,6 @@ func TestRunReportLiveGate(t *testing.T) {
 			req.Commander = cmd
 			flags := core.ReportFlags{Live: tc.live}
 			if tc.gate {
-				// A matching post record passes completeness, and no tier
-				// is set: this dimension alone moves GateFailed.
 				writeFile(t, ".review/5101/post.json", `{"head":"`+storeHeadSHA+`"}`)
 				flags.Completeness = true
 			}
@@ -417,8 +369,6 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	}
 }
 
-// containsLine reports whether any line equals want or contains it (warns
-// carry a detail suffix the test may not pin).
 func containsLine(lines []string, want string) bool {
 	for _, line := range lines {
 		if strings.Contains(line, want) {
@@ -436,8 +386,6 @@ func containsLine(lines []string, want string) bool {
 //
 //nolint:gocognit,revive // both tallies assert inline so the store-wide/filtered split is visible
 func TestRunReportCounts(t *testing.T) {
-	// Five inline findings (anchored, unanchored, addressed, deferred, and an
-	// absent anchored flag) and two sections (wont-fix, false-positive).
 	findings := "[" + strings.Join([]string{
 		entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"critical"`, "true"),
 		entryJSON("2222222222222222222222222222222222222222", "inline", "open", `"important"`, "false"),
@@ -465,8 +413,6 @@ func TestRunReportCounts(t *testing.T) {
 		}
 	})
 
-	// A status filter narrows the displayed ranking — and so the verdict —
-	// but never the store-wide kind counts.
 	t.Run("filtered", func(t *testing.T) {
 		req := fixture(t, findings)
 		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{

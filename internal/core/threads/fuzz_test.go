@@ -60,7 +60,6 @@ func FuzzProviderMappers(f *testing.F) {
 	})
 }
 
-// asList wraps a non-array payload as a one-element list.
 func asList(doc any) []any {
 	if items, ok := doc.([]any); ok {
 		return items
@@ -68,7 +67,6 @@ func asList(doc any) []any {
 	return []any{doc}
 }
 
-// allMappers runs every host mapper over the same decoded payload.
 func allMappers(items []any) map[string][]threadscore.Thread {
 	gh, _ := threadscore.FromGitHubThreads(items)
 	return map[string][]threadscore.Thread{
@@ -82,8 +80,6 @@ func allMappers(items []any) map[string][]threadscore.Thread {
 	}
 }
 
-// assertFeedContract renders ts as a threads.json feed and checks it against
-// the published schema and the body cap.
 func assertFeedContract(t *testing.T, checker *schemacheck.Checker, name string, ts []threadscore.Thread, input []byte) {
 	t.Helper()
 	feed := &threadscore.File{
@@ -103,7 +99,6 @@ func assertFeedContract(t *testing.T, checker *schemacheck.Checker, name string,
 	}
 }
 
-// assertBodies checks the cap and UTF-8 validity of every comment body.
 func assertBodies(t *testing.T, name string, comments []threadscore.Comment) {
 	t.Helper()
 	for _, c := range comments {

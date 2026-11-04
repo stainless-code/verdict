@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
-# Case hunk-snapshot: anchors validate against the fetch-time snapshot.
 #
-# Grades (hermetic — crafted bundles, smart gh stub, no network):
-#   H1  pinned snapshot wins: a mid-run push rewrites full.diff, but post
-#       still validates against hunks.tsv — the kept anchor posts inline,
-#       the snapshot-dropped anchor lands in the posted body as a named
-#       note with its reason (exit 0, drops never fail).
-#   H2  no-drop parity: a run with zero drops posts a body byte-identical
-#       to the rebuilt-index run (pinning changes nothing on the kept path).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Smart gh stub: review POSTs succeed (payload saved when asked), the live
-# SHA read returns a moved HEAD (bbbb…) so drift context triggers while
-# validation must stay pinned to the snapshot.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -38,13 +27,9 @@ exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
 
-# --- H1: mid-run push does not move the validation target ---
 PR=4281
 eval_mk_bundle "$PR"
-# What fetch pinned before the push: notes.txt commentable on NEW 1-3 only.
 printf 'notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n' > "$EVAL_SANDBOX/.review/$PR/hunks.tsv"
-# The push rewrites full.diff (line 50 commentable live) — the snapshot
-# must still decide.
 {
   echo 'diff --git a/notes.txt b/notes.txt'
   echo 'index 1111111..2222222 100644'
@@ -104,7 +89,6 @@ else
   bad "findings anchored flags wrong"
 fi
 
-# --- H2: no-drop run is byte-identical with or without the snapshot ---
 mk_kept() { # $1 = pr
   eval_mk_bundle "$1"
   eval_write_review "$1" <<'EOF'
@@ -137,10 +121,6 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "rebuilt no-drop run exits $EVAL_STATUS"
 fi
-# The drift nudge names the per-PR advance command (fetch <repo> <pr>
-# --base-sha <short>), and the hidden repeat marker hashes the full payload
-# (PR number included), so mask both before comparing: pinning must change
-# nothing else on the kept path.
 mask() { sed -E 's/acme\/app 428[23]/acme\/app PR/; s/verdict-review payload=[0-9a-f]{40}/verdict-review payload=HASH/'; }
 mask <"$EVAL_SANDBOX/posted-4282.json" >"$EVAL_SANDBOX/norm-4282.json"
 mask <"$EVAL_SANDBOX/posted-4283.json" >"$EVAL_SANDBOX/norm-4283.json"

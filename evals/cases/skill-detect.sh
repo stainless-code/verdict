@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
-# Case skill-detect: `verdict skill install --detect` end to end.
 #
-# Grades (all hermetic: temp HOMEs holding fake agent skills dirs, the binary's
-# own embedded payload, and the network-dead gh stub; no real network):
-#   D1  detection follows install-skill.sh's rule — a skills dir that exists
-#       AND holds a file is a target, an empty one and an absent one are not —
-#       and the targets appear in agent-table order, not creation order.
-#   D2  --dry-run --json previews one create per detected agent, writes
-#       nothing, and keeps the documented envelope.
-#   D3  apply writes the payload into exactly those targets with a receipt,
-#       and a re-run reads keep for each.
-#   D4  with no live skills dir the run refuses typed skill-no-detected-agent,
-#       names --agent, and writes nothing.
-#   D5  --detect cannot be combined with --dir or --agent: usage exit 2.
-#   D6  a foreign target refuses typed without --force before ANY target is
-#       written; --force writes only verdict's payload and spares foreign files.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -25,10 +10,7 @@ DETECT_HOME="$SANDBOX/detect-home"
 mkdir -p "$DETECT_HOME/.codex/skills" "$DETECT_HOME/.cursor/skills" "$DETECT_HOME/.claude/skills"
 printf 'existing skill\n' >"$DETECT_HOME/.codex/skills/existing.md"
 printf 'existing skill\n' >"$DETECT_HOME/.claude/skills/existing.md"
-# A skills dir that exists but holds nothing is not a live setup.
 
-# run_detect <home> <verdict args...> — run the CLI with that HOME as its
-# agent table root; captures stdout/stderr and sets EVAL_STATUS like run_review.
 run_detect() {
   local home="$1"
   shift
@@ -44,7 +26,6 @@ run_detect() {
   return 0
 }
 
-# --- D1: detection over the agent table ---
 run_detect "$DETECT_HOME" skill install --detect --dry-run
 assert_exit "detect previews over the live skills dirs" 0
 assert_eq "human targets are the live agents in table order" "claude codex " \
@@ -55,7 +36,6 @@ else
   bad "detect targeted a skills dir that is not live"
 fi
 
-# --- D2: dry-run previews create per target and writes nothing ---
 run_detect "$DETECT_HOME" skill install --detect --dry-run --json
 assert_exit "detect dry-run --json exits 0" 0
 assert_envelope "detect dry-run"
@@ -72,7 +52,6 @@ else
   bad "dry-run created a target"
 fi
 
-# --- D3: apply, payload bytes, receipt, and keep per target ---
 run_detect "$DETECT_HOME" skill install --detect
 assert_exit "detect applies" 0
 assert_file_eq "claude payload is the embedded SKILL.md" "$EVAL_SKILL/SKILL.md" \
@@ -90,7 +69,6 @@ assert_json_field "claude re-run keeps" "keep" '.data.targets[0].status'
 assert_json_field "codex re-run keeps" "keep" '.data.targets[1].status'
 assert_json_field "a keep writes nothing" "0" '[.data.targets[].written] | add'
 
-# --- D4: nothing detected refuses typed and writes nothing ---
 NONE_HOME="$SANDBOX/none-home"
 mkdir -p "$NONE_HOME"
 run_detect "$NONE_HOME" skill install --detect --json
@@ -103,7 +81,6 @@ else
   bad "none detected wrote into HOME: $(ls -A "$NONE_HOME")"
 fi
 
-# --- D5: --detect is exclusive with --dir and --agent ---
 run_detect "$DETECT_HOME" skill install --detect --dir "$SANDBOX/dir-scope" --json
 assert_exit "--detect with --dir is a usage error" 2
 assert_stream_nogrep "the --dir usage error writes no envelope" "$EVAL_OUT" '"schema_version"'
@@ -116,7 +93,6 @@ else
   bad "the usage error still installed into --dir"
 fi
 
-# --- D6: per-target receipt/force rules ---
 FOREIGN_HOME="$SANDBOX/foreign-home"
 mkdir -p "$FOREIGN_HOME/.claude/skills/verdict" "$FOREIGN_HOME/.codex/skills"
 printf 'foreign bytes\n' >"$FOREIGN_HOME/.claude/skills/verdict/keep.txt"
@@ -140,7 +116,6 @@ assert_file_eq "force wrote the payload beside the foreign file" "$EVAL_SKILL/SK
 assert_file_grep "force spared the foreign file" "$FOREIGN_HOME/.claude/skills/verdict/keep.txt" \
   "foreign bytes" "-F"
 
-# --- offline proof ---
 if [ ! -s "$EVAL_STUBLOG" ]; then
   good "zero stub-gh intercepts across the detect legs (offline)"
 else

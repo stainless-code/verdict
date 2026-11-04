@@ -11,8 +11,6 @@ import (
 	"testing"
 )
 
-// updateToolsList rewrites the tools/list wire snapshots instead of comparing
-// them. Refresh them only for a deliberate contract change.
 var updateToolsList = flag.Bool("update-tools-list", false, "regenerate the tools/list wire snapshots")
 
 // TestToolsListWireSnapshot pins the exact bytes of the tools/list result on
@@ -66,8 +64,6 @@ func TestToolsListWireSnapshot(t *testing.T) {
 	}
 }
 
-// firstByteDiff locates the first byte where got and want differ and renders a
-// short window around it, so a protocol drift is readable in test output.
 func firstByteDiff(got, want []byte) string {
 	limit := min(len(got), len(want))
 	at := limit
@@ -83,7 +79,6 @@ func firstByteDiff(got, want []byte) string {
 		at, window(got, start, end), window(want, start, end))
 }
 
-// window clamps bytes to the requested span.
 func window(raw []byte, start, end int) []byte {
 	if start >= len(raw) {
 		return nil

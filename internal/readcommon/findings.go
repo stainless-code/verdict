@@ -46,7 +46,6 @@ func LoadFindings(dir string) ([]any, error) {
 	return entries, nil
 }
 
-// corruptStore builds the corrupt-store refusal for dir.
 func corruptStore(dir string) *core.RefusalError {
 	return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
 }
@@ -68,8 +67,6 @@ func ValidEntries(entries []any) bool {
 	return true
 }
 
-// validEntry gates one entry: null reads clean, anything else must be a
-// well-shaped findings object.
 func validEntry(e any) bool {
 	if e == nil {
 		return true
@@ -81,7 +78,6 @@ func validEntry(e any) bool {
 	return validEntryStrings(m) && validEntryMaps(m)
 }
 
-// validEntryStrings gates the string-indexed entry fields.
 func validEntryStrings(m *jq.Obj) bool {
 	for _, key := range []string{"sig", "body", "heading", "kind", "suggestion"} {
 		v, has := m.Get(key)
@@ -95,8 +91,6 @@ func validEntryStrings(m *jq.Obj) bool {
 	return true
 }
 
-// validEntryMaps gates the indexed-map entry fields: containers would crash
-// the severity/rigor rank lookups.
 func validEntryMaps(m *jq.Obj) bool {
 	for _, key := range []string{"severity", "rigor"} {
 		v, has := m.Get(key)
@@ -138,8 +132,6 @@ func ResolveSig(entries []any, prefix string) string {
 	}
 }
 
-// entrySig reads one entry's string sig (the entry guard keeps stores
-// clean, so anything else reads no-match).
 func entrySig(e any) (string, bool) {
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {

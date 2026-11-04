@@ -11,22 +11,18 @@ import (
 	"github.com/stainless-code/verdict/internal/retry"
 )
 
-// retryResult is one canned read attempt: the streams plus the failure flag.
 type retryResult struct {
 	stdout string
 	stderr string
 	fail   bool
 }
 
-// retryCommander replays read attempts in order and records every argv, so a
-// retry leg can prove the exact attempt count and the unchanged command.
 type retryCommander struct {
 	t       *testing.T
 	results []retryResult
 	calls   [][]string
 }
 
-// Run records argv and replays the next canned attempt.
 func (s *retryCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	s.t.Helper()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
@@ -42,7 +38,6 @@ func (s *retryCommander) Run(_ context.Context, cmd core.Command) (core.Result, 
 	return out, nil
 }
 
-// retryHead is the reviewed SHA the live lookup returns.
 const retryHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 // TestReadRetryLiveSHA proves the drift read honors a secondary rate limit:
@@ -183,14 +178,12 @@ type cancelRetryCommander struct {
 	calls  int
 }
 
-// Run cancels and reports one retryable failure.
 func (c *cancelRetryCommander) Run(context.Context, core.Command) (core.Result, error) {
 	c.calls++
 	c.cancel()
 	return core.Result{Stderr: c.stderr, ExitCode: 1}, nil
 }
 
-// LookPath reports every tool present.
 func (c *cancelRetryCommander) LookPath(string) error { return nil }
 
 // assertRetryCalls proves the attempt count and that every attempt ran the
@@ -225,7 +218,6 @@ type cancelAfterCommander struct {
 	after  int
 }
 
-// Run replays the next canned attempt and cancels after the nth call.
 func (c *cancelAfterCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
 	res, err := c.retryCommander.Run(ctx, cmd)
 	if len(c.calls) == c.after {

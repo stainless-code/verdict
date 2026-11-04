@@ -1,4 +1,3 @@
-// Public surface of the verdict TS client. EXPERIMENTAL until 1.0.
 export {
   createClient,
   run,
