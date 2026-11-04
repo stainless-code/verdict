@@ -3,8 +3,10 @@
 //   schemas/envelope.schema.json ($defs -> clients/ts/src/types.gen.ts)
 //   release/contract.json (archives[] -> clients/ts/src/platforms.gen.ts and
 //     scripts/npm-shim/platforms.gen.json)
-// Refusal codes are not generated here: they come from the Go hint table via
-// `go run ./cmd/tsgen`, because the table is data the Go compiler checks.
+// Refusal codes are not generated here: they come from the Go refusal-code
+// registry (internal/core/refusalcodes.go) via `go run ./cmd/tsgen`, because
+// that list is what internal/archtest holds equal to the codes the binary
+// refuses with.
 // No dependencies beyond Node builtins. Run `bun run gen` (or node this
 // script) after changing a schema or the release contract; `--check` fails
 // when the checked-in files are stale (drift gate, like make schemas-check).
