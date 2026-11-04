@@ -42,6 +42,13 @@ var shapeRedactions = []struct {
 }
 
 func redactShapes(tail string) string {
+	if isASCII(tail) {
+		return redactShapesASCII(tail)
+	}
+	return redactShapesRegexp(tail)
+}
+
+func redactShapesRegexp(tail string) string {
 	for _, r := range shapeRedactions {
 		tail = r.re.ReplaceAllString(tail, r.repl)
 	}
