@@ -7,7 +7,7 @@ const dist = join(docsRoot, process.argv[2] ?? "dist");
 
 const FULL_BUDGET = 72_000;
 const INSTALL_COMMAND = "npm i -g @stainless-code/verdict";
-const CHANGELOG_INDEX = "/verdict/changelog";
+const LONG_FORM_PAGES = ["/verdict/changelog", "/verdict/manual"];
 const INDEX_FALLBACK_HEADING = "## Agent resources";
 const MERGE_LINE = /^(?:[*-]\s+)?[0-9a-f]{40}\s+\S/u;
 const CHANGELOG_SOURCE = /^Source: \S*\/changelog\//mu;
@@ -84,11 +84,12 @@ const main = (): void => {
     ]);
   }
 
-  if (!index.includes(CHANGELOG_INDEX)) {
+  const unlisted = LONG_FORM_PAGES.filter((page) => !index.includes(page));
+  if (unlisted.length > 0) {
     fail([
-      "llms files: llms.txt does not point at the changelog.",
-      "Its release pages are excluded from the agent files, so the index is the",
-      "only way an agent finds them; name it in agents.llmsTxt.details.",
+      `llms files: llms.txt does not point at ${unlisted.join(", ")}.`,
+      "Both are excluded from the agent files for their size, so the index is the",
+      "only way an agent finds them; name them in agents.llmsTxt.details.",
     ]);
   }
 

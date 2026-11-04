@@ -6,6 +6,7 @@ import { defineConfig } from "blume";
 import { orama } from "blume/search";
 import { custom, filesystem } from "blume/sources";
 import { changelogSource } from "./sources/changelog.ts";
+import { manualSource } from "./sources/manual.ts";
 
 const title = "Verdict";
 const description =
@@ -81,6 +82,7 @@ export default defineConfig({
           site: origin,
         }),
       ),
+      custom(manualSource()),
     ],
   },
 
@@ -98,9 +100,10 @@ export default defineConfig({
     skills: "./skills",
     llmsTxt: {
       details: [
-        `Release notes live at ${origin}${deploymentBase}/changelog, one page per`,
-        "release; they are the longest pages here, so `llms-full.txt` leaves them",
-        "out. Fetch `/verdict/changelog/<version>.md` for one release.",
+        "The two long-form references are left out of `llms-full.txt` for their size:",
+        `the operator manual at ${origin}${deploymentBase}/manual.md (envelope, exit codes,`,
+        "store files, refusal codes, control files, provider matrix), and the release",
+        `notes at ${origin}${deploymentBase}/changelog.`,
       ].join("\n"),
     },
   },
@@ -122,6 +125,7 @@ export default defineConfig({
       { label: "Why Verdict", path: "/why-verdict" },
       { label: "Comparison", path: "/comparison" },
       { label: "Roadmap", path: "/roadmap" },
+      { label: "Manual", path: "/manual" },
       { label: "Changelog", path: "/changelog" },
     ],
     sidebar: { display: "flat" },
