@@ -216,3 +216,40 @@ func readRetrySidecar(t *testing.T, path string) string {
 	}
 	return string(raw)
 }
+
+// cancelAfterCommander cancels the run's context once the nth call returns,
+// so a leg can observe what the retry loop does after its final attempt.
+type cancelAfterCommander struct {
+	*retryCommander
+	cancel context.CancelFunc
+	after  int
+}
+
+// Run replays the next canned attempt and cancels after the nth call.
+func (c *cancelAfterCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+	res, err := c.retryCommander.Run(ctx, cmd)
+	if len(c.calls) == c.after {
+		c.cancel()
+	}
+	return res, err
+}
+
+// TestReadRetryFinalAttemptNeverWaits proves the exhausted read returns the
+// last attempt's own failure instead of sleeping first: a context canceled as
+// the third attempt returns must still surface "gh: exit status 1", where a
+// loop that waited after the final attempt would surface the cancellation.
+func TestReadRetryFinalAttemptNeverWaits(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	limited := retryResult{stderr: "HTTP 429: secondary rate limit exceeded, retry-after: 0", fail: true}
+	cmdr := &cancelAfterCommander{
+		retryCommander: &retryCommander{t: t, results: []retryResult{limited, limited, limited}},
+		cancel:         cancel,
+		after:          retry.MaxAttempts,
+	}
+	_, err := runReadRetry(ctx, cmdr, core.Command{Argv: []string{"gh", "api", "x"}})
+	if err == nil || err.Error() != "read retry: gh: exit status 1" {
+		t.Errorf("err = %v, want the last attempt's exit failure, not a cancellation", err)
+	}
+}
