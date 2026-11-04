@@ -623,8 +623,12 @@ written; an absent one is `create`/`update`. The previous file is copied to
 servers are preserved. A file that does not parse, or a `verdict` entry whose
 command/argv differs (including a `--read-only` argv), refuses typed instead of
 being rewritten; for TOML only a plain `[mcp_servers.verdict]` table is
-merged — inline/dotted spellings refuse rather than guess. Fix or remove the
-entry by hand and re-run.
+merged — inline/dotted spellings refuse rather than guess, and a header, key, or
+comment counts only outside strings and comments. A file that ends inside an
+unterminated TOML string, or whose `[mcp_servers.verdict]` line opens one,
+refuses too: the merge never writes keys the next run would read as string
+content. The file's own line endings are kept. Fix or remove the entry by hand
+and re-run.
 
 Use `--read-only` in review-only hosts by editing the entry to
 `{"command":"verdict","args":["mcp","--read-only"]}` (or the TOML
