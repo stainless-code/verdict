@@ -31,6 +31,10 @@ func TestWriteThroughReplacesTheSymlinksTarget(t *testing.T) {
 	target := filepath.Join(dir, "review.md")
 	link := filepath.Join(dir, "out.md")
 	seedLink(t, target, link)
+	before, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := atomic.WriteThrough(link, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +43,13 @@ func TestWriteThroughReplacesTheSymlinksTarget(t *testing.T) {
 	}
 	checkLink(t, link, target)
 	checkContent(t, target, "newer\n")
+	after, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Error("target was rewritten in place; want a staged file renamed over it")
+	}
 }
 
 // TestWriteThroughCreatesThroughADanglingLink checks a link whose target does
