@@ -115,6 +115,14 @@ alters golden-covered output, regenerate with `go test ./<pkg>/ -update`
 cannot explain line-by-line is a red flag, not a green gate. Never
 commit a golden update alongside unrelated changes.
 
+## Store schemas
+
+The Go store types are the source of truth and `make schemas` generates the
+published schemas from them. A slice that changes what the script reads or
+writes updates the matching schema plus the schema-contract fixtures in the
+same commit, so `evals/cases/schema-contract.sh` proves the new shape instead
+of a review finding it later.
+
 ## Versioning
 
 Add `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing notes)

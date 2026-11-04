@@ -1493,12 +1493,6 @@ quality — the prompts do.
 
 ## Store changelog (additive within schema_version "1" — renames never happen, only additions)
 
-<!-- repository-only:start -->
-
-Release versioning (changesets → Version PR → npm + GitHub Release) lives in
-`CONTRIBUTING.md ## Versioning`.
-<!-- repository-only:end -->
-
 This section tracks store-schema evolution only —
 verbs and features ship in the release changelog.
 
@@ -1574,10 +1568,3 @@ Drift rule: additive within `schema_version`/`sig_version` `"1"`, matching
 the changelog above — new optional keys pass through the stores and the
 schemas alike; renames, tighter types, and newly required keys never happen
 without a version bump, and a bump ships only by operator decision.
-<!-- repository-only:start -->
-
-Who updates: the slice that changes what the script reads or writes updates the
-matching schema plus the schema-contract fixtures in the same commit, so the
-eval proves the new shape. The Go implementation is the source of truth;
-`make schemas` generates the published schemas from its store types.
-<!-- repository-only:end -->
