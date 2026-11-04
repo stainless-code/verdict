@@ -29,10 +29,10 @@ Install it into your agents with one command:
 verdict skill install --detect
 ```
 
-`--detect` installs into every agent that already has a skills directory. To
-target one agent, pass `--agent` with `claude`, `cursor`, `codex`, `opencode`,
-`copilot`, `gemini`, `goose`, `qwen`, `windsurf`, or `agents`. To install into
-any other directory, pass `--dir <skills-dir>`.
+`--detect` installs into every agent whose skills directory already exists and
+is non-empty. To target one agent, pass `--agent` with `claude`, `cursor`,
+`codex`, `opencode`, `copilot`, `gemini`, `goose`, `qwen`, `windsurf`, or
+`agents`. To install into any other directory, pass `--dir <skills-dir>`.
 
 ```bash
 verdict skill install --agent claude --dry-run   # preview: create, update, keep, blocked

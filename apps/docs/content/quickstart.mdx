@@ -20,10 +20,12 @@ Three steps: install the binary, add the skill, review a PR.
 
     <InstallSwitcher />
 
-    The install scripts take `VERDICT_VERSION=vX.Y.Z` to pin a version (Windows:
-    `-Version vX.Y.Z`).
-    Update later with `verdict upgrade`. It runs only when you type it. In CI,
-    the [`setup-verdict` action](https://github.com/stainless-code/verdict#ci-setup-verdict-action)
+    The install scripts take `VERDICT_VERSION=vX.Y.Z` to pin a version — on the
+    script half of the pipe:
+    `curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=vX.Y.Z sh`
+    (Windows: `-Version vX.Y.Z`). Update later with `verdict upgrade`. It runs
+    only when you type it. In CI, the
+    [`setup-verdict` action](https://github.com/stainless-code/verdict#ci-setup-verdict-action)
     installs a pinned, verified binary.
 
   </Step>
@@ -31,9 +33,10 @@ Three steps: install the binary, add the skill, review a PR.
     ```bash
     verdict skill install --detect
     ```
-    This installs the skill into every agent that already has a skills
-    directory. To target one agent, pass `--agent claude`, or `cursor`, `codex`,
-    `opencode`, `copilot`, `gemini`, `goose`, `qwen`, `windsurf`, or `agents`.
+    This installs the skill into every agent whose skills directory already
+    exists and is non-empty. To target one agent, pass `--agent` with `claude`,
+    `cursor`, `codex`, `opencode`, `copilot`, `gemini`, `goose`, `qwen`,
+    `windsurf`, or `agents`.
     The skill ships inside the binary, so it always matches your version.
 
     You can also install it from the registry with

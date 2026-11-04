@@ -873,7 +873,8 @@ you stand).
 - **Updating** (`verdict upgrade`): explicit only — no background check, no
   nag, no daemon, and the review path never calls it. The command resolves
   `os.Executable()` through symlinks and maps the result to one channel:
-  installer-managed (receipt in `~/.verdict/bin` / `VERDICT_INSTALL`) does a
+  installer-managed (a receipt beside the running binary, in
+  `~/.verdict/bin`, or in `VERDICT_INSTALL`) does a
   verified self-replace (archive + `checksums.txt` + sigstore bundle; cosign
   identity/issuer when cosign is present, loud checksum-only fallback, and
   `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract only the

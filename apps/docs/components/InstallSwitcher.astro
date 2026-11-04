@@ -49,6 +49,12 @@ const tabs: Tab[] = [
     label: "pnpm",
     icon: "package",
     command: "pnpm add -g @stainless-code/verdict",
+    note: {
+      before:
+        "pnpm's release-age gate can serve the previous release for a day after a new one ships: pin the exact version, or add",
+      code: "--config.minimumReleaseAge=0",
+      after: ".",
+    },
   },
   {
     id: "bun",

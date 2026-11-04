@@ -32,6 +32,10 @@ yarn global add @stainless-code/verdict
 brew install stainless-code/tap/verdict
 ```
 
+pnpm's release-age gate (`minimumReleaseAge`) can serve the previous release for
+a day after a new one ships, so pin the exact version or add
+`--config.minimumReleaseAge=0` when you need the newest.
+
 macOS and Linux:
 
 ```bash
@@ -56,7 +60,8 @@ The skill is the review prompt. It ships inside the binary.
 verdict skill install --detect
 ```
 
-`--detect` installs into every agent that already has a skills directory. To target one agent, run `verdict skill install --agent claude`. The agent names are in `verdict skill --help`. You can also use the registry: `npx skills add stainless-code/verdict`. Use one route per machine, or the skill loads twice. The registry route installs only the skill, so install the binary first: `install.sh` is not shipped in the npm tarball. After `verdict upgrade`, re-run the install to refresh the copy.
+`--detect` installs into every agent whose skills directory already exists and
+is non-empty. To target one agent, run `verdict skill install --agent claude`. The agent names are in `verdict skill --help`. You can also use the registry: `npx skills add stainless-code/verdict`. Use one route per machine, or the skill loads twice. The registry route installs only the skill, so install the binary first: `install.sh` is not shipped in the npm tarball. After `verdict upgrade`, re-run the install to refresh the copy.
 
 ### 3. Review a PR
 
@@ -83,7 +88,7 @@ verdict record owner/repo local-work    # validate anchors, save the findings
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Try it once                | `npx @stainless-code/verdict --help` or `bunx @stainless-code/verdict --help`                                                                     |
 | Pin a version (npm)        | `npm i -g @stainless-code/verdict@X.Y.Z`                                                                                                          |
-| Pin a version (shell)      | `VERDICT_VERSION=vX.Y.Z curl -fsSL https://stainless-code.com/verdict/install.sh \| sh`                                                           |
+| Pin a version (shell)      | `curl -fsSL https://stainless-code.com/verdict/install.sh \| VERDICT_VERSION=vX.Y.Z sh`                                                           |
 | Pin a version (PowerShell) | `$env:VERDICT_VERSION = 'vX.Y.Z'; irm https://stainless-code.com/verdict/install.ps1 \| iex`                                                      |
 | Update                     | `verdict upgrade` (add `--dry-run` to preview)                                                                                                    |
 | Uninstall                  | `verdict uninstall --remove-path`, or the owning manager: `npm uninstall -g @stainless-code/verdict`, `brew uninstall stainless-code/tap/verdict` |
