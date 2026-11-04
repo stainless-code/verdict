@@ -24,3 +24,14 @@ A value flag given without its value now fails as a usage error naming what
 it wanted (`--provider needs a value (want <name>)`, exit 2) before any
 network call, instead of falling back to a default target. A bare `--stash`
 still means `stash@{0}`.
+
+Cancellation is clean. SIGTERM now cancels a running verb the way Ctrl-C
+does: exit 3 with a `canceled` envelope, and child process groups are killed
+instead of orphaned. A cancelled verb returns promptly even when a grandchild
+process still holds its output pipe. Interrupting `verify` refuses
+`canceled` and records nothing, where it used to record a false
+`timeout after 300s` proof and exit 0. On Windows, `verdict upgrade` stages its
+helper beside the installed binary, so an install directory on another drive
+no longer makes the final move fail after the upgrade reported success.
+`threads.json` always labels a thread's author kind, including a thread with
+no readable comments, as the published schema requires.

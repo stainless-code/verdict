@@ -18,3 +18,12 @@ reader rejects oversized documents while keeping its own refusal code. A review
 anchor, knowledge-base counter, override threshold, adopt anchor, verify
 timeout, or read number that does not fit in an integer now takes its typed
 refusal instead of wrapping into a nonsense negative span or count.
+
+The `verify` gate now refuses a command it cannot fully scan. A destructive
+tool name hidden inside `$(…)` substitutions nested deeper than the gate's
+scan bound, or inside a substitution body glued directly to a word (for
+example `$( (echo r))m -rf dir`), was previously treated as clean. Both now
+refuse before anything runs. A pull request file name containing a tab or
+newline can no longer forge or shift rows in `hunks.tsv`, and the ordered
+JSON reader rejects trailing bytes after the document (`{"a":1}}`) instead of
+silently ignoring them.
