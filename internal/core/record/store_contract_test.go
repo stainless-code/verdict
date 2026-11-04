@@ -655,33 +655,43 @@ func lastHistory(t *testing.T, events []any) (string, string) {
 	return event, note
 }
 
-// TestRunRecordClaimsAllApplyInOneRun proves the claim kinds compose: a
-// verification claim and a triage claim in the same run each land on their
+// TestRunRecordClaimsAllApplyInOneRun proves the claim kinds compose: two
+// verification claims and a triage claim in the same run each land on their
 // own finding. A run that stops after the first successful claim silently
-// drops the operator's triage, which is the failure this pins.
+// drops the rest of the operator's claims, leaving a finding at its prior
+// status while the envelope reads as if every claim applied.
 func TestRunRecordClaimsAllApplyInOneRun(t *testing.T) {
 	const (
 		// sha1("notes.txt Cited finding here with enough substance.")
 		verifiedSig = "101d0761051f365731b9b857810c9b3603c50208"
 		// sha1("notes.txt Second inline finding body for the store.")
 		triagedSig = "cec2c320fb7d7983e6271674e0f6af6718374758"
+		// sha1("notes.txt Third inline finding body for the store.")
+		secondVerifiedSig = "8767c19ed9e1d2f5139277832aa7e7bb4507d448"
 	)
 	review := `{"schema_version":"1","body":"` + storeBody + `","approved":false,"comments":[` +
 		`{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."},` +
-		`{"path":"notes.txt","line":3,"body":"Second inline finding body for the store."}],` +
+		`{"path":"notes.txt","line":3,"body":"Second inline finding body for the store."},` +
+		`{"path":"notes.txt","line":4,"body":"Third inline finding body for the store."}],` +
 		`"triage":[{"sig":"` + triagedSig + `","status":"wont-fix",` +
 		`"rationale":"By design: the gate owns that decision and tests cover it."}]}`
 	writeStoreBundle(t, "local-cc", review)
 	writeFile(t, ".review/local-cc/verification.json",
-		`[{"sig":"`+verifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`)
+		`[{"sig":"`+verifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"},`+
+			`{"sig":"`+secondVerifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`)
 
 	c := &collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-cc")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	entries := bySig(t, storeEntries(t, "local-cc"))
-	if got := entries[verifiedSig]["status"]; got != "addressed" {
-		t.Errorf("verified finding status = %v, want addressed", got)
+	for _, sig := range []string{verifiedSig, secondVerifiedSig} {
+		if got := entries[sig]["status"]; got != "addressed" {
+			t.Errorf("finding %s status = %v, want addressed (every verification claim applies)", sig, got)
+		}
+		if event, _ := lastHistory(t, historyOf(t, entries[sig])); event != "addressed" {
+			t.Errorf("finding %s last history event = %q, want addressed", sig, event)
+		}
 	}
 	if got := entries[triagedSig]["status"]; got != "wont-fix" {
 		t.Errorf("triaged finding status = %v, want wont-fix (a claim never blocks the next)", got)
