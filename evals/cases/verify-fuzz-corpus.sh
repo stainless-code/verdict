@@ -8,7 +8,7 @@
 #     envelope with data null, try: hint plus quoted fragment, patch.json
 #     byte-identical, no .verify.out write) — an executing strict row is a
 #     NEW BYPASS and fails the suite (record it as xfail, never fix the
-#     gate in the corpus ticket).
+#     gate by editing the corpus).
 #   xfail refuse rows pin known gaps: executing is the recorded expectation
 #     (tallied, suite stays green); refusing is an XPASS and fails the suite
 #     with a "promote to strict" message (the gap closed — update the corpus).

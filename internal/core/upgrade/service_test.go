@@ -64,7 +64,7 @@ func resolvedTempDir(t *testing.T) string {
 	return dir
 }
 
-// installerLayout creates a ticket-10 install: binary plus receipt.
+// installerLayout creates an installer-owned install: binary plus receipt.
 func installerLayout(t *testing.T) (dir, target, receipt string) {
 	t.Helper()
 	dir = resolvedTempDir(t)

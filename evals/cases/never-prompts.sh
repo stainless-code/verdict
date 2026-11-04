@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Case never-prompts: machine modes never block on stdin (ticket 16).
+# Case never-prompts: machine modes never block on stdin.
 #
 # Grades (all hermetic — sandbox cwd, fake HOME, stub gh, stdin never a TTY):
 #   H1  embedded skill install with stdin CLOSED applies the payload (exit 0)

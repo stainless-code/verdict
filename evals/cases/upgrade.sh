@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Case upgrade: `verdict upgrade` + `verdict uninstall` (ticket 11).
+# Case upgrade: `verdict upgrade` + `verdict uninstall`.
 #
 # Grades (all hermetic; a local loopback server serves locally built
 # archives/checksums, fake manager binaries log argv, fake HOME/install dirs

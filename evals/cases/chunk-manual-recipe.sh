@@ -32,7 +32,7 @@ unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVI
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
 # Scratch git repo at the sandbox root (run_review runs with cwd=sandbox).
-# Multi-file fixture (ticket-02 shape): 6 files x 1500 changed lines each.
+# Multi-file fixture: 6 files x 1500 changed lines each.
 # History is three slice commits so --range hand-slices stay under the cap.
 (
   cd "$EVAL_SANDBOX" || exit 99
@@ -74,7 +74,7 @@ EOF
   git add mrec-f5.txt mrec-f6.txt
   git commit -qm mrec-slice-c 2>/dev/null || true
   MREC_C="$(git rev-parse HEAD)"
-  # Degenerate fixture (ticket-01 shape, single file): appended in halves so
+  # Degenerate fixture (single file, appended in halves) so
   # the full file is over the cap while each half-range stays under it.
   awk 'BEGIN{for(i=0;i<7500;i++) printf "base line %06d padding padding padding padding padding\n", i}' > mrec-huge.txt
   git add mrec-huge.txt

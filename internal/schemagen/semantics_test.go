@@ -12,7 +12,7 @@ import (
 // published before generation (9f20c140). The generator that replaced the
 // hand-written files was a re-serialization: every key, type, required list,
 // enum and description had to stay identical. An intentional published-schema
-// change updates this map in its own ticket (audit-24 drift rule); a mere
+// change updates this map in its own change, with the reason recorded; a mere
 // reformat of schemas/*.schema.json must not change it. The relocation of the
 // schemas to skills/verdict/schemas/ (so the registry install ships only the
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,

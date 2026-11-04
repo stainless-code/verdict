@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Case fetch-worktree: fetch-local --worktree builds the bundle from a
-# temporary isolated checkout (ticket 11).
+# temporary isolated checkout.
 #
 # Grades (all hermetic — sandbox git repo, real git, stub gh first on
 # PATH, no network):

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Case chunk-local: local-bundle chunking parity with PR-bundle chunking.
 #
-# Ticket 06. The shared gate/writer (tickets 01+02) already slices fetch-local
-# through the same code as fetch; this case proves the parity the ticket
-# demands, side by side on one fixture (prior art: chunk-manifest.sh for the
-# chunk layout, completeness.sh C8 for the local source record as authority):
+# The shared gate/writer already slices fetch-local through the same code as
+# fetch; this case proves that parity side by side on one fixture (prior art:
+# chunk-manifest.sh for the chunk layout, completeness.sh C8 for the local
+# source record as authority):
 #   L1  same cap, same knob, same shape on the local path: absent knob refuses
 #       with no chunk mention and no chunks dir; --chunk and the knob file opt
 #       in with the notice naming the source; the manifest carries schema 1,

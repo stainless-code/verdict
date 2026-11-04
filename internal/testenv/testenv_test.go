@@ -178,7 +178,7 @@ func evalsHelperEnv(t *testing.T) map[string]string {
 }
 
 // TestSecretPredicateMatchesShell pins the shared suffix rule on the shapes
-// the ticket names, including rotation suffixes.
+// this predicate names, including rotation suffixes.
 func TestSecretPredicateMatchesShell(t *testing.T) {
 	names := []string{
 		"GH_TOKEN", "GITHUB_TOKEN", "NPM_TOKEN", "NPM_TOKEN_2", "SOME_KEY",

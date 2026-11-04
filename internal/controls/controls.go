@@ -46,7 +46,7 @@ const (
 	dirPerm       = 0o755
 )
 
-// Inventory is the closed control set (v1); later tickets add rows.
+// Inventory is the closed control set (v1); new controls add rows.
 var Inventory = []string{
 	".review/panel",
 	".review/budget",
