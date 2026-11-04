@@ -850,9 +850,10 @@ you stand).
 The shipped `verdict` is one static Go binary (`make build` writes
 `bin/verdict`) that needs no shell wrapper. `VERDICT_IMPL` — the retired v0
 shell dispatch's knob — is dead: nothing reads it. `VERDICT_BIN` is not the
-binary's: it is the skill shim's override (`skills/verdict/scripts/verdict`
-resolves it first, then `<skill>/bin/verdict`, then `verdict` on `PATH`), so
-a plain `verdict` call consults neither variable.
+binary's: the skill shim and the TypeScript client both consult it. The shim
+(`skills/verdict/scripts/verdict`) resolves it first, then `<skill>/bin/verdict`,
+then `verdict` on `PATH`; `resolveBin` in `clients/ts` takes it ahead of the
+platform package. A plain `verdict` call consults neither variable.
 
 - **Binary** (`install.sh` / `install.ps1`, the default): the script fetches
   one release archive, `checksums.txt`, and `checksums.txt.sigstore.json`,
