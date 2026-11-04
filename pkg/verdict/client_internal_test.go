@@ -83,6 +83,27 @@ func TestLineWriterSplitsPartialLines(t *testing.T) {
 	}
 }
 
+// TestLineWriterLeadingNewline proves a chunk whose first byte is the
+// newline forwards the empty line and every line after it: the index of the
+// first newline is 0, and treating that as "no newline" would swallow the
+// whole chunk.
+func TestLineWriterLeadingNewline(t *testing.T) {
+	var got []string
+	w := &lineWriter{onLine: func(line string) { got = append(got, line) }}
+	if n, err := w.Write([]byte("\nfirst\nsecond\n")); err != nil || n != len("\nfirst\nsecond\n") {
+		t.Fatalf("Write = %d, %v; want the full count and nil", n, err)
+	}
+	if want := []string{"", "first", "second"}; !equalLines(got, want) {
+		t.Errorf("lines = %q, want %q", got, want)
+	}
+	if n, err := w.Write([]byte("\ntail")); err != nil || n != len("\ntail") {
+		t.Fatalf("second Write = %d, %v", n, err)
+	}
+	if want := []string{"", "first", "second", ""}; !equalLines(got, want) {
+		t.Errorf("lines after the second write = %q, want %q", got, want)
+	}
+}
+
 // TestStreamWriterRoutes proves the progress writer seam: human lines route
 // to Human, diagnostics route to Diag, and a client without an observer
 // discards both without panicking.

@@ -292,3 +292,90 @@ func assertLocalBundle(t *testing.T, doc map[string]any) {
 		t.Errorf("omitted = %v, want the whole diff in bounds", omitted)
 	}
 }
+
+// incrementalDiff is the compare payload the base override writes.
+const incrementalDiff = "diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n" +
+	"@@ -1,1 +1,2 @@\n top\n+later line\n"
+
+// TestClientFetchBaseOverride proves the SDK turns a base override into the
+// incremental compare: the FetchFlags presence bit derives from BaseSHA, so
+// --base-sha reaches the fetch service instead of being dropped as absent.
+func TestClientFetchBaseOverride(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stubTools(t, "gh", "git", "curl", "glab")
+	cmdr := fetchCommander(t)
+	cmdr.rules = append(cmdr.rules, cannedRule{
+		tokens: []string{"compare/" + sdkBaseB},
+		result: verdict.CommandResult{Stdout: incrementalDiff},
+	})
+	progress := &recordedProgress{}
+	c := newSDKClient(progress, cmdr)
+	defer c.Close()
+
+	_, err := c.Fetch(context.Background(), &verdict.FetchRequest{
+		Invocation:    sdkInvocation("7"),
+		BaseSHA:       sdkBaseB,
+		BudgetConsent: true,
+	})
+	requireNoError(t, err)
+	if !cmdr.spawned("compare/" + sdkBaseB + "..." + sdkHeadA) {
+		t.Fatalf("no compare spawn for the base override: %q", cmdr.calls)
+	}
+	if got := readText(t, ".review/7/incremental.diff"); got != incrementalDiff {
+		t.Errorf("incremental.diff = %q, want the compare payload", got)
+	}
+	if want := "» compare " + sdkBaseB + "..." + sdkHeadA + " -> .review/7/incremental.diff"; !strings.Contains(progress.joinedHuman(), want) {
+		t.Errorf("human = %q, want %q", progress.joinedHuman(), want)
+	}
+}
+
+// TestClientFetchNoBaseSkipsCompare proves the other side of the presence
+// bit: without BaseSHA nothing spawns a compare and no incremental diff
+// lands.
+func TestClientFetchNoBaseSkipsCompare(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stubTools(t, "gh", "git", "curl", "glab")
+	cmdr := fetchCommander(t)
+	c := newSDKClient(nil, cmdr)
+	defer c.Close()
+
+	_, err := c.Fetch(context.Background(), &verdict.FetchRequest{
+		Invocation:    sdkInvocation("7"),
+		BudgetConsent: true,
+	})
+	requireNoError(t, err)
+	if cmdr.spawned("compare/") {
+		t.Errorf("no-base fetch spawned a compare: %q", cmdr.calls)
+	}
+	if _, err := os.Stat(".review/7/incremental.diff"); !os.IsNotExist(err) {
+		t.Errorf("no-base fetch wrote incremental.diff")
+	}
+}
+
+// TestClientFetchProviderReachesValidation proves the SDK forwards the
+// provider value itself: an unknown one is refused by the fetch service's own
+// validation instead of being dropped and silently defaulting to GitHub. The
+// HasProvider bit is derived for the JSON transports and never consulted by
+// the fetch service, so the value is the only thing that can carry this.
+func TestClientFetchProviderReachesValidation(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stubTools(t, "gh", "git", "curl", "glab")
+	cmdr := fetchCommander(t)
+	c := newSDKClient(nil, cmdr)
+	defer c.Close()
+
+	_, err := c.Fetch(context.Background(), &verdict.FetchRequest{
+		Invocation:    sdkInvocation("7"),
+		Provider:      "bitcoffee",
+		BudgetConsent: true,
+	})
+	if err == nil {
+		t.Fatal("unknown provider fetched instead of refusing")
+	}
+	if !strings.Contains(err.Error(), "unknown --provider 'bitcoffee'") {
+		t.Errorf("err = %v, want the service's bad-provider refusal", err)
+	}
+	if len(cmdr.calls) != 0 {
+		t.Errorf("unknown provider spawned commands: %q", cmdr.calls)
+	}
+}
