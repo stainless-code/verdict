@@ -1,6 +1,6 @@
 ---
 title: Comparison
-description: "Verdict against CodeRabbit, Greptile, Pullfrog, Macroscope, Bugbot, and human-only review, with prices checked on 2026-11-04."
+description: "Verdict against CodeRabbit, Greptile, Pullfrog, Macroscope, Bugbot, and human-only review."
 search:
   tags:
     [
@@ -27,30 +27,32 @@ status quo of human-only review.
 | Pullfrog                  | GitHub Actions only (hosted control plane); no local review. Free for personal accounts and public repos; `$30`/mo or `$300`/yr per org, models separate.                                              | Configurable automations beyond review (fix CI, conflicts, triage), wrapping Claude Code, OpenCode, or Codex on your runner. | Review craft without a third-party review account, with keys staying on your machine. Loses automations beyond review by design.                                                                                        |
 | Macroscope                | Hosted app and CLI; separate meters: `$0.025–$0.20`/KB by mode (10 KB minimum), `$0.05`/commit Status, 30 credits Approvability, Agent credits for CLI reviews; prepaid balance, `$100` welcome usage. | Hosted check runs, fix PRs, analytics exports, and a published benchmark method.                                             | Local, file-based controls; no per-KB meter or hosted checks. Reads only files handed to it.                                                                                                                            |
 | Bugbot (Cursor)           | Hosted; usage-based with no published per-review rate, on Cursor Premium (`$30`/mo) and up, no separate Bugbot subscription.                                                                           | Cursor-native workflow, base-branch review config, automatic learned rules, and a vendor-run resolution-rate study.          | Local, any model, evidence-graded findings; no hosted dashboard, auto-learned rules, or remote code storage.                                                                                                            |
-| Human-only and gh aliases | Salaries plus waiting                                                                                                                                                                                  | Judgment, taste, context                                                                                                     | Every PR can get a grounded first pass in minutes. Humans spend attention on the parts that need judgment.                                                                                                              |
+| Human-only and gh aliases | Salaries plus waiting                                                                                                                                                                                  | Judgment, taste, context                                                                                                     | Every PR gets a grounded first pass in minutes. Humans spend attention on the hard 10 percent.                                                                                                                          |
 
 <Callout type="info" title="Prices change">
   Prices above were checked on 2026-11-04. Check the vendors for current
   numbers. The shape does not change.
 </Callout>
 
-The pattern across the table is a hosted component plus seats, credits, org fees, or a
-usage meter. Verdict has none of those. It does one job: fetch, review, post, stop. Setup
-is one binary, the blast radius is one post, and the model is your choice. In exchange it
-skips the hosted features in the "Where they win" column.
+Every competitor charges
+rent on the review (seats, credits, org fees, keys, dashboards) for craft that runs fine without
+any of it. Verdict wins the single transaction (fetch, review, post, stop) on setup
+cost, blast radius, model freedom, and verifiability per line of machinery.
 
 ## Complements, not competitors
 
-clawpatch (machine-checked fix-to-revalidate loops for whole-repo campaigns) and pstack
-(verification culture and multi-model endurance) shaped this skill's discipline. They
-solve different problems and can run after Verdict posts.
+clawpatch (machine-checked fix-to-revalidate loops for whole-repo campaigns), pstack
+(verification culture and multi-model endurance) shaped this skill's discipline and compose after the verdict
+posts. None of them reviews a stranger's PR on demand for near-zero setup, so none of
+them is the alternative a buyer evaluates.
 
 ## Lineage
 
-Verdict's review core descends from Pullfrog's open-source action: the review prompt,
-not its harness wrapping. It is credited in
-[NOTICE](https://github.com/stainless-code/verdict/blob/main/NOTICE.md). The review
-craft is shared on purpose. The disagreement is the meter.
+Verdict's review core descends from Pullfrog's open-source action — the review prompt,
+not its harness wrapping — credited in
+[NOTICE](https://github.com/stainless-code/verdict/blob/main/NOTICE.md). The craft is
+shared on purpose. The meters are Verdict's disagreement, and the table above states
+it plainly.
 
 ## Sources
 

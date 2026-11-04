@@ -1,60 +1,64 @@
 ---
 title: Why Verdict
-description: "The five pains behind Verdict, how it answers each one, what it does not do, and where hosted reviewers still win."
+description: "The five pains behind Verdict, how it solves them, and what it refuses to be."
 search:
   tags: ["why", "pains", "verdict-ladder", "positioning"]
 ---
 
-AI review works. It is also metered, gated behind app installs, and hard to audit.
-Verdict keeps the review and drops the meter.
+AI review got good, then expensive, gated, and hard to trust. Every serious reviewer
+converged on the same craft, then wrapped it in extraction. Verdict keeps the craft
+and drops the extraction.
 
 ## The five pains
 
-1. **Review latency.** Human review is the bottleneck. PRs wait days for a look, or
-   merge unreviewed.
-2. **Keys and data held by someone else.** Hosted reviewers typically need a GitHub
-   App install, webhook access, or API keys in their vault, and most meter usage. Some
-   bill every re-review as a new review.
-3. **Unverifiable AI output.** Many review bots post prose with no evidence level, no
-   anchor check, and no record of what was claimed. Authors learn to skim past them.
-4. **Anchor rot and re-report spam.** Comments land on lines that moved. The same
-   finding is raised again on every push. Threads get resolved without a fix.
-5. **Approval theater.** An approve on a diff nobody examined, or a blocking review
-   with nothing behind it. The verdict says nothing about what was checked.
+1. **Review latency.** Human review bottlenecks every team. PRs wait days for a look or
+   merge unreviewed. Existing AI reviewers live in SaaS queues or post drive-by comments
+   nobody trusts.
+2. **Keys and data to strangers.** SaaS reviewers demand GitHub App installs, webhook
+   access, and API keys in someone else's vault, metered on every run. Some bill every
+   re-review as a brand-new review.
+3. **Unverifiable AI output.** Most review bots post confident prose with no provenance:
+   no evidence rung, no anchor checking, no record of what was claimed. Authors learn to
+   ignore them, which is worse than no review at all.
+4. **Anchor rot and re-report spam.** Comments anchored to moved lines, the same finding
+   re-raised every push, threads resolved by fiat. Threads become noise, not a work list.
+5. **Approval theater.** One-click approves on unexamined diffs, or blocking reviews with
+   nothing behind them. The verdict carries no information about what was checked.
 
 ## How Verdict answers them
 
-- **Latency.** `fetch` pulls the bundle, and on GitHub it needs no clone. Any agent you
-  already run does the review. `post` lands one native GitHub review. Setup is `git`,
-  `gh`, and one static `verdict` binary.
-- **Trust.** Verdict has no server and sends nothing itself. Keys stay on your machine.
-  The network calls are the `gh` reads and the one post you ask for. Diffs go only where
-  your chosen model runs, and a local model keeps them on the machine. The source is open
-  Go with no Go dependencies.
-- **Verifiable output.** Every finding carries an evidence rung from `said` to
-  `reproduced`. Unproven claims ship labeled `unproven` or are dropped. Anchors are
-  checked against the diff hunks. Suggestions render as real GitHub suggestion blocks, or
-  the post refuses to fake them.
-- **Stable memory.** Findings carry a signature with no line numbers, a status, and an
-  append-only history. Re-reviews do not report a recorded finding again, and threads
-  retire by rule.
-- **Verdicts with content.** A severity ladder maps to the author's next action. Binding
-  verdicts need `--bind`, and approval is refused while findings are open. `calibrate`
-  compares predictions with what happened to the PR.
+- **Latency becomes minutes, locally.** `fetch` pulls the bundle with no clone. Any agent
+  you already run does the review. `post` lands exactly one native GitHub review. Total
+  setup: `gh`, one static `verdict` binary, one token.
+- **Trust becomes nothing to exfiltrate.** Verdict has no server side and sends nothing
+  itself: keys stay on your machine, and the only network calls are the `gh` reads and the
+  one post you ask for. Diffs go only where your chosen model runs (a local model keeps them
+  on the machine). The source is open Go with no runtime dependencies.
+- **Output becomes verifiable.** Every finding carries an evidence rung from `said` to
+  `reproduced`. Unproven claims ship labeled `unproven` or die. Anchors are
+  machine-checked against the diff hunks, and suggestions render as real GitHub
+  suggestion blocks or the post refuses to fake them.
+- **Memory becomes stable.** Findings carry line-number-free signatures with status and
+  append-only history. Re-reviews never re-report. Thread retirement is rule-bound.
+- **Verdicts carry information.** A severity ladder maps to the author's actual next
+  action, gated by machine rules: binding verdicts need `--bind`, approval is refused
+  with open findings, self-verdicts downgrade. `calibrate` joins predictions against
+  live ground truth, so accuracy is measured, not asserted.
 
-## What it does not do
+## What it refuses to be
 
-Verdict is not a hosted merge gate or check-run publisher, a daemon or watcher, a model
-provider or proxy, or a dashboard or account system. `report --check` returns an exit
-code that a CI job can honor. Verdict never posts a check run and never merges for you.
-These limits keep setup to one binary and the blast radius to one post, and they keep
-the skill runnable on any model.
+A hosted merge gate or check-run publisher. A daemon, watcher, or background loop. A model
+provider, proxy, or router. A dashboard, database, or account system. A whole-repo
+mapper, a worker fleet, an autonomous polish loop. A judge of anything it cannot anchor,
+verify, or retract. Each refusal is load-bearing: they keep setup at minutes, blast
+radius at one post, and the skill runnable on any model, anywhere. `report --check` is a
+local exit code a CI job may honor; Verdict never posts a check-run or merges for you.
 
 ## Where it concedes
 
-Hosted reviewers keep the jobs that need a server: merge gating at enterprise scale,
-fleet-wide policy, and hosted audit trails. Verdict does not do those. The review
-itself runs on your machine with the model you choose.
+SaaS reviewers keep the jobs that need servers: merge gating at enterprise scale,
+fleet-wide policy, hosted audit trails. Everything else, the actual review, runs better
+local: faster, cheaper, auditable, improvable by anyone who can read Go.
 
 <CardGroup cols={2}>
   <Card

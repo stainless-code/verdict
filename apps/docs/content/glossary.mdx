@@ -1,24 +1,25 @@
 ---
 title: Glossary
-description: "Definitions for the terms in Verdict's help, prompts and reports: bundle, lens, panel, evidence rung, sig, envelope and more."
+description: "The vocabulary Verdict's help, prompts, and reports use, defined."
 search:
   tags: ["glossary", "concepts", "lenses", "panel", "rungs", "keep-biased"]
 ---
 
 The vocabulary Verdict's help, prompts, and reports use. Terms are grouped by
-where you meet them. Each definition matches how the verbs behave today.
+where you meet them; each definition matches how the verbs behave today.
 
 ## Review shape
 
 **Bundle.** The directory one fetch produces: `.review/<pr>/` for a fetch, or
 `.review/local-<name>/` for `fetch-local`. It holds the diff, TOC, roles, and
-normalized metadata. Every later verb reads it and never re-fetches on its own.
+normalized metadata; every later verb reads it and never re-fetches on its own.
 
 **Lens.** A read-only subagent dispatched to answer one falsifiable question
 whose answer could change the review's disposition. Lenses are staffed by
-domain (billing, auth, schema migration), not by file list. A review with no
+domain (billing, auth, schema migration), not by file list; a review with no
 disposition-changing question dispatches none. The synthesizing agent still
-owns the read, the validation, and the written review.
+owns the read, validation, and the written review — never delegate
+understanding.
 
 **Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
 `.review/panel` (one slug per line). `fetch` resolves it into
@@ -33,8 +34,8 @@ per run.
 travels; `said`-only findings ship labeled `unproven` or die in triage. Nothing
 posts as fact that was never shown.
 
-**Severity tier.** A finding's next-action rank: `critical`, `important`, or
-`informational`. It is stored at write time and never parsed from prose. `report
+**Severity tier.** A finding's next-action rank — `critical`, `important`, or
+`informational` — stored at write time, never parsed from prose. `report
 --check <tier>` gates on open findings at or above that tier; untagged findings
 never meet a tier.
 
@@ -42,20 +43,6 @@ never meet a tier.
 `"1"`). Sigs survive rebases and re-slices, dedupe incremental reviews, group
 threads, and are the join key for triage, calibration, and external policy
 tools. Commands accept a unique short prefix.
-
-## Surfaces
-
-**Skill.** The instructions an agent loads to run a review: `SKILL.md`,
-`prompts/`, and `schemas/`. The binary carries its own copy, and
-`verdict skill install` writes it into an agent's skills directory.
-
-**Envelope.** The one JSON object a `--json` run prints to stdout. It has nine
-fixed keys and `schema_version: "1"`. New information goes inside `data`. See
-[Build a client](/build-a-client).
-
-**Provider.** The code host a bundle came from: GitHub (the default), GitLab,
-GitCafe, Forgejo, Bitbucket, or Azure DevOps. Pick one with
-`fetch --provider`. `post` and `calibrate` need a GitHub bundle.
 
 ## Doctrines
 
@@ -65,15 +52,15 @@ into the body; one bad anchor never fails a post. The machinery is skeptical of
 its own doubts and strict about its claims. Its sibling doctrines:
 
 **Fail-closed.** When the safe answer is unavailable, refuse with a typed code
-and a `try:` hint instead of silently proceeding. Corrupt stores, missing
+and a `try:` hint instead of silently proceeding — corrupt stores, missing
 prompt files, and unvalidated inputs refuse rather than guess.
 
-**Never-forced.** Unknowns stay unknown. An absent model, severity, counter, or
-grade is `null` or unknown, never invented or coerced to zero. A judgment the
+**Never-forced.** Unknowns stay unknown: an absent model, severity, counter, or
+grade is `null`/unknown, never invented or coerced to zero; a judgment the
 evidence does not support is not reported.
 
 **Additive-only.** Store changes add optional keys within `schema_version`
-`"1"`. History is append-only. The calibration probe writes only its one
+`"1"`; history is append-only; the calibration probe writes only its one
 `kb-grades.jsonl` file. Renames and tighter shapes require a version bump.
 
 The full operator reference is the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md).
