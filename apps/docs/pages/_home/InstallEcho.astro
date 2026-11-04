@@ -15,18 +15,11 @@ interface Props {
 const { fallback = CLI_INSTALL } = Astro.props;
 ---
 
-<div class="w-full text-left" data-install-echo data-fallback={fallback}>
-  <p
-    class="mb-1.5 font-medium text-sm"
-    data-echo-label
-    style="color: var(--landing-band-ink); opacity: 0.75;"
-  >
-    Install
-  </p>
-  <div class="flex min-w-0 items-center gap-3 rounded-xl bg-white py-2.5 pr-2.5 pl-4 text-[var(--landing-band)]">
+<div class="flex max-w-full flex-col items-center gap-2" data-install-echo data-fallback={fallback}>
+  <div class="flex w-fit max-w-full min-w-0 items-center gap-3 rounded-xl bg-white py-2.5 pr-2.5 pl-4 text-left text-[var(--landing-band)]">
     <span aria-hidden="true" class="select-none font-mono text-base opacity-50">$</span>
     <code
-      class="min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words whitespace-pre-wrap sm:text-base"
+      class="min-w-0 font-mono text-[13px] leading-[1.5] break-words whitespace-pre-wrap sm:text-base"
       data-echo-command>{breakable(fallback).map((part) => <>{part}<wbr /></>)}</code>
     <button
       aria-label={`Copy: ${fallback}`}
@@ -40,6 +33,10 @@ const { fallback = CLI_INSTALL } = Astro.props;
     </button>
     <span aria-live="polite" class="sr-only" data-echo-status></span>
   </div>
+  <p class="text-sm" style="color: var(--landing-band-ink); opacity: 0.75;">
+    Showing the <span class="font-medium" data-echo-label>npm</span> route.
+    Pick another at the top of the page.
+  </p>
 </div>
 
 <script>
@@ -75,7 +72,8 @@ const { fallback = CLI_INSTALL } = Astro.props;
     const text = panel?.textContent?.trim() ?? "";
     if (!text) return;
     render(text);
-    if (label) label.textContent = tab?.textContent?.trim() ?? "Install";
+    const route = tab?.textContent?.trim();
+    if (label && route) label.textContent = route;
     if (copy) {
       copy.dataset.command = text;
       copy.setAttribute("aria-label", `Copy: ${text}`);
