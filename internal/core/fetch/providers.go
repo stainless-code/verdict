@@ -1835,7 +1835,7 @@ func elementsOrEmpty(v any) []any {
 var providerStates = map[string]map[string]string{
 	providerGitLab:    {"opened": stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
 	providerGitCafe:   {stateOpen: stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
-	providerBitbucket: {"OPEN": stateOpen, stateMerged: stateMerged, "DECLINED": stateClosed, "SUPERSEDED": stateClosed},
+	providerBitbucket: {"OPEN": stateOpen, "MERGED": stateMerged, "DECLINED": stateClosed, "SUPERSEDED": stateClosed},
 	providerAzure:     {stateActive: stateOpen, "abandoned": stateClosed, "completed": stateMerged},
 }
 

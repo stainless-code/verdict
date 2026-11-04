@@ -553,6 +553,7 @@ func TestProviderStateFold(t *testing.T) {
 		{providerGitCafe, "closed", "closed"},
 		{providerBitbucket, "OPEN", "open"},
 		{providerBitbucket, "DECLINED", "closed"},
+		{providerBitbucket, "MERGED", "merged"},
 		{providerBitbucket, "SUPERSEDED", "closed"},
 		{providerAzure, "active", "open"},
 		{providerAzure, "abandoned", "closed"},
