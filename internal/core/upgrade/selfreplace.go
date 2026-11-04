@@ -114,8 +114,12 @@ func replaceInstalled(req *Request, det *detection, result *release.Result, vers
 	return nil
 }
 
-// windowsHandoff copies the verified new binary to %TEMP% and spawns it as
-// the replacement helper: the running exe is never overwritten.
+// windowsHandoff copies the verified new binary beside the installed one and
+// spawns it as the replacement helper: the running exe is never overwritten.
+// The helper image sits in the install directory, not %TEMP%, because the
+// helper moves it over the target with a plain MoveFileEx, which fails across
+// volumes (a TEMP on another drive than VERDICT_INSTALL). The result and log
+// files stay in the temp dir.
 func windowsHandoff(
 	ctx context.Context, req *Request, det *detection, result *release.Result, version string,
 ) (Response, *core.RefusalError) {
@@ -123,7 +127,7 @@ func windowsHandoff(
 	if err != nil {
 		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot stage the Windows handoff: " + err.Error()}
 	}
-	helper := filepath.Join(dir, filepath.Base(det.exe))
+	helper := det.exe + helperImageSuffix
 	if err := copyFile(result.Binary, helper); err != nil {
 		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot copy the new binary aside: " + err.Error()}
 	}
@@ -151,6 +155,9 @@ func windowsHandoff(
 		HelperLog:    logPath,
 	}, nil
 }
+
+// helperImageSuffix names the staged helper image beside the target.
+const helperImageSuffix = ".new"
 
 // defaultSmoke runs `--version` on the staged binary and compares bytes.
 func defaultSmoke(ctx context.Context, path, version string) error {
