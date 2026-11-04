@@ -85,8 +85,10 @@ const tabsNavClass = hasSidebar
   ? "hidden shrink-0 gap-1 md:flex"
   : "hidden shrink-0 gap-1 lg:flex";
 
+// Icon buttons draw 36px and carry a 44px hit area, so a thumb hits them
+// without the header growing taller than its 64px bar.
 const iconButton =
-  "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+  "relative inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-muted hover:text-foreground";
 
 const switcherClass = showNavToggle ? "hidden shrink-0 lg:block" : "shrink-0";
 
@@ -245,7 +247,7 @@ const clickScript = `(()=>{const dr=()=>{const h=document.querySelector("[data-b
       </summary>
       <div class="absolute end-0 top-full z-50 mt-2 flex w-40 flex-col gap-0.5 rounded-xl border border-border bg-background p-1.5 shadow-xl">
         <button
-          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 min-h-11 text-start text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
           aria-pressed="false"
           data-theme-option="light"
           type="button"
@@ -255,7 +257,7 @@ const clickScript = `(()=>{const dr=()=>{const h=document.querySelector("[data-b
           <span data-theme-check="light"><Icon class="text-accent" name="check" size={14} /></span>
         </button>
         <button
-          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 min-h-11 text-start text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
           aria-pressed="false"
           data-theme-option="dark"
           type="button"
@@ -265,7 +267,7 @@ const clickScript = `(()=>{const dr=()=>{const h=document.querySelector("[data-b
           <span data-theme-check="dark"><Icon class="text-accent" name="check" size={14} /></span>
         </button>
         <button
-          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 min-h-11 text-start text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
           aria-pressed="false"
           data-theme-option="system"
           type="button"
