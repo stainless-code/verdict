@@ -108,12 +108,12 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	}
 	ro := mcp.ToolNames(true, false)
 	slices.Sort(ro)
-	start := strings.Index(flat, "--read-only expose only non-writing tools (")
-	if start < 0 {
+	_, rest, found := strings.Cut(flat, "--read-only expose only non-writing tools (")
+	list, _, closed := strings.Cut(rest, ")")
+	if !found || !closed {
 		t.Fatal("help misses the --read-only tool list")
 	}
-	rest := flat[start+len("--read-only expose only non-writing tools ("):]
-	got := strings.Split(rest[:strings.Index(rest, ")")], ", ")
+	got := strings.Split(list, ", ")
 	slices.Sort(got)
 	if !slices.Equal(got, ro) {
 		t.Errorf("help read-only list = %v, registry = %v", got, ro)
