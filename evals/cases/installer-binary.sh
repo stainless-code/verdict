@@ -286,7 +286,11 @@ fresh
 TEST_SHELL=/bin/zsh; PIN=1.2.3; NO_PATH=0
 printf 'export KEEP_ME=1\n' > "$CASE_HOME/.zshrc"
 run_install
+assert_file_grep "a PATH-appending install ends with the skill next step" "$EVAL_OUT" \
+  'Next: verdict skill install --detect' "-F"
 run_install
+assert_file_grep "a PATH-already-set install ends with the skill next step" "$EVAL_OUT" \
+  'Next: verdict skill install --detect' "-F"
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(grep -c -F '# verdict installer' "$CASE_HOME/.zshrc")" = 1 ] \
   && grep -Fq "$INSTALL_DIR" "$CASE_HOME/.zshrc" && grep -Fq 'export KEEP_ME=1' "$CASE_HOME/.zshrc"; then
   good "PATH gets one marked line and preserves existing config"
