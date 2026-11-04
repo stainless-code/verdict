@@ -37,7 +37,7 @@ func FuzzServeFrames(f *testing.F) {
 		`{"jsonrpc":"2.0","id":"s","method":"tools/call","params":null}`,
 		`{"jsonrpc":"2.0","id":{"a":[1]},"method":"ping"}`,
 		`{"jsonrpc":"1.0","id":7,"method":"ping"}`, `{"jsonrpc":"2.0","id":8}`, `[]`, `null`, `{`, `"x"`,
-		`{"jsonrpc":"2.0","id":9,"method":"notifications/cancelled","params":{"requestId":9}}`,
+		`{"jsonrpc":"2.0","id":9,"method":"` + methodCancelled + `","params":{"requestId":9}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n" + `{"jsonrpc":"2.0","id":1,"method":"ping"}`,
 	} {
 		f.Add([]byte(s))
@@ -72,24 +72,28 @@ func assertTransportContract(t *testing.T, input, output []byte) {
 			continue
 		}
 		frames++
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(resp), &raw); err != nil {
-			t.Fatalf("stdout line is not a JSON object: %q (%v)\ninput %q", resp, err, input)
-		}
-		if string(raw["jsonrpc"]) != `"2.0"` {
-			t.Fatalf("response without jsonrpc 2.0: %q", resp)
-		}
-		_, hasResult := raw["result"]
-		_, hasError := raw["error"]
-		if hasResult == hasError {
-			t.Fatalf("response must hold exactly one of result/error: %q", resp)
-		}
-		if id := string(raw["id"]); id != "null" && !ids[id] {
-			t.Fatalf("response id %s matches no input id: %q\ninput %q", id, resp, input)
-		}
+		assertFrame(t, resp, ids, input)
 	}
 	if frames > lines {
 		t.Fatalf("%d responses for %d input lines\ninput %q\noutput %q", frames, lines, input, output)
+	}
+}
+
+// assertFrame checks one stdout line is a well-formed JSON-RPC response whose
+// id was sent by the client (or is null).
+func assertFrame(t *testing.T, resp string, ids map[string]bool, input []byte) {
+	t.Helper()
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(resp), &raw); err != nil {
+		t.Fatalf("stdout line is not a JSON object: %q (%v)\ninput %q", resp, err, input)
+	}
+	_, hasResult := raw["result"]
+	_, hasError := raw["error"]
+	if string(raw["jsonrpc"]) != `"2.0"` || hasResult == hasError {
+		t.Fatalf("response is not jsonrpc 2.0 with exactly one of result/error: %q", resp)
+	}
+	if id := string(raw["id"]); id != "null" && !ids[id] {
+		t.Fatalf("response id %s matches no input id: %q\ninput %q", id, resp, input)
 	}
 }
 
@@ -104,16 +108,24 @@ func inputIDs(input []byte) (map[string]bool, int) {
 			continue
 		}
 		lines++
-		var obj struct {
-			ID json.RawMessage `json:"id"`
-		}
-		if json.Unmarshal(line, &obj) != nil || len(obj.ID) == 0 {
-			continue
-		}
-		var buf bytes.Buffer
-		if json.Compact(&buf, obj.ID) == nil {
-			ids[buf.String()] = true
+		if id, ok := compactID(line); ok {
+			ids[id] = true
 		}
 	}
 	return ids, lines
+}
+
+// compactID returns the compacted "id" member of a JSON object line.
+func compactID(line []byte) (string, bool) {
+	var obj struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal(line, &obj) != nil || len(obj.ID) == 0 {
+		return "", false
+	}
+	var buf bytes.Buffer
+	if json.Compact(&buf, obj.ID) != nil {
+		return "", false
+	}
+	return buf.String(), true
 }

@@ -287,7 +287,7 @@ func TestSignedPrefixInt(t *testing.T) {
 // TestDecodeOrderedRefusesStrayCloser pins that a closing bracket with no
 // opener after (or between) values is a refusal, not silently-dropped
 // garbage. Found by FuzzDecodeOrdered: `{"a":1}}` decoded as `{"a":1}`
-// because json.Decoder.More reports false in front of a closer and the old
+// because [json.Decoder.More] reports false in front of a closer and the old
 // tail check treated the resulting Token error as end-of-input.
 //
 // Break killed: restoring the old tail check (`if _, err := dec.Token();

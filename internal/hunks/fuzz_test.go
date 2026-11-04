@@ -48,29 +48,76 @@ func FuzzParse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, diff string) {
 		parsed := hunks.Parse(diff)
 		for _, h := range parsed {
-			if h.Side != "OLD" && h.Side != "NEW" {
-				t.Fatalf("hunk side %q", h.Side)
-			}
-			if h.Start < 0 || h.End < h.Start {
-				t.Fatalf("hunk %+v is negative or inverted (diff %q)", h, diff)
-			}
+			assertSaneSpan(t, h, diff)
 		}
-		tsv := hunks.Format(parsed)
-		if tsv == "" {
-			return
-		}
-		rows := strings.Split(strings.TrimSuffix(tsv, "\n"), "\n")
-		if len(rows) != len(parsed) {
-			t.Fatalf("hunks.tsv has %d rows for %d hunks:\n%q\ndiff %q", len(rows), len(parsed), tsv, diff)
-		}
-		for i, row := range rows {
-			fields := strings.Split(row, "\t")
-			want := []string{parsed[i].File, parsed[i].Side, strconv.Itoa(parsed[i].Start), strconv.Itoa(parsed[i].End)}
-			if len(fields) != len(want) || strings.Join(fields, "\x00") != strings.Join(want, "\x00") {
-				t.Fatalf("hunks.tsv row %d = %q does not read back as %q (diff %q)", i, row, want, diff)
-			}
-		}
+		assertTSVReadsBack(t, parsed, diff)
 	})
+}
+
+// assertSaneSpan checks one hunk's side and span.
+func assertSaneSpan(t *testing.T, h hunks.Hunk, diff string) {
+	t.Helper()
+	if h.Side != "OLD" && h.Side != "NEW" {
+		t.Fatalf("hunk side %q", h.Side)
+	}
+	if h.Start < 0 || h.End < h.Start {
+		t.Fatalf("hunk %+v is negative or inverted (diff %q)", h, diff)
+	}
+}
+
+// assertTSVReadsBack splits the rendered hunks.tsv with plain string
+// functions and compares each row with the hunk it came from.
+func assertTSVReadsBack(t *testing.T, parsed []hunks.Hunk, diff string) {
+	t.Helper()
+	tsv := hunks.Format(parsed)
+	if tsv == "" {
+		return
+	}
+	rows := strings.Split(strings.TrimSuffix(tsv, "\n"), "\n")
+	if len(rows) != len(parsed) {
+		t.Fatalf("hunks.tsv has %d rows for %d hunks:\n%q\ndiff %q", len(rows), len(parsed), tsv, diff)
+	}
+	for i, row := range rows {
+		want := []string{parsed[i].File, parsed[i].Side, strconv.Itoa(parsed[i].Start), strconv.Itoa(parsed[i].End)}
+		if strings.Join(strings.Split(row, "\t"), "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("hunks.tsv row %d = %q does not read back as %q (diff %q)", i, row, want, diff)
+		}
+	}
+}
+
+// grepCounts is what a line-by-line scan of a diff finds: the independent
+// oracle for the section scanner.
+type grepCounts struct {
+	headers, added, removed int
+	firstOffset             int // byte offset of the first header line, -1 if none
+}
+
+// grepDiff counts header lines and +/- content lines inside sections, the way
+// `grep -c` would, over the diff minus its final newline.
+func grepDiff(body string) grepCounts {
+	c := grepCounts{firstOffset: -1}
+	offset := 0
+	for line := range strings.SplitSeq(body, "\n") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			c.headers++
+			if c.firstOffset < 0 {
+				c.firstOffset = offset
+			}
+		case c.firstOffset >= 0:
+			a, r := contentLine(line)
+			c.added, c.removed = c.added+a, c.removed+r
+		}
+		offset += len(line) + 1
+	}
+	return c
+}
+
+// contentLine classifies a diff line: 1,0 added, 0,1 removed (the +++ and ---
+// file headers excluded).
+func contentLine(line string) (added, removed int) {
+	return b2i(strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++")),
+		b2i(strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"))
 }
 
 // FuzzFiles holds the section scanner to counts a line-by-line grep gives:
@@ -81,49 +128,42 @@ func FuzzFiles(f *testing.F) {
 	f.Fuzz(func(t *testing.T, diff string) {
 		files := hunks.Files(diff)
 		body := strings.TrimSuffix(diff, "\n")
-		headers, first, added, removed := 0, -1, 0, 0
-		offset := 0
-		inSection := false
-		for line := range strings.SplitSeq(body, "\n") {
-			if strings.HasPrefix(line, "diff --git ") {
-				headers++
-				inSection = true
-				if first < 0 {
-					first = offset
-				}
-			} else if inSection {
-				added += b2i(strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"))
-				removed += b2i(strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"))
-			}
-			offset += len(line) + 1
+		want := grepDiff(body)
+		if len(files) != want.headers {
+			t.Fatalf("Files = %d sections, %d header lines in %q", len(files), want.headers, diff)
 		}
-		if diff == "" || body == "" && diff == "\n" {
-			headers = 0
-		}
-		if len(files) != headers {
-			t.Fatalf("Files = %d sections, %d header lines in %q", len(files), headers, diff)
-		}
-		sumSize, sumAdd, sumDel, prevEnd := int64(0), 0, 0, 0
-		for i := range files {
-			fl := &files[i]
-			if fl.StartLine <= prevEnd || fl.EndLine < fl.StartLine {
-				t.Fatalf("section %d spans %d-%d after %d in %q", i, fl.StartLine, fl.EndLine, prevEnd, diff)
-			}
-			prevEnd = fl.EndLine
-			sumSize += fl.Size
-			sumAdd += fl.Additions
-			sumDel += fl.Deletions
-			if len(fl.AddedLines) != fl.Additions {
-				t.Fatalf("AddedLines %d != Additions %d", len(fl.AddedLines), fl.Additions)
-			}
-		}
-		if headers > 0 && sumSize != int64(len(body)-first+1) {
-			t.Fatalf("section sizes sum to %d, diff text from first header is %d bytes", sumSize, len(body)-first+1)
-		}
-		if sumAdd != added || sumDel != removed {
-			t.Fatalf("+%d/-%d, grep counts +%d/-%d in %q", sumAdd, sumDel, added, removed, diff)
-		}
+		assertSections(t, files, want, body)
 	})
+}
+
+// assertSections checks section ordering, sizes and +/- totals.
+func assertSections(t *testing.T, files []hunks.File, want grepCounts, body string) {
+	t.Helper()
+	var size int64
+	var added, removed, prevEnd int
+	for i := range files {
+		fl := &files[i]
+		assertSectionOrder(t, fl, prevEnd)
+		prevEnd = fl.EndLine
+		size += fl.Size
+		added += fl.Additions
+		removed += fl.Deletions
+	}
+	if len(files) > 0 && size != int64(len(body)-want.firstOffset+1) {
+		t.Fatalf("section sizes sum to %d, diff text from the first header is %d bytes", size, len(body)-want.firstOffset+1)
+	}
+	if added != want.added || removed != want.removed {
+		t.Fatalf("+%d/-%d, grep counts +%d/-%d", added, removed, want.added, want.removed)
+	}
+}
+
+// assertSectionOrder checks one section starts after the previous ends and
+// carries as many added lines as it counts.
+func assertSectionOrder(t *testing.T, fl *hunks.File, prevEnd int) {
+	t.Helper()
+	if fl.StartLine <= prevEnd || fl.EndLine < fl.StartLine || len(fl.AddedLines) != fl.Additions {
+		t.Fatalf("section is inconsistent: %+v after line %d", fl, prevEnd)
+	}
 }
 
 // b2i is 1 for true.
@@ -135,9 +175,8 @@ func b2i(b bool) int {
 }
 
 // FuzzHeaderPaths holds the header path decoder to the shapes it must never
-// invent: a non-header line yields no paths, a path never keeps the a/ b/
-// side marker it stripped from a well-formed header, and the quoted form of a
-// path round-trips through git's own quoting rules (octal escapes).
+// invent: a non-header line yields no paths, and a header built from clean
+// names decodes to exactly those names.
 func FuzzHeaderPaths(f *testing.F) {
 	for _, s := range []string{
 		"diff --git a/x b/x", "diff --git \"a/h\\303\\251\" \"b/h\\303\\251\"", "diff --git ", "diff --git \"", "diff --git \"a/\\",
@@ -150,13 +189,19 @@ func FuzzHeaderPaths(f *testing.F) {
 		if !strings.HasPrefix(line, "diff --git ") && (oldP != "" || newP != "") {
 			t.Fatalf("non-header %q gave paths %q, %q", line, oldP, newP)
 		}
-		// A plain header built from two clean names must decode to exactly them.
-		plainOld, plainNew := cleanName(line), cleanName(line)+"2"
-		o2, n2 := hunks.HeaderPaths("diff --git a/" + plainOld + " b/" + plainNew)
-		if o2 != plainOld || n2 != plainNew {
-			t.Fatalf("clean header for %q,%q decoded to %q,%q", plainOld, plainNew, o2, n2)
-		}
+		assertCleanHeaderDecodes(t, cleanName(line))
 	})
+}
+
+// assertCleanHeaderDecodes builds a header from two clean names and expects
+// exactly those names back.
+func assertCleanHeaderDecodes(t *testing.T, name string) {
+	t.Helper()
+	plainNew := name + "2"
+	o, n := hunks.HeaderPaths("diff --git a/" + name + " b/" + plainNew)
+	if o != name || n != plainNew {
+		t.Fatalf("clean header for %q,%q decoded to %q,%q", name, plainNew, o, n)
+	}
 }
 
 // cleanName keeps only the path-safe letters of s, so a header built from it

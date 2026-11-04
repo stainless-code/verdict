@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -32,29 +33,35 @@ func entriesFrom(nameA, nameB, link string, kindA, kindB byte, bodyA, bodyB []by
 	}
 }
 
-// tarGz renders entries as a tar.gz byte stream.
+// tarHeader builds the tar header for one fuzz entry.
+func tarHeader(e fuzzEntry) *tar.Header {
+	hdr := &tar.Header{Name: e.name, Mode: 0o755, Size: int64(len(e.body)), Typeflag: tar.TypeReg}
+	switch e.kind {
+	case 1:
+		hdr.Typeflag, hdr.Linkname, hdr.Size = tar.TypeSymlink, e.link, 0
+	case 2:
+		hdr.Typeflag, hdr.Size = tar.TypeDir, 0
+	case 3:
+		hdr.Typeflag, hdr.Linkname, hdr.Size = tar.TypeLink, e.link, 0
+	}
+	return hdr
+}
+
+// tarGz renders entries as a tar.gz byte stream (nil when the tar writer
+// refuses a header, which is the writer's own validation, not the code under
+// test).
 func tarGz(t *testing.T, entries []fuzzEntry) []byte {
 	t.Helper()
 	var raw bytes.Buffer
 	gz := gzip.NewWriter(&raw)
 	tw := tar.NewWriter(gz)
 	for _, e := range entries {
-		hdr := &tar.Header{Name: e.name, Mode: 0o755, Size: int64(len(e.body)), Typeflag: tar.TypeReg}
-		switch e.kind {
-		case 1:
-			hdr.Typeflag, hdr.Linkname, hdr.Size = tar.TypeSymlink, e.link, 0
-		case 2:
-			hdr.Typeflag, hdr.Size = tar.TypeDir, 0
-		case 3:
-			hdr.Typeflag, hdr.Linkname, hdr.Size = tar.TypeLink, e.link, 0
-		}
+		hdr := tarHeader(e)
 		if tw.WriteHeader(hdr) != nil {
 			return nil
 		}
-		if hdr.Size > 0 {
-			if _, err := tw.Write(e.body); err != nil {
-				t.Fatal(err)
-			}
+		if _, err := tw.Write(e.body[:hdr.Size]); err != nil {
+			t.Fatal(err)
 		}
 	}
 	if tw.Close() != nil || gz.Close() != nil {
@@ -63,36 +70,54 @@ func tarGz(t *testing.T, entries []fuzzEntry) []byte {
 	return raw.Bytes()
 }
 
+// zipMode is the file mode a fuzz entry carries in a zip header.
+func zipMode(kind byte) fs.FileMode {
+	switch kind {
+	case 1:
+		return 0o755 | fs.ModeSymlink
+	case 2:
+		return 0o755 | fs.ModeDir
+	}
+	return 0o755
+}
+
 // zipOf renders entries as a zip archive.
 func zipOf(t *testing.T, entries []fuzzEntry) []byte {
 	t.Helper()
 	var raw bytes.Buffer
 	zw := zip.NewWriter(&raw)
 	for _, e := range entries {
-		hdr := &zip.FileHeader{Name: e.name, Method: zip.Store}
-		mode := fs.FileMode(0o755)
-		switch e.kind {
-		case 1:
-			mode |= fs.ModeSymlink
-		case 2:
-			mode |= fs.ModeDir
-		}
-		hdr.SetMode(mode)
-		w, err := zw.CreateHeader(hdr)
-		if err != nil {
+		if !addZipEntry(t, zw, e) {
 			return nil
-		}
-		if e.kind == 2 || strings.HasSuffix(e.name, "/") {
-			continue // a directory entry has no body
-		}
-		if _, err := w.Write(e.body); err != nil {
-			t.Fatal(err)
 		}
 	}
 	if zw.Close() != nil {
 		return nil
 	}
 	return raw.Bytes()
+}
+
+// addZipEntry writes one entry; false when the zip writer refuses its header.
+func addZipEntry(t *testing.T, zw *zip.Writer, e fuzzEntry) bool {
+	t.Helper()
+	hdr := &zip.FileHeader{Name: e.name, Method: zip.Store}
+	hdr.SetMode(zipMode(e.kind))
+	w, err := zw.CreateHeader(hdr)
+	if err != nil {
+		return false
+	}
+	if e.kind == 2 || strings.HasSuffix(e.name, "/") {
+		return true // a directory entry has no body
+	}
+	if _, err := w.Write(e.body); err != nil {
+		t.Fatal(err)
+	}
+	return true
+}
+
+// allowlisted reports whether name is in the contract allowlist.
+func allowlisted(name string) bool {
+	return slices.Contains(fuzzMembers, name)
 }
 
 // wantExtraction is the independent verdict on a described archive: the
@@ -102,11 +127,7 @@ func zipOf(t *testing.T, entries []fuzzEntry) []byte {
 func wantExtraction(entries []fuzzEntry) (ok bool, body []byte) {
 	found := false
 	for _, e := range entries {
-		allowed := false
-		for _, m := range fuzzMembers {
-			allowed = allowed || e.name == m
-		}
-		if !allowed || e.kind != 0 {
+		if !allowlisted(e.name) || e.kind != 0 {
 			return false, nil
 		}
 		if e.name == "verdict" {
@@ -116,26 +137,25 @@ func wantExtraction(entries []fuzzEntry) (ok bool, body []byte) {
 	return found, body
 }
 
+// sandboxPaths are the only paths that may exist under the test root.
+func sandboxPaths(archive string) map[string]bool {
+	return map[string]bool{
+		".": true, filepath.Base(archive): true, "outside": true, filepath.Join("outside", "keep"): true,
+		"stage": true, filepath.Join("stage", "verdict"): true,
+	}
+}
+
 // assertSandboxed checks the extraction touched nothing but stage/verdict:
 // the tree under root holds exactly the files the test created, and the
 // sentinel outside the stage dir is intact.
 func assertSandboxed(t *testing.T, root, archive string) {
 	t.Helper()
-	allowed := map[string]bool{
-		".": true, filepath.Base(archive): true, "outside": true, filepath.Join("outside", "keep"): true,
-		"stage": true, filepath.Join("stage", "verdict"): true,
-	}
+	allowed := sandboxPaths(archive)
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(root, p)
-		if !allowed[rel] {
-			t.Errorf("extraction created %s", rel)
-		}
-		if rel == filepath.Join("stage", "verdict") && !d.Type().IsRegular() {
-			t.Errorf("stage/verdict is %v, not a regular file", d.Type())
-		}
+		checkSandboxEntry(t, root, p, d, allowed)
 		return nil
 	})
 	if err != nil {
@@ -146,24 +166,42 @@ func assertSandboxed(t *testing.T, root, archive string) {
 	}
 }
 
+// checkSandboxEntry flags one path the extraction should not have made.
+func checkSandboxEntry(t *testing.T, root, p string, d fs.DirEntry, allowed map[string]bool) {
+	t.Helper()
+	rel, err := filepath.Rel(root, p)
+	if err != nil || !allowed[rel] {
+		t.Errorf("extraction created %s", rel)
+	}
+	if rel == filepath.Join("stage", "verdict") && !d.Type().IsRegular() {
+		t.Errorf("stage/verdict is %v, not a regular file", d.Type())
+	}
+}
+
+// newSandbox lays out root/outside/keep, root/stage and root/<name> (the
+// archive) and returns the root, stage dir and archive path.
+func newSandbox(t *testing.T, name string, archive []byte) (root, stage, path string) {
+	t.Helper()
+	root = t.TempDir()
+	stage = filepath.Join(root, "stage")
+	path = filepath.Join(root, name)
+	for _, dir := range []string{filepath.Join(root, "outside"), stage} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for file, content := range map[string][]byte{filepath.Join(root, "outside", "keep"): []byte("keep"), path: archive} {
+		if err := os.WriteFile(file, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root, stage, path
+}
+
 // runExtraction stages one archive and runs extractBinary against it.
 func runExtraction(t *testing.T, name string, archive []byte, entries []fuzzEntry) {
 	t.Helper()
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "outside"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "outside", "keep"), []byte("keep"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	stage := filepath.Join(root, "stage")
-	if err := os.MkdirAll(stage, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(root, name)
-	if err := os.WriteFile(path, archive, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	root, stage, path := newSandbox(t, name, archive)
 	got, err := extractBinary(path, stage, "verdict", fuzzMembers)
 	assertSandboxed(t, root, path)
 	wantOK, wantBody := wantExtraction(entries)
@@ -173,8 +211,8 @@ func runExtraction(t *testing.T, name string, archive []byte, entries []fuzzEntr
 	if err != nil {
 		return
 	}
-	if got != filepath.Join(stage, "verdict") {
-		t.Fatalf("staged path %q, want %q", got, filepath.Join(stage, "verdict"))
+	if want := filepath.Join(stage, "verdict"); got != want {
+		t.Fatalf("staged path %q, want %q", got, want)
 	}
 	if b, err := os.ReadFile(got); err != nil || !bytes.Equal(b, wantBody) {
 		t.Fatalf("staged bytes %q (%v), want %q", b, err, wantBody)
@@ -188,10 +226,18 @@ func seedArchives(f *testing.F) {
 		a, b, link string
 		ka, kb     byte
 	}{
-		{"verdict", "LICENSE", "", 0, 0}, {"verdict", "README.md", "", 0, 0}, {"../verdict", "verdict", "", 0, 0},
-		{"/etc/cron.d/x", "verdict", "", 0, 0}, {"verdict", "evil", "", 0, 0}, {"verdict", "LICENSE", "../outside/keep", 0, 1},
-		{"verdict", "verdict", "", 0, 0}, {"verdict", "verdict", "../outside/keep", 1, 0}, {"stage/../verdict", "verdict", "", 0, 0},
-		{"verdict", "LICENSE", "verdict", 0, 3}, {"verdict/", "verdict", "", 2, 0}, {"./verdict", "verdict", "", 0, 0},
+		{"verdict", "LICENSE", "", 0, 0},
+		{"verdict", "README.md", "", 0, 0},
+		{"../verdict", "verdict", "", 0, 0},
+		{"/etc/cron.d/x", "verdict", "", 0, 0},
+		{"verdict", "evil", "", 0, 0},
+		{"verdict", "LICENSE", "../outside/keep", 0, 1},
+		{"verdict", "verdict", "", 0, 0},
+		{"verdict", "verdict", "../outside/keep", 1, 0},
+		{"stage/../verdict", "verdict", "", 0, 0},
+		{"verdict", "LICENSE", "verdict", 0, 3},
+		{"verdict/", "verdict", "", 2, 0},
+		{"./verdict", "verdict", "", 0, 0},
 	} {
 		f.Add(s.a, s.b, s.link, s.ka, s.kb, []byte("bin-a"), []byte("bin-b"))
 	}

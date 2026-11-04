@@ -23,14 +23,20 @@ func seedFixtures(f *testing.F, globs ...string) {
 			f.Fatal(err)
 		}
 		for _, p := range paths {
-			if b, err := os.ReadFile(p); err == nil && len(b) < 1<<16 {
-				f.Add(b)
-			}
+			addFixture(f, p)
 		}
 	}
 }
 
-// stdlibDecode decodes data with encoding/json (numbers as json.Number): the
+// addFixture seeds one small readable file.
+func addFixture(f *testing.F, path string) {
+	f.Helper()
+	if b, err := os.ReadFile(path); err == nil && len(b) < 1<<16 {
+		f.Add(b)
+	}
+}
+
+// stdlibDecode decodes data with encoding/json (numbers as [json.Number]): the
 // independent oracle for what the document means. ok is false when data is
 // not exactly one valid JSON value.
 func stdlibDecode(data []byte) (any, bool) {
@@ -82,31 +88,34 @@ func FuzzDecodeOrdered(f *testing.F) {
 	}
 	seedFixtures(f, "../../examples/python-client/fixtures/bundle/*/*.json",
 		"../../bench/corpus/*/agents/*.json", "../../evals/fixtures/*/*.json", "../../schemas/*.json")
-	f.Fuzz(func(t *testing.T, data []byte) {
-		want, valid := stdlibDecode(data)
-		got, err := jq.DecodeOrdered(data)
-		if (err == nil) != valid {
-			t.Fatalf("DecodeOrdered err=%v but json.Valid=%v for %q", err, valid, data)
+	f.Fuzz(checkDecodeOrdered)
+}
+
+// checkDecodeOrdered is the FuzzDecodeOrdered property.
+func checkDecodeOrdered(t *testing.T, data []byte) {
+	want, valid := stdlibDecode(data)
+	got, err := jq.DecodeOrdered(data)
+	if (err == nil) != valid {
+		t.Fatalf("DecodeOrdered err=%v but json.Valid=%v for %q", err, valid, data)
+	}
+	if err != nil {
+		if got != nil {
+			t.Fatalf("refusal returned partial value %#v", got)
 		}
-		if err != nil {
-			if got != nil {
-				t.Fatalf("refusal returned partial value %#v", got)
-			}
-			return
-		}
-		back, rendered := plain(t, got)
-		if !reflect.DeepEqual(back, want) {
-			t.Fatalf("meaning changed: %q decodes to %#v, re-render %q to %#v", data, want, rendered, back)
-		}
-		again, err := jq.DecodeOrdered([]byte(rendered))
-		if err != nil {
-			t.Fatalf("re-render %q does not decode: %v", rendered, err)
-		}
-		if second := renderOrdered(again); second != rendered {
-			t.Fatalf("render unstable: %q then %q", rendered, second)
-		}
-		assertObjShape(t, got)
-	})
+		return
+	}
+	back, rendered := plain(t, got)
+	if !reflect.DeepEqual(back, want) {
+		t.Fatalf("meaning changed: %q decodes to %#v, re-render %q to %#v", data, want, rendered, back)
+	}
+	again, err := jq.DecodeOrdered([]byte(rendered))
+	if err != nil {
+		t.Fatalf("re-render %q does not decode: %v", rendered, err)
+	}
+	if second := renderOrdered(again); second != rendered {
+		t.Fatalf("render unstable: %q then %q", rendered, second)
+	}
+	assertObjShape(t, got)
 }
 
 // assertObjShape checks the Obj bookkeeping invariant: Keys lists each field
@@ -115,21 +124,27 @@ func assertObjShape(t *testing.T, v any) {
 	t.Helper()
 	switch x := v.(type) {
 	case *jq.Obj:
-		seen := map[string]bool{}
-		for _, k := range x.Keys {
-			if seen[k] {
-				t.Fatalf("Obj.Keys repeats %q: %v", k, x.Keys)
-			}
-			seen[k] = true
-			assertObjShape(t, x.Fields[k])
-		}
-		if len(x.Keys) != len(x.Fields) {
-			t.Fatalf("Obj has %d keys but %d fields", len(x.Keys), len(x.Fields))
-		}
+		assertObjKeys(t, x)
 	case []any:
 		for _, e := range x {
 			assertObjShape(t, e)
 		}
+	}
+}
+
+// assertObjKeys checks one object and recurses into its values.
+func assertObjKeys(t *testing.T, x *jq.Obj) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, k := range x.Keys {
+		if seen[k] {
+			t.Fatalf("Obj.Keys repeats %q: %v", k, x.Keys)
+		}
+		seen[k] = true
+		assertObjShape(t, x.Fields[k])
+	}
+	if len(x.Keys) != len(x.Fields) {
+		t.Fatalf("Obj has %d keys but %d fields", len(x.Keys), len(x.Fields))
 	}
 }
 
@@ -144,27 +159,36 @@ func FuzzDecodeJSONLOrdered(f *testing.F) {
 	}
 	seedFixtures(f, "../../evals/fixtures/bench-corpus/*.jsonl", "../../internal/mcp/testdata/*.jsonl",
 		"../../examples/usage-adapters/*/fixtures/*.jsonl")
-	f.Fuzz(func(t *testing.T, data []byte) {
-		wantN, wantOK := stdlibObjectStream(data)
-		got, err := jq.DecodeJSONLOrdered(data)
-		if (err == nil) != wantOK {
-			t.Fatalf("DecodeJSONLOrdered err=%v, oracle ok=%v for %q", err, wantOK, data)
+	f.Fuzz(checkDecodeJSONL)
+}
+
+// checkDecodeJSONL is the FuzzDecodeJSONLOrdered property.
+func checkDecodeJSONL(t *testing.T, data []byte) {
+	wantN, wantOK := stdlibObjectStream(data)
+	got, err := jq.DecodeJSONLOrdered(data)
+	if (err == nil) != wantOK {
+		t.Fatalf("DecodeJSONLOrdered err=%v, oracle ok=%v for %q", err, wantOK, data)
+	}
+	if err != nil {
+		if got != nil {
+			t.Fatalf("refusal returned partial result %v", got)
 		}
-		if err != nil {
-			if got != nil {
-				t.Fatalf("refusal returned partial result %v", got)
-			}
-			return
+		return
+	}
+	if len(got) != wantN {
+		t.Fatalf("decoded %d objects, oracle found %d in %q", len(got), wantN, data)
+	}
+	assertRendersValid(t, got)
+}
+
+// assertRendersValid checks every object renders as valid JSON.
+func assertRendersValid(t *testing.T, objs []*jq.Obj) {
+	t.Helper()
+	for _, o := range objs {
+		if _, ok := stdlibDecode([]byte(o.MarshalCompact())); !ok {
+			t.Fatalf("object renders as invalid JSON: %q", o.MarshalCompact())
 		}
-		if len(got) != wantN {
-			t.Fatalf("decoded %d objects, oracle found %d in %q", len(got), wantN, data)
-		}
-		for _, o := range got {
-			if _, ok := stdlibDecode([]byte(o.MarshalCompact())); !ok {
-				t.Fatalf("object renders as invalid JSON: %q", o.MarshalCompact())
-			}
-		}
-	})
+	}
 }
 
 // stdlibObjectStream counts the values in a JSON stream with encoding/json;

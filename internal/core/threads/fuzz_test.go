@@ -11,6 +11,20 @@ import (
 	"github.com/stainless-code/verdict/internal/schemacheck"
 )
 
+// seedThreadFixtures adds the repo's thread fixtures to the corpus.
+func seedThreadFixtures(f *testing.F) {
+	f.Helper()
+	paths, err := filepath.Glob("../../../evals/fixtures/prompt-injection/threads-*.json")
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, p := range paths {
+		if b, err := os.ReadFile(p); err == nil {
+			f.Add(b)
+		}
+	}
+}
+
 // FuzzProviderMappers feeds hostile provider JSON to all six host mappers and
 // holds every thread they emit to the published contract: the feed built from
 // it validates against schemas/threads.schema.json (the independent oracle —
@@ -30,14 +44,7 @@ func FuzzProviderMappers(f *testing.F) {
 	} {
 		f.Add([]byte(s))
 	}
-	for _, g := range []string{"../../../evals/fixtures/prompt-injection/threads-*.json"} {
-		paths, _ := filepath.Glob(g)
-		for _, p := range paths {
-			if b, err := os.ReadFile(p); err == nil {
-				f.Add(b)
-			}
-		}
-	}
+	seedThreadFixtures(f)
 	checker, err := schemacheck.Load("../../../schemas/threads.schema.json", "")
 	if err != nil {
 		f.Fatal(err)
@@ -47,23 +54,32 @@ func FuzzProviderMappers(f *testing.F) {
 		if err != nil {
 			return
 		}
-		items, ok := doc.([]any)
-		if !ok {
-			items = []any{doc}
-		}
-		gh, _ := threadscore.FromGitHubThreads(items)
-		for name, ts := range map[string][]threadscore.Thread{
-			"github":    gh,
-			"reviews":   threadscore.FromReviewBodies(items),
-			"gitlab":    threadscore.FromGitLab(items, "head"),
-			"forgejo":   threadscore.FromForgejo(items, items, "head"),
-			"bitbucket": threadscore.FromBitbucket(items),
-			"azure":     threadscore.FromAzure(items),
-			"gitcafe":   threadscore.FromGitCafe(items, items),
-		} {
+		for name, ts := range allMappers(asList(doc)) {
 			assertFeedContract(t, checker, name, ts, data)
 		}
 	})
+}
+
+// asList wraps a non-array payload as a one-element list.
+func asList(doc any) []any {
+	if items, ok := doc.([]any); ok {
+		return items
+	}
+	return []any{doc}
+}
+
+// allMappers runs every host mapper over the same decoded payload.
+func allMappers(items []any) map[string][]threadscore.Thread {
+	gh, _ := threadscore.FromGitHubThreads(items)
+	return map[string][]threadscore.Thread{
+		"github":    gh,
+		"reviews":   threadscore.FromReviewBodies(items),
+		"gitlab":    threadscore.FromGitLab(items, "head"),
+		"forgejo":   threadscore.FromForgejo(items, items, "head"),
+		"bitbucket": threadscore.FromBitbucket(items),
+		"azure":     threadscore.FromAzure(items),
+		"gitcafe":   threadscore.FromGitCafe(items, items),
+	}
 }
 
 // assertFeedContract renders ts as a threads.json feed and checks it against
@@ -83,13 +99,17 @@ func assertFeedContract(t *testing.T, checker *schemacheck.Checker, name string,
 		t.Fatalf("%s: feed violates threads.schema.json: %v\ninput %q", name, bad, input)
 	}
 	for i := range ts {
-		for _, c := range ts[i].Comments {
-			if len(c.Body) > threadscore.MaxCommentBytes {
-				t.Fatalf("%s: body of %d bytes exceeds the %d cap", name, len(c.Body), threadscore.MaxCommentBytes)
-			}
-			if !utf8.ValidString(c.Body) {
-				t.Fatalf("%s: body is not valid UTF-8: %q", name, c.Body)
-			}
+		assertBodies(t, name, ts[i].Comments)
+	}
+}
+
+// assertBodies checks the cap and UTF-8 validity of every comment body.
+func assertBodies(t *testing.T, name string, comments []threadscore.Comment) {
+	t.Helper()
+	for _, c := range comments {
+		if len(c.Body) > threadscore.MaxCommentBytes || !utf8.ValidString(c.Body) {
+			t.Fatalf("%s: body of %d bytes (valid UTF-8: %v) breaks the %d-byte cap contract",
+				name, len(c.Body), utf8.ValidString(c.Body), threadscore.MaxCommentBytes)
 		}
 	}
 }

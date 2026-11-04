@@ -43,20 +43,27 @@ func FuzzMergeJSON(f *testing.F) {
 	f.Fuzz(func(t *testing.T, old []byte) {
 		out, changed, ref := mergeJSON(old, "cfg.json")
 		if ref != nil {
-			if out != nil || changed || !refusalCodes[ref.Code] {
-				t.Fatalf("refusal %q returned out=%q changed=%v", ref.Code, out, changed)
-			}
+			assertRefusalIsClean(t, ref.Code, out, changed)
 			return
 		}
-		if !changed {
-			if out != nil {
-				t.Fatalf("unchanged merge returned bytes %q", out)
-			}
-			assertAlreadyConfigured(t, old)
+		if changed {
+			assertMergedJSON(t, old, out)
 			return
 		}
-		assertMergedJSON(t, old, out)
+		if out != nil {
+			t.Fatalf("unchanged merge returned bytes %q", out)
+		}
+		assertAlreadyConfigured(t, old)
 	})
+}
+
+// assertRefusalIsClean checks a refusal carries a documented code and no
+// bytes.
+func assertRefusalIsClean(t *testing.T, code string, out []byte, changed bool) {
+	t.Helper()
+	if out != nil || changed || !refusalCodes[code] {
+		t.Fatalf("refusal %q returned out=%q changed=%v", code, out, changed)
+	}
 }
 
 // assertAlreadyConfigured checks a keep verdict: the original already holds
@@ -64,53 +71,68 @@ func FuzzMergeJSON(f *testing.F) {
 func assertAlreadyConfigured(t *testing.T, old []byte) {
 	t.Helper()
 	doc, ok := decodeStd(old)
-	root, isObj := doc.(map[string]any)
-	if !ok || !isObj {
+	root := asObject(doc)
+	if !ok || root == nil {
 		t.Fatalf("keep verdict on a non-object document %q", old)
 	}
-	servers, _ := root["mcpServers"].(map[string]any)
-	server, _ := servers["verdict"].(map[string]any)
+	server := asObject(asObject(root["mcpServers"])["verdict"])
 	if server["command"] != "verdict" || !reflect.DeepEqual(server["args"], []any{"mcp"}) {
 		t.Fatalf("keep verdict but %q does not configure `verdict mcp`", old)
 	}
 }
 
+// asObject reads v as a JSON object, nil for anything else.
+func asObject(v any) map[string]any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return m
+}
+
+// stdRoot decodes a JSON object document with encoding/json, nil when it is
+// not one.
+func stdRoot(data []byte) map[string]any {
+	doc, ok := decodeStd(data)
+	if !ok {
+		return nil
+	}
+	return asObject(doc)
+}
+
 // assertMergedJSON checks a changed merge against the original.
 func assertMergedJSON(t *testing.T, old, out []byte) {
 	t.Helper()
-	merged, ok := decodeStd(out)
-	if !ok {
-		t.Fatalf("merge produced invalid JSON %q from %q", out, old)
+	merged := stdRoot(out)
+	if merged == nil {
+		t.Fatalf("merge produced invalid JSON or a non-object: %q (from %q)", out, old)
 	}
-	mroot, ok := merged.(map[string]any)
-	if !ok {
-		t.Fatalf("merge produced a non-object %q", out)
-	}
-	servers, _ := mroot["mcpServers"].(map[string]any)
+	servers := asObject(merged["mcpServers"])
 	want := map[string]any{"command": "verdict", "args": []any{"mcp"}}
 	if !reflect.DeepEqual(servers["verdict"], want) {
 		t.Fatalf("merged verdict entry = %#v, want %#v", servers["verdict"], want)
 	}
-	// Everything the operator had is still there, byte-for-meaning.
 	delete(servers, "verdict")
-	var origRoot map[string]any
-	if orig, ok := decodeStd(old); ok {
-		origRoot, _ = orig.(map[string]any)
-	}
-	origServers, hadServers := origRoot["mcpServers"].(map[string]any)
-	if !hadServers {
-		delete(mroot, "mcpServers")
-	} else if !reflect.DeepEqual(servers, origServers) {
-		t.Fatalf("other servers changed: %#v -> %#v", origServers, servers)
-	}
-	if origRoot == nil {
-		origRoot = map[string]any{}
-	}
-	if !reflect.DeepEqual(mroot, origRoot) {
-		t.Fatalf("operator keys changed: %#v -> %#v (input %q)", origRoot, mroot, old)
-	}
+	assertOperatorKeysKept(t, stdRoot(old), merged, old)
 	if _, again, ref := mergeJSON(out, "cfg.json"); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
+	}
+}
+
+// assertOperatorKeysKept checks that, once the verdict entry is removed, the
+// merged document means what the original did.
+func assertOperatorKeysKept(t *testing.T, orig, merged map[string]any, old []byte) {
+	t.Helper()
+	if origServers := asObject(orig["mcpServers"]); origServers == nil {
+		delete(merged, "mcpServers")
+	} else if !reflect.DeepEqual(asObject(merged["mcpServers"]), origServers) {
+		t.Fatalf("other servers changed: %#v -> %#v", origServers, merged["mcpServers"])
+	}
+	if len(orig) == 0 && len(merged) == 0 {
+		return
+	}
+	if !reflect.DeepEqual(merged, orig) {
+		t.Fatalf("operator keys changed: %#v -> %#v (input %q)", orig, merged, old)
 	}
 }
 
@@ -132,18 +154,14 @@ func FuzzMergeTOML(f *testing.F) {
 	f.Fuzz(func(t *testing.T, old []byte) {
 		out, changed, ref := mergeTOML(old, "config.toml")
 		if ref != nil {
-			if out != nil || changed || !refusalCodes[ref.Code] {
-				t.Fatalf("refusal %q returned out=%q changed=%v", ref.Code, out, changed)
-			}
+			assertRefusalIsClean(t, ref.Code, out, changed)
 			return
 		}
-		if !changed {
-			if out != nil {
-				t.Fatalf("unchanged merge returned bytes %q", out)
-			}
-			return
+		if changed {
+			assertMergedTOML(t, old, out)
+		} else if out != nil {
+			t.Fatalf("unchanged merge returned bytes %q", out)
 		}
-		assertMergedTOML(t, old, out)
 	})
 }
 
@@ -153,13 +171,7 @@ func assertMergedTOML(t *testing.T, old, out []byte) {
 	if !isSubsequence(nonBlankLines(string(old)), nonBlankLines(string(out))) {
 		t.Fatalf("merge dropped or reordered operator lines:\nold %q\nnew %q", old, out)
 	}
-	headers := 0
-	for _, ln := range strings.Split(string(out), "\n") {
-		if strings.TrimSpace(ln) == "[mcp_servers.verdict]" {
-			headers++
-		}
-	}
-	if headers == 0 && !bytes.Contains(old, []byte("mcp_servers")) {
+	if !bytes.Contains(out, []byte("[mcp_servers.verdict]")) && !bytes.Contains(old, []byte("mcp_servers")) {
 		t.Fatalf("merge added no [mcp_servers.verdict] table: %q", out)
 	}
 	if _, again, ref := mergeTOML(out, "config.toml"); ref != nil || again {

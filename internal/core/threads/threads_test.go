@@ -356,13 +356,19 @@ func TestRootlessThreadStillLabelsItsAuthorKind(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			threads, _ := FromGitHubThreads([]any{node})
-			if len(threads) != 1 {
-				t.Fatalf("threads = %d, want the anchored thread kept", len(threads))
-			}
-			if got := threads[0].AuthorKind; got != AuthorHuman {
-				t.Fatalf("author_kind = %q, want %q", got, AuthorHuman)
-			}
+			wantRootlessKind(t, node)
 		})
+	}
+}
+
+// wantRootlessKind maps one comment-less GitHub node and checks its label.
+func wantRootlessKind(t *testing.T, node map[string]any) {
+	t.Helper()
+	threads, _ := FromGitHubThreads([]any{node})
+	if len(threads) != 1 {
+		t.Fatalf("threads = %d, want the anchored thread kept", len(threads))
+	}
+	if got := threads[0].AuthorKind; got != AuthorHuman {
+		t.Fatalf("author_kind = %q, want %q", got, AuthorHuman)
 	}
 }
