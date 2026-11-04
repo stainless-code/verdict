@@ -151,8 +151,9 @@ func TestShimResolutionOrder(t *testing.T) {
 }
 
 // TestShimBootstrapReusesInstaller proves the one-time bootstrap fetches the
-// pinned release's install.sh (the ticket-10 verifier), installs the binary,
-// is idempotent, and leaves no partial binary on a verification failure.
+// pinned release's install.sh (the installer's own verifier), installs the
+// binary, is idempotent, and leaves no partial binary on a verification
+// failure.
 //
 //nolint:cyclop,gocognit,revive // the sequence is the bootstrap contract
 func TestShimBootstrapReusesInstaller(t *testing.T) {

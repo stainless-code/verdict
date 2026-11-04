@@ -258,7 +258,7 @@ func requireRefusal(t *testing.T, err error, code string) *core.RefusalError {
 }
 
 // assertWorktreeLine proves the human stream reports the checkout
-// location (the on-demand report the ticket requires).
+// location (the on-demand report this case requires).
 func assertWorktreeLine(t *testing.T, human *bytes.Buffer, wt string) {
 	t.Helper()
 	if got := human.String(); !strings.Contains(got, "worktree: "+wt+" (temporary isolated checkout; removed on exit)") {

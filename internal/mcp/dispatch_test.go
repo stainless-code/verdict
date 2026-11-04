@@ -10,7 +10,7 @@ import (
 
 // TestCallDecodesArgumentsOnce pins the parse budget: one call decodes its
 // arguments exactly once, before dispatch. A second decode would be the
-// double-parsing regression STA-73 removes.
+// double-parsing regression this test exists to catch.
 func TestCallDecodesArgumentsOnce(t *testing.T) {
 	fixture(t)
 	cfg := testConfig()

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Case skill-route: the embedded skill, `verdict skill`, the install matrix,
-# the POSIX shim, and the one-time bootstrap (ticket 12).
+# the POSIX shim, and the one-time bootstrap.
 #
 # Grades (all hermetic — the binary's own embedded payload, temp skill dirs,
 # fake platform tools, and a file:// release mirror; no real network):

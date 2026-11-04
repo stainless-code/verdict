@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Case automation-recipe: the first-party CI automation recipe with merge
-# gating (ticket 13).
+# gating.
 #
 # Grades (all hermetic — doc/workflow greps plus a sandbox git repo with
 # real git and the stub gh, no network):

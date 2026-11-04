@@ -4,8 +4,7 @@ package archtest
 // once which jobs block a merge (required) and which only report (advisory),
 // and this test fails the build when that declaration drifts from the real
 // job graph. Without it, adding a job would leave the gate silently optional
-// and a platform-only failure could not be told apart from a merge blocker
-// (STA-78).
+// and a platform-only failure could not be told apart from a merge blocker.
 
 import (
 	"os"

@@ -14,7 +14,7 @@ import (
 // TestEnvelopeSchemaMatchesRenderer pins the published envelope key set to
 // the keys RenderEnvelope actually emits. The description is hand-maintained
 // while the key set is typed, so this guard fails on the next field add or
-// prose drift instead of relying on review (ticket POST-08c).
+// prose drift instead of relying on review.
 func TestEnvelopeSchemaMatchesRenderer(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	env := core.RenderEnvelope("report", "acme/app", "5101",

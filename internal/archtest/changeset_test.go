@@ -5,7 +5,7 @@ package archtest
 // without the opening `---` is silently dropped from the release notes, and a
 // bump naming a package that no `package.json` declares would fail the release
 // run long after the change landed. This test fails, naming the file, when a
-// changeset stops matching the documented shape (STA-71).
+// changeset stops matching the documented shape.
 
 import (
 	"encoding/json"

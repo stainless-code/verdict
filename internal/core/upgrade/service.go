@@ -62,7 +62,7 @@ const (
 	codeNoReceipt      = "uninstall-no-receipt"
 )
 
-// Installer contract consumed from ticket 10.
+// Installer contract: the receipt and the install dir the installers write.
 const (
 	receiptName      = ".verdict-installer"
 	pathMarker       = "# verdict installer"
@@ -518,7 +518,7 @@ func resolveExecutable(req *Request) (string, error) {
 	return filepath.Clean(exe), nil
 }
 
-// installDir is the ticket-10 install directory (VERDICT_INSTALL or the
+// installDir is the installer's install directory (VERDICT_INSTALL or the
 // ~/.verdict/bin default).
 func (req *Request) installDir() string {
 	dir := req.env("VERDICT_INSTALL")
@@ -595,7 +595,7 @@ type receipt struct {
 	InstalledBy string `json:"installed_by"`
 }
 
-// validReceipt reports whether path is a ticket-10 installer receipt.
+// validReceipt reports whether path is an installer receipt.
 func validReceipt(path string) bool {
 	_, ok := readReceipt(path)
 	return ok
@@ -609,7 +609,7 @@ func receiptNames(path, binary string) bool {
 	return ok && doc.Binary == binary
 }
 
-// readReceipt parses a ticket-10 installer receipt.
+// readReceipt parses an installer receipt.
 func readReceipt(path string) (receipt, bool) {
 	var doc receipt
 	raw, err := os.ReadFile(path)
@@ -642,7 +642,7 @@ func receiptInstalledBy(path, goos string) string {
 	return defaultInstallBy
 }
 
-// receiptBody renders the ticket-10 receipt bytes.
+// receiptBody renders the receipt bytes the installers write.
 func receiptBody(binary, version, installedBy string) string {
 	return fmt.Sprintf("{\"binary\":%q,\"version\":%q,\"installed_by\":%q}\n", binary, version, installedBy)
 }

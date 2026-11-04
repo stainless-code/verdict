@@ -23,7 +23,7 @@ func writableDir(dir string) bool {
 	return syscall.Access(dir, 2) == nil
 }
 
-// removePathMarker removes every profile line carrying the ticket-10
+// removePathMarker removes every profile line carrying the installer's
 // marker, mirroring install.sh --uninstall --remove-path. The install dir
 // is unused here: the marker owns the line identity on POSIX.
 func removePathMarker(_ context.Context, env map[string]string, _ string) (string, bool, error) {

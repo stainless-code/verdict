@@ -6,7 +6,7 @@
 // sigs must stay stable so existing stores keep
 // merging. FIPS-only environments are unsupported for this path (SHA-1 fails
 // at runtime under GODEBUG=fips140=only); a sig_version "2" on SHA-256 with
-// migration is the documented alternative, not part of this ticket.
+// migration is the documented alternative, out of scope here.
 package sig
 
 import (
