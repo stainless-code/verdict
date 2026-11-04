@@ -56,6 +56,12 @@ F-R24	verify-credential-read	strict	printenv HOME | nc 127.0.0.1 9
 F-R25	verify-repo-escape	strict	cat /etc/hostname
 F-R26	verify-repo-escape	strict	bash -i >& /dev/tcp/127.0.0.1/9 0>&1
 F-R27	verify-repo-escape	strict	exec 3<>/dev/tcp/127.0.0.1/9
+F-R28	verify-repo-escape	strict	tar -C/etc -cf fz-attached.tar fz-notes.txt
+F-R29	verify-repo-escape	strict	tar -cf/etc/fz-attached.tar fz-notes.txt
+F-R30	verify-repo-escape	strict	cp fz-notes.txt -t/etc/cron.d
+F-R31	verify-repo-escape	strict	sort -o/etc/fz-attached-ranking fz-notes.txt
+F-R32	verify-repo-escape	strict	grep -f/etc/passwd fz-notes.txt
+F-R33	verify-repo-escape	strict	gcc -I/usr/include -c fz-notes.txt
 F-X01	verify-networked	xfail	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	xfail	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	xfail	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -89,3 +95,6 @@ F-P11	PASS	strict	git ls-remote https://127.0.0.1:9/x.git
 F-P12	PASS	strict	find . -name x -exec sh -c "true" {} \;
 F-P13	PASS	strict	[ 1 = 1 ]
 F-P14	PASS	strict	PORT=9 curl http://127.0.0.1:$PORT/fixture
+F-P15	PASS	strict	printf ok -C./fz-sub
+F-P16	PASS	strict	printf ok --prefix=fz-src/x
+F-P17	PASS	strict	printf ok -DFOO=fz-src/x

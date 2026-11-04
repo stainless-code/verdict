@@ -199,6 +199,10 @@ func chdirIntoRepoDir(t *testing.T) string {
 
 const absPathDetail = " (absolute path escapes the repo — use repo-relative paths, /tmp for scratch)"
 
+// absAttachedDetail is the same refusal for a path the scanner read out of a
+// value glued to its option (-C/etc): the value it quotes is the path it saw.
+const absAttachedDetail = " (absolute path attaches to an option — separate the value, and use repo-relative paths or /tmp for scratch)"
+
 func wantInsideRootClean(t *testing.T, wd string) {
 	t.Helper()
 	for _, cmd := range []string{`cat ` + wd + `/gate.golden`, `ls ` + wd, `cat "` + wd + `/gate.golden"`} {
@@ -264,4 +268,124 @@ func TestCheckUnreducibleSubstitutionBenignStaysClean(t *testing.T) {
 			t.Errorf("Check(%q) = %s: %q, want clean", cmd, ref.Code, ref.Message)
 		}
 	}
+}
+
+// TestCheckAttachedOptionValueMatchesSpaced pins that a value getopt attaches
+// to its short option is judged as the same invocation as the spaced spelling:
+// the arm's contract already refuses `/etc` as a word, and attaching it to
+// `-C`, `-cf`, `-t`, `-o`, `-f`, `-I`, or `-X` must not change the verdict.
+func TestCheckAttachedOptionValueMatchesSpaced(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ name, attached, spaced string }{
+		{"tar -C", `tar -C/etc -cf /tmp/verify-attached.tar passwd`, `tar -C /etc -cf /tmp/verify-attached.tar passwd`},
+		{"tar -cf cluster", `tar -cf/etc/verify-attached.tar .`, `tar -cf /etc/verify-attached.tar .`},
+		{"tar -czf cluster", `tar -czf/etc/verify-attached.tgz .`, `tar -czf /etc/verify-attached.tgz .`},
+		{"tar -T", `tar -T/etc/passwd -cf verify-attached.tar`, `tar -T /etc/passwd -cf verify-attached.tar`},
+		{"tar -X", `tar -X/etc/passwd -cf verify-attached.tar .`, `tar -X /etc/passwd -cf verify-attached.tar .`},
+		{"tar positional after --", `tar -cf verify-attached.tar -- -C/etc passwd`, `tar -cf verify-attached.tar -- -C /etc passwd`},
+		{"cp -t", `cp notes.txt -t/etc/cron.d`, `cp notes.txt -t /etc/cron.d`},
+		{"cp --target-directory", `cp --target-directory=/etc notes.txt`, `cp --target-directory /etc notes.txt`},
+		{"sort -o", `sort -o/etc/verify-attached.out notes.txt`, `sort -o /etc/verify-attached.out notes.txt`},
+		{"sort -T", `sort -T/etc -o verify-attached.out notes.txt`, `sort -T /etc -o verify-attached.out notes.txt`},
+		{"grep -f", `grep -f/etc/passwd notes.txt`, `grep -f /etc/passwd notes.txt`},
+		{"sed -f", `sed -f/etc/passwd notes.txt`, `sed -f /etc/passwd notes.txt`},
+		{"awk -f", `awk -f/etc/passwd notes.txt`, `awk -f /etc/passwd notes.txt`},
+		{"gcc -I", `gcc -I/usr/include -c notes.txt`, `gcc -I /usr/include -c notes.txt`},
+		{"git -C", `git -C/etc status`, `git -C /etc status`},
+		{"make -C", `make -C/etc test`, `make -C /etc test`},
+		{"go -o", `go build -o/etc/verify-attached ./...`, `go build -o /etc/verify-attached ./...`},
+		{"quoted value", `tar "-C/etc" -cf /tmp/verify-attached.tar passwd`, `tar "-C /etc" -cf /tmp/verify-attached.tar passwd`},
+		{"escaped value", `tar -C\/etc -cf /tmp/verify-attached.tar passwd`, `tar -C \/etc -cf /tmp/verify-attached.tar passwd`},
+		{"uppercase tool and path", `TAR -C/ETC -cf /tmp/verify-attached.tar passwd`, `TAR -C /ETC -cf /tmp/verify-attached.tar passwd`},
+		{"dot-dot value", `tar -C../x -cf /tmp/verify-attached.tar .`, `tar -C ../x -cf /tmp/verify-attached.tar .`},
+		{"tilde value", `tar -C~/verify-attached -cf /tmp/verify-attached.tar .`, `tar -C ~/verify-attached -cf /tmp/verify-attached.tar .`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertAttachedMatchesSpaced(t, tc.attached, tc.spaced)
+		})
+	}
+}
+
+// assertAttachedMatchesSpaced holds one row to the row's spaced baseline: the
+// same code and the same quoted fragment.
+func assertAttachedMatchesSpaced(t *testing.T, attached, spaced string) {
+	t.Helper()
+	spacedRef := verifycore.Check(spaced)
+	if spacedRef == nil {
+		t.Fatalf("Check(%q) = nil, want a refusal: the spaced spelling is this row's baseline", spaced)
+	}
+	attachedRef := verifycore.Check(attached)
+	if attachedRef == nil {
+		t.Fatalf("Check(%q) = nil, want %s like %q", attached, spacedRef.Code, spaced)
+	}
+	if attachedRef.Code != spacedRef.Code {
+		t.Fatalf("Check(%q) = %s, want %s (the spaced spelling)", attached, attachedRef.Code, spacedRef.Code)
+	}
+	if got, want := matchedFragment(t, attachedRef.Message), matchedFragment(t, spacedRef.Message); got != want {
+		t.Fatalf("Check(%q) quotes %q, want %q (the spaced spelling)", attached, got, want)
+	}
+}
+
+// TestCheckAttachedOptionValueFragments pins the fragment the headline forms
+// quote, so a refusal names the path the operator can act on.
+func TestCheckAttachedOptionValueFragments(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ name, cmd, matched string }{
+		{"tar -C", `tar -C/etc -cf /tmp/verify-attached.tar passwd`, "/etc"},
+		{"tar -cf cluster", `tar -cf/etc/verify-attached.tar .`, "/etc/verify-attached.tar"},
+		{"cp -t", `cp notes.txt -t/etc/cron.d`, "/etc/cron.d"},
+		{"sort -o", `sort -o/etc/verify-attached.out notes.txt`, "/etc/verify-attached.out"},
+		{"grep -f", `grep -f/etc/passwd notes.txt`, "/etc/passwd"},
+		{"git -C", `git -C/etc status`, "/etc"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			wantRefusal(t, tc.cmd, "verify-repo-escape",
+				"refusing verifyCmd: matched '"+tc.matched+"'"+absAttachedDetail)
+		})
+	}
+}
+
+// TestCheckAttachedOptionValueBenignStaysClean guards the split against
+// over-refusal: relative attached values, dot-prefixed values, `=`-joined
+// values, `--` separators, URLs, and the /tmp carve-out still execute.
+func TestCheckAttachedOptionValueBenignStaysClean(t *testing.T) {
+	t.Parallel()
+	for _, cmd := range []string{
+		`printf ok -Csub`,
+		`printf ok -C./sub`,
+		`printf ok -o./bin`,
+		`printf ok -Iinclude`,
+		`printf ok -DFOO=src/x`,
+		`printf ok --prefix=src/x`,
+		`printf ok --prefix=./x`,
+		`printf ok --prefix=$FOO/x`,
+		`FOO=-C/etc printf ok`,
+		`printf -- ok`,
+		`git diff -- src/x.go`,
+		`printf ok >-C/etc`,
+		`printf ok -C /tmp/verify-attached-scratch`,
+		`curl -fsSL http://127.0.0.1:9/fixture`,
+		`curl -fsSL -D - http://127.0.0.1:9/f`,
+		`cat /tmp/verify-attached/some/path`,
+	} {
+		if ref := verifycore.Check(cmd); ref != nil {
+			t.Errorf("Check(%q) = %s: %q, want clean", cmd, ref.Code, ref.Message)
+		}
+	}
+}
+
+// matchedFragment returns the text a refusal quotes between matched '…' and
+// its trailing detail, so a test can compare two refusals on substance.
+func matchedFragment(t *testing.T, msg string) string {
+	t.Helper()
+	start := strings.Index(msg, "matched '")
+	end := strings.LastIndex(msg, "' (")
+	if start < 0 || end < 0 || end < start {
+		t.Fatalf("message %q quotes no fragment", msg)
+	}
+	return msg[start+len("matched '") : end]
 }

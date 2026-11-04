@@ -10,30 +10,47 @@ import (
 )
 
 func checkRepoEscape(g *gateText) *core.RefusalError {
-	if ref := checkEscapeWords(g); ref != nil {
+	if ref := checkEscapeWords(g.bare); ref != nil {
 		return ref
 	}
-	return checkAbsPaths(g)
+	esc := detachOptionValues(g.bare)
+	if esc == g.bare {
+		return checkAbsPaths(g.bare, false)
+	}
+	if ref := checkAbsPaths(g.bare, false); ref != nil {
+		return ref
+	}
+	if ref := checkEscapeWords(esc); ref != nil {
+		return ref
+	}
+	return checkAbsPaths(esc, true)
 }
 
-func checkEscapeWords(g *gateText) *core.RefusalError {
-	if frag := grepO(reDevProcSys, g.bare); frag != "" {
+// detachOptionValues splits a short option from the value getopt attaches to
+// it, so -C/etc, -czf/etc/x, -C../x, and -C~/x reach the escape arms as the
+// path they are rather than as text glued to a flag.
+func detachOptionValues(bare string) string {
+	return reAttachedValue.ReplaceAllString(bare, "$1$2 $3")
+}
+
+func checkEscapeWords(bare string) *core.RefusalError {
+	if frag := grepO(reDevProcSys, bare); frag != "" {
 		return refuse(codeRepoEscape, frag, "/dev|/proc|/sys access escapes the repo")
 	}
-	if frag := grepO(reDotDot, g.bare); frag != "" {
+	if frag := grepO(reDotDot, bare); frag != "" {
 		return refuse(codeRepoEscape, frag, ".. traversal escapes the repo")
 	}
-	if frag := grepO(reTilde, g.bare); frag != "" {
+	if frag := grepO(reTilde, bare); frag != "" {
 		return refuse(codeRepoEscape, frag, "home-directory target escapes the repo")
 	}
-	if frag := grepO(reDollarHome, g.bare); frag != "" {
+	if frag := grepO(reDollarHome, bare); frag != "" {
 		return refuse(codeRepoEscape, frag, "home-directory target escapes the repo")
 	}
 	return nil
 }
 
-func checkAbsPaths(g *gateText) *core.RefusalError {
-	barepaths := rePathPlumb.ReplaceAllString(" "+g.bare, " varpath")
+func checkAbsPaths(bare string, attached bool) *core.RefusalError {
+	barepaths := rePathPlumb.ReplaceAllString(" "+bare, " varpath")
 	cands := reAbsPath.FindAllString(barepaths, -1)
 	if len(cands) == 0 {
 		return nil
@@ -47,8 +64,11 @@ func checkAbsPaths(g *gateText) *core.RefusalError {
 		if ok {
 			continue
 		}
-		return refuse(codeRepoEscape, norm,
-			"absolute path escapes the repo — use repo-relative paths, /tmp for scratch")
+		detail := "absolute path escapes the repo — use repo-relative paths, /tmp for scratch"
+		if attached {
+			detail = "absolute path attaches to an option — separate the value, and use repo-relative paths or /tmp for scratch"
+		}
+		return refuse(codeRepoEscape, norm, detail)
 	}
 	return nil
 }
@@ -73,4 +93,10 @@ var (
 	reDollarHome = regexp.MustCompile(`\$home([^a-z0-9_]|$)|\$\{home\}`)
 	reAbsPath    = regexp.MustCompile(`(^|[[:space:];|&(){}=,<>])/[^[:space:];|&(){}]*`)
 	rePathPlumb  = regexp.MustCompile(` (path|pythonpath|node_path|ld_library_path)=[^[:space:];|&]*`)
+	// getopt glues a short option to its value (-C/etc, -czf/etc/x, -C../x,
+	// -C~/x): the flag run is letters or digits, the value starts with /, ..,
+	// or ~, and tar's positional -C takes the same shape after --.
+	reAttachedValue = regexp.MustCompile(
+		`(^|[[:space:];|&(){}])(-[[:alpha:][:digit:]]+)(/[^[:space:];|&(){}]*` +
+			`|\.\.(/[^[:space:];|&(){}]*)?|~(/[^[:space:];|&(){}]*)?)`)
 )
