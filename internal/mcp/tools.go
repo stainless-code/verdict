@@ -493,3 +493,14 @@ func internalRefusal() *core.RefusalError {
 // rawMarshal is kept next to wireData so result construction uses the same
 // compact encoder as the CLI envelope.
 func rawMarshal(o *jq.Obj) json.RawMessage { return json.RawMessage(o.MarshalCompact()) }
+
+// ToolNames lists the tool names a server with this surface exposes, in
+// registry order. `verdict mcp --help` is checked against it.
+func ToolNames(readOnly, operator bool) []string {
+	tools := allTools(readOnly, operator)
+	out := make([]string, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, t.name)
+	}
+	return out
+}

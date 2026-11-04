@@ -19,13 +19,13 @@ func mcpUsageText() string {
 		"  stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
 		"  notifications/cancelled. The process exits when stdin closes: no daemon, no HTTP.\n" + //nolint:misspell // MCP method name
-		"  --read-only  expose only non-writing tools (report, next, show, trend, ready, doctor, check-tree)\n" +
+		"  --read-only  expose only non-writing tools (report, next, show, threads, trend, ready, doctor, check-tree)\n" +
 		"  --operator   also expose the human-owned `triage` tool; mutually exclusive with --read-only\n" +
 		"\n" +
-		"  Default tools (17): adopt, calibrate, check-tree, doctor, fetch, fetch-local, fix, init,\n" +
-		"  learn, next, post, ready, record, report, show, trend, verify. `triage` joins them only\n" +
-		"  with --operator: status flips are human-owned, and agents propose `triage[]` in\n" +
-		"  review.json instead.\n" +
+		"  Default tools (18): adopt, calibrate, check-tree, doctor, fetch, fetch-local, fix, init,\n" +
+		"  learn, next, post, ready, record, report, show, threads, trend, verify. `triage` joins\n" +
+		"  them only with --operator: status flips are human-owned, and agents propose `triage[]`\n" +
+		"  in review.json instead.\n" +
 		"  Each tool takes the core request shape: repo/pr plus verb fields; schemas are generated\n" +
 		"  from those structs. tools/list adds a title and the four MCP behavior hints; initialize\n" +
 		"  returns the review doctrine in `instructions`. Success data matches the CLI --json\n" +
