@@ -20,7 +20,10 @@ import (
 func TestExecuteTimeoutKillsTree(t *testing.T) {
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "grandchild.pid"))
 	vcmd := `trap '' TERM; (trap '' TERM; exec sleep 30) & ` + pidReport(pidFile) + `; exec sleep 30`
-	tctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	// The deadline must outlast Git Bash's startup on a cold Windows runner:
+	// a kill that lands before the child reports its pid leaves no file to
+	// probe. The sleeps run 30s, so 5s still proves the timeout kill.
+	tctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
 	if err != nil {
