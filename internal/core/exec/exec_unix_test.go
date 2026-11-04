@@ -5,6 +5,9 @@ package exec
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -248,5 +251,76 @@ func TestRunnerKeepsTwentyMiBDiff(t *testing.T) {
 	}
 	if len(res.Stdout) != diffBytes {
 		t.Errorf("Stdout = %d bytes, want %d", len(res.Stdout), diffBytes)
+	}
+}
+
+// holdSeconds is how long the pipe-holding grandchildren below live. It is
+// longer than the bound the runner must return within, so a runner that waits
+// for the pipe to close fails the bound instead of passing slowly.
+const holdSeconds = "9"
+
+// returnBound is the longest a cancelled or exited runner may take: the
+// 2s WaitDelay plus scheduling slack, well under holdSeconds.
+const returnBound = 6 * time.Second
+
+// TestRunnerCancelDoesNotWaitForPipeHolders pins the Ctrl-C hang: the
+// context fires, the child is killed, but a grandchild keeps the stdout pipe
+// open. Run must give up on the pipe after WaitDelay instead of blocking
+// until the grandchild exits (found by running `verdict fetch` against a gh
+// that spawned a long-lived helper: SIGINT took 18s to exit 3).
+func TestRunnerCancelDoesNotWaitForPipeHolders(t *testing.T) {
+	tctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "holder.pid"))
+	start := time.Now()
+	res, err := Runner{}.Run(tctx, core.Command{
+		Argv: []string{"sh", "-c", `sleep ` + holdSeconds + ` & ` + pidReport(pidFile) + `; wait`},
+	})
+	elapsed := time.Since(start)
+	t.Cleanup(func() { killReportedPid(pidFile) })
+	if elapsed > returnBound {
+		t.Fatalf("Run took %v after a 300ms deadline; want it to return within %v of the kill", elapsed, returnBound)
+	}
+	if err != nil {
+		t.Errorf("err = %v, want a completed result for the killed child", err)
+	}
+	if res.ExitCode != 137 {
+		t.Errorf("ExitCode = %d, want 137 (SIGKILL by the context)", res.ExitCode)
+	}
+}
+
+// TestRunnerExitZeroWithLingeringPipeHolder pins the other WaitDelay arm: a
+// child that exits 0 while a background helper still holds stdout is a
+// completed process, not a spawn failure. The captured output is returned
+// and the exit code stays 0.
+func TestRunnerExitZeroWithLingeringPipeHolder(t *testing.T) {
+	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "holder.pid"))
+	start := time.Now()
+	res, err := Runner{}.Run(tctx, core.Command{
+		Argv: []string{"sh", "-c", `printf done; sleep ` + holdSeconds + ` & ` + pidReport(pidFile)},
+	})
+	elapsed := time.Since(start)
+	t.Cleanup(func() { killReportedPid(pidFile) })
+	if err != nil {
+		t.Fatalf("err = %v, want a completed result (the child exited 0)", err)
+	}
+	if res.ExitCode != 0 || res.Stdout != "done" {
+		t.Errorf("result = exit %d stdout %q, want exit 0 stdout done", res.ExitCode, res.Stdout)
+	}
+	if elapsed > returnBound {
+		t.Errorf("Run took %v; want it to stop waiting for the pipe holder within %v", elapsed, returnBound)
+	}
+}
+
+// killReportedPid reaps the helper a test left behind, if it reported one.
+func killReportedPid(pidFile string) {
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		return
+	}
+	if pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw))); convErr == nil {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
 	}
 }
