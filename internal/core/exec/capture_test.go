@@ -18,9 +18,9 @@ func TestBoundedBufferHeadKeepsFirstBytes(t *testing.T) {
 	if len(b.buf) != 4 {
 		t.Errorf("retained bytes = %d, want 4", len(b.buf))
 	}
-	got := b.String()
-	if !strings.HasPrefix(got, "abcd") || !strings.Contains(got, "truncated") {
-		t.Errorf("String = %q, want abcd plus a truncation notice", got)
+	want := "abcd\n[verdict: output truncated at 4 bytes; kept the first 4 bytes]\n"
+	if got := b.String(); got != want {
+		t.Errorf("String = %q, want %q", got, want)
 	}
 }
 
@@ -37,8 +37,9 @@ func TestBoundedBufferTailKeepsLastBytes(t *testing.T) {
 		t.Fatal("Truncated = false, want true")
 	}
 	got := b.String()
-	if !strings.HasPrefix(got, "efghi") || !strings.Contains(got, "truncated") {
-		t.Errorf("String = %q, want efghi plus a truncation notice", got)
+	want := "efghi\n[verdict: output truncated at 5 bytes; kept the last 5 bytes]\n"
+	if got != want {
+		t.Errorf("String = %q, want %q", got, want)
 	}
 }
 

@@ -80,10 +80,12 @@ func TestStripFooterKeepsReceipt(t *testing.T) {
 // TestHeadShortDirty checks the dirty-head readings, including the JSON
 // string "true" form the comparison accepts.
 func TestHeadShortDirty(t *testing.T) {
-	dir := writeBundle(t, map[string]string{
+	refDir := writeBundle(t, map[string]string{
 		"source.json": `{"head_ref":"work"}`,
 	})
-	_ = dir
+	if got := provenance.HeadShort(refDir); got != "unknown" {
+		t.Errorf("HeadShort(branch only) = %q; want unknown", got)
+	}
 	boolDir := writeBundle(t, map[string]string{"source.json": `{"dirty":true}`})
 	if got := provenance.HeadShort(boolDir); got != "dirty" {
 		t.Errorf("HeadShort(bool dirty) = %q; want dirty", got)
