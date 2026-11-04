@@ -1,7 +1,9 @@
 package reportcore
 
 import (
+	"cmp"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -422,15 +424,40 @@ type overviewEdge struct {
 }
 
 func overviewEdges(rows []fileRowShape, added [][2]string) []overviewEdge {
+	if len(added) == 0 {
+		return nil
+	}
 	freq, index := edgeTargets(rows)
+	mentions := newMentionIndex(rows, freq)
 	seen := map[[2]int]bool{}
+	cands := make([]int, 0, mentionCandidateCap)
 	var edges []overviewEdge
 	for _, add := range added {
 		cur, ok := index[add[0]]
 		if !ok {
 			continue
 		}
-		edges = appendMentionEdges(edges, rows, freq, seen, cur, add[1])
+		cands = mentions.candidates(add[1], cands[:0])
+		edges = appendMentionEdges(edges, rows, freq, seen, cur, cands)
+	}
+	return edges
+}
+
+func appendMentionEdges(
+	edges []overviewEdge, rows []fileRowShape, freq map[string]int,
+	seen map[[2]int]bool, cur int, cands []int,
+) []overviewEdge {
+	for _, dst := range cands {
+		key := [2]int{cur, dst}
+		if dst == cur || seen[key] {
+			continue
+		}
+		seen[key] = true
+		edges = append(edges, overviewEdge{
+			from:  rows[cur].id,
+			to:    rows[dst].id,
+			label: edgeLabel(rows[cur], rows[dst], freq),
+		})
 	}
 	return edges
 }
@@ -445,32 +472,208 @@ func edgeTargets(rows []fileRowShape) (map[string]int, map[string]int) {
 	return freq, index
 }
 
-func appendMentionEdges(
-	edges []overviewEdge, rows []fileRowShape, freq map[string]int,
-	seen map[[2]int]bool, cur int, line string,
-) []overviewEdge {
-	for j, row := range rows {
-		edges = appendMentionEdge(edges, rows, freq, seen, cur, line, j, row)
-	}
-	return edges
+// mentionIndex matches the file paths named on each added diff line. It walks
+// the rows once to pick one pattern per row, then walks each line once per
+// distinct pattern length with a rolling hash.
+type mentionIndex struct {
+	names   []string
+	slots   []mentionEntry
+	rows    []int
+	starts  []int
+	shifts  []uint64
+	lengths []int
+	always  []int
+	mask    uint64
 }
 
-func appendMentionEdge(
-	edges []overviewEdge, rows []fileRowShape, freq map[string]int,
-	seen map[[2]int]bool, cur int, line string, j int, row fileRowShape,
-) []overviewEdge {
-	if j == cur {
-		return edges
+type mentionEntry struct {
+	hash uint64
+	id   int
+}
+
+type mentionMembership struct {
+	name string
+	row  int
+}
+
+const (
+	mentionHashBase uint64 = 0x100000001b3
+	// mentionIndexMin is the pattern count below which scanning the patterns
+	// with [strings.Contains] beats a rolling-hash window scan.
+	mentionIndexMin = 12
+	// mentionCandidateCap seeds the reused per-line candidate slice.
+	mentionCandidateCap = 8
+)
+
+func newMentionIndex(rows []fileRowShape, freq map[string]int) *mentionIndex {
+	m := &mentionIndex{}
+	m.collect(rows, freq)
+	if len(m.names) > mentionIndexMin {
+		m.index()
 	}
-	if !mentions(line, row.path, freq[baseName(row.path)] == 1) {
-		return edges
+	return m
+}
+
+// collect picks the pattern each row is matched by. A unique basename
+// subsumes its full path: a line naming the path also names the basename, so
+// one shorter pattern answers both probes. Rows with an empty path — or an
+// empty basename that is unique — match every line.
+func (m *mentionIndex) collect(rows []fileRowShape, freq map[string]int) {
+	members := make([]mentionMembership, 0, len(rows))
+	for i := range rows {
+		if pattern, always := mentionPattern(rows[i].path, freq); always {
+			m.always = append(m.always, i)
+		} else {
+			members = append(members, mentionMembership{name: pattern, row: i})
+		}
 	}
-	key := [2]int{cur, j}
-	if seen[key] {
-		return edges
+	m.buildRuns(members)
+}
+
+func (m *mentionIndex) buildRuns(members []mentionMembership) {
+	slices.SortFunc(members, func(a, b mentionMembership) int {
+		if c := strings.Compare(a.name, b.name); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.row, b.row)
+	})
+	m.rows = make([]int, len(members))
+	m.names = make([]string, 0, len(members))
+	m.starts = make([]int, 0, len(members)+1)
+	for i := range members {
+		if i == 0 || members[i].name != members[i-1].name {
+			m.names = append(m.names, members[i].name)
+			m.starts = append(m.starts, i)
+		}
+		m.rows[i] = members[i].row
 	}
-	seen[key] = true
-	return append(edges, overviewEdge{from: rows[cur].id, to: row.id, label: edgeLabel(rows[cur], row, freq)})
+	m.starts = append(m.starts, len(members))
+}
+
+// mentionPattern returns the pattern a row's path is matched by. always means
+// every added line mentions the row.
+func mentionPattern(path string, freq map[string]int) (pattern string, always bool) {
+	if path == "" {
+		return "", true
+	}
+	base := baseName(path)
+	switch {
+	case freq[base] > 1:
+		return path, false
+	case base == "":
+		return "", true
+	default:
+		return base, false
+	}
+}
+
+// index hashes the patterns into an open-addressing table so appendWindow can
+// find them in constant time. Hash collisions are kept in the probe sequence
+// and verified against the pattern text.
+func (m *mentionIndex) index() {
+	size := 1
+	for size < len(m.names)*2 {
+		size <<= 1
+	}
+	m.mask = uint64(size - 1) //nolint:gosec // G115: size is a positive power of two.
+	m.slots = make([]mentionEntry, size)
+	for i := range m.slots {
+		m.slots[i].id = -1
+	}
+	m.lengths = make([]int, 0, len(m.names))
+	for id := range m.names {
+		name := m.names[id]
+		hash := mentionHash(name)
+		slot := hash & m.mask
+		for m.slots[slot].id >= 0 {
+			slot = (slot + 1) & m.mask
+		}
+		m.slots[slot] = mentionEntry{hash: hash, id: id}
+		m.lengths = append(m.lengths, len(name))
+	}
+	slices.Sort(m.lengths)
+	m.lengths = slices.Compact(m.lengths)
+	m.shifts = make([]uint64, len(m.lengths))
+	for i, size := range m.lengths {
+		m.shifts[i] = mentionPow(size - 1)
+	}
+}
+
+// mentionPow returns base raised to exp, for rolling-hash window shifts.
+func mentionPow(exp int) uint64 {
+	result := uint64(1)
+	base := mentionHashBase
+	for exp > 0 {
+		if exp&1 == 1 {
+			result *= base
+		}
+		base *= base
+		exp >>= 1
+	}
+	return result
+}
+
+func mentionHash(s string) uint64 {
+	h := uint64(0)
+	for i := range len(s) {
+		h = h*mentionHashBase + uint64(s[i])
+	}
+	return h
+}
+
+// candidates returns the sorted, deduplicated row indexes mentioned by line.
+// dst is reused across calls to keep the per-line scan allocation-free.
+func (m *mentionIndex) candidates(line string, dst []int) []int {
+	dst = append(dst, m.always...)
+	if m.slots == nil {
+		dst = m.linearCandidates(line, dst)
+	} else {
+		dst = m.windowCandidates(line, dst)
+	}
+	slices.Sort(dst)
+	return slices.Compact(dst)
+}
+
+func (m *mentionIndex) linearCandidates(line string, dst []int) []int {
+	for id, name := range m.names {
+		if strings.Contains(line, name) {
+			dst = append(dst, m.rows[m.starts[id]:m.starts[id+1]]...)
+		}
+	}
+	return dst
+}
+
+func (m *mentionIndex) windowCandidates(line string, dst []int) []int {
+	for i, size := range m.lengths {
+		if size > len(line) {
+			break
+		}
+		dst = m.scanLength(line, size, m.shifts[i], dst)
+	}
+	return dst
+}
+
+func (m *mentionIndex) scanLength(line string, size int, shift uint64, dst []int) []int {
+	hash := mentionHash(line[:size])
+	for pos := 0; ; pos++ {
+		dst = m.appendWindow(hash, line[pos:pos+size], dst)
+		if pos+size == len(line) {
+			return dst
+		}
+		hash = (hash-uint64(line[pos])*shift)*mentionHashBase + uint64(line[pos+size])
+	}
+}
+
+func (m *mentionIndex) appendWindow(hash uint64, window string, dst []int) []int {
+	for slot := hash & m.mask; ; slot = (slot + 1) & m.mask {
+		entry := &m.slots[slot]
+		if entry.id < 0 {
+			return dst
+		}
+		if entry.hash == hash && m.names[entry.id] == window {
+			dst = append(dst, m.rows[m.starts[entry.id]:m.starts[entry.id+1]]...)
+		}
+	}
 }
 
 func edgeLabel(src, dst fileRowShape, freq map[string]int) string {
@@ -489,13 +692,6 @@ type fileRowShape struct {
 	id, path, role string
 	adds, dels     int
 	hunks          int
-}
-
-func mentions(line, path string, uniqueBase bool) bool {
-	if uniqueBase && strings.Contains(line, baseName(path)) {
-		return true
-	}
-	return strings.Contains(line, path)
 }
 
 func baseName(path string) string {
