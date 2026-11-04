@@ -1,56 +1,90 @@
 #!/usr/bin/env bash
-# pre-commit: formatting gate. CHECK-ONLY — never rewrites files.
-# (auto-write would reflow protected prompt examples; see CONTRIBUTING ## Formatting.)
-# Wired by install-skill.sh via `git config core.hooksPath`. Filenames with spaces
-# are not supported (this repo has none).
+# Check-only: never rewrites a file. A rewrite would reflow the prompt examples
+# under skills/verdict/prompts/ (CONTRIBUTING ## Formatting).
 set -euo pipefail
 
-staged=""
+# @latest would lint workflows against a version no one reviewed; pin it.
+actionlint_pin=github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+fmt_files=() shell_files=() go_files=() wf_files=() mod_files=()
 while IFS= read -r f; do
-  # skill prompt examples are never reflowed (see CONTRIBUTING ## Formatting).
-  case "$f" in skills/verdict/prompts/*) continue;; *.md|*.mdx|*.json|*.ts) staged="$staged$f
-";; esac
+  [ -n "$f" ] || continue
+  case "$f" in
+    skills/verdict/prompts/*) ;;
+    *.md|*.mdx|*.json|*.ts) fmt_files+=("$f") ;;
+    *.sh|hooks/pre-commit|hooks/pre-push) shell_files+=("$f") ;;
+    *.go) go_files+=("$f") ;;
+    .github/workflows/*.yml|.github/workflows/*.yaml) wf_files+=("$f") ;;
+    go.mod|go.sum) mod_files+=("$f") ;;
+  esac
 done < <(git diff --cached --name-only --diff-filter=ACM)
 
-# Staged shell scripts, for the shellcheck gate below (same file list shape).
-sh_staged=""
-while IFS= read -r f; do
-  case "$f" in *.sh) sh_staged="$sh_staged$f
-";; esac
-done < <(git diff --cached --name-only --diff-filter=ACM)
-
-if [[ -z "$staged" && -z "$sh_staged" ]]; then exit 0; fi
-
-# Both gates always run so one pass reports every failure; the exit code is
-# accumulated. (Failing fast would hide the second gate's findings.)
 failed=0
-if [[ -n "$staged" ]]; then
-  if ! command -v bun >/dev/null 2>&1; then
-    echo "pre-commit: bun not found — formatting unchecked (see CONTRIBUTING ## Formatting)"
+fail() { printf 'pre-commit: %s\n' "$1" >&2; failed=1; }
+
+if ((${#fmt_files[@]})); then
+  if command -v bun >/dev/null 2>&1; then
+    bun fmt --check -- "${fmt_files[@]}" ||
+      fail "formatting issues above; run bun fmt on those files, never on prompts/ examples"
   else
-    printf '%s' "$staged" | xargs bun fmt --check -- || {
-      echo "pre-commit: formatting issues above."
-      echo "Fix only non-example hunks (never reflow prompts/ examples) or run:"
-      echo "  git diff --cached --name-only | grep -E '\\.(md|json|ts)$' | grep -v '^skills/verdict/prompts/' | xargs bun fmt --check --"
-      echo "If the only diffs are protected prompt examples, commit with --no-verify and say why."
-      failed=1
-    }
+    echo "pre-commit: bun not found — formatting unchecked (see CONTRIBUTING ## Formatting)"
   fi
 fi
 
-# Shell gate (same -S warning bar CI enforces). Missing binary skips with a
-# notice — same degrade-gracefully idiom as bun above. Filenames with spaces
-# are not supported (this repo has none). Note: no xargs -r — it is GNU-only
-# and this hook runs on macOS bash 3.2; the non-empty guards above are the
-# portable equivalent.
-if [[ -n "$sh_staged" ]]; then
-  if ! command -v shellcheck >/dev/null 2>&1; then
-    echo "pre-commit: shellcheck not found — shell lint unchecked (CI still gates on -S warning)"
+if ((${#shell_files[@]})); then
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck -S warning "${shell_files[@]}" ||
+      fail "shellcheck issues above (CI gates on -S warning)"
   else
-    printf '%s' "$sh_staged" | xargs shellcheck -S warning -- || {
-      echo "pre-commit: shellcheck issues above (CI gates on -S warning)."
-      failed=1
-    }
+    echo "pre-commit: shellcheck not found — shell lint unchecked (CI still gates on -S warning)"
   fi
 fi
+
+if ((${#go_files[@]})); then
+  if ! command -v go >/dev/null 2>&1 || ! command -v gofmt >/dev/null 2>&1; then
+    fail "go and gofmt are required for staged *.go files; install Go to commit them"
+  else
+    unformatted="$(gofmt -l -- "${go_files[@]}")"
+    if [ -n "$unformatted" ]; then
+      printf '%s\n' "$unformatted"
+      fail "gofmt -l lists the files above"
+    fi
+    pkgs=() seen=" "
+    for f in "${go_files[@]}"; do
+      d="${f%/*}"
+      if [ "$d" = "$f" ]; then d=.; fi
+      if [ "$d" != . ]; then d="./$d"; fi
+      case "$seen" in *" $d "*) continue ;; esac
+      seen="$seen$d "
+      pkgs+=("$d")
+    done
+    go vet "${pkgs[@]}" || fail "go vet failed for the packages above"
+    go build ./... || fail "go build ./... failed"
+  fi
+fi
+
+if ((${#wf_files[@]})); then
+  if command -v actionlint >/dev/null 2>&1; then
+    actionlint "${wf_files[@]}" || fail "actionlint found problems in the workflows above"
+  elif command -v go >/dev/null 2>&1; then
+    go run "$actionlint_pin" "${wf_files[@]}" ||
+      fail "actionlint found problems above, or the pinned tool could not be fetched"
+  else
+    echo "pre-commit: actionlint not found — workflow lint unchecked (CI still lints)"
+  fi
+  if command -v go >/dev/null 2>&1; then
+    go test ./internal/archtest/... || fail "archtest failed (it pins the workflow structure)"
+  else
+    echo "pre-commit: go not found — archtest unchecked (CI still gates on it)"
+  fi
+fi
+
+if ((${#mod_files[@]})); then
+  if command -v go >/dev/null 2>&1; then
+    go mod verify || fail "go mod verify failed (the module cache no longer matches go.sum)"
+  else
+    echo "pre-commit: go not found — go mod verify unchecked"
+  fi
+fi
+
 exit "$failed"

@@ -91,7 +91,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Lint shell
-        run: git ls-files '*.sh' hooks/pre-commit | xargs shellcheck -S warning
+        run: git ls-files '*.sh' hooks/pre-commit hooks/pre-push | xargs shellcheck -S warning
 
   installer:
     name: 🔌 Skill installer smoke

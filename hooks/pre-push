@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# The Go bar CI runs, before the push. Escape hatch: SKIP_PRE_PUSH=1.
+set -euo pipefail
+
+if [ "${SKIP_PRE_PUSH:-0}" = 1 ]; then
+  echo "pre-push: SKIP_PRE_PUSH=1 — Go gates skipped (CI still runs them)"
+  exit 0
+fi
+
+if [ -t 0 ]; then
+  echo "pre-push: no refs on stdin (git push supplies them); nothing to classify"
+  exit 0
+fi
+
+# git hands over one line per pushed ref: local-ref local-sha remote-ref remote-sha.
+range_paths() {
+  local _local_ref local_sha _remote_ref remote_sha base
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac # all-zero sha = ref deletion
+    case "$remote_sha" in
+      *[!0]*) git diff --name-only "$remote_sha" "$local_sha" ;;
+      *)
+        base="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+        if [ -n "$base" ]; then
+          git diff --name-only "$base" "$local_sha"
+        else
+          git ls-tree -r --name-only "$local_sha"
+        fi
+        ;;
+    esac
+  done
+}
+
+paths="$(range_paths)"
+
+full=true
+if [ -n "$paths" ]; then
+  full="$(printf '%s\n' "$paths" | sh scripts/ci-changes.sh)"
+  full="${full#full=}"
+fi
+
+if [ "$full" != true ]; then
+  echo "pre-push: pushed range is docs-only — Go gates skipped"
+  exit 0
+fi
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "pre-push: go not found — the Go gates are required (SKIP_PRE_PUSH=1 overrides)" >&2
+  exit 1
+fi
+
+failed=0
+fail() { printf 'pre-push: %s\n' "$1" >&2; failed=1; }
+
+go build ./... || fail "go build ./... failed"
+go vet ./... || fail "go vet ./... failed"
+go test ./... || fail "go test ./... failed"
+
+if command -v make >/dev/null 2>&1 && grep -q '^cross:' Makefile; then
+  make cross || fail "make cross failed"
+fi
+
+pinned="$(awk '/golangci-lint-action/ { found = 1 } found && /^[[:space:]]*version:/ {
+  sub(/#.*/, ""); sub(/^[[:space:]]*version:[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); print; exit
+}' .github/workflows/ci.yml)"
+if [ -z "$pinned" ]; then
+  echo "pre-push: no golangci-lint version pinned in .github/workflows/ci.yml — lint skipped"
+elif ! command -v golangci-lint >/dev/null 2>&1; then
+  echo "pre-push: golangci-lint $pinned not installed — lint skipped"
+  echo "pre-push: install the pinned release binary (a go install build reports phantom revive findings):"
+  echo "  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$pinned/install.sh | sh -s -- -b \"\$(go env GOPATH)/bin\" \"$pinned\""
+else
+  have="$(golangci-lint version --short 2>/dev/null | head -1 || true)"
+  if [ -z "$have" ]; then
+    have="$(golangci-lint --version 2>/dev/null | awk '{ print $NF }' || true)"
+  fi
+  case "$have" in v*) ;; *) have="v$have" ;; esac
+  if [ "$have" = "$pinned" ]; then
+    golangci-lint run --timeout=10m || fail "golangci-lint found issues"
+  else
+    echo "pre-push: golangci-lint $pinned pinned, found $have — lint skipped (versions disagree)"
+    echo "pre-push: install the pinned release binary (a go install build reports phantom revive findings):"
+    echo "  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$pinned/install.sh | sh -s -- -b \"\$(go env GOPATH)/bin\" \"$pinned\""
+  fi
+fi
+
+exit "$failed"

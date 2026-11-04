@@ -250,7 +250,7 @@ wire_hooks() {
   git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   cur="$(git -C "$ROOT" config --local core.hooksPath 2>/dev/null || true)"
   if [ -z "$cur" ]; then
-    git -C "$ROOT" config core.hooksPath "$ROOT/hooks" && echo "hooks: pre-commit wired ($ROOT/hooks)"
+    git -C "$ROOT" config core.hooksPath "$ROOT/hooks" && echo "hooks: pre-commit + pre-push wired ($ROOT/hooks)"
   elif [ "$cur" = "$ROOT/hooks" ]; then
     echo "hooks: already wired"
   elif [ "$FORCE" = 1 ]; then

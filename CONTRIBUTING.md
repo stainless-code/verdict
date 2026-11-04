@@ -16,7 +16,14 @@ as CI's `.github/actions/setup`). The eval harness also needs `jq`
 bun install --frozen-lockfile
 (cd apps/docs && bun install --frozen-lockfile)
 make build          # writes bin/verdict, the CLI under test
+make hooks          # wires hooks/pre-commit and hooks/pre-push into git
 ```
+
+`hooks/pre-commit` gates staged formatting, shell, Go, workflow, and module
+files — check-only, never rewrites. `hooks/pre-push` runs the Go bar CI runs
+(`build`, `vet`, `test`, `make cross`, pinned `golangci-lint`) over the pushed
+range and skips it for a docs-only range; `SKIP_PRE_PUSH=1 git push` is the
+escape hatch.
 
 Run `verdict doctor` to preflight the harness.
 

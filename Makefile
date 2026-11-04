@@ -26,6 +26,11 @@ build:
 	@# skill dir at the build output (untracked, gitignored, never shipped).
 	ln -sfn ../../bin skills/verdict/bin
 
+.PHONY: hooks
+hooks:
+	git config core.hooksPath hooks
+	@echo "hooks: pre-commit + pre-push wired ($(CURDIR)/hooks, relative to the checkout)"
+
 .PHONY: gofmt-check
 gofmt-check:
 	test -z "$$(gofmt -l .)"
