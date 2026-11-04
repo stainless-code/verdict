@@ -34,7 +34,10 @@ process still holds its output pipe. Interrupting `verify` refuses
 helper beside the installed binary, so an install directory on another drive
 no longer makes the final move fail after the upgrade reported success.
 `threads.json` always labels a thread's author kind, including a thread with
-no readable comments, as the published schema requires.
+no readable comments, as the published schema requires. A cancel that lands
+inside a read verb's service (`ready`, `trend`, `threads`, `calibrate`,
+`check-tree`, `doctor`, `report`, `next`) exits 3 with the `canceled` envelope
+like every other verb, where it used to exit 1 as an ordinary refusal.
 
 Provider page walks finish what they start. A GitLab merge request whose diff
 list spans host pages (`glab api --paginate` concatenates one JSON array per
