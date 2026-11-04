@@ -915,7 +915,7 @@ you stand).
   `<skillsdir>/verdict/bin/verdict`. It is idempotent and offline afterwards;
   no review ever downloads. Refresh the skill with `npx skills update`.
 - **Source checkout** (`git clone` + `make build` + `./install-skill.sh`):
-  symlinks the checkout into the agent skill dirs (nine agents,
+  symlinks `skills/verdict` into the agent skill dirs (nine agents,
   `--detect`/`--all`, doctor-gated). Updates via `git pull`;
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only. (Before 0.4 this script was named

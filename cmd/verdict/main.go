@@ -344,10 +344,10 @@ func stripRunnerFlags(r *cli.Runner, args []string) ([]string, *cli.GlobalForces
 }
 
 // exeRoot resolves the checkout root from the directory holding this binary,
-// walking up to the checkout
-// carrying package.json so a conventional bin/verdict build (see the
-// Makefile) still finds package.json and prompts/ at the checkout root. A
-// relocated binary with no checkout above it keeps the binary directory, so
+// walking up to the checkout carrying package.json so a conventional
+// bin/verdict build (see the Makefile) still finds package.json at the checkout
+// root and, through the provenance fallback, the prompts under skills/verdict.
+// A relocated binary with no checkout above it keeps the binary directory, so
 // hermetic harnesses can plant the provenance inputs beside it.
 func exeRoot() string {
 	exe, err := os.Executable()

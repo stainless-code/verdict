@@ -7,7 +7,7 @@ set -euo pipefail
 
 staged=""
 while IFS= read -r f; do
-  # prompts/ examples are never reflowed (see README ## Formatting).
+  # skill prompt examples are never reflowed (see README ## Formatting).
   case "$f" in skills/verdict/prompts/*) continue;; *.md|*.mdx|*.json|*.ts) staged="$staged$f
 ";; esac
 done < <(git diff --cached --name-only --diff-filter=ACM)

@@ -24,7 +24,7 @@ const Dir = "skills/verdict"
 // payload is the embedded skill directory: SKILL.md, prompts/, schemas/, and
 // the POSIX shim that resolves the binary from a skill copy. Patterns name
 // files and subtrees, never the bare directory, so a stray file beside them
-// is not embedded (and TestSkillDirIsPayload fails on it).
+// is not embedded (and TestEmbedMatchesRepo fails on it).
 //
 //go:embed skills/verdict/SKILL.md skills/verdict/prompts skills/verdict/schemas skills/verdict/scripts/verdict
 var payload embed.FS
