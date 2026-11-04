@@ -82,7 +82,8 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-unavailable"}, hint: "try: check out the PR base (actions/checkout fetch-depth: 0, " +
 		"or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"},
 	{codes: []string{"controls-stale"}, hint: "try: re-fetch the bundle (controls changed under it), then re-run"},
-	{codes: []string{"state-unwritable"}, hint: "try: make the state root writable (or pass --state-dir <writable path> / set VERDICT_STATE), then re-run"},
+	{codes: []string{"state-unwritable"}, hint: "try: make the state root writable " +
+		"(or pass --state-dir <writable path> / set VERDICT_STATE), then re-run"},
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},

@@ -114,7 +114,7 @@ func localSetup(
 		return localMode{}, "", "", ref
 	}
 	if err := statedir.Resolve().Ensure(); err != nil {
-		return localMode{}, "", "", &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+		return localMode{}, "", "", &core.RefusalError{Code: codeStateUnwritable, Message: err.Error()}
 	}
 	dir := statedir.Resolve().BundleDir("local-" + slug)
 	ctx2.dir = dir
@@ -144,7 +144,7 @@ func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, 
 		return budget, err
 	}
 	if err := statedir.Resolve().Ensure(); err != nil {
-		return budget, &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+		return budget, &core.RefusalError{Code: codeStateUnwritable, Message: err.Error()}
 	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return budget, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}

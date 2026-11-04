@@ -149,7 +149,7 @@ func dirtyTarget(ctx context.Context, s *session) (string, bool, error) {
 func resolveIsolationDir(slug string) (string, error) {
 	reviewDir := statedir.Resolve().Root
 	if err := statedir.Resolve().Ensure(); err != nil {
-		return "", &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+		return "", &core.RefusalError{Code: codeStateUnwritable, Message: err.Error()}
 	}
 	if err := os.MkdirAll(reviewDir, dirPerm); err != nil {
 		return "", &core.RefusalError{

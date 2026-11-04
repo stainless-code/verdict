@@ -13,6 +13,8 @@ import (
 // (the worktree only under the explicit opt-out) before any reader runs. A
 // budget armed only by the .review/budget file resolves here; the
 // REVIEW_BUDGET_USD env layer already gated before any provider call.
+//
+//nolint:revive // prototype: the preamble reads as one ordered sequence
 func resolveControls(
 	ctx context.Context, ctx2 *fetchRunCtx, repo, baseSHA string, allowHead bool, budget *budgetState, consent bool,
 ) error {

@@ -22,13 +22,9 @@ import (
 	"github.com/stainless-code/verdict/internal/statedir"
 )
 
-var (
-	// reviewDir is the prototype controls directory; init still writes the
-	// per-file shape there, not verdict.toml.
-	reviewDir = statedir.Resolve().ControlsDir() + "/"
-	// reviewDot is the state root.
-	reviewDot = statedir.Resolve().Root
-)
+// reviewDir is the prototype controls directory; init still writes the
+// per-file shape there, not verdict.toml.
+var reviewDir = statedir.Resolve().ControlsDir() + "/"
 
 const (
 	codeInitFailed   = "init-failed"

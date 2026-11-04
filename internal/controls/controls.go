@@ -45,6 +45,8 @@ const (
 	statusUsed    = "used"
 	statusMissing = "missing"
 	dirPerm       = 0o755
+	// inventoryKBPolicy is the inventory name of the KB policy file.
+	inventoryKBPolicy = ".review/kb-policy"
 )
 
 // Inventory is the closed control set (v1); new controls add rows.
@@ -54,7 +56,7 @@ var Inventory = []string{
 	".review/max_bytes",
 	".review/chunk",
 	".review/kb.jsonl",
-	".review/kb-policy",
+	inventoryKBPolicy,
 	".review/learnings.md",
 	".review/overrides/preamble.md",
 	".review/overrides/footer-order.md",

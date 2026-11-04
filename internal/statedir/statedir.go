@@ -40,9 +40,23 @@ const (
 	ControlsName = "controls"
 	// EnvControls is the prototype controls-mode switch.
 	EnvControls = "VERDICT_PROTO_CONTROLS"
+	// ModeCommitted selects committed controls.
+	ModeCommitted = "committed"
+	// ModeLocal is the default.
+	ModeLocal = "local"
+	// parentDir and the bundle prefixes keep path predicates readable.
+	parentDir         = ".."
+	localBundlePrefix = "local-"
+	corpusPrefix      = "corpus-"
+	// stateDirPerm is the mode the state root is created with.
+	stateDirPerm = 0o755
+	// dotGitignorePerm is owner-only; git only reads it.
+	dotGitignorePerm = 0o600
 )
 
 // State is one resolved state root.
+//
+//nolint:govet // prototype: field order follows the envelope, not padding
 type State struct {
 	Root     string
 	Scope    string
@@ -114,6 +128,8 @@ func resolve() State {
 }
 
 // repoBase finds the git toplevel from start, falling back to start.
+//
+//nolint:noctx // the resolver has no context seam; git rev-parse is instant
 func repoBase(start string) (string, string) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
 	cmd.Dir = start
@@ -142,12 +158,14 @@ func absFrom(base, p string) string {
 
 func within(path, base string) bool {
 	rel, err := filepath.Rel(base, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return err == nil && rel != parentDir && !strings.HasPrefix(rel, parentDir+string(filepath.Separator))
 }
 
 // probeWritable reports whether the root can be created and written, without
 // creating the root itself: the nearest existing ancestor is probed with a
 // temp file. It never reads $HOME.
+//
+//nolint:revive,gosec // prototype: the operator names the state root
 func probeWritable(root string) bool {
 	dir := root
 	for {
@@ -180,12 +198,12 @@ func (s State) Ensure() error {
 	if !s.Writable {
 		return &UnwritableError{State: s}
 	}
-	if err := os.MkdirAll(s.Root, 0o755); err != nil {
+	if err := os.MkdirAll(s.Root, stateDirPerm); err != nil {
 		return &UnwritableError{State: s, Err: err}
 	}
 	ignore := filepath.Join(s.Root, ".gitignore")
 	if _, err := os.Stat(ignore); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(ignore, []byte("*\n"), 0o644); err != nil {
+		if err := os.WriteFile(ignore, []byte("*\n"), dotGitignorePerm); err != nil {
 			return &UnwritableError{State: s, Err: err}
 		}
 	}
@@ -193,11 +211,14 @@ func (s State) Ensure() error {
 }
 
 // UnwritableError is the typed state-unwritable refusal payload.
+//
+//nolint:govet // prototype: field order follows the payload, not padding
 type UnwritableError struct {
 	State State
 	Err   error
 }
 
+// Error renders the refusal, naming path, winning source, and scope.
 func (e *UnwritableError) Error() string {
 	msg := fmt.Sprintf("state root %s is not writable (source %s, scope %s)", e.State.Root, e.State.Source, e.State.Scope)
 	if e.Err != nil {
@@ -208,11 +229,11 @@ func (e *UnwritableError) Error() string {
 
 // BundleDir joins a bundle name onto the resolved root (absolute).
 func (s State) BundleDir(pr string) string {
-	if strings.HasPrefix(pr, "local-") || strings.HasPrefix(pr, "corpus-") {
+	if strings.HasPrefix(pr, localBundlePrefix) || strings.HasPrefix(pr, corpusPrefix) {
 		return filepath.Join(s.Root, pr)
 	}
-	if isDir(filepath.Join(s.Root, "local-"+pr)) && !exists(filepath.Join(s.Root, pr, "PR.json")) {
-		return filepath.Join(s.Root, "local-"+pr)
+	if isDir(filepath.Join(s.Root, localBundlePrefix+pr)) && !exists(filepath.Join(s.Root, pr, "PR.json")) {
+		return filepath.Join(s.Root, localBundlePrefix+pr)
 	}
 	return filepath.Join(s.Root, pr)
 }
@@ -224,7 +245,7 @@ func (s State) ControlsDir() string { return filepath.Join(s.Root, ControlsName)
 // sources: the committed path in committed mode, the local snapshot path in
 // local mode.
 func ControlsLabel(name string) string {
-	if ControlsMode() == "committed" {
+	if ControlsMode() == ModeCommitted {
 		switch name {
 		case "panel", "budget", "max_bytes", "chunk", "kb-policy":
 			return "verdict.toml [review]"
@@ -243,7 +264,7 @@ func ControlsLabel(name string) string {
 // git porcelain lines carry), or the absolute root when it sits outside cwd.
 func (s State) RelPrefix() string {
 	rel, err := filepath.Rel(cwd(), s.Root)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || rel == parentDir || strings.HasPrefix(rel, parentDir+string(filepath.Separator)) {
 		return s.Root + string(filepath.Separator)
 	}
 	return filepath.ToSlash(rel) + "/"
@@ -251,10 +272,10 @@ func (s State) RelPrefix() string {
 
 // ControlsMode reads the prototype switch: committed|local (default local).
 func ControlsMode() string {
-	if os.Getenv(EnvControls) == "committed" {
-		return "committed"
+	if os.Getenv(EnvControls) == ModeCommitted {
+		return ModeCommitted
 	}
-	return "local"
+	return ModeLocal
 }
 
 // Wire renders the envelope `state` object.
@@ -271,7 +292,7 @@ func Wire() any {
 // IsLocalBundleDir reports whether an absolute bundle dir is a local bundle.
 func IsLocalBundleDir(dir string) bool {
 	base := filepath.Base(dir)
-	return strings.HasPrefix(base, "local-") || strings.HasPrefix(base, "corpus-")
+	return strings.HasPrefix(base, localBundlePrefix) || strings.HasPrefix(base, corpusPrefix)
 }
 
 func exists(path string) bool {
@@ -285,6 +306,8 @@ func isDir(path string) bool {
 }
 
 // configStateDir reads [state] dir from <base>/verdict.toml.
+//
+//nolint:gosec // base is the resolved repository root
 func configStateDir(base string) string {
 	raw, err := os.ReadFile(filepath.Join(base, ConfigName))
 	if err != nil {
@@ -296,10 +319,12 @@ func configStateDir(base string) string {
 // ParseTOML is a prototype flat parser: section headers plus scalar
 // key = value lines, rendered unquoted. It understands no arrays, tables, or
 // multiline strings.
+//
+//nolint:revive // prototype: a flat parser is intentionally one pass
 func ParseTOML(raw []byte) map[string]string {
 	out := map[string]string{}
 	section := ""
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		line = strings.TrimSpace(line)
 		if i := strings.Index(line, "#"); i >= 0 && !strings.Contains(line[:i], "\"") {
 			line = strings.TrimSpace(line[:i])

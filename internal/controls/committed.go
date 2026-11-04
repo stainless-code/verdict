@@ -1,11 +1,12 @@
 package controls
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -28,6 +29,8 @@ type committedControls struct {
 
 // readCommittedBase reads the committed controls at base. A missing path is
 // an absent control; an unreadable base is controls-unavailable.
+//
+//nolint:revive // prototype: one linear read is clearer than four helpers
 func readCommittedBase(ctx context.Context, cmd core.Commander, base, root string) (*committedControls, *core.RefusalError) {
 	if _, err := runGit(ctx, cmd, 0, "cat-file", "-e", base+"^{commit}"); err != nil {
 		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here: %v", shortSHA(base), err))
@@ -65,8 +68,8 @@ var scalarKeys = map[string]string{
 	"review.budget_usd": ".review/budget",
 	"review.max_bytes":  ".review/max_bytes",
 	"review.chunk":      ".review/chunk",
-	"review.kb_policy":  ".review/kb-policy",
-	"kb.policy":         ".review/kb-policy",
+	"review.kb_policy":  inventoryKBPolicy,
+	"kb.policy":         inventoryKBPolicy,
 }
 
 // committedFiles lists the committed control corpus under verdict/.
@@ -76,14 +79,14 @@ func committedFiles(ctx context.Context, cmd core.Commander, base string) []stri
 		return nil
 	}
 	var files []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || committedKey(line) == "" {
 			continue
 		}
 		files = append(files, line)
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 	return files
 }
 
@@ -113,6 +116,8 @@ func show(ctx context.Context, cmd core.Commander, base, rel string) ([]byte, bo
 // driftWarnings compares the worktree copies of the committed controls with
 // the base bytes. A difference is a warning, never a silent switch: the run
 // uses the base. Extra worktree controls are ignored for the same reason.
+//
+//nolint:gocognit,revive,cyclop // prototype: one linear compare pass reads better than helpers
 func driftWarnings(root string, base map[string][]byte) []string {
 	if root == "" {
 		root = "."
@@ -120,12 +125,13 @@ func driftWarnings(root string, base map[string][]byte) []string {
 	var differ, added []string
 	for rel, raw := range base {
 		local, err := os.ReadFile(filepath.Join(root, rel))
-		if err == nil && string(local) != string(raw) {
+		if err == nil && !bytes.Equal(local, raw) {
 			differ = append(differ, rel)
 		}
 	}
 	worktree := []string{committedTOML}
-	if matches, _ := filepath.Glob(filepath.Join(root, committedDir, "**", "*")); len(matches) > 0 {
+	matches, globErr := filepath.Glob(filepath.Join(root, committedDir, "**", "*"))
+	if globErr == nil && len(matches) > 0 {
 		for _, m := range matches {
 			rel, err := filepath.Rel(root, m)
 			if err != nil {
@@ -144,8 +150,8 @@ func driftWarnings(root string, base map[string][]byte) []string {
 			added = append(added, rel)
 		}
 	}
-	sort.Strings(differ)
-	sort.Strings(added)
+	slices.Sort(differ)
+	slices.Sort(added)
 	var out []string
 	if len(differ) > 0 {
 		out = append(out, fmt.Sprintf("controls differ from base: %s (the review uses the base copy)", strings.Join(differ, ", ")))
@@ -158,6 +164,8 @@ func driftWarnings(root string, base map[string][]byte) []string {
 
 // committedHead reads the worktree committed controls (the explicit
 // --allow-head-controls opt-out in committed mode).
+//
+//nolint:gocognit,revive // prototype: mirrors driftWarnings and stays one pass
 func committedHead(root string) map[string][]byte {
 	if root == "" {
 		root = "."
@@ -175,7 +183,8 @@ func committedHead(root string) map[string][]byte {
 			contents[committedKey(rel)] = raw
 		}
 	}
-	if matches, _ := filepath.Glob(filepath.Join(root, committedDir, "overrides", "*.md")); len(matches) > 0 {
+	matches, globErr := filepath.Glob(filepath.Join(root, committedDir, "overrides", "*.md"))
+	if globErr == nil && len(matches) > 0 {
 		for _, m := range matches {
 			if raw, err := os.ReadFile(m); err == nil {
 				contents[".review/overrides/"+filepath.Base(m)] = raw
@@ -185,9 +194,12 @@ func committedHead(root string) map[string][]byte {
 	return contents
 }
 
+// shortSHALen abbreviates a commit in messages.
+const shortSHALen = 7
+
 func shortSHA(sha string) string {
-	if len(sha) > 7 {
-		return sha[:7]
+	if len(sha) > shortSHALen {
+		return sha[:shortSHALen]
 	}
 	return sha
 }

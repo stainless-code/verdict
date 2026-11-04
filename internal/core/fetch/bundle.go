@@ -217,7 +217,9 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 		}
 		fmt.Fprintf(ctx.runner.Human, "» panel (%d from %s)\n", len(panelList), panelSrc)
 	} else if ctx.runner.Effective.Compact != strTrue {
-		fmt.Fprintln(ctx.runner.Human, "» panel: none pinned (set REVIEW_PANEL or "+statedir.ControlsLabel("panel")+" for comparable, cost-capped runs)")
+		label := statedir.ControlsLabel("panel")
+		fmt.Fprintln(ctx.runner.Human, "» panel: none pinned (set REVIEW_PANEL or "+label+
+			" for comparable, cost-capped runs)")
 	}
 	return nil
 }

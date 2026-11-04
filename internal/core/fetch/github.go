@@ -299,7 +299,7 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	dir := statedir.Resolve().BundleDir(req.Pr)
 	ctx2.dir = dir
 	if err := statedir.Resolve().Ensure(); err != nil {
-		return nil, "", &core.RefusalError{Code: "state-unwritable", Message: err.Error()}
+		return nil, "", &core.RefusalError{Code: codeStateUnwritable, Message: err.Error()}
 	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return nil, "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}

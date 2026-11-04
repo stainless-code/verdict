@@ -13,6 +13,8 @@ import (
 )
 
 // threadsRequest builds a refresh request over a scripted commander.
+//
+//nolint:unparam // the helper mirrors the verb's signature
 func threadsRequest(cmdr Commander, repo, pr string) *ThreadsRequest {
 	root := ""
 	req := &ThreadsRequest{}
