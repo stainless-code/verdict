@@ -19,7 +19,8 @@
     "LICENSE",
     "CHANGELOG.md",
     "scripts/",
-    "prompts/"
+    "prompts/",
+    "schemas/"
   ],
   "scripts": {
     "changeset": "changeset",
@@ -28,6 +29,8 @@
     "prepublishOnly": "npm pack --dry-run 2>&1 | tee pack.log && (! grep -iE '\\.env|secret|token|key\\.json|\\.pem$' pack.log)"
   },
   "devDependencies": {
-    "@changesets/cli": "3.0.3"
+    "@changesets/cli": "3.0.3",
+    "@types/node": "22.19.1",
+    "typescript": "5.9.2"
   }
 }

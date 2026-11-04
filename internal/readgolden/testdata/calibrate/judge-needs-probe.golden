@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--judge and --judge-file need --probe (judgments only merge on a probe run)
+--- files ---

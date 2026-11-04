@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: id 'await-err' is taken (pass a different --id)
+try: pass a different --id
+re-enter: verdict learn --rule ... --scope ...
+--- files ---

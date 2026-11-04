@@ -1,0 +1,10 @@
+diff --git a/query.go b/query.go
+index 1111111..2222222 100644
+--- a/query.go
++++ b/query.go
+@@ -74,10 +74,10 @@ func findUser(db *sql.DB, name string) (*User, error) {
+-	q := "select id, name from users where name = '" + name + "'"
+-	row := db.QueryRow(q)
++	row := db.QueryRow("select id, name from users where name = $1", name)
+ 	var u User
+ 	return &u, row.Scan(&u.ID, &u.Name)

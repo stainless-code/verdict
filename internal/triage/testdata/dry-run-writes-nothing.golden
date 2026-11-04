@@ -1,0 +1,20 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "triage",
+  "repo": "acme/app",
+  "pr": 4251,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "none — dry run, nothing written",
+  "warnings": [],
+  "data": {
+    "sig": "123456789abcdef0123456789abcdef012345678",
+    "status": "false-positive",
+    "dry_run": true
+  },
+  "error": null
+}
+--- stderr ---
+triage --dry-run: would set 12345678 -> false-positive (rationale 49 chars, actor human)
+--- files ---

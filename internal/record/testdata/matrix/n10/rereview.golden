@@ -1,0 +1,445 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "record",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "report or triage the local bundle; post stays refused (no PR target)",
+  "warnings": [
+    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+  ],
+  "data": {
+    "dir": ".review/local-mx",
+    "anchors": {
+      "kept": 0,
+      "moved": 0
+    },
+    "findings": {
+      "open": 11,
+      "deferred": 1,
+      "addressed": 0,
+      "file": ".review/local-mx/findings.json"
+    },
+    "confidence": null,
+    "security_summary": null,
+    "items": [
+      {
+        "sig": "c7bc06e4b34c00e95d1488a85c4cb394f88ed232",
+        "status": "deferred",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "63b8aa5b62b12a5f047a118ba744c095f7cdfe2c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:73"
+      },
+      {
+        "sig": "748484cb3c12e2fa35a083abdd367a5b336bf76e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:143"
+      },
+      {
+        "sig": "71eb69f49cb65794b78d63f73b2daa15839457f0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:213"
+      },
+      {
+        "sig": "e8e306834f388a5f07f0042bf9d10155c20bc0cc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:283"
+      },
+      {
+        "sig": "daea61531f5880722d293dae40483e2173a536c0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:353"
+      },
+      {
+        "sig": "c84ffef906aab45b3a73fc7dfc8d511f07747b33",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:423"
+      },
+      {
+        "sig": "5ae0170615a426fef7188f44a49defeac0a3af6d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:493"
+      },
+      {
+        "sig": "c2009016d7998b2ab22b2b0fbd745322e289cec9",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:563"
+      },
+      {
+        "sig": "65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:633"
+      },
+      {
+        "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
+        "status": "open",
+        "anchored": "body",
+        "locator": "### Watch the loop"
+      },
+      {
+        "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
+        "status": "open",
+        "anchored": "body",
+        "locator": "### Check the edges"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+» anchors: 0 inline, 0 moved to body
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+» findings: 12 sigs -> .review/local-mx/findings.json
+  c7bc06e4  deferred  true  notes.txt
+  63b8aa5b  open  true  notes.txt
+  748484cb  open  true  notes.txt
+  71eb69f4  open  true  notes.txt
+  e8e30683  open  true  notes.txt
+  daea6153  open  true  notes.txt
+  c84ffef9  open  true  notes.txt
+  5ae01706  open  true  notes.txt
+  c2009016  open  true  notes.txt
+  65c5e5ce  open  true  notes.txt
+  99cd29f4  open  body  ### Watch the loop
+  e5ae2abb  open  body  ### Check the edges
+recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+--- files ---
+--- file C/.review/local-mx/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 3,
+    "anchored": true,
+    "body": "Comment 0 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": "critical",
+    "sig": "c7bc06e4b34c00e95d1488a85c4cb394f88ed232",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "deferred",
+    "rationale": "deferring this finding with a rationale long enough to pass",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      },
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "claim",
+        "actor": "agent",
+        "note": "claimed in review",
+        "sha": "aaaaaaa"
+      },
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "triaged",
+        "actor": "agent",
+        "note": "deferring this finding with a rationale long enough to pass",
+        "sha": "aaaaaaa"
+      }
+    ],
+    "triagedAt": "0000-00-00T00:00:00Z",
+    "triagedBy": "agent"
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 73,
+    "anchored": true,
+    "body": "Comment 1 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "pointed",
+    "severity": null,
+    "sig": "63b8aa5b62b12a5f047a118ba744c095f7cdfe2c",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 143,
+    "anchored": true,
+    "body": "Comment 2 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "walked",
+    "severity": null,
+    "sig": "748484cb3c12e2fa35a083abdd367a5b336bf76e",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 213,
+    "anchored": true,
+    "body": "Comment 3 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "ran",
+    "severity": "critical",
+    "sig": "71eb69f49cb65794b78d63f73b2daa15839457f0",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 283,
+    "anchored": true,
+    "body": "Comment 4 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "reproduced",
+    "severity": null,
+    "sig": "e8e306834f388a5f07f0042bf9d10155c20bc0cc",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 353,
+    "anchored": true,
+    "body": "Comment 5 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "severity": null,
+    "sig": "daea61531f5880722d293dae40483e2173a536c0",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 423,
+    "anchored": true,
+    "body": "Comment 6 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "pointed",
+    "severity": "critical",
+    "sig": "c84ffef906aab45b3a73fc7dfc8d511f07747b33",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 493,
+    "anchored": true,
+    "body": "Comment 7 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "walked",
+    "severity": null,
+    "sig": "5ae0170615a426fef7188f44a49defeac0a3af6d",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 563,
+    "anchored": true,
+    "body": "Comment 8 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "ran",
+    "severity": null,
+    "sig": "c2009016d7998b2ab22b2b0fbd745322e289cec9",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 633,
+    "anchored": true,
+    "body": "Comment 9 body with enough substance to read as a finding.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "reproduced",
+    "severity": "critical",
+    "sig": "65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "section",
+    "heading": "### Watch the loop",
+    "anchored": "body",
+    "body": "### Watch the loop",
+    "severity": "important",
+    "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "kb": [],
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  },
+  {
+    "kind": "section",
+    "heading": "### Check the edges",
+    "anchored": "body",
+    "body": "### Check the edges",
+    "severity": "informational",
+    "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "kb": [],
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  }
+]
+--- file C/.review/local-mx/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 12,
+  "open": 11,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
+  "model": null
+}

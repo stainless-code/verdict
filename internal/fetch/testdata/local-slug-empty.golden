@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch-local",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-slug",
+    "message": "name '--' sanitizes to nothing — pass a usable bundle name\ntry: re-run with one of the valid values named above"
+  }
+}
+--- stderr ---
+
+--- files ---

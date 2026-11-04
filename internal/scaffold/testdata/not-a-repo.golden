@@ -1,0 +1,46 @@
+exit: 0
+--- stdout ---
+init: preset standard (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
+--- .review/budget (create) ---
+# Verdict spend budget (USD) — written by `verdict init --preset standard`.
+# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.
+0.50
+--- .review/panel (create) ---
+# Verdict panel — written by `verdict init --preset standard`.
+# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
+# Replace these placeholders with real slugs; same panel every run keeps verdicts comparable.
+main
+--- .review/kb-policy (create) ---
+# Verdict KB retirement policy — written by `verdict init --preset standard`.
+# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.
+MIN_JUDGED=5
+MAX_FP_RATE=0.5
+--- .review/kb.jsonl (create) ---
+{"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
+{"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
+wrote: .review/budget
+wrote: .review/panel
+wrote: .review/kb-policy
+wrote: .review/kb.jsonl
+check-tree: not a git repo
+next: replace panel placeholders with real slugs, tune .review/budget, then fetch
+--- stderr ---
+warn: init wrote the control files but the worktree carries non-.review dirt (see check-tree above)
+--- files ---
+--- file C/.review/budget ---
+# Verdict spend budget (USD) — written by `verdict init --preset standard`.
+# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.
+0.50
+--- file C/.review/kb-policy ---
+# Verdict KB retirement policy — written by `verdict init --preset standard`.
+# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.
+MIN_JUDGED=5
+MAX_FP_RATE=0.5
+--- file C/.review/kb.jsonl ---
+{"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
+{"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
+--- file C/.review/panel ---
+# Verdict panel — written by `verdict init --preset standard`.
+# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
+# Replace these placeholders with real slugs; same panel every run keeps verdicts comparable.
+main

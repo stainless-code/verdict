@@ -1,0 +1,180 @@
+name: setup-verdict
+description: Install a pinned, signature-verified verdict binary and add it to PATH.
+
+# Location: this composite action lives in-repo at setup-verdict/ so that
+# `uses: stainless-code/verdict/setup-verdict@vX` works with no extra repo to
+# tag or sync. A dedicated stainless-code/setup-verdict repo stays an option
+# if non-verdict repos ever need it without checking out verdict; until then
+# one repo, one tag line, and the installers stay the single verifier.
+
+inputs:
+  version:
+    description: "verdict version to install (X.Y.Z or vX.Y.Z). 'latest' resolves via the releases redirect."
+    required: false
+    default: latest
+  require-signature:
+    description: "Fail closed when cosign is unavailable. 'false' falls back to a checksum-only install with a warning."
+    required: false
+    default: "true"
+
+outputs:
+  path:
+    description: Absolute path to the installed verdict binary.
+    value: ${{ steps.install-nix.outputs.path }}${{ steps.install-win.outputs.path }}
+  version:
+    description: Installed verdict version (leading v stripped, from the installer receipt).
+    value: ${{ steps.install-nix.outputs.version }}${{ steps.install-win.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # One resolve step per shell family: composite `shell:` is static, so the
+    # nix steps read resolve-nix and the Windows steps read resolve-win. The
+    # other family's outputs are empty strings, which is why the shared
+    # outputs above concatenate both ids.
+    - name: Resolve install dir (macOS/Linux)
+      id: resolve-nix
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -eu
+        ver='${{ inputs.version }}'
+        case "$ver" in
+          latest) ver=latest ;;
+          v*) ver="${ver#v}" ;;
+        esac
+        case "$ver" in
+          latest | *[!0-9A-Za-z.+-]* | '')
+            [ "$ver" = latest ] || { echo "setup-verdict: bad version: '${{ inputs.version }}' (use X.Y.Z or vX.Y.Z)" >&2; exit 1; } ;;
+        esac
+        case '${{ inputs.require-signature }}' in
+          true | false) ;;
+          *) echo "setup-verdict: require-signature must be 'true' or 'false'" >&2; exit 1 ;;
+        esac
+        dir="$RUNNER_TOOL_CACHE/setup-verdict/$ver"
+        echo "install-dir=$dir" >> "$GITHUB_OUTPUT"
+        echo "version=$ver" >> "$GITHUB_OUTPUT"
+        echo "binary=$dir/verdict" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve install dir (Windows)
+      id: resolve-win
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $ver = '${{ inputs.version }}'
+        if ($ver -eq 'latest') { $ver = 'latest' } else { $ver = $ver.TrimStart('v') }
+        if ($ver -ne 'latest' -and ($ver -eq '' -or $ver -match '[^0-9A-Za-z.+-]')) {
+          throw "setup-verdict: bad version: '${{ inputs.version }}' (use X.Y.Z or vX.Y.Z)"
+        }
+        if ('${{ inputs.require-signature }}' -notin @('true', 'false')) {
+          throw "setup-verdict: require-signature must be 'true' or 'false'"
+        }
+        $dir = Join-Path $env:RUNNER_TOOL_CACHE "setup-verdict/$ver"
+        "install-dir=$dir" >> $env:GITHUB_OUTPUT
+        "version=$ver" >> $env:GITHUB_OUTPUT
+        "binary=$(Join-Path $dir 'verdict.exe')" >> $env:GITHUB_OUTPUT
+
+    - name: Check for cosign (macOS/Linux)
+      id: have-cosign-nix
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -u
+        if { [ -n "${VERDICT_COSIGN:-}" ] && [ -x "$VERDICT_COSIGN" ]; } || command -v cosign >/dev/null 2>&1; then
+          echo 'found=true' >> "$GITHUB_OUTPUT"
+        else
+          echo 'found=false' >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Check for cosign (Windows)
+      id: have-cosign-win
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $found = $false
+        if ($env:VERDICT_COSIGN -and (Test-Path -LiteralPath $env:VERDICT_COSIGN)) { $found = $true }
+        elseif (Get-Command cosign -ErrorAction SilentlyContinue) { $found = $true }
+        "found=$($found.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+    # Pinned by full commit SHA like every other third-party action in this
+    # repo. Skipped when the runner already has cosign (or VERDICT_COSIGN
+    # points at one), which is also what keeps hermetic tests offline.
+    - name: Install cosign
+      if: inputs.require-signature == 'true' && steps.have-cosign-nix.outputs.found != 'true' && steps.have-cosign-win.outputs.found != 'true'
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      with:
+        cosign-release: v3.0.6
+
+    # Cross-job cache for PINNED versions only. `latest` is deliberately
+    # excluded: a cache key containing "latest" would pin whichever build was
+    # cached first and silently reinstall it forever. Within a job the install
+    # step below is already idempotent (receipt-checked, no network on reuse).
+    - name: Cache the verified binary (macOS/Linux)
+      if: runner.os != 'Windows' && inputs.version != 'latest'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ steps.resolve-nix.outputs.install-dir }}
+        # The install dir is version-scoped (see resolve), so the key only
+        # needs version + platform to be unambiguous.
+        key: setup-verdict-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-nix.outputs.version }}
+
+    - name: Cache the verified binary (Windows)
+      if: runner.os == 'Windows' && inputs.version != 'latest'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ steps.resolve-win.outputs.install-dir }}
+        key: setup-verdict-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-win.outputs.version }}
+
+    # The installers (10) own download + verify; the action only sets their
+    # env. VERDICT_NO_MODIFY_PATH=1 always: PATH goes through $GITHUB_PATH,
+    # never through shell rc files.
+    - name: Install verdict (macOS/Linux)
+      id: install-nix
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        VERDICT_VERSION: ${{ inputs.version }}
+        VERDICT_INSTALL: ${{ steps.resolve-nix.outputs.install-dir }}
+        VERDICT_NO_MODIFY_PATH: "1"
+        VERDICT_REQUIRE_SIGNATURE: ${{ inputs.require-signature == 'true' && '1' || '0' }}
+      run: |
+        set -eu
+        installer='${{ github.action_path }}/../install.sh'
+        if [ -x "$VERDICT_INSTALL/verdict" ]; then
+          echo "setup-verdict: reusing $VERDICT_INSTALL/verdict (already installed; no download)"
+        else
+          sh "$installer"
+        fi
+        version="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$VERDICT_INSTALL/.verdict-installer" | head -1)"
+        [ -n "$version" ] || { echo 'setup-verdict: installer left no receipt' >&2; exit 1; }
+        echo "path=$VERDICT_INSTALL/verdict" >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "$VERDICT_INSTALL" >> "$GITHUB_PATH"
+        "$VERDICT_INSTALL/verdict" --version
+
+    - name: Install verdict (Windows)
+      id: install-win
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        VERDICT_VERSION: ${{ inputs.version }}
+        VERDICT_INSTALL: ${{ steps.resolve-win.outputs.install-dir }}
+        VERDICT_NO_MODIFY_PATH: "1"
+        VERDICT_REQUIRE_SIGNATURE: ${{ inputs.require-signature == 'true' && '1' || '0' }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $installer = Join-Path '${{ github.action_path }}' '../install.ps1'
+        $binary = Join-Path $env:VERDICT_INSTALL 'verdict.exe'
+        if (Test-Path -LiteralPath $binary) {
+          Write-Host "setup-verdict: reusing $binary (already installed; no download)"
+        } else {
+          & $installer
+        }
+        $receipt = Get-Content -LiteralPath (Join-Path $env:VERDICT_INSTALL '.verdict-installer') -Raw
+        if ($receipt -notmatch '"version":"([^"]+)"') { throw 'setup-verdict: installer left no receipt' }
+        "path=$binary" >> $env:GITHUB_OUTPUT
+        "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+        $env:VERDICT_INSTALL >> $env:GITHUB_PATH
+        & $binary --version

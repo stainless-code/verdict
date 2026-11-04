@@ -1,0 +1,7 @@
+exit: 0
+--- stdout ---
+await-err [active] walked hits=3 false_hits=1 judged=4 precision=3/4
+no-secrets [active] pointed hits=0 false_hits=0 judged=0 precision=n/a
+--- stderr ---
+
+--- files ---

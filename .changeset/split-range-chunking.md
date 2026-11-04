@@ -2,4 +2,10 @@
 "@stainless-code/verdict": minor
 ---
 
-Chunked split-range reviews. Over-cap diffs machine-slice on file boundaries (`--chunk` / `.review/chunk` opt-in) with a versioned manifest; the Review contract reads per-chunk and synthesizes one verdict with a summed Basis line; `post`/`record` refuse attested-but-partial coverage and warn loudly on unattested chunked reviews. Same flow on `fetch-local`.
+Chunked split-range reviews. Very large PRs are reviewable again: with
+`--chunk` (or `.review/chunk`) an over-cap diff is sliced on file boundaries
+into numbered chunks with a versioned manifest, the agent reviews one chunk at
+a time, and the results synthesize into one verdict with a summed Basis line.
+`post` and `record` refuse coverage that claims to be complete but is attested
+partial, and warn loudly when a chunked review is unattested. `fetch-local`
+supports the same flow.

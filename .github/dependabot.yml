@@ -1,0 +1,56 @@
+# Automated bump proposals: GitHub Actions (SHA pins included),
+# Go modules, and npm (root wrapper + TS client). Weekly, grouped so
+# each ecosystem arrives as one reviewable PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+    groups:
+      modules:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+    groups:
+      root:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: npm
+    directory: /clients/ts
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+    groups:
+      ts-client:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: client

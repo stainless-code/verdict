@@ -22,10 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -78,14 +74,10 @@ fi
 # --- M1: absent-knob parity on the multi-file over-cap fixture ---
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix -- $CMAN_FILES
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && ! grep -qi "chunk" "$EVAL_ERR"; then
-  good "absent knob: multi-file over-cap refuses diff-too-large, no chunk mention"
-else
-  bad "absent baseline exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "absent-knob multi-file over-cap refuses" 1
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$BUNDLE/chunks" ]; then
   good "absent refusal writes no chunks dir"
 else
@@ -295,10 +287,11 @@ echo "fake-gh: unexpected call ($*)" >&2; exit 1
 EOF
 chmod +x "$CMAN_FAKEBIN/gh"
 run_review_fake() {
+  eval_seed_base
   set +e
   (
     cd "$EVAL_SANDBOX" || exit 99
-    PATH="$CMAN_FAKEBIN:$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" "$@" \
+    PATH="$CMAN_FAKEBIN:$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" \
       >"$EVAL_OUT" 2>"$EVAL_ERR"
   )
   EVAL_STATUS=$?
@@ -351,5 +344,4 @@ rm -f "$EVAL_SANDBOX"/cman-concat.diff "$EVAL_SANDBOX"/cman-manifest-1.json "$EV
 rm -f "$EVAL_SANDBOX"/cman-canned.diff "$EVAL_SANDBOX"/cman-pr.json
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-manifest: FAIL ($fails)"; exit 1; fi
-echo "case chunk-manifest: PASS"
+eval_end

@@ -4,7 +4,7 @@
 2. `gh run list --branch <head-ref> && gh run view <failed-id> --log-failed`. Read the workflow file.
 3. **CRITICAL: verify the failure was INTRODUCED BY THIS PR.** If unrelated/pre-existing → abort + report, do not fix.
 4. Preview first: state the exact CI command you will reproduce with, then proceed.
-   Require a clean tree before editing — run `./scripts/review.sh check-tree`; it refuses on unexpected dirt.
+   Require a clean tree before editing — run `verdict check-tree`; it refuses on unexpected dirt.
 5. Diagnose + fix: reproduce locally with the EXACT CI commands, fix with native tools, verify by
    re-running the exact CI command, review diff (only the fix, no debug artifacts, senior-approvable),
    confirm every dirty file maps to the failure (stop-and-report on hitchhikers),

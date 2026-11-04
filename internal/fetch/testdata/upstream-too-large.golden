@@ -1,0 +1,31 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4711,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "upstream-diff-too-large",
+    "message": "upstream refused the diff over 300 files (host will not render it) — re-fetch narrowed to a range via --base-sha/--since, or narrow with a paths filter, then re-run\ntry: re-fetch narrowed to a range via --base-sha/--since, or narrow with a paths filter, then re-run"
+  }
+}
+--- stderr ---
+» gh pr view acme/app#4711
+» gh pr diff -> .review/4711/full.diff
+gh: diff unavailable
+gh pr diff failed, trying API diff
+HTTP 406: this diff is too large to be rendered
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4711 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4711 --repo acme/app
+CALL: api repos/acme/app/pulls/4711 -H Accept: application/vnd.github.diff
+--- file C/.review/4711/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+--- file C/.review/4711/full.diff ---
+

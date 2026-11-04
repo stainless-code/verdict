@@ -1,0 +1,340 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4709,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4709/PR.json + full.diff to any agent; ask it to write .review/4709/review.json; prior threads are in .review/4709/threads.json (run verdict threads to refresh)",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4709",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 99,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "bitbucket",
+      "fetch": true,
+      "post": false,
+      "inline_anchors": false,
+      "thread_resolution": false,
+      "review_verdicts": false
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
+    },
+    "artifacts": {
+      "PR.json": ".review/4709/PR.json",
+      "full.diff": ".review/4709/full.diff",
+      "toc.txt": ".review/4709/toc.txt",
+      "roles.txt": ".review/4709/roles.txt",
+      "reviews.json": ".review/4709/reviews.json",
+      "inline.json": ".review/4709/inline.json",
+      "threads.json": ".review/4709/threads.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» bitbucket diff -> .review/4709/full.diff
+» roles -> .review/4709/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+done: .review/4709/PR.json .review/4709/full.diff .review/4709/toc.txt .review/4709/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4709/PR.json + .review/4709/full.diff (+ .review/4709/roles.txt) to any agent; ask it to write .review/4709/review.json; prior threads are in .review/4709/threads.json (run verdict threads to refresh)
+--- files ---
+--- file C/.curl-calls.log ---
+CALL: -sf -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709
+CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/diff
+CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/diffstat?pagelen=100
+CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/comments?pagelen=100
+--- file C/.review/4709/.diff.err ---
+
+--- file C/.review/4709/.difffiles ---
+a.txt
+--- file C/.review/4709/.meta.err ---
+
+--- file C/.review/4709/PR.json ---
+{
+  "schema_version": "1",
+  "provider": "bitbucket",
+  "number": 11,
+  "title": "PR eleven",
+  "body": "body",
+  "base_ref": "main",
+  "head_ref": "feat",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "author": "mate",
+  "url": "https://example.invalid/11",
+  "state": "open",
+  "draft": false,
+  "files": [
+    {
+      "path": "a.txt",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 1,
+  "deletions": 1
+}
+--- file C/.review/4709/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4709/full.diff ---
+diff --git a/a.txt b/a.txt
+index 1111111..2222222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.review/4709/hunks.tsv ---
+a.txt	OLD	1	1
+a.txt	NEW	1	1
+--- file C/.review/4709/inline.json ---
+[
+  {
+    "content": {
+      "raw": "Inline nit"
+    },
+    "created_on": "0000-00-00T00:00:00Z",
+    "id": 2,
+    "inline": {
+      "outdated": false,
+      "path": "a.txt",
+      "to": 1
+    },
+    "links": {
+      "html": {
+        "href": "https://example.invalid/c/2"
+      }
+    },
+    "resolution": {
+      "user": {
+        "nickname": "ana"
+      }
+    },
+    "user": {
+      "nickname": "ana"
+    }
+  }
+]
+--- file C/.review/4709/reviews.json ---
+[
+  {
+    "content": {
+      "raw": "General note"
+    },
+    "created_on": "0000-00-00T00:00:00Z",
+    "id": 1,
+    "links": {
+      "html": {
+        "href": "https://example.invalid/c/1"
+      }
+    },
+    "user": {
+      "nickname": "rev"
+    }
+  },
+  {
+    "content": {
+      "raw": "Reply"
+    },
+    "created_on": "0000-00-00T00:00:00Z",
+    "id": 3,
+    "parent": {
+      "id": 2
+    },
+    "user": {
+      "nickname": "bo"
+    }
+  },
+  {
+    "content": {
+      "raw": "gone"
+    },
+    "deleted": true,
+    "id": 4
+  },
+  {
+    "content": {
+      "raw": "draft"
+    },
+    "id": 5,
+    "pending": true
+  }
+]
+--- file C/.review/4709/roles.txt ---
+## docs
+- a.txt
+--- file C/.review/4709/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4709/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "bitbucket",
+  "pr": 4709,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "1",
+      "path": "",
+      "line": null,
+      "start_line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "url": "https://example.invalid/c/1",
+      "author": "rev",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "issue-comment",
+      "comments": [
+        {
+          "id": "1",
+          "author": "rev",
+          "author_kind": "human",
+          "body": "General note",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": false,
+      "url": "https://example.invalid/c/2",
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "2",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Inline nit",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        },
+        {
+          "id": "3",
+          "author": "bo",
+          "author_kind": "human",
+          "body": "Reply",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+--- file C/.review/4709/toc.txt ---
+# TOC for bitbucket #4709 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+
+## stat
+a.txt (+1/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)

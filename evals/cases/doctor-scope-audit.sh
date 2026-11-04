@@ -14,18 +14,21 @@
 #       plus the excess row for the non-baseline grant; exit 0 (warn-only
 #       never fails the run)
 #   S5  text mode with excess stub → WARN line on stdout, exit stays 0
+#   D1  text mode opens with the `doctor @ <utc>` run stamp
+#   D2  text mode closes with the Summary line and its word agrees with the
+#       exit code (dead stub → unhealthy, exit 1)
+#   D3  a minimal PATH holding only gh/git/ps is healthy: the doctor rows have
+#       no jq/shasum requirement, because the Go binary never spawns them
 #   S6  doctor writes nothing to the sandbox (tree-clean: no .review/ dir)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
-snap_tree() { # sandbox tree minus harness-owned capture files (content changes, not the tree)
-  (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' | sort)
+snap_tree() { # sandbox tree minus harness-owned capture/minimal-PATH files (content changes, not the tree)
+  # A per-case sandbox starts empty, so grep -v can see zero lines; tolerate
+  # that instead of letting pipefail abort the case before it prints anything.
+  (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' -e './minbin' | sort) || true
 }
 pre_tree="$(snap_tree)"
 
@@ -131,6 +134,52 @@ else
 fi
 unset GH_STUB_DOCTOR
 
+# --- D1/D2: human run stamp + trailing summary (dead stub → unhealthy) ---
+run_review doctor
+stamp="$(head -n 1 "$EVAL_OUT")"
+summary="$(tail -n 1 "$EVAL_OUT")"
+if printf '%s' "$stamp" | matches -E '^doctor @ [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+  good "D1 first line is the doctor run stamp"
+else
+  bad "D1 first line: $(printf '%s' "$stamp" | head -c 120)"
+fi
+if printf '%s' "$summary" | matches -E '^Summary: (healthy|unhealthy) — [0-9]+ ok, [0-9]+ warn, [0-9]+ fail$'; then
+  word="${summary#Summary: }"
+  word="${word%% *}"
+  if { [ "$EVAL_STATUS" -eq 0 ] && [ "$word" = "healthy" ]; } \
+    || { [ "$EVAL_STATUS" -ne 0 ] && [ "$word" = "unhealthy" ]; }; then
+    good "D2 summary word '$word' agrees with exit $EVAL_STATUS"
+  else
+    bad "D2 summary word '$word' disagrees with exit $EVAL_STATUS"
+  fi
+else
+  bad "D2 last line: $(printf '%s' "$summary" | head -c 120)"
+fi
+
+# --- D3: no jq/shasum on PATH is healthy (the Go binary never spawns them) ---
+# The old doctor hard-failed on both tools; a minimal PATH keeps gh/git/ps
+# (the only tools the binary and its watchdog run) and drops jq/shasum.
+MINBIN="$EVAL_SANDBOX/minbin"
+mkdir -p "$MINBIN"
+for tool in bash dirname git ps readlink; do
+  ln -s "$(command -v "$tool")" "$MINBIN/$tool"
+done
+ln -s "$EVAL_STUBBIN/gh" "$MINBIN/gh"
+export GH_STUB_DOCTOR="repo"
+set +e
+( cd "$EVAL_SANDBOX" && PATH="$MINBIN" "$EVAL_CLI" doctor --json >"$EVAL_OUT" 2>"$EVAL_ERR" )
+st=$?
+set -e
+unset GH_STUB_DOCTOR
+if [ "$st" -eq 0 ] \
+  && jq -e '.data.healthy == true
+    and ([.data.checks[].name] | index("jq") == null)
+    and ([.data.checks[].name] | index("shasum") == null)' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "D3 minimal PATH without jq/shasum is healthy (no phantom rows, exit 0)"
+else
+  bad "D3 minimal PATH exits $st: $(head -c 300 "$EVAL_OUT")"
+fi
+
 # --- S6: doctor writes nothing (tree-clean: sandbox tree identical) ---
 post_tree="$(snap_tree)"
 if [ "$post_tree" = "$pre_tree" ]; then
@@ -139,5 +188,4 @@ else
   bad "S6 sandbox tree changed: $(diff <(printf '%s\n' "$pre_tree") <(printf '%s\n' "$post_tree") | head -5)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case doctor-scope-audit: FAIL ($fails)"; exit 1; fi
-echo "case doctor-scope-audit: PASS"
+eval_end

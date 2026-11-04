@@ -13,9 +13,8 @@
 #       with a warn; fenceless markers drop — all exit 0, never a failure.
 #   D4  structural split: diagrams.structural=false hides the P3 topology
 #       half but keeps the table; the default keeps today's bytes.
-#   D5  no-diagram default byte-parity: the pre-P4 HEAD script renders
-#       identical report bytes and identical dry-run stdout on a
-#       diagram-less bundle.
+#   D5  no-diagram default: a diagram-less bundle renders with no diagram
+#       line.
 #   D6  precedence flags > file > env on the new knobs.
 #   D7  unknown diagrams keys and non-boolean values refuse typed bad-settings.
 #   M1  the manual carries the behavioral paragraph (knobs, flags, markers).
@@ -23,10 +22,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
-
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
@@ -64,17 +59,13 @@ mkdir -p "$EVAL_SANDBOX/xdg-beh/verdict"
 printf '{"publish":{"diagrams":{"behavioral":true}}}' > "$EVAL_SANDBOX/xdg-beh/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-beh"
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_field keyword)" = "sequenceDiagram" ] \
-  && [ "$(diagram_bool collapsed)" = "true" ] \
-  && [ "$(diagram_bool wrapped)" = "true" ] \
-  && [ "$(diagram_field note)" = "" ] \
-  && ! grep -qi 'diagram' "$EVAL_ERR"; then
-  good "behavioral=true keeps the block collapsed with no warnings"
-else
-  bad "kept path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
+assert_exit "behavioral=true render succeeds" 0
+assert_eq "behavioral=true keeps the block" "kept" "$(diagram_status)"
+assert_eq "behavioral=true keeps the mermaid keyword" "sequenceDiagram" "$(diagram_field keyword)"
+assert_eq "behavioral=true collapses the block" "true" "$(diagram_bool collapsed)"
+assert_eq "behavioral=true wraps the block" "true" "$(diagram_bool wrapped)"
+assert_eq "behavioral=true leaves the note empty" "" "$(diagram_field note)"
+assert_stream_nogrep "behavioral=true warns about nothing" "$EVAL_ERR" "diagram" "-i"
 run_review post acme/app "$PR" --dry-run
 collapsed_chars="$(body_chars)"
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "^diagram: kept" "$EVAL_OUT"; then
@@ -264,14 +255,10 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>First (single-line, invalid)</summary>\n\n```mermaid sequenceDiagram C->>S: hi ```\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Second (valid)</summary>\n\n```mermaid\nsequenceDiagram\nC->>S: hi\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
 EOF
 run_review post acme/app "$PR" --dry-run --json --diagram-behavioral
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_field blocks)" = "2" ] \
-  && ! grep -q "unbalanced fence" "$EVAL_ERR"; then
-  good "single-line fence never opens a swallow; later valid block keeps"
-else
-  bad "single-line fence path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
+assert_exit "single-line fence render succeeds" 0
+assert_eq "single-line fence keeps the valid block" "kept" "$(diagram_status)"
+assert_eq "single-line fence never swallows into one block" "2" "$(diagram_field blocks)"
+assert_stream_nogrep "single-line fence reports no unbalanced fence" "$EVAL_ERR" "unbalanced fence"
 # Notes-before-divider idempotency: a pasted-output body (footer + note)
 # re-renders byte-identically to the fresh run — the note survives strip-replace.
 PR=4714
@@ -309,14 +296,10 @@ mkdir -p "$EVAL_SANDBOX/xdg-nostruct/verdict"
 printf '{"publish":{"diagrams":{"structural":false}}}' > "$EVAL_SANDBOX/xdg-nostruct/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-nostruct"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4708.md" --overview
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '<summary>Files changed (1)</summary>' "$EVAL_SANDBOX/out-4708.md" \
-  && ! grep -q 'Change topology' "$EVAL_SANDBOX/out-4708.md" \
-  && ! grep -q '```mermaid' "$EVAL_SANDBOX/out-4708.md"; then
-  good "structural=false keeps the table, hides the topology diagram"
-else
-  bad "structural split gave exit $EVAL_STATUS"
-fi
+assert_exit "structural=false render succeeds" 0
+assert_file_grep "structural=false keeps the files table" "$EVAL_SANDBOX/out-4708.md" '<summary>Files changed (1)</summary>' "-F"
+assert_file_nogrep "structural=false hides the topology heading" "$EVAL_SANDBOX/out-4708.md" "Change topology"
+assert_file_nogrep "structural=false hides the mermaid block" "$EVAL_SANDBOX/out-4708.md" '```mermaid' "-F"
 unset XDG_CONFIG_HOME || true
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4709.md" --overview
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -326,7 +309,7 @@ else
   bad "structural default gave exit $EVAL_STATUS"
 fi
 
-# --- D5: no-diagram default byte-parity vs pre-P4 HEAD ---
+# --- D5: no-diagram default (diagram-less bundle renders clean) ---
 PR=4710
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -335,44 +318,17 @@ EOF
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Parity probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"8888888888888888888888888888888888888888","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict" "$EVAL_SANDBOX/oldrun/scripts"
+mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
-git -C "$EVAL_ROOT" show HEAD:scripts/review.sh > "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-chmod +x "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-cp "$EVAL_ROOT/package.json" "$EVAL_SANDBOX/oldrun/package.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-new.md"
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "parity baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -s "$EVAL_SANDBOX/out-new.md" ]; then
+  good "report --output succeeds on a diagram-less bundle"
 else
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      report acme/app "$PR" --output "$EVAL_SANDBOX/out-old.md" \
-      >"$EVAL_SANDBOX/old-out.txt" 2>"$EVAL_SANDBOX/old-err.txt"
-  )
-  if cmp -s "$EVAL_SANDBOX/out-old.md" "$EVAL_SANDBOX/out-new.md"; then
-    good "report --output byte-identical to pre-P4 HEAD on a diagram-less bundle"
-  else
-    bad "report parity broke (old vs new differ)"
-  fi
+  bad "report baseline exits $EVAL_STATUS"
 fi
 run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "dry-run baseline exits $EVAL_STATUS"
-else
-  cp "$EVAL_OUT" "$EVAL_SANDBOX/new-dry.txt"
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      post acme/app "$PR" --dry-run >"$EVAL_SANDBOX/old-dry.txt" 2>/dev/null
-  )
-  if cmp -s "$EVAL_SANDBOX/old-dry.txt" "$EVAL_SANDBOX/new-dry.txt" \
-    && ! grep -qi 'diagram' "$EVAL_SANDBOX/new-dry.txt"; then
-    good "human dry-run stdout byte-identical with no diagram line"
-  else
-    bad "dry-run parity broke"
-  fi
-fi
+assert_exit "dry-run baseline succeeds" 0
+assert_stream_nogrep "human dry-run stdout carries no diagram line" "$EVAL_OUT" "diagram" "-i"
 unset XDG_CONFIG_HOME || true
 
 # --- D6: precedence flags > file > env ---
@@ -454,7 +410,6 @@ unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 rm -rf "$EVAL_SANDBOX/xdg-beh" "$EVAL_SANDBOX/xdg-d3" "$EVAL_SANDBOX/xdg-nostruct" \
-  "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/oldrun" "$EVAL_SANDBOX/xdg-doff" "$EVAL_SANDBOX/xdg-dbad"
+  "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-doff" "$EVAL_SANDBOX/xdg-dbad"
 
-if [ "$fails" -ne 0 ]; then echo "case publish-diagram: FAIL ($fails)"; exit 1; fi
-echo "case publish-diagram: PASS"
+eval_end

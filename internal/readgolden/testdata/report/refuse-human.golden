@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: findings store .review/5101/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)
+try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run
+--- files ---

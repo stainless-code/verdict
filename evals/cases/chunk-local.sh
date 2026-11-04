@@ -31,10 +31,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -63,7 +59,15 @@ EOF
     awk -v f="$i" 'BEGIN{for(j=0;j<1500;j++) printf "base line %06d file%d padding padding padding padding\n", j, f}' > "cloc-f$i.txt"
   done
   printf 'alpha\nbeta\ngamma\n' > cloc-small.txt
-  git add cloc-f1.txt cloc-f2.txt cloc-f3.txt cloc-f4.txt cloc-f5.txt cloc-f6.txt cloc-small.txt .gitignore
+  # Prompt files for the --show-prompts leg: the dump refuses typed without
+  # the preamble (F7), so the sandbox carries committed prompt files — the
+  # explicit-path fetches below keep them out of every diff.
+  printf '# verdict skill (eval fixture)\n' > SKILL.md
+  mkdir -p prompts
+  printf '# system (eval fixture)\n' > prompts/system.md
+  printf '# review mode (eval fixture)\n' > prompts/review.md
+  printf '# diagrams (eval fixture)\n' > prompts/diagrams.md
+  git add cloc-f1.txt cloc-f2.txt cloc-f3.txt cloc-f4.txt cloc-f5.txt cloc-f6.txt cloc-small.txt SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md .gitignore
   git commit -qm cloc-base 2>/dev/null || true
 )
 (
@@ -85,14 +89,14 @@ KNOB="$EVAL_SANDBOX/.review/chunk"
 # --- L1: same cap, same knob, same shape on the local path ---
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && ! grep -qi "chunk" "$EVAL_ERR" \
-  && [ ! -d "$BUNDLE/chunks" ]; then
-  good "absent knob: over-cap local refuses diff-too-large, no chunk mention, no chunks dir"
+assert_exit "absent-knob over-cap local refuses" 1
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
+if [ ! -d "$BUNDLE/chunks" ]; then
+  good "absent knob writes no chunks dir"
 else
-  bad "absent baseline exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
+  bad "absent knob wrote a chunks dir"
 fi
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
@@ -104,6 +108,7 @@ else
   bad "local --chunk exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 printf 'true\n' > "$KNOB"
+eval_commit_controls
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -113,6 +118,7 @@ else
   bad "knob-file exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 rm -f "$KNOB"
+eval_commit_controls
 MAN="$BUNDLE/chunks/manifest.json"
 N="$(jq -r '.chunk_count' <"$MAN" 2>/dev/null || echo 0)"
 if [ -f "$MAN" ] \
@@ -152,6 +158,10 @@ if cmp -s "$EVAL_SANDBOX/cloc-concat.diff" "$BUNDLE/full.diff"; then
 else
   bad "local chunk concat differs from full.diff"
 fi
+# Re-fetch at the settled HEAD: the knob commits above moved the base the
+# manifest records, so the reproducibility pair is taken after them.
+# shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
+run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
 cp "$MAN" "$EVAL_SANDBOX/cloc-manifest-1.json"
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
@@ -209,10 +219,11 @@ echo "fake-gh: unexpected call ($*)" >&2; exit 1
 EOF
 chmod +x "$CLOC_FAKEBIN/gh"
 run_review_fake() {
+  eval_seed_base
   set +e
   (
     cd "$EVAL_SANDBOX" || exit 99
-    PATH="$CLOC_FAKEBIN:$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" "$@" \
+    PATH="$CLOC_FAKEBIN:$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" \
       >"$EVAL_OUT" 2>"$EVAL_ERR"
   )
   EVAL_STATUS=$?
@@ -296,11 +307,7 @@ else
 fi
 cp "$EVAL_OUT" "$EVAL_SANDBOX/cloc-under-out.txt"
 cp "$EVAL_SANDBOX/.review/local-clocsmall/full.diff" "$EVAL_SANDBOX/cloc-under.diff"
-if grep -qi "chunk" "$EVAL_ERR"; then
-  bad "under-cap --chunk mentions chunking: $(head -c 200 "$EVAL_ERR")"
-else
-  good "under-cap --chunk stays silent about chunking"
-fi
+assert_stream_nogrep "under-cap --chunk stays silent about chunking" "$EVAL_ERR" "chunk" "-i"
 run_review fetch-local acme/app clocsmall -- cloc-small.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cloc-under-out.txt" \
@@ -312,6 +319,7 @@ else
   bad "under-cap absent parity exits $EVAL_STATUS"
 fi
 printf 'false\n' > "$KNOB"
+eval_commit_controls
 (
   cd "$EVAL_SANDBOX" || exit 99
   for i in 1 2 3 4 5 6; do
@@ -324,6 +332,7 @@ false_status="$EVAL_STATUS"
 cp "$EVAL_ERR" "$EVAL_SANDBOX/cloc-false-err.txt"
 cp "$EVAL_OUT" "$EVAL_SANDBOX/cloc-false-out.txt"
 rm -f "$KNOB"
+eval_commit_controls
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 if [ "$false_status" -eq 1 ] && [ "$EVAL_STATUS" -eq 1 ] \
@@ -358,5 +367,4 @@ rm -f "$EVAL_SANDBOX"/cloc-under-out.txt "$EVAL_SANDBOX"/cloc-under.diff
 rm -f "$EVAL_SANDBOX"/cloc-false-err.txt "$EVAL_SANDBOX"/cloc-false-out.txt
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-local: FAIL ($fails)"; exit 1; fi
-echo "case chunk-local: PASS"
+eval_end

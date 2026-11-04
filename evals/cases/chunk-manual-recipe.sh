@@ -22,10 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -99,16 +95,12 @@ fi
 
 # --- M1: opted-out refusal names the working manual path ---
 run_review fetch-local acme/app mrecopt --range "$MREC_BASE..$MREC_C"
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && grep -q "try: split the range" "$EVAL_ERR" \
-  && grep -q -- "--range" "$EVAL_ERR" \
-  && grep -q "paths filter" "$EVAL_ERR" \
-  && ! grep -qi "chunk" "$EVAL_ERR"; then
-  good "opted-out: multi-file over-cap refuses with the manual split-or-narrow hint, no chunk mention"
-else
-  bad "opted-out refusal exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "opted-out multi-file over-cap refuses" 1
+assert_file_grep "opted-out refusal names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "opted-out refusal carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_file_grep "opted-out refusal names --range" "$EVAL_ERR" "--range"
+assert_file_grep "opted-out refusal names the paths filter" "$EVAL_ERR" "paths filter"
+assert_stream_nogrep "opted-out refusal mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$EVAL_SANDBOX/.review/local-mrecopt/chunks" ]; then
   good "opted-out refusal writes no chunks dir"
 else
@@ -118,7 +110,7 @@ run_review fetch-local acme/app mrecopt --range "$MREC_BASE..$MREC_C" --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT")" = "diff-too-large" ] \
   && jq -e '.error.candidates | length > 0' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && jq -r '.error.message' <"$EVAL_OUT" | grep -q "try: split the range"; then
+  && jq -r '.error.message' <"$EVAL_OUT" | matches "try: split the range"; then
   good "--json refusal keeps code + candidates + the manual hint"
 else
   bad "--json refusal exits $EVAL_STATUS"
@@ -213,7 +205,7 @@ if grep -q "## Over-cap diffs" "$EVAL_ROOT/docs/manual.md" \
 else
   bad "operator manual misses the chunking/manual-recipe prose"
 fi
-if grep -q -- "--chunk" "$EVAL_ROOT/scripts/review.sh"; then
+if "$EVAL_CLI" --help 2>/dev/null | matches -- "--chunk"; then
   good "usage text names the --chunk opt-in"
 else
   bad "usage text misses --chunk"
@@ -224,5 +216,4 @@ fi
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-manual-recipe: FAIL ($fails)"; exit 1; fi
-echo "case chunk-manual-recipe: PASS"
+eval_end

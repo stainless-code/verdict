@@ -1,0 +1,30 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "learn",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "cite the rule id in review.json kb lists",
+  "warnings": [],
+  "data": {
+    "rule": {
+      "id": "no-secret-logs",
+      "rule": "Never log secrets in error paths",
+      "scope": "src/*.ts",
+      "provenance": "manual",
+      "rigor": "walked",
+      "hits": 0,
+      "false_hits": 0,
+      "judged": 0,
+      "status": "active"
+    }
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---
+--- file C/.review/kb.jsonl ---
+{"id":"no-secret-logs","rule":"Never log secrets in error paths","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}

@@ -1,0 +1,6 @@
+# Accepted deadcode entries. `make deadcode` (scripts/deadcode.sh) fails on
+# anything reported that is not listed here, and on a listed entry that is no
+# longer reported, so this list cannot rot. Format: `<file>: <symbol>`.
+#
+# Keep the comments with the group and the entries sorted by file/symbol
+# (LC_ALL=C); the gate compares against the sorted, comment-stripped list.

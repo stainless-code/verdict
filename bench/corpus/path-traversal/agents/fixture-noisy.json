@@ -1,0 +1,19 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "files.go",
+        "line": 20,
+        "side": "RIGHT",
+        "body": "The error message repeats the full path; keep it relative to root.",
+        "rigor": "observed",
+        "severity": "informational"
+      }
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/usage.schema.json",
+  "title": "usage.json — explicitly handed spend record",
+  "description": "What the agent or a usage adapter hands the budget gate through VERDICT_USAGE: one measured run per record (a single object) or a run log (an array). The gate joins each record against past cost records by its window and prices comparable runs from usd, preferring it over the self-reported est_usd; records without usd never become a measured claim. verdict never discovers these files — the operator names them explicitly. Unknown keys are ignored, so newer writers stay readable.",
+  "anyOf": [
+    { "$ref": "#/$defs/record" },
+    {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    }
+  ],
+  "$defs": {
+    "record": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "model": {
+          "description": "Model that burned the tokens, when known; absent reads unknown, never priced.",
+          "type": "string"
+        },
+        "tokens": {
+          "description": "Token counts for the window, when known; absent reads as unknown, never zero.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/usageTokens" }]
+        },
+        "usd": {
+          "description": "Measured session price in USD, when the measurer priced it; the tool never prices tokens itself.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "source": {
+          "description": "Free-form measurer name (e.g. claude-code, opencode); carried into data.estimate.harness when the record prices a run.",
+          "type": "string"
+        },
+        "started_at": {
+          "description": "Window start (RFC 3339); the joined cost record's mtime must fall inside it.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "ended_at": {
+          "description": "Window end (RFC 3339), never before the start.",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["schema_version", "source", "started_at", "ended_at"],
+      "additionalProperties": true
+    },
+    "usageTokens": {
+      "description": "Token counts for one usage record: input and output plus the provider-reported cache subsets.",
+      "type": "object",
+      "properties": {
+        "input": { "type": "number", "minimum": 0 },
+        "output": { "type": "number", "minimum": 0 },
+        "cache_read": {
+          "description": "Input tokens served from cache; a subset of input, never an addition.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "cache_write": {
+          "description": "Input tokens spent writing the cache; a subset of input, never an addition.",
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      },
+      "required": ["input", "output"],
+      "additionalProperties": true
+    }
+  }
+}

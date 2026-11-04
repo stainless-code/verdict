@@ -1,0 +1,135 @@
+// Package testenv builds the deterministic child environment shared by every
+// harness that spawns git, gh, or the verdict binary. It exists so CI
+// determinism is structural, not a per-test habit: the developer's (or
+// runner's) git config, credentials, and harness knobs never leak into a
+// hermetic child.
+//
+// Two rules live here:
+//
+//   - Git runs with a fixed configuration (core.autocrlf=false,
+//     commit.gpgsign=false, tag.gpgsign=false, init.defaultBranch=main,
+//     core.longpaths=true, no system or user config), so a fixture commit
+//     cannot fail because the host signs commits, defaults to another branch
+//     name, or rewrites line endings.
+//   - Secret-shaped variables (*_TOKEN, *_KEY, *_SECRET, AWS_*) are dropped
+//     from the inherited environment. A child may still receive one through
+//     extra, which is how a test that *needs* an auth variable plants it.
+package testenv
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/stainless-code/verdict/internal/envsecret"
+)
+
+// dropPrefixes are harness/CI knobs that never belong in a hermetic child.
+// GH_ and GITHUB_ cover the runner's gh auth and host selection (GH_TOKEN,
+// GITHUB_TOKEN, GH_HOST), AWS_ covers cloud credentials, and GIT_CONFIG_* is
+// re-emitted by GitConfig so the caller's values cannot shadow the pinned ones.
+var dropPrefixes = []string{"REVIEW_", "GH_", "GITHUB_", "GIT_CONFIG_", "AWS_"}
+
+// dropNames are exact variables the harness always sets itself.
+var dropNames = []string{"HOME", "TMPDIR", "XDG_CONFIG_HOME", "NO_COLOR"}
+
+// Fixed values and separators shared by the emitted environment.
+const (
+	envSep     = "="
+	configPerm = 0o600
+	falseValue = "false"
+)
+
+// gitConfig is the fixed repository behavior every fixture assumes. The order
+// is stable so the emitted GIT_CONFIG_KEY_*/VALUE_* pairs are reproducible.
+var gitConfig = [][2]string{
+	{"core.autocrlf", falseValue},
+	{"commit.gpgsign", falseValue},
+	{"tag.gpgsign", falseValue},
+	{"init.defaultBranch", "main"},
+	{"core.longpaths", "true"},
+}
+
+// emptyGlobalConfig is the GIT_CONFIG_GLOBAL target: a path that exists but is
+// empty, so the host's ~/.gitconfig is never read. [os.DevNull] is not
+// portable to every Git-for-Windows build, hence a real file.
+func emptyGlobalConfig() string {
+	emptyOnce.Do(func() {
+		path := filepath.Join(os.TempDir(), "verdict-testenv-empty-gitconfig")
+		if err := os.WriteFile(path, nil, configPerm); err != nil {
+			emptyPath = os.DevNull
+			return
+		}
+		emptyPath = path
+	})
+	return emptyPath
+}
+
+var (
+	emptyOnce sync.Once
+	emptyPath string
+)
+
+// GitConfig returns the exported GIT_CONFIG_* entries that pin the repository
+// behavior: no system config, an empty global config, then the fixed keys at
+// command scope (highest precedence, so a repository's own config cannot
+// override them).
+func GitConfig() []string {
+	env := []string{
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_GLOBAL=" + emptyGlobalConfig(),
+		"GIT_CONFIG_COUNT=" + strconv.Itoa(len(gitConfig)),
+	}
+	for i, kv := range gitConfig {
+		env = append(env,
+			"GIT_CONFIG_KEY_"+strconv.Itoa(i)+"="+kv[0],
+			"GIT_CONFIG_VALUE_"+strconv.Itoa(i)+"="+kv[1])
+	}
+	return env
+}
+
+// Base returns the child environment: the parent's variables minus harness
+// leaks, secret-shaped names, and anything extra overrides, then the pinned
+// git config, then extra itself (last wins, so a test can override any key).
+// Callers append HOME/PATH/TMPDIR and any per-run values.
+func Base(extra map[string]string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extra))
+	for _, kv := range os.Environ() {
+		if entry, ok := keep(kv, extra); ok {
+			env = append(env, entry)
+		}
+	}
+	env = append(env, GitConfig()...)
+	for k, v := range extra {
+		env = append(env, k+envSep+v)
+	}
+	return env
+}
+
+// keep returns the parent entry when it survives into the child.
+func keep(kv string, extra map[string]string) (string, bool) {
+	name, _, ok := strings.Cut(kv, envSep)
+	if !ok {
+		return kv, true
+	}
+	if _, override := extra[name]; override {
+		return "", false
+	}
+	if dropName(name) || envsecret.IsSecret(name) {
+		return "", false
+	}
+	return kv, true
+}
+
+// dropName reports whether a parent variable is a harness leak.
+func dropName(name string) bool {
+	for _, prefix := range dropPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return slices.Contains(dropNames, name)
+}

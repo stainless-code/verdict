@@ -1,0 +1,305 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4706,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4706/PR.json + full.diff to any agent; ask it to write .review/4706/review.json; prior threads are in .review/4706/threads.json (run verdict threads to refresh)",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4706",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 99,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "gitlab",
+      "fetch": true,
+      "post": false,
+      "inline_anchors": false,
+      "thread_resolution": false,
+      "review_verdicts": false
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
+    },
+    "artifacts": {
+      "PR.json": ".review/4706/PR.json",
+      "full.diff": ".review/4706/full.diff",
+      "toc.txt": ".review/4706/toc.txt",
+      "roles.txt": ".review/4706/roles.txt",
+      "reviews.json": ".review/4706/reviews.json",
+      "inline.json": ".review/4706/inline.json",
+      "threads.json": ".review/4706/threads.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» glab mr diff -> .review/4706/full.diff
+» roles -> .review/4706/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+done: .review/4706/PR.json .review/4706/full.diff .review/4706/toc.txt .review/4706/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4706/PR.json + .review/4706/full.diff (+ .review/4706/roles.txt) to any agent; ask it to write .review/4706/review.json; prior threads are in .review/4706/threads.json (run verdict threads to refresh)
+--- files ---
+--- file C/.glab-calls.log ---
+CALL: mr view 4706 -R acme/app -F json
+CALL: api projects/acme%2Fapp --jq .id
+CALL: api projects/11/merge_requests/4706/diffs --paginate
+CALL: mr diff 4706 -R acme/app --raw
+CALL: api projects/11/merge_requests/4706/notes?per_page=100&page=1
+CALL: api projects/11/merge_requests/4706/discussions?per_page=100&page=1
+--- file C/.review/4706/.diff.err ---
+
+--- file C/.review/4706/.difffiles ---
+a.txt
+--- file C/.review/4706/.meta.err ---
+
+--- file C/.review/4706/PR.json ---
+{
+  "schema_version": "1",
+  "provider": "gitlab",
+  "number": 5,
+  "title": "MR five",
+  "body": "body",
+  "base_ref": "main",
+  "head_ref": "feat",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "author": "mate",
+  "url": "https://example.invalid/5",
+  "state": "open",
+  "draft": false,
+  "files": [
+    {
+      "path": "a.txt",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 1,
+  "deletions": 1
+}
+--- file C/.review/4706/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4706/full.diff ---
+diff --git a/a.txt b/a.txt
+index 1111111..2222222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.review/4706/hunks.tsv ---
+a.txt	OLD	1	1
+a.txt	NEW	1	1
+--- file C/.review/4706/inline.json ---
+[
+  {
+    "type": "DiffNote"
+  }
+]
+--- file C/.review/4706/reviews.json ---
+[
+  {
+    "type": "Note"
+  }
+]
+--- file C/.review/4706/roles.txt ---
+## docs
+- a.txt
+--- file C/.review/4706/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4706/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "gitlab",
+  "pr": 4706,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "d1",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "201",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Please rename.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        },
+        {
+          "id": "202",
+          "author": "verdict",
+          "author_kind": "human",
+          "body": "Fixed.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d2",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": true,
+      "url": null,
+      "author": "bo",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "204",
+          "author": "bo",
+          "author_kind": "human",
+          "body": "Old note",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d3",
+      "path": "",
+      "line": null,
+      "start_line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "rev",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "issue-comment",
+      "comments": [
+        {
+          "id": "205",
+          "author": "rev",
+          "author_kind": "human",
+          "body": "LGTM",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+--- file C/.review/4706/toc.txt ---
+# TOC for gitlab #4706 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+
+## stat
+a.txt (+1/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)

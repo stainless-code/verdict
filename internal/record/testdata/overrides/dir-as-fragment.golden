@@ -1,0 +1,37 @@
+exit: 0
+--- stdout ---
+» anchors: 0 inline, 0 moved to body
+» findings: 0 sigs -> .review/local-ov/findings.json
+recorded: .review/local-ov/findings.json (0 open) + .review/local-ov/record.json — report/triage read it; post stays refused (no PR target)
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+--- files ---
+--- file C/.review/local-ov/findings.json ---
+[]
+--- file C/.review/local-ov/hunks.tsv ---
+notes.txt	OLD	1	7
+notes.txt	NEW	1	7
+notes.txt	OLD	11	17
+notes.txt	NEW	11	17
+other.txt	OLD	1	3
+other.txt	NEW	1	3
+--- file C/.review/local-ov/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "ad170d66e9e46837651817fd7d3009b2e2d27afd8e5612be10a809778ebb526a",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 0,
+  "open": 0,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
+  "model": null
+}
+--- file C/.review/local-ov/store.json ---
+{
+  "schema_version": "1"
+}

@@ -1,6 +1,13 @@
-# [Changesets](https://github.com/changesets/changesets): open a "Version packages" PR when
-# `.changeset/*.md` files land on `main`, then publish to npm when that PR merges via npm
-# trusted publishing (GitHub OIDC — no NPM_TOKEN; provenance auto-generated).
+# Release: Changesets opens "Version packages" PRs on main; merging one runs
+# the full release chain (scripts/release.sh) in four idempotent stages:
+# git-tag the bumped version, GoReleaser builds/signs/attests the six static
+# binaries and owns the GitHub Release, then the npm tree publishes (platforms
+# first, wrapper last) and the Homebrew formula renders. Each stage skips when
+# its effect already exists, so re-running this workflow after a mid-chain
+# failure finishes the remaining stages instead of wedging. GoReleaser owns
+# the GitHub Release, so create-github-releases stays false. Trusted
+# publishing is npm OIDC (no NPM_TOKEN); cosign is keyless (GitHub OIDC, no
+# keys).
 name: Release
 
 on:
@@ -14,6 +21,7 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -26,15 +34,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # npm trusted publishing (OIDC) needs npm >= 11.5.1 (docs.npmjs.com/trusted-publishers).
-      #
-      # This step MUST run after `Setup Bun and install`: that composite runs
-      # its own setup-node (Node 22, npm 10.x), which puts npm 10 back on PATH.
-      # Whatever runs last owns PATH at publish time, and npm 10 cannot detect
-      # OIDC, so `npm publish` goes out anonymous and the registry answers
-      # every PUT with E404. Node 24 ships npm 11.x, which auto-authenticates
-      # via OIDC (no token). This repo keeps zero native dependencies,
-      # so switching Node after install has no ABI consequences.
       - name: Setup Bun and install
         uses: ./.github/actions/setup
 
@@ -44,17 +43,52 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Setup Go (GoReleaser builds the binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install GoReleaser (pinned)
+        shell: bash
+        run: |
+          GOBIN="${{ runner.temp }}/grbin" go install "github.com/goreleaser/goreleaser/v2@v2.19.0"
+          echo "${{ runner.temp }}/grbin" >> "$GITHUB_PATH"
+
+      - name: Install Syft (pinned, per-archive SPDX SBOMs)
+        shell: bash
+        run: |
+          GOBIN="${{ runner.temp }}/grbin" go install "github.com/anchore/syft/cmd/syft@v1.56.0"
+          echo "${{ runner.temp }}/grbin" >> "$GITHUB_PATH"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
       # Opens/updates the Version PR when `.changeset/*.md` exist. When there are none, the action
-      # can still run `publish` so a just-merged Version PR can ship.
+      # can still run `publish` so a just-merged Version PR ships.
       # `prepack` (package.json) asserts no secrets in the tarball on every publish.
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: bun run version
-          publish-script: bun run release
+          publish-script: scripts/release.sh
           pr-title: "chore: version packages"
           commit-message: "chore: version packages"
-          create-github-releases: true
+          create-github-releases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tap push: a fine-grained token with Contents read/write on
+          # stainless-code/homebrew-tap, enabled by the TAP_PUSH=1 repository
+          # variable; release.sh skips the tap push while TAP_PUSH is unset.
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAP_PUSH: ${{ vars.TAP_PUSH }}
+
+      # Provenance attestation over the signed checksums. Runs only when the
+      # publish chain produced a release (no dist/ on Version-PR-only runs).
+      - name: Attest build provenance
+        if: steps.changesets.outputs.published == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/checksums.txt

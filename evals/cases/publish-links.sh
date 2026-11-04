@@ -19,10 +19,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 SHA_F="ffffffffffffffffffffffffffffffffffffffff"
@@ -86,13 +82,9 @@ else
   bad "provider record exits $EVAL_STATUS"
 fi
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4523.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq 'notes.txt:2' "$EVAL_SANDBOX/out-4523.md" \
-  && ! grep -q 'blob/' "$EVAL_SANDBOX/out-4523.md"; then
-  good "provider report renders plain path:line, no blob URLs"
-else
-  bad "provider fallback wrong (exit $EVAL_STATUS)"
-fi
+assert_exit "provider report renders" 0
+assert_file_grep "provider report renders plain path:line" "$EVAL_SANDBOX/out-4523.md" 'notes.txt:2' "-F"
+assert_file_nogrep "provider report carries no blob URLs" "$EVAL_SANDBOX/out-4523.md" 'blob/' "-F"
 
 # --- L4: local bundle degrades to plain path:line ---
 PR="local-t2"
@@ -122,13 +114,9 @@ else
   bad "local record exits $EVAL_STATUS"
 fi
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4524.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq 'notes.txt:2' "$EVAL_SANDBOX/out-4524.md" \
-  && ! grep -q 'blob/' "$EVAL_SANDBOX/out-4524.md"; then
-  good "local report renders plain path:line, no blob URLs"
-else
-  bad "local fallback wrong (exit $EVAL_STATUS)"
-fi
+assert_exit "local report renders" 0
+assert_file_grep "local report renders plain path:line" "$EVAL_SANDBOX/out-4524.md" 'notes.txt:2' "-F"
+assert_file_nogrep "local report carries no blob URLs" "$EVAL_SANDBOX/out-4524.md" 'blob/' "-F"
 
 # --- L5: mismatch warns and keeps; correct pin stays silent ---
 PR=4525
@@ -150,13 +138,9 @@ eval_write_review "$PR" <<EOF
 {"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n[notes.txt:2][ev-1]\n\n[ev-1]: https://github.com/acme/app/blob/$SHA_A/notes.txt#L2","approved":true,"comments":[]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -q "differs from the reviewed SHA" "$EVAL_ERR" \
-  && ! grep -q "longer than 3 lines" "$EVAL_ERR"; then
-  good "correctly pinned link stays silent"
-else
-  bad "correct pin warned (exit $EVAL_STATUS)"
-fi
+assert_exit "correctly pinned link succeeds" 0
+assert_stream_nogrep "correctly pinned link warns about no SHA drift" "$EVAL_ERR" "differs from the reviewed SHA"
+assert_stream_nogrep "correctly pinned link warns about no line overflow" "$EVAL_ERR" "longer than 3 lines"
 
 # --- M1: manual carries the permalink paragraph ---
 if grep -Fq 'pinned to the reviewed commit — never live HEAD' "$EVAL_ROOT/docs/manual.md"; then
@@ -165,5 +149,4 @@ else
   bad "permalink paragraph missing from docs/manual.md"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case publish-links: FAIL ($fails)"; exit 1; fi
-echo "case publish-links: PASS"
+eval_end

@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "calibrate",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "provider-unimplemented",
+    "message": "calibrate on gitlab is not implemented yet (no live thread join for it)\ntry: use the verb named above for this bundle kind"
+  }
+}
+--- stderr ---
+
+--- files ---

@@ -1,0 +1,35 @@
+{
+  "model": "fixture-good",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "pagination.go",
+        "line": 10,
+        "side": "RIGHT",
+        "body": "Header helper naming nit: buildHeader could live with the renderer.",
+        "rigor": "observed",
+        "severity": "informational"
+      },
+      {
+        "path": "pagination.go",
+        "line": 42,
+        "side": "RIGHT",
+        "body": "Loop bound runs one past the slice; use i < len(xs).",
+        "rigor": "walked",
+        "severity": "critical"
+      },
+      {
+        "path": "pagination.go",
+        "line": 58,
+        "side": "RIGHT",
+        "body": "The fetchPage error is discarded; propagate it instead of breaking on next == \"\".",
+        "rigor": "pointed",
+        "severity": "important"
+      }
+    ]
+  }
+}

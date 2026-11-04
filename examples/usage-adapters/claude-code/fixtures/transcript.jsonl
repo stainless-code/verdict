@@ -1,0 +1,4 @@
+{"type":"assistant","sessionId":"sess-a","cwd":"/work/acme","timestamp":"2026-09-01T10:00:00.123Z","requestId":"r1","costUSD":0.4,"message":{"id":"m1","model":"claude-sonnet-4-5","usage":{"input_tokens":1000,"output_tokens":50,"cache_read_input_tokens":800,"cache_creation_input_tokens":100}}}
+{"type":"assistant","sessionId":"sess-a","cwd":"/work/acme","timestamp":"2026-09-01T10:00:05Z","requestId":"r1","costUSD":0.4,"message":{"id":"m1","model":"claude-sonnet-4-5","usage":{"input_tokens":1000,"output_tokens":50,"cache_read_input_tokens":800,"cache_creation_input_tokens":100}}}
+{"type":"assistant","sessionId":"sess-a","cwd":"/work/acme","timestamp":"2026-09-01T10:01:00Z","requestId":"r2","costUSD":1.7,"message":{"id":"m2","model":"claude-sonnet-4-5","usage":{"input_tokens":2000,"output_tokens":120}}}
+{"type":"cost-state","sessionId":"sess-a","cwd":"/work/acme","timestamp":"2026-09-01T10:02:00Z","totalCostUSD":2.5,"startTime":1785626400000}

@@ -1,0 +1,76 @@
+exit: 0
+--- stdout ---
+» anchors: 1 inline, 0 moved to body
+» findings: 1 sigs -> .review/local-kb/findings.json
+  bfd750df  open  true  notes.txt
+recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-kb/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: ignoring unknown kb rule 'a'
+warn: ignoring unknown kb rule 'b'
+warn: ignoring unknown kb rule 'c'
+warn: ignoring unknown kb rule 'd'
+warn: ignoring unknown kb rule 'e'
+warn: ignoring unknown kb rule 'f'
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+--- files ---
+--- file C/.review/local-kb/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Cited finding here.",
+    "suggestion": null,
+    "kb": [
+      "rec-rule"
+    ],
+    "inBounds": true,
+    "rigor": "walked",
+    "severity": "important",
+    "sig": "bfd750dfd6a62efb7a91db702664395618b7f845",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  }
+]
+--- file C/.review/local-kb/hunks.tsv ---
+notes.txt	OLD	1	7
+notes.txt	NEW	1	7
+notes.txt	OLD	11	17
+notes.txt	NEW	11	17
+notes.txt	OLD	21	27
+notes.txt	NEW	21	27
+notes.txt	OLD	31	37
+notes.txt	NEW	31	37
+other.txt	OLD	1	3
+other.txt	NEW	1	3
+--- file C/.review/local-kb/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 1,
+  "open": 1,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
+  "model": null
+}
+--- file C/.review/local-kb/store.json ---
+{
+  "schema_version": "1"
+}

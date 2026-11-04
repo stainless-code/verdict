@@ -1,0 +1,14 @@
+# Line endings: LF everywhere. Without this, Windows checkouts (autocrlf)
+# flip tracked text files to CRLF and trip the gofmt / shell / fmt gates.
+* text=auto eol=lf
+*.go text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.md text eol=lf
+*.mdx text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.tsv text eol=lf
+hooks/* text eol=lf
+*.png binary

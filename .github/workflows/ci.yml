@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "agent/**"
   pull_request:
     branches:
       - main
@@ -49,7 +50,7 @@ jobs:
         run: git ls-files '*.sh' hooks/pre-commit | xargs shellcheck -S warning
 
   installer:
-    name: 🔌 Installer smoke
+    name: 🔌 Skill installer smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -64,20 +65,212 @@ jobs:
           # network, never run doctor, and HOME points at a temp dir.
           export HOME="$RUNNER_TEMP/fakehome"
           mkdir -p "$HOME"
-          ./install.sh --help >/dev/null
-          ./install.sh --list | grep -q '^absent:   agents'
-          ./install.sh --list --agent qwen | grep -q '^absent:   qwen'
-          ./install.sh --agent nope >/dev/null 2>&1 && exit 1 || true
-          ./install.sh --dir relative/path >/dev/null 2>&1 && exit 1 || true
-          XDG_CONFIG_HOME="$HOME/.xdg" ./install.sh --list --agent opencode | grep -q "$HOME/.xdg/opencode/skills"
-          CLAUDE_CONFIG_DIR="$HOME/claude" ./install.sh --list --agent claude | grep -q "$HOME/claude/skills"
-          ./install.sh --list --detect | grep -q '^absent:   agents'
-          echo "installer smoke ok"
+          ./install-skill.sh --help >/dev/null
+          ./install-skill.sh --list | grep -q '^absent:   agents'
+          ./install-skill.sh --list --agent qwen | grep -q '^absent:   qwen'
+          ./install-skill.sh --agent nope >/dev/null 2>&1 && exit 1 || true
+          ./install-skill.sh --dir relative/path >/dev/null 2>&1 && exit 1 || true
+          XDG_CONFIG_HOME="$HOME/.xdg" ./install-skill.sh --list --agent opencode | grep -q "$HOME/.xdg/opencode/skills"
+          CLAUDE_CONFIG_DIR="$HOME/claude" ./install-skill.sh --list --agent claude | grep -q "$HOME/claude/skills"
+          ./install-skill.sh --list --detect | grep -q '^absent:   agents'
+          echo "skill installer smoke ok"
+
+  installers:
+    name: 📥 Installers (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go (the eval runner expects a built binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install shellcheck (macOS does not preinstall it)
+        shell: bash
+        run: |
+          if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
+
+      - name: Shellcheck installers
+        shell: bash
+        run: |
+          shellcheck -s sh -S warning install.sh
+          shellcheck -S warning install-skill.sh evals/cases/installer-binary.sh evals/cases/upgrade.sh
+
+      - name: Hermetic installer eval (fake release assets, file:// URLs)
+        shell: bash
+        run: make build && ./evals/one.sh installer-binary
+
+  installers-windows:
+    name: 📥 Installers (windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: install.ps1 tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./evals/cases/installer-binary.ps1
+
+      - name: install.ps1 tests (PowerShell 7)
+        shell: pwsh
+        run: ./evals/cases/installer-binary.ps1
+
+  go:
+    name: 🐹 Go (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Harness deps (bash/jq/git used by Go tests and stubs)
+        shell: bash
+        run: |
+          # Go tests shell bash for provider stubs and the verify watchdog,
+          # and the CLI probes jq/git, so assert each tool separately:
+          # `command -v a b c` passes when only one is found.
+          command -v bash
+          command -v jq
+          command -v git
+          jq --version
+
+      - name: Go gate (gofmt, vet, mod verify, race tests, vuln)
+        shell: bash
+        run: make ci-go
+
+      - name: golangci-lint (repo config, pinned v2.15.x)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          args: --timeout=10m
+
+      - name: Prove the golden tests ran (no silent skip)
+        shell: bash
+        run: |
+          # Re-run one golden test verbosely: the step passes only on an
+          # observed `--- PASS`, so a suite that never executes (or errors
+          # before running) fails the build instead of looking green.
+          go test -count=1 -v -run '^TestGateGolden$' ./internal/core/verify/ > "$RUNNER_TEMP/golden-guard.log" 2>&1
+          grep -q '^--- PASS: TestGateGolden' "$RUNNER_TEMP/golden-guard.log"
+
+  go-windows:
+    name: 🐹 Go Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Harness deps (bash/jq/git used by Go tests and stubs)
+        shell: bash
+        run: |
+          # Go tests shell bash for provider stubs and the verify watchdog,
+          # and the Go CLI probes git/jq, so assert each tool separately:
+          # `command -v a b c` passes when only one is found.
+          command -v bash
+          command -v jq
+          command -v git
+          jq --version
+
+      - name: gofmt check
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+
+      - name: go build
+        shell: bash
+        run: go build ./...
+
+      - name: go vet + mod verify
+        shell: bash
+        run: |
+          go vet ./...
+          go mod verify
+
+      - name: go test
+        shell: bash
+        run: go test -count=1 -timeout=25m ./...
+
+  evals:
+    name: 🧪 Evals (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go (the suite runs the built binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install shellcheck (precommit-hook grades it, and the macOS
+          image does not preinstall it)
+        shell: bash
+        run: |
+          if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
+
+      - name: Harness deps (bash/jq/git/go/shellcheck)
+        shell: bash
+        run: |
+          # run.sh fails on a missing dep, but assert up front so the log
+          # names the side. precommit-hook grades shellcheck (H1 fails
+          # without it), so its absence fails here instead of deep in the
+          # suite.
+          command -v bash jq git go shellcheck
+          jq --version
+          go version
+
+      - name: Run offline contract evals (built binary)
+        shell: bash
+        run: make evals
+        # Builds bin/verdict, asserts it is executable (the suite fails here
+        # rather than silently grading nothing), then runs every case
+        # against it via $EVAL_CLI. Same hermeticity locally and here
+        # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
+        # assertion). macOS runners shell out with bash 3.2, which doubles
+        # as the suite's 3.2-compat bar.
 
   docs:
     name: 📖 Docs site
     runs-on: ubuntu-latest
-    # Private repo: the changelog source reads releases via GITHUB_TOKEN.
+    # Public repo: the changelog source still reads releases through
+    # GITHUB_TOKEN to avoid unauthenticated GitHub API rate limits.
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -106,6 +299,68 @@ jobs:
       - name: Audit the built site
         working-directory: apps/docs
         run: bun run audit
+
+  release-dry-run:
+    name: 📦 Release dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Bun and install (the dry run builds the TS client)
+        uses: ./.github/actions/setup
+
+      - name: Setup Node (npm tree + pack checks)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+
+      - name: Install GoReleaser (pinned)
+        shell: bash
+        run: |
+          GOBIN="${{ runner.temp }}/grbin" go install "github.com/goreleaser/goreleaser/v2@v2.19.0"
+          echo "${{ runner.temp }}/grbin" >> "$GITHUB_PATH"
+
+      # Snapshot archives, the TS client build, the npm tree (fake npm records
+      # argv, publishes nothing), the tap formula, `npm pack` content checks,
+      # and the contract tests. Uploads nothing; needs no secrets.
+      - name: Snapshot the whole release train (publishes nothing)
+        shell: bash
+        run: make release-dry-run
+
+  ts-client:
+    name: 📦 TS client
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Setup Go (the suite runs the built binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+
+      - name: Build the binary, then gate the TS client
+        shell: bash
+        run: make build && make clients-ts
 
   audit:
     name: 🛡 Audit
@@ -155,17 +410,66 @@ jobs:
 
   ci-complete:
     name: CI complete
-    needs: [format, lint, docs, audit]
+    # The single declaration of what blocks a merge. Every job below must
+    # appear in exactly one list (`internal/archtest` fails the build on
+    # drift), and only a required lane can fail this gate: a required lane
+    # must be literally `success` — a skip reports success to branch
+    # protection, so a skip fails here too — while an advisory lane just has
+    # to report its result. Both platform legs stay required: `go-windows` is
+    # green and deterministic, and demoting a platform is a policy decision,
+    # not a flake workaround. ADVISORY_JOBS is empty today; the gate below
+    # reads an empty list as "no advisory lanes".
+    env:
+      REQUIRED_JOBS: format lint installer installers installers-windows go go-windows evals docs ts-client audit release-dry-run
+      ADVISORY_JOBS: ""
+    needs:
+      [
+        format,
+        lint,
+        installer,
+        installers,
+        installers-windows,
+        go,
+        go-windows,
+        evals,
+        docs,
+        ts-client,
+        audit,
+        release-dry-run,
+      ]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any required job failed
-        if: |
-          needs.format.result != 'success' ||
-            needs.lint.result != 'success' ||
-            needs.docs.result != 'success' ||
-            needs.audit.result != 'success'
-        run: exit 1
+      - name: Required lanes succeeded, advisory lanes reported
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          # One data-driven gate over the declaration above: report every
+          # lane, then fail only on a required lane that is not `success`, an
+          # advisory lane that never reported, or a job nobody declared.
+          printf '%s' "$NEEDS" | jq -r --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
+            def lanes: split(" ") | map(select(length > 0));
+            ($req | lanes) as $r | ($adv | lanes) as $a
+            | to_entries[]
+            | .key as $k | (.value.result // "") as $res
+            | if ($r | index($k)) then "required \($k): \($res)"
+              elif ($a | index($k)) then "advisory \($k): \($res) (never blocks)"
+              else "undeclared \($k): \($res)" end'
+          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
+            def lanes: split(" ") | map(select(length > 0));
+            ($req | lanes) as $r | ($adv | lanes) as $a
+            | [to_entries[].key] as $have
+            | [((($r + $a) - $have)[]) | "declared but absent from needs: \(.)"]
+              + [to_entries[]
+                 | .key as $k | (.value.result // "") as $res
+                 | if ($r | index($k)) then
+                     (if $res != "success" then "required but \($res): \($k)" else empty end)
+                   elif ($a | index($k)) then
+                     (if $res == "" then "advisory but silent: \($k)" else empty end)
+                   else "undeclared in needs: \($k)" end]
+            | if length == 0 then true
+              else (.[] | halt_error(1)) end' > /dev/null
 
       - name: OK
         run: echo "CI requirements satisfied"

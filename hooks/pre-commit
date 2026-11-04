@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pre-commit: formatting gate. CHECK-ONLY — never rewrites files.
 # (auto-write would reflow protected prompt examples; see README ## Formatting.)
-# Wired by install.sh via `git config core.hooksPath`. Filenames with spaces
+# Wired by install-skill.sh via `git config core.hooksPath`. Filenames with spaces
 # are not supported (this repo has none).
 set -euo pipefail
 

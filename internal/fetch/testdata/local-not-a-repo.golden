@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch-local",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "not-a-repo",
+    "message": "fetch-local runs inside a git worktree\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

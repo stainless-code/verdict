@@ -1,0 +1,73 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "report",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "address open threads",
+  "warnings": [
+    "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
+  ],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "dir": ".review/local-work",
+    "head": {
+      "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "live": null,
+      "stale": false
+    },
+    "verdict": {
+      "open": 1,
+      "deferred": 0,
+      "addressed": 0,
+      "terminal": 0
+    },
+    "counts": {
+      "inline": 1,
+      "section": 0,
+      "anchored": 1,
+      "unanchored": 0
+    },
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "patch": null,
+    "output": null,
+    "filters": {
+      "status": "all",
+      "kind": "all"
+    },
+    "items": [
+      {
+        "kind": "inline",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "said",
+        "severity": "informational",
+        "sig": "a333333333333333333333333333333333333333",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "open",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 1
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
+check: no open findings at-or-above critical — gate passes
+--- files ---

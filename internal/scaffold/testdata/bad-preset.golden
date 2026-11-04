@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "init",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-preset",
+    "message": "unknown --preset 'bogus' (want chill|standard|strict)\ntry: re-run with one of the valid values named above"
+  }
+}
+--- stderr ---
+re-enter: verdict init --preset bogus --yes --json
+--- files ---

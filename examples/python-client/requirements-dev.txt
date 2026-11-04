@@ -1,0 +1,2 @@
+# Codegen only. The runtime example uses the standard library.
+datamodel-code-generator==0.88.0

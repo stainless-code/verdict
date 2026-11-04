@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "triage",
+  "repo": "acme/app",
+  "pr": 4251,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-triage-status",
+    "message": "refusing triage: unknown status 'bogus' (want open|addressed|wont-fix|false-positive|deferred)\ntry: re-run with one of the valid values named above"
+  }
+}
+--- stderr ---
+
+--- files ---

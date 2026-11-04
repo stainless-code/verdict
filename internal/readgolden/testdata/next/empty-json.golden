@@ -1,0 +1,18 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "next",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "none — nothing to act on",
+  "warnings": [],
+  "data": {
+    "item": null
+  },
+  "error": null
+}
+--- stderr ---
+next: none open — nothing to act on
+--- files ---

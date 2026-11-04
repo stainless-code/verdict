@@ -1,0 +1,19 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "middleware.go",
+        "line": 52,
+        "side": "RIGHT",
+        "body": "The role comparison is inverted; reject when role != \"admin\".",
+        "rigor": "walked",
+        "severity": "critical"
+      }
+    ]
+  }
+}

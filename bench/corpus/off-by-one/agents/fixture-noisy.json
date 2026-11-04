@@ -1,0 +1,19 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "pagination.go",
+        "line": 42,
+        "side": "RIGHT",
+        "body": "Loop bound runs one past the slice; use i < len(xs).",
+        "rigor": "walked",
+        "severity": "critical"
+      }
+    ]
+  }
+}

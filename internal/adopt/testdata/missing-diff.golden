@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "adopt",
+  "repo": "acme/app",
+  "pr": 4311,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "missing-diff",
+    "message": "missing .review/4311/full.diff (fetch the PR first)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

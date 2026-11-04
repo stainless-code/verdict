@@ -1,0 +1,399 @@
+package verdict // import "github.com/stainless-code/verdict/pkg/verdict"
+
+Package verdict is the public Go facade over the review core services.
+
+Experimental: the Go API may change in a minor release before 1.0; pin a version
+if you embed. The stable contract is the binary's --json envelope plus the
+published JSON Schemas (schema_version "1"): the core owns every behavior,
+this package only converts typed requests and responses.
+
+Bundle files resolve from the process working directory, exactly like the CLI:
+call from (or change into) the checkout that carries .review/. Options.Dir
+anchors tool-version and provenance lookups to that checkout. Methods are
+context-first, never call os.Exit, and never touch process stdio: human lines
+and warnings flow through Options.Progress.
+
+Distribution surfaces (install, upgrade, skill) stay CLI-only on purpose and are
+not exposed here.
+
+TYPES
+
+type AdoptRequest struct {
+	Invocation
+	From string
+}
+    AdoptRequest copies findings from a local bundle into the target bundle.
+
+type AdoptResponse struct {
+	Outcome
+	Human string
+}
+    AdoptResponse carries the handoff summary and the human line.
+
+type Artifact struct {
+	Path    string
+	Content []byte
+}
+    Artifact is one rendered output file. The service returns bytes; writing
+    them is the caller's decision.
+
+type CalibrateRequest struct {
+	Invocation
+	Probe     bool
+	Specs     []string
+	JudgeFile string
+}
+    CalibrateRequest carries the calibration options: offline probe or live
+    ground-truth join.
+
+type CheckTreeRequest struct {
+	Invocation
+	Expect string
+}
+    CheckTreeRequest gates on a clean git worktree.
+
+type CheckTreeResponse struct {
+	Outcome
+	Exit int
+}
+    CheckTreeResponse carries the gate outcome and process exit code.
+
+type Client struct {
+	// Has unexported fields.
+}
+    Client runs review operations in-process. It owns no behavior: every method
+    converts a typed request, calls one core service, and converts the typed
+    response back.
+
+func New(o Options) *Client
+    New builds a Client. The zero Options yields a usable client with the wall
+    clock, no environment, discarded progress, and the real command runner.
+
+func (c *Client) Adopt(ctx context.Context, req *AdoptRequest) (*AdoptResponse, error)
+    Adopt copies findings from a local bundle into the target PR bundle.
+
+func (c *Client) Calibrate(ctx context.Context, req *CalibrateRequest) (*Result, error)
+    Calibrate compares stored findings against ground truth.
+
+func (c *Client) CheckTree(ctx context.Context, req *CheckTreeRequest) (*CheckTreeResponse, error)
+    CheckTree gates on a clean git worktree. A not-a-repo checkout returns a
+    typed refusal, not a response.
+
+func (c *Client) Close() error
+    Close releases client resources. It is a no-op today, kept so embedding code
+    never needs a second revision when a resource appears.
+
+func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error)
+    Doctor preflights the harness (auth, git, storage) and reports health.
+
+func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error)
+    Fetch fetches a pull request into .review/<pr>.
+
+func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Result, error)
+    FetchLocal fetches a local git diff into .review/local-<name>.
+
+func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error)
+    Fix runs one bounded fix pass over an inline finding (or reports completion
+    when nothing is actionable).
+
+func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
+    Init scaffolds .review control files from a style preset.
+
+func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
+    Learn reads or updates the local structured knowledge base.
+
+func (c *Client) Next(ctx context.Context, req *NextRequest) (*NextResponse, error)
+    Next returns the top actionable finding for the bundle.
+
+func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error)
+    Post submits the review payload; DryRun renders without submitting.
+
+func (c *Client) Ready(ctx context.Context, req *ReadyRequest) (*ReadyResponse, error)
+    Ready reports merge readiness (checks, threads, draft/conflict).
+
+func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error)
+    Record validates and merges a local review.json into the stores.
+
+func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportResponse, error)
+    Report renders the offline review report for the bundle.
+
+func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, error)
+    Show returns one full finding record by signature or unique prefix.
+
+func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, error)
+    Trend rolls up review outcomes across fetched bundles.
+
+func (c *Client) Triage(ctx context.Context, req *TriageRequest) (*TriageResponse, error)
+    Triage flips one finding's status, or previews the flip with DryRun.
+
+func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyResponse, error)
+    Verify runs the recorded verifyCmd with the watchdog and records proof.
+
+type Command struct {
+	Argv  []string
+	Stdin io.Reader
+	Env   []string
+}
+    Command is one spawned process: argv, stdin, and environment.
+
+type CommandResult struct {
+	Stdout   string
+	Stderr   string
+	ExitCode int
+	TimedOut bool
+	Decoy    bool
+}
+    CommandResult is one completed process: captured streams plus wait status.
+
+type Commander interface {
+	Run(ctx context.Context, cmd Command) (CommandResult, error)
+}
+    Commander runs one process to completion. The production client shells out
+    to the real gh/git; tests inject a scripted Commander.
+
+type DoctorRequest struct{}
+    DoctorRequest carries no positionals: doctor preflights the harness.
+
+type DoctorResponse struct {
+	Outcome
+	Healthy bool
+}
+    DoctorResponse carries the preflight result.
+
+type FetchLocalRequest struct {
+	Invocation
+	Range, BaseRef, Stash                               string
+	Paths                                               []string
+	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
+}
+    FetchLocalRequest carries the local-diff fetch options.
+
+type FetchRequest struct {
+	Invocation
+	BaseSHA, Provider                 string
+	BudgetConsent, ShowPrompts, Chunk bool
+}
+    FetchRequest carries the fetch options: base/provider overrides and flags.
+
+type Finding struct {
+	Sig      string
+	Status   string
+	Locator  string
+	Rank     int
+	Anchored any
+	Raw      json.RawMessage
+}
+    Finding is one ranked finding: locator fields plus the full store record.
+
+type FixRequest struct {
+	Invocation
+	Sig string
+}
+    FixRequest runs one bounded fix pass over an inline finding.
+
+type InitRequest struct {
+	Preset string
+	Yes    bool
+}
+    InitRequest scaffolds .review control files from a style preset.
+    Non-interactive only: pass Yes to confirm.
+
+type InitResponse struct {
+	Outcome
+	ExitCode int
+}
+    InitResponse carries the scaffold plan and exit code.
+
+type Invocation struct {
+	Repo string
+	PR   string
+}
+    Invocation carries the repo/PR positionals shared by most requests.
+
+type LearnRequest struct {
+	Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
+	Status                                                      bool
+}
+    LearnRequest reads or updates the local knowledge base. It takes no repo/PR
+    positionals; the base lives under .review/.
+
+type MissingToolError struct {
+	Tool string
+}
+    MissingToolError marks a missing-tool exit: the named tool does not resolve
+    on PATH. Match it with errors.As.
+
+func (e *MissingToolError) Error() string
+    Error implements error.
+
+type NextRequest struct {
+	Invocation
+	Status string
+}
+    NextRequest asks for the top actionable finding, optionally filtered.
+
+type NextResponse struct {
+	Repo, PR, At, Status, Human string
+	Warnings                    []string
+	Item                        *Finding
+	StoreUnreadable             bool
+}
+    NextResponse carries the top actionable finding for the bundle.
+
+type Options struct {
+	// Dir is the checkout carrying .review/. It anchors tool-version and
+	// provenance lookups; bundle files still resolve from the process
+	// working directory, like the CLI.
+	Dir string
+	// Env is the injected environment snapshot (never the process env).
+	Env map[string]string
+	// Now is the injected clock; defaults to time.Now.
+	Now func() time.Time
+	// Progress observes human lines and warnings; nil discards.
+	Progress Progress
+	// Commander runs subprocesses; defaults to the production watchdog.
+	Commander Commander
+}
+    Options configures a Client.
+
+type Outcome struct {
+	At       string
+	Next     string
+	Warnings []string
+	Data     json.RawMessage
+}
+    Outcome carries the envelope fields for verbs without repo/PR positionals.
+
+type PostRequest struct {
+	Invocation
+	Approve, ReviewFile                 string
+	RequestChanges, Bind, Force, DryRun bool
+}
+    PostRequest carries the post options: approval, review file, and guards.
+
+type Progress interface {
+	Human(line string)
+	Warn(msg string)
+	Diag(line string)
+}
+    Progress observes human-facing lines. It mirrors the core observer seam so
+    no core type appears in a public signature; a nil Progress discards.
+
+type ReadyRequest struct {
+	Invocation
+	Check bool
+}
+    ReadyRequest gates on merge readiness.
+
+type ReadyResponse struct {
+	Result
+	Ready, GateFailed bool
+}
+    ReadyResponse carries the merge-readiness advisory and gate outcome.
+
+type RecordRequest struct {
+	Invocation
+}
+    RecordRequest merges a local review.json into the findings store.
+
+type RefusalError struct {
+	Code     string
+	Message  string
+	Hint     string
+	Warnings []string
+}
+    RefusalError is a typed refusal: machine code plus human message. Match it
+    with errors.As; every Client method returns one (or a MissingToolError)
+    instead of raw core errors.
+
+func (e *RefusalError) Error() string
+    Error implements error.
+
+type ReportRequest struct {
+	Invocation
+	Status, Kind, Output, Sarif, Check, Live string
+	Cost, Completeness                       bool
+}
+    ReportRequest carries the report options. Output/Sarif name files whose
+    bytes return in the response instead of being written.
+
+type ReportResponse struct {
+	Result
+	Human      []string
+	CheckLines []string
+	GateFailed bool
+	Output     *Artifact
+	Sarif      *Artifact
+}
+    ReportResponse is the offline review report with render inputs and the
+    requested file bytes.
+
+type Result struct {
+	Repo     string
+	PR       string
+	At       string
+	Next     string
+	Warnings []string
+	Data     json.RawMessage
+}
+    Result carries the envelope fields shared by bundle-scoped responses. Data
+    is the verb's data profile as JSON, byte-identical to the --json envelope's
+    data object.
+
+type ShowRequest struct {
+	Invocation
+	Sig string
+}
+    ShowRequest asks for one full finding record by signature or prefix.
+
+type ShowResponse struct {
+	Repo, PR, At string
+	Warnings     []string
+	Item         *Finding
+}
+    ShowResponse carries one full finding record in store key order.
+
+type TrendRequest struct {
+	Repo    string
+	Overlap bool
+}
+    TrendRequest rolls up review outcomes across fetched bundles. PR is unused;
+    trend scopes by repo.
+
+type TrendResponse struct {
+	Repo, At, Next string
+	Warnings       []string
+	Human          []string
+	Data           json.RawMessage
+}
+    TrendResponse carries the outcome rollup and the human summary.
+
+type TriageRequest struct {
+	Invocation
+	Sig, Status, Rationale string
+	Force, DryRun          bool
+}
+    TriageRequest flips one finding's status (or previews the flip).
+
+type TriageResponse struct {
+	Outcome
+	Human string
+}
+    TriageResponse carries the flip summary and the human line.
+
+type VerifyRequest struct {
+	Invocation
+	Timeout string   // raw --timeout value (seconds); bad values refuse
+	Env     []string // ordered child environment snapshot
+}
+    VerifyRequest runs the recorded verifyCmd under the watchdog.
+
+type VerifyResponse struct {
+	Result
+	Exit     int
+	PatchDir string
+	TimedOut bool
+	Tail     string
+}
+    VerifyResponse carries the verify outcome and the recorded proof.
+

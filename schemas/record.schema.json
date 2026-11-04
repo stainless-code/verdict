@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/record.schema.json",
+  "title": "record.json — completed-record (local bundles)",
+  "description": "Written by the record verb in the verdict CLI for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "status": {
+      "description": "Bundle provider that was recorded (e.g. local).",
+      "type": "string"
+    },
+    "head": {
+      "description": "Reviewed SHA (real head_sha, or \"dirty\"/\"unknown\" when the bundle has none).",
+      "type": "string"
+    },
+    "diff_sha256": {
+      "description": "SHA-256 of full.diff at record time.",
+      "type": "string"
+    },
+    "recorded_at": {
+      "description": "UTC timestamp of the record run.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "findings": {
+      "description": "Total merged findings.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "open": {
+      "description": "Open findings after the merge.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "confidence": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+    "security_summary": { "type": ["string", "null"] },
+    "tool_version": {
+      "description": "Tool version that wrote this record (from package.json).",
+      "type": "string"
+    },
+    "prompts_hash": {
+      "description": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
+      "type": "string"
+    },
+    "model": {
+      "description": "First model of the latest cost record, else null when no cost record names one.",
+      "type": ["string", "null"]
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "head",
+    "diff_sha256",
+    "recorded_at",
+    "findings",
+    "open"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: --range/--base/--staged/--stash are mutually exclusive
+try: re-run with one of the valid values named above
+--- files ---

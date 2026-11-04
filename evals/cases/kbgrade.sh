@@ -25,10 +25,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 S1="f111111111111111111111111111111111111111"
 S2="f222222222222222222222222222222222222222"
 S3="f333333333333333333333333333333333333333"
@@ -305,5 +301,4 @@ else
   bad "judgment runs touched the network ($stub_p6_before -> $stub_p6_after)"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case kbgrade: FAIL ($fails)"; exit 1; fi
-echo "case kbgrade: PASS"
+eval_end

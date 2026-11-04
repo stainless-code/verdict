@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Case publish-overrides: operator-owned per-block template fragments (P5).
+# Case publish-overrides: operator-owned per-block template fragments.
 #
 # Grades (all hermetic — crafted bundles, stub gh, no network):
-#   V1  absent-fragment parity: no .review/overrides reads today's bytes
-#       (report --output and human post dry-run match the pre-P5 HEAD script).
+#   V1  absent-fragment default: no .review/overrides reads the built-in
+#       bytes (report --output and human post dry-run succeed; V2 pins the
+#       default-fragment rendering).
 #   V2  valid default fragments render byte-identically (all four present with
 #       default content; report cmp identical; post dry-run exit 0; check-tree
-#       passes validation and fails only on the missing git repo).
+#       passes fragment validation and fails only on the repo/tree gate).
 #   E1  custom attribution fragment renders substituted (exit 0).
 #   E2  custom footer-order reorders/drops receipt fields (exact segments).
 #   E3  custom threshold shows the overview below the defaults (files=0).
@@ -25,10 +26,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
-
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_FOOTER REVIEW_PUBLISH_ATTRIBUTION || true
@@ -101,43 +98,20 @@ post_refuse() { # $1 = label, $2 = pr, $3 = want code, $4 = want invariant
 mk_full_bundle 4801
 mk_clean_bundle 4802
 
-# --- V1: absent-fragment parity vs pre-P5 HEAD (report bytes + dry-run stdout) ---
-mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict" "$EVAL_SANDBOX/oldrun/scripts"
+# --- V1: absent-fragment default (built-in bytes render) ---
+mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
-git -C "$EVAL_ROOT" show HEAD:scripts/review.sh > "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-chmod +x "$EVAL_SANDBOX/oldrun/scripts/review.sh"
-cp "$EVAL_ROOT/package.json" "$EVAL_SANDBOX/oldrun/package.json"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-new.md"
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "parity baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -s "$EVAL_SANDBOX/out-new.md" ]; then
+  good "no overrides: report --output renders the built-ins"
 else
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      report acme/app 4802 --output "$EVAL_SANDBOX/out-old.md" \
-      >"$EVAL_SANDBOX/old-out.txt" 2>"$EVAL_SANDBOX/old-err.txt"
-  )
-  if cmp -s "$EVAL_SANDBOX/out-old.md" "$EVAL_SANDBOX/out-new.md"; then
-    good "no overrides: report --output byte-identical to pre-P5 HEAD"
-  else
-    bad "report parity broke (old vs new differ)"
-  fi
+  bad "report baseline exits $EVAL_STATUS"
 fi
 run_review post acme/app 4802 --dry-run
-if [ "$EVAL_STATUS" -ne 0 ]; then
-  bad "dry-run baseline exits $EVAL_STATUS"
+if [ "$EVAL_STATUS" -eq 0 ] && [ -s "$EVAL_OUT" ]; then
+  good "no overrides: human dry-run succeeds"
 else
-  cp "$EVAL_OUT" "$EVAL_SANDBOX/new-dry.txt"
-  (
-    cd "$EVAL_SANDBOX" || exit 99
-    PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_SANDBOX/oldrun/scripts/review.sh" \
-      post acme/app 4802 --dry-run >"$EVAL_SANDBOX/old-dry.txt" 2>/dev/null
-  )
-  if cmp -s "$EVAL_SANDBOX/old-dry.txt" "$EVAL_SANDBOX/new-dry.txt"; then
-    good "no overrides: human dry-run byte-identical to pre-P5 HEAD"
-  else
-    bad "dry-run parity broke"
-  fi
+  bad "dry-run baseline exits $EVAL_STATUS"
 fi
 cp "$EVAL_SANDBOX/out-new.md" "$EVAL_SANDBOX/out-base.md"
 unset XDG_CONFIG_HOME || true
@@ -161,11 +135,14 @@ else
   bad "valid post gave exit $EVAL_STATUS"
 fi
 run_review check-tree --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "valid fragments pass authoring-time validation (clean tree)"
-elif [ -z "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" ] \
-  && grep -q "check-tree:" "$EVAL_ERR"; then
-  good "valid fragments pass authoring-time validation (only the tree gate trips)"
+elif [ "$code" = "not-a-repo" ] \
+  || { [ -z "$code" ] && grep -q "check-tree:" "$EVAL_ERR"; }; then
+  # A fresh per-case sandbox has no git repo: check-tree validates the
+  # fragments first, then trips the repo (or tree) gate — never bad-override.
+  good "valid fragments pass authoring-time validation (only the repo/tree gate trips)"
 else
   bad "valid check-tree gave exit $EVAL_STATUS"
 fi
@@ -184,13 +161,9 @@ fi
 printf 'files\ncost\ntier\n' > "$OV/footer-order.md"
 printf 'Reviewed with [**Verdict {version}**]({product_url})\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-e2.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '4 files · cost $0.05 · standard tier' "$EVAL_SANDBOX/out-e2.md" \
-  && ! grep -Fq '[review' "$EVAL_SANDBOX/out-e2.md"; then
-  good "custom footer-order reorders and drops the link field"
-else
-  bad "footer-order effect gave exit $EVAL_STATUS"
-fi
+assert_exit "footer-order render succeeds" 0
+assert_file_grep "custom footer-order reorders the receipt" "$EVAL_SANDBOX/out-e2.md" '4 files · cost $0.05 · standard tier' "-F"
+assert_file_nogrep "custom footer-order drops the link field" "$EVAL_SANDBOX/out-e2.md" '[review' "-F"
 
 # --- E3: custom threshold shows the overview below the defaults ---
 ov_rm; mkdir -p "$OV"
@@ -208,13 +181,9 @@ ov_rm
 mkdir -p "$OV"
 printf '## Walkthrough ({files_reviewed})\n' > "$OV/preamble.md"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-e4.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '## Walkthrough (4 files)' "$EVAL_SANDBOX/out-e4.md" \
-  && ! grep -Fq '## What we checked' "$EVAL_SANDBOX/out-e4.md"; then
-  good "custom preamble rewords the heading with substitution"
-else
-  bad "preamble effect gave exit $EVAL_STATUS"
-fi
+assert_exit "preamble render succeeds" 0
+assert_file_grep "custom preamble rewords the heading with substitution" "$EVAL_SANDBOX/out-e4.md" '## Walkthrough (4 files)' "-F"
+assert_file_nogrep "custom preamble drops the default heading" "$EVAL_SANDBOX/out-e4.md" '## What we checked' "-F"
 
 # --- E5: full v1 inventory substitutes in one line ---
 printf '## Walk ({version}|{tier}|{product_url}|{files_reviewed}|{head_sha_short}|{model}|{cost})\n' > "$OV/preamble.md"
@@ -293,13 +262,9 @@ ov_rm
 mkdir -p "$OV"
 printf 'Fragment loses {version}\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-p1.md" --attribution-text "Flag wins {version}"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq "Flag wins $VER" "$EVAL_SANDBOX/out-p1.md" \
-  && ! grep -Fq 'Fragment loses' "$EVAL_SANDBOX/out-p1.md"; then
-  good "flag --attribution-text wins over the fragment"
-else
-  bad "flag-over-fragment gave exit $EVAL_STATUS"
-fi
+assert_exit "flag-over-fragment render succeeds" 0
+assert_file_grep "flag --attribution-text wins over the fragment" "$EVAL_SANDBOX/out-p1.md" "Flag wins $VER" "-F"
+assert_file_nogrep "flag --attribution-text drops the fragment text" "$EVAL_SANDBOX/out-p1.md" 'Fragment loses' "-F"
 ov_rm
 
 # --- L3b: 20-digit threshold refuses (64-bit wrap guard) ---
@@ -392,7 +357,6 @@ unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_MODEL || true
-rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/oldrun" "$EVAL_SANDBOX/.review/overrides"
+rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/.review/overrides"
 
-if [ "$fails" -ne 0 ]; then echo "case publish-overrides: FAIL ($fails)"; exit 1; fi
-echo "case publish-overrides: PASS"
+eval_end

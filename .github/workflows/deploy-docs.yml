@@ -89,6 +89,59 @@ jobs:
         working-directory: apps/docs
         run: bun run audit
 
+      # Public install entry points live on the project domain; the binaries
+      # still come from GitHub Releases. Fetch the latest release's scripts
+      # into the built site instead of copying the working tree, so the
+      # published bytes are the signed release assets. No release yet (404)
+      # is a notice, not a deploy failure.
+      - name: Publish release install scripts
+        id: installers
+        if: steps.gate.outputs.release != 'false'
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/stainless-code/verdict/releases/latest/download"
+          DEST="apps/docs/dist"
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          # 0 = downloaded, 2 = 404; any other failure exits the step.
+          fetch() { # url dest
+            local url="$1" dest="$2" code
+            if ! code=$(curl -sSL -o "$dest" -w '%{http_code}' "$url"); then
+              echo "::error::download failed: $url" >&2
+              exit 1
+            fi
+            case "$code" in
+              200) ;;
+              404) rm -f "$dest"; return 2 ;;
+              *) echo "::error::unexpected HTTP $code for $url" >&2; exit 1 ;;
+            esac
+          }
+          if ! fetch "$BASE/install.sh" "$TMP/install.sh"; then
+            echo "::notice::No GitHub release yet (HTTP 404); skipping install scripts."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! fetch "$BASE/install.ps1" "$TMP/install.ps1"; then
+            echo "::notice::install.ps1 missing from the latest release (HTTP 404); skipping both."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Guard against a 200 HTML page when `latest` has no release to
+          # resolve to: only publish the scripts themselves.
+          if ! head -n 1 "$TMP/install.sh" | grep -qx '#!/bin/sh' \
+            || ! head -n 1 "$TMP/install.ps1" | grep -q '^# verdict binary installer'; then
+            echo "::notice::Latest release did not resolve to install scripts; skipping."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp "$TMP/install.sh" "$TMP/install.ps1" "$DEST"/
+          {
+            echo "published=true"
+            echo "install_sh_sha=$(sha256sum "$DEST/install.sh" | cut -d' ' -f1)"
+            echo "install_ps1_sha=$(sha256sum "$DEST/install.ps1" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+          sha256sum "$DEST/install.sh" "$DEST/install.ps1"
+
       # Same convention as lossless: the FTP user lands in the subsite
       # directory, so server-dir stays ./ — the account behind FTP_HOST
       # must be rooted at /verdict/, not the domain root.
@@ -113,10 +166,33 @@ jobs:
       # Fail-closed deploy proof: the live changelog is built from the releases
       # API at build time, so only a fresh deploy can contain this run's tags.
       # No tags on HEAD (docs PR, manual dispatch): assert liveness only.
+      # When the install scripts were published, their live sha256 must match
+      # the release assets downloaded before upload.
       - name: Verify live site serves this release
         if: steps.gate.outputs.release != 'false'
+        env:
+          INSTALLERS_PUBLISHED: ${{ steps.installers.outputs.published }}
+          INSTALL_SH_SHA: ${{ steps.installers.outputs.install_sh_sha }}
+          INSTALL_PS1_SHA: ${{ steps.installers.outputs.install_ps1_sha }}
         run: |
+          set -euo pipefail
           SITE="https://stainless-code.com/verdict"
+          if [ "${INSTALLERS_PUBLISHED:-false}" = "true" ]; then
+            for PAIR in "install.sh:$INSTALL_SH_SHA" "install.ps1:$INSTALL_PS1_SHA"; do
+              NAME="${PAIR%%:*}"
+              WANT="${PAIR#*:}"
+              ATTEMPT=0
+              until [ "$(curl -sSfL "$SITE/$NAME" | sha256sum | cut -d' ' -f1)" = "$WANT" ]; do
+                ATTEMPT=$((ATTEMPT + 1))
+                if [ "$ATTEMPT" -ge 3 ]; then
+                  echo "::error::$NAME: live copy does not match the release asset (want $WANT)" >&2
+                  exit 1
+                fi
+                sleep 10
+              done
+              echo "$NAME: live copy matches the release asset ($WANT)"
+            done
+          fi
           TAGS="$(git tag --points-at HEAD)"
           if [ -z "$TAGS" ]; then
             curl -sSfL -o /dev/null "$SITE/"

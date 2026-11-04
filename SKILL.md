@@ -8,37 +8,70 @@ description: "Local on-demand PR review via gh CLI, any model. Triggers: review 
 The agent does the review; `gh` does GitHub I/O. You bring `GH_TOKEN`;
 the model is whatever agent you invoke.
 
+## Where commands run
+
+Run the CLI from the repo under review: `.review/` is created in the
+current directory, never beside the tool. The primary path is the GLOBAL
+`verdict` binary installed once (`curl -fsSL
+https://stainless-code.com/verdict/install.sh
+| sh`, `npm i -g @stainless-code/verdict`, or `brew install
+stainless-code/tap/verdict`); the installed `verdict/` skill dir is only the
+skill. A skill copy resolves the binary through `scripts/verdict`:
+`VERDICT_BIN`, then `<skill>/bin/verdict`, then `verdict` on `PATH`. When none
+exists, install the global binary (primary) or run the one-time verified
+`scripts/verdict bootstrap` (it fetches and verifies once, then works
+offline; a review never downloads). `npx skills` manages the skill copy only:
+`npx skills update` refreshes it. Below, `verdict` means the resolved binary.
+
+## Install or refresh this skill
+
+The binary carries its own skill, so a copy can never skew from the CLI:
+`verdict skill` prints this file, `verdict skill files` lists the payload, and
+`verdict skill install [--agent claude|codex|cursor|...]` (or `--dir
+<skills-dir>`) writes it atomically with a `.verdict-managed` receipt. Re-run
+it after upgrading the binary; `npx skills update` covers registry copies.
+
 ## Workflow
 
 ```bash
 # 1. Fetch the PR bundle (diff + metadata, no clone needed)
-./scripts/review.sh fetch owner/repo 123
-# Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt.
-# Over-cap diffs refuse: re-run fetch with --chunk (or hold true in
-# .review/chunk), read each chunk per chunks/manifest.json, and stamp
-# top-level "chunks" naming every manifest chunk in review.json.
+verdict fetch owner/repo 123
+# Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt,
+# controls.json. Review controls (.review/kb.jsonl, panel, budget, overrides,
+# ...) are read from the PR base commit, never the PR head — from the clone,
+# else the GitHub contents API; --allow-head-controls is the one recorded opt-out.
+# Over-cap diffs refuse: re-run fetch with --chunk (or commit true in
+# .review/chunk at the bundle base: the PR base for fetch, the local diff
+# base (HEAD by default) for fetch-local), read each chunk per
+# chunks/manifest.json, and stamp top-level "chunks" naming every manifest
+# chunk in review.json.
 
 # 2. Review with any agent. Load prompts/system.md, then the one mode file
 #    from the router below, plus the bundle. Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs and `triage[]` claims `{sig, status, rationale}`); `post` validates anchors, merges the findings store, and submits. The mode file defines the exact shape.
+#    Prior feedback lives in `.review/N/threads.json` (all six hosts): host-resolved
+#    state, anchors, authors, and `finding_sig` links. `verdict threads owner/repo N`
+#    refreshes it alone — no diff refetch — so run it after pushing fixes and before
+#    a re-review or merge gate.
 
 # 3. Post. Done when exactly one review lands — one review.json, one post call.
-./scripts/review.sh post owner/repo 123 --approve=false
+verdict post owner/repo 123 --approve=false
 ```
 
-Local changes (no PR): `./scripts/review.sh fetch-local owner/repo work
+Local changes (no PR): `verdict fetch-local owner/repo work
 [--staged] [--range A..B] [--base R] [--stash [n]] [-- paths...]` writes
 `.review/local-work/` (source.json instead of PR.json), the bundle is reviewed
-the same way, and `./scripts/review.sh record owner/repo local-work` merges it
+the same way, and `verdict record owner/repo local-work` merges it
 to `findings.json` — read with `report`, never `post` (no PR target).
 `adopt owner/repo 123 --from local-work` carries a local review into a fresh
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
-Between runs the operator may run `./scripts/review.sh triage …` (status changes), `report`
-(ranked read), `calibrate` (predictions vs ground truth), or `fix` (one bounded
+Between runs the operator may run `verdict triage …` (status changes), `report`
+(ranked read), `verdict threads …` (refresh the PR conversation feed),
+`calibrate` (predictions vs ground truth), or `fix` (one bounded
 verify-gated pass over a local bundle — prints the finding plus land instructions;
 agents never call `triage` — they propose via `triage[]`).
 
-Delta re-review: `./scripts/review.sh fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
+Delta re-review: `verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
 then load `prompts/incremental-review.md` instead of `prompts/review.md`.
 
 ## Mode router
@@ -89,3 +122,14 @@ to write dispatches, lenses run under it.
 
 There is no server side: anything not in this folder or reachable via `gh` doesn't
 exist for this run — don't look for it.
+
+## Spend tracking (usage handoff, optional)
+
+If you know this run's real usage — tokens in/out (plus cached), USD, and the
+run window — write one usage record per `schemas/usage.schema.json` and report
+its path. The operator hands it to the next `fetch` via
+`VERDICT_USAGE=<file|dir>` so the spend budget prices from measured runs.
+Otherwise write nothing: the budget estimate stays self-reported, never
+guessed. Harness exports (Claude Code transcripts, opencode exports) are
+outside the binary — convert them with `examples/usage-adapters/` first;
+`verdict` never reads those files itself.

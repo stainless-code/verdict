@@ -1,0 +1,177 @@
+{
+  "cost": {
+    "descriptions": {
+      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them.",
+      "/$defs/record/properties/effort": "Run tier; missing or unknown values roll up as standard.",
+      "/$defs/record/properties/models": "One entry per model that generated tokens: the synthesizer first, then each lens.",
+      "/$defs/record/properties/est_usd": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
+      "/$defs/modelSpend/properties/cache_read_input_tokens": "Input tokens served from cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero.",
+      "/$defs/modelSpend/properties/cache_creation_input_tokens": "Input tokens spent writing the cache; a subset of input_tokens, never an addition. Absent or null reads as unknown, never zero."
+    }
+  },
+  "corpus": {
+    "descriptions": {
+      "": "One benchmark corpus manifest, checked in as bench/corpus/<id>/case.json and copied into a run bundle as .review/corpus-*/corpus.json. The case records the ground truth a review output is graded against: a real PR that later needed a bug-fix commit, or a seeded defect with what was injected. calibrate and trend join findings.json against these bugs offline; matching is path plus a +/- line_tolerance window, one finding per bug. additionalProperties stays closed so a typo fails validation instead of silently grading a different field.",
+      "/properties/id": "Stable case id, matching the bench/corpus/<id> directory name.",
+      "/properties/kind": "seeded for deterministic injected fixtures, real for a published PR with a later fix.",
+      "/properties/line_tolerance": "How many lines from a bug still count as the same defect (default 3). A hit is one-to-one: a second finding on the same bug is a false positive.",
+      "/properties/provenance": "Where the case came from: injected text for seeded cases, or repo/PR/fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
+      "/properties/bugs": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path plus the line window, not kind or severity.",
+      "/$defs/provenance": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, and the later commit that fixed the bug.",
+      "/$defs/bug": "One known defect: the reviewed path, the line in the reviewed head, the defect kind (off-by-one, nil-deref, injection, missing-error-check, ...), and the severity a good review should assign."
+    }
+  },
+  "envelope": {
+    "descriptions": {
+      "": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; report, post, record, and show carry a pinned data shape here ($defs, validated explicitly), fetch publishes its additive estimate object as fetchEstimate, and the remaining verbs keep the generic object shape until their data stabilizes.",
+      "/properties/pr": "Numeric PR, else null (local slugs never coerce).",
+      "/$defs/error": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
+      "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
+      "/$defs/provenance": "Review provenance triple: the tooling behind a run, so mixed-version histories never read as one series. The writer always emits all three keys; model is null when no cost record names one.",
+      "/$defs/reportData": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, receipt keys only when budget.json parses.",
+      "/$defs/reportCost": "Summed rollup from cost.json plus per-chunk records; by_tier always carries all three tiers.",
+      "/$defs/reportCost/properties/cached_input_tokens": "Summed per-model cache_read_input_tokens plus cache_creation_input_tokens; totals stay input + output exactly.",
+      "/$defs/postData": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
+      "/$defs/postData/properties/review": "Real-post only: the accepted GitHub review object.",
+      "/$defs/recordData": "record --json data: the local-bundle merge (post stays refused, no PR target).",
+      "/$defs/showData": "show --json data: item is the raw finding record in store key order; fix is the read-only machine repair directive built from that record plus the bundle's patch/verification history. Neither key adds execution, flags, or store writes.",
+      "/$defs/showFix": "The per-finding repair directive: identity, status, files, locator, embedded suggestion, and the last recorded rerun hint. Missing history reads as null; caution is a fixed untrusted-evidence reminder, never composed from finding text.",
+      "/$defs/showFix/properties/status": "The record's stored status string, read verbatim (absent reads empty, never invented).",
+      "/$defs/showFix/properties/files": "Deduped anchor paths read from the record (path plus any files/related_files lists); [] when the record names none.",
+      "/$defs/showFix/properties/locator": "path[:line] for inline findings, the heading for section findings, else empty.",
+      "/$defs/showFix/properties/suggestion": "The record's embedded suggestion body, or null when absent.",
+      "/$defs/showFix/properties/verify_hint": "The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
+      "/$defs/showFix/properties/caution": "Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction.",
+      "/$defs/verifyHint": "A recorded rerun command and its nullable head bracket.",
+      "/$defs/fetchEstimate": "fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did.",
+      "/$defs/fetchEstimate/properties/basis": "measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed.",
+      "/$defs/fetchEstimate/properties/harness": "Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis.",
+      "/$defs/fetchEstimate/properties/measured_runs": "How many priced samples in the projected tier came from a harness session; absent with basis."
+    }
+  },
+  "findings": {
+    "descriptions": {
+      "": "What post/record write per bundle. Derived from validate_and_merge in the verdict CLI: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
+      "/$defs/entry/properties/sig": "Stable cross-run join key: SHA-1 of path + heading + body, whitespace-squashed.",
+      "/$defs/entry/properties/sig_version": "Normalization generation; backfilled onto older entries, never clobbered.",
+      "/$defs/entry/properties/path": "Inline findings only.",
+      "/$defs/entry/properties/heading": "Section findings only: the exact ### body heading.",
+      "/$defs/entry/properties/anchored": "Inline: true when the anchor sits inside one reviewed hunk. Section: the string \"body\".",
+      "/$defs/entry/properties/kb": "Cited knowledge-base rule ids; [] when uncited.",
+      "/$defs/entry/properties/inBounds": "CamelCase in the store (hyphenated in review.json input); absent reads true.",
+      "/$defs/entry/properties/rigor": "Evidence rung on inline findings; the re-post merge stamps an explicit null onto section entries.",
+      "/$defs/entry/properties/history": "Append-only: reported, claim, reopened, revalidation, addressed, triaged."
+    }
+  },
+  "post": {
+    "descriptions": {
+      "": "Written only by the real-post path in the verdict CLI (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
+      "/properties/review": "Raw GitHub review object: id, html_url and whatever the API returned.",
+      "/properties/head": "Reviewed commit SHA; doubles as the single-review finalizer key.",
+      "/properties/posted_at": "UTC timestamp of the completed post.",
+      "/properties/tool_version": "Tool version that wrote this record (from package.json).",
+      "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
+      "/properties/model": "First model of the latest cost record, else null when no cost record names one."
+    }
+  },
+  "record": {
+    "descriptions": {
+      "": "Written by the record verb in the verdict CLI for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",
+      "/properties/status": "Bundle provider that was recorded (e.g. local).",
+      "/properties/head": "Reviewed SHA (real head_sha, or \"dirty\"/\"unknown\" when the bundle has none).",
+      "/properties/diff_sha256": "SHA-256 of full.diff at record time.",
+      "/properties/recorded_at": "UTC timestamp of the record run.",
+      "/properties/findings": "Total merged findings.",
+      "/properties/open": "Open findings after the merge.",
+      "/properties/tool_version": "Tool version that wrote this record (from package.json).",
+      "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
+      "/properties/model": "First model of the latest cost record, else null when no cost record names one."
+    }
+  },
+  "review": {
+    "descriptions": {
+      "": "What the agent writes and post/record validate. Derived from validate_and_merge in the verdict CLI and the review.json block in docs/manual.md: unknown schema_version refuses, missing warns; out-of-range confidence and non-string security_summary warn-and-drop; unknown anchor paths and non-numeric anchors are kept with a warning, provably-outside anchors move to the body; unknown rigor/severity values fall back (pointed/null). Unknown top-level keys are ignored by the CLI, so this schema allows them.",
+      "/properties/schema_version": "Agents stamp \"1\"; post/record refuse anything else.",
+      "/properties/body": "Full review text, verdict marker first line.",
+      "/properties/approved": "Binding ask; the CLI --bind/--request-changes flags win over this.",
+      "/properties/comments": "Inline findings; one per anchor.",
+      "/properties/resolved": "Finding sigs (full or unambiguous prefix) the run addresses. Bare claims only record history; addressed needs verification.json evidence.",
+      "/properties/triage": "Status claims with rationale. Unknown status refuses the run; unknown sig warns; rationale under 30 chars keeps the prior status.",
+      "/properties/sections": "Severity tags for ### body sections; exact heading string, unmatched tags ignored.",
+      "/properties/confidence": "Review-level certainty, integer 1-5; out-of-range warns and drops.",
+      "/properties/security_summary": "One-paragraph security read; non-string warns and drops.",
+      "/properties/chunks": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Attested-but-partial coverage is refused.",
+      "/$defs/comment/properties/path": "Diff-relative path; unknown paths are kept with a warning, never refused.",
+      "/$defs/comment/properties/line": "NEW-side line; numeric strings anchor like integers, non-numeric anchors are kept with a warning.",
+      "/$defs/comment/properties/start_line": "Multi-line range start; same tolerance as line.",
+      "/$defs/comment/properties/side": "Defaults to RIGHT; case-insensitive, LEFT for deleted lines.",
+      "/$defs/comment/properties/suggestion": "Fenced suggestions demote to the body (a fence inside would break rendering).",
+      "/$defs/comment/properties/rigor": "Evidence rung; unknown values read as pointed.",
+      "/$defs/comment/properties/severity": "Stored at write time; unknown values read as null.",
+      "/$defs/comment/properties/in-bounds": "Hyphenated in agent input; absent reads true.",
+      "/$defs/comment/properties/kb": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop."
+    }
+  },
+  "threads": {
+    "descriptions": {
+      "": "One provider bundle's normalized PR-conversation feed, written beside the raw host files (inline.json/reviews.json keep their exact bytes). Each host's native review data is filtered the way its review surface expects (system/deleted/pending comments dropped, host resolution and stale-anchor state read from the host's own fields) and flattened to one shape, so re-review, address-reviews, merge readiness, and calibration read prior feedback without parsing six formats. Review threads are authoritative: GitHub comes from GraphQL reviewThreads (REST has no resolution), GitLab from discussions (resolved/resolvable), Azure from thread status, Forgejo from review-comment resolver/position, Bitbucket from comment resolution + inline.outdated, GitCafe from its comment flags. Unknown root keys are rejected: a new field is a contract change.",
+      "/properties/schema_version": "Feed format version; only \"1\" is read.",
+      "/properties/provider": "The host whose raw payload produced this feed.",
+      "/properties/pr": "Pull request number the feed belongs to (0 when the positional was not numeric).",
+      "/properties/head_sha": "The PR head the feed was read at; GitLab and Forgejo compare it to a comment's anchor commit to flag outdated.",
+      "/properties/fetched_at": "UTC read timestamp (RFC 3339); the feed is a snapshot, not a live view.",
+      "/properties/truncated": "True when a thread read failed, a host thread arrived with more comments than its cap returned, or a page walk stopped at the provider cap. The threads present are still trustworthy; the list may under-cover.",
+      "/properties/threads": "One normalized thread per host root, in host order. A thread with a diff anchor is a review-comment; otherwise it is a conversation comment. Replies ride in comments[].",
+      "/$defs/thread": "One review thread or conversation comment: host thread identity (what a resolution call takes), diff anchor and state, root author, and the replies.",
+      "/$defs/thread/properties/id": "Host thread identity (GitHub reviewThreads id, GitLab discussion id, Bitbucket root comment id, Azure thread id, Forgejo comment id, GitCafe thread id). Empty when the payload carried none.",
+      "/$defs/thread/properties/path": "Diff-relative path for a review-comment, empty for a conversation comment.",
+      "/$defs/thread/properties/line": "End line of the anchor (the commented line for a single-line anchor), null when absent.",
+      "/$defs/thread/properties/start_line": "First line of a multi-line anchor, null for a single-line anchor or a host with no range field.",
+      "/$defs/thread/properties/side": "LEFT for a deleted-side anchor, RIGHT for an added/context anchor, null for a conversation comment or a host with no side.",
+      "/$defs/thread/properties/resolved": "Host resolution state read from the host's own field: GitHub isResolved, GitLab note resolved, Azure thread status, Forgejo review-comment resolver, Bitbucket comment resolution, GitCafe resolved/resolvedAt. Hosts without a resolution field read false.",
+      "/$defs/thread/properties/outdated": "True when the host says the anchor no longer maps to the current head: GitHub isOutdated, Bitbucket inline.outdated, GitLab position.head_sha differs from the feed head, Forgejo position 0 against a non-zero original_position, GitCafe outdated, Azure context without a line.",
+      "/$defs/thread/properties/url": "Host-comment permalink when the payload carries one cheaply (GitHub url, Forgejo html_url, Bitbucket links.html.href); null otherwise.",
+      "/$defs/thread/properties/author": "Root comment author handle or display name, empty when absent.",
+      "/$defs/thread/properties/author_kind": "verdict when the root comment's final line is verdict's own hidden marker, bot when the host marks the author as a bot (or the login carries GitHub's [bot] suffix), else human.",
+      "/$defs/thread/properties/finding_sig": "Finding signature linked from the root comment's hidden final-line verdict marker; null for threads verdict did not author and for summaries.",
+      "/$defs/thread/properties/kind": "review-comment for a diff-anchored thread, issue-comment for a conversation comment.",
+      "/$defs/thread/properties/comments": "Root comment first, then replies in host order. Each comment id is the id a reply call takes (GitHub databaseId).",
+      "/$defs/comment": "One comment inside a thread: author identity/kind, the body excerpt, and the truncation flag.",
+      "/$defs/comment/properties/id": "Host comment id (GitHub databaseId when present), empty when absent.",
+      "/$defs/comment/properties/author": "Author handle or display name, empty when absent.",
+      "/$defs/comment/properties/author_kind": "verdict when the comment's final line is verdict's own hidden marker, bot when the host marks the author as a bot (or the login carries GitHub's [bot] suffix), else human.",
+      "/$defs/comment/properties/body": "Comment body, capped at 8 KiB; the raw provider file keeps the full text.",
+      "/$defs/comment/properties/truncated": "True when body is an excerpt of a longer comment.",
+      "/$defs/comment/properties/created_at": "Host creation timestamp (RFC 3339 when the host publishes one), empty when absent."
+    }
+  },
+  "usage": {
+    "descriptions": {
+      "": "What the agent or a usage adapter hands the budget gate through VERDICT_USAGE: one measured run per record (a single object) or a run log (an array). The gate joins each record against past cost records by its window and prices comparable runs from usd, preferring it over the self-reported est_usd; records without usd never become a measured claim. verdict never discovers these files — the operator names them explicitly. Unknown keys are ignored, so newer writers stay readable.",
+      "/$defs/record/properties/source": "Free-form measurer name (e.g. claude-code, opencode); carried into data.estimate.harness when the record prices a run.",
+      "/$defs/record/properties/model": "Model that burned the tokens, when known; absent reads unknown, never priced.",
+      "/$defs/record/properties/tokens": "Token counts for the window, when known; absent reads as unknown, never zero.",
+      "/$defs/record/properties/usd": "Measured session price in USD, when the measurer priced it; the tool never prices tokens itself.",
+      "/$defs/record/properties/started_at": "Window start (RFC 3339); the joined cost record's mtime must fall inside it.",
+      "/$defs/record/properties/ended_at": "Window end (RFC 3339), never before the start.",
+      "/$defs/usageTokens": "Token counts for one usage record: input and output plus the provider-reported cache subsets.",
+      "/$defs/usageTokens/properties/cache_read": "Input tokens served from cache; a subset of input, never an addition.",
+      "/$defs/usageTokens/properties/cache_write": "Input tokens spent writing the cache; a subset of input, never an addition."
+    }
+  },
+  "controls": {
+    "descriptions": {
+      "": "The bundle's resolved review controls: fetch snapshots every control file at the PR base commit, and post/record refuse to trust the snapshot when its base or any used-file hash drifted. policy 'base' is the default; 'head' is the explicit --allow-head-controls opt-out.",
+      "/properties/schema_version": "Snapshot format version; only \"1\" is trusted.",
+      "/properties/policy": "base is the default base-owned rule set; head is the recorded opt-out.",
+      "/properties/base_sha": "The bundle's base commit, the value post/record verify against.",
+      "/properties/sha": "The commit the controls were read at; \"\" for the worktree opt-out.",
+      "/properties/files": "One entry per inventory path, in inventory order.",
+      "/$defs/file": "One control path's snapshot status: used entries carry the exact written bytes and SHA-256.",
+      "/$defs/file/properties/path": "The inventory path, relative to the repository root (.review/...).",
+      "/$defs/file/properties/status": "used means materialized and safe to read; missing means absent at the source.",
+      "/$defs/file/properties/bytes": "The exact bytes written to the snapshot.",
+      "/$defs/file/properties/sha256": "SHA-256 of the exact written bytes; post/record re-hash and refuse controls-stale on drift."
+    }
+  }
+}

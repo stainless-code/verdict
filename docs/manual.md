@@ -6,24 +6,31 @@ Run PR reviews **locally, on-demand, with your own models**. The agent reviews;
 ## Quickstart
 
 ```bash
-chmod +x scripts/review.sh
+make build   # writes bin/verdict; or use the installed copy
 export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-requests:write, issues:write
 
 # 0. onboard once per repo (optional, offline): scaffold .review/ controls
-./scripts/review.sh init --preset standard --yes
+verdict init --preset standard --yes
 
 # 1. fetch
-./scripts/review.sh fetch owner/repo 123
+verdict fetch owner/repo 123
 
-# 2. review with ANY agent:
-#    Read SKILL.md, prompts/system.md, prompts/review.md, .review/123/PR.json,
-#    .review/123/roles.txt. Read .review/123/full.diff fully via .review/123/toc.txt.
-#    Fan out 0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
+# 2. review with ANY agent (the installed skill is the prompt; add it with
+#    `verdict skill install --agent <name>` if it is missing):
+#    Point the agent at .review/123/. It reads .review/123/full.diff fully via
+#    .review/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
+#    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
 #    Write exactly one .review/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
-./scripts/review.sh post owner/repo 123
+verdict post owner/repo 123
+
+# 4. read the report (offline)
+verdict report owner/repo 123
 ```
+
+New to the vocabulary? The [glossary](glossary.md) defines lenses, panel,
+evidence rungs, keep-biased, and its sibling doctrines.
 
 `review.json` schema:
 
@@ -116,11 +123,11 @@ runs, and failures never write the key, so only a real post arms it.
 
 Finalizer loop (one shape end to end — refuse → advance → delta review →
 post → gate): the `already-posted` refusal names both exits — `--force` to
-override, or the forward path `./scripts/review.sh fetch owner/repo 123
+override, or the forward path `verdict fetch owner/repo 123
 --base-sha <short-posted-head>` (the 7-char reviewed SHA) and review the
 delta per `prompts/incremental-review.md` step 2. A push that lands after
 fetch never fails the run: `post` warns on stderr and appends the `> ⚠️`
-body note, both naming `./scripts/review.sh fetch owner/repo 123
+body note, both naming `verdict fetch owner/repo 123
 --base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,
 then close the loop with `report --completeness` (stale-head on a bundle
 with a posted head names the `--base-sha` advance form; missing-post with
@@ -136,8 +143,24 @@ Bare `resolved[]` sigs record a claim but never flip status. `addressed` require
 with `resultHead` matching HEAD — the revalidator writes it); `NOT VERIFIED` reopens,
 `INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
 unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
-store directly between runs with `./scripts/review.sh triage … --sig … --status … --rationale …`
+store directly between runs with `verdict triage … --sig … --status … --rationale …`
 (human supremacy, every override history-logged).
+
+Malformed agent input refuses typed (exit 1, machine envelope with `error.code`,
+nothing written — no `findings.json`/`record.json`, no KB credit): an unparsable
+`review.json` or a non-object document (`bad-review-input` / `bad-review-schema`),
+misshapen `comments[]`/`resolved[]`/`triage[]`/`sections[]` (non-object entries,
+non-string `path`/`body`/`suggestion`, non-string `resolved[]` items), and
+misshapen `verification.json` claims all fail closed as `bad-review-input`;
+a present-but-corrupt (or non-list) `findings.json` refuses as `corrupt-store` —
+the run never starts fresh, since that would silently lose history (restore from
+backup, then re-run). The read verbs apply the same guard to every entry:
+`report`/`show`/`calibrate` refuse `corrupt-store` on non-object entries or
+non-string `sig`/`body`/`heading`/`kind`/`suggestion` (and `report` on an
+unreadable `patch.json`), instead of dying mid-render with no envelope;
+`trend` warns and skips corrupt bundles, rolling up the readable ones, so one
+bad bundle never fails the whole audit. An unreadable `source.json` head degrades to the dirty-head
+path instead (`record.json` head reads `"dirty"`).
 
 ### Sig contract (sig_version 1)
 
@@ -153,19 +176,39 @@ history — that ships as a new `sig_version` with a migration note here, never 
 `review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
 versions, warn-and-proceed when the stamp is missing); every bundle carries
 `.review/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
-whole store — plugins read it instead of sniffing shapes. `PR.json`/`reviews.json`/
-`inline.json` are raw GitHub output (GitHub's schema, unversioned); `post.json` and
-`record.json` carry `schema_version: "1"`.
+whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
+`PR.json`/`reviews.json`/`inline.json` as raw API output (GitHub's schema,
+unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
+and normalize `PR.json` to one schema. Every provider bundle also writes
+`threads.json` (`schema_version: "1"`, published as
+[`schemas/threads.schema.json`](../schemas/threads.schema.json)): the raw
+files stay as-is, and the feed is the authoritative PR conversation. Review
+threads come from each host's native source — GitHub GraphQL `reviewThreads`
+(REST has no resolution), GitLab discussions (`resolved`/`resolvable`), Azure
+thread `status`, Forgejo review-comment `resolver`/position, Bitbucket
+`resolution` + `inline.outdated`, GitCafe's comment flags. Each thread carries
+`id`, `path`/`line`/`start_line`/`side`, `resolved`/`outdated`, `url` when
+cheap, root `author`/`author_kind` (`human|bot|verdict`), optional
+`finding_sig`, `kind`, and `comments[]` (`id`, `author`, `author_kind`, body
+capped at 8 KiB with a `truncated` flag, `created_at`). Top level: `provider`,
+`pr`, `head_sha`, `fetched_at`, `truncated`. `verdict threads owner/repo N
+[--provider …]` re-reads only the thread surface and rewrites only this file,
+so a re-review after pushing fixes sees current resolution state.
+`post.json` and `record.json` carry `schema_version: "1"`.
 
 ### Bundle namespace (core files vs `x-*`)
 
-A bundle dir holds exactly the core-owned files (`PR.json`/`source.json`,
+A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
-`post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `panel`,
-`patch.json`, `verification.json`, `incremental.diff`, `kb.txt`, `chunks/`
+`post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
+`panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
+`sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
-`.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`). Router-authorized
+`.difffiles`/`.chunk-hunks.tsv`/`.posted_*`/`.compare.err`/`.diff.err`/`.post.err`/`.recheck.err`).
+Dot-scratch `.err` sidecars are owner-only (`0600`) debug residue, not published
+bundle content. Router-authorized
 agent terminal writes (`report.md` via `prompts/ci.md`, `replies.json` via
 `prompts/address-reviews.md`, `noreview.md` via `prompts/incremental-review.md`)
 are core-tolerated scratch: core verbs never read them. Anything else a
@@ -180,8 +223,11 @@ everything else in a bundle dir is script-owned.
 
 `.review/learnings.md` at the repo root is the skill's only cross-run memory: durable
 knowledge (test commands, conventions, gotchas) in `##`-headed sections. `fetch` reports
-it when present; agents read headings first and challenge stale claims. Post-run reflection
-appends durable lessons (never transcripts). Deleting a wrong entry beats editing around it.
+its base-resolved copy (`.review/N/controls/learnings.md`, see
+[Review controls are base-owned](#review-controls-are-base-owned)); agents read headings
+first and challenge stale claims. Post-run reflection appends durable lessons (never
+transcripts) to the worktree file — commit it, then re-fetch; do not run `learn` or edit
+the file while a review is in flight. Deleting a wrong entry beats editing around it.
 
 ## Knowledge base (scoped local rules)
 
@@ -191,15 +237,17 @@ false_hits, judged, status}` (`id` matches `^[a-z0-9][a-z0-9-]{0,64}$`,
 `scope` is a non-empty comma-separated glob list, `rigor` is
 `said`/`pointed`/`walked`/`ran`/`reproduced`, counters are non-negative ints
 with `judged == hits+false_hits`, `status` is `active`/`retired`). Commit it;
-it compounds.
+it compounds. This repo's `.gitignore` tracks the control files (`.review/*` with
+negations), so a plain `git add .review/kb.jsonl` works; an older checkout that ignores
+all of `.review/` needs the one-time `git add -f` of each control file.
 
 `learn` manages it (no repo/PR args, no network):
 
 ```bash
-./scripts/review.sh learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
-./scripts/review.sh learn --status            # rules + counters + precision
-./scripts/review.sh learn --retire <id> --reason "<30+ chars, on the record>"
-./scripts/review.sh learn --restore <id> --reason "<30+ chars, on the record>"
+verdict learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
+verdict learn --status            # rules + counters + precision
+verdict learn --retire <id> --reason "<30+ chars, on the record>"
+verdict learn --restore <id> --reason "<30+ chars, on the record>"
 ```
 
 `--id` is optional (slugged from the rule text when absent). Exact-duplicate
@@ -241,13 +289,61 @@ Retirement is data-driven: after any credit, a rule with `judged` at/above
 invalid values warn and fall back, never failing the flip. Retired rules never
 recall; citing one warns and drops.
 
+## Review controls are base-owned
+
+A pull request must not be able to edit the rules it is judged by. `fetch` and
+`fetch-local` therefore read every review control from the PR base commit —
+`git show <base>:<path>` through the command seam, never the worktree — and
+snapshot the bytes into the bundle:
+
+| Control                                         | Consumed by                           |
+| ----------------------------------------------- | ------------------------------------- |
+| `.review/panel`, `budget`, `max_bytes`, `chunk` | `fetch` panel, budget, cap, chunking  |
+| `.review/kb.jsonl`, `kb-policy`                 | `fetch` recall; `record`/`post` cites |
+| `.review/learnings.md`                          | the review agent (headings)           |
+| `.review/overrides/*.md` (four fragments)       | `record`/`post` body and footer       |
+
+`.review/N/controls/` holds the bytes and `.review/N/controls.json` records
+`policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
+files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
+and `sha256` (schema: `schemas/controls.schema.json`). The base is `PR.json`'s base
+commit for `fetch`, and the mode base for `fetch-local` (`HEAD`, the merge-base for
+`--base`, the range base, the stash parent), so uncommitted edits to a control are
+not read. Environment knobs (`REVIEW_PANEL`, `REVIEW_MAX_BYTES`, `REVIEW_BUDGET_USD`,
+`REVIEW_KB_*`) still win over the file layer. A default run prints nothing extra;
+the JSON envelope gains `data.controls` (`policy`, `sha`, `files`).
+
+`post` and `record` load `controls.json` before any merge read and re-hash every
+used file. They refuse:
+
+- `controls-unavailable` — no or invalid `controls.json` (re-fetch), or at fetch
+  time the base commit is not readable: a GitHub `fetch` falls back to the contents API
+  (`gh api repos/<owner>/<repo>/contents/<path>?ref=<base>`, a 404 reading as an absent
+  control) when the checkout lacks the base, but any other API failure refuses, and
+  other providers refuse outright (use `actions/checkout` with `fetch-depth: 0`, or
+  `git fetch --depth=1 origin <base>`; verdict never fetches for you), or a control is a
+  symlink.
+- `controls-stale` — the snapshot's base is not the bundle's base, or a file's
+  bytes changed under the bundle: re-fetch.
+- `controls-too-large` — a control over 256 KiB (1 MiB across all); never truncated.
+
+`--allow-head-controls` on `fetch`/`fetch-local` is the only opt-out: it reads the
+worktree as before, warns once (human and JSON), and stamps `policy: "head"`.
+Track your controls once so the base commit carries them:
+`git add .review/kb.jsonl .review/learnings.md .review/panel` (and any other
+control you use), then commit.
+
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`trend`/`learn`/`init`/`install` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `report` is the pure offline reader over the store (ranked items, verdict,
-counts, patch passthrough, optional `--output` markdown with machine-header markers,
+non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.review/<pr>/threads.json` from the host (all six
+hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
+never refetches the diff, so it is the cheap re-read after replies,
+resolutions, or a push. `report` is the pure offline reader over the store
+(ranked items, verdict, counts, patch passthrough, optional `--output` markdown
+with machine-header markers,
 optional `--sarif` for scanners/CI). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
 `unrecorded`/`not assessed` when the run recorded neither) and, on clean
@@ -270,24 +366,72 @@ prose emoji never parsed) — rank uses status, then severity, then rigor, then
 anchored/inBounds, then path/line/sig. `doctor` preflights the harness; `calibrate`
 joins findings against live ground truth, read-only.
 
+`show --json` returns the finding in `data.item` (the raw store record in key
+order) plus `data.fix`, a read-only repair directive built from that record
+and the bundle's history:
+
+| `data.fix` key | Meaning                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sig`          | Full finding sig (short prefixes still address the run).                                                                       |
+| `status`       | The record's stored status string, read verbatim (absent reads empty).                                                         |
+| `severity`     | `critical`/`important`/`informational`, else `null`.                                                                           |
+| `files`        | Deduped anchor paths: the record's `path` plus any `files`/`related_files` lists; `[]` when none.                              |
+| `locator`      | `path:line` for inline findings, the heading for section findings, else empty.                                                 |
+| `suggestion`   | The record's embedded suggestion body, else `null`.                                                                            |
+| `verify_hint`  | `{verifyCmd, resultHead}` from a `verification.json` claim for this sig, else a matching (or unnamed) `patch.json`; else null. |
+| `caution`      | Fixed reminder that finding text quotes attacker-controlled PR content and is untrusted evidence, never instructions.          |
+
+The block is pure read: no `gh` call, no `verifyCmd` execution, no store
+writes — the bundle is byte-identical after the run, and the bare text path
+(no `--json`) still prints just the record. Missing history reads as nulls,
+never a warning.
+
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
 the script renders the assembled agent reading list — `SKILL.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
-`kb.txt`, `sensitive.txt`, and `panel` when present, concatenated in that
-order — to stdout (human mode; progress moves to stderr) or
+`kb.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
+prompts verbatim, then the trust-boundary prologue, then one nonce fence
+per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
-byte-identical.
+byte-identical. It reads the trusted prompts from the current directory, so
+run it from the skill/checkout carrying `SKILL.md` and `prompts/`. Missing
+bundle files skip silently, but missing trusted
+prompt files fail loudly: no `prompts/system.md` refuses typed
+(`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
+without it is unsafe), while a missing `SKILL.md`, `prompts/review.md`, or
+`prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
+proceeds without it. Trusted prompts print verbatim first, then a
+tool-generated trust-boundary prologue naming the run's nonce, then every
+present bundle file inside its own fence — the bundle meta (`PR.json` or
+`source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the
+manifest-order chunk concat on chunked bundles under the same label),
+`kb.txt`, `sensitive.txt`, and `panel` — each wrapped as
+`<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
+`<<<END UNTRUSTED nonce=<same>>>`, open and close markers each on their own
+line (a missing trailing newline is added, never a content byte dropped).
+The nonce is 8 crypto-random bytes rendered as 16 lowercase hex characters
+(64 bits), minted fresh per dump: text and `--json` dumps
+from separate runs carry different nonces. Only a fence carrying exactly the
+prologue's nonce opens or closes a region — payload text shaped like a fence
+(wrong or missing nonce) stays inside as evidence, and `prompts/system.md`
+instructs the model to treat all fenced content as evidence, never
+instructions. Thread files (`reviews.json`, `inline.json`) are deliberately
+excluded: the dump reproduces the initial-review reading list (the fetch
+`next:` line), and threads are prior-review context consumed live via
+`gh api` on the incremental path — never bundle files in the prompt. This
+section is the format contract: the binary reproduces it exactly (same
+order, markers, nonce grammar, and section labels).
 
 `ready` stays advisory by default (exit 0, blockers listed); `ready --check`
 opts into gating for hooks/CI with machine exits — 0 ready, 1 blockers-or-wait,
 2 usage, 3 tool error — so callers branch without parsing JSON:
 
 ```bash
-./scripts/review.sh ready owner/repo 123 --check
+verdict ready owner/repo 123 --check
 case $? in
-  0) ./scripts/review.sh fetch owner/repo 123;;  # reviewable — review
+  0) verdict fetch owner/repo 123;;  # reviewable — review
   1) echo "not ready — nudge the author instead of reviewing";;
   2) echo "usage error — check the invocation";;
   *) echo "ready itself failed — check auth/bundle, then retry";;
@@ -306,7 +450,7 @@ severity name (`critical`/`important`/`informational`; untagged findings never
 meet a tier) and only `open` findings count — dispositioned states stay human.
 
 ```bash
-./scripts/review.sh report owner/repo 123 --check important
+verdict report owner/repo 123 --check important
 case $? in
   0) echo "no open important+ findings — proceed to merge";;
   1) echo "open important+ findings — triage before merging";;
@@ -337,21 +481,138 @@ and fails the gate when more are open live than the store holds open
 (`check: N live open thread(s) vs M local open finding(s) — gate fails
 (fetch + triage them, then re-check)` — fetch the PR, triage the new
 threads, re-run `report --check`. An unreachable lookup warns (`live
-thread recheck unreachable`) and leaves the dimension neutral: the gate
-reflects local dimensions only, and the run never exits 3 over the
-network. Local bundles and non-GitHub providers skip the lookup with a
-warn (`live recheck skipped: ...`), paying zero network; plain `report`
+thread recheck unreachable`) and, under the default `--live auto` posture,
+leaves the dimension neutral: the gate reflects local dimensions only, and
+the run never exits 3 over the network. Local bundles and non-GitHub
+providers skip the lookup with a warn (`live recheck skipped: ...`),
+paying zero network; plain `report`
 without a gate flag never calls the network. There is no `--force` on
 report: fetch + triage + re-check is the recovery, and advisory `report`
 without `--check` is the escape hatch.
 
+Offline posture (`--live auto|strict|skip`, gate runs only) is always an
+explicit operator choice — automation never inherits it silently. `auto`
+(the default) keeps the fail-open behavior above: a dead network reads as
+"unknown", not "clean", and the warn plus the envelope `warnings[]` entry
+say so. `strict` fails the gate closed on an unreachable lookup (`check:
+live thread recheck unreachable ... — gate fails: offline posture is
+strict; restore the network or re-run with --live skip, then re-check`,
+exit 1, still never 3 — the network is a gate condition, not a corrupt
+store). `skip` pays zero network and gates on the local dimensions only,
+saying so loudly: a `live recheck skipped (--live skip ...)` warn (also in
+`--json` `warnings[]`) plus a neutral skipped `check:` line in the gate
+tail. Structural skips stay neutral in every posture — a local bundle has
+no live threads to verify and a non-GitHub provider's threads are outside
+the GitHub-only read, so there is no live dimension to pass or fail. Pick
+`strict` for merge gates that must never report ready while threads stand
+open live; pick `skip` for air-gapped runs where the operator accepts the
+local-dimensions-only verdict on the record. `--live` without a gate flag
+is inert: advisory runs never touch the network regardless.
+
 Hook recipe (merge gate — findings AND freshness in one call):
 
 ```bash
-./scripts/review.sh report owner/repo 123 --check critical --completeness || exit 1
+verdict report owner/repo 123 --check critical --completeness || exit 1
 # exit 0 only when no open critical+ findings stand AND the fetched HEAD
 # is the posted HEAD; exit 1 names which dimension failed on stderr.
 ```
+
+### MCP server (stdio, experimental until 1.0)
+
+`verdict mcp` serves the review verbs as MCP tools over stdio: newline-delimited
+JSON-RPC 2.0 on stdin/stdout, one frame per line. There is no daemon, listener,
+HTTP/SSE mode, or remote auth: the process shares the host's credentials and
+exits when stdin closes. It is listed as experimental in the usage block, and
+`verdict mcp --help` documents it.
+
+Tools are named after the verbs and take the core request shape: `adopt`,
+`calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
+`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `threads`,
+`trend`, `verify`. That is 18 tools. `upgrade` and `skill` are distribution surfaces,
+never tools; `triage` is human-owned and joins the surface only with
+`--operator`, so an agent proposes status changes through `triage[]` in
+`review.json` instead. Input schemas are generated from the Go request structs,
+so they cannot drift from the core contract; `repo`/`pr` plus verb fields are
+the arguments. Closed vocabularies and numeric bounds the structs declare
+(`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
+become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
+error the model sees before calling instead of a runtime refusal. `post` writes
+a review and calls GitHub, so it is not exposed under `--read-only`.
+
+`--read-only` exposes only the eight non-submitting tools (`report`, `next`,
+`show`, `threads`, `trend`, `ready`, `doctor`, `check-tree`; `threads` refreshes
+its bundle snapshot and nothing else) and is mutually exclusive with
+`--operator`. Every review verb except the human-owned `triage` is exposed by
+default because the host already authorizes the binary and its credentials.
+A call to a tool the flags hide is a JSON-RPC `-32602` error whose message and
+`data` name the tool and the flag combination that exposes it (`record` under
+`--read-only`, `triage` without `--operator`), so a hidden verb is never
+reported as an unknown one; a truly unknown name still answers
+`unknown tool`.
+`--operator` adds `triage` (18 tools) for an operator's own assistant that is
+allowed to flip statuses; it is never the default. Each `tools/list` entry
+carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
+real behavior: `post` is destructive and open-world, `fetch` is open-world,
+`report` is read-only and idempotent. Descriptions state what the tool does,
+when to call it, and what it writes or sends. `initialize` returns an
+`instructions` string with the same doctrine (fetch, review, post; one review;
+refusals carry a `hint`; never `triage` without `--operator`), so an MCP-only
+agent sees it before its first call. Each
+`tools/call` returns the CLI `--json` envelope's `data` as one text block plus
+`structuredContent`; a typed refusal sets `isError: true` with
+`{code, message, hint}` in both places, plus `retry_at` when the refusal is
+retryable. The text block is budgeted at 256 KiB:
+a larger result keeps `structuredContent` whole and replaces the text with a
+JSON summary carrying `truncated: true`, the measured `bytes` and `limit`, the
+on-disk `artifact` (the bundle directory when the verb reports one) and a
+`next` step, so one oversized `report` cannot silently consume the agent's
+context. A malformed call is a JSON-RPC `-32602` error, not a refusal. Human
+progress and warnings go to stderr (or MCP notifications), never stdout:
+stdout is the protocol channel.
+
+#### Host config
+
+`verdict mcp config --agent <claude|cursor|codex>` prints the exact entry (the
+default is print-only, like `--dry-run`). Add `--write` to merge it into the
+host's documented config, or `--json` for one envelope with the path, format,
+snippet, and merge status. It never prompts and never starts the server.
+
+| Agent    | Config file                                            | Format |
+| -------- | ------------------------------------------------------ | ------ |
+| `claude` | project `.mcp.json`                                    | JSON   |
+| `cursor` | project `.cursor/mcp.json`                             | JSON   |
+| `codex`  | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` | TOML   |
+
+```json
+{ "mcpServers": { "verdict": { "command": "verdict", "args": ["mcp"] } } }
+```
+
+```toml
+[mcp_servers.verdict]
+command = "verdict"
+args = ["mcp"]
+```
+
+`--write` is idempotent: an existing matching entry is `keep` and nothing is
+written; an absent one is `create`/`update`. The previous file is copied to
+`<path>.verdict.bak` before the first changing write. Unknown keys and other
+servers are preserved. A file that does not parse, or a `verdict` entry whose
+command/argv differs (including a `--read-only` argv), refuses typed instead of
+being rewritten; for TOML only a plain `[mcp_servers.verdict]` table is
+merged — inline/dotted spellings refuse rather than guess. Fix or remove the
+entry by hand and re-run.
+
+Use `--read-only` in review-only hosts by editing the entry to
+`{"command":"verdict","args":["mcp","--read-only"]}` (or the TOML
+`args = ["mcp", "--read-only"]`). An operator's own assistant opts into the
+human-owned verbs the same way with `args = ["mcp", "--operator"]`; never
+combine the two flags. `mcp config --write` refuses either edited entry on a
+later run because its argv differs; that is intentional, since silently
+rewriting it would widen the host's permissions.
+
+The server is experimental until 1.0: tool shapes may still move, while the
+envelope keeps its `schema_version` contract.
 
 ### Pre-push probe (local gate before CI burns)
 
@@ -360,7 +621,7 @@ or an open critical fails locally instead of burning CI:
 
 ```bash
 #!/bin/sh
-./scripts/review.sh report owner/repo 123 --check critical --completeness || exit 1
+verdict report owner/repo 123 --check critical --completeness || exit 1
 # exit 0 only when no open critical+ findings stand AND the fetched HEAD
 # is the posted HEAD; exit 1 names which dimension failed on stderr.
 ```
@@ -370,18 +631,27 @@ check line names the re-fetch command — the `--base-sha <short-posted-head>`
 advance form when `post.json` carries a head, the plain `fetch` when there is
 nothing to advance from (see the `report --completeness` paragraph above and
 the Finalizer loop under Findings store + triage authority). Local bundles
-keep the `fetch-local` form.
+keep the `fetch-local` form. The fail-open default is deliberate: the local
+dimensions (tier hits, HEAD-reviewed) are ground truth the operator already
+paid to collect, while a failed lookup proves nothing about live threads —
+conflating "network dead" with "threads open" would turn every outage into
+a red gate and teach operators to bypass it. `strict` exists for the
+opposite bet: a merge gate that must refuse rather than pass blind, at the
+cost of going red whenever the network does.
 
-Offline-safe by construction: every gate run ends with the live-thread recheck
+Offline-safe by construction: every gate run under the default `--live auto`
+posture ends with the live-thread recheck
 that warns (`live thread recheck unreachable`) and proceeds on the local
 dimensions when the network is unreachable — the hook stays fast and never
-exits 3 over the network.
+exits 3 over the network. Operators who need the closed posture opt in
+with `--live strict` (or accept the loudly-skipped local verdict with
+`--live skip`).
 
 ### Doctor preflight
 
 `doctor` preflights the harness with no repo/PR args and no writes: `gh-cli`,
-`gh-auth`, `jq`, `shasum`, and `storage-writable` hard-fail the run (exit 1);
-`token-scopes`, `ps`, `git`, and `api-reachable` warn only and never fail it.
+`gh-auth`, and `storage-writable` hard-fail the run (exit 1); `token-scopes`,
+`ps`, `git`, and `api-reachable` warn only and never fail it.
 The scope rows reuse the single existing `gh api user` scopes-header read —
 no new network calls. Grants below the baseline (`repo`/`public_repo` for the
 reads the tool performs) warn on the `token-scopes` row; grants above it warn
@@ -428,19 +698,75 @@ key in the JSON cost object). Threshold is the budget itself: projected above bu
 needs consent, at-or-under proceeds. Estimates cover the review run about to start,
 not the fetch reads; unknown estimates never refuse.
 
+When the agent's provider reports prompt caching, per-model `cost.json` entries
+may carry `cache_read_input_tokens` (served from cache) and
+`cache_creation_input_tokens` (spent writing the cache) — both subsets of the
+sibling `input_tokens`, never additions; absent or `null` reads as unknown, never
+zero. `report --cost` rolls the split into a top-level `cached_input_tokens`
+scalar (shown as `cached=N` on the human line) while totals stay
+`input + output` exactly; the script never prices cached tokens (`est_usd`
+remains the agent's own math, as today).
+
+#### Measured usage (explicit usage handoff)
+
+When the operator hands over usage records, the budget gate prices
+comparable runs from them instead of the self-reported `est_usd` — read
+locally, never over the network, and never discovered on its own. Point
+`VERDICT_USAGE` at one file (a single record, an array of records, or a
+`.jsonl` log with one record per line) or a directory of such files, all in
+the contract shape published as `schemas/usage.schema.json`:
+
+```json
+{
+  "schema_version": "1",
+  "source": "claude-code",
+  "model": "claude-sonnet-4-5",
+  "tokens": { "input": 3000, "output": 170, "cache_read": 800 },
+  "usd": 2.5,
+  "started_at": "2026-09-01T10:00:00Z",
+  "ended_at": "2026-09-01T10:02:00Z"
+}
+```
+
+Only `schema_version`, `source` (a free-form measurer name), and the
+`started_at`/`ended_at` window are required; `model`, `tokens`, and `usd`
+ride along when the measurer knows them. If the agent running the review
+knows its real usage, it writes one such record (see `SKILL.md`) and reports
+the path; harness exports (Claude Code transcripts, opencode exports) are
+converted with the optional scripts in `examples/usage-adapters/` — the
+binary never opens those files itself.
+
+A record is joined to a `.review/*/cost.json` entry only when its window
+brackets that record's mtime, so an unrelated session never prices a review.
+The handed USD replaces the self-reported `est_usd` for that run; records
+without a handed twin keep their self-report. Records without a priced
+total are never converted to USD (the tool never prices tokens).
+
+The estimate names its basis whenever a handed record contributed:
+`data.estimate.basis` is `measured` (every priced sample in the projected
+tier came from handed usage) or `mixed`, with `harness[]` naming the
+record `source` strings and `measured_runs` counting them; the human
+estimate line and an over-budget refusal carry
+`[measured from N harness session(s)]`. Those keys are absent — and the
+legacy output stays byte-identical — when nothing was handed over, so a
+self-reported estimate is never silently labeled as measured. A named path
+that is missing, oversized, or malformed refuses typed (`bad-usage`) before
+the bundle is written: an explicit handoff never silently degrades.
+
 ## Onboarding (scaffolder + prefs file + skill installer)
 
 New operators onboard in one offline command — no network, ever:
 
 ```bash
-./scripts/review.sh init --preset standard --yes   # chill|standard|strict, default standard
+verdict init --preset standard --yes   # chill|standard|strict, default standard
 ```
 
 `init` writes the standard local control files, then runs check-tree
 validation (same filter: own `.review/` scratch ignored). Existing files
-print a preview and need `--yes`/`--force` (or an interactive confirm when
-stdin is a tty) before overwrite — the same preview-then-confirm idiom the
-installer uses. Re-running with the same preset reads as `keep` (idempotent).
+print a preview and need `--yes`/`--force` (or, in human mode, an
+interactive confirm when stdin is a tty) before overwrite — under `--json`
+there is no prompt: the run refuses typed `needs-confirm` instead. The same
+preview-then-confirm idiom the installer uses. Re-running with the same preset reads as `keep` (idempotent).
 
 Style presets map to panel strictness plus KB retirement thresholds (the KB
 starter is identical across presets):
@@ -463,11 +789,10 @@ The prefs file ends env sprawl without forcing migration. Path:
 respected, `$schema` key carries a schema hint that is never fetched).
 Presentation keys only — CLI survey: the only presentation surfaces are the
 machine envelope (`--json`), file outputs (`--output`/`--sarif`), and the
-prompt-dump destination, so the file exposes exactly three namespaces:
+prompt-dump destination, so the file exposes exactly four namespaces:
 
 ```json
 {
-  "$schema": "https://github.com/stainless-code/verdict/blob/main/schemas/settings.schema.json",
   "output": { "format": "text" },
   "layout": { "compact": false },
   "color": { "mode": "auto" },
@@ -510,6 +835,106 @@ byte-identical to today (marker-first, degenerate-body bar unchanged); only
 the rendered bytes gain the default footer block below — no forced
 migration, no env removed.
 
+## Install routes and where commands run
+
+One execution model across every route. Run the CLI from the repo under
+review: `.review/` is created in the current directory, never beside the
+tool. The CLI is the `verdict` binary. Caller tracing, test checks, and
+`verify` all run repo-scoped in that directory, so reviewing another repo
+means running from its checkout (or accepting that the bundle lands wherever
+you stand).
+
+- **Binary** (`install.sh` / `install.ps1`, the default): the script fetches
+  one release archive, `checksums.txt`, and `checksums.txt.sigstore.json`,
+  verifies the cosign identity/issuer over the checksums and the archive
+  SHA-256, extracts only `verdict`, and atomically renames a staged file over
+  the target. `$VERDICT_INSTALL/verdict` is the binary (default
+  `~/.verdict/bin/verdict`); `$VERDICT_INSTALL/.verdict-installer` is the
+  installer receipt. No root is needed or requested. Any verification failure
+  leaves the old binary in place; the download is never executed before
+  verification. When cosign is present the sigstore bundle is mandatory.
+  Without cosign the installer warns loudly and verifies the checksum only;
+  `VERDICT_REQUIRE_SIGNATURE=1` (Windows: `-RequireSignature`) fails closed.
+  `VERDICT_VERSION` pins a release (`vX.Y.Z` accepted); the default `latest`
+  resolves through the Releases redirect, never the rate-limited API (Windows
+  `-Version`). `VERDICT_DOWNLOAD_URL` overrides the release base for mirrors.
+  PATH is touched only by appending one marked line (`# verdict installer`)
+  when the install dir is missing; `VERDICT_NO_MODIFY_PATH=1` or
+  `--no-modify-path` (Windows `-NoModifyPath`) opts out, and `install.ps1`
+  updates the user PATH only. Offline installs pass a local archive
+  (`install.sh ./verdict_1.2.3_linux_amd64.tar.gz`) with its sibling
+  `checksums.txt` and optional bundle, or point `VERDICT_DOWNLOAD_URL` at a
+  `file://` mirror; local-file installs make no network call.
+  `install.sh --uninstall [--remove-path]` and Windows
+  `install.ps1 -Uninstall [-RemovePath]` remove only installer-managed files
+  and their own PATH line;
+  a `verdict` without the receipt is refused as foreign. The scripts are
+  release assets, not npm tarball contents.
+- **Updating** (`verdict upgrade`): explicit only — no background check, no
+  nag, no daemon, and the review path never calls it. The command resolves
+  `os.Executable()` through symlinks and maps the result to one channel:
+  installer-managed (receipt in `~/.verdict/bin` / `VERDICT_INSTALL`) does a
+  verified self-replace (archive + `checksums.txt` + sigstore bundle; cosign
+  identity/issuer when cosign is present, loud checksum-only fallback, and
+  `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract only the
+  binary; `--version` smoke test; atomic replace with rollback). Global
+  npm/pnpm/bun/yarn installs run that manager's global update
+  (`npm i -g @stainless-code/verdict@latest`, `pnpm add -g …`,
+  `bun add -g …`, `yarn global add …`) after printing the exact command and
+  with no prompt; Homebrew runs
+  `brew upgrade stainless-code/tap/verdict` (the formula owns the version, so
+  `--version` refuses). Project-local `node_modules` (the manifest/lockfile
+  owns it), skill copies (`npx skills update` / the skill bootstrap),
+  sudo/admin, unwritable targets, and unidentifiable paths refuse typed with
+  the exact remediation command — never a silent privilege escalation and no
+  download in a refusal path. `--dry-run` prints the channel and planned
+  action and touches nothing; `--json` emits the standard envelope;
+  `VERDICT_INSTALL_METHOD` (`installer-managed`, `npm`, `pnpm`, `bun`,
+  `yarn`, `homebrew`, `project-local`, `skill`, `unknown`) overrides
+  detection for tests. On Windows the
+  running `.exe` is never overwritten: the verified new binary is copied to
+  `%TEMP%`, spawned as a helper that waits for the parent PID, renames the old
+  binary to `.old`, moves the new one in, smoke-tests, writes the receipt,
+  deletes `.old`, and restores the old binary on failure.
+- **Uninstalling** (`verdict uninstall`): installer-managed installs only.
+  Removes `verdict`, the `.verdict-installer` receipt, and (with
+  `--remove-path`) the marked `# verdict installer` shell-profile line
+  (`install.ps1`'s user PATH entry on Windows); other files are untouched.
+  npm/pnpm/bun/yarn/Homebrew/project-local/skill copies refuse typed with the
+  owning removal command (`npm uninstall -g …`, `brew uninstall …`,
+  `rm -rf <skill dir>`, …). `--dry-run` and `--json` are supported.
+- **Registry** (`npx skills add stainless-code/verdict`): the primary path is
+  the GLOBAL binary (curl/npm/brew above), which the skill copy resolves on
+  PATH through `scripts/verdict` (`VERDICT_BIN`, then `<skill>/bin/verdict`,
+  then `verdict`). `npx skills` is scoped to the skills dir and never
+  installs the binary; `install.sh` is not shipped in the npm tarball and
+  never runs here. With no global binary, run the one-time verified
+  `sh <skillsdir>/verdict/scripts/verdict bootstrap`: it fetches the pinned
+  release's `install.sh` once, that installer verifies the sigstore bundle
+  (when cosign is present) and the SHA-256, and the binary lands at
+  `<skillsdir>/verdict/bin/verdict`. It is idempotent and offline afterwards;
+  no review ever downloads. Refresh the skill with `npx skills update`.
+- **Source checkout** (`git clone` + `make build` + `./install-skill.sh`):
+  symlinks the checkout into the agent skill dirs (nine agents,
+  `--detect`/`--all`, doctor-gated). Updates via `git pull`;
+  `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
+  wiring applies to the checkout only. (Before 0.4 this script was named
+  `install.sh`; the name now belongs to the binary installer.)
+- **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
+  `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
+  never skew from the binary. `verdict skill` prints `SKILL.md` (default
+  `--format md`); `--format json` is one standard envelope with
+  `name`/`version`/`files`; `verdict skill files` lists every embedded path.
+  `verdict skill install` (flags: `--dir <skills-dir>` or `--agent <name>`,
+  `--force`, `--dry-run`, `--json`) writes the payload plus a
+  `.verdict-managed` receipt (file-atomic, receipt last), previews
+  create/update/keep/blocked, refuses
+  a target without a verdict receipt unless `--force`, never removes foreign
+  files, never prompts, and makes no network call. `--agent` accepts
+  `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
+  `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
+  shared `~/.agents/skills/verdict` slot.
+
 ## Publish footer + attribution knobs
 
 Every posted body and every `report --output` file ends with one merged
@@ -524,7 +949,8 @@ block at the end:
 ```
 
 Fields degrade factually, never blank, never failing the run: an unreadable
-version reads `unknown`, unpriced spend reads `cost unrecorded`, uncountable
+version reads `0.0.0-unknown` (the same string `--version` prints), unpriced
+spend reads `cost unrecorded`, uncountable
 files read `files unrecorded`, and the review link renders only when a
 completed post record carries it (never invented pre-post). When the post
 record's head matches the bundle HEAD the link is omitted instead of pointing
@@ -565,8 +991,8 @@ Flags `--footer/--no-footer`, `--attribution [off|product|full]`/`--no-attributi
 over defaults. Unknown `publish.*` keys refuse typed `bad-settings`, and any
 credential-shaped key at any depth refuses `bad-settings-credentials`.
 
-Migration note (P1b breaks the day-old P1 default): `publish.attribution`
-was a bool in 0.2.0 and is now `off`/`product`/`full` — a file carrying
+Migration note: `publish.attribution` was a bool in 0.2.0 and is now
+`off`/`product`/`full` — a file carrying
 `true`/`false` refuses with the mapping named (`"off"` for `false`,
 `"product"` for `true`). `--attribution`/`--no-attribution` keep working
 (product/off); `--attribution full` reaches the maker level.
@@ -627,12 +1053,12 @@ divider, bounded because the footer marker cuts to end-of-body and a mid-body
 diagram is not terminal. Knobs live under `publish.diagrams`:
 `publish.diagrams.behavioral` (bool, default `false` — the block renders
 only when opted in), `publish.diagrams.structural` (bool, default `true` —
-the P3 topology half above), `publish.diagrams.expanded` (bool, default
+the topology half above), `publish.diagrams.expanded` (bool, default
 `false` — renders the kept block open instead of collapsed). Flags
 `--diagram-behavioral` / `--no-diagram-behavioral` (plus
 the matching `-structural` / `-expanded` pairs) win over the file; the file
 wins over `REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL` / `_STRUCTURAL` / `_EXPANDED`
-env; env wins over defaults. With no diagram in the body the script path is
+env; env wins over defaults. With no diagram in the body the output path is
 byte-identical whether the knobs are set or not.
 
 ## Section overrides (per-block template fragments)
@@ -678,7 +1104,8 @@ still kills the block). Validation runs at `check-tree` (authoring-time) and
 is revalidated cheaply at `post`/`record`/`report` time with no re-render —
 every violation refuses loudly with the broken invariant named (fail-closed;
 warn-and-keep never applies to explicit operator intent). With no
-`.review/overrides/` dir the script path is byte-identical to today.
+`.review/overrides/` dir the output path is byte-identical to the built-in
+fragments.
 
 ## Local review (no PR)
 
@@ -709,12 +1136,43 @@ reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses lo
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —
 record predictions locally, settle them after the upgrade below.
 
+The shipped `verdict` is a single static Go binary: `make build` writes
+`bin/verdict`. There is no shell leg and no `VERDICT_IMPL`/`VERDICT_BIN`
+dispatch.
+
+Two `post` guards (graded by `evals/cases/post-go-guards.sh`): secondary rate
+limits (a 403/429 with a rate-limit signal) retry within
+bounds — honoring the `retry-after` hint or the reset marker, at most three
+attempts, never publishing twice — and review bodies past the 65,536-char
+hosting limit split into parts: the first review keeps the footer intact,
+and the remaining parts post as follow-up COMMENT reviews with a continuation
+header. A failed follow-up refuses typed (`post-failed`) and names the review
+that already landed. When the last permitted attempt still carries a
+retryable signal, the refusal adds `retry_at` (RFC 3339), so an agent can wait
+for that instant instead of parsing the prose.
+
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`
 history event and re-resolves anchors against the PR hunks (unmatched paths land
 `anchored:false`, never dropped), refuses into a non-empty store. From there `post`
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
+
+### Isolated checkout (`--worktree`)
+
+`fetch-local --worktree` checks the review target into a temporary detached
+worktree under `.review/` and builds the bundle from that checkout instead of
+the live tree: the default dirty tree via a read-only stash snapshot, `--staged`
+via a synthesized index commit, `--range`/`--base`/`--stash` at their head
+commits. The bundle bytes match the classic run on a quiet tree, but a dirty
+working tree — yours or a teammate's editor saving mid-fetch — cannot leak in
+or tear the read. The run prints the checkout path (`worktree: ...`) and always
+removes it before exiting, on success and on every refusal or cancel; a removal
+that fails warns with the manual `git worktree remove --force` recovery. When
+no checkout can be created the verb refuses typed `worktree-failed` and writes
+nothing. Re-materialize the same tree later for caller tracing or `verify`
+runs with `git worktree add --detach /tmp/<name> <head-sha from source.json>`
+and remove it when done — the working tree stays untouched throughout.
 
 ### Fix loops (bounded, verify-gated)
 
@@ -763,7 +1221,7 @@ only the filesystem and network it sees change):
 
 ```bash
 bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh -- ./scripts/review.sh verify owner/repo 123
+  --tmpfs ~/.config/gh -- verdict verify owner/repo 123
 ```
 
 `--ro-bind / /` makes the host read-only, `--bind` remounts the repo
@@ -773,7 +1231,7 @@ full network isolation for the command under test:
 
 ```bash
 bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh --unshare-net -- ./scripts/review.sh verify owner/repo 123
+  --tmpfs ~/.config/gh --unshare-net -- verdict verify owner/repo 123
 ```
 
 No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network
@@ -781,7 +1239,7 @@ half of the shape only — network-only isolation, not the same shape:
 
 ```bash
 sudo systemd-nspawn --directory=/ --bind="$(pwd):$(pwd)" --private-network \
-  -- ./scripts/review.sh verify owner/repo 123
+  -- verdict verify owner/repo 123
 ```
 
 `--directory=/` runs the container on the host rootfs, so this is
@@ -814,6 +1272,27 @@ through any of these reopens the mandate discussion.
   as found, never "complete");
 - container/VM escape (out of scope by recipe, not by gate).
 
+## Child environment (what inherits, what is explicit)
+
+Documented so nobody "fixes" it: verdict's children do not all get the same
+environment, and the split is deliberate (the security rationale is in
+`SECURITY.md` § Child process environment).
+
+- The `gh` and `git` calls **verdict issues itself** (fetch, post, triage,
+  `doctor`, and the base-owned control reads) **inherit your environment**.
+  That is the point: they must use your `gh` auth and your git config,
+  because verdict is a local CLI working on your behalf.
+- The **agent-written `verifyCmd`** runs under `bash -c` with an **explicit**
+  environment — the ordered snapshot the CLI hands `verify`, not a silent
+  inheritance. The same snapshot is the redaction list for the recorded tail,
+  so a token you exported is scrubbed from `.verify.out` and `patch.json`.
+
+In tests the counterpart is `internal/testenv`: every harness that spawns
+`git`, `gh`, or `verdict` builds a fixed, secret-free child environment
+(secret-shaped names and harness knobs dropped, git configuration pinned) and
+never inherits the runner's. Production inherits the operator's environment on
+purpose; tests never do.
+
 ## Over-cap diffs (chunked fetch + manual recipe)
 
 Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
@@ -822,7 +1301,8 @@ candidates (largest file alone, everything-but-largest, range half-split) —
 nothing auto-narrows. Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
 or a `.review/max_bytes` file holding one plain byte count (env wins, then
 the file, then the 512000 default; either override disables chunking outright
-and the fetch prints its source).
+and the fetch prints its source). The file knobs (`max_bytes`, `chunk`) are read
+from the PR base commit, so a PR cannot raise its own cap.
 
 Chunked fetch is the opted-in over-cap path: pass `--chunk` on `fetch` or
 `fetch-local`, or hold `true` (`on`/`1`/`yes` — first usable line wins) in a
@@ -841,7 +1321,8 @@ checklist), and `chunk-NN.roles.txt`, plus `chunks/manifest.json` (`schema_versi
 chunk list with member files, sizes, and diff/toc/roles refs). The top-level
 bundle keeps `full.diff` for anchor pinning and drift detection; the `--json`
 envelope gains additive `data.chunk` (`count`/`manifest`/`total_bytes`);
-`--show-prompts` concatenates the chunk diffs in manifest order.
+`--show-prompts` fences the chunk diffs in manifest order (one ordered
+document, byte-equal to `full.diff`, labeled `source=full.diff`).
 
 Review from the chunks: read the manifest first, then each chunk diff
 end-to-end against its own checklist — an unread chunk is as visible as an
@@ -867,9 +1348,9 @@ it (split the range and re-fetch each slice, or narrow with a paths filter),
 then review each slice and stitch the verdict yourself:
 
 ```bash
-./scripts/review.sh fetch-local owner/repo slice-a --range <base>..<mid>   # or --base <R>
-./scripts/review.sh fetch owner/repo 123 --base-sha <sha>                  # or --since <sha>
-./scripts/review.sh fetch-local owner/repo slice-b -- <paths...>           # narrow to a file subset
+verdict fetch-local owner/repo slice-a --range <base>..<mid>   # or --base <R>
+verdict fetch owner/repo 123 --base-sha <sha>                  # or --since <sha>
+verdict fetch-local owner/repo slice-b -- <paths...>           # narrow to a file subset
 ```
 
 ## Providers (non-GitHub hosts)
@@ -881,14 +1362,21 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post`, `calibrate`,
-and `adopt`-into refuse non-GitHub bundles: none of these hosts has GitHub's
-single atomic review submit (GitLab needs draft-notes-then-publish, Bitbucket
-and Azure need N thread POSTs, Forgejo's CLIs can't author inline comments),
-so submit stays a per-host follow-up rather than unverified code.
+and `adopt`-into refuse non-GitHub bundles. The refusal is deliberate, not a
+claim that submit is impossible elsewhere: GitLab accepts per-comment
+discussion POSTs plus one summary note and an approve call, and Forgejo can
+author inline comments through its API even though its CLIs cannot. What those
+hosts lack is GitHub's single atomic review submit, so a submit path needs the
+comments → summary body → verdict-last ordering and the partial-post receipt
+that already exists here. Until that per-host replay lands, submit stays a
+follow-up rather than unverified code. `fetch --json` publishes the facts in
+`data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`,
+`thread_resolution`, and `review_verdicts`, so an agent can plan before it
+writes a review.
 
 | Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list` + changes API                                                               | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused)                                  |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused)                                  |
 | `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships |
 | `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                            |
 | `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                         |
@@ -934,7 +1422,7 @@ findings against the code in `agent_verdict` / `agent_helpful` columns that
 MAY diverge from the baseline, merged machine-readably via `--judge
 SIG:VERDICT[:HELPFUL]` or `--judge-file PATH` (every sig validated against
 the findings store; unknown sigs refuse typed), with `agreement` computed per
-row. The M4-consumable number is the agreement rate over doubly-judged rows
+row. The evidence number is the agreement rate over doubly-judged rows
 with the sample size recorded alongside. The run is additive-only (that one
 file; findings, joins, and calibration outputs stay byte-identical),
 deterministic and idempotent, and needs no post record and no network — local
@@ -947,7 +1435,9 @@ record, it is not the record.
 `trend <owner/repo>` rolls up every reviewed bundle (`.review/*/findings.json`)
 into one time series: findings opened/addressed/closed per review date, broken
 down by severity tier and status, plus per-bundle rows (review time, models and
-effort from `cost.json` when the agent wrote one). Pure read — no network,
+effort from `cost.json` when the agent wrote one, provenance from the post
+receipt else the calibration record — `tool_version`, `prompts_hash`, `model`,
+missing reads unmarked). Pure read — no network,
 nothing written, recomputed every run so hand-edited stores stay truthful;
 missing or unreadable stores warn and skip, and no reviewed bundles reads as
 zeros, never an error. `closed` means no longer actionable
@@ -980,7 +1470,9 @@ quality — the prompts do.
 
 ## Store changelog (additive within schema_version "1" — renames never happen, only additions)
 
-Schema evolution only — verbs and features ship in the release changelog.
+Release versioning (changesets → Version PR → npm + GitHub Release) lives in
+`README ## Versioning`. This section tracks store-schema evolution only —
+verbs and features ship in the release changelog.
 
 - Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.
 - Added: `rigor`, `inBounds`, retained `suggestion`, `rationale`/`triagedAt`/`triagedBy`, history `actor`/`sha`; statuses `wont-fix/false-positive/deferred`; `verification.json` evidence gate; `patch.json` gains `verifyCmd/verifyOutput/baseHead/resultHead`.
@@ -1003,3 +1495,58 @@ Schema evolution only — verbs and features ship in the release changelog.
   `manifest.json` with `schema_version: "1"`, per-chunk `<name>.cost.json`) —
   `post`/`record` gate attested top-level `"chunks"` coverage against the
   manifest.
+- Added: per-model cache-token split on `cost.json` (`cache_read_input_tokens`,
+  `cache_creation_input_tokens` — optional subsets of `input_tokens`, absent
+  or `null` reads unknown, never zero); `report --cost` rolls them into a
+  top-level `cached_input_tokens` scalar while `total_tokens` stays
+  `input_tokens + output_tokens` exactly.
+- Added: per-provider `threads.json` — the normalized PR-conversation feed
+  (`schema_version: "1"`, published as `schemas/threads.schema.json`): root
+  threads with host id, anchor/state, author kind, optional `finding_sig`, and
+  capped comments[]. Every posted inline comment now carries the hidden
+  final-line marker `<!-- verdict-finding sig=<sig> -->`, so the next
+  `fetch`/`threads` read links a verdict-authored thread back to its finding;
+  older comments without the marker read `finding_sig: null` (backward
+  compatible, never a different bot's marker).
+- Added: review provenance on `post.json`/`record.json` (`tool_version`,
+  `prompts_hash`, `model` — model from the latest cost record when one names
+  it, else `null`); `calibrate`/`trend` surface it so mixed-version histories
+  read as mixed, never one series. `prompts_hash` is sha256 over the sorted
+  prompt-set file names plus contents — exactly `SKILL.md` plus
+  `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, each fed as
+  `== <path> ==` plus its bytes in sorted path order. Old receipts without
+  the fields read as unmarked, never fail.
+
+### Published schemas + drift rule
+
+The shapes agents write and operators parse are pinned in `schemas/`
+(draft 2020-12, shipped in the npm tarball): `review.schema.json`
+(agent-written input), `findings.schema.json` (the merged findings store),
+`cost.schema.json` (the self-reported spend record), `controls.schema.json`
+(the resolved base-owned controls snapshot), `usage.schema.json` (the
+explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
+`post.schema.json` and `record.schema.json` (completed post/record captures),
+`threads.schema.json` (the normalized PR conversation),
+and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
+`data` for `report`, `post`, `record`, and `show`, plus fetch's additive
+estimate). `schemas/validate.sh` is the
+offline checker: a shim over `verdict __validate-schema`, whose implementation
+lives in `internal/schemacheck` — the one keyword subset the published schemas
+use (`$ref` within a file or across sibling files, `type`, `const`, `enum`,
+`properties`, `required`, `items`, `additionalProperties` as a bool or a
+schema, `minimum`/`maximum`, `minLength`/`maxLength`, `pattern`, `anyOf`,
+`format: date-time`), with anything outside it failing loudly and an
+unresolvable `$ref` never validating. The Go conformance tests and the evals
+therefore run the same code, so a fixture cannot pass one side and fail the
+other; `evals/cases/schema-contract.sh` asserts representative fixtures
+validate — a shape change that breaks agents or parsers fails the build
+instead of a review.
+
+Drift rule: additive within `schema_version`/`sig_version` `"1"`, matching
+the changelog above — new optional keys pass through the stores and the
+schemas alike; renames, tighter types, and newly required keys never happen
+without a version bump, and a bump ships only by operator decision. Who
+updates: the slice that changes what the script reads or writes updates the
+matching schema plus the schema-contract fixtures in the same commit, so the
+eval proves the new shape. The Go implementation is the source of truth;
+`make schemas` generates the published schemas from its store types.

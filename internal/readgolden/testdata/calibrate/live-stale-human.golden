@@ -1,0 +1,12 @@
+exit: 0
+--- stdout ---
+calibrate: acme/app#5101 — review 424242 @ aaaaaaa (stale — aaaaaaa → ccccccc), PR OPEN
+c1111111 [fixed] notes.txt:2 — thread resolved + cited file changed since review head kb:c111111111111111111111111111111111111111,open,critical,notes.txt:2,fixed,thread resolved + cited file changed since review head,["r-a1"]
+b2222222 [open] notes.txt:2 — thread still open kb:b222222222222222222222222222222222222222,open,important,notes.txt:2,open,thread still open
+d4444444 [unknown] notes.txt:2 — comment not found live kb:d444444444444444444444444444444444444444,addressed,important,notes.txt:2,unknown,comment not found live,["r-a2"]
+f6666666 [unknown] ? — body section — not a thread comment kb:f666666666666666666666666666666666666666,open,informational,?,unknown,body section — not a thread comment
+precision: fixed=1 resolved-unfixed=0 open=1 unknown=2 (judged 2)
+provenance: tool v0.0.1-test prompts abc123def456 model m
+--- stderr ---
+
+--- files ---

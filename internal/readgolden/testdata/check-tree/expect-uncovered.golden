@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+check-tree: unexpected dirt:
+?? scratch.txt
+--- stderr ---
+
+--- files ---

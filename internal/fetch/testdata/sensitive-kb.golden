@@ -1,0 +1,244 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4715,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4715/PR.json + full.diff to any agent; ask it to write .review/4715/review.json",
+  "warnings": [
+    "sensitive paths in bundle (see .review/4715/sensitive.txt): .env (filename)"
+  ],
+  "data": {
+    "dir": ".review/4715",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+    "files": 2,
+    "additions": 2,
+    "deletions": 1,
+    "hunks": 2,
+    "omitted": [],
+    "diff_bytes": 175,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "github",
+      "fetch": true,
+      "post": true,
+      "inline_anchors": true,
+      "thread_resolution": true,
+      "review_verdicts": true
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+      "files": 1
+    },
+    "artifacts": {
+      "PR.json": ".review/4715/PR.json",
+      "full.diff": ".review/4715/full.diff",
+      "toc.txt": ".review/4715/toc.txt",
+      "roles.txt": ".review/4715/roles.txt",
+      "reviews.json": ".review/4715/reviews.json",
+      "inline.json": ".review/4715/inline.json",
+      "threads.json": ".review/4715/threads.json",
+      "sensitive.txt": ".review/4715/sensitive.txt",
+      "incremental.diff": null,
+      "kb.txt": ".review/4715/kb.txt",
+      "kb-recall.json": ".review/4715/kb-recall.json"
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» gh pr view acme/app#4715
+» gh pr diff -> .review/4715/full.diff
+» roles -> .review/4715/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+warn: sensitive paths in bundle (see .review/4715/sensitive.txt): .env (filename)
+» kb: 1 rule(s) -> .review/4715/kb.txt (r1)
+» reviews + inline comments
+done: .review/4715/PR.json .review/4715/full.diff .review/4715/toc.txt .review/4715/roles.txt (2 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4715/PR.json + .review/4715/full.diff (+ .review/4715/roles.txt) to any agent; ask it to write .review/4715/review.json
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4715 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4715 --repo acme/app
+CALL: pr view 4715 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
+CALL: api repos/acme/app/pulls/4715/reviews --paginate
+CALL: api repos/acme/app/pulls/4715/comments --paginate
+CALL: api graphql -F owner=acme -F name=app -F pr=4715 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
+            }
+          }
+        }
+      }
+--- file C/.review/4715/.difffiles ---
+.env
+notes.txt
+--- file C/.review/4715/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"29c13ae939537f329d09b5f53a8fcb28260c815e","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
+--- file C/.review/4715/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+  "sha": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "used",
+      "bytes": 135,
+      "sha256": "3114c109b64ebf2f0205f690c7e9f75155b2a35615e401a515273b6567652a3c"
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4715/controls/kb.jsonl ---
+{"id":"r1","rule":"watch env","scope":"*.env","provenance":"op","rigor":"walked","hits":2,"false_hits":0,"judged":4,"status":"active"}
+--- file C/.review/4715/full.diff ---
+diff --git a/.env b/.env
+--- a/.env
++++ b/.env
+@@ -1 +1 @@
+-old
++sk-live-AAAAAAAAAAAAAAAA
+diff --git a/notes.txt b/notes.txt
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.review/4715/hunks.tsv ---
+.env	OLD	1	1
+.env	NEW	1	1
+notes.txt	OLD	1	1
+notes.txt	NEW	1	1
+--- file C/.review/4715/inline.json ---
+[]
+--- file C/.review/4715/kb-recall.json ---
+[{"id":"r1","score":0.5,"hits":2,"judged":4}]
+--- file C/.review/4715/kb.txt ---
+# kb recall — context, never orders. Cited rules inform the review; evidence still decides.
+# r1 — *.env — precision 2/4
+watch env
+--- file C/.review/4715/reviews.json ---
+[]
+--- file C/.review/4715/roles.txt ---
+## docs
+- notes.txt
+
+## source
+- .env
+--- file C/.review/4715/sensitive.txt ---
+# sensitive-path manifest — advisory only, not a gate.
+# Flagged paths stay reviewable evidence; never quote flagged values
+# into posted review bodies — name the path, not the secret.
+.env (filename)
+--- file C/.review/4715/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4715/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "github",
+  "pr": 4715,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": []
+}
+--- file C/.review/4715/toc.txt ---
+# TOC for PR #4715 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/.env b/.env
+7:diff --git a/notes.txt b/notes.txt
+
+## stat
+.env (+1/-0)
+notes.txt (+1/-1)
+
+## coverage manifest
+files in PR: 2 | files with diff hunks: 2
+omitted: (none)

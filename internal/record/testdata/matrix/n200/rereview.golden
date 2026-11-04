@@ -1,0 +1,1474 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "record",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "report or triage the local bundle; post stays refused (no PR target)",
+  "warnings": [
+    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+  ],
+  "data": {
+    "dir": ".review/local-mx",
+    "anchors": {
+      "kept": 0,
+      "moved": 0
+    },
+    "findings": {
+      "open": 202,
+      "deferred": 1,
+      "addressed": 0,
+      "file": ".review/local-mx/findings.json"
+    },
+    "confidence": null,
+    "security_summary": null,
+    "items": [
+      {
+        "sig": "c7bc06e4b34c00e95d1488a85c4cb394f88ed232",
+        "status": "deferred",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "63b8aa5b62b12a5f047a118ba744c095f7cdfe2c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:73"
+      },
+      {
+        "sig": "748484cb3c12e2fa35a083abdd367a5b336bf76e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:143"
+      },
+      {
+        "sig": "71eb69f49cb65794b78d63f73b2daa15839457f0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:213"
+      },
+      {
+        "sig": "e8e306834f388a5f07f0042bf9d10155c20bc0cc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:283"
+      },
+      {
+        "sig": "daea61531f5880722d293dae40483e2173a536c0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:353"
+      },
+      {
+        "sig": "c84ffef906aab45b3a73fc7dfc8d511f07747b33",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:423"
+      },
+      {
+        "sig": "5ae0170615a426fef7188f44a49defeac0a3af6d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:493"
+      },
+      {
+        "sig": "c2009016d7998b2ab22b2b0fbd745322e289cec9",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:563"
+      },
+      {
+        "sig": "65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:633"
+      },
+      {
+        "sig": "3799f659ab520605018f5f06298e698cdedf1537",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "b874f9504db49f29b1cbd59250765cc451e9adb3",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:133"
+      },
+      {
+        "sig": "b280b3f8f087604212dd6db9418c3f1bba430235",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:153"
+      },
+      {
+        "sig": "fdd8e950a5688b0e284eb0f9a6fa3bfb11431ab7",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1123"
+      },
+      {
+        "sig": "303ba953e737d793e4e97e9961b152ba5c54a879",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1193"
+      },
+      {
+        "sig": "c73d365898f5bebe0ba91bdc248b1dbc134235db",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1263"
+      },
+      {
+        "sig": "351a716c8ca1595a38f5a622ec4176ce0cb207c5",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1333"
+      },
+      {
+        "sig": "1d4351dd3fb3e342463b745e9a73d0cd6c43e067",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1403"
+      },
+      {
+        "sig": "afb9e47b4369dfff0fd65963df0a5fe05b1643f5",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1473"
+      },
+      {
+        "sig": "b6beaf97393791401f703dc359ad51bb81ac34c1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1543"
+      },
+      {
+        "sig": "4c8167c8a44087f272e8e688ab290e3e492ac893",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1613"
+      },
+      {
+        "sig": "5cf0bb2c9c45715d642d91fb22d521121f4252bb",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1683"
+      },
+      {
+        "sig": "6b75f645793b5dd355fc9ed2f0e24786da9736d4",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1753"
+      },
+      {
+        "sig": "f4ddf17be1ad81c197e4a8f3b31f55b48a81956f",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1823"
+      },
+      {
+        "sig": "6bce9b054390d70951c6a9e8a02fc50d1a716d7f",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1893"
+      },
+      {
+        "sig": "f1d100050738bbc47ad088f76015f44e52c3f227",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1963"
+      },
+      {
+        "sig": "1af55343737b575f169b27c4eb3a75479c35d25e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2033"
+      },
+      {
+        "sig": "102a5d936d30cb6ec72879131374ef7736dc162c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "3b89d8029673c23c74d93cd83665bd2b634b1fe6",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:333"
+      },
+      {
+        "sig": "0b7162fe4040ad8b291165b82f32a64664c54fc0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:353"
+      },
+      {
+        "sig": "a9d91e98c7a731fa4079bf7efc4d0338afb4c5aa",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:323"
+      },
+      {
+        "sig": "4ea3408f91a74c0bb1972173ebafca03ff4ac384",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:393"
+      },
+      {
+        "sig": "41d2d9c4a0f0dea39bc98942a05be45039435126",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:463"
+      },
+      {
+        "sig": "5dd4393fbeba6f683672ba36a3f1c915e453b76a",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:533"
+      },
+      {
+        "sig": "3aa1a65cc1e47062ef1bb8bba33c1f0c0bd473b1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:603"
+      },
+      {
+        "sig": "5d41f301dc49610680fdcd5cadc7faf92f805cc4",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:673"
+      },
+      {
+        "sig": "97782a5d14c51afa41c4e9e0a1a131760d77214a",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:743"
+      },
+      {
+        "sig": "7c9fd8b403a8266d3d037a44ccbc6f3df4058587",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:813"
+      },
+      {
+        "sig": "795174ab98e264232526a52bb9866b3bcc7b0ad9",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:883"
+      },
+      {
+        "sig": "2d784bc747df2755a9549a73fd4930f6d20e73b8",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:953"
+      },
+      {
+        "sig": "060dd3dec57d5bd58e819ae8d841259fcc2eb664",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1023"
+      },
+      {
+        "sig": "a045e2bccae60f9ec9bf985bccbbb7faeb3dd3f0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1093"
+      },
+      {
+        "sig": "ab7a49a121ca33c2dc971c5f84af0c94a1ed819e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1163"
+      },
+      {
+        "sig": "d2ca3f8acc3763fbb3d42e887cc8b59a469c3e4b",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1233"
+      },
+      {
+        "sig": "3727577a3bae92f93647ca786d349659d78c0517",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "0b10e9a5b4d449bfc872099e1eef9b6070458249",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:533"
+      },
+      {
+        "sig": "e12cb64244f60324920a0d86790dbb3647d1bec1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:553"
+      },
+      {
+        "sig": "60545b4149febee0b7d101e3d200a642b991442f",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1723"
+      },
+      {
+        "sig": "e00988e1b4cc416240171e149e93e3ee84eb4c61",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1793"
+      },
+      {
+        "sig": "6861a0f57426c3acf7b0f95d3561635578da0ebf",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1863"
+      },
+      {
+        "sig": "31d6f2a607d7d052f2d2ecb06dac573bd83eb46d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1933"
+      },
+      {
+        "sig": "2434239d9437224537569126e8e3c62beb79ca19",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2003"
+      },
+      {
+        "sig": "2a743cad00d3e6d9dbbeaa4a4b0ccc41843287fb",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2073"
+      },
+      {
+        "sig": "4a803d46a4d2cf98dd445c7cf15a28a044529269",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2143"
+      },
+      {
+        "sig": "140e89ff404c75efcc0937ee44ee418c4af93372",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "a1d3837a59b249575d53b285d8c5ba9e842f2db9",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:83"
+      },
+      {
+        "sig": "0f4bbd69480ea63cf417148b25c2e36f4fe2af00",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:153"
+      },
+      {
+        "sig": "5518f3c8cb3a0bd7cd721e598a359169e76ee927",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:223"
+      },
+      {
+        "sig": "7ad05197841c849f40310b34647244bb2da14352",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:293"
+      },
+      {
+        "sig": "0b51180072ac7b4f859ec7d13ee48c0e87f258e8",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:363"
+      },
+      {
+        "sig": "73927a00207e64fe1e7c6534875d97cc45bc9dd3",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:433"
+      },
+      {
+        "sig": "9cac678be749e4cbf3bdc55da7972e5da001b178",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "a08abaa7e0f8b311900606f309f01e5506b94732",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:733"
+      },
+      {
+        "sig": "d0bb6bf413e52eea65c1eaa89eabbb230760977c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:753"
+      },
+      {
+        "sig": "8ee0fb9ac3a96e087f19e5559472abb6d86fa223",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:923"
+      },
+      {
+        "sig": "58a765bfabb0b47271941bb2559cad7420ec8643",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:993"
+      },
+      {
+        "sig": "ed6b9ec58657d753a72c2f9d5bd858ad6f75fc87",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1063"
+      },
+      {
+        "sig": "556fc30680d43379f7b4590c863b94632216b29d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1133"
+      },
+      {
+        "sig": "5cc8bdf211aebc6df6b9e3b769fdc0fec8cb6ced",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1203"
+      },
+      {
+        "sig": "bbd92c181f2298ef077077b76a0da0657b99f0c5",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1273"
+      },
+      {
+        "sig": "0ac6a75861c9a9d14708204743788466c593cb20",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1343"
+      },
+      {
+        "sig": "d5eff8e330e98de9e0895fd37925de4186e05385",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1413"
+      },
+      {
+        "sig": "6c4f5eca609dd4bced122ef91fe5539b344aca63",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1483"
+      },
+      {
+        "sig": "904c1585c2c54b3b0d916d7d30ed3b07876cdf09",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1553"
+      },
+      {
+        "sig": "161a007a39cbc117c7d03dbbcb9b0047828c1510",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1623"
+      },
+      {
+        "sig": "5fa2d5d35b5ad9cfc1f5ba2092fbab1134c1caa7",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1693"
+      },
+      {
+        "sig": "65569d0625537ef02f23c0550564e5677b574331",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1763"
+      },
+      {
+        "sig": "edddefc49c4458dd36207bc4bcbaa75c03ff55de",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1833"
+      },
+      {
+        "sig": "4d0314614f59b8ef4db42b592f3c1a6444f4b1c1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "4f591ac75f1e5be011b271db93093ca4586d224e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:933"
+      },
+      {
+        "sig": "c69bd007ce6c363586f83cfdbcd80fea2db7c282",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:953"
+      },
+      {
+        "sig": "b2e672acfb180e219b1cf5de7f24dc9e5f327db8",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:123"
+      },
+      {
+        "sig": "ca825269985ba1aa57f9f5189e7103b67cb98f79",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:193"
+      },
+      {
+        "sig": "f4426fc0eab80ba525c019f43264a34d4d8e3402",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:263"
+      },
+      {
+        "sig": "3e93d47c9f2206e7e0b362cd389d2f57a878cf72",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:333"
+      },
+      {
+        "sig": "cb2b45f47a63647b719ff24d2982e4f3006712b0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:403"
+      },
+      {
+        "sig": "16e3196a74900b02bd33f4b7cdd60e97152dc399",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:473"
+      },
+      {
+        "sig": "34850a6f2e19883526828a8fa48486727cffe760",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:543"
+      },
+      {
+        "sig": "de8bc3e77a51aaef576195c1fc5ecf8e2dc13ab0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:613"
+      },
+      {
+        "sig": "eae4e80a54957a71b46abca405c4bbf9062d217d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:683"
+      },
+      {
+        "sig": "da575fdfa12dfdb314e572a318d685253ff2aa5a",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:753"
+      },
+      {
+        "sig": "9777b462d550a637a81fafab93fc4f667cce58fd",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:823"
+      },
+      {
+        "sig": "723ffecb267ff67823d8e2d30ab7e87e9107d528",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:893"
+      },
+      {
+        "sig": "ce1e511ded15ec969b31ecd45e8c8337e74bdc0c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:963"
+      },
+      {
+        "sig": "7f0f0b1fe3dc18885133d3cb099665153311500b",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1033"
+      },
+      {
+        "sig": "654f7a3da4bcbe590d1765505cc8dd9f944cf64d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "7596d64165dd13399c3aa4f6146294fe1529a174",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1133"
+      },
+      {
+        "sig": "7e9838fd871f60d5394ef43c2e4e05ef7c510951",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1153"
+      },
+      {
+        "sig": "e5235db216eea62cd0eb4600cbcb18c9bb756bc6",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1523"
+      },
+      {
+        "sig": "0d7305b268d3a8420d430a91136c4c6feeab7773",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1593"
+      },
+      {
+        "sig": "c5ee448c0dfda49fc0f1c28df160a09c0001c195",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1663"
+      },
+      {
+        "sig": "a9f71ad60301775d120c3d9a0b62ec5494a1a6fa",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1733"
+      },
+      {
+        "sig": "6a5db2e2efac20c5254622bccb62903027ed62dc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1803"
+      },
+      {
+        "sig": "73e4c719b243d538b4bb9fb93381ac64d25888d5",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1873"
+      },
+      {
+        "sig": "5d016e382c4a14ba7eb16ec50f441062fdae691a",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1943"
+      },
+      {
+        "sig": "9621e905e608def19b1b62a08e6c239c2918d0ea",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2013"
+      },
+      {
+        "sig": "450d48bed94fcca1d473da21f2fc680d7db4be6e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2083"
+      },
+      {
+        "sig": "99f0444bc52d465e3b30e4ffba381144adcdf76c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2153"
+      },
+      {
+        "sig": "c124b80bf23c259fed9761c63f8f119333284fa1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "745c0fa1c8a54d072601c19f370a0fb815a3a643",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:93"
+      },
+      {
+        "sig": "6528ccd0bf3355d8a5624a8beeb30d330f7a17d9",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:163"
+      },
+      {
+        "sig": "bab6667c874f7e2455d7c7f04ebade1f5db36b3f",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:233"
+      },
+      {
+        "sig": "ef443857e9d739a1d1eaa501094ee5aa89b0b2a0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "24f4279f86d298b30bfc3534c5d401cb7b3c1c2e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1333"
+      },
+      {
+        "sig": "2723216572b2a0a90cc9dae8a3e8a0a44795287e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1353"
+      },
+      {
+        "sig": "971f942738a6fbe802d8ff2aba05ce3dfdca8352",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:723"
+      },
+      {
+        "sig": "55f81897dda1676c721c6b41d112318677ad04e9",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:793"
+      },
+      {
+        "sig": "45dcc20fb6fd0c1355767d74362113cc6ca47a52",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:863"
+      },
+      {
+        "sig": "316ce35e553b85c8a231b0e32d2aaa0fe8fa495b",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:933"
+      },
+      {
+        "sig": "4a045b086ef2fc15492e3dc7b4ef551c80bfee59",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1003"
+      },
+      {
+        "sig": "ffe27ec1817625bf1876c90edbdf1d67ba6a4e93",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1073"
+      },
+      {
+        "sig": "503a0fcd47546e827ca342b5b928e227448a8466",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1143"
+      },
+      {
+        "sig": "4d9df5c215fb54ff5b419de96c66d2faf663138a",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1213"
+      },
+      {
+        "sig": "bee33c09675112e82dfaf3380ce6af736eb84253",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1283"
+      },
+      {
+        "sig": "a390ec7a42eef3321799d1152c153c1bd8059691",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1353"
+      },
+      {
+        "sig": "3b11b28d41663f2a1b9859b17503b1e9f356cbb4",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1423"
+      },
+      {
+        "sig": "aa45820e2975c13f25ff3deeea3c32a517438408",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1493"
+      },
+      {
+        "sig": "6604f70c8946c25bb5a8182eee8c54f57c77ba08",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1563"
+      },
+      {
+        "sig": "fecf647288e96a76a21a3dcb148c8729d12ecf30",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1633"
+      },
+      {
+        "sig": "3f1186943c57b2a4db065eb79123c1dd7b826acd",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "361934d3beecc1ddf493ae2ce28743efe40f860a",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1533"
+      },
+      {
+        "sig": "2cb91f125cbd9a2d4df53e8a362566b2e8df4acd",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1553"
+      },
+      {
+        "sig": "393344e2ee183c33e3846d5758995a02afcda52c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2123"
+      },
+      {
+        "sig": "b0083b5dce05eb72810f8e3512a075a87a7bd251",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2193"
+      },
+      {
+        "sig": "87b204f2f9a2f356df0ae1930f7299987f446126",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:63"
+      },
+      {
+        "sig": "a0d994168e5a525701c330a1512f938c4c207648",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:133"
+      },
+      {
+        "sig": "4dabe427011b3d58c0ab4c6ac547f211b5f95d76",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:203"
+      },
+      {
+        "sig": "363a9535c673e817430e2c41d4e37324d99a296b",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:273"
+      },
+      {
+        "sig": "3cbc8fb7735d7ab49e40bee01e4206de2c87d215",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:343"
+      },
+      {
+        "sig": "8ed138d1d85716a0e8b0e0184102bf6fd9bc82f1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:413"
+      },
+      {
+        "sig": "26462cdea88a6b000ec54320a4c9975cc234e882",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:483"
+      },
+      {
+        "sig": "7a93f337902b78af2f01e110a0791494636095a0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:553"
+      },
+      {
+        "sig": "e363ad54aaeb409ab1cb54a5039e1f9dbbb6e356",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:623"
+      },
+      {
+        "sig": "bcc8913c4f4353ce47d8cece0e5483117deed3b3",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:693"
+      },
+      {
+        "sig": "e904ff3b369ab34bbd295e7200c9156dbbfc3fdc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:763"
+      },
+      {
+        "sig": "cde0138e8d7fa4289c844f388ed23dd2dbef3aea",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:833"
+      },
+      {
+        "sig": "cf2cfdad559b05e493821f56d151ff46bd270742",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "6f8a15cb837381c224823ea2fd28f578a87013f4",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1733"
+      },
+      {
+        "sig": "84a8fdb941b31419952b7aa184186535b3100f93",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1753"
+      },
+      {
+        "sig": "7e34d40da89c0864d76fe82dfd9e5e4027525072",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1323"
+      },
+      {
+        "sig": "5c432157e8a3a1ecfb2bfdf200c3c798693a1160",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1393"
+      },
+      {
+        "sig": "6ca1566fad71a777f505f4498697fbc980288c7d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1463"
+      },
+      {
+        "sig": "2201f14b69bb55d4d75ef02d4f840afab872a7f8",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1533"
+      },
+      {
+        "sig": "71358a4f21c305994839864976929447cb3511dc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1603"
+      },
+      {
+        "sig": "8d8315aebd08d9302e96e74f5c0987434ba627c0",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1673"
+      },
+      {
+        "sig": "cc067fbb00b462b3dfe8e1c21545de0be4480742",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1743"
+      },
+      {
+        "sig": "453eb2d172cf997f3d0e3cfd0586f6af04fd9893",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1813"
+      },
+      {
+        "sig": "5c1ee2e7761fa40433c7fb025a08cb7651dc280c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1883"
+      },
+      {
+        "sig": "3cf8d26ac84c650425a49381fa558a703b5158a8",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1953"
+      },
+      {
+        "sig": "afc103b87c4722e91e66f74ffdb49c432af1c6f7",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2023"
+      },
+      {
+        "sig": "e5e869869d29a5f116e0071a2ae18045251c4069",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2093"
+      },
+      {
+        "sig": "c416cecfdefad2ff5d0dda2f20030fef29a6b6b1",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2163"
+      },
+      {
+        "sig": "c054b504fac7221174d3a3420b3923daed1fe86d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      },
+      {
+        "sig": "b3e169dc8a39c83949d71608418b2b73bf7fd4ad",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:two"
+      },
+      {
+        "sig": "d8ca90654b92a8c8a3d3b442d490951ef1d6934f",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1933"
+      },
+      {
+        "sig": "a5c35e451b58dc5558db2f850994db3c93730c18",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1953"
+      },
+      {
+        "sig": "a241e8626987e04f79cab0215678ead1dc7e1112",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:523"
+      },
+      {
+        "sig": "042bb991035f3e4cdc3d1c8cd9455c3b62f3b91c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:593"
+      },
+      {
+        "sig": "bdc469b72a204f3d82115d50c6bafd4c4f6a1008",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:663"
+      },
+      {
+        "sig": "09d3e683ae1f33e92a6422dd18709698c082a2c2",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:733"
+      },
+      {
+        "sig": "4629ed12dc60e25bc29f601351e2b87802cdcb56",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:143"
+      },
+      {
+        "sig": "d00d2dbb6055691a3c930a1a9c6cfa2e69a41275",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:343"
+      },
+      {
+        "sig": "ce238ee6987812617c92597afd2f68a76a230c36",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:543"
+      },
+      {
+        "sig": "27aad97f5534276f5cc5d9f038bd4701a2953a50",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:743"
+      },
+      {
+        "sig": "dd42c118b0344f47934bd3006c2a64e34ff8275a",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:943"
+      },
+      {
+        "sig": "b28e91e6d02119443c969ee3ca4a0534c6b9cbcd",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:1143"
+      },
+      {
+        "sig": "46226d7405f360cb839e8b2b487a7c9ae89fa334",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:1343"
+      },
+      {
+        "sig": "41040d39782161fefd4a29ec6a0ee8cf36b8ef77",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:1543"
+      },
+      {
+        "sig": "3ac501dc686bda02bf3988c4ed27bb159a53ea53",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:1743"
+      },
+      {
+        "sig": "85f1aca7c210a828396ae08c6adfd4e6a2fe44c4",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:1943"
+      },
+      {
+        "sig": "caecd3a690a0c1d8e2a057e48d159143c89b7ad8",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "29e0cb91381cedb15ff38c803a8b036d3661453e",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "5676864e7b0edd65a71ec8b921da9902e9d737cf",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "7b2b8bff18a60e09abf33dc1d0f9fcea8c730cc6",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "b3b64c3ed96602a9de0e81578b7dd111664d5b9f",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "795db78f2b8834d7abea19532cf216e033c16c5c",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "6202bde33e6f135576c4b24c61e30ab0240235ad",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "07aa857278f5e735de38b5a6f51c9032b90ee5e3",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "84371e80f39a0e131ec8cdd3d3c928b874a17e6e",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "b4cc44e3306df715686f82aec274071f26dab419",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "9f8948417e851fedf255fdf0ae2fd63905354fe8",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "cbf9b6eaa6f3249144e136e81815e4d45dce93eb",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "855b078f35c5a523889a1313b8e21e70cc6d6a01",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "ec359a362473cb16a25722091c68e531a844dd70",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "a2b1354270785eb2d786314a6f4cf030422cd2db",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "a859c615a5583db806babdc6c8706c1c29343187",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "55d125a40871d122443e1a2fcd9cfacb02fd9202",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "90c9d2554fe13e963ecce25b17e09c961e76cb41",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "a4a2b4fd60e09dc136395c75a4646f82d16397a3",
+        "status": "open",
+        "anchored": false,
+        "locator": "unknown/file.txt:2"
+      },
+      {
+        "sig": "5c088656b7929020994ea2f12f9a05ae01a66268",
+        "status": "open",
+        "anchored": false,
+        "locator": "notes.txt:99991"
+      },
+      {
+        "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
+        "status": "open",
+        "anchored": "body",
+        "locator": "### Watch the loop"
+      },
+      {
+        "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
+        "status": "open",
+        "anchored": "body",
+        "locator": "### Check the edges"
+      },
+      {
+        "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
+        "status": "open",
+        "anchored": "body",
+        "locator": "### ℹ️ Unanchored observations"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+» anchors: 0 inline, 0 moved to body
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+» findings: 203 sigs -> .review/local-mx/findings.json
+  c7bc06e4  deferred  true  notes.txt
+  63b8aa5b  open  true  notes.txt
+  748484cb  open  true  notes.txt
+  71eb69f4  open  true  notes.txt
+  e8e30683  open  true  notes.txt
+  daea6153  open  true  notes.txt
+  c84ffef9  open  true  notes.txt
+  5ae01706  open  true  notes.txt
+  c2009016  open  true  notes.txt
+  65c5e5ce  open  true  notes.txt
+  3799f659  open  true  notes.txt
+  b874f950  open  true  notes.txt
+  b280b3f8  open  true  notes.txt
+  fdd8e950  open  true  notes.txt
+  303ba953  open  true  notes.txt
+  c73d3658  open  true  notes.txt
+  351a716c  open  true  notes.txt
+  1d4351dd  open  true  notes.txt
+  afb9e47b  open  true  notes.txt
+  b6beaf97  open  true  notes.txt
+  4c8167c8  open  true  notes.txt
+  5cf0bb2c  open  true  notes.txt
+  6b75f645  open  true  notes.txt
+  f4ddf17b  open  true  notes.txt
+  6bce9b05  open  true  notes.txt
+  f1d10005  open  true  notes.txt
+  1af55343  open  true  notes.txt
+  102a5d93  open  true  notes.txt
+  3b89d802  open  true  notes.txt
+  0b7162fe  open  true  notes.txt
+  a9d91e98  open  true  notes.txt
+  4ea3408f  open  true  notes.txt
+  41d2d9c4  open  true  notes.txt
+  5dd4393f  open  true  notes.txt
+  3aa1a65c  open  true  notes.txt
+  5d41f301  open  true  notes.txt
+  97782a5d  open  true  notes.txt
+  7c9fd8b4  open  true  notes.txt
+  795174ab  open  true  notes.txt
+  2d784bc7  open  true  notes.txt
+  060dd3de  open  true  notes.txt
+  a045e2bc  open  true  notes.txt
+  ab7a49a1  open  true  notes.txt
+  d2ca3f8a  open  true  notes.txt
+  3727577a  open  true  notes.txt
+  0b10e9a5  open  true  notes.txt
+  e12cb642  open  true  notes.txt
+  60545b41  open  true  notes.txt
+  e00988e1  open  true  notes.txt
+  6861a0f5  open  true  notes.txt
+  31d6f2a6  open  true  notes.txt
+  2434239d  open  true  notes.txt
+  2a743cad  open  true  notes.txt
+  4a803d46  open  true  notes.txt
+  140e89ff  open  true  notes.txt
+  a1d3837a  open  true  notes.txt
+  0f4bbd69  open  true  notes.txt
+  5518f3c8  open  true  notes.txt
+  7ad05197  open  true  notes.txt
+  0b511800  open  true  notes.txt
+  73927a00  open  true  notes.txt
+  9cac678b  open  true  notes.txt
+  a08abaa7  open  true  notes.txt
+  d0bb6bf4  open  true  notes.txt
+  8ee0fb9a  open  true  notes.txt
+  58a765bf  open  true  notes.txt
+  ed6b9ec5  open  true  notes.txt
+  556fc306  open  true  notes.txt
+  5cc8bdf2  open  true  notes.txt
+  bbd92c18  open  true  notes.txt
+  0ac6a758  open  true  notes.txt
+  d5eff8e3  open  true  notes.txt
+  6c4f5eca  open  true  notes.txt
+  904c1585  open  true  notes.txt
+  161a007a  open  true  notes.txt
+  5fa2d5d3  open  true  notes.txt
+  65569d06  open  true  notes.txt
+  edddefc4  open  true  notes.txt
+  4d031461  open  true  notes.txt
+  4f591ac7  open  true  notes.txt
+  c69bd007  open  true  notes.txt
+  b2e672ac  open  true  notes.txt
+  ca825269  open  true  notes.txt
+  f4426fc0  open  true  notes.txt
+  3e93d47c  open  true  notes.txt
+  cb2b45f4  open  true  notes.txt
+  16e3196a  open  true  notes.txt
+  34850a6f  open  true  notes.txt
+  de8bc3e7  open  true  notes.txt
+  eae4e80a  open  true  notes.txt
+  da575fdf  open  true  notes.txt
+  9777b462  open  true  notes.txt
+  723ffecb  open  true  notes.txt
+  ce1e511d  open  true  notes.txt
+  7f0f0b1f  open  true  notes.txt
+  654f7a3d  open  true  notes.txt
+  7596d641  open  true  notes.txt
+  7e9838fd  open  true  notes.txt
+  e5235db2  open  true  notes.txt
+  0d7305b2  open  true  notes.txt
+  c5ee448c  open  true  notes.txt
+  a9f71ad6  open  true  notes.txt
+  6a5db2e2  open  true  notes.txt
+  73e4c719  open  true  notes.txt
+  5d016e38  open  true  notes.txt
+  9621e905  open  true  notes.txt
+  450d48be  open  true  notes.txt
+  99f0444b  open  true  notes.txt
+  c124b80b  open  true  notes.txt
+  745c0fa1  open  true  notes.txt
+  6528ccd0  open  true  notes.txt
+  bab6667c  open  true  notes.txt
+  ef443857  open  true  notes.txt
+  24f4279f  open  true  notes.txt
+  27232165  open  true  notes.txt
+  971f9427  open  true  notes.txt
+  55f81897  open  true  notes.txt
+  45dcc20f  open  true  notes.txt
+  316ce35e  open  true  notes.txt
+  4a045b08  open  true  notes.txt
+  ffe27ec1  open  true  notes.txt
+  503a0fcd  open  true  notes.txt
+  4d9df5c2  open  true  notes.txt
+  bee33c09  open  true  notes.txt
+  a390ec7a  open  true  notes.txt
+  3b11b28d  open  true  notes.txt
+  aa45820e  open  true  notes.txt
+  6604f70c  open  true  notes.txt
+  fecf6472  open  true  notes.txt
+  3f118694  open  true  notes.txt
+  361934d3  open  true  notes.txt
+  2cb91f12  open  true  notes.txt
+  393344e2  open  true  notes.txt
+  b0083b5d  open  true  notes.txt
+  87b204f2  open  true  notes.txt
+  a0d99416  open  true  notes.txt
+  4dabe427  open  true  notes.txt
+  363a9535  open  true  notes.txt
+  3cbc8fb7  open  true  notes.txt
+  8ed138d1  open  true  notes.txt
+  26462cde  open  true  notes.txt
+  7a93f337  open  true  notes.txt
+  e363ad54  open  true  notes.txt
+  bcc8913c  open  true  notes.txt
+  e904ff3b  open  true  notes.txt
+  cde0138e  open  true  notes.txt
+  cf2cfdad  open  true  notes.txt
+  6f8a15cb  open  true  notes.txt
+  84a8fdb9  open  true  notes.txt
+  7e34d40d  open  true  notes.txt
+  5c432157  open  true  notes.txt
+  6ca1566f  open  true  notes.txt
+  2201f14b  open  true  notes.txt
+  71358a4f  open  true  notes.txt
+  8d8315ae  open  true  notes.txt
+  cc067fbb  open  true  notes.txt
+  453eb2d1  open  true  notes.txt
+  5c1ee2e7  open  true  notes.txt
+  3cf8d26a  open  true  notes.txt
+  afc103b8  open  true  notes.txt
+  e5e86986  open  true  notes.txt
+  c416cecf  open  true  notes.txt
+  c054b504  open  true  notes.txt
+  b3e169dc  open  true  notes.txt
+  d8ca9065  open  true  notes.txt
+  a5c35e45  open  true  notes.txt
+  a241e862  open  true  notes.txt
+  042bb991  open  true  notes.txt
+  bdc469b7  open  true  notes.txt
+  09d3e683  open  true  notes.txt
+  4629ed12  open  false  notes.txt
+  d00d2dbb  open  false  notes.txt
+  ce238ee6  open  false  notes.txt
+  27aad97f  open  false  notes.txt
+  dd42c118  open  false  notes.txt
+  b28e91e6  open  false  notes.txt
+  46226d74  open  false  notes.txt
+  41040d39  open  false  notes.txt
+  3ac501dc  open  false  notes.txt
+  85f1aca7  open  false  notes.txt
+  caecd3a6  open  false  unknown/file.txt
+  29e0cb91  open  false  notes.txt
+  5676864e  open  false  unknown/file.txt
+  7b2b8bff  open  false  notes.txt
+  b3b64c3e  open  false  unknown/file.txt
+  795db78f  open  false  notes.txt
+  6202bde3  open  false  unknown/file.txt
+  07aa8572  open  false  notes.txt
+  84371e80  open  false  unknown/file.txt
+  b4cc44e3  open  false  notes.txt
+  9f894841  open  false  unknown/file.txt
+  cbf9b6ea  open  false  notes.txt
+  855b078f  open  false  unknown/file.txt
+  ec359a36  open  false  notes.txt
+  a2b13542  open  false  unknown/file.txt
+  a859c615  open  false  notes.txt
+  55d125a4  open  false  unknown/file.txt
+  90c9d255  open  false  notes.txt
+  a4a2b4fd  open  false  unknown/file.txt
+  5c088656  open  false  notes.txt
+  99cd29f4  open  body  ### Watch the loop
+  e5ae2abb  open  body  ### Check the edges
+  1b5fa562  open  body  ### ℹ️ Unanchored observations
+recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+--- files ---
+--- file C/.review/local-mx/findings.json (size=118393 sha256=df57e741e30824c533d3b7869ed4eaee4972d7e326f47ede23d411596c89ca1c) ---
+--- file C/.review/local-mx/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 203,
+  "open": 202,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
+  "model": null
+}

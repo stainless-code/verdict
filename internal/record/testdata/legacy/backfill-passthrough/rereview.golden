@@ -1,0 +1,78 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "record",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "report or triage the local bundle; post stays refused (no PR target)",
+  "warnings": [
+    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+  ],
+  "data": {
+    "dir": ".review/local-kb",
+    "anchors": {
+      "kept": 1,
+      "moved": 0
+    },
+    "findings": {
+      "open": 1,
+      "deferred": 0,
+      "addressed": 0,
+      "file": ".review/local-kb/findings.json"
+    },
+    "confidence": null,
+    "security_summary": null,
+    "items": [
+      {
+        "sig": "bfd750dfd6a62efb7a91db702664395618b7f845",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:2"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+» anchors: 1 inline, 0 moved to body
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+» findings: 1 sigs -> .review/local-kb/findings.json
+  bfd750df  open  true  notes.txt
+recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+--- files ---
+--- file C/.review/local-kb/findings.json ---
+[
+  {
+    "anchored": true,
+    "body": "Cited finding here.",
+    "firstSeen": "aaaaaaa",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ],
+    "inBounds": true,
+    "kb": [],
+    "kind": "inline",
+    "lastSeen": "aaaaaaa",
+    "line": 2,
+    "path": "notes.txt",
+    "rationale": "",
+    "rigor": "walked",
+    "severity": "important",
+    "side": "RIGHT",
+    "sig": "bfd750dfd6a62efb7a91db702664395618b7f845",
+    "status": "open",
+    "suggestion": null,
+    "x-custom": {
+      "nested": [
+        1,
+        2
+      ]
+    },
+    "sig_version": "1"
+  }
+]

@@ -1,0 +1,27 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4714,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "controls-unavailable",
+    "message": "the bundle does not name a full PR base commit\ntry: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"
+  }
+}
+--- stderr ---
+» gh pr view acme/app#4714
+» gh pr diff -> .review/4714/full.diff
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4714 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4714 --repo acme/app
+--- file C/.review/4714/PR.json ---
+not json{{{
+--- file C/.review/4714/full.diff ---
+diff --git a/a b/b

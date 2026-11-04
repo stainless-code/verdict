@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: show: sig prefix ambiguous
+try: copy the full sig prefix from report output
+--- files ---

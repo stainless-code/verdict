@@ -22,10 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # 40-hex sigs (same length/shape as the kb case fixtures).
 CRIT="c123456789abcdef0123456789abcdef01234567"
 INFO="1123456789abcdef0123456789abcdef01234567"
@@ -425,5 +421,4 @@ else
   bad "human-mode completion gave exit $EVAL_STATUS"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case fix: FAIL ($fails)"; exit 1; fi
-echo "case fix: PASS"
+eval_end

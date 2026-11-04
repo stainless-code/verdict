@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4708,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "auth-missing",
+    "message": "forgejo needs FORGEJO_HOST=https://host and FORGEJO_TOKEN set\ntry: export the credential named above, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

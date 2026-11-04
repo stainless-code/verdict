@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch-local",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-stash",
+    "message": "no such stash: stash@{9} (see git stash list)\ntry: re-run with one of the valid values named above"
+  }
+}
+--- stderr ---
+
+--- files ---

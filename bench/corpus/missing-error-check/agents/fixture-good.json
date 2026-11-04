@@ -1,0 +1,19 @@
+{
+  "model": "fixture-good",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "upload.go",
+        "line": 24,
+        "side": "RIGHT",
+        "body": "Check the io.Copy error; a short write currently returns nil.",
+        "rigor": "pointed",
+        "severity": "important"
+      }
+    ]
+  }
+}

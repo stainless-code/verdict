@@ -1,0 +1,9 @@
+exit: 0
+--- stdout ---
+retired await-err (tombstone kept, counters untouched)
+--- stderr ---
+
+--- files ---
+--- file C/.review/kb.jsonl ---
+{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":3,"false_hits":1,"judged":4,"status":"retired","retiredAt":"0000-00-00T00:00:00Z","retireReason":"the rule stopped matching how this repo writes code","history":[{"at":"0000-00-00T00:00:00Z","event":"retired","actor":"human","note":"the rule stopped matching how this repo writes code"}]}
+{"id":"no-secrets","rule":"Never log secrets in error paths","scope":"src/*.go","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}

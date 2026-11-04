@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "calibrate",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "no-threads",
+    "message": "calibrate joins live threads — nothing to settle on a local bundle (adopt + post first, then calibrate the PR)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

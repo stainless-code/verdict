@@ -1,0 +1,212 @@
+name: setup-verdict
+
+# Hermetic by construction: every asset is built on the runner (fake binary,
+# checksums, bundle, fake cosign) and served over file://. Nothing touches
+# real GitHub releases, Rekor, or Fulvio. `latest` is never used here: each
+# version key is an obvious fake (0.0.0-test.N) so cache entries can never
+# collide with a real install.
+
+on:
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - setup-verdict/**
+      - install.sh
+      - install.ps1
+      - release/contract.json
+      - .github/workflows/setup-verdict.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - setup-verdict/**
+      - install.sh
+      - install.ps1
+      - release/contract.json
+      - .github/workflows/setup-verdict.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 🧪 setup-verdict (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Fake release: one good, one corrupt, one for the checksum-only leg.
+      # The Windows exe is compiled locally via Add-Type (no downloads).
+      - name: Build fake release (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          fake="$RUNNER_TEMP/fake"
+          python3 setup-verdict/test-fixtures/make-fake-release.py --out "$fake" --version 0.0.0-test.1
+          python3 setup-verdict/test-fixtures/make-fake-release.py --out "$fake" --version 0.0.0-test.2 --corrupt
+          python3 setup-verdict/test-fixtures/make-fake-release.py --out "$fake" --version 0.0.0-test.3 --no-shims
+          echo "$fake/fakebin" >> "$GITHUB_PATH"
+          {
+            echo "VERDICT_COSIGN=$fake/fakebin/cosign"
+            echo "VERDICT_DOWNLOAD_URL=file://$fake"
+            echo "FAKE_COSIGN_LOG=$RUNNER_TEMP/cosign.log"
+            echo "FAKE_COSIGN_STATUS=0"
+            echo "FAKE_CURL_LOG=$RUNNER_TEMP/curl.log"
+          } >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/cosign.log"
+          : > "$RUNNER_TEMP/curl.log"
+
+      - name: Build fake release (Windows)
+        if: runner.os == 'Windows'
+        # Windows PowerShell 5.1, not pwsh: Add-Type -OutputType
+        # ConsoleApplication is unsupported on PowerShell 7.
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fake = Join-Path $env:RUNNER_TEMP 'fake'
+          $exe = Join-Path $env:RUNNER_TEMP 'fake-verdict.exe'
+          Add-Type -OutputType ConsoleApplication -OutputAssembly $exe -TypeDefinition @'
+          public static class Verdict {
+            public static void Main(string[] args) { System.Console.WriteLine("verdict 0.0.0-test.1"); }
+          }
+          '@
+          python setup-verdict/test-fixtures/make-fake-release.py --out $fake --version 0.0.0-test.1 --exe $exe
+          python setup-verdict/test-fixtures/make-fake-release.py --out $fake --version 0.0.0-test.2 --corrupt --exe $exe
+          Add-Content $env:GITHUB_PATH "$fake/fakebin"
+          $fakeUri = 'file:///' + ($fake -replace '\\', '/')
+          Add-Content $env:GITHUB_ENV "VERDICT_COSIGN=$fake/fakebin/cosign.cmd"
+          Add-Content $env:GITHUB_ENV "VERDICT_DOWNLOAD_URL=$fakeUri"
+          Add-Content $env:GITHUB_ENV "FAKE_COSIGN_LOG=$env:RUNNER_TEMP/cosign.log"
+          Add-Content $env:GITHUB_ENV "FAKE_COSIGN_STATUS=0"
+          New-Item -ItemType File -Path "$env:RUNNER_TEMP/cosign.log" -Force | Out-Null
+
+      - name: Install (first run)
+        id: first
+        uses: ./setup-verdict
+        with:
+          version: 0.0.0-test.1
+
+      - name: Assert outputs, PATH, and --version (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          [ "${{ steps.first.outputs.version }}" = 0.0.0-test.1 ]
+          [ -x "${{ steps.first.outputs.path }}" ]
+          "${{ steps.first.outputs.path }}" --version | grep -q 0.0.0-test.1
+          [ "$(command -v verdict)" = "${{ steps.first.outputs.path }}" ]
+          grep -q '"version":"0.0.0-test.1"' "$(dirname "${{ steps.first.outputs.path }}")/.verdict-installer"
+          echo "outputs, PATH, and --version ok: ${{ steps.first.outputs.path }}"
+
+      - name: Assert outputs, PATH, and --version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ steps.first.outputs.version }}' -ne '0.0.0-test.1') { throw 'version output wrong' }
+          if (-not (Test-Path -LiteralPath '${{ steps.first.outputs.path }}')) { throw 'binary missing' }
+          $out = & '${{ steps.first.outputs.path }}' --version
+          if ($out -notmatch '0\.0\.0-test\.1') { throw "unexpected --version: $out" }
+          $onPath = (Get-Command verdict).Source
+          $expected = '${{ steps.first.outputs.path }}'
+          if (-not $onPath -or -not $expected) { throw 'PATH verdict or action path missing' }
+          # Compare resolved files: the tool-cache path may carry mixed
+          # separators, while Get-Command normalizes them.
+          if ((Get-Item -LiteralPath $onPath).FullName -ne (Get-Item -LiteralPath $expected).FullName) {
+            throw "PATH verdict is $onPath"
+          }
+          Write-Host "outputs, PATH, and --version ok: ${{ steps.first.outputs.path }}"
+
+      - name: Record state before second run (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ steps.first.outputs.path }}" | awk '{print $1}' > "$RUNNER_TEMP/hash.before"
+          else
+            shasum -a 256 "${{ steps.first.outputs.path }}" | awk '{print $1}' > "$RUNNER_TEMP/hash.before"
+          fi
+          wc -l < "$FAKE_CURL_LOG" | tr -d ' ' > "$RUNNER_TEMP/curl.before"
+
+      - name: Record state before second run (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          (Get-FileHash -LiteralPath '${{ steps.first.outputs.path }}' -Algorithm SHA256).Hash | Out-File -FilePath "$env:RUNNER_TEMP/hash.before" -NoNewline
+
+      - name: Install again (must reuse, no download)
+        id: second
+        uses: ./setup-verdict
+        with:
+          version: 0.0.0-test.1
+
+      - name: Assert reuse (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          [ "${{ steps.second.outputs.path }}" = "${{ steps.first.outputs.path }}" ]
+          if command -v sha256sum >/dev/null 2>&1; then
+            second_hash="$(sha256sum "${{ steps.second.outputs.path }}" | awk '{print $1}')"
+          else
+            second_hash="$(shasum -a 256 "${{ steps.second.outputs.path }}" | awk '{print $1}')"
+          fi
+          [ "$second_hash" = "$(cat "$RUNNER_TEMP/hash.before")" ]
+          [ "$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')" = "$(cat "$RUNNER_TEMP/curl.before")" ]
+          echo "reuse ok: no new download on second invocation"
+
+      - name: Assert reuse (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ steps.second.outputs.path }}' -ne '${{ steps.first.outputs.path }}') { throw 'path changed' }
+          $after = (Get-FileHash -LiteralPath '${{ steps.second.outputs.path }}' -Algorithm SHA256).Hash
+          $before = Get-Content -LiteralPath "$env:RUNNER_TEMP/hash.before" -Raw
+          if ($after -ne $before) { throw 'binary changed' }
+          Write-Host 'reuse ok: same binary on second invocation'
+
+      - name: Install corrupt release (must fail)
+        id: corrupt
+        continue-on-error: true
+        uses: ./setup-verdict
+        with:
+          version: 0.0.0-test.2
+
+      - name: Assert corrupt install failed
+        if: always() && steps.corrupt.outcome != 'failure'
+        shell: bash
+        run: exit 1
+
+      # Checksum-only leg: no cosign anywhere, require-signature false.
+      # Linux-only: it overrides PATH to hide the fake cosign.
+      - name: Install without cosign (checksum-only)
+        if: runner.os == 'Linux'
+        uses: ./setup-verdict
+        with:
+          version: 0.0.0-test.3
+          require-signature: "false"
+        env:
+          VERDICT_COSIGN: ""
+          PATH: /usr/local/bin:/usr/bin:/bin
+
+      - name: Assert checksum-only install (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          [ -x "$RUNNER_TOOL_CACHE/setup-verdict/0.0.0-test.3/verdict" ]
+          "$RUNNER_TOOL_CACHE/setup-verdict/0.0.0-test.3/verdict" --version | grep -q 0.0.0-test.3

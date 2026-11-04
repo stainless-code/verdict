@@ -1,0 +1,21 @@
+exit: 3
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "ready",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "pr-read-failed",
+    "message": "could not read live PR state for acme/app#5101: evals-stub-gh: network disabled (pr view 5101 --repo acme/app --json isDraft,mergeable,mergeStateStatus,body,state,headRefOid) \ntry: run 'gh auth status', confirm the repo/PR spelling, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---
+--- file C/.review/5101/.ready.err ---
+evals-stub-gh: network disabled (pr view 5101 --repo acme/app --json isDraft,mergeable,mergeStateStatus,body,state,headRefOid)

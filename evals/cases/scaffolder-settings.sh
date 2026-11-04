@@ -28,10 +28,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 # --- sandbox root controls: back up whatever earlier cases left ---
@@ -53,7 +49,7 @@ mkdir -p "$EVAL_SANDBOX/initrepo"
   git commit -qm init
 )
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" init --preset standard --yes >"$EVAL_SANDBOX/init-out.txt" 2>"$EVAL_SANDBOX/init-err.txt") || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset standard --yes >"$EVAL_SANDBOX/init-out.txt" 2>"$EVAL_SANDBOX/init-err.txt") || st=$?
 if [ "$st" -eq 0 ]; then
   good "init --preset standard --yes exits 0 in a fresh repo"
 else
@@ -81,7 +77,7 @@ else
   bad "standard preset contents drifted"
 fi
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" learn --status --json >"$EVAL_SANDBOX/init-learn.txt" 2>/dev/null) || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" learn --status --json >"$EVAL_SANDBOX/init-learn.txt" 2>/dev/null) || st=$?
 if [ "$st" -eq 0 ] && [ "$(jq -r '.data.rules | length' <"$EVAL_SANDBOX/init-learn.txt" 2>/dev/null)" = "2" ]; then
   good "starter kb.jsonl passes learn --status (2 active rules)"
 else
@@ -90,7 +86,7 @@ fi
 
 # --- I2: preset mapping (panel strictness + kb-policy thresholds) ---
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" init --preset chill --yes >/dev/null 2>&1) || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill --yes >/dev/null 2>&1) || st=$?
 if [ "$st" -eq 0 ] \
   && [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/panel" | grep -v '^[[:space:]]*$' | wc -l | tr -d ' ')" = "0" ] \
   && grep -q "^MIN_JUDGED=10$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
@@ -101,7 +97,7 @@ else
   bad "chill mapping drifted (exit $st)"
 fi
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" init --preset strict --yes >/dev/null 2>&1) || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset strict --yes >/dev/null 2>&1) || st=$?
 if [ "$st" -eq 0 ] \
   && [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/panel" | grep -v '^[[:space:]]*$' | wc -l | tr -d ' ')" = "3" ] \
   && grep -q "^MIN_JUDGED=3$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
@@ -114,7 +110,7 @@ fi
 
 # --- I3: overwrite guard (non-tty stdin: no prompt possible) ---
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" init --preset chill </dev/null >"$EVAL_SANDBOX/init-needs.txt" 2>"$EVAL_SANDBOX/init-needs-err.txt") || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill </dev/null >"$EVAL_SANDBOX/init-needs.txt" 2>"$EVAL_SANDBOX/init-needs-err.txt") || st=$?
 if [ "$st" -ne 0 ] \
   && grep -q "without confirm" "$EVAL_SANDBOX/init-needs-err.txt" \
   && grep -q "^MIN_JUDGED=3$" "$EVAL_SANDBOX/initrepo/.review/kb-policy"; then
@@ -123,14 +119,14 @@ else
   bad "overwrite guard gave exit $st"
 fi
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" init --preset chill --yes >/dev/null 2>&1) || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill --yes >/dev/null 2>&1) || st=$?
 if [ "$st" -eq 0 ] && grep -q "^MIN_JUDGED=10$" "$EVAL_SANDBOX/initrepo/.review/kb-policy"; then
   good "--yes overwrites after preview"
 else
   bad "--yes overwrite exits $st"
 fi
 st=0
-(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" bash "$EVAL_ROOT/scripts/review.sh" init --preset chill >"$EVAL_SANDBOX/init-keep.txt" 2>&1) || st=$?
+(cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill >"$EVAL_SANDBOX/init-keep.txt" 2>&1) || st=$?
 if [ "$st" -eq 0 ] && grep -q "already up to date" "$EVAL_SANDBOX/init-keep.txt"; then
   good "identical re-run reads keep and exits 0 without --yes"
 else
@@ -228,11 +224,8 @@ mkdir -p "$EVAL_SANDBOX/xdg-compact/verdict"
 printf '{"layout":{"compact":true}}' > "$EVAL_SANDBOX/xdg-compact/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-compact"
 run_review fetch-local acme/app compact-b
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "panel: none pinned" "$EVAL_OUT"; then
-  good "compact file suppresses the panel advisory"
-else
-  bad "compact file kept the advisory (exit $EVAL_STATUS)"
-fi
+assert_exit "compact file render succeeds" 0
+assert_stream_nogrep "compact file suppresses the panel advisory" "$EVAL_OUT" "panel: none pinned"
 run_review fetch-local acme/app compact-c --no-compact
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "panel: none pinned" "$EVAL_OUT"; then
   good "--no-compact wins over the compact file"
@@ -248,25 +241,16 @@ if [ "$EVAL_STATUS" -eq 0 ] && grep -q $'\033' "$EVAL_ERR"; then
 else
   bad "color always left stderr plain (exit $EVAL_STATUS)"
 fi
-if [ "$(stdout_docs)" = "0" ] && ! grep -q $'\033' "$EVAL_OUT"; then
-  good "human stdout carries no codes even when always"
-else
-  bad "stdout leaked codes or parsed as JSON"
-fi
+assert_eq "human stdout parsed as zero JSON docs" "0" "$(stdout_docs)"
+assert_stream_nogrep "human stdout carries no codes even when always" "$EVAL_OUT" $'\033' "-F"
 printf '{"color":{"mode":"never"}}' > "$EVAL_SANDBOX/xdg-color/verdict/settings.json"
 run_review fetch-local acme/app compact-e
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q $'\033' "$EVAL_ERR"; then
-  good "color never stays plain"
-else
-  bad "color never emitted codes (exit $EVAL_STATUS)"
-fi
+assert_exit "color never render succeeds" 0
+assert_stream_nogrep "color never stays plain" "$EVAL_ERR" $'\033' "-F"
 printf '{"color":{"mode":"always"}}' > "$EVAL_SANDBOX/xdg-color/verdict/settings.json"
 run_review fetch-local acme/app compact-f --color never
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q $'\033' "$EVAL_ERR"; then
-  good "--color never wins over the always file"
-else
-  bad "--color flag lost to the file (exit $EVAL_STATUS)"
-fi
+assert_exit "--color never render succeeds" 0
+assert_stream_nogrep "--color never wins over the always file" "$EVAL_ERR" $'\033' "-F"
 export NO_COLOR=1
 run_review fetch-local acme/app compact-g
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q $'\033' "$EVAL_ERR"; then
@@ -339,5 +323,4 @@ else
   bad "stub gh intercepted calls during offline legs"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case scaffolder-settings: FAIL ($fails)"; exit 1; fi
-echo "case scaffolder-settings: PASS"
+eval_end

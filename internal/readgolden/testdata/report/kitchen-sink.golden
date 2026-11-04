@@ -1,0 +1,419 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "report",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "wrote out.md",
+  "warnings": [
+    "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)"
+  ],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "dir": ".review/5101",
+    "head": {
+      "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "live": null,
+      "stale": false
+    },
+    "verdict": {
+      "open": 4,
+      "deferred": 1,
+      "addressed": 1,
+      "terminal": 0
+    },
+    "counts": {
+      "inline": 5,
+      "section": 1,
+      "anchored": 5,
+      "unanchored": 0
+    },
+    "panel": {
+      "source": "panel",
+      "members": [
+        "alice",
+        "bob"
+      ]
+    },
+    "patch": {
+      "sig": "patch1",
+      "note": "hello"
+    },
+    "output": "out.md",
+    "filters": {
+      "status": "all",
+      "kind": "all"
+    },
+    "items": [
+      {
+        "kind": "inline",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "walked",
+        "severity": "critical",
+        "sig": "c111111111111111111111111111111111111111",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "open",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 1
+      },
+      {
+        "kind": "inline",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "pointed",
+        "severity": "important",
+        "sig": "b222222222222222222222222222222222222222",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "open",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 2
+      },
+      {
+        "kind": "section",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "pointed",
+        "severity": "informational",
+        "sig": "f666666666666666666666666666666666666666",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "open",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 3
+      },
+      {
+        "kind": "inline",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "said",
+        "severity": "informational",
+        "sig": "a333333333333333333333333333333333333333",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "open",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 4
+      },
+      {
+        "kind": "inline",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "reproduced",
+        "severity": "critical",
+        "sig": "e555555555555555555555555555555555555555",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "deferred",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 5
+      },
+      {
+        "kind": "inline",
+        "path": "notes.txt",
+        "side": "RIGHT",
+        "line": 2,
+        "anchored": true,
+        "body": "Usable body here with enough substance.",
+        "suggestion": null,
+        "inBounds": true,
+        "rigor": "walked",
+        "severity": "important",
+        "sig": "d444444444444444444444444444444444444444",
+        "sig_version": "1",
+        "firstSeen": "aaaaaaa",
+        "lastSeen": "aaaaaaa",
+        "status": "addressed",
+        "rationale": "",
+        "history": [],
+        "locator": "notes.txt:2",
+        "rank": 6
+      }
+    ],
+    "cost": {
+      "runs": 2,
+      "runs_with_cost": 2,
+      "input_tokens": 1120,
+      "output_tokens": 255,
+      "cached_input_tokens": 40,
+      "est_usd": 1.55,
+      "by_tier": {
+        "cheap": {
+          "runs": 1,
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "total_tokens": 1200
+        },
+        "standard": {
+          "runs": 1,
+          "input_tokens": 120,
+          "output_tokens": 55,
+          "total_tokens": 175
+        },
+        "deep": {
+          "runs": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0
+        }
+      },
+      "total_tokens": 1375,
+      "receipts": [
+        {
+          "at": "0000-00-00T00:00:00Z",
+          "projected_usd": 9.5,
+          "projected_tier": "standard",
+          "budget_usd": 10
+        }
+      ]
+    },
+    "completeness": {
+      "reviewed": true,
+      "fetched_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "posted_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "error": null
+}
+--- stderr ---
+warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
+wrote out.sarif
+wrote out.md
+check: 2 open finding(s) at-or-above important — gate fails
+check: HEAD aaaaaaa reviewed (post matches fetch) — completeness passes
+--- files ---
+--- file C/out.md ---
+# Review report — acme/app#5101
+
+<!-- report-machine:start -->
+> Confidence: unrecorded · Safety: not assessed
+> Basis: 1 reproduced · 0 ran · 2 walked · 2 pointed · 1 said · 0 rules cited · 1 verified fixes
+## Counts — open 4 · head aaaaaaa
+1. [open] [notes.txt:2][ev-1] (c1111111, walked) — Usable body here with enough substance.
+2. [open] [notes.txt:2][ev-2] (b2222222, pointed) — Usable body here with enough substance.
+3. [open] [notes.txt:2][ev-3] (f6666666, pointed) — Usable body here with enough substance.
+4. [open] [notes.txt:2][ev-4] (a3333333, said) — Usable body here with enough substance.
+5. [deferred] [notes.txt:2][ev-5] (e5555555, reproduced) — Usable body here with enough substance.
+6. [addressed] [notes.txt:2][ev-6] (d4444444, walked) — Usable body here with enough substance.
+[ev-1]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
+[ev-2]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
+[ev-3]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
+[ev-4]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
+[ev-5]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
+[ev-6]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
+---
+
+<!-- verdict-footer -->
+> <a href="https://stainless-code.com/verdict"><img src="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict VERSION**](https://stainless-code.com/verdict) · standard tier · cost $0.05 · 1 file
+<!-- report-machine:end -->
+--- file C/out.sarif ---
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "verdict",
+          "version": "1",
+          "informationUri": "https://github.com",
+          "rules": [
+            {
+              "id": "verdict/inline",
+              "name": "inline",
+              "shortDescription": {
+                "text": "verdict inline finding"
+              }
+            },
+            {
+              "id": "verdict/section",
+              "name": "section",
+              "shortDescription": {
+                "text": "verdict section finding"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "verdict/inline",
+          "level": "error",
+          "message": {
+            "text": "Usable body here with enough substance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "notes.txt"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "verdict/sig": "c111111111111111111111111111111111111111"
+          }
+        },
+        {
+          "ruleId": "verdict/inline",
+          "level": "warning",
+          "message": {
+            "text": "Usable body here with enough substance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "notes.txt"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "verdict/sig": "b222222222222222222222222222222222222222"
+          }
+        },
+        {
+          "ruleId": "verdict/section",
+          "level": "note",
+          "message": {
+            "text": "Usable body here with enough substance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "notes.txt"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "verdict/sig": "f666666666666666666666666666666666666666"
+          }
+        },
+        {
+          "ruleId": "verdict/inline",
+          "level": "note",
+          "message": {
+            "text": "Usable body here with enough substance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "notes.txt"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "verdict/sig": "a333333333333333333333333333333333333333"
+          }
+        },
+        {
+          "ruleId": "verdict/inline",
+          "level": "error",
+          "message": {
+            "text": "Usable body here with enough substance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "notes.txt"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "verdict/sig": "e555555555555555555555555555555555555555"
+          }
+        },
+        {
+          "ruleId": "verdict/inline",
+          "level": "warning",
+          "message": {
+            "text": "Usable body here with enough substance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "notes.txt"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "verdict/sig": "d444444444444444444444444444444444444444"
+          }
+        }
+      ]
+    }
+  ]
+}

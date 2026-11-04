@@ -1,0 +1,17 @@
+exit: 0
+--- stdout ---
+trend: acme/app — 3 bundle(s), 9 findings (open=6 addressed=2 closed=1)
+2026-01-01  bundles=1 findings=6 open=4 addressed=1 closed=1 tiers critical=2 important=2 informational=2 untagged=0
+2026-02-01  bundles=1 findings=2 open=1 addressed=1 closed=0 tiers critical=0 important=1 informational=1 untagged=0
+2026-03-01  bundles=1 findings=1 open=1 addressed=0 closed=0 tiers critical=1 important=0 informational=0 untagged=0
+tiers: critical=3 important=3 informational=3 untagged=0
+status: open=6 addressed=2 wont-fix=0 false-positive=0 deferred=1
+provenance: tools=unmarked models=unmarked prompts=0 unique (+unmarked)
+overlap: 1 measured, 2 unmeasured — precision=0 coverage=n/a (recalled=1 cited=0 overlap=0)
+cited outcomes: 0 cited findings — addressed=0 false-positive=0 pending=0 wont-fix=0; joins rows=1 (addressed=1 false-positive=0)
+  5101: measured=false precision=n/a coverage=n/a (recalled=0 cited=0 overlap=0) outcomes addressed=0 false-positive=0 pending=0
+  5102: measured=true precision=0 coverage=n/a (recalled=1 cited=0 overlap=0) outcomes addressed=0 false-positive=0 pending=0
+  local-x: measured=false precision=n/a coverage=n/a (recalled=0 cited=0 overlap=0) outcomes addressed=0 false-positive=0 pending=0
+--- stderr ---
+warn: trend skips .review/5109/ (findings.json unreadable or not a findings array)
+--- files ---

@@ -1,0 +1,375 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4703,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/chunks/manifest.json and the chunks it lists to any agent; ask it to write .review/4703/review.json",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4703",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "ab91545e1cfbffc91b92203b22bc87e37c6470e1",
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "hunks": 14,
+    "omitted": [],
+    "diff_bytes": 832678,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "github",
+      "fetch": true,
+      "post": true,
+      "inline_anchors": true,
+      "thread_resolution": true,
+      "review_verdicts": true
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "ab91545e1cfbffc91b92203b22bc87e37c6470e1",
+      "files": 1
+    },
+    "artifacts": {
+      "PR.json": ".review/4703/PR.json",
+      "full.diff": ".review/4703/full.diff",
+      "toc.txt": ".review/4703/toc.txt",
+      "roles.txt": ".review/4703/roles.txt",
+      "reviews.json": ".review/4703/reviews.json",
+      "inline.json": ".review/4703/inline.json",
+      "threads.json": ".review/4703/threads.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null,
+    "chunk": {
+      "count": 2,
+      "manifest": ".review/4703/chunks/manifest.json",
+      "total_bytes": 832678
+    }
+  },
+  "error": null
+}
+--- stderr ---
+» gh pr view acme/app#4703
+» gh pr diff -> .review/4703/full.diff
+» chunking opted in (from .review/chunk) — slicing over-cap diff (832678 bytes, cap 512000) into cap-sized chunks
+» roles -> .review/4703/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+» reviews + inline comments
+» chunked: 2 chunk(s) at or under 512000 bytes + .review/4703/chunks/manifest.json
+done: .review/4703/PR.json .review/4703/full.diff .review/4703/toc.txt .review/4703/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4703/PR.json + .review/4703/chunks/manifest.json and the chunks it lists (+ .review/4703/roles.txt) to any agent; ask it to write .review/4703/review.json
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4703 --repo acme/app
+CALL: pr view 4703 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
+CALL: api repos/acme/app/pulls/4703/reviews --paginate
+CALL: api repos/acme/app/pulls/4703/comments --paginate
+CALL: api graphql -F owner=acme -F name=app -F pr=4703 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
+            }
+          }
+        }
+      }
+--- file C/.review/4703/.difffiles ---
+f00.txt
+f01.txt
+f02.txt
+f03.txt
+f04.txt
+f05.txt
+f06.txt
+f07.txt
+f08.txt
+f09.txt
+f10.txt
+f11.txt
+f12.txt
+f13.txt
+--- file C/.review/4703/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"ab91545e1cfbffc91b92203b22bc87e37c6470e1","author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1}],"additions":1,"deletions":1}
+--- file C/.review/4703/chunks/chunk-01.diff (size=475816 sha256=d2fed71287ec06ad98f41fbebb22ab2ee2d5b20b468151f06166d7293c26cd62) ---
+--- file C/.review/4703/chunks/chunk-01.roles.txt ---
+## docs
+- f00.txt
+- f01.txt
+- f02.txt
+- f03.txt
+- f04.txt
+- f05.txt
+- f06.txt
+- f07.txt
+--- file C/.review/4703/chunks/chunk-01.toc.txt ---
+# Chunk 1/2 for 4703 — read ranges as coverage checklist
+
+1:diff --git a/f00.txt b/f00.txt
+907:diff --git a/f01.txt b/f01.txt
+1813:diff --git a/f02.txt b/f02.txt
+2719:diff --git a/f03.txt b/f03.txt
+3625:diff --git a/f04.txt b/f04.txt
+4531:diff --git a/f05.txt b/f05.txt
+5437:diff --git a/f06.txt b/f06.txt
+6343:diff --git a/f07.txt b/f07.txt
+
+## files
+- f00.txt (59477 bytes)
+- f01.txt (59477 bytes)
+- f02.txt (59477 bytes)
+- f03.txt (59477 bytes)
+- f04.txt (59477 bytes)
+- f05.txt (59477 bytes)
+- f06.txt (59477 bytes)
+- f07.txt (59477 bytes)
+--- file C/.review/4703/chunks/chunk-02.diff (size=356862 sha256=db8f323dd53a49d61509272e8ef03b22214c72fab8fbd2fbcf0a948ff4be3d62) ---
+--- file C/.review/4703/chunks/chunk-02.roles.txt ---
+## docs
+- f08.txt
+- f09.txt
+- f10.txt
+- f11.txt
+- f12.txt
+- f13.txt
+--- file C/.review/4703/chunks/chunk-02.toc.txt ---
+# Chunk 2/2 for 4703 — read ranges as coverage checklist
+
+1:diff --git a/f08.txt b/f08.txt
+907:diff --git a/f09.txt b/f09.txt
+1813:diff --git a/f10.txt b/f10.txt
+2719:diff --git a/f11.txt b/f11.txt
+3625:diff --git a/f12.txt b/f12.txt
+4531:diff --git a/f13.txt b/f13.txt
+
+## files
+- f08.txt (59477 bytes)
+- f09.txt (59477 bytes)
+- f10.txt (59477 bytes)
+- f11.txt (59477 bytes)
+- f12.txt (59477 bytes)
+- f13.txt (59477 bytes)
+--- file C/.review/4703/chunks/manifest.json ---
+{
+  "schema_version": "1",
+  "bundle": ".review/4703",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "ab91545e1cfbffc91b92203b22bc87e37c6470e1",
+  "cap": {
+    "bytes": 512000,
+    "source": null
+  },
+  "total_bytes": 832678,
+  "chunk_count": 2,
+  "chunks": [
+    {
+      "index": 1,
+      "name": "chunk-01",
+      "files": [
+        "f00.txt",
+        "f01.txt",
+        "f02.txt",
+        "f03.txt",
+        "f04.txt",
+        "f05.txt",
+        "f06.txt",
+        "f07.txt"
+      ],
+      "estimated_bytes": 475816,
+      "bytes": 475816,
+      "diff": ".review/4703/chunks/chunk-01.diff",
+      "toc": ".review/4703/chunks/chunk-01.toc.txt",
+      "roles": ".review/4703/chunks/chunk-01.roles.txt"
+    },
+    {
+      "index": 2,
+      "name": "chunk-02",
+      "files": [
+        "f08.txt",
+        "f09.txt",
+        "f10.txt",
+        "f11.txt",
+        "f12.txt",
+        "f13.txt"
+      ],
+      "estimated_bytes": 356862,
+      "bytes": 356862,
+      "diff": ".review/4703/chunks/chunk-02.diff",
+      "toc": ".review/4703/chunks/chunk-02.toc.txt",
+      "roles": ".review/4703/chunks/chunk-02.roles.txt"
+    }
+  ]
+}
+--- file C/.review/4703/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "ab91545e1cfbffc91b92203b22bc87e37c6470e1",
+  "sha": "ab91545e1cfbffc91b92203b22bc87e37c6470e1",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "used",
+      "bytes": 5,
+      "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74"
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4703/controls/chunk ---
+true
+--- file C/.review/4703/full.diff (size=832678 sha256=d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3) ---
+--- file C/.review/4703/hunks.tsv ---
+f00.txt	OLD	1	1
+f00.txt	NEW	1	1
+f01.txt	OLD	1	1
+f01.txt	NEW	1	1
+f02.txt	OLD	1	1
+f02.txt	NEW	1	1
+f03.txt	OLD	1	1
+f03.txt	NEW	1	1
+f04.txt	OLD	1	1
+f04.txt	NEW	1	1
+f05.txt	OLD	1	1
+f05.txt	NEW	1	1
+f06.txt	OLD	1	1
+f06.txt	NEW	1	1
+f07.txt	OLD	1	1
+f07.txt	NEW	1	1
+f08.txt	OLD	1	1
+f08.txt	NEW	1	1
+f09.txt	OLD	1	1
+f09.txt	NEW	1	1
+f10.txt	OLD	1	1
+f10.txt	NEW	1	1
+f11.txt	OLD	1	1
+f11.txt	NEW	1	1
+f12.txt	OLD	1	1
+f12.txt	NEW	1	1
+f13.txt	OLD	1	1
+f13.txt	NEW	1	1
+--- file C/.review/4703/inline.json ---
+[]
+--- file C/.review/4703/reviews.json ---
+[]
+--- file C/.review/4703/roles.txt ---
+## docs
+- f00.txt
+--- file C/.review/4703/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4703/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "github",
+  "pr": 4703,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": []
+}
+--- file C/.review/4703/toc.txt ---
+# TOC for PR #4703 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/f00.txt b/f00.txt
+907:diff --git a/f01.txt b/f01.txt
+1813:diff --git a/f02.txt b/f02.txt
+2719:diff --git a/f03.txt b/f03.txt
+3625:diff --git a/f04.txt b/f04.txt
+4531:diff --git a/f05.txt b/f05.txt
+5437:diff --git a/f06.txt b/f06.txt
+6343:diff --git a/f07.txt b/f07.txt
+7249:diff --git a/f08.txt b/f08.txt
+8155:diff --git a/f09.txt b/f09.txt
+9061:diff --git a/f10.txt b/f10.txt
+9967:diff --git a/f11.txt b/f11.txt
+10873:diff --git a/f12.txt b/f12.txt
+11779:diff --git a/f13.txt b/f13.txt
+
+## stat
+f00.txt (+1/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 14
+omitted: (none)

@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "triage",
+  "repo": "acme/app",
+  "pr": 4251,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "unknown-sig",
+    "message": "refusing triage: sig not in store\ntry: copy the full sig prefix from report output"
+  }
+}
+--- stderr ---
+
+--- files ---

@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "id": "auth-bypass",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "The admin-role branch is inverted, so an ordinary user reaches the privileged handler.",
+    "source": "bench/corpus/auth-bypass/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "middleware.go",
+      "line": 52,
+      "kind": "auth-bypass",
+      "severity": "critical",
+      "note": "the role check is inverted, so non-admins pass"
+    }
+  ]
+}

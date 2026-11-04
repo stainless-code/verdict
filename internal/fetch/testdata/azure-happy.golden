@@ -1,0 +1,307 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4716,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4716/PR.json + full.diff to any agent; ask it to write .review/4716/review.json; prior threads are in .review/4716/threads.json (run verdict threads to refresh)",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4716",
+    "head_sha": "e516722ce9ce0870538023ae1e062b7f1a11e504",
+    "base_sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 103,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "azure",
+      "fetch": true,
+      "post": false,
+      "inline_anchors": false,
+      "thread_resolution": false,
+      "review_verdicts": false
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+      "files": 0
+    },
+    "artifacts": {
+      "PR.json": ".review/4716/PR.json",
+      "full.diff": ".review/4716/full.diff",
+      "toc.txt": ".review/4716/toc.txt",
+      "roles.txt": ".review/4716/roles.txt",
+      "reviews.json": ".review/4716/reviews.json",
+      "inline.json": ".review/4716/inline.json",
+      "threads.json": ".review/4716/threads.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» roles -> .review/4716/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+done: .review/4716/PR.json .review/4716/full.diff .review/4716/toc.txt .review/4716/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4716/PR.json + .review/4716/full.diff (+ .review/4716/roles.txt) to any agent; ask it to write .review/4716/review.json; prior threads are in .review/4716/threads.json (run verdict threads to refresh)
+--- files ---
+--- file C/.az-calls.log ---
+CALL: repos pr show --id 4716 --org https://example.invalid --project acme --repository app -o json
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/threads?api-version=7.1 --query value -o json
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations?api-version=7.1 --query max_by(value, &id).id -o tsv
+CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations/3/changes?api-version=7.1&$top=1000&$skip=0 --query changeEntries -o json
+--- file C/.review/4716/.diff.err ---
+
+--- file C/.review/4716/.difffiles ---
+a.txt
+--- file C/.review/4716/.meta.err ---
+
+--- file C/.review/4716/PR.json ---
+{
+  "schema_version": "1",
+  "provider": "azure",
+  "number": 16,
+  "title": "PR sixteen",
+  "body": "body",
+  "base_ref": "main",
+  "head_ref": "feat",
+  "base_sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+  "head_sha": "e516722ce9ce0870538023ae1e062b7f1a11e504",
+  "author": "mate",
+  "url": "https://example.invalid/16",
+  "state": "open",
+  "draft": false,
+  "files": [
+    {
+      "path": "a.txt",
+      "status": "edit",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 1,
+  "deletions": 1
+}
+--- file C/.review/4716/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+  "sha": "c4d827b6a20aa8f3200cb15d134772e8471130da",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4716/full.diff ---
+diff --git a/a.txt b/a.txt
+index 5626abf..f719efd 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++two
+--- file C/.review/4716/hunks.tsv ---
+a.txt	OLD	1	1
+a.txt	NEW	1	1
+--- file C/.review/4716/inline.json ---
+[
+  {
+    "comments": [
+      {
+        "commentType": "system",
+        "content": "system",
+        "id": 1,
+        "publishedDate": "0000-00-00T00:00:00Z"
+      },
+      {
+        "author": {
+          "displayName": "ana"
+        },
+        "content": "Nit",
+        "id": 2,
+        "publishedDate": "0000-00-00T00:00:00Z"
+      }
+    ],
+    "id": 9,
+    "status": "fixed",
+    "threadContext": {
+      "filePath": "/a.txt",
+      "rightFileEnd": {
+        "line": 1
+      },
+      "rightFileStart": {
+        "line": 1
+      }
+    }
+  }
+]
+--- file C/.review/4716/reviews.json ---
+[
+  {
+    "comments": [
+      {
+        "author": {
+          "displayName": "bo"
+        },
+        "content": "Question",
+        "id": 3,
+        "publishedDate": "0000-00-00T00:00:00Z"
+      }
+    ],
+    "id": 10,
+    "status": "active"
+  }
+]
+--- file C/.review/4716/roles.txt ---
+## docs
+- a.txt
+--- file C/.review/4716/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4716/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "azure",
+  "pr": 4716,
+  "head_sha": "e516722ce9ce0870538023ae1e062b7f1a11e504",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "9",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": false,
+      "url": null,
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "2",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Nit",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "path": "",
+      "line": null,
+      "start_line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "bo",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "issue-comment",
+      "comments": [
+        {
+          "id": "3",
+          "author": "bo",
+          "author_kind": "human",
+          "body": "Question",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+--- file C/.review/4716/toc.txt ---
+# TOC for azure #4716 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+
+## stat
+a.txt (+1/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)

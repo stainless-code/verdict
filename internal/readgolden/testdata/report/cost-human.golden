@@ -1,0 +1,16 @@
+exit: 0
+--- stdout ---
+report: .review/5101 (6 shown) open=4 head=aaaaaaa
+1. [open] notes.txt:2 (c1111111)
+2. [open] notes.txt:2 (b2222222)
+3. [open] notes.txt:2 (f6666666)
+4. [open] notes.txt:2 (a3333333)
+5. [deferred] notes.txt:2 (e5555555)
+6. [addressed] notes.txt:2 (d4444444)
+cost: 1 run(s), 1 with records — in=120 out=55 total=175 est_usd=0.05 cached=40
+tiers: cheap=0 standard=1 deep=0
+receipts: 1 consented over-budget run(s) (latest projected $9.5 standard vs budget $10 @ 0000-00-00T00:00:00Z)
+next: address open threads
+--- stderr ---
+
+--- files ---

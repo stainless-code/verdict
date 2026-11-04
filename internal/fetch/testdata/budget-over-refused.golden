@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4705,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "budget-exceeded",
+    "message": "projected standard run ~$3 exceeds budget $0.50 (REVIEW_BUDGET_USD) from 2 comparable run(s) — consent required before this run starts\ntry: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/.review/budget"
+  }
+}
+--- stderr ---
+» estimate: tier standard ~$3/run from 2 comparable run(s) — OVER budget $0.50 (REVIEW_BUDGET_USD)
+--- files ---

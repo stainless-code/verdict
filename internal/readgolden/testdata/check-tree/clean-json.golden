@@ -1,0 +1,19 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "check-tree",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "check-tree: clean",
+  "warnings": [],
+  "data": {
+    "clean": true,
+    "ignored_review_lines": 0
+  },
+  "error": null
+}
+--- stderr ---
+check-tree: clean
+--- files ---

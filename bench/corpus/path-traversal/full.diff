@@ -1,0 +1,10 @@
+diff --git a/files.go b/files.go
+index 1111111..2222222 100644
+--- a/files.go
++++ b/files.go
+@@ -13,10 +13,10 @@ func open(root, name string) (*os.File, error) {
+ 	if name == "" {
+ 		return nil, errors.New("empty name")
+ 	}
+-	full := filepath.Join(root, name)
++	full := filepath.Join(root, filepath.Clean(name))

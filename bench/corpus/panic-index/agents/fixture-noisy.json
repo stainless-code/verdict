@@ -1,0 +1,19 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "parse.go",
+        "line": 13,
+        "side": "RIGHT",
+        "body": "Check len(parts) before indexing parts[1].",
+        "rigor": "pointed",
+        "severity": "important"
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: record works on local bundles and provider PRs (fetch-local / fetch --provider first); GitHub PRs use post
+try: run the fetch/record step named above first, then re-run
+re-enter: verdict record acme/app 4251
+--- files ---

@@ -9,8 +9,9 @@ no external services, no daemons, no accounts.
 
 One sentence: **PR reviews with receipts.**
 
-Its review core descends from Pullfrog's open-source action; its discipline borrows
-from clawpatch and pstack — credited, not hidden (see [`NOTICE.md`](../NOTICE.md)).
+Its review core descends from Pullfrog's open-source action — the review prompt, not its
+harness wrapping; its discipline borrows from clawpatch and pstack — credited, not hidden
+(see [`NOTICE.md`](../NOTICE.md)).
 
 ## Public narrative
 

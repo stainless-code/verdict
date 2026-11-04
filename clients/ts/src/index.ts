@@ -1,0 +1,40 @@
+// Public surface of the verdict TS client. EXPERIMENTAL until 1.0.
+export {
+  createClient,
+  run,
+  resolveBin,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_MAX_STDOUT,
+  type ClientOptions,
+  type RunOptions,
+  type VerdictClient,
+} from "./client.js";
+export {
+  assertEnvelope,
+  assertRefusalEnvelope,
+  SCHEMA_VERSION,
+  type Envelope,
+  type RefusalBody,
+  type RefusalEnvelope,
+  type DataFor,
+} from "./envelope.js";
+export {
+  VERDICT_REPAIR,
+  VerdictRefusalError,
+  type VerdictRefusal,
+  VerdictUsageError,
+  VerdictProcessError,
+  type VerdictCrash,
+  VerdictTimeoutError,
+  VerdictSpawnError,
+  VerdictSchemaError,
+} from "./errors.js";
+export type {
+  ReportData,
+  PostData,
+  RecordData,
+  FindingItem,
+  ReportCost,
+  ReportCompleteness,
+} from "./types.gen.js";
+export type { RefusalCode } from "./refusal-codes.gen.js";

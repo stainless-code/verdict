@@ -1,0 +1,293 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4705,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4705/PR.json + full.diff to any agent; ask it to write .review/4705/review.json; prior threads are in .review/4705/threads.json (run verdict threads to refresh)",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4705",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+    "files": 1,
+    "additions": 3,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 146,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "github",
+      "fetch": true,
+      "post": true,
+      "inline_anchors": true,
+      "thread_resolution": true,
+      "review_verdicts": true
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
+    },
+    "artifacts": {
+      "PR.json": ".review/4705/PR.json",
+      "full.diff": ".review/4705/full.diff",
+      "toc.txt": ".review/4705/toc.txt",
+      "roles.txt": ".review/4705/roles.txt",
+      "reviews.json": ".review/4705/reviews.json",
+      "inline.json": ".review/4705/inline.json",
+      "threads.json": ".review/4705/threads.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null,
+    "estimate": {
+      "tier": "standard",
+      "projected_usd": 3,
+      "comparable_runs": 2
+    },
+    "budget": {
+      "usd": 0.50,
+      "source": "REVIEW_BUDGET_USD",
+      "consented": true
+    }
+  },
+  "error": null
+}
+--- stderr ---
+» estimate: tier standard ~$3/run from 2 comparable run(s) — OVER budget $0.50 (REVIEW_BUDGET_USD)
+» receipt: consented over-budget run recorded in .review/4705/budget.json (projected $3 standard vs budget $0.50)
+» gh pr view acme/app#4705
+» gh pr diff -> .review/4705/full.diff
+» roles -> .review/4705/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+» reviews + inline comments
+done: .review/4705/PR.json .review/4705/full.diff .review/4705/toc.txt .review/4705/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4705/PR.json + .review/4705/full.diff (+ .review/4705/roles.txt) to any agent; ask it to write .review/4705/review.json; prior threads are in .review/4705/threads.json (run verdict threads to refresh)
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4705 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4705 --repo acme/app
+CALL: pr view 4705 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
+CALL: api repos/acme/app/pulls/4705/reviews --paginate
+CALL: api repos/acme/app/pulls/4705/comments --paginate
+CALL: api graphql -F owner=acme -F name=app -F pr=4705 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                startLine
+                diffSide
+                comments(first:100) {
+                  totalCount
+                  nodes { id databaseId author { __typename login } body createdAt url }
+                }
+              }
+            }
+          }
+        }
+      }
+--- file C/.review/4705/.difffiles ---
+notes.txt
+--- file C/.review/4705/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+--- file C/.review/4705/budget.json ---
+[{
+  "at": "0000-00-00T00:00:00Z",
+  "budget_usd": 0.50,
+  "budget_src": "REVIEW_BUDGET_USD",
+  "projected_tier": "standard",
+  "projected_usd": 3,
+  "comparable_runs": 2,
+  "consent": "--consent-over-budget"
+}]
+--- file C/.review/4705/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4705/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.review/4705/hunks.tsv ---
+notes.txt	OLD	1	3
+notes.txt	NEW	1	3
+--- file C/.review/4705/inline.json ---
+[]
+--- file C/.review/4705/reviews.json ---
+[]
+--- file C/.review/4705/roles.txt ---
+## docs
+- notes.txt
+--- file C/.review/4705/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4705/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "github",
+  "pr": 4705,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "PRRT_1",
+      "path": "notes.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": "https://example.invalid/c/101",
+      "author": "verdict[bot]",
+      "author_kind": "verdict",
+      "finding_sig": "6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e",
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "101",
+          "author": "verdict[bot]",
+          "author_kind": "verdict",
+          "body": "Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        },
+        {
+          "id": "102",
+          "author": "mate",
+          "author_kind": "human",
+          "body": "Done.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "PRRT_2",
+      "path": "notes.txt",
+      "line": null,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": true,
+      "url": "https://example.invalid/c/103",
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "103",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Old anchor.",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+--- file C/.review/4705/toc.txt ---
+# TOC for PR #4705 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/notes.txt b/notes.txt
+
+## stat
+notes.txt (+3/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)

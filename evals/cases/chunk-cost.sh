@@ -26,10 +26,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -109,17 +105,13 @@ cat > "$EVAL_SANDBOX/.review/4902/chunks/chunk-01.cost.json" <<'EOF'
 {"schema_version":"1","effort":"cheap","models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
 EOF
 run_review report acme/app 4902 --cost --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.data.cost.runs' <"$EVAL_OUT" 2>/dev/null)" = "2" ] \
-  && [ "$(jq -r '.data.cost.input_tokens' <"$EVAL_OUT" 2>/dev/null)" = "110" ] \
-  && [ "$(jq -r '.data.cost.output_tokens' <"$EVAL_OUT" 2>/dev/null)" = "55" ] \
-  && [ "$(jq -r '.data.cost.total_tokens' <"$EVAL_OUT" 2>/dev/null)" = "165" ] \
-  && [ "$(jq -r '.data.cost.est_usd' <"$EVAL_OUT" 2>/dev/null)" = "0.06" ] \
-  && ! grep -q "chunk cost" "$EVAL_ERR"; then
-  good "two missing chunk records read zeros with no warning and no failure"
-else
-  bad "absent-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
-fi
+assert_exit "absent-grade run succeeds" 0
+assert_json_field "absent-grade counts both runs" "2" '.data.cost.runs'
+assert_json_field "absent-grade sums input tokens" "110" '.data.cost.input_tokens'
+assert_json_field "absent-grade sums output tokens" "55" '.data.cost.output_tokens'
+assert_json_field "absent-grade sums total tokens" "165" '.data.cost.total_tokens'
+assert_json_field "absent-grade estimates usd" "0.06" '.data.cost.est_usd'
+assert_stream_nogrep "absent-grade warns about no chunk cost" "$EVAL_ERR" "chunk cost"
 
 # --- C3: unreadable chunk record warns, reads zeros, never fails ---
 eval_mk_bundle 4903
@@ -194,5 +186,4 @@ rm -rf "$EVAL_SANDBOX/.review/4901" "$EVAL_SANDBOX/.review/4902" \
   "$EVAL_SANDBOX/.review/4905" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-cost: FAIL ($fails)"; exit 1; fi
-echo "case chunk-cost: PASS"
+eval_end

@@ -1,0 +1,12 @@
+diff --git a/session.go b/session.go
+index 1111111..2222222 100644
+--- a/session.go
++++ b/session.go
+@@ -28,16 +28,16 @@ func lookup(ctx context.Context, id string) (*Session, error) {
+ 	session, err := store.Lookup(ctx, id)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	user := session.User
++	user := session.User
++	if user == nil {

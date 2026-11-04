@@ -1,0 +1,24 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4701,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "fetch-failed",
+    "message": "gh pr view failed for acme/app#4701 (auth? PR number?)\ntry: run 'gh auth status', confirm the repo/PR spelling, then re-run"
+  }
+}
+--- stderr ---
+» gh pr view acme/app#4701
+gh: PR not found
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+--- file C/.review/4701/PR.json ---
+

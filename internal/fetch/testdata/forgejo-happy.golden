@@ -1,0 +1,315 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4708,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4708/PR.json + full.diff to any agent; ask it to write .review/4708/review.json; prior threads are in .review/4708/threads.json (run verdict threads to refresh)",
+  "warnings": [],
+  "data": {
+    "dir": ".review/4708",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "hunks": 1,
+    "omitted": [],
+    "diff_bytes": 99,
+    "panel": {
+      "source": null,
+      "members": []
+    },
+    "capabilities": {
+      "provider": "forgejo",
+      "fetch": true,
+      "post": false,
+      "inline_anchors": false,
+      "thread_resolution": false,
+      "review_verdicts": false
+    },
+    "controls": {
+      "policy": "base",
+      "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+      "files": 0
+    },
+    "artifacts": {
+      "PR.json": ".review/4708/PR.json",
+      "full.diff": ".review/4708/full.diff",
+      "toc.txt": ".review/4708/toc.txt",
+      "roles.txt": ".review/4708/roles.txt",
+      "reviews.json": ".review/4708/reviews.json",
+      "inline.json": ".review/4708/inline.json",
+      "threads.json": ".review/4708/threads.json",
+      "sensitive.txt": null,
+      "incremental.diff": null
+    },
+    "incremental_base": null
+  },
+  "error": null
+}
+--- stderr ---
+» forgejo diff -> .review/4708/full.diff
+» roles -> .review/4708/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+done: .review/4708/PR.json .review/4708/full.diff .review/4708/toc.txt .review/4708/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4708/PR.json + .review/4708/full.diff (+ .review/4708/roles.txt) to any agent; ask it to write .review/4708/review.json; prior threads are in .review/4708/threads.json (run verdict threads to refresh)
+--- files ---
+--- file C/.curl-calls.log ---
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708.diff
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/files?limit=50&page=1
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews?limit=50&page=1
+CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews/7/comments
+--- file C/.review/4708/.difffiles ---
+a.txt
+--- file C/.review/4708/.meta.err ---
+
+--- file C/.review/4708/PR.json ---
+{
+  "schema_version": "1",
+  "provider": "forgejo",
+  "number": 9,
+  "title": "PR nine",
+  "body": "body",
+  "base_ref": "main",
+  "head_ref": "feat",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "author": "mate",
+  "url": "https://example.invalid/9",
+  "state": "open",
+  "draft": false,
+  "files": [
+    {
+      "path": "a.txt",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 1,
+  "deletions": 1
+}
+--- file C/.review/4708/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4708/full.diff ---
+diff --git a/a.txt b/a.txt
+index 1111111..2222222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.review/4708/hunks.tsv ---
+a.txt	OLD	1	1
+a.txt	NEW	1	1
+--- file C/.review/4708/inline.json ---
+[
+  {
+    "body": "Nit",
+    "created_at": "0000-00-00T00:00:00Z",
+    "html_url": "https://example.invalid/c/11",
+    "id": 11,
+    "original_position": 1,
+    "path": "a.txt",
+    "position": 1,
+    "resolver": {
+      "login": "ana"
+    },
+    "user": {
+      "login": "ana"
+    }
+  },
+  {
+    "body": "Old spot",
+    "created_at": "0000-00-00T00:00:00Z",
+    "html_url": "https://example.invalid/c/12",
+    "id": 12,
+    "original_position": 2,
+    "path": "a.txt",
+    "position": 0,
+    "resolver": null,
+    "user": {
+      "login": "bo"
+    }
+  }
+]
+--- file C/.review/4708/reviews.json ---
+[{"id":7,"user":{"login":"rev"},"body":"Summary note","submitted_at":"0000-00-00T00:00:00Z","html_url":"https://example.invalid/r/7"}]
+--- file C/.review/4708/roles.txt ---
+## docs
+- a.txt
+--- file C/.review/4708/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/4708/threads.json ---
+{
+  "schema_version": "1",
+  "provider": "forgejo",
+  "pr": 4708,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "0000-00-00T00:00:00Z",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "7",
+      "path": "",
+      "line": null,
+      "start_line": null,
+      "side": null,
+      "resolved": false,
+      "outdated": false,
+      "url": "https://example.invalid/r/7",
+      "author": "rev",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "issue-comment",
+      "comments": [
+        {
+          "id": "7",
+          "author": "rev",
+          "author_kind": "human",
+          "body": "Summary note",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "path": "a.txt",
+      "line": 1,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": false,
+      "url": "https://example.invalid/c/11",
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "11",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "Nit",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "path": "a.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "LEFT",
+      "resolved": false,
+      "outdated": true,
+      "url": "https://example.invalid/c/12",
+      "author": "bo",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "12",
+          "author": "bo",
+          "author_kind": "human",
+          "body": "Old spot",
+          "truncated": false,
+          "created_at": "0000-00-00T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+--- file C/.review/4708/toc.txt ---
+# TOC for forgejo #4708 (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+
+## stat
+a.txt (+1/-1)
+
+## coverage manifest
+files in PR: 1 | files with diff hunks: 1
+omitted: (none)

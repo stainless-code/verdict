@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+unknown flag '--bogus' for triage (want --sig, --status, --rationale, --force, --dry-run, --json)
+--- files ---

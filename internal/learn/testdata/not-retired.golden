@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: learn: rule 'await-err' is already active
+try: check the rule status with learn --status, then re-run
+re-enter: verdict learn --restore ...
+--- files ---

@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+unknown flag '--bogus' for fetch (want --base-sha|--since <sha>, --provider <name>, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, --json)
+--- files ---

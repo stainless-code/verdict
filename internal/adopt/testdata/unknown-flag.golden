@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+unknown flag '--bogus' for adopt (want --from <local-slug>, --json)
+--- files ---

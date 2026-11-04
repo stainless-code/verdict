@@ -1,0 +1,38 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "next",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "address via address-reviews mode, then post",
+  "warnings": [],
+  "data": {
+    "item": {
+      "kind": "inline",
+      "path": "notes.txt",
+      "side": "RIGHT",
+      "line": 2,
+      "anchored": true,
+      "body": "Usable body here with enough substance.",
+      "suggestion": null,
+      "inBounds": true,
+      "rigor": "walked",
+      "severity": "critical",
+      "sig": "c111111111111111111111111111111111111111",
+      "sig_version": "1",
+      "firstSeen": "aaaaaaa",
+      "lastSeen": "aaaaaaa",
+      "status": "open",
+      "rationale": "",
+      "history": [],
+      "locator": "notes.txt:2",
+      "rank": 1
+    }
+  },
+  "error": null
+}
+--- stderr ---
+next: c1111111 [open] notes.txt:2 — address via address-reviews mode, then post
+--- files ---

@@ -1,0 +1,138 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4703,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "diff-too-large",
+    "message": "diff 832678 bytes exceeds cap 512000 bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or .review/max_bytes)\ntry: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
+    "candidates": [
+      {
+        "kind": "paths",
+        "files": [
+          "f00.txt"
+        ],
+        "estimated_bytes": 59477,
+        "suggestion": "re-fetch narrowed to f00.txt (~59477 bytes)"
+      },
+      {
+        "kind": "paths",
+        "files": [
+          "f01.txt",
+          "f02.txt",
+          "f03.txt",
+          "f04.txt",
+          "f05.txt",
+          "f06.txt",
+          "f07.txt",
+          "f08.txt",
+          "f09.txt",
+          "f10.txt"
+        ],
+        "estimated_bytes": 773201,
+        "suggestion": "re-fetch excluding f00.txt: first 10 of 13 remaining files (~773201 bytes total)"
+      },
+      {
+        "kind": "range",
+        "files": [],
+        "estimated_bytes": 416339,
+        "suggestion": "split the range in half (~416339 bytes each): fetch-local --range/--base, fetch --base-sha/--since"
+      }
+    ]
+  }
+}
+--- stderr ---
+» gh pr view acme/app#4703
+» gh pr diff -> .review/4703/full.diff
+candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
+- [paths] re-fetch narrowed to f00.txt (~59477 bytes)
+- [paths] re-fetch excluding f00.txt: first 10 of 13 remaining files (~773201 bytes total)
+- [range] split the range in half (~416339 bytes each): fetch-local --range/--base, fetch --base-sha/--since
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4703 --repo acme/app
+--- file C/.review/4703/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1}],"additions":1,"deletions":1}
+--- file C/.review/4703/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4703/full.diff (size=832678 sha256=d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3) ---

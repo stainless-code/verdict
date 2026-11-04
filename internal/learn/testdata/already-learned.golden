@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: rule text already learned (cite the existing rule id instead of learning it twice)
+try: cite the existing rule id instead of learning it twice
+re-enter: verdict learn --rule ... --scope ...
+--- files ---

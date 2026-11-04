@@ -1,0 +1,19 @@
+{
+  "model": "fixture-good",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "pool.go",
+        "line": 88,
+        "side": "RIGHT",
+        "body": "Wait for the close before returning the conn to the pool.",
+        "rigor": "reproduced",
+        "severity": "important"
+      }
+    ]
+  }
+}

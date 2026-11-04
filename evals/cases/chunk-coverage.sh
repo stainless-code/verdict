@@ -33,10 +33,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -168,9 +164,9 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "partial post gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
 fi
-if jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "chunk-02" \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "b.txt" \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "try: re-fetch"; then
+if jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-02" \
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "b.txt" \
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "try: re-fetch"; then
   good "refusal names the missing chunk (chunk-02, b.txt) with the re-fetch remediation"
 else
   bad "refusal message misses the chunk/remediation: $(jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | head -c 300)"
@@ -191,7 +187,7 @@ EOF
 run_review record acme/app local-covrec --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-chunk-coverage" ] \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "chunk-01"; then
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-01"; then
   good "record refuses the partial attestation naming chunk-01"
 else
   bad "record gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
@@ -212,8 +208,8 @@ EOF
 run_review post acme/app 4642 --dry-run --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-chunk-snapshot" ] \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "chunk-02" \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | grep -q "try: re-fetch"; then
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-02" \
+  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "try: re-fetch"; then
   good "missing pinned diff refuses typed missing-chunk-snapshot naming chunk-02 + re-fetch"
 else
   bad "snapshot leg gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
@@ -258,7 +254,7 @@ fi
 
 # --- C5: a complete attested synthesis posts exactly once with sig dedupe ---
 mkcovbundle 4644
-# sig_of mirror (scripts/review.sh normalizes key whitespace, then sha1):
+# sig_of mirror (the CLI normalizes key whitespace, then sha1):
 # sigKey for an inline comment is path + "\n" + heading("") + "\n" + body.
 sig_for() { printf '%s\n%s\n%s' "$1" "" "$2" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
 ABODY="Prior note on file one still stands."
@@ -350,13 +346,9 @@ eval_write_review 4641 <<'EOF'
 {"schema_version":"1","body":"> ✅ One note on chunk-01.\n> Basis: 0 reproduced · 1 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational"}]}
 EOF
 run_review post acme/app 4641 --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.data.anchors.kept' <"$EVAL_OUT" 2>/dev/null)" = "1" ] \
-  && ! grep -q "basis line counts" "$EVAL_ERR"; then
-  good "unattested partial review passes as today (exit 0, kept, no basis warning)"
-else
-  bad "unattested leg gave exit $EVAL_STATUS"
-fi
+assert_exit "unattested partial review passes as today" 0
+assert_json_field "unattested partial review keeps the anchor" "1" '.data.anchors.kept'
+assert_stream_nogrep "unattested partial review warns about no basis counts" "$EVAL_ERR" "basis line counts"
 if grep -q "no chunks attestation" "$EVAL_ERR" \
   && grep -q "chunks/manifest.json" "$EVAL_ERR"; then
   good "unattested chunked review warns loudly naming the manifest"
@@ -376,5 +368,4 @@ rm -rf "$EVAL_SANDBOX/.review/4641" "$EVAL_SANDBOX/.review/4642" \
 rm -f "$EVAL_SANDBOX"/posted-4644.json "$EVAL_SANDBOX"/cov-post.log
 unset XDG_CONFIG_HOME EVAL_SAVE_PAYLOAD || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-coverage: FAIL ($fails)"; exit 1; fi
-echo "case chunk-coverage: PASS"
+eval_end

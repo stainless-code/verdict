@@ -1,0 +1,6 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+next: cannot read store (run post or record first)
+--- files ---

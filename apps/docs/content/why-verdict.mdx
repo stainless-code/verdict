@@ -29,10 +29,11 @@ and drops the extraction.
 
 - **Latency becomes minutes, locally.** `fetch` pulls the bundle with no clone. Any agent
   you already run does the review. `post` lands exactly one native GitHub review. Total
-  setup: `gh`, `jq`, one token.
-- **Trust becomes nothing to exfiltrate.** There is no server side. Keys never leave your
-  machine, diffs never leave your machine, and the roughly 5,500 lines of bash read in one
-  sitting.
+  setup: `gh`, one static `verdict` binary, one token.
+- **Trust becomes nothing to exfiltrate.** Verdict has no server side and sends nothing
+  itself: keys stay on your machine, and the only network calls are the `gh` reads and the
+  one post you ask for. Diffs go only where your chosen model runs (a local model keeps them
+  on the machine). The source is open Go with no runtime dependencies.
 - **Output becomes verifiable.** Every finding carries an evidence rung from `said` to
   `reproduced`. Unproven claims ship labeled `unproven` or die. Anchors are
   machine-checked against the diff hunks, and suggestions render as real GitHub
@@ -46,17 +47,18 @@ and drops the extraction.
 
 ## What it refuses to be
 
-A CI gate that blocks merges. A daemon, watcher, or background loop. A model provider,
-proxy, or router. A dashboard, database, or account system. A whole-repo mapper, a
-worker fleet, an autonomous polish loop. A judge of anything it cannot anchor, verify,
-or retract. Each refusal is load-bearing: they keep setup at minutes, blast radius at
-one post, and the skill runnable on any model, anywhere.
+A hosted merge gate or check-run publisher. A daemon, watcher, or background loop. A model
+provider, proxy, or router. A dashboard, database, or account system. A whole-repo
+mapper, a worker fleet, an autonomous polish loop. A judge of anything it cannot anchor,
+verify, or retract. Each refusal is load-bearing: they keep setup at minutes, blast
+radius at one post, and the skill runnable on any model, anywhere. `report --check` is a
+local exit code a CI job may honor; Verdict never posts a check-run or merges for you.
 
 ## Where it concedes
 
 SaaS reviewers keep the jobs that need servers: merge gating at enterprise scale,
 fleet-wide policy, hosted audit trails. Everything else, the actual review, runs better
-local: faster, cheaper, auditable, improvable by anyone who can read bash.
+local: faster, cheaper, auditable, improvable by anyone who can read Go.
 
 <CardGroup cols={2}>
   <Card

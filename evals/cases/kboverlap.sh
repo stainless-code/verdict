@@ -20,10 +20,6 @@ HERE="$(dirname "$0")"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Cases share one sandbox: stash any bundles other cases left behind so the
 # rollup below grades exactly this case's fixtures (restored on exit,
 # even on failure — later cases must see their own stores untouched).
@@ -193,11 +189,8 @@ else
   bad "default envelope grew an overlap key (exit $EVAL_STATUS)"
 fi
 run_review trend acme/app
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "overlap:" "$EVAL_OUT"; then
-  good "default human output has no overlap section"
-else
-  bad "default human output grew an overlap section"
-fi
+assert_exit "default human trend succeeds" 0
+assert_stream_nogrep "default human output has no overlap section" "$EVAL_OUT" "overlap:"
 
 # --- O5: pure read (hashes stable, no network, corrupt joins warns+zeros) ---
 after_hash="$(cd "$EVAL_SANDBOX" && find .review -type f | LC_ALL=C sort | xargs shasum -a 1)"
@@ -259,5 +252,4 @@ else
   bad "empty store edge broke"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case kboverlap: FAIL ($fails)"; exit 1; fi
-echo "case kboverlap: PASS"
+eval_end

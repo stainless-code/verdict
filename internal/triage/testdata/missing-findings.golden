@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "triage",
+  "repo": "acme/app",
+  "pr": 4251,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "missing-findings",
+    "message": "missing .review/4251/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

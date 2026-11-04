@@ -1,0 +1,6 @@
+exit: 0
+--- stdout ---
+check-tree: clean (1 .review/ scratch line(s) ignored)
+--- stderr ---
+
+--- files ---

@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: unknown --provider 'gitea' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)
+try: re-run with one of the valid values named above
+--- files ---

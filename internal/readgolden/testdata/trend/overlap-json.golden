@@ -1,0 +1,260 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "trend",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "calibrate recent bundles for per-model tier precision",
+  "warnings": [],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "bundles": 3,
+    "findings": 9,
+    "open": 6,
+    "addressed": 2,
+    "closed": 1,
+    "by_status": {
+      "open": 6,
+      "addressed": 2,
+      "wont-fix": 0,
+      "false-positive": 0,
+      "deferred": 1
+    },
+    "by_tier": {
+      "critical": 3,
+      "important": 3,
+      "informational": 3,
+      "untagged": 0
+    },
+    "provenance": {
+      "tools": [
+        null
+      ],
+      "models": [
+        null
+      ],
+      "prompts_hashes": [
+        null
+      ]
+    },
+    "periods": [
+      {
+        "period": "2026-01-01",
+        "bundles": 1,
+        "findings": 6,
+        "open": 4,
+        "addressed": 1,
+        "closed": 1,
+        "by_tier": {
+          "critical": 2,
+          "important": 2,
+          "informational": 2,
+          "untagged": 0
+        }
+      },
+      {
+        "period": "2026-02-01",
+        "bundles": 1,
+        "findings": 2,
+        "open": 1,
+        "addressed": 1,
+        "closed": 0,
+        "by_tier": {
+          "critical": 0,
+          "important": 1,
+          "informational": 1,
+          "untagged": 0
+        }
+      },
+      {
+        "period": "2026-03-01",
+        "bundles": 1,
+        "findings": 1,
+        "open": 1,
+        "addressed": 0,
+        "closed": 0,
+        "by_tier": {
+          "critical": 1,
+          "important": 0,
+          "informational": 0,
+          "untagged": 0
+        }
+      }
+    ],
+    "per_bundle": [
+      {
+        "bundle": "5101",
+        "at": "0000-00-00T00:00:00Z",
+        "models": [],
+        "efforts": [],
+        "provenance": {
+          "tool_version": null,
+          "prompts_hash": null,
+          "model": null
+        },
+        "findings": 6,
+        "open": 4,
+        "addressed": 1,
+        "closed": 1,
+        "by_status": {
+          "open": 4,
+          "addressed": 1,
+          "wont-fix": 0,
+          "false-positive": 0,
+          "deferred": 1
+        },
+        "by_tier": {
+          "critical": 2,
+          "important": 2,
+          "informational": 2,
+          "untagged": 0
+        }
+      },
+      {
+        "bundle": "5102",
+        "at": "0000-00-00T00:00:00Z",
+        "models": [
+          "m"
+        ],
+        "efforts": [
+          "deep"
+        ],
+        "provenance": {
+          "tool_version": null,
+          "prompts_hash": null,
+          "model": null
+        },
+        "findings": 2,
+        "open": 1,
+        "addressed": 1,
+        "closed": 0,
+        "by_status": {
+          "open": 1,
+          "addressed": 1,
+          "wont-fix": 0,
+          "false-positive": 0,
+          "deferred": 0
+        },
+        "by_tier": {
+          "critical": 0,
+          "important": 1,
+          "informational": 1,
+          "untagged": 0
+        }
+      },
+      {
+        "bundle": "local-x",
+        "at": "0000-00-00T00:00:00Z",
+        "models": [],
+        "efforts": [],
+        "provenance": {
+          "tool_version": null,
+          "prompts_hash": null,
+          "model": null
+        },
+        "findings": 1,
+        "open": 1,
+        "addressed": 0,
+        "closed": 0,
+        "by_status": {
+          "open": 1,
+          "addressed": 0,
+          "wont-fix": 0,
+          "false-positive": 0,
+          "deferred": 0
+        },
+        "by_tier": {
+          "critical": 1,
+          "important": 0,
+          "informational": 0,
+          "untagged": 0
+        }
+      }
+    ],
+    "overlap": {
+      "measured_bundles": 1,
+      "unmeasured_bundles": 2,
+      "unmeasured": [
+        "5101",
+        "local-x"
+      ],
+      "bundles": 3,
+      "recalled_rules": [
+        "r-a1"
+      ],
+      "cited_rules": [],
+      "overlap_rules": [],
+      "precision": 0,
+      "coverage": null,
+      "cited_findings": 0,
+      "addressed": 0,
+      "false_positive": 0,
+      "pending": 0,
+      "wont_fix": 0,
+      "joins": {
+        "rows": 1,
+        "addressed": 1,
+        "false_positive": 0
+      },
+      "calibrate_eligible_bundles": 1,
+      "per_bundle": [
+        {
+          "bundle": "5101",
+          "measured": false,
+          "recalled": [],
+          "cited": [],
+          "overlap": [],
+          "precision": null,
+          "coverage": null,
+          "cited_findings": 0,
+          "addressed": 0,
+          "false_positive": 0,
+          "pending": 0,
+          "wont_fix": 0,
+          "joins_rows": 0,
+          "calibrate_eligible": true
+        },
+        {
+          "bundle": "5102",
+          "measured": true,
+          "recalled": [
+            "r-a1"
+          ],
+          "cited": [],
+          "overlap": [],
+          "precision": 0,
+          "coverage": null,
+          "cited_findings": 0,
+          "addressed": 0,
+          "false_positive": 0,
+          "pending": 0,
+          "wont_fix": 0,
+          "joins_rows": 1,
+          "calibrate_eligible": false
+        },
+        {
+          "bundle": "local-x",
+          "measured": false,
+          "recalled": [],
+          "cited": [],
+          "overlap": [],
+          "precision": null,
+          "coverage": null,
+          "cited_findings": 0,
+          "addressed": 0,
+          "false_positive": 0,
+          "pending": 0,
+          "wont_fix": 0,
+          "joins_rows": 0,
+          "calibrate_eligible": false
+        }
+      ]
+    }
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

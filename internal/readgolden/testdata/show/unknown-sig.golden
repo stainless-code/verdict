@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "show",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "unknown-sig",
+    "message": "show: sig not in store\ntry: copy the full sig prefix from report output"
+  }
+}
+--- stderr ---
+
+--- files ---

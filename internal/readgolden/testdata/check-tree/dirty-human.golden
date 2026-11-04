@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+check-tree: dirty worktree — commit or stash first:
+?? scratch.txt
+--- stderr ---
+
+--- files ---

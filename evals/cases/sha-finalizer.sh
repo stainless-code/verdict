@@ -29,14 +29,15 @@
 #       (exit 0, posted once, reason in stderr + body — never a silent
 #       APPROVE); an unreachable live lookup warns and proceeds (exit 0,
 #       posted once — never a refusal), including on the APPROVE path.
+#   F9  fresh bundle: with no post.json or .posted_ marker, the same post
+#       refuses already-posted from the bundle's fetched reviews.json (the
+#       hidden marker on the reviewed commit); the same marker on another
+#       commit refuses duplicate-payload; --force passes; every refusal
+#       makes zero network POSTs and names the stale-review re-fetch hint.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
-
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
 
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEADB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -60,6 +61,7 @@ case "$*" in
     if [ -f "${EVAL_SANDBOX:-/tmp}/post-fail" ]; then
       echo "evals-stub-gh: POST rejected" >&2; exit 1
     fi
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
     printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
     exit 0;;
   *pulls*)
@@ -79,6 +81,21 @@ reviews_posts_since() {
   printf '%s' "$n"
 }
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
+
+# run_review_in <cwd> <verdict args...> — run_review from another directory,
+# for the fresh-bundle leg (a different checkout of the same bundle).
+run_review_in() {
+  local cwd="$1"
+  shift
+  set +e
+  (
+    cd "$cwd" || exit 99
+    PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@" >"$EVAL_OUT" 2>"$EVAL_ERR"
+  )
+  EVAL_STATUS=$?
+  set -e
+  return 0
+}
 
 mk_comment() { # $1 = pr — clean bundle carrying a non-binding review
   eval_mk_bundle "$1"
@@ -100,8 +117,12 @@ fi
 # --- F1: first post arms, same-SHA repost refused ---
 PR=4296
 mk_comment "$PR"
+cp "$EVAL_SANDBOX/.review/$PR/review.json" "$EVAL_SANDBOX/review-$PR.json"
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-$PR.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
 m="$(mark)"
 run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEADA" ]; then
   good "first post completes and records the reviewed SHA"
@@ -140,12 +161,64 @@ else
   bad "refused repost posted or rewrote the record"
 fi
 
+# --- F9: fresh bundle refuses from the fetched live reviews, not local stores ---
+# Copy the bundle without post.json or the dot-marker, then synthesize the
+# reviews.json a re-fetch would have written: the body GitHub actually
+# received (captured above, hidden marker included) on the reviewed commit.
+FRESH="$EVAL_SANDBOX/fresh"
+rm -rf "$FRESH"
+mkdir -p "$FRESH/.review"
+cp -R "$EVAL_SANDBOX/.review/$PR" "$FRESH/.review/$PR"
+cp "$EVAL_SANDBOX/review-$PR.json" "$FRESH/.review/$PR/review.json"
+rm -f "$FRESH/.review/$PR/post.json" "$FRESH/.review/$PR"/.posted_*
+posted_body="$(jq -r '.body // empty' "$EVAL_SANDBOX/posted-$PR.json" 2>/dev/null || true)"
+jq -n --arg b "$posted_body" --arg h "$HEADA" \
+  '[{id:901,body:$b,commit_id:$h,submitted_at:"2026-01-01T00:00:00Z"}]' \
+  >"$FRESH/.review/$PR/reviews.json"
+m="$(mark)"
+run_review_in "$FRESH" post acme/app "$PR" --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-posted" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
+  good "fresh bundle refuses already-posted from reviews.json (no network POST)"
+else
+  bad "fresh bundle gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/already-posted/0"
+fi
+if printf '%s' "$msg" | matches "re-fetch if the earlier review was deleted"; then
+  good "fresh-bundle refusal names the stale-review re-fetch hint"
+else
+  bad "fresh-bundle refusal message: $(printf '%s' "$msg" | head -c 300)"
+fi
+
+# Same marker, different commit: the coarse guard passes and the fine guard
+# recognizes the payload hash.
+jq --arg h "$HEADB" '.[0].commit_id = $h' "$FRESH/.review/$PR/reviews.json" \
+  >"$FRESH/.review/$PR/reviews.json.new"
+mv "$FRESH/.review/$PR/reviews.json.new" "$FRESH/.review/$PR/reviews.json"
+m="$(mark)"
+run_review_in "$FRESH" post acme/app "$PR" --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "duplicate-payload" ] \
+  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
+  good "fresh bundle refuses duplicate-payload from the live marker (no network POST)"
+else
+  bad "fresh duplicate gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/duplicate-payload/0"
+fi
+m="$(mark)"
+run_review_in "$FRESH" post acme/app "$PR" --force --json
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
+  good "--force posts through the live-review guard (exit 0, one POST)"
+else
+  bad "fresh --force gave exit $EVAL_STATUS calls $(reviews_posts_since "$m"), want 0/1"
+fi
+
 # --- F6: refusal names the advance command + force override, both surfaces ---
 run_review post acme/app "$PR" --json
 msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] \
-  && printf '%s' "$msg" | grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" \
-  && printf '%s' "$msg" | grep -q -- "--force"; then
+  && printf '%s' "$msg" | matches "fetch acme/app $PR --base-sha ${HEADA:0:7}" \
+  && printf '%s' "$msg" | matches -- "--force"; then
   good "--json error.message names the exact advance command + --force"
 else
   bad "--json error.message: $(head -c 300 "$EVAL_OUT")"
@@ -251,14 +324,10 @@ PR=4299
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 run_review report acme/app "$PR" --completeness
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "missing-post" "$EVAL_ERR" \
-  && grep -q "fetch acme/app $PR" "$EVAL_ERR" \
-  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "missing-post (no head) keeps the plain fetch with no --base-sha"
-else
-  bad "missing-post stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "missing-post (no head) fails the gate" 1
+assert_file_grep "missing-post names the typed code" "$EVAL_ERR" "missing-post"
+assert_file_grep "missing-post names the plain fetch" "$EVAL_ERR" "fetch acme/app $PR"
+assert_stream_nogrep "missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
 # F7 provider: a stale-head on a provider bundle names the plain provider
 # fetch (no --base-sha — fetch refuses it for non-GitHub providers), and
@@ -273,14 +342,10 @@ jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.review/$PR/post.json"
 run_review report acme/app "$PR" --completeness
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "stale-head" "$EVAL_ERR" \
-  && grep -q "fetch acme/app $PR --provider gitlab" "$EVAL_ERR" \
-  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "provider stale-head names the plain provider fetch, no --base-sha"
-else
-  bad "provider stale-head stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "provider stale-head fails the gate" 1
+assert_file_grep "provider stale-head names the typed code" "$EVAL_ERR" "stale-head"
+assert_file_grep "provider stale-head names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"
+assert_stream_nogrep "provider stale-head keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 PR=4308
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
@@ -288,14 +353,10 @@ cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
 EOF
 printf '[]' | eval_write_findings "$PR"
 run_review report acme/app "$PR" --completeness
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "missing-post" "$EVAL_ERR" \
-  && grep -q "fetch acme/app $PR --provider gitlab" "$EVAL_ERR" \
-  && ! grep -q -- "--base-sha" "$EVAL_ERR"; then
-  good "provider missing-post names the plain provider fetch, no --base-sha"
-else
-  bad "provider missing-post stderr: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_exit "provider missing-post fails the gate" 1
+assert_file_grep "provider missing-post names the typed code" "$EVAL_ERR" "missing-post"
+assert_file_grep "provider missing-post names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"
+assert_stream_nogrep "provider missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
 # --- F8: mid-run-push nudge names the advance command; gh-down warns and proceeds ---
 # Overlay a stub whose pulls endpoint reports a NEWER live head (a push
@@ -431,5 +492,4 @@ else
   bad "gh-down APPROVE gave exit $EVAL_STATUS event '$event' / stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case sha-finalizer: FAIL ($fails)"; exit 1; fi
-echo "case sha-finalizer: PASS"
+eval_end

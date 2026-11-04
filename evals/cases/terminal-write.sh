@@ -15,10 +15,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # --- T1: doctrine pins ---
 if grep -q "Exactly one terminal write" "$EVAL_ROOT/SKILL.md"; then
   good "SKILL.md pins exactly-one terminal write"
@@ -89,5 +85,4 @@ else
   bad "findings.dryrun.json missing"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case terminal-write: FAIL ($fails)"; exit 1; fi
-echo "case terminal-write: PASS"
+eval_end

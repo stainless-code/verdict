@@ -5,15 +5,16 @@
 ## Checklist
 
 1. **Task list** as first action.
-2. **Checkout / context.** Run `./scripts/review.sh fetch owner/repo N`
+2. **Checkout / context.** Run `verdict fetch owner/repo N`
    (writes `.review/N/PR.json`, `.review/N/full.diff`, `.review/N/toc.txt`).
-   Then run `./scripts/review.sh ready owner/repo N` — on `review`, review;
+   Then run `verdict ready owner/repo N` — on `review`, review;
    on `nudge-author`, post a short nudge naming the blockers instead of reviewing;
    on `wait` (draft/closed/merged — nothing actionable), hold: do not review
    and do not nudge.
    Non-GitHub host: add `--provider gitlab|gitcafe|forgejo|bitbucket|azure`
-   (same bundle shape, `PR.json` normalized; `record`, `report` and `triage`
-   work on provider bundles — only `post` and `calibrate` refuse them for now).
+   (same bundle shape, `PR.json` normalized; `record`, `report`, `triage`,
+   `show` and `next` work on provider bundles; `post`, `calibrate`, `adopt`
+   and `ready` refuse them (`provider-unimplemented`)).
    Local variant: `fetch-local owner/repo <name>` writes `.review/local-<name>/`
    with `source.json` instead of `PR.json` — no `reviews.json`/`inline.json`
    exist, so skip thread-context reads entirely. Absence of threads is not signal.
@@ -27,8 +28,9 @@
    `full.diff` for anchor pinning and drift detection; review from the chunks.
 3. **Triage.** Orient: what kind of thing is this (domain, seams crossed, external contracts,
    user surfaces)? Read `.review/N/roles.txt` first — it maps test/generated/docs/config/source
-   so lenses fan out to source, not snapshots. Read `.review/learnings.md` headings when `fetch`
-   reports the file — prior runs' conventions and gotchas, challenged when stale. Pull context to render a confident grounded
+   so lenses fan out to source, not snapshots. Read the `learnings.md` headings in the bundle's
+   `controls/` snapshot when `fetch` reports it — prior runs' conventions and gotchas, challenged
+   when stale. Never read the worktree's `.review/learnings.md`; the PR can edit it. Pull context to render a confident grounded
    review: read related files, grep callers of changed symbols, check tests on touched paths,
    fetch related GitHub state. Read `.review/N/sensitive.txt` when `fetch` reports it —
    flagged paths stay readable evidence, but never quote flagged values into posted bodies
@@ -92,7 +94,7 @@
 details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
-7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent, out-of-range confidence is dropped. Then run `./scripts/review.sh post owner/repo N` — done when it returns a review URL. List addressed finding sigs (short ids from the prior `findings.json` table) in `resolved`; `post` marks them addressed with history. `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
+7. **Submit.** Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent, out-of-range confidence is dropped. Then run `verdict post owner/repo N` — done when it returns a review URL. Record addressed sigs (short ids from the prior `findings.json` table) in `resolved`; the flip to `addressed` needs `verification.json` evidence (below). `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.review/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
    Track coverage yourself against the TOC — no tool checks it; an unread range is how findings get missed.
 8. **Cost record.** With every `review.json`, write `.review/N/cost.json`
    (local: `.review/local-<name>/cost.json`) — your self-reported spend for
@@ -113,7 +115,9 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
        {
          "name": "<synthesizer model id>",
          "input_tokens": 0,
-         "output_tokens": 0
+         "output_tokens": 0,
+         "cache_read_input_tokens": null,
+         "cache_creation_input_tokens": null
        },
        { "name": "<lens model id>", "input_tokens": 0, "output_tokens": 0 }
      ],
@@ -123,6 +127,11 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
      "est_usd": null
    }
    ```
+   When your provider reports a prompt-caching split, record it in the
+   optional per-model `cache_read_input_tokens` (input served from cache)
+   and `cache_creation_input_tokens` (input spent writing the cache) — both
+   are subsets of the sibling `input_tokens`, never additions. Absent or
+   `null` reads as unknown, never zero.
 
 ## Review body format (Default format — at most two parts, in order)
 

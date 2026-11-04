@@ -1,0 +1,36 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "done — no open findings",
+  "warnings": [],
+  "data": {
+    "dir": ".review/local-done",
+    "ledger": ".review/local-done/fix.json",
+    "sig": null,
+    "locator": null,
+    "severity": null,
+    "body": null,
+    "anchors": null,
+    "pass": null,
+    "max_passes": 3,
+    "kb": null,
+    "open_inline": 0,
+    "fixed": 1,
+    "open": 0,
+    "stopped": 0,
+    "complete": true
+  },
+  "error": null
+}
+--- stderr ---
+» readiness: .review/local-done — findings 0 open (0 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+fix complete: .review/local-done — fixed=1 open=0 stopped=0 (ledger .review/local-done/fix.json)
+next: done — no open findings
+--- files ---
+--- file C/.review/local-done/fix.json ---
+{"sigs":{}}

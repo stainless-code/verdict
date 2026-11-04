@@ -22,10 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Scratch git repo for the fetch-local recall legs. Everything git runs in a
 # subshell pinned to the sandbox cwd — never the caller's cwd, never the
 # repo checkout under test (a stray `git add` there would stage the harness).
@@ -227,18 +223,15 @@ fi
   cd "$EVAL_SANDBOX" || exit 99
   echo "change" >> src/app.ts
 )
+eval_commit_controls
 run_review fetch-local acme/app kbrecall1 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" ]; then
   good "matching diff writes kb.txt"
 else
   bad "kbrecall1 exit $EVAL_STATUS (kb.txt missing?)"
 fi
-if grep -q "await-err" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" \
-  && ! grep -q "docs-ex" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt"; then
-  good "recall keeps active matches, excludes retired"
-else
-  bad "kb.txt content: $(cat "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" 2>/dev/null)"
-fi
+assert_file_grep "recall keeps active matches" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" "await-err"
+assert_file_nogrep "recall excludes retired rules" "$EVAL_SANDBOX/.review/local-kbrecall1/kb.txt" "docs-ex"
 if jq -e '.data.artifacts | has("kb.txt")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "envelope carries the kb.txt artifact"
 else
@@ -254,6 +247,7 @@ fi
   git commit -qm readme
   echo "more" >> README.md
 )
+eval_commit_controls
 run_review fetch-local acme/app kbrecall2 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.review/local-kbrecall2/kb.txt" ]; then
   good "clean diff leaves no kb.txt"
@@ -262,6 +256,7 @@ else
 fi
 # No kb.jsonl reads byte-identical: no file, no envelope key.
 mv "$EVAL_SANDBOX/.review/kb.jsonl" "$EVAL_SANDBOX/.review/kb.jsonl.hold"
+eval_commit_controls
 run_review fetch-local acme/app kbrecall3 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ ! -f "$EVAL_SANDBOX/.review/local-kbrecall3/kb.txt" ] \
@@ -377,6 +372,7 @@ run_review triage acme/app "$PR" --sig "$osig5" --status false-positive --ration
   git commit -qm ord
   echo "more" >> ord/x.ts
 )
+eval_commit_controls
 run_review fetch-local acme/app kbrecall4 --json >/dev/null
 kb_order="$(grep '^# ord-' "$EVAL_SANDBOX/.review/local-kbrecall4/kb.txt" 2>/dev/null | cut -d' ' -f2 | tr '\n' ',' || true)"
 if [ "$kb_order" = "ord-a,ord-b,ord-c," ]; then
@@ -529,5 +525,4 @@ else
   bad "PR joins row: $jrow"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case kb: FAIL ($fails)"; exit 1; fi
-echo "case kb: PASS"
+eval_end

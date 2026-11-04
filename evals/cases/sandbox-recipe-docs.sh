@@ -16,10 +16,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 MANUAL="$EVAL_ROOT/docs/manual.md"
 SYSTEM="$EVAL_ROOT/prompts/system.md"
 
@@ -32,8 +28,8 @@ if grep -q "bwrap" "$MANUAL" \
 else
   bad "recipe missing bwrap/systemd-nspawn one-liners from docs/manual.md"
 fi
-if awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -qi "untrusted" \
-  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "verifyCmd"; then
+if awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches -i "untrusted" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "verifyCmd"; then
   good "when-to-use named (untrusted diff + networked verifyCmd)"
 else
   bad "recipe misses the when-to-use line in docs/manual.md"
@@ -75,14 +71,13 @@ else
 fi
 
 # --- R5: known-residuals subsection pinned in the recipe section ---
-if awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "Known residuals (string-scan ceiling)" \
-  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "TOCTOU" \
-  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "PYTHONPATH" \
-  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | grep -q "container/VM escape"; then
+if awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "Known residuals (string-scan ceiling)" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "TOCTOU" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "PYTHONPATH" \
+  && awk '/^## Hostile-PR sandbox recipe/,/^## Over-cap/' "$MANUAL" | matches "container/VM escape"; then
   good "known-residuals subsection present (ceiling + TOCTOU/PYTHONPATH/container-escape)"
 else
   bad "recipe misses the known-residuals subsection in docs/manual.md"
 fi
 
-if [ "$fails" -ne 0 ]; then echo "case sandbox-recipe-docs: FAIL ($fails)"; exit 1; fi
-echo "case sandbox-recipe-docs: PASS"
+eval_end

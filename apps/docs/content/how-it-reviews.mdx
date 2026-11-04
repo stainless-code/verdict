@@ -27,9 +27,10 @@ Self-verdicts downgrade. The review never blocks what it cannot justify.
 
 Confidence 1–5 is the agent's "would I merge on this review" judgment,
 informed by evidence depth, coverage, and rule support. The scale never
-rescales, so past verdicts stay comparable. Every report `--output` and posted body
-carries a `Basis` line computed from the store — rigor rung counts, distinct
-cited rules, addressed findings as verified fixes — never from prose.
+rescales, so past verdicts stay comparable. `report --output` computes its
+`Basis` line from the store — rigor rung counts, distinct cited rules,
+addressed findings as verified fixes — never from prose. A posted body's
+`Basis` is agent-written and validated against the review's own comments.
 
 ## Keep-biased machinery
 

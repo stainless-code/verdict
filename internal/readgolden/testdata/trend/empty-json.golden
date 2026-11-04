@@ -1,0 +1,43 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "trend",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "no reviewed bundles yet — fetch + post/record first",
+  "warnings": [],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "bundles": 0,
+    "findings": 0,
+    "open": 0,
+    "addressed": 0,
+    "closed": 0,
+    "by_status": {
+      "open": 0,
+      "addressed": 0,
+      "wont-fix": 0,
+      "false-positive": 0,
+      "deferred": 0
+    },
+    "by_tier": {
+      "critical": 0,
+      "important": 0,
+      "informational": 0,
+      "untagged": 0
+    },
+    "provenance": {
+      "tools": [],
+      "models": [],
+      "prompts_hashes": []
+    },
+    "periods": [],
+    "per_bundle": []
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

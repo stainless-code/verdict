@@ -1,0 +1,33 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "ready",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "fetch + review",
+  "warnings": [],
+  "data": {
+    "ready": true,
+    "recommendation": "review",
+    "blockers": [],
+    "state": "OPEN",
+    "draft": false,
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "CLEAN",
+    "ci": {
+      "failing": 0,
+      "total": 1
+    },
+    "threads_open": 0,
+    "description_chars": 70
+  },
+  "error": null
+}
+--- stderr ---
+ready: yes — acme/app#5101 looks reviewable (CI 1 checks, 0 failing; 0 open threads; mergeable MERGEABLE; body 70 chars)
+recommendation: review — fetch + review
+--- files ---
+--- file C/.review/5101/.ready.err ---
+

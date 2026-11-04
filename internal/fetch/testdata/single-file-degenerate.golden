@@ -1,0 +1,121 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4704,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "diff-too-large",
+    "message": "diff 1220081 bytes exceeds cap 512000 bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or .review/max_bytes)\ntry: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
+    "candidates": [
+      {
+        "kind": "paths",
+        "files": [
+          "huge.txt"
+        ],
+        "estimated_bytes": 1220081,
+        "suggestion": "re-fetch narrowed to huge.txt (~1220081 bytes)"
+      },
+      {
+        "kind": "range",
+        "files": [],
+        "estimated_bytes": 610041,
+        "suggestion": "split the range in half (~610041 bytes each): fetch-local --range/--base, fetch --base-sha/--since"
+      }
+    ]
+  }
+}
+--- stderr ---
+» gh pr view acme/app#4704
+» gh pr diff -> .review/4704/full.diff
+» chunking opted in (from --chunk) — single file over cap, keeping today's advisory refusal (split the range or narrow, or override the cap deliberately)
+candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
+- [paths] re-fetch narrowed to huge.txt (~1220081 bytes)
+- [range] split the range in half (~610041 bytes each): fetch-local --range/--base, fetch --base-sha/--since
+--- files ---
+--- file C/.gh-calls.log ---
+CALL: pr view 4704 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr diff 4704 --repo acme/app
+--- file C/.review/4704/PR.json ---
+{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"huge.txt","additions":1,"deletions":1}],"additions":1,"deletions":1}
+--- file C/.review/4704/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/4704/full.diff (size=1220081 sha256=dfb0becb975b2eca2d56fb509ed687d5647271ede4e714d4aab7a065f35df961) ---

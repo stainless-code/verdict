@@ -1,0 +1,77 @@
+# verdict review with merge gating (copy-paste recipe).
+#
+# Copy into your repo as .github/workflows/verdict-review.yml. Runs in YOUR
+# CI with YOUR runner and key: fetch → agent review → post → the findings
+# merge gate. No hosted service, no new secrets leaving your machines.
+#
+# Pin policy: every `uses:` below pins the full 40-hex commit SHA, never a
+# moving tag; the trailing `# vX` comment names the release the SHA
+# resolves to so bumps stay reviewable. Re-pin setup-verdict to the newest
+# release commit periodically.
+name: verdict review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verdict-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: review + merge gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The review controls are read from the PR base commit
+          # (`git show <base>:<path>`), so the checkout must hold it.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install verdict
+        uses: stainless-code/verdict/setup-verdict@471d2985b29060caa90036fefac565e97a12bb2c # action as introduced; re-pin to a release commit
+        with:
+          # Pin a released version for a frozen gate; latest tracks the
+          # newest release (see docs/ci-recipe.md).
+          version: latest
+
+      - name: Readiness pre-check (saves agent spend)
+        run: |
+          verdict ready "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --check
+
+      - name: Fetch the PR bundle
+        run: |
+          verdict fetch "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
+
+      - name: Agent review (bring your own agent + key)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Any agent works: it reads .review/<pr>/full.diff via toc.txt
+          # (+ PR.json, roles.txt, SKILL.md + prompts/) and writes exactly
+          # one .review/<pr>/review.json ({schema_version: 1, body,
+          # approved, comments[], resolved?, triage?}). Wire your runner's
+          # agent CLI here; it authenticates with YOUR key on YOUR runner,
+          # so the diff goes nowhere else.
+          PR="${{ github.event.pull_request.number }}"
+          echo "wire your agent CLI here (see docs/ci-recipe.md): review .review/$PR/ and write .review/$PR/review.json"
+
+      - name: Post the review
+        run: |
+          verdict post "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
+
+      - name: Merge gate (findings + freshness)
+        run: |
+          verdict report "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --check critical --completeness

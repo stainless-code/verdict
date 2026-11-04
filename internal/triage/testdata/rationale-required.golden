@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "triage",
+  "repo": "acme/app",
+  "pr": 4251,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "rationale-required",
+    "message": "refusing triage: rationale required (>=30 chars) unless --force\ntry: add --rationale with 30+ chars, or --force"
+  }
+}
+--- stderr ---
+
+--- files ---

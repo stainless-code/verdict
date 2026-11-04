@@ -1,0 +1,207 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "record",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "report or triage the local bundle; post stays refused (no PR target)",
+  "warnings": [
+    "verification claim c ignored (ambiguous prefix)",
+    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+  ],
+  "data": {
+    "dir": ".review/local-kb",
+    "anchors": {
+      "kept": 0,
+      "moved": 0
+    },
+    "findings": {
+      "open": 24,
+      "deferred": 0,
+      "addressed": 0,
+      "file": ".review/local-kb/findings.json"
+    },
+    "confidence": null,
+    "security_summary": null,
+    "items": [
+      {
+        "sig": "c5afec6b3dfcb87d898c7d0409ff54f6e868dbdd",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "f447c3f0a26a2067f31611619f195e2571f28584",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "28211a7614d6f05675b190ed9fd2169462ef6ac2",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "6e214db03915bb60f323a3b19cdcf6e8dbcec6be",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      },
+      {
+        "sig": "fd5c412bd9e01396c8cb0de8b6af740b2c208c17",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "88284232c8d6d7d80d539342d5709a5e34207435",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "8d3392d5d14a6e2f27f30019c059ab4ecc7f1042",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "fd6c6248429adc37dd2d9bf11c2cd53bad4f9b10",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      },
+      {
+        "sig": "6e022a657b92e1d3f915c4d22ed3df8b6dfc7003",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "e6d052686578cc76ac8f16c4a534988ba93c2d58",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "04b60eccf460ce8fedcea09ec3c9bd529cf201dc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "c8bf2b26d273e4cd47d018dc726ff7e1bb86a622",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      },
+      {
+        "sig": "24126663f5cc244637c961711a4ada62bb66bba2",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "47c9f89c07d6dc07cd70f2aac2363714acdedf6e",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "f6c7ed54052e213a92e6e7043d3551172fc86736",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "03e5546fcd32337a62840fd4014e89f1529aa312",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      },
+      {
+        "sig": "c394616cdc4b4b3a33d5b81fc677938e3fa8280d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "930750829439aae2bac795272a8c792126c33e67",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "b8f0e4dc519d03eacfafe56f4706d5b2a7936dde",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "db4ce9ebd301da62e0360a8b48df0bf1a8754c05",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      },
+      {
+        "sig": "cdf5d7cb361fbb248a7f26f661083034e305c59c",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:3"
+      },
+      {
+        "sig": "959590b0990f08cffcccdd08568e802e0a7c6807",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:13"
+      },
+      {
+        "sig": "25e4f73db8074fa8b3a9a6fa5cb5563672d9e8e5",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:23"
+      },
+      {
+        "sig": "2715b8f082abfb5117c4c2eb9f3168a3eb31bebc",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:33"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+» anchors: 0 inline, 0 moved to body
+warn: verification claim c ignored (ambiguous prefix)
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+» findings: 24 sigs -> .review/local-kb/findings.json
+  c5afec6b  open  true  notes.txt
+  f447c3f0  open  true  notes.txt
+  28211a76  open  true  notes.txt
+  6e214db0  open  true  notes.txt
+  fd5c412b  open  true  notes.txt
+  88284232  open  true  notes.txt
+  8d3392d5  open  true  notes.txt
+  fd6c6248  open  true  notes.txt
+  6e022a65  open  true  notes.txt
+  e6d05268  open  true  notes.txt
+  04b60ecc  open  true  notes.txt
+  c8bf2b26  open  true  notes.txt
+  24126663  open  true  notes.txt
+  47c9f89c  open  true  notes.txt
+  f6c7ed54  open  true  notes.txt
+  03e5546f  open  true  notes.txt
+  c394616c  open  true  notes.txt
+  93075082  open  true  notes.txt
+  b8f0e4dc  open  true  notes.txt
+  db4ce9eb  open  true  notes.txt
+  cdf5d7cb  open  true  notes.txt
+  959590b0  open  true  notes.txt
+  25e4f73d  open  true  notes.txt
+  2715b8f0  open  true  notes.txt
+recorded: .review/local-kb/findings.json (24 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+--- files ---

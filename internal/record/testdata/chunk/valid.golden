@@ -1,0 +1,62 @@
+exit: 0
+--- stdout ---
+» anchors: 1 inline, 0 moved to body
+» findings: 1 sigs -> .review/local-ch/findings.json
+  b9ae64f9  open  true  c1.txt
+recorded: .review/local-ch/findings.json (1 open) + .review/local-ch/record.json — report/triage read it; post stays refused (no PR target)
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+--- files ---
+--- file C/.review/local-ch/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "c1.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Chunk comment.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "walked",
+    "severity": null,
+    "sig": "b9ae64f9ec7f647658ee6729c69c5254836e5e5e",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  }
+]
+--- file C/.review/local-ch/hunks.tsv ---
+c1.txt	OLD	1	2
+c1.txt	NEW	1	2
+c1.txt	OLD	1	2
+c1.txt	NEW	1	2
+--- file C/.review/local-ch/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "c882e2ef91a0d2833e8d25cf0b03b201379101677b35bd78838609132fdd2a1f",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 1,
+  "open": 1,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "92022d302e95908bb862e7209e95ca13e089351a47d6162b1c358189ef4f5fa5",
+  "model": null
+}
+--- file C/.review/local-ch/store.json ---
+{
+  "schema_version": "1"
+}

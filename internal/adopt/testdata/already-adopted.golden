@@ -1,0 +1,23 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "adopt",
+  "repo": "acme/app",
+  "pr": 4311,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "already-adopted",
+    "message": ".review/4311/findings.json exists — adopt merges once into a fresh fetch (re-fetch or post first)\ntry: use the verb named above for this bundle kind"
+  }
+}
+--- stderr ---
+
+--- files ---
+--- file C/.review/4311/store.json ---
+{
+  "schema_version": "1"
+}

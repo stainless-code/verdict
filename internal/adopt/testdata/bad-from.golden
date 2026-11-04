@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "adopt",
+  "repo": "acme/app",
+  "pr": 4311,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-from",
+    "message": "adopt needs --from <local-slug> (a .review/local-* dir with findings.json)\ntry: re-run with one of the valid values named above"
+  }
+}
+--- stderr ---
+
+--- files ---

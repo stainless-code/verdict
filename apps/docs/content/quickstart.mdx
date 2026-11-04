@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: "First Verdict review in five minutes: install, fetch, review, post."
+description: "First Verdict review in five minutes: install, fetch, review, post, read the report."
 search:
   tags: ["quickstart", "getting-started", "install"]
 ---
@@ -8,13 +8,30 @@ search:
 Order matters, so follow the steps.
 
 <Callout type="info" title="Requirements">
-  `gh` (authed), `jq`, and a token with `repo` scope. Verdict brings everything
+  `gh` (authed), `git`, and a token with `repo` scope. Verdict brings everything
   else.
 </Callout>
 
 <Steps>
-  <Step title="Install the skill">
+  <Step title="Install">
     <Tabs>
+      <Tab title="Binary (verified)">
+        ```bash
+        curl -fsSL https://stainless-code.com/verdict/install.sh | sh
+        ```
+        macOS/Linux: installs `verdict` to `~/.verdict/bin` after verifying the
+        checksum (and the cosign bundle when cosign is present). Pin with
+        `VERDICT_VERSION=vX.Y.Z`, skip the
+        PATH edit with `--no-modify-path`, and uninstall with
+        `install.sh --uninstall --remove-path`. Windows:
+        `irm https://stainless-code.com/verdict/install.ps1 | iex`.
+
+        If the docs site is unreachable, or directly from GitHub Releases:
+        `https://github.com/stainless-code/verdict/releases/latest/download/install.sh`
+        (macOS/Linux) or
+        `https://github.com/stainless-code/verdict/releases/latest/download/install.ps1`
+        (Windows).
+      </Tab>
       <Tab title="skills.sh">
         ```bash
         npx skills add stainless-code/verdict
@@ -23,16 +40,18 @@ Order matters, so follow the steps.
       <Tab title="Clone">
         ```bash
         git clone https://github.com/stainless-code/verdict.git
-        cd verdict && ./install.sh
+        cd verdict && make build && ./install-skill.sh
         ```
-        `install.sh` runs `doctor` first and symlinks the skill into your agent's
-        skills directory. `git pull` is the updater.
+        `install-skill.sh` runs `doctor` first and symlinks the skill into your
+        agent's skills directory. `git pull` is the updater. (This script was
+        called `install.sh` before 0.4; that name is now the binary installer.)
       </Tab>
     </Tabs>
+
   </Step>
   <Step title="Scaffold local defaults (optional)">
     ```bash
-    ./scripts/review.sh init --preset standard
+    verdict init --preset standard
     ```
     Writes starter `.review/` control files (budget, panel, KB policy and rules)
     then runs check-tree validation. Pure-local and skippable: fetch works
@@ -40,37 +59,48 @@ Order matters, so follow the steps.
   </Step>
   <Step title="Fetch the bundle">
     ```bash
-    ./scripts/review.sh fetch owner/repo 123
+    verdict fetch owner/repo 123
     ```
     One command pulls the diff, metadata, threads, and file roles into `.review/123/`.
     No clone needed. Done when the directory holds `PR.json`, `full.diff`, `toc.txt`,
     and `roles.txt`.
   </Step>
   <Step title="Review with any agent">
-    Hand your agent three things: `SKILL.md`, `prompts/system.md`, `prompts/review.md`,
-    plus the bundle from step 2. The agent reads the whole diff first, fans out
-    read-only lens subagents with one falsifiable question each, and writes exactly
-    one `.review/123/review.json`.
+    The skill you installed in step 1 is the prompt: the agent discovers
+    `SKILL.md` in its skills directory and loads the mode file it names. A global
+    binary install can add it with `verdict skill install --agent <name>`. Point
+    the agent at `.review/123/` (the bundle from step 2); it reads the whole diff
+    first, fans out read-only lens subagents with one falsifiable question each,
+    and writes exactly one `.review/123/review.json`.
   </Step>
   <Step title="Post">
     ```bash
-    ./scripts/review.sh post owner/repo 123 --approve=false
+    verdict post owner/repo 123 --approve=false
     ```
     Anchors are machine-checked against the diff hunks, suggestions go in as real
     GitHub suggestion blocks, and exactly one review lands. Done when one review
     exists: one `review.json`, one post call.
   </Step>
+  <Step title="Read the report">
+    ```bash
+    verdict report owner/repo 123
+    ```
+    One offline read of the store: ranked open findings, the verdict, and counts.
+    `verdict next` names the top actionable finding and the command to act on it;
+    `report --json` is the same data for a script. Done when you have a ranked
+    list you can act on.
+  </Step>
   <Step title="Re-review new commits">
     ```bash
-    ./scripts/review.sh fetch owner/repo 123 --base-sha <prior-reviewed-sha>
+    verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>
     ```
     Then review with `prompts/incremental-review.md` instead of `prompts/review.md`.
     Recorded findings are never re-reported. Threads retire by rule.
   </Step>
   <Step title="No PR? Review the worktree">
     ```bash
-    ./scripts/review.sh fetch-local owner/repo work
-    ./scripts/review.sh record owner/repo local-work
+    verdict fetch-local owner/repo work
+    verdict record owner/repo local-work
     ```
     Same review, no GitHub object: bundle the worktree (`--staged`, `--range`,
     `--base`, and `--stash` variants exist), review it the same way, and `record`
@@ -85,12 +115,15 @@ A grounded first pass on the PR in minutes, with every claim carrying an evidenc
 rung and every comment anchored to a real hunk. Humans spend their attention on the
 hard parts.
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card
     title="Manual"
     href="https://github.com/stainless-code/verdict/blob/main/docs/manual.md"
   >
     Every verb, the store schema, and the doctrines.
+  </Card>
+  <Card title="Glossary" href="/glossary">
+    Lenses, panel, evidence rungs, keep-biased, and its sibling doctrines.
   </Card>
   <Card title="Why Verdict" href="/why-verdict">
     The pains this solves and what it refuses to be.

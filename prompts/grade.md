@@ -10,15 +10,15 @@ in the grades file, so that agreement is measured, not assumed.
 ## Checklist
 
 1. **Task list** as first action.
-2. **Read the bundle.** Run `./scripts/review.sh report owner/repo <bundle> --status all`
+2. **Read the bundle.** Run `verdict report owner/repo <bundle> --status all`
    and read `.review/<bundle>/findings.json` (sig, status, kb cites per finding).
    Closed findings are the sample: `addressed` / `false-positive` carry a
    baseline verdict; `open` / `wont-fix` / `deferred` carry none.
-3. **Baseline.** Run `./scripts/review.sh calibrate owner/repo <bundle> --probe`
+3. **Baseline.** Run `verdict calibrate owner/repo <bundle> --probe`
    (`--json` for the machine envelope). The script writes
    `.review/<bundle>/kb-grades.jsonl` — one row per finding with script-owned
    baseline columns (`verdict` from the disposition, first cited `rule`,
-   `helpfulness`). Never hand-edit that file; the next probe run regenerates
+   `helpful`). Never hand-edit that file; the next probe run regenerates
    the baseline and overwrites direct edits. To change the baseline itself,
    triage the finding and re-run.
 4. **Judge the sample.** Re-read each sampled closed finding against the code at
@@ -35,7 +35,7 @@ in the grades file, so that agreement is measured, not assumed.
    rest unsampled (`agent_verdict` stays `null`). Your verdict may disagree
    with the baseline: that dissent is the point, and it is recorded, not punished.
 
-5. **Merge.** Run `./scripts/review.sh calibrate owner/repo <bundle> --probe
+5. **Merge.** Run `verdict calibrate owner/repo <bundle> --probe
 --judge-file <fragment>` (or repeatable `--judge SIG:VERDICT[:HELPFUL]` for
    one-liners). The script validates every sig against the findings store —
    unknown sigs refuse typed (`unknown-judgment`), malformed rows refuse as
@@ -43,10 +43,10 @@ in the grades file, so that agreement is measured, not assumed.
    `agent_helpful` / `agreement` columns. Judgments are sticky: re-runs keep
    prior agent columns for surviving sigs, so the sample survives triage
    refreshes of the baseline.
-6. **Report the number.** The M4-consumable result is the agreement rate over
+6. **Report the number.** The evidence number is the agreement rate over
    doubly-judged rows (baseline known AND agent judged `real`/`false`), with
    the sample size: `judgments: sampled=S judged=J agreed=A disagreed=D
-rate=R` (also `data.judgment` in the `--json` envelope). Name each dissent
+rate=R` (also `data.judgment.agreement_rate` in the `--json` envelope). Name each dissent
    (sig, baseline vs yours, why) as advisory text — the file already holds the
    record, the prose holds the reasoning.
 7. **Close advisory-only.** Name the top finding the probe confirms (highest

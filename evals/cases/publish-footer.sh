@@ -41,10 +41,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 VER="$(jq -r .version "$EVAL_ROOT/package.json")"
 PRODUCT_URL="https://stainless-code.com/verdict"
 PRODUCT_LINK="Reviewed with [**Verdict $VER**]($PRODUCT_URL)"
@@ -95,12 +91,8 @@ if grep -Fq "$GOLDEN_LINE" "$EVAL_SANDBOX/out-4501.md" \
 else
   bad "footer fields wrong: $(sed -n '/^---$/,$p' "$EVAL_SANDBOX/out-4501.md" | head -c 600)"
 fi
-if ! grep -Fq "Verdict [" "$EVAL_SANDBOX/out-4501.md" \
-  && ! grep -Fq "Verdict (" "$EVAL_SANDBOX/out-4501.md"; then
-  good "version stays inline space-separated, never brackets or parens"
-else
-  bad "bracket/paren version leaked into the footer"
-fi
+assert_file_nogrep "version stays inline, never bracketed" "$EVAL_SANDBOX/out-4501.md" "Verdict [" "-F"
+assert_file_nogrep "version stays inline, never parenthesized" "$EVAL_SANDBOX/out-4501.md" "Verdict (" "-F"
 if grep -Fq '> Basis: 2 reproduced · 1 ran · 1 walked · 2 pointed · 0 said · 2 rules cited · 1 verified fixes' "$EVAL_SANDBOX/out-4501.md"; then
   good "basis counts exact on the script path"
 else
@@ -126,14 +118,10 @@ jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   > "$EVAL_SANDBOX/.review/$PR/post.json"
 run_review post acme/app "$PR" --dry-run --json
 repost_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -n "$repost_footer" ] \
-  && ! grep -Fq '[review' <<<"$repost_footer" \
-  && grep -Fq 'standard tier' <<<"$repost_footer"; then
-  good "same-head repost omits the stale link, receipt kept"
-else
-  bad "repost guard gave exit $EVAL_STATUS"
-fi
+printf '%s' "$repost_footer" > "$EVAL_SANDBOX/repost-footer.txt"
+assert_exit "same-head repost succeeds" 0
+assert_file_nogrep "same-head repost omits the stale link" "$EVAL_SANDBOX/repost-footer.txt" '[review' "-F"
+assert_file_grep "same-head repost keeps the receipt" "$EVAL_SANDBOX/repost-footer.txt" 'standard tier' "-F"
 # (b) post.json head != bundle HEAD: new-commit post keeps today's link.
 PR=4525
 eval_mk_bundle "$PR"
@@ -158,13 +146,9 @@ eval_write_review "$PR" <<'EOF'
 EOF
 run_review post acme/app "$PR" --dry-run --json
 absent_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -n "$absent_footer" ] \
-  && ! grep -Fq '[review' <<<"$absent_footer"; then
-  good "absent post.json keeps today's unlinked render"
-else
-  bad "absent-post control gave exit $EVAL_STATUS"
-fi
+printf '%s' "$absent_footer" > "$EVAL_SANDBOX/absent-footer.txt"
+assert_exit "absent post.json render succeeds" 0
+assert_file_nogrep "absent post.json keeps today's unlinked render" "$EVAL_SANDBOX/absent-footer.txt" '[review' "-F"
 if [ "$absent_footer" = "$repost_footer" ]; then
   good "omit-branch footer byte-identical to fresh unlinked render"
 else
@@ -181,12 +165,15 @@ jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   '{schema_version:"1",review:{id:101},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
   > "$EVAL_SANDBOX/.review/$PR/post.json"
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -Fq 'review `' <<<"$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"; then
-  good "same-head omit swallows the plain-text no-URL fallback too"
+nourl_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
+assert_exit "no-URL fallback render succeeds" 0
+if [ -n "$nourl_footer" ]; then
+  good "no-URL fallback emits a footer"
 else
-  bad "no-URL fallback gave exit $EVAL_STATUS"
+  bad "no-URL fallback emitted no footer to scan"
 fi
+printf '%s' "$nourl_footer" > "$EVAL_SANDBOX/nourl-footer.txt"
+assert_file_nogrep "same-head omit swallows the plain-text no-URL fallback too" "$EVAL_SANDBOX/nourl-footer.txt" 'review `' "-F"
 
 # --- F2: degraded reads (no cost, no post, no file list, no diff) ---
 PR=4502
@@ -194,38 +181,26 @@ dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir"
 printf '[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Degraded probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"1111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]' > "$dir/findings.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4502.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq 'cost unrecorded · files unrecorded' "$EVAL_SANDBOX/out-4502.md" \
-  && ! grep -Fq '[review' "$EVAL_SANDBOX/out-4502.md" \
-  && grep -Fq '> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes' "$EVAL_SANDBOX/out-4502.md"; then
-  good "absent records degrade to unrecorded with no link, never fail"
-else
-  bad "degraded footer wrong (exit $EVAL_STATUS)"
-fi
+assert_exit "degraded footer renders" 0
+assert_file_grep "absent records degrade the receipt" "$EVAL_SANDBOX/out-4502.md" 'cost unrecorded · files unrecorded' "-F"
+assert_file_nogrep "absent records carry no review link" "$EVAL_SANDBOX/out-4502.md" '[review' "-F"
+assert_file_grep "degraded footer keeps the exact basis line" "$EVAL_SANDBOX/out-4502.md" '> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes' "-F"
 
 # --- F3: knob-off (file) ---
 mkdir -p "$EVAL_SANDBOX/xdg-off/verdict"
 printf '{"publish":{"footer":false}}' > "$EVAL_SANDBOX/xdg-off/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-off"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4503.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -Fq '<!-- verdict-footer -->' "$EVAL_SANDBOX/out-4503.md" \
-  && ! grep -Fq 'Reviewed with' "$EVAL_SANDBOX/out-4503.md" \
-  && grep -Fq '> Basis:' "$EVAL_SANDBOX/out-4503.md"; then
-  good "publish.footer=false removes the block, basis stays (lead, not footer)"
-else
-  bad "footer-off file exits $EVAL_STATUS"
-fi
+assert_exit "footer-off file render succeeds" 0
+assert_file_nogrep "publish.footer=false removes the marker" "$EVAL_SANDBOX/out-4503.md" '<!-- verdict-footer -->' "-F"
+assert_file_nogrep "publish.footer=false removes the sentence" "$EVAL_SANDBOX/out-4503.md" 'Reviewed with' "-F"
+assert_file_grep "publish.footer=false keeps the basis line" "$EVAL_SANDBOX/out-4503.md" '> Basis:' "-F"
 printf '{"publish":{"attribution":"off"}}' > "$EVAL_SANDBOX/xdg-off/verdict/settings.json"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4504.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '> standard tier · cost $0.05 · 4 files' "$EVAL_SANDBOX/out-4504.md" \
-  && ! grep -Fq 'Reviewed with' "$EVAL_SANDBOX/out-4504.md" \
-  && ! grep -Fq '<img' "$EVAL_SANDBOX/out-4504.md"; then
-  good "publish.attribution=off keeps the receipt without the sentence or logo"
-else
-  bad "attribution-off file exits $EVAL_STATUS"
-fi
+assert_exit "attribution-off file render succeeds" 0
+assert_file_grep "attribution-off keeps the receipt" "$EVAL_SANDBOX/out-4504.md" '> standard tier · cost $0.05 · 4 files' "-F"
+assert_file_nogrep "attribution-off drops the sentence" "$EVAL_SANDBOX/out-4504.md" 'Reviewed with' "-F"
+assert_file_nogrep "attribution-off drops the logo" "$EVAL_SANDBOX/out-4504.md" '<img' "-F"
 printf '{"publish":{"attribution":false}}' > "$EVAL_SANDBOX/xdg-off/verdict/settings.json"
 run_review check-tree --json
 if [ "$EVAL_STATUS" -ne 0 ] \
@@ -237,11 +212,8 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4505.md" --no-footer
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -Fq '<!-- verdict-footer -->' "$EVAL_SANDBOX/out-4505.md"; then
-  good "--no-footer flag kills the block with no file present"
-else
-  bad "--no-footer exits $EVAL_STATUS"
-fi
+assert_exit "--no-footer render succeeds" 0
+assert_file_nogrep "--no-footer flag kills the block with no file present" "$EVAL_SANDBOX/out-4505.md" '<!-- verdict-footer -->' "-F"
 
 # --- F4: precedence flags > file > env ---
 mkdir -p "$EVAL_SANDBOX/xdg-on/verdict"
@@ -257,18 +229,12 @@ else
   bad "file-over-env gave exit $EVAL_STATUS"
 fi
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4507.md" --no-footer
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -Fq '<!-- verdict-footer -->' "$EVAL_SANDBOX/out-4507.md"; then
-  good "flag --no-footer wins over file true"
-else
-  bad "flag-over-file gave exit $EVAL_STATUS"
-fi
+assert_exit "flag-over-file render succeeds" 0
+assert_file_nogrep "flag --no-footer wins over file true" "$EVAL_SANDBOX/out-4507.md" '<!-- verdict-footer -->' "-F"
 unset XDG_CONFIG_HOME || true
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4508.md"
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -Fq '<!-- verdict-footer -->' "$EVAL_SANDBOX/out-4508.md"; then
-  good "env false alone (no file) turns the footer off"
-else
-  bad "env alone gave exit $EVAL_STATUS"
-fi
+assert_exit "env-off render succeeds" 0
+assert_file_nogrep "env false alone (no file) turns the footer off" "$EVAL_SANDBOX/out-4508.md" '<!-- verdict-footer -->' "-F"
 unset REVIEW_PUBLISH_FOOTER || true
 
 # --- F5: unknown publish keys refuse (06 idiom) ---
@@ -323,13 +289,9 @@ mkdir -p "$EVAL_SANDBOX/xdg-lvl/verdict"
 printf '{"publish":{"attribution":"product"}}' > "$EVAL_SANDBOX/xdg-lvl/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-lvl"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4520.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq "$GOLDEN_LINE" "$EVAL_SANDBOX/out-4520.md" \
-  && ! grep -Fq 'Stainless Code](' "$EVAL_SANDBOX/out-4520.md"; then
-  good "explicit product level renders the golden line with no maker"
-else
-  bad "product level gave exit $EVAL_STATUS"
-fi
+assert_exit "product level render succeeds" 0
+assert_file_grep "product level renders the golden line" "$EVAL_SANDBOX/out-4520.md" "$GOLDEN_LINE" "-F"
+assert_file_nogrep "product level names no maker" "$EVAL_SANDBOX/out-4520.md" 'Stainless Code](' "-F"
 printf '{"publish":{"attribution":"full"}}' > "$EVAL_SANDBOX/xdg-lvl/verdict/settings.json"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4521.md"
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -341,13 +303,9 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4522.md" --no-attribution
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '> standard tier · cost $0.05' "$EVAL_SANDBOX/out-4522.md" \
-  && ! grep -Fq 'Reviewed with' "$EVAL_SANDBOX/out-4522.md"; then
-  good "--no-attribution flag keeps the receipt without the sentence"
-else
-  bad "--no-attribution gave exit $EVAL_STATUS"
-fi
+assert_exit "--no-attribution render succeeds" 0
+assert_file_grep "--no-attribution keeps the receipt" "$EVAL_SANDBOX/out-4522.md" '> standard tier · cost $0.05' "-F"
+assert_file_nogrep "--no-attribution drops the sentence" "$EVAL_SANDBOX/out-4522.md" 'Reviewed with' "-F"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4523.md" --attribution full
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -Fq "by [Stainless Code](https://stainless-code.com)" "$EVAL_SANDBOX/out-4523.md"; then
@@ -361,13 +319,9 @@ mkdir -p "$EVAL_SANDBOX/xdg-logo/verdict"
 printf '{"publish":{"logo":false}}' > "$EVAL_SANDBOX/xdg-logo/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-logo"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4530.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -Fq '<img' "$EVAL_SANDBOX/out-4530.md" \
-  && grep -Fq "$PRODUCT_LINK" "$EVAL_SANDBOX/out-4530.md"; then
-  good "publish.logo=false drops the image, keeps the linked sentence"
-else
-  bad "logo-off file exits $EVAL_STATUS"
-fi
+assert_exit "logo-off file render succeeds" 0
+assert_file_nogrep "publish.logo=false drops the image" "$EVAL_SANDBOX/out-4530.md" '<img' "-F"
+assert_file_grep "publish.logo=false keeps the linked sentence" "$EVAL_SANDBOX/out-4530.md" "$PRODUCT_LINK" "-F"
 printf '{"publish":{"logo_url":"https://example.invalid/custom.svg"}}' > "$EVAL_SANDBOX/xdg-logo/verdict/settings.json"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4531.md"
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -378,22 +332,14 @@ else
 fi
 printf '{"publish":{"logo_url":""}}' > "$EVAL_SANDBOX/xdg-logo/verdict/settings.json"
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4532.md"
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -Fq '<img' "$EVAL_SANDBOX/out-4532.md" \
-  && grep -Fq "$PRODUCT_LINK" "$EVAL_SANDBOX/out-4532.md"; then
-  good "empty logo_url degrades to text-only, never a broken image"
-else
-  bad "empty logo exits $EVAL_STATUS"
-fi
+assert_exit "empty logo_url render succeeds" 0
+assert_file_nogrep "empty logo_url renders no image" "$EVAL_SANDBOX/out-4532.md" '<img' "-F"
+assert_file_grep "empty logo_url keeps the linked sentence" "$EVAL_SANDBOX/out-4532.md" "$PRODUCT_LINK" "-F"
 unset XDG_CONFIG_HOME || true
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4533.md" --no-logo
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && ! grep -Fq '<img' "$EVAL_SANDBOX/out-4533.md" \
-  && grep -Fq "$PRODUCT_LINK" "$EVAL_SANDBOX/out-4533.md"; then
-  good "--no-logo flag drops the image"
-else
-  bad "--no-logo gave exit $EVAL_STATUS"
-fi
+assert_exit "--no-logo render succeeds" 0
+assert_file_nogrep "--no-logo flag drops the image" "$EVAL_SANDBOX/out-4533.md" '<img' "-F"
+assert_file_grep "--no-logo keeps the linked sentence" "$EVAL_SANDBOX/out-4533.md" "$PRODUCT_LINK" "-F"
 
 # --- A4: divider idempotency (strip-and-replace, byte-identical re-render) ---
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4540a.md"
@@ -421,16 +367,12 @@ jq -n --arg b "$STALE_BODY" '{schema_version:"1",body:$b,approved:false,comments
   > "$EVAL_SANDBOX/.review/$PR/review.json"
 run_review post acme/app "$PR" --dry-run
 stale_chars=$(grep -o 'body chars: [0-9]*' "$EVAL_OUT" | grep -o '[0-9]*')
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -n "$clean_chars" ] && [ "$clean_chars" = "$stale_chars" ] \
-  && [ "$(grep -c '<!-- verdict-footer -->' "$EVAL_OUT")" = "1" ] \
-  && grep -Fq "Verdict $VER" "$EVAL_OUT" \
-  && ! grep -Fq 'Verdict 9.9.9' "$EVAL_OUT" \
-  && grep -Fq 'replacing it with the canonical block' "$EVAL_ERR"; then
-  good "stale rendered block is strip-and-replaced (same body chars, one marker, fresh version)"
-else
-  bad "divider idempotency broke (clean=$clean_chars stale=$stale_chars exit $EVAL_STATUS)"
-fi
+assert_exit "stale-block repost succeeds" 0
+assert_eq "stale block keeps the body char count" "$clean_chars" "$stale_chars"
+assert_eq "stale block leaves exactly one marker" "1" "$(grep -c '<!-- verdict-footer -->' "$EVAL_OUT")"
+assert_file_grep "stale block is replaced with the fresh version" "$EVAL_OUT" "Verdict $VER" "-F"
+assert_file_nogrep "stale block drops the old version" "$EVAL_OUT" 'Verdict 9.9.9' "-F"
+assert_file_grep "stale block warns it is replacing" "$EVAL_ERR" 'replacing it with the canonical block' "-F"
 
 # --- B2: agent-path mismatch warns and keeps, never fails ---
 PR=4510
@@ -452,11 +394,8 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis" "$EVAL_ERR"; then
-  good "right basis stays silent"
-else
-  bad "right basis warned (exit $EVAL_STATUS)"
-fi
+assert_exit "right basis render succeeds" 0
+assert_stream_nogrep "right basis stays silent" "$EVAL_ERR" "basis"
 
 # --- B3: re-review with carried-over findings never warns on its own counts ---
 # Store holds 2 open pointed findings from a prior run; the current review
@@ -472,11 +411,8 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis line counts" "$EVAL_ERR"; then
-  good "re-review matching its own comment stays silent despite carried-over store"
-else
-  bad "re-review warned (exit $EVAL_STATUS)"
-fi
+assert_exit "re-review matching its own comment succeeds" 0
+assert_stream_nogrep "re-review stays silent despite the carried-over store" "$EVAL_ERR" "basis line counts"
 PR=4516
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -542,11 +478,8 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 1 rules cited · 1 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}],"triage":[{"sig":"cccccccccccccccccccccccccccccccccccccccc","status":"addressed","rationale":"verified the fix path end to end with evidence"}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && ! grep -q "basis line counts" "$EVAL_ERR"; then
-  good "triage-addressed + cited rule count exactly, no warn"
-else
-  bad "B4 flip-count gave exit $EVAL_STATUS"
-fi
+assert_exit "triage-addressed flip succeeds" 0
+assert_stream_nogrep "triage-addressed + cited rule count exactly, no warn" "$EVAL_ERR" "basis line counts"
 
 # --- M1: manual carries the one-sentence metric definition ---
 if grep -Fq 'Confidence is the agent'"'"'s "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.' "$EVAL_ROOT/docs/manual.md"; then
@@ -588,5 +521,4 @@ unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 rm -rf "$EVAL_SANDBOX/xdg-off" "$EVAL_SANDBOX/xdg-on" "$EVAL_SANDBOX/xdg-bad" \
   "$EVAL_SANDBOX/xdg-typo" "$EVAL_SANDBOX/xdg-lvl" "$EVAL_SANDBOX/xdg-logo"
 
-if [ "$fails" -ne 0 ]; then echo "case publish-footer: FAIL ($fails)"; exit 1; fi
-echo "case publish-footer: PASS"
+eval_end

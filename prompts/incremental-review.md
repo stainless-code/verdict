@@ -7,7 +7,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
 ## Checklist
 
 1. **Task list** first.
-2. **Checkout.** `./scripts/review.sh fetch owner/repo N --base-sha <prior-reviewed-sha>`
+2. **Checkout.** `verdict fetch owner/repo N --base-sha <prior-reviewed-sha>`
    (writes `full.diff` + `incremental.diff` when computable). If `incremental.diff` exists it is
    your coverage checklist: read it FIRST in full, then only the `full.diff` ranges the delta
    needs for context. If absent: full TOC, determine what changed since the last review yourself.
@@ -19,14 +19,17 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    delta needs. Unaffected chunks are out of scope: never re-review the whole bundle. If
    `incremental.diff` is absent, determine the delta yourself the same way, then scope to the
    chunks it touches.
-3. **Prior feedback — read AND retire it**: fetch previous reviews via `gh api repos/{o}/{r}/pulls/{n}/reviews`, then thread
-   comments per prior review. Triage open threads severity-first (blocking → must-fix → minor).
-   For every **open, bot-originated** thread: read the file at the
+3. **Prior feedback — read AND retire it**: run `verdict threads owner/repo N` (refreshes
+   `.review/N/threads.json`; all six hosts, threads only, no diff refetch) and read every
+   entry. Triage open threads severity-first (blocking → must-fix → minor).
+   For every **open, bot- or verdict-originated** thread (`author_kind` bot|verdict; a
+   verdict root carries `finding_sig` to join `.review/N/findings.json`): read the file at the
    anchor, judge whether new commits substantively resolve it (reformat/rename/move ≠ addressed;
-   multi-concern threads need ALL addressed; `[OUTDATED]` anchor-shift ≠ addressed — re-read
-   new location). If addressed: reply one line (`Addressed in <sha>.`) then resolve — BEFORE
-   drafting the new review. If uncertain/partial: leave open. Only retire bot threads; human
-   threads belong to humans. False-positive resolves erode trust faster than false negatives.
+   multi-concern threads need ALL addressed; `outdated: true` anchor-shift ≠ addressed — re-read
+   the new location). If addressed: reply one line (`Addressed in <sha>.`) then resolve — BEFORE
+   drafting the new review, then run `verdict threads` once more after the push. If uncertain/
+   partial: leave open. Only retire bot and verdict threads; human threads belong to humans.
+   False-positive resolves erode trust faster than false negatives.
    Carry still-open out-of-scope items as Deferred bullets in the review body — what, and why deferred.
 4. **Triage the incremental changes** (domain/seams/contracts/surfaces). You are the synthesizer.
    Apply the scope gate in `prompts/system.md` — it alone decides the non-substantive path

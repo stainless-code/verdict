@@ -1,0 +1,40 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "ready",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "nudge the author instead of reviewing",
+  "warnings": [],
+  "data": {
+    "ready": false,
+    "recommendation": "nudge-author",
+    "blockers": [
+      {
+        "kind": "threads-open",
+        "detail": "1 unresolved thread(s)",
+        "action": "address or resolve open threads, then re-run ready"
+      }
+    ],
+    "state": "OPEN",
+    "draft": false,
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "CLEAN",
+    "ci": {
+      "failing": 0,
+      "total": 1
+    },
+    "threads_open": 1,
+    "description_chars": 70
+  },
+  "error": null
+}
+--- stderr ---
+ready: no — acme/app#5101 has 1 blocker(s):
+  - [threads-open] 1 unresolved thread(s) — action: address or resolve open threads, then re-run ready
+recommendation: nudge-author — nudge the author instead of reviewing
+--- files ---
+--- file C/.review/5101/.ready.err ---
+

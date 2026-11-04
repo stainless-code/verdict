@@ -1,0 +1,227 @@
+exit: 0
+--- stdout (size=1001275 sha256=669414bb8a483c5ef7db7e10ad44c27fd06cd490fb9abb04e3b0db721886a172) ---
+--- stderr ---
+» chunking opted in (from --chunk) — slicing over-cap diff (999309 bytes, cap 512000) into cap-sized chunks
+» roles -> .review/local-demo/roles.txt (heuristic file roles for triage)
+» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)
+done: .review/local-demo/source.json .review/local-demo/full.diff .review/local-demo/toc.txt .review/local-demo/roles.txt (3 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/local-demo/source.json + .review/local-demo/chunks/manifest.json and the chunks it lists to any agent; ask it to write .review/local-demo/review.json
+» chunked: 3 chunk(s) at or under 512000 bytes + .review/local-demo/chunks/manifest.json
+--- files ---
+--- file C/.review/local-demo/.diff.err ---
+
+--- file C/.review/local-demo/.difffiles ---
+a.txt
+b.txt
+c.txt
+--- file C/.review/local-demo/chunks/chunk-01.diff (size=333103 sha256=2632645fc85fafe9186ac00cb33955509ba716c062e5095a7cbd193a3e1dfd52) ---
+--- file C/.review/local-demo/chunks/chunk-01.roles.txt ---
+## docs
+- a.txt
+--- file C/.review/local-demo/chunks/chunk-01.toc.txt ---
+# Chunk 1/3 for local-demo — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+
+## files
+- a.txt (333103 bytes)
+--- file C/.review/local-demo/chunks/chunk-02.diff (size=333103 sha256=f5a519d6a9425fa7622f5425cfdf1fc24cabced2bec21908343e870af9470edf) ---
+--- file C/.review/local-demo/chunks/chunk-02.roles.txt ---
+## docs
+- b.txt
+--- file C/.review/local-demo/chunks/chunk-02.toc.txt ---
+# Chunk 2/3 for local-demo — read ranges as coverage checklist
+
+1:diff --git a/b.txt b/b.txt
+
+## files
+- b.txt (333103 bytes)
+--- file C/.review/local-demo/chunks/chunk-03.diff (size=333103 sha256=34b2137f5e7fc41329dd5c11408d24dc1f9cf624f47daf49189aa848bce8ef15) ---
+--- file C/.review/local-demo/chunks/chunk-03.roles.txt ---
+## docs
+- c.txt
+--- file C/.review/local-demo/chunks/chunk-03.toc.txt ---
+# Chunk 3/3 for local-demo — read ranges as coverage checklist
+
+1:diff --git a/c.txt b/c.txt
+
+## files
+- c.txt (333103 bytes)
+--- file C/.review/local-demo/chunks/manifest.json ---
+{
+  "schema_version": "1",
+  "bundle": ".review/local-demo",
+  "head_sha": null,
+  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "cap": {
+    "bytes": 512000,
+    "source": null
+  },
+  "total_bytes": 999309,
+  "chunk_count": 3,
+  "chunks": [
+    {
+      "index": 1,
+      "name": "chunk-01",
+      "files": [
+        "a.txt"
+      ],
+      "estimated_bytes": 333103,
+      "bytes": 333103,
+      "diff": ".review/local-demo/chunks/chunk-01.diff",
+      "toc": ".review/local-demo/chunks/chunk-01.toc.txt",
+      "roles": ".review/local-demo/chunks/chunk-01.roles.txt"
+    },
+    {
+      "index": 2,
+      "name": "chunk-02",
+      "files": [
+        "b.txt"
+      ],
+      "estimated_bytes": 333103,
+      "bytes": 333103,
+      "diff": ".review/local-demo/chunks/chunk-02.diff",
+      "toc": ".review/local-demo/chunks/chunk-02.toc.txt",
+      "roles": ".review/local-demo/chunks/chunk-02.roles.txt"
+    },
+    {
+      "index": 3,
+      "name": "chunk-03",
+      "files": [
+        "c.txt"
+      ],
+      "estimated_bytes": 333103,
+      "bytes": 333103,
+      "diff": ".review/local-demo/chunks/chunk-03.diff",
+      "toc": ".review/local-demo/chunks/chunk-03.toc.txt",
+      "roles": ".review/local-demo/chunks/chunk-03.roles.txt"
+    }
+  ]
+}
+--- file C/.review/local-demo/controls.json ---
+{
+  "schema_version": "1",
+  "policy": "base",
+  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "files": [
+    {
+      "path": ".review/panel",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/max_bytes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/chunk",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb.jsonl",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/kb-policy",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/learnings.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/preamble.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/footer-order.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    }
+  ]
+}
+--- file C/.review/local-demo/full.diff (size=999309 sha256=6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c) ---
+--- file C/.review/local-demo/hunks.tsv ---
+a.txt	OLD	1	3000
+a.txt	NEW	1	3000
+b.txt	OLD	1	3000
+b.txt	NEW	1	3000
+c.txt	OLD	1	3000
+c.txt	NEW	1	3000
+--- file C/.review/local-demo/roles.txt ---
+## docs
+- a.txt
+- b.txt
+- c.txt
+--- file C/.review/local-demo/source.json ---
+{
+  "schema_version": "1",
+  "kind": "worktree",
+  "repo": "acme/app",
+  "slug": "demo",
+  "base_ref": null,
+  "head_ref": "main",
+  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "head_sha": null,
+  "range": "HEAD:worktree",
+  "dirty": true,
+  "diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
+  "files": 3,
+  "additions": 9000,
+  "deletions": 9000,
+  "tool_version": "VERSION",
+  "model": null,
+  "created_at": "0000-00-00T00:00:00Z"
+}
+--- file C/.review/local-demo/store.json ---
+{
+  "schema_version": "1"
+}
+--- file C/.review/local-demo/toc.txt ---
+# TOC for local demo (acme/app) — read ranges as coverage checklist
+
+1:diff --git a/a.txt b/a.txt
+6006:diff --git a/b.txt b/b.txt
+12011:diff --git a/c.txt b/c.txt
+
+## stat
+a.txt (+3000/-3000)
+b.txt (+3000/-3000)
+c.txt (+3000/-3000)
+
+## coverage manifest
+files changed: 3 | files with diff hunks: 3
+omitted: (none)

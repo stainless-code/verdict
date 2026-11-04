@@ -1,0 +1,9 @@
+{
+  "info": {
+    "id": "ses_oc",
+    "directory": "/work/acme",
+    "cost": 2.5,
+    "time": { "created": 1788256800000, "updated": 1788256860000 }
+  },
+  "messages": []
+}

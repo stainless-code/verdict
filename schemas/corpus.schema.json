@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/corpus.schema.json",
+  "title": "corpus.json — benchmark corpus case manifest",
+  "description": "One benchmark corpus manifest, checked in as bench/corpus/<id>/case.json and copied into a run bundle as .review/corpus-*/corpus.json. The case records the ground truth a review output is graded against: a real PR that later needed a bug-fix commit, or a seeded defect with what was injected. calibrate and trend join findings.json against these bugs offline; matching is path plus a +/- line_tolerance window, one finding per bug. additionalProperties stays closed so a typo fails validation instead of silently grading a different field.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "id": {
+      "description": "Stable case id, matching the bench/corpus/<id> directory name.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "seeded for deterministic injected fixtures, real for a published PR with a later fix.",
+      "enum": ["seeded", "real"]
+    },
+    "language": { "type": "string" },
+    "line_tolerance": {
+      "description": "How many lines from a bug still count as the same defect (default 3). A hit is one-to-one: a second finding on the same bug is a false positive.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "provenance": {
+      "description": "Where the case came from: injected text for seeded cases, or repo/PR/fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
+      "$ref": "#/$defs/provenance"
+    },
+    "bugs": {
+      "description": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path plus the line window, not kind or severity.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/bug" }
+    }
+  },
+  "required": ["schema_version", "id", "kind", "provenance", "bugs"],
+  "additionalProperties": false,
+  "$defs": {
+    "provenance": {
+      "description": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, and the later commit that fixed the bug.",
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["seeded", "real"] },
+        "injected": { "type": "string" },
+        "repo": { "type": "string" },
+        "pr": { "type": ["integer", "null"] },
+        "fix_commit": { "type": "string" },
+        "source": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "required": ["kind"],
+      "additionalProperties": true
+    },
+    "bug": {
+      "description": "One known defect: the reviewed path, the line in the reviewed head, the defect kind (off-by-one, nil-deref, injection, missing-error-check, ...), and the severity a good review should assign.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "kind": { "type": "string" },
+        "severity": { "enum": ["critical", "important", "informational"] },
+        "note": { "type": "string" }
+      },
+      "required": ["path", "line", "kind", "severity"],
+      "additionalProperties": true
+    }
+  }
+}

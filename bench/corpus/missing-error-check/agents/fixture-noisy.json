@@ -1,0 +1,27 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-beta"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "upload.go",
+        "line": 24,
+        "side": "RIGHT",
+        "body": "Check the io.Copy error; a short write currently returns nil.",
+        "rigor": "pointed",
+        "severity": "important"
+      },
+      {
+        "path": "upload.go",
+        "line": 30,
+        "side": "RIGHT",
+        "body": "The close defer could log its error too.",
+        "rigor": "observed",
+        "severity": "informational"
+      }
+    ]
+  }
+}

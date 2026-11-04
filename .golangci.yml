@@ -1,0 +1,277 @@
+# Verdict Go lint profile (ticket 01): KB lint/golangci.yml with the verdict
+# application notes from .scratch/go-kb/README.md applied:
+# - depguard crypto/sha1 ban scoped to allow exactly one wire-compat package
+#   (internal/sig, sig_version "1" identifiers — not a security boundary).
+# - tagliatelle dropped: store field names are frozen mixed snake_case /
+#   camelCase wire formats (GO-JSON-03), so tag-style linting does not apply.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - makezero
+    - mirror
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nosprintfhostport
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+    - cyclop
+    - depguard
+    - dogsled
+    - dupword
+    - forbidigo
+    - goconst
+    - gocognit
+    - gocritic
+    - godoclint
+    - godot
+    - goprintffuncname
+    - inamedparam
+    - misspell
+    - modernize
+    - musttag
+    - nolintlint
+    - perfsprint
+    - predeclared
+    - reassign
+    - recvcheck
+    - revive
+    - sloglint
+    - tagalign
+    - testifylint
+    - thelper
+    - usetesting
+    - whitespace
+    - wrapcheck
+    - gomoddirectives
+  disable: []
+  exclusions:
+    generated: strict
+    warn-unused: true
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      # Test ergonomics: fixture builders and the golden harness use direct
+      # output and temp-dir cleanup; failures surface via t.Fatal/Fail.
+      - path: .*_test\.go
+        linters:
+          - dogsled
+          - forbidigo
+          - gosec
+          - wrapcheck
+      # Fixture data in tests legitimately repeats slugs, flags, and JSON
+      # keys; the named-constant discipline applies to production code.
+      - path: .*_test\.go
+        text: add-constant
+        linters:
+          - revive
+      # Fixture JSON blobs are single-line data; wrapping them would hurt
+      # readability, not help it. The limit applies to production code.
+      - path: .*_test\.go
+        text: line-length-limit
+        linters:
+          - revive
+  settings:
+    copyloopvar:
+      check-alias: true
+    cyclop:
+      max-complexity: 12
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          allow:
+            - $gostd
+            - github.com/stainless-code/verdict
+          files:
+            - $all
+            - "!**/sig/**.go"
+          deny:
+            - pkg: io/ioutil
+              desc: io/ioutil is frozen since Go 1.16; use io or os instead.
+            - pkg: github.com/pkg/errors
+              desc: Use the standard library (errors, fmt) for error wrapping.
+            - pkg: encoding/json/v2
+              desc: json/v2 is still experiment-gated in Go 1.27 (GOEXPERIMENT=nojsonv2 removes it); stay on encoding/json per GO-JSON-05.
+            - pkg: encoding/json/jsontext
+              desc: jsontext ships with the gated json/v2 experiment; do not import until stable per GO-JSON-05.
+            - pkg: math/rand
+              desc: math/rand is predictable; use math/rand/v2 for simulations and crypto/rand for secrets per GO-SEC-02.
+            - pkg: crypto/sha1
+              desc: SHA-1 fails at runtime under GODEBUG=fips140=only; confined to internal/sig for wire-compat sig_version "1" identifiers per GO-CRYPTO-02.
+    dogsled:
+      max-blank-identifiers: 2
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      # Diagnostic stream writes (stdout/stderr) are un-actionable: a failed
+      # human/envelope write has nowhere to report. All store writes go
+      # through internal/atomic with checked errors.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    exhaustive:
+      check:
+        - switch
+        - typeswitch
+      default-signifies-exhaustive: true
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: Use the output writer instead of fmt.Print*; keeps stdout testable and redirectable.
+        - pattern: ^os\.Exit$
+          msg: Call os.Exit only from main; library/command code must return errors instead.
+        - pattern: ^print(ln)?$
+        - pattern: ^http\.(Get|Post|PostForm|Head)$
+          msg: Use the hardened client constructor (timeouts, capped bodies, retry policy) instead of the package-level convenience funcs per GO-HTTP-01.
+        - pattern: ^http\.Default(Client|Transport)$
+          msg: http.DefaultClient has no timeout; use the hardened client constructor per GO-HTTP-01.
+        - pattern: ^reflect\.DeepEqual$
+          msg: Use cmp.Equal (reflect.DeepEqual on func values panics and on slices ignores type params); see GO-COLLECT-03.
+        - pattern: ^sort\.
+          msg: Use the slices package instead of sort per GO-COLLECT-03.
+    gocognit:
+      min-complexity: 15
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-tests: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-tags:
+        - experimental
+        - opinionated
+    godoclint:
+      default: all
+    godot:
+      scope: toplevel
+      period: true
+      capital: false
+    gosec:
+      excludes:
+        - G104
+        # G304: the CLI reads operator-specified bundle paths (fixed filenames
+        # joined under the invocation cwd) by design — the operator's own
+        # checkout, never agent-supplied paths.
+        - G304
+    govet:
+      enable:
+        - atomicalign
+        - deepequalerrors
+        - fieldalignment
+        - nilness
+        - stdversion
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      confidence: 0.8
+      enable-default-rules: true
+      rules:
+        - name: add-constant
+          arguments:
+            - max-lit-count: "3"
+              allow-strs: '""'
+              allow-ints: "0,1,2"
+              allow-floats: "0.0,0.,1.0,1.,2.0,2."
+        - name: cognitive-complexity
+        - name: context-as-argument
+        - name: dot-imports
+        - name: early-return
+        - name: error-naming
+        - name: import-shadowing
+        - name: line-length-limit
+          arguments: [140]
+        - name: package-comments
+        - name: range-val-in-closure
+        - name: receiver-naming
+        - name: time-naming
+        - name: unconditional-recursion
+        - name: unhandled-error
+        - name: use-any
+        - name: use-errors-new
+        - name: var-naming
+    sloglint:
+      no-global: all
+      static-msg: true
+    staticcheck:
+      checks: ["all"]
+    testifylint:
+      enable-all: true
+    wrapcheck:
+      report-internal-errors: false
+      # Sealed constructors carry the layer-boundary contract (GO-ERRORS-03):
+      # callers map these errors to typed refusals instead of inspecting them.
+      ignore-sigs:
+        - .Sealed(
+        - .NewErr(
+        - .NewErrf(
+        - .WriteFile(
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gofumpt:
+      module-path: github.com/stainless-code/verdict
+      extra-rules: false
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/stainless-code/verdict)
+      custom-order: true
+
+run:
+  timeout: 10m
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

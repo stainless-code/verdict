@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: '4351' looks like a PR number — use fetch for PRs
+try: re-run with one of the valid values named above
+--- files ---

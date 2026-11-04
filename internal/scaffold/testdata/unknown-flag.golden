@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+unknown flag '--bogus' for init (want --preset <chill|standard|strict>, --yes, --force, --json)
+--- files ---

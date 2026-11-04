@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "id": "nil-deref",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "Session lookup dereferences the returned pointer before checking err, so a missing session panics.",
+    "source": "bench/corpus/nil-deref/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "session.go",
+      "line": 31,
+      "kind": "nil-deref",
+      "severity": "critical",
+      "note": "session is dereferenced before the lookup error is checked"
+    }
+  ]
+}

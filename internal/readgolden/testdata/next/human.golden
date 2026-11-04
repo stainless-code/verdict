@@ -1,0 +1,6 @@
+exit: 0
+--- stdout ---
+next: c1111111 [open] notes.txt:2 — address via address-reviews mode, then post
+--- stderr ---
+
+--- files ---

@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: no local- prefix needed — the store adds it
+try: re-run with one of the valid values named above
+--- files ---

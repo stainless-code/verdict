@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "id": "off-by-one",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "Pagination loop advances one element past the slice and ignores the error returned when the page fetch fails.",
+    "source": "bench/corpus/off-by-one/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "pagination.go",
+      "line": 42,
+      "kind": "off-by-one",
+      "severity": "critical",
+      "note": "loop bound is <= len(xs), so the last read runs one past the slice"
+    },
+    {
+      "path": "pagination.go",
+      "line": 58,
+      "kind": "missing-error-check",
+      "severity": "important",
+      "note": "fetchPage error is dropped and the loop treats a failed page as empty"
+    }
+  ]
+}

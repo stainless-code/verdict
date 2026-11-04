@@ -1,0 +1,60 @@
+exit: 0
+--- stdout ---
+triaged 01234567 -> deferred
+--- stderr ---
+
+--- files ---
+--- file C/.review/4251/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Unhandled await error path here.",
+    "suggestion": null,
+    "inBounds": true,
+    "rigor": "walked",
+    "severity": "important",
+    "kb": [
+      "await-err"
+    ],
+    "sig": "0123456789abcdef0123456789abcdef01234567",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "deferred",
+    "rationale": "deferring this until the next pass for more evidence here",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "triaged",
+        "actor": "human",
+        "note": "deferring this until the next pass for more evidence here"
+      }
+    ],
+    "triagedAt": "0000-00-00T00:00:00Z",
+    "triagedBy": "human"
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Second comment, no cites.",
+    "suggestion": null,
+    "inBounds": true,
+    "rigor": "pointed",
+    "severity": "informational",
+    "kb": [],
+    "sig": "123456789abcdef0123456789abcdef012345678",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": []
+  }
+]

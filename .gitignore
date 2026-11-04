@@ -1,4 +1,15 @@
-.review/
+# Bundles and run state stay ignored; the review controls are tracked so the
+# PR base commit carries them (negations need `.review/*`, not `.review/`).
+.review/*
+!.review/kb.jsonl
+!.review/learnings.md
+!.review/panel
+!.review/budget
+!.review/kb-policy
+!.review/max_bytes
+!.review/chunk
+!.review/overrides/
+!.review/overrides/*.md
 .env
 .env.local
 .DS_Store
@@ -9,3 +20,10 @@ dist/
 pack.log
 # Local-only working notes (strategy, scratch). Never commit.
 .agents/local/
+# Go build output: `make build` writes bin/verdict, the binary every eval
+# case invokes. Never commit binaries.
+# Never commit binaries.
+bin/
+
+# Python bytecode from examples/python-client.
+__pycache__/

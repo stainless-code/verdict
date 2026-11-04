@@ -28,10 +28,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-fails=0
-good() { echo "  ok: $1"; }
-bad() { echo "  FAIL: $1"; fails=$((fails + 1)); }
-
 # Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
@@ -172,7 +168,7 @@ else
   bad "anchor lines unresolved (f1:'$F1L' f6:'$F6L')"
 fi
 
-# sig_of mirror (scripts/review.sh normalizes key whitespace, then sha1):
+# sig_of mirror (the CLI normalizes key whitespace, then sha1):
 # sigKey for an inline comment is path + "\n" + heading("") + "\n" + body.
 sig_for() { printf '%s\n%s\n%s' "$1" "" "$2" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//' | shasum -a 1 | cut -d' ' -f1; }
 F1B="Prior note still stands on file one."
@@ -318,5 +314,4 @@ fi
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
-if [ "$fails" -ne 0 ]; then echo "case chunk-incremental: FAIL ($fails)"; exit 1; fi
-echo "case chunk-incremental: PASS"
+eval_end

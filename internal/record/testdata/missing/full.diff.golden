@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: missing .review/local-mf/full.diff (run fetch-local / fetch --provider first)
+try: run the fetch/record step named above first, then re-run
+re-enter: verdict record acme/app local-mf
+--- files ---

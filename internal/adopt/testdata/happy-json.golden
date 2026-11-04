@@ -1,0 +1,88 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "adopt",
+  "repo": "acme/app",
+  "pr": 4311,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "post the adopted findings, then calibrate to settle them",
+  "warnings": [
+    "no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+  ],
+  "data": {
+    "dir": ".review/4311",
+    "from": "adopt1",
+    "adopted": 2,
+    "open": 2
+  },
+  "error": null
+}
+--- stderr ---
+warn: no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+» adopted 2 findings from .review/local-adopt1 (open: 2) — post to publish, calibrate to settle
+--- files ---
+--- file C/.review/4311/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Adopt me.",
+    "suggestion": null,
+    "inBounds": true,
+    "rigor": "pointed",
+    "severity": "important",
+    "kb": [],
+    "sig": "0123456789abcdef0123456789abcdef01234567",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "adopted",
+        "actor": "script",
+        "note": "from adopt1"
+      }
+    ]
+  },
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 99,
+    "anchored": false,
+    "body": "Drifted anchor here.",
+    "suggestion": null,
+    "inBounds": true,
+    "rigor": "pointed",
+    "severity": "informational",
+    "kb": [],
+    "sig": "123456789abcdef0123456789abcdef012345678",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "adopted",
+        "actor": "script",
+        "note": "from adopt1"
+      }
+    ]
+  }
+]
+--- file C/.review/4311/hunks.tsv ---
+notes.txt	OLD	1	3
+notes.txt	NEW	1	3
+--- file C/.review/4311/store.json ---
+{
+  "schema_version": "1"
+}

@@ -1,0 +1,10 @@
+exit: 0
+--- stdout ---
+ready: no — acme/app#5101 has 1 blocker(s):
+  - [threads-open] 1 unresolved thread(s) — action: address or resolve open threads, then re-run ready
+recommendation: nudge-author — nudge the author instead of reviewing
+--- stderr ---
+
+--- files ---
+--- file C/.review/5101/.ready.err ---
+

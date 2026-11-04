@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "adopt",
+  "repo": "acme/app",
+  "pr": 4311,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "missing-findings",
+    "message": "missing .review/local-nope/findings.json (record the local review first)\ntry: run the fetch/record step named above first, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

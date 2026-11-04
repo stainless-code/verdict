@@ -1,0 +1,19 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "query.go",
+        "line": 82,
+        "side": "RIGHT",
+        "body": "Consider naming the local row variable found instead of u.",
+        "rigor": "observed",
+        "severity": "informational"
+      }
+    ]
+  }
+}

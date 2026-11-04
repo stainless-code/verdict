@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: learn --retire needs --reason with 30+ chars (human veto, on the record)
+try: re-run with one of the valid values named above
+re-enter: verdict learn --retire ...
+--- files ---

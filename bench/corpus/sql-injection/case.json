@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "id": "sql-injection",
+  "kind": "seeded",
+  "language": "go",
+  "line_tolerance": 3,
+  "provenance": {
+    "kind": "seeded",
+    "injected": "User input is concatenated into a SQL statement, allowing a crafted name to change the query.",
+    "source": "bench/corpus/sql-injection/full.diff",
+    "note": "deterministic fixture; no real repository"
+  },
+  "bugs": [
+    {
+      "path": "query.go",
+      "line": 77,
+      "kind": "injection",
+      "severity": "critical",
+      "note": "user name is formatted into the SQL text instead of bound as a parameter"
+    }
+  ]
+}

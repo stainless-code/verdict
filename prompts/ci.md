@@ -2,7 +2,7 @@
 
 Read-only loop for pipelines: full judgment, zero writes to GitHub.
 
-1. Task list first. Fetch: `./scripts/review.sh fetch owner/repo N --since <ref>`.
+1. Task list first. Fetch: `verdict fetch owner/repo N --since <ref>`.
 2. Read the bundle exactly like `prompts/review.md` steps 2–6 (full diff via TOC,
    roles first, 0–N lenses, sound+correct+elegant bar) — but write NO review.json.
 3. Write `.review/N/report.md`: severity-ordered findings (blocking → must-fix → minor),
