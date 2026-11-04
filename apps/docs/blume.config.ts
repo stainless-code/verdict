@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "blume";
 import { orama } from "blume/search";
-import { filesystem, githubReleases } from "blume/sources";
+import { custom, filesystem } from "blume/sources";
+import { changelogSource } from "./sources/changelog.ts";
 
 const title = "Verdict";
 const description =
@@ -12,6 +13,7 @@ const description =
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";
+const origin = "https://stainless-code.com";
 
 // Prerendered pages skip transformIndexHtml, so append tags to dist after build.
 const webAppHeadIntegration = {
@@ -70,11 +72,15 @@ export default defineConfig({
   content: {
     sources: [
       filesystem({ root: "content" }),
-      githubReleases({
-        owner: "stainless-code",
-        repo: "verdict",
-        prefix: "changelog",
-      }),
+      custom(
+        changelogSource({
+          name: "changelog",
+          owner: "stainless-code",
+          repo: "verdict",
+          prefix: "changelog",
+          site: origin,
+        }),
+      ),
     ],
   },
 
@@ -90,6 +96,13 @@ export default defineConfig({
   agents: {
     skillMd: false,
     skills: "./skills",
+    llmsTxt: {
+      details: [
+        `Release notes live at ${origin}${deploymentBase}/changelog, one page per`,
+        "release; they are the longest pages here, so `llms-full.txt` leaves them",
+        "out. Fetch `/verdict/changelog/<version>.md` for one release.",
+      ].join("\n"),
+    },
   },
 
   integrations: [webAppHeadIntegration],
@@ -148,7 +161,7 @@ export default defineConfig({
   },
 
   deployment: {
-    site: "https://stainless-code.com",
+    site: origin,
     base: deploymentBase,
   },
 });
