@@ -59,7 +59,8 @@ func usageText() string {
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
-		"  report <owner/repo> <pr> [--status open|addressed|all] [--kind inline|section|all]\n" +
+		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
+		"[--kind inline|section|all]\n" +
 		"        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
