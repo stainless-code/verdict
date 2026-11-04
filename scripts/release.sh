@@ -68,7 +68,11 @@ build_client() {
 # remote tag, so the remaining work is pushing a tag origin does not have.
 # "Already done" = origin's tag points at HEAD.
 stage_tag() {
-  changeset git-tag
+  # The changesets action runs this script without node_modules/.bin on PATH,
+  # so the CLI is called by path, like tsc in build_client.
+  [ -x node_modules/.bin/changeset ] ||
+    die "node_modules/.bin/changeset missing: run bun install (the release tags through changesets)"
+  node_modules/.bin/changeset git-tag
   local head local_commit remote_commit
   head="$(git rev-parse HEAD)"
   if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
