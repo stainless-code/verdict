@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "audit": "blume audit --fail-on error",
-    "build": "blume build && bun scripts/check-skill-names.ts && bun scripts/check-llms.ts && bun scripts/check-docs.ts",
+    "build": "blume build && bun scripts/check-skill-names.ts && bun scripts/check-output.ts",
     "check": "blume check",
     "dev": "blume dev",
     "preview": "blume preview",
