@@ -4,8 +4,9 @@
 // The rules below are bug-for-bug ports, verified against jq 1.7 in the
 // record golden suite:
 //   - `//` yields the right side when the left is null OR false.
-//   - `jq -r` renders null as "null", strings raw, numbers in jq's shortest
-//     round-trip form, booleans as true/false, containers as compact JSON.
+//   - `jq -r` renders null as "null", strings raw, numbers in jq's literal
+//     form (see [CanonNumber]), booleans as true/false, containers as compact
+//     JSON.
 //   - `\(...)` interpolation renders null as "" (unlike -r) and otherwise
 //     matches -r.
 //   - `jq '.'` pretty-prints with 2-space indent and codepoint-sorted keys;
@@ -120,24 +121,127 @@ func Interp(v any) string {
 	return Str(v)
 }
 
-// CanonNumber normalizes a JSON number literal to jq's output form. Integer
-// literals are already canonical (JSON forbids leading zeros); fractional or
-// exponent literals that are integral and fit int64 print as integers, and
-// anything else prints in the shortest float form. Anchor lines, confidence
-// levels, and counts all live in the plain-integer domain where every form
-// agrees; this only matters for exotic agent-written literals.
+// CanonNumber normalizes a JSON number literal to the bytes jq prints for
+// that same literal. Integer literals are already canonical (JSON forbids
+// leading zeros); every other literal is rebuilt from its own digits and
+// exponent, exactly as jq's decNumber path does. Nothing here converts to
+// float64 or int64, so the result cannot differ by architecture or lose a
+// digit above 2^53: 9.223372036854775808e18 keeps all nineteen digits instead
+// of saturating to MaxInt64 on arm64 and going negative on amd64. Anchor
+// lines, confidence levels, and counts all live in the plain-integer domain;
+// this only matters for exotic agent-written literals.
 func CanonNumber(lit string) string {
 	if isPlainInt(lit) {
 		return lit
 	}
-	f, err := strconv.ParseFloat(lit, floatBits)
-	if err != nil {
-		return lit
+	if canon, ok := canonLiteral(lit); ok {
+		return canon
 	}
-	if f == float64(int64(f)) && f < maxExactInt && f > -maxExactInt {
-		return strconv.FormatInt(int64(f), decimalBase)
+	return lit
+}
+
+// canonLiteral re-renders one JSON number literal the way jq does: plain
+// notation while the exponent is non-positive and the adjusted exponent is
+// at least [minPlainAdjusted], exponential notation otherwise. jq keeps the
+// literal's trailing fraction zeros ("2.0", "1.500"), its exponent spelling
+// ("1E+7"), and the sign of zero ("-0.0"). ok is false for anything that is
+// not a number with a representable exponent; the caller then passes the
+// literal through untouched.
+func canonLiteral(lit string) (string, bool) {
+	mant, exponent, neg, ok := cutExponent(lit)
+	if !ok {
+		return "", false
 	}
-	return strconv.FormatFloat(f, 'g', -1, floatBits)
+	digits, fracExp, ok := literalDigits(mant)
+	if !ok {
+		return "", false
+	}
+	body := jqDecimal(digits, exponent+fracExp)
+	if neg {
+		return "-" + body, true
+	}
+	return body, true
+}
+
+// jqDecimal renders digits×10^exponent in the notation jq picks for an
+// adjusted exponent of this size.
+func jqDecimal(digits string, exponent int) string {
+	if adjusted := exponent + len(digits) - 1; exponent > 0 || adjusted < minPlainAdjusted {
+		return scientific(digits, adjusted)
+	}
+	return plainDecimal(digits, exponent)
+}
+
+// literalDigits folds a mantissa into its significant digits (leading zeros
+// dropped, trailing zeros kept) and the power of ten its fraction carries.
+func literalDigits(mant string) (string, int, bool) {
+	intPart, fracPart, found := strings.Cut(mant, ".")
+	if !isPlainInt(intPart) || (found && !isPlainInt(fracPart)) {
+		return "", 0, false
+	}
+	digits := strings.TrimLeft(intPart+fracPart, "0")
+	if digits == "" {
+		digits = "0"
+	}
+	return digits, -len(fracPart), true
+}
+
+// cutExponent splits a JSON number literal into its mantissa, its exponent
+// (zero when absent) and its sign. ok is false without a mantissa or when the
+// exponent does not fit an int (jq falls back to a double there; verdict
+// keeps the literal instead of guessing).
+func cutExponent(lit string) (mant string, exponent int, neg bool, ok bool) {
+	s := lit
+	if strings.HasPrefix(s, "-") {
+		neg, s = true, s[1:]
+	}
+	mant = s
+	if i := strings.IndexAny(s, "eE"); i >= 0 {
+		e, err := strconv.Atoi(s[i+1:])
+		if err != nil {
+			return "", 0, false, false
+		}
+		mant, exponent = s[:i], e
+	}
+	if mant == "" {
+		return "", 0, false, false
+	}
+	return mant, exponent, neg, true
+}
+
+// scientific renders digits in jq's exponential notation: one leading digit,
+// the rest after a point when there are more, then the adjusted exponent.
+func scientific(digits string, adjusted int) string {
+	var b strings.Builder
+	b.WriteByte(digits[0])
+	if len(digits) > 1 {
+		b.WriteByte('.')
+		b.WriteString(digits[1:])
+	}
+	b.WriteByte('E')
+	if adjusted < 0 {
+		b.WriteByte('-')
+		adjusted = -adjusted
+	} else {
+		b.WriteByte('+')
+	}
+	b.WriteString(strconv.Itoa(adjusted))
+	return b.String()
+}
+
+// plainDecimal renders digits in plain notation at the given power of ten,
+// padding with at most [minPlainAdjusted] leading fraction zeros (the
+// caller sends everything smaller to [scientific]).
+func plainDecimal(digits string, exponent int) string {
+	point := len(digits) + exponent
+	switch {
+	case point >= len(digits):
+		return digits
+	case point > 0:
+		return digits[:point] + "." + digits[point:]
+	default:
+		return "0." + strings.Repeat("0", -point) + digits
+	}
 }
 
 // IntOf reads a decoded JSON number as an int. Decoded stores hold
@@ -410,10 +514,9 @@ func AsMap(v any) (map[string]any, bool) {
 const (
 	// floatBits is the precision for threshold and literal parsing.
 	floatBits = 64
-	// decimalBase is the radix for integer rendering.
-	decimalBase = 10
-	// maxExactInt is the magnitude below which integral floats print as integers.
-	maxExactInt = 1e21
+	// minPlainAdjusted is the smallest adjusted exponent jq writes in plain
+	// notation; below it the literal renders as exponential.
+	minPlainAdjusted = -6
 	// newline terminates encoder output.
 	newline = "\n"
 	// opDecodeJSON names the JSON decode operation in sealed errors.

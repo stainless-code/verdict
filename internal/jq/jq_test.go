@@ -36,7 +36,7 @@ func TestStr(t *testing.T) {
 		{"true", true, "true"},
 		{"false", false, "false"},
 		{"int literal", jq.Number("2"), "2"},
-		{"integral float literal", jq.Number("2.0"), "2"},
+		{"fraction literal", jq.Number("2.0"), "2.0"},
 		{"untyped float", 1.5, "1.5"},
 		{"untyped integral float", 2.0, "2"},
 		{"object", map[string]any{"a": 1}, `{"a":1}`},
@@ -60,18 +60,42 @@ func TestInterpNull(t *testing.T) {
 	}
 }
 
-// TestCanonNumber checks number canonicalization matches jq.
+// TestCanonNumber checks CanonNumber reproduces the bytes jq prints for the
+// same literal. Every want below is jq's literal output, recorded with
+// `printf '%s\n' <lit> | jq -c '.'` on jq 1.8.2 (decNumber build); jq keeps a
+// literal's significant digits and only moves the decimal point, so nothing
+// here is a float64 or int64 round trip.
 func TestCanonNumber(t *testing.T) {
 	tests := []struct{ give, want string }{
 		{"2", "2"},
-		{"2.0", "2"},
+		{"2.0", "2.0"},
 		{"-0", "-0"},
 		{"1.5", "1.5"},
+		{"1.50", "1.50"},
 		{"99999999999999999999", "99999999999999999999"},
-		{"1e999", "1e999"},
-		{"1e7", "10000000"},
-		{"-1e7", "-10000000"},
+		{"1e999", "1E+999"},
+		{"1e7", "1E+7"},
+		{"-1e7", "-1E+7"},
 		{"abc", "abc"},
+		// At and around 2^63: verdict used to convert to int64 here, which
+		// saturates to MaxInt64 on arm64 and wraps to MinInt64 on amd64.
+		{"9.2e18", "9.2E+18"},
+		{"9.223372036854775807e18", "9223372036854775807"},
+		{"9.223372036854775808e18", "9223372036854775808"},
+		{"1e19", "1E+19"},
+		{"-9.2e18", "-9.2E+18"},
+		{"-9.223372036854775807e18", "-9223372036854775807"},
+		{"-9.223372036854775808e18", "-9223372036854775808"},
+		{"-1e19", "-1E+19"},
+		// The plain/exponential boundary (adjusted exponent -6) and the two
+		// zero spellings jq keeps.
+		{"1e-6", "0.000001"},
+		{"1e-7", "1E-7"},
+		{"0.0000010", "0.0000010"},
+		{"123.4e2", "1.234E+4"},
+		{"0.0", "0.0"},
+		{"-0.0", "-0.0"},
+		{"0e5", "0E+5"},
 	}
 	for _, tt := range tests {
 		if got := jq.CanonNumber(tt.give); got != tt.want {
@@ -105,7 +129,7 @@ func TestR(t *testing.T) {
 	if got := jq.R(nil); got != "null" {
 		t.Errorf("R(nil) = %q; want null", got)
 	}
-	if got := jq.R(jq.Number("2.0")); got != "2" {
+	if got := jq.R(jq.Number("2.0")); got != "2.0" {
 		t.Errorf("R(2.0) = %q; want 2", got)
 	}
 	if got := jq.R(1.5); got != "1.5" {
