@@ -95,7 +95,6 @@ func (d *Data) Wire() *jq.Obj {
 	)
 }
 
-// state carries the loaded ready run.
 type state struct {
 	req         *Request
 	warnings    []string
@@ -115,19 +114,14 @@ type state struct {
 	draft       bool
 }
 
-// recWait holds the review instead of reviewing.
 const recWait = "wait"
 
-// hashSep joins repo and pr in human diagnostics.
 const hashSep = "#"
 
-// mergeUnknown reads when GitHub has not computed mergeability yet.
 const mergeUnknown = "UNKNOWN"
 
-// newline splits description lines.
 const newline = "\n"
 
-// commentOpen and commentClose bracket HTML comment spans.
 const (
 	commentOpen  = "<!--"
 	commentClose = "-->"
@@ -150,34 +144,28 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.finish(), nil
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// human streams one human output line.
 func (st *state) human(line string) {
 	if st.req.Runtime != nil {
 		st.req.Human(line)
 	}
 }
 
-// diag streams one raw diagnostic line.
 func (st *state) diag(line string) {
 	if st.req.Runtime != nil {
 		st.req.Diag(line)
 	}
 }
 
-// withWarnings attaches the accumulated warnings to a refusal so the
-// adapter's envelope stays byte-identical to a success run's warning list.
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	ref.Warnings = st.warnings
 	return ref
 }
 
-// commander returns the injected commander (nil when the caller set none).
 func (st *state) commander() core.Commander {
 	var commander core.Commander
 	if rt := st.runtime(); rt != nil {
@@ -186,12 +174,10 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
-// runtime returns the injected runtime (nil when the caller set none).
 func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-// finish owns the advisory emit plus the --check gate.
 func (st *state) finish() *Response {
 	st.emitHuman()
 	next := "nudge the author instead of reviewing"
@@ -213,7 +199,6 @@ func (st *state) finish() *Response {
 	}
 }
 
-// data assembles the typed data profile in wire order.
 func (st *state) data() *Data {
 	return &Data{
 		Ready:            st.ready,
@@ -229,8 +214,6 @@ func (st *state) data() *Data {
 	}
 }
 
-// loadState resolves the bundle and reads every live dimension: PR state,
-// checks, threads, and the description strip.
 func loadState(ctx context.Context, st *state) *core.RefusalError {
 	dir := readcommon.ResolveBundleDir(st.pr)
 	if isLocalDir(dir) {
@@ -262,22 +245,17 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	return nil
 }
 
-// providerGitHub is the only provider with live reads.
 const providerGitHub = "github"
 
-// isLocalDir reports whether dir is a local bundle.
 func isLocalDir(dir string) bool {
 	return strings.HasPrefix(dir, ".review/local-")
 }
 
-// isRegular reports whether path is a regular file.
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// loadLive reads the live PR state, staging gh's stderr beside the bundle
-// (the file stays: empty on success).
 func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	stdout, stderr, ok := coreexec.Gh(ctx, st.commander(), "pr", "view", st.pr, "--repo", st.repo,
 		"--json", "isDraft,mergeable,mergeStateStatus,body,state,headRefOid")
@@ -313,23 +291,14 @@ func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	return nil
 }
 
-// probeStagePerm stages probe stderr readable only by the owner: the
-// content can carry token-adjacent gh diagnostics.
 const probeStagePerm = 0o600
 
-// writeErrFile stages probe stderr beside the bundle through the shared
-// atomic path. The write is best-effort, so a
-// failure warns instead of refusing: the file is a debug side channel and
-// the run must not fail over garnish.
 func writeErrFile(st *state, path, stderr string) {
 	if err := atomic.WriteFileMode(path, []byte(stderr), probeStagePerm); err != nil {
-		// Un-actionable beyond the notice: the live data already loaded.
 		st.diag("ready: could not stage probe stderr in " + path + ": " + err.Error())
 	}
 }
 
-// firstLine renders the first 200 bytes with newlines as spaces,
-// newlines flattened.
 func firstLine(s string) string {
 	if len(s) > errHeadBytes {
 		s = s[:errHeadBytes]
@@ -337,10 +306,8 @@ func firstLine(s string) string {
 	return strings.ReplaceAll(s, newline, " ")
 }
 
-// errHeadBytes caps the PR-view error detail.
 const errHeadBytes = 200
 
-// liveString renders one live field jq -r style, defaulting to "".
 func liveString(live map[string]any, key string) string {
 	v, ok := live[key]
 	if !ok || v == nil {
@@ -349,7 +316,6 @@ func liveString(live map[string]any, key string) string {
 	return jq.R(v)
 }
 
-// liveOr renders one live field with a default for missing values.
 func liveOr(live map[string]any, key, dflt string) string {
 	v, ok := live[key]
 	if !ok || v == nil {
@@ -358,7 +324,6 @@ func liveOr(live map[string]any, key, dflt string) string {
 	return jq.R(v)
 }
 
-// liveBody reads the live body text ("" when absent).
 func liveBody(live map[string]any) string {
 	v, ok := live["body"]
 	if !ok || v == nil {
@@ -367,8 +332,6 @@ func liveBody(live map[string]any) string {
 	return jq.R(v)
 }
 
-// bodyLength owns the description completeness measure: HTML-comment spans
-// stripped (multiline-aware), whitespace runs squeezed, byte count.
 func bodyLength(body string) int {
 	var out strings.Builder
 	inComment := false
@@ -379,8 +342,6 @@ func bodyLength(body string) int {
 	return len(squeezeSpace(out.String()))
 }
 
-// stripComments removes <!-- --> spans from one line, carrying the
-// in-comment state across lines.
 func stripComments(line string, inComment *bool) string {
 	var kept strings.Builder
 	rest := line
@@ -394,8 +355,6 @@ func stripComments(line string, inComment *bool) string {
 	return kept.String()
 }
 
-// skipCommentRest drops through the closing --> (or the whole line when
-// the comment continues past it), reporting the remainder.
 func skipCommentRest(rest string, inComment *bool) string {
 	if _, after, ok := strings.Cut(rest, commentClose); ok {
 		*inComment = false
@@ -404,8 +363,6 @@ func skipCommentRest(rest string, inComment *bool) string {
 	return ""
 }
 
-// takePlainSegment copies through the next <!-- opener (or the whole line
-// when none opens), flipping into comment state past the opener.
 func takePlainSegment(rest string, inComment *bool, kept *strings.Builder) string {
 	if before, after, ok := strings.Cut(rest, commentOpen); ok {
 		kept.WriteString(before)
@@ -416,9 +373,6 @@ func takePlainSegment(rest string, inComment *bool, kept *strings.Builder) strin
 	return ""
 }
 
-// squeezeSpace collapses whitespace runs to one space and trims
-// one space (C-locale set: space, tab, newline, vertical tab, form feed,
-// carriage return).
 func squeezeSpace(s string) string {
 	var out strings.Builder
 	out.Grow(len(s))
@@ -437,7 +391,6 @@ func squeezeSpace(s string) string {
 	return out.String()
 }
 
-// isSpaceByte reports C-locale whitespace.
 func isSpaceByte(c byte) bool {
 	switch c {
 	case ' ', '\t', '\n', '\v', '\f', '\r':
@@ -447,8 +400,6 @@ func isSpaceByte(c byte) bool {
 	}
 }
 
-// loadChecks reads the live CI state: unreadable checks read unknown,
-// never blocking.
 func loadChecks(ctx context.Context, st *state) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "pr", "checks", st.pr, "--repo", st.repo,
 		"--json", "bucket,name,state")
@@ -482,8 +433,6 @@ func loadChecks(ctx context.Context, st *state) {
 	}
 }
 
-// countFailBucket handles one checks element: fail buckets bump the failing
-// count and name list, every other bucket reads skipped.
 func countFailBucket(st *state, m map[string]any, failNames []string) []string {
 	bucket, ok := m["bucket"].(string)
 	if !ok || bucket != "fail" {
@@ -493,9 +442,6 @@ func countFailBucket(st *state, m map[string]any, failNames []string) []string {
 	return append(failNames, checkName(m))
 }
 
-// checkElements counts elements in the checks payload: arrays
-// pass through, objects contribute values, null reads empty, anything
-// else reads empty.
 func checkElements(raw string) []any {
 	doc, err := jq.Decode([]byte(raw))
 	if err != nil {
@@ -517,7 +463,6 @@ func checkElements(raw string) []any {
 	}
 }
 
-// checkName renders one failing check name jq -r style.
 func checkName(m map[string]any) string {
 	v, ok := m["name"]
 	if !ok || v == nil {
@@ -526,10 +471,6 @@ func checkName(m map[string]any) string {
 	return jq.R(v)
 }
 
-// loadThreads counts unresolved live threads: resolution state exists
-// only live, so the bundle's thread files never count. The shared helper
-// applies the fail-closed posture (malformed nodes count as unresolved),
-// and a malformed read warns before it can flip the gate.
 func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 	owner, name := readcommon.SplitOwner(st.repo)
 	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.pr, false)
@@ -554,8 +495,6 @@ func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 	return nil
 }
 
-// computeReadiness owns the ready/rec decision plus the draft, conflict,
-// and description-thin blockers.
 func computeReadiness(st *state) {
 	appendDraftBlocker(st)
 	appendConflictBlocker(st)
@@ -577,7 +516,6 @@ func computeReadiness(st *state) {
 	}
 }
 
-// appendDraftBlocker owns the draft blocker.
 func appendDraftBlocker(st *state) {
 	if st.draft {
 		st.blockers = append(st.blockers, Blocker{
@@ -588,7 +526,6 @@ func appendDraftBlocker(st *state) {
 	}
 }
 
-// appendConflictBlocker owns the merge-conflict blocker.
 func appendConflictBlocker(st *state) {
 	if st.mergeable == "CONFLICTING" || st.mergeState == "DIRTY" {
 		st.blockers = append(st.blockers, Blocker{
@@ -599,7 +536,6 @@ func appendConflictBlocker(st *state) {
 	}
 }
 
-// appendDescriptionBlocker owns the description-thin blocker.
 func appendDescriptionBlocker(st *state) {
 	if st.bodyLen < descriptionThin {
 		st.blockers = append(st.blockers, Blocker{
@@ -610,10 +546,8 @@ func appendDescriptionBlocker(st *state) {
 	}
 }
 
-// descriptionThin is the description completeness floor.
 const descriptionThin = 50
 
-// emitHuman owns the advisory lines plus the recommendation.
 func (st *state) emitHuman() {
 	if st.ready {
 		st.human("ready: yes — " + st.repo + hashSep + st.pr + " looks reviewable " +
@@ -640,7 +574,6 @@ func (st *state) emitHuman() {
 	}
 }
 
-// sortedKeys returns the sorted keys of m (jq object iteration order).
 func sortedKeys(m map[string]any) []string {
 	return slices.Sorted(maps.Keys(m))
 }

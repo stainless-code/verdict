@@ -51,8 +51,6 @@ func skipWithoutPOSIXModes(t *testing.T) {
 	}
 }
 
-// seedArtifactLink writes a 0640 target and a symlink to it, as an operator
-// who keeps reports under a stable link would have.
 func seedArtifactLink(t *testing.T) (target, link string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -66,8 +64,6 @@ func seedArtifactLink(t *testing.T) (target, link string) {
 	return target, link
 }
 
-// seedUnwritableArtifact writes a known artifact into a directory that denies
-// creation. The mode is restored for TempDir cleanup.
 func seedUnwritableArtifact(t *testing.T) (path string) {
 	t.Helper()
 	if os.Geteuid() == 0 {
@@ -89,7 +85,6 @@ func seedUnwritableArtifact(t *testing.T) (path string) {
 	return path
 }
 
-// checkArtifactLink fails unless link is still a symlink naming target.
 func checkArtifactLink(t *testing.T, link, target string) {
 	t.Helper()
 	fi, err := os.Lstat(link)
@@ -106,7 +101,6 @@ func checkArtifactLink(t *testing.T, link, target string) {
 	}
 }
 
-// checkArtifactFile fails unless path holds exactly want under want mode.
 func checkArtifactFile(t *testing.T, path, want string, mode os.FileMode) {
 	t.Helper()
 	raw, err := os.ReadFile(path)

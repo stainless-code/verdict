@@ -111,8 +111,14 @@ them, the way it does on the footer divider.
 <details>
   <summary>Behavior flow (generated — verify against the diff)</summary>
 
-  ```mermaid sequenceDiagram participant C as Caller participant S as Service
-  C->>S: request S-->>C: response ```
+  ```mermaid
+  sequenceDiagram
+      participant C as Caller
+      participant S as Service
+      C->>S: request
+      S-->>C: response
+  ```
+
 </details>
 <!-- verdict-diagram:end -->
 ````

@@ -13,7 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Schema keywords this checker reads.
 const (
 	keyRef      = "$ref"
 	keyDefs     = "$defs"
@@ -34,7 +33,6 @@ const (
 
 	formatDateTime = "date-time"
 
-	// Pointer and reference separators, named so the escapes stay readable.
 	refSeparator = "/"
 	refHash      = "#"
 	escapedSlash = "~1"
@@ -49,17 +47,13 @@ const (
 	typeNull     = "null"
 )
 
-// constraintKeys are the keywords this checker enforces or understands
-// structurally.
 var constraintKeys = names(keyRef, keyDefs, keyType, keyFormat, keyPattern,
 	keyItems, keyMin, keyMax, keyMinLen, keyMaxLen, keyAnyOf, keyProps,
 	keyRequired, keyAddl, keyConst, keyEnum)
 
-// annotationKeys carry documentation, not constraints, so they are ignored.
 var annotationKeys = names("$schema", "$id", "title", "description", "default",
 	"examples", "$comment")
 
-// names builds a keyword set from a list.
 func names(keys ...string) map[string]bool {
 	set := make(map[string]bool, len(keys))
 	for _, key := range keys {
@@ -68,8 +62,6 @@ func names(keys ...string) map[string]bool {
 	return set
 }
 
-// applyKeywords runs every keyword check in a fixed order. Each check ignores
-// keywords it does not own, so the list stays flat.
 func (w *walk) applyKeywords(d document, s map[string]any, value any, path string) {
 	w.checkType(d, s, value, path)
 	w.checkConst(d, s, value, path)
@@ -102,7 +94,6 @@ func (w *walk) checkKeywords(s map[string]any, path string) {
 	w.fail(path, "unsupported keyword(s) for this checker: "+strings.Join(unknown, " "))
 }
 
-// checkType enforces "type" (one name or an array of names).
 func (w *walk) checkType(_ document, s map[string]any, value any, path string) {
 	spec, ok := s[keyType]
 	if !ok || typeMatches(spec, value) {
@@ -111,7 +102,6 @@ func (w *walk) checkType(_ document, s map[string]any, value any, path string) {
 	w.fail(path, fmt.Sprintf("want type %s, got %s", renderJSON(spec), jsonType(value)))
 }
 
-// checkConst enforces "const".
 func (w *walk) checkConst(_ document, s map[string]any, value any, path string) {
 	want, ok := s["const"]
 	if !ok || equalJSON(want, value) {
@@ -120,7 +110,6 @@ func (w *walk) checkConst(_ document, s map[string]any, value any, path string) 
 	w.fail(path, fmt.Sprintf("%s is not the const %s", renderJSON(value), renderJSON(want)))
 }
 
-// checkEnum enforces "enum".
 func (w *walk) checkEnum(_ document, s map[string]any, value any, path string) {
 	members, ok := s["enum"].([]any)
 	if !ok {
@@ -135,7 +124,6 @@ func (w *walk) checkEnum(_ document, s map[string]any, value any, path string) {
 	w.fail(path, fmt.Sprintf("%s is not one of %s", renderJSON(value), renderJSON(members)))
 }
 
-// checkRequired enforces "required" on an object value.
 func (w *walk) checkRequired(_ document, s map[string]any, value any, path string) {
 	raw, has := s[keyRequired]
 	if !has {
@@ -175,7 +163,6 @@ func missingKeys(raw, value any) ([]string, error) {
 	return missing, nil
 }
 
-// checkProperties validates each declared property that the value carries.
 func (w *walk) checkProperties(d document, s map[string]any, value any, path string) {
 	object, ok := value.(map[string]any)
 	if !ok {
@@ -191,8 +178,6 @@ func (w *walk) checkProperties(d document, s map[string]any, value any, path str
 	}
 }
 
-// checkAdditional enforces "additionalProperties": false rejects unknown keys,
-// and a schema validates them. A value that is not an object is untouched.
 func (w *walk) checkAdditional(d document, s map[string]any, value any, path string) {
 	object, ok := value.(map[string]any)
 	if !ok {
@@ -208,8 +193,6 @@ func (w *walk) checkAdditional(d document, s map[string]any, value any, path str
 	}
 }
 
-// checkExtra applies "additionalProperties" to the keys no property covers: a
-// false schema rejects them, and a schema validates each of them.
 func (w *walk) checkExtra(d document, spec any, object map[string]any, extra []string, path string) {
 	if allowed, ok := spec.(bool); ok {
 		if !allowed {
@@ -222,7 +205,6 @@ func (w *walk) checkExtra(d document, spec any, object map[string]any, extra []s
 	}
 }
 
-// checkItems validates every array element against a single-schema "items".
 func (w *walk) checkItems(d document, s map[string]any, value any, path string) {
 	items, has := s[keyItems]
 	if !has {
@@ -241,7 +223,6 @@ func (w *walk) checkItems(d document, s map[string]any, value any, path string) 
 	}
 }
 
-// checkBounds enforces numeric "minimum"/"maximum".
 func (w *walk) checkBounds(_ document, s map[string]any, value any, path string) {
 	got, ok := numberOf(value)
 	if !ok {
@@ -255,8 +236,6 @@ func (w *walk) checkBounds(_ document, s map[string]any, value any, path string)
 	}
 }
 
-// checkLength enforces "minLength"/"maxLength" in characters (code points, as
-// the specification counts them).
 func (w *walk) checkLength(_ document, s map[string]any, value any, path string) {
 	text, ok := value.(string)
 	if !ok {
@@ -271,8 +250,6 @@ func (w *walk) checkLength(_ document, s map[string]any, value any, path string)
 	}
 }
 
-// checkPattern enforces "pattern" as a regular expression match (Go's RE2
-// syntax; the published schemas use plain character classes).
 func (w *walk) checkPattern(_ document, s map[string]any, value any, path string) {
 	raw, has := s[keyPattern]
 	if !has {
@@ -297,8 +274,6 @@ func (w *walk) checkPattern(_ document, s map[string]any, value any, path string
 	}
 }
 
-// checkFormat enforces "format: date-time" (RFC 3339). Other formats are
-// outside this checker and fail loudly.
 func (w *walk) checkFormat(_ document, s map[string]any, value any, path string) {
 	raw, has := s[keyFormat]
 	if !has {
@@ -318,8 +293,6 @@ func (w *walk) checkFormat(_ document, s map[string]any, value any, path string)
 	}
 }
 
-// checkAnyOf succeeds when one branch validates; a branch is tried in its own
-// pass so its failures never leak into this one.
 func (w *walk) checkAnyOf(d document, s map[string]any, value any, path string) {
 	raw, has := s[keyAnyOf]
 	if !has {
@@ -342,7 +315,6 @@ func (w *walk) checkAnyOf(d document, s map[string]any, value any, path string) 
 	w.fail(path, "matches no anyOf branch ("+strings.Join(nearest, "; ")+")")
 }
 
-// propertyNames lists an object schema's declared properties in a stable order.
 func propertyNames(s map[string]any) []string {
 	properties, _ := s[keyProps].(map[string]any) //nolint:errcheck // absent properties means no declared names
 	keys := make([]string, 0, len(properties))
@@ -353,7 +325,6 @@ func propertyNames(s map[string]any) []string {
 	return keys
 }
 
-// unknownKeys lists the value's keys that no declared property covers.
 func unknownKeys(object, s map[string]any) []string {
 	declared, _ := s[keyProps].(map[string]any) //nolint:errcheck // absent properties means every key is extra
 	var extra []string
@@ -366,7 +337,6 @@ func unknownKeys(object, s map[string]any) []string {
 	return extra
 }
 
-// typeChecks maps each JSON Schema type name to its predicate.
 var typeChecks = map[string]func(any) bool{
 	typeObject:  func(v any) bool { _, ok := v.(map[string]any); return ok },
 	typeArray:   func(v any) bool { _, ok := v.([]any); return ok },
@@ -377,7 +347,6 @@ var typeChecks = map[string]func(any) bool{
 	typeInteger: isInteger,
 }
 
-// typeMatches checks a type name or an array of names against value.
 func typeMatches(spec, value any) bool {
 	if choices, ok := spec.([]any); ok {
 		return anyTypeMatches(choices, value)
@@ -390,12 +359,10 @@ func typeMatches(spec, value any) bool {
 	return known && matches(value)
 }
 
-// anyTypeMatches reports whether one of the type names matches value.
 func anyTypeMatches(choices []any, value any) bool {
 	return slices.ContainsFunc(choices, func(choice any) bool { return typeMatches(choice, value) })
 }
 
-// jsonType names the decoded value's JSON type for a failure message.
 func jsonType(value any) string {
 	switch value.(type) {
 	case nil:
@@ -434,8 +401,6 @@ func isInteger(value any) bool {
 	}
 }
 
-// numberOf converts a decoded number to float64, whether the document was
-// decoded with number fidelity or by encoding/json's float64 default.
 func numberOf(value any) (float64, bool) {
 	switch number := value.(type) {
 	case json.Number:
@@ -450,7 +415,6 @@ func numberOf(value any) (float64, bool) {
 	}
 }
 
-// intBound reads an integer-valued keyword such as minLength.
 func intBound(raw any) (int, bool) {
 	got, ok := numberOf(raw)
 	if !ok {
@@ -459,7 +423,6 @@ func intBound(raw any) (int, bool) {
 	return int(got), true
 }
 
-// slicesContainsMember reports whether value equals one enum member.
 func slicesContainsMember(members []any, value any) bool {
 	return slices.ContainsFunc(members, func(member any) bool { return equalJSON(member, value) })
 }
@@ -469,7 +432,6 @@ func slicesContainsMember(members []any, value any) bool {
 // compact renderings compare exactly.
 func equalJSON(a, b any) bool { return renderJSON(a) == renderJSON(b) }
 
-// renderJSON renders one decoded value as compact JSON for a message.
 func renderJSON(value any) string {
 	raw, err := json.Marshal(value)
 	if err != nil {

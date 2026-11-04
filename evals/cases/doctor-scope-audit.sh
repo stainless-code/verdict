@@ -1,33 +1,11 @@
 #!/usr/bin/env bash
-# Case doctor-scope-audit: token-scope excess audit in the doctor verb (slice 02).
 #
-# Grades (hermetic — network-dead gh stub with a header affordance driven by
-# GH_STUB_DOCTOR, sandbox cwd, no fixtures beyond the sandbox itself):
-#   S1  excess stub ("repo, delete_repo, admin:org, workflow, gist") →
-#       token-scopes-excess WARN row naming the excess scopes with a try:
-#       hint, exit 0, --json checks array carries it
-#   S2  minimal stubs ("repo"; "public_repo, read:org") → no excess row,
-#       exit 0 (read:* is baseline, not excess)
-#   S3  no-header stub → today's fine-grained advisory row verbatim, exit 0,
-#       no excess row
-#   S4  insufficient stub ("gist") → today's insufficient-scope row verbatim
-#       plus the excess row for the non-baseline grant; exit 0 (warn-only
-#       never fails the run)
-#   S5  text mode with excess stub → WARN line on stdout, exit stays 0
-#   D1  text mode opens with the `doctor @ <utc>` run stamp
-#   D2  text mode closes with the Summary line and its word agrees with the
-#       exit code (dead stub → unhealthy, exit 1)
-#   D3  a minimal PATH holding only gh/git/ps is healthy: the doctor rows have
-#       no jq/shasum requirement, because the Go binary never spawns them
-#   S6  doctor writes nothing to the sandbox (tree-clean: no .review/ dir)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
 snap_tree() { # sandbox tree minus harness-owned capture/minimal-PATH files (content changes, not the tree)
-  # A per-case sandbox starts empty, so grep -v can see zero lines; tolerate
-  # that instead of letting pipefail abort the case before it prints anything.
   (cd "$EVAL_SANDBOX" && find . -mindepth 1 -maxdepth 2 | grep -v -e './eval-out.bin' -e './eval-err.txt' -e './gh-stub.log' -e './minbin' | sort) || true
 }
 pre_tree="$(snap_tree)"
@@ -36,7 +14,6 @@ excess_rows() { # count of token-scopes-excess rows in the last --json stdout
   jq -r '[.data.checks[] | select(.name == "token-scopes-excess")] | length' <"$EVAL_OUT" 2>/dev/null || echo "?"
 }
 
-# --- S1: excess scopes → WARN row, exit 0, checks array carries it ---
 export GH_STUB_DOCTOR="repo, delete_repo, admin:org, workflow, gist"
 user_calls_before="$(grep -c "^stub-gh api user --include" "$EVAL_STUBLOG" || true)"
 run_review doctor --json
@@ -82,7 +59,6 @@ else
   bad "S1 gh api user call count off: $n_user_calls"
 fi
 
-# --- S2: minimal grants → no excess row, exit 0 ---
 for scopes in "repo" "public_repo, read:org"; do
   export GH_STUB_DOCTOR="$scopes"
   run_review doctor --json
@@ -93,7 +69,6 @@ for scopes in "repo" "public_repo, read:org"; do
   fi
 done
 
-# --- S3: no header → today's fine-grained advisory verbatim ---
 export GH_STUB_DOCTOR="__NO_HEADER__"
 run_review doctor --json
 want_adv="no scopes header — fine-grained token, scopes proven at post time"
@@ -106,7 +81,6 @@ else
   bad "S3 advisory drifted: $(jq -r '.data.checks[] | select(.name == "token-scopes")' <"$EVAL_OUT" 2>/dev/null || head -c 300 "$EVAL_OUT")"
 fi
 
-# --- S4: insufficient scope → today's row verbatim + excess row, exit 0 ---
 export GH_STUB_DOCTOR="gist"
 run_review doctor --json
 want_ins="needs repo (private) or public_repo scope — x-oauth-scopes: gist"
@@ -124,7 +98,6 @@ else
   bad "S4 excess row missing for gist grant"
 fi
 
-# --- S5: text mode with excess stub → WARN line, exit 0 ---
 export GH_STUB_DOCTOR="repo, delete_repo, workflow"
 run_review doctor
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "WARN token-scopes-excess" "$EVAL_OUT"; then
@@ -134,7 +107,6 @@ else
 fi
 unset GH_STUB_DOCTOR
 
-# --- D1/D2: human run stamp + trailing summary (dead stub → unhealthy) ---
 run_review doctor
 stamp="$(head -n 1 "$EVAL_OUT")"
 summary="$(tail -n 1 "$EVAL_OUT")"
@@ -156,9 +128,6 @@ else
   bad "D2 last line: $(printf '%s' "$summary" | head -c 120)"
 fi
 
-# --- D3: no jq/shasum on PATH is healthy (the Go binary never spawns them) ---
-# The old doctor hard-failed on both tools; a minimal PATH keeps gh/git/ps
-# (the only tools the binary and its watchdog run) and drops jq/shasum.
 MINBIN="$EVAL_SANDBOX/minbin"
 mkdir -p "$MINBIN"
 for tool in bash dirname git ps readlink; do
@@ -180,7 +149,6 @@ else
   bad "D3 minimal PATH exits $st: $(head -c 300 "$EVAL_OUT")"
 fi
 
-# --- S6: doctor writes nothing (tree-clean: sandbox tree identical) ---
 post_tree="$(snap_tree)"
 if [ "$post_tree" = "$pre_tree" ]; then
   good "S6 sandbox tree unchanged (doctor wrote nothing)"

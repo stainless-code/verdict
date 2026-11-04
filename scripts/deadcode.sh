@@ -1,14 +1,5 @@
 #!/bin/sh
-# deadcode: ratchet against unreachable functions.
 #
-#   sh scripts/deadcode.sh v0.52.0     (make deadcode pins the version)
-#
-# `deadcode -test` counts helpers reachable only from a test, so what it
-# reports is the code neither a test nor any call path can reach. The tool
-# only sees this module, so pkg/verdict's exported SDK surface (dialled from
-# other repositories) always looks dead; scripts/deadcode-baseline.txt records
-# the entries we accept. A new entry fails the gate, and so does a baseline
-# line that no longer reproduces, so the list cannot rot silently.
 set -eu
 
 VERSION="${1:?usage: deadcode.sh <vX.Y.Z>}"

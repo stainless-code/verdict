@@ -23,7 +23,6 @@ type FooterOpts struct {
 	AttributionTextSet     bool
 }
 
-// placeholderBase mirrors the P1b default sentence before substitution.
 const placeholderBase = "Reviewed with [**Verdict {version}**](" + core.DefaultProductURL + ")"
 
 // baseAttribution renders the P1b default sentence before substitution.
@@ -56,7 +55,6 @@ func RenderFooter(o *FooterOpts) (string, error) {
 	return strings.TrimSuffix(out, newline), nil
 }
 
-// footerValues resolves the substitution values for the footer.
 func footerValues(o *FooterOpts) overrides.Values {
 	tier, cost := Spend(o.Dir)
 	return overrides.Values{
@@ -87,7 +85,6 @@ func footerAttribution(o *FooterOpts, vals *overrides.Values) string {
 	return overrides.Substitute(attr, vals)
 }
 
-// footerReceipt joins the ordered receipt segments.
 func footerReceipt(o *FooterOpts, order []string, tier, cost string) string {
 	receipt := ""
 	for _, seg := range order {
@@ -107,7 +104,6 @@ func footerReceipt(o *FooterOpts, order []string, tier, cost string) string {
 	return receipt
 }
 
-// receiptSegment renders one receipt segment.
 func receiptSegment(o *FooterOpts, seg, tier, cost string) string {
 	switch seg {
 	case "tier":
@@ -123,7 +119,6 @@ func receiptSegment(o *FooterOpts, seg, tier, cost string) string {
 	}
 }
 
-// attributionLine renders the attribution blockquote line.
 func attributionLine(o *FooterOpts, attr, receipt string) string {
 	if o.PublishAttribution == core.AttributionOff || attr == "" {
 		return "> " + receipt
@@ -157,7 +152,6 @@ func StripFooter(body string) string {
 	return strings.Join(trimTrailingBlanks(kept), "\n")
 }
 
-// stripRendered cuts everything from the machine divider line on.
 func stripRendered(lines []string) []string {
 	var kept []string
 	cut := false
@@ -174,7 +168,6 @@ func stripRendered(lines []string) []string {
 	return kept
 }
 
-// trimTrailingBlanks drops trailing blank lines.
 func trimTrailingBlanks(lines []string) []string {
 	for len(lines) > 0 && strings.Trim(lines[len(lines)-1], " \t\r\n\v\f") == "" {
 		lines = lines[:len(lines)-1]
@@ -182,5 +175,4 @@ func trimTrailingBlanks(lines []string) []string {
 	return lines
 }
 
-// newline terminates the receipt block.
 const newline = "\n"

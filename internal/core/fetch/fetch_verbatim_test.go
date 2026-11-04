@@ -1,10 +1,5 @@
 package fetchcore
 
-// Verbatim provider-bytes contract: the cafe full.diff join
-// preserves patch bytes exactly — a trailing newline survives, a missing
-// one is never added. A cross-implementation comparison could never be
-// green on Linux (the other side gained one trailing newline under GNU
-// tooling), so this unit test pins the Go side directly.
 import "testing"
 
 // TestCafeFullDiffVerbatim pins the cafe full.diff join against the

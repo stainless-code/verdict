@@ -41,9 +41,10 @@ reviewing Go here.
   a network-dead `gh` stub and proves zero real calls (`evals/README.md`).
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
-- **`skills/verdict/SKILL.md` and `prompts/` are hashed into goldens.** `record` stores a
-  `prompts_hash`, so regenerating after an edit there must move only those
-  lines — prove it in the diff.
+- **Exactly four skill files are hashed into goldens.** `skills/verdict/SKILL.md`,
+  `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md` (the rest of
+  `prompts/` is not). `record` stores a `prompts_hash`, so an edit there must
+  move only those lines — prove it in the diff.
 
 ## Git and commits
 

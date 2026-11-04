@@ -10,7 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/mcp"
 )
 
-// mcpTempFiles returns stdout/stderr temp files for run() calls.
 func mcpTempFiles(t *testing.T) (*os.File, *os.File) {
 	t.Helper()
 	out, err := os.CreateTemp(t.TempDir(), "stdout-*")
@@ -28,7 +27,6 @@ func mcpTempFiles(t *testing.T) (*os.File, *os.File) {
 	return out, errOut
 }
 
-// readFile resets and reads a temp output file.
 func readOutput(t *testing.T, f *os.File) string {
 	t.Helper()
 	raw, err := os.ReadFile(f.Name())

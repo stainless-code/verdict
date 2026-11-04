@@ -13,16 +13,12 @@ import (
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
-// fixedNow is the deterministic clock every test injects.
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
-// fixedRuntime returns the injected test runtime.
 func fixedRuntime() *core.Runtime {
 	return &core.Runtime{Now: func() time.Time { return fixedNow }}
 }
 
-// fixture creates a hermetic .review/5101 bundle in a temp cwd and returns
-// the report request runtime.
 func fixture(t *testing.T, findings string) core.ReadRequest {
 	t.Helper()
 	dir := t.TempDir()
@@ -38,7 +34,6 @@ func fixture(t *testing.T, findings string) core.ReadRequest {
 	}
 }
 
-// writeFile writes one fixture file, creating parents.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -49,8 +44,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// openFinding is one open finding rendered with the store's field order: the
-// fixtures compare it byte for byte, so a reordered or renamed field fails.
 const openFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
 	`"anchored":true,"body":"Usable body.","suggestion":null,` +
 	`"inBounds":true,"rigor":"walked","severity":"critical",` +
@@ -102,8 +95,6 @@ func TestRunReportData(t *testing.T) {
 	}
 }
 
-// sarifFindingJSON renders one finding with an explicit kind and severity,
-// so the SARIF export can be checked field by field.
 func sarifFindingJSON(kind, severity, sig string) string {
 	return `{"kind":"` + kind + `","path":"notes.txt","side":"RIGHT","line":2,` +
 		`"anchored":true,"body":"` + kind + ` body.","suggestion":null,` +
@@ -318,8 +309,6 @@ func TestRunShow(t *testing.T) {
 	if resp.Item == nil || resp.Item.Raw == nil {
 		t.Fatal("no item returned")
 	}
-	// The record round-trips byte for byte, in the store's field order: a
-	// reordered or dropped field is a wire change, not a detail.
 	if got := resp.Item.Raw.MarshalCompact(); got != openFinding {
 		t.Errorf("record = %s", got)
 	}

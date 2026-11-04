@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
-# Case publish-overview: script-computed collapsed overview (P3).
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   O1  table exactness vs fixture (columns, order, stable F1..Fn ids,
-#       +/- from PR.json, hunk counts from hunks.tsv, roles from roles.txt).
-#   O2  topology node/edge correctness + no-invented-relations (PR fan-out
-#       to every file; edges only where an added line names another changed
-#       file; the unmentioned file carries no edges).
-#   O3  threshold both directions (7-file/small omitted; 9-file shown;
-#       2-file/30KB shown via the byte trigger).
-#   O4  flag overrides both ways (small + --overview shown;
-#       large + --no-overview omitted).
-#   O5  omitted default: a below-threshold bundle renders with no
-#       <details> overview.
-#   O6  precedence flags > file > env (file/env false hide a large bundle;
-#       --overview wins over a false file).
-#   M1  the manual carries the threshold paragraph (numbers, flags, row-id
-#       reservation note).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -28,7 +11,6 @@ unset REVIEW_PUBLISH_OVERVIEW || true
 SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-# --- shared fixture: 4 files, known hunks/roles, two real mentions ---
 mk_overview_fixture() {
   local pr="$1"
   local dir="$EVAL_SANDBOX/.review/$pr"
@@ -99,7 +81,6 @@ extract_overview() { # $1 = report file; prints the two <details> blocks
   awk '/^<details>$/{on=1} on{print} /^<\/details>$/{c++; if(c==2)exit}' "$1"
 }
 
-# --- O1 + O2: exact table and topology vs fixture ---
 PR=4601
 mk_overview_fixture "$PR"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4601.md" --overview
@@ -156,7 +137,6 @@ else
   bad "overview placement drifted"
 fi
 
-# --- O3: threshold both directions ---
 mk_sized_bundle() { # $1 = pr, $2 = file count, $3 = pad lines per file
   local pr="$1" n="$2" pad="$3"
   local dir="$EVAL_SANDBOX/.review/$pr" i
@@ -205,7 +185,6 @@ else
   bad "threshold byte side gave exit $EVAL_STATUS"
 fi
 
-# --- O4: flag overrides both ways ---
 run_review report acme/app 4603 --output "$EVAL_SANDBOX/out-4606.md" --overview
 if [ "$EVAL_STATUS" -eq 0 ] && grep -Fq '<summary>Files changed (7)</summary>' "$EVAL_SANDBOX/out-4606.md"; then
   good "--overview forces show below threshold"
@@ -216,7 +195,6 @@ run_review report acme/app 4604 --output "$EVAL_SANDBOX/out-4607.md" --no-overvi
 assert_exit "--no-overview render succeeds" 0
 assert_file_nogrep "--no-overview forces hide above threshold" "$EVAL_SANDBOX/out-4607.md" "Files changed"
 
-# --- O5: omitted default (below threshold renders with no overview) ---
 mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 run_review report acme/app 4601 --output "$EVAL_SANDBOX/out-new.md"
@@ -224,7 +202,6 @@ assert_exit "omitted-default render succeeds" 0
 assert_file_nogrep "below threshold the report renders with no <details> overview" "$EVAL_SANDBOX/out-new.md" "<details>"
 unset XDG_CONFIG_HOME || true
 
-# --- O6: precedence flags > file > env ---
 mkdir -p "$EVAL_SANDBOX/xdg-ov/verdict"
 printf '{"publish":{"overview":false}}' > "$EVAL_SANDBOX/xdg-ov/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-ov"
@@ -246,7 +223,6 @@ assert_exit "env-off render succeeds" 0
 assert_file_nogrep "env false alone (no file) hides a large bundle" "$EVAL_SANDBOX/out-4610.md" "Files changed"
 unset REVIEW_PUBLISH_OVERVIEW || true
 
-# --- O7: colliding basenames label the edge with the full path ---
 PR=4611
 dir="$EVAL_SANDBOX/.review/$PR"
 mkdir -p "$dir"
@@ -290,7 +266,6 @@ assert_exit "collision bundle renders" 0
 assert_file_grep "colliding basenames label the edge with the full path" "$EVAL_SANDBOX/out-4611.md" 'F3 -->|"uses b/theme.ts"|' "-F"
 assert_file_nogrep "colliding basenames never drop to the bare basename" "$EVAL_SANDBOX/out-4611.md" 'uses theme.ts"|' "-F"
 
-# --- M1: manual carries the threshold paragraph ---
 if grep -Fq '24KB (24576 bytes)' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq -- '--overview' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq -- '--no-overview' "$EVAL_ROOT/docs/manual.md" \
@@ -301,7 +276,6 @@ else
   bad "overview paragraph missing from docs/manual.md"
 fi
 
-# --- cleanup: no knob state leaks into later cases ---
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-ov"

@@ -2,13 +2,6 @@
 // global flag strip, the layered preferences resolution (flags > file >
 // env > defaults), warning accumulation, and typed refusals rendered either
 // as a machine envelope (--json) or human text with frozen exit codes.
-//
-// Byte stability of the CLI contract is the point: message strings, key
-// order, exit codes, and the flags-win-over-file-over-env precedence are
-// frozen. The one deliberate deviation
-// is logging: GO-LOG-01 wants slog, but the frozen CLI contract emits
-// exactly `warn: ...` / `error: ...` lines, so this package writes those
-// bytes directly instead of a log [record] with timestamps.
 package cli
 
 import (
@@ -46,15 +39,12 @@ type Runner struct {
 	Pr                 string
 	Repo               string
 	Warnings           []string
-	// Candidates carries the fetch oversize narrowing suggestions for the
-	// refusal envelope (nil on every other verb, so their envelopes stay
-	// byte-identical). The fetch diff-too-large refusal is the only writer.
-	Candidates   []any
-	JSONMode     bool
-	JSONPeeked   bool
-	EnvNoColor   bool
-	PrefColorSet bool
-	NoColor      bool
+	Candidates         []any
+	JSONMode           bool
+	JSONPeeked         bool
+	EnvNoColor         bool
+	PrefColorSet       bool
+	NoColor            bool
 }
 
 // Effective is core's render configuration (alias of core.Effective).
@@ -100,8 +90,6 @@ type RefusalError = core.RefusalError
 // Refuse renders a refusal and returns exit 1 (check_gate stays false on the
 // record path, so every refusal exits 1): the one exception is a cancel,
 // which exits 3 wherever it is rendered (GO-CLI-05, see [Runner.RefuseExit]).
-// The edge accepts error and recovers the typed refusal with [errors.As];
-// non-refusal errors render as internal failures, never silently.
 func (r *Runner) Refuse(err error) int {
 	return r.RefuseExit(err, ExitRefused)
 }
@@ -194,8 +182,6 @@ func (r *Runner) Canceled(ctx context.Context, verb string) (int, bool) {
 	return r.RefuseExit(&RefusalError{Code: CodeCanceled, Message: "canceled before " + verb + " completed"}, ExitBroke), true
 }
 
-// refusalObject builds the envelope error object with the additive
-// candidate and retry_at keys (absent keys stay dropped).
 func (r *Runner) refusalObject(ref *RefusalError, msg string) *jq.Obj {
 	errObj := jq.NewObj("code", ref.Code, "message", msg)
 	if r.Candidates != nil {
@@ -207,7 +193,6 @@ func (r *Runner) refusalObject(ref *RefusalError, msg string) *jq.Obj {
 	return errObj
 }
 
-// refusalOf recovers the typed refusal carried by err via [errors.As].
 func refusalOf(err error) (*RefusalError, bool) {
 	if ref, ok := errors.AsType[*RefusalError](err); ok {
 		return ref, true

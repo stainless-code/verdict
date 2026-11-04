@@ -71,9 +71,6 @@ func (d *Data) Wire() *jq.Obj {
 	return data
 }
 
-// state carries one trend run: the request, the accumulated warnings,
-// and the buffered human lines (human mode prints after the run, so the
-// warnings streamed during the scan keep their position).
 type state struct {
 	req      *Request
 	warnings []string
@@ -110,18 +107,15 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	}, nil
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// human buffers one human output line for the human-mode summary.
 func (st *state) human(line string) {
 	st.lines = append(st.lines, line)
 }
 
-// row is one per-bundle rollup point.
 type row struct {
 	prov     *jq.Obj
 	byStatus map[string]int
@@ -134,9 +128,6 @@ type row struct {
 	hasAt    bool
 }
 
-// collectRows owns the per-bundle scan: every .review/*/ carrying a
-// findings array is one point in time; unreadable stores warn and skip,
-// never fail.
 func collectRows(st *state) []row {
 	entries, err := os.ReadDir(".review")
 	if err != nil {
@@ -155,8 +146,6 @@ func collectRows(st *state) []row {
 	return rows
 }
 
-// readBundleRow handles one bundle's read: non-dirs and unreadable or
-// misshapen stores warn and skip.
 func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 	if !e.IsDir() {
 		return row{}, false
@@ -181,7 +170,6 @@ func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 	return buildRow(bundle, name, findings), true
 }
 
-// buildRow builds one bundle row.
 func buildRow(bundle, name string, findings []any) row {
 	at, hasAt := bundleTime(bundle)
 	return row{
@@ -197,8 +185,6 @@ func buildRow(bundle, name string, findings []any) row {
 	}
 }
 
-// bundleTime owns the bundle timestamp: post.json posted_at, else
-// record.json recorded_at, else undated.
 func bundleTime(bundle string) (string, bool) {
 	if isRegular(bundle + "post.json") {
 		if at := readcommon.JSONRaw(bundle+"post.json", "posted_at"); at != "" {
@@ -213,7 +199,6 @@ func bundleTime(bundle string) (string, bool) {
 	return "", false
 }
 
-// bundleModels owns the per-bundle model list (unique, invalid reads []).
 func bundleModels(bundle string) []any {
 	costs := readcommon.CostRecords(bundle)
 	if costs == nil {
@@ -232,8 +217,6 @@ func bundleModels(bundle string) []any {
 	return dedupeSorted(names)
 }
 
-// appendModelNames folds one record's models into the name list: nameless
-// models skip, non-object models invalidate the bundle read.
 func appendModelNames(names, models []any) ([]any, bool) {
 	for _, mm := range models {
 		var ok bool
@@ -244,7 +227,6 @@ func appendModelNames(names, models []any) ([]any, bool) {
 	return names, true
 }
 
-// appendModelName folds one model into the name list.
 func appendModelName(names []any, mm any) ([]any, bool) {
 	m, ok := mm.(map[string]any)
 	if !ok {
@@ -260,7 +242,6 @@ func appendModelName(names []any, mm any) ([]any, bool) {
 	return append(names, name), true
 }
 
-// bundleEfforts owns the per-bundle effort list (unique, invalid reads []).
 func bundleEfforts(bundle string) []any {
 	costs := readcommon.CostRecords(bundle)
 	if costs == nil {
@@ -282,7 +263,6 @@ func bundleEfforts(bundle string) []any {
 	return efforts
 }
 
-// appendTier appends one normalized tier once.
 func appendTier(efforts []any, seen map[string]bool, tier string) []any {
 	if !seen[tier] {
 		seen[tier] = true
@@ -291,8 +271,6 @@ func appendTier(efforts []any, seen map[string]bool, tier string) []any {
 	return efforts
 }
 
-// bundleProvenance owns the per-bundle provenance triple: the post
-// receipt first, then the calibration record; old receipts read unmarked.
 func bundleProvenance(bundle string) *jq.Obj {
 	for _, rec := range []string{bundle + "post.json", bundle + "record.json"} {
 		if !isRegular(rec) {
@@ -305,7 +283,6 @@ func bundleProvenance(bundle string) *jq.Obj {
 	return unmarkedProvenance()
 }
 
-// provenanceTriple reads one receipt's triple, or nil when invalid.
 func provenanceTriple(path string) *jq.Obj {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -326,13 +303,10 @@ func provenanceTriple(path string) *jq.Obj {
 	)
 }
 
-// unmarkedProvenance renders the all-null triple.
 func unmarkedProvenance() *jq.Obj {
 	return jq.NewObj("tool_version", nil, "prompts_hash", nil, "model", nil)
 }
 
-// statusCounts counts findings by status; unknown statuses count nowhere,
-// mirroring the fixed-key by_status object.
 func statusCounts(findings []any) map[string]int {
 	counts := map[string]int{
 		statusOpen: 0, statusAddressed: 0, statusWontFix: 0, statusFalsePositive: 0, statusDeferred: 0,
@@ -345,7 +319,6 @@ func statusCounts(findings []any) map[string]int {
 	return counts
 }
 
-// tierCounts counts findings by tier (untagged for anything else).
 func tierCounts(findings []any) map[string]int {
 	counts := map[string]int{
 		tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
@@ -356,7 +329,6 @@ func tierCounts(findings []any) map[string]int {
 	return counts
 }
 
-// tierOf owns the trend tier: the raw severity or untagged.
 func tierOf(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -372,7 +344,6 @@ func tierOf(entry any) string {
 	return tierUntagged
 }
 
-// dedupeSorted dedupes values in jq order (unique).
 func dedupeSorted(vals []any) []any {
 	if vals == nil {
 		return []any{}
@@ -391,7 +362,6 @@ func dedupeSorted(vals []any) []any {
 	return out
 }
 
-// isRegular reports whether path is a regular file.
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()

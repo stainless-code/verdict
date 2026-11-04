@@ -1,23 +1,5 @@
 #!/usr/bin/env bash
-# Case publish-diagram: opt-in behavioral diagram (P4).
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   D1  knob matrix: off default strips (exit 0, disposition stripped);
-#       file behavioral=true keeps collapsed and silent; file expanded=true
-#       renders open (body-chars delta of exactly 5 for <details> open).
-#   D2  contract presence: prompts/diagrams.md carries the 7-type map,
-#       honesty rule, one-diagram cap, tables-stay-tables, marker pair, and
-#       generated label; review.md references the fragment.
-#   D3  grammar validation: beta keyword drops with a note; unbalanced drops
-#       fails-soft; empty drops; cap keeps the first; unmarked valid keeps
-#       with a warn; fenceless markers drop — all exit 0, never a failure.
-#   D4  structural split: diagrams.structural=false hides the P3 topology
-#       half but keeps the table; the default keeps today's bytes.
-#   D5  no-diagram default: a diagram-less bundle renders with no diagram
-#       line.
-#   D6  precedence flags > file > env on the new knobs.
-#   D7  unknown diagrams keys and non-boolean values refuse typed bad-settings.
-#   M1  the manual carries the behavioral paragraph (knobs, flags, markers).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -32,7 +14,6 @@ diagram_field() { jq -r ".data.body.diagram.$1 // empty" <"$EVAL_OUT" 2>/dev/nul
 diagram_bool() { jq -r ".data.body.diagram.$1" <"$EVAL_OUT" 2>/dev/null; }
 body_chars() { grep -o 'body chars: [0-9]*' "$EVAL_OUT" | grep -o '[0-9]*'; }
 
-# --- D1a: off default strips (opt-in, renders only when set) ---
 PR=4701
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -54,7 +35,6 @@ else
   bad "human dry-run disposition missing (exit $EVAL_STATUS)"
 fi
 
-# --- D1b: file behavioral=true keeps collapsed and silent ---
 mkdir -p "$EVAL_SANDBOX/xdg-beh/verdict"
 printf '{"publish":{"diagrams":{"behavioral":true}}}' > "$EVAL_SANDBOX/xdg-beh/verdict/settings.json"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-beh"
@@ -74,7 +54,6 @@ else
   bad "human kept disposition missing (exit $EVAL_STATUS)"
 fi
 
-# --- D1c: expanded renders open (wrapper swap is exactly 5 chars: " open") ---
 printf '{"publish":{"diagrams":{"behavioral":true,"expanded":true}}}' > "$EVAL_SANDBOX/xdg-beh/verdict/settings.json"
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -93,7 +72,6 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- D2: contract presence (map + honesty + cap in the prompt text) ---
 frag="$EVAL_SKILL/prompts/diagrams.md"
 if [ -f "$frag" ] \
   && grep -Fq 'sequenceDiagram' "$frag" && grep -Fq 'stateDiagram' "$frag" \
@@ -122,7 +100,6 @@ else
   bad "review.md hook missing"
 fi
 
-# --- D3b: beta keyword drops with a note, never fails ---
 PR=4702
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -141,7 +118,6 @@ else
   bad "beta path gave exit $EVAL_STATUS status '$(diagram_status)'"
 fi
 
-# --- D3c: unbalanced fence drops fails-soft ---
 PR=4703
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -156,7 +132,6 @@ else
   bad "unbalanced path gave exit $EVAL_STATUS status '$(diagram_status)'"
 fi
 
-# --- D3d: empty fence drops ---
 PR=4704
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'

@@ -8,7 +8,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// JSON Schema keywords and JSON type names used by the reflector.
 const (
 	schemaType                 = "type"
 	schemaProperties           = "properties"
@@ -32,9 +31,6 @@ const (
 	floatBits                  = 64
 )
 
-// internalFieldNames are request fields the transport owns: the injected
-// runtime, presentation prefs, adapter streams, and CLI-only switches. They
-// never appear in a tool schema or accept an argument.
 var internalFieldNames = map[string]bool{
 	"Runtime":     true,
 	"Root":        true,
@@ -49,30 +45,20 @@ var internalFieldNames = map[string]bool{
 	"Interactive": true,
 }
 
-// schemaSource is one tool's schema source type. The registry treats it as an
-// opaque handle; this file is the only production code that reaches through
-// reflect, and only to derive the JSON schema from the request struct.
 type schemaSource = reflect.Type
 
-// schemaOf names the schema source for one request type.
 func schemaOf[Req any]() schemaSource { return reflect.TypeFor[Req]() }
 
-// readRequestType is core's embedded transport-neutral invocation.
 var readRequestType = reflect.TypeFor[core.ReadRequest]()
 
-// effectiveType is core's resolved presentation configuration.
 var effectiveType = reflect.TypeFor[core.Effective]()
 
-// visibleField is one request field the transport exposes.
 type visibleField struct { //nolint:govet // field grouping documents the walk; alignment is irrelevant
 	sf     reflect.StructField
 	index  []int
 	nested bool
 }
 
-// visibleFields lists the request fields a tool exposes. Anonymous
-// core.ReadRequest embeddings inline (the transport speaks repo/pr
-// directly); named structs such as the verb Flags stay nested objects.
 //
 //nolint:revive // the field-policy walk is one flat loop
 func visibleFields(t reflect.Type, omit map[string]bool) []visibleField {
@@ -99,13 +85,10 @@ func visibleFields(t reflect.Type, omit map[string]bool) []visibleField {
 	return fields
 }
 
-// hasVisibleFields reports whether t carries at least one exposed field.
 func hasVisibleFields(t reflect.Type, omit map[string]bool) bool {
 	return len(visibleFields(t, omit)) > 0
 }
 
-// skipField applies the transport's field policy: unexported or json:"-"
-// fields, the adapter-owned names above, and non-data kinds.
 func skipField(sf *reflect.StructField, omit map[string]bool) bool {
 	if sf.PkgPath != "" || sf.Tag.Get("json") == "-" {
 		return true
@@ -120,8 +103,6 @@ func skipField(sf *reflect.StructField, omit map[string]bool) bool {
 	return sf.Type.Kind() == reflect.Interface || sf.Type.Kind() == reflect.Func
 }
 
-// argName maps a Go field name to the tool argument key: an explicit json
-// tag wins, otherwise lowerCamelCase (BaseSHA -> baseSHA, ID -> id).
 func argName(sf *reflect.StructField) string {
 	if tag := sf.Tag.Get("json"); tag != "" {
 		if name, _, _ := strings.Cut(tag, ","); name != "" {
@@ -131,9 +112,6 @@ func argName(sf *reflect.StructField) string {
 	return lowerCamel(sf.Name)
 }
 
-// lowerCamel lowercases a Go field name without mangling initialisms: a
-// leading uppercase run becomes lowercase, except its last letter when a
-// lowercase letter follows (BaseSHA -> baseSHA, URLPath -> urlPath).
 func lowerCamel(name string) string {
 	if name == "" {
 		return ""
@@ -154,9 +132,6 @@ func lowerCamel(name string) string {
 	}
 }
 
-// fieldSchema builds one property schema from the field's Go type, the
-// shared description table, and the closed vocabulary / numeric bounds the
-// request struct already declares.
 func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool) (map[string]any, bool) {
 	node, ok := typeSchema(sf.Type, omit)
 	if !ok {
@@ -171,9 +146,6 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 	return node, true
 }
 
-// applyEnum turns the "a|b" enum tag into the schema's closed vocabulary.
-// Nullable enum tags (schemagen's "a|null" spelling) do not appear on
-// request fields; a literal null member would still be a valid JSON value.
 func applyEnum(node map[string]any, sf *reflect.StructField) {
 	spec := sf.Tag.Get(tagEnum)
 	if spec == "" {
@@ -187,7 +159,6 @@ func applyEnum(node map[string]any, sf *reflect.StructField) {
 	node[schemaEnum] = values
 }
 
-// applyBound copies one numeric tag onto the schema when it parses.
 func applyBound(node map[string]any, key, raw string) {
 	if raw == "" {
 		return
@@ -201,9 +172,6 @@ func applyBound(node map[string]any, key, raw string) {
 	}
 }
 
-// typeSchema maps a Go type to a JSON Schema node. It is intentionally a
-// small subset: strings, booleans, integers, numbers, string arrays, and
-// nested request structs.
 func typeSchema(t reflect.Type, omit map[string]bool) (map[string]any, bool) {
 	if t.Kind() == reflect.Pointer {
 		return typeSchema(t.Elem(), omit)
@@ -230,7 +198,6 @@ func typeSchema(t reflect.Type, omit map[string]bool) (map[string]any, bool) {
 	}
 }
 
-// objectSchema renders one nested request struct as a closed object.
 func objectSchema(t reflect.Type, omit map[string]bool) map[string]any {
 	props := make(map[string]any)
 	fields := visibleFields(t, omit)
@@ -253,8 +220,6 @@ func objectSchema(t reflect.Type, omit map[string]bool) map[string]any {
 	}
 }
 
-// inputSchema builds a tool's top-level input schema from its request
-// struct. There is no hand-maintained duplicate: the schema is the struct.
 //
 //nolint:revive // schema assembly is one flat field loop
 func inputSchema(t *tool) map[string]any {
@@ -285,42 +250,41 @@ func inputSchema(t *tool) map[string]any {
 	}
 }
 
-// fieldDocs carries the request fields' meaning. Structure is reflected
-// from the Go types; this table only adds prose (tool descriptions carry
-// the verb-level contract).
 var fieldDocs = map[string]string{
-	"Repo":       "Repository as owner/name.",
-	"Pr":         "Pull-request number or bundle slug (local-<name> for local bundles).",
-	"Sig":        "Finding signature or unique prefix.",
-	"Status":     "Target status (open, addressed, wont-fix, false-positive, deferred).",
-	"Expect":     "Comma-separated allowlist of paths that may be dirty.",
-	"From":       "Local bundle slug to adopt findings from.",
-	"Check":      "Gate tier (critical, important, informational); empty disables the gate.",
-	"Live":       "Live-thread posture (auto, strict, skip).",
-	"Output":     "Write the rendered report markdown to this path.",
-	"Sarif":      "Write a SARIF report to this path.",
-	"Overlap":    "Join overlapping findings across bundles.",
-	"Probe":      "Grade the offline probe instead of joining live state.",
-	"Specs":      "Judge specs to grade (probe mode).",
-	"JudgeFile":  "Path to a judge spec file (probe mode).",
-	"Rule":       "Rule text to append (learn).",
-	"Scope":      "Rule scope (repo, path, or language).",
-	"ID":         "Explicit rule id.",
-	"Provenance": "Rule provenance label.",
-	"Rigor":      "Rule rigor level.",
-	"Reason":     "Retirement reason (30+ characters).",
-	"Retire":     "Rule id to retire.",
-	"Restore":    "Rule id to restore.",
-	"Preset":     "Scaffold preset (chill, standard, strict).",
-	"Yes":        "Confirm overwriting existing control files.",
-	"TimeoutRaw": "Verification timeout in seconds (positive integer).",
-	"Rationale":  "Explanation for the status change.",
-	"Force":      "Override the refusal that would otherwise block the change.",
-	"DryRun":     "Report what would change without writing.",
+	"Repo":          "Repository as owner/name.",
+	"Pr":            "Pull-request number or bundle slug (local-<name> for local bundles).",
+	"Sig":           "Finding signature or unique prefix.",
+	"Status":        "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
+	"Kind":          "Kind filter (inline, section, all).",
+	"Expect":        "Comma-separated allowlist of paths that may be dirty.",
+	"From":          "Local bundle slug to adopt findings from.",
+	"Check":         "Gate tier (critical, important, informational); empty disables the gate.",
+	"Live":          "Live-thread posture (auto, strict, skip).",
+	"Output":        "Write the rendered report markdown to this path.",
+	"Sarif":         "Write a SARIF report to this path.",
+	"Overlap":       "Join overlapping findings across bundles.",
+	"Probe":         "Grade the offline probe instead of joining live state.",
+	"Specs":         "Judge specs to grade (probe mode).",
+	"JudgeFile":     "Path to a judge spec file (probe mode).",
+	"Rule":          "Rule text to append (learn).",
+	"Scope":         "Rule scope (repo, path, or language).",
+	"ID":            "Explicit rule id.",
+	"Provenance":    "Rule provenance label.",
+	"Rigor":         "Rule rigor level.",
+	"Reason":        "Retirement reason (30+ characters).",
+	"Retire":        "Rule id to retire.",
+	"Restore":       "Rule id to restore.",
+	"Preset":        "Scaffold preset (chill, standard, strict).",
+	"Yes":           "Confirm overwriting existing control files.",
+	"TimeoutRaw":    "Verification timeout in seconds (positive integer).",
+	"Rationale":     "Explanation for the status change.",
+	"Force":         "Override the refusal that would otherwise block the change.",
+	"DryRun":        "Report what would change without writing.",
+	"learn.Status":  "List rules with counters and precision (boolean list switch; learn sets no status).",
+	"next.Status":   "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
+	"triage.Status": "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
 }
 
-// fieldDescription resolves tool-specific prose first, then the shared
-// field table.
 func fieldDescription(toolName, field string) string {
 	if doc, ok := fieldDocs[toolName+"."+field]; ok {
 		return doc

@@ -8,17 +8,10 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// The keep-biased anchor partition doctrine lives in the core merge: these
-// legs moved here with the engine (slice 16) so post keeps only its
-// payload/guard tests.
-
-// anchorTestState builds an empty merge state for partition table tests;
-// the hunk rows reach the partition through classifyComment.
 func anchorTestState() *state {
 	return &state{}
 }
 
-// anchorComment builds a minimal review comment object.
 func anchorComment(path, line, start, side string) *jq.Obj {
 	m := jq.NewObj(fieldPath, path, fieldLine, line, "side", side, fieldBody, "note body here")
 	if start != "" {
@@ -70,7 +63,6 @@ func checkAnchorPartition(t *testing.T, rows []hunks.Hunk, tc anchorCase) {
 	}
 }
 
-// anchorCase is one keep-biased partition leg.
 type anchorCase struct {
 	name string
 	path string
@@ -116,8 +108,6 @@ func TestAnchorOverflowKeepsWithWarning(t *testing.T) {
 	})
 }
 
-// checkAnchorWarning asserts a non-numeric anchor keeps with the exact
-// warning, never a wrapped span.
 func checkAnchorWarning(t *testing.T, rows []hunks.Hunk, line string) {
 	t.Helper()
 	st := anchorTestState()
@@ -131,7 +121,6 @@ func checkAnchorWarning(t *testing.T, rows []hunks.Hunk, line string) {
 	}
 }
 
-// checkAnchorKept asserts a numeric anchor stays inline with no warning.
 func checkAnchorKept(t *testing.T, rows []hunks.Hunk, line string) {
 	t.Helper()
 	st := anchorTestState()
@@ -171,8 +160,6 @@ func TestAnchorClassifyAllocsFlatInHunks(t *testing.T) {
 	}
 }
 
-// anchorClassifyBytes measures one comment classification against an index
-// of n hunks, the last of which holds the comment.
 func anchorClassifyBytes(t *testing.T, n int) uint64 {
 	t.Helper()
 	hs := make([]hunks.Hunk, 0, n)

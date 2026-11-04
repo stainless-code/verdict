@@ -1,24 +1,5 @@
 #!/usr/bin/env bash
-# Case verify-fuzz-corpus: data-driven adversarial battery for the verify
-# pre-exec gate, graded from evals/fixtures/verify-fuzz-corpus.tsv.
 #
-# Grades (hermetic — crafted patch.json fixtures, commands aimed at
-# sandbox-relative paths or the 127.0.0.1:9 discard port, tight --timeout):
-#   strict refuse rows must refuse typed (exit 1, exact error.code, one-doc
-#     envelope with data null, try: hint plus quoted fragment, patch.json
-#     byte-identical, no .verify.out write) — an executing strict row is a
-#     NEW BYPASS and fails the suite (record it as xfail, never fix the
-#     gate by editing the corpus).
-#   xfail refuse rows pin known gaps: executing is the recorded expectation
-#     (tallied, suite stays green); refusing is an XPASS and fails the suite
-#     with a "promote to strict" message (the gap closed — update the corpus).
-#   strict PASS rows must execute (error null, numeric data.exit, verifyExit
-#     recorded, .verify.out written) — a refusal is a FALSE POSITIVE and
-#     fails the suite.
-#
-# The TSV is language-neutral (id, expect, mode, command tab-separated, no
-# quoting rules) so the Go port reuses the file unchanged. Extend by
-# appending one line; the format is documented in the TSV header.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -27,10 +8,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 CORPUS_SRC="$HERE/../fixtures/verify-fuzz-corpus.tsv"
 if [ ! -f "$CORPUS_SRC" ]; then echo "corpus missing: $CORPUS_SRC" >&2; exit 1; fi
 
-# The TSV stays language-neutral; the runtime copy only rewrites the shared
-# /tmp namespace to a private one. Executed rows use /tmp scratch, so without
-# this two copies of the suite (or a future nested run) would clobber the
-# same fixed files.
 FUZZ_TMP="$(mktemp -d /tmp/verify-fuzz.XXXXXX)"
 trap 'rm -rf "$FUZZ_TMP"' EXIT
 CORPUS="$EVAL_SANDBOX/verify-fuzz-corpus.tsv"
@@ -39,8 +16,6 @@ sed "s#/tmp/verify-fuzz[.-]#$FUZZ_TMP/#g" "$CORPUS_SRC" >"$CORPUS"
 strict_ok=0 pass_ok=0 xfail_ok=0
 refused_total=0 executed_total=0
 
-# Sandbox fixtures the executed rows need (executed = gate passed, command
-# really runs — keep every fixture inert and fast):
 printf 'line1\n' > "$EVAL_SANDBOX/fz-notes.txt"
 printf -- '-s\n' > "$FUZZ_TMP/curlcfg"
 printf 'http://127.0.0.1:9/f\n' > "$FUZZ_TMP/wgeturls"
@@ -51,8 +26,6 @@ chmod +x "$FUZZ_TMP/fetched" 2>/dev/null || true
 AWS_KEY="fuzzcanary"
 export AWS_KEY
 
-# run_probe <pr>: run verify for the row's patch.json; sets PROBE_STATUS and
-# PROBE_CODE (empty when the command executed instead of refusing).
 run_probe() { # $1 = pr
   local pr="$1"
   run_review verify acme/app "$pr" --json --timeout 10
@@ -152,8 +125,6 @@ while IFS="$TAB" read -r id expect mode command; do
   esac
 done < "$CORPUS"
 
-# Fixture cleanup: the private /tmp dir goes with the EXIT trap; the sandbox
-# dir goes with run.sh.
 rm -rf "$FUZZ_TMP"
 rm -f "$EVAL_SANDBOX/fz-notes.txt" "$EVAL_SANDBOX/f" "$EVAL_SANDBOX/fz-out"
 

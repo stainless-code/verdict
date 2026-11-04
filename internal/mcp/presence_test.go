@@ -20,8 +20,6 @@ func TestPresenceFieldsCovered(t *testing.T) {
 	}
 }
 
-// auditPresence walks one request type recursively, checking every Has* bool
-// it finds against the owning presence table.
 //
 //nolint:revive // the audit is one branch per field shape
 func auditPresence(t *testing.T, tool string, typ reflect.Type, visited map[reflect.Type]bool) {
@@ -52,7 +50,6 @@ func auditPresence(t *testing.T, tool string, typ reflect.Type, visited map[refl
 	checkPresenceNames(t, tool, typ, reflect.ValueOf(deriver).Elem(), table)
 }
 
-// presenceFields lists the Has* bools of one struct type.
 func presenceFields(typ reflect.Type) []reflect.StructField {
 	var present []reflect.StructField
 	for sf := range typ.Fields() {
@@ -63,7 +60,6 @@ func presenceFields(typ reflect.Type) []reflect.StructField {
 	return present
 }
 
-// presenceEntries indexes a presence table by flag name.
 func presenceEntries(t *testing.T, tool string, typ reflect.Type, deriver core.PresenceDeriver) map[string]*bool {
 	t.Helper()
 	table := map[string]*bool{}
@@ -77,8 +73,6 @@ func presenceEntries(t *testing.T, tool string, typ reflect.Type, deriver core.P
 	return table
 }
 
-// checkPresenceFields proves each Has* field is hidden from the schema and
-// that the table entry points at that exact field.
 //
 //nolint:revive // the field audit reads as one assertion block
 func checkPresenceFields(t *testing.T, tool string, typ reflect.Type, value reflect.Value, present []reflect.StructField, table map[string]*bool) {
@@ -105,7 +99,6 @@ func checkPresenceFields(t *testing.T, tool string, typ reflect.Type, value refl
 	}
 }
 
-// checkPresenceNames proves every table entry names a real bool field.
 func checkPresenceNames(t *testing.T, tool string, typ reflect.Type, value reflect.Value, table map[string]*bool) {
 	t.Helper()
 	for name := range table {

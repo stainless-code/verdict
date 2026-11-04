@@ -7,8 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Provider payload keys the mappers share. Revive's constant rule wants the
-// repeated wire keys named once per package.
 const (
 	keyAuthor    = "author"
 	keyBody      = "body"
@@ -19,11 +17,6 @@ const (
 	keyLogin     = "login"
 	keyPath      = "path"
 )
-
-// This file holds the six host mappers. Each one takes a decoded provider
-// payload (never a process) and returns the shared thread shape. Field
-// sources are named per mapper; anything a host does not publish stays
-// null/false rather than being guessed.
 
 // FromGitHubThreads maps GraphQL reviewThreads nodes. Resolution and
 // outdated state are GitHub's own isResolved/isOutdated; the thread id is the
@@ -43,7 +36,6 @@ func FromGitHubThreads(nodes []any) ([]Thread, bool) {
 	return out, capped
 }
 
-// gitHubThread maps one GraphQL review-thread node.
 func gitHubThread(m map[string]any) (Thread, bool) {
 	if m == nil {
 		return Thread{}, false
@@ -66,7 +58,6 @@ func gitHubThread(m map[string]any) (Thread, bool) {
 	return t, capped
 }
 
-// gitHubComments maps a GraphQL comment connection.
 func gitHubComments(conn map[string]any) ([]Comment, string, bool) {
 	var out []Comment
 	url := ""
@@ -84,7 +75,6 @@ func gitHubComments(conn map[string]any) ([]Comment, string, bool) {
 	return out, url, ok && total > len(out)
 }
 
-// gitHubComment maps one GraphQL review-comment node.
 func gitHubComment(m map[string]any) Comment {
 	author := obj(m[keyAuthor])
 	login := str(author, keyLogin)
@@ -119,7 +109,6 @@ func FromReviewBodies(reviews []any) []Thread {
 	return out
 }
 
-// reviewThread maps one review-summary record.
 func reviewThread(m map[string]any) (Thread, bool) {
 	if m == nil {
 		return Thread{}, false
@@ -170,7 +159,6 @@ func FromGitLab(discussions []any, headSHA string) []Thread {
 	return out
 }
 
-// gitLabThread maps one discussion.
 func gitLabThread(dm map[string]any, headSHA string) (Thread, bool) {
 	if dm == nil {
 		return Thread{}, false
@@ -189,7 +177,6 @@ func gitLabThread(dm map[string]any, headSHA string) (Thread, bool) {
 	return finishThread(&t)
 }
 
-// gitLabNotes filters a discussion's system notes.
 func gitLabNotes(dm map[string]any) []map[string]any {
 	var notes []map[string]any
 	for _, n := range list(dm["notes"]) {
@@ -202,7 +189,6 @@ func gitLabNotes(dm map[string]any) []map[string]any {
 	return notes
 }
 
-// gitLabComments maps every non-system note.
 func gitLabComments(notes []map[string]any) []Comment {
 	comments := make([]Comment, 0, len(notes))
 	for _, nm := range notes {
@@ -211,7 +197,6 @@ func gitLabComments(notes []map[string]any) []Comment {
 	return comments
 }
 
-// gitLabAnchor reads the root note's diff position.
 func gitLabAnchor(root map[string]any, t *Thread, headSHA string) {
 	pos := obj(root["position"])
 	if pos == nil || (pos["new_line"] == nil && pos["old_line"] == nil) {
@@ -233,7 +218,6 @@ func gitLabAnchor(root map[string]any, t *Thread, headSHA string) {
 	t.Outdated = head != "" && headSHA != "" && head != headSHA
 }
 
-// gitLabComment maps one GitLab note.
 func gitLabComment(m map[string]any) Comment {
 	author := obj(m[keyAuthor])
 	login := str(author, "username", "name")
@@ -265,7 +249,6 @@ func FromForgejo(reviews, comments []any, _ string) []Thread {
 	return out
 }
 
-// forgejoThread maps one Forgejo review comment.
 func forgejoThread(m map[string]any) (Thread, bool) {
 	if m == nil {
 		return Thread{}, false
@@ -329,7 +312,6 @@ func FromBitbucket(comments []any) []Thread {
 	return out
 }
 
-// plainComment builds a one-comment thread body from a host comment payload.
 func plainComment(m map[string]any, login, body string, truncated bool) Comment {
 	return Comment{
 		ID:         idStr(m[keyID]),
@@ -341,7 +323,6 @@ func plainComment(m map[string]any, login, body string, truncated bool) Comment 
 	}
 }
 
-// bitbucketKept drops deleted/pending comments and indexes the rest by id.
 func bitbucketKept(comments []any) ([]map[string]any, map[string]map[string]any) {
 	kept := make([]map[string]any, 0, len(comments))
 	byID := make(map[string]map[string]any, len(comments))
@@ -356,8 +337,6 @@ func bitbucketKept(comments []any) ([]map[string]any, map[string]map[string]any)
 	return kept, byID
 }
 
-// bitbucketGroups folds comments under their root, preserving first-seen
-// root order.
 func bitbucketGroups(
 	kept []map[string]any, byID map[string]map[string]any,
 ) (map[string][]map[string]any, []string) {
@@ -377,8 +356,6 @@ func bitbucketGroups(
 	return groups, order
 }
 
-// bitbucketRoot walks the parent chain to the comment that started a thread,
-// stopping when a parent is missing (dropped or outside the read).
 func bitbucketRoot(m map[string]any, byID map[string]map[string]any) map[string]any {
 	current := m
 	for range len(byID) + 1 {
@@ -395,11 +372,8 @@ func bitbucketRoot(m map[string]any, byID map[string]map[string]any) map[string]
 	return current
 }
 
-// bitbucketThread maps one root plus its replies.
 func bitbucketThread(root map[string]any, group []map[string]any) Thread {
 	inline := obj(root["inline"])
-	// Replies can land on a later page than their root: order the assembled
-	// thread by creation time so comments[0] stays the root.
 	slices.SortStableFunc(group, func(a, b map[string]any) int {
 		return strings.Compare(str(a, "created_on"), str(b, "created_on"))
 	})
@@ -426,7 +400,6 @@ func bitbucketThread(root map[string]any, group []map[string]any) Thread {
 	return t
 }
 
-// bitbucketComments maps one assembled thread's comments.
 func bitbucketComments(group []map[string]any) []Comment {
 	comments := make([]Comment, 0, len(group))
 	for _, m := range group {
@@ -461,7 +434,6 @@ func FromAzure(rawThreads []any) []Thread {
 	return out
 }
 
-// azureThread maps one Azure thread.
 func azureThread(m map[string]any) (Thread, bool) {
 	if m == nil || truthy(m["isDeleted"]) {
 		return Thread{}, false
@@ -487,7 +459,6 @@ func azureThread(m map[string]any) (Thread, bool) {
 	return finishThread(&t)
 }
 
-// azureComments keeps publishable human comments in thread order.
 func azureComments(m map[string]any) []Comment {
 	comments := make([]Comment, 0, len(list(m[keyComments])))
 	for _, cn := range list(m[keyComments]) {
@@ -510,7 +481,6 @@ func azureComments(m map[string]any) []Comment {
 	return comments
 }
 
-// azureCommentUsable drops deleted, system, unpublished, and empty comments.
 func azureCommentUsable(cm map[string]any) bool {
 	if cm == nil || truthy(cm["isDeleted"]) || str(cm, "commentType") == "system" {
 		return false
@@ -521,7 +491,6 @@ func azureCommentUsable(cm map[string]any) bool {
 	return str(cm, "content") != "" || str(obj(cm[keyAuthor]), "displayName", "uniqueName") != ""
 }
 
-// azureAnchor reads the right (new) side first, then the left (old) side.
 func azureAnchor(ctx map[string]any, t *Thread) {
 	if right := obj(ctx["rightFileStart"]); right != nil {
 		azureRightAnchor(ctx, right, t)
@@ -536,7 +505,6 @@ func azureAnchor(ctx map[string]any, t *Thread) {
 	}
 }
 
-// azureRightAnchor folds an end-line range into start_line/line.
 func azureRightAnchor(ctx, right map[string]any, t *Thread) {
 	t.Side = sidePtr(SideRight)
 	t.Line = positiveInt(right[keyLine])
@@ -579,7 +547,6 @@ func FromGitCafe(reviews, comments []any) []Thread {
 	return out
 }
 
-// gitCafeThread maps one GitCafe comment.
 func gitCafeThread(m map[string]any) (Thread, bool) {
 	if m == nil {
 		return Thread{}, false
@@ -609,7 +576,6 @@ func gitCafeThread(m map[string]any) (Thread, bool) {
 	return finishThread(&t)
 }
 
-// gitCafeAuthor reads the host's author handle/display name.
 func gitCafeAuthor(v any) string {
 	if s, ok := v.(string); ok {
 		return s
@@ -643,8 +609,6 @@ func finishThread(t *Thread) (Thread, bool) {
 // finding marker.
 func (t *Thread) foldRoot() {
 	if len(t.Comments) == 0 {
-		// No readable root comment: the author is unknown, which the feed
-		// still has to label (the same default AuthorKind gives an empty login).
 		t.AuthorKind = AuthorKind("", false, "")
 		return
 	}
@@ -659,8 +623,6 @@ func (t *Thread) foldRoot() {
 	}
 }
 
-// obj reads one decoded value as a plain map, accepting both the plain
-// decoder output and ordered objects.
 func obj(v any) map[string]any {
 	switch t := v.(type) {
 	case map[string]any:
@@ -679,11 +641,8 @@ func obj(v any) map[string]any {
 	}
 }
 
-// list reads one value as an array (nil reads empty).
 func list(v any) []any { return jq.Elements(v) }
 
-// idStr renders a host id as the contract's string: numeric ids are the
-// common case (GitLab, Bitbucket, Azure, Forgejo), GitHub uses string ids.
 func idStr(v any) string {
 	switch t := v.(type) {
 	case nil, bool:
@@ -699,7 +658,6 @@ func idStr(v any) string {
 	}
 }
 
-// firstNonNil returns the first non-nil value (threadId fallback).
 func firstNonNil(vals ...any) any {
 	for _, v := range vals {
 		if v != nil {
@@ -709,7 +667,6 @@ func firstNonNil(vals ...any) any {
 	return nil
 }
 
-// str reads the first non-empty string member.
 func str(m map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if s, ok := m[key].(string); ok && s != "" {
@@ -719,13 +676,11 @@ func str(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// truthy reads a host boolean exactly: only bool true is true.
 func truthy(v any) bool {
 	b, ok := v.(bool)
 	return ok && b
 }
 
-// intOf reads one numeric member (numbers or numeric strings).
 func intOf(v any) (int, bool) {
 	if v == nil {
 		return 0, false
@@ -737,7 +692,6 @@ func intOf(v any) (int, bool) {
 	return n, true
 }
 
-// positiveInt reads a positive line number, nil otherwise.
 func positiveInt(v any) *int {
 	n, ok := intOf(v)
 	if !ok || n <= 0 {
@@ -746,7 +700,6 @@ func positiveInt(v any) *int {
 	return &n
 }
 
-// sidePtr normalizes a host side label (empty reads nil).
 func sidePtr(v string) *string {
 	switch strings.ToUpper(strings.TrimSpace(v)) {
 	case SideLeft, "OLD":

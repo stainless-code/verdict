@@ -43,8 +43,6 @@ func TestRenderOverviewGate(t *testing.T) {
 	}
 }
 
-// overviewFixture writes one bundle with a full.diff and no PR.json, so the
-// paths, counts, and hunk columns all come from the diff fallback.
 func overviewFixture(t *testing.T, diff string) string {
 	t.Helper()
 	dir := t.TempDir()

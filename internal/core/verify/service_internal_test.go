@@ -29,7 +29,6 @@ func TestTruncateOutputsEmptiesEveryPath(t *testing.T) {
 	}
 }
 
-// writeStale seeds each path with bytes a previous run would leave behind.
 func writeStale(t *testing.T, paths ...string) {
 	t.Helper()
 	for _, p := range paths {
@@ -39,7 +38,6 @@ func writeStale(t *testing.T, paths ...string) {
 	}
 }
 
-// assertEmpty fails if any path still carries bytes.
 func assertEmpty(t *testing.T, paths ...string) {
 	t.Helper()
 	for _, p := range paths {

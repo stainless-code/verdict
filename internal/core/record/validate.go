@@ -8,10 +8,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// validateInputs validates review input and prior findings: every shape the
-// merge cannot read refuses here as a typed refusal, before any merge output
-// is written. The order is fixed (comments, resolved, triage, sections,
-// verification claims, prior store) so the first refusal is deterministic.
 func (st *state) validateInputs() error {
 	if err := checkCommentsShape(st.review); err != nil {
 		return err
@@ -31,9 +27,6 @@ func (st *state) validateInputs() error {
 	return checkPriorShape(st.dir)
 }
 
-// reviewList returns the named top-level claim list, or nil when absent,
-// null, or false (all read as "no claims", matching jq //). ok is false when
-// present but not an array.
 func reviewList(review *jq.Obj, key string) ([]any, bool) {
 	v, has := review.Get(key)
 	if !has || v == nil || v == false {
@@ -43,7 +36,6 @@ func reviewList(review *jq.Obj, key string) ([]any, bool) {
 	return arr, ok
 }
 
-// checkCommentsShape validates the comments claim list and its entries.
 func checkCommentsShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "comments")
 	if !ok {
@@ -61,10 +53,6 @@ func checkCommentsShape(review *jq.Obj) error {
 	return nil
 }
 
-// checkCommentScalars validates the string-concatenated comment fields: path,
-// body, and suggestion must be strings when present (absent, null, and false
-// read as absent). Numbers, booleans, and containers would corrupt the
-// rendered body, so they refuse here.
 func checkCommentScalars(m *jq.Obj) error {
 	for _, key := range []string{fieldPath, fieldBody, fieldSuggestion} {
 		v, has := m.Get(key)
@@ -78,7 +66,6 @@ func checkCommentScalars(m *jq.Obj) error {
 	return nil
 }
 
-// checkResolvedShape validates the resolved claim list: an array of strings.
 func checkResolvedShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "resolved")
 	if !ok {
@@ -92,7 +79,6 @@ func checkResolvedShape(review *jq.Obj) error {
 	return nil
 }
 
-// checkTriageShape validates the triage claim list: an array of objects.
 func checkTriageShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "triage")
 	if !ok {
@@ -106,7 +92,6 @@ func checkTriageShape(review *jq.Obj) error {
 	return nil
 }
 
-// checkSectionsShape validates the sections claim list: an array of objects.
 func checkSectionsShape(review *jq.Obj) error {
 	items, ok := reviewList(review, "sections")
 	if !ok {
@@ -120,9 +105,6 @@ func checkSectionsShape(review *jq.Obj) error {
 	return nil
 }
 
-// checkVerificationShape validates the verification.json claims: an absent or
-// unparsable file reads as no claims, but
-// a present file must hold an array of claim objects.
 func checkVerificationShape(dir string) error {
 	raw, err := readAgentFile(dir + "/verification.json")
 	if err != nil {
@@ -134,7 +116,6 @@ func checkVerificationShape(dir string) error {
 	return checkVerificationClaims(raw)
 }
 
-// checkVerificationClaims validates decoded verification claims.
 func checkVerificationClaims(raw []byte) error {
 	if raw == nil {
 		return nil
@@ -151,7 +132,6 @@ func checkVerificationClaims(raw []byte) error {
 	return checkClaimItems(items)
 }
 
-// checkClaimItems validates every verification claim is an object.
 func checkClaimItems(items []any) error {
 	for _, item := range items {
 		if m, ok := item.(*jq.Obj); !ok || m == nil {
@@ -161,13 +141,6 @@ func checkClaimItems(items []any) error {
 	return nil
 }
 
-// checkPriorShape validates the prior findings store: absent, empty, null,
-// false, or a JSON list read as (no) prior; anything else refuses as
-// corrupt-store — the run never starts fresh over history. Every present
-// element must be an object passing the store shape: exotic elements refuse
-// typed here instead of corrupting the store. Null reads as no prior for the
-// read verbs, but the merge indexes elements by sig, so the write path
-// refuses null too.
 func checkPriorShape(dir string) error {
 	path := dir + "/findings.json"
 	raw, ok := ReadOptional(path)
@@ -191,7 +164,6 @@ func checkPriorShape(dir string) error {
 	return checkPriorElements(path, items)
 }
 
-// checkPriorElements validates every prior element against the store shape.
 func checkPriorElements(path string, items []any) error {
 	for _, item := range items {
 		if !priorElementOK(item) {
@@ -201,9 +173,6 @@ func checkPriorElements(path string, items []any) error {
 	return nil
 }
 
-// priorElementOK reports whether one prior element passes the store shape:
-// a non-null object whose string-indexed fields read null-or-string and
-// whose indexed-map fields never read object-or-array (entries_guard).
 func priorElementOK(item any) bool {
 	m, ok := item.(*jq.Obj)
 	if !ok || m == nil {
@@ -212,7 +181,6 @@ func priorElementOK(item any) bool {
 	return priorScalarsOK(m) && priorMapsOK(m)
 }
 
-// priorScalarsOK validates the string-indexed fields.
 func priorScalarsOK(m *jq.Obj) bool {
 	for _, key := range []string{fieldSig, fieldBody, fieldHeading, "kind", fieldSuggestion} {
 		if v, has := m.Get(key); has && v != nil && v != false {
@@ -224,7 +192,6 @@ func priorScalarsOK(m *jq.Obj) bool {
 	return true
 }
 
-// priorMapsOK validates the indexed-map fields.
 func priorMapsOK(m *jq.Obj) bool {
 	for _, key := range []string{fieldSeverity, fieldRigor} {
 		if v, has := m.Get(key); has && isContainer(v) {
@@ -234,7 +201,6 @@ func priorMapsOK(m *jq.Obj) bool {
 	return true
 }
 
-// isContainer reports whether v decodes as a JSON object or array.
 func isContainer(v any) bool {
 	switch v.(type) {
 	case *jq.Obj, map[string]any, []any:

@@ -1,24 +1,5 @@
 #!/usr/bin/env bash
-# Case installer-binary: install.sh verifies and installs local fake releases.
 #
-# Grades (all hermetic: assets are built in the sandbox and served as file://,
-# a fake cosign records argv, fake uname/sysctl pin the platform):
-#   B1  happy path for each contract platform: the contract archive name is
-#       requested, the signature identity/issuer are passed to cosign, the
-#       SHA-256 is checked, only the expected binary is installed, and the
-#       installed binary is smoke-checked with --version from its final path.
-#   B2  Rosetta 2: a darwin/x86_64 shell with sysctl.proc_translated=1 installs
-#       the native darwin/arm64 archive and says so.
-#   B3  checksum mismatch and bad signature refuse, leaving the old binary;
-#       a verified archive whose binary cannot answer --version fails the
-#       install instead of passing silently.
-#   B4  unknown platform and wrong-arch archives refuse with the supported list.
-#   B5  version pin (vX.Y.Z) and latest-via-redirect (no API call).
-#   B6  PATH: one marked line only when missing; env and flag opt-outs.
-#   B7  local-file install makes no curl call; checksum-only warns or fails
-#       closed under VERDICT_REQUIRE_SIGNATURE=1.
-#   B8  re-install is idempotent; uninstall removes only managed files and its
-#       own PATH line; a foreign verdict is never removed.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -94,7 +75,6 @@ mk_release 3.0.0 linux amd64
 finish_release 3.0.0
 mk_release 9.9.9 linux amd64
 finish_release 9.9.9
-# Corrupt only 2.0.0's archive hash (the signature still passes).
 (cd "$REL/v2.0.0" && printf '%064d  verdict_2.0.0_linux_amd64.tar.gz\n' 0 > checksums.txt)
 
 contract="$EVAL_ROOT/release/contract.json"
@@ -139,7 +119,6 @@ run_install() {
 }
 fresh() { rm -rf "$INSTALL_DIR" "$CASE_HOME"; mkdir -p "$CASE_HOME"; : > "$COSIGN_LOG"; : > "$CURL_LOG"; }
 
-# --- B1 + B2: contract platform matrix, signature argv, Rosetta ---
 for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
   "darwin arm64 0 darwin arm64" "darwin amd64 1 darwin arm64"; do
   # shellcheck disable=SC2086
@@ -186,7 +165,6 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
   fi
 done
 
-# --- B3: checksum mismatch / bad signature leave the old binary ---
 fresh
 PLAT_OS=linux; PLAT_ARCH=amd64; ROSETTA=0; PIN=1.2.3; COSIGN_OVERRIDE=''; FAKE_COSIGN_STATUS=0
 run_install
@@ -218,7 +196,6 @@ else
   good "refused runs clean staging behind"
 fi
 
-# --- B3b: a verified archive whose binary cannot run still fails loudly ---
 printf '#!/bin/sh\nexit 3\n' > "$BIN_SRC"
 mk_release 4.0.0 linux amd64
 finish_release 4.0.0
@@ -231,7 +208,6 @@ fi
 printf '#!/bin/sh\nprintf "fake-verdict %%s\\n" "$*"\n' > "$BIN_SRC"
 chmod +x "$BIN_SRC"
 
-# --- B4: unknown platform, wrong arch, and local-archive mismatch ---
 PLAT_OS=SunOS; PLAT_ARCH=x86_64; PIN=1.2.3
 run_install
 if [ "$EVAL_STATUS" -ne 0 ] && grep -q "supported: darwin/amd64" "$EVAL_ERR"; then
@@ -261,7 +237,6 @@ else
   bad "local wrong-arch exit $EVAL_STATUS"
 fi
 
-# --- B5: version pin and latest via redirect (nil API) ---
 fresh
 PLAT_OS=linux; PLAT_ARCH=amd64; PIN=v3.0.0; COSIGN_OVERRIDE=''
 run_install
@@ -281,7 +256,6 @@ assert_file_grep "latest walks the redirect" "$CURL_LOG" "file://$REL/latest" "-
 assert_file_nogrep "latest never falls back to the API" "$CURL_LOG" 'api.github.com'
 EFFECTIVE_URL=''
 
-# --- B6: PATH append once, env and flag opt-outs ---
 fresh
 TEST_SHELL=/bin/zsh; PIN=1.2.3; NO_PATH=0
 printf 'export KEEP_ME=1\n' > "$CASE_HOME/.zshrc"
@@ -307,7 +281,6 @@ run_install --no-modify-path
 if [ ! -e "$CASE_HOME/.zshrc" ]; then good "--no-modify-path leaves shell config alone"; else bad "flag PATH opt-out wrote .zshrc"; fi
 NO_PATH=1
 
-# --- B7: local archive is network-free; checksum-only warns/fails closed ---
 fresh
 TEST_SHELL=/bin/sh; COSIGN_OVERRIDE="$FAKEBIN/cosign"
 run_install "$REL/v1.2.3/verdict_1.2.3_linux_amd64.tar.gz"
@@ -334,7 +307,6 @@ else
 fi
 REQUIRE_SIG=0; COSIGN_OVERRIDE=''
 
-# --- B8: idempotent re-install and uninstall semantics ---
 fresh
 PLAT_OS=linux; PLAT_ARCH=amd64; PIN=1.2.3
 run_install
@@ -369,7 +341,6 @@ else
 fi
 NO_PATH=1
 
-# --- restore + offline proof ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
   good "zero stub-gh intercepts across installer legs (offline)"
 else

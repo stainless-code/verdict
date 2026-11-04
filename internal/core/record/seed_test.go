@@ -7,9 +7,6 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 )
 
-// seedControls snapshots the sandbox's .review controls into the bundle
-// through the head opt-out, standing in for fetch's base resolution. A
-// bundle without a recorded base is left unseeded and must refuse.
 func seedControls(t *testing.T, bundleDir string) {
 	t.Helper()
 	base := recordcore.BundleBase(bundleDir, nil)

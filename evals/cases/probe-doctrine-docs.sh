@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
-# Case probe-doctrine-docs: gate doctrine + pre-push probe docs presence.
 #
-# Grades (all hermetic — docs-presence greps, no network, no model):
-#   D1  doctrine line: the Machine-surface passage names --json, never, and
-#       interactive together (one line: machine modes never prompt; the
-#       script never blocks on interactive setup or confirm); usage text
-#       still names --json.
-#   D2  probe subsection: the manual contains pre-push, the combined
-#       report --check --completeness recipe, and the .git/hooks/pre-push
-#       path.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# --- D1: machine-modes-never-prompt doctrine in Machine surface ---
 if grep -q "Machine modes never prompt" "$EVAL_ROOT/docs/manual.md" \
   && awk '/--json/ && /never/ && /interactive/ {found=1} END {exit !found}' \
     "$EVAL_ROOT/docs/manual.md"; then
@@ -28,7 +18,6 @@ else
   bad "usage text misses --json"
 fi
 
-# --- D2: pre-push probe subsection ---
 if grep -q "Pre-push probe" "$EVAL_ROOT/docs/manual.md" \
   && grep -q "pre-push" "$EVAL_ROOT/docs/manual.md" \
   && grep -q "\.git/hooks/pre-push" "$EVAL_ROOT/docs/manual.md" \

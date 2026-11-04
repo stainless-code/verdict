@@ -45,8 +45,6 @@ func fetchTail(
 	return data, next, nil
 }
 
-// writeFetchTailJSON owns the --json tail: the staged dump, the progress
-// lines, and the typed data for the adapter's envelope.
 func writeFetchTailJSON(
 	ctx2 *fetchRunCtx, f core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase, next string,
@@ -82,7 +80,6 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 	return d, true, nil
 }
 
-// writeFetchDone owns the human done/next lines.
 func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
@@ -204,7 +201,6 @@ func countHunkLines(fullDiff string) int {
 	return n
 }
 
-// panelVal owns the envelope's panel summary.
 func panelVal(ctx2 *fetchRunCtx) core.FetchPanel {
 	panel := core.FetchPanel{Members: append([]string{}, ctx2.panelList...)}
 	if ctx2.panelSrc != "" {
@@ -214,7 +210,6 @@ func panelVal(ctx2 *fetchRunCtx) core.FetchPanel {
 	return panel
 }
 
-// sensitiveVal owns the sensitive.txt artifact (path or null).
 func sensitiveVal(dir string) any {
 	if _, err := os.Stat(dir + "/sensitive.txt"); err == nil {
 		return dir + "/sensitive.txt"
@@ -267,7 +262,6 @@ func fetchData(
 	return data
 }
 
-// incrementalVal owns the incremental.diff artifact (path or null).
 func incrementalVal(dir, incBase string) any {
 	if incBase == nullStr {
 		return nil
@@ -291,7 +285,6 @@ func statFiles(st *fetchStats, dir string, m map[string]any) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
 }
 
-// addFetchExtras owns the conditional estimate/budget/cap/chunk keys.
 func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, chunkJSON any) {
 	if budget.hasBudget {
 		data.Estimate = budget.estimateJSON
@@ -318,7 +311,6 @@ func readDiffHunks(dir string) []string {
 	return out
 }
 
-// localFetchData owns the local envelope's data block.
 func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, adds, dels int, dump *string) *core.FetchData {
 	dir := ctx2.dir
 	withHunks := readDiffHunks(dir)
@@ -361,7 +353,6 @@ func localArtifacts(dir string) *jq.Obj {
 	return artifacts
 }
 
-// addArtifactIfPresent adds one optional artifact path.
 func addArtifactIfPresent(obj *jq.Obj, dir, key, suffix string) {
 	if _, err := os.Stat(dir + suffix); err == nil {
 		obj.Set(key, dir+suffix)

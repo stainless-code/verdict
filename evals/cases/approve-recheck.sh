@@ -1,25 +1,10 @@
 #!/usr/bin/env bash
-# Case approve-recheck: live open-thread recheck on the APPROVE path only.
 #
-# Grades (hermetic — crafted bundles, smart gh stub, no network):
-#   R1  clear: zero live opens -> the real post binds APPROVE (exit 0) and the
-#       APPROVE path pays the recheck call.
-#   R2  unknown-live: more live opens than local opens -> refuse APPROVE with
-#       the approve-blocked typed error naming the counts plus the
-#       triage-or-override path (exit 1, posts nothing).
-#   R3  override: the same unknown-live run with --force binds APPROVE.
-#   R4  unreachable: failed live lookup -> COMMENT downgrade with the reason in
-#       warnings and in the posted body (exit 0, never a silent APPROVE).
-#   R5  cheap paths: COMMENT, REQUEST_CHANGES, and --dry-run runs make zero
-#       recheck (graphql) calls.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Overlay a smart gh stub: live SHA + authorship + reviews POST succeed, the
-# threads (graphql) read follows $EVAL_SANDBOX/recheck-mode (clear|open, else
-# unreachable). Restored on exit so sibling cases keep the dead stub.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -50,7 +35,6 @@ exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
 
-# graphql_since <mark> — recheck (graphql) calls logged after <mark>.
 graphql_since() {
   local n
   n=$(tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "graphql" || true)
@@ -66,7 +50,6 @@ mk_clean() { # $1 = pr — clean bundle carrying an approving review
 EOF
 }
 
-# --- R1: clear recheck binds APPROVE ---
 PR=4271
 mk_clean "$PR"
 set_mode clear
@@ -89,7 +72,6 @@ else
   bad "APPROVE path made no recheck call"
 fi
 
-# --- R2: unknown live threads refuse APPROVE ---
 PR=4272
 mk_clean "$PR"
 set_mode open
@@ -115,7 +97,6 @@ else
   bad "refused APPROVE still wrote post.json"
 fi
 
-# --- R3: --force overrides the live refusal ---
 run_review post acme/app "$PR" --bind --force --json
 event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "APPROVE" ]; then
@@ -124,7 +105,6 @@ else
   bad "forced run gave exit $EVAL_STATUS event '$event', want 0/APPROVE"
 fi
 
-# --- R4: unreachable recheck downgrades to COMMENT ---
 PR=4273
 mk_clean "$PR"
 set_mode unreachable
@@ -155,7 +135,6 @@ else
   bad "posted payload misses the note: $(head -c 200 "$PAYLOAD_FILE" 2>/dev/null)"
 fi
 
-# --- R5: cheap paths make zero recheck calls ---
 PR=4274
 mk_clean "$PR"
 set_mode clear

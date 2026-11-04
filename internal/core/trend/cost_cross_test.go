@@ -9,8 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// costFixture is one bundle spend record: two runs, different tiers and
-// models, so the readers have something to disagree about.
 const costFixture = `[
   {"schema_version":"1","effort":"cheap","models":[{"name":"m-cheap"}],"est_usd":0.5},
   {"schema_version":"1","effort":"deep","models":[{"name":"m-deep"},{"name":"m-extra"}],"est_usd":2.25}
@@ -34,10 +32,8 @@ func TestCostReadersAgree(t *testing.T) {
 	checkRollupCost(t)
 }
 
-// costBundle is the seeded bundle's trailing-slash directory.
 const costBundle = ".review/7/"
 
-// seedCostBundle writes the shared fixture bundle.
 func seedCostBundle(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".review", "7"), 0o755); err != nil {
@@ -49,7 +45,6 @@ func seedCostBundle(t *testing.T, dir string) {
 	}
 }
 
-// checkTrendCostLists pins the trend rollup's view of the records.
 func checkTrendCostLists(t *testing.T) {
 	t.Helper()
 	if got, want := bundleModels(costBundle), []any{"m-cheap", "m-deep", "m-extra"}; !equalAny(got, want) {
@@ -60,7 +55,6 @@ func checkTrendCostLists(t *testing.T) {
 	}
 }
 
-// checkProvenanceCost pins the footer tier, model, and estimate sum.
 func checkProvenanceCost(t *testing.T, records []any) {
 	t.Helper()
 	tier, spend := provenance.Spend(costBundle)
@@ -78,7 +72,6 @@ func checkProvenanceCost(t *testing.T, records []any) {
 	}
 }
 
-// checkRollupCost pins the report rollup reading the same records.
 func checkRollupCost(t *testing.T) {
 	t.Helper()
 	rollup := readcommon.CostRollup(costBundle)
@@ -87,10 +80,8 @@ func checkRollupCost(t *testing.T) {
 	}
 }
 
-// jqKeyRuns names the rollup's runs field.
 const jqKeyRuns = "runs"
 
-// equalAny compares two value slices element-wise.
 func equalAny(a, b []any) bool {
 	if len(a) != len(b) {
 		return false

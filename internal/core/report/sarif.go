@@ -18,7 +18,6 @@ func sarifArtifact(st *state) *core.FileArtifact {
 	return &core.FileArtifact{Path: st.flags.Sarif, Content: []byte(jq.PrettyOrdered(sarifDoc(st)))}
 }
 
-// sarifDoc builds the SARIF document over the ranked findings.
 func sarifDoc(st *state) *jq.Obj {
 	kinds := sarifKinds(st.ranked)
 	rules := make([]any, 0, len(kinds))
@@ -48,9 +47,6 @@ func sarifDoc(st *state) *jq.Obj {
 	)
 }
 
-// sarifKinds owns the unique-kind rule list: the coalesced kinds
-// (null reads unknown, mirroring the null-safe kind concat) sorted in jq
-// order.
 func sarifKinds(ranked []readcommon.Ranked) []string {
 	var kinds []string
 	seen := map[string]bool{}
@@ -65,8 +61,6 @@ func sarifKinds(ranked []readcommon.Ranked) []string {
 	return kinds
 }
 
-// sarifKind renders the kind half of a SARIF rule id ("unknown" when
-// absent).
 func sarifKind(entry any) string {
 	if kind, ok := readcommon.FieldOf(entry, "kind").(string); ok {
 		return kind
@@ -74,8 +68,6 @@ func sarifKind(entry any) string {
 	return "unknown"
 }
 
-// sarifResult handles one SARIF result: the tier level, heading-led message,
-// path/line location, and sig fingerprint.
 func sarifResult(entry any) *jq.Obj {
 	message := sarifMessage(entry)
 	region := jq.NewObj()
@@ -98,8 +90,6 @@ func sarifResult(entry any) *jq.Obj {
 	)
 }
 
-// sarifMessage owns the heading-led message: "[heading] body", with the
-// body reading "" when the entry carries none.
 func sarifMessage(entry any) string {
 	message := ""
 	if heading := readcommon.FieldOf(entry, "heading"); heading != nil && heading != false {
@@ -114,7 +104,6 @@ func sarifMessage(entry any) string {
 	return message + body
 }
 
-// sarifLevel owns the severity-to-level map: untagged severities read note.
 func sarifLevel(sev any) string {
 	if s, ok := sev.(string); ok {
 		switch s {

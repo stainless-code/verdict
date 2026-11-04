@@ -1,32 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-knob: explicit --chunk flag + .review/chunk knob file with
-# flag-wins -> file -> off precedence, cap-override-wins, and absent-knob
-# byte-identical refusal. This grades the opt-in predicate and the opted-in
-# refusal path.
 #
-# Grades (all hermetic — sandbox git repo, stub gh, no network):
-#   K1  absent-knob baseline: the over-cap refusal without the knob is
-#       byte-identical (exit, stdout, stderr) in text mode, and identical
-#       modulo the `at` timestamp in --json mode — pinned directly against
-#       the case's own fixed assertions below.
-#   K2  precedence: --chunk alone opts in; .review/chunk true alone opts in;
-#       flag wins over a false file; a false/empty file alone reads off
-#       (stderr identical to the absent baseline). Opted in still refuses as
-#       today (same exit, code, candidates, hint) plus one stderr notice
-#       naming the winning source.
-#   K3  cap-override-wins: an overridden cap (env or file) disables chunking
-#       outright — a fitting diff succeeds with no chunk notice, and a
-#       still-over diff refuses with no chunk notice.
-#   K4  under-cap unaffected: small fetches succeed with identical bytes
-#       (stdout + full.diff) whether the knob is absent, flagged, or filed.
-#   K5  bad knob refuses typed (bad-chunk-knob) on the over-cap path only;
-#       under-cap fetches never consult the knob.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -35,9 +13,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
-# Scratch git repo at the sandbox root (run_review runs with cwd=sandbox, so
-# fetch-local worktree mode sees this repo). Explicit adds only — earlier
-# cases' .review fixtures stay untracked and out of every diff.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -58,8 +33,6 @@ EOF
   git add chunkbig.txt chunksmall.txt .gitignore
   git commit -qm base 2>/dev/null || true
 )
-# Over-cap worktree state: rewrite the big file end-to-end (diff ~1.4 MB,
-# well above the 512000 default cap) while the small file stays committed.
 (
   cd "$EVAL_SANDBOX" || exit 99
   awk 'BEGIN{for(i=0;i<16000;i++) printf "changed line %06d completely new words words words\n", i}' > chunkbig.txt
@@ -67,7 +40,6 @@ EOF
 
 KNOB="$EVAL_SANDBOX/.review/chunk"
 
-# --- K1: absent-knob baseline + byte-identical parity vs HEAD ---
 run_review fetch-local acme/app chunkbig
 assert_exit "absent-knob baseline refuses" 1
 assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
@@ -89,7 +61,6 @@ else
   bad "--json refusal shape: $(jq -c '.error | {code}' <"$EVAL_SANDBOX/k0-json.txt" 2>/dev/null)"
 fi
 
-# --- K2: precedence (flag > file > off); opted-in refuses as today + notice ---
 run_review fetch-local acme/app chunkbig --chunk
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "chunking opted in (from --chunk)" "$EVAL_ERR" \
@@ -147,7 +118,6 @@ fi
 rm -f "$KNOB"
 eval_commit_controls
 
-# --- K3: cap-override-wins (env and file forms) ---
 REVIEW_MAX_BYTES=2000000 run_review fetch-local acme/app chunkbig --chunk
 assert_exit "raised cap + --chunk succeeds" 0
 assert_stream_nogrep "raised cap prints no chunk notice" "$EVAL_ERR" "chunking"
@@ -168,7 +138,6 @@ assert_file_grep "cap file names the override source" "$EVAL_OUT" "from .review/
 rm -f "$EVAL_SANDBOX/.review/max_bytes" "$KNOB"
 eval_commit_controls
 
-# --- K4: under-cap unaffected (flag vs file vs absent, same bytes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- chunkbig.txt
@@ -198,7 +167,6 @@ assert_file_eq "under-cap filed knob keeps identical stdout bytes" "$EVAL_SANDBO
 assert_file_eq "under-cap filed knob keeps identical full.diff" "$EVAL_SANDBOX/k4-flag.diff" "$EVAL_SANDBOX/.review/local-chunksmall/full.diff"
 assert_stream_nogrep "under-cap filed knob mentions no chunk" "$EVAL_ERR" "chunk" "-i"
 
-# --- K5: bad knob refuses typed on the over-cap path only ---
 printf 'maybe\n' > "$KNOB"
 eval_commit_controls
 (
@@ -224,7 +192,6 @@ else
   bad "under-cap with bad knob exits $EVAL_STATUS"
 fi
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- chunkbig.txt chunksmall.txt 2>/dev/null || true

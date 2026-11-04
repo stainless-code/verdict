@@ -15,8 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// runLive owns the live-ground-truth join: thread states plus files
-// changed since the review head, with tier precision.
 func (st *state) runLive(ctx context.Context, dir string) *core.RefusalError {
 	entries, reviewID, head0, refusal := st.liveBundle(dir)
 	if refusal != nil {
@@ -43,7 +41,6 @@ func (st *state) runLive(ctx context.Context, dir string) *core.RefusalError {
 	return nil
 }
 
-// liveResult carries the completed live join for the typed data profile.
 type liveResult struct { //nolint:govet // field grouping documents the loaded dimensions
 	reviewID string
 	head0    string
@@ -52,8 +49,6 @@ type liveResult struct { //nolint:govet // field grouping documents the loaded d
 	dir      string
 }
 
-// liveBundle owns the live-join bundle gate: local, provider, post,
-// findings, and id/head checks run before any gh call.
 func (st *state) liveBundle(dir string) ([]any, string, string, *core.RefusalError) {
 	if isLocalDir(dir) {
 		return nil, "", "", st.withWarnings(&core.RefusalError{
@@ -73,8 +68,6 @@ func (st *state) liveBundle(dir string) ([]any, string, string, *core.RefusalErr
 	return st.liveFindings(dir)
 }
 
-// liveFindings loads the findings plus the review id/head after the bundle
-// gate.
 func (st *state) liveFindings(dir string) ([]any, string, string, *core.RefusalError) {
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
@@ -91,13 +84,10 @@ func (st *state) liveFindings(dir string) ([]any, string, string, *core.RefusalE
 	return entries, reviewID, head0, nil
 }
 
-// isLocalDir reports whether dir is a local bundle.
 func isLocalDir(dir string) bool {
 	return strings.HasPrefix(dir, ".review/local-")
 }
 
-// nestedReviewID reads the nested review.id with `jq -r` rendering ("" when
-// absent, null, or false).
 func nestedReviewID(dir string) string {
 	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
@@ -122,8 +112,6 @@ func nestedReviewID(dir string) string {
 	return jq.R(id)
 }
 
-// liveThreads reads the live review threads with comments through the
-// injected commander and the shared thread read.
 func (st *state) liveThreads(ctx context.Context) ([]any, *core.RefusalError) {
 	owner, name := readcommon.SplitOwner(st.req.Repo)
 	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.req.Pr, true)
@@ -133,7 +121,6 @@ func (st *state) liveThreads(ctx context.Context) ([]any, *core.RefusalError) {
 	return nodes, nil
 }
 
-// livePR reads the live PR state.
 func (st *state) livePR(ctx context.Context) (map[string]any, *core.RefusalError) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
 		"pr", "view", st.req.Pr, "--repo", st.req.Repo, "--json", "headRefOid,state,mergedAt")
@@ -146,8 +133,6 @@ func (st *state) livePR(ctx context.Context) (map[string]any, *core.RefusalError
 	return map[string]any{}, nil
 }
 
-// decodeLivePR decodes the live PR payload; unparseable payloads read as
-// an empty state (the degrade path).
 func decodeLivePR(stdout string) (map[string]any, bool) {
 	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {
@@ -160,15 +145,10 @@ func decodeLivePR(stdout string) (map[string]any, bool) {
 	return m, true
 }
 
-// liveHead reads the live head SHA.
 func liveHead(live map[string]any) string {
 	return jq.StrOf(live["headRefOid"])
 }
 
-// liveChanged owns the changed-file evidence: the compare file list, or
-// empty with a warning when the compare is unavailable. A failed call
-// warns once (the evidence-off line); an unparseable payload warns twice
-// (the parse line, then the evidence-off line).
 func (st *state) liveChanged(ctx context.Context, head0, liveHead string) []any {
 	if head0 == liveHead {
 		return []any{}
@@ -193,7 +173,6 @@ func (st *state) liveChanged(ctx context.Context, head0, liveHead string) []any 
 	return list
 }
 
-// outcome is one joined finding outcome.
 type outcome struct {
 	entry   any
 	kb      any
@@ -206,8 +185,6 @@ type outcome struct {
 	hasKb   bool
 }
 
-// joinOutcomes owns the outcomes join over open, addressed, and deferred
-// findings.
 func joinOutcomes(entries, threads, changed []any) []outcome {
 	var out []outcome
 	for _, e := range entries {
@@ -220,7 +197,6 @@ func joinOutcomes(entries, threads, changed []any) []outcome {
 	return out
 }
 
-// joinOne handles one outcome row.
 func joinOne(entry any, threads, changed []any) outcome {
 	out := outcome{
 		entry:   entry,
@@ -265,8 +241,6 @@ func joinOne(entry any, threads, changed []any) outcome {
 	return out
 }
 
-// withKb attaches the cited kb value when it reads non-empty (jq length
-// semantics with booleans reading 0, so a length read never errors).
 func withKb(out *outcome, entry any) {
 	kb := readcommon.FieldOf(entry, "kb")
 	if kb == nil {
@@ -278,8 +252,6 @@ func withKb(out *outcome, entry any) {
 	}
 }
 
-// kbLen owns the safe kb length: booleans read 0, everything else reads
-// jq length.
 func kbLen(kb any) float64 {
 	switch t := kb.(type) {
 	case nil:
@@ -315,7 +287,6 @@ func locatorFor(entry any) string {
 	return "?"
 }
 
-// severityOf owns the outcome severity (untagged default).
 func severityOf(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -331,9 +302,6 @@ func severityOf(entry any) string {
 	return outcomeUntagged
 }
 
-// postedBody owns the posted-body match key: body plus the fenced
-// suggestion block. Bodies and suggestions read raw (the entry guard keeps
-// them null-or-string, so only a present non-empty string appends).
 func postedBody(entry any) string {
 	body, ok := readcommon.FieldOf(entry, "body").(string)
 	if !ok {
@@ -349,7 +317,6 @@ func postedBody(entry any) string {
 	return body
 }
 
-// findThread finds the first thread with a matching comment.
 func findThread(threads []any, pb string, path any) any {
 	for _, t := range threads {
 		if threadMatches(t, pb, path) {
@@ -359,8 +326,6 @@ func findThread(threads []any, pb string, path any) any {
 	return nil
 }
 
-// threadMatches handles one thread's comment scan: any comment matching the
-// posted body and path resolves the thread.
 func threadMatches(t any, pb string, path any) bool {
 	m, ok := t.(map[string]any)
 	if !ok {
@@ -378,8 +343,6 @@ func threadMatches(t any, pb string, path any) bool {
 	return false
 }
 
-// commentNodes reads `.comments[]` over a thread: the nodes list for the
-// usual object shape, the elements for an array shape, nothing otherwise.
 func commentNodes(comments any) []any {
 	switch t := comments.(type) {
 	case map[string]any:
@@ -395,7 +358,6 @@ func commentNodes(comments any) []any {
 	}
 }
 
-// pathChanged reports whether the cited path changed since review head.
 func pathChanged(changed []any, path any) bool {
 	if path == nil {
 		return false
@@ -408,7 +370,6 @@ func pathChanged(changed []any, path any) bool {
 	return false
 }
 
-// precision is the outcome tallies plus the per-tier split.
 type precision struct {
 	byTier          map[string]map[string]int
 	fixed           int
@@ -418,7 +379,6 @@ type precision struct {
 	judged          int
 }
 
-// countPrecision tallies outcomes.
 func countPrecision(outcomes []outcome) precision {
 	p := precision{byTier: map[string]map[string]int{}}
 	ensure := func(tier string) map[string]int {
@@ -451,7 +411,6 @@ func countPrecision(outcomes []outcome) precision {
 	return p
 }
 
-// emitLiveHuman owns the live human lines plus the provenance tail.
 func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outcomes []outcome, dir string) {
 	p := countPrecision(outcomes)
 	head := liveHead(live)
@@ -481,9 +440,6 @@ func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outc
 		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model")))
 }
 
-// sigHuman renders the human sig cell: the 8-codepoint prefix of a string
-// sig, "null" for the missing/null sig (jq -r renders null), mirroring
-// \(.sig[0:8]). Sigs are hex, so bytes and codepoints agree.
 func sigHuman(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -496,10 +452,6 @@ func sigHuman(entry any) string {
 	return "null"
 }
 
-// showKbSuffix applies the suffix gate: ((.kb // []) | type) ==
-// "array" — the trailing `length > 0` reads the row's own key count, so
-// missing, null, and (even empty) array cites all render the suffix while
-// scalar or object cites hide it.
 func showKbSuffix(kb any) bool {
 	if kb == nil {
 		return true
@@ -508,10 +460,6 @@ func showKbSuffix(kb any) bool {
 	return ok
 }
 
-// kbRowText renders the cited-row suffix: tostring over the
-// whole outcome row (not just the cites), so the suffix joins every row
-// value in shell key order with the cites rendered compact. Rows without
-// a kb key join six values; the seventh lands only with the key.
 func kbRowText(o *outcome) string {
 	vals := []any{outcomeSig(o), o.status, o.sev, o.locator, o.result, o.detail}
 	if o.hasKb {
@@ -524,7 +472,6 @@ func kbRowText(o *outcome) string {
 	return " kb:" + strings.Join(parts, ",")
 }
 
-// provOrUnmarked reads one provenance field with the unmarked fallback.
 func provOrUnmarked(dir, key string) string {
 	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
@@ -545,7 +492,6 @@ func provOrUnmarked(dir, key string) string {
 	return jq.Str(v)
 }
 
-// provHashPrefix reads the prompts hash prefix with the unmarked fallback.
 func provHashPrefix(dir string) string {
 	hash := provRaw(dir, "prompts_hash")
 	if hash == "" {
@@ -558,10 +504,8 @@ func provHashPrefix(dir string) string {
 	return string(runes)
 }
 
-// provHashRunes caps the provenance hash display.
 const provHashRunes = 12
 
-// provRaw reads one raw provenance value as a string.
 func provRaw(dir, key string) string {
 	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {
@@ -585,8 +529,6 @@ func provRaw(dir, key string) string {
 	return readcommon.Tostring(v)
 }
 
-// nextLive owns the live next step: open threads first, then unsettled
-// unknowns, else the recorded calibration.
 func nextLive(p precision) string {
 	next := "calibration recorded"
 	if p.open > 0 {
@@ -639,8 +581,6 @@ func (r *liveResult) Wire() *jq.Obj {
 	)
 }
 
-// outcomeDoc renders one outcome row in shell key order: sig, status,
-// severity, locator, outcome, detail, plus kb when cited.
 func outcomeDoc(o *outcome) *jq.Obj {
 	doc := jq.NewObj(
 		"sig", outcomeSig(o),
@@ -656,7 +596,6 @@ func outcomeDoc(o *outcome) *jq.Obj {
 	return doc
 }
 
-// outcomeSig renders the outcome sig raw.
 func outcomeSig(o *outcome) any {
 	m, ok := o.entry.(*jq.Obj)
 	if !ok || m == nil {
@@ -666,7 +605,6 @@ func outcomeSig(o *outcome) any {
 	return sig
 }
 
-// sortedTierKeys sorts tiers in jq group_by order (byte order).
 func sortedTierKeys(byTier map[string]map[string]int) []string {
 	keys := make([]string, 0, len(byTier))
 	for k := range byTier {
@@ -676,11 +614,8 @@ func sortedTierKeys(byTier map[string]map[string]int) []string {
 	return keys
 }
 
-// idFloatBits is the float precision for numeric review ids.
 const idFloatBits = 64
 
-// reviewIDValue reads ($rid | tonumber? // $rid): numeric ids read as
-// numbers, everything else reads raw.
 func reviewIDValue(rid string) any {
 	if f, err := strconv.ParseFloat(rid, idFloatBits); err == nil {
 		return f
@@ -688,7 +623,6 @@ func reviewIDValue(rid string) any {
 	return rid
 }
 
-// provValue reads one envelope provenance value (null when missing).
 func provValue(dir, key string) any {
 	raw, err := os.ReadFile(dir + postFileSuffix)
 	if err != nil {

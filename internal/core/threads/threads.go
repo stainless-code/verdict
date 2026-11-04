@@ -20,7 +20,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Published schema values.
 const (
 	// SchemaVersion is the only feed version read.
 	SchemaVersion = "1"
@@ -247,7 +246,6 @@ func AuthorKind(login string, hostBot bool, body string) string {
 	}
 }
 
-// finalLine returns the last non-empty-trimmed line of body.
 func finalLine(body string) string {
 	trimmed := strings.TrimRight(body, " \t\r\n")
 	if _, after, found := strings.CutLast(trimmed, "\n"); found {

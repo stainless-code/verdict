@@ -73,8 +73,6 @@ func (c *Case) Run(t *testing.T, h *Harness) Outputs {
 	return out
 }
 
-// envAt returns the child environment overlay for one sandbox: the case's
-// own variables plus, when opted in, a TMPDIR inside the sandbox.
 func (c *Case) envAt(dir string) map[string]string {
 	env := maps.Clone(c.Env)
 	if !c.TmpInSandbox {
@@ -89,7 +87,6 @@ func (c *Case) envAt(dir string) map[string]string {
 	return env
 }
 
-// pinned filters the graded file map down to the keys the suite pins.
 func (c *Case) pinned(files map[string]string) map[string]string {
 	if c.Omit == nil {
 		return files
@@ -158,8 +155,6 @@ func RunMain(m *testing.M, dst **Harness, hooks ...func(*Harness) error) int {
 	return m.Run()
 }
 
-// errorer is the slice of [testing.T] the read-only proof needs, so the
-// helper's failing behavior is unit-testable with a recorder.
 type errorer interface {
 	Helper()
 	Errorf(format string, args ...any)
@@ -184,7 +179,6 @@ func assertNoWrites(t errorer, before, after map[string]string, allowed map[stri
 	}
 }
 
-// checkKeptFile proves one pre-existing file survived the run unchanged.
 func checkKeptFile(t errorer, k, va string, before map[string]string) {
 	t.Helper()
 	vb, ok := before[k]

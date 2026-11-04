@@ -1,7 +1,3 @@
-// The verdict --json envelope. EXPERIMENTAL until 1.0: the wire shape is
-// skills/verdict/schemas/envelope.schema.json (generated from Go types); this generic is
-// the hand-written view over it with the per-verb data types filled in from
-// types.gen.ts. Verbs without a pinned data shape use unknown.
 import type {
   PostData,
   RecordData,
@@ -10,7 +6,6 @@ import type {
 } from "./types.gen.js";
 import { VerdictSchemaError } from "./errors.js";
 
-// Envelope is one successful run: error null, data carrying the verb shape.
 export interface Envelope<T = unknown> {
   schema_version: "1";
   verb: string;
@@ -23,10 +18,8 @@ export interface Envelope<T = unknown> {
   error: null;
 }
 
-// RefusalBody is the typed refusal the binary returns with exit 1.
 export type RefusalBody = RefusalErrorBody;
 
-// RefusalEnvelope is the exit-1 shape: data null, error set.
 export interface RefusalEnvelope {
   schema_version: "1";
   verb: string;
@@ -39,15 +32,12 @@ export interface RefusalEnvelope {
   error: RefusalBody;
 }
 
-// DataFor pins the published data shapes per verb; every other verb is
-// unknown until its data stabilizes (schemas keep the generic object).
 export interface DataFor {
   report: ReportData;
   post: PostData;
   record: RecordData;
 }
 
-// REQUIRED_KEYS is the documented envelope key set (envelope-shape eval).
 const REQUIRED_KEYS = [
   "schema_version",
   "verb",
@@ -60,12 +50,8 @@ const REQUIRED_KEYS = [
   "error",
 ] as const;
 
-// SCHEMA_VERSION is the only wire version this client reads.
 export const SCHEMA_VERSION = "1";
 
-// assertEnvelope narrows unknown JSON to an Envelope<T>: exactly the
-// documented keys, schema_version "1", error null. Anything else is a
-// VerdictSchemaError (missing/other version) or a contract break.
 export function assertEnvelope<T = unknown>(
   value: unknown,
   stdout: string,
@@ -79,7 +65,6 @@ export function assertEnvelope<T = unknown>(
   }
 }
 
-// assertRefusalEnvelope narrows unknown JSON to the exit-1 refusal shape.
 export function assertRefusalEnvelope(
   value: unknown,
   stdout: string,
@@ -106,8 +91,6 @@ export function assertRefusalEnvelope(
   }
 }
 
-// assertEnvelopeShape checks keys, version, and warnings without judging
-// error/data; it is the one shape implementation both assertions use.
 function assertEnvelopeShape(
   value: unknown,
   stdout: string,
@@ -138,7 +121,6 @@ function assertEnvelopeShape(
   }
 }
 
-// describe names a value for error messages without dumping it.
 function describe(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";

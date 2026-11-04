@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// wantAnnotations is the tools/list contract snapshot: every name, title,
-// and behavior hint. Update it only when a tool's real behavior changes.
 var wantAnnotations = map[string]toolAnnotations{
 	"adopt": {Title: "Adopt findings", IdempotentHint: true},
 	"calibrate": {
@@ -35,10 +33,10 @@ var wantAnnotations = map[string]toolAnnotations{
 		Title: "Merge readiness", ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: true,
 	},
 	"record": {Title: "Record review", IdempotentHint: true},
-	"report": {Title: "Render report", ReadOnlyHint: true, IdempotentHint: true},
+	"report": {Title: "Render report", IdempotentHint: true},
 	"show":   {Title: "Show finding", ReadOnlyHint: true, IdempotentHint: true},
 	"threads": {
-		Title: "Refresh review threads", ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: true,
+		Title: "Refresh review threads", IdempotentHint: true, OpenWorldHint: true,
 	},
 	"trend":  {Title: "Review trend", ReadOnlyHint: true, IdempotentHint: true},
 	"triage": {Title: "Triage finding", DestructiveHint: true},
@@ -86,8 +84,7 @@ func TestToolsListSnapshot(t *testing.T) {
 	}
 }
 
-// TestSurfaceSets pins the three tool sets: default 19, read-only 8, and
-// operator 20 (the default plus triage).
+// TestSurfaceSets pins the default, read-only, and operator tool sets.
 func TestSurfaceSets(t *testing.T) {
 	t.Parallel()
 	names := func(tools []*tool) []string {
@@ -107,7 +104,7 @@ func TestSurfaceSets(t *testing.T) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "doctor", "next", "ready", "report", "show", "threads", "trend"}
+	wantReadOnly := []string{"check-tree", "doctor", "next", "ready", "report", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}

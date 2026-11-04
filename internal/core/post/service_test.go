@@ -29,14 +29,12 @@ type scriptCommander struct {
 	stdin []string
 }
 
-// scriptResult is one canned spawn: the streams plus the failure flag.
 type scriptResult struct {
 	stdout string
 	stderr string
 	fail   bool
 }
 
-// Run records argv/stdin and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	s.t.Helper()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
@@ -61,8 +59,6 @@ func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result,
 	return out, nil
 }
 
-// LookPath reports every tool present (post degrades on lookup failure,
-// never refuses missing-tool).
 func (s *scriptCommander) LookPath(string) error { return nil }
 
 // testProgress collects streamed warnings.
@@ -71,17 +67,14 @@ type testProgress struct {
 	human    *[]string
 }
 
-// Human records one human line.
 func (p testProgress) Human(line string) {
 	if p.human != nil {
 		*p.human = append(*p.human, line)
 	}
 }
 
-// Warn records one warning.
 func (p testProgress) Warn(msg string) { *p.warnings = append(*p.warnings, msg) }
 
-// Diag discards raw diagnostics.
 func (p testProgress) Diag(string) {}
 
 var postTestTime = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -106,7 +99,6 @@ func postTestReq(cmdr Commander, flags core.PostFlags, warnings *[]string, human
 	}
 }
 
-// writeTestFile writes content to path.
 func writeTestFile(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -132,7 +124,6 @@ func postTestState(dir, commitID string, flags core.PostFlags, warnings *[]strin
 	return &state{req: req, warnings: *warnings, dir: dir, commitID: commitID, flags: flags}
 }
 
-// refusalCode recovers the typed refusal code with [errors.As].
 func refusalCode(err error) (string, bool) {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref.Code, true
@@ -464,7 +455,6 @@ func TestProjectCommentCounts(t *testing.T) {
 	}
 }
 
-// mustGet reads a field the test guarantees present.
 func mustGet(m *jq.Obj) any {
 	v, _ := m.Get(fieldBody)
 	return v
@@ -579,7 +569,6 @@ func decodePostedPayload(t *testing.T, raw string) map[string]any {
 	return doc
 }
 
-// decodeFindingsStore decodes a findings array from path.
 func decodeFindingsStore(t *testing.T, path string) []map[string]any {
 	t.Helper()
 	raw, err := os.ReadFile(path)

@@ -47,8 +47,6 @@ func TestToolCommanders(t *testing.T) {
 	}
 }
 
-// commanderPose names a commander's type and, for the split-stream Runner,
-// the two options that distinguish its postures.
 func commanderPose(c core.Commander) string {
 	if r, ok := c.(coreexec.Runner); ok {
 		limit := r.OutputCap
@@ -83,14 +81,10 @@ func TestCommanderOverride(t *testing.T) {
 	}
 }
 
-// stubCommander is a no-op runner for injection tests. It intentionally
-// satisfies only the base Commander interface.
 type stubCommander struct{}
 
-// Run returns an empty result.
 func (*stubCommander) Run(_ context.Context, _ core.Command) (core.Result, error) {
 	return core.Result{}, nil
 }
 
-// The compile-time check keeps the stub usable as a core.Commander.
 var _ core.Commander = (*stubCommander)(nil)

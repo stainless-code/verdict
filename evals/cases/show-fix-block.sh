@@ -1,31 +1,14 @@
 #!/usr/bin/env bash
-# Case show-fix-block: `show --json` carries the additive read-only
-# `data.fix` repair directive beside the unchanged `data.item`.
 #
-# Grades (all hermetic — crafted findings + history, stub gh, no network):
-#   F1  full finding: fix carries sig/status/severity/files/locator/
-#       suggestion/verify_hint/caution, and data.item is byte-identical to
-#       the stored record. The bare (no --json) text path is unchanged too.
-#   F2  suggestion-less section finding: suggestion null, files read from the
-#       record's related list, verify_hint null when no history exists.
-#   F3  verification.json history for a short sig wins over a non-matching
-#       patch.json: verify_hint names the exact rerun command + resultHead.
-#   F4  unknown and ambiguous sigs keep their typed refusals (data null, no
-#       fix block), before any block is built.
-#   F5  read-path proof: every bundle byte is identical after the runs and no
-#       gh call is attempted.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Normalize the sandbox path (mktemp leaves a double slash when TMPDIR ends
-# in one, which some tooling reports differently).
 EVAL_SANDBOX="$(cd "$EVAL_SANDBOX" && pwd -P)"
 
 GOLDENS="$EVAL_ROOT/evals/fixtures/show-fix-block"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -34,7 +17,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_PANEL REVIEW_MODEL REVIEW_BUDGET_USD || true
 
-# bundle_checksum <pr> — every file byte under the bundle, sorted.
 bundle_checksum() {
   ( cd "$EVAL_SANDBOX/.review/$1" && find . -type f -print | LC_ALL=C sort | xargs shasum )
 }
@@ -48,7 +30,6 @@ check_fix() { # $1 = label, $2 = golden file
   fi
 }
 
-# --- F1: full record + patch history ---
 mkdir -p "$EVAL_SANDBOX/.review/5201"
 cat > "$EVAL_SANDBOX/.review/5201/findings.json" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Consider clarifying this line.","suggestion":"Use a clearer name.","inBounds":true,"rigor":"pointed","severity":"important","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"related_files":["notes.txt","src/other.go"]}]
@@ -87,7 +68,6 @@ else
   bad "F1 bundle changed during a read"
 fi
 
-# --- F2: suggestion-less section finding, read from a related-files list ---
 mkdir -p "$EVAL_SANDBOX/.review/5202"
 cat > "$EVAL_SANDBOX/.review/5202/findings.json" <<'EOF'
 [{"kind":"section","heading":"Scope note","anchored":"body","body":"Explains the scope.","suggestion":null,"inBounds":true,"rigor":"walked","severity":null,"sig":"d222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"deferred","rationale":"","history":[],"files":["docs/scope.md"]}]
@@ -103,7 +83,6 @@ else
 fi
 check_fix "F2" "$GOLDENS/null-suggestion.fix.golden"
 
-# --- F3: verification.json for the sig wins over a non-matching patch ---
 mkdir -p "$EVAL_SANDBOX/.review/5203"
 cat > "$EVAL_SANDBOX/.review/5203/findings.json" <<'EOF'
 [{"kind":"inline","path":"src/a.go","side":"RIGHT","line":10,"anchored":true,"body":"Check the error path.","suggestion":null,"inBounds":true,"rigor":"ran","severity":"informational","sig":"e333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
@@ -124,7 +103,6 @@ else
 fi
 check_fix "F3" "$GOLDENS/verify-hint.fix.golden"
 
-# --- F4: typed refusals fire before any block is built ---
 mkdir -p "$EVAL_SANDBOX/.review/5204"
 cat > "$EVAL_SANDBOX/.review/5204/findings.json" <<'EOF'
 [{"kind":"inline","path":"a.go","side":"RIGHT","line":1,"anchored":true,"body":"One.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"b.go","side":"RIGHT","line":1,"anchored":true,"body":"Two.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
@@ -147,7 +125,6 @@ else
   bad "ambiguous sig: exit $EVAL_STATUS $(jq -c '{error,data}' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- F5: the whole read path is side-effect free ---
 f5_before="$(for pr in 5201 5202 5203 5204; do bundle_checksum "$pr"; done)"
 gh_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 run_review show acme/app 5201 --sig c1111111 --json

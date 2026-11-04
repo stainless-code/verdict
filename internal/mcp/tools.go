@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
@@ -27,11 +28,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// fetchRunner is the commander posture for the fetch tools: the fetch output
-// cap plus the missing-tool pre-check.
 var fetchRunner = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 
-// Argument keys and adapter constants shared by the registry.
 const (
 	argRepo            = "repo"
 	argPr              = "pr"
@@ -43,65 +41,54 @@ const (
 	artifactPerm       = 0o600
 )
 
-// requiredRepoPr is the common required-argument pair, and omitPositionals
-// hides repo/pr from verbs that take no positionals.
 var (
 	requiredRepoPr  = []string{argRepo, argPr}
 	omitPositionals = map[string]bool{fieldRepo: true, fieldPr: true}
 )
 
-// toolMeta is the descriptor half of a tool: the human title and the four
-// MCP behavior hints. readOnly is also the access policy the CLI filters on.
 type toolMeta struct {
-	title       string
-	readOnly    bool
-	destructive bool
-	idempotent  bool
-	openWorld   bool
+	title              string
+	readOnly           bool
+	destructive        bool
+	idempotent         bool
+	openWorld          bool
+	servedWhenReadOnly bool
 }
 
-// toolSpec is the policy half of one registry entry.
 type toolSpec struct {
 	name        string
 	description string
 	omit        map[string]bool
+	writeArgs   map[string]string
 	required    []string
 	meta        toolMeta
 }
 
-// toolDeps is the dependency half of one registry entry: the runners the
-// verb's CLI adapter would install. Production passes the concrete commander
-// per tool; tests substitute fakes.
 type toolDeps struct {
 	commander core.Commander
 }
 
-// tool is one MCP tool: the request type its schema comes from, the field
-// policy that hides adapter-owned members, and the explicit decode, inject,
-// and service seams for that type.
 type tool struct { //nolint:govet // the grouping documents the descriptor; alignment is irrelevant
-	name         string
-	title        string
-	description  string
-	request      schemaSource
-	omit         map[string]bool
-	required     []string
-	deps         toolDeps
-	readOnly     bool
-	destructive  bool
-	idempotent   bool
-	openWorld    bool
-	operatorOnly bool
-	decode       func(json.RawMessage) (any, error)
-	wire         func(*bindings, any)
-	invoke       func(context.Context, any) (*jq.Obj, *core.RefusalError)
+	name               string
+	title              string
+	description        string
+	request            schemaSource
+	omit               map[string]bool
+	required           []string
+	deps               toolDeps
+	readOnly           bool
+	servedWhenReadOnly bool
+	destructive        bool
+	idempotent         bool
+	openWorld          bool
+	operatorOnly       bool
+	writeArgs          map[string]string
+	refusedArgs        map[string]bool
+	decode             func(json.RawMessage) (any, error)
+	wire               func(*bindings, any)
+	invoke             func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
-// allTools returns the registered tool set for one surface. readOnly keeps
-// only non-writing tools; operator adds the human-owned verbs. The CLI
-// refuses the two together, and the filter order here makes that impossible
-// to violate from the library either. upgrade/skill are distribution
-// surfaces, never review tools.
 func allTools(readOnly, operator bool) []*tool {
 	tools := []*tool{
 		dataTool(&toolSpec{
@@ -216,8 +203,9 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Render the offline review report (ranked findings, counts, markdown/SARIF). " +
 				"Call after fetch or record; the follow-up is next. Reads the bundle and writes " +
 				"only artifacts you request.",
-			required: requiredRepoPr,
-			meta:     toolMeta{title: "Render report", readOnly: true, idempotent: true},
+			writeArgs: map[string]string{"Output": "output", "Sarif": "sarif"},
+			required:  requiredRepoPr,
+			meta:      toolMeta{title: "Render report", idempotent: true, servedWhenReadOnly: true},
 		}, toolDeps{}, decodeReport, wireReport, invokeReport),
 		directTool(&toolSpec{
 			name: "show",
@@ -233,7 +221,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"resolution state before a re-review or merge readiness. Reads the host; writes " +
 				"threads.json only.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Refresh review threads", readOnly: true, idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Refresh review threads", idempotent: true, openWorld: true},
 		}, toolDeps{}, decodeThreads, wireThreads, fetchcore.RunThreads,
 			func(resp *fetchcore.ThreadsResponse) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
@@ -265,6 +253,9 @@ func allTools(readOnly, operator bool) []*tool {
 	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
+		if readOnly {
+			t.narrowReadOnly()
+		}
 		if !exposed(t, readOnly, operator) {
 			continue
 		}
@@ -273,25 +264,31 @@ func allTools(readOnly, operator bool) []*tool {
 	return kept
 }
 
-// exposed reports whether one tool is on the surface the two flags select.
-// The CLI refuses --read-only with --operator, but the predicate stays total
-// so the library cannot expose an operator tool on a read-only surface either.
+func (t *tool) narrowReadOnly() {
+	if len(t.writeArgs) == 0 {
+		return
+	}
+	omit := make(map[string]bool, len(t.omit)+len(t.writeArgs))
+	maps.Copy(omit, t.omit)
+	for field, arg := range t.writeArgs {
+		omit[field] = true
+		t.refusedArgs[arg] = true
+	}
+	t.omit = omit
+}
+
 func exposed(t *tool, readOnly, operator bool) bool {
-	if readOnly && !t.readOnly {
+	if readOnly && !t.readOnly && !t.servedWhenReadOnly {
 		return false
 	}
 	return !t.operatorOnly || (!readOnly && operator)
 }
 
-// operatorTool marks one tool as part of the opt-in operator surface.
 func operatorTool(t *tool) *tool {
 	t.operatorOnly = true
 	return t
 }
 
-// dataTool builds a tool whose service returns a response carrying a Data
-// field, the shape every verb except next/show/check-tree/fetch shares. The
-// response accessor is explicit: a renamed Data field is a compile error.
 func dataTool[Req, S any](
 	spec *toolSpec, deps toolDeps,
 	decode func(*Req, *args), wire func(*bindings, *Req),
@@ -303,7 +300,6 @@ func dataTool[Req, S any](
 	})
 }
 
-// directTool builds a tool with a hand-written response mapping.
 func directTool[Req any](
 	spec *toolSpec, deps toolDeps,
 	decode func(*Req, *args), wire func(*bindings, *Req),
@@ -312,46 +308,46 @@ func directTool[Req any](
 	return newTool(spec, deps, decode, wire, run)
 }
 
-// newTool assembles one registry entry. The request type parameter is the
-// single source of the arg schema and of the decode/wire/invoke type
-// assertions, so none of the three can name a different request type.
 func newTool[Req any](
 	spec *toolSpec, deps toolDeps,
 	decode func(*Req, *args), wire func(*bindings, *Req),
 	run func(context.Context, *Req) (*jq.Obj, *core.RefusalError),
 ) *tool {
-	return &tool{
-		name:         spec.name,
-		title:        spec.meta.title,
-		description:  spec.description,
-		request:      schemaOf[Req](),
-		omit:         spec.omit,
-		required:     spec.required,
-		deps:         deps,
-		readOnly:     spec.meta.readOnly,
-		destructive:  spec.meta.destructive,
-		idempotent:   spec.meta.idempotent,
-		openWorld:    spec.meta.openWorld,
-		operatorOnly: false,
-		decode: func(raw json.RawMessage) (any, error) {
-			return decodeRequest[Req](raw, spec.required, decode)
-		},
-		wire: func(b *bindings, raw any) {
-			if req, ok := raw.(*Req); ok {
-				wire(b, req)
-			}
-		},
-		invoke: func(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-			req, ok := raw.(*Req)
-			if !ok {
-				return nil, internalRefusal()
-			}
-			return run(ctx, req)
-		},
+	t := &tool{
+		name:               spec.name,
+		title:              spec.meta.title,
+		description:        spec.description,
+		request:            schemaOf[Req](),
+		omit:               spec.omit,
+		writeArgs:          spec.writeArgs,
+		required:           spec.required,
+		deps:               deps,
+		readOnly:           spec.meta.readOnly,
+		servedWhenReadOnly: spec.meta.servedWhenReadOnly,
+		destructive:        spec.meta.destructive,
+		idempotent:         spec.meta.idempotent,
+		openWorld:          spec.meta.openWorld,
+		operatorOnly:       false,
+		refusedArgs:        map[string]bool{},
 	}
+	t.decode = func(raw json.RawMessage) (any, error) {
+		return decodeRequest[Req](raw, spec.required, decode, t.refusedArgs)
+	}
+	t.wire = func(b *bindings, raw any) {
+		if req, ok := raw.(*Req); ok {
+			wire(b, req)
+		}
+	}
+	t.invoke = func(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
+		req, ok := raw.(*Req)
+		if !ok {
+			return nil, internalRefusal()
+		}
+		return run(ctx, req)
+	}
+	return t
 }
 
-// invokeService adapts one typed core service call.
 func invokeService[R, S any](
 	ctx context.Context, req *R,
 	svc func(context.Context, *R) (*S, *core.RefusalError),
@@ -367,8 +363,6 @@ func invokeService[R, S any](
 	return data(resp), nil
 }
 
-// invokeReport runs report and writes its requested artifacts (the CLI
-// adapter owns the same writes; the transport returns data, not files).
 func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.Run(ctx, req)
 	if ref != nil {
@@ -383,7 +377,6 @@ func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.
 	return wireData(resp.Data), nil
 }
 
-// invokeNext maps the next response to the CLI envelope's data shape.
 func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.RunNext(ctx, req)
 	if ref != nil {
@@ -396,7 +389,6 @@ func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.Refu
 	return jq.NewObj("item", item), nil
 }
 
-// invokeShow maps the show response to the CLI envelope's data shape.
 func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.RunShow(ctx, req)
 	if ref != nil {
@@ -413,7 +405,6 @@ func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.Refu
 	return data, nil
 }
 
-// invokeCheckTree maps the not-a-repo machine refusal to a tool refusal.
 func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, *core.RefusalError) {
 	resp, ref := checktreecore.Run(ctx, req)
 	if ref != nil {
@@ -425,8 +416,6 @@ func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, 
 	return wireData(resp.Data), nil
 }
 
-// invokeFetch calls the network-backed fetch service; its error is the
-// adapter's missing-tool/refusal seam.
 func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.Run(ctx, req)
 	if err != nil {
@@ -435,7 +424,6 @@ func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.Re
 	return wireData(resp.Data), nil
 }
 
-// invokeFetchLocal calls the local fetch service.
 func invokeFetchLocal(ctx context.Context, req *core.FetchLocalRequest) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.RunLocal(ctx, req)
 	if err != nil {
@@ -444,7 +432,6 @@ func invokeFetchLocal(ctx context.Context, req *core.FetchLocalRequest) (*jq.Obj
 	return wireData(resp.Data), nil
 }
 
-// commandRefusal maps the command runner's error forms to a tool refusal.
 func commandRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -455,10 +442,6 @@ func commandRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "fetch-failed", Message: err.Error()}
 }
 
-// writeArtifact writes one requested report artifact atomically (0600 when it
-// creates the file: reports can carry reviewed-diff excerpts; an existing file
-// keeps its own mode). A symlink is resolved first so the link survives and
-// only its target is replaced; a device or FIFO keeps the direct write.
 func writeArtifact(a *core.FileArtifact) *core.RefusalError {
 	if a == nil {
 		return nil
@@ -472,8 +455,6 @@ func writeArtifact(a *core.FileArtifact) *core.RefusalError {
 	return nil
 }
 
-// wireData renders a typed data profile through core's ordered wire
-// mapping, so the MCP result equals the CLI --json envelope's data.
 func wireData(v any) *jq.Obj {
 	if v == nil {
 		return jq.NewObj()
@@ -484,14 +465,10 @@ func wireData(v any) *jq.Obj {
 	return jq.NewObj()
 }
 
-// internalRefusal builds a sealed internal refusal for impossible request
-// mismatches.
 func internalRefusal() *core.RefusalError {
 	return &core.RefusalError{Code: "internal", Message: msgRequestMismatch}
 }
 
-// rawMarshal is kept next to wireData so result construction uses the same
-// compact encoder as the CLI envelope.
 func rawMarshal(o *jq.Obj) json.RawMessage { return json.RawMessage(o.MarshalCompact()) }
 
 // ToolNames lists the tool names a server with this surface exposes, in

@@ -10,7 +10,6 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
-// wantRefusal asserts the gate refuses cmd with the exact code and message.
 func wantRefusal(t *testing.T, cmd, code, message string) {
 	t.Helper()
 	ref := verifycore.Check(cmd)
@@ -69,9 +68,6 @@ func TestCheckRefusalMessages(t *testing.T) {
 	}
 }
 
-// nestedSubst builds r$(echo $(echo … m)) -rf x with depth $(…) levels: a
-// bash word that expands to `rm -rf x` (the shell evaluates the innermost
-// echo first, so the glued r + m = rm).
 func nestedSubst(depth int) string {
 	return "r" + strings.Repeat("$(echo ", depth) + "m" + strings.Repeat(")", depth) + " -rf x"
 }
@@ -177,7 +173,6 @@ func TestCheckAbsolutePathRoot(t *testing.T) {
 	t.Run("slash cwd", func(t *testing.T) {
 		t.Chdir("/")
 		wantRefusal(t, `cat /etc/passwd`, "verify-repo-escape", "refusing verifyCmd: matched '/etc/passwd'"+absPathDetail)
-		// The filesystem root itself is never "the repo", even when it is the cwd.
 		wantRefusal(t, `ls /`, "verify-repo-escape", "refusing verifyCmd: matched '/'"+absPathDetail)
 		if ref := verifycore.Check(`cat /tmp/x`); ref != nil {
 			t.Errorf("Check(/tmp/x) from /: %s, want clean (scratch carve-out)", ref.Code)
@@ -185,8 +180,6 @@ func TestCheckAbsolutePathRoot(t *testing.T) {
 	})
 }
 
-// chdirIntoRepoDir moves into the package's testdata (a repo dir, not under
-// /tmp) and returns the working directory the gate will read.
 func chdirIntoRepoDir(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs("testdata")
@@ -204,10 +197,8 @@ func chdirIntoRepoDir(t *testing.T) string {
 	return wd
 }
 
-// absPathDetail is the absolute-path refusal's parenthesised hint.
 const absPathDetail = " (absolute path escapes the repo — use repo-relative paths, /tmp for scratch)"
 
-// wantInsideRootClean asserts paths under the invocation root execute.
 func wantInsideRootClean(t *testing.T, wd string) {
 	t.Helper()
 	for _, cmd := range []string{`cat ` + wd + `/gate.golden`, `ls ` + wd, `cat "` + wd + `/gate.golden"`} {
@@ -217,7 +208,6 @@ func wantInsideRootClean(t *testing.T, wd string) {
 	}
 }
 
-// wantOutsideRootRefused asserts look-alike siblings and foreign paths refuse.
 func wantOutsideRootRefused(t *testing.T, wd string) {
 	t.Helper()
 	for _, frag := range []string{wd + `-evil/x`, wd + `_sibling`} {

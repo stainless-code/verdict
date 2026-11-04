@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// corpusPoint is one graded corpus bundle.
 type corpusPoint struct {
 	id             string
 	model          string
@@ -23,7 +22,6 @@ type corpusPoint struct {
 	missed         int
 }
 
-// corpusCounts is one aggregation cell (all bundles, one model, one panel).
 type corpusCounts struct {
 	bundles        int
 	bugs           int
@@ -33,8 +31,6 @@ type corpusCounts struct {
 	missed         int
 }
 
-// corpusRollup is the measured corpus block: overall plus per-model and
-// per-panel splits. It is nil when no corpus bundle was read.
 type corpusRollup struct {
 	cases   map[string]bool
 	byModel map[string]*corpusCounts
@@ -42,9 +38,6 @@ type corpusRollup struct {
 	total   corpusCounts
 }
 
-// readCorpus grades one .review/corpus-* bundle and records its point.
-// A marked corpus bundle with an unusable manifest or findings store warns
-// and skips (trend never fails on a bad store).
 func (st *state) readCorpus(e os.DirEntry) {
 	dir := ".review/" + e.Name()
 	c, ref := corpuscore.Load(dir)
@@ -70,7 +63,6 @@ func (st *state) readCorpus(e os.DirEntry) {
 	})
 }
 
-// corpusRollupOf aggregates the points; nil when there are none.
 func corpusRollupOf(points []corpusPoint) *corpusRollup {
 	if len(points) == 0 {
 		return nil
@@ -90,7 +82,6 @@ func corpusRollupOf(points []corpusPoint) *corpusRollup {
 	return r
 }
 
-// add folds one point into the counts.
 func (c *corpusCounts) add(p *corpusPoint) {
 	c.bundles++
 	c.bugs += p.bugs
@@ -100,7 +91,6 @@ func (c *corpusCounts) add(p *corpusPoint) {
 	c.missed += p.missed
 }
 
-// cell returns the named aggregation cell, creating it on first use.
 func cell(m map[string]*corpusCounts, key string) *corpusCounts {
 	if c, ok := m[key]; ok {
 		return c
@@ -136,7 +126,6 @@ func corpusDoc(r *corpusRollup) *jq.Obj {
 	)
 }
 
-// corpusCountsDoc renders one model/panel cell.
 func corpusCountsDoc(key, label string, c *corpusCounts) *jq.Obj {
 	return jq.NewObj(
 		key, label,
@@ -152,7 +141,6 @@ func corpusCountsDoc(key, label string, c *corpusCounts) *jq.Obj {
 	)
 }
 
-// emitCorpusHuman prints the measured corpus summary and each split.
 func (st *state) emitCorpusHuman(r *corpusRollup) {
 	st.human(fmt.Sprintf("corpus: %d bundle(s) over %d case(s) — ground_truth=%d reported=%d "+
 		"matched=%d false_positives=%d missed=%d",
@@ -170,7 +158,6 @@ func (st *state) emitCorpusHuman(r *corpusRollup) {
 	}
 }
 
-// corpusCountsLine renders one model/panel summary line.
 func corpusCountsLine(key, label string, c *corpusCounts) string {
 	return fmt.Sprintf("corpus %s %s: bundles=%d ground_truth=%d reported=%d matched=%d "+
 		"false_positives=%d missed=%d precision=%s recall=%s false-positive-rate=%s",

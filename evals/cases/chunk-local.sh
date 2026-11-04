@@ -1,31 +1,5 @@
 #!/usr/bin/env bash
-# Case chunk-local: local-bundle chunking parity with PR-bundle chunking.
 #
-# The shared gate/writer already slices fetch-local through the same code as
-# fetch; this case proves that parity side by side on one fixture (prior art:
-# chunk-manifest.sh for the chunk layout, completeness.sh C8 for the local
-# source record as authority):
-#   L1  same cap, same knob, same shape on the local path: absent knob refuses
-#       with no chunk mention and no chunks dir; --chunk and the knob file opt
-#       in with the notice naming the source; the manifest carries schema 1,
-#       cap 512000 + null source, totals, and ordered chunks each at or under
-#       the cap concatenating byte-identically to full.diff; re-fetch
-#       reproduces the manifest.
-#   L2  source-HEAD authority: the local manifest head/base SHAs equal the
-#       local source.json SHAs — null head on a dirty worktree, real commit
-#       SHAs on a --range bundle.
-#   L3  PR parity: the same diff bytes through fetch --chunk (canned gh) yield
-#       the same chunk count, member files, and per-chunk bytes, the same
-#       schema, and the additive data.chunk envelope key on both verbs.
-#   L4  degenerate parity: one file over the cap refuses diff-too-large with
-#       the single-file notice and no chunks dir on BOTH verbs.
-#   L5  opted-out / under-cap byte-identity on the local path: under-cap
-#       fetches read identical bytes with and without the knob and mint no
-#       chunks; a false knob file on the over-cap path reads absent bytes.
-#   L6  dump path: --show-prompts on a chunked local bundle embeds the full
-#       diff bytes (== the ordered chunk concat), so the dump composes with
-#       chunks instead of bypassing them.
-# All hermetic — sandbox git repo, stub/canned gh, no network.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -59,9 +33,6 @@ EOF
     awk -v f="$i" 'BEGIN{for(j=0;j<1500;j++) printf "base line %06d file%d padding padding padding padding\n", j, f}' > "cloc-f$i.txt"
   done
   printf 'alpha\nbeta\ngamma\n' > cloc-small.txt
-  # Prompt files for the --show-prompts leg: the dump refuses typed without
-  # the preamble (F7), so the sandbox carries committed prompt files — the
-  # explicit-path fetches below keep them out of every diff.
   printf '# verdict skill (eval fixture)\n' > SKILL.md
   mkdir -p prompts
   printf '# system (eval fixture)\n' > prompts/system.md
@@ -86,7 +57,6 @@ fi
 BUNDLE="$EVAL_SANDBOX/.review/local-clocfix"
 KNOB="$EVAL_SANDBOX/.review/chunk"
 
-# --- L1: same cap, same knob, same shape on the local path ---
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 assert_exit "absent-knob over-cap local refuses" 1
@@ -158,8 +128,6 @@ if cmp -s "$EVAL_SANDBOX/cloc-concat.diff" "$BUNDLE/full.diff"; then
 else
   bad "local chunk concat differs from full.diff"
 fi
-# Re-fetch at the settled HEAD: the knob commits above moved the base the
-# manifest records, so the reproducibility pair is taken after them.
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
 cp "$MAN" "$EVAL_SANDBOX/cloc-manifest-1.json"
@@ -171,7 +139,6 @@ else
   bad "local re-fetch exits $EVAL_STATUS / manifest differs"
 fi
 
-# --- L2: the local source record is the HEAD authority ---
 if [ "$(jq -r '.head_sha' <"$MAN" 2>/dev/null)" = "$(jq -r '.head_sha' <"$BUNDLE/source.json" 2>/dev/null)" ] \
   && [ "$(jq -r '.head_sha' <"$MAN" 2>/dev/null)" = "null" ] \
   && [ "$(jq -r '.base_sha' <"$MAN" 2>/dev/null)" = "$(jq -r '.base_sha' <"$BUNDLE/source.json" 2>/dev/null)" ] \
@@ -202,7 +169,6 @@ else
   bad "range SHAs: manifest $(jq -c '{head_sha,base_sha}' <"$RMAN" 2>/dev/null || echo MISSING)"
 fi
 
-# --- L3: the same diff bytes chunk identically down the PR path ---
 CLOC_FAKEBIN="$EVAL_SANDBOX/fakebin"
 mkdir -p "$CLOC_FAKEBIN"
 jq -n --argjson files "$(printf '%s\n' $CLOC_FILES | jq -R . | jq -s 'map({path:.})')" \
@@ -210,7 +176,6 @@ jq -n --argjson files "$(printf '%s\n' $CLOC_FILES | jq -R . | jq -s 'map({path:
   > "$EVAL_SANDBOX/cloc-pr.json"
 cat > "$CLOC_FAKEBIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# Case-local gh shim: serve the canned PR payload, log every interception.
 echo "fake-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat "$EVAL_SANDBOX/cloc-pr.json"; exit 0; fi
 if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then cat "$EVAL_SANDBOX/cloc-canned.diff"; exit 0; fi
@@ -256,7 +221,6 @@ else
   bad "envelope parity: local $(jq -c '.count // "absent"' <<<"$local_chunk" 2>/dev/null)"
 fi
 
-# --- L4: degenerate single-file behavior matches on both verbs ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   awk 'BEGIN{for(i=0;i<16000;i++) printf "base line %06d padding padding padding padding padding\n", i}' > cloc-huge.txt
@@ -293,7 +257,6 @@ else
   bad "degenerate codes: local $local_code / pr $pr_code"
 fi
 
-# --- L5: opted-out and under-cap local fetches behave exactly as today ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- cloc-huge.txt 2>/dev/null || true
@@ -343,7 +306,6 @@ else
   bad "false-knob parity broke"
 fi
 
-# --- L6: the prompt-dump path composes with chunks ---
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocrange --range "$CLOC_A..$CLOC_B" --chunk --show-prompts -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -355,7 +317,6 @@ else
   bad "dump exits $EVAL_STATUS with $(grep -c '^diff --git' "$EVAL_OUT" 2>/dev/null) headers"
 fi
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- $CLOC_FILES cloc-small.txt cloc-huge.txt 2>/dev/null || true

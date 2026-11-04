@@ -70,8 +70,6 @@ func TestResultSizeBudgetWithoutArtifact(t *testing.T) {
 	}
 }
 
-// assertTruncationSummary pins the fields of one truncation summary, including
-// the artifact pointer the exit criterion asks for.
 func assertTruncationSummary(t *testing.T, text, artifact string, full int) {
 	t.Helper()
 	summary := decodeSummary(t, text)
@@ -92,7 +90,6 @@ func assertTruncationSummary(t *testing.T, text, artifact string, full int) {
 	}
 }
 
-// decodeSummary parses one truncation summary text block.
 func decodeSummary(t *testing.T, text string) map[string]any {
 	t.Helper()
 	var summary map[string]any

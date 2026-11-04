@@ -1,15 +1,4 @@
 #!/usr/bin/env node
-// Generate the TS client's generated sources from the repo contracts:
-//   skills/verdict/schemas/envelope.schema.json ($defs -> clients/ts/src/types.gen.ts)
-//   release/contract.json (archives[] -> clients/ts/src/platforms.gen.ts and
-//     scripts/npm-shim/platforms.gen.json)
-// Refusal codes are not generated here: they come from the Go refusal-code
-// registry (internal/core/refusalcodes.go) via `go run ./cmd/tsgen`, because
-// that list is what internal/archtest holds equal to the codes the binary
-// refuses with.
-// No dependencies beyond Node builtins. Run `bun run gen` (or node this
-// script) after changing a schema or the release contract; `--check` fails
-// when the checked-in files are stale (drift gate, like make schemas-check).
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,8 +8,6 @@ const REPO_ROOT = join(HERE, "..", "..", "..");
 const SRC_DIR = join(HERE, "..", "src");
 const SHIM_DIR = join(REPO_ROOT, "scripts", "npm-shim");
 
-// NAME_OVERRIDES renames $defs that would collide with globals (`error`
-// vs the global Error); $refs resolve through the same mapping.
 const NAME_OVERRIDES = { error: "RefusalErrorBody" };
 
 function typeName(name) {
@@ -37,10 +24,6 @@ function docComment(description) {
   return `/** ${safe} */\n`;
 }
 
-// hoist lifts every inline object with properties to a named synthetic
-// $def (<Parent><Prop>), so the emitter only ever prints top-level
-// interfaces (which bun fmt leaves alone) instead of nested literals
-// (which it re-indents). The wire shape is unchanged; names are additive.
 function hoist(defs) {
   const all = { ...defs };
   const walk = (owner, node) => {
@@ -73,10 +56,6 @@ function hoist(defs) {
   for (const [name, node] of Object.entries(defs)) walk(typeName(name), node);
   return all;
 }
-// toTS maps the schema subset schemagen emits (draft 2020-12: $ref, const,
-// enum, type unions with null, objects with required + additionalProperties,
-// arrays, formats) to TypeScript. Anything outside that subset is unknown
-// by design — the envelope stays readable rather than clever.
 function toTS(node, defs) {
   if (node === true || node === undefined) return "unknown";
   if (node === false) return "never";
@@ -91,6 +70,7 @@ function toTS(node, defs) {
   if (Array.isArray(node.enum)) {
     return node.enum.map((v) => JSON.stringify(v)).join(" | ");
   }
+  if (Array.isArray(node.anyOf)) return anyOfTS(node.anyOf, defs);
   const types = Array.isArray(node.type) ? node.type : [node.type];
   const nullable = types.includes("null");
   const concrete = types.filter((t) => t !== "null" && t !== undefined);
@@ -105,6 +85,27 @@ function toTS(node, defs) {
 
 function paren(type) {
   return type.includes(" | ") ? `(${type})` : type;
+}
+
+// anyOf joins its variants into a union. A null variant renders the way a
+// `type: [..., "null"]` array does -- trailing ` | null` -- so both nullable
+// spellings produce one shape instead of `null | T` in one place and `T | null`
+// in another.
+function anyOfTS(variants, defs) {
+  const nullable = variants.some(isNullVariant);
+  const concrete = variants.filter((variant) => !isNullVariant(variant));
+  if (concrete.length === 0) return "null";
+  const base = concrete.map((variant) => toTS(variant, defs)).join(" | ");
+  return nullable ? `${paren(base)} | null` : base;
+}
+
+function isNullVariant(node) {
+  if (!node || typeof node !== "object" || node.$ref) return false;
+  if (Array.isArray(node.anyOf) || Array.isArray(node.enum)) return false;
+  if (node.const !== undefined) return node.const === null;
+  return Array.isArray(node.type)
+    ? node.type.length === 1 && node.type[0] === "null"
+    : node.type === "null";
 }
 
 function singleTS(type, node, defs) {
@@ -174,10 +175,6 @@ function genTypes() {
   return `${header("skills/verdict/schemas/envelope.schema.json ($defs)")}\n${chunks.join("\n\n")}\n`;
 }
 
-// genPlatforms renders the platform -> npm package map twice from one source:
-// `client` is the typed copy the ESM client imports, `shim` the JSON the CJS
-// install shim requires. Both are byte-compared by --check, so a rename in
-// release/contract.json cannot leave one of them resolving a dead package.
 function genPlatforms() {
   const contract = JSON.parse(
     readFileSync(join(REPO_ROOT, "release", "contract.json"), "utf8"),

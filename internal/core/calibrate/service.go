@@ -98,8 +98,6 @@ func (d *Data) Wire() *jq.Obj {
 	return d.live.Wire()
 }
 
-// state carries one calibrate run: the request, the accumulated warnings,
-// and the completed join or probe.
 type state struct { //nolint:govet // calibrate service state is allocated once per invocation
 	req      *Request
 	warnings []string
@@ -131,7 +129,6 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.liveResponse(), nil
 }
 
-// runJoin selects the marked corpus join or the live ground-truth join.
 func (st *state) runJoin(ctx context.Context, dir string) *core.RefusalError {
 	if corpuscore.IsDir(dir) {
 		return st.runCorpus(dir)
@@ -139,29 +136,22 @@ func (st *state) runJoin(ctx context.Context, dir string) *core.RefusalError {
 	return st.runLive(ctx, dir)
 }
 
-// warn records and streams one warning.
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	st.req.Warn(msg)
 }
 
-// human streams one human output line.
 func (st *state) human(line string) {
 	if st.req.Runtime != nil {
 		st.req.Human(line)
 	}
 }
 
-// withWarnings attaches the accumulated warnings to a refusal so the
-// adapter's envelope stays byte-identical to a success run's warning list.
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	ref.Warnings = st.warnings
 	return ref
 }
 
-// loadRefusal recovers the typed refusal carried by a store-guard error.
-// LoadFindings and the judgment readers only fail typed, so the As-chain
-// always hits; the fallback is defensive and never fires in practice.
 func (st *state) loadRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return st.withWarnings(ref)
@@ -169,7 +159,6 @@ func (st *state) loadRefusal(err error) *core.RefusalError {
 	return st.withWarnings(&core.RefusalError{Code: "internal", Message: err.Error()})
 }
 
-// commander returns the injected commander (nil when the caller set none).
 func (st *state) commander() core.Commander {
 	var commander core.Commander
 	if rt := st.runtime(); rt != nil {
@@ -178,12 +167,10 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
-// runtime returns the injected runtime (nil when the caller set none).
 func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-// liveResponse assembles the typed response after the live join.
 func (st *state) liveResponse() *Response {
 	return &Response{
 		Repo:     st.req.Repo,
@@ -195,7 +182,6 @@ func (st *state) liveResponse() *Response {
 	}
 }
 
-// probeResponse assembles the typed response after the probe write.
 func (st *state) probeResponse() *Response {
 	return &Response{
 		Repo:     st.req.Repo,

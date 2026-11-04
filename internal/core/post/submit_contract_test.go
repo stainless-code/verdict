@@ -12,8 +12,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// postFailCommander scripts the post happy path with a chosen reviews-POST
-// outcome, so a leg can fail the submit without touching the reads.
 func postFailCommander(t *testing.T, res scriptResult) *scriptCommander {
 	t.Helper()
 	cmdr := postCommander(t)
@@ -74,8 +72,6 @@ func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 	}
 }
 
-// writeProvenanceFixture seeds the version, prompt set, and cost model the
-// receipt's provenance triple reads.
 func writeProvenanceFixture(t *testing.T) {
 	t.Helper()
 	if err := writeTestFile("package.json", `{"version":"3.1.4"}`); err != nil {
@@ -230,7 +226,6 @@ func TestPostCountsTally(t *testing.T) {
 		jq.NewObj("status", "addressed"),
 		jq.NewObj("status", "addressed"),
 	}
-	// Three distinct counts, so a swapped pair of statuses cannot pass.
 	open, deferred, addressed := postCounts(entries)
 	if open != 2 || deferred != 1 || addressed != 3 {
 		t.Errorf("counts = %d open, %d deferred, %d addressed; want 2, 1, 3", open, deferred, addressed)
@@ -414,8 +409,6 @@ func TestSplitHelpersLiteralOracle(t *testing.T) {
 // splits a part it could keep, and every part stays within budget.
 func TestSplitBodyKeepsExactFitChunk(t *testing.T) {
 	t.Parallel()
-	// "aaaa\n\nbbb" is exactly the 9-byte budget; only the third paragraph
-	// overflows it.
 	parts := splitBody("aaaa\n\nbbb\n\ncccc", 9)
 	want := []string{"aaaa\n\nbbb", "cccc"}
 	if strings.Join(parts, "|") != strings.Join(want, "|") {
@@ -435,7 +428,6 @@ func TestSplitBodyKeepsExactFitChunk(t *testing.T) {
 // on rune boundaries and loses no bytes.
 func TestRuneChunksCutOnBoundaries(t *testing.T) {
 	t.Parallel()
-	// "⚠" is 3 bytes, so a 7-byte budget fits two of them.
 	parts := runeChunks(strings.Repeat("⚠", 4), 7)
 	if len(parts) != 2 {
 		t.Fatalf("runeChunks = %q, want two 6-byte parts", parts)
@@ -522,7 +514,6 @@ func TestBuildPostCommentsSigShortfall(t *testing.T) {
 func TestRunSplitFollowUps(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// Two paragraphs, each big enough that the body needs two review parts.
 	para := strings.Repeat("z", 32768)
 	review := fmt.Sprintf(`{"schema_version":"1","body":"> ✅ Long review.`+
 		`%s%s","approved":false,"comments":[]}`, para, para)
@@ -607,14 +598,11 @@ func TestRunSplitFollowUpFailure(t *testing.T) {
 	}
 }
 
-// splitFailCommander answers the reads from the scripted commander and fails
-// the second reviews POST, so the first review really lands.
 type splitFailCommander struct {
 	*scriptCommander
 	posts int
 }
 
-// Run forwards to the scripted commander but fails every POST after the
 // first.
 func (s *splitFailCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
 	if strings.Contains(strings.Join(cmd.Argv, " "), "/reviews") {

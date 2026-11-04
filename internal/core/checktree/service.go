@@ -48,7 +48,6 @@ type Data struct { //nolint:govet // field order is the published property order
 	Lines   []string
 }
 
-// Outcome kinds, one per gate path.
 const (
 	kindClean      = "clean"
 	kindDirty      = "dirty"
@@ -57,7 +56,6 @@ const (
 	kindNotARepo   = "not-a-repo"
 )
 
-// keyClean names the envelope clean flag.
 const keyClean = "clean"
 
 // Wire renders the profile in published wire order.
@@ -76,8 +74,6 @@ func (d *Data) Wire() *jq.Obj {
 	}
 }
 
-// stringLines owns the files/unexpected values: non-empty lines, never
-// null.
 func stringLines(lines []string) []any {
 	var out []any
 	for _, line := range lines {
@@ -92,8 +88,6 @@ func stringLines(lines []string) []any {
 	return out
 }
 
-// state carries one check-tree run: the request plus the accumulated
-// warnings.
 type state struct {
 	req      *Request
 	warnings []string
@@ -111,22 +105,18 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.runCheck(ctx), nil
 }
 
-// human streams one human output line.
 func (st *state) human(line string) {
 	if st.req.Runtime != nil {
 		st.req.Human(line)
 	}
 }
 
-// diag streams one raw diagnostic line.
 func (st *state) diag(line string) {
 	if st.req.Runtime != nil {
 		st.req.Diag(line)
 	}
 }
 
-// loadRefusal recovers the typed refusal carried by an overrides-guard
-// error; the fallback is defensive and never fires in practice.
 func (st *state) loadRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		ref.Warnings = st.warnings
@@ -135,7 +125,6 @@ func (st *state) loadRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "internal", Message: err.Error(), Warnings: st.warnings}
 }
 
-// commander returns the injected commander (nil when the caller set none).
 func (st *state) commander() core.Commander {
 	var commander core.Commander
 	if rt := st.runtime(); rt != nil {
@@ -144,12 +133,10 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
-// runtime returns the injected runtime (nil when the caller set none).
 func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-// response assembles the typed response after the gate resolves.
 func (st *state) response(next string, data *Data, errObj *core.SchemaError, exit int) *Response {
 	return &Response{
 		At:       st.req.TimeUTC(),
@@ -161,8 +148,6 @@ func (st *state) response(next string, data *Data, errObj *core.SchemaError, exi
 	}
 }
 
-// Porcelain layout constants: `git status --porcelain` v1 lines read two
-// XY status columns, one space, then the path.
 const (
 	porcelainSpaceAt = 2      // separator between the XY columns and the path
 	porcelainPathAt  = 3      // path starts after the XY columns and the space
@@ -171,7 +156,6 @@ const (
 	newline          = "\n"
 )
 
-// runCheck owns the check-tree gate over `git status --porcelain`.
 func (st *state) runCheck(ctx context.Context) *Response {
 	out, ok := st.gitPorcelain(ctx)
 	if !ok {
@@ -191,8 +175,6 @@ func (st *state) runCheck(ctx context.Context) *Response {
 	return st.expectGate(porcelain, st.req.Expect)
 }
 
-// gitPorcelain runs git status --porcelain through the injected commander,
-// discarding stderr.
 func (st *state) gitPorcelain(ctx context.Context) (string, bool) {
 	cmdr := st.commander()
 	if cmdr == nil {
@@ -205,8 +187,6 @@ func (st *state) gitPorcelain(ctx context.Context) (string, bool) {
 	return strings.TrimRight(res.Stdout, "\n"), true
 }
 
-// splitScratch counts and removes the skill's own .review/ scratch lines:
-// two status columns, a space, then .review/.
 func splitScratch(porcelain string) (int, string) {
 	if porcelain == "" {
 		return 0, ""
@@ -223,19 +203,15 @@ func splitScratch(porcelain string) (int, string) {
 	return own, strings.Join(kept, newline)
 }
 
-// porcelainLinesRaw splits porcelain output into lines.
 func porcelainLinesRaw(porcelain string) []string {
 	return slices.Collect(strings.SplitSeq(porcelain, newline))
 }
 
-// isScratchLine matches ^.. \.review/: any two status columns, a space,
-// then .review/.
 func isScratchLine(line string) bool {
 	return len(line) >= porcelainMinLen && line[porcelainSpaceAt] == ' ' &&
 		strings.HasPrefix(line[porcelainPathAt:], ".review/")
 }
 
-// notARepo owns the not-a-git-repo refusal.
 func (st *state) notARepo() *Response {
 	st.diag("check-tree: not a git repo")
 	return st.response("run inside a git repository",
@@ -244,14 +220,12 @@ func (st *state) notARepo() *Response {
 		1)
 }
 
-// cleanTree owns the clean path.
 func (st *state) cleanTree(scratch string, own int) *Response {
 	msg := "check-tree: clean" + scratch
 	st.human(msg)
 	return st.response(msg, &Data{Kind: kindClean, Clean: true, Ignored: own}, nil, 0)
 }
 
-// dirtyTree owns the dirty path without an --expect allowlist.
 func (st *state) dirtyTree(porcelain string) *Response {
 	msg := "check-tree: dirty worktree — commit or stash first:"
 	st.human(msg)
@@ -259,8 +233,6 @@ func (st *state) dirtyTree(porcelain string) *Response {
 	return st.response(msg, &Data{Kind: kindDirty, Lines: porcelainLinesRaw(porcelain)}, nil, 1)
 }
 
-// expectGate owns the --expect allowlist: stray paths fail, covered dirt
-// passes.
 func (st *state) expectGate(porcelain, expect string) *Response {
 	if stray := unexpectedPaths(porcelain, splitPrefixes(expect)); len(stray) > 0 {
 		return st.unexpectedDirt(stray)
@@ -270,8 +242,6 @@ func (st *state) expectGate(porcelain, expect string) *Response {
 	return st.response(msg, &Data{Kind: kindExpected, Clean: true}, nil, 0)
 }
 
-// unexpectedPaths owns the stray scan: rename lines match on the
-// post-arrow path.
 func unexpectedPaths(porcelain string, prefixes []string) []string {
 	var stray []string
 	for _, line := range porcelainLinesRaw(porcelain) {
@@ -282,7 +252,6 @@ func unexpectedPaths(porcelain string, prefixes []string) []string {
 	return stray
 }
 
-// stripStatus drops the XY status columns, reading "" on short lines.
 func stripStatus(line string) string {
 	if len(line) >= porcelainPathAt {
 		return line[porcelainPathAt:]
@@ -290,7 +259,6 @@ func stripStatus(line string) string {
 	return ""
 }
 
-// renameTarget returns the post-arrow path on renames.
 func renameTarget(file string) string {
 	if _, after, ok := strings.CutLast(file, renameSep); ok {
 		return after
@@ -298,7 +266,6 @@ func renameTarget(file string) string {
 	return file
 }
 
-// splitPrefixes splits and trims the --expect prefix list.
 func splitPrefixes(expect string) []string {
 	var out []string
 	for p := range strings.SplitSeq(expect, ",") {
@@ -307,8 +274,6 @@ func splitPrefixes(expect string) []string {
 	return out
 }
 
-// matchesPrefix applies a byte prefix test: an empty prefix matches
-// everything.
 func matchesPrefix(file string, prefixes []string) bool {
 	for _, p := range prefixes {
 		if strings.HasPrefix(file, p) {
@@ -318,7 +283,6 @@ func matchesPrefix(file string, prefixes []string) bool {
 	return false
 }
 
-// unexpectedDirt owns the unexpected-dirt failure.
 func (st *state) unexpectedDirt(stray []string) *Response {
 	msg := "check-tree: unexpected dirt:"
 	st.human(msg)

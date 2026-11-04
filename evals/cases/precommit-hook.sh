@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# Case precommit-hook: the pre-commit shell gate (hook wiring, not CLI behavior).
 #
-# Grades (all hermetic — sandbox repo, stub-free, no network):
-#   H1  staged violating .sh fails the hook (shellcheck runs, exit non-zero).
-#   H2  staged clean .sh passes the hook (exit 0, no warnings).
-#   H3  missing shellcheck skips with a notice and passes (degrade gracefully).
-# Pre-existing convention: bun stage never fires here (no md/json/ts staged),
-# so no formatter binary is needed for any leg.
 set -euo pipefail
 HERE="$(dirname "$0")"
 # shellcheck source=../lib/common.sh
@@ -36,7 +29,6 @@ hook() {
   return 0
 }
 
-# --- H1: staged violating .sh fails the hook (SC2034 unused var is warning-level) ---
 printf '#!/usr/bin/env bash\nunused_for_hook_test=1\necho "clean"\n' > "$REPO/bad.sh"
 git -C "$REPO" add bad.sh
 hook
@@ -47,7 +39,6 @@ else
 fi
 git -C "$REPO" reset -q
 
-# --- H2: staged clean .sh passes the hook ---
 printf '#!/usr/bin/env bash\necho "clean"\n' > "$REPO/good.sh"
 git -C "$REPO" add good.sh
 hook
@@ -58,11 +49,6 @@ else
 fi
 git -C "$REPO" reset -q
 
-# --- H3: missing shellcheck skips with a notice and passes ---
-# Minimal PATH holding only what the hook needs besides the gated binaries.
-# (An apt-installed shellcheck at /usr/bin/shellcheck survives a naive PATH
-# trim, so hiding by directory would pass on macOS and fail on Linux —
-# a stub dir with just git+bash+xargs proves absence on both.)
 mkdir -p "$EVAL_SANDBOX/stubbin-nosc"
 for t in git bash xargs; do
   p=$(command -v "$t" 2>/dev/null || true)

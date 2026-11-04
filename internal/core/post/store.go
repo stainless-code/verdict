@@ -8,11 +8,8 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// providerGitHub is the default provider marker.
 const providerGitHub = "github"
 
-// typedPostItems builds the typed envelope summaries alongside the ordered
-// items the wire renders verbatim.
 func typedPostItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {
@@ -33,7 +30,6 @@ func typedPostItems(entries []any) []core.FindingItem {
 	return items
 }
 
-// intOrNilPost reads an agent confidence as an int (nil when absent).
 func intOrNilPost(v any) *int {
 	if v == nil {
 		return nil
@@ -44,7 +40,6 @@ func intOrNilPost(v any) *int {
 	return nil
 }
 
-// strOrNilPost reads an agent security summary as a string (nil when absent).
 func strOrNilPost(v any) *string {
 	if v == nil {
 		return nil
@@ -55,8 +50,6 @@ func strOrNilPost(v any) *string {
 	return nil
 }
 
-// postDiagramValue owns the dry-run diagram disposition: null when the body
-// carried no candidates, else the validated shape with null keyword/note.
 func postDiagramValue(dstat *diagram.Status) any {
 	if dstat.State == "absent" {
 		return nil
@@ -79,14 +72,12 @@ func postDiagramValue(dstat *diagram.Status) any {
 	)
 }
 
-// postCounts tallies the merged findings for preflight and envelopes.
 func postCounts(entries []any) (open, deferred, addressed int) {
 	return countByStatus(entries, statusOpen),
 		countByStatus(entries, "deferred"),
 		countByStatus(entries, "addressed")
 }
 
-// countByStatus counts entries with status.
 func countByStatus(entries []any, status string) int {
 	n := 0
 	for _, e := range entries {
@@ -99,8 +90,6 @@ func countByStatus(entries []any, status string) int {
 	return n
 }
 
-// decodeProvenanceTyped parses the bundle provenance triple into the typed
-// shape for the envelope.
 func decodeProvenanceTyped(root, dir string) *core.Provenance {
 	doc, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(root, dir)))
 	if err != nil {

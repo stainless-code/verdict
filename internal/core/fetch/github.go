@@ -26,7 +26,6 @@ const providerFileCeiling = 3000
 // diffs over this count are refused upstream, never rendered.
 const upstreamFileLimit = 300
 
-// runGitHub mirrors the GitHub fetch path.
 func runGitHub(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
 ) (*core.FetchData, string, error) {
@@ -55,8 +54,6 @@ func runGitHub(
 	return fetchTail(ctx2, req, f, budget, &fc, chunkJSON, incBase)
 }
 
-// githubFetch owns the GitHub view/diff/file-list reads: PR.json, the
-// full diff with its API fallback, and the audit-18 paged file listing.
 func githubFetch(ctx context.Context, ctx2 *fetchRunCtx, r *session, dir, repo, pr string) error {
 	if ref := githubView(ctx, r, dir, repo, pr); ref != nil {
 		return ref
@@ -124,9 +121,6 @@ func githubAPIDiff(ctx context.Context, r *session, dir, repo, pr, cliStderr str
 	return nil
 }
 
-// githubBundle owns the post-cap bundle derivation: hunks, TOC/roles,
-// context, store, sensitive manifest, recall, review threads, chunks, and
-// the incremental diff. Returns the envelope chunk summary and base.
 func githubBundle(
 	ctx context.Context, ctx2 *fetchRunCtx, _ *core.FetchRequest, f core.FetchFlags,
 	dir, repo, pr string, fc fetchCap, chunkActive bool,
@@ -246,8 +240,6 @@ func githubIncrementalFail(r *session, dir, stderr string) error {
 	return nil
 }
 
-// githubIncrementalNote owns the failed-compare note: the first 300
-// stderr bytes (command substitution, no tr) name the unavailability.
 func githubIncrementalNote(r *session, dir, stderr string) *core.RefusalError {
 	head := stderr
 	if len(head) > compareErrHeadBytes {
@@ -275,8 +267,6 @@ func writeGitHubTOC(ctx context.Context, ctx2 *fetchRunCtx) error {
 	return writeTocRolesGitHub(ctx2, total, statLines, withHunks, omitted)
 }
 
-// githubStat owns the toc stat block: total plus the gh files stat lines
-// (a failing gh call degrades to no stat lines, like `|| true`).
 func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	total := "?"
 	if raw, err := os.ReadFile(ctx2.dir + suffixPRJSON); err == nil {
@@ -297,10 +287,6 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	return total, lines
 }
 
-// prExtraPaths lists every changed path plus each `previous_filename`, for
-// the sensitive and kb-recall extra inputs.
-// fetchPrepare owns the fetch preamble: budget resolution and gate,
-// the bundle directory, and the budget receipt.
 func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
 	budget, ref := resolveBudget(ctx2.env, ctx2.runner)
 	if ref != nil {
@@ -352,10 +338,6 @@ func extraPathsOf(f any) []string {
 	return out
 }
 
-// upstreamRefusalRe matches the host's own over-file-count diff refusal:
-// the upstream will not render the diff at all, distinct from the tool's
-// byte cap. The 300-file upstream limit rides in the message the
-// caller reports.
 var upstreamRefusalRe = regexp.MustCompile(`(?i)too large|not rendered|300 files?|maximum.*?files?`)
 
 // upstreamDiffRefusal names an upstream the host refused: when both diff

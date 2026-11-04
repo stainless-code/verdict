@@ -93,8 +93,6 @@ func isolationTarget(ctx context.Context, s *session, mode *localMode) (string, 
 	}
 }
 
-// committedTarget checks out the mode's head commit where one already
-// exists (stash, range, branch).
 func committedTarget(mode *localMode) (string, bool, error) {
 	if mode.headSHA == "" {
 		return "", false, &core.RefusalError{
@@ -105,10 +103,6 @@ func committedTarget(mode *localMode) (string, bool, error) {
 	return mode.headSHA, false, nil
 }
 
-// stagedTarget synthesizes a commit for the index tree via commit-tree
-// (parentless on an unborn HEAD): the commit message is a fixed marker,
-// since the commit is an unreferenced helper the worktree remove drops
-// with the checkout.
 func stagedTarget(ctx context.Context, s *session, mode *localMode) (string, bool, error) {
 	args := []string{gitCmdCommitTree, mode.headSHA}
 	if mode.baseSHA != "" {

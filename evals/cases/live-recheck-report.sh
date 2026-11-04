@@ -1,31 +1,10 @@
 #!/usr/bin/env bash
-# Case live-recheck-report: live-thread dimension on the report gate tail.
 #
-# Grades (all hermetic — crafted bundles, smart gh stub, no network):
-#   G1  clear-pass: zero live opens on a clean reviewed bundle -> gate exits
-#       0 with tier, completeness, and live check: pass lines naming both
-#       counts; the one-live leg proves the comparison key is the
-#       whole-store open count (a lone below-tier finding still passes).
-#   G2  unknown-fails: more live opens than local opens -> exit 1, the
-#       check: line names both counts plus the fetch-and-triage path, the
-#       store is unmutated (report never posts), and --force is refused
-#       (no --force on report).
-#   G3  unreachable-neutral both directions: a failed lookup warns (stderr +
-#       envelope warnings[]) and stays neutral — a clean bundle still exits
-#       0, a tier-dirty bundle still exits 1 on the tier; never exit 3, and
-#       no live check: line prints either way.
-#   G4  no-flag-zero-calls: advisory report without a gate flag makes zero
-#       graphql calls, prints no check: line, and reads deterministically.
-#   G5  provider/local skip: non-GitHub and local bundles warn-skip with
-#       zero graphql calls while the local dimensions still gate.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Overlay a smart gh stub: the threads (graphql) read follows
-# $EVAL_SANDBOX/recheck-mode (clear/one/open, else unreachable). Everything
-# else stays network-dead. Restored on exit so sibling cases keep theirs.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -47,7 +26,6 @@ exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
 
-# graphql_since <mark> — recheck (graphql) calls logged after <mark>.
 graphql_since() {
   local n
   n=$(tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "graphql" || true)
@@ -60,7 +38,6 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_C="cccccccccccccccccccccccccccccccccccccccc"
 HEAD_D="dddddddddddddddddddddddddddddddddddddddd"
 
-# live_mk_post <pr> <head> — craft a completed-post record.
 live_mk_post() {
   local pr="$1" head="$2"
   jq -n --arg h "$head" \
@@ -71,7 +48,6 @@ live_mk_post() {
 INFO_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Nit: clarify this line.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
 CRIT_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Critical boundary bug here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
 
-# --- G1: clear-pass (tier + completeness + live all pass) ---
 PR=4284
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -106,8 +82,6 @@ else
   bad "clear --json exits $EVAL_STATUS: $(jq -c '{error:.error,warnings:.warnings}' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# G1b: whole-store key — one below-tier open finding, one live open thread,
-# --check critical still passes (live 1 vs local 1, not vs tier hits 0).
 PR=4285
 eval_mk_bundle "$PR"
 printf '%s' "$INFO_FINDING" | eval_write_findings "$PR"
@@ -125,7 +99,6 @@ else
   bad "whole-store stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- G2: unknown-live fails the gate ---
 PR=4286
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -172,7 +145,6 @@ else
   bad "--force gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
-# --- G3: unreachable stays neutral, both directions ---
 PR=4287
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -211,7 +183,6 @@ else
   bad "dirty envelope warnings: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- G4: no gate flag means zero network ---
 PR=4290
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
@@ -244,7 +215,6 @@ fi
 assert_stream_nogrep "advisory --json prints no check: line" "$EVAL_ERR" "check:"
 assert_eq "advisory --json makes zero recheck calls" "0" "$(graphql_since "$m")"
 
-# --- G5: provider + local bundles warn-skip with zero network ---
 PR=4289
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
@@ -308,12 +278,6 @@ else
   bad "dirty local exits $EVAL_STATUS with $(graphql_since "$m") call(s)"
 fi
 
-# --- G6: real-failing-gh warn parity (F15) ---
-# A real failing gh prints its error document to stdout (gh api prints the
-# response body there) while the human message goes to stderr. The warn line
-# must carry only gh's stderr — never a downstream `jq: error ... Cannot
-# iterate over null` from slurping that stdout (the binary prints gh's stderr
-# only).
 PR=4291
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"

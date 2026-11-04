@@ -1,25 +1,5 @@
 #!/usr/bin/env bash
-# Case upgrade: `verdict upgrade` + `verdict uninstall`.
 #
-# Grades (all hermetic; a local loopback server serves locally built
-# archives/checksums, fake manager binaries log argv, fake HOME/install dirs
-# pin every channel):
-#   U1  installer-managed pinned self-replace: verified archive, cosign
-#       identity/issuer argv, SHA-256, --version smoke, receipt update, and
-#       the replaced binary answers --version.
-#   U2  latest resolves through the release redirect (never the API).
-#   U3  checksum mismatch refuses and leaves the old binary + receipt.
-#   U4  --dry-run prints the channel/action, makes no request, touches nothing.
-#   U5  npm delegation: exact argv, streamed output, exit code propagated,
-#       typed manager-failed envelope; no prompt (/dev/null stdin).
-#   U6  refusals are typed with the exact command: project-local, skill copy,
-#       unidentifiable.
-#   U7  uninstall removes only installer-managed files (+ --remove-path marker),
-#       dry-run touches nothing, foreign channels refuse with the owner command.
-#   U8  signature policy: checksum-only warns loudly, VERDICT_REQUIRE_SIGNATURE=1
-#       fails closed without cosign.
-#   U9  receipt-only detection: the receipt beside the binary names the channel
-#       with VERDICT_INSTALL unset; a copy without one is still unknown.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -41,7 +21,6 @@ mkdir -p "$REL/v$VERSION" "$FAKEBIN" "$CLEANBIN" "$CASE_HOME"
 : > "$COSIGN_LOG"
 : > "$REQ_LOG"
 
-# The fake released binary answers the smoke test and otherwise is inert.
 cat > "$BIN_SRC" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = "--version" ]; then printf '1.2.3\n'; exit 0; fi
@@ -49,7 +28,6 @@ printf 'fake-verdict %s\n' "$*"
 EOF
 chmod +x "$BIN_SRC"
 
-# Contract platform of the machine running the eval.
 os="$(uname -s)"
 case "$os" in Darwin) os=darwin ;; Linux) os=linux ;; *) bail "unsupported eval OS $os" ;; esac
 machine="$(uname -m)"
@@ -69,7 +47,6 @@ rm -rf "$REL/v$VERSION/payload"
 (cd "$REL/v$VERSION" && shasum -a 256 "$archive" > checksums.txt)
 printf '{}\n' > "$REL/v$VERSION/checksums.txt.sigstore.json"
 
-# Fake manager + cosign.
 cat > "$FAKEBIN/npm" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "${FAKE_NPM_LOG:-/dev/null}"
@@ -84,9 +61,6 @@ exit "${FAKE_COSIGN_STATUS:-0}"
 EOF
 chmod +x "$FAKEBIN/npm" "$FAKEBIN/cosign"
 
-# Local release server (python3 stdlib). python3 is a hard prerequisite like
-# jq/shasum: the server-backed legs prove the checksum gate, self-replace, and
-# receipt update, so skipping them silently would grade a broken upgrade green.
 SERVER_PID=''
 PORT=''
 cleanup() {
@@ -130,9 +104,6 @@ fi
 BASE_URL=""
 [ -z "$PORT" ] || BASE_URL="http://127.0.0.1:$PORT"
 
-# run_cli_bare <binary> [args...] runs with VERDICT_INSTALL unset, so the
-# channel has to come from the receipt beside the binary. No network: every
-# call here is a --dry-run plan.
 run_cli_bare() {
   local bin="$1"
   shift
@@ -147,7 +118,6 @@ run_cli_bare() {
   set -e
 }
 
-# run_cli <binary> <download-url-or-empty> [args...]
 run_cli() {
   local bin="$1" base="$2"
   shift 2
@@ -165,7 +135,6 @@ run_cli() {
   set -e
 }
 
-# fresh_install installs the eval binary as an installer-managed copy.
 fresh_install() {
   rm -rf "$INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
@@ -177,7 +146,6 @@ digest() { shasum -a 256 "$1" | awk '{print $1}'; }
 envelope_code() { jq -r '.error.code // empty' "$EVAL_OUT" 2>/dev/null; }
 envelope_data() { jq -r "$1" "$EVAL_OUT" 2>/dev/null; }
 
-# --- U1: pinned installer self-replace ---
 if [ -n "$PORT" ]; then
   fresh_install
   before="$(digest "$INSTALL_DIR/verdict")"
@@ -211,7 +179,6 @@ if [ -n "$PORT" ]; then
     good "U1 self-replace cleans its staging"
   fi
 
-  # --- U2: latest through the redirect ---
   fresh_install
   run_cli "$INSTALL_DIR/verdict" "$BASE_URL" upgrade
   if [ "$EVAL_STATUS" -eq 0 ] && grep -Fq '"version":"1.2.3"' "$INSTALL_DIR/.verdict-installer" \
@@ -221,7 +188,6 @@ if [ -n "$PORT" ]; then
     bad "U2 latest exit $EVAL_STATUS (requests: $(tr '\n' ' ' <"$REQ_LOG"))"
   fi
 
-  # --- U3: checksum mismatch leaves the old binary ---
   fresh_install
   cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
   cp "$REL/v$VERSION/checksums.txt" "$CASE/good-checksums.txt"
@@ -236,7 +202,6 @@ if [ -n "$PORT" ]; then
     bad "U3 checksum mismatch exit $EVAL_STATUS (old binary changed?)"
   fi
 
-  # --- U4: dry-run touches nothing and makes no request ---
   fresh_install
   requests_before="$(wc -l <"$REQ_LOG" | tr -d ' ')"
   cp "$INSTALL_DIR/verdict" "$CASE/dry-verdict"
@@ -252,7 +217,6 @@ if [ -n "$PORT" ]; then
     bad "U4 dry-run exit $EVAL_STATUS (requests $requests_before/$requests_after, data $(envelope_data .data.channel)/$(envelope_data .data.action))"
   fi
 
-  # --- U8: signature policy ---
   fresh_install
   set +e
   (
@@ -285,7 +249,6 @@ if [ -n "$PORT" ]; then
   fi
 fi
 
-# --- U9: the receipt beside the binary is enough; a copy without one is not ---
 fresh_install
 run_cli_bare "$INSTALL_DIR/verdict" upgrade --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -308,7 +271,6 @@ else
   bad "U9 foreign copy exit $EVAL_STATUS (data $(envelope_data .data.channel)/$(envelope_data .data.action))"
 fi
 
-# --- U5: npm delegation acts, streams, and propagates the exit code ---
 NPM_ROOT="$CASE/home/.npm-global/lib/node_modules/@stainless-code/verdict/bin"
 mkdir -p "$NPM_ROOT"
 cp "$EVAL_CLI" "$NPM_ROOT/verdict"
@@ -336,7 +298,6 @@ else
   bad "U5 npm default update exit $EVAL_STATUS (argv: $(cat "$NPM_LOG"))"
 fi
 
-# --- U6: typed refusals with the exact command ---
 PROJECT_ROOT="$CASE/project"
 mkdir -p "$PROJECT_ROOT/node_modules/@stainless-code/verdict/bin"
 printf '{"name":"demo"}\n' > "$PROJECT_ROOT/package.json"
@@ -368,7 +329,6 @@ else
   bad "U6 unidentifiable exit $EVAL_STATUS code $(envelope_code)"
 fi
 
-# --- U7: uninstall ---
 fresh_install
 printf 'export KEEP_ME=1\nexport PATH="%s:$PATH" # verdict installer\n' "$INSTALL_DIR" > "$CASE_HOME/.zshrc"
 run_cli "$INSTALL_DIR/verdict" "" uninstall --remove-path

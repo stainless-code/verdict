@@ -1,26 +1,10 @@
 #!/usr/bin/env bash
-# Case kb-recall: machine-readable recall manifest beside the human note.
 #
-# Grades (hermetic — crafted KB rows plus a scratch git repo in the sandbox;
-# the network-dead gh stub stays first on PATH throughout):
-#   R1  manifest carries recalled ids in rank order with the ranker's scores;
-#       ids+order agree with kb.txt by construction (single sort, two
-#       renderings); kb.txt bytes unchanged by the manifest.
-#   R2  scores match the ranker (unjudged 0.5 else hits/judged) and the
-#       precision columns in kb.txt; top-3 cap holds; envelope carries both
-#       artifacts on a match.
-#   R3  absent-on-clean parity: a diff with no scope match leaves neither
-#       file and the envelope carries neither key.
-#   R4  old-bundle tolerance: a bundle with kb.txt but no manifest still reads
-#       fine (fix surfaces kb.txt, exit 0); re-fetch regenerates the manifest
-#       with kb.txt bytes identical.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Scratch git repo (standalone-safe: init is a no-op when kb.sh already made
-# one; unique scope m1recall/ isolates this case from other rules).
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -33,8 +17,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
   git commit -qm m1recall-base 2>/dev/null || true
 )
 
-# Four rules on an isolated scope: m1-a judged high, m1-b/c unjudged,
-# m1-d judged low. Top-3 must read m1-a, m1-b, m1-c.
 run_review learn --rule "M1 high precision rule" --scope "m1recall/*.ts" --id m1-a --json >/dev/null
 run_review learn --rule "M1 unjudged rule bee" --scope "m1recall/*.ts" --id m1-b --json >/dev/null
 run_review learn --rule "M1 unjudged rule cee" --scope "m1recall/*.ts" --id m1-c --json >/dev/null
@@ -55,7 +37,6 @@ run_review triage acme/app "$PR" --sig "e323456789abcdef0123456789abcdef01234567
 run_review triage acme/app "$PR" --sig "e423456789abcdef0123456789abcdef01234567" --status false-positive --rationale "low precision m1 rule misfired on this finding completely here" --json >/dev/null
 run_review triage acme/app "$PR" --sig "e523456789abcdef0123456789abcdef01234567" --status false-positive --rationale "low precision m1 rule misfired on this finding completely here" --json >/dev/null
 
-# Matching diff for the recall legs.
 (
   cd "$EVAL_SANDBOX" || exit 99
   echo "more" >> m1recall/a.ts
@@ -70,7 +51,6 @@ else
   bad "m1recall1 exit $EVAL_STATUS (both files?)"
 fi
 
-# --- R1: ids/order agree by construction ---
 man_ids="$(jq -r '.[].id' "$EVAL_SANDBOX/.review/local-m1recall1/kb-recall.json" 2>/dev/null | tr '\n' ',' || true)"
 txt_ids="$(grep '^# m1-' "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" 2>/dev/null | cut -d' ' -f2 | tr '\n' ',' || true)"
 if [ "$man_ids" = "m1-a,m1-b,m1-c," ] && [ "$txt_ids" = "$man_ids" ]; then
@@ -95,7 +75,6 @@ else
   good "recall writes only tool-owned files"
 fi
 
-# --- R2: scores vs the note ---
 if [ "$(jq -c '[.[] | .score]' "$EVAL_SANDBOX/.review/local-m1recall1/kb-recall.json" 2>/dev/null)" = "[1,0.5,0.5]" ]; then
   good "manifest scores read 1 then neutral 0.5 prior"
 else
@@ -119,8 +98,6 @@ else
   bad "envelope missing a recall artifact"
 fi
 
-# kb.txt bytes identical with/without the manifest: hash survives a
-# manifest delete + re-fetch of the same diff.
 kb_hash_before="$(shasum -a 1 "$EVAL_SANDBOX/.review/local-m1recall1/kb.txt" | cut -d' ' -f1)"
 rm -f "$EVAL_SANDBOX/.review/local-m1recall1/kb-recall.json"
 eval_commit_controls
@@ -133,7 +110,6 @@ else
   bad "kb.txt hash moved ($kb_hash_before vs $kb_hash_after)"
 fi
 
-# --- R3: absent-on-clean parity ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git add -A
@@ -158,7 +134,6 @@ fi
   git commit -qm m1recall-tidy 2>/dev/null || true
 )
 
-# --- R4: old-bundle tolerance (kb.txt, no manifest) ---
 OLD="$EVAL_SANDBOX/.review/local-oldm1"
 mkdir -p "$OLD"
 cat > "$OLD/source.json" <<'EOF'

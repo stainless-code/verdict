@@ -1,28 +1,10 @@
 #!/usr/bin/env bash
-# Case fix: bounded verify-gated fix loops over local bundles (offline).
 #
-# Grades (hermetic — crafted local bundles plus a scratch git repo in the
-# sandbox; the network-dead gh stub stays first on PATH throughout):
-#   F1  default pick: top open inline sig by severity (critical first),
-#       path-asc tiebreak; pass output carries readiness, finding, anchors,
-#       instructions; --json envelope is one doc with the fix data shape.
-#   F2  --sig must be open + inline: addressed/section/unknown refuse as
-#       bad-sig, ambiguous prefix as ambiguous-sig, all with try: hints.
-#   F3  PR bundles refuse as not-local; closed local bundles (PR.json state
-#       closed) refuse; conflicted worktrees refuse as conflicted-tree.
-#   F4  ceiling: 3 passes land, the 4th refuses as fix-ceiling with a
-#       stopped:ceiling tombstone (passes stay 3, repeat refusal stable).
-#   F5  scope-escape: touching a file outside the anchor stops the loop,
-#       names the file, tombstones stopped:scope-escape; reverting recovers.
-#   F6  kb.txt content surfaces in full in the fix output (human + envelope);
-#       completion fires with no open inline sigs (counts + ledger + done).
-#   F7  fix writes only fix.json (findings.json byte-identical, no tmp left).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# 40-hex sigs (same length/shape as the kb case fixtures).
 CRIT="c123456789abcdef0123456789abcdef01234567"
 INFO="1123456789abcdef0123456789abcdef01234567"
 INFO2="1123456789abcdef0123456789abcdef01234568"
@@ -59,10 +41,6 @@ mk_finding() { # $1=sig $2=kind $3=status $4=severity $5=path $6=body
     '{kind:$kind,path:(if $kind == "inline" then $p else null end),heading:(if $kind == "inline" then null else "Notes" end),side:"RIGHT",line:2,anchored:true,body:$b,suggestion:null,inBounds:true,rigor:"pointed",severity:$sev,kb:[],sig:$sig,sig_version:"1",firstSeen:"aaaaaaa",lastSeen:"aaaaaaa",status:$st,rationale:"",history:[]}'
 }
 
-# Scratch git repo for the worktree audits. Everything git runs in a subshell
-# pinned to the sandbox cwd — never the caller's cwd, never the repo checkout
-# under test. Harness artifacts are gitignored so status audits see only probe
-# files (the script itself also ignores .review/ either way).
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q
@@ -83,7 +61,6 @@ EOF
   git commit -qm init
 )
 
-# --- F1: default pick (severity first), pass output, envelope shape ---
 mk_local fixpick
 {
   mk_finding "$INFO" inline open informational notes.txt "Minor wording nit here."
@@ -148,7 +125,6 @@ else
   bad "bundle dir drifted: $(ls "$EVAL_SANDBOX/.review/local-fixpick/")"
 fi
 
-# Path-asc tiebreak at equal severity.
 mk_local fixorder
 {
   mk_finding "$INFO" inline open important b.txt "Bee file issue here."
@@ -161,7 +137,6 @@ else
   bad "tiebreak gave '$(jq -r '.data.locator // empty' <"$EVAL_OUT")'"
 fi
 
-# --- F2: --sig must be open + inline ---
 mk_local fixbad
 {
   mk_finding "$INFO" inline open informational notes.txt "Open nit here."
@@ -209,7 +184,6 @@ else
   bad "explicit --sig gave exit $EVAL_STATUS sig '$(jq -r '.data.sig // empty' <"$EVAL_OUT")'"
 fi
 
-# --- F3: locality, closed bundles, conflicted trees ---
 PR=4291
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -269,7 +243,6 @@ else
   bad "tree still dirty after abort: $(git -C "$EVAL_SANDBOX" status --porcelain)"
 fi
 
-# --- F4: ceiling refuses the 4th pass, tombstones once ---
 mk_local fixceil
 mk_finding "$CEIL" inline open important notes.txt "Stubborn bug here." | jq -s '.' | fix_write_findings fixceil
 for n in 1 2 3; do
@@ -305,7 +278,6 @@ else
   bad "5th pass gave exit $EVAL_STATUS code '$code'"
 fi
 
-# --- F5: scope-escape on out-of-anchor touch, recovery on revert ---
 mk_local fixscope
 mk_finding "$SCOP" inline open important notes.txt "Scoped bug here." | jq -s '.' | fix_write_findings fixscope
 run_review fix acme/app local-fixscope --json
@@ -365,7 +337,6 @@ fi
   git checkout -q -- other.txt
 )
 
-# --- F5b: quoted anchor paths never false-trigger the audit ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   printf 'spaced\n' > "my file.txt"
@@ -386,7 +357,6 @@ else
   bad "spaced anchor false escape, exit $EVAL_STATUS"
 fi
 
-# --- F6: kb.txt recall + terminal completion ---
 mk_local fixkb
 mk_finding "$INFO" inline open informational notes.txt "Kb-guided nit." | jq -s '.' | fix_write_findings fixkb
 cat > "$EVAL_SANDBOX/.review/local-fixkb/kb.txt" <<'EOF'

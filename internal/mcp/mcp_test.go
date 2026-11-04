@@ -23,10 +23,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// fixedNow is the deterministic clock every test injects.
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
-// testConfig builds a hermetic transport config rooted at the current cwd.
 func testConfig() Config {
 	return Config{
 		Version: "1.2.3",
@@ -36,7 +34,6 @@ func testConfig() Config {
 	}
 }
 
-// fixture writes a minimal hermetic PR bundle and changes into its root.
 func fixture(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
@@ -46,7 +43,6 @@ func fixture(t *testing.T) {
 	writeFile(t, ".review/5101/findings.json", `[]`)
 }
 
-// writeFile writes one fixture file, creating parents.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -57,7 +53,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// frame is one decoded JSON-RPC response.
 type frame struct { //nolint:govet // field order mirrors the decoded wire frame
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
@@ -65,7 +60,6 @@ type frame struct { //nolint:govet // field order mirrors the decoded wire frame
 	Error   *rpcError       `json:"error"`
 }
 
-// serve runs one scripted session and returns the decoded stdout frames.
 func serve(t *testing.T, cfg *Config, lines ...string) map[string]frame {
 	t.Helper()
 	var out bytes.Buffer
@@ -76,7 +70,6 @@ func serve(t *testing.T, cfg *Config, lines ...string) map[string]frame {
 	return decodeFrames(t, out.Bytes())
 }
 
-// decodeFrames proves stdout holds protocol frames only.
 //
 //nolint:revive // frame decoding asserts one line of protocol output
 func decodeFrames(t *testing.T, raw []byte) map[string]frame {
@@ -160,7 +153,6 @@ func TestToolSchemas(t *testing.T) {
 	}
 }
 
-// checkSchema walks the small JSON Schema subset the reflector emits.
 //
 //nolint:revive // the schema walk is one branch per JSON type
 func checkSchema(t *testing.T, tool string, node map[string]any) {
@@ -221,14 +213,11 @@ func TestDataToolCall(t *testing.T) {
 	}
 }
 
-// postCommander scripts post's reads (live SHA, authorship, empty threads)
-// and fails the test on any reviews POST.
 type postCommander struct {
 	t     *testing.T
 	calls []string
 }
 
-// Run replays one canned read; dry-run must never reach the reviews POST.
 func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	joined := strings.Join(cmd.Argv, " ")
 	c.calls = append(c.calls, joined)
@@ -248,7 +237,6 @@ func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, e
 	}
 }
 
-// postFixture writes the bundle post's dry run needs.
 func postFixture(t *testing.T) {
 	t.Helper()
 	writeFile(t, ".review/7/PR.json",
@@ -338,8 +326,7 @@ func TestPostTool(t *testing.T) {
 	}
 }
 
-// TestReadOnlyPolicy proves --read-only filters the tool list and makes a
-// write tool a hidden-tool error naming --read-only.
+// TestReadOnlyPolicy pins what --read-only serves and what it hides.
 //
 //nolint:revive,cyclop // the policy matrix reads as one assertion block
 func TestReadOnlyPolicy(t *testing.T) {
@@ -351,7 +338,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 		t.Fatal("no read-only tools")
 	}
 	for _, tool := range readOnly {
-		if !tool.readOnly {
+		if !tool.readOnly && !tool.servedWhenReadOnly {
 			t.Errorf("%s leaked into --read-only", tool.name)
 		}
 	}
@@ -364,13 +351,17 @@ func TestReadOnlyPolicy(t *testing.T) {
 	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
+	kept := false
 	for _, tool := range list.Tools {
-		if tool.Name == "record" || tool.Name == "post" {
+		switch tool.Name {
+		case "record", "post", "threads":
 			t.Errorf("read-only list exposed %q", tool.Name)
+		case "report":
+			kept = true
 		}
-		if !tool.Annotations.ReadOnlyHint {
-			t.Errorf("%s readOnlyHint = false", tool.Name)
-		}
+	}
+	if !kept {
+		t.Error("read-only list dropped report")
 	}
 	if frames["2"].Error == nil || frames["2"].Error.Code != codeInvalidParams {
 		t.Fatalf("record in read-only = %+v, want -32602", frames["2"].Error)
@@ -379,6 +370,93 @@ func TestReadOnlyPolicy(t *testing.T) {
 		t.Errorf("record in read-only = %q, want a hidden-tool error naming --read-only", msg)
 	}
 }
+
+// TestReadOnlyReportSchema proves the read-only schema offers no writing arg.
+func TestReadOnlyReportSchema(t *testing.T) {
+	t.Parallel()
+	report := toolNamed(t, readOnlyList(t), "report")
+	if report.Annotations.ReadOnlyHint {
+		t.Error("report readOnlyHint = true, but --output and --sarif write files")
+	}
+	props := schemaProps(t, report.InputSchema, argFlags)
+	for _, arg := range []string{"output", "sarif"} {
+		if _, offered := props[arg]; offered {
+			t.Errorf("read-only report schema still offers %q", arg)
+		}
+	}
+	if _, ok := props[argStatus]; !ok {
+		t.Error("read-only report schema dropped the status filter")
+	}
+}
+
+func readOnlyList(t *testing.T) toolsListResult {
+	t.Helper()
+	cfg := testConfig()
+	cfg.ReadOnly = true
+	frames := serve(t, &cfg, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	var list toolsListResult
+	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	return list
+}
+
+func toolNamed(t *testing.T, list toolsListResult, name string) toolDescriptor {
+	t.Helper()
+	for _, tool := range list.Tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("tools/list has no %q", name)
+	return toolDescriptor{}
+}
+
+// TestReadOnlyReportRefusesArtifactArgs proves --read-only refuses, not hides.
+func TestReadOnlyReportRefusesArtifactArgs(t *testing.T) {
+	fixture(t)
+	const call = `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":` +
+		`{"name":"report","arguments":{"repo":"acme/app","pr":"5101","flags":{"output":"out.md"}}}}`
+	readOnly := testConfig()
+	readOnly.ReadOnly = true
+	frames := serve(t, &readOnly, call)
+	if frames["1"].Error == nil || frames["1"].Error.Code != codeInvalidParams {
+		t.Fatalf("report --output in read-only = %+v, want -32602", frames["1"].Error)
+	}
+	if msg := frames["1"].Error.Message; !strings.Contains(msg, `unknown argument "flags.output"`) {
+		t.Errorf("report --output in read-only = %q, want the unknown-argument refusal", msg)
+	}
+	if _, err := os.Stat("out.md"); !os.IsNotExist(err) {
+		t.Fatalf("read-only report wrote out.md: %v", err)
+	}
+	open := testConfig()
+	frames = serve(t, &open, call)
+	if frames["1"].Error != nil {
+		t.Fatalf("report --output without --read-only = %+v", frames["1"].Error)
+	}
+	if _, err := os.Stat("out.md"); err != nil {
+		t.Errorf("report --output without --read-only wrote no file: %v", err)
+	}
+}
+
+func schemaProps(t *testing.T, schema map[string]any, key string) map[string]any {
+	t.Helper()
+	parent, ok := schema[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatal("schema has no properties")
+	}
+	child, ok := parent[key].(map[string]any)
+	if !ok {
+		t.Fatalf("schema has no %q object", key)
+	}
+	props, ok := child[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatalf("%q has no properties", key)
+	}
+	return props
+}
+
+// TestWriteToolsNeverClaimReadOnly holds every hint to its own description.
 
 // TestServeLifecycle drives initialize -> tools/list -> tools/call
 // success -> refusal -> ping -> malformed frames in one session.
@@ -416,7 +494,6 @@ func TestServeLifecycle(t *testing.T) {
 	if len(list.Tools) != 18 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
-	// Success.
 	var ok callToolResult
 	if err := json.Unmarshal(frames["3"].Result, &ok); err != nil {
 		t.Fatalf("success result: %v", err)
@@ -434,7 +511,6 @@ func TestServeLifecycle(t *testing.T) {
 	if string(ok.StructuredContent) != ok.Content[0].Text {
 		t.Error("text and structuredContent diverged")
 	}
-	// Refusal.
 	var refused callToolResult
 	if err := json.Unmarshal(frames["4"].Result, &refused); err != nil {
 		t.Fatalf("refusal result: %v", err)
@@ -452,7 +528,6 @@ func TestServeLifecycle(t *testing.T) {
 	if refusal["hint"] == "" || !strings.Contains(refused.Content[0].Text, refusal["hint"]) {
 		t.Errorf("refusal hint = %q", refusal["hint"])
 	}
-	// Ping, unknown tool, unknown method, parse error.
 	if string(frames["5"].Result) != "{}" {
 		t.Errorf("ping result = %s", frames["5"].Result)
 	}
@@ -531,7 +606,6 @@ func TestArgsDecode(t *testing.T) {
 	}
 }
 
-// findTool returns one registered tool from the full surface.
 func findTool(t *testing.T, name string) *tool {
 	t.Helper()
 	for _, tool := range allTools(false, true) {
@@ -589,7 +663,6 @@ func TestOperatorSurface(t *testing.T) {
 	}
 }
 
-// hasTriage reports whether the registry contains the operator tool.
 func hasTriage(tools []*tool) bool {
 	for _, tool := range tools {
 		if tool.name == "triage" {
@@ -599,7 +672,6 @@ func hasTriage(tools []*tool) bool {
 	return false
 }
 
-// listHasTriage reports whether a wire tool list contains the operator tool.
 func listHasTriage(tools []toolDescriptor) bool {
 	for _, tool := range tools {
 		if tool.Name == "triage" {
@@ -698,8 +770,6 @@ func TestServeEndsOnContextCancelWithoutEOF(t *testing.T) {
 	}
 }
 
-// runningWaitTool is a tool that marks `running` on disk, then blocks until
-// its call context is canceled and refuses `canceled`.
 func runningWaitTool(running string) *tool {
 	return &tool{
 		name:    "wait",
@@ -714,7 +784,6 @@ func runningWaitTool(running string) *tool {
 	}
 }
 
-// waitForFile polls until path exists, failing the test at a 5s deadline.
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -771,13 +840,11 @@ func TestRefusalResultRetryAt(t *testing.T) {
 	}
 }
 
-// threadsCommander answers the refresh's GraphQL page.
 type threadsCommander struct {
 	t    *testing.T
 	page string
 }
 
-// Run replays the one scripted page.
 func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
 		return core.Result{Stdout: c.page}, nil
@@ -786,11 +853,10 @@ func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result
 	return core.Result{}, errors.New("unexpected argv")
 }
 
-// LookPath reports every tool present.
 func (c *threadsCommander) LookPath(string) error { return nil }
 
-// TestThreadsTool proves the MCP threads tool is read-only/open-world, maps
-// into the refresh service, and returns the same data profile as the CLI.
+// TestThreadsTool proves the MCP threads tool refreshes its bundle snapshot, is
+// open-world, and returns the same data profile as the CLI.
 //
 //nolint:revive // the registry/refresh matrix reads as one assertion block
 func TestThreadsTool(t *testing.T) {
@@ -807,7 +873,7 @@ func TestThreadsTool(t *testing.T) {
 	if registered == nil {
 		t.Fatal("threads tool is not registered")
 	}
-	if !registered.readOnly || !registered.openWorld || !registered.idempotent {
+	if registered.readOnly || !registered.openWorld || !registered.idempotent {
 		t.Errorf("threads annotations = %+v", registered)
 	}
 	page := `{"data":{"repository":{"pullRequest":{"reviewThreads":{` +
@@ -837,8 +903,6 @@ func TestThreadsTool(t *testing.T) {
 	}
 }
 
-// concurrentReport renders one report call; even ids hit the fixture bundle
-// (success), odd ids a PR with none (refusal).
 func concurrentReport(id int) string {
 	pr := "9999"
 	if id%2 == 0 {

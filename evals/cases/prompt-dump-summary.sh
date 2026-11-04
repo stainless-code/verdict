@@ -1,34 +1,5 @@
 #!/usr/bin/env bash
-# Case prompt-dump-summary: read-only prompt dump on fetch + confidence-led summary.
 #
-# Grades (all hermetic — crafted bundles, stub gh, sandbox git worktree):
-#   P1  dump parity (fetch-local): --show-prompts stdout == the documented
-#       assembly — trusted prompts verbatim, the trust-boundary prologue,
-#       every present bundle file fenced with the run's nonce (SKILL.md,
-#       system, mode, diagrams, then meta, toc, roles, diff, recall when
-#       present, advisories/panel when present) — with a well-formed nonce.
-#   P2  no extra store writes: with-flag vs without-flag bundles hold identical
-#       file sets and identical diff bytes; stdout carries only the dump
-#       (progress stays on stderr).
-#   P3  no agent, no extra network: fetch-local makes zero gh calls; the
-#       canned-gh fetch path makes the same call count with and without flag.
-#   P4  dump parity (fetch): same concatenation contract on the PR path via a
-#       canned gh stub (run with the sandbox prompt files present; missing
-#       siblings warn, a missing preamble refuses — graded under F7).
-#   P5  --json parity: with the flag the envelope gains data.prompt_dump equal
-#       to the concatenation; without the flag the key is absent.
-#   F7  missing prompt files fail loudly: no prompts/system.md refuses typed
-#       (prompt-dump-failed, no dump on stdout); a missing sibling prompt
-#       warns on stderr (+ envelope warnings[] under --json) while the dump
-#       proceeds without it.
-#   S1  report --output leads with confidence + safety from the stored record,
-#       keeps machine markers, and omits the checked list when findings stand.
-#   S2  clean reports carry a bounded checked list (max 7 + overflow pointer).
-#   S3  full reasoning stays in the machine envelope: file bodies truncate at
-#       200 chars while --json items keep the full text.
-#   S4  guard parity: the guided shape (verdict marker first, confidence lead
-#       after) passes the degenerate-body guard; marker-less shorts still fail.
-#   S5  missing records read neutral (unrecorded / not assessed), never fail.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -36,7 +7,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-# --- sandbox git worktree (kb.sh already inits one; ensure standalone-safe) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -56,15 +26,8 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 )
 run_review learn --rule "Dump probe lines stay short" --scope "dumpdir/*.txt" --id dump-probe --json >/dev/null 2>&1 || true
 
-# dump_nonce <file> — the first nonce=<16 hex> fence marker in a dump.
 dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
 
-# dump_expected <bundle-dir> <out> <nonce> — the documented dump, built
-# independently of render_prompt_dump: trusted prompts verbatim, the
-# trust-boundary prologue naming <nonce>, every present bundle file fenced
-# with <nonce>. Callers mine <nonce> from the actual dump first, so byte
-# equality grades structure and content; nonce properties (grammar,
-# freshness, forgery containment) are graded in prompt-injection.sh.
 dump_expected() {
   (
     cd "$EVAL_SANDBOX" || exit 99
@@ -110,7 +73,6 @@ EOF
   )
 }
 
-# --- P1: dump parity on fetch-local ---
 calls_p3_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 eval_commit_controls
 run_review fetch-local acme/app dump-a --show-prompts
@@ -132,7 +94,6 @@ else
   bad "kb.txt missing (dump-probe rule should match dumpdir/*.txt)"
 fi
 
-# --- P2: no extra store writes, stdout carries only the dump ---
 eval_commit_controls
 run_review fetch-local acme/app dump-b
 if [ "$EVAL_STATUS" -eq 0 ]; then
@@ -157,14 +118,12 @@ else
 fi
 assert_file_nogrep "dump owns stdout (no progress lines in the concatenation)" "$EVAL_SANDBOX/expected-a.txt" "^done:"
 
-# --- P3: fetch-local makes zero gh calls ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - calls_p3_before ))" = "0" ]; then
   good "zero stub-gh intercepts across the fetch-local legs (no agent, no network)"
 else
   bad "stub gh intercepted $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') call(s)"
 fi
 
-# --- P4: dump parity on the PR fetch path via canned gh ---
 cat > "$EVAL_SANDBOX/canned-PR.json" <<'EOF'
 {"number":99,"title":"canned","body":"","baseRefName":"main","headRefName":"feat","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"url":"https://example.invalid/99","commits":[{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","messageHeadline":"canned"}],"files":[{"path":"notes.txt","additions":1,"deletions":1},{"path":"dumpdir/probe.txt","additions":1,"deletions":0}],"additions":2,"deletions":1,"isDraft":false,"reviewDecision":null,"state":"OPEN"}
 EOF
@@ -234,7 +193,6 @@ else
   bad "PR-path bundle file sets differ"
 fi
 
-# --- P5: --json parity ---
 eval_commit_controls
 run_review fetch-local acme/app dump-j --show-prompts --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(stdout_docs)" = "1" ]; then
@@ -257,7 +215,6 @@ else
   bad "plain --json leaks prompt_dump"
 fi
 
-# --- F7: missing prompt files fail loudly, never silently ---
 mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
 eval_commit_controls
 run_review fetch-local acme/app dump-f7a --show-prompts
@@ -282,9 +239,6 @@ eval_commit_controls
 run_review fetch-local acme/app dump-f7c --show-prompts
 f7c_status="$EVAL_STATUS"
 mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"
-# The hidden file is tracked, so its deletion still rides the dump's own diff
-# section (as a `-` line) — the prompt-section copy is the anchored `^#`
-# line, which must be gone while the preamble stays.
 f7c_omitted="$(grep -c '^# review mode (eval fixture)' "$EVAL_OUT" || true)"
 if [ "$f7c_status" -eq 0 ] \
   && grep -q "prompts/review.md" "$EVAL_ERR" \
@@ -310,7 +264,6 @@ else
   bad "F7: missing sibling warning missing from warnings[] (exit $f7d_status)"
 fi
 
-# --- S1: lead lines from the stored record + markers, no checked list ---
 PR=4301
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
@@ -337,7 +290,6 @@ run_review report acme/app "$PR"
 assert_exit "human report succeeds" 0
 assert_stream_nogrep "human stdout stays marker-free (lead lives in the file)" "$EVAL_OUT" "Confidence:"
 
-# --- S2: clean reports carry a bounded checked list ---
 PR=4302
 eval_mk_bundle "$PR"
 jq --arg h "$HEAD_A" '.headRefOid = $h
@@ -364,7 +316,6 @@ else
   bad "checked list has $(grep -c '^- ' "$EVAL_SANDBOX/out-4302.md") bullets"
 fi
 
-# --- S3: file truncates, envelope retains ---
 PR=4303
 eval_mk_bundle "$PR"
 LONG_A="$(printf 'A%.0s' {1..200})"
@@ -378,7 +329,6 @@ assert_file_grep "file keeps the summary prefix" "$EVAL_SANDBOX/out-4303.md" "$L
 assert_file_nogrep "file truncates before the tail" "$EVAL_SANDBOX/out-4303.md" "$LONG_B" "-F"
 assert_json_field "envelope keeps all 300 chars" "300" '.data.items[0].body | length'
 
-# --- S4: guided shape passes the degenerate-body guard ---
 PR=4304
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
@@ -401,7 +351,6 @@ else
   bad "degenerate-body guard broke (exit $EVAL_STATUS)"
 fi
 
-# --- S5: missing records read neutral ---
 PR=4305
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"

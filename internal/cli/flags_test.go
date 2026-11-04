@@ -29,7 +29,6 @@ func TestStripGlobalToggles(t *testing.T) {
 	checkForce(t, "attribution", g.PublishAttributionForce, "off")
 }
 
-// checkForce checks one force value.
 func checkForce(t *testing.T, name, got, want string) {
 	t.Helper()
 	if got != want {
@@ -53,7 +52,6 @@ func TestStripGlobalValues(t *testing.T) {
 	checkSetValue(t, "copyright", g.PublishCopyright, g.PublishCopyrightSet, "c")
 }
 
-// checkSetValue checks one set-flag value.
 func checkSetValue(t *testing.T, name, got string, set bool, want string) {
 	t.Helper()
 	if got != want || !set {
@@ -61,7 +59,6 @@ func checkSetValue(t *testing.T, name, got string, set bool, want string) {
 	}
 }
 
-// mustStrip strips globals or fails the test.
 func mustStrip(t *testing.T, args []string) ([]string, *cli.GlobalForces) {
 	t.Helper()
 	rest, g, uerr, ref := cli.StripGlobal(args)
@@ -109,7 +106,6 @@ func TestStripGlobalMissingValue(t *testing.T) {
 	}
 }
 
-// checkMissingValue asserts one global flag with no value reports want.
 func checkMissingValue(t *testing.T, flag, want string) {
 	t.Helper()
 	_, _, uerr, ref := cli.StripGlobal([]string{"record", flag})
@@ -222,7 +218,6 @@ func TestApplyGlobalForcesJSONMode(t *testing.T) {
 	}
 }
 
-// checkApplyJSONMode strips args and asserts the resolved toggle.
 func checkApplyJSONMode(t *testing.T, args []string, want bool) {
 	t.Helper()
 	_, g, uerr, ref := cli.StripGlobal(args)
@@ -349,8 +344,6 @@ func TestApplyGlobalForcesNoColor(t *testing.T) {
 	}
 }
 
-// noColorCase is one --no-color precedence row: the forced mode, the
-// configured mode, the stored preference, and the expected result.
 type noColorCase struct {
 	name     string
 	color    string
@@ -360,7 +353,6 @@ type noColorCase struct {
 	noColor  bool
 }
 
-// checkNoColorRule applies one --no-color row and asserts the resulting mode.
 func checkNoColorRule(t *testing.T, tc noColorCase) {
 	t.Helper()
 	r := &cli.Runner{EnvReviewColorMode: tc.env, PrefColorSet: tc.pref}
@@ -393,15 +385,12 @@ func TestBoolFlagTableUncoveredHalf(t *testing.T) {
 	}
 }
 
-// boolFlagCase is one boolean global flag: the force it must set, its name,
-// and the value it must leave behind.
 type boolFlagCase struct {
 	field func(*cli.GlobalForces) string
 	flag  string
 	want  string
 }
 
-// checkBoolFlag strips one boolean flag and asserts the force it left behind.
 func checkBoolFlag(t *testing.T, tc boolFlagCase) {
 	t.Helper()
 	rest, g := mustStrip(t, []string{"record", tc.flag})

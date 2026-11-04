@@ -10,18 +10,11 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// benchOverviewFiles and benchOverviewBytes size the synthetic large-diff
-// fixture: a review-scale bundle whose overview block renders from one diff
-// read, not one per file row.
 const (
 	benchOverviewFiles = 200
 	benchOverviewBytes = 2 << 20
 )
 
-// benchOverviewDiff builds a synthetic diff with fileCount sections totalling
-// about target bytes. Every section carries a hunk with context padding and a
-// few added lines that mention a sibling, so the overview renders the full
-// table plus the change-topology edges.
 func benchOverviewDiff(files, target int) string {
 	perFile := max(target/files, 1)
 	var sb strings.Builder

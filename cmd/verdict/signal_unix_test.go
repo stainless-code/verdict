@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// envSignalChild marks the re-executed test binary that plays the verdict
-// process in TestShutdownSignalsCancelTheVerb.
 const envSignalChild = "VERDICT_TEST_SIGNAL_CHILD"
 
 // TestSignalChild is the child half of TestShutdownSignalsCancelTheVerb: it
@@ -38,7 +36,6 @@ func TestShutdownSignalsCancelTheVerb(t *testing.T) {
 	t.Run("SIGTERM", func(t *testing.T) { t.Parallel(); assertSignalCancels(t, syscall.SIGTERM) })
 }
 
-// assertSignalCancels pins exit 3 and the canceled envelope for one signal.
 func assertSignalCancels(t *testing.T, sig syscall.Signal) {
 	t.Helper()
 	code, stdout := signalMidFetch(t, sig)
@@ -50,9 +47,6 @@ func assertSignalCancels(t *testing.T, sig syscall.Signal) {
 	}
 }
 
-// signalMidFetch starts the re-executed front door on a `fetch` whose gh
-// blocks, sends sig once gh is running, and returns the exit code (-1 for a
-// death by signal) and stdout.
 func signalMidFetch(t *testing.T, sig syscall.Signal) (int, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -86,7 +80,6 @@ func signalMidFetch(t *testing.T, sig syscall.Signal) (int, string) {
 	return cmd.ProcessState.ExitCode(), stdout.String()
 }
 
-// waitForFile polls until the stub gh proves the verb is mid-flight.
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)

@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// handoffFixture builds an old target, a new image, and the receipt path.
 func handoffFixture(t *testing.T) Handoff {
 	t.Helper()
 	dir := t.TempDir()
@@ -141,7 +140,6 @@ func TestParseHandoffRejectsMissingFlags(t *testing.T) {
 	}
 }
 
-// assertResult reads the helper result document.
 func assertResult(t *testing.T, path string, wantOK bool) {
 	t.Helper()
 	raw, err := os.ReadFile(path)

@@ -1,25 +1,5 @@
 #!/usr/bin/env bash
-# Case kbgrade: self-grading probe over closed findings (calibrate --probe).
 #
-# Grades (hermetic — crafted bundle fixtures in the sandbox; the
-# network-dead gh stub stays first on PATH throughout):
-#   P1  grade rows are well-formed: one per finding, verdict from the
-#       recorded disposition (addressed = real, false-positive = false),
-#       first cited rule + helpfulness, grader + timestamp, bundle key.
-#   P2  additive-only: findings.json, kb.jsonl, and kb-joins.jsonl are
-#       byte-identical after a probe run; re-running is idempotent.
-#   P3  no-ground-truth edge: open/wont-fix/deferred findings grade
-#       unknown with null helpfulness — never forced real/false.
-#   P4  offline: no post.json needed, local bundles grade, zero gh
-#       interceptions across the probe runs.
-#   P5  missing/unreadable findings refuse typed (missing-findings /
-#       corrupt-store) and write no grades file.
-#   P6  agent judgment loop: --judge/--judge-file merge agent_verdict/
-#       agent_helpful/agreement columns that may diverge from the baseline
-#       (agree + disagree shapes), unknown sigs refuse typed, malformed input
-#       refuses typed, baseline columns untouched by judgments, the dissent
-#       rate computable with sample size, judgments sticky across re-runs,
-#       still offline.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -31,9 +11,6 @@ S3="f333333333333333333333333333333333333333"
 S4="f444444444444444444444444444444444444444"
 S5="f555555555555555555555555555555555555555"
 
-# Bundle 4501: addressed cited, false-positive cited, addressed uncited,
-# open cited (no ground truth yet), deferred cited. Deliberately no
-# post.json — the probe must not need one.
 mkdir -p "$EVAL_SANDBOX/.review/4501"
 cat > "$EVAL_SANDBOX/.review/4501/findings.json" <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Real cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["g-real"],"sig":"$S1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},
@@ -57,7 +34,6 @@ else
   bad "calibrate --probe exits $EVAL_STATUS"
 fi
 
-# --- P1: well-formed rows ---
 if [ "$(jq -r '.schema_version' <"$EVAL_OUT" 2>/dev/null)" = "1" ] \
   && [ "$(jq -r '.verb' <"$EVAL_OUT" 2>/dev/null)" = "calibrate" ] \
   && jq -e '.data.bundle == "4501" and (.data.grades | length) == 5
@@ -107,7 +83,6 @@ else
 fi
 run_review calibrate acme/app 4501 --probe --json
 
-# --- P3: no-ground-truth edge (unknown, never forced) ---
 if [ "$(row "$S4" | jq -c '[.verdict, .rule, .helpful]')" = '["unknown","g-real",null]' ] \
   && [ "$(row "$S5" | jq -c '[.verdict, .rule, .helpful]')" = '["unknown","g-real",null]' ]; then
   good "open + deferred grade unknown with the cite kept and helpful null"
@@ -115,7 +90,6 @@ else
   bad "unknown edge: S4=$(row "$S4") S5=$(row "$S5")"
 fi
 
-# --- P2: additive-only + idempotent ---
 after_findings="$(shasum -a 1 "$EVAL_SANDBOX/.review/4501/findings.json" | cut -d' ' -f1)"
 after_kb="absent"; [ -f "$EVAL_SANDBOX/.review/kb.jsonl" ] \
   && after_kb="$(shasum -a 1 "$EVAL_SANDBOX/.review/kb.jsonl" | cut -d' ' -f1)"
@@ -137,7 +111,6 @@ else
   bad "re-run moved the grade rows"
 fi
 
-# --- P4: offline, local bundles included ---
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 if [ "$stub_before" = "$stub_after" ]; then
   good "zero gh interceptions across the probe runs"
@@ -160,7 +133,6 @@ else
   bad "local probe gave exit $EVAL_STATUS"
 fi
 
-# --- P5: typed refusals, no grades file ---
 run_review calibrate acme/app 4599 --probe --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-findings" ] \
@@ -180,7 +152,6 @@ else
   bad "corrupt-store leg gave exit $EVAL_STATUS"
 fi
 
-# --- P6: agent judgment loop (judgments that can diverge) ---
 stub_p6_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 mkdir -p "$EVAL_SANDBOX/.review/4502"
 cat > "$EVAL_SANDBOX/.review/4502/findings.json" <<EOF

@@ -17,22 +17,13 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 )
 
-// envMCPChild marks the re-executed test binary that plays `verdict mcp` in
-// TestMCPShutdownSignalKillsTheToolTree.
 const envMCPChild = "VERDICT_TEST_MCP_CHILD"
 
-// mcpSignalExitBound is the wall clock a signaled MCP server gets to cancel
-// its handlers and exit. The kill path is the watchdog's group kill plus the
-// exec wait delay, both well under a second.
 const mcpSignalExitBound = 15 * time.Second
 
-// mcpSignalToolCall is the one tool call the child serves: verify runs the
-// recorded verifyCmd in its own process group, so the grandchild it spawns is
-// exactly the process a host's SIGTERM used to orphan.
 const mcpSignalToolCall = `{"jsonrpc":"2.0","id":2,"method":"tools/call",` +
 	`"params":{"name":"verify","arguments":{"repo":"acme/app","pr":"5201","timeoutRaw":"300"}}}`
 
-// mcpSignalInitialize is the handshake frame a host sends first.
 const mcpSignalInitialize = `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
 	`"params":{"protocolVersion":"2025-06-18"}}`
 
@@ -57,8 +48,6 @@ func TestMCPShutdownSignalKillsTheToolTree(t *testing.T) {
 	t.Run("SIGTERM", func(t *testing.T) { t.Parallel(); assertMCPSignalKillsTree(t, syscall.SIGTERM) })
 }
 
-// assertMCPSignalKillsTree runs one signaled session and pins its exit code,
-// bound, canceled frame, race-clean stderr and dead grandchild.
 func assertMCPSignalKillsTree(t *testing.T, sig syscall.Signal) {
 	t.Helper()
 	got := runMCPThenSignal(t, sig)
@@ -89,10 +78,6 @@ type mcpRun struct {
 	stderr  string
 }
 
-// runMCPThenSignal serves `verdict mcp` with a verify call in flight, sends sig
-// once the grandchild has reported its pid, and returns what the session did:
-// the grandchild pid, the exit code, the time the server took after the signal,
-// and both streams.
 func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 	t.Helper()
 	dir := t.TempDir()
@@ -116,8 +101,6 @@ func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 		t.Fatal(err)
 	}
 	defer func() { _ = cmd.Process.Kill() }() //nolint:errcheck // cleanup after a failed run leaves nothing behind
-	// The host keeps its end of stdin open: the signal, not EOF, is what ends
-	// this session.
 	if _, err := stdin.Write([]byte(mcpSignalInitialize + "\n" + mcpSignalToolCall + "\n")); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +121,6 @@ func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 	}
 }
 
-// waitForExit fails the test if the server is still running at the deadline.
 func waitForExit(t *testing.T, cmd *exec.Cmd, deadline time.Duration) {
 	t.Helper()
 	done := make(chan struct{}, 1)
@@ -154,7 +136,6 @@ func waitForExit(t *testing.T, cmd *exec.Cmd, deadline time.Duration) {
 	}
 }
 
-// writeVerifyCmd writes the bundle the verify tool call runs in.
 func writeVerifyCmd(t *testing.T, dir, verifyCmd string) {
 	t.Helper()
 	bundle := filepath.Join(dir, ".review", "5201")
@@ -170,8 +151,6 @@ func writeVerifyCmd(t *testing.T, dir, verifyCmd string) {
 	}
 }
 
-// mcpCallFrame is one response frame: the request id plus the tool result.
-// Field order mirrors the decoded wire frame (govet fieldalignment).
 //
 //nolint:govet // field order mirrors the decoded wire frame
 type mcpCallFrame struct {
@@ -179,7 +158,6 @@ type mcpCallFrame struct {
 	Result mcpCallResult   `json:"result"`
 }
 
-// mcpCallResult is one tool result's error flag and typed refusal.
 //
 //nolint:govet // field order mirrors the decoded wire frame
 type mcpCallResult struct {
@@ -187,14 +165,10 @@ type mcpCallResult struct {
 	StructuredContent mcpRefusalCode `json:"structuredContent"`
 }
 
-// mcpRefusalCode is a refusal's machine-readable code.
 type mcpRefusalCode struct {
 	Code string `json:"code"`
 }
 
-// assertCanceledCall proves the in-flight tool call reported the cancel: the
-// response frame for id 2 is an error whose structured content names the
-// `canceled` code (not a recorded timeout, not a missing frame).
 func assertCanceledCall(t *testing.T, stdout string) {
 	t.Helper()
 	for line := range strings.SplitSeq(stdout, "\n") {
@@ -210,7 +184,6 @@ func assertCanceledCall(t *testing.T, stdout string) {
 	t.Fatalf("no response frame for the in-flight call\nstdout: %s", stdout)
 }
 
-// waitForMCPPID polls until the verifyCmd's grandchild has reported its pid.
 func waitForMCPPID(t *testing.T, path string) int {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
@@ -224,7 +197,6 @@ func waitForMCPPID(t *testing.T, path string) int {
 	return 0
 }
 
-// readCompletePID reads a whole pid file, reporting ok only for a positive pid.
 func readCompletePID(path string) (int, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil || !strings.HasSuffix(string(raw), "\n") {
@@ -237,8 +209,6 @@ func readCompletePID(path string) (int, bool) {
 	return pid, true
 }
 
-// requireMCPChildGone polls past the reparent/reap window until the pid is dead
-// and fails if it outlives the tree kill.
 func requireMCPChildGone(t *testing.T, pid int) {
 	t.Helper()
 	proc, err := os.FindProcess(pid)

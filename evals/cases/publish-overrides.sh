@@ -1,27 +1,5 @@
 #!/usr/bin/env bash
-# Case publish-overrides: operator-owned per-block template fragments.
 #
-# Grades (all hermetic — crafted bundles, stub gh, no network):
-#   V1  absent-fragment default: no .review/overrides reads the built-in
-#       bytes (report --output and human post dry-run succeed; V2 pins the
-#       default-fragment rendering).
-#   V2  valid default fragments render byte-identically (all four present with
-#       default content; report cmp identical; post dry-run exit 0; check-tree
-#       passes fragment validation and fails only on the repo/tree gate).
-#   E1  custom attribution fragment renders substituted (exit 0).
-#   E2  custom footer-order reorders/drops receipt fields (exact segments).
-#   E3  custom threshold shows the overview below the defaults (files=0).
-#   E4  custom preamble rewords the clean-review heading (placeholder fed).
-#   E5  full v1 inventory substitutes in one line (exact match).
-#   L1  marker in a fragment refuses naming marker-first-line (check + post).
-#   L2  ### in a fragment refuses naming findings-structure (check + post).
-#   L3  bad threshold refuses naming degenerate-guard (check + post).
-#   L4  metadata comment in a fragment refuses naming metadata-presence.
-#   L5  divider in a fragment refuses naming divider-shape (check + post).
-#   U1  unknown placeholder refuses typed bad-settings (check + post).
-#   F1  unknown footer field refuses naming footer-order-subset (check + post).
-#   P1  precedence: --attribution-text flag wins over the attribution fragment.
-#   M1  the manual carries paths, locked/open lists, inventory, fail-closed.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -58,9 +36,6 @@ index 1111111..2222222 100644
 EOF
   printf '[{"kind":"inline","path":"a.txt","side":"RIGHT","line":2,"anchored":true,"body":"Open probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"1111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]' > "$dir/findings.json"
   printf '{"schema_version":"1","effort":"standard","est_usd":0.05}' > "$dir/cost.json"
-  # post.json head differs from the PR HEAD (new-commit post), so the footer
-  # keeps today's link — a same-head head would now omit it (07 repost guard)
-  # and break the V1 old-vs-new parity baseline below by design.
   jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
     '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
     > "$dir/post.json"
@@ -94,11 +69,9 @@ post_refuse() { # $1 = label, $2 = pr, $3 = want code, $4 = want invariant
   fi
 }
 
-# --- fixtures ---
 mk_full_bundle 4801
 mk_clean_bundle 4802
 
-# --- V1: absent-fragment default (built-in bytes render) ---
 mkdir -p "$EVAL_SANDBOX/xdg-empty/verdict"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-new.md"
@@ -116,7 +89,6 @@ fi
 cp "$EVAL_SANDBOX/out-new.md" "$EVAL_SANDBOX/out-base.md"
 unset XDG_CONFIG_HOME || true
 
-# --- V2: valid default fragments render byte-identically ---
 mkdir -p "$OV"
 printf '## What we checked\n' > "$OV/preamble.md"
 printf 'tier\ncost\nfiles\nlink\n' > "$OV/footer-order.md"
@@ -140,14 +112,11 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
   good "valid fragments pass authoring-time validation (clean tree)"
 elif [ "$code" = "not-a-repo" ] \
   || { [ -z "$code" ] && grep -q "check-tree:" "$EVAL_ERR"; }; then
-  # A fresh per-case sandbox has no git repo: check-tree validates the
-  # fragments first, then trips the repo (or tree) gate — never bad-override.
   good "valid fragments pass authoring-time validation (only the repo/tree gate trips)"
 else
   bad "valid check-tree gave exit $EVAL_STATUS"
 fi
 
-# --- E1: custom attribution fragment renders substituted ---
 printf 'House style {version} on {tier}\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-e1.md"
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -157,7 +126,6 @@ else
   bad "attribution effect gave exit $EVAL_STATUS"
 fi
 
-# --- E2: custom footer-order reorders/drops receipt fields ---
 printf 'files\ncost\ntier\n' > "$OV/footer-order.md"
 printf 'Reviewed with [**Verdict {version}**]({product_url})\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-e2.md"
@@ -165,7 +133,6 @@ assert_exit "footer-order render succeeds" 0
 assert_file_grep "custom footer-order reorders the receipt" "$EVAL_SANDBOX/out-e2.md" '4 files · cost $0.05 · standard tier' "-F"
 assert_file_nogrep "custom footer-order drops the link field" "$EVAL_SANDBOX/out-e2.md" '[review' "-F"
 
-# --- E3: custom threshold shows the overview below the defaults ---
 ov_rm; mkdir -p "$OV"
 printf 'files: 0\nbytes: 0\n' > "$OV/walkthrough-threshold.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-e3.md"
@@ -177,7 +144,6 @@ else
 fi
 ov_rm
 
-# --- E4: custom preamble rewords the clean-review heading ---
 mkdir -p "$OV"
 printf '## Walkthrough ({files_reviewed})\n' > "$OV/preamble.md"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-e4.md"
@@ -185,7 +151,6 @@ assert_exit "preamble render succeeds" 0
 assert_file_grep "custom preamble rewords the heading with substitution" "$EVAL_SANDBOX/out-e4.md" '## Walkthrough (4 files)' "-F"
 assert_file_nogrep "custom preamble drops the default heading" "$EVAL_SANDBOX/out-e4.md" '## What we checked' "-F"
 
-# --- E5: full v1 inventory substitutes in one line ---
 printf '## Walk ({version}|{tier}|{product_url}|{files_reviewed}|{head_sha_short}|{model}|{cost})\n' > "$OV/preamble.md"
 run_review report acme/app 4802 --output "$EVAL_SANDBOX/out-e5.md"
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -204,21 +169,18 @@ else
 fi
 ov_rm
 
-# --- L1: marker in a fragment refuses ---
 mkdir -p "$OV"
 printf '> %s Stale marker\n' "$(printf '\342\234\205')" > "$OV/preamble.md"
 check_refuse "marker fragment" "bad-override" "marker-first-line"
 post_refuse "marker fragment" 4801 "bad-override" "marker-first-line"
 ov_rm
 
-# --- L2: ### in a fragment refuses ---
 mkdir -p "$OV"
 printf '### Custom section\n' > "$OV/preamble.md"
 check_refuse "findings fragment" "bad-override" "findings-structure"
 post_refuse "findings fragment" 4801 "bad-override" "findings-structure"
 ov_rm
 
-# --- L3: bad threshold refuses ---
 mkdir -p "$OV"
 printf 'files: -1\n' > "$OV/walkthrough-threshold.md"
 check_refuse "bad threshold" "bad-override" "degenerate-guard"
@@ -228,28 +190,24 @@ check_refuse "non-numeric threshold" "bad-override" "degenerate-guard"
 post_refuse "non-numeric threshold" 4801 "bad-override" "degenerate-guard"
 ov_rm
 
-# --- L4: metadata comment in a fragment refuses ---
 mkdir -p "$OV"
 printf '<!-- report-machine:start -->\n' > "$OV/preamble.md"
 check_refuse "metadata fragment" "bad-override" "metadata-presence"
 post_refuse "metadata fragment" 4801 "bad-override" "metadata-presence"
 ov_rm
 
-# --- L5: divider in a fragment refuses ---
 mkdir -p "$OV"
 printf 'note <!-- verdict-footer --> tail\n' > "$OV/attribution.md"
 check_refuse "divider fragment" "bad-override" "divider-shape"
 post_refuse "divider fragment" 4801 "bad-override" "divider-shape"
 ov_rm
 
-# --- U1: unknown placeholder refuses typed bad-settings ---
 mkdir -p "$OV"
 printf 'Hello {bogus}\n' > "$OV/attribution.md"
 check_refuse "unknown placeholder" "bad-settings" "{bogus}"
 post_refuse "unknown placeholder" 4801 "bad-settings" "{bogus}"
 ov_rm
 
-# --- F1: unknown footer field refuses ---
 mkdir -p "$OV"
 printf 'tier\nbogus_field\n' > "$OV/footer-order.md"
 check_refuse "unknown footer field" "bad-override" "footer-order-subset"
@@ -258,7 +216,6 @@ printf 'tier\ntier\n' > "$OV/footer-order.md"
 check_refuse "duplicate footer field" "bad-override" "footer-order-subset"
 ov_rm
 
-# --- P1: --attribution-text flag wins over the fragment ---
 mkdir -p "$OV"
 printf 'Fragment loses {version}\n' > "$OV/attribution.md"
 run_review report acme/app 4801 --output "$EVAL_SANDBOX/out-p1.md" --attribution-text "Flag wins {version}"
@@ -267,14 +224,12 @@ assert_file_grep "flag --attribution-text wins over the fragment" "$EVAL_SANDBOX
 assert_file_nogrep "flag --attribution-text drops the fragment text" "$EVAL_SANDBOX/out-p1.md" 'Fragment loses' "-F"
 ov_rm
 
-# --- L3b: 20-digit threshold refuses (64-bit wrap guard) ---
 mkdir -p "$OV"
 printf 'files: 99999999999999999999\n' > "$OV/walkthrough-threshold.md"
 check_refuse "huge threshold" "bad-override" "degenerate-guard"
 post_refuse "huge threshold" 4801 "bad-override" "degenerate-guard"
 ov_rm
 
-# --- L6: innocent prose mentioning a machine comment passes (anchored scan) ---
 mkdir -p "$OV"
 printf 'We follow the report-machine comment convention documented in the manual.\n' > "$OV/preamble.md"
 run_review post acme/app 4801 --dry-run --json
@@ -285,12 +240,6 @@ else
 fi
 ov_rm
 
-# --- C1: check-tree --json envelopes on native paths (temp repo, removed after) ---
-# NOTE: run_review truncates $EVAL_OUT/$EVAL_ERR inside the cwd before the CLI
-# runs, so a sandbox repo always sees its own capture files as dirt. The clean
-# path is therefore exercised via --expect (only-expected-dirt, exit 0); the
-# not-a-repo path is exercised before git init (guarded: another case may own
-# a repo first one day, and then this leg must be revisited, not silenced).
 if [ ! -d "$EVAL_SANDBOX/.git" ]; then
   run_review check-tree --json
   if [ "$EVAL_STATUS" -eq 1 ] \
@@ -328,7 +277,6 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.git" "$EVAL_SANDBOX/ct-probe.txt"
 
-# --- M1: manual carries paths, lists, inventory, fail-closed behavior ---
 if grep -Fq '.review/overrides/' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq 'preamble.md' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq 'footer-order.md' "$EVAL_ROOT/docs/manual.md" \
@@ -349,7 +297,6 @@ else
   bad "overrides paragraph missing from docs/manual.md"
 fi
 
-# --- cleanup: no knob or fragment state leaks into later cases ---
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_FOOTER REVIEW_PUBLISH_ATTRIBUTION || true
 unset REVIEW_PUBLISH_ATTRIBUTION_TEXT REVIEW_PUBLISH_COPYRIGHT || true

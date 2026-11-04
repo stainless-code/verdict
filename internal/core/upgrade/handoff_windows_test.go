@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// TestWaitProcessReturnsForExitedChild proves the Windows wait path
-// observes a real process exit (the handoff's central precondition).
 func TestWaitProcessReturnsForExitedChild(t *testing.T) {
 	cmd := exec.Command("cmd.exe", "/c", "exit", "0")
 	if err := cmd.Start(); err != nil {

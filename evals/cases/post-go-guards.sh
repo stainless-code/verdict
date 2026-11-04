@@ -1,18 +1,5 @@
 #!/usr/bin/env bash
-# Case post-go-guards: bounded post guards (audit 02 + audit 21).
 #
-# Grades (hermetic — crafted bundles, smart gh stub, no network):
-#   G1  secondary rate limit retries with bounded backoff: a 429 carrying a
-#       retry-after hint retries and posts exactly once (exit 0, two reviews
-#       calls, one review created).
-#   G2  a persistent 429 fails fast after three attempts (exit 1, post-failed,
-#       three reviews calls, no post.json) — bounded, never hanging the run.
-#   G3  oversized bodies split across follow-up review comments: a body past
-#       the 65,536-char hosting limit posts twice (review + one COMMENT
-#       follow-up), each part fitting the limit with the footer intact on
-#       the first part, instead of submitting a doomed review.
-#   G4  unknown-path comments move to the body: a comment on a path outside
-#       the diff index posts under Unanchored observations, never inline.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -20,9 +7,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-# Overlay a smart gh stub: pulls/user answer locally, the reviews POST fails
-# with a 429 carrying retry-after while $EVAL_SANDBOX/rate-count stays below
-# $EVAL_SANDBOX/rate-budget, then succeeds. Restored on exit.
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
 restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
@@ -57,7 +41,6 @@ exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
 
-# reviews_posts_since <mark> — reviews POST calls logged after <mark>.
 reviews_posts_since() {
   local n
   n=$(tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews" || true)
@@ -72,7 +55,6 @@ mk_comment() { # $1 = pr — clean bundle carrying a non-binding review
 EOF
 }
 
-# --- G1: one 429 retries and posts exactly once ---
 PR=4471
 mk_comment "$PR"
 printf '%s' '1' > "$EVAL_SANDBOX/rate-budget"
@@ -98,7 +80,6 @@ else
 fi
 rm -f "$EVAL_SANDBOX/rate-budget" "$EVAL_SANDBOX/rate-count"
 
-# --- G2: persistent 429 fails after three attempts, arms nothing ---
 PR=4472
 mk_comment "$PR"
 printf '%s' '99' > "$EVAL_SANDBOX/rate-budget"
@@ -126,7 +107,6 @@ else
 fi
 rm -f "$EVAL_SANDBOX/rate-budget" "$EVAL_SANDBOX/rate-count"
 
-# --- G3: oversized body splits across a follow-up review, footer intact ---
 PR=4473
 eval_mk_bundle "$PR"
 python3 -c "print('{\"schema_version\":\"1\",\"body\":\"> ✅ ' + 'x' * 70000 + '\",\"approved\":false,\"comments\":[]}')" \
@@ -163,7 +143,6 @@ else
   bad "split payloads: $(head -c 300 "$EVAL_SANDBOX/posted-4473.json")"
 fi
 
-# --- G4: unknown-path comment moves to the body, never inline ---
 PR=4474
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'

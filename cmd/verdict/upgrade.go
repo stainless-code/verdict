@@ -13,14 +13,12 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// upgradeFlags is the parsed `upgrade`/`uninstall` option set.
 type upgradeFlags struct {
 	version    string
 	dryRun     bool
 	removePath bool
 }
 
-// runUpgrade dispatches `verdict upgrade`.
 func runUpgrade(ctx context.Context, r *cli.Runner, args []string, env map[string]string) int {
 	flags, code, done := parseUpgradeFlags(r, "upgrade", args, false)
 	if done {
@@ -29,7 +27,6 @@ func runUpgrade(ctx context.Context, r *cli.Runner, args []string, env map[strin
 	return finishUpgrade(ctx, r, env, flags)
 }
 
-// runUninstall dispatches `verdict uninstall`.
 func runUninstall(ctx context.Context, r *cli.Runner, args []string, env map[string]string) int {
 	flags, code, done := parseUpgradeFlags(r, "uninstall", args, true)
 	if done {
@@ -38,7 +35,6 @@ func runUninstall(ctx context.Context, r *cli.Runner, args []string, env map[str
 	return finishUninstall(ctx, r, env, flags)
 }
 
-// parseUpgradeFlags strips both verbs' flags, reporting unknown ones.
 //
 //nolint:revive // the flag switch is the parser; splitting it hides the grammar
 func parseUpgradeFlags(r *cli.Runner, verb string, args []string, uninstall bool) (upgradeFlags, int, bool) {
@@ -68,7 +64,6 @@ func parseUpgradeFlags(r *cli.Runner, verb string, args []string, uninstall bool
 	return f, 0, false
 }
 
-// finishUpgrade runs the service and renders its outcome.
 func finishUpgrade(ctx context.Context, r *cli.Runner, env map[string]string, f upgradeFlags) int {
 	r.Repo, r.Pr = "", ""
 	r.Rentry = "verdict upgrade"
@@ -109,7 +104,6 @@ func finishUpgrade(ctx context.Context, r *cli.Runner, env map[string]string, f 
 	return cli.ExitOK
 }
 
-// finishUninstall runs the service and renders its outcome.
 func finishUninstall(ctx context.Context, r *cli.Runner, env map[string]string, f upgradeFlags) int {
 	r.Repo, r.Pr = "", ""
 	r.Rentry = "verdict uninstall"
@@ -139,8 +133,6 @@ func finishUninstall(ctx context.Context, r *cli.Runner, env map[string]string, 
 	return cli.ExitOK
 }
 
-// finishUpgradeRefusal renders a typed refusal, propagating a manager exit
-// code when the failure came from the owning package manager.
 func finishUpgradeRefusal(r *cli.Runner, ref *cli.RefusalError, exit int) int {
 	if exit <= 0 {
 		exit = cli.ExitRefused
@@ -148,7 +140,6 @@ func finishUpgradeRefusal(r *cli.Runner, ref *cli.RefusalError, exit int) int {
 	return r.RefuseExit(ref, exit)
 }
 
-// printUpgradePlan renders the dry-run plan; it touches nothing.
 func printUpgradePlan(r *cli.Runner, resp *upgrade.Response) {
 	fmt.Fprintf(r.Human, "upgrade: channel: %s (%s)\n", resp.Channel, resp.Target)
 	switch {
@@ -163,7 +154,6 @@ func printUpgradePlan(r *cli.Runner, resp *upgrade.Response) {
 	fmt.Fprintln(r.Human, "upgrade: dry-run: nothing changed")
 }
 
-// printSelfReplace renders the synchronous or Windows-handoff outcome.
 func printSelfReplace(r *cli.Runner, resp *upgrade.Response) {
 	if resp.Handoff {
 		fmt.Fprintf(r.Human, "upgrade: verdict %s staged; the replacement helper finishes after this process exits\n", resp.Version)
@@ -173,7 +163,6 @@ func printSelfReplace(r *cli.Runner, resp *upgrade.Response) {
 	fmt.Fprintf(r.Human, "upgrade: installed verdict %s to %s (SHA-256 verified)\n", resp.Version, resp.Target)
 }
 
-// printUninstall renders the removed paths.
 func printUninstall(r *cli.Runner, resp *upgrade.Response) {
 	if resp.DryRun {
 		fmt.Fprintf(r.Human, "uninstall: would remove: %s\n", strings.Join(resp.Removed, ", "))
@@ -183,7 +172,6 @@ func printUninstall(r *cli.Runner, resp *upgrade.Response) {
 	fmt.Fprintf(r.Human, "uninstall: removed %s\n", strings.Join(resp.Removed, ", "))
 }
 
-// upgradeData builds the ordered upgrade --json data object.
 func upgradeData(resp *upgrade.Response) *jq.Obj {
 	data := jq.NewObj(
 		"channel", resp.Channel,
@@ -209,7 +197,6 @@ func upgradeData(resp *upgrade.Response) *jq.Obj {
 	return data
 }
 
-// uninstallData builds the ordered uninstall --json data object.
 func uninstallData(resp *upgrade.Response) *jq.Obj {
 	return jq.NewObj(
 		"channel", resp.Channel,
@@ -221,7 +208,6 @@ func uninstallData(resp *upgrade.Response) *jq.Obj {
 	)
 }
 
-// writeUpgradeEnvelope prints exactly one envelope for a successful call.
 func writeUpgradeEnvelope(r *cli.Runner, verb string, data *jq.Obj) {
 	env := core.RenderEnvelope(verb, "", "", cli.NowUTC(r.Now()), "",
 		r.Warnings, data, nil)

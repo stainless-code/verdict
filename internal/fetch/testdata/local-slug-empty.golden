@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-slug",
-    "message": "name '--' sanitizes to nothing — pass a usable bundle name\ntry: re-run with one of the valid values named above"
+    "message": "name '.' sanitizes to nothing — pass a usable bundle name\ntry: re-run with one of the valid values named above"
   }
 }
 --- stderr ---

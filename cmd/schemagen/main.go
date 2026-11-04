@@ -16,32 +16,24 @@ import (
 	"github.com/stainless-code/verdict/internal/schemagen"
 )
 
-// storeDirMode is the schemas directory mode when it must be created.
 const storeDirMode = 0o755
 
-// cliPrefix names the command in every user-facing failure.
 const cliPrefix = "schemagen:"
 
-// options are the parsed command-line choices.
 type options struct { //nolint:govet // option order matches the documented flags
 	write bool
 	dir   string
 }
 
-// cliError is the command's sealed error type; it never leaks fmt/errors
-// values across the run boundary.
 type cliError struct { //nolint:govet // cause-first reads better than padding for size
 	msg   string
 	cause error
 }
 
-// Error implements error.
 func (e *cliError) Error() string { return e.msg }
 
-// Unwrap exposes the cause to [errors.Is]/[errors.As].
 func (e *cliError) Unwrap() error { return e.cause }
 
-// errorf builds a command error without a prefix (run adds it once).
 func errorf(format string, args ...any) error {
 	if len(args) == 0 {
 		return &cliError{msg: format}
@@ -49,7 +41,6 @@ func errorf(format string, args ...any) error {
 	return &cliError{msg: fmt.Sprintf(format, args...)}
 }
 
-// wrapError annotates a cause and keeps the chain.
 func wrapError(prefix string, cause error) error {
 	return &cliError{msg: prefix + ": " + cause.Error(), cause: cause}
 }
@@ -59,7 +50,6 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run executes one schemagen invocation and returns its exit code.
 func run(args []string, stdout, stderr io.Writer) int {
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
@@ -76,12 +66,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// fail prints one prefixed command failure.
 func fail(stderr io.Writer, err error) {
 	fmt.Fprintln(stderr, cliPrefix, err)
 }
 
-// execute generates, then writes or checks the schemas.
 func execute(opts options, stdout, stderr io.Writer) error {
 	files, err := schemagen.Generate()
 	if err != nil {
@@ -101,7 +89,6 @@ func execute(opts options, stdout, stderr io.Writer) error {
 	return checkAll(target, files, stdout)
 }
 
-// parseFlags parses the command-line flags without exiting the process.
 func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs := flag.NewFlagSet("schemagen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -116,7 +103,6 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	return options{write: *write, dir: *dir}, nil
 }
 
-// resolveDir picks the schemas directory to read or write.
 func resolveDir(dir string) (string, error) {
 	if dir != "" {
 		return dir, nil
@@ -128,7 +114,6 @@ func resolveDir(dir string) (string, error) {
 	return filepath.Join(root, "skills", "verdict", "schemas"), nil
 }
 
-// writeAll writes every generated file below dir.
 func writeAll(dir string, files []schemagen.File) error {
 	if err := os.MkdirAll(dir, storeDirMode); err != nil {
 		return wrapError("create "+dir, err)
@@ -141,7 +126,6 @@ func writeAll(dir string, files []schemagen.File) error {
 	return nil
 }
 
-// checkAll compares every generated file with its committed copy.
 func checkAll(dir string, files []schemagen.File, stdout io.Writer) error {
 	stale := false
 	for _, file := range files {
@@ -157,7 +141,6 @@ func checkAll(dir string, files []schemagen.File, stdout io.Writer) error {
 	return nil
 }
 
-// checkFile compares one generated file with its committed copy.
 func checkFile(dir string, file schemagen.File, stdout io.Writer) (bool, error) {
 	want, err := os.ReadFile(filepath.Join(dir, file.Name))
 	if err != nil {

@@ -21,11 +21,6 @@ const (
 	azureChangePageSize = 1000
 )
 
-// pageWalk pages one provider list. first is the first page cursor; fetch
-// resolves one cursor to its page items and the next cursor ("" when the
-// host says the list ended). The walk stops at maxPages or on a repeated
-// cursor (truncated), or on the first fetch error (the items collected so
-// far ride along so a caller can keep a partial read and warn).
 func pageWalk(
 	ctx context.Context, first string, maxPages int,
 	fetch func(context.Context, string) ([]any, string, error),
@@ -47,18 +42,12 @@ func pageWalk(
 	return items, false, pages, nil
 }
 
-// indexPager carries one index-paged list read: the 1-based page fetch and
-// the first page's raw body (kept so a complete single-page read stays
-// byte-identical to the host response).
 type indexPager struct {
 	fetch    func(context.Context, int) (string, error)
 	rawFirst string
 	pageSize int
 }
 
-// indexPageWalk walks a 1-based index endpoint until a short page, the page
-// cap, or a failed page. A complete single page returns verbatim; anything
-// else re-renders the concatenation.
 func indexPageWalk(
 	ctx context.Context, pageSize int, fetch func(context.Context, int) (string, error),
 ) (body string, truncated bool, err error) {
@@ -73,8 +62,6 @@ func indexPageWalk(
 	return jq.Pretty(items), truncated, werr
 }
 
-// page fetches and decodes one index page, reporting the next page only
-// while the host keeps filling the requested size.
 func (p *indexPager) page(ctx context.Context, cursor string) ([]any, string, error) {
 	page, ok := cursorPage(cursor)
 	if !ok {
@@ -106,8 +93,6 @@ func cursorPage(cursor string) (int, bool) {
 	return page, true
 }
 
-// warnPaging surfaces an early-stopped list read: the pages already fetched
-// are kept, but the agent must know the bundle may under-cover.
 func warnPaging(r *session, provider, what string, err error, truncated bool) {
 	switch {
 	case err != nil:
@@ -119,8 +104,6 @@ func warnPaging(r *session, provider, what string, err error, truncated bool) {
 	}
 }
 
-// jsonArray decodes one JSON array response, sealing anything else as an
-// internal error the page walk can warn about.
 func jsonArray(raw string) ([]any, error) {
 	doc, err := jq.Decode([]byte(raw))
 	if err != nil {

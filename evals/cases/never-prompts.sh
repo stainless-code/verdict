@@ -1,31 +1,5 @@
 #!/usr/bin/env bash
-# Case never-prompts: machine modes never block on stdin.
 #
-# Grades (all hermetic — sandbox cwd, fake HOME, stub gh, stdin never a TTY):
-#   H1  embedded skill install with stdin CLOSED applies the payload (exit 0)
-#       without reading stdin and without dropping a verdict/ slot in any
-#       detected agent dir.
-#   H2  `skill install --json` with stdin at /dev/null reads keep (exit 0),
-#       keeps the documented envelope, and never prompts.
-#   H3  scaffolder overwrite with stdin at /dev/null refuses typed
-#       needs-confirm (exit 1, try: hint) and overwrites nothing.
-#   H4  scaffolder overwrite with stdin CLOSED under --json refuses typed
-#       needs-confirm in the envelope, exit exactly 1.
-#   H5  verification step: a verifyCmd that consumes stdin (`read -r line`)
-#       completes promptly with stdin closed (exit 0, timedOut false, proof
-#       recorded) — the spawned verification never waits on stdin either.
-#   H6  hang-trap: `skill install --json` with stdin a held-open pipe (open
-#       for read+write, never EOF, never data) still completes promptly. A
-#       regressed bare `read` would block here, so the watchdog — never the
-#       suite — eats the timeout and the leg FAILs.
-#   H8  live pty: `skill install --json` and `init --json` with stdin a
-#       pseudo-TTY (via script(1), macOS/Linux forms detected; SKIP where
-#       unavailable, never a pass) never prompt; the installer
-#       applies/keeps, the scaffolder refuses typed `needs-confirm` at exit 1.
-#       A regressed
-#       TTY-scoped prompt would block on the pty read, so the watchdog turns
-#       it into a leg FAIL instead of a suite hang.
-#   H7  offline: zero stub-gh intercepts across every leg.
 #
 # Watchdog: every CLI run below goes through watchdog_review, which backgrounds
 # the command with explicit stdin and polls with kill -0 plus a ps zombie arm
@@ -45,11 +19,6 @@ WD_STATUS=0
 WD_TIMED_OUT="false"
 WD_DIR=""
 
-# watchdog_review <secs> <stdin> -- <verdict args...>: runs $EVAL_CLI directly.
-# <stdin> is "closed" (EBADF on read) or a path (/dev/null, fifo). Runs in
-# $WD_DIR (default: sandbox root) with the stub gh first on PATH, captures to
-# EVAL_OUT/EVAL_ERR, sets EVAL_STATUS/WD_STATUS/WD_TIMED_OUT. Always returns 0
-# so callers under `set -e` can grade hangs as well as exits.
 watchdog_review() {
   local limit="$1" src="$2"
   shift 2
@@ -98,7 +67,6 @@ hung_ok() { # $1 = label: watchdog silent is the whole point
 
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
-# --- sandbox roots: repo scope is the sandbox cwd; home scope is a fake HOME ---
 OLD_HOME="$HOME"
 export HOME="$EVAL_SANDBOX/fakehome"
 mkdir -p "$EVAL_SANDBOX/.agents/skills" "$HOME/.agents/skills"
@@ -107,7 +75,6 @@ FOREIGN_SNAP="$EVAL_SANDBOX/foreign-snap.txt"
 (cd "$EVAL_SANDBOX" && find .agents fakehome -type f | LC_ALL=C sort | xargs shasum) > "$FOREIGN_SNAP"
 NEVER_SKILLS="$EVAL_SANDBOX/never-skills"
 
-# --- scratch repo for the scaffolder overwrite path (own .review/, own tree) ---
 mkdir -p "$EVAL_SANDBOX/np-repo"
 (
   cd "$EVAL_SANDBOX/np-repo" || exit 99
@@ -119,7 +86,6 @@ mkdir -p "$EVAL_SANDBOX/np-repo"
   git commit -qm probe
 )
 
-# --- seed: standard preset applies cleanly (never prompts: nothing to overwrite) ---
 WD_DIR="$EVAL_SANDBOX/np-repo"
 watchdog_review "$LIMIT" "/dev/null" -- init --preset standard --yes
 hung_ok "seed init --preset standard --yes"
@@ -130,7 +96,6 @@ else
 fi
 seed_sums="$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)"
 
-# --- H1: skill install, stdin closed, human mode ---
 WD_DIR="$EVAL_SANDBOX"
 watchdog_review "$LIMIT" "closed" -- skill install --dir "$NEVER_SKILLS"
 hung_ok "skill install with stdin closed"
@@ -149,7 +114,6 @@ else
   bad "install touched foreign or detected agent dirs"
 fi
 
-# --- H2: skill install, stdin /dev/null, machine mode ---
 watchdog_review "$LIMIT" "/dev/null" -- skill install --dir "$NEVER_SKILLS" --json
 hung_ok "skill install --json with stdin at /dev/null"
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -165,7 +129,6 @@ else
   bad "keep breaks the envelope shape"
 fi
 
-# --- H3: scaffolder overwrite, stdin /dev/null, human mode ---
 WD_DIR="$EVAL_SANDBOX/np-repo"
 watchdog_review "$LIMIT" "/dev/null" -- init --preset chill
 hung_ok "init overwrite with stdin at /dev/null"
@@ -182,7 +145,6 @@ else
   bad "refused overwrite mutated the control files"
 fi
 
-# --- H4: scaffolder overwrite, stdin closed, machine mode ---
 watchdog_review "$LIMIT" "closed" -- init --preset strict --json
 hung_ok "init --json overwrite with stdin closed"
 if [ "$EVAL_STATUS" -eq 1 ] \
@@ -193,7 +155,6 @@ else
   bad "machine overwrite refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 fi
 
-# --- H5: verification step — stdin-consuming verifyCmd, stdin closed ---
 PR=6101
 mkdir -p "$EVAL_SANDBOX/.review/$PR"
 jq -n '{"verifyCmd":"read -r line || true"}' > "$EVAL_SANDBOX/.review/$PR/patch.json"
@@ -228,7 +189,6 @@ else
 fi
 rm -f "$EVAL_SANDBOX/stdin-pipe"
 
-# --- H8: machine mode on a live pty never prompts ---
 # script(1) gives the child a pty stdin (-t 0 true) while our own stdin stays
 # /dev/null, so a regressed prompt would block on the pty read and the
 # watchdog — never the suite — eats the timeout. macOS and Linux spell the
@@ -255,9 +215,6 @@ else
   pty_avail="false"
 fi
 if [ "${pty_avail:-false}" = "true" ]; then
-  # watchdog_pty <secs> -- <verdict args...>: like watchdog_review but the
-  # child runs under script(1), so its stdin is a pty. Always returns 0 so
-  # callers under `set -e` can grade hangs as well as exits.
   watchdog_pty() {
     local limit="$1"
     shift
@@ -309,7 +266,6 @@ if [ "${pty_avail:-false}" = "true" ]; then
     awk '{ sub(/\r$/, "") } /^{$/ { buf=""; inenv=1 } inenv { buf=buf $0 "\n" } /^}$/ { if (inenv) { printf "%s", buf; inenv=0; buf="" } }' "$1"
   }
 
-  # --- H8a: skill install under --json on a pty ---
   WD_DIR="$EVAL_SANDBOX"
   watchdog_pty "$LIMIT" -- skill install --dir "$NEVER_SKILLS" --json
   hung_ok "skill install --json on a pty"
@@ -335,9 +291,6 @@ if [ "${pty_avail:-false}" = "true" ]; then
     bad "pty install touched foreign or detected agent dirs"
   fi
 
-  # --- H8b: scaffolder overwrite under --json on a pty ---
-  # np-repo still carries the standard seed (H3/H4 refused), so a chill
-  # preset wants overwrite and must take the confirm path.
   WD_DIR="$EVAL_SANDBOX/np-repo"
   watchdog_pty "$LIMIT" -- init --preset chill --json
   hung_ok "init --json overwrite on a pty"
@@ -360,14 +313,12 @@ else
   skip "script(1) unavailable or unsupported OS — pty legs did not run"
 fi
 
-# --- H7: offline across every leg ---
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
   good "zero stub-gh intercepts across never-prompts legs (offline)"
 else
   bad "stub gh intercepted calls during never-prompts legs"
 fi
 
-# --- restore: fake HOME and scratch state stay in the sandbox ---
 export HOME="$OLD_HOME"
 rm -rf "$EVAL_SANDBOX/fakehome" "$EVAL_SANDBOX/.agents" "$EVAL_SANDBOX/np-repo" "$EVAL_SANDBOX/never-skills" "$EVAL_SANDBOX/foreign-snap.txt"
 rm -rf "$EVAL_SANDBOX/.review/6101"

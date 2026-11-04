@@ -1,28 +1,10 @@
 #!/usr/bin/env bash
-# Case chunk-manifest: chunked fetch for over-cap bundles (writer + manifest
-# + degenerate fallback).
 #
-# Grades (all hermetic — sandbox git repo, stub gh, no network):
-#   M1  absent-knob parity: the same multi-file over-cap fixture without the
-#       knob refuses diff-too-large with no chunk mention and no chunks dir.
-#   M2  chunked fetch-local: --chunk on the multi-file over-cap fixture
-#       succeeds; every chunk diff stays at or under the cap; the ordered
-#       chunk diffs concatenate byte-identically to full.diff; the manifest
-#       carries schema_version 1, fetched SHAs, cap bytes + source, total
-#       bytes, and the ordered chunk file lists with sizes and coverage refs.
-#   M3  determinism: re-fetch reproduces the identical chunk map.
-#   M4  envelope additive: the chunked --json envelope carries data.chunk
-#       with all existing keys intact.
-#   M5  single-file fallback: one file over the cap keeps today's advisory
-#       refusal with no chunks dir and no manifest (no hang, no half-write).
-#   M6  PR fetch path: fetch --chunk on a canned over-cap PR writes the same
-#       chunk layout with PR head/base SHAs and the additive envelope key.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Deterministic surface: no settings file, no ambient REVIEW_* knobs.
 mkdir -p "$EVAL_SANDBOX/xdg-empty"
 export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty"
 unset REVIEW_MAX_BYTES REVIEW_OUTPUT_FORMAT REVIEW_LAYOUT_COMPACT REVIEW_COLOR_MODE || true
@@ -31,9 +13,6 @@ unset REVIEW_PUBLISH_COPYRIGHT REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL REVIE
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
-# Scratch git repo at the sandbox root (run_review runs with cwd=sandbox).
-# Explicit adds only — earlier cases' fixtures stay untracked and out of
-# every diff; every fetch below names its paths explicitly.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -71,7 +50,6 @@ if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
   bad "fixture diff $FULL_DIFF_BYTES bytes is not over the 512000 cap"
 fi
 
-# --- M1: absent-knob parity on the multi-file over-cap fixture ---
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix -- $CMAN_FILES
 assert_exit "absent-knob multi-file over-cap refuses" 1
@@ -84,7 +62,6 @@ else
   bad "absent refusal left a chunks dir"
 fi
 
-# --- M2: chunked fetch-local ---
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix --chunk -- $CMAN_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -180,7 +157,6 @@ else
   bad "$missing_refs manifest reference(s) missing on disk"
 fi
 
-# --- M3: determinism (re-fetch reproduces the identical chunk map) ---
 cp "$MAN" "$EVAL_SANDBOX/cman-manifest-1.json"
 i=1
 while [ "$i" -le "$N" ]; do
@@ -210,7 +186,6 @@ else
   bad "re-fetch chunk diffs differ ($same/$N same)"
 fi
 
-# --- M4: additive envelope ---
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix --chunk --json -- $CMAN_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -228,10 +203,8 @@ else
   bad "--json envelope shape broke: $(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# Save the multi-file diff for the canned PR leg before restoring the tree.
 (cd "$EVAL_SANDBOX" && git diff HEAD -- $CMAN_FILES > "$EVAL_SANDBOX/cman-canned.diff")
 
-# --- M5: single-file over-cap fallback ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- $CMAN_FILES
@@ -270,7 +243,6 @@ else
   bad "fallback --json left a chunks dir"
 fi
 
-# --- M6: PR fetch path via a canned gh shim ---
 CMAN_FAKEBIN="$EVAL_SANDBOX/fakebin"
 mkdir -p "$CMAN_FAKEBIN"
 jq -n --argjson files "$(printf '%s\n' $CMAN_FILES | jq -R . | jq -s 'map({path:.})')" \
@@ -278,7 +250,6 @@ jq -n --argjson files "$(printf '%s\n' $CMAN_FILES | jq -R . | jq -s 'map({path:
   > "$EVAL_SANDBOX/cman-pr.json"
 cat > "$CMAN_FAKEBIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# Case-local gh shim: serve the canned PR payload, log every interception.
 echo "fake-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then cat "$EVAL_SANDBOX/cman-pr.json"; exit 0; fi
 if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then cat "$EVAL_SANDBOX/cman-canned.diff"; exit 0; fi
@@ -334,7 +305,6 @@ else
   bad "PR --json exits $EVAL_STATUS: $(jq -c '.data.chunk // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-# --- cleanup: restore the shared sandbox (fixtures stay, probe state goes) ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- cman-f1.txt cman-f2.txt cman-f3.txt cman-f4.txt cman-f5.txt cman-f6.txt cman-huge.txt 2>/dev/null || true

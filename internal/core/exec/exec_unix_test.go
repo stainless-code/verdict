@@ -16,14 +16,10 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// pidReport is the shell fragment that writes the last background job's pid
-// to file.
 func pidReport(file string) string {
 	return `echo $! > '` + file + `'`
 }
 
-// pidAlive reports whether pid is still running: kill -0 succeeds for a
-// running (or zombie) process, and EPERM still means the pid exists.
 func pidAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
@@ -181,7 +177,6 @@ func TestRunnerMissingTool(t *testing.T) {
 	})
 }
 
-// assertRunnerStdout runs one command and pins its stdout.
 func assertRunnerStdout(ctx context.Context, t *testing.T, runner Runner, cmd core.Command, want string) {
 	t.Helper()
 	res, err := runner.Run(ctx, cmd)
@@ -214,8 +209,6 @@ func TestRunnerCapsStdout(t *testing.T) {
 	})
 }
 
-// assertOutputCapped pins the over-cap refusal: a typed stdout cap error, the
-// truncation flag, and a bounded capture.
 func assertOutputCapped(t *testing.T, res core.Result, err error, limit int) {
 	t.Helper()
 	capErr, ok := errors.AsType[*core.OutputCappedError](err)
@@ -254,13 +247,8 @@ func TestRunnerKeepsTwentyMiBDiff(t *testing.T) {
 	}
 }
 
-// holdSeconds is how long the pipe-holding grandchildren below live. It is
-// longer than the bound the runner must return within, so a runner that waits
-// for the pipe to close fails the bound instead of passing slowly.
 const holdSeconds = "9"
 
-// returnBound is the longest a canceled or exited runner may take: the
-// 2s WaitDelay plus scheduling slack, well under holdSeconds.
 const returnBound = 6 * time.Second
 
 // TestRunnerCancelDoesNotWaitForPipeHolders pins the Ctrl-C hang: the
@@ -314,7 +302,6 @@ func TestRunnerExitZeroWithLingeringPipeHolder(t *testing.T) {
 	}
 }
 
-// killReportedPid reaps the helper a test left behind, if it reported one.
 func killReportedPid(pidFile string) {
 	raw, err := os.ReadFile(pidFile)
 	if err != nil {

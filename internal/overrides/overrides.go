@@ -40,7 +40,6 @@ func At(dir string) Set { return Set{Dir: dir} }
 // by hand.
 func (s Set) Path(name string) string { return s.path(name) }
 
-// path maps one fragment name to its read path.
 func (s Set) path(name string) string {
 	if s.Dir == "" {
 		return Dir + "/" + name
@@ -75,7 +74,6 @@ func CheckLocked(path, text string) error {
 	}
 }
 
-// cliRef builds the bad-override refusal for one invariant.
 func cliRef(path, invariant, why string) error {
 	return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
 		"override %s violates locked invariant '%s' (%s)", path, invariant, why)}
@@ -113,9 +111,6 @@ func parseOrderLines(raw string) ([]string, error) {
 	var order []string
 	seen := map[string]bool{}
 	for ln := range strings.SplitSeq(raw, newline) {
-		// A final unterminated line still counts, so
-		// line still counts; Split keeps it as the last element. A trailing
-		// newline yields a final empty element that skips below.
 		line := strings.TrimSpace(strings.ReplaceAll(ln, "\r", ""))
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -144,19 +139,12 @@ func checkOrderField(line string, seen map[string]bool) error {
 	return nil
 }
 
-// Thresholds reads `files: N` / `bytes: N` lines (both
-// `:` and `=` forms after whitespace removal), defaulting to 8 files and
-// Override threshold parsing constants.
 const (
-	// defaultMaxFiles and defaultMaxBytes are the degenerate-guard defaults.
-	defaultMaxFiles = 8
-	defaultMaxBytes = 24576
-	// maxThresholdDigits caps threshold values to 64-bit arithmetic.
+	defaultMaxFiles    = 8
+	defaultMaxBytes    = 24576
 	maxThresholdDigits = 15
-	// codeBadOverride names the refusal code for fragment violations.
-	codeBadOverride = "bad-override"
-	// keyFiles names the files threshold key.
-	keyFiles = "files"
+	codeBadOverride    = "bad-override"
+	keyFiles           = "files"
 )
 
 // Thresholds reads the overview thresholds: 8 files / 24576 bytes defaults,
@@ -187,7 +175,6 @@ func (s Set) Thresholds() (files, bytes int, ref error) {
 	return files, bytes, nil
 }
 
-// applyThresholds overlays parsed values onto the defaults.
 func applyThresholds(vals map[string]int, files, bytes *int) {
 	if v, ok := vals[keyFiles]; ok {
 		*files = v
@@ -197,8 +184,6 @@ func applyThresholds(vals map[string]int, files, bytes *int) {
 	}
 }
 
-// parseThresholdEntry parses one threshold file line: blanks and comments
-// skip, invalid lines refuse, valid lines return the parsed value.
 func parseThresholdEntry(ln string, seen map[string]bool) (key string, val int, skip bool, ref error) {
 	line := strings.TrimSpace(strings.ReplaceAll(ln, "\r", ""))
 	if line == "" || strings.HasPrefix(line, "#") {
@@ -237,8 +222,6 @@ func checkThreshold(line, key, val string, seen map[string]bool) (int, error) {
 		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant "+
 			"'degenerate-guard' (duplicate '%s' — list each key once)", Threshold, key)}
 	}
-	// The digit gate and the 15-digit cap above guarantee the value fits in
-	// an int; keep the check so an overflow can never wrap into a threshold.
 	n, err := strconv.Atoi(val)
 	if err != nil {
 		return 0, jq.Sealed("parse threshold", err)
@@ -246,8 +229,6 @@ func checkThreshold(line, key, val string, seen map[string]bool) (int, error) {
 	return n, nil
 }
 
-// splitThreshold removes all whitespace, maps `:` to `=`, and splits
-// files=/bytes= keys.
 func splitThreshold(line string) (key, val string) {
 	flat := strings.ReplaceAll(removeSpaces(line), ":", "=")
 	if rest, ok := strings.CutPrefix(flat, "files="); ok {
@@ -259,7 +240,6 @@ func splitThreshold(line string) (key, val string) {
 	return "", ""
 }
 
-// removeSpaces strips ASCII whitespace.
 func removeSpaces(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {

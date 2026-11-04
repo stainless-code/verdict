@@ -1,23 +1,5 @@
 #!/usr/bin/env bash
-# Case controls-base: review controls come from the PR base commit, never
-# from the head that is being judged (D1).
 #
-# Grades (hermetic — a scratch git repo with a base commit that tracks the
-# controls and a head commit that rewrites every one of them hostilely; the
-# network-dead gh stub stays first on PATH and must never be called):
-#   B1  fetch-local --base <base> reads the snapshot from the base commit:
-#       kb.txt recalls the base rule and never the head rule, the bundle panel
-#       and the snapshot learnings are the base bytes, controls.json records
-#       policy base at the base commit, the default run prints no controls
-#       line, and the envelope carries data.controls.
-#   B2  the base max_bytes (1024) refuses an over-cap diff even though the
-#       head max_bytes is huge.
-#   B3  post --dry-run on a bundle carrying that snapshot renders the base
-#       attribution, not the head's.
-#   B4  a tampered snapshot (file bytes, then controls.json sha) refuses
-#       controls-stale; a missing controls.json refuses controls-unavailable.
-#   B5  --allow-head-controls is the one opt-out: it reads the hostile head
-#       copies, warns once, and stamps policy head in controls.json.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -33,8 +15,6 @@ KB_ROW='{"id":"%s","rule":"%s","scope":"notes.txt","provenance":"op","rigor":"wa
 GIT_ID=(-c user.email=controls@example.com -c user.name=controls -c commit.gpgsign=false)
 sandbox_git() { (cd "$EVAL_SANDBOX" && git "${GIT_ID[@]}" "$@"); }
 
-# Base commit: every control tracked (force-added past .gitignore, the way a
-# repo commits them). Head commit: every control rewritten hostilely.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -67,7 +47,6 @@ BASE="$(sandbox_git rev-parse HEAD)"
 BUNDLE="$EVAL_SANDBOX/.review/local-demo"
 calls() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 
-# --- B1: the snapshot is the base commit's bytes ---
 mark="$(calls)"
 run_review fetch-local acme/app demo --base "$BASE" --json -- notes.txt
 assert_exit "kb recall run succeeds" 0
@@ -96,7 +75,6 @@ fi
 cp -r "$BUNDLE/controls" "$EVAL_SANDBOX/snap-controls"
 cp "$BUNDLE/controls.json" "$EVAL_SANDBOX/snap-controls.json"
 
-# --- B2: the base cap rules, not the head's ---
 (
   cd "$EVAL_SANDBOX" || exit 99
   awk 'BEGIN{for(i=0;i<400;i++) printf "padding line %04d to exceed the base cap\n", i}' >big.txt
@@ -111,7 +89,6 @@ else
   bad "base cap exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 
-# --- B3: post renders the base attribution ---
 PR=123
 eval_mk_bundle "$PR"
 jq '.baseRefOid = $b' --arg b "$BASE" "$EVAL_SANDBOX/.review/$PR/PR.json" >"$EVAL_SANDBOX/pr.tmp"
@@ -127,7 +104,6 @@ assert_exit "post dry-run succeeds" 0
 assert_file_grep "post --dry-run renders the base attribution" "$EVAL_OUT" 'Base attribution line'
 assert_stream_nogrep "post --dry-run renders no head attribution" "$EVAL_OUT" 'EVIL attribution'
 
-# --- B4: tamper and absence refuse typed ---
 printf 'EVIL attribution line\n' >"$EVAL_SANDBOX/.review/$PR/controls/overrides/attribution.md"
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code' "$EVAL_OUT")" = "controls-stale" ]; then
@@ -152,7 +128,6 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.review/$PR"
 
-# --- B5: --allow-head-controls is the recorded opt-out ---
 run_review fetch-local acme/app headopt --base "$BASE" --allow-head-controls --json -- notes.txt
 HB="$EVAL_SANDBOX/.review/local-headopt"
 if [ "$EVAL_STATUS" -eq 0 ] \

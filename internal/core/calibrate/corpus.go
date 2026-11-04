@@ -10,9 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// runCorpus joins a corpus bundle's findings against the checked-in ground
-// truth carried in corpus.json. It is fully offline: no gh call, no store
-// write, no post record required.
 func (st *state) runCorpus(dir string) *core.RefusalError {
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
@@ -33,7 +30,6 @@ func (st *state) runCorpus(dir string) *core.RefusalError {
 	return nil
 }
 
-// corpusResult carries one graded corpus bundle for the typed data profile.
 type corpusResult struct {
 	dir    string
 	report *corpuscore.Report
@@ -41,7 +37,6 @@ type corpusResult struct {
 	panel  []string
 }
 
-// corpusResponse assembles the typed response after a corpus join.
 func (st *state) corpusResponse() *Response {
 	return &Response{
 		Repo:     st.req.Repo,
@@ -88,7 +83,6 @@ func (r *corpusResult) Wire() *jq.Obj {
 	)
 }
 
-// outcomeCorpusDoc renders one graded finding.
 func outcomeCorpusDoc(o *corpuscore.Outcome) *jq.Obj {
 	var path, line any
 	if o.HasPath {
@@ -125,7 +119,6 @@ func corpusBugDoc(b *core.CorpusBug) *jq.Obj {
 	)
 }
 
-// emitCorpusHuman prints the per-finding grades and the exact rates.
 func (st *state) emitCorpusHuman(r *corpusResult) {
 	rep := r.report
 	st.human(fmt.Sprintf("calibrate: corpus %s — %s (model %s, panel %s)",
@@ -152,7 +145,6 @@ func (st *state) emitCorpusHuman(r *corpusResult) {
 		corpuscore.RateText(corpuscore.RateOrNil(rep.FalsePositives, rep.Reported))))
 }
 
-// corpusLocator renders path:line, "?" when either anchor is absent.
 func corpusLocator(o *corpuscore.Outcome) string {
 	if !o.HasPath {
 		return "?"
@@ -163,7 +155,6 @@ func corpusLocator(o *corpuscore.Outcome) string {
 	return fmt.Sprintf("%s:%d", o.Path, o.Line)
 }
 
-// corpusSig renders the 8-character sig prefix, "null" when absent.
 func corpusSig(sig string) string {
 	if sig == "" {
 		return corpusSigNull
@@ -171,5 +162,4 @@ func corpusSig(sig string) string {
 	return readcommon.Prefix(sig)
 }
 
-// corpusSigNull renders a missing sig like jq -r.
 const corpusSigNull = "null"

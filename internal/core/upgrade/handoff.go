@@ -19,9 +19,6 @@ import (
 // replacement helper. It never appears in usage text.
 const HelperCommand = helperCommand
 
-// handoffWaitTimeout bounds the parent-PID wait; the parent exits right
-// after spawning the helper, so a timeout means something is very wrong
-// and the helper touches nothing.
 const handoffWaitTimeout = 60 * time.Second
 
 // Handoff is the replacement plan the helper executes after the running
@@ -74,7 +71,6 @@ func (h *Handoff) Run(ctx context.Context) error {
 	return h.finish(nil)
 }
 
-// restore puts the old binary back and parks the new image as .failed.
 func (h *Handoff) restore(old string, cause error) error {
 	failed := h.Target + ".failed"
 	_ = os.Remove(failed) // stale leftover; the rename below owns the outcome
@@ -87,7 +83,6 @@ func (h *Handoff) restore(old string, cause error) error {
 	return cause
 }
 
-// finish records the helper outcome for the operator and returns err.
 func (h *Handoff) finish(err error) error {
 	if h.ResultPath == "" {
 		return err
@@ -108,7 +103,6 @@ func (h *Handoff) finish(err error) error {
 	return err
 }
 
-// argv renders the helper flags.
 func (h *Handoff) argv() []string {
 	return []string{
 		"--parent", strconv.Itoa(h.ParentPID),
@@ -121,7 +115,6 @@ func (h *Handoff) argv() []string {
 	}
 }
 
-// parseHandoff parses the hidden helper flags.
 func parseHandoff(args []string) (Handoff, error) {
 	fs := flag.NewFlagSet(helperCommand, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -162,9 +155,6 @@ func RunHelper(ctx context.Context, args []string, stderr io.Writer) int {
 	return 0
 }
 
-// spawnHandoff starts the new binary as the detached replacement helper.
-// The parent must not wait: the helper's first act is waiting for the
-// parent PID to disappear.
 func spawnHandoff(ctx context.Context, req *Request, helper string, h *Handoff) (string, error) {
 	logPath := h.ResultPath + ".log"
 	logFile, err := os.Create(logPath)

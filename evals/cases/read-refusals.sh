@@ -1,33 +1,10 @@
 #!/usr/bin/env bash
-# Case read-refusals: the pure-read verbs fail closed typed on corrupt stores.
 #
-# Grades (all hermetic — crafted local/PR bundles in the sandbox, the
-# network-dead gh stub stays first on PATH):
-#   R1  report refuses corrupt-store on a numeric-sig entry (was jq exit-5,
-#       no envelope — the shape guard now names the store instead).
-#   R2  report refuses corrupt-store on a numeric-body entry.
-#   R3  report refuses corrupt-store on a non-object entry.
-#   R4  show resolves a valid prefix beside a null-sig entry (was a
-#       startswith crash — null sigs never match, they no longer kill).
-#   R5  show refuses corrupt-store on a non-array store (show had no store
-#       check at all before).
-#   R6  calibrate --probe refuses corrupt-store on a misshapen entry.
-#   R7  trend warns and skips a corrupt bundle, rolling up the readable
-#       ones (exit 0 — one bad bundle never fails the whole audit).
-#   R8  report refuses corrupt-store on an unreadable patch.json.
-#   R9  trend survives a boolean-kb entry (was a length crash).
-#   R10 calibrate (live path) refuses missing-post on an unreadable
-#       post.json — before any gh call, so the stub stays silent.
-#   R11 calibrate --probe grades a string-kb entry as uncited (was a map
-#       crash — non-array kb now reads as no cites, exit 0).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-# Cases share one sandbox: stash any bundles other cases left behind so the
-# rollup below grades exactly this case's fixtures (restored on exit —
-# later cases must see their own stores untouched).
 HOLD="$EVAL_SANDBOX/.review-hold-readref"
 mkdir -p "$EVAL_SANDBOX/.review" "$HOLD"
 for e in "$EVAL_SANDBOX"/.review/*; do
@@ -45,7 +22,6 @@ trap restore_rr EXIT
 
 VALID_SIG="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-# mkf <slug> — stdin becomes findings.json inside a minimal local bundle.
 mkf() { # $1 = slug
   local dir="$EVAL_SANDBOX/.review/$1"
   rm -rf "$dir"; mkdir -p "$dir"
@@ -68,8 +44,6 @@ EOF
 
 ENTRY_TMPL='{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"SIG","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}'
 
-# expect_store_refusal <label> <verb...> — the verb refuses corrupt-store
-# (exit 1, envelope code) and the seeded findings.json stays byte-identical.
 expect_store_refusal() { # $1 = label, rest = review args
   local label="$1"; shift
   local before=""
@@ -91,22 +65,18 @@ expect_store_refusal() { # $1 = label, rest = review args
   fi
 }
 
-# --- R1: numeric sig ---
 SLUG="local-rr1"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":42/')" | mkf "$SLUG"
 expect_store_refusal "R1 numeric sig" report acme/app "$SLUG"
 
-# --- R2: numeric body ---
 SLUG="local-rr2"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/; s/"body":"Usable body here."/"body":42/')" | mkf "$SLUG"
 expect_store_refusal "R2 numeric body" report acme/app "$SLUG"
 
-# --- R3: non-object entry ---
 SLUG="local-rr3"
 printf '[42]' | mkf "$SLUG"
 expect_store_refusal "R3 non-object entry" report acme/app "$SLUG"
 
-# --- R4: null sig beside a valid entry — show still resolves ---
 SLUG="local-rr4"
 {
   printf '['
@@ -123,7 +93,6 @@ else
   bad "R4 show exits $EVAL_STATUS (want 0 with the valid sig)"
 fi
 
-# --- R5: show on a non-array store ---
 SLUG="local-rr5"
 printf '{"not":"a list"}' | mkf "$SLUG"
 run_review show acme/app "$SLUG" --sig aaa --json
@@ -134,18 +103,14 @@ else
   bad "R5 show exits $EVAL_STATUS with error '$got' (want exit 1, corrupt-store)"
 fi
 
-# --- R6: calibrate --probe on a misshapen entry ---
 SLUG="local-rr6"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/; s/"severity":"informational"/"severity":[1]/')" | mkf "$SLUG"
 expect_store_refusal "R6 misshapen severity" calibrate acme/app "$SLUG" --probe
 
-# R1-R6 fixtures stay behind as extra skip warnings; clear them so R7
-# counts exactly its own two bundles.
 rm -rf "$EVAL_SANDBOX/.review/local-rr1" "$EVAL_SANDBOX/.review/local-rr2" \
   "$EVAL_SANDBOX/.review/local-rr3" "$EVAL_SANDBOX/.review/local-rr4" \
   "$EVAL_SANDBOX/.review/local-rr5" "$EVAL_SANDBOX/.review/local-rr6"
 
-# --- R7: trend warns and skips the corrupt bundle ---
 SLUG="local-rr7bad"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":7/')" | mkf "$SLUG"
 SLUG="local-rr7good"
@@ -163,13 +128,11 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.review/local-rr7bad" "$EVAL_SANDBOX/.review/local-rr7good"
 
-# --- R8: unreadable patch.json ---
 SLUG="local-rr8"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/')" | mkf "$SLUG"
 printf '{broken' > "$EVAL_SANDBOX/.review/$SLUG/patch.json"
 expect_store_refusal "R8 unreadable patch.json" report acme/app "$SLUG"
 
-# --- R9: boolean kb survives trend ---
 SLUG="local-rr9"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/' | sed 's/"history":\[\]/"history":[],"kb":true/')" | mkf "$SLUG"
 run_review trend acme/app --json
@@ -180,7 +143,6 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.review/$SLUG"
 
-# --- R10: unreadable post.json refuses before any gh call ---
 SLUG="7701"
 rm -rf "$EVAL_SANDBOX/.review/$SLUG"; mkdir -p "$EVAL_SANDBOX/.review/$SLUG"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/')" \
@@ -197,7 +159,6 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.review/$SLUG"
 
-# --- R11: string kb grades as uncited ---
 SLUG="local-rr11"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/; s/"status":"open"/"status":"addressed"/' | sed 's/"history":\[\]/"history":[],"kb":"r-stray"/')" | mkf "$SLUG"
 run_review calibrate acme/app "$SLUG" --probe --json

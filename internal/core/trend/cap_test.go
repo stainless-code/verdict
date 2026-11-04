@@ -10,8 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// writePaddedStore writes content padded with JSON whitespace to exactly size
-// bytes.
 func writePaddedStore(t *testing.T, path, content string, size int64) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
