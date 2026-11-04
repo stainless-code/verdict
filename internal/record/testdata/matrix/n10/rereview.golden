@@ -440,6 +440,6 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "556bbe3476db16a7e7cb3fc0be7b33919a8fb113fcb6161ef0761ef6d7a38ef0",
+  "prompts_hash": "847fbeea5b32d3353595c90ea2e14c0e48a989de97e828ff1f14c64930488804",
   "model": null
 }

@@ -1,9 +1,9 @@
 ---
 name: verdict
-description: "Local on-demand PR review via gh CLI, any model. Triggers: review a PR, re-review new commits, address review threads, fix CI failures, report without posting."
+description: "Local on-demand code review for any git target — a GitHub PR via gh, another host with --provider, or local git (staged changes, a branch, a commit range, a stash entry, a worktree) — on any model. Triggers: review a PR, re-review new commits, review my staged changes, review this branch, review a commit range, address review threads, fix CI failures, report without posting."
 ---
 
-# Local PR review workflow
+# Local code review workflow
 
 The agent does the review; `gh` does GitHub I/O. `gh` must be authenticated —
 its own `gh auth login` or `GH_TOKEN`; `verdict doctor` checks. The model is

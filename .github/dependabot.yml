@@ -13,6 +13,13 @@ updates:
       actions:
         patterns:
           - "*"
+    # The v4.4.0 line upstream diverged: the commit this repo pins carries
+    # "use checkout v6 action to support node 24", and dependabot's newer
+    # candidate is a different branch that lacks it. The step only runs on
+    # release, so a bad bump here fails at deploy time, not in CI. Drop this
+    # ignore once upstream tags a release containing the checkout v6 fix.
+    ignore:
+      - dependency-name: "SamKirkland/FTP-Deploy-Action"
     commit-message:
       prefix: ci
 
