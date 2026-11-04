@@ -1,7 +1,7 @@
 # Verdict — operator manual
 
-Run PR reviews **locally, on-demand, with your own models**. The agent reviews;
-`gh` does GitHub I/O. No servers, no external services.
+Verdict runs code review on your machine, with your agent as reviewer. The agent
+reviews; `gh` does GitHub I/O. No servers, no external services.
 
 ## Quickstart
 

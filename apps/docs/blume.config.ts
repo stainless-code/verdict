@@ -8,7 +8,7 @@ import { filesystem, githubReleases } from "blume/sources";
 
 const title = "Verdict";
 const description =
-  "Local, on-demand code review for any coding agent, on a PR or any git range. Evidence-graded findings, machine gates, and one static binary to install.";
+  "Verdict runs code review on your machine, with your agent as reviewer. Evidence-graded findings, machine gates, and one static binary.";
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";

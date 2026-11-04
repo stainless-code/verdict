@@ -19,6 +19,13 @@ interface Props {
 
 const { command, fill = false, tone = "surface" } = Astro.props;
 const paper = tone === "paper";
+
+// Break between words, never inside a flag: a wrapped `--detect` that turns
+// into `--` / `detect` reads as a typo. Paths and URLs stay breakable, so a
+// long route still wraps instead of running off the box.
+const tokens = command
+  .split(" ")
+  .map((token) => ({ token, keep: token.length <= 24 && !token.includes("/") }));
 ---
 
 <div
@@ -36,9 +43,16 @@ const paper = tone === "paper";
     $
   </span>
   <code
-    class={`min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words whitespace-pre-wrap sm:text-base ${paper ? "" : "text-foreground"}`}
+    class={`min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words sm:text-base ${paper ? "" : "text-foreground"}`}
   >
-    {command}
+    {
+      tokens.map(({ token, keep }, i) => (
+        <>
+          {i > 0 && " "}
+          {keep ? <span class="whitespace-nowrap">{token}</span> : token}
+        </>
+      ))
+    }
   </code>
   <button
     aria-label={`Copy: ${command}`}

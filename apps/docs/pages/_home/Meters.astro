@@ -1,111 +1,32 @@
 ---
 import { contentHref } from "blume/components/content/base-href.ts";
-import Icon from "blume/components/Icon.astro";
 import Inline from "./Inline.astro";
 import SectionHead from "./SectionHead.astro";
 
-// One plain meter per reviewer, each linked to the vendor's own page. Prices
-// were checked on 2026-11-04 and match apps/docs/content/comparison.mdx; the
-// ledger is .scratch/onboarding/O-compete.md.
-const rows = [
-  {
-    name: "CodeRabbit",
-    meter:
-      "`$24` to `$72` per developer a month on annual billing, across three tiers, plus `$0.25` per reviewed file past the plan's limit and `$0.40` per agent minute.",
-    href: "https://www.coderabbit.ai/pricing",
-  },
-  {
-    name: "GitHub Copilot code review",
-    meter:
-      "AI credits per review by effort: `$0.05` to `$1` on Lite, `$0.25` to `$5` on Balanced, `$1.50` to `$25` on Max, plus Actions minutes. Model switching is not supported.",
-    href: "https://docs.github.com/en/copilot/concepts/agents/code-review",
-  },
-  {
-    name: "Cursor Bugbot",
-    meter:
-      "Usage-based, included from Cursor Premium (`$30` a month) up. No per-review rate is published, and each review reports its own cost.",
-    href: "https://cursor.com/docs/bugbot",
-  },
-  {
-    name: "Greptile",
-    meter:
-      "`$1` per credit, shared across the org, no seats. A review costs 1, 3 or 10 credits by tier. The free tier is 1 developer and 50 credits a month.",
-    href: "https://www.greptile.com/pricing",
-  },
-  {
-    name: "Macroscope",
-    meter:
-      "Hosted reviews bill `$0.025` to `$0.20` per KB by mode, with a 10 KB minimum, plus separate meters for commit status and Approvability. CLI reviews bill in Agent credits at model cost plus 5%.",
-    href: "https://docs.macroscope.com/pricing",
-  },
-  {
-    name: "Pullfrog",
-    meter:
-      "GitHub Actions only. Free for personal accounts and public repos, otherwise `$30` a month or `$300` a year per org, with models billed at provider cost.",
-    href: "https://docs.pullfrog.com/billing",
-  },
-];
+// One band: the price claim, in one place. Vendor prices live in
+// apps/docs/content/comparison.mdx, which is the only page that carries them,
+// so this copy cannot drift from the ledger.
 ---
 
-<section id="meters" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
+<section id="cost" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
   <SectionHead
-    title="Against the meters."
-    lede="Hosted reviewers meter the review. Verdict has no meter from us, and your model bill is yours."
+    title="What it costs."
+    lede="MIT licensed, with no subscription, no seat count and no per-review charge."
+    align="start"
   />
-
-  <div class="mt-12 grid items-start gap-4 lg:grid-cols-12">
-    <div class="rounded-2xl border border-border bg-[var(--landing-surface)] p-6 sm:p-8 lg:col-span-7">
-      <h3 class="font-display font-semibold text-xl tracking-tight">The hosted reviewers</h3>
-      <ul class="mt-4 border-border border-t">
-        {
-          rows.map((row) => (
-            <li class="grid gap-1 border-border border-b py-4 sm:grid-cols-[150px_1fr] sm:gap-6">
-              <p class="font-display font-semibold text-base tracking-tight">
-                <a
-                  class="inline-flex items-start gap-1 hover:text-accent"
-                  href={row.href}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <span>{row.name}</span>
-                  <span class="sr-only"> pricing (opens in a new tab)</span>
-                  <span aria-hidden="true" class="text-[var(--landing-faint)] text-sm">↗</span>
-                </a>
-              </p>
-              <p class="text-base text-muted-foreground leading-relaxed">
-                <Inline text={row.meter} />
-              </p>
-            </li>
-          ))
-        }
-      </ul>
-      <p class="mt-4 text-sm text-[var(--landing-faint)]">
-        Checked on 2026-11-04. Prices change, so check the vendor before you decide.
-      </p>
-    </div>
-
-    <div class="flex flex-col rounded-2xl border border-accent bg-[var(--landing-surface)] p-6 sm:p-8 lg:col-span-5">
-      <h3 class="font-display font-semibold text-xl tracking-tight">Verdict</h3>
-      <p class="mt-3 text-base text-muted-foreground leading-relaxed">
-        MIT licensed. No vendor subscription, no app to install and no per-review meter. Re-reviews
-        carry no charge from Verdict.
-      </p>
-      <p class="mt-3 text-base text-muted-foreground leading-relaxed">
-        Your agent's model usage is your cost, at your provider's rates. To cap it, set{" "}
-        <code class="font-mono text-sm text-foreground">REVIEW_BUDGET_USD</code>: fetch then
-        estimates the run from your past runs and refuses one projected over budget.
-      </p>
-      <p class="mt-3 text-base text-muted-foreground leading-relaxed">
-        What you give up: a hosted dashboard, a merge gate run by a vendor, and a managed index of
-        the whole repo.
-      </p>
-      <a
-        class="mt-auto inline-flex items-center gap-1.5 pt-6 font-medium text-accent text-sm"
-        href={contentHref("/comparison")}
-      >
-        Full comparison, with where each one wins
-        <Icon name="arrow-right" size={14} />
+  <div class="mt-8 max-w-[70ch] space-y-4 text-base text-muted-foreground leading-relaxed">
+    <p>
+      Your agent's model usage is the only bill, at your provider's rates. A re-review
+      carries no charge from Verdict.
+    </p>
+    <p>
+      <Inline text="To cap the bill, set `REVIEW_BUDGET_USD`. `fetch` then estimates the run from your past runs and refuses one projected over budget, unless you pass `--consent-over-budget`." />
+    </p>
+    <p>
+      <a class="font-medium text-accent" href={contentHref("/comparison")}>
+        Hosted reviewers charge per seat or per review
       </a>
-    </div>
+      , and the comparison lists each price with the date it was checked.
+    </p>
   </div>
 </section>

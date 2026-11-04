@@ -1,0 +1,58 @@
+---
+import SectionHead from "./SectionHead.astro";
+import Inline from "./Inline.astro";
+
+/**
+ * The trust boundary in four rows: what Verdict writes, runs, reads and never
+ * does, then the exit codes a script branches on. Every line comes from
+ * docs/manual.md and docs/build-a-client.mdx; the mapping is in
+ * docs/landing-claims.md.
+ */
+const rows = [
+  {
+    label: "Writes",
+    body: "`.review/` inside your repository. `skill install` also writes the skill into the agent directories you name, or into every one it detects.",
+  },
+  {
+    label: "Runs",
+    body: "One static Go binary. `gh` for GitHub I/O, `git` for local ranges.",
+  },
+  {
+    label: "Fetches",
+    body: "GitHub, GitLab, GitCafe, Forgejo, Bitbucket and Azure DevOps. Posting is GitHub only.",
+  },
+  {
+    label: "Never",
+    body: "No server, no account, no daemon, no telemetry, no background update. It posts only when `verdict post` runs.",
+  },
+];
+---
+
+<section id="trust" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
+  <SectionHead
+    title="What runs on your machine."
+    lede="The whole boundary, so you can check it against the source."
+    align="start"
+  />
+
+  <dl class="mt-10 border-border border-t">
+    {
+      rows.map((row) => (
+        <div class="grid gap-1 border-border border-b py-5 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-8">
+          <dt class="font-medium text-base">{row.label}</dt>
+          <dd class="max-w-[62ch] text-base text-muted-foreground leading-relaxed">
+            <Inline text={row.body} />
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+
+  <p class="mt-6 max-w-[70ch] text-base text-muted-foreground leading-relaxed">
+    <Inline text="Exit codes are fixed: `0` success, `1` refused or a failed gate, `2` usage, `3` cancellation or a tool failure." />
+    {" "}
+    <a class="font-medium text-accent" href="https://github.com/stainless-code/verdict/blob/main/internal/cli/cli.go">
+      The table is in the source.
+    </a>
+  </p>
+</section>

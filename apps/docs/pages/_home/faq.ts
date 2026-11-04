@@ -2,7 +2,10 @@
  * Homepage FAQ. Answers use `code` spans written with backticks; Faq.astro
  * renders them and index.astro strips the backticks for the FAQPage JSON-LD.
  * Every answer is checked against docs/manual.md and the binary's own `--help`;
- * the sources are listed in .scratch/onboarding/O-landing.md.
+ * the mapping is in docs/landing-claims.md.
+ *
+ * Four questions survive. Cost moved to the pricing band, and "is my code sent
+ * anywhere" moved to the trust table, so neither is answered twice.
  */
 export interface Qa {
   q: string;
@@ -14,14 +17,7 @@ export const faq: Qa[] = [
     q: "Does it post without me?",
     a: [
       "No. Nothing runs in the background. A review posts when you run `verdict post`, or when an agent you gave that command runs it.",
-      "Try `verdict post --dry-run` first: it validates the anchors and prints the payload without posting. Approving or requesting changes needs `--bind`, and an approval is refused while findings are open unless you pass `--force`. `verdict mcp --read-only` gives an agent a server that cannot write.",
-    ],
-  },
-  {
-    q: "What does it cost?",
-    a: [
-      "Verdict is MIT licensed, with no subscription, seats or per-review meter. Your agent's model usage is billed by your model provider at its own rates.",
-      "To cap that bill, set `REVIEW_BUDGET_USD`. Fetch then estimates the run from your past runs and refuses one projected over budget, unless you pass `--consent-over-budget`.",
+      "Try `verdict post --dry-run` first. It validates the anchors and prints the payload without posting. Approving or requesting changes needs `--bind`, and an approval is refused while findings are open unless you pass `--force`. `verdict mcp --read-only` gives an agent a server that cannot write.",
     ],
   },
   {
@@ -43,13 +39,6 @@ export const faq: Qa[] = [
     a: [
       "Yes. `fetch-local owner/repo work` builds a review bundle from git alone: a branch against a base (`--base main`), a commit range (`--range A..B`), staged changes (`--staged`), a stash entry (`--stash [n]`), or an isolated checkout (`--worktree`).",
       "`record`, `report`, `triage`, `show` and `next` all run on the local bundle. Only `post` needs a GitHub PR, and it refuses a local bundle with `no-pr-target` instead of inventing a target.",
-    ],
-  },
-  {
-    q: "Is my code sent anywhere?",
-    a: [
-      "Verdict has no server and no telemetry, and it never updates itself in the background. It reads your host with your credentials and posts only when `verdict post` runs.",
-      "Your agent sends the diff to whichever model provider it uses. That is your choice, not Verdict's, and provider tokens go only to their own hosts.",
     ],
   },
 ];

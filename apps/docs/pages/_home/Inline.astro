@@ -12,7 +12,7 @@ const parts = Astro.props.text
 {
   parts.map((part) =>
     part.code ? (
-      <code class="font-mono text-[0.875em] text-foreground">{part.value}</code>
+      <code class="whitespace-nowrap font-mono text-[0.875em] text-foreground">{part.value}</code>
     ) : (
       part.value
     ),

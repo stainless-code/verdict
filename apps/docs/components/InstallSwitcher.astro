@@ -1,6 +1,7 @@
 ---
 import Icon from "blume/components/Icon.astro";
 import { brandIcons, type BrandIcon } from "./brand-icons.ts";
+import { breakable } from "./install.ts";
 
 /**
  * Install switcher: one tab per install route, one command box, one copy
@@ -22,31 +23,6 @@ interface Props {
 }
 
 const { name = "install" } = Astro.props;
-
-/**
- * Split a command into segments that may break at their end, so a wrapped
- * route breaks after a path separator instead of inside a word. Breaks are
- * offered only after a lone `/`: never after `-`, which would split a
- * hyphenated word (`@stainless-` / `code`), and never inside a scheme's `//`.
- * `<wbr>` adds no text, so the copy handler still reads the whole command
- * from `textContent`.
- */
-const breakable = (command: string) => {
-  const parts: string[] = [];
-  let start = 0;
-  for (let i = 0; i < command.length; i += 1) {
-    const next = command[i + 1] ?? "";
-    const prev = command[i - 1] ?? "";
-    const breaks =
-      command[i] === "/" && prev !== "/" && next !== "" && next !== "/";
-    if (breaks) {
-      parts.push(command.slice(start, i + 1));
-      start = i + 1;
-    }
-  }
-  parts.push(command.slice(start));
-  return parts;
-};
 
 interface Tab {
   id: string;
@@ -469,6 +445,18 @@ const tabs: Tab[] = [
         window.dispatchEvent(new CustomEvent(CHANGE, { detail: initial }));
       }
       fade();
+
+      // A restored route can be measured before the strip has a width (web
+      // fonts, a hidden ancestor), so restore the scroll once painted.
+      const settle = () => {
+        const current = tabs.find(
+          (tab) => tab.getAttribute("aria-selected") === "true",
+        );
+        if (current) reveal(current);
+        fade();
+      };
+      requestAnimationFrame(settle);
+      void document.fonts?.ready.then(settle).catch(() => {});
 
       for (const tab of tabs) {
         tab.addEventListener("click", () => {

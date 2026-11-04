@@ -9,6 +9,7 @@ import Hero from "./_home/Hero.astro";
 import HowItWorks from "./_home/HowItWorks.astro";
 import Differences from "./_home/Differences.astro";
 import Meters from "./_home/Meters.astro";
+import Trust from "./_home/Trust.astro";
 import Integrations from "./_home/Integrations.astro";
 import Faq from "./_home/Faq.astro";
 import FinalCta from "./_home/FinalCta.astro";
@@ -103,8 +104,9 @@ const jsonLd = {
       <Hero />
       <HowItWorks />
       <Differences />
-      <Meters />
+      <Trust />
       <Integrations />
+      <Meters />
       <Faq />
       <FinalCta />
     </main>
@@ -117,22 +119,30 @@ const jsonLd = {
               {config.title}
             </p>
             <p class="mt-4 max-w-[254px] text-[14px] text-muted-foreground leading-[22px]">
-              Local, on-demand code review for any coding agent. A PR, a branch, a commit
-              range, staged changes — evidence-graded findings, machine gates, and one
-              static binary to install.
+              Code review on your machine, with your agent as reviewer. It fetches a
+              pull request, a branch, a commit range or staged changes, and grades every
+              finding by how it was checked.
             </p>
           </div>
-          <nav aria-label="Footer" class="grid grid-cols-2 gap-x-12 gap-y-10 sm:grid-cols-3">
+          <nav aria-label="Footer" class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 sm:gap-x-12">
             <div>
               <h3 class="text-sm font-medium text-[var(--landing-faint)]">Docs</h3>
               <ul class="mt-3 space-y-3">
-                {(config.navigation?.tabs ?? []).map((tab) => (
-                  <li>
-                    <a href={contentHref(tab.path)} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
-                      {tab.label}
-                    </a>
-                  </li>
-                ))}
+                <li>
+                  <a href={contentHref("/quickstart")} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Quickstart
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/how-it-reviews")} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
+                    How it reviews
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/comparison")} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Comparison
+                  </a>
+                </li>
               </ul>
             </div>
             <div>
@@ -148,14 +158,31 @@ const jsonLd = {
                     MIT license
                   </a>
                 </li>
-              </ul>
-            </div>
-            <div>
-              <h3 class="text-sm font-medium text-[var(--landing-faint)]">House</h3>
-              <ul class="mt-3 space-y-3">
                 <li>
                   <a href="https://stainless-code.com" rel="noreferrer" target="_blank" class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
                     stainless-code
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div class="col-span-2 sm:col-span-1">
+              {/* Machine entry points: agents that read the HTML find them here,
+                  and crawlers find the same files by convention. */}
+              <h3 class="text-sm font-medium text-[var(--landing-faint)]">For agents</h3>
+              <ul class="mt-3 space-y-3">
+                <li>
+                  <a href={contentHref("/llms.txt")} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
+                    llms.txt
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/agent-readability.json")} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
+                    agent-readability.json
+                  </a>
+                </li>
+                <li>
+                  <a href={contentHref("/.well-known/agent-skills/index.json")} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
+                    Skill index
                   </a>
                 </li>
               </ul>

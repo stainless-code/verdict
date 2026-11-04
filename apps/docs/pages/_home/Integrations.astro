@@ -1,6 +1,5 @@
 ---
 import { contentHref } from "blume/components/content/base-href.ts";
-import Icon from "blume/components/Icon.astro";
 import Inline from "./Inline.astro";
 import SectionHead from "./SectionHead.astro";
 
@@ -17,7 +16,7 @@ const rows = [
   {
     name: "MCP server",
     snippet: "verdict mcp",
-    body: "The review verbs as tools over stdio; `verdict mcp config --write` writes the host config. Experimental until 1.0.",
+    body: "The review verbs as tools over stdio. `verdict mcp config --write` writes the host config. Experimental until 1.0.",
     href: `${base}#mcp-server`,
     span: "lg:col-span-3",
   },
@@ -50,6 +49,7 @@ const rows = [
     <SectionHead
       title="Five ways in."
       lede="Every surface runs the same review core and returns the data as `--json`."
+      align="start"
     />
     <ul class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
       {
@@ -71,13 +71,12 @@ const rows = [
         ))
       }
     </ul>
-    <p class="mt-8 text-center">
+    <p class="mt-8">
       <a
-        class="relative inline-flex items-center gap-2 font-medium text-accent text-sm after:absolute after:-inset-3 after:content-['']"
+        class="relative inline-flex items-center font-medium text-accent text-sm after:absolute after:-inset-3 after:content-['']"
         href={base}
       >
-        Integrations, with an example for each
-        <Icon name="arrow-right" size={14} />
+        Every surface, with an example for each
       </a>
     </p>
   </div>

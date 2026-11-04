@@ -1,6 +1,5 @@
 ---
 import { contentHref } from "blume/components/content/base-href.ts";
-import Icon from "blume/components/Icon.astro";
 import InstallEcho from "./InstallEcho.astro";
 import VerdictMark from "./VerdictMark.astro";
 ---
@@ -15,8 +14,8 @@ import VerdictMark from "./VerdictMark.astro";
       Hand your agent a PR.
     </h2>
     <p class="max-w-xl text-balance" style="color: var(--landing-band-ink); opacity: 0.85;">
-      The route you picked, ready to paste. Then fetch, review, post — no
-      seats, no meters, no app to authorize.
+      The route you picked, ready to paste. Fetch the change, let the agent
+      review, post once.
     </p>
     <div class="w-full max-w-[44rem]">
       <InstallEcho />
@@ -27,15 +26,14 @@ import VerdictMark from "./VerdictMark.astro";
         style="color: var(--landing-band-ink);"
         href={contentHref("/quickstart")}
       >
-        Quickstart
+        Read the quickstart
       </a>
       <a
-        class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] bg-white px-5 font-medium text-base transition-opacity hover:opacity-90"
+        class="inline-flex h-11 items-center whitespace-nowrap rounded-[9px] bg-white px-5 font-medium text-base transition-opacity hover:opacity-90"
         style="color: var(--landing-band);"
         href={contentHref("/how-it-reviews")}
       >
-        How it reviews
-        <Icon name="arrow-right" size={16} />
+        See how it reviews
       </a>
     </div>
   </div>

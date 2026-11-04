@@ -1,6 +1,6 @@
 ---
 import Icon from "blume/components/Icon.astro";
-import { CLI_INSTALL } from "./install.ts";
+import { breakable, CLI_INSTALL } from "../../components/install.ts";
 
 /**
  * Mirrors the route selected in the hero's install switcher. The closing band
@@ -27,7 +27,7 @@ const { fallback = CLI_INSTALL } = Astro.props;
     <span aria-hidden="true" class="select-none font-mono text-base opacity-50">$</span>
     <code
       class="min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words whitespace-pre-wrap sm:text-base"
-      data-echo-command>{fallback}</code>
+      data-echo-command>{breakable(fallback).map((part) => <>{part}<wbr /></>)}</code>
     <button
       aria-label={`Copy: ${fallback}`}
       class="relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-black/[0.06] text-[var(--landing-band)] transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-black/10"
@@ -43,6 +43,8 @@ const { fallback = CLI_INSTALL } = Astro.props;
 </div>
 
 <script>
+  import { breakable } from "../../components/install.ts";
+
   const CHANGE = "verdict-install-change";
 
   const root = document.querySelector<HTMLElement>("[data-install-echo]");
@@ -51,6 +53,16 @@ const { fallback = CLI_INSTALL } = Astro.props;
   const label = root?.querySelector<HTMLElement>("[data-echo-label]");
   const copy = root?.querySelector<HTMLButtonElement>("[data-echo-copy]");
   const status = root?.querySelector<HTMLElement>("[data-echo-status]");
+
+  /** Print the route so a wrapped URL breaks after `/`, never inside a word. */
+  const render = (text: string) => {
+    if (!command) return;
+    const nodes: (Text | HTMLElement)[] = [];
+    for (const part of breakable(text)) {
+      nodes.push(document.createTextNode(part), document.createElement("wbr"));
+    }
+    command.replaceChildren(...nodes);
+  };
 
   const sync = () => {
     if (!source || !command) return;
@@ -62,7 +74,7 @@ const { fallback = CLI_INSTALL } = Astro.props;
     );
     const text = panel?.textContent?.trim() ?? "";
     if (!text) return;
-    command.textContent = text;
+    render(text);
     if (label) label.textContent = tab?.textContent?.trim() ?? "Install";
     if (copy) {
       copy.dataset.command = text;

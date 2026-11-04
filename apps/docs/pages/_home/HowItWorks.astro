@@ -1,14 +1,13 @@
 ---
 import { contentHref } from "blume/components/content/base-href.ts";
-import Icon from "blume/components/Icon.astro";
 import CopyCommand from "./CopyCommand.astro";
 import Inline from "./Inline.astro";
 import SectionHead from "./SectionHead.astro";
 import Terminal from "./Terminal.astro";
 
 // Every line below was printed by `bin/verdict` 0.4.0 in a scratch git repo
-// with a two-line change in src/retry.ts. See .scratch/onboarding/O-landing.md
-// for the transcript. `⋯` marks an elided stretch of progress lines.
+// with a two-line change in src/retry.ts. `⋯` marks an elided stretch of
+// progress lines. The transcript is reproduced in docs/landing-claims.md.
 const sample = [
   { kind: "cmd", text: "verdict fetch-local acme/app work" },
   {
@@ -40,17 +39,17 @@ const sample = [
 const steps = [
   {
     title: "Add the skill",
-    body: "The skill ships inside the binary and writes itself into every agent it detects, so it always matches your version. It carries the review prompts and the verb order the agent follows.",
+    body: "The skill ships inside the binary and writes itself into every agent it detects, so it always matches your version.",
     commands: ["verdict skill install --detect"],
   },
   {
-    title: "Fetch the PR",
-    body: "`fetch` writes the diff, a table of contents and the file roles into `.review/`, so the agent reads a bundle instead of paging a web UI.",
+    title: "Fetch the change",
+    body: "`fetch` writes the diff, a table of contents and the file roles into `.review/`, so the agent reads files instead of a web page.",
     commands: ["verdict fetch owner/repo 123"],
   },
   {
     title: "Review and post",
-    body: "Your agent reads the bundle and writes `.review/123/review.json`. `post` checks every anchor, then submits exactly one review — `report --check` gates the same findings in CI.",
+    body: "Your agent reads the bundle and writes `.review/123/review.json`. `post` checks every anchor and submits exactly one review. `report --check` gates the same findings in CI.",
     commands: ["verdict post owner/repo 123"],
   },
 ] as const;
@@ -59,7 +58,8 @@ const steps = [
 <section id="how-it-works" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
   <SectionHead
     title="Three steps to a first review."
-    lede="One binary, one skill install, then fetch, review and post."
+    lede="One binary, one skill install, then fetch, review, and post."
+    align="start"
   />
 
   <ol class="mt-12 border-border border-t">
@@ -87,17 +87,16 @@ const steps = [
     <Terminal
       title="A local run: two lines changed in src/retry.ts, then the gate"
       lines={[...sample]}
-      caption="Verbatim from verdict 0.4.0, with progress lines elided at ⋯. The review file was written by hand the way an agent writes it; the gate exited 1. For a pull request the same findings go through verdict post."
+      caption="Verbatim from verdict 0.4.0, with progress lines elided at ⋯. The review file was written by hand, the way an agent writes it, and the gate exited 1. For a pull request the same findings go through verdict post."
     />
   </div>
 
-  <p class="mt-8 text-center">
+  <p class="mt-8">
     <a
-      class="relative inline-flex items-center gap-2 font-medium text-accent text-sm after:absolute after:-inset-3 after:content-['']"
+      class="relative inline-flex items-center font-medium text-accent text-sm after:absolute after:-inset-3 after:content-['']"
       href={contentHref("/quickstart")}
     >
-      The full quickstart, including re-reviews and local changes
-      <Icon name="arrow-right" size={14} />
+      The quickstart covers re-reviews and local changes
     </a>
   </p>
 </section>
