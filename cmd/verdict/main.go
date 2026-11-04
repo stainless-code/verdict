@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
@@ -193,7 +194,9 @@ func dispatch(
 	forces *cli.GlobalForces, rest []string, stderr *os.File,
 ) int {
 	r.RouteHuman()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+	// SIGKILL cannot be caught, so SIGTERM (kill, docker stop, systemd) is the
+	// second catchable shutdown signal (GO-CLI-05).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{
