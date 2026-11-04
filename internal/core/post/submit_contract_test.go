@@ -24,6 +24,8 @@ func postFailCommander(t *testing.T, res scriptResult) *scriptCommander {
 // TestRunPostFailedCarriesStderrHead proves the typed post-failed refusal
 // quotes the forge's own stderr (flattened) instead of an empty reason, and
 // caps it at the documented 300 bytes.
+//
+//nolint:gocognit,revive // legs assert the refusal, receipt, and projection fields inline
 func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -39,8 +41,8 @@ func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 		},
 		{
 			name:   "over-300-bytes-truncates",
-			stderr: strings.Repeat("x", postErrHeadBytes) + "TAIL-THAT-MUST-NOT-RIDE",
-			want:   "post failed: " + strings.Repeat("x", postErrHeadBytes) + " — narrow the cause",
+			stderr: strings.Repeat("x", 300) + "TAIL-THAT-MUST-NOT-RIDE",
+			want:   "post failed: " + strings.Repeat("x", 300) + " — narrow the cause",
 			absent: "TAIL-THAT-MUST-NOT-RIDE",
 		},
 	}
@@ -62,28 +64,14 @@ func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 			if tc.absent != "" && strings.Contains(ref.Message, tc.absent) {
 				t.Errorf("message carries the bytes past the 300-byte head: %q", ref.Message)
 			}
-			if exists(".review/7/post.json") || exists(".review/7/.posted_"+markerlessHash(t, cmdr)) {
-				t.Error("a failed post armed the receipt or the duplicate marker")
+			if exists(".review/7/post.json") {
+				t.Error("a failed post wrote the receipt")
+			}
+			if matches := globMarkers(t); len(matches) != 0 {
+				t.Errorf("a failed post armed the duplicate marker: %v", matches)
 			}
 		})
 	}
-}
-
-// markerlessHash returns the payload hash the failed run computed, read from
-// the POST stdin body's marker when present ("" when the run never rendered
-// one).
-func markerlessHash(t *testing.T, cmdr *scriptCommander) string {
-	t.Helper()
-	for i, call := range cmdr.calls {
-		if !strings.Contains(strings.Join(call, " "), "/reviews") {
-			continue
-		}
-		body, _ := decodePostedPayload(t, cmdr.stdin[i])["body"].(string)
-		if hash, _, ok := reviewMarker(body); ok {
-			return hash
-		}
-	}
-	return ""
 }
 
 // writeProvenanceFixture seeds the version, prompt set, and cost model the
@@ -105,6 +93,8 @@ func writeProvenanceFixture(t *testing.T) {
 // TestRunReceiptProvenanceTriple proves post.json carries the bundle's
 // provenance triple (version, prompt-set hash, cost model) instead of empty
 // fields, and the real-post envelope carries the same triple.
+//
+//nolint:revive // legs assert the refusal, receipt, and projection fields inline
 func TestRunReceiptProvenanceTriple(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -121,8 +111,8 @@ func TestRunReceiptProvenanceTriple(t *testing.T) {
 	if got := receipt["tool_version"]; got != "3.1.4" {
 		t.Errorf("post.json tool_version = %v, want 3.1.4", got)
 	}
-	hash, _ := receipt["prompts_hash"].(string)
-	if len(hash) != 64 || strings.Trim(hash, "0123456789abcdef") != "" {
+	hash, isString := receipt["prompts_hash"].(string)
+	if !isString || len(hash) != 64 || strings.Trim(hash, "0123456789abcdef") != "" {
 		t.Errorf("post.json prompts_hash = %q, want the 64-hex prompt-set digest", hash)
 	}
 	if got := receipt["model"]; got != "gpt-5-codex" {
@@ -141,6 +131,8 @@ func TestRunReceiptProvenanceTriple(t *testing.T) {
 
 // TestRunSuccessNextLine proves the real-post envelope's next line follows
 // the open-finding count in both directions.
+//
+//nolint:revive // legs assert the refusal, receipt, and projection fields inline
 func TestRunSuccessNextLine(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -235,10 +227,13 @@ func TestPostCountsTally(t *testing.T) {
 		jq.NewObj("status", "open"),
 		jq.NewObj("status", "deferred"),
 		jq.NewObj("status", "addressed"),
+		jq.NewObj("status", "addressed"),
+		jq.NewObj("status", "addressed"),
 	}
+	// Three distinct counts, so a swapped pair of statuses cannot pass.
 	open, deferred, addressed := postCounts(entries)
-	if open != 2 || deferred != 1 || addressed != 1 {
-		t.Errorf("counts = %d open, %d deferred, %d addressed; want 2, 1, 1", open, deferred, addressed)
+	if open != 2 || deferred != 1 || addressed != 3 {
+		t.Errorf("counts = %d open, %d deferred, %d addressed; want 2, 1, 3", open, deferred, addressed)
 	}
 	if n := countByStatus([]any{jq.NewObj("status", "open"), jq.NewObj("kind", "section")}, "open"); n != 1 {
 		t.Errorf("countByStatus = %d, want the status-bearing entry only", n)
@@ -247,6 +242,8 @@ func TestPostCountsTally(t *testing.T) {
 
 // TestTypedPostItemsProjection proves the typed envelope summary carries each
 // entry's sig, status, anchored flag, and locator, and skips non-objects.
+//
+//nolint:revive // legs assert the refusal, receipt, and projection fields inline
 func TestTypedPostItemsProjection(t *testing.T) {
 	t.Parallel()
 	entries := []any{
@@ -277,6 +274,8 @@ func TestTypedPostItemsProjection(t *testing.T) {
 
 // TestPostDiagramValue proves the dry-run diagram disposition: absent reads
 // null, and present carries the state with null keyword/note when unset.
+//
+//nolint:revive // legs assert the refusal, receipt, and projection fields inline
 func TestPostDiagramValue(t *testing.T) {
 	t.Parallel()
 	if got := postDiagramValue(&diagram.Status{State: "absent"}); got != nil {
@@ -311,6 +310,8 @@ func TestPostDiagramValue(t *testing.T) {
 // TestDecodeProvenanceTyped proves the typed provenance reader honors the
 // triple: a missing cost record reads a nil model, a present one reads its
 // model, and an unreadable bundle reads nil.
+//
+//nolint:revive // legs assert the refusal, receipt, and projection fields inline
 func TestDecodeProvenanceTyped(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeTestFile(dir+"/package.json", `{"version":"3.1.4"}`); err != nil {
@@ -340,6 +341,8 @@ func TestDecodeProvenanceTyped(t *testing.T) {
 // TestRunDryRunFooterDisposition proves the dry-run envelope reports the
 // footer as null when the knobs disable it and as the rendered block
 // otherwise, so a reader can tell "off" from "rendered nothing".
+//
+//nolint:gocognit,revive // legs assert the refusal, receipt, and projection fields inline
 func TestRunDryRunFooterDisposition(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -455,7 +458,7 @@ func TestPreviewDryRunLines(t *testing.T) {
 	var human []string
 	var warnings []string
 	st := postSplitState(&warnings)
-	st.req.Runtime.Progress = testProgress{warnings: &warnings, human: &human}
+	st.req.Progress = testProgress{warnings: &warnings, human: &human}
 	st.body = "> ✅ Looks good."
 	st.comments = []any{jq.NewObj(fieldPath, "notes.txt", fieldLine, 2, fieldBody, "x")}
 	st.diagram = diagram.Status{State: "rewritten", Detail: "two blocks collapsed"}
@@ -496,12 +499,12 @@ func TestBuildPostCommentsSigShortfall(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("comments = %d, want 3", len(got))
 	}
-	first := jq.R(mustGet(got[0].(*jq.Obj)))
+	first := commentBody(t, got[0])
 	if !strings.HasSuffix(first, "<!-- verdict-finding sig="+strings.Repeat("a", 40)+" -->") {
 		t.Errorf("first body = %q, want the finding marker", first)
 	}
 	for i, want := range []string{"second", "third"} {
-		body := jq.R(mustGet(got[i+1].(*jq.Obj)))
+		body := commentBody(t, got[i+1])
 		if body != want {
 			t.Errorf("comment %d body = %q, want %q unmarked", i+2, body, want)
 		}
@@ -514,11 +517,13 @@ func TestBuildPostCommentsSigShortfall(t *testing.T) {
 // TestRunSplitFollowUps proves an over-limit body posts the first part as the
 // review and each continuation as its own COMMENT review, with the part
 // header, the follow-up progress line, and the hosting-limit warning.
+//
+//nolint:revive // legs assert the refusal, receipt, and projection fields inline
 func TestRunSplitFollowUps(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	// Two paragraphs, each big enough that the body needs two review parts.
-	para := strings.Repeat("z", hostingBodyLimit/2)
+	para := strings.Repeat("z", 32768)
 	review := fmt.Sprintf(`{"schema_version":"1","body":"> ✅ Long review.`+
 		`%s%s","approved":false,"comments":[]}`, para, para)
 	postBundle(t, review)
@@ -535,11 +540,11 @@ func TestRunSplitFollowUps(t *testing.T) {
 	if len(payloads) != 2 {
 		t.Fatalf("posted payloads = %d, want the review plus one follow-up", len(payloads))
 	}
-	head, _ := payloads[0]["body"].(string)
+	head := payloadBody(t, payloads[0])
 	if !strings.Contains(head, "\n\n> ⚠️ Note: this review continues in 1 follow-up comment(s) below") {
 		t.Errorf("first part misses the continuation note:\n%.200q", head)
 	}
-	follow, _ := payloads[1]["body"].(string)
+	follow := payloadBody(t, payloads[1])
 	wantHead := "> ℹ️ Note: review body continued (part 2/2 — split at the 65,536-char hosting limit; " +
 		"see findings.json for the full text).\n\n"
 	if !strings.HasPrefix(follow, wantHead) {
@@ -558,8 +563,7 @@ func TestRunSplitFollowUps(t *testing.T) {
 		t.Errorf("warnings = %q, want the split notice", resp.Warnings)
 	}
 	for _, p := range payloads {
-		body, _ := p["body"].(string)
-		if len(body) > hostingBodyLimit {
+		if body := payloadBody(t, p); len(body) > 65536 {
 			t.Errorf("posted part is %d chars, over the hosting limit", len(body))
 		}
 	}
@@ -571,7 +575,7 @@ func TestRunSplitFollowUps(t *testing.T) {
 func TestRunSplitFollowUpFailure(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	para := strings.Repeat("z", hostingBodyLimit/2)
+	para := strings.Repeat("z", 32768)
 	review := fmt.Sprintf(`{"schema_version":"1","body":"> ✅ Long review.`+
 		`%s%s","approved":false,"comments":[]}`, para, para)
 	postBundle(t, review)
@@ -598,10 +602,8 @@ func TestRunSplitFollowUpFailure(t *testing.T) {
 	if exists(".review/7/post.json") {
 		t.Error("a partial post wrote the receipt")
 	}
-	for name := range map[string]bool{".review/7/.posted_": true} {
-		if matches, _ := filepathGlob(name + "*"); len(matches) != 0 {
-			t.Errorf("a partial post armed the duplicate marker: %v", matches)
-		}
+	if matches := globMarkers(t); len(matches) != 0 {
+		t.Errorf("a partial post armed the duplicate marker: %v", matches)
 	}
 }
 
@@ -618,13 +620,30 @@ func (s *splitFailCommander) Run(ctx context.Context, cmd core.Command) (core.Re
 	if strings.Contains(strings.Join(cmd.Argv, " "), "/reviews") {
 		s.posts++
 		if s.posts > 1 {
-			s.scriptCommander.calls = append(s.scriptCommander.calls, append([]string{}, cmd.Argv...))
-			s.scriptCommander.stdin = append(s.scriptCommander.stdin, "")
+			s.calls = append(s.calls, append([]string{}, cmd.Argv...))
+			s.stdin = append(s.stdin, "")
 			return core.Result{Stderr: "HTTP 422: too large\n", ExitCode: 1}, nil
 		}
 	}
 	return s.scriptCommander.Run(ctx, cmd)
 }
 
-// filepathGlob matches a bundle path pattern.
-func filepathGlob(pattern string) ([]string, error) { return filepath.Glob(pattern) }
+// globMarkers lists the armed duplicate markers in the test bundle.
+func globMarkers(t *testing.T) []string {
+	t.Helper()
+	matches, err := filepath.Glob(".review/7/.posted_*")
+	if err != nil {
+		t.Fatalf("glob markers: %v", err)
+	}
+	return matches
+}
+
+// commentBody returns the posted body of one built comment.
+func commentBody(t *testing.T, comment any) string {
+	t.Helper()
+	obj, ok := comment.(*jq.Obj)
+	if !ok {
+		t.Fatalf("comment %v is not an ordered object", comment)
+	}
+	return jq.R(mustGet(obj))
+}

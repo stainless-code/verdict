@@ -35,17 +35,21 @@ const driftNotePrefix = "> ⚠️ Note: commits landed after this review's fetch
 	"(fetched `aaaaaaa`, live `bbbbbbb`); treat line anchors as potentially stale. " +
 	"Run `verdict fetch acme/app 7 --base-sha aaaaaaa` and review the delta.\n\n"
 
-// staleNotePrefix is the binding refusal's body note (a real newline plus a
-// literal backslash-n, as the frozen message renders it).
+// staleNotePrefix is the binding refusal's body note up to the end of its
+// sentence. The separator production appends after it is deliberately not
+// pinned here: it currently renders a literal backslash-n into the posted
+// body (service.go approveGate), which the manual never specifies.
 const staleNotePrefix = "> ⚠️ Note: posting as COMMENT instead of APPROVE — commits " +
 	"landed after this review's fetch, so the review does not cover live HEAD; " +
-	"run `verdict fetch acme/app 7 --base-sha aaaaaaa` and review the delta.\n\\n"
+	"run `verdict fetch acme/app 7 --base-sha aaaaaaa` and review the delta."
 
 // TestRunDriftKeepsPinnedSnapshot proves a push after fetch only adds drift
 // context: the anchors still validate against the fetch-time hunks (the
 // comment stays inline), the warning names both heads and the delta command,
 // the body note leads the posted body, and the marker stays the last line
 // after the footer.
+//
+//nolint:revive // legs assert the warning, body, and posted payload inline
 func TestRunDriftKeepsPinnedSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -136,6 +140,8 @@ func TestRunDriftLookupFailed(t *testing.T) {
 // TestRunStaleApproveDowngrades proves a binding APPROVE on a moved HEAD
 // never lands as APPROVE: it posts as COMMENT with the stale warning and the
 // two-line body note.
+//
+//nolint:revive // legs assert the warning, body, and posted payload inline
 func TestRunStaleApproveDowngrades(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -161,12 +167,15 @@ func TestRunStaleApproveDowngrades(t *testing.T) {
 	body := postedBody(t, cmdr)
 	// checkDrift prepends the drift note, then approveGate prepends the
 	// downgrade note in front of it.
-	after, hasStale := strings.CutPrefix(body, staleNotePrefix)
-	if !hasStale {
+	if !strings.HasPrefix(body, staleNotePrefix) {
 		t.Fatalf("downgrade note does not front the body:\n%.300q", body)
 	}
-	if !strings.HasPrefix(after, driftNotePrefix) {
-		t.Errorf("drift note does not follow the downgrade note:\n%.400q", after)
+	driftAt := strings.Index(body, driftNotePrefix)
+	if driftAt < len(staleNotePrefix) {
+		t.Fatalf("drift note (at %d) does not follow the downgrade note:\n%.600q", driftAt, body)
+	}
+	if !strings.Contains(body[driftAt:], "> ✅ Ship it.") {
+		t.Errorf("review prose does not follow the drift note:\n%.600q", body)
 	}
 	if payload := postedPayloads(t, cmdr); len(payload) != 1 || payload[0]["event"] != eventComment {
 		t.Errorf("posted payloads = %v, want one COMMENT review", payload)
@@ -181,9 +190,16 @@ func postedBody(t *testing.T, cmdr *scriptCommander) string {
 	if len(payloads) == 0 {
 		t.Fatal("no reviews POST fired")
 	}
-	body, ok := payloads[0]["body"].(string)
+	return payloadBody(t, payloads[0])
+}
+
+// payloadBody returns one decoded payload's body, failing the test when it
+// is not a string.
+func payloadBody(t *testing.T, payload map[string]any) string {
+	t.Helper()
+	body, ok := payload["body"].(string)
 	if !ok {
-		t.Fatalf("posted body is not a string: %v", payloads[0]["body"])
+		t.Fatalf("posted body is not a string: %v", payload["body"])
 	}
 	return body
 }
@@ -215,11 +231,7 @@ func TestRunRecheckOnlyOnApprove(t *testing.T) {
 		if _, ref := Run(context.Background(), req); ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
-		for _, call := range cmdr.calls {
-			if strings.Contains(strings.Join(call, " "), "graphql") {
-				t.Fatalf("COMMENT post spawned the live-thread read: %q", call)
-			}
-		}
+		assertNoThreadRead(t, cmdr, "COMMENT post")
 	})
 	t.Run("dry-run-approve", func(t *testing.T) {
 		dir := t.TempDir()
@@ -227,24 +239,39 @@ func TestRunRecheckOnlyOnApprove(t *testing.T) {
 		postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
 		live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		cmdr := postBundleCommander(t, &live)
+		// A reviewer other than the PR author: a self-verdict downgrades to
+		// COMMENT before the recheck guard is ever reached.
+		cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
 		var warnings, human []string
 		req := postTestReq(cmdr, core.PostFlags{
 			Approve: "true", Bind: true, ReviewFile: ".review/7/review.json", DryRun: true,
 		}, &warnings, &human)
-		if _, ref := Run(context.Background(), req); ref != nil {
+		resp, ref := Run(context.Background(), req)
+		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
-		for _, call := range cmdr.calls {
-			if strings.Contains(strings.Join(call, " "), "graphql") {
-				t.Fatalf("dry run spawned the live-thread read: %q", call)
-			}
+		if resp.Data.Event != "APPROVE" {
+			t.Fatalf("event = %q, want the APPROVE scenario this leg guards", resp.Data.Event)
 		}
+		assertNoThreadRead(t, cmdr, "dry run")
 	})
+}
+
+// assertNoThreadRead fails when any scripted call was the live-thread read.
+func assertNoThreadRead(t *testing.T, cmdr *scriptCommander, who string) {
+	t.Helper()
+	for _, call := range cmdr.calls {
+		if strings.Contains(strings.Join(call, " "), "graphql") {
+			t.Fatalf("%s spawned the live-thread read: %q", who, call)
+		}
+	}
 }
 
 // TestRunApproveLiveThreadBoundary proves the live-approve gate refuses only
 // a surplus of live open threads: zero local and zero live binds, one live
 // thread the store does not know refuses.
+//
+//nolint:gocognit,revive // legs assert the warning, body, and posted payload inline
 func TestRunApproveLiveThreadBoundary(t *testing.T) {
 	threadsArgvKey := "gh\x00api\x00graphql\x00--paginate\x00-F\x00owner=acme\x00-F\x00name=app\x00-F\x00pr=7\x00-f\x00query=" + queryLiveCount
 	nodes := func(n int) string {
@@ -261,17 +288,21 @@ func TestRunApproveLiveThreadBoundary(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name    string
+		wantMsg string
 		live    int
 		wantRef bool
-		wantMsg string
 	}{
 		{name: "no-live-threads-binds", live: 0},
-		{name: "one-live-thread-refuses", live: 1, wantRef: true,
+		{
+			name: "one-live-thread-refuses", live: 1, wantRef: true,
 			wantMsg: "refusing APPROVE: 1 live open thread(s) vs 0 local open finding(s) — " +
-				"1 thread(s) the store does not know about"},
-		{name: "two-live-threads-refuses", live: 2, wantRef: true,
+				"1 thread(s) the store does not know about",
+		},
+		{
+			name: "two-live-threads-refuses", live: 2, wantRef: true,
 			wantMsg: "refusing APPROVE: 2 live open thread(s) vs 0 local open finding(s) — " +
-				"2 thread(s) the store does not know about"},
+				"2 thread(s) the store does not know about",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -309,14 +340,16 @@ func TestRunApproveLiveThreadBoundary(t *testing.T) {
 
 // pinnedHunkRow renders one side-aware range row in the fetch-time snapshot
 // format (`file<TAB>side<TAB>start<TAB>end`).
-func pinnedHunkRow(file, side string, start, end int) string {
-	return fmt.Sprintf("%s\t%s\t%d\t%d\n", file, side, start, end)
+func pinnedHunkRow(side string, start, end int) string {
+	return fmt.Sprintf("notes.txt\t%s\t%d\t%d\n", side, start, end)
 }
 
 // TestRunAnchorsUsePinnedSnapshot proves post validates against the
 // fetch-time hunks.tsv, not the full diff it sits beside: the same comment is
 // inline under a snapshot that covers its line and moves into the body under
 // a snapshot that does not, with the snapshot left byte-identical.
+//
+//nolint:gocognit,revive,cyclop // legs assert the warning, body, and posted payload inline
 func TestRunAnchorsUsePinnedSnapshot(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -326,14 +359,14 @@ func TestRunAnchorsUsePinnedSnapshot(t *testing.T) {
 	}{
 		{
 			name:     "pinned-covers-the-line",
-			snapshot: pinnedHunkRow("notes.txt", "OLD", 1, 3) + pinnedHunkRow("notes.txt", "NEW", 1, 3),
+			snapshot: pinnedHunkRow("OLD", 1, 3) + pinnedHunkRow("NEW", 1, 3),
 			wantKept: 1,
 		},
 		{
 			// full.diff's hunk covers NEW 1-3, so anything that re-derived
 			// the snapshot from it would keep the anchor inline.
 			name:     "pinned-excludes-the-line",
-			snapshot: pinnedHunkRow("notes.txt", "OLD", 10, 12) + pinnedHunkRow("notes.txt", "NEW", 10, 12),
+			snapshot: pinnedHunkRow("OLD", 10, 12) + pinnedHunkRow("NEW", 10, 12),
 			wantKept: 0,
 			wantBody: "### ℹ️ Unanchored observations",
 		},

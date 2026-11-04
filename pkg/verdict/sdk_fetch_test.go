@@ -329,9 +329,11 @@ func TestClientFetchBaseOverride(t *testing.T) {
 	}
 }
 
-// TestClientFetchNoBaseSkipsCompare proves the other side of the presence
-// bit: without BaseSHA nothing spawns a compare and no incremental diff
-// lands.
+// TestClientFetchNoBaseSkipsCompare is the negative control for the base
+// override: a plain fetch really runs (the bundle's full diff lands) yet
+// spawns no compare and writes no incremental diff. Forcing the presence bit
+// on is guarded again by the service's empty-base check, so this test pins
+// the no-compare default, not the bit itself.
 func TestClientFetchNoBaseSkipsCompare(t *testing.T) {
 	t.Chdir(t.TempDir())
 	stubTools(t, "gh", "git", "curl", "glab")
@@ -344,6 +346,9 @@ func TestClientFetchNoBaseSkipsCompare(t *testing.T) {
 		BudgetConsent: true,
 	})
 	requireNoError(t, err)
+	if !strings.Contains(readText(t, ".review/7/full.diff"), "+new line") {
+		t.Fatalf("plain fetch did not run: full.diff missing the PR diff")
+	}
 	if cmdr.spawned("compare/") {
 		t.Errorf("no-base fetch spawned a compare: %q", cmdr.calls)
 	}
