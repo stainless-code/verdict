@@ -8,6 +8,7 @@ import Header from "../components/blume/Header.astro";
 import Hero from "./_home/Hero.astro";
 import HowItWorks from "./_home/HowItWorks.astro";
 import Differences from "./_home/Differences.astro";
+import Pipeline from "./_home/Pipeline.astro";
 import Meters from "./_home/Meters.astro";
 import Trust from "./_home/Trust.astro";
 import Integrations from "./_home/Integrations.astro";
@@ -18,7 +19,7 @@ import VerdictMark from "./_home/VerdictMark.astro";
 import "blume:theme";
 
 const { config } = data;
-const pageTitle = `${config.title}: PR code review with receipts`;
+const pageTitle = `${config.title}: code review your agent runs`;
 const year = new Date().getFullYear();
 const siteUrl = (config.site ?? "").replace(/\/$/, "");
 const canonicalUrl = `${siteUrl}${contentHref("/")}`.replace(/\/$/, "");
@@ -104,6 +105,7 @@ const jsonLd = {
       <Hero />
       <HowItWorks />
       <Differences />
+      <Pipeline />
       <Trust />
       <Integrations />
       <Meters />
@@ -119,7 +121,7 @@ const jsonLd = {
               {config.title}
             </p>
             <p class="mt-4 max-w-[254px] text-[14px] text-muted-foreground leading-[22px]">
-              Code review on your machine, with your agent as reviewer. It fetches a
+              Code review in steps your agent runs on your machine. It fetches a
               pull request, a branch, a commit range or staged changes, and grades every
               finding by how it was checked.
             </p>

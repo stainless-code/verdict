@@ -1,7 +1,7 @@
 # Verdict — operator manual
 
-Verdict runs code review on your machine, with your agent as reviewer. The agent
-reviews; `gh` does GitHub I/O. No servers, no external services.
+Verdict splits code review into steps your agent runs on your machine: fetch,
+review, gate, post. The agent reviews; `gh` does GitHub I/O. No servers, no external services.
 
 ## Quickstart
 
