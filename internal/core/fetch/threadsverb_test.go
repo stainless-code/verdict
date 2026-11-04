@@ -163,8 +163,8 @@ func TestRunThreadsKeepsFeedOnTotalFailure(t *testing.T) {
 }
 
 // TestRunThreadsKeepsFeedOnSilentEmpty proves a clean-but-empty read never
-// replaces a prior non-empty feed (the GitCafe pager cannot distinguish a
-// failed page from an empty one).
+// replaces a prior non-empty feed: an empty page with no truncation signal is
+// still no evidence that the conversation is empty.
 func TestRunThreadsKeepsFeedOnSilentEmpty(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -232,6 +232,75 @@ func TestRunThreadsGitLabRefresh(t *testing.T) {
 	}
 	if len(cmdr.calls) != 2 {
 		t.Errorf("calls = %v", cmdr.calls)
+	}
+}
+
+// cafeCommentCall is the single comments page a GitCafe refresh reads.
+const cafeCommentCall = "cafe\x00pr\x00comments\x007\x00-R\x00o/r\x00--filter\x00all\x00--json"
+
+// TestRunThreadsGitCafeFailedReadRefuses proves a GitCafe reviews/comments
+// read that fails outright refuses with both causes, instead of refreshing the
+// feed from whatever arrived.
+func TestRunThreadsGitCafeFailedReadRefuses(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeThreadsBundle(t, "7", strings.Repeat("a", 40))
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		cafeReviewCall(""): {stderr: "cafe: 500 reviews down", fail: true},
+		cafeCommentCall:    {stderr: "cafe: 502 comments down", fail: true},
+	}}
+	req := threadsRequest(cmdr, "o/r", "7")
+	req.Provider = providerGitCafe
+	_, ref := RunThreads(context.Background(), req)
+	if ref == nil || ref.Code != codeThreadsFailed {
+		t.Fatalf("refusal = %v, want threads-failed", ref)
+	}
+	// Both legs failed, and both causes are reported: one "exit status 1" line
+	// per read, joined.
+	if n := strings.Count(ref.Message, "exit status 1"); n != 2 {
+		t.Errorf("message %q carries %d read failures, want 2 (reviews and comments)", ref.Message, n)
+	}
+	if _, err := os.Stat(".review/7/threads.json"); !os.IsNotExist(err) {
+		t.Errorf("threads.json written on a failed read (err=%v)", err)
+	}
+}
+
+// TestRunThreadsGitCafePartialReadMarksTruncated proves a reviews walk that
+// stops after a good page still refreshes the feed and says it is incomplete:
+// truncated:true in threads.json plus the envelope warning.
+func TestRunThreadsGitCafePartialReadMarksTruncated(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeThreadsBundle(t, "7", strings.Repeat("a", 40))
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		cafeReviewCall(""):   cafeReviewPage([]string{"r1"}, "c2"),
+		cafeReviewCall("c2"): {stderr: "cafe: 500 reviews down", fail: true},
+		cafeCommentCall:      {stdout: `{"data":{"items":[]}}`},
+	}}
+	req := threadsRequest(cmdr, "o/r", "7")
+	req.Provider = providerGitCafe
+	resp, ref := RunThreads(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("RunThreads refusal: %v", ref)
+	}
+	if !resp.Data.Truncated {
+		t.Errorf("data = %+v, want truncated", resp.Data)
+	}
+	assertWarning(t, resp.Warnings, "thread read was incomplete")
+	raw, err := os.ReadFile(".review/7/threads.json")
+	if err != nil {
+		t.Fatalf("read feed: %v", err)
+	}
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
+		t.Fatalf("decode feed: %v", derr)
+	}
+	feed, _ := jq.AsMap(doc)
+	if feed["truncated"] != true {
+		t.Errorf("feed = %s, want truncated:true", raw)
+	}
+	if n := len(jq.Elements(feed["threads"])); n != 1 {
+		t.Errorf("feed = %s, want the first page's review kept", raw)
 	}
 }
 

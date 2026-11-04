@@ -159,7 +159,8 @@ func gitlabProjectID(ctx context.Context, r *session, repo string) (string, erro
 }
 
 // gitlabChanges owns the diffs-or-changes read: diffs first, then
-// changes, then an empty changes list.
+// changes, then an empty changes list with a warning so a failed file read
+// never looks like a PR that touched no files.
 func gitlabChanges(ctx context.Context, r *session, _, pr, pid string) string {
 	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/diffs", flagPaginate); err == nil {
 		return res.Stdout
@@ -167,6 +168,7 @@ func gitlabChanges(ctx context.Context, r *session, _, pr, pid string) string {
 	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/changes", flagPaginate); err == nil {
 		return res.Stdout
 	}
+	r.Warn("gitlab changed-file read failed (diffs and changes) — PR.json carries no file list; the bundle may under-cover")
 	return "{\"changes\":[]}\n"
 }
 
@@ -378,16 +380,19 @@ func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	if err != nil {
 		return err
 	}
-	revs := fetchCafePages(cafeReviewsPage(ctx, r, repo, pr))
+	revs, revTruncated, revErr := fetchCafePages(cafeReviewsPage(ctx, r, repo, pr))
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
 	}
-	cmts := fetchCafePages(cafeCommentsPage(ctx, r, repo, pr))
+	warnPaging(r, providerGitCafe, "reviews", revErr, revTruncated)
+	cmts, cmtTruncated, cmtErr := fetchCafePages(cafeCommentsPage(ctx, r, repo, pr))
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(cmts)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
+	warnPaging(r, providerGitCafe, "comments", cmtErr, cmtTruncated)
 	feed := threadscore.FromGitCafe(decodeThreadPayload(revs), decodeThreadPayload(cmts))
-	if ref := writeThreadsJSON(dir, providerGitCafe, pr, cafeHeadSHA(metaRes.Stdout), r.nowUTC(), false, feed); ref != nil {
+	truncated := revTruncated || cmtTruncated
+	if ref := writeThreadsJSON(dir, providerGitCafe, pr, cafeHeadSHA(metaRes.Stdout), r.nowUTC(), truncated, feed); ref != nil {
 		return ref
 	}
 	doc, normErr := normalizeGitCafe(metaRes.Stdout, itemsRes.Stdout)
@@ -557,45 +562,50 @@ func hasHunkHeader(diff string) bool {
 	return false
 }
 
-// fetchCafePages owns the 20-page cursor loop: items accumulate across
-// pages and render jq-pretty without a trailing newline (printf %s). A
-// failed call feeds '{}'; undecodable output breaks the loop leaving the
-// accumulator empty.
-func fetchCafePages(call func(cursor string) (core.Result, error)) string {
-	acc, ok := cafeAccumulate(call)
-	if !ok {
-		return ""
-	}
+// fetchCafePages owns the 20-page cursor loop: items accumulate across pages
+// and render jq-pretty without a trailing newline (printf %s). A failed or
+// unreadable page, and the cursor cap, end the walk with the items already
+// read plus the failure, so the caller can warn and mark the feed truncated
+// instead of silently under-covering.
+func fetchCafePages(call func(cursor string) (core.Result, error)) (string, bool, error) {
+	acc, truncated, err := cafeAccumulate(call)
 	if acc == nil {
 		acc = []any{}
 	}
-	return strings.TrimSuffix(jq.Pretty(plainAll(acc)), newline)
+	return strings.TrimSuffix(jq.Pretty(plainAll(acc)), newline), truncated, err
 }
 
-// cafeAccumulate owns the cursor walk; ok=false on an undecodable page.
-func cafeAccumulate(call func(cursor string) (core.Result, error)) ([]any, bool) {
-	var acc []any
+// cafeAccumulate owns the cursor walk: a failed or undecodable page stops the
+// walk and keeps the pages already read; a cursor still live at the page cap
+// reports truncation.
+func cafeAccumulate(call func(cursor string) (core.Result, error)) ([]any, bool, error) {
 	cursor := ""
-	for range cafeMaxPages {
-		page := cafePage(call, cursor)
-		items, ok := cafePageItems(page)
+	var acc []any
+	for page := range cafeMaxPages {
+		raw, ferr := cafePage(call, cursor)
+		if ferr != nil {
+			return acc, true, ferr
+		}
+		items, ok := cafePageItems(raw)
 		if !ok {
-			return nil, false
+			return acc, true, internalErrorf("cafe page %d unreadable", page+1)
 		}
 		acc = append(acc, items...)
-		if cursor = cafeCursor(page); cursor == "" {
-			return acc, true
+		if cursor = cafeCursor(raw); cursor == "" {
+			return acc, false, nil
 		}
 	}
-	return acc, true
+	return acc, true, nil
 }
 
-// cafePage handles one page read: a failed call feeds '{}'.
-func cafePage(call func(cursor string) (core.Result, error), cursor string) string {
-	if res, err := call(cursor); err == nil {
-		return res.Stdout
+// cafePage handles one page read: a failed call reports the call's error so the
+// walk can stop on it (the pages already read are kept by the caller).
+func cafePage(call func(cursor string) (core.Result, error), cursor string) (string, error) {
+	res, err := call(cursor)
+	if err != nil {
+		return "", err
 	}
-	return "{}"
+	return res.Stdout, nil
 }
 
 // cafePageItems reads `.data.items // .items // []`: the page items,
@@ -830,9 +840,12 @@ func forgejoListRead(
 
 // forgejoThreads owns the review-thread reads: reviews page fully and the
 // per-review comments concatenate, defaulting to [] (with a warning) on
-// failure.
+// failure. The feed's truncated flag carries the reviews page walk too, so a
+// capped or failed review list is visible in threads.json and not only in the
+// envelope warning.
 func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api, pr, meta string) error {
-	revs := forgejoList(ctx, r, auth, api+"/reviews", "reviews")
+	revs, revTruncated, revErr := forgejoListRead(ctx, r, auth, api+"/reviews")
+	warnPaging(r, providerForgejo, "reviews", revErr, revTruncated)
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
 	}
@@ -846,8 +859,9 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, 
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inline)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
+	truncated := revTruncated || !complete
 	feed := threadscore.FromForgejo(decodeThreadPayload(revs), decodeThreadPayload(inline), forgejoHeadSHA(meta))
-	if ref := writeThreadsJSON(dir, providerForgejo, pr, forgejoHeadSHA(meta), r.nowUTC(), !complete, feed); ref != nil {
+	if ref := writeThreadsJSON(dir, providerForgejo, pr, forgejoHeadSHA(meta), r.nowUTC(), truncated, feed); ref != nil {
 		return ref
 	}
 	return nil
@@ -1865,24 +1879,59 @@ func normalizeGitLab(metaRaw, changesRaw string, ns map[string]map[string]int64)
 	}), nil
 }
 
-// gitlabFileRows normalizes the changes payload into file rows: arrays pass,
-// maps read their changes member, and anything else reads empty.
+// gitlabFileRows normalizes the diffs payload into file rows, one page or
+// many (see gitlabChangeEntries); an unreadable payload reads empty.
 func gitlabFileRows(changesRaw string, ns map[string]map[string]int64) []any {
-	doc, err := jq.Decode([]byte(changesRaw))
-	if err != nil {
-		return []any{}
-	}
-	entries, ok := doc.([]any)
+	entries, ok := gitlabChangeEntries(changesRaw)
 	if !ok {
-		m, isMap := jq.AsMap(doc)
-		if !isMap {
-			return []any{}
-		}
-		entries = elementsOrEmpty(m["changes"])
+		return []any{}
 	}
 	return fileRows(entries, func(fm map[string]any) *jq.Obj {
 		return gitlabFileRow(fm, ns)
 	})
+}
+
+// gitlabChangeEntries reads the diffs payload in either shape `glab` emits:
+// one JSON document (a bare array, or the older `changes` envelope), or the
+// adjacent arrays `--paginate` concatenates for a multi-page list (`[…][…]`,
+// which is not one JSON document). Every page is kept — dropping them leaves
+// PR.json claiming the MR touched no file.
+func gitlabChangeEntries(raw string) ([]any, bool) {
+	if doc, err := jq.Decode([]byte(raw)); err == nil {
+		return gitlabChangePage(doc)
+	}
+	return gitlabChangeSlurp(raw)
+}
+
+// gitlabChangePage reads one decoded diffs document: a bare array is the page
+// list, and the `changes` envelope wraps the same rows.
+func gitlabChangePage(doc any) ([]any, bool) {
+	if arr, ok := doc.([]any); ok {
+		return arr, true
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return nil, false
+	}
+	return elementsOrEmpty(m["changes"]), true
+}
+
+// gitlabChangeSlurp concatenates the per-page arrays of a paginated list; a
+// stream holding anything but arrays is unreadable rather than partial.
+func gitlabChangeSlurp(raw string) ([]any, bool) {
+	docs, err := jq.DecodeSlurp(strings.NewReader(raw))
+	if err != nil {
+		return nil, false
+	}
+	var out []any
+	for _, doc := range docs {
+		arr, ok := doc.([]any)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, arr...)
+	}
+	return out, true
 }
 
 // gitlabFileRow handles one normalized file row: path, status, and the

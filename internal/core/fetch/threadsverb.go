@@ -219,9 +219,7 @@ func readThreadsSource(
 		}
 		return gitlabDiscussionFeed(ctx, s, pid, req.Pr, head)
 	case providerGitCafe:
-		revs := fetchCafePages(cafeReviewsPage(ctx, s, req.Repo, req.Pr))
-		cmts := fetchCafePages(cafeCommentsPage(ctx, s, req.Repo, req.Pr))
-		return threadscore.FromGitCafe(decodeThreadPayload(revs), decodeThreadPayload(cmts)), false, nil
+		return cafeThreadFeed(ctx, s, req.Repo, req.Pr)
 	case providerForgejo:
 		return forgejoThreadFeed(ctx, s, req.Repo, req.Pr, head)
 	case providerBitbucket:
@@ -231,6 +229,19 @@ func readThreadsSource(
 	default:
 		return nil, true, internalErrorf("unknown provider %q", provider)
 	}
+}
+
+// cafeThreadFeed re-reads GitCafe's reviews and comments pages. A read that
+// yields no thread at all refuses with both causes; a partial read keeps what
+// arrived and reports itself truncated, so the feed never looks complete.
+func cafeThreadFeed(ctx context.Context, s *session, repo, pr string) ([]threadscore.Thread, bool, error) {
+	revs, revTruncated, revErr := fetchCafePages(cafeReviewsPage(ctx, s, repo, pr))
+	cmts, cmtTruncated, cmtErr := fetchCafePages(cafeCommentsPage(ctx, s, repo, pr))
+	feed := threadscore.FromGitCafe(decodeThreadPayload(revs), decodeThreadPayload(cmts))
+	if len(feed) == 0 && (revErr != nil || cmtErr != nil) {
+		return nil, true, internalErrorf("gitcafe thread read failed: %v", errors.Join(revErr, cmtErr))
+	}
+	return feed, revTruncated || cmtTruncated, nil
 }
 
 // forgejoThreadFeed re-reads Forgejo reviews and their inline comments.
