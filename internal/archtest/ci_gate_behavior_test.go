@@ -1,8 +1,8 @@
 package archtest
 
-// Behavioural guard for the ci-complete gate: the string pins next door prove
+// Behavioral guard for the ci-complete gate: the string pins next door prove
 // the declaration is wired, this table proves what the shipped program does
-// with it. The cases that matter are the non-success results — a cancelled
+// with it. The cases that matter are the non-success results — a canceled
 // macOS leg on a main push, a broken macOS leg on the nightly, a skipped leg
 // on a pull request — because each one is a policy someone will be tempted to
 // widen.
@@ -27,12 +27,12 @@ type gateCase struct {
 	base     string            // result for every declared lane; "" means success
 	results  map[string]string // per-lane result, overriding base
 	silent   []string          // lanes whose needs entry carries no result at all
-	wantPass bool
 	wantLog  []string
+	wantPass bool
 }
 
 // TestCICompleteGateBehavior fails when the gate's verdict on a non-success
-// result changes: a macOS leg cancelled on a push passes, the same leg failing
+// result changes: a macOS leg canceled on a push passes, the same leg failing
 // on the nightly fails, and no other lane inherits that tolerance.
 func TestCICompleteGateBehavior(t *testing.T) {
 	workflow := readCIWorkflow(t)
@@ -44,28 +44,35 @@ func TestCICompleteGateBehavior(t *testing.T) {
 	}
 	for _, tc := range gateCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.CommandContext(t.Context(), sh, "-c", script)
-			cmd.Env = append(os.Environ(), gateEnv(t, gate, tc)...)
-			out, err := cmd.CombinedOutput()
-			if passed := err == nil; passed != tc.wantPass {
-				t.Fatalf("gate passed = %v, want %v\n%s", passed, tc.wantPass, out)
-			}
-			for _, want := range tc.wantLog {
-				if !strings.Contains(string(out), want) {
-					t.Errorf("gate output lost %q:\n%s", want, out)
-				}
-			}
+			runGateCase(t, script, sh, &gate, &tc)
 		})
+	}
+}
+
+// runGateCase runs one row of the table and checks the verdict and the lines
+// the gate must print for it.
+func runGateCase(t *testing.T, script, sh string, gate *ciGate, tc *gateCase) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), sh, "-c", script)
+	cmd.Env = append(os.Environ(), gateEnv(t, gate, tc)...)
+	out, err := cmd.CombinedOutput()
+	if passed := err == nil; passed != tc.wantPass {
+		t.Fatalf("gate passed = %v, want %v\n%s", passed, tc.wantPass, out)
+	}
+	for _, want := range tc.wantLog {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("gate output lost %q:\n%s", want, out)
+		}
 	}
 }
 
 // gateCases is the policy table: every row is an event, a needs map, and the
 // verdict that event must produce.
 func gateCases() []gateCase {
-	cancelled := map[string]string{
-		"installers-macos": "cancelled",
-		"go-macos":         "cancelled",
-		"evals-macos":      "cancelled",
+	canceled := map[string]string{
+		"installers-macos": "canceled",
+		"go-macos":         "canceled",
+		"evals-macos":      "canceled",
 	}
 	skipped := map[string]string{
 		"installers-macos": "skipped",
@@ -81,9 +88,9 @@ func gateCases() []gateCase {
 			},
 		},
 		{
-			name: "push with the macOS legs cancelled", event: "push", full: "true",
-			results: cancelled, wantPass: true,
-			wantLog: []string{"required go-macos: cancelled (macOS leg"},
+			name: "push with the macOS legs canceled", event: "push", full: "true",
+			results: canceled, wantPass: true,
+			wantLog: []string{"required go-macos: canceled (macOS leg"},
 		},
 		{
 			name: "push with a macOS leg failed", event: "push", full: "true",
@@ -91,9 +98,9 @@ func gateCases() []gateCase {
 			wantLog: []string{"required go-macos: failure (macOS leg"},
 		},
 		{
-			name:  "workflow_dispatch with a macOS leg cancelled",
+			name:  "workflow_dispatch with a macOS leg canceled",
 			event: "workflow_dispatch", full: "true",
-			results: cancelled, wantPass: true,
+			results: canceled, wantPass: true,
 		},
 		{
 			name: "push with a macOS leg reporting nothing", event: "push", full: "true",
@@ -102,10 +109,10 @@ func gateCases() []gateCase {
 			wantLog:  []string{"required but nothing: go-macos"},
 		},
 		{
-			name: "push with a Linux lane cancelled", event: "push", full: "true",
-			results:  map[string]string{"go": "cancelled"},
+			name: "push with a Linux lane canceled", event: "push", full: "true",
+			results:  map[string]string{"go": "canceled"},
 			wantPass: false,
-			wantLog:  []string{"required but cancelled: go"},
+			wantLog:  []string{"required but canceled: go"},
 		},
 		{
 			name: "push with the advisory lane silent", event: "push", full: "true",
@@ -120,9 +127,9 @@ func gateCases() []gateCase {
 			wantLog:  []string{"required but failure: evals-macos"},
 		},
 		{
-			name: "nightly with a macOS leg cancelled", event: "schedule", full: "true",
-			results: cancelled, wantPass: false,
-			wantLog: []string{"required but cancelled: "},
+			name: "nightly with a macOS leg canceled", event: "schedule", full: "true",
+			results: canceled, wantPass: false,
+			wantLog: []string{"required but canceled: "},
 		},
 		{
 			name: "nightly with every lane green", event: "schedule", full: "true",
@@ -184,7 +191,7 @@ func gateStepScript(t *testing.T, workflow string) string {
 // gateEnv renders the step's environment: the declaration read from the
 // workflow, the event inputs from the case, and a needs map covering every
 // declared lane.
-func gateEnv(t *testing.T, gate ciGate, tc gateCase) []string {
+func gateEnv(t *testing.T, gate *ciGate, tc *gateCase) []string {
 	t.Helper()
 	base := tc.base
 	if base == "" {
