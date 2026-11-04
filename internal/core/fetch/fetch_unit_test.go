@@ -294,6 +294,24 @@ func TestScopeMatch(t *testing.T) {
 		{"*.[ch]", "x.go", false},
 		{"*[!0-9]*", "a1", true},
 		{"*[!0-9]*", "1", false},
+		// `^` negates a class the same way `!` does.
+		{"[^a]", "b", true},
+		{"[^a]", "a", false},
+		// A `]` in the first body position is a member, not the close.
+		{"[]a]", "a", true},
+		{"[]a]", "b", false},
+		// A `-` before the close is a member, never a range: `[+-]` holds
+		// two chars, it does not span '+' (43) through ']' (93).
+		{"[+-]", "+", true},
+		{"[+-]", "A", false},
+		// Unterminated constructs read as "no match", never as a panic:
+		// a missing close, and a trailing backslash inside or outside a
+		// class, all leave the pattern unusable.
+		{"[ab", "a", false},
+		{"[a-", "a", false},
+		{`[a\`, "a", false},
+		{`a\`, "ab", false},
+		{"[", "[", false},
 		{`a\*b`, "a*b", true},
 		{`a\*b`, "axb", false},
 		{"", "", true},
