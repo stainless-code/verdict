@@ -35,6 +35,10 @@ func TestWriteThroughReplacesTheSymlinksTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// On Windows os.Stat defers reading the file id until the first SameFile,
+	// so a late read would see the replacement under the same path; comparing
+	// before with itself loads and caches the original id now.
+	_ = os.SameFile(before, before)
 	if err := atomic.WriteThrough(link, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
