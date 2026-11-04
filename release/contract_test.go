@@ -415,6 +415,51 @@ func TestGoreleaserMatchesContract(t *testing.T) {
 	}
 }
 
+// TestGoreleaserPlatformsMatchContract compares the goreleaser build matrix
+// with the contract rows.
+func TestGoreleaserPlatformsMatchContract(t *testing.T) {
+	doc := loadContract(t)
+	gr := repoFile(t, ".goreleaser.yml")
+	got := make(map[string]bool)
+	for _, goos := range goreleaserList(t, gr, "goos") {
+		for _, goarch := range goreleaserList(t, gr, "goarch") {
+			got[goos+"/"+goarch] = true
+		}
+	}
+	want := make(map[string]bool, len(doc.Archives))
+	for i := range doc.Archives {
+		want[doc.Archives[i].Goos+"/"+doc.Archives[i].Goarch] = true
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf(".goreleaser.yml builds %v; release/contract.json ships %v", got, want)
+	}
+}
+
+// goreleaserList reads one inline platform list (`key: [a, b]`) from the
+// builds block. The indent is part of the match because format_overrides
+// repeats these keys at another level.
+func goreleaserList(t *testing.T, gr, key string) []string {
+	t.Helper()
+	prefix := "    " + key + ": ["
+	for line := range strings.Lines(gr) {
+		value, ok := strings.CutPrefix(line, prefix)
+		if !ok {
+			continue
+		}
+		value, ok = strings.CutSuffix(strings.TrimSpace(value), "]")
+		if !ok {
+			t.Fatalf(".goreleaser.yml %s list is unterminated: %q", key, line)
+		}
+		items := strings.Split(value, ",")
+		for i := range items {
+			items[i] = strings.TrimSpace(items[i])
+		}
+		return items
+	}
+	t.Fatalf(".goreleaser.yml has no inline %s list", key)
+	return nil
+}
+
 // readManifest decodes a generated package.json.
 func readManifest(t *testing.T, dir string) map[string]any {
 	t.Helper()

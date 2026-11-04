@@ -95,7 +95,9 @@ Every PR must clear all of these; CI enforces each one:
    affected cases (`./evals/one.sh <case>`).
 2. **Go green.** `go test -race ./...` (CI also gates `go vet ./...`,
    `go mod verify`, `gofmt -l .` empty, and `govulncheck` via
-   `make ci-go`).
+   `make ci-go`). `make cross` builds and vets every `GOOS/GOARCH` pair
+   `release/contract.json` ships, so a windows/arm64-only break fails here
+   instead of in the release job.
 3. **Linter-clean.** `golangci-lint run ./...` with the repo's
    `.golangci.yml` (CI runs the pinned action; zero issues, no new
    `//nolint`).
