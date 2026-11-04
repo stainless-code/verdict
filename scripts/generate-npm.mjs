@@ -188,6 +188,10 @@ export function generateNpmTree(options) {
       version,
       description: `${root.description} (${entry.goos}/${entry.goarch} binary)`,
       license: root.license,
+      // npm provenance requires repository.url to name the repo the
+      // workflow runs in; without it the registry rejects the publish (E422).
+      repository: root.repository,
+      homepage: root.homepage,
       os: [entry.npmOS],
       cpu: [entry.npmCPU],
       files: [entry.npmBin],

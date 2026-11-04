@@ -399,6 +399,11 @@ func checkPlatformPackage(t *testing.T, out string, entry *archiveEntry) {
 	if toJSON(t, manifest["files"]) != `["`+entry.NPMBin+`"]` {
 		t.Errorf("%s files = %v; want [%s]", pkg, manifest["files"], entry.NPMBin)
 	}
+	// npm provenance rejects a publish whose repository.url does not name the
+	// repository the workflow ran in (E422 on the first 0.4.0 publish).
+	if got := toJSON(t, manifest["repository"]); got != `{"type":"git","url":"git+https://github.com/stainless-code/verdict.git"}` {
+		t.Errorf("%s repository = %s; want the stainless-code/verdict git URL", pkg, got)
+	}
 	checkNoScripts(t, pkg, manifest)
 	checkBinExecutable(t, pkg, filepath.Join(dir, entry.NPMBin))
 }
