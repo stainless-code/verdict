@@ -56,7 +56,7 @@ reviewing Go here.
 
 - Before commit or push, run `bun fmt --check` on changed files when Bun is
   available; fix only non-example hunks.
-- Never reflow `skills/verdict/prompts/` examples — see `README.md` § Formatting.
+- Never reflow `skills/verdict/prompts/` examples — see `CONTRIBUTING.md` § Formatting.
 - `gofmt -l .` must be empty, and shell files gate on `shellcheck -S warning`
   (see `hooks/pre-commit`).
 - `golangci-lint run ./...` must report 0 issues under `.golangci.yml`; no new

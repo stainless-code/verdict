@@ -20,6 +20,70 @@ make build          # writes bin/verdict, the CLI under test
 
 Run `verdict doctor` to preflight the harness.
 
+### Run your build as the skill
+
+To use a checkout as your own skill install, symlink it. `git pull` then
+updates the skill, and there is no updater daemon. `install-skill.sh` runs only
+from a checkout and refuses anywhere else.
+
+```bash
+git clone https://github.com/stainless-code/verdict.git
+cd verdict
+make build
+./install-skill.sh
+```
+
+`install-skill.sh` runs `doctor` first, wires `hooks/pre-commit`, and links the
+shared `~/.agents/skills` directory. It skips occupied slots, never overwrites
+without `--force`, never touches a foreign `core.hooksPath`, and never re-links
+an agent you removed.
+
+```bash
+./install-skill.sh --agent cursor            # link one agent
+./install-skill.sh --dir ~/.foo/skills       # link any other agent's skills dir
+./install-skill.sh --project ~/work/repo     # link into a repo's .agents/skills
+./install-skill.sh --detect                  # standard dir plus installed agents
+./install-skill.sh --all                     # every known agent
+./install-skill.sh --list                    # link status, no changes
+./install-skill.sh --check                   # doctor + verify links
+./install-skill.sh --force --agent cursor    # replace an occupied slot
+./install-skill.sh --uninstall               # remove our links (foreign files untouched)
+./install-skill.sh --uninstall --agent cursor
+```
+
+`--all` links these locations (XDG and `CLAUDE_CONFIG_DIR` aware): `~/.agents`,
+`~/.claude`, `~/.cursor`, `~/.config/opencode`, `~/.copilot`, `~/.gemini`,
+`~/.config/goose`, `~/.qwen`, `~/.codeium/windsurf`. Re-run the script after a
+rename in the tree. The binary installs its own embedded skill copy with
+`verdict skill install`, which is the route for users who do not clone.
+
+## Layout
+
+```
+verdict/
+  skills/verdict/     # the skill payload, exactly what `verdict skill files` lists:
+    SKILL.md          #   skill entry point (feed to any agent)
+    prompts/          #   system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
+    schemas/          #   JSON Schemas for the envelope and store files
+    scripts/verdict   #   POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
+  install.sh          # verified binary installer (macOS/Linux release asset)
+  install.ps1         # verified binary installer (Windows release asset)
+  install-skill.sh    # doctor-gated symlink installer for checkouts
+  CHANGELOG.md        # release notes (changesets); verdict --version reads package.json
+  cmd/verdict/        # the CLI entry point (usage.go holds the verb synopsis)
+  internal/           # verb packages, MCP server, installers, arch tests
+  pkg/verdict/        # public Go SDK
+  clients/ts/         # TypeScript client (shipped as @stainless-code/verdict/client)
+  scripts/verdict-complete.sh  # bash/zsh completion for verdict
+  setup-verdict/      # GitHub Action that installs a pinned, verified binary
+  release/            # contract.json: frozen artifact names
+  docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
+  docs/vision.md      # what it is and where its craft comes from
+  apps/docs/          # Blume docs site (deploys to /verdict/)
+  evals/              # hermetic eval suite (make evals)
+  bin/verdict         # the built CLI (make build; gitignored)
+```
+
 ## The merge bar
 
 Every PR must clear all of these; CI enforces each one:
@@ -35,11 +99,8 @@ Every PR must clear all of these; CI enforces each one:
    `//nolint`).
 4. **Formatted.** `bun fmt --check .` before pushing; fix only what it
    flags, and never reflow `skills/verdict/prompts/` examples.
-5. **A changeset when the repo's practice requires one.** Add
-   `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing
-   notes) for any user-facing change — `patch` by default, `minor`
-   for new verbs or flags, `major` for envelope/store breaks.
-   Docs-only, eval-only, and comment-only merges ship none.
+5. **A changeset when the repo's practice requires one.** See
+   [Versioning](#versioning).
 
 ## Golden tests
 
@@ -48,6 +109,79 @@ alters golden-covered output, regenerate with `go test ./... -update`
 and **review the diff** before committing. A regenerated golden you
 cannot explain line-by-line is a red flag, not a green gate. Never
 commit a golden update alongside unrelated changes.
+
+## Versioning
+
+Add `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing notes)
+with any user-facing change. Use `patch` by default, `minor` for new verbs or
+flags, and `major` for envelope or store breaks. Docs-only, eval-only, and
+comment-only merges ship none, and shipped work is never backfilled.
+
+Merging to `main` opens a `chore: version packages` PR. Merging that PR
+publishes to npm (OIDC trusted publishing, no tokens) and cuts the GitHub
+Release with your notes. Tags (`vX.Y.Z`) follow the releases. Store changes
+within a major are additive only. The changelog is at the bottom of
+[`docs/manual.md`](docs/manual.md).
+
+## Release train
+
+One merged Version PR ships everything. `changeset git-tag` tags the bumped
+version. GoReleaser builds six static binaries (`darwin`/`linux`/`windows` ×
+`amd64`/`arm64`), signs `checksums.txt` (cosign keyless bundle), emits
+per-archive SPDX SBOMs, and owns the GitHub Release. Then
+`scripts/publish-npm.mjs` publishes six `@stainless-code/verdict-<os>-<arch>`
+platform packages plus the wrapper (no postinstall, so `--ignore-scripts`
+installs work). The same run renders `dist/verdict.rb` for the
+`stainless-code/tap` Homebrew tap.
+
+The wrapper also carries the TypeScript client as its `./client` subpath
+export, so one install brings both. `scripts/release.sh` builds and checks
+that client before it tags (a published version cannot gain it later) and
+publishes with `--require-client`, which refuses a wrapper without it.
+
+Artifact names are frozen in [`release/contract.json`](release/contract.json).
+`.goreleaser.yml`, the npm scripts, the formula generator, and the archive
+allowlist both installers carry must match it; the contract tests fail
+otherwise. `verdict --version` prints the tag in release binaries (ldflags
+`main.version`) and the `package.json` version for source builds.
+
+To verify a release by hand, download `checksums.txt` and
+`checksums.txt.sigstore.json` from the GitHub Release, then:
+
+```bash
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+```
+
+Then compare the archive's SHA-256 with its line in `checksums.txt`.
+
+Dry-run (publishes nothing, pushes nothing, needs no secrets):
+`make release-dry-run`. It builds snapshot archives and the npm tree (a fake
+`npm` records argv), renders the formula and grades it with `brew style` and
+`brew audit --strict` in a throwaway local tap (`make formula-audit`), checks
+the `npm pack` contents, and runs the contract tests. CI runs it on every PR.
+The real chain (`scripts/release.sh`) runs only from the Release workflow
+after a Version PR merges, and audits the formula again before the tap push.
+The tap push stays off until tap auth lands (`TAP_PUSH=1` with
+`TAP_GITHUB_TOKEN`).
+
+`make deadcode` ratchets against unreachable functions
+(`deadcode -test ./...`). Entries the tool cannot resolve, such as the
+`pkg/verdict` SDK that other repositories dial, live in
+[`scripts/deadcode-baseline.txt`](scripts/deadcode-baseline.txt). It runs in
+`make ci-go`.
+
+## Formatting
+
+Markdown is normalized with one-shot `bun fmt` runs and human review. Tables
+and JSON blocks stay tidy, and prompt examples are never reflowed. We commit
+no formatter config (Bun is already the house runtime) and leave prose line
+length unmanaged. Run `bun fmt --check .` before pushing, and fix only what it
+flags outside `skills/verdict/prompts/` examples. `install-skill.sh` wires `hooks/pre-commit`
+(formatting plus `shellcheck -S warning` over staged shell files; check-only,
+never rewrites), so the gates run on every commit.
 
 ## Commit style
 

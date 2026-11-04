@@ -28,7 +28,7 @@ jobs:
       - name: Run format check
         shell: bash
         run: |
-          # skill prompt examples are never reflowed (see README ## Formatting):
+          # skill prompt examples are never reflowed (see CONTRIBUTING ## Formatting):
           # exempt here and in hooks/pre-commit, enforced by review, not fmt.
           # Extensions are the set bun fmt parses (it hard-errors on others);
           # bun.lock etc. are skipped the same way `bun fmt --check .` skips them.

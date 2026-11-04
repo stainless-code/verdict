@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # pre-commit: formatting gate. CHECK-ONLY — never rewrites files.
-# (auto-write would reflow protected prompt examples; see README ## Formatting.)
+# (auto-write would reflow protected prompt examples; see CONTRIBUTING ## Formatting.)
 # Wired by install-skill.sh via `git config core.hooksPath`. Filenames with spaces
 # are not supported (this repo has none).
 set -euo pipefail
 
 staged=""
 while IFS= read -r f; do
-  # skill prompt examples are never reflowed (see README ## Formatting).
+  # skill prompt examples are never reflowed (see CONTRIBUTING ## Formatting).
   case "$f" in skills/verdict/prompts/*) continue;; *.md|*.mdx|*.json|*.ts) staged="$staged$f
 ";; esac
 done < <(git diff --cached --name-only --diff-filter=ACM)
@@ -26,7 +26,7 @@ if [[ -z "$staged" && -z "$sh_staged" ]]; then exit 0; fi
 failed=0
 if [[ -n "$staged" ]]; then
   if ! command -v bun >/dev/null 2>&1; then
-    echo "pre-commit: bun not found — formatting unchecked (see README ## Formatting)"
+    echo "pre-commit: bun not found — formatting unchecked (see CONTRIBUTING ## Formatting)"
   else
     printf '%s' "$staged" | xargs bun fmt --check -- || {
       echo "pre-commit: formatting issues above."

@@ -1483,7 +1483,7 @@ quality — the prompts do.
 ## Store changelog (additive within schema_version "1" — renames never happen, only additions)
 
 Release versioning (changesets → Version PR → npm + GitHub Release) lives in
-`README ## Versioning`. This section tracks store-schema evolution only —
+`CONTRIBUTING.md ## Versioning`. This section tracks store-schema evolution only —
 verbs and features ship in the release changelog.
 
 - Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.

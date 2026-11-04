@@ -11,7 +11,7 @@
 #   V3  degrade path: with package.json unreadable, `--version` reads
 #       `0.0.0-unknown` and the footer renders `Verdict 0.0.0-unknown`
 #       (the same string; never a failure).
-#   D1  docs: README ## Versioning states the changeset rule; the manual
+#   D1  docs: CONTRIBUTING ## Versioning states the changeset rule; the manual
 #       points at it rather than duplicating it.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -107,14 +107,14 @@ else
 fi
 rm -rf "$FAKE"
 
-# --- D1: README canonical, manual points rather than duplicates ---
-if grep -Fq '## Versioning' "$EVAL_ROOT/README.md" \
-  && grep -Fq '.changeset/' "$EVAL_ROOT/README.md"; then
-  good "README ## Versioning states the changeset rule"
+# --- D1: CONTRIBUTING canonical, manual points rather than duplicates ---
+if grep -Fq '## Versioning' "$EVAL_ROOT/CONTRIBUTING.md" \
+  && grep -Fq '.changeset/' "$EVAL_ROOT/CONTRIBUTING.md"; then
+  good "CONTRIBUTING ## Versioning states the changeset rule"
 else
-  bad "README ## Versioning missing the changeset rule"
+  bad "CONTRIBUTING ## Versioning missing the changeset rule"
 fi
-assert_file_grep "manual points at README ## Versioning" "$EVAL_ROOT/docs/manual.md" 'README ## Versioning' "-F"
+assert_file_grep "manual points at CONTRIBUTING.md ## Versioning" "$EVAL_ROOT/docs/manual.md" 'CONTRIBUTING.md ## Versioning' "-F"
 assert_file_nogrep "manual never duplicates the version-packages rule" "$EVAL_ROOT/docs/manual.md" 'version packages' "-F"
 
 eval_end

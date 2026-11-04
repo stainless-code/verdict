@@ -128,8 +128,8 @@ fi
 
 # --- R3: README routes registry users away from install.sh ---
 REG_RANGE="$EVAL_SANDBOX/readme-registry.txt"
-awk '/registry route/,/source route/' "$EVAL_ROOT/README.md" >"$REG_RANGE"
-if grep -q -F "NOT shipped in the npm tarball" "$REG_RANGE"; then
+grep -F "registry route" "$EVAL_ROOT/README.md" >"$REG_RANGE" || true
+if grep -q -F "not shipped in the npm tarball" "$REG_RANGE"; then
   good "README says install.sh is not shipped in the registry route"
 else
   bad "README registry block lost the install.sh note"
