@@ -138,6 +138,132 @@ func assertFetchedBundle(t *testing.T, doc map[string]any) {
 	assertFields(t, artifacts, map[string]any{"PR.json": ".review/7/PR.json", "full.diff": ".review/7/full.diff"})
 }
 
+// sdkThreadNode renders one GraphQL review-thread node over notes.txt line 2.
+func sdkThreadNode(id string, resolved, outdated bool) string {
+	return `{"id":"` + id + `","isResolved":` + boolJSON(resolved) +
+		`,"isOutdated":` + boolJSON(outdated) + `,"path":"notes.txt","line":2,` +
+		`"diffSide":"RIGHT","comments":{"totalCount":1,"nodes":[` +
+		`{"id":"c-` + id + `","databaseId":7,"author":{"__typename":"User","login":"ana"},` +
+		`"body":"Please rename this.","createdAt":"2026-11-01T10:00:00Z"}]}}`
+}
+
+// boolJSON renders a Go bool as a JSON literal.
+func boolJSON(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+// threadsCommander scripts the authoritative GitHub thread read: one open
+// thread and one resolved, outdated one.
+func threadsCommander(t *testing.T) *fakeCommander {
+	t.Helper()
+	page := `{"data":{"repository":{"pullRequest":{"reviewThreads":{` +
+		`"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[` +
+		sdkThreadNode("t1", false, false) + `,` + sdkThreadNode("t2", true, true) + `]}}}}}`
+	return &fakeCommander{t: t, rules: []cannedRule{
+		{tokens: []string{"api", "graphql"}, result: verdict.CommandResult{Stdout: page}},
+	}}
+}
+
+// TestClientThreads proves the threads refresh through the SDK: the typed
+// envelope, the tally, the rewritten feed, and the streamed progress. The
+// verb only reads thread state, so nothing else in the bundle moves.
+func TestClientThreads(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stubTools(t, "gh")
+	writePRBundle(t, "7")
+	progress := &recordedProgress{}
+	c := newSDKClient(progress, threadsCommander(t))
+	defer c.Close()
+
+	out, err := c.Threads(context.Background(), &verdict.ThreadsRequest{Invocation: sdkInvocation("7")})
+	requireNoError(t, err)
+	if out.Repo != "acme/app" || out.PR != "7" || out.At != sdkAt {
+		t.Errorf("envelope = repo %q pr %q at %q", out.Repo, out.PR, out.At)
+	}
+	if out.Next != "address open threads with prompts/address-reviews.md" {
+		t.Errorf("next = %q, want the open-thread handoff", out.Next)
+	}
+	assertThreadsTally(t, out)
+	assertThreadsData(t, out)
+	if !strings.Contains(readText(t, ".review/7/threads.json"), `"schema_version": "1"`) {
+		t.Error("threads.json does not carry the feed schema version")
+	}
+	for _, want := range []string{
+		"» github threads -> .review/7/threads.json",
+		"done: 2 threads (1 open, 1 outdated) -> .review/7/threads.json",
+	} {
+		if !strings.Contains(progress.joinedHuman(), want) {
+			t.Errorf("human = %q, want %q", progress.joinedHuman(), want)
+		}
+	}
+}
+
+// assertThreadsTally proves the typed response mirrors the feed tally.
+func assertThreadsTally(t *testing.T, out *verdict.ThreadsResponse) {
+	t.Helper()
+	if out.Dir != ".review/7" || out.File != ".review/7/threads.json" ||
+		out.Provider != "github" || out.HeadSHA != sdkHeadA || out.FetchedAt != sdkAt {
+		t.Errorf("feed location = %q/%q provider %q head %q at %q",
+			out.Dir, out.File, out.Provider, out.HeadSHA, out.FetchedAt)
+	}
+	if out.Threads != 2 || out.Open != 1 || out.Outdated != 1 || out.Verdict != 0 || out.Truncated {
+		t.Errorf("tally = threads %d open %d outdated %d verdict %d truncated %v",
+			out.Threads, out.Open, out.Outdated, out.Verdict, out.Truncated)
+	}
+}
+
+// assertThreadsData proves Data is the published threads profile, key order
+// included.
+func assertThreadsData(t *testing.T, out *verdict.ThreadsResponse) {
+	t.Helper()
+	want := `{"dir":".review/7","file":".review/7/threads.json","provider":"github",` +
+		`"head_sha":"` + sdkHeadA + `","fetched_at":"` + sdkAt + `","truncated":false,` +
+		`"threads":2,"open":1,"outdated":1,"verdict":0}`
+	if got := string(out.Data); got != want {
+		t.Errorf("data = %s\nwant   %s", got, want)
+	}
+}
+
+// TestClientThreadsProviderReachesValidation proves the SDK forwards the
+// provider value: an unknown one is refused by the refresh service's own
+// validation instead of being dropped and silently defaulting to GitHub.
+func TestClientThreadsProviderReachesValidation(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stubTools(t, "gh")
+	writePRBundle(t, "7")
+	cmdr := threadsCommander(t)
+	c := newSDKClient(nil, cmdr)
+	defer c.Close()
+
+	_, err := c.Threads(context.Background(), &verdict.ThreadsRequest{
+		Invocation: sdkInvocation("7"), Provider: "bitcoffee",
+	})
+	if err == nil {
+		t.Fatal("unknown provider refreshed instead of refusing")
+	}
+	if !strings.Contains(err.Error(), "unknown --provider 'bitcoffee'") {
+		t.Errorf("err = %v, want the service's bad-provider refusal", err)
+	}
+	if len(cmdr.calls) != 0 {
+		t.Errorf("unknown provider spawned commands: %q", cmdr.calls)
+	}
+}
+
+// TestClientThreadsMissingBundle proves a PR that was never fetched refuses
+// typed: the refresh has nothing to rewrite.
+func TestClientThreadsMissingBundle(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stubTools(t, "gh")
+	c := newSDKClient(nil, threadsCommander(t))
+	defer c.Close()
+
+	_, err := c.Threads(context.Background(), &verdict.ThreadsRequest{Invocation: sdkInvocation("7")})
+	requireRefusal(t, err, "fetch-failed", "try: run 'gh auth status', confirm the repo/PR spelling, then re-run")
+}
+
 // TestClientFetchMissingTool proves the fetch pre-check on the default
 // runner: with no gh on PATH the verb fails as the typed missing-tool error
 // rather than a fetch refusal.

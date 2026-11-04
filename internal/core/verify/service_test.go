@@ -1,6 +1,7 @@
 package verifycore_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -206,6 +207,68 @@ func TestVerifyTimeout(t *testing.T) {
 	marker, err := os.ReadFile(".review/5201/.verify.timeout")
 	if err != nil || string(marker) != "timeout after 2s\n" {
 		t.Errorf("marker = %q, %v", marker, err)
+	}
+}
+
+type cancelCommander struct{ cancel context.CancelFunc }
+
+func (c cancelCommander) Run(context.Context, core.Command) (core.Result, error) {
+	c.cancel()
+	return core.Result{}, nil
+}
+
+type proof struct{ patch, out, marker []byte }
+
+func readProof(t *testing.T) proof {
+	t.Helper()
+	return proof{
+		patch:  readProofFile(t, ".review/5201/patch.json"),
+		out:    readProofFile(t, ".review/5201/.verify.out"),
+		marker: readProofFile(t, ".review/5201/.verify.timeout"),
+	}
+}
+
+func readProofFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return raw
+}
+
+// TestVerifyCancelKeepsPriorProof pins that a canceled re-verify leaves every
+// proof file untouched.
+func TestVerifyCancelKeepsPriorProof(t *testing.T) {
+	bundle(t, `{"verifyCmd":"sleep 30","verifyExit":0,"verifiedAt":"2026-11-01T12:00:00Z","timedOut":false,"verifiedTail":"ok"}`)
+	writeFile(t, ".review/5201/.verify.out", "ok")
+	writeFile(t, ".review/5201/.verify.timeout", "timeout after 2s\n")
+	before := readProof(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	req := verifyRequest(&collector{}, &scriptCommander{}, "10", []string{"PATH=/bin"}, true)
+	req.Commander = cancelCommander{cancel: cancel}
+	_, ref := verifycore.Run(ctx, req)
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("Run refusal = %v, want canceled", ref)
+	}
+	after := readProof(t)
+	if !bytes.Equal(after.patch, before.patch) || !bytes.Equal(after.out, before.out) || !bytes.Equal(after.marker, before.marker) {
+		t.Errorf("a canceled run mutated the proof: out %q -> %q, marker %q -> %q, patch changed %t",
+			before.out, after.out, before.marker, after.marker, !bytes.Equal(after.patch, before.patch))
+	}
+}
+
+// TestVerifySuccessClearsStaleMarker pins that a successful re-verify empties
+// the previous run's timeout marker.
+func TestVerifySuccessClearsStaleMarker(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok"}`)
+	writeFile(t, ".review/5201/.verify.timeout", "timeout after 2s\n")
+	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	if _, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if marker := readProofFile(t, ".review/5201/.verify.timeout"); len(marker) != 0 {
+		t.Errorf("stale .verify.timeout survived a successful run: %q", marker)
 	}
 }
 

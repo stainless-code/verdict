@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -305,5 +306,16 @@ func TestRunLocalEmptyDiffWarns(t *testing.T) {
 	}
 	if resp.Data.Files != 0 || resp.Data.DiffBytes != 0 || resp.Data.Hunks != 0 {
 		t.Errorf("stats = %+v, want all zero", resp.Data)
+	}
+}
+
+// TestBinarySkippedNeedsBothSidesBinary proves a numstat row counts as skipped
+// only when git reported no line counts for either side. A row with one count
+// is a textual change whose hunk was read, so calling it skipped would drop the
+// file from the advisory's arithmetic and hide a real one.
+func TestBinarySkippedNeedsBothSidesBinary(t *testing.T) {
+	rows := "-\t-\timg.png\n-\t3\thalf.txt\n3\t-\thalf.bin\n12\t4\tnotes.txt\n"
+	if got := binarySkipped(rows); !slices.Equal(got, []string{"img.png"}) {
+		t.Errorf("binarySkipped = %v, want [img.png]", got)
 	}
 }

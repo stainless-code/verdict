@@ -34,17 +34,23 @@ var publishedSemantics = map[string]string{
 	// type changed.
 	// T3-10: additive retry_at on $defs/error (optional RFC 3339 property;
 	// no existing property, required key, or type changed).
-	// D30: additive $defs/brief + $defs/briefSite and a nullable showFix.brief
-	// (optional; no existing property, required key, or type changed). The
-	// same change gives both new defs the descriptions findings and review
-	// already carry.
-	"envelope.schema.json": "a61a0beea49ad69dc143d67613e45bd9459c71e4492b4399a1c55f1226893626",
-	// D30: additive $defs/brief + $defs/briefSite and a nullable entry.brief
+	// data-profiles: additive $defs entries pinning the data profile of every
+	// verb that previously fell back to the open object (triage, ready, adopt,
+	// next, fix, learn, init, doctor, check-tree, verify, threads, trend,
+	// calibrate, fetch, fetch-local), plus the nested $defs they reference.
+	// Additions only: data keeps additionalProperties, no existing property,
+	// required key, or type changed.
+	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
+	// showFix.brief, with the descriptions findings and review already carry
 	// (optional; no existing property, required key, or type changed).
+	"envelope.schema.json": "96c3b981a465e71e6134ffaf66d68cd099062c39e1e67b6f5f92cd8ffbaeb011",
+	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
+	// entry.brief (optional; no existing property, required key, or type
+	// changed).
 	"findings.schema.json": "6ea646f31b6deae105d29f30f0ce892691c329509923a45f96b1b0538b27b4f4",
 	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
 	"record.schema.json":   "97647229b14efa63c43aca592aa8466b246065f858b28872c6ec1198c428d7b1",
-	// D30: additive $defs/brief + $defs/briefSite and a nullable comment.brief
+	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed).
 	"review.schema.json": "4b7f8da519724188347957004d7c0b230ab5dba6f58d9c1191fb82a990131a7d",
 	// T3-04: additive threads.schema.json (new bundle document; no existing

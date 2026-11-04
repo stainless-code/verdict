@@ -1,8 +1,24 @@
 import type {
+  AdoptData,
+  CalibrateData,
+  CheckTreeData,
+  DoctorData,
+  FetchData,
+  FetchLocalData,
+  FixData,
+  InitData,
+  LearnData,
+  NextData,
   PostData,
+  ReadyData,
   RecordData,
   RefusalErrorBody,
   ReportData,
+  ShowData,
+  ThreadsData,
+  TriageData,
+  TrendData,
+  VerifyData,
 } from "./types.gen.js";
 import { VerdictSchemaError } from "./errors.js";
 
@@ -32,10 +48,30 @@ export interface RefusalEnvelope {
   error: RefusalBody;
 }
 
+/**
+ * Each verb's `data` profile, keyed by the verb the envelope reports. Hyphenated
+ * verbs keep their wire spelling (`fetch-local`, `check-tree`).
+ */
 export interface DataFor {
   report: ReportData;
   post: PostData;
   record: RecordData;
+  next: NextData;
+  show: ShowData;
+  ready: ReadyData;
+  triage: TriageData;
+  fetch: FetchData;
+  "fetch-local": FetchLocalData;
+  threads: ThreadsData;
+  verify: VerifyData;
+  "check-tree": CheckTreeData;
+  doctor: DoctorData;
+  calibrate: CalibrateData;
+  trend: TrendData;
+  adopt: AdoptData;
+  fix: FixData;
+  learn: LearnData;
+  init: InitData;
 }
 
 const REQUIRED_KEYS = [

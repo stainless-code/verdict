@@ -207,6 +207,14 @@ func readCorpus(t *testing.T) []corpusRow {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rows, err := parseCorpus(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+func parseCorpus(raw []byte) ([]corpusRow, error) {
 	var out []corpusRow
 	for ln := range strings.SplitSeq(string(raw), "\n") {
 		if ln == "" || strings.HasPrefix(ln, "#") {
@@ -214,11 +222,11 @@ func readCorpus(t *testing.T) []corpusRow {
 		}
 		f := strings.SplitN(ln, "\t", 4)
 		if len(f) != 4 {
-			t.Fatalf("malformed corpus line: %q", ln)
+			return nil, fmt.Errorf("malformed corpus line: %q", ln)
 		}
 		out = append(out, corpusRow{id: f[0], expect: f[1], mode: f[2], cmd: f[3]})
 	}
-	return out
+	return out, nil
 }
 
 func gateBattery(t *testing.T) []batteryRow {

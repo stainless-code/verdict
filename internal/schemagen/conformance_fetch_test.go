@@ -9,9 +9,9 @@ import (
 )
 
 // TestRuntimeFetchOutputValidates proves the fetch service response (a)
-// validates against the generated envelope schema and (b) round-trips
-// through the modeled envelope field for field. Fetch has no published
-// data schema (its profile is open), so only the envelope is schema-bound.
+// validates against the generated envelope schema, (b) its data block
+// validates against the pinned fetchData profile, and (c) it round-trips
+// through the modeled envelope field for field.
 func TestRuntimeFetchOutputValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -32,6 +32,7 @@ func TestRuntimeFetchOutputValidates(t *testing.T) {
 	env := core.RenderEnvelope("fetch", "acme/app", "5101",
 		core.NowUTC(now), "feed the bundle to any agent", []string{"w1"}, data.Wire(), nil)
 	validateWire(t, doc, "$", doc, decodeWire(t, env))
+	validateWire(t, doc, "fetch data", defOf(t, doc, "fetchData"), decodeWire(t, data.Wire()))
 
 	var modeled Envelope
 	unmarshalWire(t, env, &modeled)
@@ -72,6 +73,7 @@ func TestRuntimeFetchLocalOutputValidates(t *testing.T) {
 	env := core.RenderEnvelope("fetch-local", "acme/app", "mine",
 		"2026-11-02T12:00:00Z", "feed the bundle to any agent", nil, data.Wire(), nil)
 	validateWire(t, doc, "$", doc, decodeWire(t, env))
+	validateWire(t, doc, "fetch-local data", defOf(t, doc, "fetchLocalData"), decodeWire(t, data.Wire()))
 
 	var modeled Envelope
 	unmarshalWire(t, env, &modeled)
