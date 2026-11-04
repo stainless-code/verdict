@@ -35,6 +35,10 @@ vet:
 	$(GO) vet ./...
 	$(GO) mod verify
 
+.PHONY: cross
+cross:
+	sh scripts/cross.sh
+
 .PHONY: test-race
 test-race:
 	$(GO) test -race -count=1 ./...

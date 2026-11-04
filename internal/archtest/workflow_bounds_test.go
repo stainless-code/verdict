@@ -92,6 +92,18 @@ func TestCICancelsSupersededRuns(t *testing.T) {
 	}
 }
 
+// TestCICrossLane fails when ci.yml stops running `make cross`.
+func TestCICrossLane(t *testing.T) {
+	path := filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if !strings.Contains(string(raw), "run: make cross") {
+		t.Error("ci.yml no longer runs `make cross`: shipped platforms go uncompiled")
+	}
+}
+
 func topLevelBlock(lines []string, key string) []string {
 	start := lineIndex(lines, key+":")
 	if start < 0 {

@@ -227,6 +227,25 @@ jobs:
         shell: bash
         run: go test -count=1 -timeout=25m ./...
 
+  cross:
+    name: 🌍 Cross
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build and vet every shipped GOOS/GOARCH
+        shell: bash
+        run: make cross
+
   evals:
     name: 🧪 Evals (${{ matrix.os }})
     strategy:
@@ -430,7 +449,7 @@ jobs:
     # not a flake workaround. ADVISORY_JOBS is empty today; the gate below
     # reads an empty list as "no advisory lanes".
     env:
-      REQUIRED_JOBS: format lint installer installers installers-windows go go-windows evals docs ts-client audit release-dry-run
+      REQUIRED_JOBS: format lint installer installers installers-windows go go-windows cross evals docs ts-client audit release-dry-run
       ADVISORY_JOBS: ""
     needs:
       [
@@ -441,6 +460,7 @@ jobs:
         installers-windows,
         go,
         go-windows,
+        cross,
         evals,
         docs,
         ts-client,
