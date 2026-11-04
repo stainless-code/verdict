@@ -215,22 +215,26 @@ else
   pty_avail="false"
 fi
 if [ "${pty_avail:-false}" = "true" ]; then
+  # The pty merges the child's two streams and translates its newlines, so the
+  # CLI writes them to plain files from inside the session: stdin stays the
+  # terminal under test, and the graded envelope never passes through the pty.
   watchdog_pty() {
     local limit="$1"
     shift
     if [ "${1:-}" = "--" ]; then shift; fi
     local dir="${WD_DIR:-$EVAL_SANDBOX}"
     local pid="" elapsed=0 alive="" one="" q=""
+    for one in "$EVAL_CLI" "$@"; do
+      q="$q '${one//\'/\'\\\'\'}'"
+    done
+    q="$q >'${EVAL_OUT//\'/\'\\\'\'}' 2>'${EVAL_ERR//\'/\'\\\'\'}'"
     WD_STATUS=0
     WD_TIMED_OUT="false"
     set +e
     if [ "$(uname -s)" = "Darwin" ]; then
-      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -q /dev/null "$EVAL_CLI" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -q /dev/null /bin/sh -c "$q" </dev/null >/dev/null 2>&1 ) & pid=$!
     else
-      for one in "$@"; do
-        q="$q '${one//\'/\'\\\'\'}'"
-      done
-      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -qec "'$EVAL_CLI'$q" /dev/null </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR" ) & pid=$!
+      ( cd "$dir" && PATH="$EVAL_STUBBIN:$PATH" script -qec "$q" /dev/null </dev/null >/dev/null 2>&1 ) & pid=$!
     fi
     while :; do
       alive="1"
@@ -256,29 +260,18 @@ if [ "${pty_avail:-false}" = "true" ]; then
     return 0
   }
 
-  # pty_envelope: the pty merges the child's stdout+stderr into one stream,
-  # so the envelope cannot be read straight off EVAL_OUT. The fail() envelope
-  # is pretty-printed jq: it opens on a line that is exactly `{` and closes
-  # on a line that is exactly `}` (nested closings are indented; preview and
-  # re-enter lines never form a lone brace). Print from the last such opener
-  # through its closer, stripping pty CRs. Prints nothing when absent.
-  pty_envelope() {
-    awk '{ sub(/\r$/, "") } /^{$/ { buf=""; inenv=1 } inenv { buf=buf $0 "\n" } /^}$/ { if (inenv) { printf "%s", buf; inenv=0; buf="" } }' "$1"
-  }
-
   WD_DIR="$EVAL_SANDBOX"
   watchdog_pty "$LIMIT" -- skill install --dir "$NEVER_SKILLS" --json
   hung_ok "skill install --json on a pty"
-  pty_env="$(pty_envelope "$EVAL_OUT")"
   if [ "$EVAL_STATUS" -eq 0 ] \
-    && [ "$(jq -r '.error == null and .data.status == "keep"' <<<"$pty_env" 2>/dev/null)" = "true" ]; then
+    && jq -e '.error == null and .data.status == "keep"' <"$EVAL_OUT" >/dev/null 2>&1; then
     good "pty machine install keeps at exit 0"
   else
-    bad "pty machine install: exit $EVAL_STATUS status $(jq -r '.data.status // empty' <<<"$pty_env" 2>/dev/null || true)"
+    bad "pty machine install: exit $EVAL_STATUS status $(jq -r '.data.status // empty' <"$EVAL_OUT" 2>/dev/null || true)"
   fi
   assert_stream_nogrep "no prompt text on stdout under --json on a pty" "$EVAL_OUT" "Proceed?"
   assert_stream_nogrep "no prompt text on stderr under --json on a pty" "$EVAL_ERR" "Proceed?"
-  if jq -e '.data != null and .error == null' <<<"$pty_env" >/dev/null 2>&1; then
+  if jq -e '.data != null and .error == null' <"$EVAL_OUT" >/dev/null 2>&1; then
     good "pty keep keeps the envelope shape (data present, error null)"
   else
     bad "pty keep breaks the envelope shape"
@@ -294,13 +287,12 @@ if [ "${pty_avail:-false}" = "true" ]; then
   WD_DIR="$EVAL_SANDBOX/np-repo"
   watchdog_pty "$LIMIT" -- init --preset chill --json
   hung_ok "init --json overwrite on a pty"
-  pty_env="$(pty_envelope "$EVAL_OUT")"
   if [ "$EVAL_STATUS" -eq 1 ] \
-    && [ "$(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null)" = "needs-confirm" ] \
-    && grep -q "try:" <<<"$pty_env"; then
+    && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)" = "needs-confirm" ] \
+    && grep -q "try:" "$EVAL_OUT"; then
     good "pty machine overwrite refusal is typed needs-confirm at exit 1 with a try: hint"
   else
-    bad "pty machine overwrite refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <<<"$pty_env" 2>/dev/null || true)"
+    bad "pty machine overwrite refusal: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
   fi
   assert_stream_nogrep "no prompt text on stdout under --json on a pty (init)" "$EVAL_OUT" "Proceed?"
   assert_stream_nogrep "no prompt text on stderr under --json on a pty (init)" "$EVAL_ERR" "Proceed?"
