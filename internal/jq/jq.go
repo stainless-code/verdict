@@ -255,10 +255,25 @@ func Decode(data []byte) (any, error) {
 	if err := dec.Decode(&v); err != nil {
 		return nil, Sealed(opDecodeJSON, err)
 	}
-	if dec.More() {
-		return nil, Sealed(opDecodeJSON, errTrailingData)
+	if err := sealTail(dec, opDecodeJSON); err != nil {
+		return nil, err
 	}
 	return v, nil
+}
+
+// sealTail reports anything but a clean end of stream after a document, sealed
+// for op. [json.Decoder.More] also reports false in front of a stray closer
+// (`}` or `]`), so a tail check built on it accepts `{"a":1}}` — the strict
+// decode entries share this one check instead.
+func sealTail(dec *json.Decoder, op string) error {
+	_, err := dec.Token()
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err == nil {
+		return Sealed(op, errTrailingData)
+	}
+	return Sealed(op, err)
 }
 
 // DecodeObject parses one JSON object document into a string map, preserving

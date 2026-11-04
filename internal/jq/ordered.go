@@ -3,8 +3,6 @@ package jq
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io"
 	"maps"
 	"strings"
 )
@@ -268,14 +266,10 @@ func decodeSequence(data []byte) ([]any, error) {
 	}
 	// More() is also false in front of a stray closer (`}` or `]`), so only a
 	// clean EOF means the stream is done: anything else is trailing garbage.
-	_, err := dec.Token()
-	if errors.Is(err, io.EOF) {
-		return out, nil
+	if err := sealTail(dec, opDecodeJSONSeq); err != nil {
+		return nil, err
 	}
-	if err == nil {
-		err = errTrailingData
-	}
-	return nil, Sealed(opDecodeJSONSeq, err)
+	return out, nil
 }
 
 // nextToken reads one token, sealing decoder errors.
