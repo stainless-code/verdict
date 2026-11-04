@@ -178,24 +178,23 @@ if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY 
 ### Technical details (every body `###` carries one; inline carries one when non-trivial)
 
 `````html
-<details>
-  <summary>Technical details</summary>
+<details><summary>Technical details</summary>
 
-  ````markdown # {title} ## Affected sites - [{file:line}][ev-N] — {what's
-  wrong} ## Required outcome - {what the fix needs to achieve, not how to
-  achieve it} ## Suggested approach (optional) ## Open questions for human
-  (optional)
+````markdown
+# {title}
+
+## Affected sites
+- [{file:line}][ev-N] — {what's wrong}
+
+## Required outcome
+- {what the fix needs to achieve, not how to achieve it}
+
+## Suggested approach (optional)
+## Open questions for human (optional)
+````
+
 </details>
 `````
-
-</details>
-```
-
-</details>
-```
-
-</details>
-```
 
 4-backtick fence keeps inner 3-backtick fences copyable. Skip optional sections when empty.
 Backtick-wrap identifiers — each `###` IS the issue.
