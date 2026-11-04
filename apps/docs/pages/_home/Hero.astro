@@ -2,6 +2,13 @@
 import { contentHref } from "blume/components/content/base-href.ts";
 import Icon from "blume/components/Icon.astro";
 import InstallSwitcher from "../../components/InstallSwitcher.astro";
+
+/**
+ * The hero carries the one install surface: every route (npm, pnpm, bun,
+ * yarn, Homebrew, script, PowerShell) lives here and nowhere else on the
+ * page. The closing band mirrors the selected route instead of mounting a
+ * second copy of the tab strip.
+ */
 ---
 
 <section class="mx-auto max-w-[1160px] px-6 pt-16 pb-14 sm:pt-24 sm:pb-20">
@@ -9,34 +16,33 @@ import InstallSwitcher from "../../components/InstallSwitcher.astro";
     <h1
       class="mx-auto max-w-3xl text-balance font-display font-semibold text-5xl leading-[1.02] tracking-tight sm:text-7xl"
     >
-      <span class="block">PR reviews</span>
+      <span class="block">Code review</span>
       <span class="block text-accent">with receipts.</span>
     </h1>
 
     <p class="mx-auto mt-6 max-w-xl text-balance text-lg text-muted-foreground">
-      Verdict fetches the PR, your agent reviews it, and exactly one review posts.
-      One static binary. No server, no account.
+      Your agent reviews. Verdict fetches the change — a PR, a branch, or a
+      commit range — keeps the receipts, and posts once.
     </p>
 
     <div id="install" class="mx-auto mt-10 w-full max-w-[44rem] scroll-mt-24">
       <InstallSwitcher name="hero" />
     </div>
 
-    <p class="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+    <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
       <a
-        class="relative inline-flex items-center gap-1.5 text-muted-foreground underline decoration-border underline-offset-4 transition-colors after:absolute after:-inset-3 after:content-[''] hover:text-foreground hover:decoration-accent"
-        href="#how-it-works"
-      >
-        How it works
-        <Icon name="arrow-down" size={14} />
-      </a>
-      <a
-        class="relative inline-flex items-center gap-1.5 text-muted-foreground underline decoration-border underline-offset-4 transition-colors after:absolute after:-inset-3 after:content-[''] hover:text-foreground hover:decoration-accent"
+        class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] bg-foreground px-5 font-medium text-background text-base transition-opacity hover:opacity-90"
         href={contentHref("/quickstart")}
       >
         Quickstart
-        <Icon name="arrow-right" size={14} />
+        <Icon name="arrow-right" size={16} />
       </a>
-    </p>
+      <a
+        class="inline-flex h-11 items-center whitespace-nowrap rounded-[9px] border border-border px-5 font-medium text-base text-foreground transition-colors hover:bg-muted"
+        href="#how-it-works"
+      >
+        How it reviews
+      </a>
+    </div>
   </div>
 </section>

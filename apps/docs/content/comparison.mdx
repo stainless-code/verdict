@@ -44,6 +44,23 @@ per-review credit or a usage meter. Verdict has none of those. It does one job: 
 review, post, stop. Setup is one binary, the blast radius is one post, and the model is
 your choice. In exchange it skips the hosted features in the "Where they win" column.
 
+## The target they do not review
+
+Every vendor row above starts at a pull request: a hosted app sees the diff arrive and
+posts the comment back. Verdict starts one step earlier. Its review target is whatever
+git can describe, and `fetch` or `fetch-local` turns any of them into the same bundle:
+
+- a pull request, on GitHub or, with `--provider`, on GitLab, GitCafe, Forgejo,
+  Bitbucket or Azure DevOps;
+- anything against a base, with `--base <rev>` or `--range A..B`;
+- staged changes, with `--staged`;
+- a stash entry, with `--stash [n]`;
+- a worktree, with `--worktree`.
+
+`record`, `report`, `triage`, `show` and `next` run on every one of those bundles.
+`post` needs a GitHub PR to land on and refuses the rest typed rather than faking a
+target. That is the one place Verdict is narrower, not wider.
+
 ## The long tail
 
 The long tail is not uniform: Qodo meters credits (`$0.012` each; Pro Team `$30`/mo buys

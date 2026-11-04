@@ -1,0 +1,66 @@
+---
+title: Roadmap
+description: "What ships in 0.4.0, what is still experimental, and what comes next."
+search:
+  tags: ["roadmap", "dashboard", "primitives", "toolkit", "future"]
+---
+
+Verdict is a review loop you own. Fetch a review target — a host PR, a branch, a
+commit range, staged changes — let your agent review it, grade the findings, post
+exactly one review. Every surface below is built from the same verbs, and every
+one of them runs on your machine: no account, no hosted state, no telemetry.
+
+This page is the honest ledger. Shipped means it is in `0.4.0` and documented in
+the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md).
+Planned means it is not built yet, and says so on its own line.
+
+## Shipped in 0.4.0
+
+| Stage         | Commands                                               | What they own                                                                                                              |
+| ------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Bundle        | `fetch`, `fetch-local`                                 | One diff per review target, from a host PR or your working tree, into `.review/`. Chunking and a budget gate are opt-in.   |
+| Review        | `record`, `adopt`, `fix`                               | Validate a review, merge it into findings, carry local findings onto a PR, and loop on one finding without escaping scope. |
+| Decide        | `report`, `triage`, `threads`, `next`, `show`, `trend` | Render the bundle, gate on severity (`--check`), emit SARIF (`--sarif`), and read trend across runs.                       |
+| Post          | `post`                                                 | Exactly one review, with anchor validation, stale-SHA and duplicate guards, `--dry-run`, and `--bind` for an approval.     |
+| Trust         | `verify`, `check-tree`, `doctor`, `calibrate`, `ready` | Check the bundle, the tree, the host login, past calibration, and readiness in one place.                                  |
+| Agent surface | `skill`, `mcp`                                         | The embedded skill (`skill`, `skill files`, `skill install`) and the review verbs as MCP tools over stdio.                 |
+| Housekeeping  | `init`, `learn`, `upgrade`, `uninstall`                | Repo config, project rules with provenance, and channel-aware upgrades and removals.                                       |
+
+Clients and actions over those verbs: the Go SDK (`pkg/verdict`), the TypeScript
+client (`@stainless-code/verdict/client`), the JSON schemas in `schemas/`, and
+`setup-verdict` for GitHub Actions.
+
+<Callout type="warning" title="Experimental until 1.0">
+  The MCP server, the Go SDK, the TypeScript client and their schemas are
+  experimental: they work, they are covered by tests, and their envelopes may
+  still change before 1.0. Everything else in the table is stable.
+</Callout>
+
+## Next
+
+**A local dashboard.** One command that opens a read-only view over `.review/`:
+the bundles, every finding with its evidence rung and anchor, the gate result,
+cost per run, and the trend line. Started by a human who wants to look, or by an
+agent that needs to show its work. Bound to localhost, reading the same files the
+CLI writes, so nothing new is stored and nothing leaves the machine. Planned, not
+built.
+
+**Incremental re-review beyond GitHub.** `fetch --since` re-reviews only new
+commits today, and only for GitHub bundles. The other five providers get full
+fetches. Planned.
+
+**Primitives before product.** New capability arrives as a verb with a schema, an
+envelope and an exit code, so a script, an agent, an editor or the dashboard can
+compose it. Nothing becomes a service you cannot run yourself.
+
+## Never
+
+A hosted control plane. A merge queue. Telemetry. Auto-merge. A model of our own.
+Each of those would move the review — and the receipt — off your machine.
+
+## Steering it
+
+Open an issue at
+[stainless-code/verdict](https://github.com/stainless-code/verdict/issues). A
+roadmap line that cannot point at a verb, a schema and a test is a wish, and
+wishes do not ship.

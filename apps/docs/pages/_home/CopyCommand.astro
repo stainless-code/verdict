@@ -5,25 +5,48 @@ import Icon from "blume/components/Icon.astro";
  * One command in a box with a copy button. The command wraps instead of
  * truncating, so a narrow screen never hides part of it.
  *
+ * `tone="paper"` is the variant for a coloured band: white box, ink that
+ * matches the band, no border to fight the background.
+ *
  * Sources: the same commands as the install switcher and docs/manual.md.
  */
 interface Props {
   command: string;
   /** Stretch to the width of the parent instead of the command's own width. */
   fill?: boolean;
+  tone?: "surface" | "paper";
 }
 
-const { command, fill = false } = Astro.props;
+const { command, fill = false, tone = "surface" } = Astro.props;
+const paper = tone === "paper";
 ---
 
 <div
-  class={`flex ${fill ? "w-full" : "w-fit"} max-w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-[var(--landing-surface)] py-2.5 pr-2.5 pl-4`}
+  class={`flex ${fill ? "w-full" : "w-fit"} max-w-full min-w-0 items-center gap-3 rounded-xl border py-2.5 pr-2.5 pl-4 ${
+    paper
+      ? "border-transparent bg-white text-[var(--landing-band)]"
+      : "border-border bg-[var(--landing-surface)]"
+  }`}
 >
-  <span aria-hidden="true" class="select-none font-mono text-base text-[var(--landing-faint)]">$</span>
-  <code class="min-w-0 flex-1 font-mono text-[13px] text-foreground leading-[1.5] break-words whitespace-pre-wrap sm:text-base">{command}</code>
+  <span
+    aria-hidden="true"
+    class={`select-none font-mono text-base ${paper ? "" : "text-[var(--landing-faint)]"}`}
+    style={paper ? "color: var(--landing-band); opacity: 0.5;" : undefined}
+  >
+    $
+  </span>
+  <code
+    class={`min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words whitespace-pre-wrap sm:text-base ${paper ? "" : "text-foreground"}`}
+  >
+    {command}
+  </code>
   <button
     aria-label={`Copy: ${command}`}
-    class="relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:text-foreground"
+    class={`relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors after:absolute after:-inset-1.5 after:content-[''] ${
+      paper
+        ? "bg-black/[0.06] text-[var(--landing-band)] hover:bg-black/10"
+        : "bg-muted text-muted-foreground hover:text-foreground"
+    }`}
     data-copy-command
     data-command={command}
     type="button"

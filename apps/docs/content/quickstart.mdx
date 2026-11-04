@@ -23,10 +23,18 @@ Three steps: install the binary, add the skill, review a PR.
     The install scripts take `VERDICT_VERSION=vX.Y.Z` to pin a version — on the
     script half of the pipe:
     `curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=vX.Y.Z sh`
-    (Windows: `-Version vX.Y.Z`). Update later with `verdict upgrade`. It runs
-    only when you type it. In CI, the
+    (Windows: `-Version vX.Y.Z`). Both verify the archive's SHA-256 and, when
+    `cosign` is installed, the release signature; the script routes install to
+    `~/.verdict/bin` with no root or admin rights. Update later with
+    `verdict upgrade`. It runs only when you type it. In CI, the
     [`setup-verdict` action](https://github.com/stainless-code/verdict#ci-setup-verdict-action)
     installs a pinned, verified binary.
+
+    Two footnotes for the package managers: `npx @stainless-code/verdict --help`
+    and `bunx @stainless-code/verdict --help` run once without installing, and
+    pnpm's release-age gate can serve the previous release for a day after a new
+    one ships — pin the exact version, or add
+    `--config.minimumReleaseAge=0`.
 
   </Step>
   <Step title="Add the skill">

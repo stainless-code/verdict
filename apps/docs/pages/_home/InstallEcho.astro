@@ -1,0 +1,96 @@
+---
+import Icon from "blume/components/Icon.astro";
+import { CLI_INSTALL } from "./install.ts";
+
+/**
+ * Mirrors the route selected in the hero's install switcher. The closing band
+ * must never mount a second tab strip: it shows the same command the hero is
+ * showing, and follows it on every change. Without JavaScript it falls back to
+ * the primary (npm) command, which is what the hero starts on.
+ */
+interface Props {
+  fallback?: string;
+}
+
+const { fallback = CLI_INSTALL } = Astro.props;
+---
+
+<div class="w-full text-left" data-install-echo data-fallback={fallback}>
+  <p
+    class="mb-1.5 font-medium text-sm"
+    data-echo-label
+    style="color: var(--landing-band-ink); opacity: 0.75;"
+  >
+    Install
+  </p>
+  <div class="flex min-w-0 items-center gap-3 rounded-xl bg-white py-2.5 pr-2.5 pl-4 text-[var(--landing-band)]">
+    <span aria-hidden="true" class="select-none font-mono text-base opacity-50">$</span>
+    <code
+      class="min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words whitespace-pre-wrap sm:text-base"
+      data-echo-command>{fallback}</code>
+    <button
+      aria-label={`Copy: ${fallback}`}
+      class="relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-black/[0.06] text-[var(--landing-band)] transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-black/10"
+      data-echo-copy
+      data-command={fallback}
+      type="button"
+    >
+      <span data-copy-idle><Icon name="copy" size={15} /></span>
+      <span data-copy-done hidden><Icon name="check" size={15} /></span>
+    </button>
+    <span aria-live="polite" class="sr-only" data-echo-status></span>
+  </div>
+</div>
+
+<script>
+  const CHANGE = "verdict-install-change";
+
+  const root = document.querySelector<HTMLElement>("[data-install-echo]");
+  const source = document.querySelector<HTMLElement>("#install install-switcher");
+  const command = root?.querySelector<HTMLElement>("[data-echo-command]");
+  const label = root?.querySelector<HTMLElement>("[data-echo-label]");
+  const copy = root?.querySelector<HTMLButtonElement>("[data-echo-copy]");
+  const status = root?.querySelector<HTMLElement>("[data-echo-status]");
+
+  const sync = () => {
+    if (!source || !command) return;
+    const panel = source.querySelector<HTMLElement>(
+      '[role="tabpanel"][data-active] [data-command]',
+    );
+    const tab = source.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    const text = panel?.textContent?.trim() ?? "";
+    if (!text) return;
+    command.textContent = text;
+    if (label) label.textContent = tab?.textContent?.trim() ?? "Install";
+    if (copy) {
+      copy.dataset.command = text;
+      copy.setAttribute("aria-label", `Copy: ${text}`);
+    }
+  };
+
+  sync();
+  requestAnimationFrame(sync);
+  window.addEventListener("load", sync);
+  window.addEventListener(CHANGE, sync);
+
+  copy?.addEventListener("click", async () => {
+    const text = copy.dataset.command ?? "";
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return;
+    }
+    const idle = copy.querySelector<HTMLElement>("[data-copy-idle]");
+    const done = copy.querySelector<HTMLElement>("[data-copy-done]");
+    if (idle) idle.hidden = true;
+    if (done) done.hidden = false;
+    if (status) status.textContent = "Copied to clipboard";
+    setTimeout(() => {
+      if (idle) idle.hidden = false;
+      if (done) done.hidden = true;
+      if (status) status.textContent = "";
+    }, 1500);
+  });
+</script>

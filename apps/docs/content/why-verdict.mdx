@@ -8,6 +8,10 @@ search:
 AI review works. It is also metered, gated behind app installs, and hard to audit.
 Verdict keeps the review and drops the meter.
 
+The review target is whatever git can describe: a host pull request, a branch, a
+commit range, staged changes, a stash entry, or a worktree. A PR is the common
+case, not the only one.
+
 ## The five pains
 
 1. **Review latency.** Human review is the bottleneck. PRs wait days for a look, or

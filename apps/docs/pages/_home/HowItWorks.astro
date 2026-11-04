@@ -39,19 +39,19 @@ const sample = [
 
 const steps = [
   {
-    title: "Install",
-    body: "One static binary for macOS, Linux and Windows, plus the shell and PowerShell installers. Pick another route in the box above.",
-    commands: ["npm i -g @stainless-code/verdict"],
-  },
-  {
     title: "Add the skill",
-    body: "The skill is the review prompt, and it ships inside the binary. `--detect` installs it into every agent whose skills directory already exists and is non-empty; `--agent` names one.",
+    body: "The skill ships inside the binary and writes itself into every agent it detects, so it always matches your version. It carries the review prompts and the verb order the agent follows.",
     commands: ["verdict skill install --detect"],
   },
   {
-    title: "Fetch, review, post",
-    body: "`fetch` writes the diff, a table of contents and the file roles. Your agent reads them and writes `.review/123/review.json`. `post` checks every anchor, then submits exactly one review.",
-    commands: ["verdict fetch owner/repo 123", "verdict post owner/repo 123"],
+    title: "Fetch the PR",
+    body: "`fetch` writes the diff, a table of contents and the file roles into `.review/`, so the agent reads a bundle instead of paging a web UI.",
+    commands: ["verdict fetch owner/repo 123"],
+  },
+  {
+    title: "Review and post",
+    body: "Your agent reads the bundle and writes `.review/123/review.json`. `post` checks every anchor, then submits exactly one review — `report --check` gates the same findings in CI.",
+    commands: ["verdict post owner/repo 123"],
   },
 ] as const;
 ---

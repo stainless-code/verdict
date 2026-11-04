@@ -23,8 +23,6 @@ interface Props {
 
 const { name = "install" } = Astro.props;
 
-const base = "https://github.com/stainless-code/verdict/releases/latest/download";
-
 /**
  * Split a command into segments that may break at their end, so a wrapped
  * route breaks after a path separator instead of inside a word. Breaks are
@@ -56,10 +54,6 @@ interface Tab {
   /** Brand marks shown before the label, painted with currentColor. */
   icons: BrandIcon[];
   command: string;
-  /** Plain-text note under the box, with an optional inline command. */
-  note?: { before: string; code?: string; after?: string };
-  /** "View install script" link for the shell routes. */
-  script?: { href: string; label: string };
 }
 
 const tabs: Tab[] = [
@@ -68,32 +62,18 @@ const tabs: Tab[] = [
     label: "npm",
     icons: ["npm"],
     command: "npm i -g @stainless-code/verdict",
-    note: {
-      before: "Run once without installing:",
-      code: "npx @stainless-code/verdict --help",
-    },
   },
   {
     id: "pnpm",
     label: "pnpm",
     icons: ["pnpm"],
     command: "pnpm add -g @stainless-code/verdict",
-    note: {
-      before:
-        "pnpm's release-age gate can serve the previous release for a day after a new one ships: pin the exact version, or add",
-      code: "--config.minimumReleaseAge=0",
-      after: ".",
-    },
   },
   {
     id: "bun",
     label: "bun",
     icons: ["bun"],
     command: "bun add -g @stainless-code/verdict",
-    note: {
-      before: "Run once without installing:",
-      code: "bunx @stainless-code/verdict --help",
-    },
   },
   {
     id: "yarn",
@@ -112,22 +92,12 @@ const tabs: Tab[] = [
     label: "macOS/Linux",
     icons: ["apple", "linux"],
     command: "curl -fsSL https://stainless-code.com/verdict/install.sh | sh",
-    note: {
-      before:
-        "Checks the SHA-256 and, when cosign is installed, the signature. Installs to ~/.verdict/bin without root.",
-    },
-    script: { href: `${base}/install.sh`, label: "View install script" },
   },
   {
     id: "ps",
     label: "Windows",
     icons: ["windows"],
     command: "irm https://stainless-code.com/verdict/install.ps1 | iex",
-    note: {
-      before:
-        "PowerShell. Checks the SHA-256 and, when cosign is installed, the signature. No admin rights needed.",
-    },
-    script: { href: `${base}/install.ps1`, label: "View install script" },
   },
 ];
 ---
@@ -146,18 +116,16 @@ const tabs: Tab[] = [
           tabindex={i === 0 ? 0 : -1}
           type="button"
         >
-          <span aria-hidden="true" class="install-icons">
-            {tab.icons.map((icon) => (
-              <svg
-                class="install-icon"
-                fill="currentColor"
-                focusable="false"
-                viewBox="0 0 24 24"
-              >
-                <path d={brandIcons[icon]} />
-              </svg>
-            ))}
-          </span>
+          {tab.icons.length > 0 && (
+            <span aria-hidden="true" class="install-icons">
+              {tab.icons.map((icon) => {
+                const Mark = brandIcons[icon];
+                return (
+                  <Mark class="install-icon" focusable="false" />
+                );
+              })}
+            </span>
+          )}
           <span>{tab.label}</span>
         </button>
       ))
@@ -202,35 +170,6 @@ const tabs: Tab[] = [
             </span>
           </button>
         </div>
-        {(tab.note || tab.script) && (
-          <p class="install-note">
-            {tab.note && (
-              <>
-                {tab.note.before}
-                {tab.note.code && (
-                  <>
-                    {" "}
-                    <code>{tab.note.code}</code>
-                  </>
-                )}
-                {tab.note.after}
-              </>
-            )}
-            {tab.script && (
-              <>
-                {tab.note && " "}
-                <a
-                  href={tab.script.href}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  {tab.script.label}
-                  <span aria-hidden="true">{" ↗"}</span>
-                </a>
-              </>
-            )}
-          </p>
-        )}
       </div>
     ))
   }
@@ -446,26 +385,6 @@ const tabs: Tab[] = [
     display: inline-flex;
   }
 
-  .install-note {
-    margin: 0.625rem 0 0;
-    color: var(--blume-muted-foreground);
-    font-size: 0.8125rem;
-    line-height: 1.5;
-  }
-
-  .install-note code {
-    font-family: var(--blume-font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
-    color: var(--blume-foreground);
-  }
-
-  .install-note a {
-    color: var(--blume-accent);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    white-space: nowrap;
-  }
-
   .install-status {
     position: absolute;
     width: 1px;
@@ -543,7 +462,12 @@ const tabs: Tab[] = [
       };
 
       const initial = read();
-      if (initial !== null) select(initial, false);
+      if (initial !== null) {
+        select(initial, false);
+        // Announce the restored route, so read-only mirrors (the closing band)
+        // never show a different command from the switcher above.
+        window.dispatchEvent(new CustomEvent(CHANGE, { detail: initial }));
+      }
       fade();
 
       for (const tab of tabs) {
