@@ -14,11 +14,25 @@ import (
 	"unicode"
 )
 
-// cliOnlyVerbs are the CLI verbs no other surface exposes, and why. The
-// distribution lifecycle stays CLI-only on purpose (pkg/verdict/doc.go), and
-// `mcp` is the transport entry point itself: an MCP tool or SDK method named
-// `mcp` would recurse instead of reviewing.
-var cliOnlyVerbs = map[string]string{
+// mcpOmittedVerbs are CLI verbs with no MCP tool, and why. The distribution
+// lifecycle stays CLI-only on purpose (pkg/verdict/doc.go), and `mcp` is the
+// transport entry point itself: an MCP tool named `mcp` would recurse instead
+// of reviewing. `gate` is omitted because it exists to hand a CI job an exit
+// code: an agent calling it as a tool would read a local verdict as authority
+// to act, when the merge stays the human's.
+var mcpOmittedVerbs = map[string]string{
+	"mcp":       "the MCP transport entry point itself",
+	"skill":     "distribution surface (pkg/verdict/doc.go)",
+	"uninstall": "distribution surface (pkg/verdict/doc.go)",
+	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
+	"gate":      "a CI exit code, not a tool an agent should act on",
+}
+
+// sdkOmittedVerbs are CLI verbs with no Go facade method or TypeScript client
+// method, and why: the distribution lifecycle stays CLI-only. `gate` is not
+// here — a program honoring an exit code may compose the same verdict — while
+// it stays out of the MCP surface above.
+var sdkOmittedVerbs = map[string]string{
 	"mcp":       "the MCP transport entry point itself",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
@@ -63,7 +77,7 @@ func readSurfaceVerbs(t *testing.T) surfaceVerbs {
 }
 
 // TestSurfaceParityCLI proves the CLI synopsis is well formed and that every
-// verb it offers reaches MCP or is allowlisted as CLI-only.
+// verb it offers reaches MCP or is omitted from that surface.
 func TestSurfaceParityCLI(t *testing.T) {
 	t.Parallel()
 	verbs := readSurfaceVerbs(t)
@@ -72,18 +86,18 @@ func TestSurfaceParityCLI(t *testing.T) {
 		t.Errorf("cli synopsis lists %d verbs; the usage line did not parse", len(verbs.cli))
 	}
 	checkSubset(t, "mcp tool", verbs.mcp, "cli verb", verbs.cli)
-	checkIncludes(t, "mcp surface", verbs.mcp, "cli verb", without(verbs.cli, names(cliOnlyVerbs)))
+	checkIncludes(t, "mcp surface", verbs.mcp, "cli verb", without(verbs.cli, names(mcpOmittedVerbs)))
 }
 
 // TestSurfaceParitySDK proves every Go facade method wraps a CLI verb, and that
-// a CLI verb reaches the facade unless it is allowlisted as CLI-only or listed
-// as a gap.
+// a CLI verb reaches the facade unless it is omitted from the SDK or listed as
+// a gap.
 func TestSurfaceParitySDK(t *testing.T) {
 	t.Parallel()
 	verbs := readSurfaceVerbs(t)
 	checkUnique(t, "sdk method", verbs.sdk)
 	checkSubset(t, "sdk method", verbs.sdk, "cli verb", verbs.cli)
-	want := without(verbs.cli, names(cliOnlyVerbs), names(sdkGaps))
+	want := without(verbs.cli, names(sdkOmittedVerbs), names(sdkGaps))
 	checkIncludes(t, "pkg/verdict surface", verbs.sdk, "cli verb", want)
 }
 
@@ -98,17 +112,36 @@ func TestSurfaceParityTS(t *testing.T) {
 	checkIncludes(t, "TypeScript client", verbs.ts, "sdk method", verbs.sdk)
 }
 
-// TestSurfaceParityAllowlistsStayHonest proves the two allowlists name real
-// verbs and go stale loudly: a CLI-only verb another surface exposes, or a gap
-// the facade has closed, fails here instead of quietly widening the check.
+// TestSurfaceParityAllowlistsStayHonest proves the allowlists name real verbs
+// and go stale loudly: a verb omitted from a surface that now exposes it, or a
+// gap the facade has closed, fails here instead of quietly widening the check.
 func TestSurfaceParityAllowlistsStayHonest(t *testing.T) {
 	t.Parallel()
 	verbs := readSurfaceVerbs(t)
-	checkSubset(t, "cli-only verb", names(cliOnlyVerbs), "cli verb", verbs.cli)
+	checkSubset(t, "mcp-omitted verb", names(mcpOmittedVerbs), "cli verb", verbs.cli)
+	checkSubset(t, "sdk-omitted verb", names(sdkOmittedVerbs), "cli verb", verbs.cli)
 	checkSubset(t, "sdk gap", names(sdkGaps), "cli verb", verbs.cli)
-	for _, verb := range names(cliOnlyVerbs) {
-		if slices.Contains(verbs.sdk, verb) || slices.Contains(verbs.mcp, verb) {
-			t.Errorf("verb %q is allowlisted as cli-only but another surface exposes it", verb)
+	checkMcpOmissions(t, &verbs)
+	checkSDKOmissions(t, &verbs)
+}
+
+// checkMcpOmissions fails an MCP-omitted verb the MCP surface carries anyway.
+func checkMcpOmissions(t *testing.T, verbs *surfaceVerbs) {
+	t.Helper()
+	for _, verb := range names(mcpOmittedVerbs) {
+		if slices.Contains(verbs.mcp, verb) {
+			t.Errorf("verb %q is omitted from MCP but the MCP surface exposes it", verb)
+		}
+	}
+}
+
+// checkSDKOmissions fails an SDK-omitted verb a client carries anyway, and a
+// gap the facade has closed (the gap entry would hide the new method).
+func checkSDKOmissions(t *testing.T, verbs *surfaceVerbs) {
+	t.Helper()
+	for _, verb := range names(sdkOmittedVerbs) {
+		if slices.Contains(verbs.sdk, verb) || slices.Contains(verbs.ts, verb) {
+			t.Errorf("verb %q is omitted from the SDK but a client exposes it", verb)
 		}
 	}
 	for _, verb := range names(sdkGaps) {

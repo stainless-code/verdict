@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready threads trend learn init skill upgrade uninstall
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready gate threads trend learn init skill upgrade uninstall
 }
 
 _verdict_flags() { # $1 = verb
@@ -23,6 +23,7 @@ _verdict_flags() { # $1 = verb
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;
     ready) printf '%s\n' --json --check;;
+    gate) printf '%s\n' --max-severity --require-head --live --json;;
     init) printf '%s\n' --preset --yes --force --json;;
     skill) printf '%s\n' show files install --format --dir --agent --force --dry-run --json;;
     upgrade) printf '%s\n' --version --dry-run --json;;
@@ -47,6 +48,8 @@ _verdict_values() { # $1 = verb, $2 = flag
       esac;;
     --approve) printf '%s\n' true false;;
     --preset) printf '%s\n' chill standard strict;;
+    --max-severity) printf '%s\n' critical important informational;;
+    --live) printf '%s\n' auto strict skip;;
     --status)
       case "$1" in
         triage) printf '%s\n' open addressed wont-fix false-positive deferred;;

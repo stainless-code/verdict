@@ -68,6 +68,23 @@ exit: 1
       "reviewed": false,
       "fetched_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "posted_head": null
+    },
+    "gate": {
+      "passed": false,
+      "dimensions": [
+        {
+          "id": "head",
+          "status": "unknown",
+          "detail": "no completed post record for HEAD aaaaaaa",
+          "count": null
+        },
+        {
+          "id": "live_threads",
+          "status": "skip",
+          "detail": "live thread recheck unreachable — gating on local dimensions only",
+          "count": null
+        }
+      ]
     }
   },
   "error": null

@@ -21,7 +21,7 @@ func buildResponse(st *state) *core.ReportResponse {
 		Sarif:    sarifArtifact(st),
 	}
 	if st.gate {
-		resp.GateFailed, resp.CheckLines = gateTail(st)
+		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateTail(st)
 	}
 	return resp
 }
@@ -312,61 +312,175 @@ func receiptFieldFromObj(latest any, key string) string {
 	return jq.Str(v)
 }
 
-func gateTail(st *state) (bool, []string) {
-	var lines []string
+// Dimension ids, statuses, and the gate vocabulary shared by the report check
+// lines and the gate verb's envelope.
+const (
+	dimFindings = "findings"
+	dimHead     = "head"
+	dimLive     = "live_threads"
+	dimPass     = "pass"
+	dimFail     = "fail"
+	dimSkip     = "skip"
+	dimUnknown  = "unknown"
+)
+
+// gateCheck is one dimension with the report check line it prints; line is
+// empty for a dimension the report surface stays quiet about.
+type gateCheck struct {
+	dim  core.GateDimension
+	line string
+}
+
+// gateTail composes the requested dimensions once and derives both surfaces
+// from them: the report's check lines and the typed result the gate verb and
+// report --json publish. A skip stays neutral; fail and unknown fail.
+func gateTail(st *state) (bool, []string, *core.ReportGate) {
+	checks := gateChecks(st)
+	lines := make([]string, 0, len(checks))
+	dims := make([]core.GateDimension, 0, len(checks))
 	failed := false
+	for _, c := range checks {
+		if c.line != "" {
+			lines = append(lines, c.line)
+		}
+		dims = append(dims, c.dim)
+		if c.dim.Status == dimFail || c.dim.Status == dimUnknown {
+			failed = true
+		}
+	}
+	return failed, lines, &core.ReportGate{Passed: !failed, Dimensions: dims}
+}
+
+// gateDimensions is the ceiling on one run's gate checks: findings, head, live.
+const gateDimensions = 3
+
+// gateChecks evaluates the dimensions this run asked for, in wire order.
+func gateChecks(st *state) []gateCheck {
+	checks := make([]gateCheck, 0, gateDimensions)
 	if st.flags.Check != "" {
-		tierFailed, tierLines := gateTierCheck(st)
-		failed = failed || tierFailed
-		lines = append(lines, tierLines...)
+		checks = append(checks, gateTierCheck(st))
 	}
 	if st.flags.Completeness {
-		compFailed, compLines := gateCompletenessCheck(st)
-		failed = failed || compFailed
-		lines = append(lines, compLines...)
+		checks = append(checks, gateCompletenessCheck(st))
 	}
-	liveFailed, liveLines := gateLiveCheck(st)
-	failed = failed || liveFailed
-	lines = append(lines, liveLines...)
-	return failed, lines
+	return append(checks, gateLiveCheck(st))
 }
 
-func gateTierCheck(st *state) (bool, []string) {
-	if n := tierHits(st.entries, st.flags.Check); n > 0 {
-		return true, []string{fmt.Sprintf("check: %d open finding(s) at-or-above %s — gate fails", n, st.flags.Check)}
+func gateTierCheck(st *state) gateCheck {
+	n := tierHits(st.entries, st.flags.Check)
+	if n > 0 {
+		return gateCheck{
+			dim: core.GateDimension{
+				ID: dimFindings, Status: dimFail, Count: new(n),
+				Detail: fmt.Sprintf("%d open finding(s) at-or-above %s", n, st.flags.Check),
+			},
+			line: fmt.Sprintf("check: %d open finding(s) at-or-above %s — gate fails", n, st.flags.Check),
+		}
 	}
-	return false, []string{fmt.Sprintf("check: no open findings at-or-above %s — gate passes", st.flags.Check)}
+	return gateCheck{
+		dim: core.GateDimension{
+			ID: dimFindings, Status: dimPass, Count: new(n),
+			Detail: "no open findings at-or-above " + st.flags.Check,
+		},
+		line: "check: no open findings at-or-above " + st.flags.Check + " — gate passes",
+	}
 }
 
-func gateCompletenessCheck(st *state) (bool, []string) {
+func gateCompletenessCheck(st *state) gateCheck {
+	short := readcommon.ShortSHA(st.headSHA)
 	if st.compOK {
-		return false, []string{fmt.Sprintf("check: HEAD %s reviewed (post matches fetch) — completeness passes",
-			readcommon.ShortSHA(st.headSHA))}
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimHead, Status: dimPass, Detail: "HEAD " + short + " reviewed (post matches fetch)"},
+			line: fmt.Sprintf("check: HEAD %s reviewed (post matches fetch) — completeness passes", short),
+		}
 	}
-	return true, completenessFailLines(st)
+	return gateCheck{
+		dim:  core.GateDimension{ID: dimHead, Status: completenessStatus(st), Detail: completenessDetail(st, short)},
+		line: completenessFailLines(st)[0],
+	}
 }
 
-func gateLiveCheck(st *state) (bool, []string) {
+// completenessStatus separates a stale post (a definite fail) from a missing
+// or headless post record (unknown: nothing recorded the head).
+func completenessStatus(st *state) string {
+	if isRegular(st.dir+"/post.json") && st.compPosted != "" {
+		return dimFail
+	}
+	return dimUnknown
+}
+
+func completenessDetail(st *state, short string) string {
+	switch {
+	case !isRegular(st.dir + "/post.json"):
+		return "no completed post record for HEAD " + short
+	case st.compPosted == "":
+		return "post record carries no head SHA (fetched HEAD " + short + ")"
+	default:
+		return "posted HEAD " + readcommon.ShortSHA(st.compPosted) + " != fetched HEAD " + short
+	}
+}
+
+func gateLiveCheck(st *state) gateCheck {
 	switch st.live.status {
 	case liveFail:
-		return true, []string{fmt.Sprintf("check: %d live open thread(s) vs %d local open finding(s) — gate fails "+
-			"(fetch + triage them, then re-check)", st.live.open, st.nAllOpen)}
-	case livePass:
-		return false, []string{fmt.Sprintf(
-			"check: %d live open thread(s) vs %d local open finding(s) — live recheck passes",
-			st.live.open, st.nAllOpen)}
-	case liveUnknownStrict:
-		detail := st.live.err
-		if detail == "" {
-			detail = "lookup failed"
+		return gateCheck{
+			dim: liveDimension(st, dimFail),
+			line: fmt.Sprintf("check: %d live open thread(s) vs %d local open finding(s) — gate fails "+
+				"(fetch + triage them, then re-check)", st.live.open, st.nAllOpen),
 		}
-		return true, []string{fmt.Sprintf("check: live thread recheck unreachable (%s — gate fails: offline posture is strict; "+
-			"restore the network or re-run with --live skip, then re-check)", detail)}
+	case livePass:
+		return gateCheck{
+			dim: liveDimension(st, dimPass),
+			line: fmt.Sprintf("check: %d live open thread(s) vs %d local open finding(s) — live recheck passes",
+				st.live.open, st.nAllOpen),
+		}
+	case liveUnknownStrict:
+		return gateCheck{
+			dim: core.GateDimension{
+				ID: dimLive, Status: dimUnknown,
+				Detail: "live thread recheck unreachable (" + liveErrDetail(st) + ") — offline posture is strict",
+			},
+			line: fmt.Sprintf("check: live thread recheck unreachable (%s — gate fails: offline posture is strict; "+
+				"restore the network or re-run with --live skip, then re-check)", liveErrDetail(st)),
+		}
+	case liveUnknown:
+		return gateCheck{
+			dim: core.GateDimension{
+				ID: dimLive, Status: dimSkip,
+				Detail: "live thread recheck unreachable — gating on local dimensions only",
+			},
+			line: "",
+		}
 	case liveSkipExplicit:
-		return false, []string{"check: live recheck skipped (--live skip) — gating on local dimensions only"}
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimLive, Status: dimSkip, Detail: "live recheck skipped (--live skip)"},
+			line: "check: live recheck skipped (--live skip) — gating on local dimensions only",
+		}
 	default:
-		return false, nil
+		return gateCheck{dim: core.GateDimension{ID: dimLive, Status: dimSkip, Detail: "live recheck skipped: " + liveSkipReason(st)}}
 	}
+}
+
+func liveDimension(st *state, status string) core.GateDimension {
+	return core.GateDimension{
+		ID: dimLive, Status: status, Count: new(st.live.open),
+		Detail: fmt.Sprintf("%d live open thread(s) vs %d local open finding(s)", st.live.open, st.nAllOpen),
+	}
+}
+
+func liveErrDetail(st *state) string {
+	if st.live.err == "" {
+		return "lookup failed"
+	}
+	return st.live.err
+}
+
+// liveSkipReason names why the probe could not read live threads at all.
+func liveSkipReason(st *state) string {
+	if isLocalDir(st.dir) {
+		return "local bundle threads unreadable here"
+	}
+	return providerName(st.dir) + " threads unreadable here"
 }
 
 func tierHits(entries []any, tier string) int {

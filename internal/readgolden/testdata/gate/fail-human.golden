@@ -1,0 +1,10 @@
+exit: 1
+--- stdout ---
+gate: findings     fail  1 open finding(s) at-or-above important
+gate: live_threads skip  live recheck skipped (--live skip)
+gate: FAIL (1 fail, 1 skip)
+gate: skipped live_threads
+try: address or triage the open findings, then re-run gate
+--- stderr ---
+warn: live recheck skipped (--live skip requested — gating on local dimensions only)
+--- files ---

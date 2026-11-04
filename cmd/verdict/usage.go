@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|threads|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -132,6 +132,18 @@ func usageText() string {
 		"    --check opts into gating (same output, machine exits): 0 ready, 1 blockers\n" +
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
+		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
+		"        [--live auto|strict|skip] [--json]\n" +
+		"    one composed local gate over the three dimensions report already computes: open\n" +
+		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
+		"    HEAD (--require-head), and live unresolved threads (--live, default auto).\n" +
+		"    At least one dimension is required; --live alone is not one. Exits 0 pass,\n" +
+		"    1 gate failed or unknown, 2 usage, 3 tool error; a gate failure carries\n" +
+		"    data.passed false with error null. data.dimensions[] lists findings, head,\n" +
+		"    live_threads with id, status, detail, count. --live skip makes zero network\n" +
+		"    calls; auto keeps the fail-open skip. Never posts, approves, merges, or\n" +
+		"    writes a store: the exit code is the whole integration, and the merge stays\n" +
+		"    the human's. Use report for the ranked items, cost, and artifacts.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .review/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
@@ -226,7 +238,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/trend/learn/init/skill/upgrade/uninstall: " +
+		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"

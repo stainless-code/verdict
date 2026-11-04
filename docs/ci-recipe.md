@@ -23,11 +23,13 @@ into your repo as `.github/workflows/verdict-review.yml`.
    `comments[]`, optional `resolved[]`/`triage[]`).
 5. **Post** — `verdict post <repo> <pr>` validates anchors, merges
    `findings.json`, and submits exactly one review.
-6. **Merge gate** — `verdict report <repo> <pr> --check critical --completeness`
-   exits 0 only when no open `critical` findings stand AND
-   the fetched HEAD is the posted HEAD. Require this job in branch
-   protection: the readiness gate saves tokens before the review, the
-   findings gate blocks the merge after it.
+6. **Merge gate** — one composed exit code:
+   `verdict gate <repo> <pr> --max-severity critical --require-head --live auto`
+   exits 0 only when no open `critical` findings stand, the fetched HEAD is
+   the posted HEAD, and no live thread stands open that the store does not.
+   One gate step instead of three chained checks. Require this job in branch
+   protection: the readiness gate saves tokens before the review, the merged
+   gate blocks the merge after it.
 
 ## Merge gating
 
@@ -36,10 +38,14 @@ example). The gate composes two machine exits, both documented in the
 operator manual:
 
 - `ready --check`: 0 reviewable, 1 blockers-or-wait, 2 usage, 3 tool error.
-- `report --check <tier> [--completeness]`: 0 no open findings at-or-above
-  the tier (and HEAD-reviewed with `--completeness`), 1 findings or stale
-  HEAD, 2 usage, 3 corrupt store. Only `open` findings count; advisory
-  `report` without `--check` never gates.
+- `gate --max-severity <tier> [--require-head] [--live auto|strict|skip]`:
+  0 every requested dimension passed (a skip is neutral), 1 a dimension
+  failed or read unknown, 2 usage, 3 tool error. It composes the same three
+  dimensions as `report --check <tier> [--completeness]` plus the live-thread
+  recheck — 0 no open findings at-or-above the tier (and HEAD-reviewed with
+  `--require-head`), 1 findings, stale HEAD, or an outnumbering live-thread
+  set. Only `open` findings count; `report` without a gate flag never gates,
+  and `report --check --completeness` stays the narrower two-dimension form.
 
 Triage or fix, then re-fetch and re-run: there is no `--force` — fetch +
 triage + re-check is the recovery.
@@ -91,6 +97,6 @@ missing gate steps fail the build.
 ## Local counterpart
 
 The same two gates run locally before CI burns: the pre-push probe
-(`report --check critical --completeness` in `.git/hooks/pre-push`) and the
+(`gate --max-severity critical --require-head` in `.git/hooks/pre-push`) and the
 readiness pre-check. See the operator manual's hook recipe and the
 readiness/report gate sections.

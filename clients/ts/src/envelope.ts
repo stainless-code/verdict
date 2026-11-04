@@ -54,6 +54,7 @@ export interface RefusalEnvelope {
  */
 export interface DataFor {
   report: ReportData;
+  gate: ReportData;
   post: PostData;
   record: RecordData;
   next: NextData;

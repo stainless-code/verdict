@@ -500,3 +500,106 @@ func TestRunReportLiveProviderSkip(t *testing.T) {
 		t.Errorf("CheckLines = %q, want the provider-aware re-fetch command", resp.CheckLines)
 	}
 }
+
+// TestRunReportGateData pins the typed result report --json publishes as
+// data.gate: one dimension per requested flag in wire order, a skip neutral, a
+// failed or unknown dimension failing the block, and no gate block at all on
+// an advisory run.
+//
+//nolint:cyclop,gocognit,revive // each leg asserts the dimensions, the status, and the count inline
+func TestRunReportGateData(t *testing.T) {
+	tests := []struct {
+		name      string
+		findings  string
+		post      string
+		live      string
+		check     string
+		wantIDs   []string
+		wantStat  []string
+		wantCount []int
+		complete  bool
+		wantFail  bool
+	}{
+		{
+			name: "tier-only-pass", findings: "[]", live: "skip", check: "critical",
+			wantIDs: []string{"findings", "live_threads"}, wantStat: []string{"pass", "skip"},
+			wantCount: []int{0, -1}, wantFail: false,
+		},
+		{
+			name:     "tier-only-fail",
+			findings: "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"critical"`, "true") + "]",
+			live:     "skip", check: "critical",
+			wantIDs: []string{"findings", "live_threads"}, wantStat: []string{"fail", "skip"},
+			wantCount: []int{1, -1}, wantFail: true,
+		},
+		{
+			name: "head-only-missing", findings: "[]", live: "skip", complete: true,
+			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"unknown", "skip"},
+			wantCount: []int{-1, -1}, wantFail: true,
+		},
+		{
+			name: "head-stale", findings: "[]", post: `{"head":"` + strings.Repeat("c", 40) + `"}`,
+			live: "skip", complete: true,
+			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"fail", "skip"},
+			wantCount: []int{-1, -1}, wantFail: true,
+		},
+		{
+			name: "head-pass", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
+			live: "skip", complete: true,
+			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"pass", "skip"},
+			wantCount: []int{-1, -1}, wantFail: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := fixture(t, tc.findings)
+			if tc.post != "" {
+				writeFile(t, ".review/5101/post.json", tc.post)
+			}
+			flags := core.ReportFlags{Check: tc.check, Completeness: tc.complete, Live: tc.live}
+			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})
+			if ref != nil {
+				t.Fatalf("Run refusal: %v", ref)
+			}
+			gate := resp.Data.Gate
+			if gate == nil {
+				t.Fatal("data.gate is nil on a gate run")
+			}
+			if gate.Passed != !tc.wantFail {
+				t.Errorf("passed = %v, want %v", gate.Passed, !tc.wantFail)
+			}
+			if gate.Passed == resp.GateFailed {
+				t.Errorf("passed = %v and GateFailed = %v disagree", gate.Passed, resp.GateFailed)
+			}
+			if len(gate.Dimensions) != len(tc.wantIDs) {
+				t.Fatalf("dimensions = %+v, want %d", gate.Dimensions, len(tc.wantIDs))
+			}
+			for i, dim := range gate.Dimensions {
+				if dim.ID != tc.wantIDs[i] || dim.Status != tc.wantStat[i] {
+					t.Errorf("dimension %d = %s/%s, want %s/%s", i, dim.ID, dim.Status, tc.wantIDs[i], tc.wantStat[i])
+				}
+				wantCount := tc.wantCount[i]
+				switch {
+				case wantCount < 0 && dim.Count != nil:
+					t.Errorf("dimension %d count = %d, want null", i, *dim.Count)
+				case wantCount >= 0 && (dim.Count == nil || *dim.Count != wantCount):
+					t.Errorf("dimension %d count = %v, want %d", i, dim.Count, wantCount)
+				}
+				if dim.Detail == "" {
+					t.Errorf("dimension %d carries no detail", i)
+				}
+			}
+		})
+	}
+
+	t.Run("advisory-run-carries-no-gate-block", func(t *testing.T) {
+		req := fixture(t, "[]")
+		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+		if ref != nil {
+			t.Fatalf("Run refusal: %v", ref)
+		}
+		if resp.Data.Gate != nil {
+			t.Errorf("data.gate = %+v on an advisory run, want none", resp.Data.Gate)
+		}
+	})
+}

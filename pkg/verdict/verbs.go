@@ -64,6 +64,68 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 	}, nil
 }
 
+// GateRequest composes the three CI gate dimensions. An empty MaxSeverity
+// skips the findings tier; Live stays empty for the auto posture.
+type GateRequest struct {
+	Invocation
+	MaxSeverity string
+	Live        string
+	RequireHead bool
+}
+
+// GateDimension is one gate dimension's verdict and its own tally. Count
+// leads so the struct scans no pointer bytes; the wire key order is fixed in
+// the JSON builder, not here.
+type GateDimension struct {
+	Count              *int
+	ID, Status, Detail string
+}
+
+// GateResponse carries the composed gate verdict. A failed gate is a verdict,
+// not a refusal: the error stays nil and Passed is false.
+type GateResponse struct {
+	Result
+	Dimensions []GateDimension
+	Passed     bool
+}
+
+// Gate runs the composed CI gate: findings at-or-above MaxSeverity, a
+// completed post for the fetched HEAD (RequireHead), and live unresolved
+// threads (Live, default auto). At least one dimension is required: Live
+// alone only sets the offline posture, so an empty request is a refusal. It
+// never posts, merges, or writes a store.
+func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error) {
+	if req.MaxSeverity == "" && !req.RequireHead {
+		return nil, refusalErr(&core.RefusalError{
+			Code: "bad-flags",
+			Message: "gate needs at least one dimension: set MaxSeverity or RequireHead " +
+				"(Live alone only sets the offline posture)",
+		})
+	}
+	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
+		ReadRequest: c.read(req.Repo, req.PR),
+		Flags: core.ReportFlags{
+			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live,
+		},
+		Effective: core.Defaults(),
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	// Gate is always populated here: the guard above rejects the request that
+	// sets no dimension, and every gating flag fills the block.
+	gate := resp.Data.Gate
+	dims := make([]GateDimension, 0, len(gate.Dimensions))
+	for _, dim := range gate.Dimensions {
+		dims = append(dims, GateDimension{ID: dim.ID, Status: dim.Status, Detail: dim.Detail, Count: dim.Count})
+	}
+	return &GateResponse{
+		Result:     resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
+		Passed:     gate.Passed,
+		Dimensions: dims,
+	}, nil
+}
+
 // NextRequest asks for the top actionable finding, optionally filtered.
 type NextRequest struct {
 	Invocation

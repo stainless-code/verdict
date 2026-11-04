@@ -96,6 +96,13 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error)
     Fix runs one bounded fix pass over an inline finding (or reports completion
     when nothing is actionable).
 
+func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error)
+    Gate runs the composed CI gate: findings at-or-above MaxSeverity,
+    a completed post for the fetched HEAD (RequireHead), and live unresolved
+    threads (Live, default auto). At least one dimension is required:
+    Live alone only sets the offline posture, so an empty request is a refusal.
+    It never posts, merges, or writes a store.
+
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
     Init scaffolds .review control files from a style preset.
 
@@ -194,6 +201,31 @@ type FixRequest struct {
 	Sig string
 }
     FixRequest runs one bounded fix pass over an inline finding.
+
+type GateDimension struct {
+	Count              *int
+	ID, Status, Detail string
+}
+    GateDimension is one gate dimension's verdict and its own tally. Count leads
+    so the struct scans no pointer bytes; the wire key order is fixed in the
+    JSON builder, not here.
+
+type GateRequest struct {
+	Invocation
+	MaxSeverity string
+	Live        string
+	RequireHead bool
+}
+    GateRequest composes the three CI gate dimensions. An empty MaxSeverity
+    skips the findings tier; Live stays empty for the auto posture.
+
+type GateResponse struct {
+	Result
+	Dimensions []GateDimension
+	Passed     bool
+}
+    GateResponse carries the composed gate verdict. A failed gate is a verdict,
+    not a refusal: the error stays nil and Passed is false.
 
 type InitRequest struct {
 	Preset string

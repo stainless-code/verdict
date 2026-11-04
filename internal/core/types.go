@@ -156,6 +156,42 @@ type ReportCompleteness struct { //nolint:govet // field order is the published 
 	PostedHead  *string `json:"posted_head"`
 }
 
+// ReportGate is the composed gate result: every dimension this run requested,
+// in `findings, head, live_threads` order. Passed is true iff no dimension
+// failed or read unknown, so a skip stays neutral.
+type ReportGate struct { //nolint:govet // published wire order: passed before dimensions
+	Passed     bool            `json:"passed"`
+	Dimensions []GateDimension `json:"dimensions"`
+}
+
+// GateDimension is one gate dimension's verdict. Detail is human text no
+// script parses; Count is the dimension's own tally, absent when the
+// dimension has none to report.
+type GateDimension struct { //nolint:govet // field order is the published property order
+	ID     string `enum:"findings|head|live_threads" json:"id"`
+	Status string `enum:"pass|fail|skip|unknown"     json:"status"`
+	Detail string `json:"detail"`
+	Count  *int   `json:"count"                      min:"0"`
+}
+
+// Wire renders the gate result in the published key order.
+func (g *ReportGate) Wire() *jq.Obj {
+	dims := make([]any, 0, len(g.Dimensions))
+	for i := range g.Dimensions {
+		dims = append(dims, g.Dimensions[i].wire())
+	}
+	return jq.NewObj("passed", g.Passed, "dimensions", dims)
+}
+
+// wire renders one dimension in the published key order.
+func (d *GateDimension) wire() *jq.Obj {
+	var count any
+	if d.Count != nil {
+		count = *d.Count
+	}
+	return jq.NewObj("id", d.ID, "status", d.Status, "detail", d.Detail, "count", count)
+}
+
 // ReportData is the report verb's typed --json data profile. Field order is
 // the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
@@ -172,6 +208,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Items        []FindingItem       `json:"items"`
 	Cost         *ReportCost         `json:"cost,omitempty"`
 	Completeness *ReportCompleteness `json:"completeness,omitempty"`
+	Gate         *ReportGate         `json:"gate,omitempty"`
 	CostRaw      *jq.Obj             `json:"-"`
 }
 

@@ -63,7 +63,24 @@ exit: 0
         "locator": "notes.txt:2",
         "rank": 1
       }
-    ]
+    ],
+    "gate": {
+      "passed": true,
+      "dimensions": [
+        {
+          "id": "findings",
+          "status": "pass",
+          "detail": "no open findings at-or-above critical",
+          "count": 0
+        },
+        {
+          "id": "live_threads",
+          "status": "skip",
+          "detail": "live recheck skipped: local bundle threads unreadable here",
+          "count": null
+        }
+      ]
+    }
   },
   "error": null
 }
