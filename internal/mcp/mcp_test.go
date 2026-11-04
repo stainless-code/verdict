@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -650,6 +651,81 @@ func TestCancellation(t *testing.T) {
 	}
 	if !got.IsError || !strings.Contains(got.Content[0].Text, "canceled") {
 		t.Fatalf("canceled result = %+v", got)
+	}
+}
+
+// TestServeEndsOnContextCancelWithoutEOF proves a canceled Serve context (the
+// binary's SIGINT/SIGTERM) ends a session whose stdin stays open: the
+// in-flight call's context is canceled, its canceled refusal is written, and
+// Serve returns without error and without waiting for the host to close its
+// pipe. Under -race it also pins that the read loop's dispatch and Serve's
+// wait for the handlers are ordered. The tool reports "running" through a
+// file, not a channel: a real signal carries no happens-before edge from the
+// dispatch, and a channel here would hand the race detector one.
+func TestServeEndsOnContextCancelWithoutEOF(t *testing.T) {
+	cfg := testConfig()
+	server := New(&cfg)
+	running := filepath.Join(t.TempDir(), "running")
+	server.tools = append(server.tools, runningWaitTool(running))
+	server.byName["wait"] = server.tools[len(server.tools)-1]
+	stdin, host := io.Pipe()
+	t.Cleanup(func() { host.Close() }) // unblocks the read loop Serve leaves behind
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, stdin, &out) }()
+	call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"wait","arguments":{}}}` + "\n"
+	if _, err := host.Write([]byte(call)); err != nil {
+		t.Fatal(err)
+	}
+	waitForFile(t, running)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve = %v, want nil on a context shutdown", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve still running 5s after its context was canceled, with stdin open")
+	}
+	var got callToolResult
+	if err := json.Unmarshal(decodeFrames(t, out.Bytes())["1"].Result, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsError || !strings.Contains(got.Content[0].Text, "canceled by shutdown") {
+		t.Fatalf("in-flight call result = %+v, want the canceled refusal", got)
+	}
+}
+
+// runningWaitTool is a tool that marks `running` on disk, then blocks until
+// its call context is canceled and refuses `canceled`.
+func runningWaitTool(running string) *tool {
+	return &tool{
+		name:    "wait",
+		request: reflect.TypeFor[struct{}](),
+		invoke: func(ctx context.Context, _ any) (*jq.Obj, *core.RefusalError) {
+			if err := os.WriteFile(running, nil, 0o600); err != nil {
+				return nil, &core.RefusalError{Code: "internal", Message: err.Error()}
+			}
+			<-ctx.Done()
+			return nil, &core.RefusalError{Code: "canceled", Message: "canceled by shutdown"}
+		},
+	}
+}
+
+// waitForFile polls until path exists, failing the test at a 5s deadline.
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never appeared", path)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

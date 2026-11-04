@@ -87,6 +87,10 @@ type Server struct { //nolint:govet // the grouping separates config, tools, and
 	inflight sync.WaitGroup
 	callMu   sync.Mutex
 	calls    map[string]context.CancelFunc
+	// stopping is set under callMu before Serve waits for the handlers. A call
+	// the read loop dispatches after that is refused, so inflight.Go never races
+	// inflight.Wait and no handler outlives the wait.
+	stopping bool
 	// closed is set under writeMu when Serve returns, so a read loop still
 	// holding a buffered line cannot write after the transport is done.
 	closed bool
@@ -194,6 +198,9 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		// The read stays blocked on stdin, which this process closes when it
 		// exits; the readLoop ctx check stops it dispatching more work.
 	}
+	s.callMu.Lock()
+	s.stopping = true
+	s.callMu.Unlock()
 	s.inflight.Wait()
 	cancel()
 	s.cancelAll()
@@ -351,8 +358,12 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 	callCtx, cancel := context.WithCancel(ctx)
 	key := string(req.ID)
 	s.callMu.Lock()
+	defer s.callMu.Unlock()
+	if s.stopping {
+		cancel()
+		return
+	}
 	s.calls[key] = cancel
-	s.callMu.Unlock()
 	s.inflight.Go(func() {
 		defer func() {
 			s.callMu.Lock()

@@ -47,28 +47,53 @@ func TestMCPChild(t *testing.T) {
 }
 
 // TestMCPShutdownSignalKillsTheToolTree pins GO-CLI-05 for the transport: a
-// SIGTERM to `verdict mcp` cancels the session, so the in-flight tool call sees
-// the cancel (its `canceled` refusal is written), its process group — the
-// verify grandchild — is dead, and the server exits within the bound instead of
-// dying to the default signal action and orphaning the tree for up to the
-// verify budget.
+// SIGINT or SIGTERM to `verdict mcp` cancels the session, so the in-flight
+// tool call sees the cancel (its `canceled` refusal is written), its process
+// group — the verify grandchild — is dead, and the server exits within the
+// bound instead of dying to the default signal action and orphaning the tree
+// for up to the verify budget.
 func TestMCPShutdownSignalKillsTheToolTree(t *testing.T) {
-	gcPID, stdout, elapsed, code := runMCPThenSignal(t, syscall.SIGTERM)
-	if code != cli.ExitBroke {
+	t.Run("SIGINT", func(t *testing.T) { t.Parallel(); assertMCPSignalKillsTree(t, syscall.SIGINT) })
+	t.Run("SIGTERM", func(t *testing.T) { t.Parallel(); assertMCPSignalKillsTree(t, syscall.SIGTERM) })
+}
+
+// assertMCPSignalKillsTree runs one signaled session and pins its exit code,
+// bound, canceled frame, race-clean stderr and dead grandchild.
+func assertMCPSignalKillsTree(t *testing.T, sig syscall.Signal) {
+	t.Helper()
+	got := runMCPThenSignal(t, sig)
+	if got.code != cli.ExitBroke {
 		t.Fatalf("exit = %d, want %d for a signaled server (a death by signal reports -1)\nstdout: %s",
-			code, cli.ExitBroke, stdout)
+			got.code, cli.ExitBroke, got.stdout)
 	}
-	if elapsed > mcpSignalExitBound {
-		t.Errorf("server took %s after SIGTERM, want within %s", elapsed, mcpSignalExitBound)
+	if got.elapsed > mcpSignalExitBound {
+		t.Errorf("server took %s after %v, want within %s", got.elapsed, sig, mcpSignalExitBound)
 	}
-	assertCanceledCall(t, stdout)
-	requireMCPChildGone(t, gcPID)
+	// Under -race the child is a race build, and the race detector only turns a
+	// zero exit into 66: with exit 3 a report would pass unnoticed.
+	if strings.Contains(got.stderr, "DATA RACE") {
+		t.Errorf("the server reported a data race:\n%s", got.stderr)
+	}
+	assertCanceledCall(t, got.stdout)
+	requireMCPChildGone(t, got.gcPID)
+}
+
+// mcpRun is one signaled `verdict mcp` session's observable outcome.
+//
+//nolint:govet // field order groups the process facts, then the streams
+type mcpRun struct {
+	gcPID   int
+	code    int
+	elapsed time.Duration
+	stdout  string
+	stderr  string
 }
 
 // runMCPThenSignal serves `verdict mcp` with a verify call in flight, sends sig
-// once the grandchild has reported its pid, and returns the exit code, stdout,
-// the grandchild pid, and the time the server took after the signal.
-func runMCPThenSignal(t *testing.T, sig syscall.Signal) (int, string, time.Duration, int) {
+// once the grandchild has reported its pid, and returns what the session did:
+// the grandchild pid, the exit code, the time the server took after the signal,
+// and both streams.
+func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 	t.Helper()
 	dir := t.TempDir()
 	writeVerifyCmd(t, dir, `sleep 30 & echo $! > gc.pid; wait`)
@@ -107,7 +132,10 @@ func runMCPThenSignal(t *testing.T, sig syscall.Signal) (int, string, time.Durat
 	if cmd.ProcessState.ExitCode() != cli.ExitBroke {
 		t.Logf("stderr: %s", stderr.String())
 	}
-	return gcPID, stdout.String(), elapsed, cmd.ProcessState.ExitCode()
+	return mcpRun{
+		gcPID: gcPID, code: cmd.ProcessState.ExitCode(), elapsed: elapsed,
+		stdout: stdout.String(), stderr: stderr.String(),
+	}
 }
 
 // waitForExit fails the test if the server is still running at the deadline.
