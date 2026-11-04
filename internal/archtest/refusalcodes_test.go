@@ -57,7 +57,9 @@ func TestRefusalCodesMatchRegistry(t *testing.T) {
 				code, strings.Join(emitted[code], ", "))
 		}
 	}
-	checkIncludes(t, "core.RefusalCodes()", registered, "emitted", slices.Sorted(maps.Keys(emitted)))
+	// The other direction: a registered code no emission site carries is dead
+	// weight in the published client union.
+	checkIncludes(t, "tree's emission sites", slices.Sorted(maps.Keys(emitted)), "registered refusal code", registered)
 }
 
 // TestRefusalCodeUnionMatchesRegistry proves the generated TypeScript union is
