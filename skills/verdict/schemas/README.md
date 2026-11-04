@@ -1,8 +1,8 @@
 # Published schemas
 
 These files are generated from the Go shape types in
-[`internal/schemagen/model.go`](../internal/schemagen/model.go). Never edit a
-`*.schema.json` file by hand.
+[`internal/schemagen/model.go`](https://github.com/stainless-code/verdict/blob/main/internal/schemagen/model.go).
+Never edit a `*.schema.json` file by hand.
 
 Regenerate after changing a store shape, a struct tag, or an overlay entry:
 
