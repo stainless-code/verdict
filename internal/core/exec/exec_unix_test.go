@@ -324,3 +324,31 @@ func killReportedPid(pidFile string) {
 		_ = syscall.Kill(pid, syscall.SIGKILL) //nolint:errcheck // best-effort reap; the helper may already be gone
 	}
 }
+
+// TestRunnerBothStreamsPastCapDoNotDeadlock proves a child that floods stdout
+// and stderr at once, both far past the cap and both larger than a pipe
+// buffer, still finishes: the capture discards the surplus without ever
+// pushing back on the child. Stdout keeps its head, stderr its tail.
+func TestRunnerBothStreamsPastCapDoNotDeadlock(t *testing.T) {
+	tctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	const limit = 32
+	script := `head -c 300000 /dev/zero | tr '\0' a >&2 & ` +
+		`head -c 300000 /dev/zero | tr '\0' b; wait; printf END >&2`
+	start := time.Now()
+	res, err := Runner{OutputCap: limit}.Run(tctx, core.Command{Argv: []string{"sh", "-c", script}})
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("Run took %v: a flooded pipe stalled the child", elapsed)
+	}
+	if _, ok := errors.AsType[*core.OutputCappedError](err); !ok {
+		t.Fatalf("err = %v, want OutputCappedError for the over-cap stdout", err)
+	}
+	wantOut := strings.Repeat("b", limit) + truncationNotice(captureHead, limit)
+	if res.Stdout != wantOut {
+		t.Errorf("Stdout = %q, want the first %d bytes plus the notice", res.Stdout, limit)
+	}
+	wantErr := strings.Repeat("a", limit-len("END")) + "END" + truncationNotice(captureTail, limit)
+	if res.Stderr != wantErr || !res.StderrTruncated {
+		t.Errorf("Stderr = %q (truncated %v), want the last %d bytes plus the notice", res.Stderr, res.StderrTruncated, limit)
+	}
+}
