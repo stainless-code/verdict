@@ -211,6 +211,7 @@ the PR template checklist. Verbs are: `fetch`, `post`, `triage`,
 `trend`, `learn`, `init`, `threads`, `skill`, `upgrade`, `uninstall`
 — plus the hidden `mcp` stdio transport. If your change adds or
 renames one, the templates, the manual, and `cmd/verdict/usage.go`
-must agree.
+must agree; [`docs/adding-a-verb.md`](docs/adding-a-verb.md) is the
+step-by-step list of every file a new verb touches.
 
 Security bugs follow `SECURITY.md`, never the public templates.
