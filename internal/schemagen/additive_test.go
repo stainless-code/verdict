@@ -13,7 +13,7 @@ import (
 )
 
 // baselineDir is the committed snapshot of the accepted published schemas.
-// `make schemas-baseline` rewrites it; see schemas/README.md.
+// `make schemas-baseline` re-takes it; see schemas/README.md.
 const baselineDir = "internal/schemagen/testdata/baseline"
 
 // TestSchemasStayAdditive compares every generated schema with the committed
@@ -22,9 +22,14 @@ const baselineDir = "internal/schemagen/testdata/baseline"
 // key, closed additionalProperties, narrowed types or bounds, or a changed
 // $ref/const. Additions pass.
 //
-// Accepting a deliberate break is explicit: run `make schemas-baseline` and
-// commit the baseline diff in the same change, where reviewers see exactly
-// what stopped being compatible.
+// Re-take the baseline (`make schemas-baseline`) in the same change whenever
+// the generator's shape moves at all, additions included. A baseline older
+// than a field cannot report that field's removal — the comparison sees no
+// delta — so a snapshot left behind is a gate that cannot fail for everything
+// added after it.
+//
+// Accepting a deliberate break is therefore explicit too: the baseline diff in
+// the same change shows reviewers exactly what stopped being compatible.
 func TestSchemasStayAdditive(t *testing.T) {
 	files, err := Generate()
 	if err != nil {

@@ -125,9 +125,10 @@ schemas:
 schemas-check:
 	$(GO) run ./cmd/schemagen
 
-# schemas-baseline snapshots the currently accepted published schemas. The
+# schemas-baseline re-takes the snapshot of the published schemas. The
 # additive-evolution test compares the generator against this snapshot; update
-# it, in the same commit, only for a deliberate breaking change.
+# it, in the same commit, whenever the generator's shape moves — an addition
+# included, since a stale snapshot cannot report the new field's removal.
 .PHONY: schemas-baseline
 schemas-baseline:
 	$(GO) run ./cmd/schemagen -write -dir internal/schemagen/testdata/baseline
