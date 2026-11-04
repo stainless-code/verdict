@@ -85,8 +85,8 @@ if jq -e 'select(.id == 2).result.tools | all(.[]; (.description | type == "stri
 else
   bad "a tool is missing title or annotations"
 fi
-if jq -e 'select(.id == 2).result.tools | (map(select(.name == "post"))[0].annotations | .destructiveHint == true and .openWorldHint == true and .readOnlyHint == false) and (map(select(.name == "report"))[0].annotations | .readOnlyHint == true and .idempotentHint == true)' <"$MCP_OUT" >/dev/null; then
-  good "post is destructive+openWorld and report is readOnly+idempotent"
+if jq -e 'select(.id == 2).result.tools | (map(select(.name == "post"))[0].annotations | .destructiveHint == true and .openWorldHint == true and .readOnlyHint == false) and (map(select(.name == "report"))[0].annotations | .readOnlyHint == false and .idempotentHint == true)' <"$MCP_OUT" >/dev/null; then
+  good "post is destructive+openWorld and report is idempotent, not readOnly"
 else
   bad "the post/report annotation contract drifted"
 fi
@@ -156,8 +156,8 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 8) and (map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
-  good "--read-only exposes only the 8 non-writing tools"
+if jq -e 'select(.id == 2).result.tools | (length == 7) and (map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+  good "--read-only exposes only the 7 non-submitting tools"
 else
   bad "--read-only tool list drifted"
 fi

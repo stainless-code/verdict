@@ -326,8 +326,7 @@ func TestPostTool(t *testing.T) {
 	}
 }
 
-// TestReadOnlyPolicy proves --read-only filters the tool list and makes a
-// write tool a hidden-tool error naming --read-only.
+// TestReadOnlyPolicy pins what --read-only serves and what it hides.
 //
 //nolint:revive,cyclop // the policy matrix reads as one assertion block
 func TestReadOnlyPolicy(t *testing.T) {
@@ -339,7 +338,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 		t.Fatal("no read-only tools")
 	}
 	for _, tool := range readOnly {
-		if !tool.readOnly {
+		if !tool.readOnly && !tool.servedWhenReadOnly {
 			t.Errorf("%s leaked into --read-only", tool.name)
 		}
 	}
@@ -352,13 +351,17 @@ func TestReadOnlyPolicy(t *testing.T) {
 	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
+	kept := false
 	for _, tool := range list.Tools {
-		if tool.Name == "record" || tool.Name == "post" {
+		switch tool.Name {
+		case "record", "post", "threads":
 			t.Errorf("read-only list exposed %q", tool.Name)
+		case "report":
+			kept = true
 		}
-		if !tool.Annotations.ReadOnlyHint {
-			t.Errorf("%s readOnlyHint = false", tool.Name)
-		}
+	}
+	if !kept {
+		t.Error("read-only list dropped report")
 	}
 	if frames["2"].Error == nil || frames["2"].Error.Code != codeInvalidParams {
 		t.Fatalf("record in read-only = %+v, want -32602", frames["2"].Error)
@@ -367,6 +370,93 @@ func TestReadOnlyPolicy(t *testing.T) {
 		t.Errorf("record in read-only = %q, want a hidden-tool error naming --read-only", msg)
 	}
 }
+
+// TestReadOnlyReportSchema proves the read-only schema offers no writing arg.
+func TestReadOnlyReportSchema(t *testing.T) {
+	t.Parallel()
+	report := toolNamed(t, readOnlyList(t), "report")
+	if report.Annotations.ReadOnlyHint {
+		t.Error("report readOnlyHint = true, but --output and --sarif write files")
+	}
+	props := schemaProps(t, report.InputSchema, argFlags)
+	for _, arg := range []string{"output", "sarif"} {
+		if _, offered := props[arg]; offered {
+			t.Errorf("read-only report schema still offers %q", arg)
+		}
+	}
+	if _, ok := props[argStatus]; !ok {
+		t.Error("read-only report schema dropped the status filter")
+	}
+}
+
+func readOnlyList(t *testing.T) toolsListResult {
+	t.Helper()
+	cfg := testConfig()
+	cfg.ReadOnly = true
+	frames := serve(t, &cfg, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	var list toolsListResult
+	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	return list
+}
+
+func toolNamed(t *testing.T, list toolsListResult, name string) toolDescriptor {
+	t.Helper()
+	for _, tool := range list.Tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("tools/list has no %q", name)
+	return toolDescriptor{}
+}
+
+// TestReadOnlyReportRefusesArtifactArgs proves --read-only refuses, not hides.
+func TestReadOnlyReportRefusesArtifactArgs(t *testing.T) {
+	fixture(t)
+	const call = `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":` +
+		`{"name":"report","arguments":{"repo":"acme/app","pr":"5101","flags":{"output":"out.md"}}}}`
+	readOnly := testConfig()
+	readOnly.ReadOnly = true
+	frames := serve(t, &readOnly, call)
+	if frames["1"].Error == nil || frames["1"].Error.Code != codeInvalidParams {
+		t.Fatalf("report --output in read-only = %+v, want -32602", frames["1"].Error)
+	}
+	if msg := frames["1"].Error.Message; !strings.Contains(msg, `unknown argument "flags.output"`) {
+		t.Errorf("report --output in read-only = %q, want the unknown-argument refusal", msg)
+	}
+	if _, err := os.Stat("out.md"); !os.IsNotExist(err) {
+		t.Fatalf("read-only report wrote out.md: %v", err)
+	}
+	open := testConfig()
+	frames = serve(t, &open, call)
+	if frames["1"].Error != nil {
+		t.Fatalf("report --output without --read-only = %+v", frames["1"].Error)
+	}
+	if _, err := os.Stat("out.md"); err != nil {
+		t.Errorf("report --output without --read-only wrote no file: %v", err)
+	}
+}
+
+func schemaProps(t *testing.T, schema map[string]any, key string) map[string]any {
+	t.Helper()
+	parent, ok := schema[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatal("schema has no properties")
+	}
+	child, ok := parent[key].(map[string]any)
+	if !ok {
+		t.Fatalf("schema has no %q object", key)
+	}
+	props, ok := child[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatalf("%q has no properties", key)
+	}
+	return props
+}
+
+// TestWriteToolsNeverClaimReadOnly holds every hint to its own description.
 
 // TestServeLifecycle drives initialize -> tools/list -> tools/call
 // success -> refusal -> ping -> malformed frames in one session.
@@ -765,8 +855,8 @@ func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result
 
 func (c *threadsCommander) LookPath(string) error { return nil }
 
-// TestThreadsTool proves the MCP threads tool is read-only/open-world, maps
-// into the refresh service, and returns the same data profile as the CLI.
+// TestThreadsTool proves the MCP threads tool refreshes its bundle snapshot, is
+// open-world, and returns the same data profile as the CLI.
 //
 //nolint:revive // the registry/refresh matrix reads as one assertion block
 func TestThreadsTool(t *testing.T) {
@@ -783,7 +873,7 @@ func TestThreadsTool(t *testing.T) {
 	if registered == nil {
 		t.Fatal("threads tool is not registered")
 	}
-	if !registered.readOnly || !registered.openWorld || !registered.idempotent {
+	if registered.readOnly || !registered.openWorld || !registered.idempotent {
 		t.Errorf("threads annotations = %+v", registered)
 	}
 	page := `{"data":{"repository":{"pullRequest":{"reviewThreads":{` +

@@ -539,10 +539,12 @@ become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
 a review and calls GitHub, so it is not exposed under `--read-only`.
 
-`--read-only` exposes only the eight non-submitting tools (`report`, `next`,
-`show`, `threads`, `trend`, `ready`, `doctor`, `check-tree`; `threads` refreshes
-its bundle snapshot and nothing else) and is mutually exclusive with
-`--operator`. Every review verb except the human-owned `triage` is exposed by
+`--read-only` exposes only the seven non-submitting tools (`report`, `next`,
+`show`, `trend`, `ready`, `doctor`, `check-tree`) and is mutually exclusive with
+`--operator`. `report` writes nothing there: the surface drops its `output`
+and `sarif` arguments and refuses them as unknown. `threads` is not exposed at
+all, because it rewrites `.review/<pr>/threads.json` from the host. Every review
+verb except the human-owned `triage` is exposed by
 default because the host already authorizes the binary and its credentials.
 A call to a tool the flags hide is a JSON-RPC `-32602` error whose message and
 `data` name the tool and the flag combination that exposes it (`record` under
@@ -554,7 +556,9 @@ allowed to flip statuses; it is never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
 real behavior: `post` is destructive and open-world, `fetch` is open-world,
-`report` is read-only and idempotent. Descriptions state what the tool does,
+`report` is idempotent and carries no `readOnlyHint` because `output`/`sarif`
+write files, and `threads` carries none because it writes `threads.json`.
+Descriptions state what the tool does,
 when to call it, and what it writes or sends. `initialize` returns an
 `instructions` string with the same doctrine (fetch, review, post; one review;
 refusals carry a `hint`; never `triage` without `--operator`), so an MCP-only

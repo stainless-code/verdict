@@ -35,9 +35,14 @@ func newArgs(raw json.RawMessage) (*args, error) {
 	return &args{obj: obj}, nil
 }
 
-func decodeRequest[Req any](raw json.RawMessage, required []string, decode func(*Req, *args)) (*Req, error) {
+func decodeRequest[Req any](
+	raw json.RawMessage, required []string, decode func(*Req, *args), refused map[string]bool,
+) (*Req, error) {
 	a, err := newArgs(raw)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.refuse(refused); err != nil {
 		return nil, err
 	}
 	a.require(required)
@@ -62,6 +67,40 @@ func (a *args) take(key string) (json.RawMessage, bool) {
 		delete(a.obj, key)
 	}
 	return raw, ok
+}
+
+func (a *args) refuse(names map[string]bool) error {
+	if len(names) == 0 {
+		return nil
+	}
+	if key := refusedKey(a.obj, names); key != "" {
+		return unknownArgument(key)
+	}
+	if key := refusedKey(flagsObject(a.obj), names); key != "" {
+		return unknownArgument(argFlags + "." + key)
+	}
+	return nil
+}
+
+func flagsObject(obj map[string]json.RawMessage) map[string]json.RawMessage {
+	var flags map[string]json.RawMessage
+	if json.Unmarshal(obj[argFlags], &flags) != nil {
+		return nil
+	}
+	return flags
+}
+
+func unknownArgument(key string) error {
+	return paramErrorf("unknown argument %q", key)
+}
+
+func refusedKey(obj map[string]json.RawMessage, names map[string]bool) string {
+	for _, name := range slices.Sorted(maps.Keys(names)) {
+		if _, ok := obj[name]; ok {
+			return name
+		}
+	}
+	return ""
 }
 
 func (a *args) require(required []string) {
@@ -147,7 +186,7 @@ func (a *args) flags(decode func(*args)) {
 		return
 	}
 	if unknown := firstKey(sub.obj); unknown != "" {
-		a.fail(paramErrorf("unknown argument %q", argFlags+"."+unknown))
+		a.fail(unknownArgument(argFlags + "." + unknown))
 	}
 }
 
@@ -156,7 +195,7 @@ func (a *args) done() error {
 		return a.err
 	}
 	if unknown := firstKey(a.obj); unknown != "" {
-		return paramErrorf("unknown argument %q", unknown)
+		return unknownArgument(unknown)
 	}
 	return nil
 }

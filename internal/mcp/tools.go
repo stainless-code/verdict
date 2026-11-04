@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
@@ -46,17 +47,19 @@ var (
 )
 
 type toolMeta struct {
-	title       string
-	readOnly    bool
-	destructive bool
-	idempotent  bool
-	openWorld   bool
+	title              string
+	readOnly           bool
+	destructive        bool
+	idempotent         bool
+	openWorld          bool
+	servedWhenReadOnly bool
 }
 
 type toolSpec struct {
 	name        string
 	description string
 	omit        map[string]bool
+	writeArgs   map[string]string
 	required    []string
 	meta        toolMeta
 }
@@ -66,21 +69,24 @@ type toolDeps struct {
 }
 
 type tool struct { //nolint:govet // the grouping documents the descriptor; alignment is irrelevant
-	name         string
-	title        string
-	description  string
-	request      schemaSource
-	omit         map[string]bool
-	required     []string
-	deps         toolDeps
-	readOnly     bool
-	destructive  bool
-	idempotent   bool
-	openWorld    bool
-	operatorOnly bool
-	decode       func(json.RawMessage) (any, error)
-	wire         func(*bindings, any)
-	invoke       func(context.Context, any) (*jq.Obj, *core.RefusalError)
+	name               string
+	title              string
+	description        string
+	request            schemaSource
+	omit               map[string]bool
+	required           []string
+	deps               toolDeps
+	readOnly           bool
+	servedWhenReadOnly bool
+	destructive        bool
+	idempotent         bool
+	openWorld          bool
+	operatorOnly       bool
+	writeArgs          map[string]string
+	refusedArgs        map[string]bool
+	decode             func(json.RawMessage) (any, error)
+	wire               func(*bindings, any)
+	invoke             func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
 func allTools(readOnly, operator bool) []*tool {
@@ -197,8 +203,9 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Render the offline review report (ranked findings, counts, markdown/SARIF). " +
 				"Call after fetch or record; the follow-up is next. Reads the bundle and writes " +
 				"only artifacts you request.",
-			required: requiredRepoPr,
-			meta:     toolMeta{title: "Render report", readOnly: true, idempotent: true},
+			writeArgs: map[string]string{"Output": "output", "Sarif": "sarif"},
+			required:  requiredRepoPr,
+			meta:      toolMeta{title: "Render report", idempotent: true, servedWhenReadOnly: true},
 		}, toolDeps{}, decodeReport, wireReport, invokeReport),
 		directTool(&toolSpec{
 			name: "show",
@@ -214,7 +221,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"resolution state before a re-review or merge readiness. Reads the host; writes " +
 				"threads.json only.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Refresh review threads", readOnly: true, idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Refresh review threads", idempotent: true, openWorld: true},
 		}, toolDeps{}, decodeThreads, wireThreads, fetchcore.RunThreads,
 			func(resp *fetchcore.ThreadsResponse) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
@@ -246,6 +253,9 @@ func allTools(readOnly, operator bool) []*tool {
 	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
+		if readOnly {
+			t.narrowReadOnly()
+		}
 		if !exposed(t, readOnly, operator) {
 			continue
 		}
@@ -254,8 +264,21 @@ func allTools(readOnly, operator bool) []*tool {
 	return kept
 }
 
+func (t *tool) narrowReadOnly() {
+	if len(t.writeArgs) == 0 {
+		return
+	}
+	omit := make(map[string]bool, len(t.omit)+len(t.writeArgs))
+	maps.Copy(omit, t.omit)
+	for field, arg := range t.writeArgs {
+		omit[field] = true
+		t.refusedArgs[arg] = true
+	}
+	t.omit = omit
+}
+
 func exposed(t *tool, readOnly, operator bool) bool {
-	if readOnly && !t.readOnly {
+	if readOnly && !t.readOnly && !t.servedWhenReadOnly {
 		return false
 	}
 	return !t.operatorOnly || (!readOnly && operator)
@@ -290,35 +313,39 @@ func newTool[Req any](
 	decode func(*Req, *args), wire func(*bindings, *Req),
 	run func(context.Context, *Req) (*jq.Obj, *core.RefusalError),
 ) *tool {
-	return &tool{
-		name:         spec.name,
-		title:        spec.meta.title,
-		description:  spec.description,
-		request:      schemaOf[Req](),
-		omit:         spec.omit,
-		required:     spec.required,
-		deps:         deps,
-		readOnly:     spec.meta.readOnly,
-		destructive:  spec.meta.destructive,
-		idempotent:   spec.meta.idempotent,
-		openWorld:    spec.meta.openWorld,
-		operatorOnly: false,
-		decode: func(raw json.RawMessage) (any, error) {
-			return decodeRequest[Req](raw, spec.required, decode)
-		},
-		wire: func(b *bindings, raw any) {
-			if req, ok := raw.(*Req); ok {
-				wire(b, req)
-			}
-		},
-		invoke: func(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
-			req, ok := raw.(*Req)
-			if !ok {
-				return nil, internalRefusal()
-			}
-			return run(ctx, req)
-		},
+	t := &tool{
+		name:               spec.name,
+		title:              spec.meta.title,
+		description:        spec.description,
+		request:            schemaOf[Req](),
+		omit:               spec.omit,
+		writeArgs:          spec.writeArgs,
+		required:           spec.required,
+		deps:               deps,
+		readOnly:           spec.meta.readOnly,
+		servedWhenReadOnly: spec.meta.servedWhenReadOnly,
+		destructive:        spec.meta.destructive,
+		idempotent:         spec.meta.idempotent,
+		openWorld:          spec.meta.openWorld,
+		operatorOnly:       false,
+		refusedArgs:        map[string]bool{},
 	}
+	t.decode = func(raw json.RawMessage) (any, error) {
+		return decodeRequest[Req](raw, spec.required, decode, t.refusedArgs)
+	}
+	t.wire = func(b *bindings, raw any) {
+		if req, ok := raw.(*Req); ok {
+			wire(b, req)
+		}
+	}
+	t.invoke = func(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
+		req, ok := raw.(*Req)
+		if !ok {
+			return nil, internalRefusal()
+		}
+		return run(ctx, req)
+	}
+	return t
 }
 
 func invokeService[R, S any](
