@@ -3,6 +3,8 @@ package jq
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"maps"
 	"strings"
 )
@@ -264,12 +266,16 @@ func decodeSequence(data []byte) ([]any, error) {
 		}
 		out = append(out, v)
 	}
-	// A trailing partial value surfaces here: More() is false but the
-	// decoder holds an error for truncated input.
-	if _, err := dec.Token(); err == nil {
-		return nil, Sealed(opDecodeJSONSeq, errTrailingData)
+	// More() is also false in front of a stray closer (`}` or `]`), so only a
+	// clean EOF means the stream is done: anything else is trailing garbage.
+	_, err := dec.Token()
+	if errors.Is(err, io.EOF) {
+		return out, nil
 	}
-	return out, nil
+	if err == nil {
+		err = errTrailingData
+	}
+	return nil, Sealed(opDecodeJSONSeq, err)
 }
 
 // nextToken reads one token, sealing decoder errors.
