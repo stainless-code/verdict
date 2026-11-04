@@ -560,11 +560,16 @@ func mustJSON(t *testing.T, s string) string {
 }
 
 // TestRunRecordKeepsFetchSnapshot proves the fetch-time artifact survives the
-// run: hunks.tsv is what post/record validate anchors against, so a merge
-// that deletes it destroys the pinned snapshot the operator fetched.
+// run untouched: hunks.tsv is what post/record validate anchors against, so a
+// merge that deletes or regenerates it destroys the pinned snapshot the
+// operator fetched. The fixture pre-seeds a snapshot whose row differs from
+// anything full.diff would derive (NEW 1-99, not 1-3), so a rebuild from the
+// diff is as visible as a deletion.
 func TestRunRecordKeepsFetchSnapshot(t *testing.T) {
+	const pinned = "notes.txt\tNEW\t1\t99\n"
 	writeStoreBundle(t, "local-snap",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
+	writeFile(t, ".review/local-snap/hunks.tsv", pinned)
 	c := &collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-snap")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -573,8 +578,11 @@ func TestRunRecordKeepsFetchSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hunks.tsv after the run: %v", err)
 	}
-	if !strings.Contains(string(raw), "notes.txt\tNEW\t1\t3") {
-		t.Errorf("hunks.tsv = %q, want the pinned notes.txt NEW 1-3 row", raw)
+	if string(raw) != pinned {
+		t.Errorf("hunks.tsv = %q, want the pinned fetch-time snapshot %q untouched", raw, pinned)
+	}
+	if hasWarning(c.warns, "no fetch-time hunk snapshot") {
+		t.Errorf("warnings = %v; the pinned snapshot exists, nothing to rebuild", c.warns)
 	}
 }
 
@@ -623,6 +631,14 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 			name:       "verified-wrong-head-only-logs",
 			claims:     `[{"sig":"` + sig + `","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"ccccccc"}]`,
 			wantStatus: "open", wantEvent: "revalidation", wantNote: "VERIFIED: go test ./...",
+		},
+		{
+			// The manual's evidence tuple is {sig, verdict, verifyCmd,
+			// resultHead}: a VERIFIED claim naming no command proves nothing
+			// reproducible, so it only logs even when the head matches.
+			name:       "verified-without-verify-cmd-only-logs",
+			claims:     `[{"sig":"` + sig + `","verdict":"VERIFIED","resultHead":"aaaaaaa"}]`,
+			wantStatus: "open", wantEvent: "revalidation", wantNote: "VERIFIED",
 		},
 		{
 			name: "not-verified-reopens", prior: addressedPrior,
