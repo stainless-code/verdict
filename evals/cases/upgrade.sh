@@ -198,7 +198,7 @@ if [ -n "$PORT" ]; then
     bad "U1 the replaced binary is unchanged or mis-versioned"
   fi
   if grep -Fq -- '--certificate-identity-regexp' "$COSIGN_LOG" \
-    && grep -Fq 'stainless-code/verdict/' "$COSIGN_LOG" \
+    && grep -Fq -- "$(jq -r .cosign.identityRegexp "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG" \
     && grep -Fq -- '--certificate-oidc-issuer' "$COSIGN_LOG" \
     && grep -Fq "$(jq -r .cosign.issuer "$EVAL_ROOT/release/contract.json")" "$COSIGN_LOG"; then
     good "U1 cosign verifies the contract identity/issuer"
