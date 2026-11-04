@@ -363,6 +363,10 @@ jobs:
         shell: bash
         run: make cross
 
+      - name: Ratchet the release binary and the module graph
+        shell: bash
+        run: make size
+
   fuzz:
     name: 🎲 Fuzz (nightly)
     needs: changes
@@ -646,17 +650,22 @@ jobs:
     # appear in exactly one list (`internal/archtest` fails the build on
     # drift), and only a required lane can fail this gate: a required lane
     # must be literally `success` — a skip reports success to branch
-    # protection, so a skip fails here too — with two exceptions: a lane
+    # protection, so a skip fails here too — with three exceptions: a lane
     # `changes` gated off on a diff it proved docs-only (`changes` itself is
-    # never accepted skipped), and a MACOS_JOBS lane on a pull request, where
-    # those legs are never scheduled. GitHub caps concurrent macOS jobs per
-    # org, so MACOS_JOBS run on main pushes, the nightly schedule, and
-    # `workflow_dispatch` only, and stay required on those events.
+    # never accepted skipped), a MACOS_JOBS lane on a pull request, where those
+    # legs are never scheduled, and a MACOS_JOBS lane on MACOS_ADVISORY_EVENTS,
+    # where it only has to report a result. GitHub caps concurrent macOS jobs
+    # per org, so MACOS_JOBS run on main pushes, the nightly schedule, and
+    # `workflow_dispatch` only: required on the nightly, advisory on a main
+    # push or a manual dispatch, where a macOS runner GitHub never assigns
+    # cancels the leg about fifteen minutes in with no step run and must not
+    # turn main red for it.
     # ADVISORY_JOBS are reported but never block: a schedule-only lane reports
     # `skipped` on a pull request, and a skip is not a pass.
     env:
       REQUIRED_JOBS: changes format lint installer installers installers-macos installers-windows go go-macos go-windows cross evals evals-macos docs ts-client audit release-dry-run
       MACOS_JOBS: installers-macos go-macos evals-macos
+      MACOS_ADVISORY_EVENTS: push workflow_dispatch
       ADVISORY_JOBS: fuzz
     needs:
       [
@@ -692,19 +701,26 @@ jobs:
         run: |
           # One data-driven gate over the declaration above: report every
           # lane, then fail only on a required lane that is neither `success`
-          # nor a docs-only fast-path skip, an advisory lane that never
-          # reported, or a job nobody declared.
-          printf '%s' "$NEEDS" | jq -r --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" '
+          # nor a docs-only fast-path skip, a macOS lane with no result on an
+          # advisory event, an advisory lane that never reported, or a job
+          # nobody declared.
+          printf '%s' "$NEEDS" | jq -r --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" --arg mac "$MACOS_JOBS" --arg madv "$MACOS_ADVISORY_EVENTS" --arg ev "$EVENT" '
             def lanes: split(" ") | map(select(length > 0));
             ($req | lanes) as $r | ($adv | lanes) as $a
+            | ($mac | lanes) as $m | ($madv | lanes) as $me
             | to_entries[]
             | .key as $k | (.value.result // "") as $res
-            | if ($r | index($k)) then "required \($k): \($res)"
+            | if ($r | index($k)) then
+                "required \($k): \($res)"
+                  + (if ($m | index($k)) and ($me | index($ev)) then " (macOS leg, a non-success result does not block on \($ev))"
+                     elif ($m | index($k)) and $ev == "pull_request" then " (macOS leg, not scheduled on a pull request)"
+                     else "" end)
               elif ($a | index($k)) then "advisory \($k): \($res) (never blocks)"
               else "undeclared \($k): \($res)" end'
-          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" --arg mac "$MACOS_JOBS" --arg full "$FULL" --arg ev "$EVENT" '
+          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" --arg mac "$MACOS_JOBS" --arg madv "$MACOS_ADVISORY_EVENTS" --arg full "$FULL" --arg ev "$EVENT" '
             def lanes: split(" ") | map(select(length > 0));
             ($req | lanes) as $r | ($adv | lanes) as $a | ($mac | lanes) as $m
+            | ($madv | lanes) as $me
             | [to_entries[].key] as $have
             | [((($r + $a) - $have)[]) | "declared but absent from needs: \(.)"]
               + [(($m - $r)[]) | "macOS lane not required: \(.)"]
@@ -714,7 +730,8 @@ jobs:
                      (if $res == "success" then empty
                       elif $res == "skipped" and $full != "true" and $k != "changes" then empty
                       elif $res == "skipped" and $ev == "pull_request" and ($m | index($k)) then empty
-                      else "required but \($res): \($k)" end)
+                      elif ($m | index($k)) and ($me | index($ev)) and $res != "" then empty
+                      else "required but \(if $res == "" then "nothing" else $res end): \($k)" end)
                    elif ($a | index($k)) then
                      (if $res == "" then "advisory but silent: \($k)" else empty end)
                    else "undeclared in needs: \($k)" end]

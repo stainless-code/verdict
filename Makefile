@@ -44,6 +44,12 @@ vet:
 cross:
 	sh scripts/cross.sh
 
+# size builds every shipped GOOS/GOARCH with the release flags and fails when a
+# binary or the module graph grows past scripts/size-baseline.txt.
+.PHONY: size
+size:
+	sh scripts/size.sh
+
 .PHONY: test-race
 test-race:
 	$(GO) test -race -shuffle=on -count=1 ./...
