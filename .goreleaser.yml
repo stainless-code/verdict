@@ -49,6 +49,12 @@ release:
     - glob: install.sh
     - glob: install.ps1
 
+# The release body is CHANGELOG.md's section for the tagged version, passed as
+# `--release-notes` (scripts/release.sh). GoReleaser's own changelog is off so a
+# run without that file cannot publish a commit list of shas and merges.
+changelog:
+  disable: true
+
 checksum:
   name_template: checksums.txt
   algorithm: sha256

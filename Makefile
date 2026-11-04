@@ -100,11 +100,14 @@ formula-audit:
 # npm tree, the tap formula (rendered and brew-audited), `npm pack` content
 # checks per package, and the contract tests (shim resolution included). No
 # tag, no cosign, no attestation, no registry, no tap push. Needs `bun
-# install` (the client build) and node for the npm scripts.
+# install` (the client build) and node for the npm scripts. It also extracts
+# the release notes GoReleaser will publish, so an unreadable CHANGELOG fails
+# here rather than mid-release.
 .PHONY: release-dry-run
 release-dry-run:
 	@[ -x node_modules/.bin/tsc ] || { echo "release-dry-run: node_modules/.bin/tsc missing: run bun install first" >&2; exit 1; }
 	$(GORELEASER) check
+	node scripts/release-notes.mjs "$$(node -p "require('./package.json').version")" > /dev/null
 	rm -rf dist
 	$(GORELEASER) release --snapshot --clean --skip=sign,sbom
 	mkdir -p dist/fakebin

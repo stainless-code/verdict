@@ -146,7 +146,9 @@ stage_goreleaser() {
       ;;
     absent) ;;
   esac
-  goreleaser release --clean
+  mkdir -p dist
+  node scripts/release-notes.mjs "$VERSION" > "dist/release-notes.md"
+  goreleaser release --clean --release-notes "dist/release-notes.md"
 }
 
 npm_packages() {
