@@ -105,6 +105,7 @@ type ShowFix struct { //nolint:govet // field order is the published property or
 	Files      []string    `json:"files"`
 	Locator    string      `json:"locator"`
 	Suggestion *string     `json:"suggestion"`
+	Brief      *Brief      `anyOf:"null"                                 json:"brief"`
 	VerifyHint *VerifyHint `anyOf:"null"                                 json:"verify_hint"`
 	Caution    string      `json:"caution"`
 }
@@ -117,7 +118,7 @@ type VerifyHint struct { //nolint:govet // field order is the published property
 }
 
 // Wire renders the fix block in the published key order (sig, status,
-// severity, files, locator, suggestion, verify_hint, caution).
+// severity, files, locator, suggestion, brief, verify_hint, caution).
 func (f *ShowFix) Wire() *jq.Obj {
 	o := jq.NewObj(
 		"sig", f.Sig,
@@ -127,6 +128,11 @@ func (f *ShowFix) Wire() *jq.Obj {
 		"locator", f.Locator,
 		"suggestion", nullableString(f.Suggestion),
 	)
+	if f.Brief == nil {
+		o.Set("brief", nil)
+	} else {
+		o.Set("brief", f.Brief.Wire())
+	}
 	if f.VerifyHint == nil {
 		o.Set("verify_hint", nil)
 	} else {

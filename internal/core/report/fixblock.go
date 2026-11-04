@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -29,6 +30,7 @@ func buildFix(rec *jq.Obj, dir string) *core.ShowFix {
 		Files:      recordFiles(rec),
 		Locator:    recordLocator(rec),
 		Suggestion: recordStringPtr(rec, "suggestion"),
+		Brief:      brief.FromRecord(rec),
 		VerifyHint: fixVerifyHint(dir, full),
 		Caution:    fixCaution,
 	}

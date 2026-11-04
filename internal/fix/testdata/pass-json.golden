@@ -15,6 +15,7 @@ exit: 0
     "locator": "app.txt:2",
     "severity": "critical",
     "body": "Critical boundary bug here.",
+    "brief": null,
     "anchors": {
       "path": "app.txt",
       "line": "2",

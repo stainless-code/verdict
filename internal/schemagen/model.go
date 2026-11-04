@@ -54,6 +54,12 @@ type SectionTag = core.SectionTag
 // FindingEntry is core's merged finding.
 type FindingEntry = core.FindingEntry
 
+// Brief is core's per-finding repair brief.
+type Brief = core.Brief
+
+// BriefSite is one affected site inside a repair brief.
+type BriefSite = core.BriefSite
+
 // HistoryEvent is core's findings history entry.
 type HistoryEvent = core.HistoryEvent
 

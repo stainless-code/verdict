@@ -15,6 +15,7 @@ exit: 0
     "locator": "notes.txt:2",
     "severity": "informational",
     "body": "Minor wording nit here.",
+    "brief": null,
     "anchors": {
       "path": "notes.txt",
       "line": "2",

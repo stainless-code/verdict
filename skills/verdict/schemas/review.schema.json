@@ -80,6 +80,10 @@
           "description": "Fenced suggestions demote to the body (a fence inside would break rendering).",
           "type": ["string", "null"]
         },
+        "brief": {
+          "description": "Optional machine brief; a bad part warns and drops, and an invalid outcome drops the whole brief.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
+        },
         "rigor": {
           "description": "Evidence rung; unknown values read as pointed.",
           "enum": ["said", "pointed", "walked", "ran", "reproduced", null]
@@ -99,6 +103,44 @@
         }
       },
       "required": ["path", "body"],
+      "additionalProperties": true
+    },
+    "brief": {
+      "description": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",
+      "type": "object",
+      "properties": {
+        "sites": {
+          "description": "Affected changed files with an optional reviewed line; a site outside every hunk warns and drops.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/briefSite" }
+        },
+        "outcome": {
+          "description": "One sentence naming what the fix must achieve — required, 10–500 characters.",
+          "type": "string"
+        },
+        "approach": {
+          "description": "Optional suggested approach, 10–1,000 characters.",
+          "type": "string"
+        },
+        "questions": {
+          "description": "Optional questions for the human, at most 10 of 10–300 characters each.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["outcome"],
+      "additionalProperties": true
+    },
+    "briefSite": {
+      "type": "object",
+      "properties": {
+        "path": { "description": "A changed file path.", "type": "string" },
+        "line": {
+          "description": "Reviewed line inside a hunk; absent means the whole file.",
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["path"],
       "additionalProperties": true
     },
     "triageClaim": {

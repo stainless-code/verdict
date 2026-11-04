@@ -36,6 +36,8 @@ const (
 	idBase                  = "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/"
 	inlineTag               = "inline"
 	inlineTrue              = "true"
+	defsBrief               = "brief"
+	defsBriefSite           = "briefSite"
 )
 
 type nodeKind int
@@ -152,6 +154,8 @@ func documents() []document {
 			root:  reflect.TypeFor[[]FindingEntry](),
 			defs: []definition{
 				{typ: reflect.TypeFor[FindingEntry](), name: "entry"},
+				{typ: reflect.TypeFor[Brief](), name: defsBrief},
+				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 				{typ: reflect.TypeFor[HistoryEvent](), name: "historyEvent"},
 				{typ: reflect.TypeFor[KBCredit](), name: "kbCredit"},
 			},
@@ -221,6 +225,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
 		{typ: reflect.TypeFor[ShowFix](), name: "showFix"},
+		{typ: reflect.TypeFor[Brief](), name: defsBrief},
+		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[VerifyHint](), name: "verifyHint"},
 		{typ: reflect.TypeFor[FetchEstimate](), name: "fetchEstimate"},
 		{typ: reflect.TypeFor[TriageData](), name: "triageData"},
@@ -259,6 +265,8 @@ func envelopeDefs() []definition {
 func reviewDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[Comment](), name: "comment"},
+		{typ: reflect.TypeFor[Brief](), name: defsBrief},
+		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
 		{typ: reflect.TypeFor[SectionTag](), name: "sectionTag"},
 	}

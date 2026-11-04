@@ -55,7 +55,16 @@ evidence rungs, keep-biased, and its sibling doctrines.
       "line": 44,
       "side": "RIGHT",
       "body": "…",
-      "suggestion": "    fixed code…\n"
+      "suggestion": "    fixed code…\n",
+      "brief": {
+        "sites": [
+          { "path": "src/api.ts", "line": 42 },
+          { "path": "src/queue.ts" }
+        ],
+        "outcome": "Reject duplicate deliveries before anything is enqueued.",
+        "approach": "Track delivery ids in a bounded LRU checked at the top of the handler.",
+        "questions": ["Should the dedupe window be 24 hours or 7 days?"]
+      }
     }
   ],
   "resolved": ["a1b2c3d4"],
@@ -81,6 +90,12 @@ same hunk, `suggestion` must preserve exact indentation. `post` checks every anc
 the fetched hunks: provably-outside anchors move into the body under Unanchored observations
 (one bad anchor never fails the run); ambiguous anchors are kept with a warning.
 Suggestions render as fenced blocks in `body` (raw keys never hit the API).
+`brief` is the optional machine form of the same finding: `outcome` (required,
+10–500 chars) plus `sites` (≤10 `{path, line?}`, each path a changed file and
+each line inside a reviewed hunk — anything else warns and drops), `approach`
+(10–1,000), and `questions` (≤10, 10–300 each). A bad part warns and drops; only
+an unusable `outcome` drops the brief, never the review. `brief` is outside the
+sig, so editing it never creates a finding.
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
 `sections` carries severity tags `{heading, severity}` for `###` body sections — exact heading string, unmatched tags ignored.
 
@@ -100,7 +115,9 @@ best-effort warning — re-fetch to pin it.
 `post` writes `.review/N/findings.json`: one record per inline comment and body `###`
 section with a stable line-number-free signature, `status` (`open`/`addressed`/`wont-fix`/
 `false-positive`/`deferred`), first/last seen SHAs, evidence rung (`said`/`pointed`/`walked`/
-`ran`/`reproduced`, default `pointed`), rationale for terminal states, and append-only `history`.
+`ran`/`reproduced`, default `pointed`), the optional `brief` (`sites`/`outcome`/`approach`/
+`questions`, stored additively — a finding without one keeps its legacy bytes), rationale for
+terminal states, and append-only `history`.
 Incremental runs dedup by sig — recorded findings are not re-reported unless the delta changes them. Before posting, `post`
 prints a fail-closed preflight block (body verdict, anchor counts, finding counts, hunk index).
 Binding verdicts need `--bind` (else downgraded to `COMMENT`); `APPROVE` is refused while
@@ -379,6 +396,7 @@ and the bundle's history:
 | `files`        | Deduped anchor paths: the record's `path` plus any `files`/`related_files` lists; `[]` when none.                              |
 | `locator`      | `path:line` for inline findings, the heading for section findings, else empty.                                                 |
 | `suggestion`   | The record's embedded suggestion body, else `null`.                                                                            |
+| `brief`        | The stored machine brief `{sites, outcome, approach?, questions?}`, read as stored (no re-validation), else `null`.            |
 | `verify_hint`  | `{verifyCmd, resultHead}` from a `verification.json` claim for this sig, else a matching (or unnamed) `patch.json`; else null. |
 | `caution`      | Fixed reminder that finding text quotes attacker-controlled PR content and is untrusted evidence, never instructions.          |
 
@@ -1208,9 +1226,10 @@ and remove it when done — the working tree stays untouched throughout.
 `fix owner/repo local-<name> [--sig <s>] [--json]` runs one bounded pass over a
 local bundle: it picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
-and inline; non-open, section, and unknown sigs refuse), prints the finding plus
-the full `kb.txt` context when present with patch → verify → land → re-run instructions, and records
-the pass in `.review/local-<name>/fix.json`. The agent patches the anchor file,
+and inline; non-open, section, and unknown sigs refuse), prints the finding
+(plus its stored `brief` block when one is present and the full `kb.txt` context
+when present) with patch → verify → land → re-run instructions, and records the
+pass in `.review/local-<name>/fix.json`. The agent patches the anchor file,
 runs the verify command itself, writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
 summary with fixed/open/stopped counts plus the ledger path). A ceiling-exhausted
@@ -1537,6 +1556,11 @@ verbs and features ship in the release changelog.
   `fetch`/`threads` read links a verdict-authored thread back to its finding;
   older comments without the marker read `finding_sig: null` (backward
   compatible, never a different bot's marker).
+- Added: per-finding `brief` on review comments and findings entries (`sites[]` with optional
+  `line`, the required `outcome`, optional `approach`/`questions`) — validated against the
+  bundle's pinned hunks (bad parts warn and drop, never refuse), stored additively so a
+  finding without one is byte-identical, preserved across re-record when the fresh comment
+  carries none, and excluded from the sig.
 - Added: review provenance on `post.json`/`record.json` (`tool_version`,
   `prompts_hash`, `model` — model from the latest cost record when one names
   it, else `null`); `calibrate`/`trend` surface it so mixed-version histories

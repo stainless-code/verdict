@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
@@ -94,6 +95,23 @@ func seedLedger(t *testing.T, dir, slug, doc string) {
 	if err := os.WriteFile(filepath.Join(bdir, "fix.json"), []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// briefJSON is the stored machine brief used by the fix brief fixture.
+const briefJSON = `"brief":{"sites":[{"path":"app.txt","line":2},` +
+	`{"path":"notes.txt"}],"outcome":"Reject duplicate deliveries before anything` +
+	` is enqueued.","approach":"Track delivery ids in a bounded LRU checked at the` +
+	` top of the handler.","questions":["Should the dedupe window be 24 hours or` +
+	` 7 days?"]},`
+
+// setupBrief is the stored-brief fixture: the fix pass prints the brief block
+// between the anchors and the instructions.
+func setupBrief(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	entry := strings.Replace(findingJSON(sigCritical, "open", "critical",
+		"app.txt", "Critical boundary bug here."), `"suggestion":null,`, `"suggestion":null,`+briefJSON, 1)
+	mkLocal(t, dir, "brief", "["+entry+"]")
 }
 
 // setupPass is the two-finding default-pick fixture.
@@ -183,6 +201,7 @@ func TestFixGolden(t *testing.T) {
 	t.Run("pick", testFixPick)
 	t.Run("refusals", testFixRefusals)
 	t.Run("gates", testFixGates)
+	t.Run("brief", testFixBrief)
 }
 
 // testFixPick covers the default pick, tiebreak, and completion.
@@ -200,6 +219,15 @@ func testFixPick(t *testing.T) {
 		"fix", "acme/app", "local-done", "--json")
 	golden.Pin(t, harness, "complete-human", setupDone, nil,
 		"fix", "acme/app", "local-done")
+}
+
+// testFixBrief pins the human and json shapes of a stored brief.
+func testFixBrief(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "brief-human", setupBrief, nil,
+		"fix", "acme/app", "local-brief")
+	golden.Pin(t, harness, "brief-json", setupBrief, nil,
+		"fix", "acme/app", "local-brief", "--json")
 }
 
 // testFixRefusals covers the sig and bundle refusals plus usage.

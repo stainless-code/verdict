@@ -15,6 +15,7 @@ exit: 0
     "locator": "a.txt:2",
     "severity": "important",
     "body": "Aye file issue here.",
+    "brief": null,
     "anchors": {
       "path": "a.txt",
       "line": "2",

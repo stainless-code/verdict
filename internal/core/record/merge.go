@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
@@ -45,6 +46,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	headFull     string
 	kept         []any
 	keptSigs     []string
+	hunkRows     []hunks.Hunk
 	moved        []any
 	entries      []any
 	hunkN        int
@@ -281,6 +283,7 @@ func (st *state) validateAnchors(body string) string {
 		comments = jq.Elements(c)
 	}
 	hs := loadHunkRows(st.anchorHunks)
+	st.hunkRows = hs
 	for _, c := range comments {
 		m, ok := c.(*jq.Obj)
 		if !ok {
@@ -473,7 +476,7 @@ func (st *state) buildEntries(body string) {
 		secs = jq.Elements(s)
 	}
 	var fresh []freshEntry
-	fresh = append(fresh, freshInline(st.kept, st.moved)...)
+	fresh = append(fresh, freshInline(st)...)
 	fresh = append(fresh, freshSections(body, secs)...)
 	kbExists := st.controls.Has(kb.File)
 	for _, fe := range fresh {
@@ -501,15 +504,15 @@ func freshInlineSigs(entries []any, kept int) []string {
 	return out
 }
 
-func freshInline(kept, moved []any) []freshEntry {
+func freshInline(st *state) []freshEntry {
 	var fresh []freshEntry
-	comments := append(append([]any{}, kept...), moved...)
+	comments := append(append([]any{}, st.kept...), st.moved...)
 	for _, c := range comments {
 		m, mok := c.(*jq.Obj)
 		if !mok || m == nil {
 			continue
 		}
-		fresh = append(fresh, buildInline(m))
+		fresh = append(fresh, buildInline(st, m))
 	}
 	return fresh
 }
@@ -525,7 +528,7 @@ func freshSections(body string, secs []any) []freshEntry {
 	return fresh
 }
 
-func buildInline(m *jq.Obj) freshEntry {
+func buildInline(st *state, m *jq.Obj) freshEntry {
 	inBounds, ok := m.Get("in-bounds")
 	if !ok || inBounds == nil {
 		inBounds = true
@@ -540,21 +543,34 @@ func buildInline(m *jq.Obj) freshEntry {
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
 	body := jq.StrOf(jq.Alt(bd, ""))
-	return freshEntry{
-		entry: &core.FindingEntry{
-			Kind:       "inline",
-			Path:       path,
-			Side:       jq.Alt(side, "RIGHT"),
-			Line:       line,
-			Anchored:   drop == nil,
-			Body:       body,
-			Suggestion: optString(jq.Alt(sugg, nil)),
-			InBounds:   inBounds,
-			Rigor:      pick(rigor, rigorAllow, "pointed"),
-			Severity:   pick(sev, sevAllow, nil),
-		},
-		kbRaw: jq.Alt(kbc, nil),
+	entry := &core.FindingEntry{
+		Kind:       "inline",
+		Path:       path,
+		Side:       jq.Alt(side, "RIGHT"),
+		Line:       line,
+		Anchored:   drop == nil,
+		Body:       body,
+		Suggestion: optString(jq.Alt(sugg, nil)),
+		InBounds:   inBounds,
+		Rigor:      pick(rigor, rigorAllow, "pointed"),
+		Severity:   pick(sev, sevAllow, nil),
 	}
+	entry.Brief = briefOf(st, m)
+	return freshEntry{entry: entry, kbRaw: jq.Alt(kbc, nil)}
+}
+
+// briefOf validates a comment's optional machine brief against the anchor
+// hunks: a bad part warns and drops, never refuses the merge.
+func briefOf(st *state, m *jq.Obj) *core.Brief {
+	raw, ok := m.Get(fieldBrief)
+	if !ok || jq.Falsey(raw) {
+		return nil
+	}
+	b, warns := brief.Validate(raw, st.hunkRows)
+	for _, w := range warns {
+		st.warn(w)
+	}
+	return b
 }
 
 func sectionSeverity(secs []any, h string) any {
@@ -776,7 +792,20 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	nkb, _ := n.Get(fieldKB)
 	pkb, _ := pm.Get(fieldKB)
 	m.Set(fieldKB, jq.Alt(jq.Alt(nkb, pkb), []any{}))
+	mergeBrief(m, n, pm)
 	return m
+}
+
+// mergeBrief replaces the prior brief with a fresh one and preserves it when
+// the fresh comment carries none; an absent pair writes no key at all.
+func mergeBrief(m, n, pm *jq.Obj) {
+	if nb, ok := n.Get(fieldBrief); ok && !jq.Falsey(nb) {
+		m.Set(fieldBrief, nb)
+		return
+	}
+	if pb, ok := pm.Get(fieldBrief); ok && !jq.Falsey(pb) {
+		m.Set(fieldBrief, pb)
+	}
 }
 
 func overlayAlt(m, n, pm *jq.Obj, field string) {

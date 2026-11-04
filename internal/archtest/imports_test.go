@@ -56,6 +56,7 @@ var forbiddenDeps = []string{
 // CLI/transport adapter are absent by design.
 var facadeAllowedDeps = map[string]bool{
 	"internal/atomic":         true,
+	"internal/brief":          true,
 	"internal/controls":       true,
 	"internal/core":           true,
 	"internal/core/adopt":     true,

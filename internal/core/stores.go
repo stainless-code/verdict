@@ -40,6 +40,7 @@ type Comment struct { //nolint:govet // field order is the published property or
 	Side       string    `json:"side,omitempty"`
 	Body       string    `json:"body"`
 	Suggestion *string   `json:"suggestion,omitempty"`
+	Brief      *Brief    `anyOf:"null"                                   json:"brief,omitempty"`
 	Rigor      any       `enum:"said|pointed|walked|ran|reproduced|null" json:"rigor,omitempty"`
 	Severity   any       `enum:"critical|important|informational|null"   json:"severity,omitempty"`
 	InBounds   *bool     `json:"in-bounds,omitempty"`
@@ -74,6 +75,7 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Anchored   any            `json:"anchored,omitempty"                              type:"boolean|string|null"`
 	Body       string         `json:"body,omitempty"`
 	Suggestion *string        `json:"suggestion,omitempty"`
+	Brief      *Brief         `anyOf:"null"                                           json:"brief,omitempty"`
 	KB         *[]string      `json:"kb,omitempty"`
 	InBounds   any            `json:"inBounds,omitempty"                              type:"boolean|null"`
 	Rigor      any            `enum:"said|pointed|walked|ran|reproduced|null"         json:"rigor,omitempty"`
@@ -86,6 +88,23 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	TriagedBy  string         `json:"triagedBy,omitempty"`
 	History    []HistoryEvent `json:"history"`
 	Extra      *jq.Obj        `json:"-"`
+}
+
+// Brief is the per-finding repair brief: the affected sites plus the outcome,
+// approach, and open questions a fix agent reads without parsing the body.
+// It enriches a finding and is not part of its sig.
+type Brief struct {
+	Sites     []BriefSite `json:"sites,omitempty"`
+	Outcome   string      `json:"outcome"`
+	Approach  string      `json:"approach,omitempty"`
+	Questions []string    `json:"questions,omitempty"`
+}
+
+// BriefSite is one affected site: a changed path, plus the reviewed line when
+// the brief names one (absent means the whole file).
+type BriefSite struct { //nolint:govet // field order is the published property order
+	Path string `json:"path"`
+	Line *int   `json:"line,omitempty"`
 }
 
 // HistoryEvent is one append-only findings history entry.
@@ -211,7 +230,7 @@ func (e *FindingEntry) wireSection() *jq.Obj {
 // wireInline builds the head of an inline entry: locator fields, anchor
 // marker, body, and the optional enrichment tail.
 func (e *FindingEntry) wireInline() *jq.Obj {
-	return jq.NewObj(
+	o := jq.NewObj(
 		"kind", e.Kind,
 		"path", e.Path,
 		"side", e.Side,
@@ -224,6 +243,44 @@ func (e *FindingEntry) wireInline() *jq.Obj {
 		"rigor", e.Rigor,
 		"severity", e.Severity,
 	)
+	briefWire(e.Brief, o)
+	return o
+}
+
+// briefWire appends the optional machine brief after severity: a finding
+// without one keeps its legacy bytes, never a null key. An unmodeled brief
+// already carried by Extra keeps its own slot instead of being written twice.
+func briefWire(b *Brief, o *jq.Obj) {
+	if b != nil && !o.Has("brief") {
+		o.Set("brief", b.Wire())
+	}
+}
+
+// Wire renders the brief in the published key order: sites, outcome, then the
+// optional approach and questions. A present-but-empty sites list stays [],
+// so a brief whose sites all dropped still reads as a brief.
+func (b *Brief) Wire() *jq.Obj {
+	o := jq.NewObj("sites", briefSitesWire(b.Sites), "outcome", b.Outcome)
+	if b.Approach != "" {
+		o.Set("approach", b.Approach)
+	}
+	if b.Questions != nil {
+		o.Set("questions", stringList(b.Questions))
+	}
+	return o
+}
+
+// briefSitesWire renders the site list ([] when none survived validation).
+func briefSitesWire(sites []BriefSite) []any {
+	out := make([]any, 0, len(sites))
+	for _, site := range sites {
+		s := jq.NewObj("path", site.Path)
+		if site.Line != nil {
+			s.Set("line", *site.Line)
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // Wire renders one history event in wire order: the fixed construction order

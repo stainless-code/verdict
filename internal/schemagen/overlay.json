@@ -47,6 +47,14 @@
       "/$defs/fetchEstimate/properties/basis": "measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed.",
       "/$defs/fetchEstimate/properties/harness": "Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis.",
       "/$defs/fetchEstimate/properties/measured_runs": "How many priced samples in the projected tier came from a harness session; absent with basis.",
+      "/$defs/showFix/properties/brief": "The stored machine brief, read as stored without re-validation, or null when the finding has none.",
+      "/$defs/brief": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",
+      "/$defs/brief/properties/sites": "Affected changed files with an optional reviewed line; a site outside every hunk warns and drops.",
+      "/$defs/brief/properties/outcome": "One sentence naming what the fix must achieve — required, 10–500 characters.",
+      "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters.",
+      "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each.",
+      "/$defs/briefSite/properties/path": "A changed file path.",
+      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file.",
       "/$defs/triageData": "triage --json data: the finding that moved and its new status. dry_run appears only when the pass changed nothing.",
       "/$defs/readyData": "ready --json data: the gate verdict, every blocker with the action that clears it, and the live PR state the gate read. recommendation is review when nothing blocks, hold otherwise.",
       "/$defs/readyBlocker": "One readiness blocker: the rule that fired, the detail that fired it, and the action that clears it.",
@@ -104,7 +112,15 @@
       "/$defs/entry/properties/kb": "Cited knowledge-base rule ids; [] when uncited.",
       "/$defs/entry/properties/inBounds": "CamelCase in the store (hyphenated in review.json input); absent reads true.",
       "/$defs/entry/properties/rigor": "Evidence rung on inline findings; the re-post merge stamps an explicit null onto section entries.",
-      "/$defs/entry/properties/history": "Append-only: reported, claim, reopened, revalidation, addressed, triaged."
+      "/$defs/entry/properties/history": "Append-only: reported, claim, reopened, revalidation, addressed, triaged.",
+      "/$defs/entry/properties/brief": "Optional machine brief; excluded from the sig, and preserved across re-record when the fresh comment carries none.",
+      "/$defs/brief": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",
+      "/$defs/brief/properties/sites": "Affected changed files with an optional reviewed line; a site outside every hunk warns and drops.",
+      "/$defs/brief/properties/outcome": "One sentence naming what the fix must achieve — required, 10–500 characters.",
+      "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters.",
+      "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each.",
+      "/$defs/briefSite/properties/path": "A changed file path.",
+      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file."
     }
   },
   "post": {
@@ -153,7 +169,15 @@
       "/$defs/comment/properties/rigor": "Evidence rung; unknown values read as pointed.",
       "/$defs/comment/properties/severity": "Stored at write time; unknown values read as null.",
       "/$defs/comment/properties/in-bounds": "Hyphenated in agent input; absent reads true.",
-      "/$defs/comment/properties/kb": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop."
+      "/$defs/comment/properties/kb": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop.",
+      "/$defs/comment/properties/brief": "Optional machine brief; a bad part warns and drops, and an invalid outcome drops the whole brief.",
+      "/$defs/brief": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",
+      "/$defs/brief/properties/sites": "Affected changed files with an optional reviewed line; a site outside every hunk warns and drops.",
+      "/$defs/brief/properties/outcome": "One sentence naming what the fix must achieve — required, 10–500 characters.",
+      "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters.",
+      "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each.",
+      "/$defs/briefSite/properties/path": "A changed file path.",
+      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file."
     }
   },
   "threads": {
