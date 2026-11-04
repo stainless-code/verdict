@@ -11,9 +11,11 @@
 
 ## Tested on
 
-CI proves Linux and Windows on every PR, and the macOS legs on a `main` push
-and the nightly run. Tick what you ran by hand; an untested route stated out
-loud is worth more than a guessed tick.
+CI proves Linux and Windows on every PR. The macOS legs of the Go, eval, and
+installer lanes run on a `main` push and on the nightly: advisory on the push
+(a macOS runner GitHub never assigns cancels the leg), required on the nightly.
+Tick what you ran by hand; an untested route stated out loud is worth more than
+a guessed tick.
 
 - [ ] `install.sh` — macOS / Linux
 - [ ] `install.ps1` — Windows

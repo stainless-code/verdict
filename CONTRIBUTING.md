@@ -120,7 +120,10 @@ fast path is decided from the diff against the PR base, and every other PR —
 plus every push to `main` — runs the whole bar above. The macOS legs of the
 Go, eval, and installer lanes are the exception, running only on pushes to
 `main`, the nightly schedule, and `workflow_dispatch`, because GitHub caps
-concurrent macOS jobs per org.
+concurrent macOS jobs per org. They are required on the nightly run and
+advisory on a `main` push or a manual dispatch, where GitHub sometimes cancels
+a macOS leg it never assigned a runner; the nightly is where a real macOS
+break turns the build red.
 
 Two rules no ladder rung covers live in
 [`docs/ci-and-tests.md`](docs/ci-and-tests.md): the commit-message skip-token

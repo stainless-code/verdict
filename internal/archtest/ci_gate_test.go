@@ -16,11 +16,12 @@ import (
 
 // ciGate is the gate contract read out of the workflow text.
 type ciGate struct {
-	jobs     []string // every job id except ci-complete
-	needs    []string // the ci-complete needs list
-	required []string // REQUIRED_JOBS: a merge blocker
-	macOS    []string // MACOS_JOBS: required lanes that skip only on a pull request
-	advisory []string // ADVISORY_JOBS: reports, never blocks
+	jobs           []string // every job id except ci-complete
+	needs          []string // the ci-complete needs list
+	required       []string // REQUIRED_JOBS: a merge blocker
+	macOS          []string // MACOS_JOBS: required lanes that skip only on a pull request
+	advisoryEvents []string // MACOS_ADVISORY_EVENTS: events where a macOS lane only reports
+	advisory       []string // ADVISORY_JOBS: reports, never blocks
 }
 
 // TestCICompleteGateDeclaration pins the declaration to the job graph.
@@ -100,7 +101,7 @@ func checkMacOSLanesAreRequired(t *testing.T, gate *ciGate) {
 func checkGateWiring(t *testing.T, workflow string) {
 	t.Helper()
 	for _, want := range []string{
-		"$REQUIRED_JOBS", "$MACOS_JOBS", "$EVENT",
+		"$REQUIRED_JOBS", "$MACOS_JOBS", "$MACOS_ADVISORY_EVENTS", "$EVENT",
 		"EVENT: ${{ github.event_name }}",
 	} {
 		if !strings.Contains(workflow, want) {
@@ -119,11 +120,12 @@ func parseCIGate(t *testing.T, workflow string) ciGate {
 	start, end := ciCompleteSpan(t, lines)
 	block := lines[start:end]
 	return ciGate{
-		jobs:     jobIDs(lines),
-		needs:    parseNeeds(t, block),
-		required: parseDeclared(t, block, "REQUIRED_JOBS"),
-		macOS:    parseDeclared(t, block, "MACOS_JOBS"),
-		advisory: parseDeclared(t, block, "ADVISORY_JOBS"),
+		jobs:           jobIDs(lines),
+		needs:          parseNeeds(t, block),
+		required:       parseDeclared(t, block, "REQUIRED_JOBS"),
+		macOS:          parseDeclared(t, block, "MACOS_JOBS"),
+		advisoryEvents: parseDeclared(t, block, "MACOS_ADVISORY_EVENTS"),
+		advisory:       parseDeclared(t, block, "ADVISORY_JOBS"),
 	}
 }
 

@@ -5,7 +5,9 @@ package archtest
 // a main push, the nightly schedule and `workflow_dispatch`. A macOS leg that
 // lost its event gate would put the queue back in front of every pull request,
 // and one that vanished would drop macOS coverage in silence; the step-parity
-// check keeps the copied macOS lane repeating the bar of the lane it twins.
+// check keeps the copied macOS lane repeating the bar of the lane it twins. On
+// a push or a manual dispatch those legs are advisory, because GitHub cancels
+// legs it never assigned a runner; the nightly keeps them required.
 
 import (
 	"maps"
@@ -81,6 +83,33 @@ func TestCINightlySchedule(t *testing.T) {
 	}
 	if !strings.Contains(joined, "pull_request:") {
 		t.Error("ci.yml no longer runs on pull_request: the merge bar lost its trigger")
+	}
+}
+
+// TestCIMacOSAdvisoryEvents pins which events tolerate a non-success macOS
+// result. A main push or a manual dispatch does, because GitHub cancels a leg
+// it never assigned a runner and that must not turn main red; every other
+// event, `schedule` above all, must keep the lane a merge blocker so a real
+// macOS break still fails the nightly.
+func TestCIMacOSAdvisoryEvents(t *testing.T) {
+	workflow := readCIWorkflow(t)
+	gate := parseCIGate(t, workflow)
+	if slices.Contains(gate.advisoryEvents, "schedule") {
+		t.Fatal("MACOS_ADVISORY_EVENTS lists schedule: a real macOS break would no longer fail the nightly")
+	}
+	want := []string{"push", "workflow_dispatch"}
+	if !slices.Equal(gate.advisoryEvents, want) {
+		t.Fatalf("MACOS_ADVISORY_EVENTS = %v; want %v (macOS required everywhere else)",
+			gate.advisoryEvents, want)
+	}
+	for _, lane := range gate.macOS {
+		if !slices.Contains(gate.required, lane) {
+			t.Errorf("%s dropped out of REQUIRED_JOBS: the nightly would stop gating it", lane)
+		}
+	}
+	const advisoryArm = `elif ($m | index($k)) and ($me | index($ev)) and $res != "" then empty`
+	if !strings.Contains(workflow, advisoryArm) {
+		t.Errorf("ci-complete lost %q: the advisory events would stop being read", advisoryArm)
 	}
 }
 
