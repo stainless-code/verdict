@@ -109,7 +109,10 @@ Every PR must clear all of these; CI enforces each one:
 A PR that touches only `apps/docs/`, `.changeset/`, `CHANGELOG.md`, or
 `.github/ISSUE_TEMPLATE/` runs the format, docs-site, and audit lanes; the
 fast path is decided from the diff against the PR base, and every other PR —
-plus every push to `main` — runs the whole bar above.
+plus every push to `main` — runs the whole bar above. The macOS legs of the
+Go, eval, and installer lanes are the exception, running only on pushes to
+`main`, the nightly schedule, and `workflow_dispatch`, because GitHub caps
+concurrent macOS jobs per org.
 
 ## Golden tests
 

@@ -9,6 +9,9 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -120,14 +123,10 @@ jobs:
           echo "skill installer smoke ok"
 
   installers:
-    name: 📥 Installers (${{ matrix.os }})
+    name: 📥 Installers (ubuntu-latest)
     needs: changes
     if: needs.changes.outputs.full == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -140,10 +139,38 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install shellcheck (macOS does not preinstall it)
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Shellcheck installers
         shell: bash
         run: |
-          if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
+          shellcheck -s sh -S warning install.sh
+          shellcheck -S warning install-skill.sh evals/cases/installer-binary.sh evals/cases/upgrade.sh
+
+      - name: Hermetic installer eval (fake release assets, file:// URLs)
+        shell: bash
+        run: make build && ./evals/one.sh installer-binary
+
+  installers-macos:
+    name: 📥 Installers (macos-latest)
+    needs: changes
+    if: needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go (the eval runner expects a built binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install shellcheck
+        run: brew install shellcheck
 
       - name: Shellcheck installers
         shell: bash
@@ -176,14 +203,57 @@ jobs:
         run: ./evals/cases/installer-binary.ps1
 
   go:
-    name: 🐹 Go (${{ matrix.os }})
+    name: 🐹 Go (ubuntu-latest)
     needs: changes
     if: needs.changes.outputs.full == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Harness deps (bash/jq/git used by Go tests and stubs)
+        shell: bash
+        run: |
+          # Go tests shell bash for provider stubs and the verify watchdog,
+          # and the CLI probes jq/git, so assert each tool separately:
+          # `command -v a b c` passes when only one is found.
+          command -v bash
+          command -v jq
+          command -v git
+          jq --version
+
+      - name: Go gate (gofmt, vet, mod verify, race tests, vuln)
+        shell: bash
+        run: make ci-go
+
+      - name: golangci-lint (repo config, pinned v2.15.x)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          args: --timeout=10m
+
+      - name: Prove the golden tests ran (no silent skip)
+        shell: bash
+        run: |
+          # Re-run one golden test verbosely: the step passes only on an
+          # observed `--- PASS`, so a suite that never executes (or errors
+          # before running) fails the build instead of looking green.
+          go test -count=1 -v -run '^TestGateGolden$' ./internal/core/verify/ > "$RUNNER_TEMP/golden-guard.log" 2>&1
+          grep -q '^--- PASS: TestGateGolden' "$RUNNER_TEMP/golden-guard.log"
+
+  go-macos:
+    name: 🐹 Go (macos-latest)
+    needs: changes
+    if: needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -294,14 +364,10 @@ jobs:
         run: make cross
 
   evals:
-    name: 🧪 Evals (${{ matrix.os }})
+    name: 🧪 Evals (ubuntu-latest)
     needs: changes
     if: needs.changes.outputs.full == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -314,11 +380,49 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install shellcheck (precommit-hook grades it, and the macOS
-          image does not preinstall it)
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Harness deps (bash/jq/git/go/shellcheck)
         shell: bash
         run: |
-          if [ "$(uname -s)" = "Darwin" ]; then brew install shellcheck; else sudo apt-get update && sudo apt-get install -y shellcheck; fi
+          # run.sh fails on a missing dep, but assert up front so the log
+          # names the side. precommit-hook grades shellcheck (H1 fails
+          # without it), so its absence fails here instead of deep in the
+          # suite.
+          command -v bash jq git go shellcheck
+          jq --version
+          go version
+
+      - name: Run offline contract evals (built binary)
+        shell: bash
+        run: make evals
+        # Builds bin/verdict, asserts it is executable (the suite fails here
+        # rather than silently grading nothing), then runs every case
+        # against it via $EVAL_CLI. Same hermeticity locally and here
+        # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
+        # assertion).
+
+  evals-macos:
+    name: 🧪 Evals (macos-latest)
+    needs: changes
+    if: needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go (the suite runs the built binary)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install shellcheck
+        # The macOS image preinstalls no shellcheck, and the eval suite grades it.
+        run: brew install shellcheck
 
       - name: Harness deps (bash/jq/git/go/shellcheck)
         shell: bash
@@ -496,14 +600,17 @@ jobs:
     # appear in exactly one list (`internal/archtest` fails the build on
     # drift), and only a required lane can fail this gate: a required lane
     # must be literally `success` — a skip reports success to branch
-    # protection, so a skip fails here too — with one exception, the lane
-    # `changes` gated off on a diff it proved docs-only; `changes` itself is
-    # never accepted skipped. Both platform legs stay required: `go-windows`
-    # is green and deterministic, and demoting a platform is a policy
-    # decision, not a flake workaround. ADVISORY_JOBS is empty today; the gate
-    # below reads an empty list as "no advisory lanes".
+    # protection, so a skip fails here too — with two exceptions: a lane
+    # `changes` gated off on a diff it proved docs-only (`changes` itself is
+    # never accepted skipped), and a MACOS_JOBS lane on a pull request, where
+    # those legs are never scheduled. GitHub caps concurrent macOS jobs per
+    # org, so MACOS_JOBS run on main pushes, the nightly schedule, and
+    # `workflow_dispatch` only, and stay required on those events.
+    # ADVISORY_JOBS is empty today; the gate below reads an empty list as
+    # "no advisory lanes".
     env:
-      REQUIRED_JOBS: changes format lint installer installers installers-windows go go-windows cross evals docs ts-client audit release-dry-run
+      REQUIRED_JOBS: changes format lint installer installers installers-macos installers-windows go go-macos go-windows cross evals evals-macos docs ts-client audit release-dry-run
+      MACOS_JOBS: installers-macos go-macos evals-macos
       ADVISORY_JOBS: ""
     needs:
       [
@@ -512,11 +619,14 @@ jobs:
         lint,
         installer,
         installers,
+        installers-macos,
         installers-windows,
         go,
+        go-macos,
         go-windows,
         cross,
         evals,
+        evals-macos,
         docs,
         ts-client,
         audit,
@@ -531,6 +641,7 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
           FULL: ${{ needs.changes.outputs.full }}
+          EVENT: ${{ github.event_name }}
         run: |
           # One data-driven gate over the declaration above: report every
           # lane, then fail only on a required lane that is neither `success`
@@ -544,16 +655,18 @@ jobs:
             | if ($r | index($k)) then "required \($k): \($res)"
               elif ($a | index($k)) then "advisory \($k): \($res) (never blocks)"
               else "undeclared \($k): \($res)" end'
-          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" --arg full "$FULL" '
+          printf '%s' "$NEEDS" | jq -e --arg req "$REQUIRED_JOBS" --arg adv "$ADVISORY_JOBS" --arg mac "$MACOS_JOBS" --arg full "$FULL" --arg ev "$EVENT" '
             def lanes: split(" ") | map(select(length > 0));
-            ($req | lanes) as $r | ($adv | lanes) as $a
+            ($req | lanes) as $r | ($adv | lanes) as $a | ($mac | lanes) as $m
             | [to_entries[].key] as $have
             | [((($r + $a) - $have)[]) | "declared but absent from needs: \(.)"]
+              + [(($m - $r)[]) | "macOS lane not required: \(.)"]
               + [to_entries[]
                  | .key as $k | (.value.result // "") as $res
                  | if ($r | index($k)) then
                      (if $res == "success" then empty
                       elif $res == "skipped" and $full != "true" and $k != "changes" then empty
+                      elif $res == "skipped" and $ev == "pull_request" and ($m | index($k)) then empty
                       else "required but \($res): \($k)" end)
                    elif ($a | index($k)) then
                      (if $res == "" then "advisory but silent: \($k)" else empty end)

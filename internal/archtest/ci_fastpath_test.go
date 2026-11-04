@@ -20,8 +20,9 @@ const fastPathCondition = "    if: needs.changes.outputs.full == 'true'"
 
 // fastPathGated lanes never run for a docs-only change.
 var fastPathGated = []string{
-	"lint", "installer", "installers", "installers-windows", "go",
-	"go-windows", "cross", "evals", "release-dry-run", "ts-client",
+	"lint", "installer", "installers", "installers-macos", "installers-windows",
+	"go", "go-macos", "go-windows", "cross", "evals", "evals-macos",
+	"release-dry-run", "ts-client",
 }
 
 // fastPathFree lanes run for every change, docs-only included.

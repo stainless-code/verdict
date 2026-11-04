@@ -19,6 +19,7 @@ type ciGate struct {
 	jobs     []string // every job id except ci-complete
 	needs    []string // the ci-complete needs list
 	required []string // REQUIRED_JOBS: a merge blocker
+	macOS    []string // MACOS_JOBS: required lanes that skip only on a pull request
 	advisory []string // ADVISORY_JOBS: reports, never blocks
 }
 
@@ -58,13 +59,39 @@ func checkGateLanes(t *testing.T, gate *ciGate) {
 	if len(gate.required) == 0 {
 		t.Fatal("REQUIRED_JOBS is empty: the gate would pass with no merge blocker")
 	}
+	checkNoLaneDeclaredTwice(t, gate)
+	if !slices.Contains(gate.required, "go-windows") {
+		t.Errorf("go-windows is not required any more (required = %v)", gate.required)
+	}
+	checkMacOSLanesAreRequired(t, gate)
+}
+
+// checkNoLaneDeclaredTwice fails when one lane sits in both lists, which would
+// leave the gate reading two rules for it.
+func checkNoLaneDeclaredTwice(t *testing.T, gate *ciGate) {
+	t.Helper()
 	for _, job := range union(gate.required, gate.advisory) {
 		if slices.Contains(gate.required, job) && slices.Contains(gate.advisory, job) {
 			t.Errorf("%s is both required and advisory", job)
 		}
 	}
-	if !slices.Contains(gate.required, "go-windows") {
-		t.Errorf("go-windows is not required any more (required = %v)", gate.required)
+}
+
+// checkMacOSLanesAreRequired pins the skip exception to real merge blockers: a
+// MACOS_JOBS entry the gate does not require would hand that lane two rules,
+// and one no job answers to would make the exception a no-op.
+func checkMacOSLanesAreRequired(t *testing.T, gate *ciGate) {
+	t.Helper()
+	if len(gate.macOS) == 0 {
+		t.Fatal("MACOS_JOBS is empty: the gate would reject the macOS skip on every PR")
+	}
+	for _, job := range gate.macOS {
+		if !slices.Contains(gate.required, job) {
+			t.Errorf("%s is a macOS lane but not required (required = %v)", job, gate.required)
+		}
+		if !slices.Contains(gate.jobs, job) {
+			t.Errorf("MACOS_JOBS names %s, which is no job in this workflow", job)
+		}
 	}
 }
 
@@ -72,7 +99,10 @@ func checkGateLanes(t *testing.T, gate *ciGate) {
 // that dropped the binding would silently restore the old static gate.
 func checkGateWiring(t *testing.T, workflow string) {
 	t.Helper()
-	for _, want := range []string{"$REQUIRED_JOBS", "$ADVISORY_JOBS"} {
+	for _, want := range []string{
+		"$REQUIRED_JOBS", "$MACOS_JOBS", "$EVENT",
+		"EVENT: ${{ github.event_name }}",
+	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("workflow no longer reads %s", want)
 		}
@@ -92,6 +122,7 @@ func parseCIGate(t *testing.T, workflow string) ciGate {
 		jobs:     jobIDs(lines),
 		needs:    parseNeeds(t, block),
 		required: parseDeclared(t, block, "REQUIRED_JOBS"),
+		macOS:    parseDeclared(t, block, "MACOS_JOBS"),
 		advisory: parseDeclared(t, block, "ADVISORY_JOBS"),
 	}
 }
