@@ -4,7 +4,7 @@
 
 The TypeScript client's verb methods now return their own `data` profile
 instead of `Envelope<unknown>`: `ready` resolves `ReadyData`, `fetch` resolves
-`FetchData`, `trend` resolves `TrendData`, and so on for all eighteen methods.
+`FetchData`, `trend` resolves `TrendData`, and so on for every verb method.
 `DataFor` exposes the same verb → profile map, so code that passes `data`
 around can name the profile without restating it.
 

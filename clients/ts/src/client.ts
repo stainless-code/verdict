@@ -270,6 +270,10 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["fetch-local"]>>;
+  threads(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["threads"]>>;
   verify(
     args?: string[],
     opts?: RunOptions,
@@ -350,6 +354,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     fetch: (args, opts) => run<DataFor["fetch"]>("fetch", args, opts),
     fetchLocal: (args, opts) =>
       run<DataFor["fetch-local"]>("fetch-local", args, opts),
+    threads: (args, opts) => run<DataFor["threads"]>("threads", args, opts),
     verify: (args, opts) => run<DataFor["verify"]>("verify", args, opts),
     checkTree: (args, opts) =>
       run<DataFor["check-tree"]>("check-tree", args, opts),

@@ -68,8 +68,9 @@ refuses a file it cannot parse.
 
 Two flags change what the server exposes:
 
-- `--read-only` exposes only tools that submit nothing: `report`, `next`,
-  `show`, `threads`, `trend`, `ready`, `doctor`, and `check-tree`.
+- `--read-only` exposes only tools that neither submit a review nor rewrite
+  the bundle: `report`, `next`, `show`, `trend`, `ready`, `doctor`, and
+  `check-tree`.
 - `--operator` adds `triage`. Status changes are the human's call, so an agent
   proposes them in `review.json` and never gets the tool by default.
 
@@ -160,8 +161,8 @@ try {
 The client spawns `verdict <verb> … --json`, reads one envelope, and maps the
 exit codes to typed errors. It finds the binary through `VERDICT_BIN`, then
 the platform package, then `PATH`. It has no dependencies and starts no server.
-`report`, `post`, and `record` have typed data. Reach any other verb with
-`verdict.run("show", [...])`.
+Every review verb has a named method and its own typed `data`; keep
+`verdict.run(verb, args)` for a verb or field the client has not typed yet.
 
 ## JSON schemas
 

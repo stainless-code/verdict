@@ -28,10 +28,9 @@ var cliOnlyVerbs = map[string]string{
 // sdkGaps are review verbs one public surface is still missing. Closing a gap
 // is an API decision (a new method and its types), so the guard records it
 // instead of hiding it: the entry must name the finding tracking it, and it
-// fails as stale the moment the method exists.
-var sdkGaps = map[string]string{
-	"threads": "A2-parity-05: pkg/verdict exposes no Threads method (OPEN)",
-}
+// fails as stale the moment the method exists. Empty today: every review verb
+// reaches the facade.
+var sdkGaps = map[string]string{}
 
 // tsMethod matches one interface method declaration in the TS client, with an
 // optional generic parameter list.
