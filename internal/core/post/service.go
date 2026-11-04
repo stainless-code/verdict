@@ -227,14 +227,17 @@ func (st *state) checkBundle() *core.RefusalError {
 	if prov := st.provider(); !core.CapabilitiesFor(prov).Post {
 		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
 	}
-	if err := recordcore.EnsureStore(st.dir); err != nil {
-		return refusalOrFailed(err)
+	if !readcommon.IsDir(st.dir) {
+		return &core.RefusalError{Code: codeMissingBundle, Message: fmt.Sprintf(msgMissingBundlePost, st.dir, st.req.Repo, st.req.Pr)}
 	}
 	if !exists(st.flags.ReviewFile) {
 		return &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.flags.ReviewFile)}
 	}
 	if !exists(st.dir + "/full.diff") {
 		return &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiffPost, st.dir)}
+	}
+	if err := recordcore.EnsureStore(st.dir); err != nil {
+		return refusalOrFailed(err)
 	}
 	switch prState := st.store().State(); prState {
 	case "":

@@ -12,6 +12,8 @@ const (
 
 	msgMissingDiffPost = "missing %s/full.diff (run fetch first — anchors validate against it)"
 
+	msgMissingBundlePost = "missing %s (run fetch %s %s first)"
+
 	msgPRNotOpen = "PR is %s — refusing post (re-fetch if this bundle is stale)"
 
 	msgBadApprove = "--approve takes true|false, got '%s'"
@@ -41,21 +43,22 @@ const (
 )
 
 const (
-	fieldPath       = "path"
-	fieldLine       = "line"
-	fieldStartLine  = "start_line"
-	fieldBody       = "body"
-	fieldSuggestion = "suggestion"
-	statusOpen      = "open"
-	localPrefix     = "local-"
-	newline         = "\n"
-	unknownTime     = "unknown time"
-	prSuffix        = "/PR.json"
-	codePostFailed  = "post-failed"
-	codeMissingDiff = "missing-diff"
-	eventComment    = "COMMENT"
-	approveTrue     = "true"
-	approveFalse    = "false"
+	fieldPath         = "path"
+	fieldLine         = "line"
+	fieldStartLine    = "start_line"
+	fieldBody         = "body"
+	fieldSuggestion   = "suggestion"
+	statusOpen        = "open"
+	localPrefix       = "local-"
+	newline           = "\n"
+	unknownTime       = "unknown time"
+	prSuffix          = "/PR.json"
+	codePostFailed    = "post-failed"
+	codeMissingDiff   = "missing-diff"
+	codeMissingBundle = "missing-bundle"
+	eventComment      = "COMMENT"
+	approveTrue       = "true"
+	approveFalse      = "false"
 )
 
 const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
