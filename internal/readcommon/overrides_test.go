@@ -115,6 +115,18 @@ func TestValidateOverridesAtFragmentShapes(t *testing.T) {
 			wantMsg: "unknown placeholder",
 		},
 		{
+			// The placeholder inventory is not the attribution file's own
+			// rule: the preamble carries the v1 placeholders too.
+			name: "preamble-placeholder",
+			seed: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFragment(t, dir, "preamble.md",
+					"Reviewed with verdict {version} — {head_sha_short} {nope}.\n")
+			},
+			want:    "bad-settings",
+			wantMsg: "unknown placeholder",
+		},
+		{
 			name: "multi-line-attribution",
 			seed: func(t *testing.T, dir string) {
 				t.Helper()
