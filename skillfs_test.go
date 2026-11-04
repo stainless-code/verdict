@@ -160,3 +160,60 @@ func mustRead(t *testing.T, path string) []byte {
 	}
 	return raw
 }
+
+// TestPayloadProsePathsResolve fails when SKILL.md or a prompt names a path a
+// checkout resolves and the payload does not ship: an installed copy resolves
+// it against the skill directory and finds nothing. Link the repository path
+// by absolute URL instead, the way schemas/README.md names its generator.
+func TestPayloadProsePathsResolve(t *testing.T) {
+	t.Parallel()
+	paths, err := skillfs.Paths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		if path == skillfs.SkillMD || strings.HasPrefix(path, "prompts/") {
+			checkProsePaths(t, path)
+		}
+	}
+}
+
+// checkProsePaths reports every word in one payload file that names a file the
+// payload does not ship.
+func checkProsePaths(t *testing.T, path string) {
+	t.Helper()
+	for i, line := range strings.Split(string(mustRead(t, path)), "\n") {
+		for word := range strings.FieldsSeq(line) {
+			if ref, ok := danglingRef(word); ok {
+				t.Errorf("%s:%d names %q, which %s does not ship: "+
+					"link the repository path by absolute URL",
+					path, i+1, ref, skillfs.Dir)
+			}
+		}
+	}
+}
+
+// danglingRef returns the payload path of a word that names a file the payload
+// lacks. A URL, an absolute path, a glob, or prose makes no such claim; a path
+// the checkout resolves, or one that starts at a payload directory and is not
+// there, does.
+func danglingRef(word string) (string, bool) {
+	if strings.Contains(word, "://") || strings.HasPrefix(word, "/") || strings.HasPrefix(word, "~") {
+		return "", false
+	}
+	ref := strings.TrimPrefix(word, "./")
+	ref = strings.TrimRight(ref, "`.,;:)/|")
+	ref = strings.TrimLeft(ref, "`([*<")
+	if !strings.Contains(ref, "/") || strings.ContainsAny(ref, "*$<>{}") {
+		return "", false
+	}
+	if _, err := fs.Stat(skillfs.FS, ref); err == nil {
+		return "", false
+	}
+	if _, err := os.Stat(filepath.FromSlash(ref)); err == nil {
+		return ref, true
+	}
+	first, _, _ := strings.Cut(ref, "/")
+	_, err := fs.Stat(skillfs.FS, first)
+	return ref, err == nil
+}
