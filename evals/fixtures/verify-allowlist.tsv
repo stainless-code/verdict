@@ -208,3 +208,11 @@ refuse	verify-networked	5593	docker run --rm 127.0.0.1:9/nope true	V40 docker ru
 refuse	verify-networked	5594	docker build -t probe-verify http://127.0.0.1:9/Dockerfile .	V40 docker build URL context
 exec	-	5595	docker ps	V40 guard docker ps executes
 exec	-	5596	docker images	V40 guard docker images executes
+# --- V41: attached option values refused like the spaced spelling; relative attached values execute ---
+refuse	verify-repo-escape	5601	tar -C/etc -cf @WA_TMP@/attached.tar notes.txt	V41 tar -C/etc
+refuse	verify-repo-escape	5602	tar -cf/etc/attached.tar notes.txt	V41 tar -cf/etc cluster
+refuse	verify-repo-escape	5603	cp notes.txt -t/etc/cron.d	V41 cp -t/etc
+refuse	verify-repo-escape	5604	sort -o/etc/attached-sorted notes.txt	V41 sort -o/etc
+refuse	verify-repo-escape	5605	grep -f/etc/passwd notes.txt	V41 grep -f/etc
+exec	-	5606	printf ok -C./sub	V41 guard relative attached value executes
+exec	-	5607	printf ok --prefix=src/x	V41 guard equals-joined value executes
