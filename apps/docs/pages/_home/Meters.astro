@@ -1,0 +1,31 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Inline from "./Inline.astro";
+import SectionHead from "./SectionHead.astro";
+
+// One band: the price claim, in one place. Vendor prices live in
+// apps/docs/content/comparison.mdx, which is the only page that carries them,
+// so this copy cannot drift from the ledger.
+---
+
+<section id="cost" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
+  <SectionHead
+    title="What it costs."
+    lede="MIT licensed, with no subscription, no seat count and no charge per review."
+  />
+  <div class="mt-8 max-w-[70ch] space-y-4 text-base text-muted-foreground leading-relaxed">
+    <p>
+      Your agent's model usage is the only bill, at your provider's rates. A re-review
+      carries no charge from Verdict.
+    </p>
+    <p>
+      <Inline text="To cap the bill, set `REVIEW_BUDGET_USD`. `fetch` then estimates the run from your past runs and refuses one projected over budget, unless you pass `--consent-over-budget`." />
+    </p>
+    <p>
+      <a class="font-medium text-accent" href={contentHref("/comparison")}>
+        Hosted reviewers charge per seat or per review
+      </a>
+      , and the comparison lists each price with the date it was checked.
+    </p>
+  </div>
+</section>

@@ -1,0 +1,56 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Inline from "./Inline.astro";
+import SectionHead from "./SectionHead.astro";
+
+const manual = "https://github.com/stainless-code/verdict/blob/main/docs/manual.md";
+
+// Four claims, each with the page that documents it. Claim sources are in
+// docs/landing-claims.md.
+const cards = [
+  {
+    title: "Findings carry receipts.",
+    body: "Each finding records how it was checked, on a scale from `said` to `reproduced`. A finding that was only said is labeled unproven and never posts as fact.",
+    link: { label: "Evidence rungs", href: `${contentHref("/how-it-reviews")}#evidence-rungs` },
+  },
+  {
+    title: "Any agent, any model.",
+    body: "The agent you run is the review model, and Verdict pins none. The skill installs into Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen and Windsurf.",
+    link: { label: "Skill and CLI", href: `${contentHref("/integrations")}#skill-and-cli` },
+  },
+  {
+    title: "Gates a script can read.",
+    body: "`report --check important` exits 1 while open findings at or above that severity remain, and 0 when none do. `report --sarif` writes SARIF 2.1.0 for your scanner.",
+    link: { label: "Machine surface", href: `${manual}#machine-surface` },
+  },
+  {
+    title: "Calibrated on your history.",
+    body: "`calibrate` compares each prediction with what happened to its thread, and `trend` rolls the outcomes up across your PRs.",
+    link: { label: "Measured, not asserted", href: `${contentHref("/how-it-reviews")}#measured-not-asserted` },
+  },
+];
+---
+
+<section id="different" class="border-border border-y bg-muted scroll-mt-20">
+  <div class="mx-auto max-w-[1160px] px-6 py-16 sm:py-24">
+    <SectionHead title="Built for agents. Checked like code." />
+    <ul class="mt-12 grid gap-4 sm:grid-cols-2">
+      {
+        cards.map((card) => (
+          <li class="flex flex-col rounded-2xl border border-border bg-[var(--landing-surface)] p-6">
+            <h3 class="font-display font-semibold text-xl tracking-tight">{card.title}</h3>
+            <p class="mt-2 text-base text-muted-foreground leading-relaxed">
+              <Inline text={card.body} />
+            </p>
+            <a
+              class="mt-auto inline-flex items-center pt-5 font-medium text-accent text-sm"
+              href={card.link.href}
+            >
+              {card.link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>

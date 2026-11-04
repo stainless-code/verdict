@@ -1,0 +1,20 @@
+---
+/** Renders `code` spans written with backticks inside plain strings. */
+interface Props {
+  text: string;
+}
+
+const parts = Astro.props.text
+  .split("`")
+  .map((value, i) => ({ value, code: i % 2 === 1 }));
+---
+
+{
+  parts.map((part) =>
+    part.code ? (
+      <code class="whitespace-nowrap font-mono text-[0.875em] text-foreground">{part.value}</code>
+    ) : (
+      part.value
+    ),
+  )
+}

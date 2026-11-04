@@ -1,0 +1,536 @@
+---
+import Icon from "blume/components/Icon.astro";
+import { brandIcons, type BrandIcon } from "./brand-icons.ts";
+import { breakable } from "./install.ts";
+
+/**
+ * Install switcher: one tab per install route, one command box, one copy
+ * button. Used on the landing hero and in MDX (`<InstallSwitcher />`).
+ *
+ * Without JavaScript the npm panel renders and the tab strip hides; a
+ * `<noscript>` rule then stacks every panel under its own label, so no route
+ * is out of reach. Panels toggle `data-active`, not `hidden`, because the
+ * Tailwind preflight's layered `[hidden] !important` would beat that rule. With JavaScript the tabs work as an ARIA tablist (arrow
+ * keys, Home, End) and the choice persists in localStorage.
+ *
+ * Tab marks are the official brand logos from Simple Icons (CC0), see
+ * `brand-icons.ts`. Command sources: README.md "Install" and docs/manual.md
+ * "Install routes".
+ */
+interface Props {
+  /** Id prefix. Give each switcher on one page a different value. */
+  name?: string;
+}
+
+const { name = "install" } = Astro.props;
+
+interface Tab {
+  id: string;
+  label: string;
+  /** Brand marks shown before the label, painted with currentColor. */
+  icons: BrandIcon[];
+  command: string;
+}
+
+const tabs: Tab[] = [
+  {
+    id: "npm",
+    label: "npm",
+    icons: ["npm"],
+    command: "npm i -g @stainless-code/verdict",
+  },
+  {
+    id: "pnpm",
+    label: "pnpm",
+    icons: ["pnpm"],
+    command: "pnpm add -g @stainless-code/verdict",
+  },
+  {
+    id: "bun",
+    label: "bun",
+    icons: ["bun"],
+    command: "bun add -g @stainless-code/verdict",
+  },
+  {
+    id: "yarn",
+    label: "yarn",
+    icons: ["yarn"],
+    command: "yarn global add @stainless-code/verdict",
+  },
+  {
+    id: "brew",
+    label: "Homebrew",
+    icons: ["homebrew"],
+    command: "brew install stainless-code/tap/verdict",
+  },
+  {
+    id: "sh",
+    label: "macOS/Linux",
+    icons: ["apple", "linux"],
+    command: "curl -fsSL https://stainless-code.com/verdict/install.sh | sh",
+  },
+  {
+    id: "ps",
+    label: "Windows",
+    icons: ["windows"],
+    command: "irm https://stainless-code.com/verdict/install.ps1 | iex",
+  },
+];
+---
+
+<install-switcher class="install not-prose" data-storage-key="verdict-install">
+  <div class="install-tabs" role="tablist" aria-label="Install method">
+    {
+      tabs.map((tab, i) => (
+        <button
+          aria-controls={`${name}-panel-${tab.id}`}
+          aria-selected={i === 0 ? "true" : "false"}
+          class="install-tab"
+          data-tab={tab.id}
+          id={`${name}-tab-${tab.id}`}
+          role="tab"
+          tabindex={i === 0 ? 0 : -1}
+          type="button"
+        >
+          {tab.icons.length > 0 && (
+            <span aria-hidden="true" class="install-icons">
+              {tab.icons.map((icon) => {
+                const Mark = brandIcons[icon];
+                return (
+                  <Mark class="install-icon" focusable="false" />
+                );
+              })}
+            </span>
+          )}
+          <span>{tab.label}</span>
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((tab, i) => (
+      <div
+        aria-labelledby={`${name}-tab-${tab.id}`}
+        class="install-panel"
+        data-active={i === 0 ? "true" : undefined}
+        data-panel={tab.id}
+        id={`${name}-panel-${tab.id}`}
+        role="tabpanel"
+        tabindex="0"
+      >
+        <p class="install-label">{tab.label}</p>
+        <div class="install-box">
+          <span aria-hidden="true" class="install-prompt">
+            $
+          </span>
+          <code class="install-command" data-command>
+            {breakable(tab.command).map((part) => (
+              <>
+                {part}
+                <wbr />
+              </>
+            ))}
+          </code>
+          <button
+            aria-label={`Copy: ${tab.command}`}
+            class="install-copy"
+            data-copy
+            hidden
+            type="button"
+          >
+            <span data-copy-idle>
+              <Icon name="copy" size={15} />
+            </span>
+            <span data-copy-done hidden>
+              <Icon name="check" size={15} />
+            </span>
+          </button>
+        </div>
+      </div>
+    ))
+  }
+  <p aria-live="polite" class="install-status" data-status role="status"></p>
+</install-switcher>
+
+<noscript>
+  <style>
+    /* The component's own rules are scoped (higher specificity): win with !important. */
+    .install-tabs {
+      display: none !important;
+    }
+    .install-panel {
+      display: block !important;
+    }
+    .install-label {
+      display: block !important;
+    }
+  </style>
+</noscript>
+
+<style>
+  .install {
+    display: block;
+    width: 100%;
+    max-width: 44rem;
+    margin-inline: auto;
+    overflow: hidden;
+    text-align: left;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.75rem;
+    background: var(--landing-surface, var(--blume-background));
+  }
+
+  /* Seven tabs fit from 672px up with room to spare. Below that the bar
+     scrolls sideways with no scrollbar, and the script keeps the selected
+     tab in view. */
+  .install-tabs {
+    display: flex;
+    gap: 0.125rem;
+    padding-inline: 0.5rem;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--blume-border);
+    background: var(--blume-muted);
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .install-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Fade the edge that has more tabs behind it. Set by the script. */
+  .install-tabs[data-fade-end] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
+
+  .install-tabs[data-fade-start] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 2rem), transparent);
+  }
+
+  .install-tabs[data-fade-start][data-fade-end] {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 2rem,
+      #000 calc(100% - 2rem),
+      transparent
+    );
+  }
+
+  .install-tab {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.4375rem;
+    min-height: 2.75rem;
+    margin-bottom: -1px;
+    padding: 0.625rem 0.4375rem;
+    white-space: nowrap;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--blume-muted-foreground);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 120ms ease;
+  }
+
+  .install-icons {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.25rem;
+  }
+
+  .install-icon {
+    display: block;
+    width: 0.9375rem;
+    height: 0.9375rem;
+  }
+
+  .install-tab:hover {
+    color: var(--blume-foreground);
+  }
+
+  .install-tab[aria-selected="true"] {
+    border-bottom-color: var(--blume-accent);
+    color: var(--blume-foreground);
+  }
+
+  .install-tab:focus-visible,
+  .install-copy:focus-visible,
+  .install-panel:focus-visible {
+    outline: 2px solid var(--blume-accent);
+    outline-offset: -2px;
+  }
+
+  .install-panel {
+    display: none;
+    padding: 0.875rem 0.75rem 0.875rem 1rem;
+  }
+
+  .install-panel[data-active] {
+    display: block;
+  }
+
+  .install-label {
+    display: none;
+    margin: 0 0 0.375rem;
+    color: var(--blume-muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .install-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    min-width: 0;
+    line-height: 1.75rem;
+  }
+
+  .install-prompt {
+    color: var(--landing-faint, var(--blume-muted-foreground));
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    line-height: 1.75rem;
+    user-select: none;
+  }
+
+  /*
+   * Wraps rather than scrolls: the longest routes (`curl … | sh`, `irm … |
+   * iex`) need ~550px, so below ~672px a scroll box would hide the half of
+   * the command that says what it does. Copy still takes the whole string
+   * from `data-command`.
+   */
+  .install-command {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--blume-foreground);
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    font-size: 0.9375rem;
+    line-height: 1.75rem;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+  }
+
+  .install-command::before,
+  .install-command::after {
+    content: none;
+  }
+
+  .install-copy {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: var(--blume-muted);
+    color: var(--blume-muted-foreground);
+    cursor: pointer;
+    transition: color 120ms ease;
+  }
+
+  /* The button draws 32px; the hit area under it is 44px, so a thumb finds it
+     without the command box growing. */
+  .install-copy::after {
+    position: absolute;
+    inset: -0.375rem;
+    content: "";
+  }
+
+  .install-copy[hidden] {
+    display: none;
+  }
+
+  .install-copy:hover {
+    color: var(--blume-foreground);
+  }
+
+  .install-copy [hidden] {
+    display: none;
+  }
+
+  .install-copy span {
+    display: inline-flex;
+  }
+
+  .install-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+</style>
+
+<script>
+  const CHANGE = "verdict-install-change";
+
+  class InstallSwitcher extends HTMLElement {
+    connectedCallback() {
+      const key = this.dataset.storageKey ?? "verdict-install";
+      const tabs = Array.from(
+        this.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+      );
+      const panels = Array.from(
+        this.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
+      );
+      const status = this.querySelector<HTMLElement>("[data-status]");
+      const ids = tabs.map((tab) => tab.dataset.tab ?? "");
+
+      const read = (): string | null => {
+        try {
+          const saved = localStorage.getItem(key);
+          return saved !== null && ids.includes(saved) ? saved : null;
+        } catch {
+          return null;
+        }
+      };
+      const write = (id: string) => {
+        try {
+          localStorage.setItem(key, id);
+        } catch {
+          // Storage can be blocked; the choice then lasts for this page only.
+        }
+      };
+
+      // Scroll the tab bar itself, never the page, so the chosen tab stays visible.
+      const reveal = (tab: HTMLElement) => {
+        const strip = tab.parentElement;
+        if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+        const left = tab.offsetLeft - strip.offsetLeft;
+        const target = left - (strip.clientWidth - tab.offsetWidth) / 2;
+        strip.scrollTo({ left: Math.max(0, target) });
+      };
+
+      const bar = this.querySelector<HTMLElement>('[role="tablist"]');
+      const fade = () => {
+        if (!bar) return;
+        const max = bar.scrollWidth - bar.clientWidth;
+        bar.toggleAttribute("data-fade-start", bar.scrollLeft > 1);
+        bar.toggleAttribute("data-fade-end", max - bar.scrollLeft > 1);
+      };
+      bar?.addEventListener("scroll", fade, { passive: true });
+      window.addEventListener("resize", fade);
+
+      const select = (id: string, focus: boolean) => {
+        for (const tab of tabs) {
+          const on = tab.dataset.tab === id;
+          tab.setAttribute("aria-selected", on ? "true" : "false");
+          tab.tabIndex = on ? 0 : -1;
+          if (on && focus) tab.focus();
+          if (on) reveal(tab);
+        }
+        for (const panel of panels) {
+          if (panel.dataset.panel === id) panel.dataset.active = "true";
+          else delete panel.dataset.active;
+        }
+      };
+
+      const initial = read();
+      if (initial !== null) {
+        select(initial, false);
+        // Announce the restored route, so read-only mirrors (the closing band)
+        // never show a different command from the switcher above.
+        window.dispatchEvent(new CustomEvent(CHANGE, { detail: initial }));
+      }
+      fade();
+
+      // A restored route can be measured before the strip has a width (web
+      // fonts, a hidden ancestor), so restore the scroll once painted.
+      const settle = () => {
+        const current = tabs.find(
+          (tab) => tab.getAttribute("aria-selected") === "true",
+        );
+        if (current) reveal(current);
+        fade();
+      };
+      requestAnimationFrame(settle);
+      void document.fonts?.ready.then(settle).catch(() => {});
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+          const id = tab.dataset.tab ?? "";
+          select(id, false);
+          write(id);
+          window.dispatchEvent(new CustomEvent(CHANGE, { detail: id }));
+        });
+      }
+
+      bar?.addEventListener(
+        "keydown",
+        (event) => {
+          const e = event as KeyboardEvent;
+          const at = tabs.findIndex(
+            (tab) => tab.getAttribute("aria-selected") === "true",
+          );
+          let next = -1;
+          if (e.key === "ArrowRight") next = (at + 1) % tabs.length;
+          else if (e.key === "ArrowLeft")
+            next = (at - 1 + tabs.length) % tabs.length;
+          else if (e.key === "Home") next = 0;
+          else if (e.key === "End") next = tabs.length - 1;
+          if (next < 0) return;
+          e.preventDefault();
+          const id = ids[next] ?? "";
+          select(id, true);
+          write(id);
+          window.dispatchEvent(new CustomEvent(CHANGE, { detail: id }));
+        },
+      );
+
+      // Keep several switchers on one page (and other tabs) in step.
+      window.addEventListener(CHANGE, (event) => {
+        const id = (event as CustomEvent<string>).detail;
+        if (ids.includes(id)) select(id, false);
+      });
+      window.addEventListener("storage", (event) => {
+        if (event.key === key && event.newValue && ids.includes(event.newValue))
+          select(event.newValue, false);
+      });
+
+      for (const button of this.querySelectorAll<HTMLButtonElement>(
+        "[data-copy]",
+      )) {
+        button.hidden = false;
+        button.addEventListener("click", async () => {
+          const code = button
+            .closest(".install-box")
+            ?.querySelector<HTMLElement>("[data-command]");
+          if (!code) return;
+          try {
+            await navigator.clipboard.writeText(code.textContent?.trim() ?? "");
+          } catch {
+            // No clipboard access: select the command so Ctrl/Cmd+C works.
+            getSelection()?.selectAllChildren(code);
+            return;
+          }
+          const idle = button.querySelector<HTMLElement>("[data-copy-idle]");
+          const done = button.querySelector<HTMLElement>("[data-copy-done]");
+          if (idle) idle.hidden = true;
+          if (done) done.hidden = false;
+          if (status) status.textContent = "Copied to clipboard";
+          setTimeout(() => {
+            if (idle) idle.hidden = false;
+            if (done) done.hidden = true;
+            if (status) status.textContent = "";
+          }, 1500);
+        });
+      }
+    }
+  }
+
+  if (!customElements.get("install-switcher")) {
+    customElements.define("install-switcher", InstallSwitcher);
+  }
+</script>

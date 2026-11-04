@@ -1,40 +1,39 @@
 ---
 import { contentHref } from "blume/components/content/base-href.ts";
 import Icon from "blume/components/Icon.astro";
-import CopyCommand from "./CopyCommand.astro";
+import InstallEcho from "./InstallEcho.astro";
 import VerdictMark from "./VerdictMark.astro";
 ---
 
 <section class="mx-auto max-w-[1160px] px-6 py-16 sm:py-24">
-  <div class="flex flex-col items-center gap-6 rounded-3xl px-6 py-16 text-center sm:p-16" style="background: var(--landing-band);">
+  <div class="flex flex-col items-center gap-6 rounded-3xl px-4 py-14 text-center sm:p-16" style="background: var(--landing-band);">
     <VerdictMark tone="paper" size={40} />
     <h2
-      class="max-w-3xl text-balance text-center font-display font-semibold text-3xl tracking-tight sm:text-[39px] sm:leading-[39px]"
+      class="max-w-3xl text-balance text-center font-display font-semibold text-3xl tracking-tight sm:text-[39px] sm:leading-[43px]"
       style="color: var(--landing-band-ink);"
     >
-      Review something in the next five minutes.
+      Hand your agent a PR.
     </h2>
-    <p class="max-w-xl text-balance" style="color: var(--landing-band-ink); opacity: 0.82;">
-      One install command, one fetch, one post. No seats, no meters, no app to authorize.
+    <p class="max-w-xl text-balance" style="color: var(--landing-band-ink); opacity: 0.85;">
+      Install once, then fetch the change, let your agent review it, and post
+      one review.
     </p>
-    <div class="flex w-full max-w-full min-w-0 justify-center">
-      <CopyCommand command="npx skills add stainless-code/verdict" tone="paper" />
-    </div>
+    <InstallEcho />
     <div class="flex flex-col items-center gap-3 sm:flex-row">
-      <a
-        class="inline-flex h-11 items-center whitespace-nowrap rounded-[9px] border border-white/60 px-5 font-medium text-base transition-colors hover:bg-white/10"
-        style="color: var(--landing-band-ink);"
-        href={contentHref("/how-it-reviews")}
-      >
-        How it reviews
-      </a>
       <a
         class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] bg-white px-5 font-medium text-base transition-opacity hover:opacity-90"
         style="color: var(--landing-band);"
         href={contentHref("/quickstart")}
       >
-        Quickstart
+        Read the quickstart
         <Icon name="arrow-right" size={16} />
+      </a>
+      <a
+        class="inline-flex h-11 items-center whitespace-nowrap rounded-[9px] border border-white/60 px-5 font-medium text-base transition-colors hover:bg-white/10"
+        style="color: var(--landing-band-ink);"
+        href={contentHref("/how-it-reviews")}
+      >
+        See how it reviews
       </a>
     </div>
   </div>

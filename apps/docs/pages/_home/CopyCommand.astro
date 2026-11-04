@@ -1,65 +1,100 @@
 ---
 import Icon from "blume/components/Icon.astro";
 
+/**
+ * One command in a box with a copy button. The command wraps instead of
+ * truncating, so a narrow screen never hides part of it.
+ *
+ * `tone="paper"` is the variant for a coloured band: white box, ink that
+ * matches the band, no border to fight the background.
+ *
+ * Sources: the same commands as the install switcher and docs/manual.md.
+ */
 interface Props {
   command: string;
-  /** `surface` for page backgrounds, `paper` for the white pill on the accent band. */
+  /** Stretch to the width of the parent instead of the command's own width. */
+  fill?: boolean;
   tone?: "surface" | "paper";
 }
 
-const { command, tone = "surface" } = Astro.props;
+const { command, fill = false, tone = "surface" } = Astro.props;
+const paper = tone === "paper";
 
-const box =
-  tone === "paper"
-    ? "border-transparent bg-[var(--landing-paper)]"
-    : "border-border bg-[var(--landing-surface)]";
-const code =
-  tone === "paper" ? "text-[var(--landing-ink)]" : "text-foreground";
-const copyButton =
-  tone === "paper"
-    ? "bg-[var(--landing-paper-muted)] text-[var(--landing-paper-faint)] hover:text-[var(--landing-ink)]"
-    : "bg-muted text-muted-foreground hover:text-foreground";
-const dollar =
-  tone === "paper" ? "text-[var(--landing-paper-faint)]" : "text-[var(--landing-faint)]";
+// Break between words, never inside a flag: a wrapped `--detect` that turns
+// into `--` / `detect` reads as a typo. Paths and URLs stay breakable, so a
+// long route still wraps instead of running off the box.
+const tokens = command
+  .split(" ")
+  .map((token) => ({ token, keep: token.length <= 24 && !token.includes("/") }));
 ---
 
 <div
-  class={`flex w-fit max-w-full min-w-0 items-center gap-4 overflow-hidden rounded-xl border py-2.5 pr-2.5 pl-5 ${box}`}
-  data-landing-command
+  class={`flex ${fill ? "w-full" : "w-fit"} max-w-full min-w-0 items-center gap-3 rounded-xl border py-2.5 pr-2.5 pl-4 ${
+    paper
+      ? "border-transparent bg-white text-[var(--landing-band)]"
+      : "border-border bg-[var(--landing-surface)]"
+  }`}
 >
-  <span aria-hidden="true" class={`select-none font-mono text-base ${dollar}`}>$</span>
-  <code class={`min-w-0 flex-1 truncate text-left font-mono text-base ${code}`} data-landing-command-text>{command}</code>
+  <span
+    aria-hidden="true"
+    class={`select-none font-mono text-base ${paper ? "" : "text-[var(--landing-faint)]"}`}
+    style={paper ? "color: var(--landing-band); opacity: 0.5;" : undefined}
+  >
+    $
+  </span>
+  <code
+    class={`min-w-0 flex-1 font-mono text-[13px] leading-[1.5] break-words sm:text-base ${paper ? "" : "text-foreground"}`}
+  >
+    {
+      tokens.map(({ token, keep }, i) => (
+        <>
+          {i > 0 && " "}
+          {keep ? <span class="whitespace-nowrap">{token}</span> : token}
+        </>
+      ))
+    }
+  </code>
   <button
-    aria-label={`Copy ${command}`}
-    class={`inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors ${copyButton}`}
-    data-landing-copy
+    aria-label={`Copy: ${command}`}
+    class={`relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors after:absolute after:-inset-1.5 after:content-[''] ${
+      paper
+        ? "bg-black/[0.06] text-[var(--landing-band)] hover:bg-black/10"
+        : "bg-muted text-muted-foreground hover:text-foreground"
+    }`}
+    data-copy-command
     data-command={command}
     type="button"
   >
-    <Icon name="copy" size={15} />
+    <span data-copy-idle><Icon name="copy" size={15} /></span>
+    <span data-copy-done hidden><Icon name="check" size={15} /></span>
   </button>
+  <span aria-live="polite" class="sr-only" data-copy-status></span>
 </div>
 
-<script is:inline>
-  (() => {
-    if (document.documentElement.dataset.landingCopyBound === "true") return;
-    document.documentElement.dataset.landingCopyBound = "true";
-    const CHECK =
-      '<svg height="15" width="15" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>';
-    document.addEventListener("click", async (e) => {
-      const target = e.target instanceof Element ? e.target : null;
-      const button = target?.closest("[data-landing-copy]");
-      if (!(button instanceof HTMLElement)) return;
-      try {
-        await navigator.clipboard.writeText(button.dataset.command ?? "");
-      } catch {
-        return;
-      }
-      const original = button.innerHTML;
-      button.innerHTML = CHECK;
-      setTimeout(() => {
-        button.innerHTML = original;
-      }, 1500);
-    });
-  })();
+<script>
+  document.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target?.closest("[data-copy-command]");
+    if (!(button instanceof HTMLElement)) return;
+    const command = button.dataset.command ?? "";
+    try {
+      await navigator.clipboard.writeText(command);
+    } catch {
+      // No clipboard access: say nothing rather than claim success.
+      return;
+    }
+    const idle = button.querySelector<HTMLElement>("[data-copy-idle]");
+    const done = button.querySelector<HTMLElement>("[data-copy-done]");
+    const status = button
+      .closest("div")
+      ?.querySelector<HTMLElement>("[data-copy-status]");
+    if (idle) idle.hidden = true;
+    if (done) done.hidden = false;
+    if (status) status.textContent = "Copied to clipboard";
+    setTimeout(() => {
+      if (idle) idle.hidden = false;
+      if (done) done.hidden = true;
+      if (status) status.textContent = "";
+    }, 1500);
+  });
 </script>

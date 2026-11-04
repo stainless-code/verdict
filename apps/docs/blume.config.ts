@@ -8,7 +8,7 @@ import { filesystem, githubReleases } from "blume/sources";
 
 const title = "Verdict";
 const description =
-  "Local on-demand PR review for any coding agent. Evidence-graded findings, machine gates, zero install.";
+  "Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. Evidence-graded findings and one static binary.";
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";
@@ -80,7 +80,8 @@ export default defineConfig({
 
   changelog: {
     title: "Changelog",
-    description: "Every Verdict release, newest first.",
+    description:
+      "Every Verdict release, newest first, with the notes from each GitHub Release: what changed, what was added, and what was fixed.",
   },
 
   integrations: [webAppHeadIntegration],
@@ -90,12 +91,16 @@ export default defineConfig({
   },
 
   navigation: {
+    // Order is the reader's path, not the repo's: install, see the loop, pick a
+    // surface, then argue about positioning and price. Roadmap before Changelog
+    // because the future is a shorter read than the log.
     tabs: [
       { label: "Quickstart", path: "/quickstart" },
+      { label: "How it reviews", path: "/how-it-reviews" },
+      { label: "Integrations", path: "/integrations" },
       { label: "Why Verdict", path: "/why-verdict" },
       { label: "Comparison", path: "/comparison" },
-      { label: "How it reviews", path: "/how-it-reviews" },
-      { label: "Build a client", path: "/build-a-client" },
+      { label: "Roadmap", path: "/roadmap" },
       { label: "Changelog", path: "/changelog" },
     ],
     sidebar: { display: "flat" },
@@ -105,8 +110,12 @@ export default defineConfig({
     copyright: `© 2026 stainless-code, MIT licensed.`,
     links: [
       {
-        label: "Skill repo",
+        label: "GitHub repository",
         href: "https://github.com/stainless-code/verdict",
+      },
+      {
+        label: "Releases",
+        href: "https://github.com/stainless-code/verdict/releases",
       },
       {
         label: "MIT license",

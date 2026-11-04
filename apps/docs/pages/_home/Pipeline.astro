@@ -1,0 +1,118 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Inline from "./Inline.astro";
+import SectionHead from "./SectionHead.astro";
+
+/**
+ * The review pipeline as the commands that own each stage, split into what
+ * ships in 0.4.0 and what is planned. A row carries a badge only when it is an
+ * exception to its group (MCP is experimental). Rows mirror
+ * apps/docs/content/roadmap.mdx; change one, change both. Claim sources are in
+ * docs/landing-claims.md.
+ */
+interface Row {
+  stage: string;
+  commands?: string[];
+  body: string;
+  /** An exception to the group's status, shown as a badge. */
+  note?: string;
+}
+
+const shipped: Row[] = [
+  {
+    stage: "Bundle",
+    commands: ["fetch", "fetch-local"],
+    body: "One diff per target, from a host PR or your working tree, written to `.review/`.",
+  },
+  {
+    stage: "Review",
+    commands: ["record", "adopt", "fix"],
+    body: "Your agent writes the findings. `record` validates them and merges each one with its evidence rung.",
+  },
+  {
+    stage: "Gate",
+    commands: ["report", "triage", "next", "trend"],
+    body: "Rank the findings, fail a build on a severity with `--check`, and write SARIF for your scanner.",
+  },
+  {
+    stage: "Post",
+    commands: ["post"],
+    body: "Exactly one review, with anchor checks and stale-SHA and duplicate guards.",
+  },
+  {
+    stage: "Trust",
+    commands: ["verify", "doctor", "calibrate", "ready"],
+    body: "Check the bundle, the host login, past calibration and readiness before anything posts.",
+  },
+  {
+    stage: "Agent surface",
+    commands: ["skill", "mcp"],
+    body: "The skill ships inside the binary. `mcp` serves the same commands as tools over stdio.",
+    note: "MCP experimental",
+  },
+];
+
+const next: Row[] = [
+  {
+    stage: "Dashboard",
+    body: "A read-only view of `.review/` on localhost: findings, evidence, the gate, cost and trend. For a person who wants to look, or an agent showing its work.",
+  },
+  {
+    stage: "Re-review",
+    body: "`fetch --since` reviews only the new commits, on GitHub today. GitLab, GitCafe, Forgejo, Bitbucket and Azure DevOps are next.",
+  },
+];
+
+const groups = [
+  { title: "Shipped in 0.4.0", rows: shipped },
+  { title: "Planned", rows: next },
+];
+---
+
+<section id="pipeline" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
+  <SectionHead
+    title="The review pipeline, in pieces."
+    lede="Each stage is a command with a JSON envelope and a fixed exit code. Your agent runs them in order. A script or a CI job can run any one alone."
+  />
+
+  {
+    groups.map((group) => (
+      <div class="mt-10">
+        <h3 class="mb-3 font-medium text-muted-foreground text-sm">{group.title}</h3>
+        <ul class="border-border border-t">
+          {group.rows.map((row) => (
+            <li class="grid gap-2 border-border border-b py-5 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-start sm:gap-8">
+              <span class="font-medium text-base">{row.stage}</span>
+              <div class="min-w-0">
+                {row.commands && (
+                  <p class="mb-1.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-sm text-foreground">
+                    {row.commands.map((command) => (
+                      <code class="whitespace-nowrap">{command}</code>
+                    ))}
+                  </p>
+                )}
+                <p class="max-w-[62ch] text-base text-muted-foreground leading-relaxed">
+                  <Inline text={row.body} />
+                </p>
+              </div>
+              {row.note && (
+                <span class="inline-flex h-6 w-fit items-center whitespace-nowrap rounded-full border border-current px-2.5 font-medium text-accent text-xs sm:justify-self-end">
+                  {row.note}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+
+  <p class="mt-6 max-w-[70ch] text-base text-muted-foreground leading-relaxed">
+    New capability arrives as a command first, so an agent, a script or the
+    dashboard can build on it.
+    {" "}
+    <a class="font-medium text-accent" href={contentHref("/roadmap")}>
+      The roadmap keeps the full ledger, including what Verdict will never do.
+    </a>
+  </p>
+</section>

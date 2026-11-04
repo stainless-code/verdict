@@ -1,40 +1,47 @@
 ---
 import { contentHref } from "blume/components/content/base-href.ts";
-import Icon from "blume/components/Icon.astro";
-import CopyCommand from "./CopyCommand.astro";
+import InstallSwitcher from "../../components/InstallSwitcher.astro";
+
+/**
+ * The hero carries the one install surface: every route (npm, pnpm, bun,
+ * yarn, Homebrew, script, PowerShell) lives here and nowhere else on the
+ * page. The closing band mirrors the selected route instead of mounting a
+ * second copy of the tab strip.
+ *
+ * The sentence under the headline is the same first sentence as README.md and
+ * the site description, so all three open with one claim.
+ */
 ---
 
-<section class="mx-auto max-w-[1160px] px-6 pt-16 pb-16 sm:pt-24 sm:pb-20">
+<section class="mx-auto max-w-[1160px] px-6 pt-16 pb-14 sm:pt-24 sm:pb-20">
   <div class="mx-auto max-w-3xl text-center">
     <h1
-      class="mx-auto mt-5 max-w-3xl text-balance font-display font-semibold text-5xl leading-[1.02] tracking-tight sm:text-6xl"
+      class="mx-auto max-w-3xl text-balance font-display font-semibold text-5xl leading-[1.02] tracking-tight sm:text-7xl"
     >
-      <span class="block">PR reviews</span>
+      <span class="block">Code review</span>
       <span class="block text-accent">with receipts.</span>
     </h1>
 
-    <p class="mx-auto mt-6 max-w-2xl text-balance text-lg text-muted-foreground">
-      One command fetches, your agent reviews, exactly one review posts.
+    <p class="mx-auto mt-6 max-w-xl text-balance text-lg text-muted-foreground">
+      Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post.
     </p>
 
-    <div class="mt-8 flex w-full max-w-full min-w-0 justify-center">
-      <CopyCommand command="npx skills add stainless-code/verdict" />
+    <div id="install" class="mx-auto mt-10 w-full max-w-[44rem] scroll-mt-24">
+      <InstallSwitcher name="hero" />
     </div>
 
-    <div class="mt-6 flex flex-wrap items-center justify-center gap-4">
+    <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
       <a
-        class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] bg-accent px-5 font-medium text-base text-[var(--blume-accent-foreground)] transition-opacity hover:opacity-90"
+        class="inline-flex h-11 items-center whitespace-nowrap rounded-[9px] bg-foreground px-5 font-medium text-background text-base transition-opacity hover:opacity-90"
         href={contentHref("/quickstart")}
       >
-        Quickstart
-        <Icon name="arrow-right" size={14} />
+        Read the quickstart
       </a>
       <a
-        class="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[9px] border border-border px-5 font-medium text-base text-foreground transition-colors hover:border-foreground"
-        href="#verbs"
+        class="inline-flex h-11 items-center whitespace-nowrap rounded-[9px] border border-border px-5 font-medium text-base text-foreground transition-colors hover:bg-muted"
+        href={contentHref("/how-it-reviews")}
       >
-        How it works
-        <Icon name="arrow-right" size={14} />
+        See how it reviews
       </a>
     </div>
   </div>

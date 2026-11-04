@@ -4,7 +4,7 @@
   <img src="apps/docs/public/logo.svg" alt="Verdict" height="48" />
 </p>
 
-PR reviews with receipts. Verdict is local, on-demand PR review for any coding agent. Your agent does the review. The `verdict` binary fetches the PR, checks the findings, and posts exactly one review. No servers, no accounts, no daemon.
+Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No servers, no accounts, no daemon.
 
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
 - **Guarded posting.** Anchors are validated before posting. One bad anchor never fails a post. Stale-SHA and duplicate-post guards refuse to post over a moved head or a repeat.

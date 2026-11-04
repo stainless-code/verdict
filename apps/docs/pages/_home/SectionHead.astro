@@ -1,0 +1,28 @@
+---
+import Inline from "./Inline.astro";
+
+interface Props {
+  title: string;
+  lede?: string;
+  /** Heading level id, so sections can be labelled for assistive tech. */
+  id?: string;
+}
+
+const { title, lede, id } = Astro.props;
+---
+
+<div class="max-w-2xl">
+  <h2
+    id={id}
+    class="text-balance font-display font-semibold text-[32px] leading-[1.05] tracking-tight sm:text-[48px] sm:leading-[1.02]"
+  >
+    {title}
+  </h2>
+  {
+    lede && (
+      <p class="mt-4 max-w-xl text-pretty text-lg text-muted-foreground">
+        <Inline text={lede} />
+      </p>
+    )
+  }
+</div>
