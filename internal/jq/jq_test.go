@@ -64,6 +64,9 @@ func TestCanonNumber(t *testing.T) {
 		{"2", "2"},
 		{"2.0", "2"},
 		{"-0", "-0"},
+		{"1.5", "1.5"},
+		{"99999999999999999999", "99999999999999999999"},
+		{"1e999", "1e999"},
 		{"abc", "abc"},
 	}
 	for _, tt := range tests {
@@ -300,5 +303,58 @@ func TestDecodeOrderedRefusesStrayCloser(t *testing.T) {
 		if v, err := jq.DecodeJSONLOrdered([]byte(in)); err == nil {
 			t.Errorf("DecodeJSONLOrdered(%q) = %v, want refusal", in, v)
 		}
+	}
+}
+
+// TestObjSetDeleteOrder pins the ordered-object editing contract: Set appends
+// a new key but never moves an existing one (jq's `+`), and Delete drops the
+// key from both the map and the order slice, leaving the rest in place
+// (jq's `del`). Break killed: inverting the `k != key` guard in Delete keeps
+// the deleted key in order (or drops the wrong one), failing both assertions.
+func TestObjSetDeleteOrder(t *testing.T) {
+	o := jq.NewObj("a", 1, "b", 2, "c", 3)
+	o.Set("a", 10)
+	if got := o.MarshalCompact(); got != `{"a":10,"b":2,"c":3}` {
+		t.Errorf("Set(existing) = %s; want {\"a\":10,\"b\":2,\"c\":3} (position kept)", got)
+	}
+	o.Delete("b")
+	o.Delete("absent")
+	if got := o.Keys; len(got) != 2 || got[0] != "a" || got[1] != "c" {
+		t.Errorf("Keys after Delete(b) = %v; want [a c]", got)
+	}
+	if _, ok := o.Get("b"); ok || o.Has("b") {
+		t.Error("Delete(b) left the field readable")
+	}
+}
+
+// TestNewObjOddPairs pins the tolerant constructor: a trailing key with no
+// value is ignored rather than panicking on a short slice. Break killed:
+// relaxing the `i+1 < len(pairs)` guard to `i < len(pairs)` indexes past the
+// end and panics on the trailing key.
+func TestNewObjOddPairs(t *testing.T) {
+	o := jq.NewObj("a", 1, "dangling")
+	if got := o.MarshalCompact(); got != `{"a":1}` {
+		t.Errorf("NewObj(a,1,dangling) = %s; want {\"a\":1}", got)
+	}
+	if o.Has("dangling") {
+		t.Error("the value-less key was stored")
+	}
+}
+
+// TestPrettySortedKeys pins the pretty printer the findings stores are frozen
+// with (plain maps are key-sorted there): two-space indent, one trailing
+// newline, and no HTML escaping, so a diff hunk containing "<&>" round-trips
+// verbatim instead of an escaped \u003c sequence.
+//
+// Break killed: turning SetEscapeHTML back on or emptying the indent string
+// changes every byte of the expectation.
+func TestPrettySortedKeys(t *testing.T) {
+	want := "{\n  \"a\": \"<&>\",\n  \"b\": 2,\n  \"c\": [\n    1,\n    null\n  ]\n}\n"
+	got := jq.Pretty(map[string]any{"c": []any{1, nil}, "b": json.Number("2"), "a": "<&>"})
+	if got != want {
+		t.Errorf("Pretty() =\n%q\nwant\n%q", got, want)
+	}
+	if got := jq.Compact(map[string]any{"a": "<&>"}); got != `{"a":"<&>"}` {
+		t.Errorf("Compact() = %s; want {\"a\":\"<&>\"}", got)
 	}
 }
