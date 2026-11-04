@@ -1,6 +1,8 @@
 package provenance_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,5 +179,50 @@ func TestToolVersionDegrade(t *testing.T) {
 	dir := writeBundle(t, map[string]string{})
 	if got := provenance.ToolVersion(filepath.Join(dir, "missing")); got != core.VersionUnknown {
 		t.Errorf("ToolVersion(no metadata) = %q; want %q", got, core.VersionUnknown)
+	}
+}
+
+// TestPromptsHashLayouts proves the prompt-set hash reads a flat skill
+// directory and a checkout's skills/verdict alike, prefers the flat copy, and
+// hashes the empty set when neither exists. The expected digests are SHA-256
+// of the documented "== <path> ==\n<bytes>\n" text, written out literally.
+func TestPromptsHashLayouts(t *testing.T) {
+	sum := func(text string) string {
+		h := sha256.Sum256([]byte(text))
+		return hex.EncodeToString(h[:])
+	}
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{
+			name:  "flat skill dir",
+			files: map[string]string{"SKILL.md": "S", "prompts/review.md": "R"},
+			want:  sum("== SKILL.md ==\nS\n== prompts/review.md ==\nR\n"),
+		},
+		{
+			name:  "checkout skills/verdict",
+			files: map[string]string{"skills/verdict/SKILL.md": "S", "skills/verdict/prompts/review.md": "R"},
+			want:  sum("== SKILL.md ==\nS\n== prompts/review.md ==\nR\n"),
+		},
+		{
+			name:  "flat file wins over the checkout copy",
+			files: map[string]string{"SKILL.md": "flat", "skills/verdict/SKILL.md": "nested"},
+			want:  sum("== SKILL.md ==\nflat\n"),
+		},
+		{
+			name:  "a missing flat file falls back per file",
+			files: map[string]string{"SKILL.md": "flat", "skills/verdict/prompts/system.md": "Y"},
+			want:  sum("== SKILL.md ==\nflat\n== prompts/system.md ==\nY\n"),
+		},
+		{name: "no prompt files", files: map[string]string{"notes.txt": "x"}, want: sum("")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := provenance.PromptsHash(writeBundle(t, tc.files)); got != tc.want {
+				t.Errorf("PromptsHash = %s, want %s", got, tc.want)
+			}
+		})
 	}
 }
