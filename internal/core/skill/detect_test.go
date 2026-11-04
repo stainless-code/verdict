@@ -224,3 +224,66 @@ func TestInstallDetectedPerTargetSafety(t *testing.T) {
 		t.Fatalf("target file was modified: %q, %v", got, err)
 	}
 }
+
+// TestInstallDetectedPathConflictWritesNothing pins that a path-shape conflict
+// in a later target (a verdict-owned copy whose prompts/ is a file) refuses
+// typed before the earlier target is written.
+func TestInstallDetectedPathConflictWritesNothing(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	claude := seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	// Own codex first, then break its prompts/ into a file.
+	own := newRequest(t)
+	own.Env = map[string]string{"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
+	own.Agent = "codex"
+	if _, ref := skill.Install(context.Background(), own); ref != nil {
+		t.Fatalf("seed codex install: %v", ref)
+	}
+	prompts := filepath.Join(codex, "verdict", "prompts")
+	if err := os.RemoveAll(prompts); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, prompts, "a file where a dir belongs\n")
+
+	_, ref := skill.InstallDetected(context.Background(), req)
+	if ref == nil || ref.Code != "skill-foreign-conflict" {
+		t.Fatalf("path-conflict refusal = %v, want skill-foreign-conflict", ref)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "verdict")); !os.IsNotExist(err) {
+		t.Fatal("a refused run still wrote the earlier target")
+	}
+}
+
+// TestInstallDetectedHonorsEnvLayouts pins detection through CLAUDE_CONFIG_DIR
+// and XDG_CONFIG_HOME, the two overrides install-skill.sh also honors.
+func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	claudeCfg := filepath.Join(t.TempDir(), "claude-cfg")
+	xdg := filepath.Join(t.TempDir(), "xdg")
+	req.Env["CLAUDE_CONFIG_DIR"] = claudeCfg
+	req.Env["XDG_CONFIG_HOME"] = xdg
+	// A live default ~/.claude must be ignored while CLAUDE_CONFIG_DIR is set.
+	seedSkillsDir(t, home, ".claude")
+	seedSkillsDir(t, claudeCfg)
+	seedSkillsDir(t, xdg, "opencode")
+	// ~/.config/goose is not where XDG points, so it must not count.
+	seedSkillsDir(t, home, ".config", "goose")
+
+	det, ref := skill.InstallDetected(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("detect: %v", ref)
+	}
+	if want := []string{"claude", "opencode"}; !slices.Equal(det.Agents, want) {
+		t.Fatalf("detected agents = %v, want %v", det.Agents, want)
+	}
+	if want := filepath.Join(claudeCfg, "skills", "verdict"); det.Plans[0].Target != want {
+		t.Fatalf("claude target = %q, want %q", det.Plans[0].Target, want)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "verdict")); !os.IsNotExist(err) {
+		t.Fatal("installed into ~/.claude although CLAUDE_CONFIG_DIR is set")
+	}
+}

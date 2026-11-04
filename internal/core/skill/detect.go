@@ -50,11 +50,14 @@ func InstallDetected(ctx context.Context, req *Request) (Detection, *core.Refusa
 	return det, nil
 }
 
-// applyDetected refuses before writing when any target would be blocked, so a
-// --detect run never leaves a half-installed set behind.
+// applyDetected refuses before writing when any target would be blocked or
+// holds a path-shape conflict, so a --detect run never leaves a refused set
+// half-installed. A disk error while writing can still stop the run after
+// earlier targets finished; each target is complete on its own and a re-run
+// reads keep for them.
 func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 	for i := range plans {
-		if ref := checkApply(req, &plans[i]); ref != nil {
+		if ref := checkDetected(req, &plans[i]); ref != nil {
 			return ref
 		}
 	}
@@ -64,6 +67,18 @@ func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 		}
 	}
 	return nil
+}
+
+// checkDetected refuses one planned target that cannot be written: blocked,
+// not a directory, or holding a path-shape conflict. A keep writes no payload.
+func checkDetected(req *Request, plan *Plan) *core.RefusalError {
+	if ref := checkApply(req, plan); ref != nil {
+		return ref
+	}
+	if plan.Status == StatusKeep {
+		return nil
+	}
+	return preflight(plan.Target, plan.Files)
 }
 
 // planDetected classifies every detected agent's target without writing.

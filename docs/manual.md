@@ -938,8 +938,10 @@ you stand).
   each target's result; with none present it refuses typed
   (`skill-no-detected-agent`) and asks for `--agent <name>`. It cannot be
   combined with `--dir` or `--agent`, every target keeps the receipt and
-  `--force` rules above, and a blocked target refuses before any target is
-  written.
+  `--force` rules above, and a blocked or conflicting target refuses before any
+  target is written. It does not create a missing agent dir, and unlike
+  `install-skill.sh --detect` it skips `~/.agents/skills` when that dir is
+  absent or empty.
 
 ## Publish footer + attribution knobs
 
