@@ -19,6 +19,11 @@ func setGroup(cmd *osexec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
+// armStarted is the post-Start hook the Windows watchdog uses to enroll the
+// suspended child in its job. POSIX needs none: Setpgid already puts the
+// child in its own group at fork, so every descendant is born inside it.
+func armStarted(_ *osexec.Cmd) error { return nil }
+
 // killGroup SIGKILLs the child's process group (GO-EXEC-05: kill the group,
 // not the pid).
 func killGroup(cmd *osexec.Cmd) error {

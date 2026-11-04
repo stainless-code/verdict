@@ -98,6 +98,12 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 		releaseTree(proc)
 		return nil, nil, nil, watchdogError("start command: " + err.Error())
 	}
+	// Windows spawns suspended and only resumes once the child is inside
+	// its job object; a failure there has already killed and reaped it.
+	if err := armStarted(proc); err != nil {
+		releaseTree(proc)
+		return nil, nil, nil, err
+	}
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- proc.Wait() }()
 	return proc, waitDone, out, nil
