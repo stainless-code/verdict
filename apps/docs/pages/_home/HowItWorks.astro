@@ -1,0 +1,103 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Icon from "blume/components/Icon.astro";
+import CopyCommand from "./CopyCommand.astro";
+import Inline from "./Inline.astro";
+import SectionHead from "./SectionHead.astro";
+import Terminal from "./Terminal.astro";
+
+// Every line below was printed by `bin/verdict` 0.4.0 in a scratch git repo
+// with a two-line change in src/retry.ts. See .scratch/onboarding/O-landing.md
+// for the transcript. `⋯` marks an elided stretch of progress lines.
+const sample = [
+  { kind: "cmd", text: "verdict fetch-local acme/app work" },
+  {
+    kind: "out",
+    text: "done: .review/local-work/source.json .review/local-work/full.diff .review/local-work/toc.txt .review/local-work/roles.txt (1 files)",
+  },
+  { kind: "gap" },
+  { kind: "cmd", text: "verdict record acme/app local-work" },
+  { kind: "out", text: "» anchors: 1 inline, 0 moved to body" },
+  {
+    kind: "out",
+    text: "» findings: 1 sigs -> .review/local-work/findings.json",
+  },
+  { kind: "out", text: "  878a93e0  open  true  src/retry.ts" },
+  { kind: "cmd", text: "verdict report acme/app local-work --check important" },
+  {
+    kind: "dim",
+    text: "warn: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)",
+  },
+  { kind: "out", text: "report: .review/local-work (1 shown) open=1 head=" },
+  { kind: "out", text: "1. [open] src/retry.ts:3 (878a93e0)" },
+  { kind: "out", text: "next: address open threads" },
+  {
+    kind: "fail",
+    text: "check: 1 open finding(s) at-or-above important — gate fails",
+  },
+] as const;
+
+const steps = [
+  {
+    title: "Install",
+    body: "One static binary for macOS, Linux and Windows, plus the shell and PowerShell installers. Pick another route in the box above.",
+    commands: ["npm i -g @stainless-code/verdict"],
+  },
+  {
+    title: "Add the skill",
+    body: "The skill is the review prompt, and it ships inside the binary. `--detect` installs it into every agent whose skills directory already exists and is non-empty; `--agent` names one.",
+    commands: ["verdict skill install --detect"],
+  },
+  {
+    title: "Fetch, review, post",
+    body: "`fetch` writes the diff, a table of contents and the file roles. Your agent reads them and writes `.review/123/review.json`. `post` checks every anchor, then submits exactly one review.",
+    commands: ["verdict fetch owner/repo 123", "verdict post owner/repo 123"],
+  },
+] as const;
+---
+
+<section id="how-it-works" class="mx-auto max-w-[1160px] scroll-mt-20 px-6 py-16 sm:py-24">
+  <SectionHead
+    title="Three steps to a first review."
+    lede="One binary, one skill install, then fetch, review and post."
+  />
+
+  <ol class="mt-12 border-border border-t">
+    {
+      steps.map((step, i) => (
+        <li class="grid gap-4 border-border border-b py-7 lg:grid-cols-[2rem_minmax(0,1fr)_minmax(0,26rem)] lg:items-start lg:gap-8">
+          <span class="font-mono text-sm text-accent lg:pt-1.5">{String(i + 1).padStart(2, "0")}</span>
+          <div>
+            <h3 class="font-display font-semibold text-xl tracking-tight">{step.title}</h3>
+            <p class="mt-1 max-w-[52ch] text-base text-muted-foreground leading-relaxed">
+              <Inline text={step.body} />
+            </p>
+          </div>
+          <div class="flex min-w-0 flex-col gap-2">
+            {step.commands.map((command) => (
+              <CopyCommand command={command} fill />
+            ))}
+          </div>
+        </li>
+      ))
+    }
+  </ol>
+
+  <div class="mt-12">
+    <Terminal
+      title="A local run: two lines changed in src/retry.ts, then the gate"
+      lines={[...sample]}
+      caption="Verbatim from verdict 0.4.0, with progress lines elided at ⋯. The review file was written by hand the way an agent writes it; the gate exited 1. For a pull request the same findings go through verdict post."
+    />
+  </div>
+
+  <p class="mt-8 text-center">
+    <a
+      class="relative inline-flex items-center gap-2 font-medium text-accent text-sm after:absolute after:-inset-3 after:content-['']"
+      href={contentHref("/quickstart")}
+    >
+      The full quickstart, including re-reviews and local changes
+      <Icon name="arrow-right" size={14} />
+    </a>
+  </p>
+</section>

@@ -1,0 +1,84 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Icon from "blume/components/Icon.astro";
+import Inline from "./Inline.astro";
+import SectionHead from "./SectionHead.astro";
+
+// Five surfaces over one review core. Snippets and claims: apps/docs/content/integrations.mdx.
+const base = contentHref("/integrations");
+const rows = [
+  {
+    name: "Skill and CLI",
+    snippet: "verdict skill install --detect",
+    body: "Your agent loads the skill and runs the verbs. The default way to use Verdict.",
+    href: `${base}#skill-and-cli`,
+    span: "lg:col-span-3",
+  },
+  {
+    name: "MCP server",
+    snippet: "verdict mcp",
+    body: "The review verbs as tools over stdio; `verdict mcp config --write` writes the host config. Experimental until 1.0.",
+    href: `${base}#mcp-server`,
+    span: "lg:col-span-3",
+  },
+  {
+    name: "Go SDK",
+    snippet: "pkg/verdict",
+    body: "The verbs in-process, with typed requests. Experimental until 1.0.",
+    href: `${base}#go-sdk`,
+    span: "lg:col-span-2",
+  },
+  {
+    name: "TypeScript client",
+    snippet: "@stainless-code/verdict/client",
+    body: "Spawns the binary and returns typed envelopes. Experimental until 1.0.",
+    href: `${base}#typescript-client`,
+    span: "lg:col-span-2",
+  },
+  {
+    name: "JSON schemas",
+    snippet: "schemas/envelope.schema.json",
+    body: "The envelope and the stores as JSON Schema, for a client in any language.",
+    href: `${base}#json-schemas`,
+    span: "lg:col-span-2",
+  },
+];
+---
+
+<section id="integrations" class="border-border border-y bg-muted scroll-mt-20">
+  <div class="mx-auto max-w-[1160px] px-6 py-16 sm:py-24">
+    <SectionHead
+      title="Five ways in."
+      lede="Every surface runs the same review core and returns the data as `--json`."
+    />
+    <ul class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+      {
+        rows.map((row) => (
+          <li class={`min-w-0 ${row.span}`}>
+            <a
+              class="flex h-full flex-col rounded-2xl border border-border bg-[var(--landing-surface)] p-5 transition-colors hover:border-accent sm:p-6"
+              href={row.href}
+            >
+              <span class="font-display font-semibold text-lg tracking-tight">{row.name}</span>
+              <code class="mt-3 block font-mono text-xs text-accent leading-relaxed break-words">
+                {row.snippet}
+              </code>
+              <span class="mt-3 text-sm text-muted-foreground leading-relaxed">
+                <Inline text={row.body} />
+              </span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="mt-8 text-center">
+      <a
+        class="relative inline-flex items-center gap-2 font-medium text-accent text-sm after:absolute after:-inset-3 after:content-['']"
+        href={base}
+      >
+        Integrations, with an example for each
+        <Icon name="arrow-right" size={14} />
+      </a>
+    </p>
+  </div>
+</section>

@@ -1,0 +1,78 @@
+---
+import { contentHref } from "blume/components/content/base-href.ts";
+import Icon from "blume/components/Icon.astro";
+import Inline from "./Inline.astro";
+import SectionHead from "./SectionHead.astro";
+
+const manual = "https://github.com/stainless-code/verdict/blob/main/docs/manual.md";
+const rungs = ["said", "pointed", "walked", "ran", "reproduced"];
+
+// One capability per card, each linking to the page that documents it.
+// Claim sources are listed in .scratch/onboarding/O-landing.md.
+const cards = [
+  {
+    title: "Findings carry receipts.",
+    body: "Each finding records how it was checked, and the record travels with it. A finding that was only said is labeled unproven, and nothing posts as fact.",
+    link: { label: "Evidence rungs", href: `${contentHref("/how-it-reviews")}#evidence-rungs` },
+    rungs: true,
+  },
+  {
+    title: "Local. Nothing hosted.",
+    body: "No server, account, daemon or telemetry. Fetch, review and post run on your machine, and your host token goes only to your host.",
+    link: { label: "Why Verdict", href: contentHref("/why-verdict") },
+  },
+  {
+    title: "Any agent, any model.",
+    body: "The agent you run is the review model, and Verdict pins none. The skill installs into Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen and Windsurf.",
+    link: { label: "Skill and CLI", href: `${contentHref("/integrations")}#skill-and-cli` },
+  },
+  {
+    title: "Six hosts.",
+    body: "Fetch from GitHub, GitLab, GitCafe, Forgejo, Bitbucket and Azure DevOps. `record`, `report`, `triage`, `show` and `next` run on all six. Posting is GitHub only.",
+    link: { label: "Other hosts", href: `${contentHref("/quickstart")}#other-hosts` },
+  },
+  {
+    title: "Gates a script can read.",
+    body: "`report --check important` exits 1 while open findings at or above that severity remain, and 0 when none do. `report --sarif` writes SARIF 2.1.0 for your scanner.",
+    link: { label: "Machine surface", href: `${manual}#machine-surface` },
+  },
+  {
+    title: "Calibrated on your history.",
+    body: "`calibrate` compares each prediction with what happened to its thread. `trend` rolls the outcomes up across your PRs. Nothing leaves your machine.",
+    link: { label: "Measured, not asserted", href: `${contentHref("/how-it-reviews")}#measured-not-asserted` },
+  },
+];
+---
+
+<section id="different" class="border-border border-y bg-muted scroll-mt-20">
+  <div class="mx-auto max-w-[1160px] px-6 py-16 sm:py-24">
+    <SectionHead
+      title="What makes it different."
+      lede="Each card links to the page that documents it."
+    />
+    <ul class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        cards.map((card) => (
+          <li class="flex flex-col rounded-2xl border border-border bg-[var(--landing-surface)] p-6">
+            <h3 class="font-display font-semibold text-xl tracking-tight">{card.title}</h3>
+            <p class="mt-2 text-base text-muted-foreground leading-relaxed">
+              <Inline text={card.body} />
+            </p>
+            {card.rungs && (
+              <p class="mt-4 font-mono text-xs text-[var(--landing-faint)]">
+                {rungs.join(" → ")}
+              </p>
+            )}
+            <a
+              class="mt-auto inline-flex items-center gap-1.5 pt-5 font-medium text-accent text-sm"
+              href={card.link.href}
+            >
+              {card.link.label}
+              <Icon name="arrow-right" size={14} />
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
