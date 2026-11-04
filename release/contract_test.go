@@ -46,6 +46,7 @@ type contractDoc struct {
 		Archive         string `json:"archive"`
 		Checksums       string `json:"checksums"`
 		SignatureBundle string `json:"signatureBundle"`
+		Commit          string `json:"commit"`
 	} `json:"urls"`
 	Cosign          cosignPolicy `json:"cosign"`
 	Project         string       `json:"project"`
@@ -54,6 +55,7 @@ type contractDoc struct {
 	Binary          string       `json:"binary"`
 	Checksums       string       `json:"checksums"`
 	SignatureBundle string       `json:"signatureBundle"`
+	Commit          string       `json:"commit"`
 	SBOMSuffix      string       `json:"sbomSuffix"`
 	NPM             struct {
 		Wrapper      string            `json:"wrapper"`
@@ -245,6 +247,12 @@ func checkContractMeta(t *testing.T, doc *contractDoc) {
 	}
 	if doc.Formula.Tap == "" || doc.Formula.Class == "" || doc.Formula.Homepage == "" {
 		t.Errorf("formula incomplete: %+v", doc.Formula)
+	}
+	if doc.Commit == "" {
+		t.Error("commit is empty")
+	}
+	if want := "/v{version}/" + doc.Commit; !strings.HasSuffix(doc.URLs.Commit, want) {
+		t.Errorf("urls.commit = %q; want a %q suffix", doc.URLs.Commit, want)
 	}
 	checkCosignPolicy(t, doc)
 }
@@ -967,10 +975,10 @@ func requireLiterals(t *testing.T, name, body string, literals []string) {
 }
 
 // TestInstallersMatchContract pins the policy the shipped installers carry a
-// second copy of: the cosign identity/issuer, the archive-member allowlist,
-// and the checksum/bundle names. contract.json is the source; a repo rename,
-// a workflow rename, or a new archive member must fail here instead of at
-// install time.
+// second copy of: the cosign identity/issuer, the build-commit pin, the
+// archive-member allowlist, and the checksum/bundle/commit names.
+// contract.json is the source; a repo rename, a workflow rename, or a new
+// archive member must fail here instead of at install time.
 func TestInstallersMatchContract(t *testing.T) {
 	doc := loadContract(t)
 	unix := platformRow(t, &doc, "darwin", "amd64")
@@ -983,6 +991,8 @@ func TestInstallersMatchContract(t *testing.T) {
 		"COSIGN_ISSUER='" + doc.Cosign.Issuer + "'",
 		"CHECKSUMS='" + doc.Checksums + "'",
 		"BUNDLE='" + doc.SignatureBundle + "'",
+		"COMMIT='" + doc.Commit + "'",
+		"--certificate-github-workflow-sha",
 		"grep -Ev '" + membersPattern(unix.Members) + "'",
 	})
 	requireLiterals(t, "install.ps1", ps1, []string{
@@ -990,7 +1000,15 @@ func TestInstallersMatchContract(t *testing.T) {
 		"$Issuer = '" + doc.Cosign.Issuer + "'",
 		"$ChecksumsName = '" + doc.Checksums + "'",
 		"$BundleName = '" + doc.SignatureBundle + "'",
+		"$CommitName = '" + doc.Commit + "'",
+		"--certificate-github-workflow-sha",
 		"$allowed = " + membersArray(windows.Members),
+	})
+	// The release script must publish the commit asset and gate on it before
+	// declaring the release complete, or the installers refuse every install.
+	requireLiterals(t, "scripts/release.sh", repoFile(t, "scripts/release.sh"), []string{
+		"console.log(c.commit);",
+		`gh release upload "$TAG" "$STAGE_DIR/$COMMIT_FILE"`,
 	})
 	// The by-hand verification command in the contributor docs is a third copy
 	// of the identity; a reader who runs it must reach the same verdict as the
@@ -998,6 +1016,7 @@ func TestInstallersMatchContract(t *testing.T) {
 	requireLiterals(t, "CONTRIBUTING.md", repoFile(t, "CONTRIBUTING.md"), []string{
 		"--certificate-identity-regexp '" + doc.Cosign.IdentityRegexp + "'",
 		"--certificate-oidc-issuer " + doc.Cosign.Issuer,
+		"--certificate-github-workflow-sha",
 	})
 }
 

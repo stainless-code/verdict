@@ -116,7 +116,11 @@ func releaseBinaryName(goos string) string {
 	return "verdict"
 }
 
-// releaseFixture builds the served file map: archive, checksums, bundle.
+// releaseCommitSHA is the build commit of the recorded v0.4.0 release.
+const releaseCommitSHA = "72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad"
+
+// releaseFixture builds the served file map: archive, checksums, bundle,
+// and the build commit.
 func releaseFixture(t *testing.T, version string, mutators ...func(map[string][]byte)) map[string][]byte {
 	t.Helper()
 	goos := runtime.GOOS
@@ -128,6 +132,7 @@ func releaseFixture(t *testing.T, version string, mutators ...func(map[string][]
 		name:                          archive,
 		"checksums.txt":               []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), name)),
 		"checksums.txt.sigstore.json": []byte("{}"),
+		"commit.txt":                  []byte(releaseCommitSHA + "\n"),
 	}
 	for _, mutate := range mutators {
 		if mutate != nil {
@@ -236,8 +241,9 @@ func TestFetchVerifySignature(t *testing.T) {
 	}
 	policy := contractCosign(t)
 	exact := "--certificate-identity-regexp " + policy.IdentityRegexp + " --certificate-oidc-issuer " + policy.Issuer
+	pinned := "--certificate-github-workflow-sha " + releaseCommitSHA
 	joined := strings.Join(argv, " ")
-	for _, want := range []string{"verify-blob", "--bundle", "checksums.txt", exact} {
+	for _, want := range []string{"verify-blob", "--bundle", "checksums.txt", exact, pinned} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("cosign argv %q misses %q", joined, want)
 		}
@@ -274,6 +280,15 @@ func TestFetchVerifyRefusals(t *testing.T) {
 		}, func(req *release.Request) {
 			req.Cosign = fakeExecutable(t)
 		}, "verify-failed", "sigstore bundle is missing"},
+		{"release without build commit", func(files map[string][]byte) {
+			delete(files, "commit.txt")
+		}, nil, "verify-failed", "does not publish its build commit"},
+		{"build commit not a SHA", func(files map[string][]byte) {
+			files["commit.txt"] = []byte("main\n")
+		}, nil, "verify-failed", "is not a full 40-character commit SHA"},
+		{"abbreviated build commit", func(files map[string][]byte) {
+			files["commit.txt"] = []byte(releaseCommitSHA[:12] + "\n")
+		}, nil, "verify-failed", "is not a full 40-character commit SHA"},
 		{"require signature without cosign", nil, func(req *release.Request) {
 			req.RequireSignature = true
 		}, "verify-failed", "VERDICT_REQUIRE_SIGNATURE=1"},

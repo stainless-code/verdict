@@ -859,14 +859,17 @@ then `verdict` on `PATH`; `resolveBin` in `clients/ts` takes it ahead of the
 platform package. A plain `verdict` call consults neither variable.
 
 - **Binary** (`install.sh` / `install.ps1`, the default): the script fetches
-  one release archive, `checksums.txt`, and `checksums.txt.sigstore.json`,
-  verifies the cosign identity/issuer over the checksums and the archive
-  SHA-256, extracts only `verdict`, and atomically renames a staged file over
-  the target. `$VERDICT_INSTALL/verdict` is the binary (default
-  `~/.verdict/bin/verdict`); `$VERDICT_INSTALL/.verdict-installer` is the
-  installer receipt. No root is needed or requested. Any verification failure
-  leaves the old binary in place; the download is never executed before
-  verification. When cosign is present the sigstore bundle is mandatory.
+  one release archive, `checksums.txt`, `commit.txt`, and
+  `checksums.txt.sigstore.json`, verifies the cosign identity/issuer and the
+  build-commit pin (`--certificate-github-workflow-sha`) over the checksums and
+  the archive SHA-256, extracts only `verdict`, and atomically renames a
+  staged file over the target. `$VERDICT_INSTALL/verdict` is the binary
+  (default `~/.verdict/bin/verdict`); `$VERDICT_INSTALL/.verdict-installer` is
+  the installer receipt. No root is needed or requested. Any verification
+  failure leaves the old binary in place; the download is never executed
+  before verification. A release that publishes no `commit.txt` is refused:
+  an install is never left unpinned. When cosign is present the sigstore
+  bundle is mandatory.
   Without cosign the installer warns loudly and verifies the checksum only;
   `VERDICT_REQUIRE_SIGNATURE=1` (Windows: `-RequireSignature`) fails closed.
   `VERDICT_VERSION` pins a release (`vX.Y.Z` accepted); the default `latest`
@@ -877,8 +880,9 @@ platform package. A plain `verdict` call consults neither variable.
   `--no-modify-path` (Windows `-NoModifyPath`) opts out, and `install.ps1`
   updates the user PATH only. Offline installs pass a local archive
   (`install.sh ./verdict_1.2.3_linux_amd64.tar.gz`) with its sibling
-  `checksums.txt` and optional bundle, or point `VERDICT_DOWNLOAD_URL` at a
-  `file://` mirror; local-file installs make no network call.
+  `checksums.txt`, `commit.txt`, and optional bundle, or point
+  `VERDICT_DOWNLOAD_URL` at a `file://` mirror; local-file installs make no
+  network call.
   `install.sh --uninstall [--remove-path]` and Windows
   `install.ps1 -Uninstall [-RemovePath]` remove only installer-managed files
   and their own PATH line;
@@ -889,9 +893,10 @@ platform package. A plain `verdict` call consults neither variable.
   `os.Executable()` through symlinks and maps the result to one channel:
   installer-managed (a receipt beside the running binary that no package
   manager or skill copy owns, in `~/.verdict/bin`, or in `VERDICT_INSTALL`)
-  does a verified self-replace (archive + `checksums.txt` + sigstore bundle;
-  cosign identity/issuer when cosign is present, loud checksum-only
-  fallback, and `VERDICT_REQUIRE_SIGNATURE=1` fails closed; SHA-256; extract
+  does a verified self-replace (archive + `checksums.txt` + `commit.txt` +
+  sigstore bundle; cosign identity/issuer and build-commit pin when cosign is
+  present, loud checksum-only fallback, and `VERDICT_REQUIRE_SIGNATURE=1`
+  fails closed; SHA-256; extract
   only the binary; `--version` smoke test; atomic replace with rollback).
   Global npm/pnpm/bun/yarn installs run that manager's global update
   (`npm i -g @stainless-code/verdict@latest`, `pnpm add -g …`,

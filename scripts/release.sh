@@ -16,6 +16,7 @@ if [ -z "$VERSION" ]; then
 fi
 TAG_PREFIX="$(node -p "require('./release/contract.json').tagPrefix")"
 REPO="$(node -p "require('./release/contract.json').repo")"
+COMMIT_FILE="$(node -p "require('./release/contract.json').commit")"
 TAP_REPO="$(node -p "require('./release/contract.json').formula.tap")"
 TAP_GH_REPO="${TAP_REPO%%/*}/homebrew-${TAP_REPO#*/}"
 TAP_FORMULA="$(node -p "require('./release/contract.json').formula.path")"
@@ -23,9 +24,11 @@ TAG="${TAG_PREFIX}${VERSION}"
 
 TAP_DIR=""
 NOTES_FILE=""
+STAGE_DIR=""
 cleanup() {
   if [ -n "$TAP_DIR" ]; then rm -rf "$TAP_DIR"; fi
   if [ -n "$NOTES_FILE" ]; then rm -f "$NOTES_FILE"; fi
+  if [ -n "$STAGE_DIR" ]; then rm -rf "$STAGE_DIR"; fi
 }
 trap cleanup EXIT
 
@@ -93,6 +96,7 @@ for (const entry of c.archives) {
 }
 console.log(c.checksums);
 console.log(c.signatureBundle);
+console.log(c.commit);
 console.log("install.sh");
 console.log("install.ps1");
 EOF
@@ -143,14 +147,47 @@ stage_goreleaser() {
       return 0
       ;;
     partial)
-      echo "release: GitHub Release $TAG is missing:$RELEASE_MISSING; deleting the incomplete release and rebuilding"
-      gh release delete "$TAG" --repo "$REPO" --yes
+      if [ "$RELEASE_MISSING" = " $COMMIT_FILE" ]; then
+        echo "release: GitHub Release $TAG is missing only $COMMIT_FILE; pinning it without a rebuild"
+        stage_release_commit
+      else
+        echo "release: GitHub Release $TAG is missing:$RELEASE_MISSING; deleting the incomplete release and rebuilding"
+        gh release delete "$TAG" --repo "$REPO" --yes
+        build_release
+      fi
       ;;
-    absent) ;;
+    absent) build_release ;;
   esac
+  detect_release
+  [ "$RELEASE_STATE" = complete ] \
+    || die "GitHub Release $TAG is still missing:$RELEASE_MISSING after publishing $COMMIT_FILE"
+}
+
+build_release() {
   NOTES_FILE="$(mktemp)"
   node scripts/release-notes.mjs "$VERSION" > "$NOTES_FILE"
   goreleaser release --clean --release-notes "$NOTES_FILE"
+  stage_release_commit
+}
+
+release_commit() {
+  local sha
+  if ! sha="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}")"; then
+    git fetch --force --quiet origin "refs/tags/$TAG:refs/tags/$TAG" \
+      || die "cannot resolve tag $TAG"
+    sha="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}")" \
+      || die "cannot resolve tag $TAG"
+  fi
+  printf '%s\n' "$sha"
+}
+
+stage_release_commit() {
+  local sha
+  sha="$(release_commit)"
+  [ -n "$STAGE_DIR" ] || STAGE_DIR="$(mktemp -d)"
+  printf '%s\n' "$sha" > "$STAGE_DIR/$COMMIT_FILE"
+  gh release upload "$TAG" "$STAGE_DIR/$COMMIT_FILE" --repo "$REPO" --clobber
+  echo "release: published $COMMIT_FILE ($sha) on $TAG"
 }
 
 npm_packages() {

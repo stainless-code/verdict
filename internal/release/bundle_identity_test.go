@@ -18,10 +18,12 @@ import (
 // release pipeline mints without trusting the contract to describe itself.
 const recordedBundle = "testdata/v0.4.0-checksums.txt.sigstore.json"
 
-// Fulcio OIDC extensions: 1.1 is the token issuer, 1.6 is the git ref.
+// Fulcio OIDC extensions: 1.1 is the token issuer, 1.3 is the workflow SHA,
+// 1.6 is the git ref.
 const (
-	oidcIssuerExt = "1.3.6.1.4.1.57264.1.1"
-	oidcRefExt    = "1.3.6.1.4.1.57264.1.6"
+	oidcIssuerExt      = "1.3.6.1.4.1.57264.1.1"
+	oidcWorkflowSHAExt = "1.3.6.1.4.1.57264.1.3"
+	oidcRefExt         = "1.3.6.1.4.1.57264.1.6"
 )
 
 // cosignPolicy is the contract's signing section.
@@ -121,5 +123,17 @@ func TestContractIdentityMatchesRecordedCertificate(t *testing.T) {
 	// revisit the contract if this ever becomes a tag ref.
 	if ref := extValue(t, cert, oidcRefExt); !strings.HasSuffix(san, "@"+ref) {
 		t.Errorf("SAN %q does not end in the certificate's ref %q", san, ref)
+	}
+}
+
+// The installers pin cosign with --certificate-github-workflow-sha, which takes
+// a full SHA: prove Fulcio mints one and that commit.txt carries it.
+func TestRecordedCertificateCarriesFullCommit(t *testing.T) {
+	sha := extValue(t, recordedCert(t), oidcWorkflowSHAExt)
+	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(sha) {
+		t.Fatalf("bundle workflow sha = %q; want a full 40-character lowercase SHA", sha)
+	}
+	if sha != releaseCommitSHA {
+		t.Errorf("fixture commit.txt = %q; bundle workflow sha = %q", releaseCommitSHA, sha)
 	}
 }

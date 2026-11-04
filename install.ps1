@@ -14,6 +14,7 @@ $RepoBase = 'https://github.com/stainless-code/verdict/releases/download'
 $LatestUrl = 'https://github.com/stainless-code/verdict/releases/latest'
 $ChecksumsName = 'checksums.txt'
 $BundleName = 'checksums.txt.sigstore.json'
+$CommitName = 'commit.txt'
 $IdentityRegexp = '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$'
 $Issuer = 'https://token.actions.githubusercontent.com'
 
@@ -117,11 +118,18 @@ $Stage = $null
 try {
   $ChecksumsPath = Join-Path $Tmp $ChecksumsName
   $BundlePath = Join-Path $Tmp $BundleName
+  $CommitPath = Join-Path $Tmp $CommitName
   Write-Host "install: downloading verdict $Version (windows/$Arch)"
   try { Save-Url "$ReleaseUrl/$ArchiveName" $ArchivePath } catch {
     throw "download failed: $ReleaseUrl/$ArchiveName (is windows/$Arch published?)"
   }
   try { Save-Url "$ReleaseUrl/$ChecksumsName" $ChecksumsPath } catch { throw "download failed: $ReleaseUrl/$ChecksumsName" }
+  try { Save-Url "$ReleaseUrl/$CommitName" $CommitPath } catch {
+    throw "download failed: $ReleaseUrl/$CommitName (release $Version publishes no build commit; refusing an unpinned install)"
+  }
+  $Commit = ''
+  try { $Commit = ([System.IO.File]::ReadAllText($CommitPath)).Trim().ToLowerInvariant() } catch { $Commit = '' }
+  if ($Commit -notmatch '^[0-9a-f]{40}$') { throw "$CommitName is not a full 40-character commit SHA; refusing an unpinned install" }
   $BundleOk = $false
   try { Save-Url "$ReleaseUrl/$BundleName" $BundlePath; $BundleOk = $true } catch { $BundleOk = $false }
 
@@ -131,7 +139,7 @@ try {
   if ($Cosign) {
     if (-not $BundleOk) { throw "cosign is installed but $BundleName is missing; refusing an unverified install" }
     Write-Host "install: verifying the sigstore bundle for $ChecksumsName"
-    & $Cosign verify-blob --bundle $BundlePath --certificate-identity-regexp $IdentityRegexp --certificate-oidc-issuer $Issuer $ChecksumsPath
+    & $Cosign verify-blob --bundle $BundlePath --certificate-identity-regexp $IdentityRegexp --certificate-oidc-issuer $Issuer --certificate-github-workflow-sha $Commit $ChecksumsPath
     if ($LASTEXITCODE -ne 0) { throw 'signature verification failed; nothing installed' }
   } elseif ($RequireSignature) {
     throw 'VERDICT_REQUIRE_SIGNATURE=1 but cosign is not installed; nothing installed'

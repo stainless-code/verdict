@@ -41,6 +41,7 @@ const (
 	maxAssetBytes     = 128 << 20
 	downloadTimeout   = 2 * time.Minute
 	checksumHexLength = 64
+	commitHexLength   = 40
 	binNameUnix       = "verdict"
 	binNameWindows    = "verdict.exe"
 	sigVerified       = "verified"
@@ -91,6 +92,7 @@ type contractDoc struct { //nolint:govet // contract order documents the artifac
 	Archives        []archiveEntry `json:"archives"`
 	Checksums       string         `json:"checksums"`
 	SignatureBundle string         `json:"signatureBundle"`
+	Commit          string         `json:"commit"`
 	Repo            string         `json:"repo"`
 	Binary          string         `json:"binary"`
 	URLs            struct {
@@ -122,6 +124,9 @@ var loadContract = sync.OnceValues(func() (contractDoc, error) {
 	}
 	if doc.Cosign.IdentityRegexp == "" || doc.Cosign.Issuer == "" {
 		return contractDoc{}, jq.NewErr("release contract: cosign identity/issuer missing")
+	}
+	if doc.Commit == "" {
+		return contractDoc{}, jq.NewErr("release contract: build-commit asset missing")
 	}
 	return doc, nil
 })
@@ -272,9 +277,11 @@ type source struct {
 	Archive   string
 	Checksums string
 	Bundle    string
+	Commit    string
 	BaseURL   string
 	Members   []string
 	BundleOK  bool
+	CommitOK  bool
 }
 
 // sourceFrom joins the contract names onto the download base.
@@ -292,12 +299,14 @@ func sourceFrom(req *Request, doc *contractDoc, asset archiveEntry, version stri
 		Archive:   filepath.Join(dirs.download, name),
 		Checksums: filepath.Join(dirs.download, doc.Checksums),
 		Bundle:    filepath.Join(dirs.download, doc.SignatureBundle),
+		Commit:    filepath.Join(dirs.download, doc.Commit),
 		BaseURL:   base + "/v" + version + "/",
 		Members:   asset.Members,
 	}, nil
 }
 
-// downloadAssets fetches the archive, checksums, and (best effort) bundle.
+// downloadAssets fetches the archive, checksums, build commit, and (best
+// effort) bundle.
 func downloadAssets(ctx context.Context, req *Request, src *source) *core.RefusalError {
 	client := clientOr(req.Client)
 	if err := download(ctx, client, src.BaseURL+filepath.Base(src.Archive), src.Archive); err != nil {
@@ -306,6 +315,7 @@ func downloadAssets(ctx context.Context, req *Request, src *source) *core.Refusa
 	if err := download(ctx, client, src.BaseURL+filepath.Base(src.Checksums), src.Checksums); err != nil {
 		return refuse(codeFetchFailed, "download failed: "+err.Error())
 	}
+	src.CommitOK = download(ctx, client, src.BaseURL+filepath.Base(src.Commit), src.Commit) == nil
 	src.BundleOK = download(ctx, client, src.BaseURL+filepath.Base(src.Bundle), src.Bundle) == nil
 	return nil
 }
@@ -345,10 +355,15 @@ func check(ctx context.Context, req *Request, doc *contractDoc, src *source) (Re
 	}, nil
 }
 
-// verifySignature applies the installer policy: cosign present means the
-// bundle is mandatory and a failed verification refuses; absent cosign
-// warns loudly unless VERDICT_REQUIRE_SIGNATURE=1.
+// verifySignature applies the installer policy: the release build commit is
+// required, cosign present means the bundle is mandatory and pinned to that
+// commit so another run of the same workflow cannot sign for this release,
+// and absent cosign warns loudly unless VERDICT_REQUIRE_SIGNATURE=1.
 func verifySignature(ctx context.Context, req *Request, doc *contractDoc, src *source) (string, *core.RefusalError) {
+	commit, err := buildCommit(src)
+	if err != nil {
+		return "", refuse(codeVerifyFailed, err.Error())
+	}
 	cosign := cosignPath(req)
 	if cosign == "" {
 		return checksumOnly(req)
@@ -359,7 +374,8 @@ func verifySignature(ctx context.Context, req *Request, doc *contractDoc, src *s
 	args := []string{
 		"verify-blob", "--bundle", src.Bundle,
 		"--certificate-identity-regexp", doc.Cosign.IdentityRegexp,
-		"--certificate-oidc-issuer", doc.Cosign.Issuer, src.Checksums,
+		"--certificate-oidc-issuer", doc.Cosign.Issuer,
+		"--certificate-github-workflow-sha", commit, src.Checksums,
 	}
 	out, err := runCosign(ctx, req, cosign, args)
 	if err != nil {
@@ -370,6 +386,23 @@ func verifySignature(ctx context.Context, req *Request, doc *contractDoc, src *s
 		return "", refuse(codeVerifyFailed, "signature verification failed: "+detail)
 	}
 	return sigVerified, nil
+}
+
+const unpinned = "release v%s does not publish its build commit; refusing an unpinned install"
+
+// buildCommit reads the release's published build commit.
+func buildCommit(src *source) (string, error) {
+	name := filepath.Base(src.Commit)
+	raw, err := os.ReadFile(src.Commit)
+	if err != nil || !src.CommitOK {
+		return "", jq.NewErrf(unpinned, src.Version)
+	}
+	sha := strings.ToLower(strings.TrimSpace(string(raw)))
+	if len(sha) != commitHexLength || !isHex(sha) {
+		return "", jq.NewErrf("%s is not a full %d-character commit SHA; refusing an unpinned install",
+			name, commitHexLength)
+	}
+	return sha, nil
 }
 
 // checksumOnly is the loud fallback and the fail-closed requirement.

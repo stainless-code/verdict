@@ -241,7 +241,8 @@ esac`)
 }
 
 // writeRelease lays out one release dir: install.sh, the contract archive,
-// checksums, and a fixture signature bundle. corruptZeroes the archive hash.
+// checksums, the build commit, and a fixture signature bundle. corruptZeroes
+// the archive hash.
 func writeRelease(t *testing.T, root, version, binary string, corrupt bool, installer []byte) {
 	t.Helper()
 	dir := filepath.Join(root, "v"+version)
@@ -271,6 +272,11 @@ func writeRelease(t *testing.T, root, version, binary string, corrupt bool, inst
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "checksums.txt.sigstore.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// install.sh refuses a release with no build commit; the fixture publishes one.
+	commit := "72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad\n"
+	if err := os.WriteFile(filepath.Join(dir, "commit.txt"), []byte(commit), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
