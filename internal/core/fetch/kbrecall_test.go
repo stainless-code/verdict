@@ -14,16 +14,72 @@ import (
 // recallStore is the planted .review/kb.jsonl for the recall tests: four
 // active rules that scope-match, one that does not, and one retired rule.
 // The precision ladder is r-d 1.0, r-b 0.75, then r-a/r-z tied at 0.5 with
-// the same judged count (so ids decide) and r-c unjudged at 0.5 (so judged
-// desc decides against it).
-const recallStore = `{"id":"r-d","rule":"Pin the corpus slug","scope":"src/*","hits":2,"judged":2,"status":"active"}
-{"id":"r-b","rule":"Prefer table tests","scope":"src/*","hits":3,"judged":4,"status":"active"}
-{"id":"r-a","rule":"Quote paths with spaces","scope":"src/*,docs/*","hits":1,"judged":2,"status":"active"}
-{"id":"r-z","rule":"Keep refusals typed","scope":"*","hits":1,"judged":2,"status":"active"}
+// the same judged count and r-c unjudged at 0.5 (outside the top 3). The
+// store order is deliberately NOT the rank order, so a ranker that left the
+// candidates unsorted — or sorted by the wrong key — cannot reproduce the
+// expected note by accident. The tiebreaks get their own test below.
+const recallStore = `{"id":"r-ret","rule":"Retired rule","scope":"src/*","hits":9,"judged":9,"status":"retired"}
 {"id":"r-c","rule":"Never invent counts","scope":"*","hits":9,"judged":0,"status":"active"}
+{"id":"r-z","rule":"Keep refusals typed","scope":"*","hits":1,"judged":2,"status":"active"}
 {"id":"r-nom","rule":"Unrelated scope","scope":"testdata/*","hits":9,"judged":9,"status":"active"}
-{"id":"r-ret","rule":"Retired rule","scope":"src/*","hits":9,"judged":9,"status":"retired"}
+{"id":"r-a","rule":"Quote paths with spaces","scope":"src/*,docs/*","hits":1,"judged":2,"status":"active"}
+{"id":"r-b","rule":"Prefer table tests","scope":"src/*","hits":3,"judged":4,"status":"active"}
+{"id":"r-d","rule":"Pin the corpus slug","scope":"src/*","hits":2,"judged":2,"status":"active"}
 `
+
+// recallTieStore holds four all-0.5 rules in an order that is neither the
+// judged-desc nor the id order: r-d and r-b tie on judged (2), r-c leads on
+// judged (4), r-a is unjudged. Rank: r-c (judged 4), then r-b before r-d
+// (same judged, id asc); r-a (judged 0) is cut by the top 3.
+const recallTieStore = `{"id":"r-d","rule":"Tied late id","scope":"*","hits":1,"judged":2,"status":"active"}
+{"id":"r-a","rule":"Unjudged","scope":"*","hits":5,"judged":0,"status":"active"}
+{"id":"r-b","rule":"Tied early id","scope":"*","hits":1,"judged":2,"status":"active"}
+{"id":"r-c","rule":"Most judged","scope":"*","hits":2,"judged":4,"status":"active"}
+`
+
+// recallRunDiff is the one-file src/a.go diff the rank tests recall against.
+const recallRunDiff = "diff --git a/src/a.go b/src/a.go\n--- a/src/a.go\n+++ b/src/a.go\n@@ -1 +1 @@\n-a\n+b\n"
+
+// runRecallLocal runs one hermetic fetch-local (HEAD mode) over recallRunDiff
+// with store planted as .review/kb.jsonl, returning the bundle dir.
+func runRecallLocal(t *testing.T, store string) string {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	plantRecallStore(t, store)
+	cmdr := &scriptCommander{
+		t: t,
+		out: map[string]scriptResult{
+			"git\x00rev-parse\x00--is-inside-work-tree":          {stdout: "true\n"},
+			"git\x00branch\x00--show-current":                    {stdout: "main\n"},
+			"git\x00rev-parse\x00HEAD":                           {stdout: localTestHead + "\n"},
+			"git\x00diff\x00HEAD":                                {stdout: recallRunDiff},
+			"git\x00diff\x00--no-renames\x00--name-only\x00HEAD": {stdout: "src/a.go\n"},
+			"git\x00diff\x00--numstat\x00HEAD":                   {stdout: "1\t1\tsrc/a.go\n"},
+			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
+		},
+	}
+	var human, diag bytes.Buffer
+	var streamed []string
+	if _, err := RunLocal(context.Background(),
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{})); err != nil {
+		t.Fatalf("RunLocal: %v", err)
+	}
+	return filepath.Join(".review", "local-mine")
+}
+
+// TestRunLocalKBRecallTiebreakOrder proves the two tiebreaks the manual
+// names — judged desc, then id asc — when every rule scores 0.5. The store
+// order matches neither key, so dropping a tiebreak (or the sort) changes
+// the manifest: no judged key gives r-a first, no id key gives r-d before r-b.
+func TestRunLocalKBRecallTiebreakOrder(t *testing.T) {
+	bundle := runRecallLocal(t, recallTieStore)
+	want := `[{"id":"r-c","score":0.5,"hits":2,"judged":4},` +
+		`{"id":"r-b","score":0.5,"hits":1,"judged":2},` +
+		`{"id":"r-d","score":0.5,"hits":1,"judged":2}]` + "\n"
+	if got := readBundleFile(t, bundle, "kb-recall.json"); got != want {
+		t.Errorf("kb-recall.json =\n%s\nwant\n%s", got, want)
+	}
+}
 
 // TestRunLocalKBRecallRankAndManifest proves the manual's recall contract
 // end to end: top 3 by precision (judged==0 reads 0.5), tiebreak judged
