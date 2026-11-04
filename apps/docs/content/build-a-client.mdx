@@ -263,7 +263,7 @@ python3 -m venv .venv
 pip install -r examples/python-client/requirements-dev.txt
 
 datamodel-codegen \
-  --input schemas/envelope.schema.json \
+  --input skills/verdict/schemas/envelope.schema.json \
   --input-file-type jsonschema \
   --output examples/python-client/models.py \
   --output-model-type dataclasses.dataclass \

@@ -167,7 +167,7 @@ the platform package, then `PATH`. It has no dependencies and starts no server.
 
 The envelope and every store file are published as JSON Schema (draft 2020-12)
 under
-[`schemas/`](https://github.com/stainless-code/verdict/tree/main/schemas). They
+[`skills/verdict/schemas/`](https://github.com/stainless-code/verdict/tree/main/skills/verdict/schemas). They
 ship in the npm package and inside the binary. List them from a clean install:
 
 ```bash
@@ -181,11 +181,11 @@ schemas/validate.sh schemas/review.schema.json .review/123/review.json
 ```
 
 The script exits `0` when the file is valid and prints one `FAIL` line per
-problem otherwise. It is the same checker the tests use. Run it from a
-skill copy or a checkout.
+problem otherwise. It is the same checker the tests use. Run it from your
+installed skill's directory, or from `skills/verdict/` in a checkout.
 
 To generate a client for another language, point a code generator at
-`schemas/envelope.schema.json`. [Build a client](/build-a-client) walks through
+`skills/verdict/schemas/envelope.schema.json`. [Build a client](/build-a-client) walks through
 Python end to end.
 
 <CardGroup cols={2}>
