@@ -1,9 +1,10 @@
 // Package mcpconfig renders one host's MCP server snippet and merges it into
 // that host's config file (Claude/Cursor JSON, Codex TOML). The merge is
 // deliberately minimal: ordered JSON via internal/jq and a plain
-// [mcp_servers.verdict] table for TOML, never a full parser. Anything it
-// cannot merge safely refuses typed instead of rewriting the operator's file.
-// It never prompts, writes stdout, or starts the server.
+// [mcp_servers.verdict] table for TOML, placed by a line scan that tracks TOML
+// strings and comments, never a full parser. Anything it cannot merge safely
+// refuses typed instead of rewriting the operator's file. It never prompts,
+// writes stdout, or starts the server.
 package mcpconfig
 
 import (
@@ -55,11 +56,15 @@ const (
 	jsonServersKey = "mcpServers"
 	keyCommand     = "command"
 	keyArgs        = "args"
+	argsValue      = `["mcp"]`
 	newline        = "\n"
 	openBracket    = "["
 	closeBracket   = "]"
 	tripleSingle   = "'''"
 	tripleDouble   = `"""`
+	doubleQuote    = `"`
+	singleQuote    = "'"
+	quotes         = doubleQuote + singleQuote
 )
 
 // Request is one `mcp config` invocation. Cwd is the project root Claude and
@@ -177,11 +182,7 @@ func snippet(format string) string {
 }
 
 func tomlTable() string {
-	return strings.Join([]string{
-		openBracket + tomlName + closeBracket,
-		keyCommand + ` = "` + command + `"`,
-		keyArgs + ` = ["` + mcpArg + `"]`,
-	}, newline) + newline
+	return strings.Join(tableLines(), newline) + newline
 }
 
 func entry() *jq.Obj { return jq.NewObj(keyCommand, command, keyArgs, []any{mcpArg}) }
@@ -268,168 +269,365 @@ func matches(server *jq.Obj) bool {
 }
 
 func mergeTOML(old []byte, path string) ([]byte, bool, *core.RefusalError) {
-	lines := strings.Split(string(old), newline)
-	start, end, ref := findTable(lines, path)
-	if ref != nil {
+	doc := scanTOML(string(old))
+	if ref := doc.unterminated(path); ref != nil {
 		return nil, false, ref
 	}
+	start, end := doc.verdictTable()
 	if start < 0 {
-		return appendTable(string(old)), true, nil
+		return doc.appendNewTable(path)
 	}
-	hasCommand, hasArgs, ref := tableKeys(lines[start+1:end], path)
+	return doc.completeTable(start, end, path)
+}
+
+// appendNewTable adds the whole table to a file that has none, unless a
+// non-table spelling of the server is already there to define it.
+func (d *tomlDoc) appendNewTable(path string) ([]byte, bool, *core.RefusalError) {
+	if ref := d.spellingRefusal(path); ref != nil {
+		return nil, false, ref
+	}
+	return d.appendTable(), true, nil
+}
+
+// completeTable fills the keys the table is missing, and treats a table that
+// carries both as configured: the operator's spelling stays byte-identical.
+func (d *tomlDoc) completeTable(start, end int, path string) ([]byte, bool, *core.RefusalError) {
+	if ref := d.headerString(start, path); ref != nil {
+		return nil, false, ref
+	}
+	hasCommand, hasArgs, ref := d.tableKeys(start, end, path)
 	if ref != nil {
 		return nil, false, ref
 	}
 	if hasCommand && hasArgs {
 		return nil, false, nil
 	}
-	if ref := multiLineRefusal(lines[:end], path); ref != nil {
-		return nil, false, ref
-	}
-	return []byte(strings.Join(fillTable(lines, start, hasCommand, hasArgs), newline)), true, nil
+	return d.fillTable(start, hasCommand, hasArgs), true, nil
 }
 
-func fillTable(lines []string, start int, hasCommand, hasArgs bool) []string {
-	insert := make([]string, 0, len(lines)+2)
-	insert = append(insert, lines[:start+1]...)
-	if !hasCommand {
-		insert = append(insert, keyCommand+` = "`+command+`"`)
+// TOML's triple-quoted forms are the only strings that may span a newline, so a
+// file that ends inside one has no line outside a string to append to; a file
+// that ends inside a single-line quote is a syntax error either way.
+func (d *tomlDoc) unterminated(path string) *core.RefusalError {
+	if d.open.delim == "" {
+		return nil
 	}
-	if !hasArgs {
-		insert = append(insert, keyArgs+` = ["`+mcpArg+`"]`)
+	if d.open.multi {
+		return refuse(CodeUnmergeable, path+" ends inside a TOML multi-line string ("+
+			tripleDouble+" or "+tripleSingle+"), so no line outside a string is left for ["+
+			tomlName+"]; close it and re-run")
 	}
-	return append(insert, lines[start+1:]...)
+	return refuse(CodeUnmergeable, path+" has an unterminated TOML string; fix the quoting and re-run")
 }
 
-// findTable reports the canonical verdict table's line range, refusing any
-// non-table spelling it cannot merge without a parser.
-//
-//nolint:gocognit,revive // one-pass table scan; splitting the header/body branches hides it
-func findTable(lines []string, path string) (int, int, *core.RefusalError) {
-	start := -1
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(stripComment(line))
-		if trimmed == "" {
+// A header line that leaves a string open puts every key added under it inside
+// that string, where the next run would not read it, so the merge cannot fill
+// the table in.
+func (d *tomlDoc) headerString(start int, path string) *core.RefusalError {
+	if !d.scan[start].open {
+		return nil
+	}
+	return refuse(CodeUnmergeable, path+" opens a TOML string on the ["+tomlName+
+		"] line, so a key added under it would land inside that string; close the string and re-run")
+}
+
+func (d *tomlDoc) verdictTable() (int, int) {
+	want := strings.Split(tomlName, ".")
+	start := slices.IndexFunc(d.scan, func(line tomlLine) bool {
+		return line.isHeader && slices.Equal(line.parts, want)
+	})
+	if start < 0 {
+		return -1, -1
+	}
+	next := slices.IndexFunc(d.scan[start+1:], func(line tomlLine) bool { return line.isHeader })
+	if next < 0 {
+		return start, len(d.scan)
+	}
+	return start, start + 1 + next
+}
+
+// A mention of the server inside a string or a comment is prose, not a
+// definition, so only the code outside both can name a non-table spelling.
+func (d *tomlDoc) spellingRefusal(path string) *core.RefusalError {
+	for _, line := range d.scan {
+		if line.isHeader {
 			continue
 		}
-		parts, header := headerParts(trimmed)
-		if header {
-			if start >= 0 && i > start {
-				return start, i, nil
-			}
-			if start < 0 && slices.Equal(parts, strings.Split(tomlName, ".")) {
-				start = i
-			}
-			continue
-		}
-		if start < 0 && strings.Contains(trimmed, "mcp_servers") && strings.Contains(trimmed, "verdict") {
-			return -1, -1, refuse(CodeUnmergeable, path+" defines "+tomlName+
+		if strings.Contains(line.code, "mcp_servers") && strings.Contains(line.code, "verdict") {
+			return refuse(CodeUnmergeable, path+" defines "+tomlName+
 				" outside a plain ["+tomlName+"] table; refusing to guess")
 		}
 	}
-	if start >= 0 {
-		return start, len(lines), nil
-	}
-	return -1, -1, nil
+	return nil
 }
 
-//
-//nolint:revive // the two canonical keys read clearer inline than behind helpers
-func tableKeys(body []string, path string) (bool, bool, *core.RefusalError) {
+func (d *tomlDoc) tableKeys(start, end int, path string) (bool, bool, *core.RefusalError) {
 	var hasCommand, hasArgs bool
-	for _, line := range body {
-		key, value, ok := tomlPair(line)
-		if !ok {
+	for _, line := range d.scan[start+1 : end] {
+		if !line.hasPair {
 			continue
 		}
-		switch key {
-		case keyCommand:
-			if strings.Trim(value, `"'`) != command {
-				return false, false, foreignTable(path, keyCommand)
-			}
-			hasCommand = true
-		case keyArgs:
-			if compactArgs(value) != `["mcp"]` {
-				return false, false, foreignTable(path, keyArgs)
-			}
-			hasArgs = true
+		if ref := line.keyRefusal(path); ref != nil {
+			return false, false, ref
 		}
+		hasCommand = hasCommand || line.key == keyCommand
+		hasArgs = hasArgs || line.key == keyArgs
 	}
 	return hasCommand, hasArgs, nil
 }
 
-func multiLineRefusal(lines []string, path string) *core.RefusalError {
-	if !hasMultiLineString(lines) {
-		return nil
-	}
-	return refuse(CodeUnmergeable, path+" uses a TOML multi-line string ("+
-		tripleSingle+" or "+tripleDouble+") at or before ["+tomlName+
-		"], so a table header cannot be told apart from text inside it; add the table by hand")
-}
-
-// hasMultiLineString reports whether any of these lines opens a TOML
-// multi-line string. The scan is deliberately plain: it does not track quoting
-// state, because a line-based merge cannot tell a header inside a literal from
-// a real one, so the caller refuses instead of guessing.
-func hasMultiLineString(lines []string) bool {
-	for _, line := range lines {
-		if strings.Contains(line, tripleSingle) || strings.Contains(line, tripleDouble) {
-			return true
+func (l *tomlLine) keyRefusal(path string) *core.RefusalError {
+	switch l.key {
+	case keyCommand:
+		if strings.Trim(l.value, quotes) != command {
+			return foreignTable(path, keyCommand)
+		}
+	case keyArgs:
+		if compactArgs(l.value) != argsValue {
+			return foreignTable(path, keyArgs)
 		}
 	}
-	return false
+	return nil
 }
 
-// tomlPair splits one `key = value` line, dropping any trailing comment.
-func tomlPair(line string) (string, string, bool) {
-	key, value, ok := strings.Cut(strings.TrimSpace(stripComment(line)), "=")
-	if !ok {
-		return "", "", false
+func (d *tomlDoc) fillTable(start int, hasCommand, hasArgs bool) []byte {
+	lines := make([]string, 0, len(d.lines)+2)
+	lines = append(lines, d.lines[:start+1]...)
+	if !hasCommand {
+		lines = append(lines, keyCommand+` = "`+command+`"`)
 	}
-	return strings.TrimSpace(key), strings.TrimSpace(value), true
+	if !hasArgs {
+		lines = append(lines, keyArgs+` = `+argsValue)
+	}
+	return d.render(append(lines, d.lines[start+1:]...))
 }
+
+func (d *tomlDoc) appendTable() []byte {
+	lines := slices.Clone(d.lines)
+	for len(lines) > 0 && blankLine(lines[len(lines)-1]) {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > 0 {
+		lines = append(lines, "")
+	}
+	return d.render(append(lines, tableLines()...))
+}
+
+func (d *tomlDoc) render(lines []string) []byte {
+	return []byte(strings.Join(lines, d.eol) + d.eol)
+}
+
+// TOML's four string forms: only the triple-quoted pair may span a newline, and
+// only the double-quoted pair reads a backslash escape.
+type tomlString struct {
+	delim  string
+	escape bool
+	multi  bool
+}
+
+type tomlCursor struct {
+	str     tomlString
+	comment bool
+}
+
+// tomlLine is one physical line as the merge reads it. inString records a line
+// that starts inside a string, where no header, key or comment can begin, and
+// open one that ends inside a string, where no line the merge inserts is code.
+type tomlLine struct {
+	code     string
+	key      string
+	value    string
+	parts    []string
+	isHeader bool
+	hasPair  bool
+	inString bool
+	open     bool
+}
+
+type tomlDoc struct {
+	lines []string
+	scan  []tomlLine
+	eol   string
+	open  tomlString
+}
+
+// scanTOML reads the file the way TOML does, one physical line at a time, and
+// keeps the ending the file starts with so an added line never introduces a
+// second style.
+func scanTOML(text string) tomlDoc {
+	doc := tomlDoc{eol: detectEOL(text)}
+	if text == "" {
+		return doc
+	}
+	lines := strings.Split(text, newline)
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	doc.lines = make([]string, len(lines))
+	doc.scan = make([]tomlLine, len(lines))
+	cur := tomlCursor{}
+	for i, raw := range lines {
+		doc.lines[i] = strings.TrimSuffix(raw, "\r")
+		doc.scan[i], cur = scanTOMLLine(doc.lines[i], cur)
+	}
+	doc.open = cur.str
+	return doc
+}
+
+func detectEOL(text string) string {
+	if i := strings.IndexByte(text, '\n'); i > 0 && text[i-1] == '\r' {
+		return "\r\n"
+	}
+	return newline
+}
+
+func scanTOMLLine(raw string, cur tomlCursor) (tomlLine, tomlCursor) {
+	starts := cur.str.delim != ""
+	cur.comment = false
+	acc := tomlRaw{eq: -1, eqAt: -1, comment: len(raw), first: -1}
+	for i := 0; i < len(raw); {
+		next, action := tomlAdvance(raw, i, &cur)
+		if action == tomlCode {
+			acc.write(raw, i)
+		}
+		if action == tomlCommentStart {
+			acc.comment = i
+		}
+		i = next
+	}
+	line := acc.line(raw, starts)
+	line.open = cur.str.delim != ""
+	return line, cur
+}
+
+type tomlAction int
+
+const (
+	tomlSkip tomlAction = iota
+	tomlCode
+	tomlCommentStart
+)
+
+type tomlRaw struct {
+	code    strings.Builder
+	eq      int
+	eqAt    int
+	comment int
+	first   int
+	last    int
+}
+
+func (r *tomlRaw) write(raw string, i int) {
+	r.code.WriteByte(raw[i])
+	if r.first < 0 {
+		r.first = i
+	}
+	r.last = i
+	if raw[i] == '=' && r.eq < 0 {
+		r.eq, r.eqAt = r.code.Len()-1, i
+	}
+}
+
+func (r *tomlRaw) line(raw string, inString bool) tomlLine {
+	line := tomlLine{inString: inString, code: r.code.String()}
+	if r.first >= 0 && !inString {
+		line.parts, line.isHeader = headerParts(trimBlank(raw[r.first : r.last+1]))
+	}
+	if r.eq >= 0 && !inString {
+		line.hasPair = true
+		line.key = trimBlank(line.code[:r.eq])
+		line.value = trimBlank(raw[r.eqAt+1 : r.comment])
+	}
+	return line
+}
+
+// tomlAdvance consumes the byte at raw[i]. TOML ends a string only at its own
+// closing delimiter and starts a comment only on a `#` outside every string.
+func tomlAdvance(raw string, i int, cur *tomlCursor) (int, tomlAction) {
+	if cur.comment {
+		return len(raw), tomlSkip
+	}
+	if cur.str.delim != "" {
+		return tomlSkipString(raw, i, cur), tomlSkip
+	}
+	switch raw[i] {
+	case '#':
+		cur.comment = true
+		return i + 1, tomlCommentStart
+	case '"', '\'':
+		cur.str, i = tomlOpen(raw, i)
+		return i, tomlSkip
+	}
+	return i + 1, tomlCode
+}
+
+func tomlSkipString(raw string, i int, cur *tomlCursor) int {
+	if cur.str.escape && raw[i] == '\\' && i+1 < len(raw) {
+		return i + 2
+	}
+	if strings.HasPrefix(raw[i:], cur.str.delim) {
+		width := len(cur.str.delim)
+		cur.str = tomlString{}
+		return i + width
+	}
+	return i + 1
+}
+
+func tomlOpen(raw string, i int) (tomlString, int) {
+	switch {
+	case strings.HasPrefix(raw[i:], tripleDouble):
+		return tomlString{delim: tripleDouble, escape: true, multi: true}, i + len(tripleDouble)
+	case strings.HasPrefix(raw[i:], tripleSingle):
+		return tomlString{delim: tripleSingle, multi: true}, i + len(tripleSingle)
+	case strings.HasPrefix(raw[i:], doubleQuote):
+		return tomlString{delim: doubleQuote, escape: true}, i + len(doubleQuote)
+	default:
+		return tomlString{delim: singleQuote}, i + len(singleQuote)
+	}
+}
+
+func tableLines() []string {
+	return []string{
+		openBracket + tomlName + closeBracket,
+		keyCommand + ` = "` + command + `"`,
+		keyArgs + ` = ` + argsValue,
+	}
+}
+
+// blanks are the only whitespace TOML allows around a key, a value or a
+// header; the merge trims these and never a byte it could not read, so a
+// line of Unicode spaces stays where the operator put it.
+const blanks = " \t"
+
+func trimBlank(s string) string { return strings.Trim(s, blanks) }
+
+func blankLine(line string) bool { return trimBlank(line) == "" }
 
 func compactArgs(value string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(value, " ", ""), "'", `"`)
+	return strings.ReplaceAll(strings.ReplaceAll(value, " ", ""), singleQuote, doubleQuote)
 }
 
 func foreignTable(path, key string) *core.RefusalError {
 	return refuse(CodeForeign, path+" already configures ["+tomlName+"]."+key+" differently; refusing to rewrite it")
 }
 
-func appendTable(text string) []byte {
-	trimmed := strings.TrimRight(text, newline)
-	if trimmed != "" {
-		trimmed += newline + newline
-	}
-	return []byte(trimmed + tomlTable())
-}
-
 func headerParts(line string) ([]string, bool) {
 	if !strings.HasPrefix(line, openBracket) || strings.HasPrefix(line, "[[") || !strings.HasSuffix(line, closeBracket) {
 		return nil, false
 	}
-	inner := strings.TrimSpace(line[1 : len(line)-1])
+	inner := trimBlank(line[1 : len(line)-1])
 	if inner == "" {
 		return nil, true
 	}
 	parts := strings.Split(inner, ".")
 	for i, part := range parts {
-		unquoted := strings.Trim(strings.TrimSpace(part), `"'`)
+		unquoted := strings.Trim(trimBlank(part), quotes)
 		if unquoted == "" {
 			return nil, false
 		}
 		parts[i] = unquoted
 	}
 	return parts, true
-}
-
-func stripComment(line string) string {
-	before, _, found := strings.Cut(line, "#")
-	if found {
-		return before
-	}
-	return line
 }
 
 func refuse(code, message string) *core.RefusalError {

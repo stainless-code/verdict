@@ -148,13 +148,21 @@ func FuzzMergeTOML(f *testing.F) {
 		"[mcp_servers.verdict]\ncommand = \"evil\"\nargs = [\"mcp\"]\n", "mcp_servers.verdict.command = \"x\"\n",
 		"[mcp_servers . \"verdict\"] # c\ncommand = 'verdict'\n", "[[mcp_servers.verdict]]\n", "[mcp_servers.verdict.env]\nA=\"b\"\n",
 		"note = '''\n[mcp_servers.verdict]\n'''\n", "\r\n[a]\r\nb=1\r\n",
+		"note = \"\"\"\nhello\n", "note = '''\n[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\"]\n'''\n",
+		"note = \"see [mcp_servers.verdict] in the docs\"\n", "# '''\n[mcp_servers.verdict]\n", "model = \"gpt\"",
+		"\u2004", "model = \"x\"\n\u2003", " \t\n",
+		"[mcp_servers.verdict]\"\ncommand = \"verdict\"\nargs = [\"mcp\"]\n\"\n", "[mcp_servers.verdict]'''\ntext\n'''\n",
+		"model = \"x\"\r\n\r\n[b]\nc=1\n",
 	} {
 		f.Add([]byte(s))
 	}
 	// Shapes that must gain the table: a merge that reports no change here
 	// leaves the operator without the config the command exists to add, so
 	// these rows keep the fuzz body from passing on a do-nothing merge.
-	for _, s := range []string{"", "model = \"x\"\n", "[mcp_servers.other]\ncommand = \"o\"\n"} {
+	for _, s := range []string{
+		"", "model = \"x\"\n", "[mcp_servers.other]\ncommand = \"o\"\n",
+		"note = \"see [mcp_servers.verdict] in the docs\"\n",
+	} {
 		mustMergeTOML(f, s)
 	}
 	f.Fuzz(func(t *testing.T, old []byte) {
