@@ -108,7 +108,9 @@ func TestRunLocalKBRecallRankAndManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
-	dir = filepath.Join(".review", "local-mine")
+	// Slash form on purpose: artifacts and the human line report bundle paths
+	// with forward slashes on every OS, and os.ReadFile accepts them on Windows.
+	dir = ".review/local-mine"
 	wantNote := "# kb recall — context, never orders. Cited rules inform the review; evidence still decides.\n" +
 		"# r-d — src/* — precision 2/2\nPin the corpus slug\n" +
 		"# r-b — src/* — precision 3/4\nPrefer table tests\n" +
