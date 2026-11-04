@@ -1,6 +1,9 @@
 package verifycore
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestRedactShapes pins shape-based redaction: the recorded tail drops a
 // leaked credential even when no environment value names it.
@@ -67,6 +70,27 @@ func TestStripControlChars(t *testing.T) {
 		{name: "newline and tab kept", in: "a\tb\nc", want: "a\tb\nc"},
 		{name: "unicode kept", in: "exit=0 — ok\n", want: "exit=0 — ok\n"},
 		{name: "plain untouched", in: "line one\nline two\n", want: "line one\nline two\n"},
+		// Mutants killed by the rows below (gremlins, redact.go):
+		//   113:9 CONDITIONALS_NEGATION — control bytes alone, no
+		//   printable byte to trigger the rebuild, must still be dropped.
+		{name: "bel only", in: "\x07", want: ""},
+		{name: "nul only", in: "\x00\x01\x1f", want: ""},
+		//   113:47 CONDITIONALS_NEGATION (`c == delByte` -> `!=`) — DEL alone.
+		{name: "del only", in: "\x7f", want: ""},
+		//   143:11 CONDITIONALS_BOUNDARY — '@' (0x40) is the lowest CSI final
+		//   byte; if it were not final the strip would also eat the "x".
+		{name: "csi final at sign", in: "\x1b[1@x", want: "x"},
+		//   143:34 CONDITIONALS_BOUNDARY — '~' (0x7e) is the highest final
+		//   byte; if it were not final the strip would also eat the "o".
+		{name: "csi final tilde", in: "\x1b[3~ok", want: "ok"},
+		//   153:19 CONDITIONALS_BOUNDARY — scanning one byte past an OSC that
+		//   never closes panics (index out of range) instead of dropping it.
+		{name: "unterminated osc", in: "a\x1b]0;never closes", want: "a"},
+		{name: "lone escape", in: "a\x1b", want: "a"},
+		// An OSC terminated by ST is consumed through the backslash, and the
+		// text after it survives; BEL form likewise.
+		{name: "osc st then text", in: "\x1b]0;t\x1b\\after", want: "after"},
+		{name: "osc bel then text", in: "\x1b]0;t\x07after", want: "after"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,5 +109,88 @@ func TestSanitizeTail(t *testing.T) {
 	want := "login ***REDACTED*** Authorization: ***REDACTED***\n"
 	if got := sanitizeTail(in, environ); got != want {
 		t.Fatalf("sanitizeTail = %q, want %q", got, want)
+	}
+}
+
+// TestSkipOSCReturnsClosingByte pins the helper contract that
+// stripControlChars relies on: the returned index is the byte that closes the
+// OSC string (the backslash of ST, the BEL itself), or the last byte when it
+// never closes.
+//
+// Mutant killed: redact.go:158 ARITHMETIC_BASE (`return j + 1` -> `j - 1`).
+// Through stripControlChars alone that mutant is equivalent (the leftover
+// ESC \ is re-consumed as a two-byte escape), so only the helper contract
+// observes it.
+func TestSkipOSCReturnsClosingByte(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{name: "st", in: "\x1b]0;t\x1b\\x", want: 6},
+		{name: "bel", in: "\x1b]0;t\x07x", want: 5},
+		{name: "never closes", in: "\x1b]0;tt", want: 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := skipOSC(tc.in, 2); got != tc.want {
+				t.Fatalf("skipOSC(%q, 2) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFlatOfSqueezesWhitespace pins the documented flatOf contract: newlines,
+// tabs and carriage returns fold to a space, runs squeeze to one, the ends
+// are trimmed.
+//
+// Mutants killed: normalize.go:58 CONDITIONALS_NEGATION (`sb.Len() > 0` ->
+// `<= 0`) and normalize.go:69 CONDITIONALS_NEGATION (lastByte reports "empty"
+// for every non-empty builder): both stop the squeeze, so "a  b" keeps two
+// spaces. Gate-level effect is masked by the re-squeeze in bareOf/adjOf, which
+// is why only a direct test sees it.
+func TestFlatOfSqueezesWhitespace(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{name: "double space", in: "a  b", want: "a b"},
+		{name: "mixed whitespace run", in: "a\t\n \r b", want: "a b"},
+		{name: "ends trimmed", in: "  \n lead and trail \t", want: "lead and trail"},
+		{name: "single spaces kept", in: "a b c", want: "a b c"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := flatOf(tc.in); got != tc.want {
+				t.Fatalf("flatOf(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAdjOfReportsDeepNesting pins the bound for both span kinds: nesting up
+// to maxSentinelPasses fully collapses to sentinels; one level deeper is
+// reported so the gate can fail closed.
+//
+// Break killed: replaceSpans returning false unconditionally (manual) — the
+// brace row is not reachable through Check, because the glob arm refuses
+// `${` in command position first, so this is the only test of the brace loop.
+func TestAdjOfReportsDeepNesting(t *testing.T) {
+	nest := func(open, cl string, depth int) string {
+		return strings.Repeat(open, depth) + "x" + strings.Repeat(cl, depth)
+	}
+	tests := []struct {
+		name     string
+		in       string
+		wantDeep bool
+	}{
+		{name: "paren at bound", in: nest("$(", ")", 8), wantDeep: false},
+		{name: "paren past bound", in: nest("$(", ")", 9), wantDeep: true},
+		{name: "brace at bound", in: nest("${", "}", 8), wantDeep: false},
+		{name: "brace past bound", in: nest("${", "}", 9), wantDeep: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, deep := adjOf(tc.in); deep != tc.wantDeep {
+				t.Fatalf("adjOf deep = %v, want %v", deep, tc.wantDeep)
+			}
+		})
 	}
 }

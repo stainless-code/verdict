@@ -16,6 +16,10 @@ const segWordIdx = 4
 // checkSentinel owns the mid-word substitution arm: a sentinel glued to a
 // word character hides a tool name behind a concatenation.
 func checkSentinel(g *gateText) *core.RefusalError {
+	if g.deepSubst {
+		return refuse(codeDestructive, "nested-substitution",
+			"substitution nesting too deep to scan for a hidden tool word — write the tool word plainly")
+	}
 	if !reSentinel.MatchString(g.adj) {
 		return nil
 	}

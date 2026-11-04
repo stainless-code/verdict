@@ -20,6 +20,9 @@ type gateText struct {
 	bare   string
 	csbare string
 	adj    string
+	// deepSubst reports substitution nesting beyond maxSentinelPasses, so adj
+	// still carries unreplaced spans a hidden tool word could ride behind.
+	deepSubst bool
 }
 
 // normalize builds every gate text from the raw command.
@@ -30,7 +33,7 @@ func normalize(raw string) *gateText {
 	g.scan = scanOf(g.lc)
 	g.bare = bareOf(g.scan, false)
 	g.csbare = bareOf(g.flat, true)
-	g.adj = adjOf(g.scan)
+	g.adj, g.deepSubst = adjOf(g.scan)
 	return g
 }
 
@@ -125,28 +128,33 @@ func squeezeSpaces(s string) string {
 
 // adjOf owns the adj pipeline: quote handling like bare (backticks kept),
 // then sentinel replacement of innermost $(…), ${…}, $VAR, and `…` spans.
-func adjOf(scan string) string {
+// The bool reports nesting deeper than maxSentinelPasses: the bounded loops
+// stop with spans left, which the caller must treat as hostile (fail closed)
+// rather than as clean text.
+func adjOf(scan string) (string, bool) {
 	s := reLocaleSingle.ReplaceAllString(scan, groupRef)
 	s = reLocaleDouble.ReplaceAllString(s, groupRef)
 	s = reQuotes.ReplaceAllString(s, "")
 	s = squeezeSpaces(s)
-	for range maxSentinelPasses {
-		nxt := reDollarParen.ReplaceAllString(s, markStr)
-		if nxt == s {
-			break
-		}
-		s = nxt
-	}
-	for range maxSentinelPasses {
-		nxt := reDollarBrace.ReplaceAllString(s, markStr)
-		if nxt == s {
-			break
-		}
-		s = nxt
-	}
+	var deepParen, deepBrace bool
+	s, deepParen = replaceSpans(s, reDollarParen)
+	s, deepBrace = replaceSpans(s, reDollarBrace)
 	s = reDollarVar.ReplaceAllString(s, markStr)
 	s = reBacktick.ReplaceAllString(s, markStr)
-	return s
+	return s, deepParen || deepBrace
+}
+
+// replaceSpans replaces innermost spans up to maxSentinelPasses times and
+// reports whether another pass would still have changed the text.
+func replaceSpans(s string, re *regexp.Regexp) (string, bool) {
+	for range maxSentinelPasses {
+		nxt := re.ReplaceAllString(s, markStr)
+		if nxt == s {
+			return s, false
+		}
+		s = nxt
+	}
+	return s, re.MatchString(s)
 }
 
 // markStr is the substitution sentinel.
