@@ -84,6 +84,14 @@ export default defineConfig({
       "Every Verdict release, newest first, with the notes from each GitHub Release: what changed, what was added, and what was fixed.",
   },
 
+  // A generated site skill is named after the site title, which puts a second
+  // `verdict` beside the payload in `skills/`; the docs guide ships as
+  // `verdict-docs` instead.
+  agents: {
+    skillMd: false,
+    skills: "./skills",
+  },
+
   integrations: [webAppHeadIntegration],
 
   search: {
