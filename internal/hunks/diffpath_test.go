@@ -76,6 +76,10 @@ func TestUnquotePath(t *testing.T) {
 		// would erase the path an anchor has to match.
 		{`"bad\q"`, `bad\q`},
 		{`""`, ""},
+		// A lone quote (a truncated header) is both the first and last byte of
+		// a one-byte token; it must come back whole, not panic on an empty
+		// slice.
+		{`"`, `"`},
 	} {
 		if got := hunks.UnquotePath(tt.in); got != tt.want {
 			t.Errorf("UnquotePath(%q) = %q, want %q", tt.in, got, tt.want)

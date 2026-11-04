@@ -127,3 +127,37 @@ func TestRankCountsPinBothDirections(t *testing.T) {
 		t.Errorf("CountStatus(deferred) = %d; want 1", got)
 	}
 }
+
+// TestRankLowerKeysBeatSigAndPath pins the anchored, inBounds and line legs
+// where each wins against the keys below it: the winner carries the larger
+// path and sig, so a leg that stops comparing (or a chain that skips it)
+// hands the order to path/sig and reorders the pair.
+func TestRankLowerKeysBeatSigAndPath(t *testing.T) {
+	t.Parallel()
+	pair := func(winner, loser string) string {
+		return rankDoc(loser, winner)
+	}
+	tests := []struct {
+		name string
+		doc  string
+	}{
+		{"anchored", pair(
+			`{"kind":"inline","status":"open","severity":"critical","rigor":"walked","anchored":true,"inBounds":true,"line":1,"path":"zzz.txt","sig":"z"}`,
+			`{"kind":"inline","status":"open","severity":"critical","rigor":"walked","anchored":false,"inBounds":true,"line":1,"path":"aaa.txt","sig":"a"}`,
+		)},
+		{"inBounds", pair(
+			`{"kind":"inline","status":"open","severity":"critical","rigor":"walked","anchored":true,"inBounds":true,"line":1,"path":"zzz.txt","sig":"z"}`,
+			`{"kind":"inline","status":"open","severity":"critical","rigor":"walked","anchored":true,"inBounds":false,"line":1,"path":"aaa.txt","sig":"a"}`,
+		)},
+		{"line", pair(
+			`{"kind":"inline","status":"open","severity":"critical","rigor":"walked","anchored":true,"inBounds":true,"line":2,"path":"same.txt","sig":"z"}`,
+			`{"kind":"inline","status":"open","severity":"critical","rigor":"walked","anchored":true,"inBounds":true,"line":10,"path":"same.txt","sig":"a"}`,
+		)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertRankOrder(t, tc.doc, []string{"z", "a"})
+		})
+	}
+}

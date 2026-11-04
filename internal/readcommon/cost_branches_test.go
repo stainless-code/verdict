@@ -40,10 +40,10 @@ func TestCostRollupUnpricedAndModellessRecords(t *testing.T) {
 	}
 }
 
-// TestCostRollupEstUSDLNullWhenUnpriced pins the estimate sentinel: records
+// TestCostRollupEstUSDNullWhenUnpriced pins the estimate sentinel: records
 // that carry tokens but no priced total leave est_usd null, so a reader can
 // tell "not measured" from "measured at zero".
-func TestCostRollupEstUSDLNullWhenUnpriced(t *testing.T) {
+func TestCostRollupEstUSDNullWhenUnpriced(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeStore(t, dir, map[string]string{
@@ -54,8 +54,8 @@ func TestCostRollupEstUSDLNullWhenUnpriced(t *testing.T) {
 	if got := costNum(t, res.Cost, "total_tokens"); got != 10 {
 		t.Errorf("total_tokens = %v; want 10", got)
 	}
-	if v, _ := res.Cost.Get("est_usd"); v != nil {
-		t.Errorf("est_usd = %v; want null with no priced record", v)
+	if v, ok := res.Cost.Get("est_usd"); !ok || v != nil {
+		t.Errorf("est_usd = %v (present=%v); want a present null with no priced record", v, ok)
 	}
 }
 
@@ -94,5 +94,32 @@ func TestCostRollupNullModelElement(t *testing.T) {
 		if got := costNum(t, res.Cost, key); got != want {
 			t.Errorf("cost.%s = %v; want %v", key, got, want)
 		}
+	}
+}
+
+// TestCostRollupManifestNamedChunkOutsideTheGlob pins the manifest leg of
+// chunk discovery: docs/manual.md names the files `chunks/<name>.cost.json`
+// for whatever name the manifest lists, and the on-disk `chunk-*.cost.json`
+// glob cannot see a name outside that prefix. Only the manifest finds "alpha",
+// so dropping the manifest names (or skipping a valid one) loses its tokens.
+func TestCostRollupManifestNamedChunkOutsideTheGlob(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeStore(t, dir, map[string]string{
+		"chunks/manifest.json": `{"chunks":[{"name":"alpha"}]}`,
+		"chunks/alpha.cost.json": `[{"schema_version":"1","effort":"cheap",` +
+			`"models":[{"name":"m","input_tokens":7,"output_tokens":9}]}]`,
+	})
+	res := readcommon.CostRollup(dir)
+	for key, want := range map[string]float64{
+		"runs": 1, "runs_with_cost": 1, "input_tokens": 7,
+		"output_tokens": 9, "total_tokens": 16,
+	} {
+		if got := costNum(t, res.Cost, key); got != want {
+			t.Errorf("cost.%s = %v; want %v", key, got, want)
+		}
+	}
+	if len(res.Warns) != 0 {
+		t.Errorf("warns = %v; want none", res.Warns)
 	}
 }
