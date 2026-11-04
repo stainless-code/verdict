@@ -85,6 +85,26 @@ func TestRuntimeLearnEnvelopeValidates(t *testing.T) {
 	assertEnvelope(t, doc, "learn", "", resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 }
 
+// TestVerifyDataProfileValidates pins the verify data profile against the
+// generator: the struct is the wire source, so this fails when a tag moves a
+// property out of its published name or required list.
+func TestVerifyDataProfileValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	data := &core.VerifyData{
+		Exit:       0,
+		TimedOut:   false,
+		OutputTail: "ok\n",
+		Patch:      "diff --git a/notes.txt b/notes.txt\n",
+	}
+	validateWire(t, doc, "verify data", defOf(t, doc, "verifyData"), decodeWire(t, data.Wire()))
+
+	var modeled VerifyData
+	unmarshalWire(t, data.Wire(), &modeled)
+	if modeled.Exit != 0 || modeled.TimedOut || modeled.OutputTail != "ok\n" || modeled.Patch == "" {
+		t.Errorf("verify data round-trip = %+v", modeled)
+	}
+}
+
 // TestRuntimeInitEnvelopeValidates proves the init response envelope
 // validates against the generated envelope schema and carries the preset
 // values as numbers.

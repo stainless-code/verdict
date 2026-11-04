@@ -211,6 +211,368 @@ export interface FetchEstimate {
   [key: string]: unknown;
 }
 
+/** triage --json data: the finding that moved and its new status. dry_run appears only when the pass changed nothing. */
+export interface TriageData {
+  sig: string;
+  status: "open" | "addressed" | "wont-fix" | "false-positive" | "deferred";
+  dry_run?: boolean;
+  [key: string]: unknown;
+}
+
+/** ready --json data: the gate verdict, every blocker with the action that clears it, and the live PR state the gate read. recommendation is review when nothing blocks, hold otherwise. */
+export interface ReadyData {
+  ready: boolean;
+  recommendation: string;
+  blockers: Array<ReadyBlocker>;
+  state: string;
+  draft: boolean;
+  mergeable: string;
+  mergeStateStatus: string;
+  ci: ReadyCI;
+  threads_open: number;
+  description_chars: number;
+  [key: string]: unknown;
+}
+
+/** One readiness blocker: the rule that fired, the detail that fired it, and the action that clears it. */
+export interface ReadyBlocker {
+  kind: string;
+  detail: string;
+  action: string;
+  [key: string]: unknown;
+}
+
+/** The live CI check tally: failing rows out of every check the head reported. */
+export interface ReadyCI {
+  failing: number;
+  total: number;
+  [key: string]: unknown;
+}
+
+/** adopt --json data: the target bundle, its source, and how many findings were adopted and left open. */
+export interface AdoptData {
+  dir: string;
+  from: string;
+  adopted: number;
+  open: number;
+  [key: string]: unknown;
+}
+
+/** next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator. */
+export interface NextData {
+  item: FindingItem | null;
+  [key: string]: unknown;
+}
+
+/** fix --json data: one pass over the named finding, or the completion shape. The pass carries the finding identity, its anchors, the pass budget, and the open/fixed/stopped tallies; completion leaves those null and sets complete. */
+export interface FixData {
+  dir: string;
+  ledger: string;
+  sig: string | null;
+  locator: string | null;
+  severity: string | null;
+  body: string | null;
+  anchors: FixAnchors | null;
+  pass: number | null;
+  max_passes: number;
+  kb: unknown;
+  open_inline: number;
+  fixed: number;
+  open: number;
+  stopped: number;
+  complete: boolean;
+  [key: string]: unknown;
+}
+
+/** The pass's anchor block, read verbatim from the record (line and start_line stay strings). */
+export interface FixAnchors {
+  path: string;
+  line: string;
+  start_line: string;
+  side: string;
+  anchored: string;
+  [key: string]: unknown;
+}
+
+/** learn --json data: exactly one of rule (one appended rule) or rules (the status listing). */
+export interface LearnData {
+  rule?: unknown;
+  rules?: unknown[];
+  [key: string]: unknown;
+}
+
+/** init --json data: the applied preset values and the files they were written to. */
+export interface InitData {
+  preset: string;
+  budget_usd: string;
+  kb_min_judged: number;
+  kb_max_fp_rate: number;
+  files: Array<string>;
+  check_tree_clean: boolean;
+  [key: string]: unknown;
+}
+
+/** doctor --json data: every preflight row and the healthy verdict over them. Row values are environment-shaped, so the goldens, not this schema, pin them. */
+export interface DoctorData {
+  healthy: boolean;
+  checks: Array<DoctorCheck>;
+  [key: string]: unknown;
+}
+
+/** One preflight row: the check name, its severity, whether it passed, and the observed detail. */
+export interface DoctorCheck {
+  name: string;
+  severity: "ok" | "warn" | "fail";
+  ok: boolean;
+  detail: string;
+  [key: string]: unknown;
+}
+
+/** check-tree --json data: the clean verdict plus exactly one of four explanations — ignored_review_lines (clean, with ignored .review paths), files (dirty), expected_only (only expected paths changed), unexpected (unexpected paths changed). */
+export interface CheckTreeData {
+  clean: boolean;
+  ignored_review_lines?: number;
+  files?: Array<string>;
+  expected_only?: boolean;
+  unexpected?: Array<string>;
+  [key: string]: unknown;
+}
+
+/** threads --json data: where the refreshed feed was written plus a tally over it. The feed document itself is threads.schema.json. */
+export interface ThreadsData {
+  dir: string;
+  file: string;
+  provider: string;
+  head_sha: string;
+  fetched_at: string;
+  truncated: boolean;
+  threads: number;
+  open: number;
+  outdated: number;
+  verdict: number;
+  [key: string]: unknown;
+}
+
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, and the patch read back from the bundle. A timed-out run is never proof. */
+export interface VerifyData {
+  exit: number;
+  timedOut: boolean;
+  outputTail: string;
+  patch: string;
+  [key: string]: unknown;
+}
+
+/** trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present. */
+export interface TrendData {
+  generated_at: string;
+  bundles: number;
+  findings: number;
+  open: number;
+  addressed: number;
+  closed: number;
+  by_status: TrendStatuses;
+  by_tier: TrendTiers;
+  provenance: TrendProvenance;
+  periods: Array<TrendPeriod>;
+  per_bundle: Array<TrendBundleRow>;
+  overlap?: unknown;
+  corpus?: unknown;
+  [key: string]: unknown;
+}
+
+/** A five-status finding tally: open, addressed, wont-fix, false-positive, deferred. */
+export interface TrendStatuses {
+  open: number;
+  addressed: number;
+  "wont-fix": number;
+  "false-positive": number;
+  deferred: number;
+  [key: string]: unknown;
+}
+
+/** A four-tier finding tally: critical, important, informational, untagged. */
+export interface TrendTiers {
+  critical: number;
+  important: number;
+  informational: number;
+  untagged: number;
+  [key: string]: unknown;
+}
+
+/** The distinct tools, models, and prompt hashes behind the rollup; a bundle that recorded none contributes a null entry. */
+export interface TrendProvenance {
+  tools: unknown[];
+  models: unknown[];
+  prompts_hashes: unknown[];
+  [key: string]: unknown;
+}
+
+/** One time bucket of the rollup, with the same tallies as the whole. */
+export interface TrendPeriod {
+  period: string | null;
+  bundles: number;
+  findings: number;
+  open: number;
+  addressed: number;
+  closed: number;
+  by_tier: TrendTiers;
+  [key: string]: unknown;
+}
+
+/** One reviewed bundle's contribution: its model/effort inventory, provenance triple, status and tier tallies, and bundle-local counts. */
+export interface TrendBundleRow {
+  bundle: string;
+  at: string | null;
+  models: Array<string>;
+  efforts: Array<string>;
+  provenance: ProvenanceTriple;
+  findings: number;
+  open: number;
+  addressed: number;
+  closed: number;
+  by_status: TrendStatuses;
+  by_tier: TrendTiers;
+  [key: string]: unknown;
+}
+
+/** calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_positive_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment. */
+export interface CalibrateData {
+  review_id?: unknown;
+  head?: CalibrateHead | null;
+  pr?: CalibratePR | null;
+  outcomes?: unknown[];
+  precision?: unknown;
+  provenance?: ProvenanceTriple | null;
+  bundle?: string;
+  case?: string;
+  kind?: string;
+  model?: string;
+  panel?: Array<string>;
+  line_tolerance?: number;
+  ground_truth?: number;
+  reported?: number;
+  matched?: number;
+  false_positives?: number;
+  missed?: number;
+  recall?: number | null;
+  false_positive_rate?: number | null;
+  grades?: unknown[];
+  counts?: CalibrateCounts | null;
+  judgment?: CalibrateJudgment | null;
+  missed_bugs?: unknown[];
+  [key: string]: unknown;
+}
+
+/** The reviewed and live head the live join compared. */
+export interface CalibrateHead {
+  reviewed: string;
+  live: string;
+  [key: string]: unknown;
+}
+
+/** The live PR state the join read; merged_at is null until the PR merges. */
+export interface CalibratePR {
+  state: string;
+  merged_at: string | null;
+  [key: string]: unknown;
+}
+
+/** The per-bundle tooling triple; any part the bundle never recorded reads null rather than an empty string. */
+export interface ProvenanceTriple {
+  tool_version: string | null;
+  prompts_hash: string | null;
+  model: string | null;
+  [key: string]: unknown;
+}
+
+/** The probe's verdict tally over the bundle's findings: how many graded real, false, or unknown. */
+export interface CalibrateCounts {
+  findings: number;
+  real: number;
+  false: number;
+  unknown: number;
+  [key: string]: unknown;
+}
+
+/** The probe's second-sample agreement tally; agreement_rate is null until at least one finding is judged. */
+export interface CalibrateJudgment {
+  sampled: number;
+  judged: number;
+  agreed: number;
+  disagreed: number;
+  agreement_rate: number | null;
+  [key: string]: unknown;
+}
+
+/** fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, and prompt_dump lands last when staged. */
+export interface FetchData {
+  dir: string;
+  head_sha: string;
+  base_sha: string;
+  files: number;
+  additions: number;
+  deletions: number;
+  hunks: number;
+  omitted: unknown[];
+  diff_bytes: number;
+  panel: FetchPanel;
+  /** The provider capability summary when the bundle recorded one; shape owned by the fetch writer. */
+  capabilities?: unknown;
+  /** The review controls the run read from controls.json; shape owned by the controls document. */
+  controls?: unknown;
+  /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
+  artifacts: unknown;
+  incremental_base: string | null;
+  estimate?: FetchEstimate;
+  /** The resolved budget summary; present exactly when estimate is. */
+  budget?: unknown;
+  /** The armed cost cap summary; absent when no cap is armed. */
+  cap?: unknown;
+  /** The chunk plan summary; absent when the run was not chunked. */
+  chunk?: unknown;
+  /** Where the staged prompt was written; absent unless a dump was requested. */
+  prompt_dump?: string | null;
+  [key: string]: unknown;
+}
+
+/** fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base. */
+export interface FetchLocalData {
+  dir: string;
+  kind: string;
+  head_sha: string;
+  base_sha: string;
+  files: number;
+  additions: number;
+  deletions: number;
+  hunks: number;
+  omitted: unknown[];
+  diff_bytes: number;
+  panel: FetchPanel;
+  /** The provider capability summary when the bundle recorded one; shape owned by the fetch writer. */
+  capabilities?: unknown;
+  /** The review controls the run read from controls.json; shape owned by the controls document. */
+  controls?: unknown;
+  /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
+  artifacts: unknown;
+  estimate?: FetchEstimate;
+  /** The resolved budget summary; present exactly when estimate is. */
+  budget?: unknown;
+  /** The armed cost cap summary; absent when no cap is armed. */
+  cap?: unknown;
+  /** The chunk plan summary; absent when the run was not chunked. */
+  chunk?: unknown;
+  /** Where the staged prompt was written; absent unless a dump was requested. */
+  prompt_dump?: string | null;
+  [key: string]: unknown;
+}
+
+/** The panel source (null when unpinned) and its member list. */
+export interface FetchPanel {
+  source: string | null;
+  members: Array<string>;
+  [key: string]: unknown;
+}
+
 export interface PostDataBody {
   marker: string;
   footer?: unknown;

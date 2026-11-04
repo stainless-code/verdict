@@ -138,7 +138,7 @@ func pinnedDataError(doc map[string]any, env map[string]any) error {
 	if !ok {
 		return nil
 	}
-	def, ok := defs[verb+"Data"]
+	def, ok := defs[dataDefName(verb)]
 	if !ok || env["data"] == nil {
 		return nil
 	}
@@ -146,6 +146,16 @@ func pinnedDataError(doc map[string]any, env map[string]any) error {
 		return fmt.Errorf("%s data: %w", verb, err)
 	}
 	return nil
+}
+
+// dataDefName names a verb's pinned profile as the schema spells it:
+// fetch-local -> fetchLocalData, check-tree -> checkTreeData.
+func dataDefName(verb string) string {
+	parts := strings.Split(verb, "-")
+	for i := 1; i < len(parts); i++ {
+		parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+	}
+	return strings.Join(parts, "") + "Data"
 }
 
 // trailingJSONError rejects a second document after the envelope.

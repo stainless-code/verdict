@@ -34,7 +34,13 @@ var publishedSemantics = map[string]string{
 	// type changed.
 	// T3-10: additive retry_at on $defs/error (optional RFC 3339 property;
 	// no existing property, required key, or type changed).
-	"envelope.schema.json": "0604daa6b8da87d396fab698c6231ef1af5cacf68f5ed92e2ca7c4a9c0d993a5",
+	// data-profiles: additive $defs entries pinning the data profile of every
+	// verb that previously fell back to the open object (triage, ready, adopt,
+	// next, fix, learn, init, doctor, check-tree, verify, threads, trend,
+	// calibrate, fetch, fetch-local), plus the nested $defs they reference.
+	// Additions only: data keeps additionalProperties, no existing property,
+	// required key, or type changed.
+	"envelope.schema.json": "4849f91831465003cda55869c106bb449ff10e9608fb41f80d01ce3d9da5a7ff",
 	"findings.schema.json": "a1ec9ae1899a5c819fc4486367623e7d4db369de01d4408320330a1e758fb234",
 	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
 	"record.schema.json":   "97647229b14efa63c43aca592aa8466b246065f858b28872c6ec1198c428d7b1",
