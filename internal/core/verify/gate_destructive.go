@@ -20,6 +20,10 @@ func checkSentinel(g *gateText) *core.RefusalError {
 		return refuse(codeDestructive, "nested-substitution",
 			"substitution nesting too deep to scan for a hidden tool word — write the tool word plainly")
 	}
+	if g.unreduced {
+		return refuse(codeDestructive, "unscannable-substitution",
+			"substitution the gate cannot reduce sits against a word — write the tool word plainly")
+	}
 	if !reSentinel.MatchString(g.adj) {
 		return nil
 	}

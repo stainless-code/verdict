@@ -23,6 +23,10 @@ type gateText struct {
 	// deepSubst reports substitution nesting beyond maxSentinelPasses, so adj
 	// still carries unreplaced spans a hidden tool word could ride behind.
 	deepSubst bool
+	// unreduced reports a surviving $(…)/${…} span the patterns cannot match at
+	// all (an inner bare paren, say) that sits against a word character: the
+	// same mid-word concatenation hazard, hidden by the pattern's gap.
+	unreduced bool
 }
 
 // normalize builds every gate text from the raw command.
@@ -34,6 +38,7 @@ func normalize(raw string) *gateText {
 	g.bare = bareOf(g.scan, false)
 	g.csbare = bareOf(g.flat, true)
 	g.adj, g.deepSubst = adjOf(g.scan)
+	g.unreduced = gluedSpan(g.adj)
 	return g
 }
 
@@ -155,6 +160,76 @@ func replaceSpans(s string, re *regexp.Regexp) (string, bool) {
 		s = nxt
 	}
 	return s, re.MatchString(s)
+}
+
+// gluedSpan reports a substitution span that survived adjOf's replacement
+// loops and sits against a word character, so bash would concatenate it into a
+// word the gate cannot read. The span-body patterns cannot match a `$(` whose
+// body carries a bare paren (`$( (echo m) )`), and a failed match leaves the
+// span as clean-looking text; the bounded loops never see a pass to count, so
+// the depth bound does not fire. Such a span is unscannable, not clean.
+func gluedSpan(s string) bool {
+	for i := 0; i+1 < len(s); i++ {
+		if !spanOpen(s, i) {
+			continue
+		}
+		end := spanClose(s, i+1)
+		if end < 0 {
+			return gluedLeft(s, i)
+		}
+		if glueAt(s, i, end) {
+			return true
+		}
+		i = end
+	}
+	return false
+}
+
+// spanOpen reports whether a command-substitution span opens at i (`$(` or
+// `${`), excluding the `$((…))` arithmetic form.
+func spanOpen(s string, i int) bool {
+	if s[i] != '$' || (s[i+1] != '(' && s[i+1] != '{') {
+		return false
+	}
+	return s[i+1] != '(' || i+2 >= len(s) || s[i+2] != '('
+}
+
+// gluedLeft reports a word character immediately before the span that opens
+// at i (an unparsable span is hostile only when it can glue onto that word).
+func gluedLeft(s string, i int) bool {
+	return i > 0 && isWordByte(s[i-1])
+}
+
+// glueAt reports a word character immediately before the span, or after the
+// byte that closes it.
+func glueAt(s string, open, end int) bool {
+	return open > 0 && isWordByte(s[open-1]) || end+1 < len(s) && isWordByte(s[end+1])
+}
+
+// spanClose returns the index of the byte closing the span opened at open
+// (`(` or `{`), or -1 when it never closes.
+func spanClose(s string, open int) int {
+	closeByte, depth := byte(')'), 0
+	if s[open] == '{' {
+		closeByte = '}'
+	}
+	for j := open; j < len(s); j++ {
+		switch s[j] {
+		case s[open]:
+			depth++
+		case closeByte:
+			depth--
+			if depth == 0 {
+				return j
+			}
+		}
+	}
+	return -1
+}
+
+// isWordByte reports a byte the sentinel arm treats as a word character.
+func isWordByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_'
 }
 
 // markStr is the substitution sentinel.

@@ -225,3 +225,53 @@ func wantOutsideRootRefused(t *testing.T, wd string) {
 	}
 	wantRefusal(t, `cat /etc/passwd`, "verify-repo-escape", "refusing verifyCmd: matched '/etc/passwd'"+absPathDetail)
 }
+
+// TestCheckUnreducibleSubstitutionHidesToolWord pins that a `$(` span the
+// body patterns cannot match still refuses when it sits against a word: an
+// inner bare paren (`$( (echo m) )`, `$(case x in (x) … esac)`) makes
+// [reDollarParen] fail, so the bounded loops saw no pass to count and the old
+// depth bound never fired. bash still concatenates the span into a word:
+// `r$( (echo m) ) -rf victim` runs `rm -rf victim`.
+//
+// Break killed: dropping the gluedSpan call in normalize (manual) returns
+// CLEAN for every row here.
+func TestCheckUnreducibleSubstitutionHidesToolWord(t *testing.T) {
+	t.Parallel()
+	const detail = " (substitution the gate cannot reduce sits against a word — write the tool word plainly)"
+	tests := []struct{ name, cmd string }{
+		{"left glued subshell", `r$( (echo m) ) -rf x`},
+		{"left glued case arm", `r$(case x in (x) echo m;; esac) -rf x`},
+		{"left glued, nested inside", `r$( (echo $(echo m)) ) -rf x`},
+		{"right glued subshell", `$( (echo r))m -rf x`},
+		{"quoted left glued", `r"$( (echo m) )" -rf x`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			wantRefusal(t, tc.cmd, "verify-destructive",
+				"refusing verifyCmd: matched 'unscannable-substitution'"+detail)
+		})
+	}
+}
+
+// TestCheckUnreducibleSubstitutionBenignStaysClean guards that arm against
+// over-refusal: an unreduced span that touches no word character, arithmetic
+// `$((…))`, an unterminated `$(` inside a pattern argument, and a quoted
+// literal stay clean.
+//
+// Break killed: refusing every surviving `$(`/`${` instead of only a glued
+// one (manual) refuses every row here.
+func TestCheckUnreducibleSubstitutionBenignStaysClean(t *testing.T) {
+	t.Parallel()
+	for _, cmd := range []string{
+		`$( (echo hi) )`,
+		`echo $((1+1))`,
+		`n=$((1+1)); echo $n`,
+		`grep -F '$(rm' src/x.go`,
+		`echo '$('`,
+	} {
+		if ref := verifycore.Check(cmd); ref != nil {
+			t.Errorf("Check(%q) = %s: %q, want clean", cmd, ref.Code, ref.Message)
+		}
+	}
+}
