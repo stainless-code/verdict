@@ -151,6 +151,12 @@ func FuzzMergeTOML(f *testing.F) {
 	} {
 		f.Add([]byte(s))
 	}
+	// Shapes that must gain the table: a merge that reports no change here
+	// leaves the operator without the config the command exists to add, so
+	// these rows keep the fuzz body from passing on a do-nothing merge.
+	for _, s := range []string{"", "model = \"x\"\n", "[mcp_servers.other]\ncommand = \"o\"\n"} {
+		mustMergeTOML(f, s)
+	}
 	f.Fuzz(func(t *testing.T, old []byte) {
 		out, changed, ref := mergeTOML(old, "config.toml")
 		if ref != nil {
@@ -163,6 +169,16 @@ func FuzzMergeTOML(f *testing.F) {
 			t.Fatalf("unchanged merge returned bytes %q", out)
 		}
 	})
+}
+
+// mustMergeTOML fails when a config with no verdict table comes back
+// unchanged or without the table.
+func mustMergeTOML(f *testing.F, s string) {
+	f.Helper()
+	out, changed, ref := mergeTOML([]byte(s), "config.toml")
+	if ref != nil || !changed || !bytes.Contains(out, []byte("[mcp_servers.verdict]")) {
+		f.Fatalf("mergeTOML(%q) = changed=%v out=%q ref=%v, want the verdict table", s, changed, out, ref)
+	}
 }
 
 // assertMergedTOML checks a changed TOML merge.
