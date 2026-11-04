@@ -22,8 +22,9 @@ Run `verdict doctor` to preflight the harness.
 
 ### Run your build as the skill
 
-To use a checkout as your own skill install, symlink it. `git pull` then
-updates the skill, and there is no updater daemon. `install-skill.sh` runs only
+To use a checkout as your own skill install, symlink its `skills/verdict/`
+directory (never the whole checkout). `git pull` then updates the skill, and
+there is no updater daemon. `install-skill.sh` runs only
 from a checkout and refuses anywhere else.
 
 ```bash
@@ -33,8 +34,9 @@ make build
 ./install-skill.sh
 ```
 
-`install-skill.sh` runs `doctor` first, wires `hooks/pre-commit`, and links the
-shared `~/.agents/skills` directory. It skips occupied slots, never overwrites
+`install-skill.sh` runs `doctor` first, wires `hooks/pre-commit`, and links
+`skills/verdict` into the shared `~/.agents/skills` directory. An older link to
+the whole checkout is migrated. It skips occupied slots, never overwrites
 without `--force`, never touches a foreign `core.hooksPath`, and never re-links
 an agent you removed.
 
