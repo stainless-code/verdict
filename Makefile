@@ -79,6 +79,17 @@ fuzz:
 		$(GO) test -run='^$$' -fuzz="^$$fn$$" -fuzztime=$(FUZZTIME) "$$pkg"; \
 	done
 
+# bench runs every benchmark in the tree; the nightly ci.yml lane calls it and
+# uploads the output as an artifact. Five short runs per benchmark is the sample
+# benchstat needs to tell a regression from runner noise, and a run nobody stores
+# cannot be compared against the last night's.
+BENCHTIME ?= 200ms
+BENCHCOUNT ?= 5
+
+.PHONY: bench
+bench:
+	$(GO) test -run='^$$' -bench=. -benchmem -benchtime=$(BENCHTIME) -count=$(BENCHCOUNT) ./...
+
 .PHONY: vuln
 vuln:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
