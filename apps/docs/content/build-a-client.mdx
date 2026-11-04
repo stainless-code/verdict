@@ -37,7 +37,7 @@ verdict report acme/app 123 --json
 
 Every successful `--json` run prints one object with these nine keys, in this
 order. The
-[envelope schema](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)
+[envelope schema](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)
 is generated from the Go shape and is the machine-readable source of truth.
 
 | Key              | Type                      | Meaning                                                                 |
@@ -149,7 +149,7 @@ release version.
 - **A major change needs a new `schema_version` and a migration note.** A
   client must reject an unknown major instead of guessing. The schemas README
   (`make schemas`) remains the source of truth:
-  [schemas/README.md](https://github.com/stainless-code/verdict/blob/main/schemas/README.md).
+  [schemas/README.md](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/README.md).
 - **The clients, the Go SDK, and the MCP tool shapes are experimental until
   1.0.** Their ergonomics may change without a major schema bump. The envelope
   contract does not.
@@ -207,16 +207,16 @@ Other rules that belong in every wrapper:
 is a `$defs` entry in the envelope schema and the generated models are worth
 using. Open means it is the generic object until that verb's data stabilizes.
 
-| Verb                                                                                                                                                                                   | `data` profile                | Schema source                                                                                                                |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `report`                                                                                                                                                                               | pinned `reportData`           | [`envelope.schema.json#/$defs/reportData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json) |
-| `post`                                                                                                                                                                                 | pinned `postData`             | [`envelope.schema.json#/$defs/postData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)   |
-| `record`                                                                                                                                                                               | pinned `recordData`           | [`envelope.schema.json#/$defs/recordData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json) |
-| `show`                                                                                                                                                                                 | pinned `showData` / `showFix` | [`envelope.schema.json#/$defs/showData`](https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json)   |
-| `fetch`, `fetch-local`, `next`, `ready`, `threads`, `trend`, `doctor`, `check-tree`, `calibrate`, `triage`, `adopt`, `fix`, `verify`, `learn`, `init`, `skill`, `upgrade`, `uninstall` | open object (generic)         | envelope's `data` allows additional properties                                                                               |
+| Verb                                                                                                                                                                                   | `data` profile                | Schema source                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `report`                                                                                                                                                                               | pinned `reportData`           | [`envelope.schema.json#/$defs/reportData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json) |
+| `post`                                                                                                                                                                                 | pinned `postData`             | [`envelope.schema.json#/$defs/postData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)   |
+| `record`                                                                                                                                                                               | pinned `recordData`           | [`envelope.schema.json#/$defs/recordData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json) |
+| `show`                                                                                                                                                                                 | pinned `showData` / `showFix` | [`envelope.schema.json#/$defs/showData`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)   |
+| `fetch`, `fetch-local`, `next`, `ready`, `threads`, `trend`, `doctor`, `check-tree`, `calibrate`, `triage`, `adopt`, `fix`, `verify`, `learn`, `init`, `skill`, `upgrade`, `uninstall` | open object (generic)         | envelope's `data` allows additional properties                                                                                              |
 
 The schemas are published under
-[`schemas/`](https://github.com/stainless-code/verdict/tree/main/schemas). They
+[`skills/verdict/schemas/`](https://github.com/stainless-code/verdict/tree/main/skills/verdict/schemas). They
 also ship in the npm package and inside the binary. `verdict skill files` lists
 them. There is no hosted schema URL yet, so link the repo path.
 `verdict mcp` serves the verbs over stdio and has no `--json` envelope of its

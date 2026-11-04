@@ -34,7 +34,7 @@ Every PR must clear all of these; CI enforces each one:
    `.golangci.yml` (CI runs the pinned action; zero issues, no new
    `//nolint`).
 4. **Formatted.** `bun fmt --check .` before pushing; fix only what it
-   flags, and never reflow `prompts/` examples.
+   flags, and never reflow `skills/verdict/prompts/` examples.
 5. **A changeset when the repo's practice requires one.** Add
    `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing
    notes) for any user-facing change — `patch` by default, `minor`

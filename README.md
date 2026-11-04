@@ -225,7 +225,11 @@ verdict record owner/repo local-work  # validate anchors, merge store
 
 ```
 verdict/
-  SKILL.md            # skill entry point (feed to any agent)
+  skills/verdict/     # the skill, and nothing else: exactly what `npx skills add` installs and the binary embeds
+    SKILL.md          # skill entry point (feed to any agent)
+    prompts/          # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
+    schemas/          # published JSON Schemas (generated: make schemas) plus validate.sh
+    scripts/verdict   # POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
   install.sh          # verified binary installer (macOS/Linux release asset)
   install.ps1         # verified binary installer (Windows release asset)
   install-skill.sh    # doctor-gated symlink installer for checkouts (re-run to update)
@@ -233,8 +237,6 @@ verdict/
   docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
   apps/docs/          # Blume docs site (index + manual mirror, deploys to /verdict/)
   docs/vision.md      # what it is, strategy; narrative lives on the site
-  prompts/            # system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
-  scripts/verdict     # POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
   scripts/verdict-complete.sh  # bash/zsh completion for verdict
   bin/verdict         # the CLI (make build; gitignored): fetch/post/triage/report/next/show/check-tree/verify/doctor/calibrate/fetch-local/record/adopt/fix/ready/trend/learn/init/skill/upgrade/uninstall/mcp
 ```
@@ -307,7 +309,7 @@ blocks stay tidy, and prompt examples are never reflowed. We commit no formatter
 (Bun is already the house runtime); we leave prose line length unmanaged
 (renderers and agents don't care).
 Contributors: run `bun fmt --check .` before pushing; fix only what it flags outside
-`prompts/` examples. `install-skill.sh` wires `hooks/pre-commit` (formatting plus
+`skills/verdict/prompts/` examples. `install-skill.sh` wires `hooks/pre-commit` (formatting plus
 `shellcheck -S warning` over staged shell files; check-only, never rewrites),
 so the gates run automatically on every commit.
 

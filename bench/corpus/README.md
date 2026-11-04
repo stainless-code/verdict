@@ -7,7 +7,7 @@ review bundle with ground truth:
 
 ```
 bench/corpus/<case-id>/
-  case.json                 # ground truth + provenance (schemas/corpus.schema.json)
+  case.json                 # ground truth + provenance (skills/verdict/schemas/corpus.schema.json)
   full.diff                 # the reviewed change, with the bug lines in hunks
   agents/<model>.json       # a fake agent output (canned review.json)
 ```
@@ -47,7 +47,7 @@ fixtures.
 5. Run `./evals/one.sh bench-corpus` and update the goldens if the new case
    changes the measured rates.
 
-Do not edit `schemas/corpus.schema.json` by hand; run `make schemas`.
+Do not edit `skills/verdict/schemas/corpus.schema.json` by hand; run `make schemas`.
 
 The operator runbook for real PRs, real agents, cost estimates, and
 publishing measured rates lives in [`docs/benchmark.md`](../../docs/benchmark.md).

@@ -39,7 +39,7 @@ absent and never runs pip or the network:
 ## Generate the models
 
 `models.py` is generated from
-[`schemas/envelope.schema.json`](../../schemas/envelope.schema.json) with a
+[`skills/verdict/schemas/envelope.schema.json`](../../skills/verdict/schemas/envelope.schema.json) with a
 pinned [datamodel-code-generator](https://github.com/koxudaxi/datamodel-code-generator).
 The envelope schema's `$defs` carry the pinned `report`, `post`, and `record`
 data shapes, so one input file covers the envelope and all three profiles.
@@ -57,7 +57,7 @@ The exact generator invocation is in `generate_models.sh`:
 
 ```sh
 datamodel-codegen \
-  --input schemas/envelope.schema.json \
+  --input skills/verdict/schemas/envelope.schema.json \
   --input-file-type jsonschema \
   --output examples/python-client/models.py \
   --output-model-type dataclasses.dataclass \

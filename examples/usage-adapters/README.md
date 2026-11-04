@@ -59,7 +59,7 @@ line, so it never breaks the session.
 ## Validate a converted file
 
 ```bash
-schemas/validate.sh schemas/usage.schema.json <out.json>
+skills/verdict/schemas/validate.sh skills/verdict/schemas/usage.schema.json <out.json>
 ```
 
 ## Adding a harness

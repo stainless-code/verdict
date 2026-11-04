@@ -91,7 +91,7 @@ createClient({
 
 `src/types.gen.ts` (envelope `$defs`) and the platform → npm package map
 (`src/platforms.gen.ts` for the client, `scripts/npm-shim/platforms.gen.json`
-for the install shim) are rendered from `schemas/envelope.schema.json` and
+for the install shim) are rendered from `skills/verdict/schemas/envelope.schema.json` and
 `release/contract.json`:
 
 ```sh

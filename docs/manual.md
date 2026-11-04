@@ -181,7 +181,7 @@ whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
 and normalize `PR.json` to one schema. Every provider bundle also writes
 `threads.json` (`schema_version: "1"`, published as
-[`schemas/threads.schema.json`](../schemas/threads.schema.json)): the raw
+[`schemas/threads.schema.json`](../skills/verdict/schemas/threads.schema.json)): the raw
 files stay as-is, and the feed is the authoritative PR conversation. Review
 threads come from each host's native source — GitHub GraphQL `reviewThreads`
 (REST has no resolution), GitLab discussions (`resolved`/`resolvable`), Azure
@@ -396,7 +396,7 @@ per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
 byte-identical. It reads the trusted prompts from the current directory, so
-run it from the skill/checkout carrying `SKILL.md` and `prompts/`. Missing
+run it from an installed skill dir or a checkout (it falls back to the checkout's `skills/verdict/`) carrying `SKILL.md` and `prompts/`. Missing
 bundle files skip silently, but missing trusted
 prompt files fail loudly: no `prompts/system.md` refuses typed
 (`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
@@ -922,7 +922,11 @@ you stand).
   `install.sh`; the name now belongs to the binary installer.)
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
   `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
-  never skew from the binary. `verdict skill` prints `SKILL.md` (default
+  never skew from the binary. In the repository they are the one
+  `skills/verdict/` directory, which holds nothing else. The skills CLI
+  (`npx skills add stainless-code/verdict`) copies that directory and no
+  more, so the registry install and `verdict skill install` write the same
+  files. `verdict skill` prints `SKILL.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
   `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,

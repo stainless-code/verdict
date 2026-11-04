@@ -41,7 +41,7 @@ reviewing Go here.
   a network-dead `gh` stub and proves zero real calls (`evals/README.md`).
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
-- **`SKILL.md` and `prompts/` are hashed into goldens.** `record` stores a
+- **`skills/verdict/SKILL.md` and `prompts/` are hashed into goldens.** `record` stores a
   `prompts_hash`, so regenerating after an edit there must move only those
   lines — prove it in the diff.
 
@@ -56,7 +56,7 @@ reviewing Go here.
 
 - Before commit or push, run `bun fmt --check` on changed files when Bun is
   available; fix only non-example hunks.
-- Never reflow `prompts/` examples — see `README.md` § Formatting.
+- Never reflow `skills/verdict/prompts/` examples — see `README.md` § Formatting.
 - `gofmt -l .` must be empty, and shell files gate on `shellcheck -S warning`
   (see `hooks/pre-commit`).
 - `golangci-lint run ./...` must report 0 issues under `.golangci.yml`; no new
