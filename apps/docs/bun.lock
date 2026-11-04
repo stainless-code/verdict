@@ -7,6 +7,9 @@
       "dependencies": {
         "blume": "^2.2.5",
       },
+      "devDependencies": {
+        "github-slugger": "^2.0.0",
+      },
     },
   },
   "packages": {
