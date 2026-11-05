@@ -153,15 +153,50 @@ eval_seed_controls
 snap "$LB" "$EVAL_SANDBOX/s2.before"
 m0="$(mark)"
 run_review record acme/app local-chaos-order --dry-run --json
-if [ "$EVAL_STATUS" -eq 2 ] && [ ! -s "$EVAL_OUT" ]; then
-  good "invented record --dry-run is a usage error (exit 2, empty stdout)"
+assert_exit "clean record --dry-run exits 0" 0
+assert_envelope "clean record --dry-run"
+assert_json_field "dry run flags itself" "true" '.data.dry_run'
+assert_json_field "dry run counts zero comments" "0" '.data.check.comments'
+if [ -e "$LB/findings.json" ] || [ -e "$LB/record.json" ]; then
+  bad "clean dry run minted store artifacts"
 else
-  bad "invented record --dry-run exits $EVAL_STATUS"
+  good "clean dry run minted no findings.json/record.json"
 fi
 snap "$LB" "$EVAL_SANDBOX/s2.after"
-snap_same "invented record --dry-run" "$EVAL_SANDBOX/s2.before" "$EVAL_SANDBOX/s2.after"
-assert_stream_nogrep "usage error prints no envelope" "$EVAL_OUT" "schema_version"
-matrix_row "record" "has-bundle" "$EVAL_STATUS" "usage" "no" "no" "same" "$(reviews_since "$m0")"
+snap_same "clean record --dry-run" "$EVAL_SANDBOX/s2.before" "$EVAL_SANDBOX/s2.after"
+if [ "$(reviews_since "$m0")" -eq 0 ]; then
+  good "clean dry run posted nothing to the stub provider"
+else
+  bad "clean dry run reached the reviews POST"
+fi
+matrix_row "record" "dry-run-clean" "$EVAL_STATUS" "none" "yes" "no" "same" "$(reviews_since "$m0")"
+
+cat > "$LB/review.json" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks good — minor note below with enough length.","approved":false,"comments":[{"path":"nope/ghost.ts","line":1,"side":"RIGHT","body":"Hallucinated finding with enough substance here.","rigor":"walked","severity":"critical"}]}
+EOF
+snap "$LB" "$EVAL_SANDBOX/s2b.before"
+m0="$(mark)"
+run_review record acme/app local-chaos-order --dry-run --json
+assert_exit "bad record --dry-run exits 1" 1
+assert_refusal "bad record --dry-run" "bad-review-input"
+assert_json_field "bad dry run names the unknown path" "path-not-in-diff" '.error.problems[0].code'
+assert_json_field "no overflow on one problem" "0" '.error.problems_truncated'
+if [ -n "$(jq -r '.error.problems[0].fix // empty' "$EVAL_OUT" 2>/dev/null)" ]; then
+  good "dry-run problem carries the exact fix"
+else
+  bad "dry-run problem is missing its fix"
+fi
+snap "$LB" "$EVAL_SANDBOX/s2b.after"
+snap_same "bad record --dry-run" "$EVAL_SANDBOX/s2b.before" "$EVAL_SANDBOX/s2b.after"
+run_review record acme/app local-chaos-order --dry-run
+assert_exit "human bad dry run exits 1" 1
+assert_file_grep "human dry run prints the problem code" "$EVAL_ERR" "path-not-in-diff"
+assert_file_grep "human dry run prints the fix" "$EVAL_ERR" "fix:"
+assert_file_grep "human dry run names a re-enter" "$EVAL_ERR" "^re-enter: verdict record"
+matrix_row "record" "dry-run-refused" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "$(reviews_since "$m0")"
+cat > "$LB/review.json" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks good — minor note below with enough length.","approved":false,"comments":[]}
+EOF
 
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'

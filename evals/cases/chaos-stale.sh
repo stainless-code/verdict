@@ -74,7 +74,6 @@ fi
 matrix_row "fetch-local" "clean-tree" "$EVAL_STATUS" "none" "yes" "no" "created" "$(reviews_since "$m0")"
 
 cp "$LB/full.diff" "$EVAL_SANDBOX/full-fetched.diff"
-snap "$LB" "$EVAL_SANDBOX/s0.snap"
 
 cat > "$LB/full.diff" <<'EOF'
 diff --git a/totally-different.txt b/totally-different.txt
@@ -90,26 +89,36 @@ EOF
 cat > "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Re-review after the push with enough length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Still about notes.txt with enough substance.","rigor":"pointed","severity":"informational"}]}
 EOF
+snap "$LB" "$EVAL_SANDBOX/s1.base"
 m0="$(mark)"
 run_review record acme/app chaos-stale --json
-assert_exit "record after the diff moved exits 0" 0
-if grep -q "1 inline, 0 moved" "$EVAL_ERR"; then
-  good "record pinned the fetch-time snapshot (anchor stays inline)"
-else
-  bad "record did not pin the snapshot: $(head -c 300 "$EVAL_ERR")"
-fi
+assert_refusal "record after the diff moved" "bad-review-input"
+assert_json_field "moved anchor refuses as an unknown path" "path-not-in-diff" '.error.problems[0].code'
+assert_json_field "refusal carries the exact fix" "anchor the comment on a changed file or move it into the body" '.error.problems[0].fix'
+way_forward "record after the diff moved"
 if cmp -s "$LB/full.diff" "$EVAL_SANDBOX/full-fetched.diff"; then
   bad "record repaired the rewritten full.diff (must keep the drift visible)"
 else
   good "record left the rewritten full.diff alone (drift stays visible)"
 fi
 snap "$LB" "$EVAL_SANDBOX/s1.snap"
-if cmp -s "$EVAL_SANDBOX/s0.snap" "$EVAL_SANDBOX/s1.snap"; then
-  bad "record merged nothing (want findings.json + record.json)"
+if cmp -s "$EVAL_SANDBOX/s1.base" "$EVAL_SANDBOX/s1.snap"; then
+  good "refused record merged nothing (no findings.json/record.json)"
 else
-  good "record merged against the snapshot (only additive artifacts)"
+  bad "refused record wrote into the store"
 fi
-matrix_row "record" "stale-diff" "$EVAL_STATUS" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
+matrix_row "record" "stale-diff" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "$(reviews_since "$m0")"
+
+cp "$EVAL_SANDBOX/full-fetched.diff" "$LB/full.diff"
+m0="$(mark)"
+run_review record acme/app chaos-stale --json
+assert_exit "record after restoring the fetched diff exits 0" 0
+if [ -f "$LB/findings.json" ] && [ -f "$LB/record.json" ]; then
+  good "restored diff merges findings.json + record.json"
+else
+  bad "restored diff merged nothing"
+fi
+matrix_row "record" "restored-diff" "$EVAL_STATUS" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
 
 echo "evil edit under the snapshot" >> "$LB/controls/kb.jsonl"
 cat > "$LB/review.json" <<'EOF'
@@ -155,22 +164,41 @@ fi
 matrix_row "record" "restored-controls" "$EVAL_STATUS" "none" "yes" "no" "same" "$(reviews_since "$m0")"
 
 cat > "$LB/review.json" <<'EOF'
-{"schema_version":"1","body":"> ✅ Hallucinated findings below with enough length to pass the guard.","approved":false,"comments":[{"path":"nope/ghost.ts","line":999,"side":"RIGHT","body":"Hallucinated finding with enough substance here.","rigor":"walked","severity":"critical"},{"path":"notes.txt","line":99,"side":"RIGHT","body":"Off-hunk line with enough substance here.","rigor":"walked","severity":"important"}]}
+{"schema_version":"1","body":"> ✅ Off-hunk line below with enough length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":99,"side":"RIGHT","body":"Off-hunk line with enough substance here.","rigor":"walked","severity":"important"}]}
 EOF
 m0="$(mark)"
 run_review record acme/app chaos-stale --json
-assert_exit "record of hallucinated anchors exits 0" 0
+assert_exit "record of an off-hunk anchor exits 0" 0
 if grep -q "moved to body" "$EVAL_ERR"; then
-  good "hallucinated anchors move to the body with a named reason (kept, never refused)"
+  good "off-hunk anchor moves to the body with a named reason (kept, never refused)"
 else
-  bad "hallucinated anchors were not partitioned: $(head -c 300 "$EVAL_ERR")"
+  bad "off-hunk anchor was not partitioned: $(head -c 300 "$EVAL_ERR")"
 fi
+if [ "$(reviews_since "$m0")" -eq 0 ]; then
+  good "off-hunk record posted nothing"
+else
+  bad "off-hunk record reached the stub"
+fi
+matrix_row "record" "off-hunk" "$EVAL_STATUS" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
+
+cat > "$LB/review.json" <<'EOF'
+{"schema_version":"1","body":"> ✅ Hallucinated finding below with enough length to pass the guard.","approved":false,"comments":[{"path":"nope/ghost.ts","line":999,"side":"RIGHT","body":"Hallucinated finding with enough substance here.","rigor":"walked","severity":"critical"}]}
+EOF
+snap "$LB" "$EVAL_SANDBOX/s3h.before"
+m0="$(mark)"
+run_review record acme/app chaos-stale --json
+assert_exit "record of a hallucinated path exits 1" 1
+assert_refusal "record of a hallucinated path" "bad-review-input"
+assert_json_field "hallucinated path refuses as unknown" "path-not-in-diff" '.error.problems[0].code'
 if [ "$(reviews_since "$m0")" -eq 0 ]; then
   good "hallucinated record posted nothing"
 else
   bad "hallucinated record reached the stub"
 fi
-matrix_row "record" "hallucinated" "$EVAL_STATUS" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
+snap "$LB" "$EVAL_SANDBOX/s3h.after"
+snap_same "hallucinated path" "$EVAL_SANDBOX/s3h.before" "$EVAL_SANDBOX/s3h.after"
+way_forward "hallucinated path"
+matrix_row "record" "hallucinated" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "$(reviews_since "$m0")"
 
 cat > "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[5]}
@@ -199,11 +227,68 @@ snap_same "identical invalid review x3" "$EVAL_SANDBOX/s3.before" "$EVAL_SANDBOX
 way_forward "identical invalid review"
 matrix_row "record" "repeat-invalid" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "0"
 
+snap "$LB" "$EVAL_SANDBOX/s3d.before"
+for i in 1 2 3; do
+  m0="$(mark)"
+  run_review record acme/app chaos-stale --dry-run --json
+  assert_exit "identical invalid dry run $i exits 1" 1
+  assert_refusal "identical invalid dry run $i" "bad-review-input"
+  jq -S '.error.problems' "$EVAL_OUT" > "$EVAL_SANDBOX/dry.$i.json"
+  if [ "$(reviews_since "$m0")" -eq 0 ]; then
+    good "identical invalid dry run $i posted nothing"
+  else
+    bad "identical invalid dry run $i reached the stub"
+  fi
+done
+if cmp -s "$EVAL_SANDBOX/dry.1.json" "$EVAL_SANDBOX/dry.2.json" \
+  && cmp -s "$EVAL_SANDBOX/dry.2.json" "$EVAL_SANDBOX/dry.3.json"; then
+  good "identical invalid dry run gives byte-identical problems 3 times"
+else
+  bad "identical invalid dry run refused non-deterministically"
+fi
+snap "$LB" "$EVAL_SANDBOX/s3d.after"
+snap_same "identical invalid dry run x3" "$EVAL_SANDBOX/s3d.before" "$EVAL_SANDBOX/s3d.after"
+matrix_row "record" "repeat-invalid-dry-run" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "0"
+
+cat > "$LB/review.json" <<'EOF'
+{"schema_version":"1","body":"> ✅ Warning-only review with enough length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance here."}]}
+EOF
+snap "$LB" "$EVAL_SANDBOX/s3s.before"
+m0="$(mark)"
+run_review record acme/app chaos-stale --dry-run --json
+assert_exit "warning-only dry run exits 0" 0
+assert_envelope "warning-only dry run"
+assert_json_field "warning-only dry run flags itself" "true" '.data.dry_run'
+assert_json_field "warning-only dry run counts the comment" "1" '.data.check.comments'
+if jq -e '.warnings | join(" ") | contains("rigor is unset")' "$EVAL_OUT" >/dev/null; then
+  good "rigor-unset rides the envelope as a warning"
+else
+  bad "rigor-unset warning missing from the envelope"
+fi
+m0s="$(mark)"
+run_review record acme/app chaos-stale --dry-run --strict --json
+assert_exit "strict dry run exits 1" 1
+assert_refusal "strict dry run" "bad-review-input"
+assert_json_field "strict promotes the warning to an error" "error" '.error.problems[0].level'
+assert_json_field "strict names the rigor code" "rigor-unset" '.error.problems[0].code'
+if [ "$(reviews_since "$m0s")" -eq 0 ]; then
+  good "strict refusal posted nothing"
+else
+  bad "strict refusal reached the stub"
+fi
+snap "$LB" "$EVAL_SANDBOX/s3s.after"
+snap_same "strict dry run" "$EVAL_SANDBOX/s3s.before" "$EVAL_SANDBOX/s3s.after"
+matrix_row "record" "strict-dry-run" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "0"
+
+cat > "$LB/review.json" <<'EOF'
+{"schema_version":"1","body":"> ✅ Clean review with enough length to pass the guard here.","approved":false,"comments":[]}
+EOF
 MCP_OUT="$EVAL_SANDBOX/mcp-out.jsonl"
 FRAMES="$EVAL_SANDBOX/mcp-frames.jsonl"
 cat > "$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"record","arguments":{"repo":"acme/app","pr":"local-chaos-stale"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"record","arguments":{"repo":"acme/app","pr":"local-chaos-stale","dry_run":true}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"record","arguments":{"repo":"acme/app","pr":"local-chaos-stale"}}}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s4.before"
 set +e
@@ -218,11 +303,17 @@ if [ "$mcp_status" -eq 0 ]; then
 else
   bad "read-only MCP session exits $mcp_status"
 fi
-if jq -e 'select(.id == 2).error | (.code == -32602) and (.message | contains("is hidden")) and (.data.tool == "record")' \
+if jq -e 'select(.id == 2).result | (.isError == false) and (.structuredContent.dry_run == true) and (.structuredContent.check != null)' \
   "$MCP_OUT" >/dev/null 2>&1; then
-  good "read-only MCP refuses record as hidden (-32602 naming the tool)"
+  good "read-only MCP serves the dry-run record with its check"
 else
-  bad "read-only MCP did not refuse record as hidden"
+  bad "read-only MCP did not serve the dry-run record"
+fi
+if jq -e 'select(.id == 3).result | (.isError == true) and (.structuredContent.code == "bad-flags") and (.structuredContent.message | contains("dry_run"))' \
+  "$MCP_OUT" >/dev/null 2>&1; then
+  good "read-only MCP refuses a non-dry record as bad-flags naming dry_run"
+else
+  bad "read-only MCP did not refuse the non-dry record"
 fi
 if [ "$(jq -s 'length' <"$MCP_OUT" 2>/dev/null || echo 0)" -ge 2 ] \
   && jq -s -e 'all(.[]; .jsonrpc == "2.0")' "$MCP_OUT" >/dev/null 2>&1; then
