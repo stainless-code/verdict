@@ -151,7 +151,9 @@ func reportFindings(st *state) {
 }
 
 // LoadReview reads and gates a review.json file: the size cap and the JSON
-// object shape. record's checker owns content validity; post calls
+// object shape. It normalizes first, so post reads the same repaired object
+// record checks and stores; record's dry-run data.normalized is exactly what
+// post merges. record's checker owns content validity; post calls
 // [CheckDegenerate] for its body bar.
 func LoadReview(path string) (*jq.Obj, error) {
 	reviewRaw, err := readAgentFile(path)
@@ -165,9 +167,13 @@ func LoadReview(path string) (*jq.Obj, error) {
 }
 
 // LoadReviewBytes decodes one already-read review.json document and keeps the
-// record path's object and schema refusals.
+// record path's object and schema refusals. The bytes run through
+// NormalizeReview first: normalization is idempotent, so record's
+// already-normalized input decodes unchanged while post's raw file gains the
+// same repairs record reports.
 func LoadReviewBytes(reviewRaw []byte) (*jq.Obj, error) {
-	reviewDoc, err := jq.DecodeOrdered(reviewRaw)
+	normalized, _ := NormalizeReview(reviewRaw)
+	reviewDoc, err := jq.DecodeOrdered(normalized)
 	if err != nil {
 		return nil, &core.RefusalError{Code: codeBadReviewInput, Message: msgBadReviewJSON}
 	}
