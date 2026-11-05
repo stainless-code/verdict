@@ -410,7 +410,7 @@ func TestRecordStrictEnvAtRecordTime(t *testing.T) {
 	ce := &collector{}
 	ereq := recordRequest(t, ce, "local-norm-env")
 	ereq.DryRun = true
-	ereq.Runtime.Env = map[string]string{"REVIEW_STRICT_INPUT": "1"}
+	ereq.Env = map[string]string{"REVIEW_STRICT_INPUT": "1"}
 	_, ref := recordcore.Run(context.Background(), ereq)
 	if ref == nil || ref.Code != "bad-review-input" {
 		t.Fatalf("env-strict refusal = %+v, want bad-review-input", ref)
@@ -479,7 +479,10 @@ func TestNormalizeReviewDroppedCommentReportsOnlyDedupe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalized does not decode: %v\n%s", err, got)
 	}
-	obj, _ := doc.(*jq.Obj)
+	obj, ok := doc.(*jq.Obj)
+	if !ok {
+		t.Fatalf("normalized does not decode to an object:\n%s", got)
+	}
 	comments, _ := obj.Get("comments")
 	if items, ok := comments.([]any); !ok || len(items) != 1 {
 		t.Fatalf("normalized comments = %v, want 1 survivor", comments)

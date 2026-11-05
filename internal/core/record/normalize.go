@@ -101,42 +101,60 @@ func wholeDocumentFence(text string) (string, bool) {
 // costs linear time. More than one parseable top-level object is ambiguous
 // and stays an invalid-json refusal.
 func extractObject(text string) (string, bool) {
-	var found []string
-	depth := 0
-	inString := false
-	escaped := false
-	start := -1
-	for i := 0; i < len(text); i++ {
-		c := text[i]
-		if inString {
-			escaped, inString = scanStringByte(c, escaped, inString)
-			continue
-		}
-		switch c {
-		case '"':
-			inString = true
-		case '{':
-			if depth == 0 {
-				start = i
-			}
-			depth++
-		case '}':
-			if depth == 0 {
-				continue
-			}
-			depth--
-			if depth == 0 && start >= 0 {
-				if candidate := text[start : i+1]; json.Valid([]byte(candidate)) {
-					found = append(found, candidate)
-				}
-				start = -1
-			}
-		}
+	s := &objectScanner{start: -1}
+	for i := range len(text) {
+		s.step(text, i)
 	}
-	if len(found) != 1 {
+	if len(s.found) != 1 {
 		return "", false
 	}
-	return found[0], true
+	return s.found[0], true
+}
+
+// objectScanner walks agent bytes once, collecting the balanced top-level
+// objects that parse.
+type objectScanner struct {
+	found    []string
+	start    int
+	depth    int
+	escaped  bool
+	inString bool
+}
+
+// step folds one byte into the scan, closing a top-level candidate.
+func (s *objectScanner) step(text string, i int) {
+	c := text[i]
+	if s.inString {
+		s.escaped, s.inString = scanStringByte(c, s.escaped, s.inString)
+		return
+	}
+	switch c {
+	case '"':
+		s.inString = true
+	case '{':
+		if s.depth == 0 {
+			s.start = i
+		}
+		s.depth++
+	case '}':
+		s.close(text, i)
+	}
+}
+
+// close folds one closing brace, collecting the candidate when depth returns
+// to zero outside strings. A stray brace at depth zero is prose, not JSON.
+func (s *objectScanner) close(text string, i int) {
+	if s.depth == 0 {
+		return
+	}
+	s.depth--
+	if s.depth > 0 || s.start < 0 {
+		return
+	}
+	if candidate := text[s.start : i+1]; json.Valid([]byte(candidate)) {
+		s.found = append(s.found, candidate)
+	}
+	s.start = -1
 }
 
 // scanStringByte folds one byte of a JSON string into the escape state.
@@ -178,28 +196,18 @@ func normalizeComments(parent *jq.Obj, v any) []Problem {
 		return nil
 	}
 	works := normalizeCommentClones(items)
-	seen := map[string]bool{}
-	dropped := make([]bool, len(works))
-	for i, w := range works {
-		if w.raw || dropped[i] {
-			continue
-		}
-		if seen[w.canon] {
-			dropped[i] = true
-			continue
-		}
-		seen[w.canon] = true
-	}
+	dropped := markDropped(works)
 	var repairs []Problem
 	kept := make([]any, 0, len(items))
-	for i, w := range works {
+	for i := range works {
+		w := &works[i]
 		if w.raw {
 			kept = append(kept, items[w.orig])
 			continue
 		}
 		if dropped[i] {
 			repairs = append(repairs, repairProblem(core.ProblemCodeNormalizedTrivia,
-				fmt.Sprintf("$.comments[%d]", w.orig),
+				fmt.Sprintf(commentBaseFmt, w.orig),
 				"comment is an exact duplicate of an earlier comment",
 				"remove the duplicate comment"))
 			continue
@@ -214,16 +222,37 @@ func normalizeComments(parent *jq.Obj, v any) []Problem {
 	return repairs
 }
 
+// commentBaseFmt points a repair at one comment by index.
+const commentBaseFmt = "$.comments[%d]"
+
+// markDropped reports which normalized comments duplicate an earlier one,
+// in first-seen order.
+func markDropped(works []commentWork) []bool {
+	seen := map[string]bool{}
+	dropped := make([]bool, len(works))
+	for i, w := range works {
+		if w.raw || dropped[i] {
+			continue
+		}
+		if seen[w.canon] {
+			dropped[i] = true
+			continue
+		}
+		seen[w.canon] = true
+	}
+	return dropped
+}
+
 // commentWork is one comment normalized on a clone: the drop decision sees
 // the repaired shape, and a dropped comment's own repairs are discarded so
 // it reports only its dedupe repair.
 type commentWork struct {
 	clone   *jq.Obj
-	orig    int
-	raw     bool
 	repairs []Problem
 	canon   string
 	order   []string
+	orig    int
+	raw     bool
 }
 
 // normalizeCommentClones normalizes every object comment on a clone,
@@ -238,7 +267,7 @@ func normalizeCommentClones(items []any) []commentWork {
 			continue
 		}
 		clone := m.Clone()
-		base := fmt.Sprintf("$.comments[%d]", i)
+		base := fmt.Sprintf(commentBaseFmt, i)
 		works = append(works, commentWork{
 			clone:   clone,
 			orig:    i,
@@ -267,9 +296,9 @@ func commentKeyOrder(m *jq.Obj) []string {
 // finalCommentRepairs repoints one kept comment's repairs at its final index
 // and sorts them in key order, so every path resolves in the normalized
 // review and repairs read in document order.
-func finalCommentRepairs(w commentWork, final int) []Problem {
-	origBase := fmt.Sprintf("$.comments[%d]", w.orig)
-	finalBase := fmt.Sprintf("$.comments[%d]", final)
+func finalCommentRepairs(w *commentWork, final int) []Problem {
+	origBase := fmt.Sprintf(commentBaseFmt, w.orig)
+	finalBase := fmt.Sprintf(commentBaseFmt, final)
 	repairs := rebaseRepairs(w.repairs, origBase, finalBase)
 	sortCommentRepairs(repairs, finalBase, w.order)
 	return repairs

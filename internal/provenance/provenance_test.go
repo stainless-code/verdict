@@ -284,17 +284,24 @@ func TestApplyBasisLineSkipsFencedBasis(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got, p := provenance.ApplyBasisLine(expected, body)
-			if p == nil || p.Code != core.ProblemCodeBasisReplaced {
-				t.Fatalf("missing problem = %+v", p)
-			}
-			if !strings.Contains(got, "> Basis: "+expected) {
-				t.Errorf("computed line missing:\n%s", got)
-			}
-			if !strings.Contains(got, "> Basis: 9 9 9 9 9 9 9") {
-				t.Errorf("fenced example rewritten:\n%s", got)
-			}
+			checkInsertedFencedBasis(t, expected, body)
 		})
+	}
+}
+
+// checkInsertedFencedBasis proves one fenced body gains the computed line
+// under the lead while the fenced example stays byte-identical.
+func checkInsertedFencedBasis(t *testing.T, expected, body string) {
+	t.Helper()
+	got, p := provenance.ApplyBasisLine(expected, body)
+	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
+		t.Fatalf("missing problem = %+v", p)
+	}
+	if !strings.Contains(got, "> Basis: "+expected) {
+		t.Errorf("computed line missing:\n%s", got)
+	}
+	if !strings.Contains(got, "> Basis: 9 9 9 9 9 9 9") {
+		t.Errorf("fenced example rewritten:\n%s", got)
 	}
 }
 

@@ -73,11 +73,19 @@ func TestAdoptEntriesBackfillsRigorSource(t *testing.T) {
 		jq.NewObj("rigor", "walked", "rigor_source", "model", "path", "notes.txt"),
 	}
 	stamped := adoptEntries(entries, "aaaaaaa", "2026-11-02T12:00:00Z", "adopt1", nil)
-	got0, _ := stamped[0].(*jq.Obj).Get("rigor_source")
+	m0, ok := stamped[0].(*jq.Obj)
+	if !ok {
+		t.Fatalf("adopted entry 0 is not an object: %T", stamped[0])
+	}
+	got0, _ := m0.Get("rigor_source")
 	if got0 != "default" {
 		t.Errorf("pointed entry rigor_source = %v, want default", got0)
 	}
-	got1, _ := stamped[1].(*jq.Obj).Get("rigor_source")
+	m1, ok := stamped[1].(*jq.Obj)
+	if !ok {
+		t.Fatalf("adopted entry 1 is not an object: %T", stamped[1])
+	}
+	got1, _ := m1.Get("rigor_source")
 	if got1 != "model" {
 		t.Errorf("model entry rigor_source = %v, want model", got1)
 	}

@@ -47,21 +47,25 @@ func TestNormalizeReviewNeverExtractsNested(t *testing.T) {
 			if string(got) != tc.in || len(repairs) != 0 {
 				t.Fatalf("normalize recovered an inner object: %s -> %s (%v)", tc.in, got, repairs)
 			}
-			res := recordcore.CheckReview(got, checkDiff)
-			if res.Errors == 0 {
-				t.Fatalf("problems = %+v, want an invalid-json refusal", res.Problems)
-			}
-			found := false
-			for _, p := range res.Problems {
-				if p.Code == core.ProblemCodeInvalidJSON && p.Level == core.ProblemLevelError {
-					found = true
-				}
-			}
-			if !found {
-				t.Fatalf("problems = %+v, want invalid-json as an error", res.Problems)
-			}
+			checkInvalidJSONRefusal(t, tc.in, got)
 		})
 	}
+}
+
+// checkInvalidJSONRefusal proves the checker refuses the untouched bytes
+// with an invalid-json error.
+func checkInvalidJSONRefusal(t *testing.T, in string, got []byte) {
+	t.Helper()
+	res := recordcore.CheckReview(got, checkDiff)
+	if res.Errors == 0 {
+		t.Fatalf("problems = %+v, want an invalid-json refusal", res.Problems)
+	}
+	for _, p := range res.Problems {
+		if p.Code == core.ProblemCodeInvalidJSON && p.Level == core.ProblemLevelError {
+			return
+		}
+	}
+	t.Fatalf("problems = %+v, want invalid-json as an error for %s", res.Problems, in)
 }
 
 // TestNormalizeReviewBracesAreLinear proves extraction is one pass: 1 MB of

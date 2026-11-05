@@ -145,7 +145,7 @@ type RecordData struct { //nolint:govet // field order is the published property
 	Items           []FindingItem  `json:"items"`
 	DryRun          bool           `json:"dry_run,omitempty"`
 	Check           *CheckSummary  `anyOf:"null"                json:"check,omitempty"`
-	Normalized      any            `json:"normalized,omitempty"   type:"object"`
+	Normalized      any            `json:"normalized,omitempty" type:"object"`
 	Repairs         []Repair       `json:"repairs,omitempty"`
 	ConfidenceRaw   any            `json:"-"`
 	ItemsRaw        []any          `json:"-"`

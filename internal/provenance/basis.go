@@ -57,17 +57,18 @@ func reportedAtNow(m *jq.Obj, now string) bool {
 		return false
 	}
 	for _, h := range hist {
-		hm, ok := h.(*jq.Obj)
-		if !ok {
-			continue
-		}
-		if at, _ := hm.Get("at"); at == now {
-			if ev, _ := hm.Get("event"); ev == "reported" {
-				return true
-			}
+		if hm, ok := h.(*jq.Obj); ok && reportedNow(hm, now) {
+			return true
 		}
 	}
 	return false
+}
+
+// reportedNow reports one history entry recording a report at now.
+func reportedNow(hm *jq.Obj, now string) bool {
+	at, _ := hm.Get("at")
+	ev, _ := hm.Get("event")
+	return at == now && ev == "reported"
 }
 
 // entryKB lists the stored kb ids on one entry: the normalized cites the
@@ -194,27 +195,53 @@ func ApplyBasisLine(expected, body string) (string, *core.Problem) {
 // is not a quote, so a Basis-looking line inside a fence or a quoted prior
 // review is never rewritten.
 func basisLineIndex(lines []string) (int, bool) {
-	inFence := false
+	s := &basisScan{}
+	for i, line := range lines {
+		idx, found, stop := s.visit(line, i)
+		if found || stop {
+			return idx, found
+		}
+	}
+	return 0, false
+}
+
+// basisScan walks the leading quote block tracking fence state.
+type basisScan struct{ inFence bool }
+
+// visit folds one body line: the Basis index when the line matches, stop at
+// the block end, else continue.
+func (s *basisScan) visit(line string, i int) (idx int, found, stop bool) {
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case trimmed == "":
+		return 0, false, false
+	case !strings.HasPrefix(trimmed, ">"):
+		return 0, false, true
+	case basisFenceLine(trimmed):
+		s.inFence = !s.inFence
+		return 0, false, false
+	case s.inFence:
+		return 0, false, false
+	default:
+		return i, basisLineRe.MatchString(line), false
+	}
+}
+
+// leadEnd returns the index after the last leading quote line: blanks pass,
+// and the block ends at the first non-blank line that is not a quote.
+func leadEnd(lines []string) int {
+	at := 0
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
 		if !strings.HasPrefix(trimmed, ">") {
-			return 0, false
+			break
 		}
-		if basisFenceLine(trimmed) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		if basisLineRe.MatchString(line) {
-			return i, true
-		}
+		at = i + 1
 	}
-	return 0, false
+	return at
 }
 
 // basisFenceLine reports a markdown fence marker, bare or quoted, so a fenced
@@ -245,17 +272,7 @@ func replaceBasisLine(body string, lines []string, i int, computed, expected str
 // insertBasisLine adds the computed Basis line under the confidence lead,
 // keeping a blank line before a following heading.
 func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
-	at := 0
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if !strings.HasPrefix(trimmed, ">") {
-			break
-		}
-		at = i + 1
-	}
+	at := leadEnd(lines)
 	insert := []string{computed}
 	if at < len(lines) {
 		if trimmed := strings.TrimSpace(lines[at]); trimmed != "" && strings.HasPrefix(trimmed, "#") {
