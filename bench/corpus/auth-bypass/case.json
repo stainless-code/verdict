@@ -3,7 +3,6 @@
   "id": "auth-bypass",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "The admin-role branch is inverted, so an ordinary user reaches the privileged handler.",
@@ -16,7 +15,8 @@
       "line": 23,
       "kind": "auth-bypass",
       "severity": "critical",
-      "note": "the role check is inverted, so non-admins pass"
+      "note": "the role check is inverted, so non-admins pass",
+      "keywords": ["role comparison"]
     }
   ]
 }

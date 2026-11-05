@@ -351,7 +351,7 @@ func matchBug(path string, line int, text string, bugs []core.CorpusBug, used []
 			return i, ""
 		}
 	}
-	return -1, missReason(window, used)
+	return -1, missReason(window, text, bugs, used)
 }
 
 // windowBugs is the indices of the bugs on path whose line is within tol.
@@ -365,18 +365,23 @@ func windowBugs(path string, line int, bugs []core.CorpusBug, tol int) []int {
 	return out
 }
 
-// missReason names why no bug in the window matched: there was none, one sat
-// there unnamed, or every bug in the window was already counted.
-func missReason(window []int, used []bool) string {
+// missReason names why no bug in the window matched: there was none, the
+// finding names a bug already counted, one sat there unnamed, or every bug in
+// the window was already counted.
+func missReason(window []int, text string, bugs []core.CorpusBug, used []bool) string {
 	if len(window) == 0 {
 		return ReasonOffLine
 	}
+	reason := ReasonAlreadyMatched
 	for _, i := range window {
-		if !used[i] {
-			return ReasonUnnamed
+		switch {
+		case used[i] && namesDefect(text, &bugs[i]):
+			return ReasonAlreadyMatched
+		case !used[i]:
+			reason = ReasonUnnamed
 		}
 	}
-	return ReasonAlreadyMatched
+	return reason
 }
 
 // namesDefect reports whether text names the bug's defect: its kind in hyphen
@@ -408,15 +413,21 @@ func defectPhrases(b *core.CorpusBug) []string {
 func categoryPhrases(kind string) []string {
 	switch kind {
 	case "auth-bypass":
-		return []string{"role", "admin", "privilege", "authorization", "bypass"}
+		return []string{
+			"privilege", "authoriz", "authoris", "unauthoriz", "unauthoris", "unauthenticated",
+			"bypass", "role check", "admin check", "permission check",
+		}
 	case "missing-error-check":
-		return []string{"error", "short write", "unchecked", "discarded"}
+		return []string{
+			"short write", "unchecked", "discard", "ignored error", "error is ignored",
+			"error is dropped", "error is not checked", "ignores the error", "drops the error",
+		}
 	case "nil-deref":
-		return []string{"nil", "deref", "null pointer"}
+		return []string{"nil pointer", "nil deref", "nil map", "deref", "null pointer", "nil check"}
 	case "off-by-one":
-		return []string{"one past", "loop bound", "out of range"}
+		return []string{"one past", "loop bound", "out of range", "out of bounds"}
 	case "index-out-of-range":
-		return []string{"index", "len(", "out of range"}
+		return []string{"out of range", "out of bounds", "bounds check", "len("}
 	case "path-traversal":
 		return []string{"traversal", "confine", "escape", ".."}
 	case "race":

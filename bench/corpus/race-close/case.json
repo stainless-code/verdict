@@ -3,7 +3,6 @@
   "id": "race-close",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "A connection goes back into the pool and is then closed by a goroutine, so the next borrower is handed a closed conn.",

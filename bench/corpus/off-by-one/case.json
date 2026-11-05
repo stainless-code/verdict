@@ -3,7 +3,6 @@
   "id": "off-by-one",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "Pagination loop advances one element past the slice and ignores the error returned when the page fetch fails.",

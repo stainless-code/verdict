@@ -81,23 +81,24 @@ func checkTolerance(t *testing.T, name string, c *core.CorpusCase, index []hunks
 	t.Helper()
 	tol := Tolerance(c)
 	for _, bug := range c.Bugs {
-		span, ok := hunkSpan(index, bug.Path, bug.Line)
+		reach, ok := hunkReach(index, bug.Path, bug.Line)
 		if !ok {
 			t.Errorf("%s: bug %s:%d is outside the reviewed hunks", name, bug.Path, bug.Line)
 			continue
 		}
-		if tol >= span {
-			t.Errorf("%s: bug %s:%d sits in a %d-line hunk and line_tolerance is %d; keep the tolerance narrower than the hunk",
-				name, bug.Path, bug.Line, span, tol)
+		if tol >= reach {
+			t.Errorf("%s: bug %s:%d is %d line(s) from its hunk's far end and line_tolerance is %d; keep the window short of the far end",
+				name, bug.Path, bug.Line, reach, tol)
 		}
 	}
 }
 
-// hunkSpan is the new-side length of the hunk that declares line.
-func hunkSpan(index []hunks.Hunk, path string, line int) (int, bool) {
+// hunkReach is the distance from line to the farther end of the new-side hunk
+// that declares it: a window this wide covers every line of the hunk.
+func hunkReach(index []hunks.Hunk, path string, line int) (int, bool) {
 	for _, h := range index {
 		if h.Side == "NEW" && h.File == path && h.Start <= line && line <= h.End {
-			return h.End - h.Start + 1, true
+			return max(line-h.Start, h.End-line), true
 		}
 	}
 	return 0, false
@@ -271,6 +272,20 @@ func TestEvaluateMatching(t *testing.T) {
 	}
 }
 
+// TestDuplicateOnASharedWindowSaysAlreadyMatched keeps the reason honest when
+// one window holds two kinds: a second finding naming the matched bug is a
+// duplicate, not a finding that names the wrong defect.
+func TestDuplicateOnASharedWindowSaysAlreadyMatched(t *testing.T) {
+	c := &core.CorpusCase{Bugs: []core.CorpusBug{
+		{Path: "a.go", Line: 10, Kind: "off-by-one", Severity: "critical"},
+		{Path: "a.go", Line: 11, Kind: "missing-error-check", Severity: "important"},
+	}}
+	rep := Evaluate(c, []any{entry("a.go", 10, "off by one"), entry("a.go", 10, "off by one again")})
+	if got := fpReasons(rep); !equalStrings(got, []string{ReasonAlreadyMatched}) {
+		t.Fatalf("false-positive reasons = %v, want [%s]", got, ReasonAlreadyMatched)
+	}
+}
+
 // TestZeroToleranceNeedsTheBugLine pins the exact-line mode a case opts into.
 func TestZeroToleranceNeedsTheBugLine(t *testing.T) {
 	zero := 0
@@ -322,7 +337,7 @@ func TestCategoryVocabulary(t *testing.T) {
 		text string
 		want bool
 	}{
-		{"auth bypass", core.CorpusBug{Kind: "auth-bypass"}, "The role comparison is inverted; reject the admin branch.", true},
+		{"auth bypass", core.CorpusBug{Kind: "auth-bypass"}, "The role check is inverted, so any caller bypasses the admin gate.", true},
 		{"missing error check", core.CorpusBug{Kind: "missing-error-check"}, "The io.Copy error is discarded, so a short write reads as success.", true},
 		{"nil deref", core.CorpusBug{Kind: "nil-deref"}, "The session is dereferenced before the lookup error is checked.", true},
 		{"off by one", core.CorpusBug{Kind: "off-by-one"}, "The loop bound runs one past the slice.", true},
@@ -334,6 +349,10 @@ func TestCategoryVocabulary(t *testing.T) {
 		{"case keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"cache key"}}, "Two requests share a cache key.", true},
 		{"wrong defect", core.CorpusBug{Kind: "off-by-one"}, "Consider renaming this loop variable.", false},
 		{"glued word", core.CorpusBug{Kind: "race"}, "This brace style is inconsistent.", false},
+		{"generic auth word", core.CorpusBug{Kind: "auth-bypass"}, "Rename the admin variable to match its role.", false},
+		{"generic error word", core.CorpusBug{Kind: "missing-error-check"}, "Fix the error message spelling.", false},
+		{"generic nil word", core.CorpusBug{Kind: "nil-deref"}, "Return nil instead of an empty slice here.", false},
+		{"generic index word", core.CorpusBug{Kind: "index-out-of-range"}, "Rename index to i for brevity.", false},
 		{"unknown kind", core.CorpusBug{Kind: "custom-kind"}, "The loop reads one past the slice.", false},
 	}
 	for _, tc := range tests {

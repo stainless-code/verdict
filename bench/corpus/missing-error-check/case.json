@@ -3,7 +3,6 @@
   "id": "missing-error-check",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "io.Copy result is dropped, so a truncated upload still returns success.",

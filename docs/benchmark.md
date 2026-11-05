@@ -48,8 +48,9 @@ The window is deliberately narrow. On a 4-7-line hunk a `line_tolerance` of
 localization; a bug plus/minus one line still lands on the statement that
 carries it, and zero rejects a correct anchor on the second line of a
 multi-line statement. `TestCheckedInCorpusCases` asserts `line_tolerance` is
-narrower than the new-side span of the hunk that shows each bug, so a future
-short hunk cannot quietly make every anchor correct.
+smaller than the distance from each bug to the far end of the new-side hunk
+that shows it, so a future short hunk cannot quietly make every anchor
+correct.
 
 The built-in category vocabulary is deliberately small and deterministic:
 
@@ -122,8 +123,8 @@ One case, one manifest, published as
   into false ones. The bug's `kind` and its category vocabulary always name
   it too, so a case with no keywords is matched on `kind` and category.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
-  narrower than the new-side span of the hunk that shows the bug: the corpus
-  test refuses a case whose tolerance is not narrower than its hunk.
+  short of the far end of the new-side hunk that shows the bug: the corpus
+  test refuses a case whose window covers the whole hunk.
 - `benches`/agent outputs stay outside the schema: the checked-in
   `agents/<model>.json` wrapper carries `model`, `panel`, and the exact
   `review.json` body.
