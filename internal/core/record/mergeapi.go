@@ -139,7 +139,7 @@ func reportFindings(st *state) {
 		sv, _ := m.Get("sig")
 		tv, _ := m.Get("status")
 		av, _ := m.Get("anchored")
-		pv, _ := m.Get("path")
+		pv, _ := m.Get(fieldPath)
 		hv, _ := m.Get("heading")
 		st.human(fmt.Sprintf("  %s  %s  %s  %s",
 			readcommon.Prefix(jq.Interp(sv)),
@@ -161,6 +161,12 @@ func LoadReview(path string) (*jq.Obj, error) {
 		}
 		return nil, &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, path)}
 	}
+	return LoadReviewBytes(reviewRaw)
+}
+
+// LoadReviewBytes decodes one already-read review.json document and keeps the
+// record path's object and schema refusals.
+func LoadReviewBytes(reviewRaw []byte) (*jq.Obj, error) {
 	reviewDoc, err := jq.DecodeOrdered(reviewRaw)
 	if err != nil {
 		return nil, &core.RefusalError{Code: codeBadReviewInput, Message: msgBadReviewJSON}

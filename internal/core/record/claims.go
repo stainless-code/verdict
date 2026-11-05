@@ -147,7 +147,7 @@ func (st *state) applyTriage() error {
 }
 
 func triageItems(review *jq.Obj) []*jq.Obj {
-	tv, ok := review.Get("triage")
+	tv, ok := review.Get(fieldTriage)
 	if !ok {
 		return nil
 	}

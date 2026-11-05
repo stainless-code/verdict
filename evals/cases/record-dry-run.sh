@@ -54,12 +54,12 @@ check_untouched() { # $1 = label, $2 = snapshot before
 }
 
 mk_local <<'JSON'
-{"schema_version":"1","body":"> ✅ Dry run with a bad brief.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance.","rigor":"walked","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"why"}}]}
+{"schema_version":"1","body":"> ✅ Dry run with a bad brief.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance.","rigor":"walked","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":5}}]}
 JSON
 BEFORE="$(snapshot)"
 run_review record acme/app "$SLUG" --dry-run --json
-assert_exit "brief.questions string refuses the dry run" 1
-assert_refusal "brief.questions string" "bad-review-input"
+assert_exit "brief.questions number refuses the dry run" 1
+assert_refusal "brief.questions number" "bad-review-input"
 assert_json_field "one problem reported" "1" '.error.problems | length'
 assert_json_field "problem path" '$.comments[0].brief.questions' '.error.problems[0].path'
 assert_json_field "problem code" "wrong-type" '.error.problems[0].code'

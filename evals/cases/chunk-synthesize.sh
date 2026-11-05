@@ -43,8 +43,8 @@ else
   bad "prompt misses the exactly-one-document synthesis rule"
 fi
 if grep -Fq 'sum every rung count across all chunks into the single Basis' "$PROMPT" \
-  && grep -Fq 'keeps your body on' "$PROMPT"; then
-  good "prompt sums Basis rungs across chunks with keep-on-mismatch"
+  && grep -Fq 'replaces a disagreeing line' "$PROMPT"; then
+  good "prompt sums Basis rungs across chunks and names CLI replacement"
 else
   bad "prompt Basis-sum rule is missing"
 fi
@@ -163,7 +163,7 @@ eval_write_review "$PR" <<'EOF'
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from this review's comments (0 1 1 0 0 2 0)" "$EVAL_ERR" \
+  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from the computed counts (0 1 1 0 0 2 0) — replaced it (basis-replaced)" "$EVAL_ERR" \
   && grep -Fq -- 'Reviewed with' <<<"$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"; then
   good "wrong Basis exits 0, warns with review counts, keeps the footer"
 else

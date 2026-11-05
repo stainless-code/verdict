@@ -53,7 +53,11 @@ verdict fetch owner/repo 123
 #    from the router below, plus the bundle.
 #    Write exactly one `.review/N/review.json`; the mode file defines its shape
 #    (`body` and `comments[]` at minimum, plus optional `resolved` sigs and
-#    `triage[]` claims).
+#    `triage[]` claims). Verdict repairs a fenced or prose-wrapped document,
+#    scalar-for-array values, the aliases `inBounds`/`rung`/`file`, enum
+#    synonyms and case, and null optional keys, and reports every repair — but
+#    write clean JSON anyway: repairs are a safety net, and strict CI refuses
+#    them.
 #    Before posting or recording, run `verdict record owner/repo <slug>
 #    --dry-run` on the bundle (local or PR), fix every problem it lists, and
 #    repeat at most 3 rounds.

@@ -8,7 +8,8 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
-    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+    "$.comments[0].kb: optional key \"kb\" was null; dropped it",
+    "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".review/local-kb",
@@ -36,9 +37,26 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: $.comments[0].kb: optional key "kb" was null; dropped it
 » anchors: 1 inline, 0 moved to body
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 » findings: 1 sigs -> .review/local-kb/findings.json
   bfd750df  open  true  notes.txt
 recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
+--- file C/.review/local-kb/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 1,
+  "open": 1,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "66a0179cf58e46a57bbd16f0246527b03d06a49cb6667512d947d5d701d3f33f",
+  "model": null,
+  "repairs": [{"code":"normalized-trivia","path":"$.comments[0].kb"}]
+}

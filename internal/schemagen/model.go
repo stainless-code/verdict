@@ -85,6 +85,9 @@ type Candidate = core.Candidate
 // Problem is one review-input problem inside an envelope refusal.
 type Problem = core.Problem
 
+// Repair is one safe review.json rewrite the record path applied.
+type Repair = core.Repair
+
 // CheckSummary is what a clean review-input dry run would record.
 type CheckSummary = core.CheckSummary
 

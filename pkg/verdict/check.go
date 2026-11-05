@@ -16,3 +16,13 @@ type CheckResult = recordcore.CheckResult
 func CheckReview(review []byte, diff string) CheckResult {
 	return recordcore.CheckReview(review, diff)
 }
+
+// NormalizeReview repairs the mechanical shapes weak models emit — a
+// whole-document code fence, prose around the object, scalars where a string
+// array belongs, key aliases, enum synonyms and case, and trivial bytes — and
+// returns the normalized document plus one warning per rewrite. It is pure,
+// deterministic, and idempotent. It never invents or rewrites prose, and a
+// document it cannot recover comes back unchanged for CheckReview to refuse.
+func NormalizeReview(review []byte) ([]byte, []Problem) {
+	return recordcore.NormalizeReview(review)
+}

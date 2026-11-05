@@ -78,12 +78,13 @@ func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
 	if err != nil {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
+	st.normalized, st.repairs = NormalizeReview(raw)
 	in := CheckInput{Diff: string(diff)}
 	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
 	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
 		in.Verification, in.HasVerification = verification, true
 	}
-	return CheckReviewInput(raw, in), nil
+	return MergeRepairs(CheckReviewInput(st.normalized, in), st.repairs, st.normalized), nil
 }
 
 func (st *svc) addCheckWarnings(check CheckResult) {
@@ -148,7 +149,7 @@ func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
 	} else if err := EnsureHunksSnapshot(st.runtime(), dir); err != nil {
 		return nil, refusalOrFailed(err)
 	}
-	review, err := LoadReview(dir + reviewSuffix)
+	review, err := LoadReviewBytes(st.normalized)
 	if err != nil {
 		return nil, refusalOrFailed(err)
 	}
@@ -191,12 +192,14 @@ func refusalOrFailed(err error) *core.RefusalError {
 }
 
 type svc struct {
-	req      *core.RecordRequest
-	controls *controls.Snapshot
-	check    *core.CheckSummary
-	store    *readcommon.Bundle
-	hunkRows []hunks.Hunk
-	warnings []string
+	req        *core.RecordRequest
+	controls   *controls.Snapshot
+	check      *core.CheckSummary
+	store      *readcommon.Bundle
+	normalized []byte
+	repairs    []Problem
+	hunkRows   []hunks.Hunk
+	warnings   []string
 }
 
 // BundleBase reads the base commit a bundle was fetched at: the local
@@ -277,6 +280,7 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 		ToolVersion:     toolVersion,
 		PromptsHash:     promptsHash,
 		Model:           modelOrNil(model),
+		Repairs:         repairList(st.repairs),
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -320,6 +324,8 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		ItemsRaw:        EnvelopeItems(res.Entries),
 		DryRun:          true,
 		Check:           st.check,
+		Normalized:      normalizedObject(st.normalized),
+		Repairs:         repairList(st.repairs),
 	}
 	next := "re-run without --dry-run to record; fix every problem first"
 	if st.store != nil && st.store.Provider() == "github" {
@@ -333,6 +339,25 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		Warnings: st.warnings,
 		Next:     next,
 	}
+}
+
+func normalizedObject(raw []byte) any {
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return nil
+	}
+	return doc
+}
+
+func repairList(problems []Problem) []core.Repair {
+	if len(problems) == 0 {
+		return nil
+	}
+	out := make([]core.Repair, 0, len(problems))
+	for _, p := range problems {
+		out = append(out, core.Repair{Code: p.Code, Path: p.Path})
+	}
+	return out
 }
 
 func intOrNil(v any) *int {

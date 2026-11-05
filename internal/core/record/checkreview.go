@@ -60,18 +60,18 @@ const (
 var (
 	//nolint:goconst // published schema literals
 	knownReviewKeys = []string{
-		"schema_version", fieldBody, problemApproved, "comments",
-		"resolved", "triage", "sections", "chunks", "confidence", "security_summary",
+		"schema_version", fieldBody, problemApproved, fieldComments,
+		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldConfidence, fieldSecuritySummary,
 	}
 	//nolint:goconst // schema keys are published literals
 	knownCommentKeys = []string{
-		"path", "line", "start_line", "side", "body",
-		"suggestion", "brief", "rigor", fieldSeverity, "in-bounds", "kb",
+		fieldPath, fieldLine, "start_line", fieldSide, "body",
+		"suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldInBoundsInput, "kb",
 	}
 	knownTriageKeys  = []string{fieldSig, fieldStatus, problemRationale}
 	knownSectionKeys = []string{"heading", fieldSeverity}
 	reviewKeys       = []string{"critical", exampleImportant, "informational"}
-	rigorKeys        = []string{"said", "pointed", "walked", "ran", "reproduced"}
+	rigorKeys        = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
 	triageStatuses   = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
 )
 
@@ -178,6 +178,10 @@ func (c *checker) badEnum(path, message, fix string, example any) {
 	c.add(c.problem(path, core.ProblemCodeBadEnum, core.ProblemLevelError, message, fix, example))
 }
 
+func (c *checker) outOfRange(path, message, fix string, example any) {
+	c.add(c.problem(path, core.ProblemCodeOutOfRange, core.ProblemLevelError, message, fix, example))
+}
+
 func (c *checker) unknown(path, key string, known []string) {
 	fix := "remove it"
 	if near := nearest(key, known); near != "" {
@@ -202,19 +206,19 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			if _, ok := v.(bool); !ok {
 				c.wrongType("$."+problemApproved, "approved must be a boolean", "use true or false", false)
 			}
-		case "comments":
+		case fieldComments:
 			c.checkComments(v)
-		case "resolved":
+		case fieldResolved:
 			c.checkStringArray("$.resolved", v, "list finding sigs as strings")
-		case "triage":
+		case fieldTriage:
 			c.checkTriage(v)
-		case "sections":
+		case fieldSections:
 			c.checkSections(v)
-		case "confidence":
+		case fieldConfidence:
 			c.checkConfidence(v)
-		case "security_summary":
+		case fieldSecuritySummary:
 			c.checkSecuritySummary(v)
-		case "chunks":
+		case fieldChunks:
 			c.checkChunks(v)
 		default:
 			c.unknown("$", key, knownReviewKeys)
@@ -223,7 +227,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	if _, ok := obj.Get(fieldBody); !ok {
 		c.missing("$."+fieldBody, "missing body", "write the full review text", exampleEllipsis)
 	}
-	if _, ok := obj.Get("comments"); !ok {
+	if _, ok := obj.Get(fieldComments); !ok {
 		c.add(c.problem("$.comments", core.ProblemCodeMissingField, core.ProblemLevelWarning,
 			"comments is missing; treating it as an empty list",
 			"write \"comments\": []", []any{}))
@@ -235,7 +239,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			"write \"schema_version\": \"1\"", schemaVersion1))
 	}
 	if c.hasChunks {
-		if _, ok := obj.Get("chunks"); !ok {
+		if _, ok := obj.Get(fieldChunks); !ok {
 			c.unattestedChunks()
 		}
 	}
@@ -324,7 +328,7 @@ func (c *checker) checkComment(i int, item any) {
 			}
 		case fieldLine, fieldStartLine:
 			c.checkAnchorValue(base+"."+key, key, v)
-		case "side":
+		case fieldSide:
 			c.checkSide(base+".side", v)
 		case fieldBody:
 			c.checkString(base+".body", v, true, "write the finding text")
@@ -336,7 +340,7 @@ func (c *checker) checkComment(i int, item any) {
 			c.checkRigor(base, v)
 		case fieldSeverity:
 			c.checkSeverity(base+".severity", v)
-		case "in-bounds":
+		case fieldInBoundsInput:
 			if _, ok := v.(bool); !ok {
 				c.wrongType(base+".in-bounds", "in-bounds must be a boolean", "use true or false", true)
 			}
@@ -609,17 +613,17 @@ func (c *checker) checkBodyQuality(obj *jq.Obj) {
 func (c *checker) checkRigor(base string, v any) {
 	if v == nil || v == false {
 		c.add(c.problem(base+".rigor", core.ProblemCodeRigorUnset, core.ProblemLevelWarning,
-			"rigor is unset", "set rigor to said|pointed|walked|ran|reproduced", "walked"))
+			"rigor is unset", "set rigor to said|pointed|walked|ran|reproduced", rungWalked))
 		return
 	}
 	s, ok := v.(string)
 	if !ok {
-		c.wrongType(base+".rigor", "rigor must be a string", "use said|pointed|walked|ran|reproduced", "walked")
+		c.wrongType(base+".rigor", "rigor must be a string", "use said|pointed|walked|ran|reproduced", rungWalked)
 		return
 	}
 	if !slices.Contains(rigorKeys, s) {
 		c.badEnum(base+".rigor", fmt.Sprintf("unknown rigor %q", s),
-			"use said|pointed|walked|ran|reproduced", "walked")
+			"use said|pointed|walked|ran|reproduced", rungWalked)
 	}
 }
 
@@ -766,7 +770,7 @@ func (c *checker) checkConfidence(v any) {
 	}
 	level, err := n.Int64()
 	if err != nil || level < minConfidence || level > maxConfidence {
-		c.badEnum("$.confidence", fmt.Sprintf("confidence %s is outside 1-5", n.String()),
+		c.outOfRange("$.confidence", fmt.Sprintf("confidence %s is outside 1-5", n.String()),
 			"use an integer 1-5", exampleConfidence)
 	}
 }
@@ -836,16 +840,16 @@ func reviewObjectExample() map[string]any {
 		"schema_version": "1",
 		fieldBody:        "> ✅ Review text.",
 		problemApproved:  false,
-		"comments":       []any{},
+		fieldComments:    []any{},
 	}
 }
 
 func commentExample() map[string]any {
-	return map[string]any{"path": exampleFile, "line": exampleLine, "side": sideRight, "body": exampleEllipsis}
+	return map[string]any{fieldPath: exampleFile, fieldLine: exampleLine, fieldSide: sideRight, "body": exampleEllipsis}
 }
 
 func sectionExample() map[string]any {
-	return map[string]any{"heading": "### Security", "severity": exampleImportant}
+	return map[string]any{"heading": "### Security", fieldSeverity: exampleImportant}
 }
 
 func nearest(s string, keys []string) string {

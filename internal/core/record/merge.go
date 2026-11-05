@@ -170,9 +170,10 @@ func (st *state) reportMoves() {
 }
 
 func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
-	for _, w := range provenance.ValidateBasisLine(
-		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body) {
-		st.warn(w)
+	body, basisProblem := provenance.ApplyBasisLine(
+		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body)
+	if basisProblem != nil {
+		st.warn(basisProblem.Path + ": " + basisProblem.Message)
 	}
 	for _, w := range provenance.ValidateEvidenceLinks(
 		body, st.headFull, provenance.EvidenceLinkable(st.dir, st.headFull)) {
@@ -249,7 +250,7 @@ func (st *state) parseConfidence() error {
 }
 
 func (st *state) parseConfidenceLevel() {
-	conf, ok := st.review.Get("confidence")
+	conf, ok := st.review.Get(fieldConfidence)
 	if !ok || conf == nil || conf == false {
 		return
 	}
@@ -270,7 +271,7 @@ func isConfidenceLevel(s string) bool {
 }
 
 func (st *state) parseSecuritySummary() error {
-	sec, has := st.review.Get("security_summary")
+	sec, has := st.review.Get(fieldSecuritySummary)
 	if !has || sec == nil {
 		return nil
 	}
@@ -289,7 +290,7 @@ func (st *state) validateAnchors(body string) string {
 	st.kept = []any{}
 	st.moved = []any{}
 	var comments []any
-	if c, ok := st.review.Get("comments"); ok {
+	if c, ok := st.review.Get(fieldComments); ok {
 		comments = jq.Elements(c)
 	}
 	hs := st.hunkRows
@@ -372,7 +373,7 @@ func anchorRange(m *jq.Obj) (lo, hi int, side string) {
 	if lo > hi {
 		lo, hi = hi, lo
 	}
-	sv, _ := m.Get("side")
+	sv, _ := m.Get(fieldSide)
 	side = strings.ToUpper(jq.R(jq.Alt(sv, sideRight)))
 	return lo, hi, side
 }
@@ -491,7 +492,7 @@ func runeSlice(s string, n int) string {
 
 func (st *state) buildEntries(body string) {
 	var secs []any
-	if s, ok := st.review.Get("sections"); ok {
+	if s, ok := st.review.Get(fieldSections); ok {
 		secs = jq.Elements(s)
 	}
 	var fresh []freshEntry
@@ -548,13 +549,13 @@ func freshSections(body string, secs []any) []freshEntry {
 }
 
 func buildInline(st *state, m *jq.Obj) freshEntry {
-	inBounds, ok := m.Get("in-bounds")
+	inBounds, ok := m.Get(fieldInBoundsInput)
 	if !ok || inBounds == nil {
 		inBounds = true
 	}
 	drop, _ := m.Get(fieldDropReason)
 	path, _ := m.Get(fieldPath)
-	side, _ := m.Get("side")
+	side, _ := m.Get(fieldSide)
 	line, _ := m.Get(fieldLine)
 	bd, _ := m.Get(fieldBody)
 	sugg, _ := m.Get(fieldSuggestion)
@@ -562,17 +563,19 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
 	body := jq.StrOf(jq.Alt(bd, ""))
+	rigorValue, rigorSource := pickRigor(rigor)
 	entry := &core.FindingEntry{
-		Kind:       "inline",
-		Path:       path,
-		Side:       jq.Alt(side, sideRight),
-		Line:       line,
-		Anchored:   drop == nil,
-		Body:       body,
-		Suggestion: optString(jq.Alt(sugg, nil)),
-		InBounds:   inBounds,
-		Rigor:      pick(rigor, rigorAllow, "pointed"),
-		Severity:   pick(sev, sevAllow, nil),
+		Kind:        "inline",
+		Path:        path,
+		Side:        jq.Alt(side, sideRight),
+		Line:        line,
+		Anchored:    drop == nil,
+		Body:        body,
+		Suggestion:  optString(jq.Alt(sugg, nil)),
+		InBounds:    inBounds,
+		Rigor:       rigorValue,
+		RigorSource: rigorSource,
+		Severity:    pick(sev, sevAllow, nil),
 	}
 	entry.Brief = briefOf(st, m)
 	return freshEntry{entry: entry, kbRaw: jq.Alt(kbc, nil)}
@@ -608,12 +611,23 @@ func sectionSeverity(secs []any, h string) any {
 
 func buildSection(h string, sev any) *core.FindingEntry {
 	return &core.FindingEntry{
-		Kind:     "section",
-		Heading:  h,
-		Anchored: fieldBody,
-		Body:     h,
-		Severity: pick(sev, sevAllow, nil),
+		Kind:        "section",
+		Heading:     h,
+		Anchored:    fieldBody,
+		Body:        h,
+		RigorSource: rigorSourceDefault,
+		Severity:    pick(sev, sevAllow, nil),
 	}
+}
+
+// pickRigor records the rung and where it came from: a recognized string is
+// the model's, anything absent or unusable is the checker's said default.
+func pickRigor(v any) (any, string) {
+	s, ok := v.(string)
+	if ok && slices.Contains(rigorAllow, s) {
+		return s, rigorSourceModel
+	}
+	return rungSaid, rigorSourceDefault
 }
 
 func optString(v any) *string {
@@ -672,7 +686,7 @@ func sigBody(v any) string {
 }
 
 var (
-	rigorAllow = []string{"said", "pointed", "walked", "ran", "reproduced"}
+	rigorAllow = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
 	sevAllow   = []string{"critical", "important", "informational"}
 )
 
@@ -799,6 +813,7 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	nanch, _ := n.Get(fieldAnchored)
 	m.Set(fieldAnchored, nanch)
 	overlayAlt(m, n, pm, fieldRigor)
+	overlayAlt(m, n, pm, fieldRigorSource)
 	overlayAlt(m, n, pm, fieldSeverity)
 	overlayAlt(m, n, pm, fieldSuggestion)
 	nib, _ := n.Get(fieldInBounds)
@@ -839,13 +854,34 @@ func (st *state) backfill() {
 		if !ok {
 			continue
 		}
-		if kbv, _ := m.Get(fieldKB); jq.Falsey(kbv) {
-			m.Set(fieldKB, []any{})
-		}
-		if !m.Has(fieldSigVersion) {
-			m.Set(fieldSigVersion, sigVersion1)
-		}
+		backfillEntry(m)
 	}
+}
+
+// backfillEntry restores the additive fields a store entry predates: an
+// empty kb list, the sig version, and the rigor provenance the field's
+// arrival backfills from the recorded rung.
+func backfillEntry(m *jq.Obj) {
+	if kbv, _ := m.Get(fieldKB); jq.Falsey(kbv) {
+		m.Set(fieldKB, []any{})
+	}
+	if !m.Has(fieldSigVersion) {
+		m.Set(fieldSigVersion, sigVersion1)
+	}
+	if !m.Has(fieldRigorSource) {
+		m.Set(fieldRigorSource, priorRigorSource(m))
+	}
+}
+
+// priorRigorSource guesses the provenance of a store entry written before the
+// field existed: a recognized rung came from the review, anything else was the
+// checker's default.
+func priorRigorSource(m *jq.Obj) string {
+	rv, _ := m.Get(fieldRigor)
+	if s, ok := rv.(string); ok && slices.Contains(rigorAllow, s) {
+		return rigorSourceModel
+	}
+	return rigorSourceDefault
 }
 
 func (st *state) autoReopen() {
@@ -905,7 +941,7 @@ func (st *state) applyResolved() {
 
 func resolvedItems(review *jq.Obj) []string {
 	var items []any
-	if rv, ok := review.Get("resolved"); ok {
+	if rv, ok := review.Get(fieldResolved); ok {
 		if arr, isArr := rv.([]any); isArr {
 			items = arr
 		}

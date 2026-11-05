@@ -116,7 +116,12 @@
       "/$defs/problem/properties/example": "Optional example of the accepted shape at this path.",
       "/$defs/checkSummary": "What a clean dry run would record: comment and section counts plus anchors that would move to the body.",
       "/$defs/recordData/properties/dry_run": "True only on record --dry-run; the run wrote no findings.json, record.json, or any new file.",
-      "/$defs/recordData/properties/check": "Present only on a clean dry run: the review-input summary."
+      "/$defs/recordData/properties/check": "Present only on a clean dry run: the review-input summary.",
+      "/$defs/recordData/properties/normalized": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object.",
+      "/$defs/recordData/properties/repairs": "Present on record --dry-run: every safe review.json rewrite applied, in document order.",
+      "/$defs/repair": "One safe review.json rewrite: the published repair code and the JSONPath it touched.",
+      "/$defs/repair/properties/code": "The repair family: fence unwrap, prose extraction, scalar-to-array, key alias, enum synonym, or trivia removal.",
+      "/$defs/repair/properties/path": "JSONPath of the repaired value in the normalized review."
     }
   },
   "findings": {
@@ -138,7 +143,8 @@
       "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters.",
       "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each.",
       "/$defs/briefSite/properties/path": "A changed file path.",
-      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file."
+      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file.",
+      "/$defs/entry/properties/rigor_source": "Where the recorded rung came from: model when the review set it, default when the checker filled said, verified reserved for later."
     }
   },
   "post": {
@@ -163,12 +169,13 @@
       "/properties/open": "Open findings after the merge.",
       "/properties/tool_version": "Tool version that wrote this record (from package.json).",
       "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
-      "/properties/model": "First model of the latest cost record, else null when no cost record names one."
+      "/properties/model": "First model of the latest cost record, else null when no cost record names one.",
+      "/properties/repairs": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean."
     }
   },
   "review": {
     "descriptions": {
-      "": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks or past caps, brief approach/question length or caps, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
+      "": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
       "/properties/schema_version": "Agents stamp \"1\"; missing warns, any other value refuses.",
       "/properties/body": "Full review text, verdict marker first line. Missing, non-string, or degenerate text (<20 chars with no verdict marker, or a short placeholder) refuses.",
       "/properties/approved": "Binding ask; the CLI --bind/--request-changes flags win over this. A non-boolean refuses.",
@@ -184,7 +191,7 @@
       "/$defs/comment/properties/start_line": "Multi-line range start with the same tolerance as line: absent warns and moves, non-numeric warns and keeps, other types refuse.",
       "/$defs/comment/properties/side": "Defaults to RIGHT; LEFT for deleted lines. Any other value refuses.",
       "/$defs/comment/properties/suggestion": "A fenced suggestion warns and demotes to the body (a fence inside would break rendering); a non-string value refuses.",
-      "/$defs/comment/properties/rigor": "Evidence rung; absent warns (rigor-unset), unknown or non-string values refuse.",
+      "/$defs/comment/properties/rigor": "Evidence rung; absent warns (rigor-unset) and records as said with rigor_source default, unknown or non-string values refuse.",
       "/$defs/comment/properties/severity": "Stored at write time; unknown or non-string values refuse.",
       "/$defs/comment/properties/in-bounds": "Hyphenated in agent input; absent reads true, a non-boolean refuses.",
       "/$defs/comment/properties/kb": "Cited knowledge-base rule ids; a non-array or non-string entry refuses, and a malformed id warns and drops.",
@@ -192,8 +199,8 @@
       "/$defs/brief": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",
       "/$defs/brief/properties/sites": "Affected changed files with an optional reviewed line. Site shape/type/line failures refuse; a site outside every hunk or past the 10-site cap warns and drops.",
       "/$defs/brief/properties/outcome": "One sentence naming what the fix must achieve — required, 10–500 characters; missing, non-string, or out-of-range refuses the review.",
-      "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters; a non-string refuses, and a non-empty out-of-range value warns and drops.",
-      "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each; non-array/non-string refuses, and an out-of-range or past-cap question warns and drops.",
+      "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters; a non-string or out-of-range value refuses.",
+      "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each; non-array/non-string or an out-of-range or past-cap question refuses.",
       "/$defs/briefSite/properties/path": "A changed file path.",
       "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file."
     }

@@ -325,7 +325,7 @@ eval_write_review "$PR" <<'EOF'
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from this review's comments (0 0 0 0 0 0 0)" "$EVAL_ERR" \
+  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from the computed counts (0 0 0 0 0 0 0) — replaced it (basis-replaced)" "$EVAL_ERR" \
   && [ "$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null | head -c 3)" = "---" ]; then
   good "wrong basis exits 0, warns with review counts, keeps the footer"
 else
@@ -346,7 +346,7 @@ eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Carried-over one.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"Carried-over two.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 1 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "re-review matching its own comment succeeds" 0
@@ -357,11 +357,11 @@ eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Carried-over one.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"Carried-over two.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 2 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (0 0 0 2 0 0 0) differ from this review's comments (0 0 0 1 0 0 0)" "$EVAL_ERR"; then
+  && grep -q "basis line counts (0 0 0 0 2 0 0) differ from the computed counts (0 0 0 0 1 0 0) — replaced it (basis-replaced)" "$EVAL_ERR"; then
   good "re-review miscounting its own comment warns with review counts"
 else
   bad "re-review control gave exit $EVAL_STATUS"
@@ -406,7 +406,7 @@ eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Fresh finding to flip.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 1 rules cited · 1 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}],"triage":[{"sig":"cccccccccccccccccccccccccccccccccccccccc","status":"addressed","rationale":"verified the fix path end to end with evidence"}]}
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 1 said · 1 rules cited · 1 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}],"triage":[{"sig":"cccccccccccccccccccccccccccccccccccccccc","status":"addressed","rationale":"verified the fix path end to end with evidence"}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "triage-addressed flip succeeds" 0

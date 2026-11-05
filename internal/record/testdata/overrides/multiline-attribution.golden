@@ -3,7 +3,7 @@ exit: 1
 » anchors: 0 inline, 0 moved to body
 --- stderr ---
 warn: no fetch-time hunk snapshot (.review/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 error: override .review/overrides/attribution.md violates 'attribution-single-line' (want one sentence on one line)
 try: re-run with one of the valid values named above
 re-enter: verdict record acme/app local-ov

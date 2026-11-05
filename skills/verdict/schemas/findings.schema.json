@@ -51,6 +51,10 @@
           "description": "Evidence rung on inline findings; the re-post merge stamps an explicit null onto section entries.",
           "enum": ["said", "pointed", "walked", "ran", "reproduced", null]
         },
+        "rigor_source": {
+          "description": "Where the recorded rung came from: model when the review set it, default when the checker filled said, verified reserved for later.",
+          "enum": ["model", "default", "verified"]
+        },
         "severity": {
           "enum": ["critical", "important", "informational", null]
         },

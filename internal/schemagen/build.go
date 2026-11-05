@@ -168,9 +168,12 @@ func documents() []document {
 			additionalProperties: true,
 		},
 		{
-			name:                 "record",
-			title:                "record.json — completed-record (local bundles)",
-			root:                 reflect.TypeFor[Record](),
+			name:  "record",
+			title: "record.json — completed-record (local bundles)",
+			root:  reflect.TypeFor[Record](),
+			defs: []definition{
+				{typ: reflect.TypeFor[Repair](), name: "repair"},
+			},
 			additionalProperties: true,
 		},
 		{
@@ -227,6 +230,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
+		{typ: reflect.TypeFor[Repair](), name: "repair"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
 		{typ: reflect.TypeFor[ShowFix](), name: "showFix"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},

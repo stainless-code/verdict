@@ -80,10 +80,18 @@
           "enum": [
             "anchor-outside-hunk",
             "bad-enum",
+            "basis-replaced",
+            "enum-synonym",
             "invalid-json",
+            "key-alias",
             "missing-field",
+            "normalized-extracted",
+            "normalized-fence",
+            "normalized-trivia",
+            "out-of-range",
             "path-not-in-diff",
             "rigor-unset",
+            "scalar-to-array",
             "unknown-field",
             "wrong-type"
           ]
@@ -459,6 +467,14 @@
         "check": {
           "description": "Present only on a clean dry run: the review-input summary.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/checkSummary" }]
+        },
+        "normalized": {
+          "description": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object."
+        },
+        "repairs": {
+          "description": "Present on record --dry-run: every safe review.json rewrite applied, in document order.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/repair" }
         }
       },
       "required": [
@@ -469,6 +485,29 @@
         "security_summary",
         "items"
       ],
+      "additionalProperties": true
+    },
+    "repair": {
+      "description": "One safe review.json rewrite: the published repair code and the JSONPath it touched.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "description": "The repair family: fence unwrap, prose extraction, scalar-to-array, key alias, enum synonym, or trivia removal.",
+          "enum": [
+            "enum-synonym",
+            "key-alias",
+            "normalized-extracted",
+            "normalized-fence",
+            "normalized-trivia",
+            "scalar-to-array"
+          ]
+        },
+        "path": {
+          "description": "JSONPath of the repaired value in the normalized review.",
+          "type": "string"
+        }
+      },
+      "required": ["code", "path"],
       "additionalProperties": true
     },
     "showData": {

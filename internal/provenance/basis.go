@@ -55,12 +55,12 @@ func reviewComments(review *jq.Obj) []any {
 	return nil
 }
 
-// commentRigor normalizes one comment's rigor rung: null/false/missing and
-// present non-strings read pointed; unknown strings match no rung.
+// commentRigor normalizes one comment's rigor rung: null/false/missing read
+// said, the rung the checker fills; unknown strings read pointed.
 func commentRigor(m *jq.Obj) string {
 	rigorRaw, _ := m.Get("rigor")
 	if rigorRaw == nil || rigorRaw == false {
-		return rigorPointed
+		return rigorSaid
 	}
 	if s, isStr := rigorRaw.(string); isStr {
 		switch s {
@@ -132,34 +132,66 @@ var (
 	digitRunRe  = regexp.MustCompile(`[0-9]+`)
 )
 
-// ValidateBasisLine checks the Basis line: the agent-authored body may
-// carry a "> Basis:" counts line; the review's own comments decide. Mismatch
-// or unparseable warns and keeps the body.
-func ValidateBasisLine(expected, body string) []string {
-	line := ""
-	for ln := range strings.SplitSeq(body, "\n") {
-		if basisLineRe.MatchString(ln) {
-			line = ln
-			break
+// ApplyBasisLine replaces the body's first "> Basis:" line with the computed
+// counts, inserting one under the confidence lead when the body carries none.
+// It is the only prose byte the CLI writes; a matching line is left untouched.
+func ApplyBasisLine(expected, body string) (string, *core.Problem) {
+	lines := strings.Split(body, newline)
+	computed := "> Basis: " + expected
+	if i, found := basisLineIndex(lines); found {
+		return replaceBasisLine(body, lines, i, computed, expected)
+	}
+	return insertBasisLine(lines, computed)
+}
+
+// basisLineIndex finds the first "> Basis:" line.
+func basisLineIndex(lines []string) (int, bool) {
+	for i, line := range lines {
+		if basisLineRe.MatchString(line) {
+			return i, true
 		}
 	}
-	if line == "" {
-		return []string{"no basis line under the confidence lead — keeping body as-is (report renders it exactly)"}
+	return 0, false
+}
+
+// replaceBasisLine swaps a disagreeing Basis line for the computed counts;
+// a matching line leaves the body untouched.
+func replaceBasisLine(body string, lines []string, i int, computed, expected string) (string, *core.Problem) {
+	nums := strings.Join(digitRunRe.FindAllString(lines[i], -1), " ")
+	if nums == expected {
+		return body, nil
 	}
-	nums := strings.Join(digitRunRe.FindAllString(line, -1), " ")
-	n := 0
-	if nums != "" {
-		n = len(strings.Fields(nums))
+	lines[i] = computed
+	return strings.Join(lines, newline), &core.Problem{
+		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
+		Message: fmt.Sprintf(
+			"basis line counts (%s) differ from the computed counts (%s) — replaced it (basis-replaced)",
+			nums, expected),
+		Fix:     "write the computed Basis line, or leave the line to the CLI",
+		Example: computed,
 	}
-	if n != basisFieldCount {
-		return []string{fmt.Sprintf("basis line carries %d counts, want %d (reproduced ran "+
-			"walked pointed said cited verified) — keeping body as-is", n, basisFieldCount)}
+}
+
+// insertBasisLine adds the computed Basis line under the confidence lead.
+func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
+	at := 0
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, ">") {
+			break
+		}
+		at = i + 1
 	}
-	if nums != expected {
-		return []string{fmt.Sprintf("basis line counts (%s) differ from this review's "+
-			"comments (%s) — keeping body as-is (garnish never fails the run)", nums, expected)}
+	lines = append(lines[:at], append([]string{computed}, lines[at:]...)...)
+	return strings.Join(lines, newline), &core.Problem{
+		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
+		Message: "no basis line — inserted the computed counts (basis-replaced)",
+		Fix:     "write the computed Basis line, or leave the line to the CLI",
+		Example: computed,
 	}
-	return nil
 }
 
 // EvidenceBaseURL returns the blob base for GitHub bundles,
@@ -372,8 +404,6 @@ func fenceOpenLine(line string) bool {
 
 // Basis-line parsing and rendering constants.
 const (
-	// basisFieldCount is the seven-count basis-line arity (all seven rigors).
-	basisFieldCount = 7
 	// validationFalse is the provider-validation failure rendering.
 	validationFalse = "false"
 	// Rigor bucket names for the seven-count basis line.

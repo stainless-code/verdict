@@ -9,7 +9,7 @@ exit: 0
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
     "verification claim c ignored (ambiguous prefix)",
-    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+    "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".review/local-kb",
@@ -177,7 +177,7 @@ exit: 0
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
 warn: verification claim c ignored (ambiguous prefix)
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 » findings: 24 sigs -> .review/local-kb/findings.json
   c5afec6b  open  true  notes.txt
   f447c3f0  open  true  notes.txt

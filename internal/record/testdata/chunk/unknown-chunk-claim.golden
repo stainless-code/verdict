@@ -6,7 +6,7 @@ recorded: .review/local-ch/findings.json (0 open) + .review/local-ch/record.json
 --- stderr ---
 warn: $.chunks[2]: unknown chunk "zzz" in the chunks attestation
 warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 --- files ---
 --- file C/.review/local-ch/findings.json ---
 []
@@ -27,7 +27,7 @@ c1.txt	NEW	1	2
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "f36ca45162f59055616676b9408a80fd8a63c3106bc9267db6697202e13bbfe0",
+  "prompts_hash": "66a0179cf58e46a57bbd16f0246527b03d06a49cb6667512d947d5d701d3f33f",
   "model": null
 }
 --- file C/.review/local-ch/store.json ---

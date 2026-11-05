@@ -28,22 +28,6 @@ func writeBundle(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// TestValidateBasisLine checks the basis-line garnish never fails the run.
-func TestValidateBasisLine(t *testing.T) {
-	if warns := provenance.ValidateBasisLine("0 0 0 1 0 0 0", "> Confidence: 3/5\n> Body here."); len(warns) != 1 {
-		t.Errorf("missing basis line warns = %v; want one warning", warns)
-	}
-	if warns := provenance.ValidateBasisLine("0 0 0 1 0 0 0", "> Basis: 0 0 0 1 0 0 0"); len(warns) != 0 {
-		t.Errorf("matching basis line warns = %v; want none", warns)
-	}
-	if warns := provenance.ValidateBasisLine("0 0 0 1 0 0 0", "> Basis: 1 2 3"); len(warns) != 1 {
-		t.Errorf("short basis line warns = %v; want one warning", warns)
-	}
-	if warns := provenance.ValidateBasisLine("0 0 0 2 0 0 0", "> Basis: 0 0 0 1 0 0 0"); len(warns) != 1 {
-		t.Errorf("mismatched basis line warns = %v; want one warning", warns)
-	}
-}
-
 // TestReviewBasisCounts checks expected counts derive from review comments.
 func TestReviewBasisCounts(t *testing.T) {
 	review := jq.NewObj("comments", []any{
@@ -226,5 +210,49 @@ func TestPromptsHashLayouts(t *testing.T) {
 				t.Errorf("PromptsHash = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestApplyBasisLine proves the CLI owns the line: a matching line is left
+// alone, a disagreeing line is replaced, and a missing line is inserted under
+// the leading blockquote lead.
+func TestApplyBasisLine(t *testing.T) {
+	const expected = "0 0 0 1 0 0 0"
+	checkMatchingBasis(t, expected)
+	checkReplacedBasis(t, expected)
+	checkInsertedBasis(t, expected)
+}
+
+// checkMatchingBasis proves a matching Basis line is left untouched.
+func checkMatchingBasis(t *testing.T, expected string) {
+	t.Helper()
+	body := "> Basis: " + expected + "\n> body"
+	if got, p := provenance.ApplyBasisLine(expected, body); p != nil || got != body {
+		t.Errorf("matching line changed: %q (%+v)", got, p)
+	}
+}
+
+// checkReplacedBasis proves a disagreeing Basis line is replaced with the
+// computed counts and reported.
+func checkReplacedBasis(t *testing.T, expected string) {
+	t.Helper()
+	got, p := provenance.ApplyBasisLine(expected, "> Confidence: 3/5\n> Basis: 9 9 9 9 9 9 9\n> body")
+	if p == nil || p.Code != core.ProblemCodeBasisReplaced || p.Example != "> Basis: "+expected {
+		t.Fatalf("mismatch problem = %+v", p)
+	}
+	if got != "> Confidence: 3/5\n> Basis: "+expected+"\n> body" {
+		t.Errorf("mismatch body = %q", got)
+	}
+}
+
+// checkInsertedBasis proves a missing Basis line is inserted with a warning.
+func checkInsertedBasis(t *testing.T, expected string) {
+	t.Helper()
+	got, p := provenance.ApplyBasisLine(expected, "> ✅ body")
+	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
+		t.Fatalf("missing problem = %+v", p)
+	}
+	if got != "> ✅ body\n> Basis: "+expected {
+		t.Errorf("missing body = %q", got)
 	}
 }
