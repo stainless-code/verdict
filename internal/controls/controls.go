@@ -194,6 +194,10 @@ func (s *Snapshot) ReadFile(rel string) ([]byte, bool) {
 	return raw, err == nil
 }
 
+// StrictInput reports the snapshot's strict_input control: warnings in the
+// agent's review.json become errors, and record refuses when any remain.
+func (s *Snapshot) StrictInput() bool { return s != nil && s.File.StrictInput }
+
 // OverridesDir is the snapshot's overrides fragment directory.
 func (s *Snapshot) OverridesDir() string { return filepath.Join(s.Dir, "overrides") }
 

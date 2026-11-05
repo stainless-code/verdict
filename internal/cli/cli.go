@@ -190,6 +190,10 @@ func (r *Runner) refusalObject(ref *RefusalError, msg string) *jq.Obj {
 	if ref.RetryAt != "" {
 		errObj.Set("retry_at", ref.RetryAt)
 	}
+	if ref.Problems != nil {
+		errObj.Set("problems", ref.Problems)
+		errObj.Set("problems_truncated", ref.ProblemsTruncated)
+	}
 	return errObj
 }
 

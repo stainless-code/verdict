@@ -106,7 +106,7 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	}
 	ro := mcp.ToolNames(true, false)
 	slices.Sort(ro)
-	_, rest, found := strings.Cut(flat, "--read-only expose only non-writing tools (")
+	_, rest, found := strings.Cut(flat, "--read-only expose read tools plus record dry_run (")
 	list, _, closed := strings.Cut(rest, ")")
 	if !found || !closed {
 		t.Fatal("help misses the --read-only tool list")

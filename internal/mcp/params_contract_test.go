@@ -193,7 +193,7 @@ func TestHiddenToolErrorContract(t *testing.T) {
 		},
 		{
 			readOnly: true,
-			call:     "record",
+			call:     "post",
 			requires: "a server started without --read-only",
 		},
 		{

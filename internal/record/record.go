@@ -23,18 +23,24 @@ type Request struct {
 	Root   string
 }
 
-// Run executes `record <owner/repo> <local-slug> [--json]`, returning the
+// Run executes `record <owner/repo> <local-slug> [--dry-run] [--strict]
+// [--json]`, returning the
 // process exit code. Human progress goes to the runner's human stream;
 // --json mode prints exactly one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	setupRunner(r, req)
-	if code, done := parseRecordFlags(r, args); done {
+	f, code, done := parseRecordFlags(r, args)
+	if done {
 		return code
 	}
+	r.Rentry = recordRentry(req, f, r.JSONMode)
 	if code, done := r.Canceled(ctx, "record"); done {
 		return code
 	}
-	resp, ref := recordcore.Run(ctx, recordRequest(r, req))
+	rc := recordRequest(r, req)
+	rc.DryRun = f.dryRun
+	rc.Strict = f.strict
+	resp, ref := recordcore.Run(ctx, rc)
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -67,16 +73,41 @@ func recordRequest(r *cli.Runner, req Request) *core.RecordRequest {
 // setupRunner records the invocation for envelopes and usage lines.
 func setupRunner(r *cli.Runner, req Request) {
 	r.Repo, r.Pr = req.Repo, req.Pr
-	r.Rentry = "verdict record " + req.Repo + " " + req.Pr
-	if r.JSONMode {
-		r.Rentry += " --json"
-	}
 }
 
-// parseRecordFlags rejects leftovers: record takes no verb-local flags.
-func parseRecordFlags(r *cli.Runner, args []string) (int, bool) {
-	if len(args) == 0 {
-		return 0, false
+type recordFlags struct {
+	dryRun bool
+	strict bool
+}
+
+// parseRecordFlags strips record's verb-local flags, reporting unknown ones.
+func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
+	var f recordFlags
+	for _, arg := range args {
+		switch arg {
+		case "--dry-run":
+			f.dryRun = true
+		case "--strict":
+			f.strict = true
+		default:
+			return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				"unknown flag '%s' for record (want --dry-run, --strict, --json)", arg)}), true
+		}
 	}
-	return r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for record (want --json)", args[0])}), true
+	return f, 0, false
+}
+
+// recordRentry rebuilds the exact re-run command after flag parsing.
+func recordRentry(req Request, f recordFlags, jsonMode bool) string {
+	s := "verdict record " + req.Repo + " " + req.Pr
+	if f.dryRun {
+		s += " --dry-run"
+	}
+	if f.strict {
+		s += " --strict"
+	}
+	if jsonMode {
+		s += " --json"
+	}
+	return s
 }

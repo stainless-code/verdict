@@ -35,8 +35,9 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
-		"  record <owner/repo> <local-slug> [--json]\n" +
+		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
+		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
 		"  adopt <owner/repo> <pr> --from <local-slug> [--json]\n" +
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
 		"    Adopt-into needs a GitHub PR target: non-GitHub targets refuse typed (provider-unimplemented).\n" +

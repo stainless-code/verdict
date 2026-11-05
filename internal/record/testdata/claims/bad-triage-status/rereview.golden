@@ -10,11 +10,12 @@ exit: 1
   "warnings": [],
   "data": null,
   "error": {
-    "code": "bad-triage-status",
-    "message": "refusing post: unknown triage status 'bogus' (want open|addressed|wont-fix|false-positive|deferred)\ntry: re-run with one of the valid values named above"
+    "code": "bad-review-input",
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "problems": [{"path":"$.triage[0].status","code":"bad-enum","level":"error","message":"unknown triage status \"bogus\"","fix":"use open|addressed|wont-fix|false-positive|deferred","example":"wont-fix"}],
+    "problems_truncated": 0
   }
 }
 --- stderr ---
-» anchors: 0 inline, 0 moved to body
 re-enter: verdict record acme/app local-kb --json
 --- files ---

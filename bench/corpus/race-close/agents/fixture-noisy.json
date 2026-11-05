@@ -19,7 +19,7 @@
         "line": 37,
         "side": "RIGHT",
         "body": "Debug logging on every borrow will be noisy in production.",
-        "rigor": "observed",
+        "rigor": "walked",
         "severity": "informational"
       }
     ]

@@ -207,6 +207,8 @@ func envelopeDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[SchemaError](), name: "error"},
 		{typ: reflect.TypeFor[Candidate](), name: "candidate"},
+		{typ: reflect.TypeFor[Problem](), name: "problem"},
+		{typ: reflect.TypeFor[CheckSummary](), name: "checkSummary"},
 		{typ: reflect.TypeFor[AnchorsSummary](), name: "anchorsSummary"},
 		{typ: reflect.TypeFor[FindingsCounts](), name: "findingsCounts"},
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},

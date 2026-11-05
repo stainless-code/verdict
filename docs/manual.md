@@ -164,11 +164,10 @@ store directly between runs with `verdict triage … --sig … --status … --ra
 (human supremacy, every override history-logged).
 
 Malformed agent input refuses typed (exit 1, machine envelope with `error.code`,
-nothing written — no `findings.json`/`record.json`, no KB credit): an unparsable
-`review.json` or a non-object document (`bad-review-input` / `bad-review-schema`),
-misshapen `comments[]`/`resolved[]`/`triage[]`/`sections[]` (non-object entries,
-non-string `path`/`body`/`suggestion`, non-string `resolved[]` items), and
-misshapen `verification.json` claims all fail closed as `bad-review-input`;
+nothing written — no `findings.json`/`record.json`, no KB credit). `record`
+reports every review-input problem at once as `bad-review-input` with
+`error.problems[]`; `post` keeps `bad-review-schema` for a non-object document.
+Misshapen `verification.json` claims fail closed as `bad-review-input`;
 a present-but-corrupt (or non-list) `findings.json` refuses as `corrupt-store` —
 the run never starts fresh, since that would silently lose history (restore from
 backup, then re-run). The read verbs apply the same guard to every entry:
@@ -178,6 +177,29 @@ unreadable `patch.json`), instead of dying mid-render with no envelope;
 `trend` warns and skips corrupt bundles, rolling up the readable ones, so one
 bad bundle never fails the whole audit. An unreadable `source.json` head degrades to the dirty-head
 path instead (`record.json` head reads `"dirty"`).
+
+### Review-input problems
+
+`record` and `record --dry-run` run the same pure checker over `review.json`
+and `full.diff` (`pkg/verdict.CheckReview`). It walks the document in order,
+collects every problem with its JSONPath and exact fix, caps the list at 50
+(`error.problems_truncated` counts the overflow), and refuses once as
+`bad-review-input`. A clean dry run exits 0, writes nothing, and reports
+`data.check` — comment, section, and moved-anchor counts. A warning alone exits
+0 and rides `warnings`; `--strict`, or `"strict_input": true` in the bundle's
+`controls.json`, promotes every warning to an error. The published code set
+(also the `problem.code` enum in `envelope.schema.json`):
+
+| Code                  | Level   | Meaning                                                                                                  |
+| --------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `invalid-json`        | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object. |
+| `wrong-type`          | error   | A published field carries the wrong JSON type.                                                           |
+| `missing-field`       | error   | A required field is absent.                                                                              |
+| `bad-enum`            | error   | A closed enum (schema_version, rigor, severity, triage status) is outside its values.                    |
+| `path-not-in-diff`    | error   | A comment anchors a path the fetched diff does not change.                                               |
+| `unknown-field`       | warning | A key is not in the published shape; the fix names the nearest known key.                                |
+| `anchor-outside-hunk` | warning | The line is provably outside every hunk; `record` moves the comment into the body.                       |
+| `rigor-unset`         | warning | A comment carries no evidence rung.                                                                      |
 
 ### Sig contract (sig_version 1)
 
@@ -321,7 +343,9 @@ snapshot the bytes into the bundle:
 | `.review/learnings.md`                          | the review agent (headings)           |
 | `.review/overrides/*.md` (four fragments)       | `record`/`post` body and footer       |
 
-`.review/N/controls/` holds the bytes and `.review/N/controls.json` records
+Set `"strict_input": true` in the bundle's `controls.json` to make `record`
+refuse on review-input warnings, the same as `--strict`. `.review/N/controls/`
+holds the bytes and `.review/N/controls.json` records
 `policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
 files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
 and `sha256` (schema: `schemas/controls.schema.json`). The base is `PR.json`'s base
@@ -601,18 +625,20 @@ become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
 a review and calls GitHub, so it is not exposed under `--read-only`.
 
-`--read-only` exposes only the seven non-submitting tools (`report`, `next`,
-`show`, `trend`, `ready`, `doctor`, `check-tree`) and is mutually exclusive with
-`--operator`. `report` writes nothing there: the surface drops its `output`
-and `sarif` arguments and refuses them as unknown. `threads` is not exposed at
-all, because it rewrites `.review/<pr>/threads.json` from the host. Every review
-verb except the human-owned `triage` is exposed by
-default because the host already authorizes the binary and its credentials.
-A call to a tool the flags hide is a JSON-RPC `-32602` error whose message and
-`data` name the tool and the flag combination that exposes it (`record` under
-`--read-only`, `triage` without `--operator`), so a hidden verb is never
-reported as an unknown one; a truly unknown name still answers
-`unknown tool`.
+`--read-only` exposes seven read tools (`report`, `next`, `show`, `trend`,
+`ready`, `doctor`, `check-tree`) plus `record` limited to its `dry_run: true`
+form, and is mutually exclusive with `--operator`. A non-dry `record` call
+there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
+`readOnlyHint: false` because the same tool writes by default. `report` writes
+nothing there either: the surface drops its `output` and `sarif` arguments and
+refuses them as unknown. `threads` is not exposed at all, because it rewrites
+`.review/<pr>/threads.json` from the host. Every review verb except the
+human-owned `triage` is exposed by default because the host already authorizes
+the binary and its credentials. A call to a tool the flags hide is a JSON-RPC
+`-32602` error whose message and `data` name the tool and the flag combination
+that exposes it (`post` under `--read-only`, `triage` without `--operator`), so
+a hidden verb is never reported as an unknown one; a truly unknown name still
+answers `unknown tool`.
 `--operator` adds `triage` (19 tools) for an operator's own assistant that is
 allowed to flip statuses; it is never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
@@ -1229,6 +1255,8 @@ never collide with a numeric PR dir; downstream verbs address the bundle as
 `record owner/repo local-<name>` runs the validate+merge half of `post` with no
 POST: hunk index, keep-biased anchor partition, sig merge with append-only history,
 resolved/verification/triage claims, writes `findings.json` + `record.json`.
+Add `--dry-run` to run every check and write nothing; `--strict` promotes
+review-input warnings to errors.
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

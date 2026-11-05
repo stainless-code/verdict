@@ -105,7 +105,18 @@
       "/$defs/fetchLocalData/properties/budget": "The resolved budget summary; present exactly when estimate is.",
       "/$defs/fetchLocalData/properties/cap": "The armed cost cap summary; absent when no cap is armed.",
       "/$defs/fetchLocalData/properties/chunk": "The chunk plan summary; absent when the run was not chunked.",
-      "/$defs/fetchLocalData/properties/prompt_dump": "Where the staged prompt was written; absent unless a dump was requested."
+      "/$defs/fetchLocalData/properties/prompt_dump": "Where the staged prompt was written; absent unless a dump was requested.",
+      "/$defs/error/properties/problems": "Review-input problems in document order (at most 50); present only on a bad-review-input refusal, with the exact fix for each.",
+      "/$defs/error/properties/problems_truncated": "How many problems were past the 50-problem cap; 0 when the list is complete.",
+      "/$defs/problem": "One review-input problem: its JSONPath in review.json, the published code, the level, the message, the exact fix, and an optional example of the accepted shape. --strict and controls strict_input promote warnings to errors.",
+      "/$defs/problem/properties/path": "JSONPath into review.json, for example $.comments[3].brief.questions.",
+      "/$defs/problem/properties/code": "Published problem-code enum; the envelope error.code stays bad-review-input.",
+      "/$defs/problem/properties/level": "error blocks record; warning lets it proceed and report what it did, unless strict input promotes it.",
+      "/$defs/problem/properties/fix": "The exact change that clears the problem.",
+      "/$defs/problem/properties/example": "Optional example of the accepted shape at this path.",
+      "/$defs/checkSummary": "What a clean dry run would record: comment and section counts plus anchors that would move to the body.",
+      "/$defs/recordData/properties/dry_run": "True only on record --dry-run; the run wrote no findings.json, record.json, or any new file.",
+      "/$defs/recordData/properties/check": "Present only on a clean dry run: the review-input summary."
     }
   },
   "findings": {
@@ -246,7 +257,8 @@
       "/$defs/file/properties/path": "The inventory path, relative to the repository root (.review/...).",
       "/$defs/file/properties/status": "used means materialized and safe to read; missing means absent at the source.",
       "/$defs/file/properties/bytes": "The exact bytes written to the snapshot.",
-      "/$defs/file/properties/sha256": "SHA-256 of the exact written bytes; post/record re-hash and refuse controls-stale on drift."
+      "/$defs/file/properties/sha256": "SHA-256 of the exact written bytes; post/record re-hash and refuse controls-stale on drift.",
+      "/properties/strict_input": "When true, record promotes review.json warnings to errors and refuses while any remain; absent means off."
     }
   }
 }

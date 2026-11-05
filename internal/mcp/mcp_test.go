@@ -352,24 +352,60 @@ func TestReadOnlyPolicy(t *testing.T) {
 	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
-	kept := false
+	kept := map[string]bool{}
 	for _, tool := range list.Tools {
 		switch tool.Name {
-		case "record", "post", "threads":
+		case "post", "threads":
 			t.Errorf("read-only list exposed %q", tool.Name)
-		case "report":
-			kept = true
+		case "report", "record":
+			kept[tool.Name] = true
 		}
 	}
-	if !kept {
-		t.Error("read-only list dropped report")
+	if !kept["report"] || !kept["record"] {
+		t.Error("read-only list dropped report or record")
 	}
-	if frames["2"].Error == nil || frames["2"].Error.Code != codeInvalidParams {
-		t.Fatalf("record in read-only = %+v, want -32602", frames["2"].Error)
+	if frames["2"].Error != nil {
+		t.Fatalf("record in read-only = %+v, want a tool result", frames["2"].Error)
 	}
-	if msg := frames["2"].Error.Message; !strings.Contains(msg, "is hidden") || !strings.Contains(msg, "--read-only") {
-		t.Errorf("record in read-only = %q, want a hidden-tool error naming --read-only", msg)
+	var refused callToolResult
+	if err := json.Unmarshal(frames["2"].Result, &refused); err != nil {
+		t.Fatal(err)
 	}
+	if !resultIsBadFlags(t, refused) {
+		t.Errorf("non-dry record in read-only = %+v, want an isError bad-flags refusal", refused)
+	}
+}
+
+// TestReadOnlyRecordDryRun proves the read-only gate lets dry_run through:
+// the refusal that follows names the bundle, not the read-only server.
+func TestReadOnlyRecordDryRun(t *testing.T) {
+	t.Parallel()
+	readOnly := allTools(true, false)
+	var record *tool
+	for _, tool := range readOnly {
+		if tool.name == "record" {
+			record = tool
+		}
+	}
+	if record == nil {
+		t.Fatal("read-only record tool is missing")
+	}
+	request, err := record.decode([]byte(`{"repo":"acme/app","pr":"local-nope","dry_run":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ref := record.invoke(context.Background(), request); ref == nil || ref.Code == "bad-flags" {
+		t.Fatalf("dry-run record refusal = %+v, want the bundle gate to speak first", ref)
+	}
+}
+
+// resultIsBadFlags reports whether a tool result is the read-only refusal.
+func resultIsBadFlags(t *testing.T, result callToolResult) bool {
+	t.Helper()
+	if !result.IsError {
+		return false
+	}
+	return strings.Contains(string(result.StructuredContent), `"code":"bad-flags"`)
 }
 
 // TestReadOnlyReportSchema proves the read-only schema offers no writing arg.

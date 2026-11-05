@@ -82,6 +82,12 @@ type SchemaError = core.SchemaError
 // Candidate is core's refusal suggestion.
 type Candidate = core.Candidate
 
+// Problem is one review-input problem inside an envelope refusal.
+type Problem = core.Problem
+
+// CheckSummary is what a clean review-input dry run would record.
+type CheckSummary = core.CheckSummary
+
 // AnchorsSummary is core's anchor tally.
 type AnchorsSummary = core.AnchorsSummary
 

@@ -20,7 +20,9 @@ import (
 var publishedSemantics = map[string]string{
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
-	"controls.schema.json": "2ddd29802d75842d77b50e6af8b7a4701cf6076d2a52ce845d6a557a60eb349c",
+	// strict_input: an optional controls.json field (default off) that lets
+	// record promote review-input warnings to errors. Additive only.
+	"controls.schema.json": "6a91e00e446d091935ed1e00e5ebfa533511a03a8d00aa183e04fbbc80205372",
 	// additive corpus.schema.json (new document; no existing schema property,
 	// required key, or type changed).
 	// additive corpus bug keywords (optional string array naming the defect in
@@ -48,7 +50,10 @@ var publishedSemantics = map[string]string{
 	// gate: an optional, nullable reportData.gate property plus the additive
 	// $defs/reportGate and $defs/gateDimension entries. No existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "644fb82935827a99228817590b7e9aa0d3ce36ece6652eb7dda1a364c48d2c0b",
+	// review-input problems: additive $defs/problem + $defs/checkSummary,
+	// optional error.problems/problems_truncated, and dry_run/check on
+	// recordData. Additions only.
+	"envelope.schema.json": "64cafe34940c4b9acbc6ec2c0484410f26151b91cacd04d83fae6bf65043f975",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

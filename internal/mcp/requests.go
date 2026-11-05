@@ -220,6 +220,7 @@ func wireReady(b *bindings, req *readycore.Request) {
 func decodeRecord(req *core.RecordRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
+	a.boolean("dry_run", &req.DryRun)
 }
 
 func wireRecord(b *bindings, req *core.RecordRequest) {

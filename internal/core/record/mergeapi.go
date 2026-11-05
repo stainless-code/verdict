@@ -43,6 +43,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	Pr           string
 	Cmd          string
 	Controls     *controls.Snapshot
+	HunkRows     []hunks.Hunk
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
@@ -92,15 +93,18 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		prov:         in.Prov,
 		dryRun:       in.DryRun,
 		controls:     in.Controls,
+		hunkRows:     in.HunkRows,
 	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {
 		return MergeResult{}, err
 	}
-	if err := writeFindings(st); err != nil {
-		return MergeResult{}, err
+	if !st.dryRun || st.cmd != "record" {
+		if err := writeFindings(st); err != nil {
+			return MergeResult{}, err
+		}
+		st.kb.CommitStaged(st.findingsFile, st.now)
 	}
-	st.kb.CommitStaged(st.findingsFile, st.now)
 	reportFindings(st)
 	if st.hunkN == 0 {
 		st.warn("no hunks indexed — anchors unchecked, everything kept")
@@ -253,6 +257,9 @@ func agentRefusal(err error) error {
 }
 
 func removeDerivedSnapshot(st *state) {
+	if st.dryRun {
+		return
+	}
 	if st.anchorHunks != st.dir+"/hunks.tsv" {
 		removeBestEffort(st.anchorHunks)
 	}

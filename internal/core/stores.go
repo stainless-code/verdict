@@ -130,10 +130,12 @@ type KBCredit struct {
 type RecordData struct { //nolint:govet // field order is the published property order
 	Dir             string         `json:"dir"`
 	Anchors         AnchorsSummary `json:"anchors"`
-	Findings        RecordFindings `inline:"true"           json:"findings"`
-	Confidence      *int           `json:"confidence"       max:"5"         min:"1"`
+	Findings        RecordFindings `inline:"true"            json:"findings"`
+	Confidence      *int           `json:"confidence"        max:"5"                min:"1"`
 	SecuritySummary *string        `json:"security_summary"`
 	Items           []FindingItem  `json:"items"`
+	DryRun          bool           `json:"dry_run,omitempty"`
+	Check           *CheckSummary  `anyOf:"null"             json:"check,omitempty"`
 	ConfidenceRaw   any            `json:"-"`
 	ItemsRaw        []any          `json:"-"`
 }
@@ -314,7 +316,7 @@ func (d *RecordData) Wire() *jq.Obj {
 	if items == nil {
 		items = findingItemsWire(d.Items)
 	}
-	return jq.NewObj(
+	o := jq.NewObj(
 		"dir", d.Dir,
 		"anchors", jq.NewObj(
 			"kept", d.Anchors.Kept,
@@ -330,6 +332,13 @@ func (d *RecordData) Wire() *jq.Obj {
 		"security_summary", strOrNull(d.SecuritySummary),
 		"items", items,
 	)
+	if d.DryRun {
+		o.Set("dry_run", true)
+	}
+	if d.Check != nil {
+		o.Set("check", d.Check)
+	}
+	return o
 }
 
 // findingItemsWire renders typed envelope summaries.

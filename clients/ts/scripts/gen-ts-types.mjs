@@ -68,7 +68,10 @@ function toTS(node, defs) {
   }
   if (node.const !== undefined) return JSON.stringify(node.const);
   if (Array.isArray(node.enum)) {
-    return node.enum.map((v) => JSON.stringify(v)).join(" | ");
+    const values = node.enum.map((v) => JSON.stringify(v));
+    const inline = values.join(" | ");
+    if (inline.length <= 70) return inline;
+    return "\n" + values.map((value) => `    | ${value}`).join("\n");
   }
   if (Array.isArray(node.anyOf)) return anyOfTS(node.anyOf, defs);
   const types = Array.isArray(node.type) ? node.type : [node.type];
@@ -140,8 +143,10 @@ function objectTS(node, defs) {
     const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
       ? name
       : JSON.stringify(name);
+    const rendered = toTS(sub, defs);
+    const separator = rendered.startsWith("\n") ? ":" : ": ";
     lines.push(
-      `  ${docComment((sub && sub.description) || "").replaceAll("\n", "\n  ")}${key}${optional}: ${toTS(sub, defs)};`,
+      `  ${docComment((sub && sub.description) || "").replaceAll("\n", "\n  ")}${key}${optional}${separator}${rendered};`,
     );
   }
   if (node.additionalProperties === true) {

@@ -5,12 +5,48 @@ export interface RefusalErrorBody {
   message: string;
   candidates?: Array<Candidate>;
   retry_at?: string;
+  /** Review-input problems in document order (at most 50); present only on a bad-review-input refusal, with the exact fix for each. */
+  problems?: Array<Problem>;
+  /** How many problems were past the 50-problem cap; 0 when the list is complete. */
+  problems_truncated?: number;
   [key: string]: unknown;
 }
 
 export interface Candidate {
   kind: string;
   suggestion: string;
+  [key: string]: unknown;
+}
+
+/** One review-input problem: its JSONPath in review.json, the published code, the level, the message, the exact fix, and an optional example of the accepted shape. --strict and controls strict_input promote warnings to errors. */
+export interface Problem {
+  /** JSONPath into review.json, for example $.comments[3].brief.questions. */
+  path: string;
+  /** Published problem-code enum; the envelope error.code stays bad-review-input. */
+  code:
+    | "anchor-outside-hunk"
+    | "bad-enum"
+    | "invalid-json"
+    | "missing-field"
+    | "path-not-in-diff"
+    | "rigor-unset"
+    | "unknown-field"
+    | "wrong-type";
+  /** error blocks record; warning lets it proceed and report what it did, unless strict input promotes it. */
+  level: "error" | "warning";
+  message: string;
+  /** The exact change that clears the problem. */
+  fix: string;
+  /** Optional example of the accepted shape at this path. */
+  example?: unknown;
+  [key: string]: unknown;
+}
+
+/** What a clean dry run would record: comment and section counts plus anchors that would move to the body. */
+export interface CheckSummary {
+  comments: number;
+  sections: number;
+  anchors_moved_to_body: number;
   [key: string]: unknown;
 }
 
@@ -182,6 +218,10 @@ export interface RecordData {
   confidence: number | null;
   security_summary: string | null;
   items: Array<FindingItem>;
+  /** True only on record --dry-run; the run wrote no findings.json, record.json, or any new file. */
+  dry_run?: boolean;
+  /** Present only on a clean dry run: the review-input summary. */
+  check?: CheckSummary | null;
   [key: string]: unknown;
 }
 

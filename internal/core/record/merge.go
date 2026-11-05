@@ -282,7 +282,10 @@ func (st *state) validateAnchors(body string) string {
 	if c, ok := st.review.Get("comments"); ok {
 		comments = jq.Elements(c)
 	}
-	hs := loadHunkRows(st.anchorHunks)
+	hs := st.hunkRows
+	if hs == nil {
+		hs = loadHunkRows(st.anchorHunks)
+	}
 	st.hunkRows = hs
 	for _, c := range comments {
 		m, ok := c.(*jq.Obj)

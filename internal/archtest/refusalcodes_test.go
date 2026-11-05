@@ -193,6 +193,8 @@ func isEmissionSource(path string) bool {
 
 // refusalCodesInPackage reports the refusal codes one package's sources carry
 // at an emission site.
+//
+//nolint:revive // one AST walk over every package file
 func refusalCodesInPackage(fset *token.FileSet, files []*ast.File) map[string][]string {
 	consts := packageStringConsts(files)
 	sighted := map[string][]string{}
@@ -205,11 +207,27 @@ func refusalCodesInPackage(fset *token.FileSet, files []*ast.File) map[string][]
 	}
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.CompositeLit); ok && isProblemLiteral(lit) {
+				return false
+			}
 			recordEmission(n, record)
 			return true
 		})
 	}
 	return sighted
+}
+
+// isProblemLiteral reports whether lit builds a review-input Problem, whose
+// code belongs to the separate problem-code enum rather than the refusal set.
+func isProblemLiteral(lit *ast.CompositeLit) bool {
+	switch typ := lit.Type.(type) {
+	case *ast.Ident:
+		return typ.Name == "Problem"
+	case *ast.SelectorExpr:
+		return typ.Sel.Name == "Problem"
+	default:
+		return false
+	}
 }
 
 // recordEmission reports the expression an emission site names. An emission

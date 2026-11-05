@@ -25,14 +25,18 @@ func (st *state) validateChunkMerge() (string, error) {
 		return "", ref
 	}
 	chunkHunks := dir + chunkHunksSuffix
-	removeBestEffort(chunkHunks)
-	removeBestEffort(dir + "/.chunk-hunks.tsv.part")
 	diffs, allHunks, ref := resolveChunkDiffs(st, chunks, refetch)
 	if ref != nil {
 		return "", ref
 	}
-	if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
-		return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
+	if st.dryRun {
+		st.hunkRows = allHunks
+	} else {
+		removeBestEffort(chunkHunks)
+		removeBestEffort(dir + "/.chunk-hunks.tsv.part")
+		if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
+			return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
+		}
 	}
 	if !concatEquals(diffs, dir+"/full.diff") {
 		st.warn(fmt.Sprintf(msgChunkDrifted, dir))
@@ -146,7 +150,9 @@ func resolveChunkDiffs(st *state, chunks []chunk, refetch string) ([]string, []h
 		allHunks = append(allHunks, hunks.Parse(string(raw))...)
 	}
 	if len(missing) > 0 {
-		removeBestEffort(chunkHunks)
+		if !st.dryRun {
+			removeBestEffort(chunkHunks)
+		}
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
 			msgChunkSnapMissing, strings.Join(missing, " "), refetch)}
 	}
@@ -200,6 +206,7 @@ type coverageInput struct {
 	claimed []any
 }
 
+//nolint:revive // coverage checks read as one block
 func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetch string) (string, error) {
 	chunks, names, claimed := in.chunks, in.names, in.claimed
 	chunkHunks := st.dir + chunkHunksSuffix
@@ -215,7 +222,9 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 		}
 	}
 	if len(missingDescs) > 0 {
-		removeBestEffort(chunkHunks)
+		if !st.dryRun {
+			removeBestEffort(chunkHunks)
+		}
 		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
 			msgChunkCoverage, len(names)-nMiss, len(names), strings.Join(missingDescs, ", "), refetch)}
 	}

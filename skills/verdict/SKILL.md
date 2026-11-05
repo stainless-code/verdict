@@ -68,7 +68,10 @@ Local changes (no PR): `verdict fetch-local owner/repo work
 [--staged] [--range A..B] [--base R] [--stash [n]] [-- paths...]` writes
 `.review/local-work/` (source.json instead of PR.json), the bundle is reviewed
 the same way, and `verdict record owner/repo local-work` merges it
-to `findings.json` — read with `report`, never `post` (no PR target).
+to `findings.json` — read with `report`, never `post` (no PR target). Before
+recording, run `verdict record <repo> <slug> --dry-run`, fix every problem it
+lists, repeat at most 3 rounds, and if problems remain stop and report them
+rather than recording a partial review.
 `adopt owner/repo 123 --from local-work` carries a local review into a fresh
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 

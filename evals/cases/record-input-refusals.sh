@@ -110,7 +110,7 @@ expect_refusal "R1 corrupt review.json" "bad-review-input"
 mk_local <<'EOF'
 [1,2]
 EOF
-expect_refusal "R2 non-object review.json" "bad-review-schema"
+expect_refusal "R2 non-object review.json" "bad-review-input"
 
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[5]}

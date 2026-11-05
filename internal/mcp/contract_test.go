@@ -104,7 +104,7 @@ func TestSurfaceSets(t *testing.T) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "doctor", "next", "ready", "report", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "doctor", "next", "ready", "record", "report", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}

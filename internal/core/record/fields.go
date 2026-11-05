@@ -32,6 +32,8 @@ const (
 	sigVersion1           = "1"
 	newline               = "\n"
 	prSuffix              = "/PR.json"
+	reviewSuffix          = "/review.json"
+	diffSuffix            = "/full.diff"
 	providerLocal         = "local"
 	localPrefix           = "local-"
 	corpusPrefix          = "corpus-"

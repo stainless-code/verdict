@@ -28,11 +28,13 @@ type Envelope struct { //nolint:govet // field order is the published property o
 }
 
 // SchemaError is a typed refusal inside the envelope.
-type SchemaError struct { //nolint:govet // field order is the published property order
-	Code       string      `json:"code"`
-	Message    string      `json:"message"`
-	Candidates []Candidate `json:"candidates,omitempty"`
-	RetryAt    string      `format:"date-time"          json:"retry_at,omitempty"`
+type SchemaError struct {
+	Code              string      `json:"code"`
+	Message           string      `json:"message"`
+	Candidates        []Candidate `json:"candidates,omitempty"`
+	RetryAt           string      `format:"date-time"                  json:"retry_at,omitempty"`
+	Problems          []Problem   `json:"problems,omitempty"`
+	ProblemsTruncated int         `json:"problems_truncated,omitempty"`
 }
 
 // Candidate is one refusal suggestion (oversize-fetch refusals only).

@@ -101,7 +101,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
+  "prompts_hash": "5df74f0ac22a9a92b7613405a47a9bfdec117313cac007c36569c11c80c7238b",
   "model": null
 }
 --- file C/.review/local-kb/store.json ---

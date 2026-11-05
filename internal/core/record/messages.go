@@ -51,24 +51,6 @@ const (
 
 	msgReviewNotObject = "review.json must hold a JSON object (agent must write {body, approved, comments[]})"
 
-	msgMalformedComments = "review.json carries malformed comments (want an array of {path, line, body, ...})"
-
-	msgNonObjectComment = "review.json carries a non-object comments[] entry (want {path, line, body, ...})"
-
-	msgNonStringScalar = "review.json carries a non-string path, body, or suggestion in a comments[] entry (want strings)"
-
-	msgMalformedResolved = "review.json carries malformed resolved (want an array of sig strings)"
-
-	msgNonStringResolved = "review.json carries a non-string resolved[] entry (want sig strings)"
-
-	msgMalformedTriage = "review.json carries malformed triage (want an array of {sig, status, rationale})"
-
-	msgNonObjectTriage = "review.json carries a non-object triage[] entry (want {sig, status, rationale})"
-
-	msgMalformedSections = "review.json carries malformed sections (want an array of {heading, severity})"
-
-	msgNonObjectSection = "review.json carries a non-object sections[] entry (want {heading, severity})"
-
 	msgMalformedVerifyClaims = "verification.json carries malformed claims (want an array of {sig, verdict, verifyCmd, resultHead})"
 
 	msgNonObjectVerifyClaim = "verification.json carries a non-object claim (want {sig, verdict, verifyCmd, resultHead})"
