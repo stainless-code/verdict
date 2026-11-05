@@ -237,7 +237,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 // localFinish owns the fetch-local tail: source.json, the done/next
 // lines, the opt-in chunks, and the typed data for the adapter's envelope.
 func localFinish(
-	_ context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
 	dir string, budget *budgetState, fc fetchCap, chunkActive bool, mode *localMode,
 	listed string, total, adds, dels int, diffSHA string,
 ) (*core.FetchData, string, error) {
@@ -245,6 +245,9 @@ func localFinish(
 	toolVersion := provenance.ToolVersion(ctx2.root)
 	now := core.NowUTC(r.Now())
 	model, _ := ctx2.env["REVIEW_MODEL"]
+	if err := writeIdentityFile(ctx, r.commander, dir, mode.headSHA, mode.baseSHA); err != nil {
+		return nil, "", err
+	}
 	if err := writeSourceJSON(dir, req.Repo, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now); err != nil {
 		return nil, "", err
 	}

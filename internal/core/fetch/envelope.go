@@ -225,6 +225,7 @@ func fetchData(
 	artifacts := jq.NewObj(
 		"PR.json", ctx2.dir+suffixPRJSON,
 		fullDiffFile, ctx2.dir+suffixFullDiff,
+		"identity.json", ctx2.dir+suffixIdentity,
 		"toc.txt", ctx2.dir+"/toc.txt",
 		"roles.txt", ctx2.dir+"/roles.txt",
 		"reviews.json", ctx2.dir+suffixReviewsJSON,
@@ -344,6 +345,7 @@ func localArtifacts(dir string) *jq.Obj {
 	artifacts := jq.NewObj(
 		"source.json", dir+"/source.json",
 		fullDiffFile, dir+suffixFullDiff,
+		"identity.json", dir+suffixIdentity,
 		"toc.txt", dir+"/toc.txt",
 		"roles.txt", dir+"/roles.txt",
 		"sensitive.txt", sensitiveVal(dir),

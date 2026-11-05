@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -133,7 +134,39 @@ func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) 
 	if posted != "" {
 		comp.PostedHead = &posted
 	}
+	completePatchIdentity(dir, comp)
 	return comp, reviewed, posted
+}
+
+// completePatchIdentity fills the same-patch comparison: the reviewed patch
+// id from the bundle identity, the posted patch id from the post receipt,
+// and same_patch when both are present and agree. A legacy bundle with no
+// identity keeps the SHA comparison; the caller warns.
+func completePatchIdentity(dir string, comp *core.ReportCompleteness) {
+	reviewed, ok := identity.Load(dir)
+	if !ok {
+		return
+	}
+	if reviewed.PatchID != nil {
+		comp.ReviewedPatchID = reviewed.PatchID
+	}
+	posted := readcommon.PostRecord(dir)
+	if posted == nil {
+		return
+	}
+	var patch, kind string
+	if v, ok := posted["patch_id"].(string); ok {
+		patch = v
+	}
+	if patch == "" {
+		return
+	}
+	if v, ok := posted["patch_id_kind"].(string); ok {
+		kind = v
+	}
+	comp.PostedPatchID = &patch
+	same := identity.Match(reviewed, &identity.Identity{PatchID: &patch, PatchIDKind: kind})
+	comp.SamePatch = &same
 }
 
 func refetchCommand(dir string, req core.ReadRequest, posted string) string {

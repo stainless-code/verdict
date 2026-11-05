@@ -92,7 +92,19 @@ type Post struct { //nolint:govet // field order is the published property order
 	ToolVersion     string         `json:"tool_version,omitempty"`
 	PromptsHash     string         `json:"prompts_hash,omitempty"`
 	Model           *string        `json:"model,omitempty"`
+	PatchID         *string        `json:"patch_id,omitempty"`
+	PatchIDKind     string         `json:"patch_id_kind,omitempty"`
+	Forced          []ForcedPost   `json:"forced,omitempty"`
 	ReviewRaw       any            `json:"-"`
+}
+
+// ForcedPost is one explicit --force bypass recorded in post.json: the fired
+// guard plus the prior bundle and head when a same-patch sibling refused.
+type ForcedPost struct { //nolint:govet // field order is the published property order
+	Reason         string  `json:"reason"`
+	PatchID        *string `json:"patch_id,omitempty"`
+	PreviousBundle *string `json:"previous_bundle,omitempty"`
+	PreviousHead   *string `json:"previous_head,omitempty"`
 }
 
 // Wire renders the post data object in wire order. The dry-run wire swaps
@@ -170,14 +182,15 @@ func (f *PostFindings) Wire() *jq.Obj {
 }
 
 // Wire renders the post receipt in wire order: the reviewed head, the
-// timestamps, the normalized confidence, and the provenance triple. Review
-// wins from the raw ordered object so GitHub's field order survives.
+// timestamps, the normalized confidence, the provenance triple, then the
+// patch identity and the explicit --force audit. Review wins from the raw
+// ordered object so GitHub's field order survives.
 func (p *Post) Wire() *jq.Obj {
 	review := p.ReviewRaw
 	if review == nil && p.Review != nil {
 		review = p.Review
 	}
-	return jq.NewObj(
+	o := jq.NewObj(
 		"schema_version", p.SchemaVersion,
 		"review", review,
 		"head", p.Head,
@@ -188,6 +201,23 @@ func (p *Post) Wire() *jq.Obj {
 		"prompts_hash", p.PromptsHash,
 		"model", Wire(p.Model),
 	)
+	setPostPatchWire(o, p)
+	if p.Forced != nil {
+		o.Set("forced", p.Forced)
+	}
+	return o
+}
+
+// setPostPatchWire appends the optional patch identity after the provenance
+// triple: both keys ride only when the bundle had an identity, so legacy
+// receipts keep their bytes.
+func setPostPatchWire(o *jq.Obj, p *Post) {
+	if p.PatchID != nil {
+		o.Set("patch_id", *p.PatchID)
+	}
+	if p.PatchIDKind != "" {
+		o.Set("patch_id_kind", p.PatchIDKind)
+	}
 }
 
 // findingSummariesWire renders typed post items in wire order.

@@ -129,6 +129,10 @@ func githubBundle(
 	if herr := buildHunksTSV(dir+suffixFullDiff, dir+"/hunks.tsv"); herr != nil {
 		return nil, "", herr
 	}
+	if err := writeIdentityFile(ctx, r.commander, dir,
+		readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)); err != nil {
+		return nil, "", err
+	}
 	if err := writeGitHubTOC(ctx, ctx2); err != nil {
 		return nil, "", err
 	}

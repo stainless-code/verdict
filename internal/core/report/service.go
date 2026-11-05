@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -206,6 +207,9 @@ func loadStateCompleteness(st *state) {
 		return
 	}
 	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA)
+	if _, ok := identity.Load(st.dir); !ok {
+		st.warn("patch identity unavailable — completeness compares heads")
+	}
 }
 
 func storeCounts(entries []any) core.ReportCounts {

@@ -6,5 +6,6 @@ gate: FAIL (1 fail, 1 skip)
 gate: skipped live_threads
 try: post a review for the fetched HEAD, then re-run gate
 --- stderr ---
+warn: patch identity unavailable — completeness compares heads
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 --- files ---

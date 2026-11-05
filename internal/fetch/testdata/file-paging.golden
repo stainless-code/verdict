@@ -40,6 +40,7 @@ exit: 0
     "artifacts": {
       "PR.json": ".review/4712/PR.json",
       "full.diff": ".review/4712/full.diff",
+      "identity.json": ".review/4712/identity.json",
       "toc.txt": ".review/4712/toc.txt",
       "roles.txt": ".review/4712/roles.txt",
       "reviews.json": ".review/4712/reviews.json",
@@ -216,6 +217,16 @@ diff --git a/f00.txt b/f00.txt
 --- file C/.review/4712/hunks.tsv ---
 f00.txt	OLD	1	1
 f00.txt	NEW	1	1
+--- file C/.review/4712/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "bfce35b0832e01d08de421099c7402f66c7a4dec",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "996640072ea7983094675c9a97b79a1eeda1c106e380fde688049097885935b0",
+  "raw_diff_sha256": "996640072ea7983094675c9a97b79a1eeda1c106e380fde688049097885935b0",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444"
+}
 --- file C/.review/4712/inline.json ---
 []
 --- file C/.review/4712/reviews.json ---

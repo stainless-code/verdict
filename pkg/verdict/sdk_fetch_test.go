@@ -42,6 +42,10 @@ const sdkPRJSON = `{"number":7,"title":"Add notes","body":"Body text.","baseRefN
 	`"files":[{"path":"notes.txt","additions":1,"deletions":1}],` +
 	`"additions":1,"deletions":1,"isDraft":false,"reviewDecision":"","state":"OPEN"}`
 
+// sdkPatchID is the canned `git patch-id --stable` stdout the SDK seam
+// answers, so identity assertions stay deterministic.
+const sdkPatchID = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d 0000000000000000000000000000000000000000\n"
+
 // sdkThreadsJSON is an empty authoritative review-thread read.
 const sdkThreadsJSON = `{"data":{"repository":{"pullRequest":{"reviewThreads":` +
 	`{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":""}}}}}}`
@@ -55,6 +59,7 @@ func fetchCommander(t *testing.T) *fakeCommander {
 		{tokens: []string{"gh pr view", "--jq"}, result: verdict.CommandResult{Stdout: "notes.txt (+1/-1)\n"}},
 		{tokens: []string{"gh pr view"}, result: verdict.CommandResult{Stdout: sdkPRJSON}},
 		{tokens: []string{"gh pr diff"}, result: verdict.CommandResult{Stdout: sdkDiff}},
+		{tokens: []string{"git", "patch-id"}, result: verdict.CommandResult{Stdout: sdkPatchID}},
 		{tokens: []string{"pulls/7/files"}, result: verdict.CommandResult{
 			Stdout: `[{"filename":"notes.txt","status":"modified","additions":1,"deletions":1,"changes":2}]`,
 		}},
@@ -73,6 +78,7 @@ func localCommander(t *testing.T) *fakeCommander {
 		{tokens: []string{"rev-parse", "--is-inside-work-tree"}, result: verdict.CommandResult{Stdout: "true\n"}},
 		{tokens: []string{"branch", "--show-current"}, result: verdict.CommandResult{Stdout: "work\n"}},
 		{tokens: []string{"rev-parse", "HEAD"}, result: verdict.CommandResult{Stdout: sdkHeadA + "\n"}},
+		{tokens: []string{"git", "patch-id"}, result: verdict.CommandResult{Stdout: sdkPatchID}},
 		{tokens: []string{"git", "ls-tree"}, result: verdict.CommandResult{}},
 		{tokens: []string{"diff", "--numstat"}, result: verdict.CommandResult{Stdout: "1\t1\tnotes.txt\n"}},
 		{tokens: []string{"diff", "--no-renames"}, result: verdict.CommandResult{Stdout: "notes.txt\n"}},

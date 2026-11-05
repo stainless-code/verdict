@@ -31,6 +31,7 @@ exit: 0
     "artifacts": {
       "source.json": ".review/local-demo/source.json",
       "full.diff": ".review/local-demo/full.diff",
+      "identity.json": ".review/local-demo/identity.json",
       "toc.txt": ".review/local-demo/toc.txt",
       "roles.txt": ".review/local-demo/roles.txt",
       "sensitive.txt": null
@@ -142,6 +143,16 @@ index 163ed5c..6b7bc77 100644
 --- file C/.review/local-demo/hunks.tsv ---
 notes.txt	OLD	1	3
 notes.txt	NEW	1	3
+--- file C/.review/local-demo/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "629bd79c5de4baa96064efadc30ce2c7dbede9be",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "7680fad8d868f079f78eb8835c05adf01c6f5a49a9aa264e4483a7866cf7802a",
+  "raw_diff_sha256": "7680fad8d868f079f78eb8835c05adf01c6f5a49a9aa264e4483a7866cf7802a",
+  "head_sha": "35abf74931c893e37e1ab812d324e6ee618081aa",
+  "base_sha": "e379897b82c6a9586a0c8f13b612a022eb952230"
+}
 --- file C/.review/local-demo/roles.txt ---
 ## docs
 - notes.txt

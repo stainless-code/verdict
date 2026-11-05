@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -359,6 +361,27 @@ const noDiffHeaders = "(no diff headers — empty diff?)\n"
 // countNewlines counts the newline bytes.
 func countNewlines(s string) int {
 	return strings.Count(s, newline)
+}
+
+// writeIdentityFile builds the bundle patch identity over the raw diff and
+// writes identity.json beside it. It prefers full.raw.diff when an exclusion
+// pass left one, else the bundle full.diff. A write failure refuses
+// fetch-failed: the identity is part of the bundle contract, not an
+// advisory receipt.
+func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) error {
+	rawPath := dir + suffixFullDiff
+	if _, err := os.Stat(dir + suffixRawDiff); err == nil {
+		rawPath = dir + suffixRawDiff
+	}
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", rawPath, err)}
+	}
+	id := identity.Build(ctx, cmdr, raw, head, base)
+	if err := atomic.WriteFile(dir+suffixIdentity, []byte(jq.PrettyOrdered(id.Wire()))); err != nil {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/identity.json: %v", dir, err)}
+	}
+	return nil
 }
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.

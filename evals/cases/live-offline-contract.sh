@@ -168,7 +168,7 @@ fi
 set_mode open
 run_review report acme/app "$PR" --check critical --completeness --live skip --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.error == null and .warnings == ["live recheck skipped (--live skip requested — gating on local dimensions only)"]' <"$EVAL_OUT" >/dev/null 2>&1; then
+  && jq -e '.error == null and .warnings == ["patch identity unavailable — completeness compares heads","live recheck skipped (--live skip requested — gating on local dimensions only)"]' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "skip --json keeps the success shape with the skip in warnings[]"
 else
   bad "skip --json exits $EVAL_STATUS: $(jq -c '{error:.error,warnings:.warnings}' <"$EVAL_OUT" 2>/dev/null)"

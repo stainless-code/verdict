@@ -63,4 +63,6 @@ const (
 
 const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
 
+const codeAlreadyPosted = "already-posted"
+
 const codeMissingReviewFile = "missing-review-file"

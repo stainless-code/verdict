@@ -61,6 +61,11 @@ var hintRules = []HintRule{
 		"schemas/usage.schema.json, then re-run"},
 	{codes: []string{"duplicate-payload"}, hint: "try: re-run with --force to repost the identical payload — " +
 		"re-fetch if the earlier review was deleted"},
+	{codes: []string{"already-reviewed-patch"}, hint: "try: re-run with --force to post the same change again, " +
+		"or fetch the delta/base for a new review"},
+	{codes: []string{"no-patch-match"}, hint: "try: pass --from <local-slug>, or re-fetch the target bundle " +
+		"so identity.json exists"},
+	{codes: []string{"ambiguous-patch-match"}, hint: "try: pass the exact --from <local-slug> named above"},
 	{codes: []string{"already-posted"}, hint: "try: re-run with --force to override, or fetch --base-sha " +
 		"<posted-head> for the delta and review it instead — re-fetch if the earlier review was deleted"},
 	{codes: []string{"degenerate-body"}, hint: "try: open with a verdict marker (see prompts/review.md), then re-run"},

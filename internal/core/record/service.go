@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -307,6 +308,9 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 		PromptsHash:     promptsHash,
 		Model:           modelOrNil(model),
 		Repairs:         repairList(st.repairs),
+	}
+	if ident, ok := identity.Load(dir); ok {
+		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{

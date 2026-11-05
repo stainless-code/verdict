@@ -33,8 +33,47 @@
     "model": {
       "description": "First model of the latest cost record, else null when no cost record names one.",
       "type": ["string", "null"]
+    },
+    "patch_id": {
+      "description": "Bundle patch id the post reviewed, copied from identity.json; absent when the bundle had no identity.",
+      "type": ["string", "null"]
+    },
+    "patch_id_kind": {
+      "description": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity.",
+      "type": "string"
+    },
+    "forced": {
+      "description": "One entry per guard --force bypassed, in guard order; absent when the post needed no override.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/forcedPost" }
     }
   },
   "required": ["schema_version", "review", "head", "posted_at"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "$defs": {
+    "forcedPost": {
+      "description": "One explicit --force bypass: the fired guard plus the prior bundle and head when a same-patch sibling refused.",
+      "type": "object",
+      "properties": {
+        "reason": {
+          "description": "The fired guard (already-posted, duplicate-payload, already-reviewed-patch).",
+          "type": "string"
+        },
+        "patch_id": {
+          "description": "Patch id the refused sibling shared, for the same-patch bypass; else null.",
+          "type": ["string", "null"]
+        },
+        "previous_bundle": {
+          "description": "Sibling bundle slug the bypass overrode, for the same-patch bypass; else null.",
+          "type": ["string", "null"]
+        },
+        "previous_head": {
+          "description": "Prior reviewed head the bypass overrode, for same-SHA and same-patch bypasses; else null.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["reason"],
+      "additionalProperties": true
+    }
+  }
 }

@@ -5,6 +5,7 @@ report: .review/5102 (1 shown) open=1 head=aaaaaaa
 by category: untagged 1
 next: address open threads
 --- stderr ---
+warn: patch identity unavailable — completeness compares heads
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
 check: HEAD aaaaaaa reviewed (post matches fetch) — completeness passes

@@ -38,6 +38,7 @@ exit: 0
     "artifacts": {
       "PR.json": ".review/4716/PR.json",
       "full.diff": ".review/4716/full.diff",
+      "identity.json": ".review/4716/identity.json",
       "toc.txt": ".review/4716/toc.txt",
       "roles.txt": ".review/4716/roles.txt",
       "reviews.json": ".review/4716/reviews.json",

@@ -83,4 +83,4 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 }
 
 // msgUnknownFlag is the frozen unknown-flag usage text.
-const msgUnknownFlag = "unknown flag '%s' for adopt (want --from <local-slug>, --json)"
+const msgUnknownFlag = "unknown flag '%s' for adopt (want --from <local-slug>|auto, --json)"

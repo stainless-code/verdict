@@ -335,7 +335,19 @@
       "properties": {
         "reviewed": { "type": "boolean" },
         "fetched_head": { "type": ["string", "null"] },
-        "posted_head": { "type": ["string", "null"] }
+        "posted_head": { "type": ["string", "null"] },
+        "same_patch": {
+          "description": "True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id.",
+          "type": ["boolean", "null"]
+        },
+        "reviewed_patch_id": {
+          "description": "Patch id the bundle identity carried at review time; absent when the bundle had no identity.",
+          "type": ["string", "null"]
+        },
+        "posted_patch_id": {
+          "description": "Patch id the completed post receipt carried; absent when the post predates patch identity.",
+          "type": ["string", "null"]
+        }
       },
       "required": ["reviewed", "fetched_head", "posted_head"],
       "additionalProperties": true

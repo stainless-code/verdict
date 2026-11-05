@@ -8,6 +8,7 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "address open threads",
   "warnings": [
+    "patch identity unavailable — completeness compares heads",
     "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)"
   ],
   "data": {
@@ -102,6 +103,7 @@ exit: 1
   "error": null
 }
 --- stderr ---
+warn: patch identity unavailable — completeness compares heads
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)
 check: incomplete — no completed post for HEAD aaaaaaa (missing-post: run verdict fetch acme/app 5102, then review + post, then re-check)
 --- files ---
