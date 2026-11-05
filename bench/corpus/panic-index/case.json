@@ -6,17 +6,17 @@
   "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
-    "injected": "A split result is indexed without a length check, so a malformed line panics.",
+    "injected": "The split-length guard is replaced by a check that can never fail, so a line without a separator panics on parts[1].",
     "source": "bench/corpus/panic-index/full.diff",
     "note": "deterministic fixture; no real repository"
   },
   "bugs": [
     {
       "path": "parse.go",
-      "line": 13,
+      "line": 23,
       "kind": "index-out-of-range",
       "severity": "important",
-      "note": "parts[1] is indexed without checking the split length"
+      "note": "parts[1] is indexed after a guard that only rejects an empty split, so a line without a separator panics"
     }
   ]
 }

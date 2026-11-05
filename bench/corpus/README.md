@@ -8,7 +8,9 @@ review bundle with ground truth:
 ```
 bench/corpus/<case-id>/
   case.json                 # ground truth + provenance (skills/verdict/schemas/corpus.schema.json)
-  full.diff                 # the reviewed change, with the bug lines in hunks
+  full.diff                 # real git diff of the reviewed change, with the bug lines in hunks
+  snapshots/<file>.before   # the reviewed base tree
+  snapshots/<file>.after    # the reviewed head tree
   agents/<model>.json       # a fake agent output (canned review.json)
 ```
 
@@ -36,9 +38,15 @@ fixtures.
 
 ## Adding a seeded case
 
-1. Create `bench/corpus/<case-id>/`.
-2. Write `full.diff` with at least one hunk covering every bug line and every
-   false-positive line the fake agents cite (NEW side).
+1. Create `bench/corpus/<case-id>/` with `snapshots/<file>.before` and
+   `snapshots/<file>.after`: the reviewed base and the reviewed head.
+2. Generate `full.diff` with real `git diff` between those snapshots — commit
+   the before tree, write the after files over it, and capture the diff — so
+   `git apply --check` accepts it against the before tree. Use enough context
+   that every bug line and every false-positive line the fake agents cite is
+   on the NEW side, and take the ground-truth `bugs[].line` from the new-side
+   numbers. `go test ./internal/core/corpus/` proves each diff applies,
+   reproduces its after tree, and adds every ground-truth line.
 3. Write `case.json`: `kind: "seeded"`, `provenance.injected` naming the
    defect, and one `bugs[]` entry per known defect (`path`, `line`, `kind`,
    `severity`).

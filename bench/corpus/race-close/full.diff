@@ -1,10 +1,23 @@
 diff --git a/pool.go b/pool.go
-index 1111111..2222222 100644
+index d84bfe1..0452068 100644
 --- a/pool.go
 +++ b/pool.go
-@@ -85,13 +85,13 @@ func (p *Pool) release(c *conn) {
+@@ -34,9 +34,9 @@ func NewPool(size int) *Pool {
+ func (p *Pool) Borrow(ctx context.Context) (*conn, error) {
+ 	select {
+ 	case c := <-p.free:
++		slog.Debug("pool borrow", "conn", c.id)
+ 		return c, nil
+ 	case <-ctx.Done():
+-		slog.Warn("pool exhausted", "size", p.size)
+ 		return nil, errors.New("pool: exhausted")
+ 	}
+ }
+@@ -45,6 +45,7 @@ func (p *Pool) release(c *conn) {
  	p.mu.Lock()
  	defer p.mu.Unlock()
--	go c.Close()
  	p.free <- c
 +	go c.Close()
+ }
+ 
+ func (p *Pool) Release(c *conn) {

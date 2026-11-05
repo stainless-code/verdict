@@ -13,7 +13,7 @@
   "bugs": [
     {
       "path": "upload.go",
-      "line": 24,
+      "line": 31,
       "kind": "missing-error-check",
       "severity": "important",
       "note": "copy result is ignored, so a short write reports success"

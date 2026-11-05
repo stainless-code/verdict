@@ -13,10 +13,10 @@
   "bugs": [
     {
       "path": "query.go",
-      "line": 77,
+      "line": 26,
       "kind": "injection",
       "severity": "critical",
-      "note": "user name is formatted into the SQL text instead of bound as a parameter"
+      "note": "user name is concatenated into the SQL text instead of bound as a parameter"
     }
   ]
 }

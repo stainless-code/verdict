@@ -8,7 +8,7 @@
     "comments": [
       {
         "path": "middleware.go",
-        "line": 52,
+        "line": 23,
         "side": "RIGHT",
         "body": "The role comparison is inverted; reject when role != \"admin\".",
         "rigor": "walked",

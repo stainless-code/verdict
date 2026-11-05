@@ -1,0 +1,67 @@
+package sessions
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"time"
+)
+
+var (
+	errNoSession = errors.New("session not found")
+	errNoUser    = errors.New("session has no user")
+)
+
+type User struct {
+	ID    string
+	Email string
+}
+
+type Session struct {
+	ID        string
+	User      *User
+	ExpiresAt time.Time
+}
+
+type Store interface {
+	Lookup(ctx context.Context, id string) (*Session, error)
+	Touch(ctx context.Context, id string) error
+}
+
+type Service struct {
+	store Store
+	now   func() time.Time
+}
+
+func New(store Store) *Service {
+	return &Service{store: store, now: time.Now}
+}
+
+func (s *Service) Handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, err := s.LookupUser(r.Context(), r.Header.Get("X-Session-Id"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("X-User-Id", user.ID)
+	}
+}
+
+func (s *Service) LookupUser(ctx context.Context, id string) (*User, error) {
+	session, err := s.store.Lookup(ctx, id)
+	user := session.User
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errNoUser
+	}
+	if s.now().After(session.ExpiresAt) {
+		return nil, errNoSession
+	}
+	if err := s.store.Touch(ctx, id); err != nil {
+		return nil, err
+	}
+	return user, nil
+}

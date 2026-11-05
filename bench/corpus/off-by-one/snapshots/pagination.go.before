@@ -1,0 +1,59 @@
+package paginate
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+func page(xs []int) {
+	header := buildHeader(xs)
+	rows := format(header)
+	for _, row := range rows {
+		emit(row)
+	}
+}
+
+func buildHeader(xs []int) []string {
+	out := make([]string, 0, len(xs))
+	for i, x := range xs {
+		out = append(out, fmt.Sprintf("%d:%d", i, x))
+	}
+	return out
+}
+
+func format(header []string) []string {
+	rows := make([]string, 0, len(header))
+	for _, h := range header {
+		rows = append(rows, strings.ToUpper(h))
+	}
+	return rows
+}
+
+func emit(row string) {
+	if row == "" {
+		return
+	}
+	row = strings.TrimSpace(row)
+	fmt.Println(row)
+}
+
+func pageEach(xs []int) {
+	for i := 0; i < len(xs); i++ {
+		emit(fmt.Sprintf("%d", xs[i]))
+	}
+}
+
+func fetchAll(ctx context.Context) {
+	out := make([]string, 0, 8)
+	next := "1"
+	for next != "" {
+		page, err := fetchPage(ctx, next)
+		if err != nil {
+			return
+		}
+		out = append(out, page.rows...)
+		next = page.next
+	}
+	emit(strings.Join(out, "\n"))
+}

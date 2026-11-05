@@ -8,7 +8,7 @@
     "comments": [
       {
         "path": "session.go",
-        "line": 31,
+        "line": 53,
         "side": "RIGHT",
         "body": "Check the lookup error before dereferencing session.",
         "rigor": "walked",

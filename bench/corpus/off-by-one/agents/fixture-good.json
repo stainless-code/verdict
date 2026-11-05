@@ -8,9 +8,9 @@
     "comments": [
       {
         "path": "pagination.go",
-        "line": 10,
+        "line": 11,
         "side": "RIGHT",
-        "body": "Header helper naming nit: buildHeader could live with the renderer.",
+        "body": "The rename to renderRows reads well; buildHeader could move next to it.",
         "rigor": "observed",
         "severity": "informational"
       },
@@ -24,7 +24,7 @@
       },
       {
         "path": "pagination.go",
-        "line": 58,
+        "line": 51,
         "side": "RIGHT",
         "body": "The fetchPage error is discarded; propagate it instead of breaking on next == \"\".",
         "rigor": "pointed",

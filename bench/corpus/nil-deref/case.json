@@ -13,7 +13,7 @@
   "bugs": [
     {
       "path": "session.go",
-      "line": 31,
+      "line": 53,
       "kind": "nil-deref",
       "severity": "critical",
       "note": "session is dereferenced before the lookup error is checked"

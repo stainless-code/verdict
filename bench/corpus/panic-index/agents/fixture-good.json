@@ -8,7 +8,7 @@
     "comments": [
       {
         "path": "parse.go",
-        "line": 13,
+        "line": 23,
         "side": "RIGHT",
         "body": "Check len(parts) before indexing parts[1].",
         "rigor": "pointed",

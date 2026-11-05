@@ -8,9 +8,9 @@
     "comments": [
       {
         "path": "files.go",
-        "line": 20,
+        "line": 37,
         "side": "RIGHT",
-        "body": "The error message repeats the full path; keep it relative to root.",
+        "body": "The %q verb double-quotes the whole path in the error.",
         "rigor": "observed",
         "severity": "informational"
       }

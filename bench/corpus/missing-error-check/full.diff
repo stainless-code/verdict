@@ -1,10 +1,36 @@
 diff --git a/upload.go b/upload.go
-index 1111111..2222222 100644
+index b7ad490..9cfc024 100644
 --- a/upload.go
 +++ b/upload.go
-@@ -21,13 +21,13 @@ func store(ctx context.Context, r io.Reader) error {
+@@ -28,10 +28,7 @@ func (s *Store) Save(ctx context.Context, name string, r io.Reader) error {
+ 		return err
+ 	}
  	defer f.Close()
--	n, err := io.Copy(dst, r)
-+	n, _ := io.Copy(dst, r)
+-	n, err := io.Copy(f, r)
+-	if err != nil {
+-		return err
+-	}
++	n, _ := io.Copy(f, r)
  	if n == 0 {
- 		return errors.New("empty upload")
+ 		return errEmpty
+ 	}
+@@ -39,17 +36,13 @@ func (s *Store) Save(ctx context.Context, name string, r io.Reader) error {
+ }
+ 
+ func (s *Store) Remove(ctx context.Context, name string) error {
+-	full := filepath.Join(s.dir, name)
+-	if err := os.Remove(full); err != nil {
+-		return err
+-	}
+-	return nil
++	return os.Remove(filepath.Join(s.dir, name))
+ }
+ 
+ func (s *Store) Size(name string) (int64, error) {
+ 	info, err := os.Stat(filepath.Join(s.dir, name))
+ 	if err != nil {
+-		return 0, fmt.Errorf("stat: %w", err)
++		return 0, fmt.Errorf("stat %q: %w", name, err)
+ 	}
+ 	return info.Size(), nil
+ }

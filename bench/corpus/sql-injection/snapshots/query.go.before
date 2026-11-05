@@ -1,0 +1,59 @@
+package users
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
+
+var errNotFound = errors.New("user not found")
+
+type User struct {
+	ID    int64
+	Name  string
+	Email string
+}
+
+type Repo struct {
+	db *sql.DB
+}
+
+func NewRepo(db *sql.DB) *Repo {
+	return &Repo{db: db}
+}
+
+func (r *Repo) FindByName(ctx context.Context, name string) (*User, error) {
+	q := "select id, name, email from users where name = $1"
+	row := r.db.QueryRowContext(ctx, q, name)
+	u := User{}
+	if err := row.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *Repo) Recent(ctx context.Context, limit int) ([]User, error) {
+	rows, err := r.db.QueryContext(ctx, "select id, name, email from users order by id desc limit $1", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]User, 0, limit)
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repo) Rename(ctx context.Context, id int64, name string) error {
+	q := "update users set name = $1 where id = $2"
+	_, err := r.db.ExecContext(ctx, q, name, id)
+	return err
+}

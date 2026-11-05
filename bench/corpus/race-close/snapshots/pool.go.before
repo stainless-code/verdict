@@ -1,0 +1,65 @@
+package pool
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"sync"
+)
+
+type conn struct {
+	id     int
+	closed bool
+}
+
+func (c *conn) Close() error {
+	c.closed = true
+	return nil
+}
+
+type Pool struct {
+	mu   sync.Mutex
+	free chan *conn
+	size int
+}
+
+func NewPool(size int) *Pool {
+	p := &Pool{free: make(chan *conn, size), size: size}
+	for i := 0; i < size; i++ {
+		p.free <- &conn{id: i}
+	}
+	return p
+}
+
+func (p *Pool) Borrow(ctx context.Context) (*conn, error) {
+	select {
+	case c := <-p.free:
+		return c, nil
+	case <-ctx.Done():
+		slog.Warn("pool exhausted", "size", p.size)
+		return nil, errors.New("pool: exhausted")
+	}
+}
+
+func (p *Pool) release(c *conn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.free <- c
+}
+
+func (p *Pool) Release(c *conn) {
+	p.release(c)
+}
+
+func (p *Pool) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	close(p.free)
+	return nil
+}
+
+func (p *Pool) Stats() (int, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.size, len(p.free)
+}

@@ -8,9 +8,9 @@
     "comments": [
       {
         "path": "query.go",
-        "line": 82,
+        "line": 56,
         "side": "RIGHT",
-        "body": "Consider naming the local row variable found instead of u.",
+        "body": "The rename to stmt reads better than q.",
         "rigor": "observed",
         "severity": "informational"
       }

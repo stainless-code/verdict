@@ -1,12 +1,24 @@
 diff --git a/session.go b/session.go
-index 1111111..2222222 100644
+index 722cd6b..40ffb1e 100644
 --- a/session.go
 +++ b/session.go
-@@ -28,16 +28,16 @@ func lookup(ctx context.Context, id string) (*Session, error) {
- 	session, err := store.Lookup(ctx, id)
+@@ -50,10 +50,11 @@ func (s *Service) Handler() http.HandlerFunc {
+ 
+ func (s *Service) LookupUser(ctx context.Context, id string) (*User, error) {
+ 	session, err := s.store.Lookup(ctx, id)
++	user := session.User
  	if err != nil {
  		return nil, err
  	}
--	user := session.User
-+	user := session.User
+-	if session.User == nil {
 +	if user == nil {
+ 		return nil, errNoUser
+ 	}
+ 	if s.now().After(session.ExpiresAt) {
+@@ -62,5 +63,5 @@ func (s *Service) LookupUser(ctx context.Context, id string) (*User, error) {
+ 	if err := s.store.Touch(ctx, id); err != nil {
+ 		return nil, err
+ 	}
+-	return session.User, nil
++	return user, nil
+ }

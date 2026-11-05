@@ -20,10 +20,10 @@
     },
     {
       "path": "pagination.go",
-      "line": 58,
+      "line": 51,
       "kind": "missing-error-check",
       "severity": "important",
-      "note": "fetchPage error is dropped and the loop treats a failed page as empty"
+      "note": "fetchPage error is dropped, so a failed page is read as if it succeeded"
     }
   ]
 }

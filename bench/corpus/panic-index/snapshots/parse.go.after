@@ -1,0 +1,32 @@
+package parse
+
+import (
+	"errors"
+	"strings"
+)
+
+var errEmptyLine = errors.New("empty line")
+
+func Split(line string) (string, string, error) {
+	parts := strings.SplitN(line, "=", 2)
+	if len(parts) != 2 {
+		return "", "", errEmptyLine
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
+}
+
+func FirstField(line string) string {
+	parts := strings.SplitN(line, "=", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
+func pair(line string) (string, string) {
+	key, value := "", ""
+	if parts := strings.SplitN(line, "=", 2); len(parts) == 2 {
+		key, value = parts[0], parts[1]
+	}
+	return key, value
+}

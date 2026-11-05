@@ -1,0 +1,57 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"example.com/gateway/identity"
+)
+
+var errForbidden = errors.New("forbidden")
+
+func routes(mux *http.ServeMux) {
+	mux.Handle("/admin/audit", requireAdmin(http.HandlerFunc(audit)))
+	mux.Handle("/admin/users", requireAdmin(http.HandlerFunc(users)))
+	mux.HandleFunc("/healthz", health)
+}
+
+func requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		role := identity.RoleFrom(ctx)
+		if role == "admin" {
+			http.Error(w, errForbidden.Error(), http.StatusForbidden)
+			return
+		}
+		identity.Event(ctx, "admin.access", role, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func audit(w http.ResponseWriter, r *http.Request) {
+	events, err := identity.Recent(r.Context(), 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, events)
+}
+
+func users(w http.ResponseWriter, r *http.Request) {
+	list, err := identity.Users(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, list)
+}
+
+func health(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}

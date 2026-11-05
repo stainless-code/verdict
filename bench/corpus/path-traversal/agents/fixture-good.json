@@ -8,9 +8,9 @@
     "comments": [
       {
         "path": "files.go",
-        "line": 16,
+        "line": 28,
         "side": "RIGHT",
-        "body": "Clean and confine name under root before joining, or reject .. segments.",
+        "body": "Resolve must confine name under root, or reject .. segments before joining.",
         "rigor": "walked",
         "severity": "critical"
       }

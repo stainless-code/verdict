@@ -13,7 +13,7 @@
   "bugs": [
     {
       "path": "middleware.go",
-      "line": 52,
+      "line": 23,
       "kind": "auth-bypass",
       "severity": "critical",
       "note": "the role check is inverted, so non-admins pass"

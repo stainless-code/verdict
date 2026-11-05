@@ -8,7 +8,7 @@
     "comments": [
       {
         "path": "pool.go",
-        "line": 88,
+        "line": 48,
         "side": "RIGHT",
         "body": "Wait for the close before returning the conn to the pool.",
         "rigor": "reproduced",

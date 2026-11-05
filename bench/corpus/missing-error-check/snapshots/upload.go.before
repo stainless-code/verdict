@@ -1,0 +1,55 @@
+package upload
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+var errEmpty = errors.New("empty upload")
+
+type Store struct {
+	dir string
+}
+
+func NewStore(dir string) *Store {
+	return &Store{dir: dir}
+}
+
+func (s *Store) Save(ctx context.Context, name string, r io.Reader) error {
+	if err := os.MkdirAll(s.dir, 0o750); err != nil {
+		return err
+	}
+	f, err := os.Create(filepath.Join(s.dir, name))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	n, err := io.Copy(f, r)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errEmpty
+	}
+	return f.Sync()
+}
+
+func (s *Store) Remove(ctx context.Context, name string) error {
+	full := filepath.Join(s.dir, name)
+	if err := os.Remove(full); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) Size(name string) (int64, error) {
+	info, err := os.Stat(filepath.Join(s.dir, name))
+	if err != nil {
+		return 0, fmt.Errorf("stat: %w", err)
+	}
+	return info.Size(), nil
+}

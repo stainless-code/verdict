@@ -6,17 +6,17 @@
   "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
-    "injected": "A connection is released to the pool while a goroutine is still closing it, so another borrower can use a closed conn.",
+    "injected": "A connection goes back into the pool and is then closed by a goroutine, so the next borrower is handed a closed conn.",
     "source": "bench/corpus/race-close/full.diff",
     "note": "deterministic fixture; no real repository"
   },
   "bugs": [
     {
       "path": "pool.go",
-      "line": 88,
+      "line": 48,
       "kind": "race",
       "severity": "important",
-      "note": "conn is returned to the pool before the close goroutine finishes"
+      "note": "conn is returned to the pool and then closed by a goroutine, so the next borrower gets a closed conn"
     }
   ]
 }

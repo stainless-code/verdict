@@ -8,7 +8,7 @@
     "comments": [
       {
         "path": "query.go",
-        "line": 77,
+        "line": 26,
         "side": "RIGHT",
         "body": "Pass name as a query argument; do not format it into the SQL string.",
         "rigor": "ran",

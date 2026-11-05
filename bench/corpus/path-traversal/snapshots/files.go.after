@@ -1,0 +1,40 @@
+package files
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+var errEmptyName = errors.New("empty name")
+
+type Root struct {
+	dir string
+}
+
+func NewRoot(dir string) *Root {
+	return &Root{dir: dir}
+}
+
+func (r *Root) Open(name string) (*os.File, error) {
+	if name == "" {
+		return nil, errEmptyName
+	}
+	return os.Open(r.resolve(name))
+}
+
+func (r *Root) resolve(name string) string {
+	return filepath.Join(r.dir, name)
+}
+
+func (r *Root) Remove(name string) error {
+	if name == "" {
+		return errEmptyName
+	}
+	full := filepath.Join(r.dir, name)
+	if err := os.Remove(full); err != nil {
+		return fmt.Errorf("remove %q: %w", full, err)
+	}
+	return nil
+}

@@ -1,10 +1,37 @@
 diff --git a/files.go b/files.go
-index 1111111..2222222 100644
+index 5c7e084..544e19e 100644
 --- a/files.go
 +++ b/files.go
-@@ -13,10 +13,10 @@ func open(root, name string) (*os.File, error) {
+@@ -5,7 +5,6 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
+-	"strings"
+ )
+ 
+ var errEmptyName = errors.New("empty name")
+@@ -22,10 +21,11 @@ func (r *Root) Open(name string) (*os.File, error) {
  	if name == "" {
- 		return nil, errors.New("empty name")
+ 		return nil, errEmptyName
  	}
--	full := filepath.Join(root, name)
-+	full := filepath.Join(root, filepath.Clean(name))
+-	if strings.Contains(name, "..") {
+-		return nil, fmt.Errorf("path %q escapes root", name)
+-	}
+-	return os.Open(filepath.Join(r.dir, name))
++	return os.Open(r.resolve(name))
++}
++
++func (r *Root) resolve(name string) string {
++	return filepath.Join(r.dir, name)
+ }
+ 
+ func (r *Root) Remove(name string) error {
+@@ -34,7 +34,7 @@ func (r *Root) Remove(name string) error {
+ 	}
+ 	full := filepath.Join(r.dir, name)
+ 	if err := os.Remove(full); err != nil {
+-		return fmt.Errorf("remove %s: %w", full, err)
++		return fmt.Errorf("remove %q: %w", full, err)
+ 	}
+ 	return nil
+ }
