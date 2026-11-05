@@ -10,8 +10,7 @@ measured line-guessing rather than review quality; the same line could hold a
 comment about variable naming and score as a catch. A true positive now also
 has to name the bug: one of its `keywords` (new, optional in
 `corpus.schema.json`), its `kind`, or a phrase from the published category
-vocabulary. The default window drops from three lines to one, must stay under
-the hunk that shows the bug, and a finding `record` moved out of its hunk is
+vocabulary. The default window drops from three lines to one, and a finding `record` moved out of its hunk is
 never a true positive, so the anchor is measured and not assumed.
 
 The human false-positive line says which rule failed, so a run distinguishes a
