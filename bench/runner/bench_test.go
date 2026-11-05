@@ -259,6 +259,7 @@ func TestLoadCasesRefusesABuglessManifest(t *testing.T) {
 // runner reads back and hands over canned calibrate data, so the loop can be
 // tested without a build.
 type fakeGrader struct {
+	dry     func(slug string) (DryRunResult, error)
 	refusal error
 	model   string
 	prefix  string
@@ -281,6 +282,14 @@ func (f *fakeGrader) record(_ context.Context, slug string) ([]string, error) {
 		return nil, err
 	}
 	return []string{"rebuilt the hunk snapshot"}, os.WriteFile(filepath.Join(reviewRoot, slug, recordJSONName), doc, 0o600)
+}
+
+func (f *fakeGrader) dryRun(_ context.Context, slug string) (DryRunResult, error) {
+	f.calls = append(f.calls, "dryRun "+slug)
+	if f.dry != nil {
+		return f.dry(slug)
+	}
+	return DryRunResult{Exit: 0, Envelope: []byte(`{"data":{}}`), Normalized: []byte(`{"schema_version":"1","body":"ok","approved":false,"comments":[]}`)}, nil
 }
 
 func (f *fakeGrader) calibrate(_ context.Context, slug string) (json.RawMessage, error) {

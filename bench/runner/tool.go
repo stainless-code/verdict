@@ -26,6 +26,8 @@ type grader interface {
 	// record validates one bundle's review.json and writes findings.json,
 	// returning the warnings the tool reported.
 	record(ctx context.Context, slug string) ([]string, error)
+	// dryRun validates one bundle without writing and preserves raw streams.
+	dryRun(ctx context.Context, slug string) (DryRunResult, error)
 	// calibrate scores one bundle against the case manifest and returns the
 	// envelope's data block verbatim.
 	calibrate(ctx context.Context, slug string) (json.RawMessage, error)

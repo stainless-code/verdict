@@ -63,6 +63,7 @@ func parseFlags(args []string) (Config, error) {
 	fs.StringVar(&cfg.Out, "out", "", "publication JSON (default <root>/bench/results[/pilot]/<run-id>.json)")
 	fs.BoolVar(&cfg.Internal, "internal", false, "mark the run an internal pilot: never citable, kept out of bench/results")
 	fs.IntVar(&cfg.Runs, "runs", 1, "samples per case")
+	fs.IntVar(&cfg.Loop, "loop", 1, "repair rounds per sample (1 keeps the single-shot path)")
 	fs.DurationVar(&cfg.Timeout, "timeout", defaultTimeout, "budget for one sample")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, jq.NewErrf("flags: %s", err)

@@ -37,6 +37,7 @@ command. The runner sets:
 | `VERDICT_BENCH_COST`                                                                      | where to write the spend record (optional; the runner synthesizes `v1`/`standard` without `est_usd`) |
 | `VERDICT_BENCH_ROOT`                                                                      | the checkout, so an agent command can name its scripts without a machine-specific path               |
 | `VERDICT_BENCH_CASE`, `VERDICT_BENCH_RUN`, `VERDICT_BENCH_MODEL`, `VERDICT_BENCH_WORKDIR` | context for logging                                                                                  |
+| `VERDICT_BENCH_ROUND`, `VERDICT_BENCH_FEEDBACK`, `VERDICT_BENCH_PREV`                     | loop rounds only: round number, feedback file, previous review (absent on round 1)                   |
 
 ```sh
 go run ./bench/runner \
@@ -106,6 +107,7 @@ citable.
 | `-panel`    | `bench-<model>`                       | panel the samples run under                                   |
 | `-cases`    | the whole corpus                      | comma-separated case ids; a subset is never citable           |
 | `-runs`     | `1`                                   | samples per case; the runbook publishes `3`                   |
+| `-loop`     | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
 | `-timeout`  | `15m`                                 | budget for one sample                                         |
 | `-root`     | the module root                       | checkout to read the corpus, prompts, and binary from         |
 | `-corpus`   | `<root>/bench/corpus`                 | corpus directory                                              |
@@ -114,6 +116,31 @@ citable.
 | `-out`      | `bench/results[/pilot]/<run-id>.json` | publication JSON                                              |
 | `-internal` | `false`                               | mark a pilot: never citable, published under `results/pilot/` |
 | `-repo`     | `acme/bench`                          | owner/repo label the corpus verbs take (local, never network) |
+
+## Loop mode
+
+`-loop N` runs a harness-driven repair loop. Round 1 uses the same prompt
+bytes as a single-shot run. Each later round appends one feedback fence that
+carries the prior dry-run problem list and the harness output verbatim, plus
+the fixed closing line that asks for one JSON document. The harness owns the
+history: `VERDICT_BENCH_ROUND`, `VERDICT_BENCH_FEEDBACK`, and
+`VERDICT_BENCH_PREV`. Adapters that ignore the new variables keep working.
+
+Per sample the harness calls `record --dry-run --json` through the shipped
+binary and never calls the checker directly. Rounds stop on the first valid
+dry run or after N rounds. An adapter crash, a timeout, or a missing
+`review.json` ends the loop as an adapter failure and is counted, not
+retried. `pi.sh` refuses a non-JSON final message before it writes
+`review.json`, so that case lands as an adapter failure with the raw output
+in `agent.log`, not as a dry-run problem.
+
+Per-round evidence lives under `runs/<slug>/round-NN`: `prompt.md`,
+`review.json`, `dryrun.json`, `dryrun.stderr.txt`, `normalized.json`,
+`cost.json`, and `agent.log`. The final `.review/<slug>` bundle is written
+once from the last valid round, with the same layout as a single-shot run.
+A second pass over saved `review.json` bytes gives a deterministic replay
+for tests. `BENCH_FIXTURE_LOOP` selects a fixture with a `reviews` array for
+offline runs.
 
 ## What it writes
 

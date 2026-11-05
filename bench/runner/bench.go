@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -37,6 +39,7 @@ type Config struct {
 	Cases    []string
 	Timeout  time.Duration
 	Runs     int
+	Loop     int
 	Internal bool
 }
 
@@ -59,6 +62,13 @@ func (cfg *Config) validate() error {
 		return jq.NewErr("-agent is required: the command that produces a review for one prompt")
 	case cfg.Runs < 1:
 		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
+	case cfg.Loop < 0:
+		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
+	case cfg.Loop > loopMaxRounds:
+		return jq.NewErrf("-loop must be at most %d, got %d", loopMaxRounds, cfg.Loop)
+	}
+	if cfg.Loop == 0 {
+		cfg.Loop = 1
 	}
 	if cfg.Repo == "" {
 		cfg.Repo = benchRepo
@@ -87,8 +97,17 @@ type runner struct {
 	commit  string
 	cases   []corpusCase
 	scores  []*score
+	loops   []loopRecord
 	total   int
 	dirty   bool
+}
+
+// loopRecord keeps one loop outcome with its sample identity.
+type loopRecord struct { //nolint:govet // bench order keeps outcome first.
+	out    LoopOutcome
+	slug   string
+	caseID string
+	run    int
 }
 
 // Run measures one agent over the corpus and writes the publication JSON. It
@@ -417,6 +436,9 @@ func (r *runner) sample(ctx context.Context, rep *Report, c corpusCase, index in
 // measure runs the agent, then the transfer of its output into a scored
 // bundle.
 func (r *runner) measure(ctx context.Context, cr *caseRun, prefix, nonce string) error {
+	if r.cfg.Loop > 1 {
+		return r.measureLoop(ctx, cr, prefix, nonce)
+	}
 	if err := os.MkdirAll(cr.dir, dirPerm); err != nil {
 		return jq.NewErrf("sample dir: %s", err)
 	}
@@ -431,6 +453,110 @@ func (r *runner) measure(ctx context.Context, cr *caseRun, prefix, nonce string)
 		return err
 	}
 	return r.score(ctx, cr, source)
+}
+
+// measureLoop runs the loop, then records the final valid round only.
+func (r *runner) measureLoop(ctx context.Context, cr *caseRun, prefix, nonce string) error {
+	if err := os.MkdirAll(cr.dir, dirPerm); err != nil {
+		return jq.NewErrf("sample dir: %s", err)
+	}
+	source := caseSource(cr.corpus.id, cr.corpus.diff)
+	lc := loopConfig(r.cfg.Timeout, r.cfg.Loop)
+	out, err := r.runLoop(ctx, cr, prefix, nonce, lc, source)
+	if err != nil {
+		return err
+	}
+	r.loops = append(r.loops, loopRecord{out: out, slug: cr.slug, caseID: cr.corpus.id, run: cr.index})
+	cr.wall = roundMillis(loopTotalWall(&out))
+	if out.FinalValid {
+		return r.scoreLoop(ctx, cr, source, &out)
+	}
+	return loopGiveUp(&out)
+}
+
+func loopTotalWall(out *LoopOutcome) float64 {
+	var wall float64
+	for i := range out.Attempts {
+		wall += out.Attempts[i].Cost.Wall
+	}
+	return wall
+}
+
+func loopGiveUp(out *LoopOutcome) error {
+	if len(out.Attempts) == 0 {
+		return jq.NewErr("loop gave up before the first round")
+	}
+	last := &out.Attempts[len(out.Attempts)-1]
+	if last.AdapterError != "" {
+		return jq.NewErrf("loop adapter failure in round %d: %s", last.Round, last.AdapterError)
+	}
+	return jq.NewErrf("loop gave up after %d rounds with %d problems",
+		len(out.Attempts), len(last.Dry.Problems))
+}
+
+// scoreLoop assembles the final bundle and scores it.
+func (r *runner) scoreLoop(ctx context.Context, cr *caseRun, source []byte, out *LoopOutcome) error {
+	last := &out.Attempts[len(out.Attempts)-1]
+	bundle := filepath.Join(reviewRoot, cr.slug)
+	if err := r.writeLoopBundle(ctx, cr, bundle, source, last); err != nil {
+		return err
+	}
+	warnings, err := r.grader.record(ctx, cr.slug)
+	if err != nil {
+		return err
+	}
+	cr.warnings = warnings
+	stamp, err := readRecordStamp(filepath.Join(bundle, recordJSONName))
+	if err != nil {
+		return err
+	}
+	if stamp.Model != r.cfg.Model {
+		return jq.NewErrf("bundle is attributed to model %q, want %q (check cost.json models[0])", stamp.Model, r.cfg.Model)
+	}
+	if err := r.adoptPrompts(stamp.PromptsHash); err != nil {
+		return err
+	}
+	data, err := r.grader.calibrate(ctx, cr.slug)
+	if err != nil {
+		return err
+	}
+	return r.collect(cr, data)
+}
+
+// writeLoopBundle lays out the final bundle.
+func (r *runner) writeLoopBundle(ctx context.Context, cr *caseRun, bundle string, source []byte, last *RoundAttempt) error {
+	if err := os.MkdirAll(bundle, dirPerm); err != nil {
+		return jq.NewErrf("bundle: %s", err)
+	}
+	rawCost, err := os.ReadFile(filepath.Join(roundDir(cr, last.Round), costJSONName))
+	if err != nil {
+		rawCost = nil
+	}
+	spend, err := normalizeCost(rawCost, r.cfg.Model, cr.wall)
+	if err != nil {
+		return err
+	}
+	files := []bundleFile{
+		{fullDiffName, cr.corpus.diff},
+		{hunksTSVName, []byte(hunks.Snapshot(string(cr.corpus.diff)))},
+		{corpusJSONName, cr.corpus.manifest},
+		{sourceJSONName, source},
+		{panelName, []byte(strings.Join(r.cfg.Panel, nl) + nl)},
+		{reviewJSONName, last.ReviewBytes},
+		{costJSONName, spend},
+	}
+	if err := writeFiles(bundle, files); err != nil {
+		return err
+	}
+	base, err := sourceBase(source)
+	if err != nil {
+		return err
+	}
+	req := &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true}
+	if _, ref := controls.Resolve(ctx, nil, req); ref != nil {
+		return jq.NewErrf("controls snapshot: %s", ref)
+	}
+	return nil
 }
 
 // runAgent runs the operator's command under the watchdog: the run dir is the
