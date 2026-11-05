@@ -154,6 +154,7 @@ fi
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Two chunks reviewed, one minor note each.\n> Basis: 0 reproduced · 1 ran · 1 walked · 0 pointed · 0 said · 2 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational","kb":["synth-rule-one"]},{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational","kb":["synth-rule-two"]}]}
 EOF
+printf '%s\n' '{"id":"synth-rule-one","status":"active"}' '{"id":"synth-rule-two","status":"active"}' > "$EVAL_SANDBOX/.review/kb.jsonl"
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "summed Basis post succeeds" 0
 assert_stream_nogrep "summed Basis (1 ran + 1 walked, 2 rules) passes with no warning" "$EVAL_ERR" "basis line counts"
@@ -191,6 +192,7 @@ else
   bad "findings file or per-chunk review files wrong"
 fi
 
+rm -f "$EVAL_SANDBOX/.review/kb.jsonl"
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 rm -f "$EVAL_SANDBOX/synth-concat.diff"
 unset XDG_CONFIG_HOME || true
