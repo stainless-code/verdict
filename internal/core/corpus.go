@@ -31,11 +31,15 @@ type CorpusProvenance struct {
 // CorpusBug is one known defect a review is expected to report. Kind is the
 // defect category a finding must name, and Keywords adds the case's own
 // vocabulary for it; a bug without keywords is named by its category alone.
+// AlsoLines lists alternate anchors for the same defect: each entry matches
+// with the same tolerance and defect-naming rule as the primary line, and
+// matching any anchor counts the bug once.
 type CorpusBug struct { //nolint:govet // field order is the published property order
-	Path     string   `json:"path"`
-	Line     int      `json:"line"                             min:"1"`
-	Kind     string   `json:"kind"`
-	Severity string   `enum:"critical|important|informational" json:"severity"`
-	Keywords []string `json:"keywords,omitempty"`
-	Note     string   `json:"note,omitempty"`
+	Path      string   `json:"path"`
+	Line      int      `json:"line"                             min:"1"`
+	Kind      string   `json:"kind"`
+	Severity  string   `enum:"critical|important|informational" json:"severity"`
+	Keywords  []string `json:"keywords,omitempty"`
+	AlsoLines []int    `json:"also_lines,omitempty"`
+	Note      string   `json:"note,omitempty"`
 }

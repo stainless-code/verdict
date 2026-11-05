@@ -29,7 +29,10 @@ var publishedSemantics = map[string]string{
 	// additive corpus bug keywords (optional string array naming the defect in
 	// the review's own words) plus corrected matching prose and the default
 	// line_tolerance; no existing property, required key, enum, or type changed.
-	"corpus.schema.json": "3e163efcbc2253750f90f4844e1eac18bc3662bae91859d5d9e883550aab46a0",
+	// additive corpus bug also_lines (optional integer array of alternate
+	// anchors for the same defect, same window and naming rule, one match per
+	// bug); no existing property, required key, or type changed.
+	"corpus.schema.json": "0fce2e3df1d4b88822e585394cf9d42311b4728522c18bfce2ac2a7a0a9bf814",
 	"cost.schema.json":   "81e6a11f4731b7060f8975db80b01d595a3dd2e0f06bbf6372d1501810609be2",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json

@@ -15,12 +15,13 @@ func Split(line string) (string, string, error) {
 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
 }
 
-func FirstField(line string) string {
+func FirstField(line string) (string, error) {
 	parts := strings.SplitN(line, "=", 2)
 	if len(parts) == 0 {
-		return ""
+		return "", errEmptyLine
 	}
-	return strings.TrimSpace(parts[1])
+	_ = parts[1]
+	return strings.TrimSpace(parts[0]), nil
 }
 
 func pair(line string) (string, string) {

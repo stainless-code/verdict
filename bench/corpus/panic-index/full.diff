@@ -1,21 +1,16 @@
 diff --git a/parse.go b/parse.go
-index f831c3c..9359352 100644
+index f831c3c..046f250 100644
 --- a/parse.go
 +++ b/parse.go
-@@ -15,12 +15,12 @@ func Split(line string) (string, string, error) {
- 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
- }
+@@ -17,9 +17,10 @@ func Split(line string) (string, string, error) {
  
--func FirstField(line string) (string, error) {
-+func FirstField(line string) string {
+ func FirstField(line string) (string, error) {
  	parts := strings.SplitN(line, "=", 2)
 -	if len(parts) != 2 {
--		return "", errEmptyLine
 +	if len(parts) == 0 {
-+		return ""
+ 		return "", errEmptyLine
  	}
--	return strings.TrimSpace(parts[0]), nil
-+	return strings.TrimSpace(parts[1])
++	_ = parts[1]
+ 	return strings.TrimSpace(parts[0]), nil
  }
  
- func pair(line string) (string, string) {

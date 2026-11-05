@@ -20,13 +20,17 @@ bundle scores against the hunks the agent actually read. Matching is
 deliberately simple and published:
 
 - A reported finding is a **true positive** when it names the same `path`,
-  its `line` is within `line_tolerance` lines of an as-yet-unmatched
-  ground-truth bug (default 1), and its text names that bug's defect. A
-  defect is named by its `kind` in hyphen or space form (`off-by-one`,
-  `off by one`), a phrase from the published category vocabulary for that
-  kind (see below), or a phrase from the bug's optional `keywords`. Matching
-  is case-insensitive and whitespace-folded, and a phrase must start a word,
-  so `race` does not match inside `trace`.
+  its `line` is within `line_tolerance` lines of the primary line or any
+  `also_lines` entry of an as-yet-unmatched ground-truth bug (default 1),
+  and its text names that bug's defect. A defect is named by its `kind` in
+  hyphen or space form (`off-by-one`, `off by one`), a phrase from the
+  published category vocabulary for that kind (see below), or a phrase from
+  the bug's optional `keywords`. Matching is case-insensitive and
+  whitespace-folded, and a phrase must start a word, so `race` does not
+  match inside `trace`.
+- A finding that matches through an alternate anchor counts the same bug:
+  one bug is one true positive no matter how many of its lines a review
+  names, and the reported match keeps the primary line.
 - A finding record moved out of its hunk does not count: `record` keeps the
   old path and line but marks it unanchored, and the text is graded as a
   body note, never as a line claim. So the line window can never reach a
@@ -48,9 +52,10 @@ The window is deliberately narrow. On a 4-7-line hunk a `line_tolerance` of
 localization; a bug plus/minus one line still lands on the statement that
 carries it, and zero rejects a correct anchor on the second line of a
 multi-line statement. `TestCheckedInCorpusCases` asserts `line_tolerance` is
-smaller than the distance from each bug to the far end of the new-side hunk
-that shows it, so a future short hunk cannot quietly make every anchor
-correct.
+smaller than the distance from each anchor (the primary line and every
+`also_lines` entry) to the far end of the new-side hunk that shows it, so a
+future short hunk cannot quietly make every anchor correct. Every
+`also_lines` entry must itself sit on the new side inside a hunk.
 
 The built-in category vocabulary is deliberately small and deterministic:
 
@@ -125,6 +130,14 @@ One case, one manifest, published as
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.
+- `also_lines` (optional) lists alternate anchors for the same defect: other
+  new-side hunk lines where a reviewer can correctly point at this bug. The
+  call site and the unconfined join are the worked example: either anchor
+  names the same confinement defect. Each entry matches with the same window
+  and the same defect-naming rule as the primary line, one bug stays one
+  true positive, and the reported match keeps the primary line. List a line
+  only when it names the same defect from code in the same hunk; a nearby
+  formatting edit is a distractor, not an anchor.
 - `benches`/agent outputs stay outside the schema: the checked-in
   `agents/<model>.json` wrapper carries `model`, `panel`, and the exact
   `review.json` body.

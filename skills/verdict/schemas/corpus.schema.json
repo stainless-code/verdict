@@ -61,6 +61,11 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "also_lines": {
+          "description": "Optional alternate anchors for the same defect: each entry is a new-side line in the same hunk, matched with the same tolerance and defect-naming rule as the primary line. Matching any anchor counts the bug once and reports the primary line.",
+          "type": "array",
+          "items": { "type": "integer" }
+        },
         "note": { "type": "string" }
       },
       "required": ["path", "line", "kind", "severity"],

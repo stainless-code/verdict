@@ -5,7 +5,7 @@
   "language": "go",
   "provenance": {
     "kind": "seeded",
-    "injected": "The split-length guard is replaced by a check that can never fail, so a line without a separator panics on parts[1].",
+    "injected": "The split-length guard is replaced by a check that can never fail, and the index is read unchecked, so a line without a separator panics on parts[1]. Valid input still returns the field.",
     "source": "bench/corpus/panic-index/full.diff",
     "note": "deterministic fixture; no real repository"
   },
@@ -15,7 +15,8 @@
       "line": 23,
       "kind": "index-out-of-range",
       "severity": "important",
-      "note": "parts[1] is indexed after a guard that only rejects an empty split, so a line without a separator panics"
+      "also_lines": [20],
+      "note": "parts[1] is read unchecked after a guard that only rejects an empty split, so a line without a separator panics; the guard at line 20 is the alternate anchor for the same defect"
     }
   ]
 }

@@ -19,7 +19,8 @@
       "/properties/bugs": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path, the line window, and the defect the finding names, not severity.",
       "/$defs/provenance": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, and the later commit that fixed the bug.",
       "/$defs/bug": "One known defect: the reviewed path, the line in the reviewed head, the defect kind (off-by-one, nil-deref, injection, missing-error-check, ...), and the severity a good review should assign.",
-      "/$defs/bug/properties/keywords": "Optional phrases a finding may use to name this defect, matched case-insensitively at a word start. kind and the published category vocabulary always name it too, so a case with no keywords still matches."
+      "/$defs/bug/properties/keywords": "Optional phrases a finding may use to name this defect, matched case-insensitively at a word start. kind and the published category vocabulary always name it too, so a case with no keywords still matches.",
+      "/$defs/bug/properties/also_lines": "Optional alternate anchors for the same defect: each entry is a new-side line in the same hunk, matched with the same tolerance and defect-naming rule as the primary line. Matching any anchor counts the bug once and reports the primary line."
     }
   },
   "envelope": {
