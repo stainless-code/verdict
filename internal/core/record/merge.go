@@ -449,7 +449,7 @@ func moveSection(lines []string) string {
 	return moveSectionHead + strings.Join(lines, newline)
 }
 
-const moveSectionHead = "### ℹ️ Unanchored observations\n\nThe following points fell outside " +
+const moveSectionHead = core.MovedSectionHeading + "\n\nThe following points fell outside " +
 	"the diff hunks for the reviewed SHA, so they post here instead of inline:\n"
 
 func moveLine(m *jq.Obj) string {

@@ -193,7 +193,7 @@ func EnsureHunksSnapshot(rt core.Runtime, dir string) error {
 	if err != nil {
 		return &core.RefusalError{Code: "missing-diff", Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
-	return atomic.WriteFile(dir+"/hunks.tsv", []byte(hunks.Format(hunks.Parse(string(raw)))))
+	return atomic.WriteFile(dir+"/hunks.tsv", []byte(hunks.Snapshot(string(raw))))
 }
 
 // CountStatus counts entries with status.

@@ -11,14 +11,15 @@
   },
   "corpus": {
     "descriptions": {
-      "": "One benchmark corpus manifest, checked in as bench/corpus/<id>/case.json and copied into a run bundle as .review/corpus-*/corpus.json. The case records the ground truth a review output is graded against: a real PR that later needed a bug-fix commit, or a seeded defect with what was injected. calibrate and trend join findings.json against these bugs offline; matching is path plus a +/- line_tolerance window, one finding per bug. additionalProperties stays closed so a typo fails validation instead of silently grading a different field.",
+      "": "One benchmark corpus manifest, checked in as bench/corpus/<id>/case.json and copied into a run bundle as .review/corpus-*/corpus.json. The case records the ground truth a review output is graded against: a real PR that later needed a bug-fix commit, or a seeded defect with what was injected. calibrate and trend join findings.json against these bugs offline; a true positive needs the bug's path, a line inside the +/- line_tolerance window, and text that names the defect (kind, category, or keywords), one finding per bug. additionalProperties stays closed so a typo fails validation instead of silently grading a different field.",
       "/properties/id": "Stable case id, matching the bench/corpus/<id> directory name.",
       "/properties/kind": "seeded for deterministic injected fixtures, real for a published PR with a later fix.",
-      "/properties/line_tolerance": "How many lines from a bug still count as the same defect (default 3). A hit is one-to-one: a second finding on the same bug is a false positive.",
+      "/properties/line_tolerance": "How many lines from a bug still count as the same defect (default 1). Keep it narrower than the new-side span of the hunk that shows the bug. A hit is one-to-one: a second finding on the same bug is a false positive.",
       "/properties/provenance": "Where the case came from: injected text for seeded cases, or repo/PR/fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
-      "/properties/bugs": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path plus the line window, not kind or severity.",
+      "/properties/bugs": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path, the line window, and the defect the finding names, not severity.",
       "/$defs/provenance": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, and the later commit that fixed the bug.",
-      "/$defs/bug": "One known defect: the reviewed path, the line in the reviewed head, the defect kind (off-by-one, nil-deref, injection, missing-error-check, ...), and the severity a good review should assign."
+      "/$defs/bug": "One known defect: the reviewed path, the line in the reviewed head, the defect kind (off-by-one, nil-deref, injection, missing-error-check, ...), and the severity a good review should assign.",
+      "/$defs/bug/properties/keywords": "Optional phrases a finding may use to name this defect, matched case-insensitively at a word start. kind and the published category vocabulary always name it too, so a case with no keywords still matches."
     }
   },
   "envelope": {

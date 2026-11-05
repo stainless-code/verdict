@@ -28,11 +28,14 @@ type CorpusProvenance struct {
 	Note      string `json:"note,omitempty"`
 }
 
-// CorpusBug is one known defect a review is expected to report.
+// CorpusBug is one known defect a review is expected to report. Kind is the
+// defect category a finding must name, and Keywords adds the case's own
+// vocabulary for it; a bug without keywords is named by its category alone.
 type CorpusBug struct { //nolint:govet // field order is the published property order
-	Path     string `json:"path"`
-	Line     int    `json:"line"                             min:"1"`
-	Kind     string `json:"kind"`
-	Severity string `enum:"critical|important|informational" json:"severity"`
-	Note     string `json:"note,omitempty"`
+	Path     string   `json:"path"`
+	Line     int      `json:"line"                             min:"1"`
+	Kind     string   `json:"kind"`
+	Severity string   `enum:"critical|important|informational" json:"severity"`
+	Keywords []string `json:"keywords,omitempty"`
+	Note     string   `json:"note,omitempty"`
 }

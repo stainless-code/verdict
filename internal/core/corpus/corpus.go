@@ -29,8 +29,13 @@ const (
 	// manifestName is the per-bundle copy of a case manifest.
 	manifestName = "/corpus.json"
 	// DefaultLineTolerance is the +/- line window that still counts as the
-	// same defect when a manifest does not pin one.
-	DefaultLineTolerance = 3
+	// same defect when a manifest does not pin one. One line admits the second
+	// line of a statement split across lines and the brace a reviewer anchors
+	// to, while keeping the window from covering a neighbouring statement. Zero
+	// rejects an otherwise correct anchor on a multi-line statement; a wider
+	// window is what made every anchor in a short hunk score. A case pins its
+	// own window when it knows the exact line.
+	DefaultLineTolerance = 1
 	// maxManifestBytes caps one operator-written case manifest.
 	maxManifestBytes = 1 << 20
 	// unrecorded and unpaneled are the honest grouping labels when a run
@@ -41,6 +46,19 @@ const (
 	ResultTruePositive = "true-positive"
 	// ResultFalsePositive marks a finding with no matching ground-truth bug.
 	ResultFalsePositive = "false-positive"
+	// ReasonUnanchored marks a finding that carries no path and line.
+	ReasonUnanchored = "unanchored"
+	// ReasonMovedToBody marks a finding whose anchor record moved out of every
+	// reviewed hunk, so it posts as body text rather than a line claim.
+	ReasonMovedToBody = "moved-to-body"
+	// ReasonOffLine marks a finding whose anchor is outside every ground-truth
+	// bug's line window.
+	ReasonOffLine = "off-line"
+	// ReasonUnnamed marks a finding inside a bug's window whose text never names
+	// that bug's defect.
+	ReasonUnnamed = "unnamed"
+	// ReasonAlreadyMatched marks a second finding on an already-matched bug.
+	ReasonAlreadyMatched = "already-matched"
 	// RateDecimals is the published precision for every rate.
 	RateDecimals = 4
 )
@@ -145,6 +163,9 @@ func validateBug(b *core.CorpusBug, n int, seen map[string]bool, path string) *c
 	if b.Severity != "critical" && b.Severity != "important" && b.Severity != "informational" {
 		return invalid(path, fmt.Sprintf("bug %d severity must be critical, important, or informational", n))
 	}
+	if ref := validateKeywords(b.Keywords, n, path); ref != nil {
+		return ref
+	}
 	key := b.Path + ":" + b.Kind + ":" + strconv.Itoa(b.Line)
 	if seen[key] {
 		return invalid(path, "duplicate ground-truth bug at "+key)
@@ -153,7 +174,17 @@ func validateBug(b *core.CorpusBug, n int, seen map[string]bool, path string) *c
 	return nil
 }
 
-// Tolerance reads the manifest's line window (default 3).
+// validateKeywords refuses a blank phrase, which would name every finding.
+func validateKeywords(keywords []string, n int, path string) *core.RefusalError {
+	for _, k := range keywords {
+		if strings.TrimSpace(k) == "" {
+			return invalid(path, fmt.Sprintf("bug %d has a blank keyword (drop it, or write the phrase a finding must contain)", n))
+		}
+	}
+	return nil
+}
+
+// Tolerance reads the manifest's line window (default 1).
 func Tolerance(c *core.CorpusCase) int {
 	if c.LineTolerance != nil && *c.LineTolerance >= 0 {
 		return *c.LineTolerance
@@ -161,11 +192,13 @@ func Tolerance(c *core.CorpusCase) int {
 	return DefaultLineTolerance
 }
 
-// Outcome is one reported finding graded against the ground truth.
+// Outcome is one reported finding graded against the ground truth. Reason
+// names why a false positive failed; a true positive carries none.
 type Outcome struct {
 	Sig       string
 	Path      string
 	Result    string
+	Reason    string
 	Line      int
 	BugLine   int
 	HasPath   bool
@@ -184,15 +217,23 @@ type Report struct {
 }
 
 // Evaluate grades entries against the case's ground truth. A finding is a
-// true positive when it names the same path and its line sits within the
-// tolerance window of an as-yet-unmatched bug; everything else reported is a
-// false positive. Each bug counts once: a second finding on the same bug is
-// a false positive.
+// true positive when it names the same path, its line sits within the
+// tolerance window of an as-yet-unmatched bug, and its text names that bug's
+// defect; everything else reported is a false positive. Each bug counts once:
+// a second finding on the same bug is a false positive. A finding record moved
+// to the body is never a true positive: the line claim was withdrawn, so the
+// text is graded as the note it became. The tool-generated moved section is
+// skipped: it is record's own wording, and the comments it lists are graded
+// from the moved entries themselves.
 func Evaluate(c *core.CorpusCase, entries []any) *Report {
 	tol := Tolerance(c)
 	used := make([]bool, len(c.Bugs))
-	rep := &Report{Case: c, Reported: len(entries), Outcomes: make([]Outcome, 0, len(entries))}
+	rep := &Report{Case: c, Outcomes: make([]Outcome, 0, len(entries))}
 	for _, e := range entries {
+		if toolSection(e) {
+			continue
+		}
+		rep.Reported++
 		out, bug := grade(e, c.Bugs, used, tol)
 		rep.Outcomes = append(rep.Outcomes, out)
 		if bug >= 0 {
@@ -211,7 +252,7 @@ func Evaluate(c *core.CorpusCase, entries []any) *Report {
 }
 
 func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
-	out := Outcome{Result: ResultFalsePositive}
+	out := Outcome{Result: ResultFalsePositive, Reason: ReasonUnanchored}
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
 		return out, -1
@@ -222,12 +263,19 @@ func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
 	if !readAnchor(m, &out) {
 		return out, -1
 	}
-	if i := matchBug(out.Path, out.Line, bugs, used, tol); i >= 0 {
-		out.Result = ResultTruePositive
-		out.BugLine, out.HasBugHit = bugs[i].Line, true
-		return out, i
+	if movedToBody(m) {
+		out.Reason = ReasonMovedToBody
+		return out, -1
 	}
-	return out, -1
+	i, reason := matchBug(out.Path, out.Line, findingText(m), bugs, used, tol)
+	if i < 0 {
+		out.Reason = reason
+		return out, -1
+	}
+	out.Result = ResultTruePositive
+	out.Reason = ""
+	out.BugLine, out.HasBugHit = bugs[i].Line, true
+	return out, i
 }
 
 func readAnchor(m *jq.Obj, out *Outcome) bool {
@@ -248,16 +296,160 @@ func readAnchor(m *jq.Obj, out *Outcome) bool {
 	return true
 }
 
-// matchBug returns the first unused bug within the line window, or -1.
-func matchBug(path string, line int, bugs []core.CorpusBug, used []bool, tol int) int {
-	for i := range bugs {
-		b := &bugs[i]
-		if used[i] || b.Path != path || abs(line-b.Line) > tol {
-			continue
-		}
-		return i
+// movedToBody reports whether record moved the finding out of its hunk: the
+// store keeps the old path and line, and only the anchored flag says the claim
+// posts as body text.
+func movedToBody(m *jq.Obj) bool {
+	v, ok := m.Get("anchored")
+	if !ok {
+		return false
 	}
-	return -1
+	anchored, ok := v.(bool)
+	return ok && !anchored
+}
+
+// toolSection reports whether the entry is the section record and post
+// generate from anchors they moved out of the hunks. The wording is the
+// tool's, so the reviewer's own claims are the only ones graded.
+func toolSection(e any) bool {
+	m, ok := e.(*jq.Obj)
+	if !ok || m == nil {
+		return false
+	}
+	heading, ok := m.Get("heading")
+	return ok && jq.StrOf(heading) == core.MovedSectionHeading
+}
+
+// findingText is the text a finding names its defect with: the heading of a
+// section finding, then the body, lowercased with runs of whitespace folded to
+// one space so a phrase can match across a line wrap.
+func findingText(m *jq.Obj) string {
+	var sb strings.Builder
+	for _, key := range []string{"heading", "body"} {
+		if v, ok := m.Get(key); ok {
+			sb.WriteString(jq.StrOf(v))
+			sb.WriteByte(' ')
+		}
+	}
+	return strings.Join(strings.Fields(strings.ToLower(sb.String())), " ")
+}
+
+// matchBug returns the first unused bug in the line window whose defect the
+// finding names, plus the reason the match failed when there is none.
+func matchBug(path string, line int, text string, bugs []core.CorpusBug, used []bool, tol int) (int, string) {
+	window := windowBugs(path, line, bugs, tol)
+	for _, i := range window {
+		if !used[i] && namesDefect(text, &bugs[i]) {
+			return i, ""
+		}
+	}
+	return -1, missReason(window, used)
+}
+
+// windowBugs is the indices of the bugs on path whose line is within tol.
+func windowBugs(path string, line int, bugs []core.CorpusBug, tol int) []int {
+	var out []int
+	for i := range bugs {
+		if bugs[i].Path == path && abs(line-bugs[i].Line) <= tol {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// missReason names why no bug in the window matched: there was none, one sat
+// there unnamed, or every bug in the window was already counted.
+func missReason(window []int, used []bool) string {
+	if len(window) == 0 {
+		return ReasonOffLine
+	}
+	for _, i := range window {
+		if !used[i] {
+			return ReasonUnnamed
+		}
+	}
+	return ReasonAlreadyMatched
+}
+
+// namesDefect reports whether text names the bug's defect: its kind in hyphen
+// or space form, a phrase the kind's category answers to, or a phrase the case
+// pins as a keyword.
+func namesDefect(text string, b *core.CorpusBug) bool {
+	for _, phrase := range defectPhrases(b) {
+		if containsPhrase(text, normalize(phrase)) {
+			return true
+		}
+	}
+	return false
+}
+
+// defectPhrases are the names a finding can call the bug: the kind, the
+// category's vocabulary, then the case's own.
+func defectPhrases(b *core.CorpusBug) []string {
+	phrases := []string{b.Kind, strings.ReplaceAll(b.Kind, "-", " ")}
+	phrases = append(phrases, categoryPhrases(b.Kind)...)
+	return append(phrases, b.Keywords...)
+}
+
+// categoryPhrases is the published vocabulary each defect category answers to,
+// so a case written before keywords existed still matches a finding that names
+// its defect without repeating the kind label. A finding is only compared with
+// bugs on its own path inside the line window, so each phrase need only be
+// distinctive of the category, not globally unique. A kind outside the table
+// is named by its kind text and keywords alone.
+func categoryPhrases(kind string) []string {
+	switch kind {
+	case "auth-bypass":
+		return []string{"role", "admin", "privilege", "authorization", "bypass"}
+	case "missing-error-check":
+		return []string{"error", "short write", "unchecked", "discarded"}
+	case "nil-deref":
+		return []string{"nil", "deref", "null pointer"}
+	case "off-by-one":
+		return []string{"one past", "loop bound", "out of range"}
+	case "index-out-of-range":
+		return []string{"index", "len(", "out of range"}
+	case "path-traversal":
+		return []string{"traversal", "confine", "escape", ".."}
+	case "race":
+		return []string{"race", "goroutine", "concurrent", "wait for the close"}
+	case "injection":
+		return []string{"injection", "inject", "query argument"}
+	}
+	return nil
+}
+
+// containsPhrase reports whether text holds phrase at a word start: a phrase
+// opening with a letter or digit must not be glued to one before it, so the
+// keyword "race" never matches inside "trace" or "brace", while "deref"
+// still matches "dereferencing". Both come from normalize, so both are lower
+// case.
+func containsPhrase(text, phrase string) bool {
+	if phrase == "" {
+		return false
+	}
+	for from := 0; from <= len(text)-len(phrase); {
+		i := strings.Index(text[from:], phrase)
+		if i < 0 {
+			return false
+		}
+		at := from + i
+		if at == 0 || !wordByte(phrase[0]) || !wordByte(text[at-1]) {
+			return true
+		}
+		from = at + 1
+	}
+	return false
+}
+
+// normalize lowers and folds whitespace so a phrase matches across a wrap.
+func normalize(s string) string {
+	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+}
+
+// wordByte is the lower-case letter or digit a phrase may not be glued to.
+func wordByte(b byte) bool {
+	return ('a' <= b && b <= 'z') || ('0' <= b && b <= '9')
 }
 
 func abs(n int) int {

@@ -29,6 +29,7 @@ const (
 	noncePrefix      = "<<<UNTRUSTED nonce="
 	promptFile       = "prompt.md"
 	fullDiffName     = "full.diff"
+	hunksTSVName     = "hunks.tsv"
 	sourceJSONName   = "source.json"
 	costJSONName     = "cost.json"
 	reviewJSONName   = "review.json"

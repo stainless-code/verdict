@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/corpus.schema.json",
   "title": "corpus.json — benchmark corpus case manifest",
-  "description": "One benchmark corpus manifest, checked in as bench/corpus/<id>/case.json and copied into a run bundle as .review/corpus-*/corpus.json. The case records the ground truth a review output is graded against: a real PR that later needed a bug-fix commit, or a seeded defect with what was injected. calibrate and trend join findings.json against these bugs offline; matching is path plus a +/- line_tolerance window, one finding per bug. additionalProperties stays closed so a typo fails validation instead of silently grading a different field.",
+  "description": "One benchmark corpus manifest, checked in as bench/corpus/<id>/case.json and copied into a run bundle as .review/corpus-*/corpus.json. The case records the ground truth a review output is graded against: a real PR that later needed a bug-fix commit, or a seeded defect with what was injected. calibrate and trend join findings.json against these bugs offline; a true positive needs the bug's path, a line inside the +/- line_tolerance window, and text that names the defect (kind, category, or keywords), one finding per bug. additionalProperties stays closed so a typo fails validation instead of silently grading a different field.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -16,7 +16,7 @@
     },
     "language": { "type": "string" },
     "line_tolerance": {
-      "description": "How many lines from a bug still count as the same defect (default 3). A hit is one-to-one: a second finding on the same bug is a false positive.",
+      "description": "How many lines from a bug still count as the same defect (default 1). Keep it narrower than the new-side span of the hunk that shows the bug. A hit is one-to-one: a second finding on the same bug is a false positive.",
       "type": ["integer", "null"],
       "minimum": 0
     },
@@ -25,7 +25,7 @@
       "$ref": "#/$defs/provenance"
     },
     "bugs": {
-      "description": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path plus the line window, not kind or severity.",
+      "description": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path, the line window, and the defect the finding names, not severity.",
       "type": "array",
       "items": { "$ref": "#/$defs/bug" }
     }
@@ -56,6 +56,11 @@
         "line": { "type": "integer", "minimum": 1 },
         "kind": { "type": "string" },
         "severity": { "enum": ["critical", "important", "informational"] },
+        "keywords": {
+          "description": "Optional phrases a finding may use to name this defect, matched case-insensitively at a word start. kind and the published category vocabulary always name it too, so a case with no keywords still matches.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "note": { "type": "string" }
       },
       "required": ["path", "line", "kind", "severity"],
