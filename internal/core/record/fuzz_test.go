@@ -44,6 +44,8 @@ func FuzzNormalizeReview(f *testing.F) {
 	f.Add([]byte("Here is the review:\n{\"body\":\"> ✅ body\"}\nLet me know"))
 	f.Add([]byte("\ufeff{\"comments\":[{\"file\":\"a.go\",\"rung\":\"traced\",\"severity\":\"Critical\"}]}"))
 	f.Add([]byte(`{broken`))
+	f.Add([]byte(`{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"body":"A finding with enough substance."},]}`))
+	f.Add([]byte(`{"review":{"schema_version":"1","body":"> ✅ body","approved":false,"comments":[]},}`))
 	f.Fuzz(func(t *testing.T, review []byte) {
 		checkNormalizedIdempotent(t, review)
 	})

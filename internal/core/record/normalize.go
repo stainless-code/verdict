@@ -93,78 +93,49 @@ func wholeDocumentFence(text string) (string, bool) {
 	return inner, true
 }
 
-// extractObject returns the one balanced top-level object that parses. More
-// than one parseable object is ambiguous and stays an invalid-json refusal.
+// extractObject returns the one balanced top-level object that parses. The
+// scan is one pass tracking brace depth and string state, so only `{` at
+// depth 0 outside strings can open a candidate: an object nested inside
+// another candidate is never returned, and an unbalanced run of braces
+// costs linear time. More than one parseable top-level object is ambiguous
+// and stays an invalid-json refusal.
 func extractObject(text string) (string, bool) {
 	var found []string
+	depth := 0
+	inString := false
+	escaped := false
+	start := -1
 	for i := 0; i < len(text); i++ {
-		if text[i] != '{' {
+		c := text[i]
+		if inString {
+			escaped, inString = scanStringByte(c, escaped, inString)
 			continue
 		}
-		if candidate, ok := balancedCandidate(text, i); ok {
-			found = append(found, candidate)
-			i += len(candidate) - 1
+		switch c {
+		case '"':
+			inString = true
+		case '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case '}':
+			if depth == 0 {
+				continue
+			}
+			depth--
+			if depth == 0 && start >= 0 {
+				if candidate := text[start : i+1]; json.Valid([]byte(candidate)) {
+					found = append(found, candidate)
+				}
+				start = -1
+			}
 		}
 	}
 	if len(found) != 1 {
 		return "", false
 	}
 	return found[0], true
-}
-
-// balancedCandidate returns the balanced object opened at start when it
-// parses, so prose around exactly one object extracts cleanly.
-func balancedCandidate(text string, start int) (string, bool) {
-	end, ok := objectEnd(text, start)
-	if !ok {
-		return "", false
-	}
-	candidate := text[start : end+1]
-	if !json.Valid([]byte(candidate)) {
-		return "", false
-	}
-	return candidate, true
-}
-
-// objectEnd finds the closing brace of the object opened at start, ignoring
-// braces inside JSON strings.
-func objectEnd(text string, start int) (int, bool) {
-	depth := 0
-	inString := false
-	escaped := false
-	for i := start; i < len(text); i++ {
-		c := text[i]
-		if inString {
-			escaped, inString = scanStringByte(c, escaped, inString)
-			continue
-		}
-		if c == '"' {
-			inString = true
-			continue
-		}
-		var done bool
-		depth, done = scanBrace(c, depth)
-		if done {
-			return i, true
-		}
-	}
-	return 0, false
-}
-
-// scanBrace folds one structural byte into the brace depth, reporting the
-// object's end when depth returns to zero.
-func scanBrace(c byte, depth int) (int, bool) {
-	switch c {
-	case '{':
-		return depth + 1, false
-	case '}':
-		if depth == 1 {
-			return depth, true
-		}
-		return depth - 1, false
-	default:
-		return depth, false
-	}
 }
 
 // scanStringByte folds one byte of a JSON string into the escape state.
