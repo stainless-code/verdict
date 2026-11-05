@@ -1,0 +1,1136 @@
+{
+  "prompt_sha256": {
+    "auth-bypass": "454f526bb8398d5625bdd2c5702f006a9761f0d2b31407b61579fd1890e50740",
+    "missing-error-check": "25fd333584cc65edbf153124338a2f305fbae43149f1a7f91e969c425e11a5e8",
+    "nil-deref": "76e94110703261200bf4d087bed70d09f345648dd7e0687b90fe09ff02634b8f",
+    "off-by-one": "5e23d0df9a9d8ce2ee7351a8220872d092f72ea05bbcfb2f49d52f6a74777601",
+    "panic-index": "d3e630b6d1ea5a36ee1b4e4f0ecd055e71e5d96756dfa70174987223dbcbba20",
+    "path-traversal": "af76100a6586150f6fabfde57d59f9c8a7311a89bdddcc3abc49ac8f746f4bbe",
+    "race-close": "1dfb87e7f55b533509533e25e9ec62da785d8245db8ad728b69e05f2a8f9594b",
+    "sql-injection": "59e9fd19225ec6642e28788fdae8e08e983172b2c740d08b713b95dccbdb3ffa"
+  },
+  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
+  "run_id": "2026-11-04-deepseek-deepseek-flash-pilot",
+  "generated_at": "2026-11-04T23:47:40Z",
+  "schema_version": "1",
+  "citable_reason": "internal pilot",
+  "panel": ["bench-deepseek-deepseek-flash"],
+  "cases": [
+    {
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 0,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "case": "auth-bypass",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "case": "missing-error-check",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": null,
+        "min": null,
+        "max": null
+      },
+      "recall": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "false_positive_rate": {
+        "median": null,
+        "min": null,
+        "max": null
+      },
+      "case": "nil-deref",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "case": "off-by-one",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "case": "panic-index",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "case": "path-traversal",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "false_positive_rate": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "case": "race-close",
+      "runs": 3
+    },
+    {
+      "precision": {
+        "median": null,
+        "min": null,
+        "max": null
+      },
+      "recall": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "false_positive_rate": {
+        "median": null,
+        "min": null,
+        "max": null
+      },
+      "case": "sql-injection",
+      "runs": 3
+    }
+  ],
+  "bundles": [
+    {
+      "slug": "corpus-auth-bypass-deepseek-deepseek-flash-run1",
+      "case": "auth-bypass",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-auth-bypass-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-auth-bypass-deepseek-deepseek-flash-run1",
+        "case": "auth-bypass",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "middleware.go",
+            "line": 52,
+            "kind": "auth-bypass",
+            "severity": "critical",
+            "note": "the role check is inverted, so non-admins pass"
+          }
+        ]
+      },
+      "run": 1,
+      "wall_seconds": 95.006
+    },
+    {
+      "slug": "corpus-auth-bypass-deepseek-deepseek-flash-run2",
+      "case": "auth-bypass",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-auth-bypass-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-auth-bypass-deepseek-deepseek-flash-run2",
+        "case": "auth-bypass",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "a4be187431b6270dea831bb92c24003ac877d511",
+            "path": "middleware.go",
+            "line": 50,
+            "result": "true-positive",
+            "matched_line": 52
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 171.851
+    },
+    {
+      "slug": "corpus-auth-bypass-deepseek-deepseek-flash-run3",
+      "case": "auth-bypass",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-auth-bypass-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "brief questions is not an array — dropped",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-auth-bypass-deepseek-deepseek-flash-run3",
+        "case": "auth-bypass",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "1ba82c70d41e19570ab50ce2ed08f04f7f765e4d",
+            "path": "middleware.go",
+            "line": 50,
+            "result": "true-positive",
+            "matched_line": 52
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 62.657
+    },
+    {
+      "slug": "corpus-missing-error-check-deepseek-deepseek-flash-run1",
+      "case": "missing-error-check",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-missing-error-check-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-missing-error-check-deepseek-deepseek-flash-run1",
+        "case": "missing-error-check",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "c3a1ee622941d38d12ad60f59b0d7b49c9a10eef",
+            "path": "upload.go",
+            "line": 22,
+            "result": "true-positive",
+            "matched_line": 24
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 21.235
+    },
+    {
+      "slug": "corpus-missing-error-check-deepseek-deepseek-flash-run2",
+      "case": "missing-error-check",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-missing-error-check-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-missing-error-check-deepseek-deepseek-flash-run2",
+        "case": "missing-error-check",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "867657c96d3fc7c921fc9708214c122a9dc56a8d",
+            "path": "upload.go",
+            "line": 23,
+            "result": "true-positive",
+            "matched_line": 24
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 13.139
+    },
+    {
+      "slug": "corpus-missing-error-check-deepseek-deepseek-flash-run3",
+      "case": "missing-error-check",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-missing-error-check-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-missing-error-check-deepseek-deepseek-flash-run3",
+        "case": "missing-error-check",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "8c1ca63110af8890f9ebf69403822c36cb387e3f",
+            "path": "upload.go",
+            "line": 23,
+            "result": "true-positive",
+            "matched_line": 24
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 8.09
+    },
+    {
+      "slug": "corpus-nil-deref-deepseek-deepseek-flash-run1",
+      "case": "nil-deref",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-nil-deref-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-nil-deref-deepseek-deepseek-flash-run1",
+        "case": "nil-deref",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "session.go",
+            "line": 31,
+            "kind": "nil-deref",
+            "severity": "critical",
+            "note": "session is dereferenced before the lookup error is checked"
+          }
+        ]
+      },
+      "run": 1,
+      "wall_seconds": 10.114
+    },
+    {
+      "slug": "corpus-nil-deref-deepseek-deepseek-flash-run2",
+      "case": "nil-deref",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-nil-deref-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-nil-deref-deepseek-deepseek-flash-run2",
+        "case": "nil-deref",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "session.go",
+            "line": 31,
+            "kind": "nil-deref",
+            "severity": "critical",
+            "note": "session is dereferenced before the lookup error is checked"
+          }
+        ]
+      },
+      "run": 2,
+      "wall_seconds": 15.157
+    },
+    {
+      "slug": "corpus-nil-deref-deepseek-deepseek-flash-run3",
+      "case": "nil-deref",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-nil-deref-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-nil-deref-deepseek-deepseek-flash-run3",
+        "case": "nil-deref",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "session.go",
+            "line": 31,
+            "kind": "nil-deref",
+            "severity": "critical",
+            "note": "session is dereferenced before the lookup error is checked"
+          }
+        ]
+      },
+      "run": 3,
+      "wall_seconds": 9.098
+    },
+    {
+      "slug": "corpus-off-by-one-deepseek-deepseek-flash-run1",
+      "case": "off-by-one",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-off-by-one-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-off-by-one-deepseek-deepseek-flash-run1",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 2,
+        "reported": 2,
+        "matched": 2,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "48085ebcd60122431c0c5f3a2e5f9daffe7c6dd4",
+            "path": "pagination.go",
+            "line": 41,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "c399de7018d8820168715f3a3393cabed7c41e73",
+            "path": "pagination.go",
+            "line": 57,
+            "result": "true-positive",
+            "matched_line": 58
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 44.489
+    },
+    {
+      "slug": "corpus-off-by-one-deepseek-deepseek-flash-run2",
+      "case": "off-by-one",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-off-by-one-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-off-by-one-deepseek-deepseek-flash-run2",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 2,
+        "reported": 2,
+        "matched": 2,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "b9e7ae969e3aa1a1089b79fb55691c07ea4f25ce",
+            "path": "pagination.go",
+            "line": 41,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "f8fa2af1a63ba42815b90558467638050827ec75",
+            "path": "pagination.go",
+            "line": 57,
+            "result": "true-positive",
+            "matched_line": 58
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 60.63
+    },
+    {
+      "slug": "corpus-off-by-one-deepseek-deepseek-flash-run3",
+      "case": "off-by-one",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-off-by-one-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-off-by-one-deepseek-deepseek-flash-run3",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 2,
+        "reported": 2,
+        "matched": 2,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "0edb91c5b0a4b4b6a6e865b26b10b967003645bb",
+            "path": "pagination.go",
+            "line": 41,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "faf1da862d9e29f19187e9c8f74873dcbb337218",
+            "path": "pagination.go",
+            "line": 57,
+            "result": "true-positive",
+            "matched_line": 58
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 43.471
+    },
+    {
+      "slug": "corpus-panic-index-deepseek-deepseek-flash-run1",
+      "case": "panic-index",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-panic-index-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "brief questions is not an array — dropped",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-panic-index-deepseek-deepseek-flash-run1",
+        "case": "panic-index",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "aa9fcd5ccd19411a6cc963318ebf429ca9ffa2f8",
+            "path": "parse.go",
+            "line": 15,
+            "result": "true-positive",
+            "matched_line": 13
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 18.195
+    },
+    {
+      "slug": "corpus-panic-index-deepseek-deepseek-flash-run2",
+      "case": "panic-index",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-panic-index-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-panic-index-deepseek-deepseek-flash-run2",
+        "case": "panic-index",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "a6fba0e73f3d165efccc6fc8f772d77157022159",
+            "path": "parse.go",
+            "line": 15,
+            "result": "true-positive",
+            "matched_line": 13
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 14.161
+    },
+    {
+      "slug": "corpus-panic-index-deepseek-deepseek-flash-run3",
+      "case": "panic-index",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-panic-index-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-panic-index-deepseek-deepseek-flash-run3",
+        "case": "panic-index",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "3a5ee2f3742a3f0d581b1e2e61277098139227d7",
+            "path": "parse.go",
+            "line": 14,
+            "result": "true-positive",
+            "matched_line": 13
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 19.198
+    },
+    {
+      "slug": "corpus-path-traversal-deepseek-deepseek-flash-run1",
+      "case": "path-traversal",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-path-traversal-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "brief questions is not an array — dropped",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-path-traversal-deepseek-deepseek-flash-run1",
+        "case": "path-traversal",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "f5cc179a64c115a9d638c64a57bd13ca0250f8bd",
+            "path": "files.go",
+            "line": 16,
+            "result": "true-positive",
+            "matched_line": 16
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 23.261
+    },
+    {
+      "slug": "corpus-path-traversal-deepseek-deepseek-flash-run2",
+      "case": "path-traversal",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-path-traversal-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-path-traversal-deepseek-deepseek-flash-run2",
+        "case": "path-traversal",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "071e41794f5c0f8fc7000e8e6ded490bd7916a94",
+            "path": "files.go",
+            "line": 16,
+            "result": "true-positive",
+            "matched_line": 16
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 22.249
+    },
+    {
+      "slug": "corpus-path-traversal-deepseek-deepseek-flash-run3",
+      "case": "path-traversal",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-path-traversal-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "brief questions is not an array — dropped",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-path-traversal-deepseek-deepseek-flash-run3",
+        "case": "path-traversal",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "bb1f33b78877cfb1a74a38f5793f2f25fd6834a4",
+            "path": "files.go",
+            "line": 17,
+            "result": "true-positive",
+            "matched_line": 16
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 15.166
+    },
+    {
+      "slug": "corpus-race-close-deepseek-deepseek-flash-run1",
+      "case": "race-close",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-race-close-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-race-close-deepseek-deepseek-flash-run1",
+        "case": "race-close",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "c9191b30d8c89f09acf78813c41ed1c862247cbc",
+            "path": "pool.go",
+            "line": 88,
+            "result": "true-positive",
+            "matched_line": 88
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 47.489
+    },
+    {
+      "slug": "corpus-race-close-deepseek-deepseek-flash-run2",
+      "case": "race-close",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-race-close-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "brief questions is not an array — dropped",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-race-close-deepseek-deepseek-flash-run2",
+        "case": "race-close",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "1f4c7384d883e8479c1d494cb4c88651381733b1",
+            "path": "pool.go",
+            "line": 88,
+            "result": "true-positive",
+            "matched_line": 88
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 40.435
+    },
+    {
+      "slug": "corpus-race-close-deepseek-deepseek-flash-run3",
+      "case": "race-close",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-race-close-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "brief questions is not an array — dropped",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-race-close-deepseek-deepseek-flash-run3",
+        "case": "race-close",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 1,
+        "matched": 1,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": 1,
+        "recall": 1,
+        "false_positive_rate": 0,
+        "outcomes": [
+          {
+            "sig": "8e39a4f67baaaf4baf55da16db6ae987f9541613",
+            "path": "pool.go",
+            "line": 88,
+            "result": "true-positive",
+            "matched_line": 88
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 30.331
+    },
+    {
+      "slug": "corpus-sql-injection-deepseek-deepseek-flash-run1",
+      "case": "sql-injection",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-sql-injection-deepseek-deepseek-flash-run1/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-sql-injection-deepseek-deepseek-flash-run1",
+        "case": "sql-injection",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "query.go",
+            "line": 77,
+            "kind": "injection",
+            "severity": "critical",
+            "note": "user name is formatted into the SQL text instead of bound as a parameter"
+          }
+        ]
+      },
+      "run": 1,
+      "wall_seconds": 9.093
+    },
+    {
+      "slug": "corpus-sql-injection-deepseek-deepseek-flash-run2",
+      "case": "sql-injection",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-sql-injection-deepseek-deepseek-flash-run2/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-sql-injection-deepseek-deepseek-flash-run2",
+        "case": "sql-injection",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "query.go",
+            "line": 77,
+            "kind": "injection",
+            "severity": "critical",
+            "note": "user name is formatted into the SQL text instead of bound as a parameter"
+          }
+        ]
+      },
+      "run": 2,
+      "wall_seconds": 8.095
+    },
+    {
+      "slug": "corpus-sql-injection-deepseek-deepseek-flash-run3",
+      "case": "sql-injection",
+      "warnings": [
+        "no fetch-time hunk snapshot (.review/corpus-sql-injection-deepseek-deepseek-flash-run3/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+        "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+      ],
+      "calibrate": {
+        "bundle": "corpus-sql-injection-deepseek-deepseek-flash-run3",
+        "case": "sql-injection",
+        "kind": "seeded",
+        "model": "deepseek/deepseek-flash",
+        "panel": ["bench-deepseek-deepseek-flash"],
+        "line_tolerance": 3,
+        "ground_truth": 1,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 1,
+        "precision": null,
+        "recall": 0,
+        "false_positive_rate": null,
+        "outcomes": [],
+        "missed_bugs": [
+          {
+            "path": "query.go",
+            "line": 77,
+            "kind": "injection",
+            "severity": "critical",
+            "note": "user name is formatted into the SQL text instead of bound as a parameter"
+          }
+        ]
+      },
+      "run": 3,
+      "wall_seconds": 6.064
+    }
+  ],
+  "trend_corpus": {
+    "cases": 8,
+    "bundles": 24,
+    "ground_truth": 27,
+    "reported": 20,
+    "matched": 20,
+    "false_positives": 0,
+    "missed": 7,
+    "precision": 1,
+    "recall": 0.7407,
+    "false_positive_rate": 0,
+    "by_model": [
+      {
+        "model": "deepseek/deepseek-flash",
+        "bundles": 24,
+        "ground_truth": 27,
+        "reported": 20,
+        "matched": 20,
+        "false_positives": 0,
+        "missed": 7,
+        "precision": 1,
+        "recall": 0.7407,
+        "false_positive_rate": 0
+      }
+    ],
+    "by_panel": [
+      {
+        "panel": "bench-deepseek-deepseek-flash",
+        "bundles": 24,
+        "ground_truth": 27,
+        "reported": 20,
+        "matched": 20,
+        "false_positives": 0,
+        "missed": 7,
+        "precision": 1,
+        "recall": 0.7407,
+        "false_positive_rate": 0
+      }
+    ]
+  },
+  "failures": [],
+  "agent": {
+    "command": "sh \"$VERDICT_BENCH_ROOT/bench/agents/pi.sh\"",
+    "model": "deepseek/deepseek-flash",
+    "runs": 3,
+    "timeout_seconds": 900
+  },
+  "corpus": {
+    "commit": "ecfc01a9356c727694b71c51b53c77edbd0fa1aa",
+    "case_ids": [
+      "auth-bypass",
+      "missing-error-check",
+      "nil-deref",
+      "off-by-one",
+      "panic-index",
+      "path-traversal",
+      "race-close",
+      "sql-injection"
+    ],
+    "cases": 8,
+    "dirty": false
+  },
+  "cost": {
+    "bundles": 24,
+    "bundles_with_estimate": 24,
+    "measured_usd": 0.248213,
+    "measured": true
+  },
+  "samples": 24,
+  "elapsed_seconds": 811.867,
+  "tolerance_points": 5,
+  "citable": false,
+  "internal": true
+}

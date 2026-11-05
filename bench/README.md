@@ -50,6 +50,53 @@ comes from `-model` and is verified twice (the bundle's `record.json` and the
 and the prompt set is copied into the run dir so `prompts_hash` names what the
 agents read.
 
+## Run it with a real model
+
+`bench/agents/pi.sh` is the adapter for [`pi`](https://github.com/earendil-works/pi):
+it reads `$VERDICT_BENCH_PROMPT`, hands it to one non-interactive `pi` run, and
+writes the review and its spend where the runner expects them.
+
+```sh
+make build
+go run ./bench/runner -model deepseek/deepseek-flash -runs 3 -internal \
+  -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/pi.sh"'
+```
+
+It pins `--mode json -p --no-session --no-tools --no-mcp --no-skills
+--no-prompt-templates --no-context-files`, so the sample reads the prompt and
+nothing else: no repository, no local skills, no session of yours. The prompt
+file arrives as one `@file` argument plus one line naming `$VERDICT_BENCH_OUT`.
+The last assistant message is the review — the adapter strips a code fence when
+the model adds one, refuses anything that is not JSON, and exits non-zero so the
+runner records a failure instead of scoring garbage.
+
+`pi`'s default system prompt advertises tools, and this adapter disables them. A
+model told it can run commands answers with literal tool-call markup instead of
+a review (4 of 24 samples did before `--system-prompt` replaced that claim with
+the truth). The shipped prompt set is written for a harness with tools and
+subagents, so a tool-free sample reads that workflow without being able to run
+it: that is the measurement, not something to paper over.
+
+| variable         | default                        |
+| ---------------- | ------------------------------ |
+| `BENCH_PI_MODEL` | `deepseek/deepseek-flash:high` |
+| `BENCH_PI_BIN`   | `pi` on `PATH`                 |
+
+`BENCH_PI_MODEL` is a `provider/model:thinking` pattern. A bundle is attributed
+to a bare model id, so the adapter refuses to run when the pattern's model is
+not exactly the `-model` the runner was given: otherwise the spend splits across
+two names and the rates stop describing one model.
+
+Cost is measured, not estimated: `pi --mode json` reports provider usage per
+assistant message, including `cost.total`, and the adapter sums those into
+`cost.json` with `models[0].name` set to `$VERDICT_BENCH_MODEL`. When the
+provider reports no price it omits `est_usd`, which reads `unmeasured` in the
+report rather than free.
+
+[`bench/results/pilot/2026-11-04-deepseek-flash-pilot.json`](results/pilot/2026-11-04-deepseek-flash-pilot.json)
+is the first such run: eight cases, three samples each, `internal`, never
+citable.
+
 ## Flags
 
 | flag        | default                               |                                                               |
