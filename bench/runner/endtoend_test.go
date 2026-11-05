@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -302,4 +304,204 @@ func outcomeOn(t *testing.T, outcomes []gradedOutcome, line int) gradedOutcome {
 	}
 	t.Fatalf("no graded outcome on line %d (outcomes %+v)", line, outcomes)
 	return gradedOutcome{}
+}
+
+func requireShippedBinary(t *testing.T) (string, string) {
+	t.Helper()
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	bin := filepath.Join(root, "bin", "verdict")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skip("bin/verdict is not built: run make build")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	return root, bin
+}
+
+func shippedLoopBadFixed(t *testing.T, bad, fixed string) (*Report, *Config) {
+	t.Helper()
+	root, bin := requireShippedBinary(t)
+	restoreWD(t)
+	t.Setenv("BENCH_TEST_BAD", bad)
+	t.Setenv("BENCH_TEST_FIXED", fixed)
+	agent := `if [ "${VERDICT_BENCH_ROUND:-1}" = "1" ]; then printf '%s' "$BENCH_TEST_BAD" > "$VERDICT_BENCH_OUT"; ` +
+		`else printf '%s' "$BENCH_TEST_FIXED" > "$VERDICT_BENCH_OUT"; fi`
+	cfg := &Config{
+		Root:    root,
+		Corpus:  filepath.Join(root, "bench", "corpus"),
+		Verdict: bin,
+		WorkDir: t.TempDir(),
+		Out:     filepath.Join(t.TempDir(), "run.json"),
+		Agent:   agent,
+		Model:   "fixture-good",
+		Panel:   []string{"panel-alpha"},
+		Cases:   []string{"off-by-one"},
+		Runs:    1,
+		Loop:    2,
+		Timeout: 2 * time.Minute,
+		Now:     time.Date(2026, 11, 5, 1, 2, 3, 0, time.UTC),
+		Summary: io.Discard,
+	}
+	rep, err := Run(context.Background(), cfg)
+	if err != nil {
+		if raw, rerr := os.ReadFile(cfg.Out); rerr == nil && len(raw) > 0 {
+			t.Logf("report: %.8000s", string(raw))
+		}
+		t.Fatalf("Run: %v", err)
+	}
+	if len(rep.Failures) != 0 || len(rep.Loops) != 1 {
+		t.Fatalf("failures=%v loops=%d, want one clean loop", rep.Failures, len(rep.Loops))
+	}
+	return rep, cfg
+}
+
+const shippedBody = `> Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive with enough substance.`
+
+func shippedReview(comments string) string {
+	return `{"schema_version":"1","body":"` + shippedBody + `","approved":false,"comments":[` + comments + `]}`
+}
+
+func findShippedRate(rep *Report, code, level string) *FixRate {
+	for i := range rep.FixRates {
+		if rep.FixRates[i].Code == code && rep.FixRates[i].Level == level {
+			return &rep.FixRates[i]
+		}
+	}
+	return nil
+}
+
+func checkShippedFixRate(t *testing.T, rep *Report, code, level string, shown, fixed, dropped int) {
+	t.Helper()
+	fr := findShippedRate(rep, code, level)
+	if fr == nil {
+		t.Fatalf("no %s/%s row in %+v", code, level, rep.FixRates)
+	}
+	if fr.Shown != shown || fr.Fixed != fixed || fr.Dropped != dropped {
+		t.Errorf("rate = %+v, want shown %d fixed %d dropped %d", fr, shown, fixed, dropped)
+	}
+	if fr.Unattributed != 0 {
+		t.Errorf("rate = %+v, want no unattributed", fr)
+	}
+}
+
+// TestShippedLoopSameAnchorDeletionIsDrop keeps a deletion from borrowing.
+func TestShippedLoopSameAnchorDeletionIsDrop(t *testing.T) {
+	needPOSIX(t)
+	keep := `{"path":"pagination.go","line":11,"side":"RIGHT","body":"The rename to renderRows reads well.","rigor":"walked","severity":"informational"}`
+	bad := shippedReview(keep + `,{"path":"pagination.go","line":11,"side":"RIGHT","rigor":"walked","severity":"informational"}`)
+	fixed := shippedReview(keep)
+	rep, _ := shippedLoopBadFixed(t, bad, fixed)
+	checkShippedFixRate(t, rep, "missing-field", "error", 1, 0, 1)
+	if len(rep.Loops[0].Added) != 0 || len(rep.Loops[0].Dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(rep.Loops[0].Added), len(rep.Loops[0].Dropped))
+	}
+}
+
+// TestShippedLoopWrongTypeKeepsSiblings keeps siblings on wrong type.
+func TestShippedLoopWrongTypeKeepsSiblings(t *testing.T) {
+	keep11 := `{"path":"pagination.go","line":11,"side":"RIGHT","body":"The rename to renderRows reads well.","rigor":"walked","severity":"informational"}`
+	keep51 := `{"path":"pagination.go","line":51,"side":"RIGHT","body":"The fetchPage error is discarded.","rigor":"pointed","severity":"important"}`
+	bad := shippedReview(keep11 + `,{"path":"pagination.go","line":42,"side":"RIGHT","body":42,"rigor":"walked","severity":"critical"},` + keep51)
+	fixed := shippedReview(keep11 + `,` + keep51)
+	rep, _ := shippedLoopBadFixed(t, bad, fixed)
+	checkShippedFixRate(t, rep, "wrong-type", "error", 1, 0, 1)
+	if len(rep.Loops[0].Added) != 0 || len(rep.Loops[0].Dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(rep.Loops[0].Added), len(rep.Loops[0].Dropped))
+	}
+}
+
+// TestShippedLoopEmptyEntryKeepsIndex keeps an empty entry indexed.
+func TestShippedLoopEmptyEntryKeepsIndex(t *testing.T) {
+	keep11 := `{"path":"pagination.go","line":11,"side":"RIGHT","body":"The rename to renderRows reads well.","rigor":"walked","severity":"informational"}`
+	keep42 := `{"path":"pagination.go","line":42,"side":"RIGHT","body":"Loop bound runs one past the slice.","rigor":"walked","severity":"critical"}`
+	keep51 := `{"path":"pagination.go","line":51,"side":"RIGHT","body":"The fetchPage error is discarded.","rigor":"pointed","severity":"important"}`
+	bad := shippedReview(`{},` + keep11 + `,` + keep42 + `,` + keep51)
+	fixed := shippedReview(keep11 + `,` + keep42 + `,` + keep51)
+	rep, _ := shippedLoopBadFixed(t, bad, fixed)
+	checkShippedFixRate(t, rep, "missing-field", "error", 2, 0, 2)
+	if len(rep.Loops[0].Added) != 0 || len(rep.Loops[0].Dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(rep.Loops[0].Added), len(rep.Loops[0].Dropped))
+	}
+}
+
+// TestShippedLoopAliasDeleteIsDrop treats a deleted alias as a loss.
+func TestShippedLoopAliasDeleteIsDrop(t *testing.T) {
+	keep11 := `{"path":"pagination.go","line":11,"side":"RIGHT","body":"The rename to renderRows reads well.","rigor":"walked","severity":"informational"}`
+	keep51 := `{"path":"pagination.go","line":51,"side":"RIGHT","body":"The fetchPage error is discarded.","rigor":"pointed","severity":"important"}`
+	bad := shippedReview(keep11 + `,{"line":42,"side":"RIGHT","rigor":"walked","severity":"critical","file":"pagination.go"},` + keep51)
+	fixed := shippedReview(keep11 + `,` + keep51)
+	rep, _ := shippedLoopBadFixed(t, bad, fixed)
+	checkShippedFixRate(t, rep, "missing-field", "error", 1, 0, 1)
+	checkShippedFixRate(t, rep, "key-alias", "warning", 1, 0, 1)
+	if len(rep.Loops[0].Added) != 0 || len(rep.Loops[0].Dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(rep.Loops[0].Added), len(rep.Loops[0].Dropped))
+	}
+}
+
+func replayReviews(t *testing.T, cfg *Config, slug string) ([][]byte, []byte, []byte) {
+	t.Helper()
+	round1, err := os.ReadFile(filepath.Join(cfg.WorkDir, "runs", slug, "round-01", reviewJSONName))
+	if err != nil {
+		t.Fatalf("round-01 review: %v", err)
+	}
+	round2, err := os.ReadFile(filepath.Join(cfg.WorkDir, "runs", slug, "round-02", reviewJSONName))
+	if err != nil {
+		t.Fatalf("round-02 review: %v", err)
+	}
+	return [][]byte{round1, round2}, round1, round2
+}
+
+func checkReplayOutcome(t *testing.T, first *LoopOutcome, round1, round2 []byte) {
+	t.Helper()
+	if !first.FinalValid || first.RoundsToValid != 2 {
+		t.Errorf("outcome = %+v, want valid on 2", first)
+	}
+	if !bytes.Equal(first.Attempts[0].ReviewBytes, round1) || !bytes.Equal(first.Attempts[1].ReviewBytes, round2) {
+		t.Error("replay changed saved review bytes")
+	}
+}
+
+func checkReplayRates(t *testing.T, first *LoopOutcome, rep *Report) {
+	t.Helper()
+	if len(first.Added) != len(rep.Loops[0].Added) || len(first.Dropped) != len(rep.Loops[0].Dropped) {
+		t.Errorf("replay added/dropped = %d/%d, want %d/%d", len(first.Added), len(first.Dropped), len(rep.Loops[0].Added), len(rep.Loops[0].Dropped))
+	}
+	gotRates := fixRatesFromOutcomes([]*LoopOutcome{first})
+	if len(gotRates) != len(rep.FixRates) {
+		t.Fatalf("replay rates len %d, want %d", len(gotRates), len(rep.FixRates))
+	}
+	for i := range gotRates {
+		if gotRates[i].Fixed != rep.FixRates[i].Fixed || gotRates[i].Dropped != rep.FixRates[i].Dropped {
+			t.Errorf("replay rate = %+v, want %+v", gotRates[i], rep.FixRates[i])
+		}
+	}
+}
+
+// TestReplayLoopReplaysShippedArtifacts replays saved reviews.
+func TestReplayLoopReplaysShippedArtifacts(t *testing.T) {
+	needPOSIX(t)
+	keep11 := `{"path":"pagination.go","line":11,"side":"RIGHT","body":"The rename to renderRows reads well.","rigor":"walked","severity":"informational"}`
+	keep42 := `{"path":"pagination.go","line":42,"side":"RIGHT","body":"Loop bound runs one past the slice.","rigor":"walked","severity":"critical"}`
+	keep51 := `{"path":"pagination.go","line":51,"side":"RIGHT","body":"The fetchPage error is discarded.","rigor":"pointed","severity":"important"}`
+	missing11 := `{"path":"pagination.go","line":11,"side":"RIGHT","rigor":"walked","severity":"informational"}`
+	bad := shippedReview(missing11 + `,` + keep42 + `,` + keep51)
+	fixed := shippedReview(keep11 + `,` + keep42 + `,` + keep51)
+	rep, cfg := shippedLoopBadFixed(t, bad, fixed)
+	checkShippedFixRate(t, rep, "missing-field", "error", 1, 1, 0)
+	reviews, round1, round2 := replayReviews(t, cfg, rep.Loops[0].Slug)
+	dry := func(round int, _ []byte) (DryRunResult, error) {
+		sum := rep.Loops[0].Attempts[round-1]
+		return DryRunResult{Exit: sum.Exit, Problems: sum.Problems, Truncated: sum.Truncated, Repairs: sum.Repairs, Warnings: sum.Warnings}, nil
+	}
+	first := replayLoop(reviews, dry)
+	second := replayLoop(reviews, dry)
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("replay differs")
+	}
+	checkReplayOutcome(t, &first, round1, round2)
+	checkReplayRates(t, &first, rep)
 }

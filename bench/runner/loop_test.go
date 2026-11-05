@@ -238,7 +238,7 @@ func checkMissingDropRate(t *testing.T, rates []FixRate) {
 		if fr.Code != "missing-field" {
 			continue
 		}
-		if !dropRateOK(fr) {
+		if !dropRateOK(&fr) {
 			t.Errorf("rate = %+v, want shown 2 dropped 2 rate 0", fr)
 		}
 		return
@@ -246,7 +246,7 @@ func checkMissingDropRate(t *testing.T, rates []FixRate) {
 	t.Fatal("no missing-field row")
 }
 
-func dropRateOK(fr FixRate) bool {
+func dropRateOK(fr *FixRate) bool {
 	return fr.Shown == 2 && fr.Fixed == 0 && fr.Dropped == 2 && fr.Rate != nil && *fr.Rate == 0
 }
 
@@ -295,7 +295,7 @@ func TestFixRateSplitsLevelsPerCode(t *testing.T) {
 		if !ok {
 			t.Fatalf("no missing-field/%s row in %+v", level, rates)
 		}
-		if !levelRateOK(fr, 1, 1, 0) {
+		if !levelRateOK(&fr, 1, 1, 0) {
 			t.Errorf("rate = %+v, want one fix", fr)
 		}
 	}
@@ -312,7 +312,7 @@ func ratesByLevel(rates []FixRate, code string) map[string]FixRate {
 	return out
 }
 
-func levelRateOK(fr FixRate, shown, fixed, dropped int) bool {
+func levelRateOK(fr *FixRate, shown, fixed, dropped int) bool {
 	return fr.Shown == shown && fr.Fixed == fixed && fr.Dropped == dropped
 }
 
@@ -359,21 +359,44 @@ func checkRepairPath(t *testing.T, raw []byte, problems []core.Problem, repairPa
 	t.Fatal("no key-alias row")
 }
 
-// TestLoopCommentListPrefersNormalized pins the raw-to-normalized read:
-// lists and sets compare the same comments across the validity boundary.
-func TestLoopCommentListPrefersNormalized(t *testing.T) {
-	raw := []byte(`{"comments":[{"path":"a","line":1,"body":"raw"}]}`)
-	norm := []byte(`{"comments":[{"path":"a","line":1,"body":"kept"}]}`)
-	got := loopCommentList(raw, norm)
-	if len(got) != 1 || got[0].Body != "kept" {
-		t.Fatalf("list = %+v, want the normalized comment", got)
+func checkEmptySlot(t *testing.T, got []rawSlot) {
+	t.Helper()
+	if got[0].pathKey != "" || got[0].id == "" {
+		t.Errorf("empty slot = %+v, want a distinct preserved id", got[0])
 	}
-	if set := loopFindingSet(raw, norm); len(set) != 1 {
-		t.Fatalf("set = %v, want one normalized id", set)
+}
+
+func checkAliasSlots(t *testing.T, got []rawSlot) {
+	t.Helper()
+	if got[1].path != "a" || got[2].path != "a" {
+		t.Errorf("alias slot = %+v vs %+v, want file resolved to path", got[1], got[2])
 	}
-	got = loopCommentList(raw, nil)
-	if len(got) != 1 || got[0].Body != "raw" {
-		t.Fatalf("list = %+v, want the raw fallback", got)
+	if got[1].id != got[2].id {
+		t.Errorf("alias ids differ: %q vs %q", got[1].id, got[2].id)
+	}
+}
+
+func checkWrongTypeSlot(t *testing.T, got []rawSlot) {
+	t.Helper()
+	if got[3].bodyText || got[3].bodyKey == "" || got[3].id == got[1].id {
+		t.Errorf("wrong-type slot = %+v, want a distinct preserved id", got[3])
+	}
+}
+
+// TestLoopRawSlotsPreserveEveryIndex pins the raw-slot read: every comment
+// index survives with its alias-resolved path, even with empty or wrong-typed
+// fields, so later matching sees the true owner.
+func TestLoopRawSlotsPreserveEveryIndex(t *testing.T) {
+	raw := []byte(`{"comments":[{},{"path":"a","line":1,"body":"raw"},{"file":"a","line":1,"body":"raw"},{"path":"a","line":1,"body":42}]}`)
+	got := loopCommentList(raw)
+	if len(got) != 4 {
+		t.Fatalf("slots = %+v, want four preserved indexes", got)
+	}
+	checkEmptySlot(t, got)
+	checkAliasSlots(t, got)
+	checkWrongTypeSlot(t, got)
+	if set := loopFindingSet(raw); len(set) != 3 {
+		t.Fatalf("set = %v, want empty plus raw plus wrong-type", set)
 	}
 }
 
@@ -582,7 +605,7 @@ func checkDropFixRates(t *testing.T, rep *Report) {
 		if fr.Code != "missing-field" {
 			continue
 		}
-		if !dropRateOK(fr) {
+		if !dropRateOK(&fr) {
 			t.Errorf("rate = %+v, want shown 2 dropped 2 rate 0", fr)
 		}
 		return
@@ -662,4 +685,259 @@ func TestLoopFailedShellAgentWithoutSpendStaysUnmeasured(t *testing.T) {
 	if got.Measured || got.Usd != 0 || got.WithEstimate != 0 {
 		t.Errorf("loop cost = %+v, want unmeasured", got)
 	}
+}
+
+func missingAt(path string) []core.Problem {
+	return []core.Problem{{Path: path, Code: "missing-field", Level: "error", Message: "m", Fix: "f"}}
+}
+
+func wrongAt(path string) []core.Problem {
+	return []core.Problem{{Path: path, Code: "wrong-type", Level: "error", Message: "m", Fix: "f"}}
+}
+
+func findRate(rates []FixRate, code, level string) *FixRate {
+	for i := range rates {
+		if rates[i].Code == code && rates[i].Level == level {
+			return &rates[i]
+		}
+	}
+	return nil
+}
+
+func checkRate(t *testing.T, rates []FixRate, code, level string, shown, fixed, dropped int) {
+	t.Helper()
+	fr := findRate(rates, code, level)
+	if fr == nil {
+		t.Fatalf("no %s/%s row in %+v", code, level, rates)
+	}
+	if fr.Shown != shown || fr.Fixed != fixed || fr.Dropped != dropped {
+		t.Errorf("rate = %+v, want shown %d fixed %d dropped %d", fr, shown, fixed, dropped)
+	}
+	if fr.Unattributed != 0 {
+		t.Errorf("rate = %+v, want no unattributed", fr)
+	}
+}
+
+// TestFixRateSameAnchorDeletionIsDrop keeps a deletion from borrowing.
+func TestFixRateSameAnchorDeletionIsDrop(t *testing.T) {
+	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":11}]}`)
+	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = missingAt("$.comments[1].body")
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	checkRate(t, rates, "missing-field", "error", 1, 0, 1)
+	added, dropped := diffLoopFindings(&cur, &next)
+	if len(added) != 0 || len(dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(added), len(dropped))
+	}
+}
+
+// TestFixRateWrongTypeKeepsSiblings keeps siblings on wrong type.
+func TestFixRateWrongTypeKeepsSiblings(t *testing.T) {
+	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":42,"body":42},{"path":"a","line":51,"body":"keep2"}]}`)
+	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":51,"body":"keep2"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = wrongAt("$.comments[1].body")
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	checkRate(t, rates, "wrong-type", "error", 1, 0, 1)
+	added, dropped := diffLoopFindings(&cur, &next)
+	if len(added) != 0 || len(dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(added), len(dropped))
+	}
+}
+
+// TestFixRateEmptyEntryKeepsIndex keeps an empty entry indexed.
+func TestFixRateEmptyEntryKeepsIndex(t *testing.T) {
+	before := []byte(`{"comments":[{},{"path":"a","line":11,"body":"keep"}]}`)
+	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = append(missingAt("$.comments[0].body"),
+		core.Problem{Path: "$.comments[0].rigor", Code: "rigor-unset", Level: "warning", Message: "m", Fix: "f"})
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	checkRate(t, rates, "missing-field", "error", 1, 0, 1)
+	checkRate(t, rates, "rigor-unset", "warning", 1, 0, 1)
+	added, dropped := diffLoopFindings(&cur, &next)
+	if len(added) != 0 || len(dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(added), len(dropped))
+	}
+}
+
+// TestFixRateAliasDeleteIsDrop treats a deleted alias as a loss.
+func TestFixRateAliasDeleteIsDrop(t *testing.T) {
+	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"file":"a","line":42},{"path":"a","line":51,"body":"keep2"}]}`)
+	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":51,"body":"keep2"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = missingAt("$.comments[1].body")
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	checkRate(t, rates, "missing-field", "error", 1, 0, 1)
+	added, dropped := diffLoopFindings(&cur, &next)
+	if len(added) != 0 || len(dropped) != 1 {
+		t.Errorf("added=%d dropped=%d, want 0 and 1", len(added), len(dropped))
+	}
+}
+
+// TestFixRateBodyRepairCountsFix keeps a repaired body as a fix.
+func TestFixRateBodyRepairCountsFix(t *testing.T) {
+	before := []byte(`{"comments":[{"path":"a","line":11}]}`)
+	after := []byte(`{"comments":[{"path":"a","line":11,"body":"found"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = missingAt("$.comments[0].body")
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	checkRate(t, rates, "missing-field", "error", 1, 1, 0)
+}
+
+// TestFixRateTwoDeletionsAreDrops counts two losses.
+func TestFixRateTwoDeletionsAreDrops(t *testing.T) {
+	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":42},{"path":"a","line":51}]}`)
+	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = []core.Problem{
+		{Path: "$.comments[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+		{Path: "$.comments[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+	}
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	checkRate(t, rates, "missing-field", "error", 2, 0, 2)
+}
+
+// TestFixRateUnattributedWhenOwnerMissing marks a missing owner unattributed.
+func TestFixRateUnattributedWhenOwnerMissing(t *testing.T) {
+	before := []byte(`{"comments":[]}`)
+	after := []byte(`{"comments":[{"path":"a","line":1,"body":"x"}]}`)
+	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
+	cur.Dry = DryRunResult{Exit: 1}
+	cur.Dry.Problems = missingAt("$.comments[0].body")
+	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
+	next.Dry = DryRunResult{Exit: 0, Normalized: after}
+	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
+	for _, fr := range rates {
+		if fr.Code != "missing-field" {
+			continue
+		}
+		if fr.Shown != 1 || fr.Fixed != 0 || fr.Dropped != 0 || fr.Unattributed != 1 {
+			t.Errorf("rate = %+v, want unattributed", fr)
+		}
+		return
+	}
+	t.Fatal("no missing-field row")
+}
+
+// TestLoopCostIncompleteIsLowerBound keeps a truncated spend as a lower bound.
+func TestLoopCostIncompleteIsLowerBound(t *testing.T) {
+	half := 0.42
+	out := LoopOutcome{Attempts: []RoundAttempt{
+		{Round: 1, Cost: AttemptCost{Wall: 1, EstUSD: &half, HasEst: true, Incomplete: true}},
+	}}
+	roll := loopCostRollup([]*LoopOutcome{&out})
+	if roll.Attempts != 1 || roll.WithEstimate != 1 || roll.Usd != 0.42 {
+		t.Errorf("roll = %+v, want 1/1/0.42", roll)
+	}
+	if roll.Incomplete != 1 || roll.Measured {
+		t.Errorf("roll = %+v, want incomplete 1 and unmeasured", roll)
+	}
+}
+
+func piStub(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stub.sh")
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatalf("stub: %v", err)
+	}
+	return path
+}
+
+func runPiStubLoop(t *testing.T, stub string) (*Report, *Config) {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	pi := filepath.Join(root, "bench", "agents", "pi.sh")
+	t.Setenv("BENCH_PI_MODEL", "fixture-good")
+	t.Setenv("BENCH_PI_BIN", stub)
+	cfg := loopTwoRoundConfig(t, fakeCorpus(t), "sh "+pi)
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err == nil {
+		t.Fatal("want adapter failure")
+	}
+	if rep == nil || rep.LoopCost == nil || len(rep.Loops) != 1 {
+		t.Fatalf("rep = %+v, want one failed loop", rep)
+	}
+	return rep, cfg
+}
+
+func checkAgentLogContains(t *testing.T, cfg *Config, slug, want string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(cfg.WorkDir, "runs", slug, "round-01", agentLogName))
+	if err != nil {
+		t.Fatalf("agent log: %v", err)
+	}
+	if !strings.Contains(string(raw), want) {
+		t.Errorf("agent log = %q, want %q", string(raw)[:500], want)
+	}
+}
+
+// TestLoopPiBadContentSavesCost saves spend when content extraction fails.
+func TestLoopPiBadContentSavesCost(t *testing.T) {
+	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[42],\"usage\":{\"cost\":{\"total\":0.42}}}}'\n")
+	rep, cfg := runPiStubLoop(t, stub)
+	got := rep.LoopCost
+	if got.Attempts != 1 || got.WithEstimate != 1 || got.Usd != 0.42 || !got.Measured {
+		t.Errorf("loop cost = %+v, want 1 measured at 0.42", got)
+	}
+	if got.Incomplete != 0 {
+		t.Errorf("loop cost = %+v, want complete", got)
+	}
+	checkAgentLogContains(t, cfg, rep.Loops[0].Slug, "0.42")
+	if est := rep.Loops[0].Attempts[0].EstUSD; est == nil || *est != 0.42 {
+		t.Errorf("attempt spend = %v, want 0.42", est)
+	}
+}
+
+// TestLoopPiTruncatedKeepsSalvagedCost keeps salvaged spend on truncation.
+func TestLoopPiTruncatedKeepsSalvagedCost(t *testing.T) {
+	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"not-json\"}],\"usage\":{\"input\":20,\"output\":5,\"cost\":{\"total\":0.42}}}}'\nprintf '{broken-event\\n'\n")
+	rep, cfg := runPiStubLoop(t, stub)
+	got := rep.LoopCost
+	if got.Attempts != 1 || got.WithEstimate != 1 || got.Usd != 0.42 {
+		t.Errorf("loop cost = %+v, want 1 salvaged at 0.42", got)
+	}
+	if got.Incomplete != 1 || got.Measured {
+		t.Errorf("loop cost = %+v, want incomplete 1 and unmeasured lower bound", got)
+	}
+	checkAgentLogContains(t, cfg, rep.Loops[0].Slug, "0.42")
+}
+
+// TestLoopPiMissingUsageStaysUnmeasured keeps missing spend unmeasured.
+func TestLoopPiMissingUsageStaysUnmeasured(t *testing.T) {
+	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"not-json\"}],\"usage\":{\"input\":20,\"output\":5,\"cost\":{\"total\":0}}}}'\n")
+	rep, cfg := runPiStubLoop(t, stub)
+	got := rep.LoopCost
+	if got.Measured || got.Usd != 0 || got.WithEstimate != 0 {
+		t.Errorf("loop cost = %+v, want unmeasured", got)
+	}
+	if got.Incomplete != 0 {
+		t.Errorf("loop cost = %+v, want no incomplete", got)
+	}
+	checkAgentLogContains(t, cfg, rep.Loops[0].Slug, "not-json")
 }

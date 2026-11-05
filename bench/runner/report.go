@@ -93,6 +93,7 @@ type Stat struct {
 type CostRollup struct {
 	Bundles      int     `json:"bundles"`
 	WithEstimate int     `json:"bundles_with_estimate"`
+	Incomplete   int     `json:"bundles_incomplete,omitempty"`
 	Usd          float64 `json:"measured_usd"`
 	Measured     bool    `json:"measured"`
 }
@@ -251,28 +252,34 @@ func (r *runner) spread() []CaseSpread {
 func (r *runner) cost() CostRollup {
 	roll := CostRollup{Bundles: len(r.scores)}
 	for _, s := range r.scores {
-		if est, ok := costEstimate(filepath.Join(reviewRoot, s.slug, costJSONName)); ok {
-			roll.Usd += est
-			roll.WithEstimate++
+		est, ok, incomplete := costEstimate(filepath.Join(reviewRoot, s.slug, costJSONName))
+		if !ok {
+			continue
+		}
+		roll.Usd += est
+		roll.WithEstimate++
+		if incomplete {
+			roll.Incomplete++
 		}
 	}
 	roll.Usd = math.Round(roll.Usd*round6) / round6
-	roll.Measured = roll.Bundles > 0 && roll.WithEstimate == roll.Bundles
+	roll.Measured = roll.Bundles > 0 && roll.WithEstimate == roll.Bundles && roll.Incomplete == 0
 	return roll
 }
 
-func costEstimate(path string) (float64, bool) {
+func costEstimate(path string) (float64, bool, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0, false
+		return 0, false, false
 	}
 	var rec struct {
-		EstUSD *float64 `json:"est_usd"`
+		EstUSD     *float64 `json:"est_usd"`
+		Incomplete bool     `json:"incomplete"`
 	}
 	if json.Unmarshal(raw, &rec) != nil || rec.EstUSD == nil {
-		return 0, false
+		return 0, false, false
 	}
-	return *rec.EstUSD, true
+	return *rec.EstUSD, true, rec.Incomplete
 }
 
 // citable applies the runbook's publication bar: three samples per case, the

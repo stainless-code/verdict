@@ -44,9 +44,10 @@ type DryRunResult struct { //nolint:govet // bench keeps raw bytes first, not sh
 
 // AttemptCost is one round spend.
 type AttemptCost struct {
-	EstUSD *float64
-	Wall   float64
-	HasEst bool
+	EstUSD     *float64
+	Wall       float64
+	HasEst     bool
+	Incomplete bool
 }
 
 // RoundAttempt is one round.
@@ -76,19 +77,21 @@ type LoopOutcome struct {
 
 // FixRate counts one code.
 type FixRate struct { //nolint:govet // field order is the published property order.
-	Code       string   `json:"code"`
-	Level      string   `json:"level"`
-	Shown      int      `json:"shown"`
-	Fixed      int      `json:"fixed"`
-	Dropped    int      `json:"dropped"`
-	RepairOnly int      `json:"repair_only"`
-	Rate       *float64 `json:"rate"`
+	Code         string   `json:"code"`
+	Level        string   `json:"level"`
+	Shown        int      `json:"shown"`
+	Fixed        int      `json:"fixed"`
+	Dropped      int      `json:"dropped"`
+	RepairOnly   int      `json:"repair_only"`
+	Unattributed int      `json:"unattributed,omitempty"`
+	Rate         *float64 `json:"rate"`
 }
 
 // LoopCost sums attempts.
 type LoopCost struct {
 	Attempts     int     `json:"attempts"`
 	WithEstimate int     `json:"attempts_with_estimate"`
+	Incomplete   int     `json:"attempts_incomplete,omitempty"`
 	Usd          float64 `json:"measured_usd"`
 	Measured     bool    `json:"measured"`
 }
@@ -152,17 +155,6 @@ func loopConfig(total time.Duration, maxRounds int) LoopConfig {
 	per := total / time.Duration(maxRounds)
 	per = max(per, loopMinPerRound)
 	return LoopConfig{MaxRounds: maxRounds, PerRound: per, Total: total}
-}
-
-// findingID identifies a finding.
-func findingID(path string, line *int, body string) string {
-	text := ""
-	if line != nil {
-		text = strconv.Itoa(*line)
-	}
-	joined := path + nl + text + nl + body
-	sum := sha256.Sum256([]byte(joined))
-	return hex.EncodeToString(sum[:])
 }
 
 // buildFeedback renders harness feedback.
@@ -431,10 +423,13 @@ func loopFeedPaths(cr *caseRun, round int, roundPath string, out *LoopOutcome,
 }
 
 func (r *runner) recordLoopAttemptCost(roundPath string, attempt *RoundAttempt) {
-	if est, ok := loopCostEstimate(filepath.Join(roundPath, costJSONName)); ok {
-		attempt.Cost.EstUSD = &est
-		attempt.Cost.HasEst = true
+	est, ok, incomplete := loopCostEstimate(filepath.Join(roundPath, costJSONName))
+	if !ok {
+		return
 	}
+	attempt.Cost.EstUSD = &est
+	attempt.Cost.HasEst = true
+	attempt.Cost.Incomplete = incomplete
 }
 
 func finishOutcome(out *LoopOutcome) {
@@ -646,71 +641,192 @@ func (r *runner) writeLoopCost(roundPath string, wall float64) error {
 }
 
 // loopCostEstimate reads est_usd.
-func loopCostEstimate(path string) (float64, bool) {
+func loopCostEstimate(path string) (float64, bool, bool) {
 	return costEstimate(path)
 }
 
-// loopFindingSet prefers normalized.
-func loopFindingSet(review, normalized []byte) map[string]bool {
-	if set := findingSetFromBytes(normalized); len(set) > 0 {
-		return set
-	}
-	return findingSetFromBytes(review)
+// STA-275 raw slots keep every comment index with alias-resolved path, valid
+// line, and body text or a type-marked raw literal, so one wrong-typed entry
+// cannot erase its siblings. Fix credit needs a one-to-one survivor: exact
+// slots consume first, then two-of-three non-empty agreements, so a deletion
+// cannot borrow an unrelated same-anchor owner. An index with no slot is
+// unattributed, never a fix. Truncated cost keeps its salvaged sum as a lower
+// bound and counts incomplete against measured; denominators are shown and
+// attempts.
+type rawSlot struct {
+	path     string
+	lineKey  string
+	pathKey  string
+	bodyKey  string
+	bodyStr  string
+	id       string
+	line     int
+	lineOK   bool
+	bodyText bool
 }
 
-// findingSetFromBytes parses ids.
-func findingSetFromBytes(raw []byte) map[string]bool {
-	out := map[string]bool{}
-	for _, c := range commentListFromBytes(raw) {
-		out[findingID(c.Path, c.Line, c.Body)] = true
-	}
-	return out
+const (
+	markerRaw  = "\x00raw:"
+	markerPath = "\x00path:"
+	markerLine = "\x00line:"
+	markerBody = "\x00body:"
+)
+
+func slotID(pathKey, lineKey, bodyKey string) string {
+	sum := sha256.Sum256([]byte(pathKey + nl + lineKey + nl + bodyKey))
+	return hex.EncodeToString(sum[:])
 }
 
-// loopCommentList prefers normalized, like loopFindingSet, but keeps the
-// order problems index into.
-func loopCommentList(review, normalized []byte) []loopComment {
-	if list := commentListFromBytes(normalized); len(list) > 0 {
-		return list
-	}
-	return commentListFromBytes(review)
-}
-
-// commentListFromBytes parses comments, skipping the degenerate entries
-// findingSetFromBytes ignores.
-func commentListFromBytes(raw []byte) []loopComment {
+func parseRawSlots(raw []byte) []rawSlot {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
-	var doc loopComments
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
 		return nil
 	}
-	out := make([]loopComment, 0, len(doc.Comments))
-	for i := range doc.Comments {
-		c := doc.Comments[i]
-		if c.Path == "" && c.Body == "" {
-			continue
-		}
-		out = append(out, c)
+	obj, ok := doc.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	v, ok := obj.Get("comments")
+	if !ok {
+		return nil
+	}
+	items, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]rawSlot, 0, len(items))
+	for i := range items {
+		out = append(out, makeRawSlot(items[i]))
 	}
 	return out
 }
 
-type loopComments struct {
-	Comments []loopComment `json:"comments"`
+func makeRawSlot(item any) rawSlot {
+	m, ok := item.(*jq.Obj)
+	if !ok {
+		body := markerRaw + compactRaw(item)
+		return rawSlot{pathKey: "", lineKey: "", bodyKey: body, id: slotID("", "", body)}
+	}
+	pathStr, pathKey := slotPath(m)
+	line, lineOK, lineKey := slotLine(m)
+	bodyKey, bodyStr, bodyText := slotBody(m)
+	return rawSlot{
+		path: pathStr, lineKey: lineKey, pathKey: pathKey,
+		bodyKey: bodyKey, bodyStr: bodyStr, id: slotID(pathKey, lineKey, bodyKey),
+		line: line, lineOK: lineOK, bodyText: bodyText,
+	}
 }
 
-type loopComment struct {
-	Path string `json:"path"`
-	Line *int   `json:"line"`
-	Body string `json:"body"`
+func stringField(m *jq.Obj, key string) (string, bool) {
+	v, ok := m.Get(key)
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+func slotPath(m *jq.Obj) (string, string) {
+	if s, ok := stringField(m, "path"); ok {
+		return s, s
+	}
+	if v, ok := m.Get("path"); ok && v != nil {
+		return "", markerPath + compactRaw(v)
+	}
+	if s, ok := stringField(m, "file"); ok {
+		return s, s
+	}
+	if v, ok := m.Get("file"); ok && v != nil {
+		return "", markerPath + compactRaw(v)
+	}
+	return "", ""
+}
+
+func slotLineNumber(v json.Number) (int, bool, string) {
+	s := string(v)
+	if strings.ContainsAny(s, ".eE") {
+		return 0, false, markerLine + s
+	}
+	if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+		return n, true, strconv.Itoa(n)
+	}
+	return 0, false, markerLine + s
+}
+
+func slotLineString(s string) (int, bool, string) {
+	if !jq.Digits(s) {
+		return 0, false, markerLine + s
+	}
+	if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+		return n, true, strconv.Itoa(n)
+	}
+	return 0, false, markerLine + s
+}
+
+func slotLine(m *jq.Obj) (int, bool, string) {
+	v, ok := m.Get("line")
+	if !ok || v == nil || v == false {
+		return 0, false, ""
+	}
+	if n, ok := v.(json.Number); ok {
+		return slotLineNumber(n)
+	}
+	if s, ok := v.(string); ok {
+		return slotLineString(s)
+	}
+	return 0, false, markerLine + compactRaw(v)
+}
+
+func slotBody(m *jq.Obj) (string, string, bool) {
+	v, ok := m.Get("body")
+	if !ok || v == nil {
+		return "", "", false
+	}
+	if s, ok := v.(string); ok {
+		if s == "" {
+			return "", "", false
+		}
+		return s, s, true
+	}
+	return markerBody + compactRaw(v), "", false
+}
+
+func compactRaw(v any) string {
+	if n, ok := v.(json.Number); ok {
+		return string(n)
+	}
+	if o, ok := v.(*jq.Obj); ok {
+		return o.MarshalCompact()
+	}
+	if arr, ok := v.([]any); ok {
+		parts := make([]string, len(arr))
+		for i, e := range arr {
+			parts[i] = compactRaw(e)
+		}
+		return "[" + strings.Join(parts, ",") + "]"
+	}
+	return jq.Compact(v)
+}
+
+func loopFindingSet(review []byte) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range parseRawSlots(review) {
+		out[s.id] = true
+	}
+	return out
+}
+
+func loopCommentList(review []byte) []rawSlot {
+	return parseRawSlots(review)
 }
 
 // diffLoopFindings compares sets.
 func diffLoopFindings(first, last *RoundAttempt) ([]string, []string) {
-	before := loopFindingSet(first.ReviewBytes, first.Dry.Normalized)
-	after := loopFindingSet(last.ReviewBytes, last.Dry.Normalized)
+	before := loopFindingSet(first.ReviewBytes)
+	after := loopFindingSet(last.ReviewBytes)
 	return stringSetDiff(before, after)
 }
 
@@ -766,7 +882,7 @@ func summarizeAttempt(cr *caseRun, a *RoundAttempt) LoopAttemptSummary {
 		Repairs:     a.Dry.Repairs,
 		Warnings:    a.Dry.Warnings,
 		WallSeconds: a.Cost.Wall,
-		Measured:    a.Cost.HasEst,
+		Measured:    a.Cost.HasEst && !a.Cost.Incomplete,
 		ReviewPath: filepath.Join("runs", cr.slug,
 			fmt.Sprintf(roundFmt, a.Round), reviewJSONName),
 	}
@@ -787,7 +903,7 @@ func loopCostRollup(outcomes []*LoopOutcome) LoopCost {
 		addOutcomeCost(&roll, out)
 	}
 	roll.Usd = math.Round(roll.Usd*round6) / round6
-	roll.Measured = roll.Attempts > 0 && roll.WithEstimate == roll.Attempts
+	roll.Measured = roll.Attempts > 0 && roll.WithEstimate == roll.Attempts && roll.Incomplete == 0
 	return roll
 }
 
@@ -798,6 +914,9 @@ func addOutcomeCost(roll *LoopCost, out *LoopOutcome) {
 		if a.Cost.HasEst && a.Cost.EstUSD != nil {
 			roll.Usd += *a.Cost.EstUSD
 			roll.WithEstimate++
+		}
+		if a.Cost.Incomplete {
+			roll.Incomplete++
 		}
 	}
 }
@@ -812,12 +931,13 @@ func fixRatesFromOutcomes(outcomes []*LoopOutcome) []FixRate {
 }
 
 type fixCounts struct { //nolint:govet // bench order keeps counts first.
-	code       string
-	shown      int
-	fixed      int
-	dropped    int
-	repairOnly int
-	level      string
+	code         string
+	shown        int
+	fixed        int
+	dropped      int
+	repairOnly   int
+	unattributed int
+	level        string
 }
 
 func addOutcomeRates(byCode map[string]*fixCounts, out *LoopOutcome) {
@@ -832,15 +952,40 @@ func addPairRates(byCode map[string]*fixCounts, cur, next *RoundAttempt) {
 	}
 	nextProblems := problemPathSet(&next.Dry)
 	nextRepairs := repairPathSet(next.Dry.Repairs)
-	curList := loopCommentList(cur.ReviewBytes, cur.Dry.Normalized)
-	nextList := loopCommentList(next.ReviewBytes, next.Dry.Normalized)
+	matched := matchSlots(loopCommentList(cur.ReviewBytes), loopCommentList(next.ReviewBytes))
 	for i := range cur.Dry.Problems {
-		addProblemRate(byCode, &cur.Dry.Problems[i], cur, next, nextProblems, nextRepairs, curList, nextList)
+		addProblemRate(byCode, &cur.Dry.Problems[i], cur, next, nextProblems, nextRepairs, matched)
 	}
 }
 
+func countDocProblem(entry *fixCounts, p *core.Problem, cur, next *RoundAttempt, nextRepairs map[string]bool) {
+	if nextRepairs[fixPathKey(p.Code, p.Path)] {
+		entry.repairOnly++
+		return
+	}
+	if cur.ReviewSHA != next.ReviewSHA {
+		entry.fixed++
+		return
+	}
+	entry.dropped++
+}
+
+func countIndexedProblem(entry *fixCounts, p *core.Problem, cur, next *RoundAttempt,
+	nextRepairs map[string]bool, matched slotMatch, idx int,
+) {
+	if idx >= len(matched.cur) {
+		entry.unattributed++
+		return
+	}
+	if matched.cur[idx] < 0 {
+		entry.dropped++
+		return
+	}
+	countDocProblem(entry, p, cur, next, nextRepairs)
+}
+
 func addProblemRate(byCode map[string]*fixCounts, p *core.Problem, cur, next *RoundAttempt,
-	nextProblems, nextRepairs map[string]bool, curList, nextList []loopComment,
+	nextProblems, nextRepairs map[string]bool, matched slotMatch,
 ) {
 	key := fixRateKey(p.Code, problemLevel(p))
 	entry := byCode[key]
@@ -852,19 +997,78 @@ func addProblemRate(byCode map[string]*fixCounts, p *core.Problem, cur, next *Ro
 	if nextProblems[fixPathKey(p.Code, p.Path)] {
 		return
 	}
-	if findingDropped(p.Path, curList, nextList) {
-		entry.dropped++
+	idx, ok := problemCommentIndex(p.Path)
+	if !ok {
+		countDocProblem(entry, p, cur, next, nextRepairs)
 		return
 	}
-	if nextRepairs[fixPathKey(p.Code, p.Path)] {
-		entry.repairOnly++
-		return
+	countIndexedProblem(entry, p, cur, next, nextRepairs, matched, idx)
+}
+
+type slotMatch struct {
+	cur  []int
+	next []int
+}
+
+func initSlotMatch(ncur, nnext int) slotMatch {
+	m := slotMatch{cur: make([]int, ncur), next: make([]int, nnext)}
+	for i := range m.cur {
+		m.cur[i] = -1
 	}
-	if cur.ReviewSHA != next.ReviewSHA {
-		entry.fixed++
-		return
+	for i := range m.next {
+		m.next[i] = -1
 	}
-	entry.dropped++
+	return m
+}
+
+func findExactSlot(m *slotMatch, id string, next []rawSlot) int {
+	for j := range next {
+		if m.next[j] >= 0 {
+			continue
+		}
+		if next[j].id == id {
+			return j
+		}
+	}
+	return -1
+}
+
+func matchExactIDs(m *slotMatch, cur, next []rawSlot) {
+	for i := range cur {
+		if j := findExactSlot(m, cur[i].id, next); j >= 0 {
+			m.cur[i], m.next[j] = j, i
+		}
+	}
+}
+
+func findFuzzySlot(m *slotMatch, a *rawSlot, next []rawSlot) int {
+	for j := range next {
+		if m.next[j] >= 0 {
+			continue
+		}
+		if sameSlot(a, &next[j]) {
+			return j
+		}
+	}
+	return -1
+}
+
+func matchFuzzySlots(m *slotMatch, cur, next []rawSlot) {
+	for i := range cur {
+		if m.cur[i] >= 0 {
+			continue
+		}
+		if j := findFuzzySlot(m, &cur[i], next); j >= 0 {
+			m.cur[i], m.next[j] = j, i
+		}
+	}
+}
+
+func matchSlots(cur, next []rawSlot) slotMatch {
+	m := initSlotMatch(len(cur), len(next))
+	matchExactIDs(&m, cur, next)
+	matchFuzzySlots(&m, cur, next)
+	return m
 }
 
 // fixRateKey splits one code's rows by level: an error and a warning with
@@ -897,24 +1101,6 @@ func repairPathSet(repairs []core.Repair) map[string]bool {
 	return out
 }
 
-// findingDropped ties one problem to the finding that owns it: the comment
-// at the problem's index. A problem whose finding survives under any two of
-// its three identity fields was edited, not deleted; a path with no comment
-// index is document-level and never drops this way.
-func findingDropped(path string, curList, nextList []loopComment) bool {
-	idx, ok := problemCommentIndex(path)
-	if !ok || idx >= len(curList) {
-		return false
-	}
-	own := curList[idx]
-	for i := range nextList {
-		if sameFinding(own, nextList[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 // problemCommentIndex reads the comment index a problem path names.
 func problemCommentIndex(path string) (int, bool) {
 	const prefix = "$.comments["
@@ -933,28 +1119,18 @@ func problemCommentIndex(path string) (int, bool) {
 	return n, true
 }
 
-// sameFinding keeps one edited field from looking like a deletion: a
-// finding that still agrees on two of path, line, and body is the same
-// finding with a fix, not a loss.
-func sameFinding(a, b loopComment) bool {
+func sameSlot(a, b *rawSlot) bool {
 	agree := 0
-	if a.Path == b.Path {
+	if a.path != "" && a.path == b.path {
 		agree++
 	}
-	if lineEqual(a.Line, b.Line) {
+	if a.lineOK && b.lineOK && a.line == b.line {
 		agree++
 	}
-	if a.Body == b.Body {
+	if a.bodyText && b.bodyText && a.bodyStr == b.bodyStr {
 		agree++
 	}
 	return agree >= 2
-}
-
-func lineEqual(a, b *int) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	return *a == *b
 }
 
 func sortedFixRates(byCode map[string]*fixCounts) []FixRate {
@@ -968,7 +1144,7 @@ func sortedFixRates(byCode map[string]*fixCounts) []FixRate {
 		out = append(out, FixRate{
 			Code: c.code, Level: c.level, Shown: c.shown,
 			Fixed: c.fixed, Dropped: c.dropped,
-			RepairOnly: c.repairOnly, Rate: &cp,
+			RepairOnly: c.repairOnly, Unattributed: c.unattributed, Rate: &cp,
 		})
 	}
 	slices.SortFunc(out, func(a, b FixRate) int {
