@@ -50,6 +50,7 @@ const (
 var Inventory = []string{
 	".review/panel",
 	".review/budget",
+	".review/strict_input",
 	".review/max_bytes",
 	".review/chunk",
 	".review/kb.jsonl",
@@ -62,6 +63,8 @@ var Inventory = []string{
 }
 
 // Request is one control resolution.
+//
+//nolint:govet // named request fields stay in call-site order
 type Request struct {
 	BundleDir string
 	BaseSHA   string
@@ -70,6 +73,9 @@ type Request struct {
 	Repo string
 	// Root is the worktree the opt-out reads; "" is the working directory.
 	Root string
+	// Env carries the fetch environment; REVIEW_STRICT_INPUT=1 wins over the
+	// snapshotted .review/strict_input file.
+	Env map[string]string
 	// AllowHead reads the worktree instead of the base commit.
 	AllowHead bool
 }
@@ -83,7 +89,7 @@ type Snapshot struct {
 // Resolve reads every inventory path from the PR base commit (or the
 // worktree under the explicit opt-out) and writes the snapshot plus
 // controls.json. It never falls back to the head on the default path.
-func Resolve(ctx context.Context, cmd core.Commander, req Request) (*Snapshot, *core.RefusalError) {
+func Resolve(ctx context.Context, cmd core.Commander, req *Request) (*Snapshot, *core.RefusalError) {
 	snap := &Snapshot{Dir: filepath.Join(req.BundleDir, DirName), File: core.ControlsFile{
 		SchemaVersion: "1", Policy: PolicyBase, BaseSHA: req.BaseSHA, SHA: req.BaseSHA,
 	}}
@@ -96,12 +102,21 @@ func Resolve(ctx context.Context, cmd core.Commander, req Request) (*Snapshot, *
 		contents, ref = readBase(ctx, cmd, req.Repo, req.BaseSHA)
 	}
 	if ref == nil {
+		snap.File.StrictInput = strictInput(contents, req.Env)
 		ref = snap.write(req.BundleDir, contents)
 	}
 	if ref != nil {
 		return nil, ref
 	}
 	return snap, nil
+}
+
+func strictInput(contents map[string][]byte, env map[string]string) bool {
+	if raw, ok := env["REVIEW_STRICT_INPUT"]; ok && strings.TrimSpace(raw) != "" {
+		return strings.TrimSpace(raw) == "1"
+	}
+	raw, ok := contents[".review/strict_input"]
+	return ok && strings.EqualFold(strings.TrimSpace(string(raw)), "true")
 }
 
 func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.RefusalError {
@@ -193,6 +208,10 @@ func (s *Snapshot) ReadFile(rel string) ([]byte, bool) {
 	raw, err := jq.CappedFile(path, MaxFileBytes)
 	return raw, err == nil
 }
+
+// StrictInput reports the snapshot's strict_input control: warnings in the
+// agent's review.json become errors, and record refuses when any remain.
+func (s *Snapshot) StrictInput() bool { return s != nil && s.File.StrictInput }
 
 // OverridesDir is the snapshot's overrides fragment directory.
 func (s *Snapshot) OverridesDir() string { return filepath.Join(s.Dir, "overrides") }

@@ -8,28 +8,37 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
+    "$.comments[11].line: kept despite non-numeric anchor: two",
+    "$.comments[12].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[14].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[31].line: kept despite non-numeric anchor: two",
+    "$.comments[32].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[34].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[51].line: kept despite non-numeric anchor: two",
+    "$.comments[52].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[54].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[71].line: kept despite non-numeric anchor: two",
+    "$.comments[72].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[74].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[91].line: kept despite non-numeric anchor: two",
+    "$.comments[92].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[94].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[111].line: kept despite non-numeric anchor: two",
+    "$.comments[112].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[114].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[131].line: kept despite non-numeric anchor: two",
+    "$.comments[132].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[134].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[151].line: kept despite non-numeric anchor: two",
+    "$.comments[152].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[154].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[171].line: kept despite non-numeric anchor: two",
+    "$.comments[172].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[174].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[191].line: kept despite non-numeric anchor: two",
+    "$.comments[192].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[194].suggestion: suggestion contains a fence — demoting it to body",
     "no fetch-time hunk snapshot (.review/local-mx/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "moved to body: unknown path (not in diff index): unknown/file.txt",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "demoting 10 suggestion(s) with fences to body",
     "ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)",
@@ -85,8 +94,8 @@ exit: 0
   "data": {
     "dir": ".review/local-mx",
     "anchors": {
-      "kept": 170,
-      "moved": 30
+      "kept": 180,
+      "moved": 20
     },
     "findings": {
       "open": 203,
@@ -156,6 +165,12 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:633"
+      },
+      {
+        "sig": "271ee0891736da439f4f1b3b42d10e351632466f",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:103"
       },
       {
         "sig": "3799f659ab520605018f5f06298e698cdedf1537",
@@ -260,6 +275,12 @@ exit: 0
         "locator": "notes.txt:2033"
       },
       {
+        "sig": "f8c039fe2c4925ce3a44d89a8ca99c48836d90ff",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:303"
+      },
+      {
         "sig": "102a5d936d30cb6ec72879131374ef7736dc162c",
         "status": "open",
         "anchored": true,
@@ -360,6 +381,12 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:1233"
+      },
+      {
+        "sig": "2f7dca05b2aff15c947700dcfe8224b1bb566a3b",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:503"
       },
       {
         "sig": "3727577a3bae92f93647ca786d349659d78c0517",
@@ -464,6 +491,12 @@ exit: 0
         "locator": "notes.txt:433"
       },
       {
+        "sig": "a4ddf07bc8766ba72fa1ac4ea5f2ca0083b07b74",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:703"
+      },
+      {
         "sig": "9cac678be749e4cbf3bdc55da7972e5da001b178",
         "status": "open",
         "anchored": true,
@@ -564,6 +597,12 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:1833"
+      },
+      {
+        "sig": "d304381b81234355ec396538b05a1baa3ec69b41",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:903"
       },
       {
         "sig": "4d0314614f59b8ef4db42b592f3c1a6444f4b1c1",
@@ -668,6 +707,12 @@ exit: 0
         "locator": "notes.txt:1033"
       },
       {
+        "sig": "6a6b179479eef0f9924d58431eea3f84c9c5a66d",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1103"
+      },
+      {
         "sig": "654f7a3da4bcbe590d1765505cc8dd9f944cf64d",
         "status": "open",
         "anchored": true,
@@ -768,6 +813,12 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:233"
+      },
+      {
+        "sig": "a85bc23d1244fc7835326874d6e0b5d05d37143b",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1303"
       },
       {
         "sig": "ef443857e9d739a1d1eaa501094ee5aa89b0b2a0",
@@ -872,6 +923,12 @@ exit: 0
         "locator": "notes.txt:1633"
       },
       {
+        "sig": "f42de78c61dd4437ae575a3aa16fdd45252966a8",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1503"
+      },
+      {
         "sig": "3f1186943c57b2a4db065eb79123c1dd7b826acd",
         "status": "open",
         "anchored": true,
@@ -972,6 +1029,12 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:833"
+      },
+      {
+        "sig": "b4b0687e3fd95ff3b90551306262ba2f7d4344e2",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1703"
       },
       {
         "sig": "cf2cfdad559b05e493821f56d151ff46bd270742",
@@ -1076,6 +1139,12 @@ exit: 0
         "locator": "notes.txt:33"
       },
       {
+        "sig": "79fb98eb8af371aa29f494ae123eff88a4e0f520",
+        "status": "open",
+        "anchored": true,
+        "locator": "notes.txt:1903"
+      },
+      {
         "sig": "b3e169dc8a39c83949d71608418b2b73bf7fd4ad",
         "status": "open",
         "anchored": true,
@@ -1178,22 +1247,10 @@ exit: 0
         "locator": "notes.txt:1943"
       },
       {
-        "sig": "caecd3a690a0c1d8e2a057e48d159143c89b7ad8",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "29e0cb91381cedb15ff38c803a8b036d3661453e",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
-      },
-      {
-        "sig": "5676864e7b0edd65a71ec8b921da9902e9d737cf",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "7b2b8bff18a60e09abf33dc1d0f9fcea8c730cc6",
@@ -1202,22 +1259,10 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
-        "sig": "b3b64c3ed96602a9de0e81578b7dd111664d5b9f",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "795db78f2b8834d7abea19532cf216e033c16c5c",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
-      },
-      {
-        "sig": "6202bde33e6f135576c4b24c61e30ab0240235ad",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "07aa857278f5e735de38b5a6f51c9032b90ee5e3",
@@ -1226,22 +1271,10 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
-        "sig": "84371e80f39a0e131ec8cdd3d3c928b874a17e6e",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "b4cc44e3306df715686f82aec274071f26dab419",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
-      },
-      {
-        "sig": "9f8948417e851fedf255fdf0ae2fd63905354fe8",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "cbf9b6eaa6f3249144e136e81815e4d45dce93eb",
@@ -1250,22 +1283,10 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
-        "sig": "855b078f35c5a523889a1313b8e21e70cc6d6a01",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "ec359a362473cb16a25722091c68e531a844dd70",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
-      },
-      {
-        "sig": "a2b1354270785eb2d786314a6f4cf030422cd2db",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "a859c615a5583db806babdc6c8706c1c29343187",
@@ -1274,22 +1295,10 @@ exit: 0
         "locator": "notes.txt:99991"
       },
       {
-        "sig": "55d125a40871d122443e1a2fcd9cfacb02fd9202",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
-      },
-      {
         "sig": "90c9d2554fe13e963ecce25b17e09c961e76cb41",
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
-      },
-      {
-        "sig": "a4a2b4fd60e09dc136395c75a4646f82d16397a3",
-        "status": "open",
-        "anchored": false,
-        "locator": "unknown/file.txt:2"
       },
       {
         "sig": "5c088656b7929020994ea2f12f9a05ae01a66268",
@@ -1320,29 +1329,38 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: $.comments[11].line: kept despite non-numeric anchor: two
+warn: $.comments[12].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[14].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[31].line: kept despite non-numeric anchor: two
+warn: $.comments[32].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[34].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[51].line: kept despite non-numeric anchor: two
+warn: $.comments[52].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[54].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[71].line: kept despite non-numeric anchor: two
+warn: $.comments[72].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[74].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[91].line: kept despite non-numeric anchor: two
+warn: $.comments[92].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[94].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[111].line: kept despite non-numeric anchor: two
+warn: $.comments[112].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[114].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[131].line: kept despite non-numeric anchor: two
+warn: $.comments[132].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[134].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[151].line: kept despite non-numeric anchor: two
+warn: $.comments[152].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[154].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[171].line: kept despite non-numeric anchor: two
+warn: $.comments[172].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[174].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[191].line: kept despite non-numeric anchor: two
+warn: $.comments[192].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[194].suggestion: suggestion contains a fence — demoting it to body
 warn: no fetch-time hunk snapshot (.review/local-mx/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: moved to body: unknown path (not in diff index): unknown/file.txt
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: demoting 10 suggestion(s) with fences to body
-» anchors: 170 inline, 30 moved to body
+» anchors: 180 inline, 20 moved to body
   - `notes.txt:143-143` (suggestion contains a fence — posted as plain text instead): Comment 14 body with enough substance to read as a finding.
   - `notes.txt:343-343` (suggestion contains a fence — posted as plain text instead): Comment 34 body with enough substance to read as a finding.
   - `notes.txt:543-543` (suggestion contains a fence — posted as plain text instead): Comment 54 body with enough substance to read as a finding.
@@ -1353,25 +1371,15 @@ warn: demoting 10 suggestion(s) with fences to body
   - `notes.txt:1543-1543` (suggestion contains a fence — posted as plain text instead): Comment 154 body with enough substance to read as a finding.
   - `notes.txt:1743-1743` (suggestion contains a fence — posted as plain text instead): Comment 174 body with enough substance to read as a finding.
   - `notes.txt:1943-1943` (suggestion contains a fence — posted as plain text instead): Comment 194 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 10 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 12 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 30 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 32 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 50 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 52 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 70 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 72 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 90 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 92 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 110 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 112 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 130 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 132 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 150 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 152 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 170 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 172 body with enough substance to read as a finding.
-  - `unknown/file.txt:2-2` (path not in diff index (unknown/file.txt) — posted here instead of inline): Comment 190 body with enough substance to read as a finding.
   - `notes.txt:99991-99991` (anchor 99991-99991 (RIGHT) outside reviewed hunks): Comment 192 body with enough substance to read as a finding.
 warn: ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)
@@ -1435,6 +1443,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   5ae01706  open  true  notes.txt
   c2009016  open  true  notes.txt
   65c5e5ce  open  true  notes.txt
+  271ee089  open  true  notes.txt
   3799f659  open  true  notes.txt
   b874f950  open  true  notes.txt
   b280b3f8  open  true  notes.txt
@@ -1452,6 +1461,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   6bce9b05  open  true  notes.txt
   f1d10005  open  true  notes.txt
   1af55343  open  true  notes.txt
+  f8c039fe  open  true  notes.txt
   102a5d93  open  true  notes.txt
   3b89d802  open  true  notes.txt
   0b7162fe  open  true  notes.txt
@@ -1469,6 +1479,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   a045e2bc  open  true  notes.txt
   ab7a49a1  open  true  notes.txt
   d2ca3f8a  open  true  notes.txt
+  2f7dca05  open  true  notes.txt
   3727577a  open  true  notes.txt
   0b10e9a5  open  true  notes.txt
   e12cb642  open  true  notes.txt
@@ -1486,6 +1497,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   7ad05197  open  true  notes.txt
   0b511800  open  true  notes.txt
   73927a00  open  true  notes.txt
+  a4ddf07b  open  true  notes.txt
   9cac678b  open  true  notes.txt
   a08abaa7  open  true  notes.txt
   d0bb6bf4  open  true  notes.txt
@@ -1503,6 +1515,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   5fa2d5d3  open  true  notes.txt
   65569d06  open  true  notes.txt
   edddefc4  open  true  notes.txt
+  d304381b  open  true  notes.txt
   4d031461  open  true  notes.txt
   4f591ac7  open  true  notes.txt
   c69bd007  open  true  notes.txt
@@ -1520,6 +1533,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   723ffecb  open  true  notes.txt
   ce1e511d  open  true  notes.txt
   7f0f0b1f  open  true  notes.txt
+  6a6b1794  open  true  notes.txt
   654f7a3d  open  true  notes.txt
   7596d641  open  true  notes.txt
   7e9838fd  open  true  notes.txt
@@ -1537,6 +1551,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   745c0fa1  open  true  notes.txt
   6528ccd0  open  true  notes.txt
   bab6667c  open  true  notes.txt
+  a85bc23d  open  true  notes.txt
   ef443857  open  true  notes.txt
   24f4279f  open  true  notes.txt
   27232165  open  true  notes.txt
@@ -1554,6 +1569,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   aa45820e  open  true  notes.txt
   6604f70c  open  true  notes.txt
   fecf6472  open  true  notes.txt
+  f42de78c  open  true  notes.txt
   3f118694  open  true  notes.txt
   361934d3  open  true  notes.txt
   2cb91f12  open  true  notes.txt
@@ -1571,6 +1587,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   bcc8913c  open  true  notes.txt
   e904ff3b  open  true  notes.txt
   cde0138e  open  true  notes.txt
+  b4b0687e  open  true  notes.txt
   cf2cfdad  open  true  notes.txt
   6f8a15cb  open  true  notes.txt
   84a8fdb9  open  true  notes.txt
@@ -1588,6 +1605,7 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   e5e86986  open  true  notes.txt
   c416cecf  open  true  notes.txt
   c054b504  open  true  notes.txt
+  79fb98eb  open  true  notes.txt
   b3e169dc  open  true  notes.txt
   d8ca9065  open  true  notes.txt
   a5c35e45  open  true  notes.txt
@@ -1605,32 +1623,22 @@ warn: no basis line under the confidence lead — keeping body as-is (report ren
   41040d39  open  false  notes.txt
   3ac501dc  open  false  notes.txt
   85f1aca7  open  false  notes.txt
-  caecd3a6  open  false  unknown/file.txt
   29e0cb91  open  false  notes.txt
-  5676864e  open  false  unknown/file.txt
   7b2b8bff  open  false  notes.txt
-  b3b64c3e  open  false  unknown/file.txt
   795db78f  open  false  notes.txt
-  6202bde3  open  false  unknown/file.txt
   07aa8572  open  false  notes.txt
-  84371e80  open  false  unknown/file.txt
   b4cc44e3  open  false  notes.txt
-  9f894841  open  false  unknown/file.txt
   cbf9b6ea  open  false  notes.txt
-  855b078f  open  false  unknown/file.txt
   ec359a36  open  false  notes.txt
-  a2b13542  open  false  unknown/file.txt
   a859c615  open  false  notes.txt
-  55d125a4  open  false  unknown/file.txt
   90c9d255  open  false  notes.txt
-  a4a2b4fd  open  false  unknown/file.txt
   5c088656  open  false  notes.txt
   99cd29f4  open  body  ### Watch the loop
   e5ae2abb  open  body  ### Check the edges
   1b5fa562  open  body  ### ℹ️ Unanchored observations
 recorded: .review/local-mx/findings.json (203 open) + .review/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-mx/findings.json (size=117881 sha256=22d9e14712a85b1d86c250d3c1b8a80216345122a6b3a2673379b98552969f76) ---
+--- file C/.review/local-mx/findings.json (size=117826 sha256=f4078b8ce22e8b3ee0e23153167fa6e5d51741d8acdf75cce9a8ee2ba1b1868b) ---
 --- file C/.review/local-mx/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
@@ -2086,7 +2094,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
+  "prompts_hash": "f36ca45162f59055616676b9408a80fd8a63c3106bc9267db6697202e13bbfe0",
   "model": null
 }
 --- file C/.review/local-mx/store.json ---

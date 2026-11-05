@@ -101,6 +101,6 @@ recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
+  "prompts_hash": "f36ca45162f59055616676b9408a80fd8a63c3106bc9267db6697202e13bbfe0",
   "model": null
 }

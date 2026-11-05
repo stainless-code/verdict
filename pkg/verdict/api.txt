@@ -46,6 +46,15 @@ type CalibrateRequest struct {
     CalibrateRequest carries the calibration options: offline probe or live
     ground-truth join.
 
+type CheckResult = recordcore.CheckResult
+    CheckResult is CheckReview's output: every problem in document order,
+    the overflow past the 50-problem cap, and the clean-run summary.
+
+func CheckReview(review []byte, diff string) CheckResult
+    CheckReview validates a review.json against a unified diff. It is pure:
+    it reads no store, writes nothing, and collects every problem instead of
+    stopping at the first.
+
 type CheckTreeRequest struct {
 	Invocation
 	Expect string
@@ -306,6 +315,10 @@ type PostRequest struct {
 	RequestChanges, Bind, Force, DryRun bool
 }
     PostRequest carries the post options: approval, review file, and guards.
+
+type Problem = recordcore.Problem
+    Problem is one review-input problem: its JSONPath, code, level, message,
+    exact fix, and an optional example of the accepted shape.
 
 type Progress interface {
 	Human(line string)

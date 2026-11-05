@@ -2,16 +2,13 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-error: refusing record: synthesized review covers 1 of 2 manifest chunk(s) — missing b (c1.txt) — re-fetch with 'verdict fetch-local acme/app ch --chunk -- <paths>', re-synthesize across all chunks, then re-run (partial coverage never posts as complete)
-try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
+error: review.json has 1 problem(s); fix every one, then re-run
+$.chunks  missing-field  chunks attestation covers 1 of 2 manifest chunk(s); missing b
+  fix: list every manifest chunk name in top-level chunks
+  example: ["a","b"]
+try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 re-enter: verdict record acme/app local-ch
 --- files ---
---- file C/.review/local-ch/hunks.tsv ---
-c1.txt	OLD	1	2
-c1.txt	NEW	1	2
-c1.txt	OLD	1	2
-c1.txt	NEW	1	2
 --- file C/.review/local-ch/store.json ---
 {
   "schema_version": "1"

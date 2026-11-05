@@ -13,6 +13,8 @@ type RecordRequest struct {
 	Flags     RecordFlags
 	Effective Effective
 	Warnings  []string
+	DryRun    bool `json:"dry_run"`
+	Strict    bool `json:"-"`
 }
 
 // RecordResponse carries the record verb's typed --json data profile, the

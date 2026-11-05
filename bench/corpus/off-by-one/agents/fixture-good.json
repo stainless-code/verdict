@@ -11,7 +11,7 @@
         "line": 11,
         "side": "RIGHT",
         "body": "The rename to renderRows reads well; buildHeader could move next to it.",
-        "rigor": "observed",
+        "rigor": "walked",
         "severity": "informational"
       },
       {

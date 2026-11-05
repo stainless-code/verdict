@@ -1,35 +1,13 @@
-exit: 0
+exit: 1
 --- stdout ---
-» anchors: 0 inline, 0 moved to body
-» findings: 0 sigs -> .review/local-ch/findings.json
-recorded: .review/local-ch/findings.json (0 open) + .review/local-ch/record.json — report/triage read it; post stays refused (no PR target)
+
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+error: review.json has 1 problem(s); fix every one, then re-run
+$.chunks  wrong-type  chunks must be an array of manifest chunk names
+  fix: list every manifest chunk name as a string
+try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
+re-enter: verdict record acme/app local-ch
 --- files ---
---- file C/.review/local-ch/findings.json ---
-[]
---- file C/.review/local-ch/hunks.tsv ---
-c1.txt	OLD	1	2
-c1.txt	NEW	1	2
-c1.txt	OLD	1	2
-c1.txt	NEW	1	2
---- file C/.review/local-ch/record.json ---
-{
-  "schema_version": "1",
-  "status": "local",
-  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "diff_sha256": "c882e2ef91a0d2833e8d25cf0b03b201379101677b35bd78838609132fdd2a1f",
-  "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 0,
-  "open": 0,
-  "confidence": null,
-  "security_summary": null,
-  "tool_version": "VERSION",
-  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
-  "model": null
-}
 --- file C/.review/local-ch/store.json ---
 {
   "schema_version": "1"

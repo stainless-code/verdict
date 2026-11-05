@@ -9,100 +9,10 @@ import (
 )
 
 func (st *state) validateInputs() error {
-	if err := checkCommentsShape(st.review); err != nil {
-		return err
-	}
-	if err := checkResolvedShape(st.review); err != nil {
-		return err
-	}
-	if err := checkTriageShape(st.review); err != nil {
-		return err
-	}
-	if err := checkSectionsShape(st.review); err != nil {
-		return err
-	}
 	if err := checkVerificationShape(st.dir); err != nil {
 		return err
 	}
 	return checkPriorShape(st.dir)
-}
-
-func reviewList(review *jq.Obj, key string) ([]any, bool) {
-	v, has := review.Get(key)
-	if !has || v == nil || v == false {
-		return nil, true
-	}
-	arr, ok := v.([]any)
-	return arr, ok
-}
-
-func checkCommentsShape(review *jq.Obj) error {
-	items, ok := reviewList(review, "comments")
-	if !ok {
-		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedComments}
-	}
-	for _, item := range items {
-		m, ok := item.(*jq.Obj)
-		if !ok || m == nil {
-			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectComment}
-		}
-		if err := checkCommentScalars(m); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func checkCommentScalars(m *jq.Obj) error {
-	for _, key := range []string{fieldPath, fieldBody, fieldSuggestion} {
-		v, has := m.Get(key)
-		if !has || v == nil || v == false {
-			continue
-		}
-		if _, ok := v.(string); !ok {
-			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonStringScalar}
-		}
-	}
-	return nil
-}
-
-func checkResolvedShape(review *jq.Obj) error {
-	items, ok := reviewList(review, "resolved")
-	if !ok {
-		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedResolved}
-	}
-	for _, item := range items {
-		if _, ok := item.(string); !ok {
-			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonStringResolved}
-		}
-	}
-	return nil
-}
-
-func checkTriageShape(review *jq.Obj) error {
-	items, ok := reviewList(review, "triage")
-	if !ok {
-		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedTriage}
-	}
-	for _, item := range items {
-		if m, ok := item.(*jq.Obj); !ok || m == nil {
-			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectTriage}
-		}
-	}
-	return nil
-}
-
-func checkSectionsShape(review *jq.Obj) error {
-	items, ok := reviewList(review, "sections")
-	if !ok {
-		return &core.RefusalError{Code: codeBadReviewInput, Message: msgMalformedSections}
-	}
-	for _, item := range items {
-		if m, ok := item.(*jq.Obj); !ok || m == nil {
-			return &core.RefusalError{Code: codeBadReviewInput, Message: msgNonObjectSection}
-		}
-	}
-	return nil
 }
 
 func checkVerificationShape(dir string) error {

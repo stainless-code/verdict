@@ -21,6 +21,10 @@
       "description": "The commit the controls were read at; \"\" for the worktree opt-out.",
       "type": "string"
     },
+    "strict_input": {
+      "description": "When true, record promotes review.json warnings to errors and refuses while any remain. fetch resolves it from REVIEW_STRICT_INPUT=1 or a .review/strict_input file holding true; absent means off.",
+      "type": "boolean"
+    },
     "files": {
       "description": "One entry per inventory path, in inventory order.",
       "type": "array",

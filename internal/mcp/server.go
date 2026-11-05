@@ -503,6 +503,7 @@ func refusalResult(ref *core.RefusalError) callToolResult {
 	}
 	structured, err := json.Marshal(refusalContent{
 		Code: ref.Code, Message: ref.Message, Hint: hint, RetryAt: ref.RetryAt,
+		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,
 	})
 	if err != nil {
 		structured = []byte("{}")
@@ -587,10 +588,12 @@ type callToolResult struct {
 }
 
 type refusalContent struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Hint    string `json:"hint"`
-	RetryAt string `json:"retry_at,omitempty"`
+	Code              string         `json:"code"`
+	Message           string         `json:"message"`
+	Hint              string         `json:"hint"`
+	RetryAt           string         `json:"retry_at,omitempty"`
+	Problems          []core.Problem `json:"problems,omitempty"`
+	ProblemsTruncated int            `json:"problems_truncated,omitempty"`
 }
 
 type initializeResult struct { //nolint:govet // field order mirrors the wire frame

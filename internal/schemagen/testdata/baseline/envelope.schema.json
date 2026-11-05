@@ -44,7 +44,16 @@
           "type": "array",
           "items": { "$ref": "#/$defs/candidate" }
         },
-        "retry_at": { "type": "string", "format": "date-time" }
+        "retry_at": { "type": "string", "format": "date-time" },
+        "problems": {
+          "description": "Review-input problems in document order (at most 50); present only on a bad-review-input refusal, with the exact fix for each.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/problem" }
+        },
+        "problems_truncated": {
+          "description": "How many problems were past the 50-problem cap; 0 when the list is complete.",
+          "type": "integer"
+        }
       },
       "required": ["code", "message"],
       "additionalProperties": true
@@ -56,6 +65,54 @@
         "suggestion": { "type": "string" }
       },
       "required": ["kind", "suggestion"],
+      "additionalProperties": true
+    },
+    "problem": {
+      "description": "One review-input problem: its JSONPath in review.json, the published code, the level, the message, the exact fix, and an optional example of the accepted shape. --strict and controls strict_input promote warnings to errors.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "JSONPath into review.json, for example $.comments[3].brief.questions.",
+          "type": "string"
+        },
+        "code": {
+          "description": "Published problem-code enum; the envelope error.code stays bad-review-input.",
+          "enum": [
+            "anchor-outside-hunk",
+            "bad-enum",
+            "invalid-json",
+            "missing-field",
+            "path-not-in-diff",
+            "rigor-unset",
+            "unknown-field",
+            "wrong-type"
+          ]
+        },
+        "level": {
+          "description": "error blocks record; warning lets it proceed and report what it did, unless strict input promotes it.",
+          "enum": ["error", "warning"]
+        },
+        "message": { "type": "string" },
+        "fix": {
+          "description": "The exact change that clears the problem.",
+          "type": "string"
+        },
+        "example": {
+          "description": "Optional example of the accepted shape at this path."
+        }
+      },
+      "required": ["path", "code", "level", "message", "fix"],
+      "additionalProperties": true
+    },
+    "checkSummary": {
+      "description": "What a clean dry run would record: comment and section counts plus anchors that would move to the body.",
+      "type": "object",
+      "properties": {
+        "comments": { "type": "integer", "minimum": 0 },
+        "sections": { "type": "integer", "minimum": 0 },
+        "anchors_moved_to_body": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["comments", "sections", "anchors_moved_to_body"],
       "additionalProperties": true
     },
     "anchorsSummary": {
@@ -394,6 +451,14 @@
         "items": {
           "type": "array",
           "items": { "$ref": "#/$defs/findingItem" }
+        },
+        "dry_run": {
+          "description": "True only on record --dry-run; the run wrote no findings.json, record.json, or any new file.",
+          "type": "boolean"
+        },
+        "check": {
+          "description": "Present only on a clean dry run: the review-input summary.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/checkSummary" }]
         }
       },
       "required": [

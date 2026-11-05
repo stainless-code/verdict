@@ -2,53 +2,53 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/review.schema.json",
   "title": "review.json — agent-written review input",
-  "description": "What the agent writes and post/record validate. Derived from validate_and_merge in the verdict CLI and the review.json block in docs/manual.md: unknown schema_version refuses, missing warns; out-of-range confidence and non-string security_summary warn-and-drop; unknown anchor paths and non-numeric anchors are kept with a warning, provably-outside anchors move to the body; unknown rigor/severity values fall back (pointed/null). Unknown top-level keys are ignored by the CLI, so this schema allows them.",
+  "description": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks or past caps, brief approach/question length or caps, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
   "type": "object",
   "properties": {
     "schema_version": {
-      "description": "Agents stamp \"1\"; post/record refuse anything else.",
+      "description": "Agents stamp \"1\"; missing warns, any other value refuses.",
       "const": "1"
     },
     "body": {
-      "description": "Full review text, verdict marker first line.",
+      "description": "Full review text, verdict marker first line. Missing, non-string, or degenerate text (<20 chars with no verdict marker, or a short placeholder) refuses.",
       "type": "string"
     },
     "approved": {
-      "description": "Binding ask; the CLI --bind/--request-changes flags win over this.",
+      "description": "Binding ask; the CLI --bind/--request-changes flags win over this. A non-boolean refuses.",
       "type": "boolean"
     },
     "comments": {
-      "description": "Inline findings; one per anchor.",
+      "description": "Inline findings; one per anchor. Missing warns as an empty list; a non-array or non-object item refuses.",
       "type": "array",
       "items": { "$ref": "#/$defs/comment" }
     },
     "resolved": {
-      "description": "Finding sigs (full or unambiguous prefix) the run addresses. Bare claims only record history; addressed needs verification.json evidence.",
+      "description": "Finding sigs (full or unambiguous prefix) the run addresses. Bare claims only record history; addressed needs verification.json evidence. A non-array or non-string item refuses.",
       "type": "array",
       "items": { "type": "string" }
     },
     "triage": {
-      "description": "Status claims with rationale. Unknown status refuses the run; unknown sig warns; rationale under 30 chars keeps the prior status.",
+      "description": "Status claims with rationale. Unknown status refuses the run; unknown sig warns; rationale under 30 chars keeps the prior status. Shape and enum failures refuse.",
       "type": "array",
       "items": { "$ref": "#/$defs/triageClaim" }
     },
     "sections": {
-      "description": "Severity tags for ### body sections; exact heading string, unmatched tags ignored.",
+      "description": "Severity tags for ### body sections; exact heading string, unmatched tags ignored. Shape and enum failures refuse.",
       "type": "array",
       "items": { "$ref": "#/$defs/sectionTag" }
     },
     "confidence": {
-      "description": "Review-level certainty, integer 1-5; out-of-range warns and drops.",
+      "description": "Review-level certainty, integer 1-5; a non-integer or out-of-range value refuses.",
       "type": ["integer", "null"],
       "minimum": 1,
       "maximum": 5
     },
     "security_summary": {
-      "description": "One-paragraph security read; non-string warns and drops.",
+      "description": "One-paragraph security read; a non-string value refuses.",
       "type": ["string", "null"]
     },
     "chunks": {
-      "description": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Attested-but-partial coverage is refused.",
+      "description": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Missing warns; non-array/non-string entries and attested-but-partial coverage refuse.",
       "type": "array",
       "items": { "type": "string" }
     }
@@ -60,44 +60,44 @@
       "type": "object",
       "properties": {
         "path": {
-          "description": "Diff-relative path; unknown paths are kept with a warning, never refused.",
+          "description": "Diff-relative path required; a path not in the fetched diff refuses.",
           "type": "string"
         },
         "line": {
-          "description": "NEW-side line; numeric strings anchor like integers, non-numeric anchors are kept with a warning.",
+          "description": "NEW-side line; numeric strings anchor like integers. An absent line/start_line warns and moves the comment to the body; a present non-numeric line warns and keeps it; other types refuse.",
           "type": ["integer", "string", "null"]
         },
         "start_line": {
-          "description": "Multi-line range start; same tolerance as line.",
+          "description": "Multi-line range start with the same tolerance as line: absent warns and moves, non-numeric warns and keeps, other types refuse.",
           "type": ["integer", "string", "null"]
         },
         "side": {
-          "description": "Defaults to RIGHT; case-insensitive, LEFT for deleted lines.",
+          "description": "Defaults to RIGHT; LEFT for deleted lines. Any other value refuses.",
           "type": "string"
         },
         "body": { "type": "string" },
         "suggestion": {
-          "description": "Fenced suggestions demote to the body (a fence inside would break rendering).",
+          "description": "A fenced suggestion warns and demotes to the body (a fence inside would break rendering); a non-string value refuses.",
           "type": ["string", "null"]
         },
         "brief": {
-          "description": "Optional machine brief; a bad part warns and drops, and an invalid outcome drops the whole brief.",
+          "description": "Optional machine brief. Shape, type, required-field, and range failures refuse; a site outside every hunk, past a cap, or a short approach/question warns and drops only that part.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
         },
         "rigor": {
-          "description": "Evidence rung; unknown values read as pointed.",
+          "description": "Evidence rung; absent warns (rigor-unset), unknown or non-string values refuse.",
           "enum": ["said", "pointed", "walked", "ran", "reproduced", null]
         },
         "severity": {
-          "description": "Stored at write time; unknown values read as null.",
+          "description": "Stored at write time; unknown or non-string values refuse.",
           "enum": ["critical", "important", "informational", null]
         },
         "in-bounds": {
-          "description": "Hyphenated in agent input; absent reads true.",
+          "description": "Hyphenated in agent input; absent reads true, a non-boolean refuses.",
           "type": ["boolean", "null"]
         },
         "kb": {
-          "description": "Cited knowledge-base rule ids the script normalizes; malformed ids warn and drop.",
+          "description": "Cited knowledge-base rule ids; a non-array or non-string entry refuses, and a malformed id warns and drops.",
           "type": ["array", "null"],
           "items": { "type": "string" }
         }
@@ -110,20 +110,20 @@
       "type": "object",
       "properties": {
         "sites": {
-          "description": "Affected changed files with an optional reviewed line; a site outside every hunk warns and drops.",
+          "description": "Affected changed files with an optional reviewed line. Site shape/type/line failures refuse; a site outside every hunk or past the 10-site cap warns and drops.",
           "type": "array",
           "items": { "$ref": "#/$defs/briefSite" }
         },
         "outcome": {
-          "description": "One sentence naming what the fix must achieve — required, 10–500 characters.",
+          "description": "One sentence naming what the fix must achieve — required, 10–500 characters; missing, non-string, or out-of-range refuses the review.",
           "type": "string"
         },
         "approach": {
-          "description": "Optional suggested approach, 10–1,000 characters.",
+          "description": "Optional suggested approach, 10–1,000 characters; a non-string refuses, and a non-empty out-of-range value warns and drops.",
           "type": "string"
         },
         "questions": {
-          "description": "Optional questions for the human, at most 10 of 10–300 characters each.",
+          "description": "Optional questions for the human, at most 10 of 10–300 characters each; non-array/non-string refuses, and an out-of-range or past-cap question warns and drops.",
           "type": "array",
           "items": { "type": "string" }
         }

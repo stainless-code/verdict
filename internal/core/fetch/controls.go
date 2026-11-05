@@ -16,8 +16,9 @@ func resolveControls(
 	ctx context.Context, ctx2 *fetchRunCtx, repo, baseSHA string, allowHead bool, budget *budgetState, consent bool,
 ) error {
 	r := ctx2.runner
-	snap, ref := controls.Resolve(ctx, r.commander, controls.Request{
+	snap, ref := controls.Resolve(ctx, r.commander, &controls.Request{
 		BundleDir: ctx2.dir, Repo: repo, BaseSHA: baseSHA, AllowHead: allowHead,
+		Env: ctx2.env,
 	})
 	if ref != nil {
 		return ref //nolint:wrapcheck // the typed refusal passes through unchanged

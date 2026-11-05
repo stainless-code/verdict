@@ -156,8 +156,8 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 7) and (map(.name) | (index("report") != null) and (index("record") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
-  good "--read-only exposes only the 7 non-submitting tools"
+if jq -e 'select(.id == 2).result.tools | (length == 8) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+  good "--read-only exposes report, the dry-run record tool, and no submit verbs"
 else
   bad "--read-only tool list drifted"
 fi
@@ -166,10 +166,10 @@ if jq -e 'select(.id == 3).result.isError == false' <"$MCP_OUT" >/dev/null; then
 else
   bad "--read-only blocked report"
 fi
-if jq -e 'select(.id == 4).error | (.code == -32602) and (.message | contains("is hidden") and contains("--read-only")) and (.data.tool == "record")' <"$MCP_OUT" >/dev/null; then
-  good "--read-only refuses record as hidden by --read-only"
+if jq -e 'select(.id == 4).result | (.isError == true) and (.structuredContent.code == "bad-flags")' <"$MCP_OUT" >/dev/null; then
+  good "--read-only refuses a non-dry record (dry_run is the only served form)"
 else
-  bad "--read-only did not refuse record as a hidden tool"
+  bad "--read-only did not refuse non-dry record"
 fi
 
 cat >"$FRAMES" <<'EOF'

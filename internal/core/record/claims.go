@@ -204,7 +204,7 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 
 func isTriageStatus(s string) bool {
 	switch s {
-	case statusOpen, outcomeAddressed, "wont-fix", "false-positive", "deferred":
+	case statusOpen, outcomeAddressed, exampleWontFix, exampleFalsePositive, "deferred":
 		return true
 	default:
 		return false

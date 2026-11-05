@@ -124,7 +124,7 @@ func ExampleClient_Record() {
 		`{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,`+
 			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Cited finding here with enough substance.",`+
 			`"rigor":"walked","severity":"important"}]}`)
-	if _, ref := controls.Resolve(context.Background(), nil, controls.Request{
+	if _, ref := controls.Resolve(context.Background(), nil, &controls.Request{
 		BundleDir: ".review/local-demo", BaseSHA: strings.Repeat("b", 40), AllowHead: true,
 	}); ref != nil {
 		fmt.Println("error:", ref)

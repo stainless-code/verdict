@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+//nolint:revive // chunk snapshot, dry-run, and coverage gates read as one block
 func (st *state) validateChunkMerge() (string, error) {
 	dir := st.dir
 	manifest := dir + "/chunks/manifest.json"
@@ -25,17 +26,24 @@ func (st *state) validateChunkMerge() (string, error) {
 		return "", ref
 	}
 	chunkHunks := dir + chunkHunksSuffix
-	removeBestEffort(chunkHunks)
-	removeBestEffort(dir + "/.chunk-hunks.tsv.part")
 	diffs, allHunks, ref := resolveChunkDiffs(st, chunks, refetch)
 	if ref != nil {
 		return "", ref
 	}
-	if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
-		return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
+	if st.dryRun {
+		st.hunkRows = allHunks
+	} else {
+		removeBestEffort(chunkHunks)
+		removeBestEffort(dir + "/.chunk-hunks.tsv.part")
+		if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
+			return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
+		}
 	}
 	if !concatEquals(diffs, dir+"/full.diff") {
 		st.warn(fmt.Sprintf(msgChunkDrifted, dir))
+	}
+	if st.inputChecked {
+		return chunkHunks, nil
 	}
 	return checkChunkCoverage(st, manifest, chunks, names, refetch)
 }
@@ -146,7 +154,9 @@ func resolveChunkDiffs(st *state, chunks []chunk, refetch string) ([]string, []h
 		allHunks = append(allHunks, hunks.Parse(string(raw))...)
 	}
 	if len(missing) > 0 {
-		removeBestEffort(chunkHunks)
+		if !st.dryRun {
+			removeBestEffort(chunkHunks)
+		}
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
 			msgChunkSnapMissing, strings.Join(missing, " "), refetch)}
 	}
@@ -185,10 +195,10 @@ func checkChunkCoverage(st *state, manifest string, chunks []chunk, names []stri
 	switch kind {
 	case attestationPresent:
 	case attestationAbsent:
-		st.warn(fmt.Sprintf(msgUnattested, manifest, len(names)))
+		st.warnInput(fmt.Sprintf(msgUnattested, manifest, len(names)))
 		return chunkHunks, nil
 	case attestationMalformed:
-		st.warn("ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested")
+		st.warnInput("ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested")
 		return chunkHunks, nil
 	}
 	return checkChunkCoverageTail(st, manifest, coverageInput{chunks: chunks, names: names, claimed: claimed}, refetch)
@@ -200,6 +210,7 @@ type coverageInput struct {
 	claimed []any
 }
 
+//nolint:revive // coverage checks read as one block
 func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetch string) (string, error) {
 	chunks, names, claimed := in.chunks, in.names, in.claimed
 	chunkHunks := st.dir + chunkHunksSuffix
@@ -211,11 +222,13 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 	missingDescs, nMiss := describeMissingChunks(chunks, claimedSet)
 	for _, c := range claimed {
 		if s, ok := c.(string); ok && s != "" && !manifestSet[s] {
-			st.warn(fmt.Sprintf("ignoring unknown chunk '%s' in the chunks attestation (not in %s)", s, manifest))
+			st.warnInput(fmt.Sprintf("ignoring unknown chunk '%s' in the chunks attestation (not in %s)", s, manifest))
 		}
 	}
 	if len(missingDescs) > 0 {
-		removeBestEffort(chunkHunks)
+		if !st.dryRun {
+			removeBestEffort(chunkHunks)
+		}
 		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
 			msgChunkCoverage, len(names)-nMiss, len(names), strings.Join(missingDescs, ", "), refetch)}
 	}
@@ -334,4 +347,23 @@ func concatRead(paths []string, total int) (string, bool) {
 		sb.Write(raw)
 	}
 	return sb.String(), true
+}
+
+// chunkCheckNames returns the manifest's chunk names for the review checker:
+// an unreadable or empty manifest leaves the checker silent so the merge's
+// pinned-snapshot refusal keeps its own code.
+func chunkCheckNames(dir string) ([]string, string) {
+	manifest := dir + "/chunks/manifest.json"
+	if !exists(manifest) {
+		return nil, ""
+	}
+	schema, manMap := manifestSchema(manifest)
+	if schema != "1" || manMap == nil {
+		return nil, ""
+	}
+	names := chunkNames(parseChunks(jq.Elements(manMap["chunks"])))
+	if len(names) == 0 {
+		return nil, ""
+	}
+	return names, manifest
 }

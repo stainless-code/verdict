@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -116,18 +117,18 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 		code    string
 		wantErr string
 	}{
-		{"comments-not-array", `,"comments":{}`, "bad-review-input", "malformed comments"},
-		{"comment-not-object", `,"comments":[42]`, "bad-review-input", "non-object comments[] entry"},
+		{"comments-not-array", `,"comments":{}`, "bad-review-input", "comments must be an array"},
+		{"comment-not-object", `,"comments":[42]`, "bad-review-input", "comment must be an object"},
 		{
 			"comment-scalar-not-string", `,"comments":[` + comment("") + `,` + comment(`,"path":7`) + `]`,
-			"bad-review-input", "non-string path, body, or suggestion",
+			"bad-review-input", "path must be a string",
 		},
-		{"resolved-not-array", `,"resolved":{}`, "bad-review-input", "malformed resolved"},
-		{"resolved-not-string", `,"resolved":[42]`, "bad-review-input", "non-string resolved[] entry"},
-		{"triage-not-array", `,"triage":"x"`, "bad-review-input", "malformed triage"},
-		{"triage-not-object", `,"triage":[42]`, "bad-review-input", "non-object triage[] entry"},
-		{"sections-not-array", `,"sections":1`, "bad-review-input", "malformed sections"},
-		{"section-not-object", `,"sections":[42]`, "bad-review-input", "non-object sections[] entry"},
+		{"resolved-not-array", `,"resolved":{}`, "bad-review-input", "value must be an array of strings"},
+		{"resolved-not-string", `,"resolved":[42]`, "bad-review-input", "array entry must be a string"},
+		{"triage-not-array", `,"triage":"x"`, "bad-review-input", "triage must be an array"},
+		{"triage-not-object", `,"triage":[42]`, "bad-review-input", "triage entry must be an object"},
+		{"sections-not-array", `,"sections":1`, "bad-review-input", "sections must be an array"},
+		{"section-not-object", `,"sections":[42]`, "bad-review-input", "section must be an object"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,8 +179,8 @@ func checkShapeRefusal(t *testing.T, slug, code, wantErr string, priorStore bool
 	if ref.Code != code {
 		t.Errorf("code = %q, want %q (message %q)", ref.Code, code, ref.Message)
 	}
-	if !strings.Contains(ref.Message, wantErr) {
-		t.Errorf("message = %q, want it to name %q", ref.Message, wantErr)
+	if !refusalNames(ref, wantErr) {
+		t.Errorf("message = %q (problems %v), want it to name %q", ref.Message, ref.Problems, wantErr)
 	}
 	for _, artifact := range []string{"findings.json", "record.json"} {
 		if priorStore && artifact == "findings.json" {
@@ -189,6 +190,20 @@ func checkShapeRefusal(t *testing.T, slug, code, wantErr string, priorStore bool
 			t.Errorf("refusal wrote %s", artifact)
 		}
 	}
+}
+
+// refusalNames reports whether the refusal, or one of its review-input
+// problems, names want.
+func refusalNames(ref *core.RefusalError, want string) bool {
+	if strings.Contains(ref.Message, want) {
+		return true
+	}
+	for _, problem := range ref.Problems {
+		if strings.Contains(problem.Message, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestRunRecordRefusesOversizeVerification proves the 32 MiB agent-input cap
@@ -465,7 +480,7 @@ func TestRunRecordFenceDemotion(t *testing.T) {
 		wantWarn   string
 		wantAnchor bool
 	}{
-		{"fenced", "```go\nold line\n```", "demoting 1 suggestion(s) with fences to body", false},
+		{"fenced", "```go\nold line\n```", "suggestion contains a fence", false},
 		{"plain", "new line", "", true},
 	}
 	for _, tc := range tests {
@@ -871,7 +886,7 @@ func TestRunRecordAnchorNormalization(t *testing.T) {
 			t.Errorf("%s anchored = %v, want true", sig, got[sig]["anchored"])
 		}
 	}
-	if !hasWarning(c.warns, "kept despite non-numeric anchor: notes.txt abc-abc") {
+	if !hasWarning(c.warns, "kept despite non-numeric anchor") {
 		t.Errorf("warnings = %v, want the non-numeric anchor warning", c.warns)
 	}
 	for _, sig := range []string{reversedSig, zeroSig} {

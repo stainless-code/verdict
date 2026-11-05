@@ -118,7 +118,7 @@ func writeFixture(t *testing.T, path, content string) {
 // head opt-out, standing in for fetch's base resolution.
 func seedControls(t *testing.T, bundleDir string) {
 	t.Helper()
-	req := controls.Request{BundleDir: bundleDir, BaseSHA: strings.Repeat("b", 40), AllowHead: true}
+	req := &controls.Request{BundleDir: bundleDir, BaseSHA: strings.Repeat("b", 40), AllowHead: true}
 	if _, ref := controls.Resolve(t.Context(), nil, req); ref != nil {
 		t.Fatal(ref)
 	}

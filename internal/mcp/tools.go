@@ -53,6 +53,7 @@ type toolMeta struct {
 	idempotent         bool
 	openWorld          bool
 	servedWhenReadOnly bool
+	readOnlyDryRun     bool
 }
 
 type toolSpec struct {
@@ -78,6 +79,8 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	deps               toolDeps
 	readOnly           bool
 	servedWhenReadOnly bool
+	readOnlyDryRun     bool
+	requireDryRun      bool
 	destructive        bool
 	idempotent         bool
 	openWorld          bool
@@ -89,6 +92,7 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	invoke             func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
+//nolint:revive // the registry reads as one block
 func allTools(readOnly, operator bool) []*tool {
 	tools := []*tool{
 		dataTool(&toolSpec{
@@ -192,10 +196,11 @@ func allTools(readOnly, operator bool) []*tool {
 			func(resp *readycore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "record",
-			description: "Validate and merge review.json into the findings and record stores. " +
-				"Call for local bundles that cannot post. Writes findings.json and record.json.",
+			description: "Validate review.json and merge it into the findings and record stores. " +
+				"Call for local bundles that cannot post; writes findings.json and record.json. " +
+				"Set dry_run to repeat every check without writing, fix each problem, and after 3 rounds report any that remain instead of recording.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Record review", idempotent: true},
+			meta:     toolMeta{title: "Record review", idempotent: true, servedWhenReadOnly: true, readOnlyDryRun: true},
 		}, toolDeps{}, decodeRecord, wireRecord, recordcore.Run,
 			func(resp *core.RecordResponse) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
@@ -255,6 +260,9 @@ func allTools(readOnly, operator bool) []*tool {
 	for _, t := range tools {
 		if readOnly {
 			t.narrowReadOnly()
+			if t.readOnlyDryRun {
+				t.requireDryRun = true
+			}
 		}
 		if !exposed(t, readOnly, operator) {
 			continue
@@ -324,6 +332,7 @@ func newTool[Req any](
 		deps:               deps,
 		readOnly:           spec.meta.readOnly,
 		servedWhenReadOnly: spec.meta.servedWhenReadOnly,
+		readOnlyDryRun:     spec.meta.readOnlyDryRun,
 		destructive:        spec.meta.destructive,
 		idempotent:         spec.meta.idempotent,
 		openWorld:          spec.meta.openWorld,
@@ -342,6 +351,9 @@ func newTool[Req any](
 		req, ok := raw.(*Req)
 		if !ok {
 			return nil, internalRefusal()
+		}
+		if t.requireDryRun && !requestDryRun(raw) {
+			return nil, &core.RefusalError{Code: "bad-flags", Message: "record writes on a read-only server; re-run with dry_run=true"}
 		}
 		return run(ctx, req)
 	}
@@ -463,6 +475,11 @@ func wireData(v any) *jq.Obj {
 		return o
 	}
 	return jq.NewObj()
+}
+
+func requestDryRun(raw any) bool {
+	req, ok := raw.(*core.RecordRequest)
+	return ok && req.DryRun
 }
 
 func internalRefusal() *core.RefusalError {

@@ -25,7 +25,7 @@ func seedControls(t *testing.T, dir string) {
 		if fi, statErr := os.Stat(bundle); statErr != nil || !fi.IsDir() || base == "" {
 			continue
 		}
-		req := controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true, Root: dir}
+		req := &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true, Root: dir}
 		if _, ref := controls.Resolve(t.Context(), nil, req); ref != nil {
 			t.Fatalf("seed controls: %v", ref)
 		}

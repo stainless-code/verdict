@@ -323,3 +323,42 @@ func TestSortedKeysIsByteOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestRefuseHumanProblems pins the review-input block: the summary line, every
+// problem in document order with its path/code/message and indented fix and
+// example lines, the truncation note, then the try and re-enter lines.
+func TestRefuseHumanProblems(t *testing.T) {
+	t.Parallel()
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Diag: &diag, Human: &out, Effective: cli.Defaults(), Now: fixedClock,
+		Rentry: "verdict record acme/app local-x --json",
+	}
+	code := r.Refuse(&cli.RefusalError{
+		Code:    "bad-review-input",
+		Message: "review.json has 2 problem(s); fix every one, then re-run",
+		Problems: []core.Problem{
+			{Path: "$.comments[0].path", Code: "wrong-type", Level: "error", Message: "path must be a string", Fix: "use a changed file path", Example: "file.go"},
+			{Path: "$.comments[1].rigor", Code: "rigor-unset", Level: "warning", Message: "rigor is unset", Fix: "set rigor to said|pointed|walked|ran|reproduced"},
+		},
+		ProblemsTruncated: 3,
+	})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
+	}
+	want := "error: review.json has 2 problem(s); fix every one, then re-run\n" +
+		"$.comments[0].path  wrong-type  path must be a string\n" +
+		"  fix: use a changed file path\n" +
+		"  example: \"file.go\"\n" +
+		"$.comments[1].rigor  rigor-unset  rigor is unset\n" +
+		"  fix: set rigor to said|pointed|walked|ran|reproduced\n" +
+		"  ... 3 more problem(s) not shown\n" +
+		"try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run\n" +
+		"re-enter: verdict record acme/app local-x --json\n"
+	if got := diag.String(); got != want {
+		t.Errorf("stderr =\n%q\nwant\n%q", got, want)
+	}
+	if out.Len() != 0 {
+		t.Errorf("stdout = %q; want no envelope outside --json mode", out.String())
+	}
+}

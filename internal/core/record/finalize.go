@@ -65,6 +65,10 @@ func (st *state) setMarker(body string) {
 }
 
 func (st *state) countHunks() {
+	if st.hunkRows != nil {
+		st.hunkN = len(st.hunkRows)
+		return
+	}
 	st.hunkN = hunkLines(st.anchorHunks)
 }
 

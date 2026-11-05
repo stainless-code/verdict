@@ -56,7 +56,7 @@ func fileBody(content string) string {
 
 func apiResolve(t *testing.T, f *apiFake, repo string) (*Snapshot, *core.RefusalError) {
 	t.Helper()
-	return Resolve(t.Context(), f, Request{BundleDir: filepath.Join(t.TempDir(), "12"), Repo: repo, BaseSHA: apiBase})
+	return Resolve(t.Context(), f, &Request{BundleDir: filepath.Join(t.TempDir(), "12"), Repo: repo, BaseSHA: apiBase})
 }
 
 // TestResolveContentsFallback proves present and absent controls land in the
@@ -147,7 +147,7 @@ func TestResolveContentsRefusals(t *testing.T) {
 func TestResolveContentsLeavesNothingOnRefusal(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "12")
 	f := &apiFake{fail: map[string]string{".review/panel": "gh: boom (HTTP 500)"}}
-	if _, ref := Resolve(t.Context(), f, Request{BundleDir: dir, Repo: "acme/app", BaseSHA: apiBase}); ref == nil {
+	if _, ref := Resolve(t.Context(), f, &Request{BundleDir: dir, Repo: "acme/app", BaseSHA: apiBase}); ref == nil {
 		t.Fatal("want a refusal")
 	}
 	if _, err := os.Stat(filepath.Join(dir, FileName)); err == nil {

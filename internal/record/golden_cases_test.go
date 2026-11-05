@@ -62,8 +62,8 @@ func genComments(n, hunks int) []any {
 		c := map[string]any{}
 		switch i % 20 {
 		case 10:
-			c["path"] = "unknown/file.txt"
-			c["line"] = 2
+			c["path"] = "notes.txt"
+			c["line"] = hunkLine(i % hunks)
 		case 11:
 			c["path"] = "notes.txt"
 			c["line"] = "two"

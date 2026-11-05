@@ -19,7 +19,7 @@
         "line": 45,
         "side": "RIGHT",
         "body": "The stat error now repeats the file name as well as the path.",
-        "rigor": "observed",
+        "rigor": "walked",
         "severity": "informational"
       }
     ]

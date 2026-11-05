@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,68 +6,19 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "report or triage the local bundle; post stays refused (no PR target)",
-  "warnings": [
-    "no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "ignoring confidence 'high' (want integer 1-5)",
-    "ignoring non-string security_summary (want a short string)",
-    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
-  ],
-  "data": {
-    "dir": ".review/local-dg",
-    "anchors": {
-      "kept": 0,
-      "moved": 0
-    },
-    "findings": {
-      "open": 0,
-      "deferred": 0,
-      "addressed": 0,
-      "file": ".review/local-dg/findings.json"
-    },
-    "confidence": null,
-    "security_summary": null,
-    "items": []
-  },
-  "error": null
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-review-input",
+    "message": "review.json has 2 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "problems": [{"path":"$.confidence","code":"wrong-type","level":"error","message":"confidence must be an integer 1-5","fix":"use an integer 1-5","example":3},{"path":"$.security_summary","code":"wrong-type","level":"error","message":"security_summary must be a string","fix":"use a short paragraph","example":"..."}],
+    "problems_truncated": 0
+  }
 }
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: ignoring confidence 'high' (want integer 1-5)
-warn: ignoring non-string security_summary (want a short string)
-» anchors: 0 inline, 0 moved to body
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
-» findings: 0 sigs -> .review/local-dg/findings.json
-recorded: .review/local-dg/findings.json (0 open) + .review/local-dg/record.json — report/triage read it; post stays refused (no PR target)
+re-enter: verdict record acme/app local-dg --json
 --- files ---
---- file C/.review/local-dg/findings.json ---
-[]
---- file C/.review/local-dg/hunks.tsv ---
-notes.txt	OLD	1	7
-notes.txt	NEW	1	7
-notes.txt	OLD	11	17
-notes.txt	NEW	11	17
-notes.txt	OLD	21	27
-notes.txt	NEW	21	27
-notes.txt	OLD	31	37
-notes.txt	NEW	31	37
-other.txt	OLD	1	3
-other.txt	NEW	1	3
---- file C/.review/local-dg/record.json ---
-{
-  "schema_version": "1",
-  "status": "local",
-  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
-  "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 0,
-  "open": 0,
-  "confidence": null,
-  "security_summary": null,
-  "tool_version": "VERSION",
-  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
-  "model": null
-}
 --- file C/.review/local-dg/store.json ---
 {
   "schema_version": "1"

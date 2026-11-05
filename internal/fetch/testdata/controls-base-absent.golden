@@ -66,6 +66,7 @@ CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefN
 CALL: pr diff 4701 --repo acme/app
 CALL: api repos/acme/app/contents/.review/panel?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.review/budget?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.review/strict_input?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.review/max_bytes?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.review/chunk?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.review/kb.jsonl?ref=cccccccccccccccccccccccccccccccccccccccc
@@ -120,6 +121,12 @@ notes.txt
     },
     {
       "path": ".review/budget",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".review/strict_input",
       "status": "missing",
       "bytes": 0,
       "sha256": ""

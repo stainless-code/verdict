@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,128 +6,19 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "report or triage the local bundle; post stays refused (no PR target)",
-  "warnings": [
-    "no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "moved to body: unknown path (not in diff index): null",
-    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
-  ],
-  "data": {
-    "dir": ".review/local-dg",
-    "anchors": {
-      "kept": 0,
-      "moved": 1
-    },
-    "findings": {
-      "open": 2,
-      "deferred": 0,
-      "addressed": 0,
-      "file": ".review/local-dg/findings.json"
-    },
-    "confidence": null,
-    "security_summary": null,
-    "items": [
-      {
-        "sig": "59853ecb96be5690aa81fb976e9e42c15644f399",
-        "status": "open",
-        "anchored": false,
-        "locator": "?"
-      },
-      {
-        "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### ℹ️ Unanchored observations"
-      }
-    ]
-  },
-  "error": null
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-review-input",
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "problems": [{"path":"$.comments[0].path","code":"wrong-type","level":"error","message":"path must be a string","fix":"use a changed file path","example":"file.go"}],
+    "problems_truncated": 0
+  }
 }
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: moved to body: unknown path (not in diff index): null
-» anchors: 0 inline, 1 moved to body
-  - `:2-2` (path not in diff index (null) — posted here instead of inline): Null path.
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
-» findings: 2 sigs -> .review/local-dg/findings.json
-  59853ecb  open  false  ?
-  1b5fa562  open  body  ### ℹ️ Unanchored observations
-recorded: .review/local-dg/findings.json (2 open) + .review/local-dg/record.json — report/triage read it; post stays refused (no PR target)
+re-enter: verdict record acme/app local-dg --json
 --- files ---
---- file C/.review/local-dg/findings.json ---
-[
-  {
-    "kind": "inline",
-    "path": null,
-    "side": "RIGHT",
-    "line": 2,
-    "anchored": false,
-    "body": "Null path.",
-    "suggestion": null,
-    "kb": [],
-    "inBounds": true,
-    "rigor": "pointed",
-    "severity": null,
-    "sig": "59853ecb96be5690aa81fb976e9e42c15644f399",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "section",
-    "heading": "### ℹ️ Unanchored observations",
-    "anchored": "body",
-    "body": "### ℹ️ Unanchored observations",
-    "severity": null,
-    "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  }
-]
---- file C/.review/local-dg/hunks.tsv ---
-notes.txt	OLD	1	7
-notes.txt	NEW	1	7
-notes.txt	OLD	11	17
-notes.txt	NEW	11	17
-notes.txt	OLD	21	27
-notes.txt	NEW	21	27
-notes.txt	OLD	31	37
-notes.txt	NEW	31	37
-other.txt	OLD	1	3
-other.txt	NEW	1	3
---- file C/.review/local-dg/record.json ---
-{
-  "schema_version": "1",
-  "status": "local",
-  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
-  "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 2,
-  "open": 2,
-  "confidence": null,
-  "security_summary": null,
-  "tool_version": "VERSION",
-  "prompts_hash": "ed1f9ab918c734f16644f593d4e76756c89d6612a362c1788cd9c226cd8b00b2",
-  "model": null
-}
 --- file C/.review/local-dg/store.json ---
 {
   "schema_version": "1"

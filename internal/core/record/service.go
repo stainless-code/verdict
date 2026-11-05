@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -22,6 +24,8 @@ import (
 // writes stdout/stderr or exits; human lines stream through the runtime
 // progress observer, stores go through the shared atomic path, and the
 // envelope inputs come back in the response for the adapter to render.
+//
+//nolint:revive // the gate order is the service contract
 func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *core.RefusalError) {
 	st := &svc{req: req, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {
@@ -31,8 +35,13 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	review, ref := st.loadInputs(dir)
+	check, ref := st.checkInputs(dir)
 	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	st.check = &check.Summary
+	st.addCheckWarnings(check)
+	if ref := reviewRefusal(check, false); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	snap, ref := controls.Gate(dir, BundleBase(dir, st.store))
@@ -40,34 +49,106 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 		return nil, st.withWarnings(ref)
 	}
 	st.controls = snap
+	if ref := reviewRefusal(check, st.req.Strict || snap.StrictInput()); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	review, ref := st.loadInputs(dir)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	res, ref := st.merge(dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if st.req.DryRun {
+		return st.dryRun(dir, now, &res), nil
+	}
 	return st.finalize(dir, prov, headFull, now, &res)
+}
+
+func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
+	raw, err := readAgentFile(dir + reviewSuffix)
+	if err != nil {
+		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+			return CheckResult{}, ref
+		}
+		return CheckResult{}, &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, dir+"/review.json")}
+	}
+	diff, err := os.ReadFile(dir + diffSuffix)
+	if err != nil {
+		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
+	}
+	in := CheckInput{Diff: string(diff)}
+	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
+	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
+		in.Verification, in.HasVerification = verification, true
+	}
+	return CheckReviewInput(raw, in), nil
+}
+
+func (st *svc) addCheckWarnings(check CheckResult) {
+	for _, p := range check.Problems {
+		if p.Level == core.ProblemLevelWarning {
+			st.addWarning(p.Path + ": " + p.Message)
+		}
+	}
+}
+
+func (st *svc) addWarning(msg string) {
+	if slices.Contains(st.warnings, msg) {
+		return
+	}
+	st.warnings = append(st.warnings, msg)
+	if st.req.Runtime != nil && st.req.Progress != nil {
+		st.req.Progress.Warn(msg)
+	}
+}
+
+func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
+	problems := make([]core.Problem, len(check.Problems))
+	copy(problems, check.Problems)
+	for i := range problems {
+		if problems[i].Level == core.ProblemLevelWarning && strict {
+			problems[i].Level = core.ProblemLevelError
+		}
+	}
+	if check.Errors == 0 && (!strict || check.Warnings == 0) {
+		return nil
+	}
+	total := check.Errors + check.Warnings
+	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
+	return &core.RefusalError{Code: codeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
 }
 
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {
 	req := st.req
 	dir = readcommon.ResolveBundleDir(req.Pr)
 	st.store = readcommon.OpenBundle(dir)
-	if prov, ref = resolveProvider(dir, st.store); ref != nil {
+	if prov, ref = resolveProvider(dir, st.store, req.DryRun); ref != nil {
 		return "", "", "", "", ref
 	}
 	if ref = checkBundleFiles(dir, prov); ref != nil {
 		return "", "", "", "", ref
 	}
-	if err := EnsureStore(dir); err != nil {
-		return "", "", "", "", recordFailed(err)
+	if !req.DryRun {
+		if err := EnsureStore(dir); err != nil {
+			return "", "", "", "", recordFailed(err)
+		}
 	}
 	return dir, prov, resolveHead(dir, st.store, prov), req.TimeUTC(), nil
 }
 
 func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
-	if err := EnsureHunksSnapshot(st.runtime(), dir); err != nil {
+	if st.req.DryRun {
+		raw, err := os.ReadFile(dir + diffSuffix)
+		if err != nil {
+			return nil, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
+		}
+		st.hunkRows = hunks.Parse(string(raw))
+	} else if err := EnsureHunksSnapshot(st.runtime(), dir); err != nil {
 		return nil, refusalOrFailed(err)
 	}
-	review, err := LoadReview(dir + "/review.json")
+	review, err := LoadReview(dir + reviewSuffix)
 	if err != nil {
 		return nil, refusalOrFailed(err)
 	}
@@ -82,7 +163,7 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		Prov:         prov,
 		HeadFull:     headFull,
 		Review:       review,
-		ReviewFile:   dir + "/review.json",
+		ReviewFile:   dir + reviewSuffix,
 		Root:         req.RootPath(),
 		Body:         reviewBodyOf(review),
 		FindingsFile: dir + "/findings.json",
@@ -91,7 +172,10 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		Repo:         req.Repo,
 		Pr:           req.Pr,
 		Cmd:          "record",
+		DryRun:       st.req.DryRun,
 		Controls:     st.controls,
+		HunkRows:     st.hunkRows,
+		InputChecked: true,
 	})
 	if err != nil {
 		return MergeResult{}, refusalOrFailed(err)
@@ -109,7 +193,9 @@ func refusalOrFailed(err error) *core.RefusalError {
 type svc struct {
 	req      *core.RecordRequest
 	controls *controls.Snapshot
+	check    *core.CheckSummary
 	store    *readcommon.Bundle
+	hunkRows []hunks.Hunk
 	warnings []string
 }
 
@@ -175,7 +261,7 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 	nOpen := CountStatus(res.Entries, statusOpen)
 	nDeferred := CountStatus(res.Entries, "deferred")
 	nAddressed := CountStatus(res.Entries, "addressed")
-	diffSHA := sha256File(dir + "/full.diff")
+	diffSHA := sha256File(dir + diffSuffix)
 	toolVersion, promptsHash, model := provenance.Triple(st.req.RootPath(), dir)
 	record := &core.Record{
 		SchemaVersion:   "1",
@@ -217,6 +303,36 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 		Warnings: st.warnings,
 		Next:     "report or triage the local bundle; post stays refused (no PR target)",
 	}, nil
+}
+
+func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
+	nOpen := CountStatus(res.Entries, statusOpen)
+	nDeferred := CountStatus(res.Entries, "deferred")
+	nAddressed := CountStatus(res.Entries, "addressed")
+	dry := &core.RecordData{
+		Dir:             dir,
+		Anchors:         core.AnchorsSummary{Kept: res.NKept, Moved: res.NMoved},
+		Findings:        core.RecordFindings{Open: nOpen, Deferred: nDeferred, Addressed: nAddressed},
+		Confidence:      intOrNil(res.Confidence),
+		ConfidenceRaw:   res.Confidence,
+		SecuritySummary: strOrNil(res.Security),
+		Items:           typedItems(res.Entries),
+		ItemsRaw:        EnvelopeItems(res.Entries),
+		DryRun:          true,
+		Check:           st.check,
+	}
+	next := "re-run without --dry-run to record; fix every problem first"
+	if st.store != nil && st.store.Provider() == "github" {
+		next = "fix every problem, then post the review with verdict post"
+	}
+	return &core.RecordResponse{
+		Repo:     st.req.Repo,
+		Pr:       st.req.Pr,
+		At:       now,
+		Data:     dry,
+		Warnings: st.warnings,
+		Next:     next,
+	}
 }
 
 func intOrNil(v any) *int {
@@ -266,7 +382,7 @@ func typedItems(entries []any) []core.FindingItem {
 	return items
 }
 
-func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.RefusalError) {
+func resolveProvider(dir string, store *readcommon.Bundle, allowPR bool) (string, *core.RefusalError) {
 	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
 		return providerLocal, nil
 	}
@@ -274,6 +390,9 @@ func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.Refusa
 	case "":
 		return "", &core.RefusalError{Code: codeNotLocal, Message: msgNotLocal}
 	case "github":
+		if allowPR {
+			return prov, nil
+		}
 		return "", &core.RefusalError{Code: codeNotLocal, Message: msgNotGH}
 	default:
 		return prov, nil
@@ -286,8 +405,8 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 		code string
 		hint string
 	}{
-		{dir + "/review.json", codeMissingReviewFile, "agent must write {body, approved, comments[]}"},
-		{dir + "/full.diff", "missing-diff", "run fetch-local / fetch --provider first"},
+		{dir + reviewSuffix, codeMissingReviewFile, "agent must write {body, approved, comments[]}"},
+		{dir + diffSuffix, "missing-diff", "run fetch-local / fetch --provider first"},
 	}
 	for _, f := range files {
 		if !exists(f.path) {
