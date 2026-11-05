@@ -112,6 +112,28 @@ else
   bad "strict refusal wrote store files"
 fi
 
+ENV_SLUG="local-recordenv"
+ENV_BUNDLE="$EVAL_SANDBOX/.review/$ENV_SLUG"
+printf '%s' "$WEAK_REVIEW" | mk_local "$ENV_SLUG"
+if [ "$(jq -r '.strict_input // empty' "$ENV_BUNDLE/controls.json" 2>/dev/null)" != "" ]; then
+  bad "record-env bundle baked strict_input at seed time"
+else
+  good "record-env bundle carries no fetch-time strict_input"
+fi
+REVIEW_STRICT_INPUT=1 run_review record acme/app "$ENV_SLUG" --dry-run --json
+assert_exit "env-at-record strict dry run refuses" 1
+assert_refusal "env-at-record strict review" "bad-review-input"
+if jq -e 'any(.error.problems[]; .code == "normalized-fence" and .level == "error")' <"$EVAL_OUT" >/dev/null; then
+  good "env-at-record promotes the fence repair to an error"
+else
+  bad "env-at-record refusal misses the promoted fence repair"
+fi
+if [ ! -e "$ENV_BUNDLE/findings.json" ] && [ ! -e "$ENV_BUNDLE/record.json" ]; then
+  good "env-at-record refusal writes no findings or record"
+else
+  bad "env-at-record refusal wrote store files"
+fi
+
 unset EVAL_NO_SEED
-rm -rf "$LB" "$STRICT_BUNDLE"
+rm -rf "$LB" "$STRICT_BUNDLE" "$ENV_BUNDLE"
 eval_end

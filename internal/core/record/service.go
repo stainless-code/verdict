@@ -49,7 +49,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 		return nil, st.withWarnings(ref)
 	}
 	st.controls = snap
-	if ref := reviewRefusal(check, st.req.Strict || snap.StrictInput()); ref != nil {
+	if ref := reviewRefusal(check, strictRecord(st.req, snap)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	review, ref := st.loadInputs(dir)
@@ -119,6 +119,32 @@ func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	total := check.Errors + check.Warnings
 	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
 	return &core.RefusalError{Code: codeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
+}
+
+// strictRecord decides whether warnings refuse the run: the --strict flag,
+// the fetch-time strict_input snapshot, or REVIEW_STRICT_INPUT=1 in the
+// record request's own environment. The environment leg matters because the
+// snapshot only captures fetch time, while CLI record, dry run, MCP, and SDK
+// callers all carry their runtime env into this request.
+func strictRecord(req *core.RecordRequest, snap *controls.Snapshot) bool {
+	if req.Strict {
+		return true
+	}
+	if snap.StrictInput() {
+		return true
+	}
+	return runtimeStrictInput(req.Runtime)
+}
+
+// runtimeStrictInput mirrors the fetch-time REVIEW_STRICT_INPUT reading: a
+// blank value leaves the snapshot in charge, any other value wins, and only
+// "1" promotes.
+func runtimeStrictInput(rt *core.Runtime) bool {
+	if rt == nil {
+		return false
+	}
+	raw, ok := rt.Env["REVIEW_STRICT_INPUT"]
+	return ok && strings.TrimSpace(raw) == "1"
 }
 
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {

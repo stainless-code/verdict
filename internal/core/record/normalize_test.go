@@ -393,6 +393,33 @@ func strictPromoted(problems []recordcore.Problem, code string) bool {
 	return false
 }
 
+// TestRecordStrictEnvAtRecordTime proves REVIEW_STRICT_INPUT=1 in the record
+// request's runtime env promotes warnings at record time, even when the
+// bundle was fetched without it: the same review records by default and
+// refuses once the env is set.
+func TestRecordStrictEnvAtRecordTime(t *testing.T) {
+	review := "```json\n" + `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,` +
+		`"comments":[{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced"}]}` + "\n```"
+	bundle(t, "local-norm-env", review)
+	c := &collector{}
+	req := recordRequest(t, c, "local-norm-env")
+	req.DryRun = true
+	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
+		t.Fatalf("default run refused: %v", ref)
+	}
+	ce := &collector{}
+	ereq := recordRequest(t, ce, "local-norm-env")
+	ereq.DryRun = true
+	ereq.Runtime.Env = map[string]string{"REVIEW_STRICT_INPUT": "1"}
+	_, ref := recordcore.Run(context.Background(), ereq)
+	if ref == nil || ref.Code != "bad-review-input" {
+		t.Fatalf("env-strict refusal = %+v, want bad-review-input", ref)
+	}
+	if !strictPromoted(ref.Problems, core.ProblemCodeNormalizedFence) {
+		t.Errorf("env-strict problems = %+v, want normalized-fence as an error", ref.Problems)
+	}
+}
+
 func readFile(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	return string(raw), err
