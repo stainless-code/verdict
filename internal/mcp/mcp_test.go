@@ -249,7 +249,7 @@ func postFixture(t *testing.T) {
 	writeFile(t, ".review/7/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
 	writeFile(t, ".review/7/findings.json", `[]`)
-	req := controls.Request{BundleDir: ".review/7", BaseSHA: strings.Repeat("b", 40), AllowHead: true}
+	req := &controls.Request{BundleDir: ".review/7", BaseSHA: strings.Repeat("b", 40), AllowHead: true}
 	if _, ref := controls.Resolve(t.Context(), nil, req); ref != nil {
 		t.Fatal(ref)
 	}

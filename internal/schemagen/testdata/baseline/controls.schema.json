@@ -22,7 +22,7 @@
       "type": "string"
     },
     "strict_input": {
-      "description": "When true, record promotes review.json warnings to errors and refuses while any remain; absent means off.",
+      "description": "When true, record promotes review.json warnings to errors and refuses while any remain. fetch resolves it from REVIEW_STRICT_INPUT=1 or a .review/strict_input file holding true; absent means off.",
       "type": "boolean"
     },
     "files": {

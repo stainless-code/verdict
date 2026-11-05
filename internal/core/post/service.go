@@ -258,6 +258,9 @@ func (st *state) loadReview() *core.RefusalError {
 	}
 	bodyRaw, _ := review.Get("body")
 	st.review, st.body = review, jq.R(jq.Alt(bodyRaw, ""))
+	if err := recordcore.CheckDegenerate(st.body); err != nil {
+		return refusalOrFailed(err)
+	}
 	return nil
 }
 

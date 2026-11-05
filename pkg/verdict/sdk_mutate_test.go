@@ -18,7 +18,7 @@ const sdkReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note
 // the snapshot, and the head policy keeps the fixture offline.
 func seedControls(t *testing.T, pr string) {
 	t.Helper()
-	if _, ref := controls.Resolve(context.Background(), nil, controls.Request{
+	if _, ref := controls.Resolve(context.Background(), nil, &controls.Request{
 		BundleDir: ".review/" + pr, BaseSHA: sdkBaseB, AllowHead: true,
 	}); ref != nil {
 		t.Fatalf("seed controls: %v", ref)

@@ -47,7 +47,7 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 	if err != nil {
 		return err
 	}
-	if _, ref := controls.Resolve(ctx, nil, controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true}); ref != nil {
+	if _, ref := controls.Resolve(ctx, nil, &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true}); ref != nil {
 		return jq.NewErrf("controls snapshot: %s", ref)
 	}
 	return nil

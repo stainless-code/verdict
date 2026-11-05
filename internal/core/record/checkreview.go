@@ -19,6 +19,8 @@ import (
 type CheckResult struct {
 	Problems  []Problem         `json:"problems"`
 	Truncated int               `json:"problems_truncated"`
+	Errors    int               `json:"errors"`
+	Warnings  int               `json:"warnings"`
 	Summary   core.CheckSummary `json:"summary"`
 }
 
@@ -38,6 +40,7 @@ type Problem = core.Problem
 
 const (
 	problemCap           = 50
+	nearestKeyMax        = 64
 	problemRoot          = "$"
 	problemSchemaVersion = "$.schema_version"
 	problemApproved      = "approved"
@@ -142,6 +145,12 @@ func (c *checker) result() *CheckResult {
 
 //nolint:gocritic // Problem is copied once into the result
 func (c *checker) add(p Problem) {
+	switch p.Level {
+	case core.ProblemLevelError:
+		c.res.Errors++
+	case core.ProblemLevelWarning:
+		c.res.Warnings++
+	}
 	if len(c.res.Problems) >= problemCap {
 		c.res.Truncated++
 		return
@@ -170,9 +179,12 @@ func (c *checker) badEnum(path, message, fix string, example any) {
 }
 
 func (c *checker) unknown(path, key string, known []string) {
+	fix := "remove it"
+	if near := nearest(key, known); near != "" {
+		fix = fmt.Sprintf("remove it or rename it to the nearest known key %q", near)
+	}
 	c.add(c.problem(path+"."+key, core.ProblemCodeUnknownField, core.ProblemLevelWarning,
-		fmt.Sprintf("unknown field %q", key),
-		fmt.Sprintf("remove it or rename it to the nearest known key %q", nearest(key, known))))
+		fmt.Sprintf("unknown field %q", key), fix))
 }
 
 // checkReview walks the top-level object in document order.
@@ -211,6 +223,12 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	if _, ok := obj.Get(fieldBody); !ok {
 		c.missing("$."+fieldBody, "missing body", "write the full review text", exampleEllipsis)
 	}
+	if _, ok := obj.Get("comments"); !ok {
+		c.add(c.problem("$.comments", core.ProblemCodeMissingField, core.ProblemLevelWarning,
+			"comments is missing; treating it as an empty list",
+			"write \"comments\": []", []any{}))
+	}
+	c.checkBodyQuality(obj)
 	if _, ok := obj.Get("schema_version"); !ok {
 		c.add(c.problem(problemSchemaVersion, core.ProblemCodeMissingField, core.ProblemLevelWarning,
 			"schema_version is missing; assuming 1",
@@ -337,7 +355,11 @@ func (c *checker) checkComment(i int, item any) {
 	if _, hasRigor := m.Get(fieldRigor); !hasRigor {
 		c.checkRigor(base, nil)
 	}
+	moved := c.moved
 	c.checkAnchor(base, m, path, pathOK)
+	if hasSuggestionFence(m) && c.moved == moved {
+		c.moved++
+	}
 }
 
 func (c *checker) checkSide(path string, v any) {
@@ -393,7 +415,7 @@ func (c *checker) checkKB(path string, v any) {
 	}
 }
 
-//nolint:revive // the chunk type and unknown-name gates read as one block
+//nolint:cyclop,gocognit,revive // chunk type, name, and coverage gates read as one block
 func (c *checker) checkChunks(v any) {
 	if v == nil || v == false {
 		if c.hasChunks {
@@ -418,6 +440,27 @@ func (c *checker) checkChunks(v any) {
 				fmt.Sprintf("unknown chunk %q in the chunks attestation", name),
 				"use a chunk name from "+c.chunkManifest))
 		}
+	}
+	if !c.hasChunks {
+		return
+	}
+	claimed := map[string]bool{}
+	for _, item := range items {
+		if name, ok := item.(string); ok {
+			claimed[name] = true
+		}
+	}
+	var missing []string
+	for _, name := range c.chunkNames {
+		if !claimed[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		c.add(c.problem("$.chunks", core.ProblemCodeMissingField, core.ProblemLevelError,
+			fmt.Sprintf("chunks attestation covers %d of %d manifest chunk(s); missing %s",
+				len(c.chunkNames)-len(missing), len(c.chunkNames), strings.Join(missing, ", ")),
+			"list every manifest chunk name in top-level chunks", c.chunkNames))
 	}
 }
 
@@ -475,6 +518,7 @@ func (c *checker) checkAnchorValue(path, key string, v any) {
 	}
 }
 
+//nolint:revive // path, missing-line, and in-hunk gates read as one check
 func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) {
 	if !pathOK {
 		return
@@ -488,6 +532,12 @@ func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) 
 	}
 	lo, hi, side := anchorRange(m)
 	if lo < 0 {
+		if anchorAbsent(m) {
+			c.moved++
+			c.add(c.problem(base+".line", core.ProblemCodeMissingField, core.ProblemLevelWarning,
+				"comment has no line or start_line; record moves it to the body",
+				"set line or start_line inside a reviewed hunk", exampleLine))
+		}
 		return
 	}
 	want := "NEW"
@@ -501,6 +551,59 @@ func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) 
 	c.add(c.problem(base+".line", core.ProblemCodeAnchorOutsideHunk, core.ProblemLevelWarning,
 		fmt.Sprintf("anchor %d-%d (%s) is outside every reviewed hunk; record moves it to the body", lo, hi, side),
 		"move the comment to the body or set line/start_line inside a reviewed hunk"))
+}
+
+func anchorAbsent(m *jq.Obj) bool {
+	hasFalse := false
+	for _, key := range []string{fieldLine, fieldStartLine} {
+		v, has := m.Get(key)
+		if !has {
+			continue
+		}
+		if v == false {
+			hasFalse = true
+			continue
+		}
+		if v != nil {
+			return false
+		}
+	}
+	return !hasFalse
+}
+
+func (c *checker) checkDegenerateBody(body string) *core.Problem {
+	if markerRe.MatchString(body) {
+		return nil
+	}
+	switch {
+	case len(body) < degenerateFloor:
+		p := Problem{
+			Path: "$.body", Code: core.ProblemCodeMissingField, Level: core.ProblemLevelError,
+			Message: "body is degenerate (<20 chars, no verdict marker)",
+			Fix:     "open with a verdict marker (see prompts/review.md) and write the review",
+		}
+		return &p
+	case len(body) < placeholderFloor && asciiContainsLower(body, placeholderRe):
+		p := Problem{
+			Path: "$.body", Code: core.ProblemCodeMissingField, Level: core.ProblemLevelError,
+			Message: "body looks like a short placeholder",
+			Fix:     "write the real review, or open with a verdict marker",
+		}
+		return &p
+	default:
+		return nil
+	}
+}
+
+func (c *checker) checkBodyQuality(obj *jq.Obj) {
+	body, _ := obj.Get(fieldBody)
+	text, ok := body.(string)
+	if !ok {
+		return
+	}
+	if p := c.checkDegenerateBody(text); p != nil {
+		c.add(*p)
+	}
 }
 
 func (c *checker) checkRigor(base string, v any) {
@@ -746,6 +849,9 @@ func sectionExample() map[string]any {
 }
 
 func nearest(s string, keys []string) string {
+	if len(s) > nearestKeyMax {
+		return ""
+	}
 	best, bestD := "", -1
 	for _, key := range keys {
 		d := editDistance(s, key)

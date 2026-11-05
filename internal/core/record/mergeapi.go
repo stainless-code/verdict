@@ -150,9 +150,9 @@ func reportFindings(st *state) {
 	}
 }
 
-// LoadReview reads and gates a review.json file: the size cap, the JSON
-// shape, and the degenerate-body bar. Both verbs share it; only the bundle
-// gates around it differ.
+// LoadReview reads and gates a review.json file: the size cap and the JSON
+// object shape. record's checker owns content validity; post calls
+// [CheckDegenerate] for its body bar.
 func LoadReview(path string) (*jq.Obj, error) {
 	reviewRaw, err := readAgentFile(path)
 	if err != nil {
@@ -168,9 +168,6 @@ func LoadReview(path string) (*jq.Obj, error) {
 	review, ok := reviewDoc.(*jq.Obj)
 	if !ok {
 		return nil, &core.RefusalError{Code: codeBadReviewSchema, Message: msgReviewNotObject}
-	}
-	if err := checkDegenerate(reviewBodyOf(review)); err != nil {
-		return nil, err
 	}
 	return review, nil
 }
@@ -276,7 +273,9 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func checkDegenerate(body string) error {
+// CheckDegenerate refuses a degenerate review body: shorter than the floor
+// with no verdict marker, or a short placeholder-looking string.
+func CheckDegenerate(body string) error {
 	if markerRe.MatchString(body) {
 		return nil
 	}

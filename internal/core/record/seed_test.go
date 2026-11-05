@@ -13,7 +13,7 @@ func seedControls(t *testing.T, bundleDir string) {
 	if base == "" {
 		return
 	}
-	if _, ref := controls.Resolve(t.Context(), nil, controls.Request{BundleDir: bundleDir, BaseSHA: base, AllowHead: true}); ref != nil {
+	if _, ref := controls.Resolve(t.Context(), nil, &controls.Request{BundleDir: bundleDir, BaseSHA: base, AllowHead: true}); ref != nil {
 		t.Fatalf("seed controls: %v", ref)
 	}
 }

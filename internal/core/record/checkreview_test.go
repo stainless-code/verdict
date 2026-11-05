@@ -15,7 +15,11 @@ const checkDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 10
 const checkBody = "> ✅ marker plus enough length to pass the guard ok."
 
 func checkReview(extra string) string {
-	return `{"schema_version":"1","body":"` + checkBody + `","approved":false` + extra + `}`
+	comments := `,"comments":[]`
+	if strings.Contains(extra, `"comments"`) {
+		comments = ""
+	}
+	return `{"schema_version":"1","body":"` + checkBody + `","approved":false` + comments + extra + `}`
 }
 
 func checkComment(extra string) string {
@@ -292,5 +296,103 @@ func TestCheckReviewCoversBundleInputs(t *testing.T) {
 				t.Errorf("level = %s, want %s: %+v", found.Level, tc.level, found)
 			}
 		})
+	}
+}
+
+// TestCheckReviewCountsTruncatedLevels proves the level tally covers problems
+// past the 50-problem cap, so a truncated error can never be accepted.
+func TestCheckReviewCountsTruncatedLevels(t *testing.T) {
+	t.Parallel()
+	var sb strings.Builder
+	sb.WriteString(`{"schema_version":"1","body":"` + checkBody + `","approved":false`)
+	for i := range 50 {
+		fmt.Fprintf(&sb, `,"zz%02d":%d`, i, i)
+	}
+	sb.WriteString(`,"comments":[{"path":7,"line":2,"body":"A finding with enough substance.","rigor":"walked"}]}`)
+	res := recordcore.CheckReview([]byte(sb.String()), checkDiff)
+	if len(res.Problems) != 50 || res.Truncated != 1 {
+		t.Fatalf("problems=%d truncated=%d, want 50/1", len(res.Problems), res.Truncated)
+	}
+	if res.Warnings != 50 || res.Errors != 1 {
+		t.Errorf("levels errors=%d warnings=%d, want 1/50", res.Errors, res.Warnings)
+	}
+}
+
+// TestCheckReviewMissingComments proves the schema-required comments key is
+// reported instead of silently accepted.
+func TestCheckReviewMissingComments(t *testing.T) {
+	t.Parallel()
+	res := recordcore.CheckReview([]byte(`{"schema_version":"1","body":"`+checkBody+`","approved":false}`), checkDiff)
+	checkProblems(t, res, 1)
+	if p := res.Problems[0]; p.Path != "$.comments" || p.Code != core.ProblemCodeMissingField || p.Level != core.ProblemLevelWarning {
+		t.Errorf("problem = %+v, want missing-field warning at $.comments", p)
+	}
+}
+
+// TestCheckReviewMissingAnchor proves a comment with no line or start_line is
+// reported and counted as moved, matching the merge's body placement.
+func TestCheckReviewMissingAnchor(t *testing.T) {
+	t.Parallel()
+	res := recordcore.CheckReview([]byte(checkReview(`,"comments":[{"path":"notes.txt","body":"A finding with enough substance.","rigor":"walked"}]`)), checkDiff)
+	checkProblems(t, res, 1)
+	if p := res.Problems[0]; p.Path != "$.comments[0].line" || p.Code != core.ProblemCodeMissingField || p.Level != core.ProblemLevelWarning {
+		t.Errorf("problem = %+v, want missing-field warning at $.comments[0].line", p)
+	}
+	if res.Summary.AnchorsMovedToBody != 1 {
+		t.Errorf("moved = %d, want 1", res.Summary.AnchorsMovedToBody)
+	}
+}
+
+// TestCheckReviewDegenerateBody proves the body-quality bar is a review-input
+// problem, not a merge-only refusal.
+func TestCheckReviewDegenerateBody(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{"short", "this is a placeholder sample text here ok"} {
+		res := recordcore.CheckReview([]byte(`{"schema_version":"1","body":`+fmt.Sprintf("%q", body)+`,"approved":false,"comments":[]}`), checkDiff)
+		checkProblems(t, res, 1)
+		if p := res.Problems[0]; p.Path != "$.body" || p.Code != core.ProblemCodeMissingField || p.Level != core.ProblemLevelError {
+			t.Errorf("body %q problem = %+v, want missing-field error at $.body", body, p)
+		}
+	}
+}
+
+// TestCheckReviewPartialChunks proves chunk coverage completeness is a
+// review-input problem before the merge.
+func TestCheckReviewPartialChunks(t *testing.T) {
+	t.Parallel()
+	in := recordcore.CheckInput{Diff: checkDiff, ChunkNames: []string{"a", "b"}, ChunkManifest: "manifest.json"}
+	res := recordcore.CheckReviewInput([]byte(checkReview(`,"chunks":["a"]`)), in)
+	var found *recordcore.Problem
+	for i := range res.Problems {
+		if res.Problems[i].Path == "$.chunks" && res.Problems[i].Code == core.ProblemCodeMissingField {
+			found = &res.Problems[i]
+		}
+	}
+	if found == nil || found.Level != core.ProblemLevelError || !strings.Contains(found.Message, "b") {
+		t.Fatalf("partial chunks problems = %+v, want missing-field error naming b", res.Problems)
+	}
+}
+
+// TestCheckReviewLongUnknownKey proves hostile key names skip the nearest-key
+// suggestion instead of paying edit distance over the whole string.
+func TestCheckReviewLongUnknownKey(t *testing.T) {
+	t.Parallel()
+	key := strings.Repeat("z", 4096)
+	res := recordcore.CheckReview([]byte(`{"schema_version":"1","body":"`+checkBody+`","approved":false,"comments":[],`+fmt.Sprintf("%q", key)+`:true}`), checkDiff)
+	checkProblems(t, res, 1)
+	if got := res.Problems[0].Fix; got != "remove it" {
+		t.Errorf("fix = %q, want remove it for the long key", got)
+	}
+}
+
+// TestCheckReviewFenceCountsAsMoved proves a fenced suggestion contributes to
+// the same moved count the merge reports.
+func TestCheckReviewFenceCountsAsMoved(t *testing.T) {
+	t.Parallel()
+	suggestion := ",\"suggestion\":\"```\\nx\\n```\""
+	res := recordcore.CheckReview([]byte(checkReview(`,"comments":[`+checkComment(`,"rigor":"walked"`+suggestion)+`]`)), checkDiff)
+	checkProblems(t, res, 1)
+	if res.Summary.AnchorsMovedToBody != 1 {
+		t.Errorf("moved = %d, want 1 for the demoted suggestion", res.Summary.AnchorsMovedToBody)
 	}
 }

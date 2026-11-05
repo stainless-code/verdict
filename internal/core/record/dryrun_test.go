@@ -3,6 +3,7 @@ package recordcore_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -79,6 +80,9 @@ func TestDryRunWritesNothing(t *testing.T) {
 	}
 	if resp.Data.Findings.Open != 1 || len(resp.Data.Items) != 1 {
 		t.Errorf("dry-run summary = %+v", resp.Data)
+	}
+	if resp.Data.Findings.File != "" {
+		t.Errorf("dry-run findings.file = %q, want empty", resp.Data.Findings.File)
 	}
 }
 
@@ -171,5 +175,84 @@ func setStrictControl(t *testing.T, path string) {
 	}
 	if err := os.WriteFile(path, updated, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestDryRunRefusesTruncatedError proves an error past the 50-problem cap still
+// refuses, with the total count in the message.
+func TestDryRunRefusesTruncatedError(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString(`{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false`)
+	for i := range 50 {
+		fmt.Fprintf(&sb, `,"zz%d":%d`, i, i)
+	}
+	sb.WriteString(`,"comments":[{"path":7,"line":2,"body":"A finding with enough substance.","rigor":"walked"}]}`)
+	bundle(t, "local-trunc", sb.String())
+	c := &collector{}
+	req := recordRequest(t, c, "local-trunc")
+	req.DryRun = true
+	_, ref := recordcore.Run(context.Background(), req)
+	if ref == nil {
+		t.Fatal("truncated error was accepted")
+	}
+	if ref.Code != "bad-review-input" || ref.ProblemsTruncated != 1 || !strings.Contains(ref.Message, "51 problem") {
+		t.Fatalf("refusal = %+v", ref)
+	}
+}
+
+// TestLineLessCommentMovesToBody proves a comment with no line is reported and
+// stored as moved rather than inline with a null anchor.
+//
+//nolint:revive // record, store, and warning assertions read as one block
+func TestLineLessCommentMovesToBody(t *testing.T) {
+	review := `{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,` +
+		`"comments":[{"path":"notes.txt","side":"RIGHT","body":"A finding with enough substance.","rigor":"walked"}]}`
+	bundle(t, "local-line", review)
+	c := &collector{}
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-line"))
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if resp.Data.Anchors.Moved != 1 {
+		t.Errorf("moved = %d, want 1", resp.Data.Anchors.Moved)
+	}
+	var inline map[string]any
+	for _, entry := range storeEntries(t, "local-line") {
+		if entry["kind"] == "inline" {
+			inline = entry
+		}
+	}
+	if inline == nil || inline["anchored"] != false || inline["line"] != nil {
+		t.Errorf("inline = %+v, want an unanchored line-less body finding", inline)
+	}
+	if !hasWarning(c.warns, "no line or start_line") {
+		t.Errorf("warnings = %v, want the missing-anchor warning", c.warns)
+	}
+}
+
+// TestPRBundleDryRun proves a GitHub PR bundle validates with --dry-run while
+// a real record keeps refusing not-local.
+func TestPRBundleDryRun(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeFile(t, ".review/5101/PR.json", `{"provider":"github","state":"OPEN",`+
+		`"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+		`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	writeFile(t, ".review/5101/full.diff", "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
+		"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
+	writeFile(t, ".review/5101/review.json", reviewJSON(""))
+	c := &collector{}
+	req := recordRequest(t, c, "5101")
+	req.DryRun = true
+	resp, ref := recordcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("PR dry run refusal: %v", ref)
+	}
+	if resp.Data == nil || !resp.Data.DryRun || resp.Data.Findings.Open != 1 {
+		t.Errorf("PR dry run data = %+v", resp.Data)
+	}
+	req.DryRun = false
+	if _, ref := recordcore.Run(context.Background(), req); ref == nil || ref.Code != "not-local" {
+		t.Errorf("real PR record = %+v, want not-local", ref)
 	}
 }

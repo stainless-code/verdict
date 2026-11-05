@@ -85,7 +85,10 @@ func checkProblemManualTable(t *testing.T, root string, codes []string) {
 		want := "`" + code + "`"
 		found := slices.ContainsFunc(lines, func(line string) bool {
 			cells := strings.Split(line, "|")
-			return len(cells) >= 3 && strings.TrimSpace(cells[1]) == want && strings.TrimSpace(cells[2]) == level
+			// "mixed" marks a code whose level depends on whether record can
+			// drop/move the part (warning) or must refuse it (error).
+			return len(cells) >= 3 && strings.TrimSpace(cells[1]) == want &&
+				(strings.TrimSpace(cells[2]) == level || strings.TrimSpace(cells[2]) == "mixed")
 		})
 		if !found {
 			t.Errorf("docs/manual.md has no problem-table row for %s (%s)", want, level)

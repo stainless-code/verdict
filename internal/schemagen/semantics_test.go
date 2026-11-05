@@ -21,8 +21,9 @@ var publishedSemantics = map[string]string{
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
-	// record promote review-input warnings to errors. Additive only.
-	"controls.schema.json": "6a91e00e446d091935ed1e00e5ebfa533511a03a8d00aa183e04fbbc80205372",
+	// record promote review-input warnings to errors. Additive only. The
+	// description now names its env/file source; shape unchanged.
+	"controls.schema.json": "cb9cbf497e1054727c8ac645cd9e7edae1d2f754898dae2a29702456162991c2",
 	// additive corpus.schema.json (new document; no existing schema property,
 	// required key, or type changed).
 	// additive corpus bug keywords (optional string array naming the defect in
@@ -61,8 +62,10 @@ var publishedSemantics = map[string]string{
 	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
 	"record.schema.json":   "97647229b14efa63c43aca592aa8466b246065f858b28872c6ec1198c428d7b1",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
-	// (optional; no existing property, required key, or type changed).
-	"review.schema.json": "4b7f8da519724188347957004d7c0b230ab5dba6f58d9c1191fb82a990131a7d",
+	// (optional; no existing property, required key, or type changed). The
+	// descriptions now state the checker's exact error/warning split; shape
+	// unchanged.
+	"review.schema.json": "00b2ef77cf82baa7a162548c687b2f864d2f0eb1011a2f81969325008c2a5fe0",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

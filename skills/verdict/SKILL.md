@@ -54,6 +54,9 @@ verdict fetch owner/repo 123
 #    Write exactly one `.review/N/review.json`; the mode file defines its shape
 #    (`body` and `comments[]` at minimum, plus optional `resolved` sigs and
 #    `triage[]` claims).
+#    Before posting or recording, run `verdict record owner/repo <slug>
+#    --dry-run` on the bundle (local or PR), fix every problem it lists, and
+#    repeat at most 3 rounds.
 #    Prior feedback lives in `.review/N/threads.json` (all six hosts): host-resolved
 #    state, anchors, authors, and `finding_sig` links. `verdict threads owner/repo N`
 #    refreshes it alone — no diff refetch — so run it after pushing fixes and before
@@ -68,10 +71,9 @@ Local changes (no PR): `verdict fetch-local owner/repo work
 [--staged] [--range A..B] [--base R] [--stash [n]] [-- paths...]` writes
 `.review/local-work/` (source.json instead of PR.json), the bundle is reviewed
 the same way, and `verdict record owner/repo local-work` merges it
-to `findings.json` — read with `report`, never `post` (no PR target). Before
-recording, run `verdict record <repo> <slug> --dry-run`, fix every problem it
-lists, repeat at most 3 rounds, and if problems remain stop and report them
-rather than recording a partial review.
+to `findings.json` — read with `report`, never `post` (no PR target). The
+universal pre-post/record dry run above applies here too; if problems remain
+after 3 rounds, stop and report them rather than recording a partial review.
 `adopt owner/repo 123 --from local-work` carries a local review into a fresh
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 

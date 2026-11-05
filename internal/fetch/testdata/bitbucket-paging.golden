@@ -122,6 +122,12 @@ b.txt
       "sha256": ""
     },
     {
+      "path": ".review/strict_input",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".review/max_bytes",
       "status": "missing",
       "bytes": 0,

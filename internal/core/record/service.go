@@ -107,19 +107,16 @@ func (st *svc) addWarning(msg string) {
 func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	problems := make([]core.Problem, len(check.Problems))
 	copy(problems, check.Problems)
-	hasError := false
 	for i := range problems {
 		if problems[i].Level == core.ProblemLevelWarning && strict {
 			problems[i].Level = core.ProblemLevelError
 		}
-		if problems[i].Level == core.ProblemLevelError {
-			hasError = true
-		}
 	}
-	if !hasError {
+	if check.Errors == 0 && (!strict || check.Warnings == 0) {
 		return nil
 	}
-	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", len(problems))
+	total := check.Errors + check.Warnings
+	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
 	return &core.RefusalError{Code: codeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
 }
 
@@ -127,7 +124,7 @@ func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError
 	req := st.req
 	dir = readcommon.ResolveBundleDir(req.Pr)
 	st.store = readcommon.OpenBundle(dir)
-	if prov, ref = resolveProvider(dir, st.store); ref != nil {
+	if prov, ref = resolveProvider(dir, st.store, req.DryRun); ref != nil {
 		return "", "", "", "", ref
 	}
 	if ref = checkBundleFiles(dir, prov); ref != nil {
@@ -315,7 +312,7 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 	dry := &core.RecordData{
 		Dir:             dir,
 		Anchors:         core.AnchorsSummary{Kept: res.NKept, Moved: res.NMoved},
-		Findings:        core.RecordFindings{Open: nOpen, Deferred: nDeferred, Addressed: nAddressed, File: res.FindingsFile},
+		Findings:        core.RecordFindings{Open: nOpen, Deferred: nDeferred, Addressed: nAddressed},
 		Confidence:      intOrNil(res.Confidence),
 		ConfidenceRaw:   res.Confidence,
 		SecuritySummary: strOrNil(res.Security),
@@ -324,13 +321,17 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		DryRun:          true,
 		Check:           st.check,
 	}
+	next := "re-run without --dry-run to record; fix every problem first"
+	if st.store != nil && st.store.Provider() == "github" {
+		next = "fix every problem, then post the review with verdict post"
+	}
 	return &core.RecordResponse{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       now,
 		Data:     dry,
 		Warnings: st.warnings,
-		Next:     "re-run without --dry-run to record; fix every problem first",
+		Next:     next,
 	}
 }
 
@@ -381,7 +382,7 @@ func typedItems(entries []any) []core.FindingItem {
 	return items
 }
 
-func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.RefusalError) {
+func resolveProvider(dir string, store *readcommon.Bundle, allowPR bool) (string, *core.RefusalError) {
 	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
 		return providerLocal, nil
 	}
@@ -389,6 +390,9 @@ func resolveProvider(dir string, store *readcommon.Bundle) (string, *core.Refusa
 	case "":
 		return "", &core.RefusalError{Code: codeNotLocal, Message: msgNotLocal}
 	case "github":
+		if allowPR {
+			return prov, nil
+		}
 		return "", &core.RefusalError{Code: codeNotLocal, Message: msgNotGH}
 	default:
 		return prov, nil

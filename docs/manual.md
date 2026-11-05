@@ -84,18 +84,21 @@ evidence rungs, keep-biased, and its sibling doctrines.
 }
 ```
 
-Inline rules: `path` should be in the diff (unknown paths are kept with a warning, never refused), `line` = NEW-side line inside
-an `@@` hunk (`side` RIGHT default, LEFT for deleted lines), multi-line needs `start_line` in the
-same hunk, `suggestion` must preserve exact indentation. `post` checks every anchor against
-the fetched hunks: provably-outside anchors move into the body under Unanchored observations
-(one bad anchor never fails the run); ambiguous anchors are kept with a warning.
-Suggestions render as fenced blocks in `body` (raw keys never hit the API).
-`brief` is the optional machine form of the same finding: `outcome` (required,
-10–500 chars) plus `sites` (≤10 `{path, line?}`, each path a changed file and
-each line inside a reviewed hunk — anything else warns and drops), `approach`
-(10–1,000), and `questions` (≤10, 10–300 each). A bad part warns and drops; only
-an unusable `outcome` drops the brief, never the review. `brief` is outside the
-sig, so editing it never creates a finding.
+Inline rules: `path` must be in the fetched diff (a comment on any other path
+refuses), `line` = NEW-side line inside an `@@` hunk (`side` RIGHT default,
+LEFT for deleted lines; any other side refuses), multi-line needs `start_line`
+in the same hunk, `suggestion` must preserve exact indentation. An absent
+`line`/`start_line` warns and moves the comment to the body; a present
+non-numeric anchor warns and keeps it inline. A fenced `suggestion` warns and
+posts as plain body text. Suggestions render as fenced blocks in `body` (raw
+keys never hit the API). `brief` is the optional machine form of the same
+finding: `outcome` (required, 10–500 chars) plus `sites` (≤10 `{path, line?}`,
+each path a changed file and each line inside a reviewed hunk), `approach`
+(10–1,000), and `questions` (≤10, 10–300 each). Brief shape, type,
+required-field, and range failures refuse the review; a site outside every
+hunk, a site/question past its cap, or a short approach/question warns and
+drops only that part. `brief` is outside the sig, so editing it never creates
+a finding.
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
 `sections` carries severity tags `{heading, severity}` for `###` body sections — exact heading string, unmatched tags ignored.
 
@@ -192,18 +195,20 @@ and reports `data.check` — comment, section, and moved-anchor counts. Human
 mode prints every problem before the `try:`/`re-enter:` lines; JSON mode
 carries the same list in `error.problems[]`. A warning alone exits 0 and rides
 `warnings`; `--strict`, or `"strict_input": true` in the bundle's
-`controls.json`, promotes every warning to an error. The Level column is each
-code's default: a problem `record` can drop or move without refusing is
-reported as a warning even under an error-default code. The published code set
-(also the `problem.code` enum in `envelope.schema.json`):
+`controls.json`, promotes every warning to an error. Level is each code's
+typical level; `mixed` means the level depends on whether `record` can drop or
+move the part (warning) or must refuse it (error). The published code set
+(also the `problem.code` enum in `envelope.schema.json`). `record --dry-run`
+validates local and provider-PR bundles and writes nothing; a real `record` on a
+GitHub PR still refuses `not-local` (use `post`).
 
 | Code                  | Level   | Meaning                                                                                                  |
 | --------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
 | `invalid-json`        | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object. |
-| `wrong-type`          | error   | A published field carries the wrong JSON type.                                                           |
-| `missing-field`       | error   | A required field is absent.                                                                              |
-| `bad-enum`            | error   | A closed enum (schema_version, rigor, severity, triage status) is outside its values.                    |
-| `path-not-in-diff`    | error   | A comment anchors a path the fetched diff does not change.                                               |
+| `wrong-type`          | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                |
+| `missing-field`       | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.            |
+| `bad-enum`            | mixed   | Error for an unknown enum; warning for a brief length/cap, KB id shape, or unknown chunk name.           |
+| `path-not-in-diff`    | mixed   | Error for a comment path; warning for a brief site outside the diff.                                     |
 | `unknown-field`       | warning | A key is not in the published shape; the fix names the nearest known key.                                |
 | `anchor-outside-hunk` | warning | The line is provably outside every hunk; `record` moves the comment into the body.                       |
 | `rigor-unset`         | warning | A comment carries no evidence rung.                                                                      |
@@ -349,9 +354,12 @@ snapshot the bytes into the bundle:
 | `.review/kb.jsonl`, `kb-policy`                 | `fetch` recall; `record`/`post` cites |
 | `.review/learnings.md`                          | the review agent (headings)           |
 | `.review/overrides/*.md` (four fragments)       | `record`/`post` body and footer       |
+| `.review/strict_input`                          | `record` warning promotion            |
 
-Set `"strict_input": true` in the bundle's `controls.json` to make `record`
-refuse on review-input warnings, the same as `--strict`. `.review/N/controls/`
+Set strict input with `REVIEW_STRICT_INPUT=1` or a `.review/strict_input` file
+holding `true`; every `fetch`/`fetch-local` resolves it into `controls.json` (do
+not hand-edit that snapshot) and it makes `record` refuse on review-input
+warnings, the same as `--strict`. `.review/N/controls/`
 holds the bytes and `.review/N/controls.json` records
 `policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
 files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
@@ -1608,7 +1616,8 @@ verbs and features ship in the release changelog.
 - Added: `rigor`, `inBounds`, retained `suggestion`, `rationale`/`triagedAt`/`triagedBy`, history `actor`/`sha`; statuses `wont-fix/false-positive/deferred`; `verification.json` evidence gate; `patch.json` gains `verifyCmd/verifyOutput/baseHead/resultHead`.
 - Added: `post.json` capture `{review, head, posted_at}` (calibration enabler).
 - Added: review-level `confidence` (1–5) + `security_summary` on `record.json`/`post.json`
-  (optional, absent → null; out-of-range confidence warns and drops, never fails).
+  (optional, absent → null; a non-integer/out-of-range confidence or non-string
+  `security_summary` refuses the review).
 - Added: local bundles — `source.json` standing in for `PR.json` under `.review/local-<name>/`.
 - Added: store versioning — per-bundle `store.json` marker, `sig_version: "1"` on
   findings entries (backfilled on merge), `schema_version: "1"` on `review.json`
@@ -1640,7 +1649,8 @@ verbs and features ship in the release changelog.
   compatible, never a different bot's marker).
 - Added: per-finding `brief` on review comments and findings entries (`sites[]` with optional
   `line`, the required `outcome`, optional `approach`/`questions`) — validated against the
-  bundle's pinned hunks (bad parts warn and drop, never refuse), stored additively so a
+  bundle's pinned hunks (shape/type/range failures refuse; a site outside every hunk,
+  past a cap, or a short approach/question warns and drops only that part), stored additively so a
   finding without one is byte-identical, preserved across re-record when the fresh comment
   carries none, and excluded from the sig.
 - Added: review provenance on `post.json`/`record.json` (`tool_version`,

@@ -317,6 +317,12 @@ func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {
 	}
 	lo, hi, side := anchorRange(m)
 	if lo < 0 {
+		if anchorAbsent(m) {
+			moved := m.Clone()
+			moved.Set(fieldDropReason, "no line/start_line — posted in the body instead of inline")
+			st.moved = append(st.moved, moved)
+			return
+		}
 		st.warnInput(fmt.Sprintf("kept despite non-numeric anchor: %s %s", path, anchorSpan(m)))
 		st.kept = append(st.kept, m)
 		return

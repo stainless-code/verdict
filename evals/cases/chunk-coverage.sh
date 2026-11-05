@@ -153,9 +153,10 @@ cat > "$EVAL_SANDBOX/.review/local-covrec/review.json" <<'EOF'
 EOF
 run_review record acme/app local-covrec --json
 if [ "$EVAL_STATUS" -eq 1 ] \
-  && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-chunk-coverage" ] \
-  && jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-01"; then
-  good "record refuses the partial attestation naming chunk-01"
+  && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "bad-review-input" ] \
+  && jq -r '.error.problems[0].message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-01" \
+  && [ "$(jq -r '.error.problems[0].path' <"$EVAL_OUT" 2>/dev/null)" = "$.chunks" ]; then
+  good "record refuses the partial attestation as a $.chunks problem naming chunk-01"
 else
   bad "record gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
 fi

@@ -161,7 +161,7 @@ func TestRunRecordRefusals(t *testing.T) {
 		{"degenerate", func(t *testing.T) {
 			t.Helper()
 			writeFile(t, ".review/local-rf/review.json", `{"body":"short"}`)
-		}, "local-rf", "degenerate-body"},
+		}, "local-rf", "bad-review-input"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

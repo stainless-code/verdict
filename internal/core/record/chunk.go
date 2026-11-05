@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+//nolint:revive // chunk snapshot, dry-run, and coverage gates read as one block
 func (st *state) validateChunkMerge() (string, error) {
 	dir := st.dir
 	manifest := dir + "/chunks/manifest.json"
@@ -40,6 +41,9 @@ func (st *state) validateChunkMerge() (string, error) {
 	}
 	if !concatEquals(diffs, dir+"/full.diff") {
 		st.warn(fmt.Sprintf(msgChunkDrifted, dir))
+	}
+	if st.inputChecked {
+		return chunkHunks, nil
 	}
 	return checkChunkCoverage(st, manifest, chunks, names, refetch)
 }
