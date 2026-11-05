@@ -14,35 +14,80 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-func collectCited(m *jq.Obj, cited map[string]bool) {
-	kbl, ok := m.Get("kb")
-	if !ok {
-		return
-	}
-	arr, ok := kbl.([]any)
-	if !ok {
-		return
-	}
-	for _, id := range arr {
-		cited[jq.Compact(id)] = true
-	}
-}
-
 // ReviewBasisCounts derives the expected Basis numbers from
-// the review's own comments (rigor normalized, distinct raw kb ids) plus the
-// verified count scoped to this run's addressed/triaged flips at now.
+// the review's own comments (rigor normalized) plus the verified count scoped
+// to this run's addressed/triaged flips at now. The cited count covers only
+// the kb ids that survived normalization into this run's stored entries, so
+// a dropped cite never reaches the posted line; carried-over findings stay
+// silent because only entries reported at now count.
 func ReviewBasisCounts(review *jq.Obj, entries []any, now string) string {
 	counts := map[string]int{}
-	cited := map[string]bool{}
 	for _, c := range reviewComments(review) {
 		m, ok := c.(*jq.Obj)
 		if !ok {
 			continue
 		}
 		counts[commentRigor(m)]++
-		collectCited(m, cited)
 	}
-	return renderBasis(counts, cited, runVerified(entries, now))
+	return renderBasis(counts, runCited(entries, now), runVerified(entries, now))
+}
+
+// runCited collects the distinct kb ids stored on this run's fresh entries:
+// an entry counts when its history reports it at now, so carried-over
+// findings from earlier runs stay silent.
+func runCited(entries []any, now string) map[string]bool {
+	cited := map[string]bool{}
+	for _, e := range entries {
+		m, ok := e.(*jq.Obj)
+		if !ok || !reportedAtNow(m, now) {
+			continue
+		}
+		for _, id := range entryKB(m) {
+			cited[id] = true
+		}
+	}
+	return cited
+}
+
+// reportedAtNow reports whether the entry was first reported at now.
+func reportedAtNow(m *jq.Obj, now string) bool {
+	histRaw, _ := m.Get("history")
+	hist, ok := histRaw.([]any)
+	if !ok {
+		return false
+	}
+	for _, h := range hist {
+		hm, ok := h.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		if at, _ := hm.Get("at"); at == now {
+			if ev, _ := hm.Get("event"); ev == "reported" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// entryKB lists the stored kb ids on one entry: the normalized cites the
+// merge kept, never the review's raw claims.
+func entryKB(m *jq.Obj) []string {
+	raw, ok := m.Get("kb")
+	if !ok || raw == nil {
+		return nil
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, id := range arr {
+		if s, ok := id.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func reviewComments(review *jq.Obj) []any {

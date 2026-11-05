@@ -29,15 +29,29 @@ func writeBundle(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// TestReviewBasisCounts checks expected counts derive from review comments.
+// TestReviewBasisCounts checks expected counts derive from review comments
+// for rigors and from this run's stored entries for cites: a dropped cite
+// never reaches the line, and a carried-over finding stays silent.
 func TestReviewBasisCounts(t *testing.T) {
 	review := jq.NewObj("comments", []any{
 		jq.NewObj("rigor", "walked", "kb", []any{"r1"}),
 		jq.NewObj("rigor", "said", "kb", []any{"r1", "r2"}),
 		jq.NewObj("rigor", "bogus"),
 	})
-	if got := provenance.ReviewBasisCounts(review, nil, "now"); got != "0 0 1 1 1 2 0" {
-		t.Errorf("ReviewBasisCounts = %q; want walked+said with 2 cited", got)
+	fresh := func(kb []any) any {
+		return jq.NewObj("kb", kb, "history", []any{
+			jq.NewObj("at", "now", "event", "reported"),
+		})
+	}
+	carried := jq.NewObj("kb", []any{"old-rule"}, "history", []any{
+		jq.NewObj("at", "earlier", "event", "reported"),
+	})
+	entries := []any{fresh([]any{"r1"}), fresh([]any{"r1", "r2"}), fresh([]any{}), carried}
+	if got := provenance.ReviewBasisCounts(review, entries, "now"); got != "0 0 1 1 1 2 0" {
+		t.Errorf("ReviewBasisCounts = %q; want walked+said with 2 stored cites", got)
+	}
+	if got := provenance.ReviewBasisCounts(review, nil, "now"); got != "0 0 1 1 1 0 0" {
+		t.Errorf("ReviewBasisCounts without entries = %q; want no cites", got)
 	}
 }
 
