@@ -9,10 +9,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stainless-code/verdict/internal/hunks"
 )
 
 // restoreWD keeps a test's later paths valid after Run moves the process into
@@ -307,9 +310,18 @@ func fakeCorpus(t *testing.T) string {
 	dir := filepath.Join(root, "corpus")
 	writeFile(t, filepath.Join(dir, "off-by-one", caseManifestName),
 		[]byte(`{"schema_version":"1","id":"off-by-one","kind":"seeded","line_tolerance":3,"bugs":[{"path":"pagination.go","line":42}]}`))
-	writeFile(t, filepath.Join(dir, "off-by-one", fullDiffName), []byte("diff --git a/pagination.go b/pagination.go\n+for i := range items {\n"))
+	writeFile(t, filepath.Join(dir, "off-by-one", fullDiffName), []byte(fakeDiff))
 	return root
 }
+
+// fakeDiff is one reviewed file with one hunk, so the bundle has a snapshot
+// to write.
+const fakeDiff = `diff --git a/pagination.go b/pagination.go
+--- a/pagination.go
++++ b/pagination.go
+@@ -1,3 +1,3 @@
++for i := range items {
+`
 
 // agentCopiesReview is the smallest conforming agent: it writes the review the
 // test supplies through the environment.
@@ -344,9 +356,19 @@ func benchConfig(t *testing.T, root, agent string) *Config {
 	}
 }
 
+// needPOSIX skips a test that drives Run, which refuses Windows because it
+// runs agents through sh(1).
+func needPOSIX(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the bench runner drives agents through sh(1)")
+	}
+}
+
 // runFixture drives one sample of the fake corpus through a canned scorer.
 func runFixture(t *testing.T) (*Report, *Config, *fakeGrader) {
 	t.Helper()
+	needPOSIX(t)
 	restoreWD(t)
 	t.Setenv("BENCH_TEST_REVIEW", reviewBody)
 	cfg := benchConfig(t, fakeCorpus(t), agentCopiesReview)
@@ -385,6 +407,7 @@ func checkBundleAndPublication(t *testing.T, cfg *Config, rep *Report) {
 	bundle := filepath.Join(reviewRoot, "corpus-off-by-one-fixture-good-run1")
 	checkBundleFiles(t, bundle)
 	checkBundleSpend(t, filepath.Join(bundle, costJSONName), cfg.Model)
+	checkBundleHunks(t, bundle)
 	checkPromptProvenance(t, cfg, rep)
 	if got := readJSON[map[string]any](t, cfg.Out)["schema_version"]; got != "1" {
 		t.Errorf("publication schema_version = %v, want 1", got)
@@ -395,7 +418,7 @@ func checkBundleAndPublication(t *testing.T, cfg *Config, rep *Report) {
 func checkBundleFiles(t *testing.T, bundle string) {
 	t.Helper()
 	for _, name := range []string{
-		fullDiffName, corpusJSONName, sourceJSONName, panelName,
+		fullDiffName, hunksTSVName, corpusJSONName, sourceJSONName, panelName,
 		reviewJSONName, costJSONName, recordJSONName, "controls.json",
 	} {
 		if _, err := os.Stat(filepath.Join(bundle, name)); err != nil {
@@ -404,6 +427,24 @@ func checkBundleFiles(t *testing.T, bundle string) {
 	}
 	if policy := readJSON[map[string]any](t, filepath.Join(bundle, "controls.json"))["policy"]; policy != "head" {
 		t.Errorf("controls policy = %v, want head (a seeded corpus has no base commit)", policy)
+	}
+}
+
+// checkBundleHunks pins the snapshot record keeps: the bundle's own hunks.tsv,
+// indexed from the diff the agent reviewed, so a later post or re-score cannot
+// move an anchor by rebuilding it from a diff that has since changed.
+func checkBundleHunks(t *testing.T, bundle string) {
+	t.Helper()
+	diff, err := os.ReadFile(filepath.Join(bundle, fullDiffName))
+	if err != nil {
+		t.Fatalf("read bundle diff: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(bundle, hunksTSVName))
+	if err != nil {
+		t.Fatalf("read bundle hunks: %v", err)
+	}
+	if want := hunks.Format(hunks.Parse(string(diff))); string(got) != want {
+		t.Errorf("hunks.tsv = %q, want the bundle diff's index %q", got, want)
 	}
 }
 
@@ -434,6 +475,7 @@ func checkPromptProvenance(t *testing.T, cfg *Config, rep *Report) {
 
 // TestRunKeepsEvidenceWhenTheAgentFails keeps a broken sample's log.
 func TestRunKeepsEvidenceWhenTheAgentFails(t *testing.T) {
+	needPOSIX(t)
 	restoreWD(t)
 	cfg := benchConfig(t, fakeCorpus(t), agentFails)
 	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}

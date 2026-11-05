@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -32,6 +33,7 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 	}
 	files := []bundleFile{
 		{fullDiffName, cr.corpus.diff},
+		{hunksTSVName, []byte(hunks.Snapshot(string(cr.corpus.diff)))},
 		{corpusJSONName, cr.corpus.manifest},
 		{sourceJSONName, source},
 		{panelName, []byte(strings.Join(r.cfg.Panel, "\n") + "\n")},

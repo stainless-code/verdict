@@ -23,7 +23,10 @@ var publishedSemantics = map[string]string{
 	"controls.schema.json": "2ddd29802d75842d77b50e6af8b7a4701cf6076d2a52ce845d6a557a60eb349c",
 	// additive corpus.schema.json (new document; no existing schema property,
 	// required key, or type changed).
-	"corpus.schema.json": "9541380bcc9a1250f65874d6586db128a543a960e563d0205c6bc5da62448c75",
+	// additive corpus bug keywords (optional string array naming the defect in
+	// the review's own words) plus corrected matching prose and the default
+	// line_tolerance; no existing property, required key, enum, or type changed.
+	"corpus.schema.json": "3e163efcbc2253750f90f4844e1eac18bc3662bae91859d5d9e883550aab46a0",
 	"cost.schema.json":   "81e6a11f4731b7060f8975db80b01d595a3dd2e0f06bbf6372d1501810609be2",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json

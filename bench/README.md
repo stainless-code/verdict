@@ -119,9 +119,13 @@ citable.
 
 `-workdir` holds the evidence: `runs/<slug>/prompt.md` (the exact bytes the
 agent read), `runs/<slug>/agent.log`, and `.review/<slug>/` for each sample
-that recorded. A sample that fails keeps its files and its bundle is dropped,
-so `trend` scores only what recorded; the failure lands in `failures[]` with
-its error and evidence path.
+that recorded. The bundle carries the reviewed `full.diff` and the `hunks.tsv`
+index built from it, so `record` keeps the hunks the agent actually read
+instead of rebuilding them later; a comment outside every hunk is recorded as
+a body note, and `calibrate` scores it as the false positive it is. A sample
+that fails keeps its files and its bundle is dropped, so `trend` scores only
+what recorded; the failure lands in `failures[]` with its error and evidence
+path.
 
 The publication JSON is a checked-in artifact, so run `bun fmt` on it before
 committing: the pre-commit hook checks tracked JSON. It carries the corpus

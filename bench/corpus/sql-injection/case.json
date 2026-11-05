@@ -3,7 +3,6 @@
   "id": "sql-injection",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "User input is concatenated into a SQL statement, allowing a crafted name to change the query.",

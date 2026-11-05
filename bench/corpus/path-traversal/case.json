@@ -3,7 +3,6 @@
   "id": "path-traversal",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "The confinement check is replaced by an extracted resolve helper that joins the caller's name unbounded.",

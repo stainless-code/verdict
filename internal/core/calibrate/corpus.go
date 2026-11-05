@@ -126,12 +126,10 @@ func (st *state) emitCorpusHuman(r *corpusResult) {
 	tol := corpuscore.Tolerance(rep.Case)
 	for i := range rep.Outcomes {
 		o := &rep.Outcomes[i]
-		loc := corpusLocator(o)
 		if o.Result == corpuscore.ResultTruePositive {
 			continue
 		}
-		st.human(fmt.Sprintf("%s [false-positive] %s — no ground-truth bug within ±%d line(s)",
-			corpusSig(o.Sig), loc, tol))
+		st.human(corpusMissLine(o, tol))
 	}
 	for i := range rep.Missed {
 		b := &rep.Missed[i]
@@ -153,6 +151,25 @@ func corpusLocator(o *corpuscore.Outcome) string {
 		return o.Path
 	}
 	return fmt.Sprintf("%s:%d", o.Path, o.Line)
+}
+
+// corpusMissLine names the rule a false positive broke: the anchor was
+// withdrawn, the line window, the bug's defect, or the one-match-per-bug
+// budget.
+func corpusMissLine(o *corpuscore.Outcome, tol int) string {
+	prefix := fmt.Sprintf("%s [false-positive] %s — ", corpusSig(o.Sig), corpusLocator(o))
+	switch o.Reason {
+	case corpuscore.ReasonMovedToBody:
+		return prefix + "the anchor is outside every hunk, so record moved it to the body"
+	case corpuscore.ReasonOffLine:
+		return prefix + fmt.Sprintf("no ground-truth bug within ±%d line(s)", tol)
+	case corpuscore.ReasonAlreadyMatched:
+		return prefix + "this bug is already matched"
+	case corpuscore.ReasonUnnamed:
+		return prefix + "the ground-truth bug here is not the defect the finding names"
+	default:
+		return prefix + "no path and line to match"
+	}
 }
 
 func corpusSig(sig string) string {

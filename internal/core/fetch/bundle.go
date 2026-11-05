@@ -18,7 +18,7 @@ func buildHunksTSV(fullDiff, out string) error {
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
 	}
-	if werr := atomic.WriteFile(out, []byte(hunks.Format(hunks.Parse(string(raw))))); werr != nil {
+	if werr := atomic.WriteFile(out, []byte(hunks.Snapshot(string(raw)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", out, werr)}
 	}
 	return nil

@@ -14,20 +14,60 @@ claim.
 
 A corpus bundle is `.review/corpus-*` holding `corpus.json` (one case
 manifest), `findings.json` (the output under test), and the normal
-provenance stores (`record.json`, `cost.json`, `panel`). Matching is
+provenance stores (`record.json`, `cost.json`, `panel`). The runner also
+writes the reviewed `full.diff` and the `hunks.tsv` index beside it, so the
+bundle scores against the hunks the agent actually read. Matching is
 deliberately simple and published:
 
-- A reported finding is a **true positive** when it names the same `path`
-  and its `line` is within `line_tolerance` lines of an as-yet-unmatched
-  ground-truth bug (default 3). Kind and severity are recorded ground truth,
-  not part of the match.
+- A reported finding is a **true positive** when it names the same `path`,
+  its `line` is within `line_tolerance` lines of an as-yet-unmatched
+  ground-truth bug (default 1), and its text names that bug's defect. A
+  defect is named by its `kind` in hyphen or space form (`off-by-one`,
+  `off by one`), a phrase from the published category vocabulary for that
+  kind (see below), or a phrase from the bug's optional `keywords`. Matching
+  is case-insensitive and whitespace-folded, and a phrase must start a word,
+  so `race` does not match inside `trace`.
+- A finding record moved out of its hunk does not count: `record` keeps the
+  old path and line but marks it unanchored, and the text is graded as a
+  body note, never as a line claim. So the line window can never reach a
+  line the reviewed diff does not show.
 - Each bug can be matched once. A second finding on the same bug is a
   **false positive**.
-- A finding with no path/line (or a section finding) is a false positive.
+- A finding with no path/line (or a reviewer section finding) is a false
+  positive. So is a finding in the window that never names the defect: the
+  anchor and the claim both have to be right. The tool-generated section
+  `record` appends for the comments it moved is not a reviewer finding and is
+  not counted.
 - A ground-truth bug with no matching finding is **missed**.
 - `precision = matched / reported`; `recall = matched / ground_truth`;
   `false_positive_rate = false_positives / reported`. Rates are rounded to
   four decimals; a zero denominator renders `null`, never `0`.
+
+The window is deliberately narrow. On a 4-7-line hunk a `line_tolerance` of
+3 makes the whole hunk the same answer, so the number stops measuring
+localization; a bug plus/minus one line still lands on the statement that
+carries it, and zero rejects a correct anchor on the second line of a
+multi-line statement. `TestCheckedInCorpusCases` asserts `line_tolerance` is
+smaller than the distance from each bug to the far end of the new-side hunk
+that shows it, so a future short hunk cannot quietly make every anchor
+correct.
+
+The built-in category vocabulary is deliberately small and deterministic:
+
+| `kind`                | phrases                                         |
+| --------------------- | ----------------------------------------------- |
+| `auth-bypass`         | role, admin, privilege, authorization, bypass   |
+| `missing-error-check` | error, short write, unchecked, discarded        |
+| `nil-deref`           | nil, deref, null pointer                        |
+| `off-by-one`          | one past, loop bound, out of range              |
+| `index-out-of-range`  | index, `len(`, out of range                     |
+| `path-traversal`      | traversal, confine, escape, `..`                |
+| `race`                | race, goroutine, concurrent, wait for the close |
+| `injection`           | injection, inject, query argument               |
+
+A finding is only compared with bugs on its own path inside its line window,
+so these phrases need only distinguish the category there. A kind outside the
+table is named by its kind text and `keywords` alone.
 
 `ground_truth` counts per bundle run, so a case reviewed by two models
 contributes its bugs twice to the per-run aggregate. Per-model and per-panel
@@ -46,7 +86,7 @@ One case, one manifest, published as
   "id": "off-by-one",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
+  "line_tolerance": 1,
   "provenance": {
     "kind": "seeded",
     "injected": "Pagination loop advances one element past the slice and ignores the fetch error.",
@@ -57,7 +97,8 @@ One case, one manifest, published as
       "path": "pagination.go",
       "line": 42,
       "kind": "off-by-one",
-      "severity": "critical"
+      "severity": "critical",
+      "keywords": ["one past", "loop bound", "len(xs)"]
     }
   ]
 }
@@ -73,6 +114,17 @@ One case, one manifest, published as
 - At least one bug is required. Ground truth is file + line + kind +
   severity; `note` says why the line is a defect. A bug that cannot be
   pointed at a line is not a corpus case.
+- `keywords` (optional) is the case's own vocabulary for that defect, in
+  case-insensitive, whitespace-folded substring form at a word start. Write
+  the words a reviewer would use to describe the defect, not the words you
+  want to see: a keyword broad enough to appear in a finding about a
+  different bug (`error`, `check`) still only counts on that bug's own path
+  and line window, but a keyword nobody would write turns true positives
+  into false ones. The bug's `kind` and its category vocabulary always name
+  it too, so a case with no keywords is matched on `kind` and category.
+- `line_tolerance` (optional, default 1) is the window in lines. Keep it
+  short of the far end of the new-side hunk that shows the bug: the corpus
+  test refuses a case whose window covers the whole hunk.
 - `benches`/agent outputs stay outside the schema: the checked-in
   `agents/<model>.json` wrapper carries `model`, `panel`, and the exact
   `review.json` body.
@@ -131,6 +183,13 @@ Keep one bug per entry. If a fix commit repairs three independent defects,
 either make three entries in one case (same reviewed diff) or three cases if
 the code regions are unrelated.
 
+Give each bug the `keywords` a reviewer would use for it (`nil pointer`,
+`one past the slice`, `query argument`), taken from the defect itself rather
+than from the review under test: the manifest is written before the run, and
+a keyword lifted from a specific finding would grade that model against its
+own wording. A bug whose only name is its `kind` is still matchable, but
+`off-by-one` misses a reviewer who writes "index runs past the end".
+
 ### 2. Build one bundle per model
 
 A corpus run never posts and never needs a live thread. Corpus bundles are
@@ -146,6 +205,7 @@ SLUG="corpus-${CASE}-${MODEL}"
 
 mkdir -p ".review/$SLUG"
 cp ".review/123/full.diff" ".review/$SLUG/full.diff"
+cp ".review/123/hunks.tsv" ".review/$SLUG/hunks.tsv"       # the fetch-time index
 cp ".review/123/review.json" ".review/$SLUG/review.json"   # the agent output
 cp "bench/corpus/$CASE/case.json" ".review/$SLUG/corpus.json"
 printf '{"head_sha":"%s","base_sha":"%s"}\n' "$HEAD" "$BASE" > ".review/$SLUG/source.json"
@@ -158,6 +218,9 @@ verdict trend owner/repo --json                # every bundle, per model/panel
 ```
 
 Rules: one model per bundle; the same prompt set and panel for every run;
+keep the fetched `hunks.tsv` beside the diff — `record` rebuilds a missing
+index from `full.diff` and says so, but a bundle without the snapshot has
+nothing to hold an anchor to if the diff is ever re-read;
 `review.json` must be the raw agent output, not hand-edited to match the
 ground truth. A model that misses a bug should show it as `missed`; a model
 that reports a non-bug is the false positive the rate is measuring.

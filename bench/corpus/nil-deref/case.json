@@ -3,7 +3,6 @@
   "id": "nil-deref",
   "kind": "seeded",
   "language": "go",
-  "line_tolerance": 3,
   "provenance": {
     "kind": "seeded",
     "injected": "Session lookup dereferences the returned pointer before checking err, so a missing session panics.",

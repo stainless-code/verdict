@@ -103,6 +103,12 @@ func Contains(hunks []Hunk, file, side string, start, end int) bool {
 	return false
 }
 
+// Snapshot renders diffText's hunk index as hunks.tsv bytes: the one formatter
+// fetch writes into a bundle and record validates anchors against.
+func Snapshot(diffText string) string {
+	return Format(Parse(diffText))
+}
+
 // Format renders hunks as hunks.tsv bytes.
 func Format(hunks []Hunk) string {
 	var sb strings.Builder

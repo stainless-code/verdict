@@ -37,6 +37,11 @@ const (
 	FooterDivider     = "<!-- verdict-footer -->"
 )
 
+// MovedSectionHeading titles the body section record and post generate from
+// the anchors they moved out of the reviewed hunks. The section is the tool's
+// text, never a finding the reviewer reported.
+const MovedSectionHeading = "### ℹ️ Unanchored observations"
+
 // VersionUnknown is the one degrade string for builds with no release
 // metadata: --version, the skill payload, and the footer all report it, so
 // the same fact never renders two ways.

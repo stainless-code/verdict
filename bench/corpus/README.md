@@ -36,6 +36,14 @@ bundle against `corpus.json`; `trend` aggregates every `corpus-*` bundle per
 model and panel. No model runs and no network are involved in the checked-in
 fixtures.
 
+A finding counts for a bug when it is on the same path, within
+`line_tolerance` lines (default 1), and its `body` names the defect — one of
+the bug's `keywords`, its `kind`, or a phrase from the published category
+vocabulary in `docs/benchmark.md`. A finding `record` moved out of its hunk
+is a body note and never counts. The checked-in fake reviews do exactly that,
+and `TestCheckedInCorpusCases` fails if a checked-in case's tolerance is not
+narrower than its hunk or no fake output names a bug.
+
 ## Adding a seeded case
 
 1. Create `bench/corpus/<case-id>/` with `snapshots/<file>.before` and
@@ -49,7 +57,7 @@ fixtures.
    reproduces its after tree, and adds every ground-truth line.
 3. Write `case.json`: `kind: "seeded"`, `provenance.injected` naming the
    defect, and one `bugs[]` entry per known defect (`path`, `line`, `kind`,
-   `severity`).
+   `severity`, and the `keywords` a reviewer would use for it).
 4. Add `agents/<model>.json` per fake model. Keep comment bodies unique per
    bundle: `record` dedupes findings by path + body, not by line.
 5. Run `./evals/one.sh bench-corpus` and update the goldens if the new case
