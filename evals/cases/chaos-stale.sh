@@ -323,6 +323,6 @@ else
 fi
 snap "$LB" "$EVAL_SANDBOX/s4.after"
 snap_same "read-only MCP record attempt" "$EVAL_SANDBOX/s4.before" "$EVAL_SANDBOX/s4.after"
-matrix_row "mcp-record" "read-only" "$mcp_status" "-32602" "no" "no" "same" "0"
+matrix_row "mcp-record" "read-only" "$mcp_status" "dry-run-served/bad-flags" "no" "no" "same" "0"
 
 eval_end
