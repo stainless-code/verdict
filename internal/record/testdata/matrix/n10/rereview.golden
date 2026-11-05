@@ -8,7 +8,7 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
-    "no basis line under the confidence lead — keeping body as-is (report renders it exactly)"
+    "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".review/local-mx",
@@ -103,7 +103,7 @@ exit: 0
 }
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
-warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)
+warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 » findings: 12 sigs -> .review/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt
@@ -132,6 +132,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "said",
+    "rigor_source": "model",
     "severity": "critical",
     "sig": "c7bc06e4b34c00e95d1488a85c4cb394f88ed232",
     "sig_version": "1",
@@ -173,6 +174,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "pointed",
+    "rigor_source": "model",
     "severity": null,
     "sig": "63b8aa5b62b12a5f047a118ba744c095f7cdfe2c",
     "sig_version": "1",
@@ -198,6 +200,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "walked",
+    "rigor_source": "model",
     "severity": null,
     "sig": "748484cb3c12e2fa35a083abdd367a5b336bf76e",
     "sig_version": "1",
@@ -223,6 +226,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "ran",
+    "rigor_source": "model",
     "severity": "critical",
     "sig": "71eb69f49cb65794b78d63f73b2daa15839457f0",
     "sig_version": "1",
@@ -248,6 +252,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "reproduced",
+    "rigor_source": "model",
     "severity": null,
     "sig": "e8e306834f388a5f07f0042bf9d10155c20bc0cc",
     "sig_version": "1",
@@ -273,6 +278,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "said",
+    "rigor_source": "model",
     "severity": null,
     "sig": "daea61531f5880722d293dae40483e2173a536c0",
     "sig_version": "1",
@@ -298,6 +304,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "pointed",
+    "rigor_source": "model",
     "severity": "critical",
     "sig": "c84ffef906aab45b3a73fc7dfc8d511f07747b33",
     "sig_version": "1",
@@ -323,6 +330,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "walked",
+    "rigor_source": "model",
     "severity": null,
     "sig": "5ae0170615a426fef7188f44a49defeac0a3af6d",
     "sig_version": "1",
@@ -348,6 +356,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "ran",
+    "rigor_source": "model",
     "severity": null,
     "sig": "c2009016d7998b2ab22b2b0fbd745322e289cec9",
     "sig_version": "1",
@@ -373,6 +382,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "kb": [],
     "inBounds": true,
     "rigor": "reproduced",
+    "rigor_source": "model",
     "severity": "critical",
     "sig": "65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6",
     "sig_version": "1",
@@ -392,6 +402,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "heading": "### Watch the loop",
     "anchored": "body",
     "body": "### Watch the loop",
+    "rigor_source": "default",
     "severity": "important",
     "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
     "sig_version": "1",
@@ -412,6 +423,7 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
     "heading": "### Check the edges",
     "anchored": "body",
     "body": "### Check the edges",
+    "rigor_source": "default",
     "severity": "informational",
     "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
     "sig_version": "1",
@@ -440,6 +452,6 @@ recorded: .review/local-mx/findings.json (11 open) + .review/local-mx/record.jso
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "f36ca45162f59055616676b9408a80fd8a63c3106bc9267db6697202e13bbfe0",
+  "prompts_hash": "66a0179cf58e46a57bbd16f0246527b03d06a49cb6667512d947d5d701d3f33f",
   "model": null
 }

@@ -45,7 +45,7 @@ func TestGoldenRefusals(t *testing.T) {
 	refuse("true-suggestion", comment(`"notes.txt"`, `"x body with enough substance."`, `true`), nil)
 	refuse("object-path", comment(`{"a":1}`, `"x body with enough substance."`, `null`), nil)
 	refuse("non-string-resolved", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"resolved":[5]`, 1), nil)
-	refuse("non-array-resolved", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"resolved":"x"`, 1), nil)
+	refuse("non-array-resolved", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"resolved":5`, 1), nil)
 	refuse("non-object-triage", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"triage":[5]`, 1), nil)
 	refuse("non-array-triage", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"triage":{"sig":"x"}`, 1), nil)
 	refuse("non-object-sections", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"sections":[5]`, 1), nil)

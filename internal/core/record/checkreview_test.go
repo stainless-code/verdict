@@ -210,7 +210,7 @@ func TestCheckReviewCoversBundleInputs(t *testing.T) {
 		},
 		{
 			name: "brief-approach-short", json: comment(`,"brief":{` + briefOutcome + `,"approach":"tiny"}`),
-			code: core.ProblemCodeBadEnum, level: core.ProblemLevelWarning, path: "$.comments[0].brief.approach",
+			code: core.ProblemCodeOutOfRange, level: core.ProblemLevelError, path: "$.comments[0].brief.approach",
 		},
 		{
 			name: "brief-question-type", json: comment(`,"brief":{` + briefOutcome + `,"questions":[42]}`),
@@ -238,7 +238,7 @@ func TestCheckReviewCoversBundleInputs(t *testing.T) {
 		},
 		{
 			name: "confidence-range", json: checkReview(`,"confidence":6`),
-			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.confidence",
+			code: core.ProblemCodeOutOfRange, level: core.ProblemLevelError, path: "$.confidence",
 		},
 		{
 			name: "security-summary-type", json: checkReview(`,"security_summary":5`),

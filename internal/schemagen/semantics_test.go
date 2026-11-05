@@ -54,18 +54,30 @@ var publishedSemantics = map[string]string{
 	// review-input problems: additive $defs/problem + $defs/checkSummary,
 	// optional error.problems/problems_truncated, and dry_run/check on
 	// recordData. Additions only.
-	"envelope.schema.json": "64cafe34940c4b9acbc6ec2c0484410f26151b91cacd04d83fae6bf65043f975",
+	// review normalization: additive repair codes on problem.code, additive
+	// $defs/repair, and optional normalized/repairs on recordData. Additions
+	// only; no existing property, required key, or type changed.
+	// recordData.normalized now carries "type": "object" so the schema refuses
+	// a string or array where the description promises the review object.
+	"envelope.schema.json": "3d8581da900764dd4f63fa2c750a9e6c60d39c5b367c8642e5f4a1a4e8c60584",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
-	"findings.schema.json": "6ea646f31b6deae105d29f30f0ce892691c329509923a45f96b1b0538b27b4f4",
+	// rigor provenance: additive optional entry.rigor_source enum. No existing
+	// property, required key, or type changed.
+	"findings.schema.json": "06a7164a6f8759dbaba94005947c769332833dada268f69dbf0194594f6beccf",
 	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
-	"record.schema.json":   "97647229b14efa63c43aca592aa8466b246065f858b28872c6ec1198c428d7b1",
+	// review normalization: additive optional repairs[] plus $defs/repair. No
+	// existing property, required key, or type changed.
+	"record.schema.json": "59fc476e273fc69cce49a3dc22f1275c0c0d8ea58d2bc934f3b1884df3ff7044",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
 	// unchanged.
-	"review.schema.json": "00b2ef77cf82baa7a162548c687b2f864d2f0eb1011a2f81969325008c2a5fe0",
+	// out-of-range: descriptions now say brief approach/question bounds refuse
+	// and unset rigor records as said; the warning list no longer claims brief
+	// caps warn. No property, required key, enum, or type changed.
+	"review.schema.json": "9a0a2adc61eb5f938b87ff3ba184b12970b209db202ad603c89a89f0b51d87aa",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

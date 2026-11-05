@@ -60,14 +60,22 @@ const msgPlaceholder = "%s carries unknown placeholder '%s' (want one of {versio
 // envelope.schema.json and are never the envelope's error.code, which stays
 // bad-review-input.
 const (
-	ProblemCodeInvalidJSON       = "invalid-json"
-	ProblemCodeWrongType         = "wrong-type"
-	ProblemCodeMissingField      = "missing-field"
-	ProblemCodeBadEnum           = "bad-enum"
-	ProblemCodePathNotInDiff     = "path-not-in-diff"
-	ProblemCodeUnknownField      = "unknown-field"
-	ProblemCodeAnchorOutsideHunk = "anchor-outside-hunk"
-	ProblemCodeRigorUnset        = "rigor-unset"
+	ProblemCodeInvalidJSON         = "invalid-json"
+	ProblemCodeWrongType           = "wrong-type"
+	ProblemCodeMissingField        = "missing-field"
+	ProblemCodeBadEnum             = "bad-enum"
+	ProblemCodeOutOfRange          = "out-of-range"
+	ProblemCodePathNotInDiff       = "path-not-in-diff"
+	ProblemCodeUnknownField        = "unknown-field"
+	ProblemCodeAnchorOutsideHunk   = "anchor-outside-hunk"
+	ProblemCodeRigorUnset          = "rigor-unset"
+	ProblemCodeNormalizedFence     = "normalized-fence"
+	ProblemCodeNormalizedExtracted = "normalized-extracted"
+	ProblemCodeScalarToArray       = "scalar-to-array"
+	ProblemCodeKeyAlias            = "key-alias"
+	ProblemCodeEnumSynonym         = "enum-synonym"
+	ProblemCodeNormalizedTrivia    = "normalized-trivia"
+	ProblemCodeBasisReplaced       = "basis-replaced"
 
 	ProblemLevelError   = "error"
 	ProblemLevelWarning = "warning"
@@ -79,8 +87,8 @@ const (
 type Problem struct { //nolint:govet // field order is the published property order
 	Path string `json:"path"`
 	//nolint:revive // published enum tag exceeds the line limit
-	Code    string `enum:"anchor-outside-hunk|bad-enum|invalid-json|missing-field|path-not-in-diff|rigor-unset|unknown-field|wrong-type" json:"code"`
-	Level   string `enum:"error|warning"                                                                                                 json:"level"` //nolint:revive // published enum tag exceeds the line limit
+	Code    string `enum:"anchor-outside-hunk|bad-enum|basis-replaced|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|scalar-to-array|unknown-field|wrong-type" json:"code"`
+	Level   string `enum:"error|warning"                                                                                                                                                                                                                            json:"level"` //nolint:revive // published enum tag exceeds the line limit
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 	Example any    `json:"example,omitempty"`
@@ -89,14 +97,22 @@ type Problem struct { //nolint:govet // field order is the published property or
 // problemCodeLevels is the closed code set with the level each code normally
 // carries. --strict and controls strict_input promote every warning.
 var problemCodeLevels = map[string]string{
-	ProblemCodeInvalidJSON:       ProblemLevelError,
-	ProblemCodeWrongType:         ProblemLevelError,
-	ProblemCodeMissingField:      ProblemLevelError,
-	ProblemCodeBadEnum:           ProblemLevelError,
-	ProblemCodePathNotInDiff:     ProblemLevelError,
-	ProblemCodeUnknownField:      ProblemLevelWarning,
-	ProblemCodeAnchorOutsideHunk: ProblemLevelWarning,
-	ProblemCodeRigorUnset:        ProblemLevelWarning,
+	ProblemCodeInvalidJSON:         ProblemLevelError,
+	ProblemCodeWrongType:           ProblemLevelError,
+	ProblemCodeMissingField:        ProblemLevelError,
+	ProblemCodeBadEnum:             ProblemLevelError,
+	ProblemCodeOutOfRange:          ProblemLevelError,
+	ProblemCodePathNotInDiff:       ProblemLevelError,
+	ProblemCodeUnknownField:        ProblemLevelWarning,
+	ProblemCodeAnchorOutsideHunk:   ProblemLevelWarning,
+	ProblemCodeRigorUnset:          ProblemLevelWarning,
+	ProblemCodeNormalizedFence:     ProblemLevelWarning,
+	ProblemCodeNormalizedExtracted: ProblemLevelWarning,
+	ProblemCodeScalarToArray:       ProblemLevelWarning,
+	ProblemCodeKeyAlias:            ProblemLevelWarning,
+	ProblemCodeEnumSynonym:         ProblemLevelWarning,
+	ProblemCodeNormalizedTrivia:    ProblemLevelWarning,
+	ProblemCodeBasisReplaced:       ProblemLevelWarning,
 }
 
 // ProblemCodes returns the published problem-code enum in lexical order.

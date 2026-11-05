@@ -71,7 +71,7 @@ func readChunkManifest(manifest, refetch string) ([]chunk, []string, error) {
 		}
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkUnreadable, manifest, schema, refetch)}
 	}
-	chunks := parseChunks(jq.Elements(manMap["chunks"]))
+	chunks := parseChunks(jq.Elements(manMap[fieldChunks]))
 	sortChunks(chunks)
 	names := chunkNames(chunks)
 	if len(names) == 0 {
@@ -280,7 +280,7 @@ func chunkAttestation(reviewRaw []byte) ([]any, attestationKind) {
 	var claimed any
 	has := false
 	if reviewMap != nil {
-		claimed, has = reviewMap.Get("chunks")
+		claimed, has = reviewMap.Get(fieldChunks)
 	}
 	if !has || claimed == nil {
 		return nil, attestationAbsent
@@ -361,7 +361,7 @@ func chunkCheckNames(dir string) ([]string, string) {
 	if schema != "1" || manMap == nil {
 		return nil, ""
 	}
-	names := chunkNames(parseChunks(jq.Elements(manMap["chunks"])))
+	names := chunkNames(parseChunks(jq.Elements(manMap[fieldChunks])))
 	if len(names) == 0 {
 		return nil, ""
 	}

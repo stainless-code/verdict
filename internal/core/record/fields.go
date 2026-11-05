@@ -25,6 +25,30 @@ const (
 	fieldTo         = "to"
 	fieldRule       = "rule"
 	fieldOutcome    = "outcome"
+	fieldComments   = "comments"
+	fieldResolved   = "resolved"
+	fieldChunks     = "chunks"
+	fieldSections   = "sections"
+	fieldTriage     = "triage"
+	fieldSide       = "side"
+	fieldConfidence = "confidence"
+	// fieldInBoundsInput is the agent-facing hyphenated key; fieldInBounds
+	// is the store's camelCase key.
+	fieldInBoundsInput   = "in-bounds"
+	fieldSecuritySummary = "security_summary"
+	// fieldRigorSource is the provenance of the recorded rung.
+	fieldRigorSource = "rigor_source"
+)
+
+const (
+	rungSaid       = "said"
+	rungPointed    = "pointed"
+	rungWalked     = "walked"
+	rungRan        = "ran"
+	rungReproduced = "reproduced"
+
+	rigorSourceModel   = "model"
+	rigorSourceDefault = "default"
 )
 
 const (

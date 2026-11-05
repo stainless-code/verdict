@@ -26,10 +26,18 @@ export interface Problem {
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
+    | "basis-replaced"
+    | "enum-synonym"
     | "invalid-json"
+    | "key-alias"
     | "missing-field"
+    | "normalized-extracted"
+    | "normalized-fence"
+    | "normalized-trivia"
+    | "out-of-range"
     | "path-not-in-diff"
     | "rigor-unset"
+    | "scalar-to-array"
     | "unknown-field"
     | "wrong-type";
   /** error blocks record; warning lets it proceed and report what it did, unless strict input promotes it. */
@@ -222,6 +230,25 @@ export interface RecordData {
   dry_run?: boolean;
   /** Present only on a clean dry run: the review-input summary. */
   check?: CheckSummary | null;
+  /** Present on record --dry-run: the exact review object the checker read after safe repairs, as an object. */
+  normalized?: unknown;
+  /** Present on record --dry-run: every safe review.json rewrite applied, in document order. */
+  repairs?: Array<Repair>;
+  [key: string]: unknown;
+}
+
+/** One safe review.json rewrite: the published repair code and the JSONPath it touched. */
+export interface Repair {
+  /** The repair family: fence unwrap, prose extraction, scalar-to-array, key alias, enum synonym, or trivia removal. */
+  code:
+    | "enum-synonym"
+    | "key-alias"
+    | "normalized-extracted"
+    | "normalized-fence"
+    | "normalized-trivia"
+    | "scalar-to-array";
+  /** JSONPath of the repaired value in the normalized review. */
+  path: string;
   [key: string]: unknown;
 }
 

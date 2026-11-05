@@ -46,6 +46,11 @@
     "model": {
       "description": "First model of the latest cost record, else null when no cost record names one.",
       "type": ["string", "null"]
+    },
+    "repairs": {
+      "description": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/repair" }
     }
   },
   "required": [
@@ -57,5 +62,25 @@
     "findings",
     "open"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "$defs": {
+    "repair": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "enum-synonym",
+            "key-alias",
+            "normalized-extracted",
+            "normalized-fence",
+            "normalized-trivia",
+            "scalar-to-array"
+          ]
+        },
+        "path": { "type": "string" }
+      },
+      "required": ["code", "path"],
+      "additionalProperties": true
+    }
+  }
 }

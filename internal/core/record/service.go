@@ -49,7 +49,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 		return nil, st.withWarnings(ref)
 	}
 	st.controls = snap
-	if ref := reviewRefusal(check, st.req.Strict || snap.StrictInput()); ref != nil {
+	if ref := reviewRefusal(check, strictRecord(st.req, snap)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	review, ref := st.loadInputs(dir)
@@ -78,12 +78,13 @@ func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
 	if err != nil {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
+	st.normalized, st.repairs = NormalizeReview(raw)
 	in := CheckInput{Diff: string(diff)}
 	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
 	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
 		in.Verification, in.HasVerification = verification, true
 	}
-	return CheckReviewInput(raw, in), nil
+	return MergeRepairs(CheckReviewInput(st.normalized, in), st.repairs, st.normalized), nil
 }
 
 func (st *svc) addCheckWarnings(check CheckResult) {
@@ -120,6 +121,32 @@ func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	return &core.RefusalError{Code: codeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
 }
 
+// strictRecord decides whether warnings refuse the run: the --strict flag,
+// the fetch-time strict_input snapshot, or REVIEW_STRICT_INPUT=1 in the
+// record request's own environment. The environment leg matters because the
+// snapshot only captures fetch time, while CLI record, dry run, MCP, and SDK
+// callers all carry their runtime env into this request.
+func strictRecord(req *core.RecordRequest, snap *controls.Snapshot) bool {
+	if req.Strict {
+		return true
+	}
+	if snap.StrictInput() {
+		return true
+	}
+	return runtimeStrictInput(req.Runtime)
+}
+
+// runtimeStrictInput mirrors the fetch-time REVIEW_STRICT_INPUT reading: a
+// blank value leaves the snapshot in charge, any other value wins, and only
+// "1" promotes.
+func runtimeStrictInput(rt *core.Runtime) bool {
+	if rt == nil {
+		return false
+	}
+	raw, ok := rt.Env["REVIEW_STRICT_INPUT"]
+	return ok && strings.TrimSpace(raw) == "1"
+}
+
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {
 	req := st.req
 	dir = readcommon.ResolveBundleDir(req.Pr)
@@ -148,7 +175,7 @@ func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
 	} else if err := EnsureHunksSnapshot(st.runtime(), dir); err != nil {
 		return nil, refusalOrFailed(err)
 	}
-	review, err := LoadReview(dir + reviewSuffix)
+	review, err := LoadReviewBytes(st.normalized)
 	if err != nil {
 		return nil, refusalOrFailed(err)
 	}
@@ -191,12 +218,14 @@ func refusalOrFailed(err error) *core.RefusalError {
 }
 
 type svc struct {
-	req      *core.RecordRequest
-	controls *controls.Snapshot
-	check    *core.CheckSummary
-	store    *readcommon.Bundle
-	hunkRows []hunks.Hunk
-	warnings []string
+	req        *core.RecordRequest
+	controls   *controls.Snapshot
+	check      *core.CheckSummary
+	store      *readcommon.Bundle
+	normalized []byte
+	repairs    []Problem
+	hunkRows   []hunks.Hunk
+	warnings   []string
 }
 
 // BundleBase reads the base commit a bundle was fetched at: the local
@@ -277,6 +306,7 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 		ToolVersion:     toolVersion,
 		PromptsHash:     promptsHash,
 		Model:           modelOrNil(model),
+		Repairs:         repairList(st.repairs),
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -320,6 +350,8 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		ItemsRaw:        EnvelopeItems(res.Entries),
 		DryRun:          true,
 		Check:           st.check,
+		Normalized:      normalizedObject(st.normalized),
+		Repairs:         repairList(st.repairs),
 	}
 	next := "re-run without --dry-run to record; fix every problem first"
 	if st.store != nil && st.store.Provider() == "github" {
@@ -333,6 +365,25 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		Warnings: st.warnings,
 		Next:     next,
 	}
+}
+
+func normalizedObject(raw []byte) any {
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return nil
+	}
+	return doc
+}
+
+func repairList(problems []Problem) []core.Repair {
+	if len(problems) == 0 {
+		return nil
+	}
+	out := make([]core.Repair, 0, len(problems))
+	for _, p := range problems {
+		out = append(out, core.Repair{Code: p.Code, Path: p.Path})
+	}
+	return out
 }
 
 func intOrNil(v any) *int {

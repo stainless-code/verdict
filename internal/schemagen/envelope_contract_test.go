@@ -73,6 +73,32 @@ func checkEnvelopeDescription(t *testing.T, doc map[string]any, keys int) {
 	}
 }
 
+// TestRecordDataNormalizedIsObject proves the published schema constrains
+// record --dry-run's data.normalized to an object, matching the description's
+// promise instead of accepting a string or array.
+func TestRecordDataNormalizedIsObject(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	defs, ok := doc["$defs"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope schema has no $defs")
+	}
+	recordData, ok := defs["recordData"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope schema has no recordData $defs entry")
+	}
+	props, ok := recordData["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("recordData has no properties object")
+	}
+	normalized, ok := props["normalized"].(map[string]any)
+	if !ok {
+		t.Fatalf("recordData has no normalized property")
+	}
+	if normalized["type"] != "object" {
+		t.Errorf(`recordData.normalized type = %v, want "object"`, normalized["type"])
+	}
+}
+
 // TestGeneratedDescriptionsAvoidShellReferences forbids descriptions that
 // cite the deleted bash emitters; the schema is the machine contract, so it
 // describes the Go renderer only.

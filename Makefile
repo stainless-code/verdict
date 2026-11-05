@@ -60,6 +60,7 @@ test-race:
 FUZZTIME ?= 30s
 FUZZ_TARGETS := \
 	./internal/core/record:FuzzCheckReview \
+	./internal/core/record:FuzzNormalizeReview \
 	./internal/core/threads:FuzzProviderMappers \
 	./internal/core/verify:FuzzGate \
 	./internal/hunks:FuzzFiles \

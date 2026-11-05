@@ -168,9 +168,12 @@ func documents() []document {
 			additionalProperties: true,
 		},
 		{
-			name:                 "record",
-			title:                "record.json — completed-record (local bundles)",
-			root:                 reflect.TypeFor[Record](),
+			name:  "record",
+			title: "record.json — completed-record (local bundles)",
+			root:  reflect.TypeFor[Record](),
+			defs: []definition{
+				{typ: reflect.TypeFor[Repair](), name: "repair"},
+			},
 			additionalProperties: true,
 		},
 		{
@@ -227,6 +230,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
+		{typ: reflect.TypeFor[Repair](), name: "repair"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
 		{typ: reflect.TypeFor[ShowFix](), name: "showFix"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
@@ -581,6 +585,9 @@ func nullableNode(schema *node, base reflect.Type) (*node, error) {
 
 func typeListNode(spec string) *node {
 	parts := strings.Split(spec, "|")
+	if len(parts) == 1 {
+		return object(false, member{keyType, stringNode(parts[0])})
+	}
 	elems := make([]*node, 0, len(parts))
 	for _, part := range parts {
 		elems = append(elems, stringNode(part))

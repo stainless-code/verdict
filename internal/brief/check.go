@@ -132,7 +132,7 @@ func checkSite(i int, item any, rows []hunks.Hunk) (core.BriefSite, Issue, bool)
 	base := fmt.Sprintf(".sites[%d]", i)
 	if i >= maxSites {
 		return core.BriefSite{}, Issue{
-			Path: base, Code: core.ProblemCodeBadEnum, Level: core.ProblemLevelWarning,
+			Path: base, Code: core.ProblemCodeOutOfRange, Level: core.ProblemLevelError,
 			Message: fmt.Sprintf("brief site %d is past the %d-site cap", i+1, maxSites),
 			Fix:     fmt.Sprintf("use at most %d sites", maxSites),
 			Warning: fmt.Sprintf("brief site %d is past the %d-site cap — dropped", i+1, maxSites),
@@ -210,7 +210,7 @@ func checkApproach(v any) (string, []Issue) {
 	}
 	if n := utf8.RuneCountInString(text); n < minApproach || n > maxApproach {
 		return "", []Issue{{
-			Path: ".approach", Code: core.ProblemCodeBadEnum, Level: core.ProblemLevelWarning,
+			Path: ".approach", Code: core.ProblemCodeOutOfRange, Level: core.ProblemLevelError,
 			Message: fmt.Sprintf("brief approach is %d chars (want %d-%d)", n, minApproach, maxApproach),
 			Fix:     fmt.Sprintf("write %d-%d chars or leave the approach out", minApproach, maxApproach),
 			Warning: fmt.Sprintf("brief approach is %d chars (want %d-%d) — dropped", n, minApproach, maxApproach),
@@ -238,7 +238,7 @@ func checkQuestions(v any) ([]string, []Issue) {
 		base := fmt.Sprintf(".questions[%d]", i)
 		if i >= maxQuestions {
 			issues = append(issues, Issue{
-				Path: base, Code: core.ProblemCodeBadEnum, Level: core.ProblemLevelWarning,
+				Path: base, Code: core.ProblemCodeOutOfRange, Level: core.ProblemLevelError,
 				Message: fmt.Sprintf("brief question %d is past the %d-question cap", i+1, maxQuestions),
 				Fix:     fmt.Sprintf("use at most %d questions", maxQuestions),
 				Warning: fmt.Sprintf("brief question %d is past the %d-question cap — dropped", i+1, maxQuestions),
@@ -257,7 +257,7 @@ func checkQuestions(v any) ([]string, []Issue) {
 		}
 		if n := utf8.RuneCountInString(text); n < minQuestion || n > maxQuestion {
 			issues = append(issues, Issue{
-				Path: base, Code: core.ProblemCodeBadEnum, Level: core.ProblemLevelWarning,
+				Path: base, Code: core.ProblemCodeOutOfRange, Level: core.ProblemLevelError,
 				Message: fmt.Sprintf("brief question %d is %d chars (want %d-%d)", i+1, n, minQuestion, maxQuestion),
 				Fix:     fmt.Sprintf("write %d-%d chars", minQuestion, maxQuestion),
 				Warning: fmt.Sprintf("brief question %d is %d chars (want %d-%d) — dropped", i+1, n, minQuestion, maxQuestion),

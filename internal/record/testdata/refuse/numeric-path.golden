@@ -8,17 +8,19 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "",
   "warnings": [
+    "$.comments[0].suggestion: optional key \"suggestion\" was null; dropped it",
     "$.comments[0].rigor: rigor is unset"
   ],
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 2 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
-    "problems": [{"path":"$.comments[0].path","code":"wrong-type","level":"error","message":"path must be a string","fix":"use a changed file path","example":"file.go"},{"path":"$.comments[0].rigor","code":"rigor-unset","level":"warning","message":"rigor is unset","fix":"set rigor to said|pointed|walked|ran|reproduced","example":"walked"}],
+    "message": "review.json has 3 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "problems": [{"path":"$.comments[0].path","code":"wrong-type","level":"error","message":"path must be a string","fix":"use a changed file path","example":"file.go"},{"path":"$.comments[0].suggestion","code":"normalized-trivia","level":"warning","message":"optional key \"suggestion\" was null; dropped it","fix":"omit the key instead of writing null"},{"path":"$.comments[0].rigor","code":"rigor-unset","level":"warning","message":"rigor is unset","fix":"set rigor to said|pointed|walked|ran|reproduced","example":"walked"}],
     "problems_truncated": 0
   }
 }
 --- stderr ---
+warn: $.comments[0].suggestion: optional key "suggestion" was null; dropped it
 warn: $.comments[0].rigor: rigor is unset
 re-enter: verdict record acme/app local-rf --json
 --- files ---

@@ -202,16 +202,40 @@ move the part (warning) or must refuse it (error). The published code set
 validates local and provider-PR bundles and writes nothing; a real `record` on a
 GitHub PR still refuses `not-local` (use `post`).
 
-| Code                  | Level   | Meaning                                                                                                  |
-| --------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `invalid-json`        | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object. |
-| `wrong-type`          | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                |
-| `missing-field`       | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.            |
-| `bad-enum`            | mixed   | Error for an unknown enum; warning for a brief length/cap, KB id shape, or unknown chunk name.           |
-| `path-not-in-diff`    | mixed   | Error for a comment path; warning for a brief site outside the diff.                                     |
-| `unknown-field`       | warning | A key is not in the published shape; the fix names the nearest known key.                                |
-| `anchor-outside-hunk` | warning | The line is provably outside every hunk; `record` moves the comment into the body.                       |
-| `rigor-unset`         | warning | A comment carries no evidence rung.                                                                      |
+Before checking, `record` runs `NormalizeReview` over the agent's bytes: one
+whole-document code fence is unwrapped, prose around exactly one balanced JSON
+object is dropped, a scalar where a string array belongs becomes a one-element
+array, the aliases `inBounds`/`rung`/`file` become `in-bounds`/`rigor`/`path`,
+rigor synonyms and enum case are folded, and a BOM, an explicit null on an
+optional key, or an exact-duplicate comment is removed. Every rewrite is a
+warning with its own code and is listed in `record.json`'s `repairs[]`; strict
+input turns each into an error. A repair never invents or rewrites prose, and
+an unparsable or non-object document, a comment with no recoverable string
+`path`/`body`, an unknown `schema_version`, a corrupt store, or partial chunk
+coverage still refuses. `record --dry-run` adds `data.normalized` (the exact
+object the checker read) and `data.repairs`; verdict never rewrites
+`review.json` on disk. The CLI also owns the body's `> Basis:` line: it
+replaces a disagreeing line, or inserts a missing one, with the counts computed
+from the review and reports `basis-replaced`.
+
+| Code                   | Level   | Meaning                                                                                                  |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object. |
+| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                |
+| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.            |
+| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.              |
+| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).    |
+| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                     |
+| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                |
+| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                       |
+| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                   |
+| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                             |
+| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                               |
+| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                |
+| `key-alias`            | warning | A known alias (`inBounds`, `rung`, `file`) was renamed to its canonical key.                             |
+| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                        |
+| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                   |
+| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts, or was missing, and the CLI replaced it.  |
 
 ### Sig contract (sig_version 1)
 
@@ -222,7 +246,11 @@ use `heading`); normalize by squashing every whitespace run (spaces, tabs, newli
 to one space and trimming ends; take the lowercase hex SHA-1. Line numbers, sides,
 severity, and rigor are deliberately excluded, so findings survive line shifts and
 re-worded metadata. Every entry stamps `sig_version: "1"`; merges backfill it onto
-older entries produced by the same normalization. Changing the normalization orphans
+older entries produced by the same normalization. Merges also backfill `rigor_source`
+onto older entries from the recorded rung: `pointed` reads as `default` because the
+previous merge filled a missing rung with `pointed`, and every other recognized rung
+reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
+a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version` with a migration note here, never silently.
 `review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
 versions, warn-and-proceed when the stamp is missing); every bundle carries
@@ -409,7 +437,7 @@ most seven bundle files (plus an overflow pointer to `toc.txt`). Under the
 lead, `--output` renders a `> Basis: …` line computed exactly from the
 findings store (rigor rung counts in evidence order, distinct cited kb rule
 ids, addressed findings as verified fixes — covering the whole store
-regardless of display filters; the agent-authored `> Basis:` line in `review.json` validates against the review's own comments instead, so carried-over findings never warn). Every `--output` file and every posted body
+regardless of display filters; the agent-authored `> Basis:` line in `review.json` is replaced with the counts computed from the review's own comments, so carried-over findings never warn). Every `--output` file and every posted body
 ends with one merged footer block (tier, cost or unrecorded, files
 reviewed, review link when known, plus a leveled attribution line with
 logo) — see

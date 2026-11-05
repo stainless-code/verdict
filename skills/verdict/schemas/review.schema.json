@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/review.schema.json",
   "title": "review.json — agent-written review input",
-  "description": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks or past caps, brief approach/question length or caps, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
+  "description": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -85,7 +85,7 @@
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
         },
         "rigor": {
-          "description": "Evidence rung; absent warns (rigor-unset), unknown or non-string values refuse.",
+          "description": "Evidence rung; absent warns (rigor-unset) and records as said with rigor_source default, unknown or non-string values refuse.",
           "enum": ["said", "pointed", "walked", "ran", "reproduced", null]
         },
         "severity": {
@@ -119,11 +119,11 @@
           "type": "string"
         },
         "approach": {
-          "description": "Optional suggested approach, 10–1,000 characters; a non-string refuses, and a non-empty out-of-range value warns and drops.",
+          "description": "Optional suggested approach, 10–1,000 characters; a non-string or out-of-range value refuses.",
           "type": "string"
         },
         "questions": {
-          "description": "Optional questions for the human, at most 10 of 10–300 characters each; non-array/non-string refuses, and an out-of-range or past-cap question warns and drops.",
+          "description": "Optional questions for the human, at most 10 of 10–300 characters each; non-array/non-string or an out-of-range or past-cap question refuses.",
           "type": "array",
           "items": { "type": "string" }
         }

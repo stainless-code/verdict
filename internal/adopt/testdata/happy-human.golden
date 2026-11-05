@@ -31,7 +31,8 @@ warn: no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuildin
         "actor": "script",
         "note": "from adopt1"
       }
-    ]
+    ],
+    "rigor_source": "default"
   },
   {
     "kind": "inline",
@@ -58,7 +59,8 @@ warn: no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuildin
         "actor": "script",
         "note": "from adopt1"
       }
-    ]
+    ],
+    "rigor_source": "default"
   }
 ]
 --- file C/.review/4311/hunks.tsv ---

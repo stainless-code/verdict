@@ -14,35 +14,81 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-func collectCited(m *jq.Obj, cited map[string]bool) {
-	kbl, ok := m.Get("kb")
-	if !ok {
-		return
-	}
-	arr, ok := kbl.([]any)
-	if !ok {
-		return
-	}
-	for _, id := range arr {
-		cited[jq.Compact(id)] = true
-	}
-}
-
 // ReviewBasisCounts derives the expected Basis numbers from
-// the review's own comments (rigor normalized, distinct raw kb ids) plus the
-// verified count scoped to this run's addressed/triaged flips at now.
+// the review's own comments (rigor normalized) plus the verified count scoped
+// to this run's addressed/triaged flips at now. The cited count covers only
+// the kb ids that survived normalization into this run's stored entries, so
+// a dropped cite never reaches the posted line; carried-over findings stay
+// silent because only entries reported at now count.
 func ReviewBasisCounts(review *jq.Obj, entries []any, now string) string {
 	counts := map[string]int{}
-	cited := map[string]bool{}
 	for _, c := range reviewComments(review) {
 		m, ok := c.(*jq.Obj)
 		if !ok {
 			continue
 		}
 		counts[commentRigor(m)]++
-		collectCited(m, cited)
 	}
-	return renderBasis(counts, cited, runVerified(entries, now))
+	return renderBasis(counts, runCited(entries, now), runVerified(entries, now))
+}
+
+// runCited collects the distinct kb ids stored on this run's fresh entries:
+// an entry counts when its history reports it at now, so carried-over
+// findings from earlier runs stay silent.
+func runCited(entries []any, now string) map[string]bool {
+	cited := map[string]bool{}
+	for _, e := range entries {
+		m, ok := e.(*jq.Obj)
+		if !ok || !reportedAtNow(m, now) {
+			continue
+		}
+		for _, id := range entryKB(m) {
+			cited[id] = true
+		}
+	}
+	return cited
+}
+
+// reportedAtNow reports whether the entry was first reported at now.
+func reportedAtNow(m *jq.Obj, now string) bool {
+	histRaw, _ := m.Get("history")
+	hist, ok := histRaw.([]any)
+	if !ok {
+		return false
+	}
+	for _, h := range hist {
+		if hm, ok := h.(*jq.Obj); ok && reportedNow(hm, now) {
+			return true
+		}
+	}
+	return false
+}
+
+// reportedNow reports one history entry recording a report at now.
+func reportedNow(hm *jq.Obj, now string) bool {
+	at, _ := hm.Get("at")
+	ev, _ := hm.Get("event")
+	return at == now && ev == "reported"
+}
+
+// entryKB lists the stored kb ids on one entry: the normalized cites the
+// merge kept, never the review's raw claims.
+func entryKB(m *jq.Obj) []string {
+	raw, ok := m.Get("kb")
+	if !ok || raw == nil {
+		return nil
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, id := range arr {
+		if s, ok := id.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func reviewComments(review *jq.Obj) []any {
@@ -55,12 +101,12 @@ func reviewComments(review *jq.Obj) []any {
 	return nil
 }
 
-// commentRigor normalizes one comment's rigor rung: null/false/missing and
-// present non-strings read pointed; unknown strings match no rung.
+// commentRigor normalizes one comment's rigor rung: null/false/missing read
+// said, the rung the checker fills; unknown strings read pointed.
 func commentRigor(m *jq.Obj) string {
 	rigorRaw, _ := m.Get("rigor")
 	if rigorRaw == nil || rigorRaw == false {
-		return rigorPointed
+		return rigorSaid
 	}
 	if s, isStr := rigorRaw.(string); isStr {
 		switch s {
@@ -132,34 +178,114 @@ var (
 	digitRunRe  = regexp.MustCompile(`[0-9]+`)
 )
 
-// ValidateBasisLine checks the Basis line: the agent-authored body may
-// carry a "> Basis:" counts line; the review's own comments decide. Mismatch
-// or unparseable warns and keeps the body.
-func ValidateBasisLine(expected, body string) []string {
-	line := ""
-	for ln := range strings.SplitSeq(body, "\n") {
-		if basisLineRe.MatchString(ln) {
-			line = ln
-			break
+// ApplyBasisLine replaces the body's first "> Basis:" line with the computed
+// counts, inserting one under the confidence lead when the body carries none.
+// It is the only prose byte the CLI writes; a matching line is left untouched.
+func ApplyBasisLine(expected, body string) (string, *core.Problem) {
+	lines := strings.Split(body, newline)
+	computed := "> Basis: " + expected
+	if i, found := basisLineIndex(lines); found {
+		return replaceBasisLine(body, lines, i, computed, expected)
+	}
+	return insertBasisLine(lines, computed)
+}
+
+// basisLineIndex finds the first "> Basis:" line in the leading quote block,
+// skipping fenced regions. The search stops at the first non-blank line that
+// is not a quote, so a Basis-looking line inside a fence or a quoted prior
+// review is never rewritten.
+func basisLineIndex(lines []string) (int, bool) {
+	s := &basisScan{}
+	for i, line := range lines {
+		idx, found, stop := s.visit(line, i)
+		if found || stop {
+			return idx, found
 		}
 	}
-	if line == "" {
-		return []string{"no basis line under the confidence lead — keeping body as-is (report renders it exactly)"}
+	return 0, false
+}
+
+// basisScan walks the leading quote block tracking fence state.
+type basisScan struct{ inFence bool }
+
+// visit folds one body line: the Basis index when the line matches, stop at
+// the block end, else continue.
+func (s *basisScan) visit(line string, i int) (idx int, found, stop bool) {
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case trimmed == "":
+		return 0, false, false
+	case !strings.HasPrefix(trimmed, ">"):
+		return 0, false, true
+	case basisFenceLine(trimmed):
+		s.inFence = !s.inFence
+		return 0, false, false
+	case s.inFence:
+		return 0, false, false
+	default:
+		return i, basisLineRe.MatchString(line), false
 	}
-	nums := strings.Join(digitRunRe.FindAllString(line, -1), " ")
-	n := 0
-	if nums != "" {
-		n = len(strings.Fields(nums))
+}
+
+// leadEnd returns the index after the last leading quote line: blanks pass,
+// and the block ends at the first non-blank line that is not a quote.
+func leadEnd(lines []string) int {
+	at := 0
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, ">") {
+			break
+		}
+		at = i + 1
 	}
-	if n != basisFieldCount {
-		return []string{fmt.Sprintf("basis line carries %d counts, want %d (reproduced ran "+
-			"walked pointed said cited verified) — keeping body as-is", n, basisFieldCount)}
+	return at
+}
+
+// basisFenceLine reports a markdown fence marker, bare or quoted, so a fenced
+// example inside the leading quote block never reads as a Basis line.
+func basisFenceLine(trimmed string) bool {
+	s := strings.TrimSpace(strings.TrimPrefix(trimmed, ">"))
+	return s == fencePrefix || fenceOpenLine(s)
+}
+
+// replaceBasisLine swaps a disagreeing Basis line for the computed counts;
+// a matching line leaves the body untouched.
+func replaceBasisLine(body string, lines []string, i int, computed, expected string) (string, *core.Problem) {
+	nums := strings.Join(digitRunRe.FindAllString(lines[i], -1), " ")
+	if nums == expected {
+		return body, nil
 	}
-	if nums != expected {
-		return []string{fmt.Sprintf("basis line counts (%s) differ from this review's "+
-			"comments (%s) — keeping body as-is (garnish never fails the run)", nums, expected)}
+	lines[i] = computed
+	return strings.Join(lines, newline), &core.Problem{
+		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
+		Message: fmt.Sprintf(
+			"basis line counts (%s) differ from the computed counts (%s) — replaced it (basis-replaced)",
+			nums, expected),
+		Fix:     "write the computed Basis line, or leave the line to the CLI",
+		Example: computed,
 	}
-	return nil
+}
+
+// insertBasisLine adds the computed Basis line under the confidence lead,
+// keeping a blank line before a following heading.
+func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
+	at := leadEnd(lines)
+	insert := []string{computed}
+	if at < len(lines) {
+		if trimmed := strings.TrimSpace(lines[at]); trimmed != "" && strings.HasPrefix(trimmed, "#") {
+			insert = append(insert, "")
+		}
+	}
+	lines = append(lines[:at], append(insert, lines[at:]...)...)
+	return strings.Join(lines, newline), &core.Problem{
+		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
+		Message: "no basis line — inserted the computed counts (basis-replaced)",
+		Fix:     "write the computed Basis line, or leave the line to the CLI",
+		Example: computed,
+	}
 }
 
 // EvidenceBaseURL returns the blob base for GitHub bundles,
@@ -372,8 +498,6 @@ func fenceOpenLine(line string) bool {
 
 // Basis-line parsing and rendering constants.
 const (
-	// basisFieldCount is the seven-count basis-line arity (all seven rigors).
-	basisFieldCount = 7
 	// validationFalse is the provider-validation failure rendering.
 	validationFalse = "false"
 	// Rigor bucket names for the seven-count basis line.

@@ -46,7 +46,8 @@ exit: 0
         "actor": "script",
         "note": "from adopt1"
       }
-    ]
+    ],
+    "rigor_source": "default"
   },
   {
     "kind": "inline",
@@ -73,7 +74,8 @@ exit: 0
         "actor": "script",
         "note": "from adopt1"
       }
-    ]
+    ],
+    "rigor_source": "default"
   }
 ]
 --- file C/.review/4311/store.json ---

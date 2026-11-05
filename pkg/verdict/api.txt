@@ -320,6 +320,14 @@ type Problem = recordcore.Problem
     Problem is one review-input problem: its JSONPath, code, level, message,
     exact fix, and an optional example of the accepted shape.
 
+func NormalizeReview(review []byte) ([]byte, []Problem)
+    NormalizeReview repairs the mechanical shapes weak models emit — a
+    whole-document code fence, prose around the object, scalars where a string
+    array belongs, key aliases, enum synonyms and case, and trivial bytes — and
+    returns the normalized document plus one warning per rewrite. It is pure,
+    deterministic, and idempotent. It never invents or rewrites prose, and a
+    document it cannot recover comes back unchanged for CheckReview to refuse.
+
 type Progress interface {
 	Human(line string)
 	Warn(msg string)

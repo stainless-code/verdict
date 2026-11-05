@@ -2,9 +2,13 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: review.json has 1 problem(s); fix every one, then re-run
-$.chunks  wrong-type  chunks must be an array of manifest chunk names
-  fix: list every manifest chunk name as a string
+warn: $.chunks: chunks was a string; wrapped it in a one-element array
+error: review.json has 2 problem(s); fix every one, then re-run
+$.chunks  scalar-to-array  chunks was a string; wrapped it in a one-element array
+  fix: write an array of strings
+$.chunks  missing-field  chunks attestation covers 1 of 2 manifest chunk(s); missing b
+  fix: list every manifest chunk name in top-level chunks
+  example: ["a","b"]
 try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 re-enter: verdict record acme/app local-ch
 --- files ---

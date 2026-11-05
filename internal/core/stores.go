@@ -65,29 +65,30 @@ type SectionTag struct { //nolint:govet // field order is the published property
 // bytes and positions; the merge itself preserves prior order through the
 // ordered clone-and-overlay path.
 type FindingEntry struct { //nolint:govet // field order is the published property order
-	Sig        string         `json:"sig"`
-	SigVersion string         `const:"1"                                              json:"sig_version"`
-	Kind       string         `enum:"inline|section"                                  json:"kind"`
-	Path       any            `json:"path,omitempty"                                  type:"string|null"`
-	Heading    any            `json:"heading,omitempty"                               type:"string|null"`
-	Line       any            `json:"line,omitempty"                                  type:"integer|null"`
-	Side       any            `json:"side,omitempty"                                  type:"string|null"`
-	Anchored   any            `json:"anchored,omitempty"                              type:"boolean|string|null"`
-	Body       string         `json:"body,omitempty"`
-	Suggestion *string        `json:"suggestion,omitempty"`
-	Brief      *Brief         `anyOf:"null"                                           json:"brief,omitempty"`
-	KB         *[]string      `json:"kb,omitempty"`
-	InBounds   any            `json:"inBounds,omitempty"                              type:"boolean|null"`
-	Rigor      any            `enum:"said|pointed|walked|ran|reproduced|null"         json:"rigor,omitempty"`
-	Severity   any            `enum:"critical|important|informational|null"           json:"severity,omitempty"`
-	Status     string         `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
-	FirstSeen  string         `json:"firstSeen"`
-	LastSeen   string         `json:"lastSeen"`
-	Rationale  string         `json:"rationale,omitempty"`
-	TriagedAt  string         `json:"triagedAt,omitempty"`
-	TriagedBy  string         `json:"triagedBy,omitempty"`
-	History    []HistoryEvent `json:"history"`
-	Extra      *jq.Obj        `json:"-"`
+	Sig         string         `json:"sig"`
+	SigVersion  string         `const:"1"                                              json:"sig_version"`
+	Kind        string         `enum:"inline|section"                                  json:"kind"`
+	Path        any            `json:"path,omitempty"                                  type:"string|null"`
+	Heading     any            `json:"heading,omitempty"                               type:"string|null"`
+	Line        any            `json:"line,omitempty"                                  type:"integer|null"`
+	Side        any            `json:"side,omitempty"                                  type:"string|null"`
+	Anchored    any            `json:"anchored,omitempty"                              type:"boolean|string|null"`
+	Body        string         `json:"body,omitempty"`
+	Suggestion  *string        `json:"suggestion,omitempty"`
+	Brief       *Brief         `anyOf:"null"                                           json:"brief,omitempty"`
+	KB          *[]string      `json:"kb,omitempty"`
+	InBounds    any            `json:"inBounds,omitempty"                              type:"boolean|null"`
+	Rigor       any            `enum:"said|pointed|walked|ran|reproduced|null"         json:"rigor,omitempty"`
+	RigorSource string         `enum:"model|default|verified"                          json:"rigor_source,omitempty"`
+	Severity    any            `enum:"critical|important|informational|null"           json:"severity,omitempty"`
+	Status      string         `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
+	FirstSeen   string         `json:"firstSeen"`
+	LastSeen    string         `json:"lastSeen"`
+	Rationale   string         `json:"rationale,omitempty"`
+	TriagedAt   string         `json:"triagedAt,omitempty"`
+	TriagedBy   string         `json:"triagedBy,omitempty"`
+	History     []HistoryEvent `json:"history"`
+	Extra       *jq.Obj        `json:"-"`
 }
 
 // Brief is the per-finding repair brief: the affected sites plus the outcome,
@@ -123,6 +124,14 @@ type KBCredit struct {
 	To   string `json:"to"`
 }
 
+// Repair is one safe review.json rewrite NormalizeReview applied before the
+// checker ran: the published code and the JSONPath it touched. Field order is
+// the published property order.
+type Repair struct {
+	Code string `enum:"enum-synonym|key-alias|normalized-extracted|normalized-fence|normalized-trivia|scalar-to-array" json:"code"`
+	Path string `json:"path"`
+}
+
 // RecordData is the record verb's --json data profile. ConfidenceRaw wins
 // over the typed confidence so an exotic agent value (a numeric string the
 // shell passes through raw) re-emits byte-identically; ItemsRaw wins over
@@ -130,12 +139,14 @@ type KBCredit struct {
 type RecordData struct { //nolint:govet // field order is the published property order
 	Dir             string         `json:"dir"`
 	Anchors         AnchorsSummary `json:"anchors"`
-	Findings        RecordFindings `inline:"true"            json:"findings"`
-	Confidence      *int           `json:"confidence"        max:"5"                min:"1"`
+	Findings        RecordFindings `inline:"true"               json:"findings"`
+	Confidence      *int           `json:"confidence"           max:"5"                min:"1"`
 	SecuritySummary *string        `json:"security_summary"`
 	Items           []FindingItem  `json:"items"`
 	DryRun          bool           `json:"dry_run,omitempty"`
-	Check           *CheckSummary  `anyOf:"null"             json:"check,omitempty"`
+	Check           *CheckSummary  `anyOf:"null"                json:"check,omitempty"`
+	Normalized      any            `json:"normalized,omitempty" type:"object"`
+	Repairs         []Repair       `json:"repairs,omitempty"`
 	ConfidenceRaw   any            `json:"-"`
 	ItemsRaw        []any          `json:"-"`
 }
@@ -151,19 +162,20 @@ type RecordFindings struct { //nolint:govet // field order is the published prop
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
 type Record struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string  `const:"1"                         json:"schema_version"`
-	Status          string  `json:"status"`
-	Head            string  `json:"head"`
-	DiffSHA256      string  `json:"diff_sha256"`
-	RecordedAt      string  `format:"date-time"                json:"recorded_at"`
-	Findings        int     `json:"findings"                   min:"0"`
-	Open            int     `json:"open"                       min:"0"`
-	Confidence      *int    `json:"confidence,omitempty"       max:"5"               min:"1"`
-	SecuritySummary *string `json:"security_summary,omitempty"`
-	ToolVersion     string  `json:"tool_version,omitempty"`
-	PromptsHash     string  `json:"prompts_hash,omitempty"`
-	Model           *string `json:"model,omitempty"`
-	ConfidenceRaw   any     `json:"-"`
+	SchemaVersion   string   `const:"1"                         json:"schema_version"`
+	Status          string   `json:"status"`
+	Head            string   `json:"head"`
+	DiffSHA256      string   `json:"diff_sha256"`
+	RecordedAt      string   `format:"date-time"                json:"recorded_at"`
+	Findings        int      `json:"findings"                   min:"0"`
+	Open            int      `json:"open"                       min:"0"`
+	Confidence      *int     `json:"confidence,omitempty"       max:"5"               min:"1"`
+	SecuritySummary *string  `json:"security_summary,omitempty"`
+	ToolVersion     string   `json:"tool_version,omitempty"`
+	PromptsHash     string   `json:"prompts_hash,omitempty"`
+	Model           *string  `json:"model,omitempty"`
+	Repairs         []Repair `json:"repairs,omitempty"`
+	ConfidenceRaw   any      `json:"-"`
 }
 
 // Wire renders one finding entry in wire order: the fixed construction order
@@ -220,13 +232,17 @@ func wireExtra(e *FindingEntry, o *jq.Obj) {
 // wireSection builds the head of a section entry: heading, anchor marker,
 // body, severity.
 func (e *FindingEntry) wireSection() *jq.Obj {
-	return jq.NewObj(
+	o := jq.NewObj(
 		"kind", e.Kind,
 		"heading", e.Heading,
 		keyAnchored, e.Anchored,
 		"body", e.Body,
-		"severity", e.Severity,
 	)
+	if e.RigorSource != "" {
+		o.Set("rigor_source", e.RigorSource)
+	}
+	o.Set("severity", e.Severity)
+	return o
 }
 
 // wireInline builds the head of an inline entry: locator fields, anchor
@@ -243,8 +259,11 @@ func (e *FindingEntry) wireInline() *jq.Obj {
 		"kb", kbWire(e.KB),
 		"inBounds", e.InBounds,
 		"rigor", e.Rigor,
-		"severity", e.Severity,
 	)
+	if e.RigorSource != "" {
+		o.Set("rigor_source", e.RigorSource)
+	}
+	o.Set("severity", e.Severity)
 	briefWire(e.Brief, o)
 	return o
 }
@@ -338,6 +357,12 @@ func (d *RecordData) Wire() *jq.Obj {
 	if d.Check != nil {
 		o.Set("check", d.Check)
 	}
+	if d.Normalized != nil {
+		o.Set("normalized", d.Normalized)
+	}
+	if d.Repairs != nil {
+		o.Set("repairs", d.Repairs)
+	}
 	return o
 }
 
@@ -359,7 +384,7 @@ func findingItemsWire(items []FindingItem) []any {
 // the typed confidence like RecordData does. Explicit nulls stay in
 // position (never omitted).
 func (r *Record) Wire() *jq.Obj {
-	return jq.NewObj(
+	o := jq.NewObj(
 		"schema_version", r.SchemaVersion,
 		"status", r.Status,
 		"head", r.Head,
@@ -373,6 +398,10 @@ func (r *Record) Wire() *jq.Obj {
 		"prompts_hash", r.PromptsHash,
 		"model", strOrNull(r.Model),
 	)
+	if len(r.Repairs) > 0 {
+		o.Set("repairs", r.Repairs)
+	}
+	return o
 }
 
 // strOrNull renders an optional string (nil reads null).
@@ -420,7 +449,7 @@ var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
 	"body": true, "suggestion": true, "kb": true, "inBounds": true,
-	"rigor": true, "severity": true, keyStatus: true, "firstSeen": true,
+	"rigor": true, "rigor_source": true, "severity": true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"history": true,
 }
@@ -461,6 +490,7 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.KB = fieldOptStrings(obj, "kb")
 	e.InBounds, _ = obj.Get("inBounds")
 	e.Rigor, _ = obj.Get("rigor")
+	e.RigorSource, _ = fieldString(obj, "rigor_source")
 	e.Severity, _ = obj.Get("severity")
 }
 
