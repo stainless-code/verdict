@@ -230,6 +230,18 @@ func checkRecordedAnchors(t *testing.T, path string) {
 		Anchored any  `json:"anchored"`
 	}](t, path)
 	want := map[int]bool{41: true, 42: false}
+	seen := checkAnchoredEntries(t, entries, want)
+	if seen != len(want) {
+		t.Errorf("recorded %d anchored findings, want one kept and one moved", seen)
+	}
+}
+
+func checkAnchoredEntries(t *testing.T, entries []struct {
+	Line     *int `json:"line"`
+	Anchored any  `json:"anchored"`
+}, want map[int]bool,
+) int {
+	t.Helper()
 	seen := 0
 	for _, entry := range entries {
 		if entry.Line == nil {
@@ -245,9 +257,7 @@ func checkRecordedAnchors(t *testing.T, path string) {
 			t.Errorf("line %d anchored = %v, want %v", *entry.Line, entry.Anchored, anchored)
 		}
 	}
-	if seen != len(want) {
-		t.Errorf("recorded %d anchored findings, want one kept and one moved", seen)
-	}
+	return seen
 }
 
 // gradedOutcome is the calibrate outcome block's grading fields.
@@ -263,11 +273,11 @@ type gradedOutcome struct {
 func checkOutOfHunkScore(t *testing.T, rep *Report) {
 	t.Helper()
 	cal := readJSON[struct {
+		Outcomes       []gradedOutcome `json:"outcomes"`
 		Reported       int             `json:"reported"`
 		Matched        int             `json:"matched"`
 		FalsePositives int             `json:"false_positives"`
 		Missed         int             `json:"missed"`
-		Outcomes       []gradedOutcome `json:"outcomes"`
 	}](t, writeTemp(t, rep.Bundles[0].Calibrate))
 	if cal.Reported != 2 || cal.Matched != 1 || cal.FalsePositives != 1 || cal.Missed != 0 {
 		t.Fatalf("calibrate = reported %d matched %d false-positives %d missed %d, want 2/1/1/0",

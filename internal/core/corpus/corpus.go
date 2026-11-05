@@ -31,7 +31,7 @@ const (
 	// DefaultLineTolerance is the +/- line window that still counts as the
 	// same defect when a manifest does not pin one. One line admits the second
 	// line of a statement split across lines and the brace a reviewer anchors
-	// to, while keeping the window from covering a neighbouring statement. Zero
+	// to, while keeping the window from covering a neighboring statement. Zero
 	// rejects an otherwise correct anchor on a multi-line statement; a wider
 	// window is what made every anchor in a short hunk score. A case pins its
 	// own window when it knows the exact line.
@@ -236,19 +236,27 @@ func Evaluate(c *core.CorpusCase, entries []any) *Report {
 		rep.Reported++
 		out, bug := grade(e, c.Bugs, used, tol)
 		rep.Outcomes = append(rep.Outcomes, out)
-		if bug >= 0 {
-			used[bug] = true
-			rep.Matched++
-		} else {
-			rep.FalsePositives++
-		}
+		tallyOutcome(rep, used, bug)
 	}
-	for i := range c.Bugs {
-		if !used[i] {
-			rep.Missed = append(rep.Missed, c.Bugs[i])
-		}
-	}
+	collectMissed(rep, c.Bugs, used)
 	return rep
+}
+
+func tallyOutcome(rep *Report, used []bool, bug int) {
+	if bug >= 0 {
+		used[bug] = true
+		rep.Matched++
+		return
+	}
+	rep.FalsePositives++
+}
+
+func collectMissed(rep *Report, bugs []core.CorpusBug, used []bool) {
+	for i := range bugs {
+		if !used[i] {
+			rep.Missed = append(rep.Missed, bugs[i])
+		}
+	}
 }
 
 func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {

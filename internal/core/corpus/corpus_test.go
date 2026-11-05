@@ -315,8 +315,6 @@ func entry(path string, line int, body string) *jq.Obj {
 // TestCategoryVocabulary pins the words that name each published category
 // against a sentence a reviewer writes for it, and rejects a claim that lands
 // on the line but talks about something else.
-//
-//nolint:revive // the table is the vocabulary matrix
 func TestCategoryVocabulary(t *testing.T) {
 	tests := []struct {
 		name string

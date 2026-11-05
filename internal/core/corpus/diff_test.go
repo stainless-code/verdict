@@ -79,12 +79,12 @@ func TestGroundTruthLinesAreAdded(t *testing.T) {
 
 func checkGroundTruth(t *testing.T, kind string, bugs []core.CorpusBug, rows []diffRow) {
 	t.Helper()
-	for _, bug := range bugs {
-		checkBug(t, kind, bug, rows)
+	for i := range bugs {
+		checkBug(t, kind, &bugs[i], rows)
 	}
 }
 
-func checkBug(t *testing.T, kind string, bug core.CorpusBug, rows []diffRow) {
+func checkBug(t *testing.T, kind string, bug *core.CorpusBug, rows []diffRow) {
 	t.Helper()
 	if !shownOnNewSide(rows, bug.Path, bug.Line) {
 		t.Errorf("%s:%d (%s) is not a new-side line inside a hunk", bug.Path, bug.Line, bug.Kind)
