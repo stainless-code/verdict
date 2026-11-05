@@ -120,11 +120,13 @@ citable.
 ## Loop mode
 
 `-loop N` runs a harness-driven repair loop. Round 1 uses the same prompt
-bytes as a single-shot run. Each later round appends one feedback fence that
+bytes as a single-shot run. Each later round appends two fences with the same
+run nonce: the exact prior `review.json` bytes, then one feedback fence that
 carries the prior dry-run problem list and the harness output verbatim, plus
 the fixed closing line that asks for one JSON document. The harness owns the
 history: `VERDICT_BENCH_ROUND`, `VERDICT_BENCH_FEEDBACK`, and
-`VERDICT_BENCH_PREV`. Adapters that ignore the new variables keep working.
+`VERDICT_BENCH_PREV`. Adapters that ignore the new variables keep working
+because the prompt file itself carries the history.
 
 Per sample the harness calls `record --dry-run --json` through the shipped
 binary and never calls the checker directly. Rounds stop on the first valid
@@ -132,7 +134,8 @@ dry run or after N rounds. An adapter crash, a timeout, or a missing
 `review.json` ends the loop as an adapter failure and is counted, not
 retried. `pi.sh` refuses a non-JSON final message before it writes
 `review.json`, so that case lands as an adapter failure with the raw output
-in `agent.log`, not as a dry-run problem.
+in `agent.log`, not as a dry-run problem. It still writes `cost.json` first,
+so the failed attempt keeps its measured spend.
 
 Per-round evidence lives under `runs/<slug>/round-NN`: `prompt.md`,
 `review.json`, `dryrun.json`, `dryrun.stderr.txt`, `normalized.json`,

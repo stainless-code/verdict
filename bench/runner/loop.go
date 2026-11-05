@@ -131,6 +131,7 @@ const (
 	loopMaxRounds   = 5
 	loopMinPerRound = 60 * time.Second
 	feedFile        = "feedback.md"
+	prevReviewFile  = "prev-review.json"
 	roundFmt        = "round-%02d"
 	dryFile         = "dryrun.json"
 	dryStderrFile   = "dryrun.stderr.txt"
@@ -478,16 +479,23 @@ func setAddedDropped(out *LoopOutcome) {
 	out.Dropped = dropped
 }
 
-// assembleLoopPrompt keeps round 1 identical.
+// assembleLoopPrompt keeps round 1 identical. Later rounds carry the exact
+// prior review plus its feedback, each in its own nonce fence, so an adapter
+// that only reads the prompt still repairs the response those paths address.
 func assembleLoopPrompt(prefix, nonce, prior string, source, diff []byte,
 	round, maxRounds int, attempts []RoundAttempt,
 ) string {
 	if round == 1 {
 		return assemblePrompt(prefix, nonce, source, diff)
 	}
+	var sb strings.Builder
+	sb.WriteString(prior)
+	if prev := attempts[len(attempts)-1].ReviewBytes; len(bytes.TrimSpace(prev)) > 0 {
+		sb.WriteString(fence(nonce, prevReviewFile, prev))
+	}
 	priorDry := &attempts[len(attempts)-1].Dry
-	fb := buildFeedback(round-1, maxRounds, priorDry)
-	return prior + fence(nonce, feedFile, []byte(fb))
+	sb.WriteString(fence(nonce, feedFile, []byte(buildFeedback(round-1, maxRounds, priorDry))))
+	return sb.String()
 }
 
 // runLoopAgent invokes agent once.
@@ -653,19 +661,38 @@ func loopFindingSet(review, normalized []byte) map[string]bool {
 // findingSetFromBytes parses ids.
 func findingSetFromBytes(raw []byte) map[string]bool {
 	out := map[string]bool{}
+	for _, c := range commentListFromBytes(raw) {
+		out[findingID(c.Path, c.Line, c.Body)] = true
+	}
+	return out
+}
+
+// loopCommentList prefers normalized, like loopFindingSet, but keeps the
+// order problems index into.
+func loopCommentList(review, normalized []byte) []loopComment {
+	if list := commentListFromBytes(normalized); len(list) > 0 {
+		return list
+	}
+	return commentListFromBytes(review)
+}
+
+// commentListFromBytes parses comments, skipping the degenerate entries
+// findingSetFromBytes ignores.
+func commentListFromBytes(raw []byte) []loopComment {
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return out
+		return nil
 	}
 	var doc loopComments
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return out
+		return nil
 	}
+	out := make([]loopComment, 0, len(doc.Comments))
 	for i := range doc.Comments {
-		c := &doc.Comments[i]
+		c := doc.Comments[i]
 		if c.Path == "" && c.Body == "" {
 			continue
 		}
-		out[findingID(c.Path, c.Line, c.Body)] = true
+		out = append(out, c)
 	}
 	return out
 }
@@ -785,6 +812,7 @@ func fixRatesFromOutcomes(outcomes []*LoopOutcome) []FixRate {
 }
 
 type fixCounts struct { //nolint:govet // bench order keeps counts first.
+	code       string
 	shown      int
 	fixed      int
 	dropped    int
@@ -802,32 +830,33 @@ func addPairRates(byCode map[string]*fixCounts, cur, next *RoundAttempt) {
 	if cur.AdapterError != "" || next.AdapterError != "" {
 		return
 	}
-	nextSet := repairCodes(next.Dry.Repairs)
-	nextCodes := problemCodeSet(&next.Dry)
-	curIDs := loopFindingSet(cur.ReviewBytes, cur.Dry.Normalized)
-	nextIDs := loopFindingSet(next.ReviewBytes, next.Dry.Normalized)
+	nextProblems := problemPathSet(&next.Dry)
+	nextRepairs := repairPathSet(next.Dry.Repairs)
+	curList := loopCommentList(cur.ReviewBytes, cur.Dry.Normalized)
+	nextList := loopCommentList(next.ReviewBytes, next.Dry.Normalized)
 	for i := range cur.Dry.Problems {
-		addProblemRate(byCode, &cur.Dry.Problems[i], cur, next, nextSet, nextCodes, curIDs, nextIDs)
+		addProblemRate(byCode, &cur.Dry.Problems[i], cur, next, nextProblems, nextRepairs, curList, nextList)
 	}
 }
 
 func addProblemRate(byCode map[string]*fixCounts, p *core.Problem, cur, next *RoundAttempt,
-	nextSet, nextCodes map[string]bool, curIDs, nextIDs map[string]bool,
+	nextProblems, nextRepairs map[string]bool, curList, nextList []loopComment,
 ) {
-	entry := byCode[p.Code]
+	key := fixRateKey(p.Code, problemLevel(p))
+	entry := byCode[key]
 	if entry == nil {
-		entry = &fixCounts{level: problemLevel(p)}
-		byCode[p.Code] = entry
+		entry = &fixCounts{code: p.Code, level: problemLevel(p)}
+		byCode[key] = entry
 	}
 	entry.shown++
-	if nextCodes[p.Code] {
+	if nextProblems[fixPathKey(p.Code, p.Path)] {
 		return
 	}
-	if !findingKept(curIDs, nextIDs) {
+	if findingDropped(p.Path, curList, nextList) {
 		entry.dropped++
 		return
 	}
-	if nextSet[p.Code] {
+	if nextRepairs[fixPathKey(p.Code, p.Path)] {
 		entry.repairOnly++
 		return
 	}
@@ -838,28 +867,106 @@ func addProblemRate(byCode map[string]*fixCounts, p *core.Problem, cur, next *Ro
 	entry.dropped++
 }
 
-func findingKept(curIDs, nextIDs map[string]bool) bool {
-	if len(curIDs) == 0 || len(nextIDs) == 0 {
-		return len(nextIDs) > 0
+// fixRateKey splits one code's rows by level: an error and a warning with
+// the same code are different contracts.
+func fixRateKey(code, level string) string {
+	return code + "\x00" + level
+}
+
+// fixPathKey ties one problem or repair to the path it names: a code
+// clearing on one comment says nothing about the same code elsewhere.
+func fixPathKey(code, path string) string {
+	return code + "\x00" + path
+}
+
+// problemPathSet codes every open problem with its path.
+func problemPathSet(dry *DryRunResult) map[string]bool {
+	out := map[string]bool{}
+	for i := range dry.Problems {
+		out[fixPathKey(dry.Problems[i].Code, dry.Problems[i].Path)] = true
 	}
-	for id := range curIDs {
-		if nextIDs[id] {
-			return true
+	return out
+}
+
+// repairPathSet codes every automatic repair with its path.
+func repairPathSet(repairs []core.Repair) map[string]bool {
+	out := map[string]bool{}
+	for i := range repairs {
+		out[fixPathKey(repairs[i].Code, repairs[i].Path)] = true
+	}
+	return out
+}
+
+// findingDropped ties one problem to the finding that owns it: the comment
+// at the problem's index. A problem whose finding survives under any two of
+// its three identity fields was edited, not deleted; a path with no comment
+// index is document-level and never drops this way.
+func findingDropped(path string, curList, nextList []loopComment) bool {
+	idx, ok := problemCommentIndex(path)
+	if !ok || idx >= len(curList) {
+		return false
+	}
+	own := curList[idx]
+	for i := range nextList {
+		if sameFinding(own, nextList[i]) {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+// problemCommentIndex reads the comment index a problem path names.
+func problemCommentIndex(path string) (int, bool) {
+	const prefix = "$.comments["
+	rest, ok := strings.CutPrefix(path, prefix)
+	if !ok {
+		return 0, false
+	}
+	end, _, found := strings.Cut(rest, "]")
+	if !found {
+		return 0, false
+	}
+	n, err := strconv.Atoi(end)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// sameFinding keeps one edited field from looking like a deletion: a
+// finding that still agrees on two of path, line, and body is the same
+// finding with a fix, not a loss.
+func sameFinding(a, b loopComment) bool {
+	agree := 0
+	if a.Path == b.Path {
+		agree++
+	}
+	if lineEqual(a.Line, b.Line) {
+		agree++
+	}
+	if a.Body == b.Body {
+		agree++
+	}
+	return agree >= 2
+}
+
+func lineEqual(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func sortedFixRates(byCode map[string]*fixCounts) []FixRate {
 	out := make([]FixRate, 0, len(byCode))
-	for code, c := range byCode {
+	for _, c := range byCode {
 		rate := 0.0
 		if c.shown > 0 {
 			rate = float64(c.fixed) / float64(c.shown)
 		}
 		cp := rate
 		out = append(out, FixRate{
-			Code: code, Level: c.level, Shown: c.shown,
+			Code: c.code, Level: c.level, Shown: c.shown,
 			Fixed: c.fixed, Dropped: c.dropped,
 			RepairOnly: c.repairOnly, Rate: &cp,
 		})
@@ -873,23 +980,6 @@ func sortedFixRates(byCode map[string]*fixCounts) []FixRate {
 	return out
 }
 
-func repairCodes(repairs []core.Repair) map[string]bool {
-	out := map[string]bool{}
-	for i := range repairs {
-		out[repairs[i].Code] = true
-	}
-	return out
-}
-
-func problemCodeSet(dry *DryRunResult) map[string]bool {
-	out := map[string]bool{}
-	for i := range dry.Problems {
-		out[dry.Problems[i].Code] = true
-	}
-	return out
-}
-
-// problemLevel reports level.
 func problemLevel(p *core.Problem) string {
 	if p.Level != "" {
 		return p.Level

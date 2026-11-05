@@ -311,9 +311,9 @@ timeout is split across rounds with a 60 second floor per round.
 
 The harness plays verdict. Each round the model writes `review.json`, the
 harness runs `record --dry-run --json`, and on problems it feeds the next
-round the envelope `error.problems` verbatim plus the harness lines verbatim,
+round the prior review bytes verbatim plus the envelope `error.problems` verbatim plus the harness lines verbatim,
 with the round number and the remaining budget. Round 1 keeps the single-shot
-prompt. Later rounds append one feedback fence with the same run nonce. Prior
+prompt. Later rounds append the prior review and one feedback fence with the same run nonce. Prior
 model output and feedback stay untrusted. The fence never grants execution.
 
 A non-JSON final message from `pi.sh` never reaches dry run. The adapter
