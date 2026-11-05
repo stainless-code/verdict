@@ -44,6 +44,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	Cmd          string
 	Controls     *controls.Snapshot
 	HunkRows     []hunks.Hunk
+	InputChecked bool
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
@@ -94,6 +95,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		dryRun:       in.DryRun,
 		controls:     in.Controls,
 		hunkRows:     in.HunkRows,
+		inputChecked: in.InputChecked,
 	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {

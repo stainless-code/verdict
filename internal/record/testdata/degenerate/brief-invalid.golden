@@ -8,17 +8,24 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "",
   "warnings": [
-    "$.comments[0].brief.outcome_typo: unknown field \"outcome_typo\""
+    "$.comments[0].brief.sites[0].path: brief site unknown/file.txt:2 is not a changed file with hunks",
+    "$.comments[0].brief.sites[1].path: brief site notes.txt:99 is not a changed file with hunks",
+    "$.comments[0].brief.approach: brief approach is 4 chars (want 10-1000)",
+    "$.comments[0].brief.outcome_typo: unknown brief field \"outcome_typo\""
   ],
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 2 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
-    "problems": [{"path":"$.comments[0].brief.questions[1]","code":"wrong-type","level":"error","message":"question must be a string","fix":"use a question string","example":"Should ...?"},{"path":"$.comments[0].brief.outcome_typo","code":"unknown-field","level":"warning","message":"unknown field \"outcome_typo\"","fix":"remove it or rename it to the nearest known key \"outcome\""}],
+    "message": "review.json has 5 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "problems": [{"path":"$.comments[0].brief.sites[0].path","code":"path-not-in-diff","level":"warning","message":"brief site unknown/file.txt:2 is not a changed file with hunks","fix":"use a changed file and a line inside one of its hunks"},{"path":"$.comments[0].brief.sites[1].path","code":"path-not-in-diff","level":"warning","message":"brief site notes.txt:99 is not a changed file with hunks","fix":"use a changed file and a line inside one of its hunks"},{"path":"$.comments[0].brief.approach","code":"bad-enum","level":"warning","message":"brief approach is 4 chars (want 10-1000)","fix":"write 10-1000 chars or leave the approach out"},{"path":"$.comments[0].brief.questions[1]","code":"wrong-type","level":"error","message":"brief question 2 must be a string","fix":"use a question string","example":"Should ...?"},{"path":"$.comments[0].brief.outcome_typo","code":"unknown-field","level":"warning","message":"unknown brief field \"outcome_typo\"","fix":"remove it or rename it to a known brief key"}],
     "problems_truncated": 0
   }
 }
 --- stderr ---
+warn: $.comments[0].brief.sites[0].path: brief site unknown/file.txt:2 is not a changed file with hunks
+warn: $.comments[0].brief.sites[1].path: brief site notes.txt:99 is not a changed file with hunks
+warn: $.comments[0].brief.approach: brief approach is 4 chars (want 10-1000)
+warn: $.comments[0].brief.outcome_typo: unknown brief field "outcome_typo"
 re-enter: verdict record acme/app local-dg --json
 --- files ---
 --- file C/.review/local-dg/store.json ---

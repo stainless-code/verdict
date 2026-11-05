@@ -53,6 +53,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	nKept        int
 	nMoved       int
 	dryRun       bool
+	inputChecked bool
 	warnings     []string
 }
 
@@ -60,6 +61,14 @@ func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
 	if st.progress != nil {
 		st.progress.Warn(msg)
+	}
+}
+
+// warnInput emits a merge-time input warning only when the review checker did
+// not already report the same fact as a structured problem.
+func (st *state) warnInput(msg string) {
+	if !st.inputChecked {
+		st.warn(msg)
 	}
 }
 
@@ -74,9 +83,10 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.kb.ReadFile = st.controls.ReadFile
 	st.kb.ResolvePolicy(st.env, st.controls.Has(kb.File))
 	st.kb.Broken = false
+	st.kb.QuietShape = st.inputChecked
 	st.loadKB()
 	st.kb.Staged = []map[string]any{}
-	if err := checkReviewSchema(st.warn, st.review); err != nil {
+	if err := checkReviewSchema(st.warnInput, st.review); err != nil {
 		return "", diagram.Status{}, err
 	}
 	if err := st.validateInputs(); err != nil {
@@ -246,7 +256,7 @@ func (st *state) parseConfidenceLevel() {
 	if s := jq.R(conf); isConfidenceLevel(s) {
 		st.confidence = conf
 	} else {
-		st.warn(fmt.Sprintf("ignoring confidence '%s' (want integer 1-5)", s))
+		st.warnInput(fmt.Sprintf("ignoring confidence '%s' (want integer 1-5)", s))
 	}
 }
 
@@ -266,7 +276,7 @@ func (st *state) parseSecuritySummary() error {
 	}
 	s, isStr := sec.(string)
 	if !isStr {
-		st.warn("ignoring non-string security_summary (want a short string)")
+		st.warnInput("ignoring non-string security_summary (want a short string)")
 		return nil
 	}
 	if s != "" {
@@ -307,12 +317,12 @@ func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {
 	}
 	lo, hi, side := anchorRange(m)
 	if lo < 0 {
-		st.warn(fmt.Sprintf("kept despite non-numeric anchor: %s %s", path, anchorSpan(m)))
+		st.warnInput(fmt.Sprintf("kept despite non-numeric anchor: %s %s", path, anchorSpan(m)))
 		st.kept = append(st.kept, m)
 		return
 	}
 	want := "NEW"
-	if side == "LEFT" {
+	if side == sideLeft {
 		want = "OLD"
 	}
 	if hunks.Contains(hs, key, want, lo, hi) {
@@ -328,7 +338,7 @@ func (st *state) moveUnknownPath(m *jq.Obj, path string) {
 	moved := m.Clone()
 	moved.Set(fieldDropReason, fmt.Sprintf("path not in diff index (%s) — posted here instead of inline", path))
 	st.moved = append(st.moved, moved)
-	st.warn("moved to body: unknown path (not in diff index): " + path)
+	st.warnInput("moved to body: unknown path (not in diff index): " + path)
 }
 
 func stripDiffPrefix(path string) string {
@@ -357,7 +367,7 @@ func anchorRange(m *jq.Obj) (lo, hi int, side string) {
 		lo, hi = hi, lo
 	}
 	sv, _ := m.Get("side")
-	side = strings.ToUpper(jq.R(jq.Alt(sv, "RIGHT")))
+	side = strings.ToUpper(jq.R(jq.Alt(sv, sideRight)))
 	return lo, hi, side
 }
 
@@ -417,7 +427,7 @@ func (st *state) demoteFences(body string) string {
 		}
 	}
 	if len(fenced) > 0 {
-		st.warn(fmt.Sprintf("demoting %d suggestion(s) with fences to body", len(fenced)))
+		st.warnInput(fmt.Sprintf("demoting %d suggestion(s) with fences to body", len(fenced)))
 		st.moved = append(fenced, st.moved...)
 		st.kept = kept
 	}
@@ -549,7 +559,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	entry := &core.FindingEntry{
 		Kind:       "inline",
 		Path:       path,
-		Side:       jq.Alt(side, "RIGHT"),
+		Side:       jq.Alt(side, sideRight),
 		Line:       line,
 		Anchored:   drop == nil,
 		Body:       body,
@@ -571,7 +581,7 @@ func briefOf(st *state, m *jq.Obj) *core.Brief {
 	}
 	b, warns := brief.Validate(raw, st.hunkRows)
 	for _, w := range warns {
-		st.warn(w)
+		st.warnInput(w)
 	}
 	return b
 }

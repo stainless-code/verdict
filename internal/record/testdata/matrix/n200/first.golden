@@ -8,28 +8,37 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
+    "$.comments[11].line: kept despite non-numeric anchor: two",
     "$.comments[12].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[14].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[31].line: kept despite non-numeric anchor: two",
     "$.comments[32].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[34].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[51].line: kept despite non-numeric anchor: two",
     "$.comments[52].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[54].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[71].line: kept despite non-numeric anchor: two",
     "$.comments[72].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[74].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[91].line: kept despite non-numeric anchor: two",
     "$.comments[92].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[94].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[111].line: kept despite non-numeric anchor: two",
     "$.comments[112].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[114].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[131].line: kept despite non-numeric anchor: two",
     "$.comments[132].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[134].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[151].line: kept despite non-numeric anchor: two",
     "$.comments[152].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[154].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[171].line: kept despite non-numeric anchor: two",
     "$.comments[172].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[174].suggestion: suggestion contains a fence — demoting it to body",
+    "$.comments[191].line: kept despite non-numeric anchor: two",
     "$.comments[192].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body",
+    "$.comments[194].suggestion: suggestion contains a fence — demoting it to body",
     "no fetch-time hunk snapshot (.review/local-mx/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "kept despite non-numeric anchor: notes.txt two-two",
-    "demoting 10 suggestion(s) with fences to body",
     "ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .review/kb.jsonl yet)",
@@ -1320,18 +1329,37 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: $.comments[11].line: kept despite non-numeric anchor: two
+warn: $.comments[12].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[14].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[31].line: kept despite non-numeric anchor: two
+warn: $.comments[32].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[34].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[51].line: kept despite non-numeric anchor: two
+warn: $.comments[52].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[54].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[71].line: kept despite non-numeric anchor: two
+warn: $.comments[72].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[74].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[91].line: kept despite non-numeric anchor: two
+warn: $.comments[92].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[94].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[111].line: kept despite non-numeric anchor: two
+warn: $.comments[112].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[114].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[131].line: kept despite non-numeric anchor: two
+warn: $.comments[132].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[134].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[151].line: kept despite non-numeric anchor: two
+warn: $.comments[152].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[154].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[171].line: kept despite non-numeric anchor: two
+warn: $.comments[172].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[174].suggestion: suggestion contains a fence — demoting it to body
+warn: $.comments[191].line: kept despite non-numeric anchor: two
+warn: $.comments[192].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
+warn: $.comments[194].suggestion: suggestion contains a fence — demoting it to body
 warn: no fetch-time hunk snapshot (.review/local-mx/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: kept despite non-numeric anchor: notes.txt two-two
-warn: demoting 10 suggestion(s) with fences to body
 » anchors: 180 inline, 20 moved to body
   - `notes.txt:143-143` (suggestion contains a fence — posted as plain text instead): Comment 14 body with enough substance to read as a finding.
   - `notes.txt:343-343` (suggestion contains a fence — posted as plain text instead): Comment 34 body with enough substance to read as a finding.

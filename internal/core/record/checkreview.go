@@ -7,9 +7,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 )
 
 // CheckResult is CheckReview's output: every problem in document order, the
@@ -20,12 +22,24 @@ type CheckResult struct {
 	Summary   core.CheckSummary `json:"summary"`
 }
 
+// CheckInput carries everything the one review checker can validate beyond
+// review.json: the fetched diff, the chunk manifest's names, and the optional
+// verification claims. Empty fields leave that check out.
+type CheckInput struct {
+	Diff            string
+	ChunkNames      []string
+	ChunkManifest   string
+	Verification    []byte
+	HasVerification bool
+}
+
 // Problem is one CheckReview finding.
 type Problem = core.Problem
 
 const (
 	problemCap           = 50
 	problemRoot          = "$"
+	problemSchemaVersion = "$.schema_version"
 	problemApproved      = "approved"
 	problemRationale     = "rationale"
 	problemPathSuffix    = ".path"
@@ -36,6 +50,8 @@ const (
 	exampleWontFix       = "wont-fix"
 	exampleFalsePositive = "false-positive"
 	exampleConfidence    = 3
+	minConfidence        = 1
+	maxConfidence        = 5
 )
 
 var (
@@ -49,8 +65,6 @@ var (
 		"path", "line", "start_line", "side", "body",
 		"suggestion", "brief", "rigor", fieldSeverity, "in-bounds", "kb",
 	}
-	knownBriefKeys   = []string{"sites", fieldOutcome, "approach", "questions"}
-	knownSiteKeys    = []string{"path", "line"}
 	knownTriageKeys  = []string{fieldSig, fieldStatus, problemRationale}
 	knownSectionKeys = []string{"heading", fieldSeverity}
 	reviewKeys       = []string{"critical", exampleImportant, "informational"}
@@ -62,9 +76,22 @@ var (
 // reads no store and writes nothing, and it collects every problem instead of
 // stopping at the first.
 func CheckReview(review []byte, diff string) CheckResult {
+	return CheckReviewInput(review, CheckInput{Diff: diff})
+}
+
+// CheckReviewInput runs the same checker with the bundle inputs it can also
+// validate: chunk attestation names and verification claims. It reads nothing.
+//
+//nolint:gocritic // the small input struct is copied once per call
+func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 	c := &checker{
-		res:   CheckResult{Problems: []Problem{}},
-		hunks: hunks.Parse(diff),
+		res:             CheckResult{Problems: []Problem{}},
+		hunks:           hunks.Parse(in.Diff),
+		chunkNames:      in.ChunkNames,
+		chunkManifest:   in.ChunkManifest,
+		hasChunks:       in.ChunkNames != nil,
+		verification:    in.Verification,
+		hasVerification: in.HasVerification,
 	}
 	if problem := invalidJSON(review); problem != nil {
 		c.add(*problem)
@@ -83,16 +110,22 @@ func CheckReview(review []byte, diff string) CheckResult {
 		return *c.result()
 	}
 	c.checkReview(obj)
+	c.checkVerification()
 	return *c.result()
 }
 
 //nolint:govet // the fields group one check pass
 type checker struct {
-	res      CheckResult
-	hunks    []hunks.Hunk
-	comments int
-	sections int
-	moved    int
+	res             CheckResult
+	hunks           []hunks.Hunk
+	chunkNames      []string
+	chunkManifest   string
+	verification    []byte
+	comments        int
+	sections        int
+	moved           int
+	hasChunks       bool
+	hasVerification bool
 }
 
 func (c *checker) result() *CheckResult {
@@ -144,7 +177,7 @@ func (c *checker) unknown(path, key string, known []string) {
 
 // checkReview walks the top-level object in document order.
 //
-//nolint:cyclop // one branch per published review key
+//nolint:cyclop,revive // one branch per published review key
 func (c *checker) checkReview(obj *jq.Obj) {
 	for _, key := range obj.Keys {
 		v, _ := obj.Get(key)
@@ -170,7 +203,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 		case "security_summary":
 			c.checkSecuritySummary(v)
 		case "chunks":
-			c.checkStringArray("$.chunks", v, "list manifest chunk names as strings")
+			c.checkChunks(v)
 		default:
 			c.unknown("$", key, knownReviewKeys)
 		}
@@ -178,16 +211,32 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	if _, ok := obj.Get(fieldBody); !ok {
 		c.missing("$."+fieldBody, "missing body", "write the full review text", exampleEllipsis)
 	}
+	if _, ok := obj.Get("schema_version"); !ok {
+		c.add(c.problem(problemSchemaVersion, core.ProblemCodeMissingField, core.ProblemLevelWarning,
+			"schema_version is missing; assuming 1",
+			"write \"schema_version\": \"1\"", schemaVersion1))
+	}
+	if c.hasChunks {
+		if _, ok := obj.Get("chunks"); !ok {
+			c.unattestedChunks()
+		}
+	}
 }
 
 func (c *checker) checkSchemaVersion(v any) {
+	if v == nil || v == false {
+		c.add(c.problem(problemSchemaVersion, core.ProblemCodeMissingField, core.ProblemLevelWarning,
+			"schema_version is missing; assuming 1",
+			"write \"schema_version\": \"1\"", schemaVersion1))
+		return
+	}
 	s, ok := v.(string)
 	if !ok {
-		c.wrongType("$.schema_version", "schema_version must be the string \"1\"", "write \"schema_version\": \"1\"", "1")
+		c.wrongType(problemSchemaVersion, "schema_version must be the string \"1\"", "set \"schema_version\": \"1\"", schemaVersion1)
 		return
 	}
 	if s != schemaVersion1 {
-		c.badEnum("$.schema_version", fmt.Sprintf("unknown schema_version %q", s),
+		c.badEnum(problemSchemaVersion, fmt.Sprintf("unknown schema_version %q", s),
 			"write the only supported version", schemaVersion1)
 	}
 }
@@ -237,7 +286,7 @@ func (c *checker) checkComments(v any) {
 	}
 }
 
-//nolint:gocognit,cyclop,revive // one branch per published comment key
+//nolint:cyclop,revive // one branch per published comment key
 func (c *checker) checkComment(i int, item any) {
 	base := fmt.Sprintf("$.comments[%d]", i)
 	m, ok := item.(*jq.Obj)
@@ -258,13 +307,11 @@ func (c *checker) checkComment(i int, item any) {
 		case fieldLine, fieldStartLine:
 			c.checkAnchorValue(base+"."+key, key, v)
 		case "side":
-			c.checkString(base+".side", v, false, "use RIGHT or LEFT")
+			c.checkSide(base+".side", v)
 		case fieldBody:
 			c.checkString(base+".body", v, true, "write the finding text")
 		case fieldSuggestion:
-			if v != nil {
-				c.checkString(base+".suggestion", v, false, "use a string code suggestion or null")
-			}
+			c.checkSuggestion(base+".suggestion", v)
 		case fieldBrief:
 			c.checkBrief(base, v)
 		case fieldRigor:
@@ -276,7 +323,7 @@ func (c *checker) checkComment(i int, item any) {
 				c.wrongType(base+".in-bounds", "in-bounds must be a boolean", "use true or false", true)
 			}
 		case fieldKB:
-			c.checkStringArray(base+".kb", v, "list knowledge-base rule ids as strings")
+			c.checkKB(base+".kb", v)
 		default:
 			c.unknown(base, key, knownCommentKeys)
 		}
@@ -293,6 +340,117 @@ func (c *checker) checkComment(i int, item any) {
 	c.checkAnchor(base, m, path, pathOK)
 }
 
+func (c *checker) checkSide(path string, v any) {
+	if v == nil {
+		return
+	}
+	side, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "side must be a string", "use RIGHT or LEFT", sideRight)
+		return
+	}
+	if side != sideRight && side != sideLeft {
+		c.badEnum(path, fmt.Sprintf("unknown side %q", side), "use RIGHT or LEFT", sideRight)
+	}
+}
+
+func (c *checker) checkSuggestion(path string, v any) {
+	if v == nil {
+		return
+	}
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "suggestion must be a string or null", "use a string code suggestion or null", exampleEllipsis)
+		return
+	}
+	if strings.Contains(s, "```") {
+		c.add(c.problem(path, core.ProblemCodeWrongType, core.ProblemLevelWarning,
+			"suggestion contains a fence — demoting it to body",
+			"use an unfenced code suggestion"))
+	}
+}
+
+func (c *checker) checkKB(path string, v any) {
+	if v == nil {
+		return
+	}
+	items, ok := v.([]any)
+	if !ok {
+		c.wrongType(path, "kb must be an array of rule ids", "use an array of lowercase rule ids")
+		return
+	}
+	for i, item := range items {
+		s, ok := item.(string)
+		if !ok {
+			c.wrongType(fmt.Sprintf("%s[%d]", path, i), "kb id must be a string", "use a lowercase rule id")
+			continue
+		}
+		if !kb.ValidID(s) {
+			c.add(c.problem(fmt.Sprintf("%s[%d]", path, i), core.ProblemCodeBadEnum, core.ProblemLevelWarning,
+				fmt.Sprintf("kb id %q is malformed", s),
+				"use ^[a-z0-9][a-z0-9-]{0,64}$ from .review/kb.jsonl"))
+		}
+	}
+}
+
+//nolint:revive // the chunk type and unknown-name gates read as one block
+func (c *checker) checkChunks(v any) {
+	if v == nil || v == false {
+		if c.hasChunks {
+			c.unattestedChunks()
+		}
+		return
+	}
+	items, ok := v.([]any)
+	if !ok {
+		c.wrongType("$.chunks", "chunks must be an array of manifest chunk names",
+			"list every manifest chunk name as a string")
+		return
+	}
+	for i, item := range items {
+		name, ok := item.(string)
+		if !ok {
+			c.wrongType(fmt.Sprintf("$.chunks[%d]", i), "chunk name must be a string", "use a manifest chunk name")
+			continue
+		}
+		if c.hasChunks && !slices.Contains(c.chunkNames, name) {
+			c.add(c.problem(fmt.Sprintf("$.chunks[%d]", i), core.ProblemCodeBadEnum, core.ProblemLevelWarning,
+				fmt.Sprintf("unknown chunk %q in the chunks attestation", name),
+				"use a chunk name from "+c.chunkManifest))
+		}
+	}
+}
+
+func (c *checker) unattestedChunks() {
+	c.add(c.problem("$.chunks", core.ProblemCodeMissingField, core.ProblemLevelWarning,
+		fmt.Sprintf("chunked bundle %s lists %d chunk(s) but the review carries no chunks attestation",
+			c.chunkManifest, len(c.chunkNames)),
+		"stamp every manifest chunk name in top-level \"chunks\""))
+}
+
+func (c *checker) checkVerification() {
+	if !c.hasVerification {
+		return
+	}
+	doc, err := jq.DecodeOrdered(c.verification)
+	if err != nil {
+		return
+	}
+	items, ok := doc.([]any)
+	if !ok {
+		c.wrongType("verification.json", msgMalformedVerifyClaims,
+			"write an array of {sig, verdict, verifyCmd, resultHead}")
+		return
+	}
+	for i, item := range items {
+		if _, ok := item.(*jq.Obj); !ok {
+			c.wrongType(fmt.Sprintf("verification.json[%d]", i), msgNonObjectVerifyClaim,
+				"use {sig, verdict, verifyCmd, resultHead}")
+		}
+	}
+}
+
+//nolint:revive // the anchor type gates read as one block
 func (c *checker) checkAnchorValue(path, key string, v any) {
 	if v == nil || v == false {
 		if v == false {
@@ -302,6 +460,11 @@ func (c *checker) checkAnchorValue(path, key string, v any) {
 	}
 	switch t := v.(type) {
 	case string:
+		if !jq.Digits(t) {
+			c.add(c.problem(path, core.ProblemCodeWrongType, core.ProblemLevelWarning,
+				"kept despite non-numeric anchor: "+t,
+				"use a whole line number inside a hunk", exampleLine))
+		}
 		return
 	case json.Number:
 		if strings.ContainsAny(t.String(), ".eE") {
@@ -328,7 +491,7 @@ func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) 
 		return
 	}
 	want := "NEW"
-	if side == "LEFT" {
+	if side == sideLeft {
 		want = "OLD"
 	}
 	if hunks.Contains(c.hunks, path, want, lo, hi) || hunks.Contains(c.hunks, stripDiffPrefix(path), want, lo, hi) {
@@ -375,93 +538,15 @@ func (c *checker) checkSeverity(path string, v any) {
 	}
 }
 
-//nolint:revive // one branch per published brief key
 func (c *checker) checkBrief(base string, v any) {
-	bpath := base + ".brief"
 	if v == nil || v == false {
 		return
 	}
-	m, ok := v.(*jq.Obj)
-	if !ok {
-		c.wrongType(bpath, "brief must be an object", "use {outcome, sites, approach, questions}",
-			map[string]any{"outcome": "State what the fix must achieve."})
-		return
-	}
-	for _, key := range m.Keys {
-		v, _ := m.Get(key)
-		switch key {
-		case fieldOutcome:
-			c.checkString(bpath+"."+fieldOutcome, v, true, "write one sentence naming what the fix must achieve")
-		case "approach":
-			if v != nil {
-				c.checkString(bpath+".approach", v, false, "use a string approach")
-			}
-		case "questions":
-			c.checkQuestions(bpath+".questions", v)
-		case "sites":
-			c.checkSites(bpath+".sites", v)
-		default:
-			c.unknown(bpath, key, knownBriefKeys)
-		}
-	}
-	if _, ok := m.Get(fieldOutcome); !ok {
-		c.missing(bpath+"."+fieldOutcome, "missing brief outcome",
-			"add one sentence naming what the fix must achieve", "Reject duplicate deliveries before anything is enqueued.")
-	}
-}
-
-func (c *checker) checkQuestions(path string, v any) {
-	if v == nil || v == false {
-		return
-	}
-	items, ok := v.([]any)
-	if !ok {
-		c.wrongType(path, "questions must be an array of strings", "use an array of question strings", []string{"Should ...?"})
-		return
-	}
-	for i, item := range items {
-		if _, ok := item.(string); !ok {
-			c.wrongType(fmt.Sprintf("%s[%d]", path, i), "question must be a string", "use a question string", "Should ...?")
-		}
-	}
-}
-
-func (c *checker) checkSites(path string, v any) {
-	if v == nil || v == false {
-		return
-	}
-	items, ok := v.([]any)
-	if !ok {
-		c.wrongType(path, "sites must be an array", "use an array of {path, line} objects", []any{siteExample()})
-		return
-	}
-	for i, item := range items {
-		c.checkSite(fmt.Sprintf("%s[%d]", path, i), item)
-	}
-}
-
-func (c *checker) checkSite(base string, v any) {
-	m, ok := v.(*jq.Obj)
-	if !ok {
-		c.wrongType(base, "site must be an object", "use {path, line}", siteExample())
-		return
-	}
-	pathValue, hasPath := m.Get(fieldPath)
-	if _, ok := pathValue.(string); !ok && hasPath {
-		c.wrongType(base+problemPathSuffix, "site path must be a string", "use a changed file path", exampleFile)
-	}
-	for _, key := range m.Keys {
-		v, _ := m.Get(key)
-		switch key {
-		case fieldPath:
-		case fieldLine:
-			c.checkAnchorValue(base+".line", "line", v)
-		default:
-			c.unknown(base, key, knownSiteKeys)
-		}
-	}
-	if !hasPath {
-		c.missing(base+problemPathSuffix, "missing site path", "add the changed file path", exampleFile)
+	_, issues := brief.Check(v, c.hunks)
+	for i := range issues {
+		p := issues[i].Problem()
+		p.Path = base + ".brief" + p.Path
+		c.add(p)
 	}
 }
 
@@ -574,6 +659,12 @@ func (c *checker) checkConfidence(v any) {
 	n, ok := v.(json.Number)
 	if !ok || strings.ContainsAny(n.String(), ".eE") {
 		c.wrongType("$.confidence", "confidence must be an integer 1-5", "use an integer 1-5", exampleConfidence)
+		return
+	}
+	level, err := n.Int64()
+	if err != nil || level < minConfidence || level > maxConfidence {
+		c.badEnum("$.confidence", fmt.Sprintf("confidence %s is outside 1-5", n.String()),
+			"use an integer 1-5", exampleConfidence)
 	}
 }
 
@@ -647,10 +738,8 @@ func reviewObjectExample() map[string]any {
 }
 
 func commentExample() map[string]any {
-	return map[string]any{"path": exampleFile, "line": exampleLine, "side": "RIGHT", "body": exampleEllipsis}
+	return map[string]any{"path": exampleFile, "line": exampleLine, "side": sideRight, "body": exampleEllipsis}
 }
-
-func siteExample() map[string]any { return map[string]any{"path": exampleFile, "line": exampleLine} }
 
 func sectionExample() map[string]any {
 	return map[string]any{"heading": "### Security", "severity": exampleImportant}

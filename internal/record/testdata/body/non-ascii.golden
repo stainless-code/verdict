@@ -38,6 +38,7 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: $.comments[0].rigor: rigor is unset
 warn: no fetch-time hunk snapshot (.review/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 » anchors: 1 inline, 0 moved to body
 warn: no basis line under the confidence lead — keeping body as-is (report renders it exactly)

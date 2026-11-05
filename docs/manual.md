@@ -181,13 +181,20 @@ path instead (`record.json` head reads `"dirty"`).
 ### Review-input problems
 
 `record` and `record --dry-run` run the same pure checker over `review.json`
-and `full.diff` (`pkg/verdict.CheckReview`). It walks the document in order,
-collects every problem with its JSONPath and exact fix, caps the list at 50
-(`error.problems_truncated` counts the overflow), and refuses once as
-`bad-review-input`. A clean dry run exits 0, writes nothing, and reports
-`data.check` — comment, section, and moved-anchor counts. A warning alone exits
-0 and rides `warnings`; `--strict`, or `"strict_input": true` in the bundle's
-`controls.json`, promotes every warning to an error. The published code set
+and `full.diff` (`pkg/verdict.CheckReview`). The record path also hands it the
+chunk manifest names and `verification.json` claims, so comment/brief parts,
+anchors and sides, kb ids, chunk attestation, confidence, security summaries,
+claims, triage, sections, and verification shapes all reach one list. It walks
+the document in order, collects every problem with its JSONPath and exact fix,
+caps the list at 50 (`error.problems_truncated` counts the overflow), and
+refuses once as `bad-review-input`. A clean dry run exits 0, writes nothing,
+and reports `data.check` — comment, section, and moved-anchor counts. Human
+mode prints every problem before the `try:`/`re-enter:` lines; JSON mode
+carries the same list in `error.problems[]`. A warning alone exits 0 and rides
+`warnings`; `--strict`, or `"strict_input": true` in the bundle's
+`controls.json`, promotes every warning to an error. The Level column is each
+code's default: a problem `record` can drop or move without refusing is
+reported as a warning even under an error-default code. The published code set
 (also the `problem.code` enum in `envelope.schema.json`):
 
 | Code                  | Level   | Meaning                                                                                                  |

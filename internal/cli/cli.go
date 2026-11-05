@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -104,21 +105,47 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	code = ExitFor(ref, code)
 	msg := ref.Message + "\n" + HintFor(ref.Code)
-	if r.JSONMode {
+	switch {
+	case r.JSONMode:
 		env := core.RenderEnvelope(r.Cmd, r.Repo, r.Pr, NowUTC(r.Now()), "",
 			r.Warnings, nil, r.refusalObject(ref, msg))
 		fmt.Fprintln(r.Out, env.MarshalPretty())
-	} else {
-		if r.Effective.Color == colorAlways {
-			fmt.Fprintf(r.Diag, "\033[31merror: %s\033[0m\n", msg)
-		} else {
-			fmt.Fprintf(r.Diag, "error: %s\n", msg)
-		}
+	case len(ref.Problems) > 0:
+		r.writeErrorLine(ref.Message)
+		writeProblems(r.Diag, ref)
+		fmt.Fprintln(r.Diag, HintFor(ref.Code))
+	default:
+		r.writeErrorLine(msg)
 	}
 	if r.Rentry != "" {
 		fmt.Fprintf(r.Diag, "re-enter: %s\n", r.Rentry)
 	}
 	return code
+}
+
+func (r *Runner) writeErrorLine(msg string) {
+	if r.Effective.Color == colorAlways {
+		fmt.Fprintf(r.Diag, "\033[31merror: %s\033[0m\n", msg)
+		return
+	}
+	fmt.Fprintf(r.Diag, "error: %s\n", msg)
+}
+
+// writeProblems prints every review-input problem on the diagnostic stream,
+// one block per problem in document order, then the truncation note.
+func writeProblems(w io.Writer, ref *RefusalError) {
+	for _, p := range ref.Problems {
+		fmt.Fprintf(w, "%s  %s  %s\n", p.Path, p.Code, p.Message)
+		fmt.Fprintf(w, "  fix: %s\n", p.Fix)
+		if p.Example != nil {
+			if example, err := json.Marshal(p.Example); err == nil {
+				fmt.Fprintf(w, "  example: %s\n", example)
+			}
+		}
+	}
+	if ref.ProblemsTruncated > 0 {
+		fmt.Fprintf(w, "  ... %d more problem(s) not shown\n", ref.ProblemsTruncated)
+	}
 }
 
 // ExitFor maps a refusal onto its exit code: a `canceled` refusal always

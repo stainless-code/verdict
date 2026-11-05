@@ -37,6 +37,9 @@ type Ctx struct {
 	Staged   []map[string]any
 	Credited []any
 	Broken   bool
+	// QuietShape suppresses malformed shape/id warnings after the review
+	// checker already reported them as structured problems.
+	QuietShape bool
 }
 
 // New returns a Ctx with default thresholds.
@@ -199,7 +202,9 @@ func (c *Ctx) NormalizeEntry(entry *jq.Obj, kbExists bool) any {
 	}
 	arr, ok := raw.([]any)
 	if !ok {
-		c.Warn("ignoring malformed kb (want an array of rule ids)")
+		if !c.QuietShape {
+			c.Warn("ignoring malformed kb (want an array of rule ids)")
+		}
 		return out
 	}
 	norm := &normalizer{c: c, kbExists: kbExists, seen: map[string]bool{}}
@@ -220,11 +225,11 @@ type normalizer struct {
 func (n *normalizer) add(item any) {
 	s, isStr := item.(string)
 	if !isStr {
-		n.c.Warn("ignoring malformed kb id (want a rule id string)")
+		n.warnShape("ignoring malformed kb id (want a rule id string)")
 		return
 	}
 	if !idRe.MatchString(s) {
-		n.c.Warn(fmt.Sprintf("ignoring malformed kb id '%s' (want ^[a-z0-9][a-z0-9-]{0,64}$)", s))
+		n.warnShape(fmt.Sprintf("ignoring malformed kb id '%s' (want ^[a-z0-9][a-z0-9-]{0,64}$)", s))
 		return
 	}
 	if !n.live(s) {
@@ -245,6 +250,12 @@ func (n *normalizer) add(item any) {
 }
 
 // live checks the cited rule against the store, warning on dead cites.
+func (n *normalizer) warnShape(msg string) {
+	if !n.c.QuietShape {
+		n.c.Warn(msg)
+	}
+}
+
 func (n *normalizer) live(s string) bool {
 	if !n.kbExists {
 		n.c.Warn(fmt.Sprintf("ignoring unknown kb rule '%s' (no %s yet)", s, File))

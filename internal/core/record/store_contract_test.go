@@ -480,7 +480,7 @@ func TestRunRecordFenceDemotion(t *testing.T) {
 		wantWarn   string
 		wantAnchor bool
 	}{
-		{"fenced", "```go\nold line\n```", "demoting 1 suggestion(s) with fences to body", false},
+		{"fenced", "```go\nold line\n```", "suggestion contains a fence", false},
 		{"plain", "new line", "", true},
 	}
 	for _, tc := range tests {
@@ -886,7 +886,7 @@ func TestRunRecordAnchorNormalization(t *testing.T) {
 			t.Errorf("%s anchored = %v, want true", sig, got[sig]["anchored"])
 		}
 	}
-	if !hasWarning(c.warns, "kept despite non-numeric anchor: notes.txt abc-abc") {
+	if !hasWarning(c.warns, "kept despite non-numeric anchor") {
 		t.Errorf("warnings = %v, want the non-numeric anchor warning", c.warns)
 	}
 	for _, sig := range []string{reversedSig, zeroSig} {

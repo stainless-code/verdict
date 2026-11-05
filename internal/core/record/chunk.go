@@ -191,10 +191,10 @@ func checkChunkCoverage(st *state, manifest string, chunks []chunk, names []stri
 	switch kind {
 	case attestationPresent:
 	case attestationAbsent:
-		st.warn(fmt.Sprintf(msgUnattested, manifest, len(names)))
+		st.warnInput(fmt.Sprintf(msgUnattested, manifest, len(names)))
 		return chunkHunks, nil
 	case attestationMalformed:
-		st.warn("ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested")
+		st.warnInput("ignoring malformed chunks attestation (want an array of manifest chunk names) — validating as unattested")
 		return chunkHunks, nil
 	}
 	return checkChunkCoverageTail(st, manifest, coverageInput{chunks: chunks, names: names, claimed: claimed}, refetch)
@@ -218,7 +218,7 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 	missingDescs, nMiss := describeMissingChunks(chunks, claimedSet)
 	for _, c := range claimed {
 		if s, ok := c.(string); ok && s != "" && !manifestSet[s] {
-			st.warn(fmt.Sprintf("ignoring unknown chunk '%s' in the chunks attestation (not in %s)", s, manifest))
+			st.warnInput(fmt.Sprintf("ignoring unknown chunk '%s' in the chunks attestation (not in %s)", s, manifest))
 		}
 	}
 	if len(missingDescs) > 0 {
@@ -343,4 +343,23 @@ func concatRead(paths []string, total int) (string, bool) {
 		sb.Write(raw)
 	}
 	return sb.String(), true
+}
+
+// chunkCheckNames returns the manifest's chunk names for the review checker:
+// an unreadable or empty manifest leaves the checker silent so the merge's
+// pinned-snapshot refusal keeps its own code.
+func chunkCheckNames(dir string) ([]string, string) {
+	manifest := dir + "/chunks/manifest.json"
+	if !exists(manifest) {
+		return nil, ""
+	}
+	schema, manMap := manifestSchema(manifest)
+	if schema != "1" || manMap == nil {
+		return nil, ""
+	}
+	names := chunkNames(parseChunks(jq.Elements(manMap["chunks"])))
+	if len(names) == 0 {
+		return nil, ""
+	}
+	return names, manifest
 }

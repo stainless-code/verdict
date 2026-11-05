@@ -78,7 +78,12 @@ func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
 	if err != nil {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
-	return CheckReview(raw, string(diff)), nil
+	in := CheckInput{Diff: string(diff)}
+	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
+	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
+		in.Verification, in.HasVerification = verification, true
+	}
+	return CheckReviewInput(raw, in), nil
 }
 
 func (st *svc) addCheckWarnings(check CheckResult) {
@@ -90,8 +95,12 @@ func (st *svc) addCheckWarnings(check CheckResult) {
 }
 
 func (st *svc) addWarning(msg string) {
-	if !slices.Contains(st.warnings, msg) {
-		st.warnings = append(st.warnings, msg)
+	if slices.Contains(st.warnings, msg) {
+		return
+	}
+	st.warnings = append(st.warnings, msg)
+	if st.req.Runtime != nil && st.req.Progress != nil {
+		st.req.Progress.Warn(msg)
 	}
 }
 
@@ -169,6 +178,7 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		DryRun:       st.req.DryRun,
 		Controls:     st.controls,
 		HunkRows:     st.hunkRows,
+		InputChecked: true,
 	})
 	if err != nil {
 		return MergeResult{}, refusalOrFailed(err)

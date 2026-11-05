@@ -3,6 +3,8 @@ exit: 1
 
 --- stderr ---
 error: review.json has 1 problem(s); fix every one, then re-run
+$.chunks  wrong-type  chunks must be an array of manifest chunk names
+  fix: list every manifest chunk name as a string
 try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 re-enter: verdict record acme/app local-ch
 --- files ---

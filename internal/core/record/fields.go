@@ -38,6 +38,8 @@ const (
 	localPrefix           = "local-"
 	corpusPrefix          = "corpus-"
 	statusOpen            = "open"
+	sideLeft              = "LEFT"
+	sideRight             = "RIGHT"
 	codeRecordFailed      = "record-failed"
 	codePostFailed        = "post-failed"
 	codeNotLocal          = "not-local"

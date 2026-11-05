@@ -19,6 +19,7 @@ exit: 1
   }
 }
 --- stderr ---
+warn: $.comments[0].rigor: rigor is unset
 re-enter: verdict record acme/app local-rf --json
 --- files ---
 --- file C/.review/local-rf/store.json ---

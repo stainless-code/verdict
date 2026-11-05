@@ -8,11 +8,12 @@
 # build (see the script's flags), sized for the small drift a patch-level
 # toolchain bump can cause. Format: `<goos>/<goarch> <bytes>`, one `deps <n>`.
 # Review-input checker + dry run: CheckReview, its problem envelope, and the
-# dry-run data profile added ~60 KiB across every target.
+# dry-run data profile added ~60 KiB across every target. Complete checker
+# coverage plus the human problem list added ~20-40 KiB more.
 deps 0
-darwin/amd64 11110000
-darwin/arm64 10210000
-linux/amd64 10900000
-linux/arm64 9980000
-windows/amd64 11220000
-windows/arm64 10130000
+darwin/amd64 11160000
+darwin/arm64 10270000
+linux/amd64 10960000
+linux/arm64 10060000
+windows/amd64 11270000
+windows/arm64 10180000

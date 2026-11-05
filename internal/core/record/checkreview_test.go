@@ -170,3 +170,127 @@ func TestCheckReviewSummary(t *testing.T) {
 		t.Errorf("summary = %+v", result.Summary)
 	}
 }
+
+// TestCheckReviewCoversBundleInputs pins one problem for every input family
+// record would otherwise validate only while merging: brief parts, anchors and
+// sides, kb ids, chunk attestation, confidence, claims, triage, sections, and
+// verification claims.
+//
+//nolint:revive // the bundle-input matrix reads as one block
+func TestCheckReviewCoversBundleInputs(t *testing.T) {
+	t.Parallel()
+	comment := func(extra string) string {
+		return checkReview(`,"comments":[` + checkComment(`,"rigor":"walked"`+extra) + `]`)
+	}
+	briefOutcome := `"outcome":"Reject duplicate deliveries before anything is enqueued."`
+	//nolint:govet // table grouping keeps the case fields readable
+	tests := []struct {
+		name  string
+		json  string
+		input recordcore.CheckInput
+		code  string
+		level string
+		path  string
+	}{
+		{
+			name: "schema-missing", json: `{"body":"` + checkBody + `","approved":false}`,
+			code: core.ProblemCodeMissingField, level: core.ProblemLevelWarning, path: "$.schema_version",
+		},
+		{
+			name: "brief-outcome-missing", json: comment(`,"brief":{"sites":[]}`),
+			code: core.ProblemCodeMissingField, level: core.ProblemLevelError, path: "$.comments[0].brief.outcome",
+		},
+		{
+			name: "brief-site-outside-diff", json: comment(`,"brief":{` + briefOutcome + `,"sites":[{"path":"gone.txt","line":2}]}`),
+			code: core.ProblemCodePathNotInDiff, level: core.ProblemLevelWarning, path: "$.comments[0].brief.sites[0].path",
+		},
+		{
+			name: "brief-approach-short", json: comment(`,"brief":{` + briefOutcome + `,"approach":"tiny"}`),
+			code: core.ProblemCodeBadEnum, level: core.ProblemLevelWarning, path: "$.comments[0].brief.approach",
+		},
+		{
+			name: "brief-question-type", json: comment(`,"brief":{` + briefOutcome + `,"questions":[42]}`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.comments[0].brief.questions[0]",
+		},
+		{
+			name: "non-numeric-anchor", json: checkReview(`,"comments":[{"path":"notes.txt","line":"two","body":"A finding with enough substance.","rigor":"walked"}]`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelWarning, path: "$.comments[0].line",
+		},
+		{
+			name: "side-enum", json: checkReview(`,"comments":[{"path":"notes.txt","line":2,"side":"MIDDLE","body":"A finding with enough substance.","rigor":"walked"}]`),
+			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.comments[0].side",
+		},
+		{
+			name: "kb-id-shape", json: comment(`,"kb":["BAD ID!"]`),
+			code: core.ProblemCodeBadEnum, level: core.ProblemLevelWarning, path: "$.comments[0].kb[0]",
+		},
+		{
+			name: "kb-id-type", json: comment(`,"kb":[42]`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.comments[0].kb[0]",
+		},
+		{
+			name: "suggestion-fence", json: comment(",\"suggestion\":\"```suggestion\\nx\\n```\""),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelWarning, path: "$.comments[0].suggestion",
+		},
+		{
+			name: "confidence-range", json: checkReview(`,"confidence":6`),
+			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.confidence",
+		},
+		{
+			name: "security-summary-type", json: checkReview(`,"security_summary":5`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.security_summary",
+		},
+		{
+			name: "resolved-type", json: checkReview(`,"resolved":[3]`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.resolved[0]",
+		},
+		{
+			name: "triage-status", json: checkReview(`,"triage":[{"sig":"...","status":"bogus"}]`),
+			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.triage[0].status",
+		},
+		{
+			name: "sections-type", json: checkReview(`,"sections":[5]`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.sections[0]",
+		},
+		{
+			name: "chunks-type", json: checkReview(`,"chunks":"a"`),
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.chunks",
+		},
+		{
+			name: "chunks-unknown", json: checkReview(`,"chunks":["a","zzz"]`),
+			input: recordcore.CheckInput{ChunkNames: []string{"a"}, ChunkManifest: "manifest.json"},
+			code:  core.ProblemCodeBadEnum, level: core.ProblemLevelWarning, path: "$.chunks[1]",
+		},
+		{
+			name: "verification-shape", json: checkReview(""),
+			input: recordcore.CheckInput{Verification: []byte(`{"sig":"x"}`), HasVerification: true},
+			code:  core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "verification.json",
+		},
+		{
+			name: "verification-item-shape", json: checkReview(""),
+			input: recordcore.CheckInput{Verification: []byte(`[42]`), HasVerification: true},
+			code:  core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "verification.json[0]",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			in := tc.input
+			in.Diff = checkDiff
+			result := recordcore.CheckReviewInput([]byte(tc.json), in)
+			var found *recordcore.Problem
+			for i := range result.Problems {
+				if result.Problems[i].Path == tc.path && result.Problems[i].Code == tc.code {
+					found = &result.Problems[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("no %s at %s in %+v", tc.code, tc.path, result.Problems)
+			}
+			if found.Level != tc.level {
+				t.Errorf("level = %s, want %s: %+v", found.Level, tc.level, found)
+			}
+		})
+	}
+}

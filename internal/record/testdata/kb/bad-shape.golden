@@ -3,6 +3,8 @@ exit: 1
 
 --- stderr ---
 error: review.json has 1 problem(s); fix every one, then re-run
+$.comments[0].kb  wrong-type  kb must be an array of rule ids
+  fix: use an array of lowercase rule ids
 try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 re-enter: verdict record acme/app local-kb
 --- files ---
