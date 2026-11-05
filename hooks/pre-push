@@ -61,6 +61,10 @@ go build ./... || fail "go build ./... failed"
 go vet ./... || fail "go vet ./... failed"
 go test ./... || fail "go test ./... failed"
 
+if command -v make >/dev/null 2>&1 && grep -q '^deadcode:' Makefile; then
+  make deadcode || fail "make deadcode failed"
+fi
+
 if command -v make >/dev/null 2>&1 && grep -q '^cross:' Makefile; then
   make cross || fail "make cross failed"
 fi
