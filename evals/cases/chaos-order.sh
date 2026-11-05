@@ -32,7 +32,7 @@ chmod +x "$EVAL_STUBBIN/gh"
 
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 reviews_since() {
-  tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews" || true
+  tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews.*--method POST" || true
 }
 calls_since() {
   tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "" || true
@@ -41,7 +41,10 @@ calls_since() {
 snap() {
   local dir="$1" out="$2"
   if [ -d "$dir" ]; then
-    (cd "$dir" && find . -type f -exec shasum {} + | LC_ALL=C sort) >"$out" 2>/dev/null || : >"$out"
+    if ! (cd "$dir" && find . -type f -exec shasum {} + | LC_ALL=C sort) >"$out" 2>/dev/null; then
+      bad "could not hash $dir; store not observed"
+      : >"$out"
+    fi
   else
     printf 'ABSENT %s\n' "$dir" >"$out"
   fi
@@ -265,10 +268,10 @@ if [ "$(reviews_since "$m0")" -eq 1 ] && [ -f "$EVAL_SANDBOX/.review/$PR/post.js
 else
   bad "recovery post made $(reviews_since "$m0") reviews calls"
 fi
-if jq -e 'has("body")' "$EVAL_SANDBOX/payload.json" >/dev/null 2>&1; then
-  good "posted payload carries the review body"
+if jq -e 'has("body") and .event == "APPROVE"' "$EVAL_SANDBOX/payload.json" >/dev/null 2>&1; then
+  good "posted payload carries the review body and APPROVE event"
 else
-  bad "posted payload is malformed"
+  bad "posted payload is malformed or not APPROVE"
 fi
 run_review gate acme/app "$PR" --require-head --live skip --json
 assert_exit "gate on the posted HEAD exits 0" 0
@@ -311,6 +314,7 @@ matrix_row "gate" "stale-head" "$EVAL_STATUS" "none" "yes" "no" "same" "0"
 
 for verb in report next show; do
   m0="$(mark)"
+  snap "$EVAL_SANDBOX/.review/no-such-pr" "$EVAL_SANDBOX/s5.$verb.before"
   if [ "$verb" = "show" ]; then
     run_review "$verb" acme/app no-such-pr --sig abc --json
   else
@@ -325,6 +329,8 @@ for verb in report next show; do
   else
     bad "$verb on a missing bundle exits $EVAL_STATUS with code '$code' (want the documented gap or a way forward)"
   fi
+  snap "$EVAL_SANDBOX/.review/no-such-pr" "$EVAL_SANDBOX/s5.$verb.after"
+  snap_same "$verb on a missing bundle" "$EVAL_SANDBOX/s5.$verb.before" "$EVAL_SANDBOX/s5.$verb.after"
   matrix_row "$verb" "no-bundle" "$EVAL_STATUS" "$code" "no" "no" "same" "$(reviews_since "$m0")"
 done
 

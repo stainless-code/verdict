@@ -7,7 +7,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 reviews_since() {
-  tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews" || true
+  tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews.*--method POST" || true
 }
 calls_since() {
   tail -n +"$(( $1 + 1 ))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "" || true
@@ -16,7 +16,10 @@ calls_since() {
 snap() {
   local dir="$1" out="$2"
   if [ -d "$dir" ]; then
-    (cd "$dir" && find . -type f -exec shasum {} + | LC_ALL=C sort) >"$out" 2>/dev/null || : >"$out"
+    if ! (cd "$dir" && find . -type f -exec shasum {} + | LC_ALL=C sort) >"$out" 2>/dev/null; then
+      bad "could not hash $dir; store not observed"
+      : >"$out"
+    fi
   else
     printf 'ABSENT %s\n' "$dir" >"$out"
   fi
@@ -156,6 +159,7 @@ fi
 norm_store > "$EVAL_SANDBOX/n.r2.after"
 if cmp -s "$EVAL_SANDBOX/n.r2" "$EVAL_SANDBOX/n.r2.after" \
   && [ -f "$LB/record.json" ] && [ -f "$LB/findings.json" ] \
+  && jq -e 'type == "array"' "$LB/findings.json" >/dev/null 2>&1 \
   && jq -e '.schema_version == "1"' "$LB/record.json" >/dev/null 2>&1; then
   good "restored record advanced to exit 0 with the store intact (recorded_at may tick; sig set + statuses stable)"
 else
@@ -169,7 +173,7 @@ EOF
 m0="$(mark)"
 run_review record acme/app chaos-stale --json
 assert_exit "record of an off-hunk anchor exits 0" 0
-if grep -q "moved to body" "$EVAL_ERR"; then
+if grep -q "0 inline, 1 moved to body" "$EVAL_ERR"; then
   good "off-hunk anchor moves to the body with a named reason (kept, never refused)"
 else
   bad "off-hunk anchor was not partitioned: $(head -c 300 "$EVAL_ERR")"
