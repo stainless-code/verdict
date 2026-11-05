@@ -246,7 +246,11 @@ use `heading`); normalize by squashing every whitespace run (spaces, tabs, newli
 to one space and trimming ends; take the lowercase hex SHA-1. Line numbers, sides,
 severity, and rigor are deliberately excluded, so findings survive line shifts and
 re-worded metadata. Every entry stamps `sig_version: "1"`; merges backfill it onto
-older entries produced by the same normalization. Changing the normalization orphans
+older entries produced by the same normalization. Merges also backfill `rigor_source`
+onto older entries from the recorded rung: `pointed` reads as `default` because the
+previous merge filled a missing rung with `pointed`, and every other recognized rung
+reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
+a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version` with a migration note here, never silently.
 `review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
 versions, warn-and-proceed when the stamp is missing); every bundle carries

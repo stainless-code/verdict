@@ -15,6 +15,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -209,6 +210,7 @@ func adoptEntries(entries []any, shortSHA, now, from string, hs []hunks.Hunk) []
 		if !anchorHolds(m, hs) {
 			m.Set("anchored", false)
 		}
+		recordcore.BackfillEntry(m)
 	}
 	return entries
 }

@@ -61,3 +61,24 @@ func TestParseHunkRowOverflow(t *testing.T) {
 		}
 	}
 }
+
+// TestAdoptEntriesBackfillsRigorSource proves handed-off findings carry
+// rigor_source without waiting for a later post merge: a missing source is
+// backfilled from the recorded rung, and an explicit source is never
+// clobbered.
+func TestAdoptEntriesBackfillsRigorSource(t *testing.T) {
+	t.Parallel()
+	entries := []any{
+		jq.NewObj("rigor", "pointed", "path", "notes.txt"),
+		jq.NewObj("rigor", "walked", "rigor_source", "model", "path", "notes.txt"),
+	}
+	stamped := adoptEntries(entries, "aaaaaaa", "2026-11-02T12:00:00Z", "adopt1", nil)
+	got0, _ := stamped[0].(*jq.Obj).Get("rigor_source")
+	if got0 != "default" {
+		t.Errorf("pointed entry rigor_source = %v, want default", got0)
+	}
+	got1, _ := stamped[1].(*jq.Obj).Get("rigor_source")
+	if got1 != "model" {
+		t.Errorf("model entry rigor_source = %v, want model", got1)
+	}
+}

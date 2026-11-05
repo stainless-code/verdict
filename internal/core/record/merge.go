@@ -854,14 +854,15 @@ func (st *state) backfill() {
 		if !ok {
 			continue
 		}
-		backfillEntry(m)
+		BackfillEntry(m)
 	}
 }
 
-// backfillEntry restores the additive fields a store entry predates: an
+// BackfillEntry restores the additive fields a store entry predates: an
 // empty kb list, the sig version, and the rigor provenance the field's
-// arrival backfills from the recorded rung.
-func backfillEntry(m *jq.Obj) {
+// arrival backfills from the recorded rung. Adopt shares it so handed-off
+// findings carry rigor_source without waiting for a later post merge.
+func BackfillEntry(m *jq.Obj) {
 	if kbv, _ := m.Get(fieldKB); jq.Falsey(kbv) {
 		m.Set(fieldKB, []any{})
 	}
@@ -874,11 +875,14 @@ func backfillEntry(m *jq.Obj) {
 }
 
 // priorRigorSource guesses the provenance of a store entry written before the
-// field existed: a recognized rung came from the review, anything else was the
-// checker's default.
+// field existed. The pre-change merge defaulted a missing rigor to pointed,
+// so pointed reads back as the checker's default; any other recognized rung
+// must have come from the review. A model-written pointed is
+// indistinguishable from a default-filled one — the manual states that
+// ambiguity — and reads as default either way.
 func priorRigorSource(m *jq.Obj) string {
 	rv, _ := m.Get(fieldRigor)
-	if s, ok := rv.(string); ok && slices.Contains(rigorAllow, s) {
+	if s, ok := rv.(string); ok && s != rungPointed && slices.Contains(rigorAllow, s) {
 		return rigorSourceModel
 	}
 	return rigorSourceDefault

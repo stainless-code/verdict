@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 func sparseFile(t *testing.T, path string, size int64) {
@@ -125,5 +126,34 @@ func TestLoadReviewRefusesOverCap(t *testing.T) {
 	var ref *core.RefusalError
 	if !errors.As(err, &ref) || ref.Code != codeBadReviewInput {
 		t.Fatalf("err = %v, want bad-review-input", err)
+	}
+}
+
+// TestBackfillRigorSource proves old-store backfill labels the pre-change
+// pointed default as default and every other recognized rung as model, and
+// never clobbers a source the review already set.
+func TestBackfillRigorSource(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		entry *jq.Obj
+		want  string
+	}{
+		{"pointed-default", jq.NewObj("rigor", "pointed"), "default"},
+		{"walked-model", jq.NewObj("rigor", "walked"), "model"},
+		{"ran-model", jq.NewObj("rigor", "ran"), "model"},
+		{"reproduced-model", jq.NewObj("rigor", "reproduced"), "model"},
+		{"said-model", jq.NewObj("rigor", "said"), "model"},
+		{"missing-default", jq.NewObj("path", "notes.txt"), "default"},
+		{"kept-source", jq.NewObj("rigor", "walked", "rigor_source", "model"), "model"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			BackfillEntry(tc.entry)
+			got, _ := tc.entry.Get("rigor_source")
+			if got != tc.want {
+				t.Errorf("rigor_source = %v, want %s", got, tc.want)
+			}
+		})
 	}
 }
