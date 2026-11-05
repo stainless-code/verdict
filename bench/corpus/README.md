@@ -37,12 +37,14 @@ model and panel. No model runs and no network are involved in the checked-in
 fixtures.
 
 A finding counts for a bug when it is on the same path, within
-`line_tolerance` lines (default 1), and its `body` names the defect — one of
+`line_tolerance` lines (default 1) of the bug's `line` or any of its
+`also_lines` alternate anchors, and its `body` names the defect — one of
 the bug's `keywords`, its `kind`, or a phrase from the published category
-vocabulary in `docs/benchmark.md`. A finding `record` moved out of its hunk
+vocabulary in `docs/benchmark.md`. Matching any anchor counts the bug once
+and reports the primary line. A finding `record` moved out of its hunk
 is a body note and never counts. The checked-in fake reviews do exactly that,
 and `TestCheckedInCorpusCases` fails if a checked-in case's tolerance is not
-narrower than its hunk or no fake output names a bug.
+narrower than every anchor's hunk or no fake output names a bug.
 
 ## Adding a seeded case
 
@@ -57,7 +59,11 @@ narrower than its hunk or no fake output names a bug.
    reproduces its after tree, and adds every ground-truth line.
 3. Write `case.json`: `kind: "seeded"`, `provenance.injected` naming the
    defect, and one `bugs[]` entry per known defect (`path`, `line`, `kind`,
-   `severity`, and the `keywords` a reviewer would use for it).
+   `severity`, and the `keywords` a reviewer would use for it). When one
+   defect has two defensible anchors in the same hunk, keep the primary
+   `line` on the statement that carries the defect and list the other in
+   `also_lines`; a nearby edit that only rewords or reformats is a
+   distractor, not an anchor.
 4. Add `agents/<model>.json` per fake model. Keep comment bodies unique per
    bundle: `record` dedupes findings by path + body, not by line.
 5. Run `./evals/one.sh bench-corpus` and update the goldens if the new case

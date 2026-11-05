@@ -166,11 +166,31 @@ func validateBug(b *core.CorpusBug, n int, seen map[string]bool, path string) *c
 	if ref := validateKeywords(b.Keywords, n, path); ref != nil {
 		return ref
 	}
+	if ref := validateAlsoLines(b, n, path); ref != nil {
+		return ref
+	}
 	key := b.Path + ":" + b.Kind + ":" + strconv.Itoa(b.Line)
 	if seen[key] {
 		return invalid(path, "duplicate ground-truth bug at "+key)
 	}
 	seen[key] = true
+	return nil
+}
+
+// validateAlsoLines refuses a blank alternate anchor: every entry must name
+// a real line, and must not repeat the primary line or another entry.
+func validateAlsoLines(b *core.CorpusBug, n int, path string) *core.RefusalError {
+	seen := map[int]bool{b.Line: true}
+	for _, line := range b.AlsoLines {
+		if line < 1 {
+			return invalid(path, fmt.Sprintf("bug %d has also_lines entry %d below line 1 "+
+				"(drop it, or point it at the alternate anchor)", n, line))
+		}
+		if seen[line] {
+			return invalid(path, fmt.Sprintf("bug %d repeats line %d in also_lines (each anchor must be a distinct line)", n, line))
+		}
+		seen[line] = true
+	}
 	return nil
 }
 
@@ -218,9 +238,11 @@ type Report struct {
 
 // Evaluate grades entries against the case's ground truth. A finding is a
 // true positive when it names the same path, its line sits within the
-// tolerance window of an as-yet-unmatched bug, and its text names that bug's
-// defect; everything else reported is a false positive. Each bug counts once:
-// a second finding on the same bug is a false positive. A finding record moved
+// tolerance window of the primary line or any alternate anchor of an
+// as-yet-unmatched bug, and its text names that bug's defect; everything else
+// reported is a false positive. Each bug counts once even when several
+// anchors match it: a second finding on the same bug is a false positive,
+// and the reported match keeps the primary line. A finding record moved
 // to the body is never a true positive: the line claim was withdrawn, so the
 // text is graded as the note it became. The tool-generated moved section is
 // skipped: it is record's own wording, and the comments it lists are graded
@@ -354,15 +376,34 @@ func matchBug(path string, line int, text string, bugs []core.CorpusBug, used []
 	return -1, missReason(window, text, bugs, used)
 }
 
-// windowBugs is the indices of the bugs on path whose line is within tol.
+// windowBugs is the indices of the bugs on path whose primary line or any
+// alternate anchor sits within tol. Matching any anchor counts the bug once:
+// the caller marks the bug used by index, never by anchor.
 func windowBugs(path string, line int, bugs []core.CorpusBug, tol int) []int {
 	var out []int
 	for i := range bugs {
-		if bugs[i].Path == path && abs(line-bugs[i].Line) <= tol {
+		if bugs[i].Path != path {
+			continue
+		}
+		if withinAnchors(line, &bugs[i], tol) {
 			out = append(out, i)
 		}
 	}
 	return out
+}
+
+// withinAnchors reports whether line sits within tol of the bug's primary
+// line or any alternate anchor.
+func withinAnchors(line int, b *core.CorpusBug, tol int) bool {
+	if abs(line-b.Line) <= tol {
+		return true
+	}
+	for _, alt := range b.AlsoLines {
+		if abs(line-alt) <= tol {
+			return true
+		}
+	}
+	return false
 }
 
 // missReason names why no bug in the window matched: there was none, the

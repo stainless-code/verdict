@@ -15,7 +15,8 @@
       "line": 28,
       "kind": "path-traversal",
       "severity": "critical",
-      "note": "resolve joins the caller's name without confining it, so ../ escapes the root"
+      "also_lines": [24],
+      "note": "resolve joins the caller's name without confining it, so ../ escapes the root; the call site at line 24 is the alternate anchor for the same defect"
     }
   ]
 }

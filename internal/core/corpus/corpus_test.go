@@ -77,20 +77,40 @@ func checkNamedBugs(t *testing.T, name string, c *core.CorpusCase, entries []any
 // checkTolerance holds the window narrower than the hunk that shows the bug. A
 // tolerance as wide as its hunk grades any anchor in it as the same defect,
 // which is the ±3-on-a-5-line-hunk collapse the corpus is meant to prevent.
+// Every alternate anchor follows the same rule as the primary line.
 func checkTolerance(t *testing.T, name string, c *core.CorpusCase, index []hunks.Hunk) {
 	t.Helper()
 	tol := Tolerance(c)
 	for _, bug := range c.Bugs {
-		reach, ok := hunkReach(index, bug.Path, bug.Line)
-		if !ok {
-			t.Errorf("%s: bug %s:%d is outside the reviewed hunks", name, bug.Path, bug.Line)
-			continue
-		}
-		if tol >= reach {
-			t.Errorf("%s: bug %s:%d is %d line(s) from its hunk's far end and line_tolerance is %d; keep the window short of the far end",
-				name, bug.Path, bug.Line, reach, tol)
-		}
+		checkBugAnchors(t, name, &bug, tol, index)
 	}
+}
+
+// checkBugAnchors holds every anchor of one bug to the window rule.
+func checkBugAnchors(t *testing.T, name string, bug *core.CorpusBug, tol int, index []hunks.Hunk) {
+	t.Helper()
+	for _, line := range bugAnchors(bug) {
+		checkOneAnchor(t, name, bug, line, tol, index)
+	}
+}
+
+// checkOneAnchor holds one anchor inside its hunk and short of the far end.
+func checkOneAnchor(t *testing.T, name string, bug *core.CorpusBug, line, tol int, index []hunks.Hunk) {
+	t.Helper()
+	reach, ok := hunkReach(index, bug.Path, line)
+	if !ok {
+		t.Errorf("%s: bug %s:%d anchor %d is outside the reviewed hunks", name, bug.Path, bug.Line, line)
+		return
+	}
+	if tol >= reach {
+		t.Errorf("%s: bug %s:%d anchor %d is %d line(s) from its hunk's far end and line_tolerance is %d; keep the window short of the far end",
+			name, bug.Path, bug.Line, line, reach, tol)
+	}
+}
+
+// bugAnchors lists the primary line first, then each alternate anchor.
+func bugAnchors(b *core.CorpusBug) []int {
+	return append([]int{b.Line}, b.AlsoLines...)
 }
 
 // hunkReach is the distance from line to the farther end of the new-side hunk
@@ -301,6 +321,70 @@ func TestZeroToleranceNeedsTheBugLine(t *testing.T) {
 	}
 }
 
+// TestEvaluateAlsoLines pins the alternate-anchor rule: each entry matches
+// with the same tolerance and defect-naming rule as the primary line, and
+// matching several anchors for one bug still counts that bug once with the
+// primary line reported.
+func TestEvaluateAlsoLines(t *testing.T) {
+	c := alsoLinesCase()
+	rep := Evaluate(c, []any{entry("files.go", 24, "confine name under root or reject .. segments")})
+	checkAlsoMatch(t, rep)
+	rep = Evaluate(c, []any{entry("files.go", 25, "confine name under root")})
+	if rep.Matched != 1 {
+		t.Fatalf("line inside the alternate window matched %d, want 1", rep.Matched)
+	}
+}
+
+// TestEvaluateAlsoLinesNeedsTheDefect pins the naming rule on an alternate
+// anchor: the right line with the wrong defect is still a false positive.
+func TestEvaluateAlsoLinesNeedsTheDefect(t *testing.T) {
+	rep := Evaluate(alsoLinesCase(), []any{entry("files.go", 24, "rename this helper for readability")})
+	if rep.Matched != 0 {
+		t.Fatalf("alternate anchor without the defect matched %d, want 0", rep.Matched)
+	}
+	if got := fpReasons(rep); !equalStrings(got, []string{ReasonUnnamed}) {
+		t.Fatalf("false-positive reasons = %v, want [%s]", got, ReasonUnnamed)
+	}
+}
+
+// TestEvaluateAlsoLinesCountsOneBugOnce pins the one-match-per-bug rule:
+// findings on two anchors of the same bug grade as one hit and one duplicate.
+func TestEvaluateAlsoLinesCountsOneBugOnce(t *testing.T) {
+	rep := Evaluate(alsoLinesCase(), []any{
+		entry("files.go", 28, "join without confining lets ../ escape"),
+		entry("files.go", 24, "join without confining lets ../ escape"),
+	})
+	if rep.Matched != 1 || rep.FalsePositives != 1 {
+		t.Fatalf("two anchors on one bug = matched %d fp %d, want 1/1", rep.Matched, rep.FalsePositives)
+	}
+	if got := fpReasons(rep); !equalStrings(got, []string{ReasonAlreadyMatched}) {
+		t.Fatalf("false-positive reasons = %v, want [%s]", got, ReasonAlreadyMatched)
+	}
+}
+
+// checkAlsoMatch pins the alternate hit: one match reporting the primary line.
+func checkAlsoMatch(t *testing.T, rep *Report) {
+	t.Helper()
+	if rep.Matched != 1 {
+		t.Fatalf("alternate anchor matched %d, want 1", rep.Matched)
+	}
+	if rep.Outcomes[0].BugLine != 28 {
+		t.Fatalf("alternate anchor reported bug line %d, want the primary 28", rep.Outcomes[0].BugLine)
+	}
+}
+
+// alsoLinesCase is the shared single-bug case the alternate-anchor tests grade.
+func alsoLinesCase() *core.CorpusCase {
+	tol := 1
+	return &core.CorpusCase{
+		LineTolerance: &tol,
+		Bugs: []core.CorpusBug{{
+			Path: "files.go", Line: 28, Kind: "path-traversal",
+			Severity: "critical", AlsoLines: []int{24},
+		}},
+	}
+}
+
 func fpReasons(rep *Report) []string {
 	var out []string
 	for i := range rep.Outcomes {
@@ -408,6 +492,9 @@ func TestLoadRejects(t *testing.T) {
 		{"no bugs", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`},
 		{"unknown field", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}],"typo":true}`},
 		{"blank keyword", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical","keywords":[" "]}]}`},
+		{"also_lines below line 1", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[0]}]}`},
+		{"also_lines repeats the primary line", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[10]}]}`},
+		{"also_lines repeats an entry", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[8,8]}]}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

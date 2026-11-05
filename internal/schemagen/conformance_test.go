@@ -248,6 +248,74 @@ func TestUsageRejectsNegativeUsd(t *testing.T) {
 	}
 }
 
+// TestCorpusRejectsNonpositiveAlsoLines proves the generated corpus schema
+// agrees with the calibrate runtime on alternate-anchor bounds: [0] and [-1]
+// fail validation while a positive anchor passes.
+func TestCorpusRejectsNonpositiveAlsoLines(t *testing.T) {
+	doc := loadSchemaDocument(t, "corpus.schema.json")
+	assertAlsoLinesAccepts(t, doc, "[8]")
+	assertAlsoLinesRejects(t, doc, "[0]")
+	assertAlsoLinesRejects(t, doc, "[-1]")
+}
+
+// TestCorpusAlsoLinesMinimumLivesOnItems proves the bound sits on the array
+// items, never on the array itself.
+func TestCorpusAlsoLinesMinimumLivesOnItems(t *testing.T) {
+	doc := loadSchemaDocument(t, "corpus.schema.json")
+	also := alsoLinesSchema(t, doc)
+	if _, bounded := also["minimum"]; bounded {
+		t.Fatalf("also_lines carries minimum %v; want it on items only", also["minimum"])
+	}
+	items, ok := also["items"].(map[string]any)
+	if !ok {
+		t.Fatal("also_lines has no items")
+	}
+	minimum, ok := boundOf(items, keyMinimum)
+	if !ok || minimum != 1 {
+		t.Fatalf("also_lines items minimum = %v; want 1", items["minimum"])
+	}
+}
+
+// assertAlsoLinesAccepts fails when a positive anchor does not validate.
+func assertAlsoLinesAccepts(t *testing.T, doc map[string]any, lines string) {
+	t.Helper()
+	value := decodeJSONText(t, corpusBugWithLines(lines))
+	if err := validationError(doc, doc, value); err != nil {
+		t.Fatalf("also_lines=%s rejected: %v", lines, err)
+	}
+}
+
+// assertAlsoLinesRejects fails when a nonpositive anchor validates.
+func assertAlsoLinesRejects(t *testing.T, doc map[string]any, lines string) {
+	t.Helper()
+	value := decodeJSONText(t, corpusBugWithLines(lines))
+	err := validationError(doc, doc, value)
+	if err == nil || !strings.Contains(err.Error(), "below minimum") {
+		t.Fatalf("also_lines=%s = %v; want a minimum rejection", lines, err)
+	}
+}
+
+// corpusBugWithLines renders one minimal corpus case with the given anchors.
+func corpusBugWithLines(lines string) string {
+	return `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},` +
+		`"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":` + lines + `}]}`
+}
+
+// alsoLinesSchema returns the generated also_lines subschema.
+func alsoLinesSchema(t *testing.T, doc map[string]any) map[string]any {
+	t.Helper()
+	bug := defOf(t, doc, "bug")
+	props, ok := bug.(map[string]any)["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("bug has no properties")
+	}
+	also, ok := props["also_lines"].(map[string]any)
+	if !ok {
+		t.Fatal("bug has no also_lines")
+	}
+	return also
+}
+
 // decodeJSONText decodes one JSON literal with number fidelity.
 func decodeJSONText(t *testing.T, text string) any {
 	t.Helper()
