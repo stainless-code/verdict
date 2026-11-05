@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -355,9 +356,19 @@ func benchConfig(t *testing.T, root, agent string) *Config {
 	}
 }
 
+// needPOSIX skips a test that drives Run, which refuses Windows because it
+// runs agents through sh(1).
+func needPOSIX(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the bench runner drives agents through sh(1)")
+	}
+}
+
 // runFixture drives one sample of the fake corpus through a canned scorer.
 func runFixture(t *testing.T) (*Report, *Config, *fakeGrader) {
 	t.Helper()
+	needPOSIX(t)
 	restoreWD(t)
 	t.Setenv("BENCH_TEST_REVIEW", reviewBody)
 	cfg := benchConfig(t, fakeCorpus(t), agentCopiesReview)
@@ -464,6 +475,7 @@ func checkPromptProvenance(t *testing.T, cfg *Config, rep *Report) {
 
 // TestRunKeepsEvidenceWhenTheAgentFails keeps a broken sample's log.
 func TestRunKeepsEvidenceWhenTheAgentFails(t *testing.T) {
+	needPOSIX(t)
 	restoreWD(t)
 	cfg := benchConfig(t, fakeCorpus(t), agentFails)
 	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
