@@ -29,6 +29,9 @@ type Report struct {
 	Panel           []string          `json:"panel"`
 	Cases           []CaseSpread      `json:"cases"`
 	Bundles         []BundleRun       `json:"bundles"`
+	Loops           []LoopSummary     `json:"loops,omitempty"`
+	FixRates        []FixRate         `json:"fix_rates,omitempty"`
+	LoopCost        *LoopCost         `json:"loop_cost,omitempty"`
 	TrendCorpus     json.RawMessage   `json:"trend_corpus"`
 	Failures        []Failure         `json:"failures"`
 	Agent           AgentRef          `json:"agent"`
@@ -54,6 +57,7 @@ type AgentRef struct {
 	Command        string `json:"command"`
 	Model          string `json:"model"`
 	Runs           int    `json:"runs"`
+	Loop           int    `json:"loop,omitempty"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
@@ -89,6 +93,7 @@ type Stat struct {
 type CostRollup struct {
 	Bundles      int     `json:"bundles"`
 	WithEstimate int     `json:"bundles_with_estimate"`
+	Incomplete   int     `json:"bundles_incomplete,omitempty"`
 	Usd          float64 `json:"measured_usd"`
 	Measured     bool    `json:"measured"`
 }
@@ -158,13 +163,17 @@ func (r *runner) newReport() *Report {
 	for _, c := range r.cases {
 		ids = append(ids, c.id)
 	}
+	agent := AgentRef{Command: r.cfg.Agent, Model: r.cfg.Model, Runs: r.cfg.Runs, TimeoutSeconds: int(r.cfg.Timeout.Seconds())}
+	if r.cfg.Loop > 1 {
+		agent.Loop = r.cfg.Loop
+	}
 	return &Report{
 		SchemaVersion: "1",
 		RunID:         runID(r.cfg),
 		GeneratedAt:   r.cfg.Now.Format(time.RFC3339),
 		Internal:      r.cfg.Internal,
 		Corpus:        CorpusRef{Commit: r.commit, Dirty: r.dirty, Cases: len(r.cases), CaseIDs: ids},
-		Agent:         AgentRef{Command: r.cfg.Agent, Model: r.cfg.Model, Runs: r.cfg.Runs, TimeoutSeconds: int(r.cfg.Timeout.Seconds())},
+		Agent:         agent,
 		Panel:         r.cfg.Panel,
 		PromptSHA:     map[string]string{},
 		Failures:      []Failure{},
@@ -185,6 +194,14 @@ func (r *runner) finish(ctx context.Context, rep *Report) error {
 	rep.Cases = r.spread()
 	rep.Bundles = r.bundles()
 	rep.Cost = r.cost()
+	if len(r.loops) > 0 {
+		rep.Loops = r.loopSummaries()
+		rep.FixRates = r.fixRates()
+		if lc := r.loopCost(); lc.Attempts > 0 {
+			cp := lc
+			rep.LoopCost = &cp
+		}
+	}
 	rep.ElapsedSeconds = roundMillis(time.Since(r.started).Seconds())
 	rep.Citable, rep.CitableReason = r.citable(rep)
 	return rep.write(r.cfg.Out)
@@ -235,28 +252,34 @@ func (r *runner) spread() []CaseSpread {
 func (r *runner) cost() CostRollup {
 	roll := CostRollup{Bundles: len(r.scores)}
 	for _, s := range r.scores {
-		if est, ok := costEstimate(filepath.Join(reviewRoot, s.slug, costJSONName)); ok {
-			roll.Usd += est
-			roll.WithEstimate++
+		est, ok, incomplete := costEstimate(filepath.Join(reviewRoot, s.slug, costJSONName))
+		if !ok {
+			continue
+		}
+		roll.Usd += est
+		roll.WithEstimate++
+		if incomplete {
+			roll.Incomplete++
 		}
 	}
 	roll.Usd = math.Round(roll.Usd*round6) / round6
-	roll.Measured = roll.Bundles > 0 && roll.WithEstimate == roll.Bundles
+	roll.Measured = roll.Bundles > 0 && roll.WithEstimate == roll.Bundles && roll.Incomplete == 0
 	return roll
 }
 
-func costEstimate(path string) (float64, bool) {
+func costEstimate(path string) (float64, bool, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0, false
+		return 0, false, false
 	}
 	var rec struct {
-		EstUSD *float64 `json:"est_usd"`
+		EstUSD     *float64 `json:"est_usd"`
+		Incomplete bool     `json:"incomplete"`
 	}
 	if json.Unmarshal(raw, &rec) != nil || rec.EstUSD == nil {
-		return 0, false
+		return 0, false, false
 	}
-	return *rec.EstUSD, true
+	return *rec.EstUSD, true, rec.Incomplete
 }
 
 // citable applies the runbook's publication bar: three samples per case, the
@@ -275,7 +298,39 @@ func (r *runner) citable(rep *Report) (bool, string) {
 	if len(rep.Failures) > 0 {
 		reasons = append(reasons, fmt.Sprintf("%d failed sample(s)", len(rep.Failures)))
 	}
+	if r.cfg.Loop > 1 {
+		reasons = append(reasons, "loop mode")
+	}
 	return len(reasons) == 0, strings.Join(reasons, "; ")
+}
+
+// loopSummaries converts stored outcomes.
+func (r *runner) loopSummaries() []LoopSummary {
+	out := make([]LoopSummary, 0, len(r.loops))
+	for i := range r.loops {
+		rec := &r.loops[i]
+		cr := &caseRun{slug: rec.slug, corpus: corpusCase{id: rec.caseID}, index: rec.run}
+		out = append(out, summarizeLoop(cr, &rec.out))
+	}
+	return out
+}
+
+// fixRates aggregates per-code resolution.
+func (r *runner) fixRates() []FixRate {
+	outs := make([]*LoopOutcome, 0, len(r.loops))
+	for i := range r.loops {
+		outs = append(outs, &r.loops[i].out)
+	}
+	return fixRatesFromOutcomes(outs)
+}
+
+// loopCost sums every attempt spend.
+func (r *runner) loopCost() LoopCost {
+	outs := make([]*LoopOutcome, 0, len(r.loops))
+	for i := range r.loops {
+		outs = append(outs, &r.loops[i].out)
+	}
+	return loopCostRollup(outs)
 }
 
 func (rep *Report) write(out string) error {

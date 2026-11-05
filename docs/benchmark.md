@@ -303,6 +303,42 @@ Publish a checked-in JSON next to the corpus (for example
 `bench/runner` writes this file when it is run without `-internal`; then link
 it from the model comparison page.
 
+## Loop mode
+
+`-loop N` runs a repair loop per sample. The default is `1`, which keeps the
+single-shot bytes. The runbook pilot value is `3`. The max is `5`. The sample
+timeout is split across rounds with a 60 second floor per round.
+
+The harness plays verdict. Each round the model writes `review.json`, the
+harness runs `record --dry-run --json`, and on problems it feeds the next
+round the prior review bytes verbatim plus the envelope `error.problems` verbatim plus the harness lines verbatim,
+with the round number and the remaining budget. Round 1 keeps the single-shot
+prompt. Later rounds append the prior review and one feedback fence with the same run nonce. Prior
+model output and feedback stay untrusted. The fence never grants execution.
+
+A non-JSON final message from `pi.sh` never reaches dry run. The adapter
+refuses before it writes `review.json`, so the harness counts an adapter
+failure with the raw output in `agent.log`. A timeout or a missing review
+ends the same way, with wall time and any reported spend kept.
+
+Round evidence lives under `runs/<slug>/round-NN` with `prompt.md`,
+`review.json`, `dryrun.json`, `dryrun.stderr.txt`, `normalized.json`,
+`cost.json`, and `agent.log`. The final bundle is written once from the last
+valid round. When `-loop` is `1`, the report omits `loops`, `fix_rates`, and
+`loop_cost`, so the file stays byte-comparable.
+
+The report adds one loop summary per sample with valid on first try, rounds
+to valid, final validity, give-up, added and dropped finding ids, round 1
+and final problem lists, and per-round walls. Calibrate rates are published
+for the final bundle only. An invalid round 1 has no findings file, so no
+precision is invented for it. A warning such as `rigor-unset` does not refuse.
+Deletion to clear a problem counts as dropped, never as a fix. A model fix
+needs changed review bytes and no repair for that code on that path. Repairs
+count separately. Fix rates split error and warning levels per code. Costs sum
+every attempt including invalid and adapter-failed rounds when spend is
+present. Missing spend stays unmeasured, never zero. Model attribution is
+preserved. Loop runs are never citable.
+
 ## What the comparison page may cite
 
 Once 06b has run, the comparison page may cite:
