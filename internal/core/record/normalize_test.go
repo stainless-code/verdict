@@ -397,3 +397,100 @@ func readFile(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	return string(raw), err
 }
+
+// TestNormalizeReviewRepairsUseFinalIndexes proves dedupe settles before kept
+// repairs are reported: a dropped duplicate reports only its own dedupe
+// repair, and every surviving repair points at its final index, so all
+// paths resolve in the normalized review.
+func TestNormalizeReviewRepairsUseFinalIndexes(t *testing.T) {
+	t.Parallel()
+	in := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+		`{"path":"notes.txt","line":2,"body":"Same text here."},` +
+		`{"path":"notes.txt","line":2,"body":"Same text here."},` +
+		`{"path":"notes.txt","line":2,"body":"Other text here.","rung":"traced"}]}`
+	got, repairs := recordcore.NormalizeReview([]byte(in))
+	doc, err := jq.DecodeOrdered(got)
+	if err != nil {
+		t.Fatalf("normalized does not decode: %v\n%s", err, got)
+	}
+	obj, ok := doc.(*jq.Obj)
+	if !ok {
+		t.Fatalf("normalized is not an object:\n%s", got)
+	}
+	comments, _ := obj.Get("comments")
+	if items, ok := comments.([]any); !ok || len(items) != 2 {
+		t.Fatalf("normalized comments = %v, want 2 survivors", comments)
+	}
+	var codes, paths []string
+	for _, p := range repairs {
+		codes = append(codes, p.Code)
+		paths = append(paths, p.Path)
+	}
+	wantCodes := []string{
+		core.ProblemCodeNormalizedTrivia, core.ProblemCodeKeyAlias, core.ProblemCodeEnumSynonym,
+	}
+	if strings.Join(codes, ",") != strings.Join(wantCodes, ",") {
+		t.Errorf("repair codes = %v, want %v", codes, wantCodes)
+	}
+	wantPaths := []string{"$.comments[1]", "$.comments[1].rigor", "$.comments[1].rigor"}
+	if strings.Join(paths, ",") != strings.Join(wantPaths, ",") {
+		t.Errorf("repair paths = %v, want %v", paths, wantPaths)
+	}
+}
+
+// TestNormalizeReviewDroppedCommentReportsOnlyDedupe proves a dropped
+// duplicate's own alias and synonym repairs are discarded: normalization-
+// equivalent comments dedupe, the survivor keeps key-ordered repairs, and
+// the dropped comment reports one trivia repair.
+func TestNormalizeReviewDroppedCommentReportsOnlyDedupe(t *testing.T) {
+	t.Parallel()
+	in := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+		`{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced"},` +
+		`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"walked"}]}`
+	got, repairs := recordcore.NormalizeReview([]byte(in))
+	doc, err := jq.DecodeOrdered(got)
+	if err != nil {
+		t.Fatalf("normalized does not decode: %v\n%s", err, got)
+	}
+	obj, _ := doc.(*jq.Obj)
+	comments, _ := obj.Get("comments")
+	if items, ok := comments.([]any); !ok || len(items) != 1 {
+		t.Fatalf("normalized comments = %v, want 1 survivor", comments)
+	}
+	var codes []string
+	for _, p := range repairs {
+		codes = append(codes, p.Code+":"+p.Path)
+	}
+	want := []string{
+		core.ProblemCodeKeyAlias + ":$.comments[0].path",
+		core.ProblemCodeKeyAlias + ":$.comments[0].rigor",
+		core.ProblemCodeEnumSynonym + ":$.comments[0].rigor",
+		core.ProblemCodeNormalizedTrivia + ":$.comments[1]",
+	}
+	if strings.Join(codes, ",") != strings.Join(want, ",") {
+		t.Errorf("repairs = %v, want %v", codes, want)
+	}
+}
+
+// TestNormalizeReviewCommentRepairsInKeyOrder proves one comment's repairs
+// follow the document: an enum on an earlier key sorts before aliases on
+// later keys, instead of grouping alias rewrites first.
+func TestNormalizeReviewCommentRepairsInKeyOrder(t *testing.T) {
+	t.Parallel()
+	in := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+		`{"severity":"Critical","line":2,"file":"notes.txt","body":"A finding with enough substance.","rung":"traced"}]}`
+	_, repairs := recordcore.NormalizeReview([]byte(in))
+	var codes []string
+	for _, p := range repairs {
+		codes = append(codes, p.Code+":"+p.Path)
+	}
+	want := []string{
+		core.ProblemCodeEnumSynonym + ":$.comments[0].severity",
+		core.ProblemCodeKeyAlias + ":$.comments[0].path",
+		core.ProblemCodeKeyAlias + ":$.comments[0].rigor",
+		core.ProblemCodeEnumSynonym + ":$.comments[0].rigor",
+	}
+	if strings.Join(codes, ",") != strings.Join(want, ",") {
+		t.Errorf("repairs = %v, want %v", codes, want)
+	}
+}

@@ -1,6 +1,7 @@
 package recordcore
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -176,31 +177,154 @@ func normalizeComments(parent *jq.Obj, v any) []Problem {
 	if !ok {
 		return nil
 	}
-	var repairs []Problem
+	works := normalizeCommentClones(items)
 	seen := map[string]bool{}
-	kept := make([]any, 0, len(items))
-	for i, item := range items {
-		base := fmt.Sprintf("$.comments[%d]", i)
-		m, ok := item.(*jq.Obj)
-		if !ok {
-			kept = append(kept, item)
+	dropped := make([]bool, len(works))
+	for i, w := range works {
+		if w.raw || dropped[i] {
 			continue
 		}
-		repairs = append(repairs, normalizeComment(m, base)...)
-		canon := canonicalJSON(m)
-		if seen[canon] {
-			repairs = append(repairs, repairProblem(core.ProblemCodeNormalizedTrivia, base,
+		if seen[w.canon] {
+			dropped[i] = true
+			continue
+		}
+		seen[w.canon] = true
+	}
+	var repairs []Problem
+	kept := make([]any, 0, len(items))
+	for i, w := range works {
+		if w.raw {
+			kept = append(kept, items[w.orig])
+			continue
+		}
+		if dropped[i] {
+			repairs = append(repairs, repairProblem(core.ProblemCodeNormalizedTrivia,
+				fmt.Sprintf("$.comments[%d]", w.orig),
 				"comment is an exact duplicate of an earlier comment",
 				"remove the duplicate comment"))
 			continue
 		}
-		seen[canon] = true
-		kept = append(kept, item)
+		final := len(kept)
+		repairs = append(repairs, finalCommentRepairs(w, final)...)
+		kept = append(kept, w.clone)
 	}
-	if len(kept) != len(items) {
+	if len(repairs) > 0 {
 		parent.Set(fieldComments, kept)
 	}
 	return repairs
+}
+
+// commentWork is one comment normalized on a clone: the drop decision sees
+// the repaired shape, and a dropped comment's own repairs are discarded so
+// it reports only its dedupe repair.
+type commentWork struct {
+	clone   *jq.Obj
+	orig    int
+	raw     bool
+	repairs []Problem
+	canon   string
+	order   []string
+}
+
+// normalizeCommentClones normalizes every object comment on a clone,
+// recording its repairs against the original index and its key order for
+// the final document-order sort. Non-object items are kept verbatim.
+func normalizeCommentClones(items []any) []commentWork {
+	works := make([]commentWork, 0, len(items))
+	for i, item := range items {
+		m, ok := item.(*jq.Obj)
+		if !ok {
+			works = append(works, commentWork{orig: i, raw: true})
+			continue
+		}
+		clone := m.Clone()
+		base := fmt.Sprintf("$.comments[%d]", i)
+		works = append(works, commentWork{
+			clone:   clone,
+			orig:    i,
+			repairs: normalizeComment(clone, base),
+			canon:   canonicalJSON(clone),
+			order:   commentKeyOrder(m),
+		})
+	}
+	return works
+}
+
+// commentKeyOrder maps one comment's original keys through the alias table
+// so repairs sort by document position even after a rename.
+func commentKeyOrder(m *jq.Obj) []string {
+	order := make([]string, 0, len(m.Keys))
+	for _, key := range m.Keys {
+		if canonical, ok := commentAliases[key]; ok {
+			order = append(order, canonical)
+		} else {
+			order = append(order, key)
+		}
+	}
+	return order
+}
+
+// finalCommentRepairs repoints one kept comment's repairs at its final index
+// and sorts them in key order, so every path resolves in the normalized
+// review and repairs read in document order.
+func finalCommentRepairs(w commentWork, final int) []Problem {
+	origBase := fmt.Sprintf("$.comments[%d]", w.orig)
+	finalBase := fmt.Sprintf("$.comments[%d]", final)
+	repairs := rebaseRepairs(w.repairs, origBase, finalBase)
+	sortCommentRepairs(repairs, finalBase, w.order)
+	return repairs
+}
+
+// rebaseRepairs moves repair paths from one comment index to another. The
+// bracketed prefix keeps $.comments[1] from matching $.comments[10].
+func rebaseRepairs(repairs []Problem, origBase, finalBase string) []Problem {
+	if origBase == finalBase {
+		return repairs
+	}
+	for i := range repairs {
+		switch rest, ok := strings.CutPrefix(repairs[i].Path, origBase); {
+		case ok && rest == "":
+			repairs[i].Path = finalBase
+		case ok && strings.HasPrefix(rest, "."):
+			repairs[i].Path = finalBase + rest
+		}
+	}
+	return repairs
+}
+
+// sortCommentRepairs orders one comment's repairs by their key's document
+// position, keeping same-key repairs (alias before synonym) stable.
+func sortCommentRepairs(repairs []Problem, base string, order []string) {
+	pos := make(map[string]int, len(order))
+	for i, key := range order {
+		if _, ok := pos[key]; !ok {
+			pos[key] = i
+		}
+	}
+	slices.SortStableFunc(repairs, func(a, b Problem) int {
+		return cmp.Compare(repairKeyPos(a.Path, base, pos, len(order)), repairKeyPos(b.Path, base, pos, len(order)))
+	})
+}
+
+// repairKeyPos ranks a repair path by its first key segment under the
+// comment base. Alias segments map to their canonical key; anything outside
+// the comment sorts after every key.
+func repairKeyPos(path, base string, pos map[string]int, fallback int) int {
+	rest, ok := strings.CutPrefix(path, base)
+	if !ok {
+		return fallback + 1
+	}
+	rest = strings.TrimPrefix(rest, ".")
+	if i := strings.IndexAny(rest, ".["); i >= 0 {
+		rest = rest[:i]
+	}
+	if canonical, ok := commentAliases[rest]; ok {
+		rest = canonical
+	}
+	if p, ok := pos[rest]; ok {
+		return p
+	}
+	return fallback + 1
 }
 
 func normalizeComment(m *jq.Obj, base string) []Problem {

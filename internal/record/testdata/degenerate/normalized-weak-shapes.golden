@@ -114,7 +114,7 @@ other.txt	NEW	1	3
   "tool_version": "VERSION",
   "prompts_hash": "66a0179cf58e46a57bbd16f0246527b03d06a49cb6667512d947d5d701d3f33f",
   "model": null,
-  "repairs": [{"code":"scalar-to-array","path":"$.resolved"},{"code":"key-alias","path":"$.comments[0].path"},{"code":"key-alias","path":"$.comments[0].rigor"},{"code":"key-alias","path":"$.comments[0].in-bounds"},{"code":"normalized-trivia","path":"$.comments[0].suggestion"},{"code":"enum-synonym","path":"$.comments[0].rigor"},{"code":"enum-synonym","path":"$.comments[0].severity"}]
+  "repairs": [{"code":"scalar-to-array","path":"$.resolved"},{"code":"key-alias","path":"$.comments[0].path"},{"code":"key-alias","path":"$.comments[0].rigor"},{"code":"enum-synonym","path":"$.comments[0].rigor"},{"code":"enum-synonym","path":"$.comments[0].severity"},{"code":"key-alias","path":"$.comments[0].in-bounds"},{"code":"normalized-trivia","path":"$.comments[0].suggestion"}]
 }
 --- file C/.review/local-dg/store.json ---
 {
