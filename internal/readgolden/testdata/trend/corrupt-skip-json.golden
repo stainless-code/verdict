@@ -30,6 +30,9 @@ exit: 0
       "informational": 3,
       "untagged": 0
     },
+    "by_category": {
+      "untagged": 9
+    },
     "provenance": {
       "tools": [
         null
@@ -112,6 +115,9 @@ exit: 0
           "important": 2,
           "informational": 2,
           "untagged": 0
+        },
+        "by_category": {
+          "untagged": 6
         }
       },
       {
@@ -144,6 +150,9 @@ exit: 0
           "important": 1,
           "informational": 1,
           "untagged": 0
+        },
+        "by_category": {
+          "untagged": 2
         }
       },
       {
@@ -172,6 +181,9 @@ exit: 0
           "important": 0,
           "informational": 0,
           "untagged": 0
+        },
+        "by_category": {
+          "untagged": 1
         }
       }
     ]

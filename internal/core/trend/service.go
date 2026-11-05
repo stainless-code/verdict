@@ -117,15 +117,16 @@ func (st *state) human(line string) {
 }
 
 type row struct {
-	prov     *jq.Obj
-	byStatus map[string]int
-	byTier   map[string]int
-	bundle   string
-	at       string
-	models   []any
-	efforts  []any
-	findings []any
-	hasAt    bool
+	prov       *jq.Obj
+	byStatus   map[string]int
+	byTier     map[string]int
+	byCategory map[string]int
+	bundle     string
+	at         string
+	models     []any
+	efforts    []any
+	findings   []any
+	hasAt      bool
 }
 
 func collectRows(st *state) []row {
@@ -173,15 +174,16 @@ func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 func buildRow(bundle, name string, findings []any) row {
 	at, hasAt := bundleTime(bundle)
 	return row{
-		bundle:   name,
-		at:       at,
-		hasAt:    hasAt,
-		models:   bundleModels(bundle),
-		efforts:  bundleEfforts(bundle),
-		prov:     bundleProvenance(bundle),
-		findings: findings,
-		byStatus: statusCounts(findings),
-		byTier:   tierCounts(findings),
+		bundle:     name,
+		at:         at,
+		hasAt:      hasAt,
+		models:     bundleModels(bundle),
+		efforts:    bundleEfforts(bundle),
+		prov:       bundleProvenance(bundle),
+		findings:   findings,
+		byStatus:   statusCounts(findings),
+		byTier:     tierCounts(findings),
+		byCategory: categoryCounts(findings),
 	}
 }
 
@@ -342,6 +344,16 @@ func tierOf(entry any) string {
 		}
 	}
 	return tierUntagged
+}
+
+// categoryCounts buckets one bundle's findings by published category,
+// untagged for null entries.
+func categoryCounts(findings []any) map[string]int {
+	counts := map[string]int{}
+	for _, e := range findings {
+		counts[core.CategoryOf(e)]++
+	}
+	return counts
 }
 
 func dedupeSorted(vals []any) []any {

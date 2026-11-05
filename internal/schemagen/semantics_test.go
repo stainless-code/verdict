@@ -65,13 +65,21 @@ var publishedSemantics = map[string]string{
 	// only; no existing property, required key, or type changed.
 	// recordData.normalized now carries "type": "object" so the schema refuses
 	// a string or array where the description promises the review object.
-	"envelope.schema.json": "3d8581da900764dd4f63fa2c750a9e6c60d39c5b367c8642e5f4a1a4e8c60584",
+	// finding categories: additive comment/entry category enum, additive
+	// reportCounts.by_category (fixed keys) and reportFilters.category (null
+	// when unfiltered), additive trendData/trendBundleRow by_category, and the
+	// precision prose naming by_category. No existing property, required key,
+	// enum, or type changed.
+	"envelope.schema.json": "d28b52d31fbb9c85ceb6d5112ea2e198ef55aea5a9c038be60e151572ff04b45",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
 	// rigor provenance: additive optional entry.rigor_source enum. No existing
 	// property, required key, or type changed.
-	"findings.schema.json": "06a7164a6f8759dbaba94005947c769332833dada268f69dbf0194594f6beccf",
+	// finding categories: additive optional entry.category enum (absent and
+	// null group as untagged; never part of the sig). No existing property,
+	// required key, or type changed.
+	"findings.schema.json": "aa0f9fc9500bb90f2c0d7582225633e53d81b56808f5903d96d8764f0239eced",
 	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
 	// review normalization: additive optional repairs[] plus $defs/repair. No
 	// existing property, required key, or type changed.
@@ -83,7 +91,11 @@ var publishedSemantics = map[string]string{
 	// out-of-range: descriptions now say brief approach/question bounds refuse
 	// and unset rigor records as said; the warning list no longer claims brief
 	// caps warn. No property, required key, enum, or type changed.
-	"review.schema.json": "9a0a2adc61eb5f938b87ff3ba184b12970b209db202ad603c89a89f0b51d87aa",
+	// finding categories: additive optional comment.category enum; the
+	// checker warns (never refuses) on unknown or non-string values and the
+	// normalizer lowercases case variants. No existing property, required key,
+	// or type changed.
+	"review.schema.json": "5da600e4619e2943b061bc35a686d1a14fdb96709ff1b05d23713018efd2ed1b",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

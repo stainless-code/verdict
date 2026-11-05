@@ -179,6 +179,7 @@ type outcome struct {
 	sig     string
 	status  string
 	sev     string
+	cat     string
 	locator string
 	result  string
 	detail  string
@@ -203,6 +204,7 @@ func joinOne(entry any, threads, changed []any) outcome {
 		sig:     sigHuman(entry),
 		status:  readcommon.StatusOf(entry),
 		sev:     severityOf(entry),
+		cat:     core.CategoryOf(entry),
 		locator: locatorFor(entry),
 	}
 	kind, ok := readcommon.FieldOf(entry, "kind").(string)
@@ -372,6 +374,7 @@ func pathChanged(changed []any, path any) bool {
 
 type precision struct {
 	byTier          map[string]map[string]int
+	byCategory      map[string]*categoryCell
 	fixed           int
 	resolvedUnfixed int
 	open            int
@@ -379,8 +382,25 @@ type precision struct {
 	judged          int
 }
 
+// categoryCell is one per-category precision bucket: the outcome counts plus
+// the judged denominator. The resolution rate renders at wire time so a zero
+// denominator reads null instead of zero.
+type categoryCell struct {
+	fixed           int
+	resolvedUnfixed int
+	open            int
+	unknown         int
+}
+
+func (c *categoryCell) judged() int {
+	if c == nil {
+		return 0
+	}
+	return c.fixed + c.resolvedUnfixed + c.open
+}
+
 func countPrecision(outcomes []outcome) precision {
-	p := precision{byTier: map[string]map[string]int{}}
+	p := precision{byTier: map[string]map[string]int{}, byCategory: map[string]*categoryCell{}}
 	ensure := func(tier string) map[string]int {
 		if _, ok := p.byTier[tier]; !ok {
 			p.byTier[tier] = map[string]int{
@@ -392,23 +412,39 @@ func countPrecision(outcomes []outcome) precision {
 	for i := range outcomes {
 		o := &outcomes[i]
 		tier := ensure(o.sev)
+		cell := ensureCategory(&p, o.cat)
 		switch o.result {
 		case outcomeFixed:
 			p.fixed++
 			tier[outcomeFixed]++
+			cell.fixed++
 		case outcomeResolvedUnfixed:
 			p.resolvedUnfixed++
 			tier[tierResolvedUnfixed]++
+			cell.resolvedUnfixed++
 		case statusOpen:
 			p.open++
 			tier[statusOpen]++
+			cell.open++
 		default:
 			p.unknown++
 			tier[outcomeUnknown]++
+			cell.unknown++
 		}
 	}
 	p.judged = p.fixed + p.resolvedUnfixed + p.open
 	return p
+}
+
+// ensureCategory returns the precision bucket for one outcome's category,
+// creating it on first sight so only observed categories are emitted.
+func ensureCategory(p *precision, cat string) *categoryCell {
+	cell, ok := p.byCategory[cat]
+	if !ok {
+		cell = &categoryCell{}
+		p.byCategory[cat] = cell
+	}
+	return cell
 }
 
 func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outcomes []outcome, dir string) {
@@ -434,10 +470,34 @@ func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outc
 		}
 		st.human(fmt.Sprintf("%s [%s] %s — %s%s", o.sig, o.result, o.locator, o.detail, kbText))
 	}
-	st.human(fmt.Sprintf("precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)",
-		p.fixed, p.resolvedUnfixed, p.open, p.unknown, p.judged))
+	st.human(fmt.Sprintf("precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)%s",
+		p.fixed, p.resolvedUnfixed, p.open, p.unknown, p.judged, precisionCategorySuffix(&p)))
 	st.human(fmt.Sprintf("provenance: tool v%s prompts %s model %s",
 		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model")))
+}
+
+// precisionCategorySuffix names per-category fixed/judged pairs once more
+// than one category shows up, bounded to four names plus an other count so
+// the line stays readable on wide portfolios.
+func precisionCategorySuffix(p *precision) string {
+	if len(p.byCategory) < 2 {
+		return ""
+	}
+	names := make([]string, 0, len(p.byCategory))
+	for name := range p.byCategory {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	const maxNamed = 4
+	parts := make([]string, 0, maxNamed+1)
+	for i, name := range names {
+		if i >= maxNamed {
+			parts = append(parts, fmt.Sprintf("other %d", len(names)-maxNamed))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s %d/%d", name, p.byCategory[name].fixed, p.byCategory[name].judged()))
+	}
+	return ", " + strings.Join(parts, ", ")
 }
 
 func sigHuman(entry any) string {
@@ -556,6 +616,22 @@ func (r *liveResult) Wire() *jq.Obj {
 			outcomeUnknown, counts[outcomeUnknown],
 		))
 	}
+	byCategory := jq.NewObj()
+	for _, name := range sortedCategoryKeys(p.byCategory) {
+		cell := p.byCategory[name]
+		var rate any
+		if judged := cell.judged(); judged > 0 {
+			rate = float64(cell.fixed) / float64(judged)
+		}
+		byCategory.Set(name, jq.NewObj(
+			outcomeFixed, cell.fixed,
+			tierResolvedUnfixed, cell.resolvedUnfixed,
+			statusOpen, cell.open,
+			outcomeUnknown, cell.unknown,
+			"judged", cell.judged(),
+			"resolution_rate", rate,
+		))
+	}
 	var mergedAt any
 	if merged := jq.StrOf(r.live["mergedAt"]); merged != "" {
 		mergedAt = merged
@@ -572,6 +648,7 @@ func (r *liveResult) Wire() *jq.Obj {
 			"unknown", p.unknown,
 			"judged", p.judged,
 			"by_tier", byTier,
+			"by_category", byCategory,
 		),
 		"provenance", jq.NewObj(
 			"tool_version", provValue(r.dir, "tool_version"),
@@ -586,6 +663,7 @@ func outcomeDoc(o *outcome) *jq.Obj {
 		"sig", outcomeSig(o),
 		"status", o.status,
 		"severity", o.sev,
+		"category", outcomeCategory(o),
 		"locator", o.locator,
 		"outcome", o.result,
 		"detail", o.detail,
@@ -594,6 +672,15 @@ func outcomeDoc(o *outcome) *jq.Obj {
 		doc.Set("kb", o.kb)
 	}
 	return doc
+}
+
+// outcomeCategory reads the row's category for the audit: the label when
+// published, null when the finding is untagged.
+func outcomeCategory(o *outcome) any {
+	if o.cat == "" || o.cat == core.CategoryUntagged {
+		return nil
+	}
+	return o.cat
 }
 
 func outcomeSig(o *outcome) any {
@@ -608,6 +695,16 @@ func outcomeSig(o *outcome) any {
 func sortedTierKeys(byTier map[string]map[string]int) []string {
 	keys := make([]string, 0, len(byTier))
 	for k := range byTier {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// sortedCategoryKeys orders one precision map's buckets for stable wire.
+func sortedCategoryKeys(byCategory map[string]*categoryCell) []string {
+	keys := make([]string, 0, len(byCategory))
+	for k := range byCategory {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)

@@ -35,14 +35,15 @@ type Review struct { //nolint:govet // field order is the published property ord
 // Comment is one inline finding in review.json input.
 type Comment struct { //nolint:govet // field order is the published property order
 	Path       string    `json:"path"`
-	Line       any       `json:"line,omitempty"                          type:"integer|string|null"`
-	StartLine  any       `json:"start_line,omitempty"                    type:"integer|string|null"`
+	Line       any       `json:"line,omitempty"                                                               type:"integer|string|null"`
+	StartLine  any       `json:"start_line,omitempty"                                                         type:"integer|string|null"`
 	Side       string    `json:"side,omitempty"`
 	Body       string    `json:"body"`
 	Suggestion *string   `json:"suggestion,omitempty"`
-	Brief      *Brief    `anyOf:"null"                                   json:"brief,omitempty"`
-	Rigor      any       `enum:"said|pointed|walked|ran|reproduced|null" json:"rigor,omitempty"`
-	Severity   any       `enum:"critical|important|informational|null"   json:"severity,omitempty"`
+	Brief      *Brief    `anyOf:"null"                                                                        json:"brief,omitempty"`
+	Rigor      any       `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
+	Severity   any       `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`
+	Category   any       `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`
 	InBounds   *bool     `json:"in-bounds,omitempty"`
 	KB         *[]string `json:"kb,omitempty"`
 }
@@ -66,22 +67,24 @@ type SectionTag struct { //nolint:govet // field order is the published property
 // ordered clone-and-overlay path.
 type FindingEntry struct { //nolint:govet // field order is the published property order
 	Sig         string         `json:"sig"`
-	SigVersion  string         `const:"1"                                              json:"sig_version"`
-	Kind        string         `enum:"inline|section"                                  json:"kind"`
-	Path        any            `json:"path,omitempty"                                  type:"string|null"`
-	Heading     any            `json:"heading,omitempty"                               type:"string|null"`
-	Line        any            `json:"line,omitempty"                                  type:"integer|null"`
-	Side        any            `json:"side,omitempty"                                  type:"string|null"`
-	Anchored    any            `json:"anchored,omitempty"                              type:"boolean|string|null"`
+	SigVersion  string         `const:"1"                                                                           json:"sig_version"`
+	Kind        string         `enum:"inline|section"                                                               json:"kind"`
+	Path        any            `json:"path,omitempty"                                                               type:"string|null"`
+	Heading     any            `json:"heading,omitempty"                                                            type:"string|null"`
+	Line        any            `json:"line,omitempty"                                                               type:"integer|null"`
+	Side        any            `json:"side,omitempty"                                                               type:"string|null"`
+	Anchored    any            `json:"anchored,omitempty"                                                           type:"boolean|string|null"` //nolint:revive // tag column widened by the published category enum
 	Body        string         `json:"body,omitempty"`
 	Suggestion  *string        `json:"suggestion,omitempty"`
-	Brief       *Brief         `anyOf:"null"                                           json:"brief,omitempty"`
+	Brief       *Brief         `anyOf:"null"                                                                        json:"brief,omitempty"`
 	KB          *[]string      `json:"kb,omitempty"`
-	InBounds    any            `json:"inBounds,omitempty"                              type:"boolean|null"`
-	Rigor       any            `enum:"said|pointed|walked|ran|reproduced|null"         json:"rigor,omitempty"`
-	RigorSource string         `enum:"model|default|verified"                          json:"rigor_source,omitempty"`
-	Severity    any            `enum:"critical|important|informational|null"           json:"severity,omitempty"`
-	Status      string         `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
+	InBounds    any            `json:"inBounds,omitempty"                                                           type:"boolean|null"`
+	Rigor       any            `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
+	RigorSource string         `enum:"model|default|verified"                                                       json:"rigor_source,omitempty"` //nolint:revive // tag column widened by the published category enum
+	Severity    any            `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`     //nolint:revive // tag column widened by the published category enum
+	Category    any            `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`     //nolint:revive // published enum tag exceeds the line limit
+	CategorySet bool           `json:"-"`
+	Status      string         `enum:"open|addressed|wont-fix|false-positive|deferred"                              json:"status"`
 	FirstSeen   string         `json:"firstSeen"`
 	LastSeen    string         `json:"lastSeen"`
 	Rationale   string         `json:"rationale,omitempty"`
@@ -242,6 +245,7 @@ func (e *FindingEntry) wireSection() *jq.Obj {
 		o.Set("rigor_source", e.RigorSource)
 	}
 	o.Set("severity", e.Severity)
+	o.Set("category", nil)
 	return o
 }
 
@@ -264,6 +268,9 @@ func (e *FindingEntry) wireInline() *jq.Obj {
 		o.Set("rigor_source", e.RigorSource)
 	}
 	o.Set("severity", e.Severity)
+	if e.Category != nil || e.CategorySet {
+		o.Set("category", e.Category)
+	}
 	briefWire(e.Brief, o)
 	return o
 }
@@ -449,7 +456,7 @@ var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
 	"body": true, "suggestion": true, "kb": true, "inBounds": true,
-	"rigor": true, "rigor_source": true, "severity": true, keyStatus: true, "firstSeen": true,
+	"rigor": true, "rigor_source": true, "severity": true, "category": true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"history": true,
 }
@@ -492,6 +499,7 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Rigor, _ = obj.Get("rigor")
 	e.RigorSource, _ = fieldString(obj, "rigor_source")
 	e.Severity, _ = obj.Get("severity")
+	e.Category, _ = obj.Get("category")
 }
 
 // entryStamps decodes identity, lifecycle, and history: sig, version,

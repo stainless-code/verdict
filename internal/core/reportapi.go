@@ -7,6 +7,7 @@ import "github.com/stainless-code/verdict/internal/jq"
 type ReportFlags struct {
 	Status       string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
 	Kind         string `enum:"all|inline|section"`
+	Category     string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`
 	Output       string
 	Sarif        string
 	Check        string `enum:"critical|important|informational"`

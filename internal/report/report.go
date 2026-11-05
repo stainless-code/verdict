@@ -177,12 +177,13 @@ const flagStatus = "--status"
 // reportValueWants names each report value flag's operand for the
 // missing-value usage error.
 var reportValueWants = map[string]string{
-	flagStatus: "all|open|addressed|deferred|wont-fix|false-positive",
-	"--kind":   "all|inline|section",
-	"--output": "<path>",
-	"--sarif":  "<path>",
-	"--check":  "critical|important|informational",
-	"--live":   "auto|strict|skip",
+	flagStatus:   "all|open|addressed|deferred|wont-fix|false-positive",
+	"--kind":     "all|inline|section",
+	"--output":   "<path>",
+	"--sarif":    "<path>",
+	"--check":    "critical|important|informational",
+	"--live":     "auto|strict|skip",
+	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
 }
 
 // parseFlag handles one report flag, returning how many args it consumed.
@@ -202,7 +203,7 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, args []string, i int) (in
 		return 1, 0, false
 	default:
 		return 0, r.ReportUsage(usageErr(
-			"unknown flag '%s' for report (want --status, --kind, --output, "+
+			"unknown flag '%s' for report (want --status, --kind, --category, --output, "+
 				"--sarif, --cost, --check, --completeness, --live, --json)",
 			a)), true
 	}
@@ -219,6 +220,8 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		return parseStatusFlag(r, flags, v)
 	case "--kind":
 		return parseKindFlag(r, flags, v)
+	case "--category":
+		return parseCategoryFlag(r, flags, v)
 	case "--check":
 		return parseCheckFlag(r, flags, v)
 	case "--live":
@@ -257,6 +260,19 @@ func parseKindFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, in
 		return 0, r.ReportUsage(usageErr(
 			"unknown --kind '%s' for report (want all|inline|section)",
 			flags.Kind)), true
+	}
+	return 2, 0, false
+}
+
+// parseCategoryFlag consumes --category, refusing an unknown filter value as
+// the bad-category usage error (a typo would otherwise silently show zero
+// findings).
+func parseCategoryFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, int, bool) {
+	flags.Category = next
+	if !core.ValidCategory(flags.Category) {
+		return 0, r.ReportUsage(usageErr(
+			"unknown --category '%s' for report (bad-category; try: pass "+reportValueWants["--category"]+")",
+			flags.Category)), true
 	}
 	return 2, 0, false
 }

@@ -226,6 +226,45 @@ if [ "$(( stub_now - stub_pre_post ))" = "1" ] \
 else
   bad "S7 unexpected network attempts around the dry-run post leg"
 fi
+# S8: finding categories ride the review, findings, and report data schemas.
+PR=4952
+eval_mk_bundle "$PR"
+eval_write_findings "$PR" <<'EOF'
+[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Security boundary bug here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","category":"security","sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},
+{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Style nit here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","category":"style","sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},
+{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Untagged observation with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","category":null,"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
+EOF
+check "S8 findings.json with categories" "$SCH/findings.schema.json" "$EVAL_SANDBOX/.review/$PR/findings.json"
+jq '.[0] | .category = 3' "$EVAL_SANDBOX/.review/$PR/findings.json" > "$EVAL_SANDBOX/s8-badcat.json"
+must_fail "S8 findings non-string category" "$SCH/findings.schema.json" "$EVAL_SANDBOX/s8-badcat.json" "want type"
+jq -n '{"schema_version":"1","body":"> ✅ Category coverage with enough substance.","approved":false,"comments":[
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Logic bug here.","rigor":"walked","severity":"critical","category":"logic"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Edge case here with enough substance.","rigor":"walked","severity":"important","category":"edge-case"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Security hole here with enough substance.","rigor":"walked","severity":"critical","category":"security"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Slow path here with enough substance.","rigor":"walked","severity":"informational","category":"performance"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Stray file here with enough substance.","rigor":"pointed","severity":"informational","category":"accidental-commit"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Naming nit here with enough substance.","rigor":"pointed","severity":"informational","category":"style"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Docs gap here with enough substance.","rigor":"pointed","severity":"informational","category":"docs"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Odd finding here with enough substance.","rigor":"pointed","severity":"informational","category":"other"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"Untagged here with enough substance.","rigor":"pointed","severity":"informational","category":null}
+]}' > "$EVAL_SANDBOX/s8-review.json"
+check "S8 review.json with every category and null" "$SCH/review.schema.json" "$EVAL_SANDBOX/s8-review.json"
+jq '.comments[0].category = "nope"' "$EVAL_SANDBOX/s8-review.json" > "$EVAL_SANDBOX/s8-badreview.json"
+must_fail "S8 review unknown category" "$SCH/review.schema.json" "$EVAL_SANDBOX/s8-badreview.json" "not one of"
+run_review report acme/app "$PR" --json
+if [ "$EVAL_STATUS" -eq 0 ]; then
+  good "S8 report --json exits 0"
+else
+  bad "S8 report --json exits $EVAL_STATUS"
+fi
+jq '.data' <"$EVAL_OUT" > "$DATA" 2>/dev/null || echo "null" > "$DATA"
+check "S8 report data profile with by_category" "$ENV#/\$defs/reportData" "$DATA"
+if [ "$(jq -c '.counts.by_category | keys' "$DATA")" = '["accidental-commit","docs","edge-case","logic","other","performance","security","style","untagged"]' ]; then
+  good "S8 by_category carries every key plus untagged"
+else
+  bad "S8 by_category keys: $(jq -c '.counts.by_category' "$DATA")"
+fi
+rm -rf "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX"/s8-*.json
 rm -rf "$LB" "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX/.review/4950" "$EVAL_SANDBOX"/s1-review.json \
   "$EVAL_SANDBOX"/s5-post.json "$EVAL_SANDBOX"/s6-*.json "$EVAL_SANDBOX"/s3b-*.json "$DATA"
 

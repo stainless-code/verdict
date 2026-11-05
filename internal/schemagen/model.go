@@ -335,6 +335,7 @@ type TrendData struct { //nolint:govet // field order is the published property 
 	Closed      int              `json:"closed"      min:"0"`
 	ByStatus    TrendStatuses    `json:"by_status"`
 	ByTier      TrendTiers       `json:"by_tier"`
+	ByCategory  map[string]int   `json:"by_category"`
 	Provenance  TrendProvenance  `json:"provenance"`
 	Periods     []TrendPeriod    `json:"periods"`
 	PerBundle   []TrendBundleRow `json:"per_bundle"`
@@ -391,6 +392,7 @@ type TrendBundleRow struct { //nolint:govet // field order is the published prop
 	Closed     int              `json:"closed"`
 	ByStatus   TrendStatuses    `json:"by_status"`
 	ByTier     TrendTiers       `json:"by_tier"`
+	ByCategory map[string]int   `json:"by_category"`
 }
 
 // CalibrateData is the calibrate verb's --json data profile. The three modes

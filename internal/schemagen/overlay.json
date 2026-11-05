@@ -122,12 +122,17 @@
       "/$defs/recordData/properties/repairs": "Present on record --dry-run: every safe review.json rewrite applied, in document order.",
       "/$defs/repair": "One safe review.json rewrite: the published repair code and the JSONPath it touched.",
       "/$defs/repair/properties/code": "The repair family: fence unwrap, prose extraction, scalar-to-array, key alias, enum synonym, or trivia removal.",
-      "/$defs/repair/properties/path": "JSONPath of the repaired value in the normalized review."
+      "/$defs/repair/properties/path": "JSONPath of the repaired value in the normalized review.",
+      "/$defs/reportCounts/properties/by_category": "Whole-store finding counts by published category plus untagged; every key is always present with zero defaults.",
+      "/$defs/reportFilters/properties/category": "The active --category filter, or null when the run did not filter by category.",
+      "/$defs/trendData/properties/by_category": "Portfolio finding counts by observed category with untagged for null entries; only observed categories appear.",
+      "/$defs/trendBundleRow/properties/by_category": "One bundle's finding counts by observed category with untagged for null entries.",
+      "/$defs/calibrateData/properties/precision": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged."
     }
   },
   "findings": {
     "descriptions": {
-      "": "What post/record write per bundle. Derived from validate_and_merge in the verdict CLI: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
+      "": "What post/record write per bundle. Derived from validate_and_merge in the verdict CLI: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity and category to the enum-or-null (unknown category values warn and read null), kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
       "/$defs/entry/properties/sig": "Stable cross-run join key: SHA-1 of path + heading + body, whitespace-squashed.",
       "/$defs/entry/properties/sig_version": "Normalization generation; backfilled onto older entries, never clobbered.",
       "/$defs/entry/properties/path": "Inline findings only.",
@@ -145,7 +150,8 @@
       "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each.",
       "/$defs/briefSite/properties/path": "A changed file path.",
       "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file.",
-      "/$defs/entry/properties/rigor_source": "Where the recorded rung came from: model when the review set it, default when the checker filled said, verified reserved for later."
+      "/$defs/entry/properties/rigor_source": "Where the recorded rung came from: model when the review set it, default when the checker filled said, verified reserved for later.",
+      "/$defs/entry/properties/category": "Optional agent-supplied taxonomy; absent and null group as untagged in report, calibrate, and trend. Never part of the sig."
     }
   },
   "post": {
@@ -176,7 +182,7 @@
   },
   "review": {
     "descriptions": {
-      "": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
+      "": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, an unknown or non-string category (warns once, stores null), brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
       "/properties/schema_version": "Agents stamp \"1\"; missing warns, any other value refuses.",
       "/properties/body": "Full review text, verdict marker first line. Missing, non-string, or degenerate text (<20 chars with no verdict marker, or a short placeholder) refuses.",
       "/properties/approved": "Binding ask; the CLI --bind/--request-changes flags win over this. A non-boolean refuses.",
@@ -203,7 +209,8 @@
       "/$defs/brief/properties/approach": "Optional suggested approach, 10–1,000 characters; a non-string or out-of-range value refuses.",
       "/$defs/brief/properties/questions": "Optional questions for the human, at most 10 of 10–300 characters each; non-array/non-string or an out-of-range or past-cap question refuses.",
       "/$defs/briefSite/properties/path": "A changed file path.",
-      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file."
+      "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file.",
+      "/$defs/comment/properties/category": "Optional closed taxonomy: logic|edge-case|security|performance|accidental-commit|style|docs|other. Unknown or non-string values warn once and store null; never inferred from prose, path, severity, or rule. Explicit null clears a stored label on re-post; absent preserves it."
     }
   },
   "threads": {

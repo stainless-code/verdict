@@ -2,6 +2,7 @@ exit: 0
 --- stdout ---
 report: .review/local-work (1 shown) open=1 head=aaaaaaa
 1. [open] notes.txt:2 (a3333333)
+by category: untagged 1
 next: address open threads
 --- stderr ---
 

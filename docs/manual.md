@@ -549,6 +549,15 @@ Compose it after the expensive step: gate the merge on `--check critical`,
 keep `post`'s preflight as the fail-closed backstop — the gate advises,
 the human still merges.
 
+`report --category <cat>` filters the ranked findings to one finding kind
+(`logic`, `edge-case`, `security`, `performance`, `accidental-commit`,
+`style`, `docs`, `other`; unknown values are a `bad-category` usage error),
+and `report --check <tier> --category <cat>` gates only that class — a
+category narrows which findings count, never substitutes for severity,
+anchor, or rigor. The category is agent-supplied evidence on each inline
+comment (never inferred, never part of the finding's `sig`); absent and
+`null` both read untagged in `report`, `calibrate`, and `trend`.
+
 `report --completeness` answers a second question from the same read — "is
 HEAD reviewed?" — by comparing the bundle's fetched HEAD against the local
 completed-post record (`post.json`, written only by a real `post`):

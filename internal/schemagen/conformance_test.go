@@ -337,7 +337,7 @@ func compareReportData(t *testing.T, got *core.ReportData, modeled *ReportData) 
 	if !reflect.DeepEqual(modeled.Head, got.Head) {
 		t.Errorf("head = %+v, want %+v", modeled.Head, got.Head)
 	}
-	if modeled.Verdict != got.Verdict || modeled.Counts != got.Counts {
+	if modeled.Verdict != got.Verdict || !reflect.DeepEqual(modeled.Counts, got.Counts) {
 		t.Errorf("tallies = %+v %+v", modeled.Verdict, modeled.Counts)
 	}
 	if !reflect.DeepEqual(modeled.Panel, got.Panel) {

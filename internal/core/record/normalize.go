@@ -368,6 +368,8 @@ func normalizeComment(m *jq.Obj, base string) []Problem {
 			repairs = append(repairs, normalizeRigor(m, key, v, base)...)
 		case fieldSeverity:
 			repairs = append(repairs, normalizeEnum(m, key, v, base, reviewKeys)...)
+		case fieldCategory:
+			repairs = append(repairs, normalizeEnum(m, key, v, base, core.CategoryValues)...)
 		case fieldSide:
 			repairs = append(repairs, normalizeSide(m, key, v, base)...)
 		case "kb":

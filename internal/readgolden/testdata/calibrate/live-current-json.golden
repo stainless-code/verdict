@@ -23,6 +23,7 @@ exit: 0
         "sig": "c111111111111111111111111111111111111111",
         "status": "open",
         "severity": "critical",
+        "category": null,
         "locator": "notes.txt:2",
         "outcome": "resolved-unfixed",
         "detail": "thread resolved but cited file unchanged since review head",
@@ -34,6 +35,7 @@ exit: 0
         "sig": "b222222222222222222222222222222222222222",
         "status": "open",
         "severity": "important",
+        "category": null,
         "locator": "notes.txt:2",
         "outcome": "open",
         "detail": "thread still open"
@@ -42,6 +44,7 @@ exit: 0
         "sig": "d444444444444444444444444444444444444444",
         "status": "addressed",
         "severity": "important",
+        "category": null,
         "locator": "notes.txt:2",
         "outcome": "unknown",
         "detail": "comment not found live",
@@ -53,6 +56,7 @@ exit: 0
         "sig": "f666666666666666666666666666666666666666",
         "status": "open",
         "severity": "informational",
+        "category": null,
         "locator": "?",
         "outcome": "unknown",
         "detail": "body section — not a thread comment"
@@ -82,6 +86,16 @@ exit: 0
           "resolved_unfixed": 0,
           "open": 0,
           "unknown": 1
+        }
+      },
+      "by_category": {
+        "untagged": {
+          "fixed": 0,
+          "resolved_unfixed": 1,
+          "open": 1,
+          "unknown": 2,
+          "judged": 2,
+          "resolution_rate": 0
         }
       }
     },

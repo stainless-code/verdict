@@ -2,6 +2,7 @@ exit: 1
 --- stdout ---
 report: .review/5101 (1 shown) open=1 head=aaaaaaa
 1. [open] notes.txt:2 (c1111111)
+by category: untagged 1
 next: address open threads
 --- stderr ---
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)

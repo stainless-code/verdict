@@ -257,7 +257,7 @@ func TestFindingEntryWireOrder(t *testing.T) {
 		History: []core.HistoryEvent{{At: "t", Event: "reported"}},
 	}
 	wantSection := []string{
-		"kind", "heading", "anchored", "body", "severity",
+		"kind", "heading", "anchored", "body", "severity", "category",
 		"sig", "sig_version", "firstSeen", "lastSeen", "status", "rationale", "kb", "history",
 	}
 	if got := section.Wire().Keys; strings.Join(got, ",") != strings.Join(wantSection, ",") {

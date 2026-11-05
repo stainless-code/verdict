@@ -22,17 +22,18 @@ const (
 )
 
 type rollup struct {
-	byStatus  map[string]int
-	byTier    map[string]int
-	tools     []any
-	models    []any
-	hashes    []any
-	periods   []period
-	bundles   int
-	findings  int
-	open      int
-	addressed int
-	closed    int
+	byStatus   map[string]int
+	byTier     map[string]int
+	byCategory map[string]int
+	tools      []any
+	models     []any
+	hashes     []any
+	periods    []period
+	bundles    int
+	findings   int
+	open       int
+	addressed  int
+	closed     int
 }
 
 type period struct {
@@ -54,6 +55,7 @@ func rollupRows(rows []row) rollup {
 		byTier: map[string]int{
 			tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
 		},
+		byCategory: map[string]int{},
 	}
 	for i := range rows {
 		r := &rows[i]
@@ -67,6 +69,9 @@ func rollupRows(rows []row) rollup {
 		}
 		for k, v := range r.byTier {
 			out.byTier[k] += v
+		}
+		for k, v := range r.byCategory {
+			out.byCategory[k] += v
 		}
 		out.tools = append(out.tools, provField(r.prov, "tool_version"))
 		out.models = append(out.models, provField(r.prov, "model"))
@@ -177,6 +182,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 			statusDeferred, out.byStatus[statusDeferred],
 		),
 		"by_tier", tierDoc(out.byTier),
+		"by_category", categoryDoc(out.byCategory),
 		"provenance", jq.NewObj(
 			"tools", anyList(out.tools),
 			"models", anyList(out.models),
@@ -193,6 +199,21 @@ func tierDoc(counts map[string]int) *jq.Obj {
 		tierInformational, counts[tierInformational],
 		tierUntagged, counts[tierUntagged],
 	)
+}
+
+// categoryDoc renders one sparse category tally in sorted key order: only
+// observed categories appear, with untagged for null entries.
+func categoryDoc(counts map[string]int) *jq.Obj {
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	o := jq.NewObj()
+	for _, k := range keys {
+		o.Set(k, counts[k])
+	}
+	return o
 }
 
 func anyList(vals []any) []any {
@@ -225,6 +246,7 @@ func rowDoc(r *row) *jq.Obj {
 			statusDeferred, r.byStatus[statusDeferred],
 		),
 		"by_tier", tierDoc(r.byTier),
+		"by_category", categoryDoc(r.byCategory),
 	)
 }
 

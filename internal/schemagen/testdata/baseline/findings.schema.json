@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/findings.schema.json",
   "title": "findings.json — merged findings store",
-  "description": "What post/record write per bundle. Derived from validate_and_merge in the verdict CLI: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity to the enum-or-null, kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
+  "description": "What post/record write per bundle. Derived from validate_and_merge in the verdict CLI: stable line-number-free sigs, append-only history, re-post merges that keep prior fields ($prev + new, so unknown keys pass through — this schema allows them). rigor is always normalized to the enum, severity and category to the enum-or-null (unknown category values warn and read null), kb defaults to []. Section entries carry anchored:\"body\" instead of a boolean.",
   "type": "array",
   "items": { "$ref": "#/$defs/entry" },
   "$defs": {
@@ -57,6 +57,20 @@
         },
         "severity": {
           "enum": ["critical", "important", "informational", null]
+        },
+        "category": {
+          "description": "Optional agent-supplied taxonomy; absent and null group as untagged in report, calibrate, and trend. Never part of the sig.",
+          "enum": [
+            "logic",
+            "edge-case",
+            "security",
+            "performance",
+            "accidental-commit",
+            "style",
+            "docs",
+            "other",
+            null
+          ]
         },
         "status": {
           "enum": [

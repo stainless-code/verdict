@@ -2,6 +2,7 @@ package reportcore
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -56,7 +57,7 @@ func buildData(st *state) *core.ReportData {
 		Panel:   panelValue(st),
 		Patch:   st.patch,
 		Output:  outputVal(st.flags.Output),
-		Filters: core.ReportFilters{Status: st.flags.Status, Kind: st.flags.Kind},
+		Filters: core.ReportFilters{Status: st.flags.Status, Kind: st.flags.Kind, Category: outputVal(st.flags.Category)},
 		Items:   envelopeItems(st.ranked),
 	}
 	if st.cost != nil {
@@ -210,6 +211,11 @@ func buildHuman(st *state) []string {
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
 	}
+	if st.flags.Category == "" {
+		if line := categoryHuman(st.counts.ByCategory); line != "" {
+			lines = append(lines, line)
+		}
+	}
 	if st.flags.Cost {
 		lines = append(lines, costHuman(st)...)
 	}
@@ -227,6 +233,25 @@ func sigHuman(entry any) string {
 		return readcommon.Prefix(sig)
 	}
 	return jq.Str(readcommon.FieldOf(entry, "sig"))
+}
+
+// categoryHuman renders the whole-store category group line: every non-zero
+// category in wire order, untagged last when non-zero. Empty when the store
+// holds no findings, so empty stores print exactly today's lines.
+func categoryHuman(counts map[string]int) string {
+	parts := make([]string, 0, len(core.CategoryValues)+1)
+	for _, c := range core.CategoryValues {
+		if counts[c] > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", c, counts[c]))
+		}
+	}
+	if counts[core.CategoryUntagged] > 0 {
+		parts = append(parts, fmt.Sprintf("%s %d", core.CategoryUntagged, counts[core.CategoryUntagged]))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "by category: " + strings.Join(parts, ", ")
 }
 
 func costHuman(st *state) []string {
@@ -367,23 +392,32 @@ func gateChecks(st *state) []gateCheck {
 }
 
 func gateTierCheck(st *state) gateCheck {
-	n := tierHits(st.entries, st.flags.Check)
+	n := tierHits(st.entries, st.flags.Check, st.flags.Category)
 	if n > 0 {
 		return gateCheck{
 			dim: core.GateDimension{
 				ID: dimFindings, Status: dimFail, Count: new(n),
-				Detail: fmt.Sprintf("%d open finding(s) at-or-above %s", n, st.flags.Check),
+				Detail: fmt.Sprintf("%d open finding(s) at-or-above %s%s", n, st.flags.Check, inCategory(st)),
 			},
-			line: fmt.Sprintf("check: %d open finding(s) at-or-above %s — gate fails", n, st.flags.Check),
+			line: fmt.Sprintf("check: %d open finding(s) at-or-above %s%s — gate fails", n, st.flags.Check, inCategory(st)),
 		}
 	}
 	return gateCheck{
 		dim: core.GateDimension{
 			ID: dimFindings, Status: dimPass, Count: new(n),
-			Detail: "no open findings at-or-above " + st.flags.Check,
+			Detail: "no open findings at-or-above " + st.flags.Check + inCategory(st),
 		},
-		line: "check: no open findings at-or-above " + st.flags.Check + " — gate passes",
+		line: "check: no open findings at-or-above " + st.flags.Check + inCategory(st) + " — gate passes",
 	}
+}
+
+// inCategory names the gated category for check lines, empty when the gate
+// spans every category.
+func inCategory(st *state) string {
+	if st.flags.Category == "" {
+		return ""
+	}
+	return " in " + st.flags.Category
 }
 
 func gateCompletenessCheck(st *state) gateCheck {
@@ -483,18 +517,27 @@ func liveSkipReason(st *state) string {
 	return providerName(st.dir) + " threads unreadable here"
 }
 
-func tierHits(entries []any, tier string) int {
+func tierHits(entries []any, tier, category string) int {
 	threshold := map[string]int{tierCritical: 0, tierImportant: 1, tierInformational: 2}[tier]
 	n := 0
 	for _, e := range entries {
-		if readcommon.StatusOf(e) != statusOpen {
-			continue
-		}
-		if sevRankOf(e) <= threshold {
+		if tierHit(e, threshold, category) {
 			n++
 		}
 	}
 	return n
+}
+
+// tierHit reports whether one open finding meets the gate tier inside the
+// gated category: an empty category gates every class.
+func tierHit(e any, threshold int, category string) bool {
+	if readcommon.StatusOf(e) != statusOpen {
+		return false
+	}
+	if category != "" && core.CategoryOf(e) != category {
+		return false
+	}
+	return sevRankOf(e) <= threshold
 }
 
 const sevRankUntagged = 3
