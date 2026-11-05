@@ -32,7 +32,10 @@ var publishedSemantics = map[string]string{
 	// additive corpus bug also_lines (optional integer array of alternate
 	// anchors for the same defect, same window and naming rule, one match per
 	// bug); no existing property, required key, or type changed.
-	"corpus.schema.json": "0fce2e3df1d4b88822e585394cf9d42311b4728522c18bfce2ac2a7a0a9bf814",
+	// also_lines items now carry minimum 1 to match the calibrate runtime,
+	// which rejects nonpositive anchors as corpus-invalid; outer array
+	// unchanged.
+	"corpus.schema.json": "86ad631c0e4a7b10bf2160f231adf2639ba06fa595dec47cd5dd0d954b2c6391",
 	"cost.schema.json":   "81e6a11f4731b7060f8975db80b01d595a3dd2e0f06bbf6372d1501810609be2",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json

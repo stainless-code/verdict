@@ -19,6 +19,7 @@ import (
 //   - anyOf:"null" emits the null-or-$ref union;
 //   - enum/const tags emit enum/const without a type, exactly like the
 //     committed schemas;
+//   - items_min:"N" puts minimum N on integer array items, never the array;
 //   - named structs become $ref entries in $defs; anonymous structs inline;
 //   - map[string]any is an open object; any is an empty (accept-anything)
 //     schema; []any is an array without items.

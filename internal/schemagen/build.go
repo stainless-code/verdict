@@ -22,6 +22,7 @@ const (
 	keyEnum                 = "enum"
 	keyMinimum              = "minimum"
 	keyMaximum              = "maximum"
+	keyItemsMinimum         = "items_min"
 	keyFormat               = "format"
 	keyPattern              = "pattern"
 	typeObject              = "object"
@@ -489,7 +490,10 @@ func (b *builder) plainNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 		base = base.Elem()
 		nullable = true
 	}
-	schema, err := b.baseNode(base)
+	if tag.Get(keyItemsMinimum) != "" && base.Kind() != reflect.Slice {
+		return nil, errorf("%s: items_min needs a slice", typ)
+	}
+	schema, err := b.baseNode(base, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +507,7 @@ func (b *builder) plainNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 	return schema, nil
 }
 
-func (b *builder) baseNode(typ reflect.Type) (*node, error) {
+func (b *builder) baseNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	switch typ.Kind() {
 	case reflect.Interface:
 		if typ.NumMethod() != 0 {
@@ -519,7 +523,7 @@ func (b *builder) baseNode(typ reflect.Type) (*node, error) {
 	case reflect.Float32, reflect.Float64:
 		return object(false, member{keyType, stringNode(typeNumber)}), nil
 	case reflect.Slice:
-		return b.sliceNode(typ)
+		return b.sliceNode(typ, tag)
 	case reflect.Map:
 		return b.mapNode(typ)
 	case reflect.Struct:
@@ -532,14 +536,25 @@ func (b *builder) baseNode(typ reflect.Type) (*node, error) {
 	}
 }
 
-func (b *builder) sliceNode(typ reflect.Type) (*node, error) {
+func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	elem := typ.Elem()
 	if elem == interfaceType {
+		if tag.Get(keyItemsMinimum) != "" {
+			return nil, errorf("%s: items_min needs item keywords", typ)
+		}
 		return object(true, member{keyType, stringNode(typeArray)}), nil
 	}
 	items, err := b.typeNode(elem, "")
 	if err != nil {
 		return nil, err
+	}
+	if minimum := tag.Get(keyItemsMinimum); minimum != "" {
+		switch elem.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			items.members = append(items.members, member{keyMinimum, numberNode(minimum)})
+		default:
+			return nil, errorf("%s: items_min needs integer items", typ)
+		}
 	}
 	return object(true, member{keyType, stringNode(typeArray)}, member{keyItems, items}), nil
 }

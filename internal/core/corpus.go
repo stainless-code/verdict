@@ -40,6 +40,6 @@ type CorpusBug struct { //nolint:govet // field order is the published property 
 	Kind      string   `json:"kind"`
 	Severity  string   `enum:"critical|important|informational" json:"severity"`
 	Keywords  []string `json:"keywords,omitempty"`
-	AlsoLines []int    `json:"also_lines,omitempty"`
+	AlsoLines []int    `items_min:"1"                           json:"also_lines,omitempty"`
 	Note      string   `json:"note,omitempty"`
 }
