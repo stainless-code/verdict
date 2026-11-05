@@ -144,14 +144,39 @@ func ApplyBasisLine(expected, body string) (string, *core.Problem) {
 	return insertBasisLine(lines, computed)
 }
 
-// basisLineIndex finds the first "> Basis:" line.
+// basisLineIndex finds the first "> Basis:" line in the leading quote block,
+// skipping fenced regions. The search stops at the first non-blank line that
+// is not a quote, so a Basis-looking line inside a fence or a quoted prior
+// review is never rewritten.
 func basisLineIndex(lines []string) (int, bool) {
+	inFence := false
 	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, ">") {
+			return 0, false
+		}
+		if basisFenceLine(trimmed) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		if basisLineRe.MatchString(line) {
 			return i, true
 		}
 	}
 	return 0, false
+}
+
+// basisFenceLine reports a markdown fence marker, bare or quoted, so a fenced
+// example inside the leading quote block never reads as a Basis line.
+func basisFenceLine(trimmed string) bool {
+	s := strings.TrimSpace(strings.TrimPrefix(trimmed, ">"))
+	return s == fencePrefix || fenceOpenLine(s)
 }
 
 // replaceBasisLine swaps a disagreeing Basis line for the computed counts;
@@ -172,7 +197,8 @@ func replaceBasisLine(body string, lines []string, i int, computed, expected str
 	}
 }
 
-// insertBasisLine adds the computed Basis line under the confidence lead.
+// insertBasisLine adds the computed Basis line under the confidence lead,
+// keeping a blank line before a following heading.
 func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
 	at := 0
 	for i, line := range lines {
@@ -185,7 +211,13 @@ func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
 		}
 		at = i + 1
 	}
-	lines = append(lines[:at], append([]string{computed}, lines[at:]...)...)
+	insert := []string{computed}
+	if at < len(lines) {
+		if trimmed := strings.TrimSpace(lines[at]); trimmed != "" && strings.HasPrefix(trimmed, "#") {
+			insert = append(insert, "")
+		}
+	}
+	lines = append(lines[:at], append(insert, lines[at:]...)...)
 	return strings.Join(lines, newline), &core.Problem{
 		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
 		Message: "no basis line — inserted the computed counts (basis-replaced)",

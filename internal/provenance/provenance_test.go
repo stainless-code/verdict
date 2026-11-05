@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -254,5 +255,46 @@ func checkInsertedBasis(t *testing.T, expected string) {
 	}
 	if got != "> ✅ body\n> Basis: "+expected {
 		t.Errorf("missing body = %q", got)
+	}
+}
+
+// TestApplyBasisLineSkipsFencedBasis proves a Basis-looking line inside a
+// fenced example is never rewritten: the CLI inserts the computed line under
+// the lead and leaves the fenced example byte-identical.
+func TestApplyBasisLineSkipsFencedBasis(t *testing.T) {
+	t.Parallel()
+	const expected = "0 0 0 1 0 0 0"
+	for name, body := range map[string]string{
+		"bare-fence":   "> ✅ Reviewed.\n\n```\n> Basis: 9 9 9 9 9 9 9\n```",
+		"quoted-fence": "> ✅ Reviewed.\n> ```\n> Basis: 9 9 9 9 9 9 9\n> ```\n> Tail",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, p := provenance.ApplyBasisLine(expected, body)
+			if p == nil || p.Code != core.ProblemCodeBasisReplaced {
+				t.Fatalf("missing problem = %+v", p)
+			}
+			if !strings.Contains(got, "> Basis: "+expected) {
+				t.Errorf("computed line missing:\n%s", got)
+			}
+			if !strings.Contains(got, "> Basis: 9 9 9 9 9 9 9") {
+				t.Errorf("fenced example rewritten:\n%s", got)
+			}
+		})
+	}
+}
+
+// TestApplyBasisLineInsertsBlankBeforeHeading proves an inserted Basis line
+// keeps a blank line before a following heading instead of sitting directly
+// above it.
+func TestApplyBasisLineInsertsBlankBeforeHeading(t *testing.T) {
+	t.Parallel()
+	const expected = "0 0 0 1 0 0 0"
+	got, p := provenance.ApplyBasisLine(expected, "> ✅ Reviewed.\n## Summary")
+	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
+		t.Fatalf("missing problem = %+v", p)
+	}
+	if want := "> ✅ Reviewed.\n> Basis: " + expected + "\n\n## Summary"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
 	}
 }
