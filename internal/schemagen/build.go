@@ -585,6 +585,9 @@ func nullableNode(schema *node, base reflect.Type) (*node, error) {
 
 func typeListNode(spec string) *node {
 	parts := strings.Split(spec, "|")
+	if len(parts) == 1 {
+		return object(false, member{keyType, stringNode(parts[0])})
+	}
 	elems := make([]*node, 0, len(parts))
 	for _, part := range parts {
 		elems = append(elems, stringNode(part))

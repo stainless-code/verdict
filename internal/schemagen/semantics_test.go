@@ -57,7 +57,9 @@ var publishedSemantics = map[string]string{
 	// review normalization: additive repair codes on problem.code, additive
 	// $defs/repair, and optional normalized/repairs on recordData. Additions
 	// only; no existing property, required key, or type changed.
-	"envelope.schema.json": "610e97c8e613a76e6358b649ff7043c96d6ddf02761634ec010806d7fbe1953f",
+	// recordData.normalized now carries "type": "object" so the schema refuses
+	// a string or array where the description promises the review object.
+	"envelope.schema.json": "3d8581da900764dd4f63fa2c750a9e6c60d39c5b367c8642e5f4a1a4e8c60584",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

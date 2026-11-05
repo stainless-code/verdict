@@ -469,7 +469,8 @@
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/checkSummary" }]
         },
         "normalized": {
-          "description": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object."
+          "description": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object.",
+          "type": "object"
         },
         "repairs": {
           "description": "Present on record --dry-run: every safe review.json rewrite applied, in document order.",
