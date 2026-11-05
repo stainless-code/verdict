@@ -103,7 +103,6 @@ m0="$(mark)"
 run_review record acme/app local-ghost --json
 assert_exit "record before any fetch exits 1" 1
 assert_refusal "record before any fetch" "missing-review-file"
-snap "$EVAL_SANDBOX/.review/local-ghost" "$EVAL_SANDBOX/s0.snap"
 if [ ! -e "$EVAL_SANDBOX/.review/local-ghost" ]; then
   good "record before fetch created no bundle dir"
 else
@@ -124,7 +123,6 @@ run_review record acme/app local-empty --json
 assert_exit "record on an empty bundle dir exits 1" 1
 assert_refusal "record on an empty bundle dir" "missing-review-file"
 way_forward "record on an empty bundle dir"
-snap "$EVAL_SANDBOX/.review/local-empty" "$EVAL_SANDBOX/s1.snap"
 if [ -z "$(ls -A "$EVAL_SANDBOX/.review/local-empty")" ]; then
   good "record on an empty dir wrote nothing into it"
 else
@@ -232,8 +230,8 @@ if [ "$(reviews_since "$m0")" -eq 1 ] && [ -f "$EVAL_SANDBOX/.review/$PR/post.js
 else
   bad "recovery post made $(reviews_since "$m0") reviews calls"
 fi
-if jq -e '.id == 101' "$EVAL_SANDBOX/payload.json" >/dev/null 2>&1 || jq -e 'has("body") or has("event")' "$EVAL_SANDBOX/payload.json" >/dev/null 2>&1; then
-  good "posted payload is well-formed JSON"
+if jq -e 'has("body")' "$EVAL_SANDBOX/payload.json" >/dev/null 2>&1; then
+  good "posted payload carries the review body"
 else
   bad "posted payload is malformed"
 fi
