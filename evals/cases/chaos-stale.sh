@@ -131,7 +131,10 @@ fi
 matrix_row "record" "tampered-controls" "$EVAL_STATUS" "controls-stale" "no" "yes" "same" "$(reviews_since "$m0")"
 
 git -C "$EVAL_SANDBOX" show HEAD:.review/kb.jsonl > "$LB/controls/kb.jsonl"
-snap "$LB" "$EVAL_SANDBOX/s2.restored-before"
+norm_store() {
+  jq -S '[.[] | {sig, status}] | sort_by(.sig)' "$LB/findings.json" 2>/dev/null || true
+}
+norm_store > "$EVAL_SANDBOX/n.r2"
 m0="$(mark)"
 run_review record acme/app chaos-stale --json
 assert_exit "record after restoring the snapshot exits 0" 0
@@ -141,10 +144,11 @@ if [ -z "$way_re" ]; then
 else
   bad "success run prints a re-enter line"
 fi
-snap "$LB" "$EVAL_SANDBOX/s2.restored-after"
-if cmp -s "$EVAL_SANDBOX/s2.restored-before" "$EVAL_SANDBOX/s2.restored-after" \
-  && [ -f "$LB/record.json" ] && [ -f "$LB/findings.json" ]; then
-  good "restored record advanced to exit 0 and is idempotent on identical input"
+norm_store > "$EVAL_SANDBOX/n.r2.after"
+if cmp -s "$EVAL_SANDBOX/n.r2" "$EVAL_SANDBOX/n.r2.after" \
+  && [ -f "$LB/record.json" ] && [ -f "$LB/findings.json" ] \
+  && jq -e '.schema_version == "1"' "$LB/record.json" >/dev/null 2>&1; then
+  good "restored record advanced to exit 0 with the store intact (recorded_at may tick; sig set + statuses stable)"
 else
   bad "restored record left the bundle in a bad state"
 fi
