@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -484,12 +485,15 @@ func closeRecord(file *os.File) {
 const maxCostRecordBytes = 1 << 20
 
 // readCostFile reads the record under a hard size cap. A file that cannot
-// be opened is absent; a file over the cap is malformed, never decoded and
+// be found is absent; other open failures and oversized files are malformed,
 // never treated as zero usage.
 func readCostFile(path string) ([]byte, string) {
 	file, err := os.Open(path)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil, LensUsageAbsent
+	}
+	if err != nil {
+		return nil, LensUsageMalformed
 	}
 	defer closeRecord(file)
 	raw, err := io.ReadAll(io.LimitReader(file, maxCostRecordBytes+1))

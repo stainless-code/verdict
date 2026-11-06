@@ -130,7 +130,7 @@ to write dispatches, lenses run under it.
    group you ran, carrying `group` (the `plan.txt` group id), `effort` (that group's resolved
    tier), and optional `est_usd` (the number) — using each group's own tier, never the run
    default or another group's, and omit `est_usd` when you cannot price that group. The record must also carry schema
-   `"schema_version": "2"` with `run` and `inputs_sha256` copied verbatim from `run.json`; a record
+   `"schema_version": "2"`, set `run` to `run.json`'s `name`, and copy `inputs_sha256` unchanged; a record
    without that binding is unknown for this capture. Actual cost stays agent attestation: an
    unknown group cost stays unknown, and one group's actual cost is never split across groups.
 3. **Bar is sound + correct + elegant.** Keep findings that clear all three; tag each with

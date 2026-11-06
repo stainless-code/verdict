@@ -66,8 +66,8 @@
      never "review X, Y, Z");
    - a short hypothesis label (`webhook-replay`, `billing-rounding`) for log separation, and every
      dispatched label recorded in that run's `cost.json` `lenses` list so the plan's cap leaves a trail
-     (record `"schema_version": "2"`, and copy `run` and `inputs_sha256` verbatim from the current
-     `.verdict/state/N/run.json` — never guess a group label or recompute the hash; a record that is
+     (record `"schema_version": "2"`, set `run` to the current `run.json` file's `name`, and copy
+     `inputs_sha256` unchanged from `.verdict/state/N/run.json` — never guess a group label or recompute the hash; a record that is
      billing-only may omit both, but it then cannot certify work for this capture, and an old
      schema-1 or bare-string-label record is unknown, not zero):
      one `{"group": "<plan.txt group id>", "labels": [...]}` entry per plan group, naming the stable
@@ -125,8 +125,8 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
    so an honest partial beats a polished nothing. One entry per model that
    generated tokens — you first, then each lens. On chunked bundles write one
    `cost.json` total, rolling up every model that generated tokens across the run. A record that
-   certifies work for this capture is schema `"2"` and copies the bundle's `run` and
-   `inputs_sha256` verbatim from `run.json`: without that binding the record is unknown for this
+   certifies work for this capture is schema `"2"`, sets `run` to `run.json`'s `name`, and copies
+   `inputs_sha256` unchanged from `run.json`: without that binding the record is unknown for this
    capture, never zero and never a pass. Write one `lenses` entry per plan group as
    `{"group": "<stable plan.txt group id>", "labels": [...]}` — the same grouped shape recorded in
    SKILL.md, never a flat list of labels — and one `group_costs` entry per group you actually ran:

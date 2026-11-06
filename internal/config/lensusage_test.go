@@ -369,3 +369,9 @@ func TestCostRecordEncodesGroupedLenses(t *testing.T) {
 		t.Fatalf("cost record = %s, want %s", raw, want)
 	}
 }
+
+// TestReadLensUsageOpenFailureStaysUnreadable distinguishes failed reads from
+// a missing record without relying on the process's filesystem permissions.
+func TestReadLensUsageOpenFailureStaysUnreadable(t *testing.T) {
+	assertReaderState(t, filepath.Join(t.TempDir(), "invalid\x00path"), LensUsageMalformed)
+}

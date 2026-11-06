@@ -443,8 +443,8 @@ when they stay out of the payload), `report` renders below-floor findings out
 of the view while gates keep the full set, and every check execution appends
 an observation to the bundle. `verdict config <owner/repo> <pr> --explain`
 renders the stored policy; `--preview [--file <path>]` resolves a proposed
-file (or the trusted inventory, else the no-policy layers) with current
-settings and environment. Explain and preview perform no live calls, no exec,
+file or the captured inventory with current settings and environment. Without
+a capture, repository inputs are reported as unavailable. Explain and preview perform no live calls, no exec,
 and no writes, and never approve. The full rule table lives in
 `docs/policy-contract.md`.
 
