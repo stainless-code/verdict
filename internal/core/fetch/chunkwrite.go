@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -57,28 +56,18 @@ func maybeWriteChunks(
 // withholdChunkFiles drops privacy-excluded files from the chunk
 // table before any chunk byte is written: the raw full.diff keeps every
 // file for patch identity, while chunk payloads never carry excluded
-// content.
+// content. Either rename endpoint of a section triggers the drop.
 func withholdChunkFiles(table []fileSlice, exclusions []string) []fileSlice {
 	if len(exclusions) == 0 {
 		return table
 	}
 	kept := table[:0]
 	for _, entry := range table {
-		if !excludedBy(entry.path, exclusions) {
+		if !excludedEndpoint(entry.path, entry.oldPath, exclusions) {
 			kept = append(kept, entry)
 		}
 	}
 	return kept
-}
-
-// excludedBy reports whether a privacy exclusion glob covers path.
-func excludedBy(path string, exclusions []string) bool {
-	for _, glob := range exclusions {
-		if config.Match(glob, path) {
-			return true
-		}
-	}
-	return false
 }
 
 // slicePlan owns the plan slice with its typed failure: a missing chunk

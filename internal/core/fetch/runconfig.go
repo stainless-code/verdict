@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -404,7 +405,7 @@ func finalizeLocalRun(
 		return nil
 	}
 	if ref := rc.resolveLocalPhaseTwo(
-		ctx, ctx2.runner.commander, baseSHA, f.ChunkFlag, listedInputs(listed), req.SettingsPath,
+		ctx, ctx2.runner.commander, baseSHA, f.ChunkFlag, listedInputs(ctx2.dir, listed), req.SettingsPath,
 	); ref != nil {
 		return ref
 	}
@@ -413,17 +414,66 @@ func finalizeLocalRun(
 	return rc.persistRunBundle(ctx2.runner.controls, ctx2.dir, name, core.NowUTC(ctx2.runner.Now()))
 }
 
-// listedInputs converts the local stats file list to resolution inputs:
-// renames have no old-path record locally, so matching covers the new
-// paths the diff names.
-func listedInputs(listed string) []config.FileInput {
-	var out []config.FileInput
+// listedInputs converts the local stats file list to resolution inputs: the
+// captured diff's rename record joins each listed new path to its old path,
+// and the old path's own list entry folds into that join instead of standing
+// as a second, ghost file. A rename therefore carries both paths through
+// scope matching — and both paths' clauses, defaults, and provenance with it.
+func listedInputs(dir, listed string) []config.FileInput {
+	paths := listedPaths(listed)
+	previous, folded := localRenames(dir, paths)
+	out := make([]config.FileInput, 0, len(paths))
+	for _, path := range paths {
+		if folded[path] {
+			continue
+		}
+		out = append(out, config.FileInput{Path: path, OldPath: previous[path]})
+	}
+	return out
+}
+
+// listedPaths splits the local stats file list into paths, blank lines gone.
+func listedPaths(listed string) []string {
+	var out []string
 	for line := range strings.SplitSeq(listed, "\n") {
 		if path := strings.TrimSpace(line); path != "" {
-			out = append(out, config.FileInput{Path: path})
+			out = append(out, path)
 		}
 	}
 	return out
+}
+
+// localRenames reads the captured diff's own rename record: each new path
+// maps to the old path its section header names (quote-safe), and each old
+// path that joins one is marked folded so it stops being a file of its own.
+// Both sides must be in the listed set, so a pathspec-filtered diff never
+// hands back a pair the file list does not describe. Old paths are never
+// inferred from a basename: a section counts only when Git recorded the
+// rename itself.
+func localRenames(dir string, listed []string) (previous map[string]string, folded map[string]bool) {
+	sections := hunks.Files(readOptional(dir + suffixFullDiff))
+	if len(sections) == 0 {
+		return nil, nil
+	}
+	members := make(map[string]bool, len(listed))
+	for _, path := range listed {
+		members[path] = true
+	}
+	previous = make(map[string]string, len(sections))
+	folded = make(map[string]bool, len(sections))
+	for i := range sections {
+		oldPath, newPath := sections[i].OldPath, sections[i].Path
+		if oldPath == "" || newPath == "" || oldPath == newPath || !members[oldPath] || !members[newPath] {
+			continue
+		}
+		previous[newPath] = oldPath
+		folded[oldPath] = true
+	}
+	for newPath := range previous {
+		// A path renamed twice stays an input in its own right.
+		delete(folded, newPath)
+	}
+	return previous, folded
 }
 
 // writeTailReceipt records one fresh receipt for a consented over-budget

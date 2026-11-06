@@ -107,7 +107,7 @@ func localResolve(
 ) *core.RefusalError {
 	rc := ctx2.runCfg
 	if err := rc.resolveLocalPhaseTwo(
-		ctx, ctx2.runner.commander, mode.baseSHA, f.ChunkFlag, listedInputs(listed), req.SettingsPath,
+		ctx, ctx2.runner.commander, mode.baseSHA, f.ChunkFlag, listedInputs(ctx2.dir, listed), req.SettingsPath,
 	); err != nil {
 		return err
 	}

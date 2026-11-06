@@ -150,10 +150,13 @@ func printSplitCandidates(r *session, cands []any) {
 	}
 }
 
-// fileSlice is one file's byte size in diff order.
+// fileSlice is one file's byte size in diff order. oldPath carries the
+// pre-rename path when the section renamed it, so privacy matching sees
+// both endpoints; every other consumer reads path and size only.
 type fileSlice struct {
-	path string
-	size int64
+	path    string
+	oldPath string
+	size    int64
 }
 
 func chunkFileTable(fullDiff string) []fileSlice {
@@ -164,7 +167,7 @@ func chunkFileTable(fullDiff string) []fileSlice {
 	sections := hunks.Files(string(raw))
 	out := make([]fileSlice, 0, len(sections))
 	for i := range sections {
-		out = append(out, fileSlice{path: sections[i].Path, size: sections[i].Size})
+		out = append(out, fileSlice{path: sections[i].Path, oldPath: sections[i].OldPath, size: sections[i].Size})
 	}
 	return out
 }
