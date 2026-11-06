@@ -29,7 +29,18 @@ exit: 0
       "inline": 1,
       "section": 0,
       "anchored": 1,
-      "unanchored": 0
+      "unanchored": 0,
+      "by_category": {
+        "accidental-commit": 0,
+        "docs": 0,
+        "edge-case": 0,
+        "logic": 0,
+        "other": 0,
+        "performance": 0,
+        "security": 0,
+        "style": 0,
+        "untagged": 1
+      }
     },
     "panel": {
       "source": null,
@@ -39,7 +50,8 @@ exit: 0
     "output": null,
     "filters": {
       "status": "all",
-      "kind": "all"
+      "kind": "all",
+      "category": null
     },
     "items": [
       {

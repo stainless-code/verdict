@@ -235,6 +235,7 @@ func decodeReport(req *core.ReportRequest, a *args) {
 	a.flags(func(f *args) {
 		f.str(argStatus, &req.Flags.Status)
 		f.str("kind", &req.Flags.Kind)
+		f.str("category", &req.Flags.Category)
 		f.str("output", &req.Flags.Output)
 		f.str("sarif", &req.Flags.Sarif)
 		f.str("check", &req.Flags.Check)

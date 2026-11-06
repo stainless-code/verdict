@@ -23,6 +23,7 @@ func TestSchemaEnums(t *testing.T) {
 		{"triage status", "triage", []string{"status"}, statuses},
 		{"report status", "report", []string{"flags", "status"}, append([]any{"all"}, statuses...)},
 		{"report kind", "report", []string{"flags", "kind"}, []any{"all", "inline", "section"}},
+		{"report category", "report", []string{"flags", "category"}, []any{"logic", "edge-case", "security", "performance", "accidental-commit", "style", "docs", "other"}},
 		{"report check", "report", []string{"flags", "check"}, []any{"critical", "important", "informational"}},
 		{"report live", "report", []string{"flags", "live"}, []any{"auto", "strict", "skip"}},
 		{"next status", "next", []string{"status"}, append([]any{"all"}, statuses...)},

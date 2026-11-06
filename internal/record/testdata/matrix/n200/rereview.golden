@@ -1456,7 +1456,7 @@ warn: $.body: no basis line — inserted the computed counts (basis-replaced)
   1b5fa562  open  body  ### ℹ️ Unanchored observations
 recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-mx/findings.json (size=124231 sha256=1f497053fed0c4e69976ca23389a8e60941e1a7d2d57fb28f1861a0848c40730) ---
+--- file C/.review/local-mx/findings.json (size=124297 sha256=f9fa4ebbc07a8ba8fd169454ee0e75a7330b86610315cccd41423c6bcce021f2) ---
 --- file C/.review/local-mx/record.json ---
 {
   "schema_version": "1",
@@ -1469,6 +1469,6 @@ recorded: .review/local-mx/findings.json (202 open) + .review/local-mx/record.js
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "66a0179cf58e46a57bbd16f0246527b03d06a49cb6667512d947d5d701d3f33f",
+  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
   "model": null
 }

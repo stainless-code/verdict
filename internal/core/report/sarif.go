@@ -82,6 +82,7 @@ func sarifResult(entry any) *jq.Obj {
 		"ruleId", "verdict/"+sarifKind(entry),
 		"level", sarifLevel(readcommon.FieldOf(entry, "severity")),
 		"message", jq.NewObj("text", message),
+		"properties", jq.NewObj("category", sarifCategory(entry)),
 		"locations", []any{jq.NewObj("physicalLocation", jq.NewObj(
 			"artifactLocation", jq.NewObj("uri", path),
 			"region", region,
@@ -114,4 +115,18 @@ func sarifLevel(sev any) string {
 		}
 	}
 	return "note"
+}
+
+// sarifCategory reads the finding's published category for the SARIF
+// properties block: the label when present, null when untagged.
+func sarifCategory(entry any) any {
+	m, ok := entry.(*jq.Obj)
+	if !ok || m == nil {
+		return nil
+	}
+	v, _ := m.Get("category")
+	if s, ok := v.(string); ok && core.ValidCategory(s) {
+		return s
+	}
+	return nil
 }

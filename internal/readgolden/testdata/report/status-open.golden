@@ -5,6 +5,7 @@ report: .review/5101 (4 shown) open=4 head=aaaaaaa
 2. [open] notes.txt:2 (b2222222)
 3. [open] notes.txt:2 (f6666666)
 4. [open] notes.txt:2 (a3333333)
+by category: untagged 6
 next: address open threads
 --- stderr ---
 

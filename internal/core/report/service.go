@@ -25,6 +25,7 @@ const (
 	tierImportant     = "important"
 	tierInformational = "informational"
 	codeCanceled      = "canceled"
+	codeBadCategory   = "bad-category"
 	codeReportFailed  = "report-failed"
 	prJSONSuffix      = "/PR.json"
 	fullDiffSuffix    = "/full.diff"
@@ -47,7 +48,7 @@ const (
 // Flags aliases core's resolved report options.
 type Flags = core.ReportFlags
 
-type state struct { //nolint:govet // field grouping documents the loaded dimensions; alignment is irrelevant here
+type state struct { // field grouping documents the loaded dimensions; alignment is irrelevant here
 	req        *core.ReportRequest
 	flags      Flags
 	warnings   []string
@@ -93,6 +94,9 @@ const (
 // adapter to write.
 func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *core.RefusalError) {
 	flags := normalizeFlags(req)
+	if ref := validateCategory(flags.Category); ref != nil {
+		return nil, ref
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before report completed"}
 	}
@@ -115,6 +119,21 @@ func normalizeFlags(req *core.ReportRequest) Flags {
 	flags.Kind = orDefault(flags.Kind, statusAll)
 	flags.Live = orDefault(flags.Live, liveAuto)
 	return flags
+}
+
+// validateCategory refuses an unknown category filter in core so direct Go
+// API, MCP, and service callers get the same typed bad-category refusal the
+// CLI adapter already reports as exit 2: a filter typo must never read as a
+// passing gate with zero findings.
+func validateCategory(category string) *core.RefusalError {
+	if category == "" || core.ValidCategory(category) {
+		return nil
+	}
+	return &core.RefusalError{
+		Code: codeBadCategory,
+		Message: fmt.Sprintf("report: unknown category '%s' (want %s)",
+			category, strings.Join(core.CategoryValues, "|")),
+	}
 }
 
 func orDefault(v, dflt string) string {
@@ -154,7 +173,7 @@ func loadState(st *state) *core.RefusalError {
 		}
 		st.patch = patch
 	}
-	st.ranked = readcommon.Rank(entries, st.flags.Status, st.flags.Kind)
+	st.ranked = readcommon.Rank(filterCategory(st.entries, st.flags.Category), st.flags.Status, st.flags.Kind)
 	st.nOpen = readcommon.CountStatus(st.ranked, statusOpen)
 	st.nAllOpen = readcommon.CountOpen(entries)
 	st.counts = storeCounts(entries)
@@ -195,7 +214,24 @@ func storeCounts(entries []any) core.ReportCounts {
 		Section:    countKind(entries, kindSection),
 		Anchored:   countInlineAnchored(entries),
 		Unanchored: countInlineLoose(entries),
+		ByCategory: core.CategoryCounts(entries),
 	}
+}
+
+// filterCategory narrows entries to one category for the ranked display; an
+// empty filter reads everything. The gate and the counts keep the whole
+// store and apply the category themselves.
+func filterCategory(entries []any, category string) []any {
+	if category == "" {
+		return entries
+	}
+	kept := make([]any, 0, len(entries))
+	for _, e := range entries {
+		if core.CategoryOf(e) == category {
+			kept = append(kept, e)
+		}
+	}
+	return kept
 }
 
 func countKind(entries []any, kind string) int {

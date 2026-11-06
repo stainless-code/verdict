@@ -66,7 +66,7 @@ var (
 	//nolint:goconst // schema keys are published literals
 	knownCommentKeys = []string{
 		fieldPath, fieldLine, "start_line", fieldSide, "body",
-		"suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldInBoundsInput, "kb",
+		"suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldCategory, fieldInBoundsInput, "kb",
 	}
 	knownTriageKeys  = []string{fieldSig, fieldStatus, problemRationale}
 	knownSectionKeys = []string{"heading", fieldSeverity}
@@ -340,6 +340,8 @@ func (c *checker) checkComment(i int, item any) {
 			c.checkRigor(base, v)
 		case fieldSeverity:
 			c.checkSeverity(base+".severity", v)
+		case fieldCategory:
+			c.checkCategory(base+".category", v)
 		case fieldInBoundsInput:
 			if _, ok := v.(bool); !ok {
 				c.wrongType(base+".in-bounds", "in-bounds must be a boolean", "use true or false", true)
@@ -642,6 +644,28 @@ func (c *checker) checkSeverity(path string, v any) {
 	if !slices.Contains(reviewKeys, s) {
 		c.badEnum(path, fmt.Sprintf("unknown severity %q", s),
 			"use critical|important|informational", "important")
+	}
+}
+
+// checkCategory validates one comment's category without ever refusing: an
+// unknown or non-string value warns and reads null, so a taxonomy typo still
+// posts. Only null reads untagged without a warning; every other non-string
+// (false included) warns exactly once. Absent and null read untagged.
+func (c *checker) checkCategory(path string, v any) {
+	if v == nil {
+		return
+	}
+	s, ok := v.(string)
+	if !ok {
+		c.add(c.problem(path, core.ProblemCodeWrongType, core.ProblemLevelWarning,
+			"category must be a string or null — storing null (want "+strings.Join(core.CategoryValues, "|")+")",
+			"use a published category or omit it", "security"))
+		return
+	}
+	if !slices.Contains(core.CategoryValues, s) {
+		c.add(c.problem(path, core.ProblemCodeBadEnum, core.ProblemLevelWarning,
+			fmt.Sprintf("unknown category %q — storing null (want %s)", s, strings.Join(core.CategoryValues, "|")),
+			"use a published category or omit it", "security"))
 	}
 }
 

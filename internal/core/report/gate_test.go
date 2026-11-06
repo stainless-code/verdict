@@ -2,6 +2,7 @@ package reportcore_test
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -402,7 +403,7 @@ func TestRunReportCounts(t *testing.T) {
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
-		if got, want := resp.Data.Counts, (core.ReportCounts{Inline: 5, Section: 2, Anchored: 2, Unanchored: 3}); got != want {
+		if got, want := resp.Data.Counts, wantUntaggedCounts(5, 2, 2, 3, 7); !reflect.DeepEqual(got, want) {
 			t.Errorf("counts = %+v, want %+v", got, want)
 		}
 		if got, want := resp.Data.Verdict, (core.ReportVerdict{Open: 3, Deferred: 1, Addressed: 1, Terminal: 2}); got != want {
@@ -422,7 +423,7 @@ func TestRunReportCounts(t *testing.T) {
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
-		if got, want := resp.Data.Counts, (core.ReportCounts{Inline: 5, Section: 2, Anchored: 2, Unanchored: 3}); got != want {
+		if got, want := resp.Data.Counts, wantUntaggedCounts(5, 2, 2, 3, 7); !reflect.DeepEqual(got, want) {
 			t.Errorf("counts under a filter = %+v, want the whole store %+v", got, want)
 		}
 		if got, want := resp.Data.Verdict, (core.ReportVerdict{Open: 3}); got != want {
@@ -602,4 +603,14 @@ func TestRunReportGateData(t *testing.T) {
 			t.Errorf("data.gate = %+v on an advisory run, want none", resp.Data.Gate)
 		}
 	})
+}
+
+// wantUntaggedCounts builds the expected whole-store counts for a fixture
+// whose entries carry no category: every published key zero, untagged holding
+// the whole store.
+func wantUntaggedCounts(inline, section, anchored, unanchored, untagged int) core.ReportCounts {
+	return core.ReportCounts{Inline: inline, Section: section, Anchored: anchored, Unanchored: unanchored, ByCategory: map[string]int{
+		"logic": 0, "edge-case": 0, "security": 0, "performance": 0,
+		"accidental-commit": 0, "style": 0, "docs": 0, "other": 0, "untagged": untagged,
+	}}
 }

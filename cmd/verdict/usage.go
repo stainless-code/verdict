@@ -62,17 +62,21 @@ func usageText() string {
 		"    mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
 		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
 		"[--kind inline|section|all]\n" +
+		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
 		"        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
-		"    --sarif writes a SARIF 2.1.0 file (severity→level, sig as fingerprint) for scanners/CI.\n" +
+		"    --sarif writes a SARIF 2.1.0 file (severity→level, category in properties, sig as\n" +
+		"    fingerprint) for scanners/CI.\n" +
 		"    --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; " +
 		"stratified by effort tier).\n" +
 		"    Consented over-budget receipts from .review/<pr>/budget.json surface here when present.\n" +
 		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
 		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
-		"    error (missing/corrupt store). Untagged findings never meet a tier; the\n" +
+		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +
+		"    findings; `--check <tier> --category <cat>` gates only that class (an unknown\n" +
+		"    category is a usage error). Untagged findings never meet a tier; the\n" +
 		"    gate counts open findings only, whatever --status/--kind show. Without\n" +
 		"    --check the run stays advisory: exit 0 with findings listed (typed\n" +
 		"    errors exit 1, usage exits 2).\n" +

@@ -28,6 +28,7 @@ exit: 0
       "informational": 0,
       "untagged": 0
     },
+    "by_category": {},
     "provenance": {
       "tools": [],
       "models": [],

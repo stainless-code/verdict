@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/review.schema.json",
   "title": "review.json — agent-written review input",
-  "description": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
+  "description": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing schema_version, missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, an unknown or non-string category (warns once, stores null), brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -91,6 +91,20 @@
         "severity": {
           "description": "Stored at write time; unknown or non-string values refuse.",
           "enum": ["critical", "important", "informational", null]
+        },
+        "category": {
+          "description": "Optional closed taxonomy: logic|edge-case|security|performance|accidental-commit|style|docs|other. Unknown or non-string values warn once and store null; never inferred from prose, path, severity, or rule. Explicit null clears a stored label on re-post; absent preserves it.",
+          "enum": [
+            "logic",
+            "edge-case",
+            "security",
+            "performance",
+            "accidental-commit",
+            "style",
+            "docs",
+            "other",
+            null
+          ]
         },
         "in-bounds": {
           "description": "Hyphenated in agent input; absent reads true, a non-boolean refuses.",

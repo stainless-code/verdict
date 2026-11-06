@@ -7,6 +7,7 @@ report: .review/5101 (6 shown) open=4 head=aaaaaaa
 4. [open] notes.txt:2 (a3333333)
 5. [deferred] notes.txt:2 (e5555555)
 6. [addressed] notes.txt:2 (d4444444)
+by category: untagged 6
 next: address open threads
 --- stderr ---
 

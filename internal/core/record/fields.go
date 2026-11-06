@@ -15,6 +15,7 @@ const (
 	fieldPath       = "path"
 	fieldRigor      = "rigor"
 	fieldSeverity   = "severity"
+	fieldCategory   = "category"
 	fieldSig        = "sig"
 	fieldSigVersion = "sig_version"
 	fieldStatus     = "status"

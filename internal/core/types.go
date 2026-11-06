@@ -103,12 +103,13 @@ type ReportVerdict struct {
 	Terminal  int `json:"terminal"  min:"0"`
 }
 
-// ReportCounts counts finding kinds and anchoring.
-type ReportCounts struct {
-	Inline     int `json:"inline"     min:"0"`
-	Section    int `json:"section"    min:"0"`
-	Anchored   int `json:"anchored"   min:"0"`
-	Unanchored int `json:"unanchored" min:"0"`
+// ReportCounts counts finding kinds, anchoring, and categories.
+type ReportCounts struct { //nolint:govet // field order is the published property order
+	Inline     int            `json:"inline"      min:"0"`
+	Section    int            `json:"section"     min:"0"`
+	Anchored   int            `json:"anchored"    min:"0"`
+	Unanchored int            `json:"unanchored"  min:"0"`
+	ByCategory map[string]int `json:"by_category"`
 }
 
 // ReportPanel is the panel source plus its member list.
@@ -117,10 +118,11 @@ type ReportPanel struct {
 	Members []any   `json:"members"`
 }
 
-// ReportFilters echoes the active status/kind filters.
-type ReportFilters struct {
-	Status string `json:"status"`
-	Kind   string `json:"kind"`
+// ReportFilters echoes the active status/kind/category filters.
+type ReportFilters struct { //nolint:govet // field order is the published property order
+	Status   string  `json:"status"`
+	Kind     string  `json:"kind"`
+	Category *string `json:"category"`
 }
 
 // ReportCost is the summed cost rollup carried by report --cost.

@@ -238,9 +238,20 @@
         "inline": { "type": "integer", "minimum": 0 },
         "section": { "type": "integer", "minimum": 0 },
         "anchored": { "type": "integer", "minimum": 0 },
-        "unanchored": { "type": "integer", "minimum": 0 }
+        "unanchored": { "type": "integer", "minimum": 0 },
+        "by_category": {
+          "description": "Whole-store finding counts by published category plus untagged; every key is always present with zero defaults.",
+          "type": "object",
+          "additionalProperties": true
+        }
       },
-      "required": ["inline", "section", "anchored", "unanchored"],
+      "required": [
+        "inline",
+        "section",
+        "anchored",
+        "unanchored",
+        "by_category"
+      ],
       "additionalProperties": true
     },
     "reportPanel": {
@@ -258,9 +269,13 @@
       "type": "object",
       "properties": {
         "status": { "type": "string" },
-        "kind": { "type": "string" }
+        "kind": { "type": "string" },
+        "category": {
+          "description": "The active --category filter, or null when the run did not filter by category.",
+          "type": ["string", "null"]
+        }
       },
-      "required": ["status", "kind"],
+      "required": ["status", "kind", "category"],
       "additionalProperties": true
     },
     "reportCost": {
@@ -926,6 +941,11 @@
         "closed": { "type": "integer", "minimum": 0 },
         "by_status": { "$ref": "#/$defs/trendStatuses" },
         "by_tier": { "$ref": "#/$defs/trendTiers" },
+        "by_category": {
+          "description": "Portfolio finding counts by observed category with untagged for null entries; only observed categories appear.",
+          "type": "object",
+          "additionalProperties": true
+        },
         "provenance": { "$ref": "#/$defs/trendProvenance" },
         "periods": {
           "type": "array",
@@ -947,6 +967,7 @@
         "closed",
         "by_status",
         "by_tier",
+        "by_category",
         "provenance",
         "periods",
         "per_bundle"
@@ -1044,7 +1065,12 @@
         "addressed": { "type": "integer" },
         "closed": { "type": "integer" },
         "by_status": { "$ref": "#/$defs/trendStatuses" },
-        "by_tier": { "$ref": "#/$defs/trendTiers" }
+        "by_tier": { "$ref": "#/$defs/trendTiers" },
+        "by_category": {
+          "description": "One bundle's finding counts by observed category with untagged for null entries.",
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       "required": [
         "bundle",
@@ -1057,7 +1083,8 @@
         "addressed",
         "closed",
         "by_status",
-        "by_tier"
+        "by_tier",
+        "by_category"
       ],
       "additionalProperties": true
     },
@@ -1075,7 +1102,9 @@
         "outcomes": {
           "type": "array"
         },
-        "precision": {},
+        "precision": {
+          "description": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged."
+        },
         "provenance": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/provenanceTriple" }]
         },

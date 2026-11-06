@@ -256,6 +256,7 @@ var fieldDocs = map[string]string{
 	"Sig":           "Finding signature or unique prefix.",
 	"Status":        "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
 	"Kind":          "Kind filter (inline, section, all).",
+	"Category":      "Finding category filter; empty disables the filter.",
 	"Expect":        "Comma-separated allowlist of paths that may be dirty.",
 	"From":          "Local bundle slug to adopt findings from.",
 	"Check":         "Gate tier (critical, important, informational); empty disables the gate.",

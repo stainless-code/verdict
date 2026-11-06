@@ -562,8 +562,10 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	kbc, _ := m.Get(fieldKB)
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
+	cat, hasCat := m.Get(fieldCategory)
 	body := jq.StrOf(jq.Alt(bd, ""))
 	rigorValue, rigorSource := pickRigor(rigor)
+	category := pickCategory(st, m, cat, hasCat)
 	entry := &core.FindingEntry{
 		Kind:        "inline",
 		Path:        path,
@@ -576,6 +578,8 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 		Rigor:       rigorValue,
 		RigorSource: rigorSource,
 		Severity:    pick(sev, sevAllow, nil),
+		Category:    category,
+		CategorySet: hasCat,
 	}
 	entry.Brief = briefOf(st, m)
 	return freshEntry{entry: entry, kbRaw: jq.Alt(kbc, nil)}
@@ -618,6 +622,21 @@ func buildSection(h string, sev any) *core.FindingEntry {
 		RigorSource: rigorSourceDefault,
 		Severity:    pick(sev, sevAllow, nil),
 	}
+}
+
+// pickCategory normalizes one comment's category: a published value reads
+// through, absent and null read null (untagged), and an unknown or
+// non-string value warns once and reads null — a taxonomy typo never refuses
+// the review. The merge warning fires only on paths the checker did not
+// already cover, so record reports it once through the checker.
+func pickCategory(st *state, m *jq.Obj, cat any, hasCat bool) any {
+	picked := pick(cat, core.CategoryValues, nil)
+	if hasCat && cat != nil && picked == nil {
+		loc := anchorLoc(m)
+		st.warnInput(fmt.Sprintf("unknown category %q on %s — storing null (want %s)",
+			jq.Str(cat), loc, strings.Join(core.CategoryValues, "|")))
+	}
+	return picked
 }
 
 // pickRigor records the rung and where it came from: a recognized string is
@@ -815,6 +834,7 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	overlayAlt(m, n, pm, fieldRigor)
 	overlayAlt(m, n, pm, fieldRigorSource)
 	overlayAlt(m, n, pm, fieldSeverity)
+	mergeCategory(m, n)
 	overlayAlt(m, n, pm, fieldSuggestion)
 	nib, _ := n.Get(fieldInBounds)
 	if nib == nil {
@@ -839,6 +859,17 @@ func mergeBrief(m, n, pm *jq.Obj) {
 	}
 	if pb, ok := pm.Get(fieldBrief); ok && !jq.Falsey(pb) {
 		m.Set(fieldBrief, pb)
+	}
+}
+
+// mergeCategory carries the fresh category onto the merged entry: a present
+// fresh key wins (an explicit null clears the prior label), an absent one
+// preserves the prior value. A fresh unknown value already normalized to a
+// present null, so it clears like an explicit null.
+func mergeCategory(m, n *jq.Obj) {
+	if n.Has(fieldCategory) {
+		nv, _ := n.Get(fieldCategory)
+		m.Set(fieldCategory, nv)
 	}
 }
 
