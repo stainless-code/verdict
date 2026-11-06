@@ -41,6 +41,30 @@ type ControlsFile = core.ControlsFile
 // ControlsFileEntry is one control path's snapshot status and hash.
 type ControlsFileEntry = core.ControlsFileEntry
 
+// Config is the typed repository configuration, generated as
+// schemas/config.schema.json. The Go structs shape the structural
+// keywords; the hand-written parser in internal/config owns the semantic
+// checks the schema cannot express.
+type Config = core.Config
+
+// ConfigDefaults is the configuration's ordinary review defaults.
+type ConfigDefaults = core.ConfigDefaults
+
+// ConfigKBPolicy is the configuration's knowledge-base policy.
+type ConfigKBPolicy = core.ConfigKBPolicy
+
+// ConfigRequirements is the configuration's conjunctive requirements.
+type ConfigRequirements = core.ConfigRequirements
+
+// BlockClause is one per-source, per-path blocking predicate.
+type BlockClause = core.BlockClause
+
+// ConfigScope is one path-scoped configuration entry.
+type ConfigScope = core.ConfigScope
+
+// ConfigProfile is one named work-profile description.
+type ConfigProfile = core.ConfigProfile
+
 // Review is core's agent-written review input.
 type Review = core.Review
 

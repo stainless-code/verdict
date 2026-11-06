@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/config.schema.json",
+  "title": "config.json — typed repository configuration",
+  "description": "The typed repository configuration at .verdict/config.json: versioned shared defaults and review requirements with path scopes, named work profiles, and the default profile. Structural validation comes from this schema; the hand-written parser in internal/config owns the semantic checks the schema cannot express (duplicate keys, credential keys, glob portability, clause-name uniqueness, per-group clause coverage).",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": "1" },
+    "defaults": {
+      "description": "Ordinary review defaults: flag, then environment, then repository, then personal, then built-in. Nested objects merge per field; arrays replace.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/defaults" }]
+    },
+    "requirements": {
+      "description": "Conjunctive review requirements: every applicable clause must hold for compliance, and required checks accumulate across matching scopes.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/requirements" }]
+    },
+    "scopes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scope" }
+    },
+    "profiles": {
+      "description": "Named work-profile descriptions keyed by profile name; scope profile fields and default_profile resolve against these names.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "default_profile": { "type": "string" }
+  },
+  "required": ["schema_version"],
+  "additionalProperties": false,
+  "$defs": {
+    "defaults": {
+      "description": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, and the display and payload severity floors.",
+      "type": "object",
+      "properties": {
+        "panel": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "budget_usd": { "type": ["number", "null"] },
+        "max_bytes": { "type": ["integer", "null"], "minimum": 1 },
+        "chunk": { "type": ["boolean", "null"] },
+        "kb_policy": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/kbPolicy" }]
+        },
+        "effort": { "enum": ["cheap", "standard", "deep"] },
+        "display_min_severity": {
+          "enum": ["critical", "important", "informational"]
+        },
+        "post_min_severity": {
+          "enum": ["critical", "important", "informational"]
+        }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "kbPolicy": {
+      "description": "Knowledge-base retirement quorum and ceiling.",
+      "type": "object",
+      "properties": {
+        "min_judged": { "type": ["integer", "null"], "minimum": 1 },
+        "max_fp_rate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "requirements": {
+      "description": "Blocking clauses with per-source thresholds, prepublication check names, and the approval bind requirement.",
+      "type": "object",
+      "properties": {
+        "block_clauses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blockClause" }
+        },
+        "require_checks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "require_bind": { "type": ["boolean", "null"] }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "blockClause": {
+      "description": "One blocking predicate: a required name and severity threshold with optional category and path masks; absent masks mean every category or path.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "threshold": { "enum": ["critical", "important", "informational"] },
+        "categories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["name", "threshold"],
+      "additionalProperties": true
+    },
+    "scope": {
+      "description": "One path-scoped entry: required include globs with optional excludes plus resolution inputs — at most one of a named profile or inline defaults, with optional inline requirements.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "include": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "profile": { "type": ["string", "null"] },
+        "defaults": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/defaults" }]
+        },
+        "requirements": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/requirements" }]
+        }
+      },
+      "required": ["name", "include"],
+      "additionalProperties": true
+    },
+    "profile": {
+      "description": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget.",
+      "type": "object",
+      "properties": {
+        "depth": { "enum": ["standard", "deep"] },
+        "checks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "max_lenses": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "required": [],
+      "additionalProperties": true
+    }
+  }
+}

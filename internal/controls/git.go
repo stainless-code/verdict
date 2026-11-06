@@ -30,14 +30,24 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 // repository, the same base commit is read through the contents API instead;
 // without a repo the read refuses.
 func readBase(ctx context.Context, cmd core.Commander, repo, base string) (map[string][]byte, *core.RefusalError) {
+	return ReadPaths(ctx, cmd, repo, base, Inventory)
+}
+
+// ReadPaths reads arbitrary inventory paths at the PR base commit through
+// the same D1 seam as the controls snapshot: one `git ls-tree` sizing
+// pass, then blob reads, with the contents-API fallback when git cannot
+// supply the base. It caps, refuses, and never falls back to the head,
+// exactly like the inventory read above; configuration inputs reuse it so
+// the trust posture stays in one place.
+func ReadPaths(ctx context.Context, cmd core.Commander, repo, base string, paths []string) (map[string][]byte, *core.RefusalError) {
 	if !fullSHA.MatchString(base) {
 		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
 	}
-	// One ls-tree sees every control at once: the blob size caps it before
+	// One ls-tree sees every path at once: the blob size caps it before
 	// any read, and mode 120000 (a tracked symlink) refuses.
-	tree, err := runGit(ctx, cmd, 0, append([]string{"ls-tree", "-lz", base, "--"}, Inventory...)...)
+	tree, err := runGit(ctx, cmd, 0, append([]string{"ls-tree", "-lz", base, "--"}, paths...)...)
 	if err != nil && repo != "" {
-		return readContents(ctx, cmd, repo, base)
+		return readContents(ctx, cmd, repo, base, paths)
 	}
 	if err != nil {
 		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))

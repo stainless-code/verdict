@@ -18,6 +18,10 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive config.schema.json (new typed-repository-configuration
+	// document; no existing schema property, required key, or type
+	// changed).
+	"config.schema.json": "3d2776dd0829bc1ccb9c331099ec1761010d687a70a30b03c5cf8138226b19e8",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

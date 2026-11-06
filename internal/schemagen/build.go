@@ -114,6 +114,20 @@ const defsRecord = "record"
 func documents() []document {
 	return []document{
 		{
+			name:  "config",
+			title: "config.json — typed repository configuration",
+			root:  reflect.TypeFor[Config](),
+			defs: []definition{
+				{typ: reflect.TypeFor[ConfigDefaults](), name: "defaults"},
+				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy"},
+				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements"},
+				{typ: reflect.TypeFor[BlockClause](), name: "blockClause"},
+				{typ: reflect.TypeFor[ConfigScope](), name: "scope"},
+				{typ: reflect.TypeFor[ConfigProfile](), name: "profile"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "controls",
 			title: "controls.json — resolved review controls snapshot",
 			root:  reflect.TypeFor[ControlsFile](),

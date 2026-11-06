@@ -1,4 +1,18 @@
 {
+  "config": {
+    "descriptions": {
+      "": "The typed repository configuration at .verdict/config.json: versioned shared defaults and review requirements with path scopes, named work profiles, and the default profile. Structural validation comes from this schema; the hand-written parser in internal/config owns the semantic checks the schema cannot express (duplicate keys, credential keys, glob portability, clause-name uniqueness, per-group clause coverage).",
+      "/properties/defaults": "Ordinary review defaults: flag, then environment, then repository, then personal, then built-in. Nested objects merge per field; arrays replace.",
+      "/properties/requirements": "Conjunctive review requirements: every applicable clause must hold for compliance, and required checks accumulate across matching scopes.",
+      "/properties/profiles": "Named work-profile descriptions keyed by profile name; scope profile fields and default_profile resolve against these names.",
+      "/$defs/defaults": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, and the display and payload severity floors.",
+      "/$defs/kbPolicy": "Knowledge-base retirement quorum and ceiling.",
+      "/$defs/requirements": "Blocking clauses with per-source thresholds, prepublication check names, and the approval bind requirement.",
+      "/$defs/blockClause": "One blocking predicate: a required name and severity threshold with optional category and path masks; absent masks mean every category or path.",
+      "/$defs/scope": "One path-scoped entry: required include globs with optional excludes plus resolution inputs — at most one of a named profile or inline defaults, with optional inline requirements.",
+      "/$defs/profile": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget."
+    }
+  },
   "cost": {
     "descriptions": {
       "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them.",
