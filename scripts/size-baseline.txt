@@ -29,8 +29,12 @@
 # privacy filtering. Same-toolchain release builds grow a further 5.7-10.7 kB
 # per target, so the five ceilings that overflowed move to the next 10 kB above
 # their exact measurement; linux/arm64 keeps its higher existing ceiling.
+# Preview repair on top: verified captured rename identities in the preview
+# view, plus the explicitly untrusted source-snapshot policy head. Only
+# darwin/amd64 overflowed, by 2048 bytes, so its ceiling moves to the next
+# 10 kB above the exact measurement; every other ceiling stays put.
 deps 0
-darwin/amd64 12010000
+darwin/amd64 12020000
 darwin/arm64 11020000
 linux/amd64 11810000
 linux/arm64 10820000
