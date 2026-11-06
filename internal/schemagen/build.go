@@ -23,6 +23,11 @@ const (
 	keyMinimum              = "minimum"
 	keyMaximum              = "maximum"
 	keyItemsMinimum         = "items_min"
+	keyMinItems             = "minItems"
+	keyItemsEnum            = "items_enum"
+	keyExclusiveMinimum     = "exclusiveMinimum"
+	keyExclusiveMin         = "exclusiveMin"
+	keyNonNull              = "nonnull"
 	keyFormat               = "format"
 	keyPattern              = "pattern"
 	typeObject              = "object"
@@ -89,10 +94,13 @@ func nullNode() *node { return &node{kind: kindNull} }
 
 func anyNode() *node { return object(false) }
 
-// definition registers one named struct type under a $defs name.
+// definition registers one named struct type under a $defs name. Closed
+// definitions emit additionalProperties:false; open ones (the default,
+// preserving every previously published schema) emit true.
 type definition struct {
-	typ  reflect.Type
-	name string
+	typ    reflect.Type
+	name   string
+	closed bool
 }
 
 // document is one published schema: its file stem, title, root shape and
@@ -118,12 +126,12 @@ func documents() []document {
 			title: "config.json — typed repository configuration",
 			root:  reflect.TypeFor[Config](),
 			defs: []definition{
-				{typ: reflect.TypeFor[ConfigDefaults](), name: "defaults"},
-				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy"},
-				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements"},
-				{typ: reflect.TypeFor[BlockClause](), name: "blockClause"},
-				{typ: reflect.TypeFor[ConfigScope](), name: "scope"},
-				{typ: reflect.TypeFor[ConfigProfile](), name: "profile"},
+				{typ: reflect.TypeFor[ConfigDefaults](), name: "defaults", closed: true},
+				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy", closed: true},
+				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
+				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
+				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true},
+				{typ: reflect.TypeFor[ConfigProfile](), name: "profile", closed: true},
 			},
 			additionalProperties: false,
 		},
@@ -362,7 +370,7 @@ func (b *builder) anyOfRoot(types []reflect.Type) (*node, error) {
 func (b *builder) defsNode(defs []definition) (*node, error) {
 	members := make([]member, 0, len(defs))
 	for _, def := range defs {
-		schema, err := b.structNode(def.typ, true)
+		schema, err := b.structNode(def.typ, !def.closed)
 		if err != nil {
 			return nil, err
 		}
@@ -511,7 +519,9 @@ func (b *builder) plainNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 	nullable := false
 	if base.Kind() == reflect.Pointer {
 		base = base.Elem()
-		nullable = true
+		// nonnull keeps an optional pointer from widening: absent reads as
+		// missing through the required list, while a present null refuses.
+		nullable = tag.Get(keyNonNull) != inlineTrue
 	}
 	if tag.Get(keyItemsMinimum) != "" && base.Kind() != reflect.Slice {
 		return nil, errorf("%s: items_min needs a slice", typ)
@@ -565,7 +575,36 @@ func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 		if tag.Get(keyItemsMinimum) != "" {
 			return nil, errorf("%s: items_min needs item keywords", typ)
 		}
+		if tag.Get(keyItemsEnum) != "" {
+			return nil, errorf("%s: items_enum needs a typed element", typ)
+		}
+		if tag.Get(keyMinItems) != "" {
+			return nil, errorf("%s: minItems needs a typed element", typ)
+		}
 		return object(true, member{keyType, stringNode(typeArray)}), nil
+	}
+	items, err := b.itemsNode(typ, elem, tag)
+	if err != nil {
+		return nil, err
+	}
+	out := object(true, member{keyType, stringNode(typeArray)}, member{keyItems, items})
+	if bound, ok, err := arrayBound(tag); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		out.members = append(out.members, member{keyMinItems, numberNode(bound)})
+	}
+	return out, nil
+}
+
+// itemsNode builds the element schema: a closed enum when the field names
+// one, else the element type with the integer item keywords.
+func (b *builder) itemsNode(typ reflect.Type, elem reflect.Type, tag reflect.StructTag) (*node, error) {
+	if spec := tag.Get(keyItemsEnum); spec != "" {
+		if minimum := tag.Get(keyItemsMinimum); minimum != "" {
+			return nil, errorf("%s: items_enum and items_min do not combine", typ)
+		}
+		return enumNode(spec), nil
 	}
 	items, err := b.typeNode(elem, "")
 	if err != nil {
@@ -579,17 +618,58 @@ func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 			return nil, errorf("%s: items_min needs integer items", typ)
 		}
 	}
-	return object(true, member{keyType, stringNode(typeArray)}, member{keyItems, items}), nil
+	return items, nil
+}
+
+// arrayBound reads an optional non-negative minItems array bound.
+func arrayBound(tag reflect.StructTag) (string, bool, error) {
+	bound := tag.Get(keyMinItems)
+	if bound == "" {
+		return "", false, nil
+	}
+	for i := range len(bound) {
+		if bound[i] < '0' || bound[i] > '9' {
+			return "", false, errorf("minItems %q is not a non-negative integer", bound)
+		}
+	}
+	return bound, true, nil
 }
 
 func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 	if typ.Key().Kind() != reflect.String {
 		return nil, errorf("map key must be a string, got %s", typ.Key())
 	}
+	if ref, ok, err := b.valueRef(typ.Elem()); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return object(false,
+			member{keyType, stringNode(typeObject)},
+			member{keyAdditionalProperties, ref},
+		), nil
+	}
 	return object(false,
 		member{keyType, stringNode(typeObject)},
 		member{keyAdditionalProperties, boolNode(true)},
 	), nil
+}
+
+// valueRef resolves a typed map value: a named struct with a $defs
+// registration validates through that reference. Every other element type
+// keeps the legacy open object, so previously published schemas do not
+// move.
+func (b *builder) valueRef(elem reflect.Type) (*node, bool, error) {
+	if elem.Kind() != reflect.Struct || elem.Name() == "" {
+		return nil, false, nil
+	}
+	if _, ok := b.defNames[elem]; !ok {
+		return nil, false, nil
+	}
+	ref, err := b.refNode(elem)
+	if err != nil {
+		return nil, false, err
+	}
+	return ref, true, nil
 }
 
 func (b *builder) refNode(typ reflect.Type) (*node, error) {
@@ -652,6 +732,9 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 	}
 	if value := tag.Get("max"); value != "" {
 		schema.members = append(schema.members, member{keyMaximum, numberNode(value)})
+	}
+	if value := tag.Get(keyExclusiveMin); value != "" {
+		schema.members = append(schema.members, member{keyExclusiveMinimum, numberNode(value)})
 	}
 	if value := tag.Get(keyFormat); value != "" {
 		schema.members = append(schema.members, member{keyFormat, stringNode(value)})

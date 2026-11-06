@@ -29,10 +29,10 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 		cfg.SchemaRef = str
 	}
 	var ref *core.RefusalError
-	if cfg.Defaults, ref = buildDefaults(root[defaultsKey], "$.defaults"); ref != nil {
+	if cfg.Defaults, ref = presentNested(root, defaultsKey, "$", buildDefaults); ref != nil {
 		return nil, ref
 	}
-	if cfg.Requirements, ref = buildRequirements(root[requirementsKey], "$.requirements"); ref != nil {
+	if cfg.Requirements, ref = presentNested(root, requirementsKey, "$", buildRequirements); ref != nil {
 		return nil, ref
 	}
 	if ref = buildConfigTail(cfg, root); ref != nil {
@@ -45,14 +45,25 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 // the cross-field references between them.
 func buildConfigTail(cfg *core.Config, root map[string]any) *core.RefusalError {
 	var ref *core.RefusalError
-	if cfg.Scopes, ref = buildScopes(root["scopes"]); ref != nil {
+	if cfg.Scopes, ref = presentNested(root, "scopes", "$", func(raw any, _ string) ([]core.ConfigScope, *core.RefusalError) {
+		return buildScopes(raw)
+	}); ref != nil {
 		return ref
 	}
-	if cfg.Profiles, ref = buildProfiles(root["profiles"]); ref != nil {
+	if cfg.Profiles, ref = presentNested(root, "profiles", "$", func(raw any, _ string) (map[string]core.ConfigProfile, *core.RefusalError) {
+		return buildProfiles(raw)
+	}); ref != nil {
 		return ref
 	}
-	if cfg.DefaultProfile, ref = buildDefaultProfile(cfg.Profiles, root["default_profile"]); ref != nil {
-		return ref
+	if raw, ok := root["default_profile"]; ok {
+		name, ref := nonEmptyString(raw, "$.default_profile")
+		if ref != nil {
+			return ref
+		}
+		if _, known := cfg.Profiles[name]; !known {
+			return refuse(CodeBadConfig, "$.default_profile: unknown profile %q", name)
+		}
+		cfg.DefaultProfile = name
 	}
 	return checkCrossRefs(cfg)
 }
@@ -67,6 +78,19 @@ func checkCrossRefs(cfg *core.Config) *core.RefusalError {
 		return ref
 	}
 	return checkScopeProfileRefs(cfg)
+}
+
+// presentNested parses one optional nested object or array: absent reads
+// the zero value, present parses through the caller's builder — including
+// an explicit null, which refuses as misplaced through the builder's
+// shape check.
+func presentNested[T any](obj map[string]any, key, path string, build func(any, string) (T, *core.RefusalError)) (T, *core.RefusalError) {
+	var zero T
+	raw, ok := obj[key]
+	if !ok {
+		return zero, nil
+	}
+	return build(raw, path+keySep+key)
 }
 
 // presentValue parses one optional scalar key: absent reads nil, present
@@ -118,9 +142,6 @@ func requiredString(obj map[string]any, key, path, code string) (string, *core.R
 
 // buildDefaults validates the optional defaults object.
 func buildDefaults(raw any, path string) (*core.ConfigDefaults, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
 	obj, ref := asObject(raw, path)
 	if ref != nil {
 		return nil, ref
@@ -150,7 +171,7 @@ func buildDefaultsHead(obj map[string]any, path string, out *core.ConfigDefaults
 	if out.Chunk, err = presentValue(obj, "chunk", path, asBool); err != nil {
 		return err
 	}
-	out.KBPolicy, ref = buildKBPolicy(obj["kb_policy"], path+".kb_policy")
+	out.KBPolicy, ref = presentNested(obj, "kb_policy", path, buildKBPolicy)
 	return ref
 }
 
@@ -171,9 +192,6 @@ func buildDefaultsTail(obj map[string]any, path string, out *core.ConfigDefaults
 // buildKBPolicy validates the nested retirement quorum and ceiling.
 // Absent reads nil; present must be an object.
 func buildKBPolicy(raw any, path string) (*core.ConfigKBPolicy, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
 	obj, ref := asObject(raw, path)
 	if ref != nil {
 		return nil, ref
@@ -195,15 +213,12 @@ func buildKBPolicy(raw any, path string) (*core.ConfigKBPolicy, *core.RefusalErr
 
 // buildRequirements validates the optional requirements object.
 func buildRequirements(raw any, path string) (*core.ConfigRequirements, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
 	obj, ref := asObject(raw, path)
 	if ref != nil {
 		return nil, remap(raw, path, ref, CodeBadRequirement)
 	}
 	out := &core.ConfigRequirements{}
-	if out.BlockClauses, ref = buildClauseList(obj["block_clauses"], path); ref != nil {
+	if out.BlockClauses, ref = presentNested(obj, "block_clauses", path, buildClauseList); ref != nil {
 		return nil, ref
 	}
 	if out.RequireChecks, ref = presentStrings(obj, "require_checks", path, checkIDArray); ref != nil {
@@ -218,19 +233,16 @@ func buildRequirements(raw any, path string) (*core.ConfigRequirements, *core.Re
 // buildClauseList validates an optional non-empty clause array. Absent
 // reads nil; present must hold at least one clause.
 func buildClauseList(raw any, path string) ([]core.BlockClause, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
-	items, ref := asArray(raw, path+".block_clauses")
+	items, ref := asArray(raw, path)
 	if ref != nil {
-		return nil, remap(raw, path+".block_clauses", ref, CodeBadRequirement)
+		return nil, remap(raw, path, ref, CodeBadRequirement)
 	}
 	if len(items) == 0 {
-		return nil, refuse(CodeBadRequirement, "%s.block_clauses: want 1 or more clauses", path)
+		return nil, refuse(CodeBadRequirement, "%s: want 1 or more clauses", path)
 	}
 	out := make([]core.BlockClause, 0, len(items))
 	for i := range items {
-		clause, ref := buildClause(items[i], fmt.Sprintf("%s.block_clauses[%d]", path, i))
+		clause, ref := buildClause(items[i], fmt.Sprintf("%s[%d]", path, i))
 		if ref != nil {
 			return nil, ref
 		}
@@ -284,9 +296,6 @@ func requiredEnum(obj map[string]any, key, path string, vocab []string, code str
 
 // buildScopes validates the optional scope array, possibly empty.
 func buildScopes(raw any) ([]core.ConfigScope, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
 	items, ref := asArray(raw, "$.scopes")
 	if ref != nil {
 		return nil, remap(raw, "$.scopes", ref, CodeBadScope)
@@ -363,10 +372,10 @@ func buildScopeInputs(obj map[string]any, path string, out *core.ConfigScope) *c
 		return remap(obj["profile"], path+".profile", ref, CodeBadScope)
 	}
 	out.Profile = profile
-	if out.Defaults, ref = buildDefaults(obj[defaultsKey], path+".defaults"); ref != nil {
+	if out.Defaults, ref = presentNested(obj, defaultsKey, path, buildDefaults); ref != nil {
 		return remapScope(obj[defaultsKey], path+".defaults", ref)
 	}
-	out.Requirements, ref = buildRequirements(obj[requirementsKey], path+".requirements")
+	out.Requirements, ref = presentNested(obj, requirementsKey, path, buildRequirements)
 	return ref
 }
 
@@ -396,9 +405,6 @@ func remapScope(_ any, _ string, ref *core.RefusalError) *core.RefusalError {
 // buildProfiles validates the optional profile map. Member keys are
 // profile names; empty names refuse.
 func buildProfiles(raw any) (map[string]core.ConfigProfile, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
 	obj, ref := asObject(raw, "$.profiles")
 	if ref != nil {
 		return nil, ref
@@ -447,22 +453,6 @@ func buildProfile(raw any, path string) (core.ConfigProfile, *core.RefusalError)
 		return zero, err
 	}
 	return out, nil
-}
-
-// buildDefaultProfile validates the optional default profile reference:
-// absent reads empty, present must name a defined profile.
-func buildDefaultProfile(profiles map[string]core.ConfigProfile, raw any) (string, *core.RefusalError) {
-	if raw == nil {
-		return "", nil
-	}
-	name, ref := nonEmptyString(raw, "$.default_profile")
-	if ref != nil {
-		return "", ref
-	}
-	if _, known := profiles[name]; !known {
-		return "", refuse(CodeBadConfig, "$.default_profile: unknown profile %q", name)
-	}
-	return name, nil
 }
 
 // checkClauseNames enforces file-wide clause-name uniqueness across the

@@ -117,14 +117,20 @@ func checkPersonalSection(root map[string]any, key string, fields []string) *cor
 func buildPersonal(root map[string]any) (*PersonalSettings, *core.RefusalError) {
 	out := &PersonalSettings{}
 	var ref *core.RefusalError
-	if out.Review, ref = buildPersonalReview(root["review"]); ref != nil {
-		return nil, ref
+	if raw, ok := root["review"]; ok {
+		if out.Review, ref = buildPersonalReview(raw); ref != nil {
+			return nil, ref
+		}
 	}
-	if out.Spend, ref = buildPersonalSpend(root["spend"]); ref != nil {
-		return nil, ref
+	if raw, ok := root["spend"]; ok {
+		if out.Spend, ref = buildPersonalSpend(raw); ref != nil {
+			return nil, ref
+		}
 	}
-	if out.Privacy, ref = buildPersonalPrivacy(root["privacy"]); ref != nil {
-		return nil, ref
+	if raw, ok := root["privacy"]; ok {
+		if out.Privacy, ref = buildPersonalPrivacy(raw); ref != nil {
+			return nil, ref
+		}
 	}
 	return out, nil
 }
@@ -134,9 +140,6 @@ func buildPersonal(root map[string]any) (*PersonalSettings, *core.RefusalError) 
 // Absent reads as no personal review layer.
 func buildPersonalReview(raw any) (Partial, *core.RefusalError) {
 	var zero Partial
-	if raw == nil {
-		return zero, nil
-	}
 	obj, ref := asObject(raw, "$.review")
 	if ref != nil {
 		return zero, ref
@@ -158,9 +161,6 @@ func buildPersonalReview(raw any) (Partial, *core.RefusalError) {
 // reads as no spend constraint.
 func buildPersonalSpend(raw any) (PersonalSpend, *core.RefusalError) {
 	var zero PersonalSpend
-	if raw == nil {
-		return zero, nil
-	}
 	obj, ref := asObject(raw, spendPath)
 	if ref != nil {
 		return zero, ref
@@ -192,9 +192,6 @@ func presentBool(obj map[string]any, key, path string) (bool, *core.RefusalError
 // reads as no exclusions.
 func buildPersonalPrivacy(raw any) (PersonalPrivacy, *core.RefusalError) {
 	var zero PersonalPrivacy
-	if raw == nil {
-		return zero, nil
-	}
 	obj, ref := asObject(raw, "$.privacy")
 	if ref != nil {
 		return zero, ref

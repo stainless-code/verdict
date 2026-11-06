@@ -22,8 +22,19 @@ constrains through `internal/config`.
 Only `/state/` is ignored, through the nested file. Legacy `.review/` is
 untouched: no migration, no rewrite, no shim, no implicit fallback.
 `Layout.EnsureStateIgnore` writes `.verdict/.gitignore` before any state
-write; reads never create files. With no base configuration the run
-follows the no-init rule on personal and built-in defaults.
+write, and `Layout.EnsureStateDir` adds a second `*` layer at
+`.verdict/state/.gitignore` so parent negations naming generated files
+cannot re-admit them; reads never create files. With no base
+configuration the run follows the no-init rule on personal and built-in
+defaults.
+
+Writes never follow symlinks: a symlinked `.verdict`, `.verdict/state`,
+or `.verdict/.gitignore` refuses instead of landing on an unrelated
+target, and resolved paths must stay under the repository root. An
+existing ignore file is preserved byte-for-byte except for the appended
+`/state/` line, but a negation able to match the `state` directory
+itself (`!/state/`, `!state`, `!st*`, `!*`, `!**`, `!state/*`) refuses
+loudly naming the line instead of being silently honored.
 
 ## Parse order
 
@@ -39,6 +50,28 @@ under top-level `profiles` are user-defined map keys and exempt),
 unknown fixed-shape fields (refuse `bad-config` naming the path), then
 semantic checks (`defaults` problems refuse `bad-config`, requirement
 problems `bad-requirement`, scope problems `bad-scope`).
+
+An explicit JSON `null` on any present key refuses exactly like a wrong
+type: absent reads as missing (the key takes its default or stays
+unset), present `null` refuses `bad-config` (or `bad-requirement` /
+`bad-scope` inside those objects) naming the field. The published
+`config.schema.json` agrees: optional keys are absent-or-typed, never
+nullable, every fixed-shape object (including every `$defs` entry) is
+closed, profile values validate through the `profile` definition, and
+known scalar and array bounds (`budget_usd` above zero, non-empty
+panels/clause lists/includes/check sets, bounded severities, efforts,
+depths, categories, and checks) are encoded. Structural parity tests
+assert schema and parser agree on every case.
+
+## Schema/runtime split
+
+JSON Schema structurally cannot express: duplicate keys (objects
+collapse them before validation), cross-section references
+(`default_profile` and scope `profile` naming), clause/scope name
+uniqueness, the profile-plus-`defaults` exclusivity, scope input
+presence (at least one of `profile`/`defaults`/`requirements`), and glob
+portability — these stay runtime-specific and the parity tests pin the
+split instead of weakening either side.
 
 `$schema` is recognized metadata, never fetched; non-string refuses
 `bad-config`. Personal settings (`settings.json` `review`/`spend`/`privacy`
