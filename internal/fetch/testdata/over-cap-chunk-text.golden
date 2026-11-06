@@ -277,6 +277,16 @@ f12.txt	OLD	1	1
 f12.txt	NEW	1	1
 f13.txt	OLD	1	1
 f13.txt	NEW	1	1
+--- file C/.review/4703/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "bfce35b0832e01d08de421099c7402f66c7a4dec",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3",
+  "raw_diff_sha256": "d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444"
+}
 --- file C/.review/4703/inline.json ---
 []
 --- file C/.review/4703/reviews.json ---

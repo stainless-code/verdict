@@ -4,6 +4,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/identity"
 )
 
 // This file is the single source of truth for the published JSON Schemas.
@@ -174,6 +175,12 @@ type RecordFindings = core.RecordFindings
 
 // Post is schemas/post.schema.json: the completed-post record.
 type Post = core.Post
+
+// ForcedPost is one explicit --force bypass recorded in post.json.
+type ForcedPost = core.ForcedPost
+
+// Identity is schemas/identity.schema.json: the bundle's stable patch id.
+type Identity = identity.Identity
 
 // Record is core's completed-record artifact.
 type Record = core.Record

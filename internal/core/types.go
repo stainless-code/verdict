@@ -153,11 +153,16 @@ type CostTier struct {
 	TotalTokens  int `json:"total_tokens"  min:"0"`
 }
 
-// ReportCompleteness compares fetched, posted and reviewed heads.
+// ReportCompleteness compares fetched, posted and reviewed heads, plus the
+// patch identities both sides stamped: same_patch is true when the reviewed
+// bundle identity and the posted post.json patch id share id and kind.
 type ReportCompleteness struct { //nolint:govet // field order is the published property order
-	Reviewed    bool    `json:"reviewed"`
-	FetchedHead *string `json:"fetched_head"`
-	PostedHead  *string `json:"posted_head"`
+	Reviewed        bool    `json:"reviewed"`
+	FetchedHead     *string `json:"fetched_head"`
+	PostedHead      *string `json:"posted_head"`
+	SamePatch       *bool   `json:"same_patch,omitempty"`
+	ReviewedPatchID *string `json:"reviewed_patch_id,omitempty"`
+	PostedPatchID   *string `json:"posted_patch_id,omitempty"`
 }
 
 // ReportGate is the composed gate result: every dimension this run requested,

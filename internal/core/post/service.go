@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -85,6 +87,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	embedded     int
 	driftStale   bool
 	liveLoaded   bool
+	identity     *identity.Identity
+	forced       []core.ForcedPost
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -186,10 +190,8 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 		return ref
 	}
 	st.commitID = st.store().Head()
-	if !st.flags.DryRun {
-		if ref := st.finalizerGuard(); ref != nil {
-			return ref
-		}
+	if ref := st.runGuards(ctx); ref != nil {
+		return ref
 	}
 	st.checkDrift(ctx)
 	if err := recordcore.EnsureHunksSnapshot(st.mergeRuntime(), st.dir); err != nil {
@@ -437,9 +439,47 @@ func (st *state) eventLine() {
 }
 
 func (st *state) duplicateGuard() *core.RefusalError {
-	if st.flags.Force {
+	if ref := st.duplicateRefusal(); ref != nil {
+		if st.flags.Force {
+			st.forceBypass(ref.Code, nil, nil, nil)
+			return nil
+		}
+		return ref
+	}
+	return nil
+}
+
+// runGuards runs the pre-merge refusal gates in order: the local same-SHA
+// finalizer, then the same-patch sibling scan. A dry run never posts, so it
+// skips both.
+func (st *state) runGuards(ctx context.Context) *core.RefusalError {
+	if st.flags.DryRun {
 		return nil
 	}
+	if ref := st.finalizerGuard(); ref != nil {
+		return ref
+	}
+	return st.patchGuard(ctx)
+}
+
+// identityCommander returns the injected command runner for patch identity
+// recomputation, or nil when the runtime carries none: without a runner the
+// algorithm claim cannot be recomputed, so git-kind identities stay
+// unverified instead of trusted.
+func (st *state) identityCommander() core.Commander {
+	var rt *core.Runtime
+	if st.req != nil {
+		rt = st.req.Runtime
+	}
+	if rt == nil {
+		return nil
+	}
+	return rt.Commander
+}
+
+// duplicateRefusal fires when the payload already posted: the local marker
+// file first, then the live review marker.
+func (st *state) duplicateRefusal() *core.RefusalError {
 	if exists(st.dir + "/.posted_" + st.phash) {
 		return duplicatePayloadRefusal()
 	}
@@ -447,9 +487,23 @@ func (st *state) duplicateGuard() *core.RefusalError {
 }
 
 func (st *state) finalizerGuard() *core.RefusalError {
-	if st.commitID == "" || st.flags.Force {
+	if st.commitID == "" {
 		return nil
 	}
+	if ref, bypass := st.sameSHARefusal(); ref != nil {
+		if st.flags.Force {
+			st.forced = append(st.forced, bypass)
+			return nil
+		}
+		return ref
+	}
+	return nil
+}
+
+// sameSHARefusal fires when the reviewed SHA already posted: the local
+// receipt first, then the live review markers. bypass is the forced[] entry
+// a --force run records for the fired guard.
+func (st *state) sameSHARefusal() (*core.RefusalError, core.ForcedPost) {
 	if exists(st.dir + "/post.json") {
 		storedHead, readable := st.store().PostedHead()
 		switch {
@@ -459,11 +513,117 @@ func (st *state) finalizerGuard() *core.RefusalError {
 			st.warn("post record carries no head — proceeding, will refresh it on success")
 		case storedHead == st.commitID:
 			storedAt := st.postedAt()
-			return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
-				readcommon.ShortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(storedHead))}
+			return &core.RefusalError{Code: codeAlreadyPosted, Message: fmt.Sprintf(msgAlreadyPosted,
+					readcommon.ShortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(storedHead))},
+				core.ForcedPost{Reason: codeAlreadyPosted, PreviousHead: &storedHead}
 		}
 	}
-	return st.liveAlreadyPosted()
+	if ref := st.liveAlreadyPosted(); ref != nil {
+		head := st.commitID
+		return ref, core.ForcedPost{Reason: codeAlreadyPosted, PreviousHead: &head}
+	}
+	return nil, core.ForcedPost{}
+}
+
+// forceBypass records one bypassed guard in the post.json forced[] audit:
+// the fired code, with the patch identity and prior bundle when a
+// same-patch sibling refused.
+func (st *state) forceBypass(code string, patchID, prevBundle, prevHead *string) {
+	st.forced = append(st.forced, core.ForcedPost{Reason: code, PatchID: patchID, PreviousBundle: prevBundle, PreviousHead: prevHead})
+}
+
+// patchGuard refuses a duplicate review of the same patch at a new SHA: it
+// binds the current bundle identity to the bundle's present bytes, the
+// recomputed algorithm result, and head, then scans sibling
+// .review/*/post.json receipts for a completed publication of the same
+// verified patch in the same repository, refusing unless --force (recorded
+// in forced[]). It reads post.json only as publication proof, so an
+// unposted local bundle never blocks a post. A missing, malformed, stale,
+// tampered, or unrecomputable identity warns and proceeds with the SHA-only
+// dedupe; a patch id never authorizes a post.
+func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
+	if st.flags.DryRun {
+		return nil
+	}
+	cur, ok := identity.Verify(ctx, st.identityCommander(), st.dir,
+		st.commitID, recordcore.BundleBase(st.dir, st.store()))
+	if !ok {
+		st.warn("patch identity unavailable — dedupe by SHA only")
+		return nil
+	}
+	if cur.PatchID == nil {
+		return nil
+	}
+	st.identity = cur
+	match := scanPatchSiblings(st.dir, cur)
+	if match == nil {
+		return nil
+	}
+	if st.flags.Force {
+		st.forceBypass("already-reviewed-patch", cur.PatchID, &match.bundle, &match.head)
+		return nil
+	}
+	return &core.RefusalError{Code: "already-reviewed-patch", Message: fmt.Sprintf(
+		"already-reviewed-patch: patch %s was posted from .review/%s at head %s (%s) — "+
+			"refusing a duplicate review of the same change (pass --force to post again)",
+		*cur.PatchID, match.bundle, readcommon.ShortSHA(match.head), match.postedAt)}
+}
+
+// patchSibling is one completed same-patch sibling receipt.
+type patchSibling struct {
+	bundle   string
+	head     string
+	postedAt string
+}
+
+// scanPatchSiblings returns the first sibling bundle (sorted, deterministic)
+// with a completed same-patch publication: a completed post.json receipt
+// carrying the same verified patch claim in the same repository. Malformed
+// sibling receipts cannot match; a missing .review dir matches nothing.
+func scanPatchSiblings(dir string, cur *identity.Identity) *patchSibling {
+	parent := filepath.Dir(dir)
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return nil
+	}
+	self := filepath.Base(dir)
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == self {
+			continue
+		}
+		if sib := siblingMatch(parent, dir, entry.Name(), cur); sib != nil {
+			return sib
+		}
+	}
+	return nil
+}
+
+// siblingMatch reads one sibling post.json as publication proof: the
+// receipt must prove a completed publication carrying an algorithm-valid
+// patch claim matching the current verified identity, and both bundles
+// must share a known repository identity. An unposted bundle (no post.json,
+// no patch fields), an incomplete or pending receipt, a stale foreign
+// receipt, or a cross-repository patch never blocks.
+func siblingMatch(parent, current, bundle string, cur *identity.Identity) *patchSibling {
+	sibDir := parent + "/" + bundle
+	store := readcommon.OpenBundle(sibDir)
+	patch, kind, ok := identity.CompletedPatch(store.PostMap())
+	if !ok {
+		return nil
+	}
+	claim := &identity.Identity{PatchID: &patch, PatchIDKind: kind}
+	if !identity.Match(cur, claim) {
+		return nil
+	}
+	if !readcommon.SameRepo(current, sibDir) {
+		return nil
+	}
+	head, _ := store.PostedHead()
+	at, present := store.PostedAt()
+	if !present {
+		at = unknownTime
+	}
+	return &patchSibling{bundle: bundle, head: head, postedAt: at}
 }
 
 func (st *state) postedAt() string {

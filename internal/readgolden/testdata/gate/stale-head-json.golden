@@ -8,6 +8,7 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "post a review for the fetched HEAD",
   "warnings": [
+    "patch identity unavailable — completeness compares heads",
     "live recheck skipped (--live skip requested — gating on local dimensions only)"
   ],
   "data": {
@@ -36,6 +37,7 @@ exit: 1
   "error": null
 }
 --- stderr ---
+warn: patch identity unavailable — completeness compares heads
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 gate: findings     pass  no open findings at-or-above critical
 gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa

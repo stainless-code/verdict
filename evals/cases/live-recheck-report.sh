@@ -75,7 +75,7 @@ else
 fi
 run_review report acme/app "$PR" --check critical --completeness --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.error == null and .warnings == []' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && jq -e '.error == null and .warnings == ["patch identity unavailable — completeness compares heads"]' <"$EVAL_OUT" >/dev/null 2>&1 \
   && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "at data error next pr repo schema_version verb warnings" ]; then
   good "clear --json keeps the envelope shape with null error and no warnings"
 else

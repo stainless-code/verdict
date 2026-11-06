@@ -47,6 +47,8 @@ const (
 	suffixChunkManifest = "/chunks/manifest.json"
 	suffixDiffErr       = "/.diff.err"
 	suffixFullDiff      = "/full.diff"
+	suffixRawDiff       = "/full.raw.diff"
+	suffixIdentity      = "/identity.json"
 	suffixInlineJSON    = "/inline.json"
 	suffixKBRecall      = "/kb-recall.json"
 	suffixKBTxt         = "/kb.txt"

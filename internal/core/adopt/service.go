@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -52,10 +53,11 @@ func (d *Data) Wire() *jq.Obj {
 }
 
 type state struct { //nolint:govet // adopt service state is allocated once per invocation
-	req      *Request
-	warnings []string
-	human    string
-	data     *Data
+	req       *Request
+	warnings  []string
+	human     string
+	data      *Data
+	autoPatch string
 }
 
 // Run carries the local bundle's findings into the target PR bundle.
@@ -64,7 +66,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse("canceled", "canceled before adopt completed")
 	}
-	if ref := st.runAdopt(); ref != nil {
+	if ref := st.runAdopt(ctx); ref != nil {
 		return nil, ref
 	}
 	return st.response(), nil
@@ -89,8 +91,8 @@ func (st *state) response() *Response {
 	}
 }
 
-func (st *state) runAdopt() *core.RefusalError {
-	dir, fromDir, ref := st.resolveAdoptDirs()
+func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
+	dir, fromDir, display, ref := st.resolveAdoptDirs(ctx)
 	if ref != nil {
 		return ref
 	}
@@ -104,22 +106,120 @@ func (st *state) runAdopt() *core.RefusalError {
 	if ref := st.checkAdoptFresh(dir); ref != nil {
 		return ref
 	}
-	return st.finishAdopt(dir, fromDir, entries)
+	return st.finishAdopt(dir, fromDir, display, entries)
 }
 
-func (st *state) resolveAdoptDirs() (string, string, *core.RefusalError) {
+func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
 	dir := reviewRoot + st.req.Pr
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
-		return "", "", st.refuse("bad-target", msgBadTarget)
+		return "", "", "", st.refuse("bad-target", msgBadTarget)
 	}
 	if st.req.From == "" {
-		return "", "", st.refuse("bad-from", msgBadFrom)
+		return "", "", "", st.refuse("bad-from", msgBadFrom)
+	}
+	if st.req.From == fromAuto {
+		fromDir, display, ref := st.resolveAutoFrom(ctx, dir)
+		if ref != nil {
+			return "", "", "", ref
+		}
+		return dir, fromDir, display, nil
 	}
 	fromDir := reviewRoot + st.req.From
 	if !strings.HasPrefix(st.req.From, localPrefix) {
 		fromDir = reviewRoot + localPrefix + st.req.From
 	}
-	return dir, fromDir, nil
+	return dir, fromDir, st.req.From, nil
+}
+
+// identityCommander returns the injected command runner for patch identity
+// recomputation, or nil when the request carries none: without a runner the
+// algorithm claim cannot be recomputed, so git-kind identities stay
+// unverified instead of trusted.
+func (st *state) identityCommander() core.Commander {
+	if st.req == nil || st.req.Runtime == nil {
+		return nil
+	}
+	return st.req.Commander
+}
+
+// resolveAutoFrom matches the target bundle's verified patch identity
+// against every local bundle: exactly one twin adopts, zero or many refuse
+// naming the candidates. The target identity must bind the target's present
+// bytes and head, and each twin must bind its own bytes and head with the
+// requested repository — a stale or foreign bundle is not a twin. The auto
+// sentinel matches before the local- prefix rule, so a local bundle
+// literally named local-auto stays reachable as --from local-auto.
+func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, string, *core.RefusalError) {
+	target := readcommon.OpenBundle(dir)
+	cur, ok := identity.Verify(ctx, st.identityCommander(), dir, target.Head(), target.Base())
+	if !ok || cur.PatchID == nil {
+		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
+			"no-patch-match: target %s has no verifiable patch identity "+
+				"(re-fetch so identity.json exists) — pass --from <local-slug>", dir))
+	}
+	twins := st.scanPatchTwins(ctx, cur)
+	switch len(twins) {
+	case 0:
+		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
+			"no-patch-match: patch %s (%s) has no local twin (target %s) — pass --from <local-slug>",
+			*cur.PatchID, cur.PatchIDKind, dir))
+	case 1:
+		st.autoPatch = *cur.PatchID
+		return reviewRoot + twins[0], "auto -> " + twins[0], nil
+	default:
+		return "", "", st.refuse("ambiguous-patch-match", ambiguousPatchMessage(*cur.PatchID, twins))
+	}
+}
+
+// scanPatchTwins returns the sorted local bundle slugs whose verified
+// identity matches cur in the requested repository. The scan is bounded to
+// .review/local-* identity files (non-recursive), so malformed, stale, or
+// foreign receipts skip instead of refusing.
+func (st *state) scanPatchTwins(ctx context.Context, cur *identity.Identity) []string {
+	entries, err := os.ReadDir(reviewRoot)
+	if err != nil {
+		return nil
+	}
+	var twins []string
+	for _, entry := range entries {
+		if twin, ok := st.twinSlug(ctx, entry, cur); ok {
+			twins = append(twins, twin)
+		}
+	}
+	return twins
+}
+
+// twinSlug reads one candidate bundle: non-local, byte-stale, head-stale,
+// unproven-repository, and foreign-repository identities never match.
+func (st *state) twinSlug(ctx context.Context, entry os.DirEntry, cur *identity.Identity) (string, bool) {
+	name := entry.Name()
+	if !entry.IsDir() || !strings.HasPrefix(name, localPrefix) {
+		return "", false
+	}
+	twinDir := reviewRoot + name
+	head := readcommon.JSONStr(twinDir+"/source.json", "head_sha")
+	base := readcommon.JSONStr(twinDir+"/source.json", "base_sha")
+	id, ok := identity.Verify(ctx, st.identityCommander(), twinDir, head, base)
+	if !ok || !identity.Match(cur, id) {
+		return "", false
+	}
+	if repo := readcommon.JSONStr(twinDir+"/source.json", "repo"); repo == "" || repo != st.req.Repo {
+		return "", false
+	}
+	return name, true
+}
+
+// ambiguousPatchMessage names the twin candidates (max five shown, then
+// +N more) so the human picks one explicitly.
+func ambiguousPatchMessage(patch string, twins []string) string {
+	shown := twins
+	more := ""
+	if len(twins) > maxTwinShown {
+		shown = twins[:maxTwinShown]
+		more = fmt.Sprintf(" (+%d more)", len(twins)-maxTwinShown)
+	}
+	return fmt.Sprintf("ambiguous-patch-match: patch %s matches %d local bundles: %s%s — "+
+		"pass the exact --from <local-slug> named above", patch, len(twins), strings.Join(shown, ", "), more)
 }
 
 func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
@@ -157,22 +257,27 @@ func (st *state) checkAdoptFresh(dir string) *core.RefusalError {
 	return nil
 }
 
-func (st *state) finishAdopt(dir, fromDir string, entries []any) *core.RefusalError {
+func (st *state) finishAdopt(dir, fromDir, display string, entries []any) *core.RefusalError {
 	now := st.req.TimeUTC()
 	commitID := readcommon.PrField(dir, "head_sha")
 	if ref := st.ensureHunks(dir); ref != nil {
 		return ref
 	}
 	hs := readHunks(dir + hunksSuffix)
-	stamped := adoptEntries(entries, readcommon.ShortSHA(commitID), now, st.req.From, hs)
+	stamped := adoptEntries(entries, readcommon.ShortSHA(commitID), now, display, hs)
 	nOpen := countStatus(stamped, statusOpen)
 	if err := atomic.WriteFile(dir+findingsSuffix, []byte(jq.PrettyOrdered(stamped))); err != nil {
 		return st.refuse("adopt-failed", fmt.Sprintf("could not write %s/findings.json: %v", dir, err))
 	}
-	st.human = fmt.Sprintf(msgAdopted, len(stamped), fromDir, nOpen)
+	if st.autoPatch != "" {
+		st.human = fmt.Sprintf("» adopted %d findings from %s (patch %s) (open: %d)",
+			len(stamped), display, st.autoPatch, nOpen)
+	} else {
+		st.human = fmt.Sprintf(msgAdopted, len(stamped), fromDir, nOpen)
+	}
 	st.data = &Data{
 		Dir:     dir,
-		From:    st.req.From,
+		From:    display,
 		Adopted: len(stamped),
 		Open:    nOpen,
 	}
@@ -396,6 +501,12 @@ const (
 	reviewRoot = ".review/"
 	// localPrefix marks local bundle slugs.
 	localPrefix = "local-"
+	// fromAuto is the reserved --from sentinel for patch-identity matching;
+	// it never names a directory (a local bundle literally named local-auto
+	// stays reachable as --from local-auto).
+	fromAuto = "auto"
+	// maxTwinShown caps the ambiguous-patch-match candidate list.
+	maxTwinShown = 5
 	// providerGitHub is the only adopt target provider.
 	providerGitHub = "github"
 	findingsSuffix = "/findings.json"

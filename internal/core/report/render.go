@@ -429,6 +429,13 @@ func gateCompletenessCheck(st *state) gateCheck {
 			line: fmt.Sprintf("check: HEAD %s reviewed (post matches fetch) — completeness passes", short),
 		}
 	}
+	if st.comp != nil && st.comp.SamePatch != nil && *st.comp.SamePatch {
+		posted := readcommon.ShortSHA(st.compPosted)
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimHead, Status: dimPass, Detail: "same patch reviewed at " + short + " (posted " + posted + ")"},
+			line: fmt.Sprintf("check: same patch reviewed at %s (posted %s) — completeness passes (rebase/amend)", short, posted),
+		}
+	}
 	return gateCheck{
 		dim:  core.GateDimension{ID: dimHead, Status: completenessStatus(st), Detail: completenessDetail(st, short)},
 		line: completenessFailLines(st)[0],

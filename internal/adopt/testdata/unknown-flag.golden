@@ -2,5 +2,5 @@ exit: 2
 --- stdout ---
 
 --- stderr ---
-unknown flag '--bogus' for adopt (want --from <local-slug>, --json)
+unknown flag '--bogus' for adopt (want --from <local-slug>|auto, --json)
 --- files ---

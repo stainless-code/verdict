@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/identity.schema.json",
+  "title": "identity.json — bundle patch identity",
+  "description": "Bundle patch identity written by fetch/fetch-local beside the diff: the stable diff id (git patch-id --stable, labeled diff-sha256 fallback) with the head/base SHAs it was computed at. A patch id is a dedupe key, never an authorization token.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "patch_id": {
+      "description": "Stable patch id, or null for an empty diff; a fallback id never matches a git-patch-id value.",
+      "type": ["string", "null"]
+    },
+    "patch_id_kind": {
+      "description": "Patch id algorithm: git-patch-id, the labeled diff-sha256 fallback, or none for an empty diff.",
+      "enum": ["git-patch-id", "diff-sha256", "none"]
+    },
+    "diff_sha256": {
+      "description": "SHA-256 of the bundle full.diff (the filtered store hash).",
+      "type": "string"
+    },
+    "raw_diff_sha256": {
+      "description": "SHA-256 of the identity input (full.raw.diff when present, else full.diff).",
+      "type": "string"
+    },
+    "head_sha": {
+      "description": "Bundle head SHA the diff was computed at.",
+      "type": "string"
+    },
+    "base_sha": {
+      "description": "Bundle base SHA the diff was computed at.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "patch_id",
+    "patch_id_kind",
+    "diff_sha256",
+    "raw_diff_sha256",
+    "head_sha",
+    "base_sha"
+  ],
+  "additionalProperties": false
+}

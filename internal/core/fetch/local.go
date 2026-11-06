@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -237,7 +238,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 // localFinish owns the fetch-local tail: source.json, the done/next
 // lines, the opt-in chunks, and the typed data for the adapter's envelope.
 func localFinish(
-	_ context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
 	dir string, budget *budgetState, fc fetchCap, chunkActive bool, mode *localMode,
 	listed string, total, adds, dels int, diffSHA string,
 ) (*core.FetchData, string, error) {
@@ -245,7 +246,11 @@ func localFinish(
 	toolVersion := provenance.ToolVersion(ctx2.root)
 	now := core.NowUTC(r.Now())
 	model, _ := ctx2.env["REVIEW_MODEL"]
-	if err := writeSourceJSON(dir, req.Repo, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now); err != nil {
+	ident, err := writeIdentityFile(ctx, r.commander, dir, mode.headSHA, mode.baseSHA)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := writeSourceJSON(dir, req.Repo, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now, ident); err != nil {
 		return nil, "", err
 	}
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", dir, dir, dir, dir, total)
@@ -688,9 +693,12 @@ func omittedLocal(listed string, withHunks []string) []string {
 }
 
 // writeSourceJSON owns the source.json writer: the local bundle record.
+// The bundle patch identity rides along additively as patch_id and
+// patch_id_kind, stamped from the identity just built over the bundle's
+// own bytes; a null patch id reads null for the empty diff.
 func writeSourceJSON(
 	dir, repo string, mode *localMode, slug, diffSHA string,
-	total, adds, dels int, toolVersion, model, now string,
+	total, adds, dels int, toolVersion, model, now string, ident *identity.Identity,
 ) error {
 	nullStr := func(s string) any {
 		if s == "" {
@@ -714,6 +722,8 @@ func writeSourceJSON(
 		modeRange, nullStr(mode.rangeVal),
 		"dirty", mode.dirty,
 		"diff_sha256", diffSHA,
+		"patch_id", core.Wire(ident.PatchID),
+		"patch_id_kind", ident.PatchIDKind,
 		keyFiles, total,
 		keyAdditions, adds,
 		keyDeletions, dels,

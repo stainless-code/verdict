@@ -70,7 +70,10 @@ var publishedSemantics = map[string]string{
 	// when unfiltered), additive trendData/trendBundleRow by_category, and the
 	// precision prose naming by_category. No existing property, required key,
 	// enum, or type changed.
-	"envelope.schema.json": "d28b52d31fbb9c85ceb6d5112ea2e198ef55aea5a9c038be60e151572ff04b45",
+	// patch identity: additive optional same_patch/reviewed_patch_id/
+	// posted_patch_id on $defs/reportCompleteness. No existing property,
+	// required key, or type changed.
+	"envelope.schema.json": "35d577a05ee4e52152fabedd7cbd422e95c9c85929597972121dd050863eefc2",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -80,10 +83,18 @@ var publishedSemantics = map[string]string{
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
 	"findings.schema.json": "aa0f9fc9500bb90f2c0d7582225633e53d81b56808f5903d96d8764f0239eced",
-	"post.schema.json":     "6429347b9ff1240a736c420bba9fbdf3f0d80acfd7c9333ea5c6723bf3f77704",
+	"post.schema.json":     "be4c2a37058f31305bed8c3886ebf9bb9ebbdeda10d18033c6503b083718d080",
+	// patch identity: additive $defs/identity root (new bundle document) —
+	// no existing property, required key, or type changed.
+	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
+	// patch identity: additive optional patch_id/patch_id_kind plus the
+	// optional forced[] audit with $defs/forcedPost. No existing property,
+	// required key, or type changed.
 	// review normalization: additive optional repairs[] plus $defs/repair. No
 	// existing property, required key, or type changed.
-	"record.schema.json": "59fc476e273fc69cce49a3dc22f1275c0c0d8ea58d2bc934f3b1884df3ff7044",
+	// patch identity: additive optional patch_id/patch_id_kind. No existing
+	// property, required key, or type changed.
+	"record.schema.json": "1b4dd1183dafdb938513fb5765b0f0f5f64dd82c2e38083135dd25902b7a2d65",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape

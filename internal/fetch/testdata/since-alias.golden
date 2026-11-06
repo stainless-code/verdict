@@ -38,6 +38,7 @@ exit: 0
     "artifacts": {
       "PR.json": ".review/4701/PR.json",
       "full.diff": ".review/4701/full.diff",
+      "identity.json": ".review/4701/identity.json",
       "toc.txt": ".review/4701/toc.txt",
       "roles.txt": ".review/4701/roles.txt",
       "reviews.json": ".review/4701/reviews.json",
@@ -190,6 +191,16 @@ index 1111111..2222222 100644
 --- file C/.review/4701/hunks.tsv ---
 notes.txt	OLD	1	3
 notes.txt	NEW	1	3
+--- file C/.review/4701/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268",
+  "raw_diff_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444"
+}
 --- file C/.review/4701/incremental.diff ---
 diff --git a/notes.txt b/notes.txt
 index 2222222..3333333 100644

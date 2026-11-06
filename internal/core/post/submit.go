@@ -383,6 +383,12 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		ReviewRaw:       obj,
 	}
+	if st.identity != nil {
+		receipt.PatchID, receipt.PatchIDKind = st.identity.PatchID, st.identity.PatchIDKind
+	}
+	if st.forced != nil {
+		receipt.Forced = st.forced
+	}
 	prov, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(st.req.RootPath(), st.dir)))
 	if err != nil {
 		return jq.Sealed("bundle provenance", err)

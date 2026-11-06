@@ -42,6 +42,7 @@ exit: 0
     "artifacts": {
       "PR.json": ".review/4701/PR.json",
       "full.diff": ".review/4701/full.diff",
+      "identity.json": ".review/4701/identity.json",
       "toc.txt": ".review/4701/toc.txt",
       "roles.txt": ".review/4701/roles.txt",
       "reviews.json": ".review/4701/reviews.json",
@@ -182,6 +183,16 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
 
 --- file C/.review/4701/hunks.tsv ---
 
+--- file C/.review/4701/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": null,
+  "patch_id_kind": "none",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "raw_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444"
+}
 --- file C/.review/4701/inline.json ---
 []
 --- file C/.review/4701/reviews.json ---

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -119,7 +120,7 @@ func removeErrFile(path string) {
 	_ = os.Remove(path)
 }
 
-func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) {
+func completeness(ctx context.Context, cmdr core.Commander, dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool, string) {
 	var posted string
 	if isRegular(dir + "/post.json") {
 		posted = readcommon.JSONStr(dir+"/post.json", "head")
@@ -133,7 +134,30 @@ func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) 
 	if posted != "" {
 		comp.PostedHead = &posted
 	}
+	completePatchIdentity(ctx, cmdr, dir, headSHA, baseSHA, comp)
 	return comp, reviewed, posted
+}
+
+// completePatchIdentity fills the same-patch comparison: the reviewed patch
+// id from the byte-bound bundle identity, the posted patch id from the
+// completed post receipt, and same_patch when both are present and agree.
+// Either side unverified leaves its field absent; a legacy bundle with no
+// verifiable identity keeps the SHA comparison and the caller warns.
+func completePatchIdentity(ctx context.Context, cmdr core.Commander, dir, head, base string, comp *core.ReportCompleteness) {
+	reviewed, ok := identity.Verify(ctx, cmdr, dir, head, base)
+	if !ok {
+		return
+	}
+	if reviewed.PatchID != nil {
+		comp.ReviewedPatchID = reviewed.PatchID
+	}
+	patch, kind, ok := identity.CompletedPatch(readcommon.PostRecord(dir))
+	if !ok {
+		return
+	}
+	comp.PostedPatchID = &patch
+	same := identity.Match(reviewed, &identity.Identity{PatchID: &patch, PatchIDKind: kind})
+	comp.SamePatch = &same
 }
 
 func refetchCommand(dir string, req core.ReadRequest, posted string) string {

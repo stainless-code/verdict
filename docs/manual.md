@@ -1332,6 +1332,52 @@ history event and re-resolves anchors against the PR hunks (unmatched paths land
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
+### Patch identity (`identity.json`)
+
+Every fetch writes `.review/<bundle>/identity.json`: the stable diff id beside
+the head/base SHAs. The primary algorithm is `git patch-id --stable` over the raw
+pre-exclusion diff (`patch_id_kind: "git-patch-id"`); when git is missing or the
+spawn fails, the labeled `diff-sha256` fallback (sha256 of the diff minus its
+`index` lines) covers the bundle instead, and the two kinds never match each
+other. An empty diff carries `patch_id: null` with kind `"none"`, which no guard
+matches. The same `patch_id` + `patch_id_kind` are stamped additively into
+`source.json`, `post.json`, and `record.json` as provenance. A patch id is a
+dedupe key, never an authorization token: it only answers "did we already review
+this change", and every use re-binds the stored strings to the bundle's present
+diff bytes and head — recomputing the labeled algorithm over the raw input —
+before trusting them. An identity whose claim does not reproduce, or whose raw
+input cannot be read, is not certified: the run warns and falls back to SHA
+behavior instead.
+
+`adopt owner/repo N --from auto` matches the target bundle's verified identity
+against `.review/local-*` twins in the requested repository: exactly one twin
+adopts (printed as `from: auto -> local-<name>`), zero refuse `no-patch-match`,
+and many refuse `ambiguous-patch-match` naming the candidates (max five shown).
+Twins from a foreign repository, with stale bytes, or without a repository record
+never match. The literal name `local-auto` stays reachable as `--from local-auto`
+(the sentinel is matched first).
+
+`post` refuses `already-reviewed-patch` when a sibling bundle's completed
+`post.json` receipt carries the same patch id and kind in the same repository —
+unless `--force`, which posts and records one entry per bypassed guard in
+`post.json.forced[]` (reason, patch id, prior bundle, prior head), in guard order.
+A receipt proves a completed publication only with an identified review in a
+completed state (`APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED`) and
+valid head/time metadata. Incomplete, pending, dry-run, failed, empty-review, or
+invalid head/time receipts prove no publication and never block, exactly like an
+unposted bundle. A missing, malformed, stale, tampered, unrecomputable, or
+unreadable-raw `identity.json` warns `patch identity unavailable — dedupe by SHA
+only` and the run falls back to the SHA-only dedupe; a legacy bundle without
+identity warns and proceeds the same way.
+
+`report --completeness` passes a rebase or amend that keeps the patch: when the
+posted and fetched heads differ but the verified bundle identity and the
+completed post receipt share the patch id, the gate passes with `check: same
+patch reviewed at <fetched> (posted <posted>) — completeness passes
+(rebase/amend)`. A different patch keeps today's stale-head failure, and a bundle
+without verifiable identity warns `patch identity unavailable — completeness
+compares heads` and compares heads only.
+
 ### Isolated checkout (`--worktree`)
 
 `fetch-local --worktree` checks the review target into a temporary detached

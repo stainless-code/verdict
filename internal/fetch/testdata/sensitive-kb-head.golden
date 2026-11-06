@@ -41,6 +41,7 @@ exit: 0
     "artifacts": {
       "PR.json": ".review/4715/PR.json",
       "full.diff": ".review/4715/full.diff",
+      "identity.json": ".review/4715/identity.json",
       "toc.txt": ".review/4715/toc.txt",
       "roles.txt": ".review/4715/roles.txt",
       "reviews.json": ".review/4715/reviews.json",
@@ -202,6 +203,16 @@ diff --git a/notes.txt b/notes.txt
 .env	NEW	1	1
 notes.txt	OLD	1	1
 notes.txt	NEW	1	1
+--- file C/.review/4715/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "daddb5324c08348673b3967924d1a3775e52691c",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "4d649ee636aee16fe84e813a7eef07550f19cb466fef94abb825efaa30060dab",
+  "raw_diff_sha256": "4d649ee636aee16fe84e813a7eef07550f19cb466fef94abb825efaa30060dab",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "29c13ae939537f329d09b5f53a8fcb28260c815e"
+}
 --- file C/.review/4715/inline.json ---
 []
 --- file C/.review/4715/kb-recall.json ---

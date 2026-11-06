@@ -38,6 +38,7 @@ exit: 0
     "artifacts": {
       "PR.json": ".review/4703/PR.json",
       "full.diff": ".review/4703/full.diff",
+      "identity.json": ".review/4703/identity.json",
       "toc.txt": ".review/4703/toc.txt",
       "roles.txt": ".review/4703/roles.txt",
       "reviews.json": ".review/4703/reviews.json",
@@ -334,6 +335,16 @@ f12.txt	OLD	1	1
 f12.txt	NEW	1	1
 f13.txt	OLD	1	1
 f13.txt	NEW	1	1
+--- file C/.review/4703/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "bfce35b0832e01d08de421099c7402f66c7a4dec",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3",
+  "raw_diff_sha256": "d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "ab91545e1cfbffc91b92203b22bc87e37c6470e1"
+}
 --- file C/.review/4703/inline.json ---
 []
 --- file C/.review/4703/reviews.json ---

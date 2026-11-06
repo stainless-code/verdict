@@ -180,6 +180,12 @@ export interface ReportCompleteness {
   reviewed: boolean;
   fetched_head: string | null;
   posted_head: string | null;
+  /** True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id. */
+  same_patch?: boolean | null;
+  /** Patch id the bundle identity carried at review time; absent when the bundle had no identity. */
+  reviewed_patch_id?: string | null;
+  /** Patch id the completed post receipt carried; absent when the post predates patch identity. */
+  posted_patch_id?: string | null;
   [key: string]: unknown;
 }
 

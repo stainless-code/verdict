@@ -163,9 +163,18 @@ func documents() []document {
 			additionalProperties: true,
 		},
 		{
-			name:                 "post",
-			title:                "post.json — completed-post record (PR bundles)",
-			root:                 reflect.TypeFor[Post](),
+			name:                 "identity",
+			title:                "identity.json — bundle patch identity",
+			root:                 reflect.TypeFor[Identity](),
+			additionalProperties: false,
+		},
+		{
+			name:  "post",
+			title: "post.json — completed-post record (PR bundles)",
+			root:  reflect.TypeFor[Post](),
+			defs: []definition{
+				{typ: reflect.TypeFor[ForcedPost](), name: "forcedPost"},
+			},
 			additionalProperties: true,
 		},
 		{

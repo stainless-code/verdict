@@ -47,6 +47,14 @@
       "description": "First model of the latest cost record, else null when no cost record names one.",
       "type": ["string", "null"]
     },
+    "patch_id": {
+      "description": "Bundle patch id at record time, copied from identity.json; absent when the bundle had no identity.",
+      "type": ["string", "null"]
+    },
+    "patch_id_kind": {
+      "description": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity.",
+      "type": "string"
+    },
     "repairs": {
       "description": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean.",
       "type": "array",

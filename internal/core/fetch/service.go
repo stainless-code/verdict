@@ -22,6 +22,10 @@ import (
 // well.
 const CodeFetchFailed = "fetch-failed"
 
+// msgReadFailed formats an unreadable input artifact; the read sites share
+// one literal so the message never drifts.
+const msgReadFailed = "could not read %s: %v"
+
 // codeCanceled names the cancel refusal the adapter exits 3 on.
 const codeCanceled = "canceled"
 

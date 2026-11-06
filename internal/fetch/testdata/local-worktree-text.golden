@@ -105,6 +105,16 @@ index 163ed5c..d8410b6 100644
 --- file C/.review/local-demo/hunks.tsv ---
 notes.txt	OLD	1	3
 notes.txt	NEW	1	3
+--- file C/.review/local-demo/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
+  "raw_diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
+  "head_sha": "",
+  "base_sha": "e379897b82c6a9586a0c8f13b612a022eb952230"
+}
 --- file C/.review/local-demo/roles.txt ---
 ## docs
 - notes.txt
@@ -121,6 +131,8 @@ notes.txt	NEW	1	3
   "range": "HEAD:worktree",
   "dirty": true,
   "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
+  "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
+  "patch_id_kind": "git-patch-id",
   "files": 1,
   "additions": 1,
   "deletions": 1,

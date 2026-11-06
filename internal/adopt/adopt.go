@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -51,7 +52,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // typed service request.
 func adoptRequest(r *cli.Runner, req Request, from string) *adoptcore.Request {
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
+		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
 		Repo:    req.Repo,
 		Pr:      req.Pr,
 	}
@@ -83,4 +84,4 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 }
 
 // msgUnknownFlag is the frozen unknown-flag usage text.
-const msgUnknownFlag = "unknown flag '%s' for adopt (want --from <local-slug>, --json)"
+const msgUnknownFlag = "unknown flag '%s' for adopt (want --from <local-slug>|auto, --json)"

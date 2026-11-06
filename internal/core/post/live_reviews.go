@@ -93,7 +93,7 @@ func (st *state) liveAlreadyPosted() *core.RefusalError {
 		if postedAt == "" {
 			postedAt = unknownTime
 		}
-		return &core.RefusalError{Code: "already-posted", Message: fmt.Sprintf(msgAlreadyPosted,
+		return &core.RefusalError{Code: codeAlreadyPosted, Message: fmt.Sprintf(msgAlreadyPosted,
 			readcommon.ShortSHA(st.commitID), postedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.commitID))}
 	}
 	return nil

@@ -31,6 +31,9 @@
       "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
       "/$defs/provenance": "Review provenance triple: the tooling behind a run, so mixed-version histories never read as one series. The writer always emits all three keys; model is null when no cost record names one.",
       "/$defs/reportData": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set, receipt keys only when budget.json parses.",
+      "/$defs/reportCompleteness/properties/same_patch": "True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id.",
+      "/$defs/reportCompleteness/properties/reviewed_patch_id": "Patch id the bundle identity carried at review time; absent when the bundle had no identity.",
+      "/$defs/reportCompleteness/properties/posted_patch_id": "Patch id the completed post receipt carried; absent when the post predates patch identity.",
       "/$defs/reportGate": "Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "/$defs/reportGate/properties/passed": "The gate verdict the exit code follows: exit 0 when true, exit 1 when false.",
       "/$defs/gateDimension": "One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report).",
@@ -162,7 +165,26 @@
       "/properties/posted_at": "UTC timestamp of the completed post.",
       "/properties/tool_version": "Tool version that wrote this record (from package.json).",
       "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
-      "/properties/model": "First model of the latest cost record, else null when no cost record names one."
+      "/properties/model": "First model of the latest cost record, else null when no cost record names one.",
+      "/properties/patch_id": "Bundle patch id the post reviewed, copied from identity.json; absent when the bundle had no identity.",
+      "/properties/patch_id_kind": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity.",
+      "/properties/forced": "One entry per guard --force bypassed, in guard order; absent when the post needed no override.",
+      "/$defs/forcedPost": "One explicit --force bypass: the fired guard plus the prior bundle and head when a same-patch sibling refused.",
+      "/$defs/forcedPost/properties/reason": "The fired guard (already-posted, duplicate-payload, already-reviewed-patch).",
+      "/$defs/forcedPost/properties/patch_id": "Patch id the refused sibling shared, for the same-patch bypass; else null.",
+      "/$defs/forcedPost/properties/previous_bundle": "Sibling bundle slug the bypass overrode, for the same-patch bypass; else null.",
+      "/$defs/forcedPost/properties/previous_head": "Prior reviewed head the bypass overrode, for same-SHA and same-patch bypasses; else null."
+    }
+  },
+  "identity": {
+    "descriptions": {
+      "": "Bundle patch identity written by fetch/fetch-local beside the diff: the stable diff id (git patch-id --stable, labeled diff-sha256 fallback) with the head/base SHAs it was computed at. A patch id is a dedupe key, never an authorization token.",
+      "/properties/patch_id": "Stable patch id, or null for an empty diff; a fallback id never matches a git-patch-id value.",
+      "/properties/patch_id_kind": "Patch id algorithm: git-patch-id, the labeled diff-sha256 fallback, or none for an empty diff.",
+      "/properties/diff_sha256": "SHA-256 of the bundle full.diff (the filtered store hash).",
+      "/properties/raw_diff_sha256": "SHA-256 of the identity input (full.raw.diff when present, else full.diff).",
+      "/properties/head_sha": "Bundle head SHA the diff was computed at.",
+      "/properties/base_sha": "Bundle base SHA the diff was computed at."
     }
   },
   "record": {
@@ -177,7 +199,9 @@
       "/properties/tool_version": "Tool version that wrote this record (from package.json).",
       "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
       "/properties/model": "First model of the latest cost record, else null when no cost record names one.",
-      "/properties/repairs": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean."
+      "/properties/repairs": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean.",
+      "/properties/patch_id": "Bundle patch id at record time, copied from identity.json; absent when the bundle had no identity.",
+      "/properties/patch_id_kind": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity."
     }
   },
   "review": {

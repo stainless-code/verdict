@@ -15,10 +15,15 @@
 # Finding categories + repair: taxonomy, counts/filters, core bad-category
 # refusal, anchor+rigor gate eligibility, false-category warning, and the
 # category wire fields added ~30-65 KiB per target (amd64 over budget).
+# Patch identity on top: bundle identity binding, Verify recompute, receipt
+# strictness, and raw-read distinction add ~35-45 KiB per target over the
+# category baseline. Ceilings sit at the next 10 KiB above the combined
+# measurement. Final receipt-number validation and shared raw-entry checks
+# add up to another 9 KiB; only overflowing ceilings are refreshed.
 deps 0
-darwin/amd64 11280000
-darwin/arm64 10370000
-linux/amd64 11080000
+darwin/amd64 11340000
+darwin/arm64 10420000
+linux/amd64 11130000
 linux/arm64 10160000
-windows/amd64 11400000
-windows/arm64 10280000
+windows/amd64 11450000
+windows/arm64 10330000

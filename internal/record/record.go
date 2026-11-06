@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -57,7 +58,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 func recordRequest(r *cli.Runner, req Request) *core.RecordRequest {
 	root := req.Root
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
+		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
 		Repo:    req.Repo,
 		Pr:      req.Pr,
 		Forces:  req.Forces,

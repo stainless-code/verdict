@@ -178,6 +178,8 @@ type Record struct { //nolint:govet // field order is the published property ord
 	ToolVersion     string   `json:"tool_version,omitempty"`
 	PromptsHash     string   `json:"prompts_hash,omitempty"`
 	Model           *string  `json:"model,omitempty"`
+	PatchID         *string  `json:"patch_id,omitempty"`
+	PatchIDKind     string   `json:"patch_id_kind,omitempty"`
 	Repairs         []Repair `json:"repairs,omitempty"`
 	ConfidenceRaw   any      `json:"-"`
 }
@@ -406,6 +408,12 @@ func (r *Record) Wire() *jq.Obj {
 		"prompts_hash", r.PromptsHash,
 		"model", strOrNull(r.Model),
 	)
+	if r.PatchID != nil {
+		o.Set("patch_id", *r.PatchID)
+	}
+	if r.PatchIDKind != "" {
+		o.Set("patch_id_kind", r.PatchIDKind)
+	}
 	if len(r.Repairs) > 0 {
 		o.Set("repairs", r.Repairs)
 	}

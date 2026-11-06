@@ -35,6 +35,14 @@ type scriptResult struct {
 	fail   bool
 }
 
+// testPatchID is the canned `git patch-id --stable` stdout the script
+// seam answers: one fixed stable id, so identity assertions stay
+// deterministic without scripting every fetch test's map.
+const testPatchID = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d 0000000000000000000000000000000000000000\n"
+
+// patchIDKey is the script map key for the identity spawn.
+const patchIDKey = "git\x00patch-id\x00--stable"
+
 // Run records argv/stdin/env and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
 	s.t.Helper()
@@ -42,6 +50,13 @@ func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result,
 	s.stdin = append(s.stdin, cmd.Stdin != nil)
 	s.env = append(s.env, cmd.Env)
 	key := strings.Join(cmd.Argv, "\x00")
+	if key == patchIDKey {
+		if cmd.Stdin == nil {
+			s.t.Errorf("patch-id sent no stdin, want the diff on stdin")
+			return core.Result{}, errors.New("patch-id needs stdin")
+		}
+		return core.Result{Stdout: testPatchID}, nil
+	}
 	res, ok := s.out[key]
 	if !ok {
 		s.t.Errorf("unexpected argv: %q", cmd.Argv)
@@ -74,14 +89,18 @@ func assertScriptCalls(t *testing.T, cmdr *scriptCommander, want [][]string) {
 	}
 }
 
-// assertOneCall proves one scripted call fired with no stdin and an
-// inherited env.
+// assertOneCall proves one scripted call fired with an inherited env; the
+// patch-id spawn carries the diff on stdin, every other call sends none.
 func assertOneCall(t *testing.T, cmdr *scriptCommander, i int, want []string) {
 	t.Helper()
 	if strings.Join(cmdr.calls[i], "\x00") != strings.Join(want, "\x00") {
 		t.Errorf("argv %d = %q, want %q", i, cmdr.calls[i], want)
 	}
-	if cmdr.stdin[i] {
+	if strings.Join(want, "\x00") == patchIDKey {
+		if !cmdr.stdin[i] {
+			t.Errorf("argv %d sent no stdin, want the diff on stdin", i)
+		}
+	} else if cmdr.stdin[i] {
 		t.Errorf("argv %d sent stdin, want none", i)
 	}
 	if cmdr.env[i] != nil {
@@ -211,10 +230,11 @@ func TestRunGitHubHappyPath(t *testing.T) {
 	}
 	assertScriptCalls(t, cmdr, fetchHappyArgv())
 	assertBundleFiles(t, filepath.Join(".review", "7"), []string{
-		"PR.json", "full.diff",
+		"PR.json", "full.diff", "identity.json",
 		"toc.txt", "roles.txt", "hunks.tsv", "store.json", "reviews.json", "inline.json",
 		"threads.json", ".difffiles",
 	})
+	assertIdentityFile(t)
 	assertFetchFiles(t)
 	assertFetchData(t, resp, &human)
 }
@@ -228,6 +248,7 @@ func fetchHappyArgv() [][]string {
 				"files,additions,deletions,isDraft,reviewDecision,state",
 		},
 		{"gh", "pr", "diff", "7", "--repo", "o/r"},
+		{"git", "patch-id", "--stable"},
 		{
 			"gh", "pr", "view", "7", "--repo", "o/r", "--json", "files", "--jq",
 			`.files[] | "\(.path) (+\(.additions)/-\(.deletions))"`,
@@ -235,6 +256,27 @@ func fetchHappyArgv() [][]string {
 		{"gh", "api", "repos/o/r/pulls/7/reviews", "--paginate"},
 		{"gh", "api", "repos/o/r/pulls/7/comments", "--paginate"},
 		append([]string{"gh"}, readcommon.ReviewThreadsArgv("o", "r", "7", "")...),
+	}
+}
+
+// assertIdentityFile proves the happy-path bundle carries the git patch
+// identity over the fetched diff.
+func assertIdentityFile(t *testing.T) {
+	t.Helper()
+	raw, err := os.ReadFile(".review/7/identity.json")
+	if err != nil {
+		t.Fatalf("identity.json: %v", err)
+	}
+	for _, want := range []string{
+		`"schema_version": "1"`,
+		`"patch_id": "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"`,
+		`"patch_id_kind": "git-patch-id"`,
+		`"head_sha": "` + fetchTestHead + `"`,
+		`"base_sha": "` + fetchTestBase + `"`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("identity.json misses %s:\n%s", want, raw)
+		}
 	}
 }
 
@@ -517,4 +559,29 @@ func warningContains(warnings []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestWriteIdentityFileRawUnreadable proves a present-but-unreadable raw
+// diff refuses the fetch write instead of certifying the filtered bytes,
+// while a genuinely absent raw artifact falls back cleanly.
+func TestWriteIdentityFileRawUnreadable(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte("filtered bytes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeIdentityFile(context.Background(), nil, dir, "head", "base"); err != nil {
+		t.Fatalf("absent raw fallback refused: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "full.raw.diff"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeIdentityFile(context.Background(), nil, dir, "head", "base"); err == nil {
+		t.Fatal("unreadable raw diff certified, want fetch-failed")
+	} else {
+		var ref *core.RefusalError
+		if !errors.As(err, &ref) || ref.Code != CodeFetchFailed {
+			t.Fatalf("error = %v, want fetch-failed", err)
+		}
+	}
 }

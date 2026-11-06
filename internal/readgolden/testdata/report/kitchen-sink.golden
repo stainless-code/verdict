@@ -8,6 +8,7 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "wrote out.md",
   "warnings": [
+    "patch identity unavailable — completeness compares heads",
     "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)"
   ],
   "data": {
@@ -256,6 +257,7 @@ exit: 1
   "error": null
 }
 --- stderr ---
+warn: patch identity unavailable — completeness compares heads
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
 wrote out.sarif
 wrote out.md

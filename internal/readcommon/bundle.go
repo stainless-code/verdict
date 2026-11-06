@@ -35,6 +35,42 @@ func ResolveBundleDir(pr string) string {
 	return ".review/" + pr
 }
 
+// RepoKey returns the bundle's repository identity: a local bundle's
+// source.json repo, else a PR bundle's record URL with its trailing review
+// segment removed (so the github pull and the gitlab merge-request paths
+// both fold to their host plus repository path). It returns "" when the
+// bundle carries neither (legacy or hand-made records): such bundles never
+// match, so patch identity cannot cross repository or host boundaries by
+// default, and legacy bundles simply fall back to SHA behavior.
+func RepoKey(dir string) string {
+	if repo := JSONStr(dir+"/source.json", "repo"); repo != "" {
+		return "local:" + repo
+	}
+	if url := OpenBundle(dir).StrField("url"); url != "" {
+		return "pr:" + repoPrefix(url)
+	}
+	return ""
+}
+
+// repoPrefix folds a review URL to its repository collection: the URL
+// without its trailing segment and slash (github .../pull/7 and gitlab
+// .../-/merge_requests/7 both shed the review number).
+func repoPrefix(url string) string {
+	trimmed := strings.TrimSuffix(url, "/")
+	if i := strings.LastIndex(trimmed, "/"); i > 0 {
+		return trimmed[:i]
+	}
+	return trimmed
+}
+
+// SameRepo reports whether two bundles share a known repository identity.
+// Unknown keys never match: a bundle that cannot prove its repository does
+// not participate in patch matching.
+func SameRepo(aDir, bDir string) bool {
+	a, b := RepoKey(aDir), RepoKey(bDir)
+	return a != "" && a == b
+}
+
 // Bundle is one bundle's decoded provider records. PR.json and post.json are
 // read and decoded at most once per Bundle, so a verb that needs the
 // provider, head, base, state, author, and post receipt pays one store read

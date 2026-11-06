@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -16,7 +18,7 @@ import (
 func buildHunksTSV(fullDiff, out string) error {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
 	}
 	if werr := atomic.WriteFile(out, []byte(hunks.Snapshot(string(raw)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", out, werr)}
@@ -27,7 +29,7 @@ func buildHunksTSV(fullDiff, out string) error {
 func diffFiles(fullDiff, dir string) ([]string, error) {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
 	}
 	files := diffHunkFiles(string(raw))
 	slices.Sort(files)
@@ -359,6 +361,33 @@ const noDiffHeaders = "(no diff headers — empty diff?)\n"
 // countNewlines counts the newline bytes.
 func countNewlines(s string) int {
 	return strings.Count(s, newline)
+}
+
+// writeIdentityFile builds the bundle patch identity over the present diff
+// bytes and writes identity.json beside it: the filtered hash covers
+// full.diff, while the identity input prefers full.raw.diff when an
+// exclusion pass left one (so the patch id always tracks the raw
+// pre-exclusion diff even though both hashes coincide today). It returns
+// the built identity so provenance writers stamp the exact bytes-bound
+// record. A write failure refuses fetch-failed: the identity is part of
+// the bundle contract, not an advisory receipt.
+func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) (*identity.Identity, error) {
+	filtered, err := os.ReadFile(dir + suffixFullDiff)
+	if err != nil {
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixFullDiff, err)}
+	}
+	// Only a genuinely absent raw artifact falls back to the filtered
+	// bytes: a present-but-unreadable raw diff refuses instead of
+	// certifying the wrong identity input.
+	raw, err := identity.ReadRawDiff(dir, filtered)
+	if err != nil {
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixRawDiff, err)}
+	}
+	id := identity.Build(ctx, cmdr, filtered, raw, head, base)
+	if err := atomic.WriteFile(dir+suffixIdentity, []byte(jq.PrettyOrdered(id.Wire()))); err != nil {
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/identity.json: %v", dir, err)}
+	}
+	return id, nil
 }
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.
