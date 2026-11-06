@@ -107,7 +107,7 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 		warnings: append([]string{}, req.Warnings...),
 		gate:     flags.Check != "" || flags.Completeness,
 	}
-	if err := loadState(st); err != nil {
+	if err := loadState(ctx, st); err != nil {
 		return nil, err
 	}
 	runLiveProbe(ctx, st)
@@ -154,7 +154,7 @@ func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 	return ref
 }
 
-func loadState(st *state) *core.RefusalError {
+func loadState(ctx context.Context, st *state) *core.RefusalError {
 	st.dir = readcommon.ResolveBundleDir(st.req.Pr)
 	entries, err := readcommon.LoadFindings(st.dir)
 	if err != nil {
@@ -179,7 +179,7 @@ func loadState(st *state) *core.RefusalError {
 	st.nAllOpen = readcommon.CountOpen(entries)
 	st.counts = storeCounts(entries)
 	loadStateCost(st)
-	loadStateCompleteness(st)
+	loadStateCompleteness(ctx, st)
 	return nil
 }
 
@@ -202,12 +202,12 @@ func loadStateCost(st *state) {
 	st.receipts = res.Receipts
 }
 
-func loadStateCompleteness(st *state) {
+func loadStateCompleteness(ctx context.Context, st *state) {
 	if !st.flags.Completeness {
 		return
 	}
-	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA, st.baseSHA)
-	if _, ok := identity.Verify(st.dir, st.headSHA, st.baseSHA); !ok {
+	st.comp, st.compOK, st.compPosted = completeness(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA)
+	if _, ok := identity.Verify(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA); !ok {
 		st.warn("patch identity unavailable — completeness compares heads")
 	}
 }

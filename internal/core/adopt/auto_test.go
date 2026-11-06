@@ -1,12 +1,17 @@
 package adoptcore
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 const autoTestPatch = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
@@ -95,7 +100,33 @@ func autoTargetRecord(t *testing.T, bundle string) {
 func autoRequest(from string) *Request {
 	req := &Request{From: from}
 	req.Repo, req.Pr = "acme/app", "1648"
+	req.Runtime = &core.Runtime{Commander: autoCommander()}
 	return req
+}
+
+// autoCommander answers `git patch-id --stable` for the fixture diffs and
+// fails anything else exactly like an unavailable git.
+func autoCommander() core.Commander {
+	return &autoStubCommander{ids: map[string]string{
+		autoTestDiff:      autoTestPatch,
+		autoTestOtherDiff: "0123456789abcdef0123456789abcdef01234567",
+	}}
+}
+
+type autoStubCommander struct {
+	ids map[string]string
+}
+
+func (c *autoStubCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+		raw, err := io.ReadAll(cmd.Stdin)
+		if err == nil {
+			if id, ok := c.ids[string(raw)]; ok {
+				return core.Result{Stdout: id + " 0000000000000000000000000000000000000000\n"}, nil
+			}
+		}
+	}
+	return core.Result{ExitCode: 1}, errors.New("cannot compute patch id")
 }
 
 // TestAdoptAutoMatch proves --from auto adopts exactly one twin and prints
@@ -209,11 +240,57 @@ func TestAdoptAutoStaleTwinExcludes(t *testing.T) {
 // before the local- prefix rule).
 func TestAdoptLocalAutoSentinel(t *testing.T) {
 	st := &state{req: autoRequest("local-auto")}
-	dir, fromDir, display, ref := st.resolveAdoptDirs()
+	dir, fromDir, display, ref := st.resolveAdoptDirs(context.Background())
 	if ref != nil {
 		t.Fatalf("resolveAdoptDirs refusal: %v", ref)
 	}
 	if dir != ".review/1648" || fromDir != ".review/local-auto" || display != "local-auto" {
 		t.Errorf("resolve = %q %q %q", dir, fromDir, display)
+	}
+}
+
+// TestAdoptAutoTamperedTwinExcludes proves a twin whose patch claim does
+// not reproduce the raw input is never selected, even with coherent hashes
+// and head in the requested repository.
+func TestAdoptAutoTamperedTwinExcludes(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	autoBundle(t, "1648", "", false)
+	autoBundle(t, "local-twin", "acme/app", true)
+	raw, err := os.ReadFile(".review/local-twin/identity.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(raw), autoTestPatch, strings.Repeat("1", 40), 1)
+	if err := os.WriteFile(".review/local-twin/identity.json", []byte(tampered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := Run(t.Context(), autoRequest("auto"))
+	if ref == nil || ref.Code != "no-patch-match" {
+		t.Fatalf("refusal = %v, want no-patch-match", ref)
+	}
+}
+
+// TestAdoptAutoTamperedTargetRefuses proves a target whose patch claim does
+// not reproduce its bytes refuses with the re-fetch hint.
+func TestAdoptAutoTamperedTargetRefuses(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	autoBundle(t, "1648", "", false)
+	raw, err := os.ReadFile(".review/1648/identity.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(raw), autoTestPatch, strings.Repeat("1", 40), 1)
+	if err := os.WriteFile(".review/1648/identity.json", []byte(tampered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	autoBundle(t, "local-twin", "acme/app", true)
+	_, ref := Run(t.Context(), autoRequest("auto"))
+	if ref == nil || ref.Code != "no-patch-match" {
+		t.Fatalf("refusal = %v, want no-patch-match", ref)
+	}
+	if !strings.Contains(ref.Message, "re-fetch") {
+		t.Errorf("message misses the re-fetch hint: %q", ref.Message)
 	}
 }

@@ -560,3 +560,28 @@ func warningContains(warnings []string, want string) bool {
 	}
 	return false
 }
+
+// TestWriteIdentityFileRawUnreadable proves a present-but-unreadable raw
+// diff refuses the fetch write instead of certifying the filtered bytes,
+// while a genuinely absent raw artifact falls back cleanly.
+func TestWriteIdentityFileRawUnreadable(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte("filtered bytes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeIdentityFile(context.Background(), nil, dir, "head", "base"); err != nil {
+		t.Fatalf("absent raw fallback refused: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "full.raw.diff"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeIdentityFile(context.Background(), nil, dir, "head", "base"); err == nil {
+		t.Fatal("unreadable raw diff certified, want fetch-failed")
+	} else {
+		var ref *core.RefusalError
+		if !errors.As(err, &ref) || ref.Code != CodeFetchFailed {
+			t.Fatalf("error = %v, want fetch-failed", err)
+		}
+	}
+}

@@ -4,8 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 )
 
@@ -26,12 +31,28 @@ func stampIdentity(t *testing.T, slug string) {
 			`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
 }
 
+// recordStubCommander answers `git patch-id --stable` for the fixture diff
+// and fails anything else exactly like an unavailable git.
+type recordStubCommander struct{}
+
+func (c *recordStubCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+		raw, err := io.ReadAll(cmd.Stdin)
+		if err == nil && string(raw) == recordTestDiff {
+			return core.Result{Stdout: recordTestPatch + " 0000000000000000000000000000000000000000\n"}, nil
+		}
+	}
+	return core.Result{ExitCode: 1}, errors.New("cannot compute patch id")
+}
+
 // runRecordPatch runs record over the named bundle and returns its
 // record.json.
 func runRecordPatch(t *testing.T, slug string) map[string]any {
 	t.Helper()
 	c := &collector{}
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
+	req := recordRequest(t, c, slug)
+	req.Commander = &recordStubCommander{}
+	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	return readRecord(t, slug)
@@ -77,5 +98,22 @@ func TestRunRecordOmitsPatchIdentityStale(t *testing.T) {
 	stale := runRecordPatch(t, "local-stale")
 	if _, ok := stale["patch_id"]; ok {
 		t.Errorf("stale record.json carries patch_id: %v", stale["patch_id"])
+	}
+}
+
+// TestRunRecordOmitsTamperedPatchIdentity proves a hex-valid patch claim
+// that does not reproduce the raw input is never stamped into record.json.
+func TestRunRecordOmitsTamperedPatchIdentity(t *testing.T) {
+	bundle(t, "local-tampered", reviewJSON(""))
+	stampIdentity(t, "local-tampered")
+	raw, err := os.ReadFile(".review/local-tampered/identity.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(raw), recordTestPatch, strings.Repeat("1", 40), 1)
+	writeFile(t, ".review/local-tampered/identity.json", tampered)
+	rec := runRecordPatch(t, "local-tampered")
+	if _, ok := rec["patch_id"]; ok {
+		t.Errorf("tampered record.json carries patch_id: %v", rec["patch_id"])
 	}
 }

@@ -18,7 +18,7 @@ import (
 func buildHunksTSV(fullDiff, out string) error {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
 	}
 	if werr := atomic.WriteFile(out, []byte(hunks.Snapshot(string(raw)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", out, werr)}
@@ -29,7 +29,7 @@ func buildHunksTSV(fullDiff, out string) error {
 func diffFiles(fullDiff, dir string) ([]string, error) {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", fullDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
 	}
 	files := diffHunkFiles(string(raw))
 	slices.Sort(files)
@@ -374,11 +374,16 @@ func countNewlines(s string) int {
 func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) (*identity.Identity, error) {
 	filtered, err := os.ReadFile(dir + suffixFullDiff)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", dir+suffixFullDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixFullDiff, err)}
 	}
+	// Only a genuinely absent raw artifact falls back to the filtered
+	// bytes: a present-but-unreadable raw diff refuses instead of
+	// certifying the wrong identity input.
 	raw := filtered
 	if rb, err := os.ReadFile(dir + suffixRawDiff); err == nil {
 		raw = rb
+	} else if !os.IsNotExist(err) {
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixRawDiff, err)}
 	}
 	id := identity.Build(ctx, cmdr, filtered, raw, head, base)
 	if err := atomic.WriteFile(dir+suffixIdentity, []byte(jq.PrettyOrdered(id.Wire()))); err != nil {

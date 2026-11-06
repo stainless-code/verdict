@@ -190,7 +190,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 		return ref
 	}
 	st.commitID = st.store().Head()
-	if ref := st.runGuards(); ref != nil {
+	if ref := st.runGuards(ctx); ref != nil {
 		return ref
 	}
 	st.checkDrift(ctx)
@@ -452,14 +452,29 @@ func (st *state) duplicateGuard() *core.RefusalError {
 // runGuards runs the pre-merge refusal gates in order: the local same-SHA
 // finalizer, then the same-patch sibling scan. A dry run never posts, so it
 // skips both.
-func (st *state) runGuards() *core.RefusalError {
+func (st *state) runGuards(ctx context.Context) *core.RefusalError {
 	if st.flags.DryRun {
 		return nil
 	}
 	if ref := st.finalizerGuard(); ref != nil {
 		return ref
 	}
-	return st.patchGuard()
+	return st.patchGuard(ctx)
+}
+
+// identityCommander returns the injected command runner for patch identity
+// recomputation, or nil when the runtime carries none: without a runner the
+// algorithm claim cannot be recomputed, so git-kind identities stay
+// unverified instead of trusted.
+func (st *state) identityCommander() core.Commander {
+	var rt *core.Runtime
+	if st.req != nil {
+		rt = st.req.Runtime
+	}
+	if rt == nil {
+		return nil
+	}
+	return rt.Commander
 }
 
 // duplicateRefusal fires when the payload already posted: the local marker
@@ -518,18 +533,20 @@ func (st *state) forceBypass(code string, patchID, prevBundle, prevHead *string)
 }
 
 // patchGuard refuses a duplicate review of the same patch at a new SHA: it
-// binds the current bundle identity to the bundle's present bytes and head,
-// then scans sibling .review/*/post.json receipts for a completed
-// publication of the same verified patch in the same repository, refusing
-// unless --force (recorded in forced[]). It reads post.json only as
-// publication proof, so an unposted local bundle never blocks a post. A
-// missing, malformed, or stale identity warns and proceeds with the
-// SHA-only dedupe; a patch id never authorizes a post.
-func (st *state) patchGuard() *core.RefusalError {
+// binds the current bundle identity to the bundle's present bytes, the
+// recomputed algorithm result, and head, then scans sibling
+// .review/*/post.json receipts for a completed publication of the same
+// verified patch in the same repository, refusing unless --force (recorded
+// in forced[]). It reads post.json only as publication proof, so an
+// unposted local bundle never blocks a post. A missing, malformed, stale,
+// tampered, or unrecomputable identity warns and proceeds with the SHA-only
+// dedupe; a patch id never authorizes a post.
+func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
 	if st.flags.DryRun {
 		return nil
 	}
-	cur, ok := identity.Verify(st.dir, st.commitID, recordcore.BundleBase(st.dir, st.store()))
+	cur, ok := identity.Verify(ctx, st.identityCommander(), st.dir,
+		st.commitID, recordcore.BundleBase(st.dir, st.store()))
 	if !ok {
 		st.warn("patch identity unavailable — dedupe by SHA only")
 		return nil

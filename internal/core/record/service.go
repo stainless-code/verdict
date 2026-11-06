@@ -64,7 +64,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if st.req.DryRun {
 		return st.dryRun(dir, now, &res), nil
 	}
-	return st.finalize(dir, prov, headFull, now, &res)
+	return st.finalize(ctx, dir, prov, headFull, now, &res)
 }
 
 func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
@@ -287,7 +287,18 @@ func recordFailed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("record failed: %v", err)}
 }
 
-func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*core.RecordResponse, *core.RefusalError) {
+// identityCommander returns the injected command runner for patch identity
+// recomputation, or nil when the request carries none: without a runner the
+// algorithm claim cannot be recomputed, so git-kind identities stay
+// unstamped instead of trusted.
+func (st *svc) identityCommander() core.Commander {
+	if st.req == nil || st.req.Runtime == nil {
+		return nil
+	}
+	return st.req.Commander
+}
+
+func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, res *MergeResult) (*core.RecordResponse, *core.RefusalError) {
 	nOpen := CountStatus(res.Entries, statusOpen)
 	nDeferred := CountStatus(res.Entries, "deferred")
 	nAddressed := CountStatus(res.Entries, "addressed")
@@ -309,7 +320,7 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 		Model:           modelOrNil(model),
 		Repairs:         repairList(st.repairs),
 	}
-	if ident, ok := identity.Verify(dir, identityHead(dir, prov, st.store), BundleBase(dir, st.store)); ok {
+	if ident, ok := identity.Verify(ctx, st.identityCommander(), dir, identityHead(dir, prov, st.store), BundleBase(dir, st.store)); ok {
 		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {

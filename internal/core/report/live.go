@@ -120,7 +120,7 @@ func removeErrFile(path string) {
 	_ = os.Remove(path)
 }
 
-func completeness(dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool, string) {
+func completeness(ctx context.Context, cmdr core.Commander, dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool, string) {
 	var posted string
 	if isRegular(dir + "/post.json") {
 		posted = readcommon.JSONStr(dir+"/post.json", "head")
@@ -134,7 +134,7 @@ func completeness(dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool,
 	if posted != "" {
 		comp.PostedHead = &posted
 	}
-	completePatchIdentity(dir, headSHA, baseSHA, comp)
+	completePatchIdentity(ctx, cmdr, dir, headSHA, baseSHA, comp)
 	return comp, reviewed, posted
 }
 
@@ -143,8 +143,8 @@ func completeness(dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool,
 // completed post receipt, and same_patch when both are present and agree.
 // Either side unverified leaves its field absent; a legacy bundle with no
 // verifiable identity keeps the SHA comparison and the caller warns.
-func completePatchIdentity(dir, head, base string, comp *core.ReportCompleteness) {
-	reviewed, ok := identity.Verify(dir, head, base)
+func completePatchIdentity(ctx context.Context, cmdr core.Commander, dir, head, base string, comp *core.ReportCompleteness) {
+	reviewed, ok := identity.Verify(ctx, cmdr, dir, head, base)
 	if !ok {
 		return
 	}

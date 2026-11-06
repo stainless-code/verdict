@@ -1,8 +1,11 @@
 package postcore
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,6 +28,43 @@ const patchGuardDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..22222
 
 const patchGuardOtherDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+other line\n bottom\n"
+
+// patchGuardCommander answers `git patch-id --stable` for the fixture
+// diffs and fails anything else exactly like an unavailable git: unknown
+// input cannot be recomputed, so it stays unverified.
+type patchGuardCommander struct {
+	ids map[string]string
+}
+
+func (c *patchGuardCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+		raw, err := io.ReadAll(cmd.Stdin)
+		if err == nil {
+			if id, ok := c.ids[string(raw)]; ok {
+				return core.Result{Stdout: id + " 0000000000000000000000000000000000000000\n"}, nil
+			}
+		}
+	}
+	return core.Result{ExitCode: 1}, errPatchGuardNoGit
+}
+
+var errPatchGuardNoGit = errors.New("cannot compute patch id")
+
+// guardCommander owns the canned diff-to-id map for guard fixtures.
+func guardCommander() core.Commander {
+	return &patchGuardCommander{ids: map[string]string{
+		patchGuardDiff:      patchGuardPatch,
+		patchGuardOtherDiff: patchGuardOther,
+	}}
+}
+
+// patchGuardState builds a guard test state over the canonical pair
+// whose injected commander recomputes the fixture identities.
+func patchGuardState(flags core.PostFlags, warnings *[]string) *state {
+	p := postTestState(".review/1648", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", flags, warnings)
+	p.req.Commander = guardCommander()
+	return p
+}
 
 // patchGuardBundle writes one coherent bundle: full.diff bytes bound to a
 // matching identity at the given head, a PR record carrying the head, base,
@@ -91,8 +131,8 @@ func TestPatchGuardRefusesSamePatchNewSHA(t *testing.T) {
 	const cur = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	patchGuardPair(t, cur, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	var warnings []string
-	p := postTestState(".review/1648", cur, core.PostFlags{}, &warnings)
-	ref := p.patchGuard()
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	ref := p.patchGuard(context.Background())
 	if ref == nil || ref.Code != "already-reviewed-patch" {
 		t.Fatalf("patchGuard = %v, want already-reviewed-patch", ref)
 	}
@@ -107,8 +147,8 @@ func TestPatchGuardForceRecords(t *testing.T) {
 	const cur, sib = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	patchGuardPair(t, cur, sib)
 	var warnings []string
-	forced := postTestState(".review/1648", cur, core.PostFlags{Force: true}, &warnings)
-	if ref := forced.patchGuard(); ref != nil {
+	forced := patchGuardState(core.PostFlags{Force: true}, &warnings)
+	if ref := forced.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("forced patchGuard = %v, want nil", ref)
 	}
 	assertForcedPatch(t, forced)
@@ -141,8 +181,8 @@ func patchGuardProceeds(t *testing.T, setup func(t *testing.T), wantWarn string)
 	t.Chdir(dir)
 	setup(t)
 	var warnings []string
-	p := postTestState(".review/1648", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", core.PostFlags{}, &warnings)
-	if ref := p.patchGuard(); ref != nil {
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("patchGuard = %v, want nil", ref)
 	}
 	if wantWarn != "" && !slices.Contains(warnings, wantWarn) {
@@ -225,8 +265,8 @@ func TestPatchGuardDryRunSkips(t *testing.T) {
 	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
 	var warnings []string
-	p := postTestState(".review/1648", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", core.PostFlags{DryRun: true}, &warnings)
-	if ref := p.patchGuard(); ref != nil {
+	p := patchGuardState(core.PostFlags{DryRun: true}, &warnings)
+	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("dry-run patchGuard = %v, want nil", ref)
 	}
 }
@@ -327,12 +367,12 @@ func TestPatchGuardSameSHAWinsFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(".review/1648", cur, core.PostFlags{}, &warnings)
-	if ref := p.runGuards(); ref == nil || ref.Code != "already-posted" {
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	if ref := p.runGuards(context.Background()); ref == nil || ref.Code != "already-posted" {
 		t.Fatalf("runGuards = %v, want already-posted first", ref)
 	}
-	forced := postTestState(".review/1648", cur, core.PostFlags{Force: true}, &warnings)
-	if ref := forced.runGuards(); ref != nil {
+	forced := patchGuardState(core.PostFlags{Force: true}, &warnings)
+	if ref := forced.runGuards(context.Background()); ref != nil {
 		t.Fatalf("forced runGuards = %v, want nil", ref)
 	}
 	if len(forced.forced) != 2 {
@@ -341,5 +381,90 @@ func TestPatchGuardSameSHAWinsFirst(t *testing.T) {
 	if forced.forced[0].Reason != "already-posted" || forced.forced[1].Reason != "already-reviewed-patch" {
 		t.Errorf("forced order = %q, want already-posted then already-reviewed-patch",
 			[]string{forced.forced[0].Reason, forced.forced[1].Reason})
+	}
+}
+
+// TestPatchGuardTamperedClaimProceeds proves a hex-valid but unrecomputable
+// current patch claim never blocks: coherent hashes and head plus a sibling
+// receipt matching the tampered strings still warn and fall back to SHA
+// dedupe, because the claim does not reproduce the raw input.
+func TestPatchGuardTamperedClaimProceeds(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
+	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
+	raw, err := os.ReadFile(".review/1648/identity.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(raw), patchGuardPatch, strings.Repeat("1", 40), 1)
+	if err := os.WriteFile(".review/1648/identity.json", []byte(tampered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	if ref := p.patchGuard(context.Background()); ref != nil {
+		t.Fatalf("patchGuard = %v, want nil", ref)
+	}
+	if !slices.Contains(warnings, "patch identity unavailable — dedupe by SHA only") {
+		t.Errorf("warnings = %q, want the fallback warning", warnings)
+	}
+}
+
+// TestPatchGuardEmptyReceiptProceeds proves an empty review object proves
+// no publication even when every other receipt field is well-formed.
+func TestPatchGuardEmptyReceiptProceeds(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
+	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, false)
+	receipt := `{"schema_version":"1","review":{},"head":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",` +
+		`"posted_at":"2026-01-01T00:00:00Z","patch_id":"` + patchGuardPatch + `","patch_id_kind":"git-patch-id"}`
+	if err := os.WriteFile(".review/1649/post.json", []byte(receipt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	if ref := p.patchGuard(context.Background()); ref != nil {
+		t.Fatalf("patchGuard = %v, want nil", ref)
+	}
+}
+
+// TestPatchGuardInvalidHeadTimeProceeds proves non-head/non-time receipt
+// metadata proves no publication.
+func TestPatchGuardInvalidHeadTimeProceeds(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
+	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, false)
+	receipt := `{"schema_version":"1","review":{},"head":"not-a-head","posted_at":"not-a-time",` +
+		`"patch_id":"` + patchGuardPatch + `","patch_id_kind":"git-patch-id"}`
+	if err := os.WriteFile(".review/1649/post.json", []byte(receipt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	if ref := p.patchGuard(context.Background()); ref != nil {
+		t.Fatalf("patchGuard = %v, want nil", ref)
+	}
+}
+
+// TestPatchGuardRawUnreadableProceeds proves a present-but-unreadable raw
+// diff invalidates verification instead of certifying the filtered bytes.
+func TestPatchGuardRawUnreadableProceeds(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
+	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
+	if err := os.Mkdir(".review/1648/full.raw.diff", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+	p := patchGuardState(core.PostFlags{}, &warnings)
+	if ref := p.patchGuard(context.Background()); ref != nil {
+		t.Fatalf("patchGuard = %v, want nil", ref)
+	}
+	if !slices.Contains(warnings, "patch identity unavailable — dedupe by SHA only") {
+		t.Errorf("warnings = %q, want the fallback warning", warnings)
 	}
 }

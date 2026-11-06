@@ -66,7 +66,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse("canceled", "canceled before adopt completed")
 	}
-	if ref := st.runAdopt(); ref != nil {
+	if ref := st.runAdopt(ctx); ref != nil {
 		return nil, ref
 	}
 	return st.response(), nil
@@ -91,8 +91,8 @@ func (st *state) response() *Response {
 	}
 }
 
-func (st *state) runAdopt() *core.RefusalError {
-	dir, fromDir, display, ref := st.resolveAdoptDirs()
+func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
+	dir, fromDir, display, ref := st.resolveAdoptDirs(ctx)
 	if ref != nil {
 		return ref
 	}
@@ -109,7 +109,7 @@ func (st *state) runAdopt() *core.RefusalError {
 	return st.finishAdopt(dir, fromDir, display, entries)
 }
 
-func (st *state) resolveAdoptDirs() (string, string, string, *core.RefusalError) {
+func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
 	dir := reviewRoot + st.req.Pr
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
 		return "", "", "", st.refuse("bad-target", msgBadTarget)
@@ -118,7 +118,7 @@ func (st *state) resolveAdoptDirs() (string, string, string, *core.RefusalError)
 		return "", "", "", st.refuse("bad-from", msgBadFrom)
 	}
 	if st.req.From == fromAuto {
-		fromDir, display, ref := st.resolveAutoFrom(dir)
+		fromDir, display, ref := st.resolveAutoFrom(ctx, dir)
 		if ref != nil {
 			return "", "", "", ref
 		}
@@ -131,6 +131,17 @@ func (st *state) resolveAdoptDirs() (string, string, string, *core.RefusalError)
 	return dir, fromDir, st.req.From, nil
 }
 
+// identityCommander returns the injected command runner for patch identity
+// recomputation, or nil when the request carries none: without a runner the
+// algorithm claim cannot be recomputed, so git-kind identities stay
+// unverified instead of trusted.
+func (st *state) identityCommander() core.Commander {
+	if st.req == nil || st.req.Runtime == nil {
+		return nil
+	}
+	return st.req.Commander
+}
+
 // resolveAutoFrom matches the target bundle's verified patch identity
 // against every local bundle: exactly one twin adopts, zero or many refuse
 // naming the candidates. The target identity must bind the target's present
@@ -138,15 +149,15 @@ func (st *state) resolveAdoptDirs() (string, string, string, *core.RefusalError)
 // requested repository — a stale or foreign bundle is not a twin. The auto
 // sentinel matches before the local- prefix rule, so a local bundle
 // literally named local-auto stays reachable as --from local-auto.
-func (st *state) resolveAutoFrom(dir string) (string, string, *core.RefusalError) {
+func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, string, *core.RefusalError) {
 	target := readcommon.OpenBundle(dir)
-	cur, ok := identity.Verify(dir, target.Head(), target.Base())
+	cur, ok := identity.Verify(ctx, st.identityCommander(), dir, target.Head(), target.Base())
 	if !ok || cur.PatchID == nil {
 		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
 			"no-patch-match: target %s has no verifiable patch identity "+
 				"(re-fetch so identity.json exists) — pass --from <local-slug>", dir))
 	}
-	twins := st.scanPatchTwins(cur)
+	twins := st.scanPatchTwins(ctx, cur)
 	switch len(twins) {
 	case 0:
 		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
@@ -164,14 +175,14 @@ func (st *state) resolveAutoFrom(dir string) (string, string, *core.RefusalError
 // identity matches cur in the requested repository. The scan is bounded to
 // .review/local-* identity files (non-recursive), so malformed, stale, or
 // foreign receipts skip instead of refusing.
-func (st *state) scanPatchTwins(cur *identity.Identity) []string {
+func (st *state) scanPatchTwins(ctx context.Context, cur *identity.Identity) []string {
 	entries, err := os.ReadDir(reviewRoot)
 	if err != nil {
 		return nil
 	}
 	var twins []string
 	for _, entry := range entries {
-		if twin, ok := st.twinSlug(entry, cur); ok {
+		if twin, ok := st.twinSlug(ctx, entry, cur); ok {
 			twins = append(twins, twin)
 		}
 	}
@@ -180,7 +191,7 @@ func (st *state) scanPatchTwins(cur *identity.Identity) []string {
 
 // twinSlug reads one candidate bundle: non-local, byte-stale, head-stale,
 // unproven-repository, and foreign-repository identities never match.
-func (st *state) twinSlug(entry os.DirEntry, cur *identity.Identity) (string, bool) {
+func (st *state) twinSlug(ctx context.Context, entry os.DirEntry, cur *identity.Identity) (string, bool) {
 	name := entry.Name()
 	if !entry.IsDir() || !strings.HasPrefix(name, localPrefix) {
 		return "", false
@@ -188,7 +199,7 @@ func (st *state) twinSlug(entry os.DirEntry, cur *identity.Identity) (string, bo
 	twinDir := reviewRoot + name
 	head := readcommon.JSONStr(twinDir+"/source.json", "head_sha")
 	base := readcommon.JSONStr(twinDir+"/source.json", "base_sha")
-	id, ok := identity.Verify(twinDir, head, base)
+	id, ok := identity.Verify(ctx, st.identityCommander(), twinDir, head, base)
 	if !ok || !identity.Match(cur, id) {
 		return "", false
 	}

@@ -2,7 +2,11 @@ package identity
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -272,17 +276,17 @@ func verifyBundle(t *testing.T, diff, head, base string) string {
 func TestVerifyBindsBytes(t *testing.T) {
 	t.Parallel()
 	dir := verifyBundle(t, testDiff, "aaaa", "bbbb")
-	if _, ok := Verify(dir, "aaaa", "bbbb"); !ok {
+	if _, ok := Verify(context.Background(), nil, dir, "aaaa", "bbbb"); !ok {
 		t.Error("Verify of a coherent bundle = false, want true")
 	}
-	if _, ok := Verify(dir, "cccc", "bbbb"); ok {
+	if _, ok := Verify(context.Background(), nil, dir, "cccc", "bbbb"); ok {
 		t.Error("Verify with a moved head = true, want false")
 	}
-	if _, ok := Verify(dir, "aaaa", "dddd"); ok {
+	if _, ok := Verify(context.Background(), nil, dir, "aaaa", "dddd"); ok {
 		t.Error("Verify with a moved base = true, want false")
 	}
 	assertVerifyRejectsStaleBytes(t, dir)
-	if _, ok := Verify(t.TempDir(), "aaaa", "bbbb"); ok {
+	if _, ok := Verify(context.Background(), nil, t.TempDir(), "aaaa", "bbbb"); ok {
 		t.Error("Verify with no bundle = true, want false")
 	}
 }
@@ -302,7 +306,7 @@ func assertVerifyRejectsStaleBytes(t *testing.T, dir string) {
 	if err := os.WriteFile(filepath.Join(stale, "full.diff"), []byte("other bytes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := Verify(stale, "aaaa", "bbbb"); ok {
+	if _, ok := Verify(context.Background(), nil, stale, "aaaa", "bbbb"); ok {
 		t.Error("Verify with stale diff bytes = true, want false")
 	}
 }
@@ -310,42 +314,246 @@ func assertVerifyRejectsStaleBytes(t *testing.T, dir string) {
 // TestCompletedPatch pins the completed-publication contract: a full
 // receipt with a valid patch proves publication, while two-field,
 // incomplete, pending, dry-run, failed, and invalid-id receipts do not.
-func TestCompletedPatch(t *testing.T) {
-	t.Parallel()
-	git := "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
-	complete := map[string]any{
+// completedReceipt builds a valid completed-publication receipt with the
+// given review object, head, and posted_at.
+func completedReceipt(review map[string]any, head, postedAt string) map[string]any {
+	return map[string]any{
 		"schema_version": "1",
-		"review":         map[string]any{"id": float64(1), "state": "COMMENTED"},
-		"head":           "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		"posted_at":      "2026-01-01T00:00:00Z",
-		"patch_id":       git,
+		"review":         review,
+		"head":           head,
+		"posted_at":      postedAt,
+		"patch_id":       "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d",
 		"patch_id_kind":  "git-patch-id",
 	}
-	if _, _, ok := CompletedPatch(complete); !ok {
-		t.Error("CompletedPatch of a completed receipt = false, want true")
+}
+
+const completedHead = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+const completedAt = "2026-01-01T00:00:00Z"
+
+// TestCompletedPatchValidControls proves legitimate completed receipts
+// prove publication: the recorded completed states, numeric and string
+// review identifiers, and producer-shaped head/time metadata.
+func TestCompletedPatchValidControls(t *testing.T) {
+	t.Parallel()
+	valid := map[string]map[string]any{
+		"commented": completedReceipt(map[string]any{"id": float64(1), "state": "COMMENTED"}, completedHead, completedAt),
+		"lowercase": completedReceipt(map[string]any{"id": float64(101), "state": "commented"}, completedHead, completedAt),
+		"approved":  completedReceipt(map[string]any{"id": float64(2), "state": "APPROVED"}, completedHead, completedAt),
+		"changes":   completedReceipt(map[string]any{"id": float64(3), "state": "CHANGES_REQUESTED"}, completedHead, completedAt),
+		"dismissed": completedReceipt(map[string]any{"id": float64(4), "state": "DISMISSED"}, completedHead, completedAt),
+		"string-id": completedReceipt(map[string]any{"id": "abc-123", "state": "COMMENTED"}, completedHead, completedAt),
+		"json-num":  completedReceipt(map[string]any{"id": json.Number("101"), "state": "COMMENTED"}, completedHead, completedAt),
+		"offset-tz": completedReceipt(map[string]any{"id": float64(5), "state": "COMMENTED"}, completedHead, "2026-01-01T02:00:00+02:00"),
 	}
+	for name, receipt := range valid {
+		if _, _, ok := CompletedPatch(receipt); !ok {
+			t.Errorf("CompletedPatch(%s) = false, want true", name)
+		}
+	}
+}
+
+// TestCompletedPatchInvalidMatrix proves fabricated, partial, and malformed
+// receipts prove no publication: empty reviews, missing or unknown review
+// identifiers and states, non-head/non-time metadata, and the previously
+// covered stub/pending/dry-run/invalid-id shapes.
+func TestCompletedPatchInvalidMatrix(t *testing.T) {
+	t.Parallel()
+	git := "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
 	stub := map[string]any{"patch_id": git, "patch_id_kind": "git-patch-id"}
-	incomplete := map[string]any{"schema_version": "1", "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "patch_id": git, "patch_id_kind": "git-patch-id"}
+	incomplete := map[string]any{"schema_version": "1", "head": completedHead, "patch_id": git, "patch_id_kind": "git-patch-id"}
 	pending := map[string]any{
-		"schema_version": "1", "review": map[string]any{"state": "PENDING"},
-		"head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "posted_at": "2026-01-01T00:00:00Z",
+		"schema_version": "1", "review": map[string]any{"id": float64(1), "state": "PENDING"},
+		"head": completedHead, "posted_at": completedAt,
 		"patch_id": git, "patch_id_kind": "git-patch-id",
 	}
 	dry := map[string]any{
-		"schema_version": "1", "review": map[string]any{"state": "COMMENTED"}, "dry_run": true,
-		"head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "posted_at": "2026-01-01T00:00:00Z",
+		"schema_version": "1", "review": map[string]any{"id": float64(1), "state": "COMMENTED"}, "dry_run": true,
+		"head": completedHead, "posted_at": completedAt,
 		"patch_id": git, "patch_id_kind": "git-patch-id",
 	}
 	bogus := map[string]any{
-		"schema_version": "1", "review": map[string]any{"id": float64(1)},
-		"head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "posted_at": "2026-01-01T00:00:00Z",
+		"schema_version": "1", "review": map[string]any{"id": float64(1), "state": "COMMENTED"},
+		"head": completedHead, "posted_at": completedAt,
 		"patch_id": "not-a-patch-id", "patch_id_kind": "git-patch-id",
 	}
-	for name, receipt := range map[string]map[string]any{
-		"nil": nil, "stub": stub, "incomplete": incomplete, "pending": pending, "dryrun": dry, "bogus": bogus,
-	} {
+	invalid := map[string]map[string]any{
+		"nil":           nil,
+		"stub":          stub,
+		"incomplete":    incomplete,
+		"pending":       pending,
+		"dryrun":        dry,
+		"bogus":         bogus,
+		"empty-review":  completedReceipt(map[string]any{}, completedHead, completedAt),
+		"missing-id":    completedReceipt(map[string]any{"state": "COMMENTED"}, completedHead, completedAt),
+		"null-id":       completedReceipt(map[string]any{"id": nil, "state": "COMMENTED"}, completedHead, completedAt),
+		"missing-state": completedReceipt(map[string]any{"id": float64(1)}, completedHead, completedAt),
+		"unknown-state": completedReceipt(map[string]any{"id": float64(1), "state": "QUEUED"}, completedHead, completedAt),
+		"failed-state":  completedReceipt(map[string]any{"id": float64(1), "state": "FAILED"}, completedHead, completedAt),
+		"bad-head":      completedReceipt(map[string]any{"id": float64(1), "state": "COMMENTED"}, "not-a-head", completedAt),
+		"short-head":    completedReceipt(map[string]any{"id": float64(1), "state": "COMMENTED"}, "aaaaaaa", completedAt),
+		"bad-time":      completedReceipt(map[string]any{"id": float64(1), "state": "COMMENTED"}, completedHead, "not-a-time"),
+	}
+	for name, receipt := range invalid {
 		if _, _, ok := CompletedPatch(receipt); ok {
 			t.Errorf("CompletedPatch(%s) = true, want false", name)
 		}
+	}
+}
+
+// gitTestPatch is the canned stable id the map commander returns for
+// testDiff.
+const gitTestPatch = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
+
+// mapCommander answers `git patch-id --stable` from a canned diff-to-id
+// map, failing anything else exactly like an unavailable git: unknown input
+// cannot be recomputed, so it stays unverified.
+type mapCommander struct {
+	ids map[string]string
+}
+
+func (c *mapCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+		raw, err := io.ReadAll(cmd.Stdin)
+		if err == nil {
+			if id, ok := c.ids[string(raw)]; ok {
+				return core.Result{Stdout: id + " 0000000000000000000000000000000000000000\n"}, nil
+			}
+		}
+	}
+	return core.Result{ExitCode: 1}, errors.New("cannot compute patch id")
+}
+
+// gitBundle writes a coherent git-kind bundle — real byte hashes with the
+// given patch claim — and returns the dir.
+func gitBundle(t *testing.T, diff, head, base, patch string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(diff), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256Of(diff)
+	ident := `{"schema_version":"1","patch_id":"` + patch + `","patch_id_kind":"git-patch-id",` +
+		`"diff_sha256":"` + sum + `","raw_diff_sha256":"` + sum + `","head_sha":"` + head + `","base_sha":"` + base + `"}`
+	if err := os.WriteFile(filepath.Join(dir, "identity.json"), []byte(ident), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func sha256Of(diff string) string {
+	sum := sha256.Sum256([]byte(diff))
+	return hex.EncodeToString(sum[:])
+}
+
+// TestVerifyRecomputesGitClaim proves a hex-valid id over the wrong bytes
+// does not verify even with coherent hashes and head: the claim must
+// reproduce `git patch-id --stable` over the raw input. Without a runner
+// the claim cannot be recomputed and stays unverified.
+func TestVerifyRecomputesGitClaim(t *testing.T) {
+	t.Parallel()
+	cmdr := &mapCommander{ids: map[string]string{testDiff: gitTestPatch}}
+	dir := gitBundle(t, testDiff, "aaaa", "bbbb", gitTestPatch)
+	if _, ok := Verify(context.Background(), cmdr, dir, "aaaa", "bbbb"); !ok {
+		t.Error("Verify of a recomputed claim = false, want true")
+	}
+	tampered := t.TempDir()
+	raw, err := os.ReadFile(filepath.Join(dir, "identity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tampered, "identity.json"),
+		bytesReplace(t, raw, gitTestPatch, strings.Repeat("1", 40)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tampered, "full.diff"), []byte(testDiff), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Verify(context.Background(), cmdr, tampered, "aaaa", "bbbb"); ok {
+		t.Error("Verify of a tampered valid-hex claim = true, want false")
+	}
+	fresh := gitBundle(t, testDiff, "aaaa", "bbbb", gitTestPatch)
+	if _, ok := Verify(context.Background(), nil, fresh, "aaaa", "bbbb"); ok {
+		t.Error("Verify without a runner = true, want false")
+	}
+}
+
+// TestVerifyFallbackRecompute proves the fallback claim recomputes locally
+// without a spawn: a coherent fallback verifies, a swapped valid-length
+// hash does not.
+func TestVerifyFallbackRecompute(t *testing.T) {
+	t.Parallel()
+	dir := verifyBundle(t, testDiff, "aaaa", "bbbb")
+	if _, ok := Verify(context.Background(), nil, dir, "aaaa", "bbbb"); !ok {
+		t.Error("Verify of a coherent fallback = false, want true")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "identity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	swapped := t.TempDir()
+	if err := os.WriteFile(filepath.Join(swapped, "identity.json"),
+		bytesReplace(t, raw, fallbackHexOf(testDiff), strings.Repeat("2", 64)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(swapped, "full.diff"), []byte(testDiff), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Verify(context.Background(), nil, swapped, "aaaa", "bbbb"); ok {
+		t.Error("Verify of a swapped fallback claim = true, want false")
+	}
+}
+
+func fallbackHexOf(diff string) string {
+	return fallbackHex([]byte(diff))
+}
+
+func bytesReplace(t *testing.T, raw []byte, old, replacement string) []byte {
+	t.Helper()
+	out := strings.Replace(string(raw), old, replacement, 1)
+	if out == string(raw) {
+		t.Fatalf("replace %q missed", old)
+	}
+	return []byte(out)
+}
+
+// TestVerifyRawUnreadable proves only a genuinely absent raw diff falls
+// back to the filtered bytes: a present-but-unreadable raw artifact
+// invalidates verification instead of certifying the wrong input.
+func TestVerifyRawUnreadable(t *testing.T) {
+	t.Parallel()
+	dir := verifyBundle(t, testDiff, "aaaa", "bbbb")
+	if err := os.Mkdir(filepath.Join(dir, "full.raw.diff"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Verify(context.Background(), nil, dir, "aaaa", "bbbb"); ok {
+		t.Error("Verify with an unreadable raw diff = true, want false")
+	}
+}
+
+// TestLoadRequiresPatchID proves a none-kind document without the required
+// patch_id field does not load, matching the published schema; an explicit
+// null still loads and never matches.
+func TestLoadRequiresPatchID(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	doc := `{"schema_version":"1","patch_id_kind":"none","diff_sha256":"","raw_diff_sha256":"","head_sha":"","base_sha":""}`
+	if err := os.WriteFile(filepath.Join(dir, "identity.json"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Load(dir); ok {
+		t.Error("Load of none-kind without patch_id = true, want false")
+	}
+	nulled := t.TempDir()
+	if err := os.WriteFile(filepath.Join(nulled, "identity.json"),
+		[]byte(strings.Replace(doc, `"patch_id_kind":"none"`, `"patch_id":null,"patch_id_kind":"none"`, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, ok := Load(nulled)
+	if !ok {
+		t.Fatal("Load of explicit-null none identity failed")
+	}
+	if Match(loaded, loaded) {
+		t.Error("none identity matches")
 	}
 }

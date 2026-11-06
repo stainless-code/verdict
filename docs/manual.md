@@ -1344,7 +1344,10 @@ matches. The same `patch_id` + `patch_id_kind` are stamped additively into
 `source.json`, `post.json`, and `record.json` as provenance. A patch id is a
 dedupe key, never an authorization token: it only answers "did we already review
 this change", and every use re-binds the stored strings to the bundle's present
-diff bytes and head before trusting them.
+diff bytes and head — recomputing the labeled algorithm over the raw input —
+before trusting them. An identity whose claim does not reproduce, or whose raw
+input cannot be read, is not certified: the run warns and falls back to SHA
+behavior instead.
 
 `adopt owner/repo N --from auto` matches the target bundle's verified identity
 against `.review/local-*` twins in the requested repository: exactly one twin
@@ -1358,11 +1361,14 @@ never match. The literal name `local-auto` stays reachable as `--from local-auto
 `post.json` receipt carries the same patch id and kind in the same repository —
 unless `--force`, which posts and records one entry per bypassed guard in
 `post.json.forced[]` (reason, patch id, prior bundle, prior head), in guard order.
-Incomplete, pending, dry-run, or failed receipts prove no publication and never
-block, exactly like an unposted bundle. A missing, malformed, or stale
-`identity.json` warns `patch identity unavailable — dedupe by SHA only` and the
-run falls back to the SHA-only dedupe; a legacy bundle without identity warns
-and proceeds the same way.
+A receipt proves a completed publication only with an identified review in a
+completed state (`APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED`) and
+valid head/time metadata. Incomplete, pending, dry-run, failed, empty-review, or
+invalid head/time receipts prove no publication and never block, exactly like an
+unposted bundle. A missing, malformed, stale, tampered, unrecomputable, or
+unreadable-raw `identity.json` warns `patch identity unavailable — dedupe by SHA
+only` and the run falls back to the SHA-only dedupe; a legacy bundle without
+identity warns and proceeds the same way.
 
 `report --completeness` passes a rebase or amend that keeps the patch: when the
 posted and fetched heads differ but the verified bundle identity and the

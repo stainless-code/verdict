@@ -11,8 +11,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -180,15 +182,20 @@ func Load(dir string) (*Identity, bool) {
 	return id, true
 }
 
-// loadMap validates the decoded identity document: a supported kind, an
-// algorithm-valid patch id (null exactly for the none kind), and present
-// string sha fields. Anything else is malformed.
+// loadMap validates the decoded identity document: the required
+// schema_version, a supported kind, a present patch id that is
+// algorithm-valid (null exactly for the none kind), and present string sha
+// fields. Anything else is malformed.
 func loadMap(m map[string]any) (*Identity, bool) {
 	kind, ok := kindOf(m)
 	if !ok {
 		return nil, false
 	}
-	patch, ok := patchOf(m)
+	rawPatch, present := m["patch_id"]
+	if !present {
+		return nil, false
+	}
+	patch, ok := patchOf(rawPatch)
 	if !ok {
 		return nil, false
 	}
@@ -240,9 +247,8 @@ func kindOf(m map[string]any) (string, bool) {
 
 // patchOf reads the nullable patch id: null reads nil, a string reads
 // through, anything else is malformed.
-func patchOf(m map[string]any) (*string, bool) {
-	raw, present := m["patch_id"]
-	if !present || raw == nil {
+func patchOf(raw any) (*string, bool) {
+	if raw == nil {
 		return nil, true
 	}
 	patch, ok := raw.(string)
@@ -253,13 +259,16 @@ func patchOf(m map[string]any) (*string, bool) {
 }
 
 // Verify loads the bundle identity and binds it to the bundle's present
-// bytes and the caller's current head/base before any gate relaxation,
-// adoption selection, or provenance stamp: ok is false for a missing or
-// malformed identity and for a verified mismatch (stale diff bytes or a
-// moved head/base). A stale or replaced identity must never relax a gate,
-// so the caller warns and falls back to SHA behavior on false.
-func Verify(dir, head, base string) (*Identity, bool) {
-	id, ok := VerifyBytes(dir)
+// bytes, the labeled algorithm recomputed over the raw input, and the
+// caller's current head/base before any gate relaxation, adoption
+// selection, or provenance stamp: ok is false for a missing or malformed
+// identity, for bytes the identity does not describe, for an algorithm
+// claim the raw input does not reproduce, for an unreadable present raw
+// diff, and for a moved head/base. A stale, tampered, or unprovable
+// identity must never relax a gate, so the caller warns and falls back to
+// SHA behavior on false.
+func Verify(ctx context.Context, cmdr core.Commander, dir, head, base string) (*Identity, bool) {
+	id, ok := VerifyBytes(ctx, cmdr, dir)
 	if !ok {
 		return nil, false
 	}
@@ -269,12 +278,16 @@ func Verify(dir, head, base string) (*Identity, bool) {
 	return id, true
 }
 
-// VerifyBytes loads the bundle identity and binds it to the bundle's
-// present diff bytes: full.diff always, full.raw.diff when an exclusion
-// pass left one (else the raw input is full.diff). A caller with no
-// authoritative head — a legacy twin without a source record — uses this
-// cheaper check and resolves the head separately.
-func VerifyBytes(dir string) (*Identity, bool) {
+// VerifyBytes loads the bundle identity, binds it to the bundle's present
+// diff bytes, and recomputes the labeled algorithm over the raw input: a
+// hex-valid id over the wrong bytes is not binding, so the claim must
+// reproduce. full.diff always feeds the filtered hash; full.raw.diff feeds
+// the raw hash when present. Only a genuinely absent raw artifact falls
+// back to the filtered bytes — a present-but-unreadable raw diff
+// invalidates verification instead of certifying the wrong input. A caller
+// with no authoritative head — a legacy twin without a source record —
+// uses this cheaper check and resolves the head separately.
+func VerifyBytes(ctx context.Context, cmdr core.Commander, dir string) (*Identity, bool) {
 	id, ok := Load(dir)
 	if !ok {
 		return nil, false
@@ -283,26 +296,69 @@ func VerifyBytes(dir string) (*Identity, bool) {
 	if err != nil {
 		return nil, false
 	}
+	raw, ok := readRawDiff(dir, full)
+	if !ok {
+		return nil, false
+	}
 	if hashHex(full) != id.DiffSHA256 {
 		return nil, false
 	}
-	raw := full
-	if rb, err := os.ReadFile(dir + "/" + rawDiffFile); err == nil {
-		raw = rb
-	}
 	if hashHex(raw) != id.RawDiffSHA256 {
+		return nil, false
+	}
+	if !verifyClaim(ctx, cmdr, id, raw) {
 		return nil, false
 	}
 	return id, true
 }
 
+// readRawDiff reads the raw pre-exclusion input: full.raw.diff when the
+// artifact exists, else the filtered bytes. Any read failure other than
+// genuine absence invalidates the caller — falling back on a failed read
+// would certify the wrong identity input.
+func readRawDiff(dir string, filtered []byte) ([]byte, bool) {
+	raw, err := os.ReadFile(dir + "/" + rawDiffFile)
+	if err == nil {
+		return raw, true
+	}
+	if os.IsNotExist(err) {
+		return filtered, true
+	}
+	return nil, false
+}
+
+// verifyClaim recomputes the labeled algorithm over the raw input and
+// requires the stored claim to reproduce it: a well-formed id over
+// unrelated bytes proves nothing. The empty diff carries no id. The local
+// fallback recomputes without a spawn. A git claim that cannot be
+// recomputed — no commander, a canceled context, a failed spawn, an
+// unparseable result — is not certified: the caller falls back to the
+// documented legacy warning instead of trusting an arbitrary string.
+func verifyClaim(ctx context.Context, cmdr core.Commander, id *Identity, raw []byte) bool {
+	if id.PatchID == nil {
+		return true
+	}
+	switch id.PatchIDKind {
+	case KindFallback:
+		return fallbackHex(raw) == *id.PatchID
+	case KindGit:
+		if ctx == nil || cmdr == nil {
+			return false
+		}
+		actual, ok := gitPatchID(ctx, cmdr, raw)
+		return ok && actual == *id.PatchID
+	default:
+		return false
+	}
+}
+
 // CompletedPatch reads a post.json receipt's patch claim: patch and kind
-// are valid only when the receipt proves a completed publication — schema
-// version 1, a real review object, a non-empty head, a posted_at stamp, no
-// dry-run marker, and no pending/failed review state — carrying an
-// algorithm-valid patch id and kind. Incomplete, pending, dry-run, and
-// failed receipts (including a bare patch_id/patch_id_kind stub) prove
-// nothing, so they never match.
+// are valid only when the receipt proves a completed publication carrying
+// an algorithm-valid patch id and kind. The review must carry an identifier
+// and a completed state, and the head and posted_at must parse as real
+// publication metadata. Incomplete, pending, dry-run, failed, empty-review,
+// and invalid head/time receipts (including a bare patch_id/patch_id_kind
+// stub) prove nothing, so they never match.
 func CompletedPatch(post map[string]any) (patch, kind string, ok bool) {
 	if !completeReceipt(post) {
 		return "", "", false
@@ -333,25 +389,62 @@ func completeReceipt(post map[string]any) bool {
 }
 
 // completeReview reports whether a present review object proves a landed
-// publication: no dry-run marker, no pending/failed review state, and the
-// head and posted_at stamps recorded.
+// publication: an identified review in a completed state, no dry-run
+// marker, and head and posted_at stamps that parse as real publication
+// metadata consistent with what the producer writes.
 func completeReview(post, review map[string]any) bool {
+	if !validReviewID(review["id"]) {
+		return false
+	}
+	if !completedReviewState(jq.StrOf(review["state"])) {
+		return false
+	}
 	if dry, ok := post["dry_run"].(bool); ok && dry {
 		return false
 	}
-	if unsubmittedReview(review) {
+	if !checkHexID(jq.StrOf(post["head"]), patchHexLen) {
 		return false
 	}
-	return jq.StrOf(post["head"]) != "" && jq.StrOf(post["posted_at"]) != ""
+	if _, err := time.Parse(time.RFC3339, jq.StrOf(post["posted_at"])); err != nil {
+		return false
+	}
+	return true
 }
 
-// unsubmittedReview reports whether a review object never completed: a
-// PENDING review is created but not submitted, a FAILED one never landed.
-func unsubmittedReview(review map[string]any) bool {
-	if state := jq.StrOf(review["state"]); state != "" {
-		return strings.EqualFold(state, "pending") || strings.EqualFold(state, "failed")
+// validReviewID reports whether a review identifier is real: a JSON number
+// as the producer decodes it (the bundle reader keeps numbers unconverted),
+// or a non-empty string. Missing, null, boolean, empty, and structured ids
+// prove nothing.
+func validReviewID(id any) bool {
+	switch v := id.(type) {
+	case float64:
+		return true
+	case json.Number:
+		return v.String() != ""
+	case jq.Number:
+		return string(v) != ""
+	case string:
+		return v != ""
+	default:
+		return false
 	}
-	return false
+}
+
+// completedReviewState reports whether a review state names a landed
+// review: the completed states the producer records, matched
+// case-insensitively so the recorded casing never matters. PENDING never
+// completed, FAILED never landed, and a missing or unknown state proves
+// nothing.
+func completedReviewState(state string) bool {
+	switch {
+	case strings.EqualFold(state, "approved"),
+		strings.EqualFold(state, "changes_requested"),
+		strings.EqualFold(state, "commented"),
+		strings.EqualFold(state, "dismissed"):
+		return true
+	default:
+		return false
+	}
 }
 
 // Match reports whether two identities name the same reviewed change: both

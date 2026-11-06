@@ -16,9 +16,6 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEADB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 HEADC="cccccccccccccccccccccccccccccccccccccccc"
-PATCH1="9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
-PATCH2="0123456789abcdef0123456789abcdef01234567"
-PATCH3="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
 
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
@@ -59,28 +56,43 @@ mk_url() { # $1 = pr — stamp the PR record URL so same-repo bundles match
     "$EVAL_SANDBOX/.review/$1/PR.json" > "$EVAL_SANDBOX/.review/$1/PR.json.new"
   mv "$EVAL_SANDBOX/.review/$1/PR.json.new" "$EVAL_SANDBOX/.review/$1/PR.json"
 }
-mk_identity() { # $1 = dir, $2 = patch, $3 = head — coherent: real byte hashes
-  local d="$EVAL_SANDBOX/.review/$1" sha
+real_patch() { # $1 = dir — actual git patch-id over the raw input
+  git patch-id --stable < "$EVAL_SANDBOX/.review/$1/full.diff" | cut -d' ' -f1
+}
+mk_identity() { # $1 = dir, $2 = head — coherent: real id + real byte hashes
+  local d="$EVAL_SANDBOX/.review/$1" sha pid
   sha="$(file_sha "$d/full.diff")"
-  jq -n --arg p "$2" --arg h "$3" --arg s "$sha" \
+  pid="$(real_patch "$1")"
+  jq -n --arg p "$pid" --arg h "$2" --arg s "$sha" \
     '{schema_version:"1",patch_id:$p,patch_id_kind:"git-patch-id",diff_sha256:$s,raw_diff_sha256:$s,head_sha:$h,base_sha:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}' \
     > "$d/identity.json"
 }
-mk_twin() { # $1 = slug, $2 = patch, $3 = repo — coherent local twin
-  local d="$EVAL_SANDBOX/.review/$1" sha
+mk_variant() { # $1 = pr — tweak the canned diff so its real patch id differs
+  sed 's/-old line/-other line/' "$EVAL_SANDBOX/.review/$1/full.diff" \
+    > "$EVAL_SANDBOX/.review/$1/full.diff.new"
+  mv "$EVAL_SANDBOX/.review/$1/full.diff.new" "$EVAL_SANDBOX/.review/$1/full.diff"
+}
+mk_variant2() { # $1 = pr — second distinct tweak; id differs from stock and mk_variant
+  sed -e 's/-old line/-other line/' -e 's/^+new line/+newer line/' "$EVAL_SANDBOX/.review/$1/full.diff" \
+    > "$EVAL_SANDBOX/.review/$1/full.diff.new"
+  mv "$EVAL_SANDBOX/.review/$1/full.diff.new" "$EVAL_SANDBOX/.review/$1/full.diff"
+}
+mk_twin() { # $1 = slug, $2 = repo — coherent local twin with the real id
+  local d="$EVAL_SANDBOX/.review/$1" sha pid
   mkdir -p "$d"
   cp "$EVAL_SANDBOX/.review/4425/full.diff" "$d/full.diff"
   sha="$(file_sha "$d/full.diff")"
-  jq -n --arg p "$2" --arg s "$sha" \
+  pid="$(real_patch "$1")"
+  jq -n --arg p "$pid" --arg s "$sha" \
     '{schema_version:"1",patch_id:$p,patch_id_kind:"git-patch-id",diff_sha256:$s,raw_diff_sha256:$s,head_sha:"cccccccccccccccccccccccccccccccccccccccc",base_sha:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}' \
     > "$d/identity.json"
-  jq -n --arg r "$3" \
+  jq -n --arg r "$2" \
     '{schema_version:"1",repo:$r,head_sha:"cccccccccccccccccccccccccccccccccccccccc",base_sha:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}' \
     > "$d/source.json"
 }
 mk_posted() { # $1 = pr, $2 = head, $3 = patch
   jq -n --arg h "$2" --arg p "$3" \
-    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,patch_id:$p,patch_id_kind:"git-patch-id"}' \
+    '{schema_version:"1",review:{id:99,state:"COMMENTED"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,patch_id:$p,patch_id_kind:"git-patch-id"}' \
     > "$EVAL_SANDBOX/.review/$1/post.json"
 }
 mk_comment() { # $1 = pr
@@ -163,12 +175,12 @@ fi
 
 mk_comment 4421
 mk_url 4421
-mk_identity 4421 "$PATCH1" "$HEADA"
+mk_identity 4421 "$HEADA"
 mk_comment 4422
 mk_url 4422
 mk_head 4422 "$HEADB"
-mk_identity 4422 "$PATCH1" "$HEADB"
-mk_posted 4421 "$HEADA" "$PATCH1"
+mk_identity 4422 "$HEADB"
+mk_posted 4421 "$HEADA" "$(real_patch 4421)"
 m="$(mark)"
 run_review post acme/app 4422 --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
@@ -194,7 +206,7 @@ fi
 if [ "$(jq -r '.forced[0].reason // empty' "$EVAL_SANDBOX/.review/4422/post.json")" = "already-reviewed-patch" ] \
   && [ "$(jq -r '.forced[0].previous_bundle // empty' "$EVAL_SANDBOX/.review/4422/post.json")" = "4421" ] \
   && [ "$(jq -r '.forced[0].previous_head // empty' "$EVAL_SANDBOX/.review/4422/post.json")" = "$HEADA" ] \
-  && [ "$(jq -r '.patch_id // empty' "$EVAL_SANDBOX/.review/4422/post.json")" = "$PATCH1" ]; then
+  && [ "$(jq -r '.patch_id // empty' "$EVAL_SANDBOX/.review/4422/post.json")" = "$(real_patch 4422)" ]; then
   good "forced post records reason, prior bundle, prior head, and patch id"
 else
   bad "post.json: $(cat "$EVAL_SANDBOX/.review/4422/post.json" 2>/dev/null | head -c 500)"
@@ -203,7 +215,8 @@ fi
 mk_comment 4423
 mk_url 4423
 mk_head 4423 "$HEADC"
-mk_identity 4423 "$PATCH2" "$HEADC"
+mk_variant 4423
+mk_identity 4423 "$HEADC"
 m="$(mark)"
 run_review post acme/app 4423 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
@@ -225,8 +238,8 @@ fi
 
 eval_mk_bundle 4425
 mk_url 4425
-mk_identity 4425 "$PATCH1" "$HEADA"
-mk_twin local-pidtwin "$PATCH1" "acme/app"
+mk_identity 4425 "$HEADA"
+mk_twin local-pidtwin "acme/app"
 cat > "$EVAL_SANDBOX/.review/local-pidtwin/findings.json" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Twin finding.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"important","kb":[],"sig":"0123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
@@ -244,7 +257,7 @@ cp "$EVAL_SANDBOX/.review/local-pidtwin/full.diff" "$EVAL_SANDBOX/.review/local-
 cp "$EVAL_SANDBOX/.review/local-pidtwin/findings.json" "$EVAL_SANDBOX/.review/local-pidtwo/findings.json"
 eval_mk_bundle 4426
 mk_url 4426
-mk_identity 4426 "$PATCH1" "$HEADA"
+mk_identity 4426 "$HEADA"
 run_review adopt acme/app 4426 --from auto --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "ambiguous-patch-match" ]; then
@@ -254,7 +267,8 @@ else
 fi
 eval_mk_bundle 4427
 mk_url 4427
-mk_identity 4427 "$PATCH2" "$HEADA"
+mk_variant 4427
+mk_identity 4427 "$HEADA"
 run_review adopt acme/app 4427 --from auto --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "no-patch-match" ]; then
@@ -265,8 +279,11 @@ fi
 
 eval_mk_bundle 4430
 mk_url 4430
-mk_identity 4430 "$PATCH3" "$HEADA"
-mk_twin local-foreign "$PATCH3" "other/repository"
+mk_variant 4430
+mk_identity 4430 "$HEADA"
+mk_twin local-foreign "other/repository"
+mk_variant local-foreign
+mk_identity local-foreign "cccccccccccccccccccccccccccccccccccccccc"
 cat > "$EVAL_SANDBOX/.review/local-foreign/findings.json" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Foreign finding.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"important","kb":[],"sig":"0123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
@@ -280,13 +297,15 @@ fi
 
 mk_comment 4431
 mk_url 4431
-mk_identity 4431 "$PATCH3" "$HEADA"
+mk_variant2 4431
+mk_identity 4431 "$HEADA"
 eval_mk_bundle 4432
-mk_identity 4432 "$PATCH3" "$HEADA"
+mk_variant2 4432
+mk_identity 4432 "$HEADA"
 jq '.url = "https://github.com/other/repository/pull/4432"' \
   "$EVAL_SANDBOX/.review/4432/PR.json" > "$EVAL_SANDBOX/.review/4432/PR.json.new"
 mv "$EVAL_SANDBOX/.review/4432/PR.json.new" "$EVAL_SANDBOX/.review/4432/PR.json"
-mk_posted 4432 "$HEADA" "$PATCH3"
+mk_posted 4432 "$HEADA" "$(real_patch 4432)"
 m="$(mark)"
 run_review post acme/app 4431 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
@@ -299,8 +318,8 @@ eval_mk_bundle 4428
 mk_url 4428
 mk_head 4428 "$HEADB"
 printf '[]' | eval_write_findings 4428
-mk_identity 4428 "$PATCH1" "$HEADB"
-mk_posted 4428 "$HEADA" "$PATCH1"
+mk_identity 4428 "$HEADB"
+mk_posted 4428 "$HEADA" "$(real_patch 4428)"
 run_review report acme/app 4428 --completeness
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "same patch reviewed at ${HEADB:0:7} (posted ${HEADA:0:7})" "$EVAL_ERR"; then
   good "report --completeness passes a rebase with the same patch"
@@ -311,8 +330,9 @@ eval_mk_bundle 4429
 mk_url 4429
 mk_head 4429 "$HEADB"
 printf '[]' | eval_write_findings 4429
-mk_identity 4429 "$PATCH2" "$HEADB"
-mk_posted 4429 "$HEADA" "$PATCH1"
+mk_variant 4429
+mk_identity 4429 "$HEADB"
+mk_posted 4429 "$HEADA" "$(real_patch 4428)"
 run_review report acme/app 4429 --completeness
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "stale-head" "$EVAL_ERR"; then
   good "report --completeness still fails for a different patch"
@@ -324,8 +344,8 @@ eval_mk_bundle 4433
 mk_url 4433
 mk_head 4433 "$HEADB"
 printf '[]' | eval_write_findings 4433
-mk_identity 4433 "$PATCH1" "$HEADB"
-mk_posted 4433 "$HEADA" "$PATCH1"
+mk_identity 4433 "$HEADB"
+mk_posted 4433 "$HEADA" "$(real_patch 4433)"
 printf 'stale bytes\n' > "$EVAL_SANDBOX/.review/4433/full.diff"
 run_review report acme/app 4433 --completeness
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
@@ -338,7 +358,9 @@ eval_mk_bundle 4434
 mk_url 4434
 mk_head 4434 "$HEADB"
 printf '[]' | eval_write_findings 4434
-mk_identity 4434 "not-a-patch-id" "$HEADB"
+mk_identity 4434 "$HEADB"
+jq --arg p "not-a-patch-id" '.patch_id = $p' "$EVAL_SANDBOX/.review/4434/identity.json" > "$EVAL_SANDBOX/.review/4434/identity.json.new"
+mv "$EVAL_SANDBOX/.review/4434/identity.json.new" "$EVAL_SANDBOX/.review/4434/identity.json"
 mk_posted 4434 "$HEADA" "not-a-patch-id"
 run_review report acme/app 4434 --completeness
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
@@ -351,14 +373,77 @@ eval_mk_bundle 4435
 mk_url 4435
 mk_head 4435 "$HEADB"
 printf '[]' | eval_write_findings 4435
-mk_identity 4435 "$PATCH1" "$HEADB"
-jq -n --arg p "$PATCH1" '{patch_id:$p,patch_id_kind:"git-patch-id"}' \
+mk_identity 4435 "$HEADB"
+jq -n --arg p "$(real_patch 4435)" '{patch_id:$p,patch_id_kind:"git-patch-id"}' \
   > "$EVAL_SANDBOX/.review/4435/post.json"
 run_review report acme/app 4435 --completeness
 if [ "$EVAL_STATUS" -ne 0 ] && grep -q "incomplete" "$EVAL_ERR"; then
   good "a two-field post stub proves no publication"
 else
   bad "stub-receipt completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+fi
+
+eval_mk_bundle 4436
+mk_url 4436
+mk_head 4436 "$HEADB"
+printf '[]' | eval_write_findings 4436
+mk_identity 4436 "$HEADB"
+mk_posted 4436 "$HEADA" "$(real_patch 4436)"
+mkdir "$EVAL_SANDBOX/.review/4436/full.raw.diff"
+run_review report acme/app 4436 --completeness
+if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
+  good "an unreadable raw diff invalidates verification"
+else
+  bad "raw-unreadable completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+fi
+
+eval_mk_bundle 4437
+mk_url 4437
+mk_head 4437 "$HEADB"
+printf '[]' | eval_write_findings 4437
+mk_identity 4437 "$HEADB"
+mk_posted 4437 "$HEADA" "$(real_patch 4437)"
+jq --arg p "1111111111111111111111111111111111111111" '.patch_id = $p' \
+  "$EVAL_SANDBOX/.review/4437/identity.json" > "$EVAL_SANDBOX/.review/4437/identity.json.new"
+mv "$EVAL_SANDBOX/.review/4437/identity.json.new" "$EVAL_SANDBOX/.review/4437/identity.json"
+jq --arg p "1111111111111111111111111111111111111111" '.patch_id = $p' \
+  "$EVAL_SANDBOX/.review/4437/post.json" > "$EVAL_SANDBOX/.review/4437/post.json.new"
+mv "$EVAL_SANDBOX/.review/4437/post.json.new" "$EVAL_SANDBOX/.review/4437/post.json"
+run_review report acme/app 4437 --completeness
+if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
+  good "a tampered valid-hex claim never relaxes completeness"
+else
+  bad "tampered-claim completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+fi
+
+eval_mk_bundle 4438
+mk_url 4438
+mk_head 4438 "$HEADB"
+printf '[]' | eval_write_findings 4438
+mk_identity 4438 "$HEADB"
+jq -n --arg h "$HEADA" --arg p "$(real_patch 4438)" \
+  '{schema_version:"1",review:{},head:$h,posted_at:"2026-01-01T00:00:00Z",patch_id:$p,patch_id_kind:"git-patch-id"}' \
+  > "$EVAL_SANDBOX/.review/4438/post.json"
+run_review report acme/app 4438 --completeness
+if [ "$EVAL_STATUS" -eq 1 ] && grep -q "stale-head" "$EVAL_ERR"; then
+  good "an empty review object proves no publication"
+else
+  bad "empty-receipt completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+fi
+
+eval_mk_bundle 4439
+mk_url 4439
+mk_head 4439 "$HEADB"
+printf '[]' | eval_write_findings 4439
+mk_identity 4439 "$HEADB"
+jq -n --arg p "$(real_patch 4439)" \
+  '{schema_version:"1",review:{},head:"not-a-head",posted_at:"not-a-time",patch_id:$p,patch_id_kind:"git-patch-id"}' \
+  > "$EVAL_SANDBOX/.review/4439/post.json"
+run_review report acme/app 4439 --completeness
+if [ "$EVAL_STATUS" -eq 1 ] && grep -q "stale-head" "$EVAL_ERR"; then
+  good "invalid head/time metadata proves no publication"
+else
+  bad "invalid-metadata completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
 eval_end
