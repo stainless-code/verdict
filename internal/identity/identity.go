@@ -12,7 +12,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"math"
+	"math/big"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,12 +36,13 @@ const (
 )
 
 const (
-	schemaVersion = "1"
-	identityFile  = "identity.json"
-	fullDiffFile  = "full.diff"
-	rawDiffFile   = "full.raw.diff"
-	patchHexLen   = 40
-	shaHexLen     = 64
+	schemaVersion     = "1"
+	identityFile      = "identity.json"
+	fullDiffFile      = "full.diff"
+	rawDiffFile       = "full.raw.diff"
+	patchHexLen       = 40
+	shaHexLen         = 64
+	reviewIDFloatBits = 64
 )
 
 // Identity is schemas/identity.schema.json: the bundle's stable diff id
@@ -296,8 +303,8 @@ func VerifyBytes(ctx context.Context, cmdr core.Commander, dir string) (*Identit
 	if err != nil {
 		return nil, false
 	}
-	raw, ok := readRawDiff(dir, full)
-	if !ok {
+	raw, err := ReadRawDiff(dir, full)
+	if err != nil {
 		return nil, false
 	}
 	if hashHex(full) != id.DiffSHA256 {
@@ -312,19 +319,23 @@ func VerifyBytes(ctx context.Context, cmdr core.Commander, dir string) (*Identit
 	return id, true
 }
 
-// readRawDiff reads the raw pre-exclusion input: full.raw.diff when the
-// artifact exists, else the filtered bytes. Any read failure other than
-// genuine absence invalidates the caller — falling back on a failed read
-// would certify the wrong identity input.
-func readRawDiff(dir string, filtered []byte) ([]byte, bool) {
-	raw, err := os.ReadFile(dir + "/" + rawDiffFile)
-	if err == nil {
-		return raw, true
+// ReadRawDiff returns full.raw.diff, or filtered when its directory entry
+// is absent. Any access failure for a present entry, including a dangling
+// symlink, returns a sealed access error instead of selecting a different
+// input. Callers must not reinterpret a failed target read as absence.
+func ReadRawDiff(dir string, filtered []byte) ([]byte, error) {
+	name := filepath.Join(dir, rawDiffFile)
+	if _, err := os.Lstat(name); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return filtered, nil
+		}
+		return nil, jq.Sealed("inspect raw diff", err)
 	}
-	if os.IsNotExist(err) {
-		return filtered, true
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		return nil, jq.Sealed("read raw diff", err)
 	}
-	return nil, false
+	return raw, nil
 }
 
 // verifyClaim recomputes the labeled algorithm over the raw input and
@@ -402,7 +413,8 @@ func completeReview(post, review map[string]any) bool {
 	if dry, ok := post["dry_run"].(bool); ok && dry {
 		return false
 	}
-	if !checkHexID(jq.StrOf(post["head"]), patchHexLen) {
+	head := jq.StrOf(post["head"])
+	if !checkHexID(head, patchHexLen) && !checkHexID(head, shaHexLen) {
 		return false
 	}
 	if _, err := time.Parse(time.RFC3339, jq.StrOf(post["posted_at"])); err != nil {
@@ -411,23 +423,30 @@ func completeReview(post, review map[string]any) bool {
 	return true
 }
 
-// validReviewID reports whether a review identifier is real: a JSON number
-// as the producer decodes it (the bundle reader keeps numbers unconverted),
-// or a non-empty string. Missing, null, boolean, empty, and structured ids
-// prove nothing.
+// validReviewID accepts finite positive integral numbers or nonblank
+// backend strings. Raw JSON numbers retain exact fractional information.
 func validReviewID(id any) bool {
 	switch v := id.(type) {
 	case float64:
-		return true
+		return v > 0 && !math.IsInf(v, 0) && math.Trunc(v) == v
 	case json.Number:
-		return v.String() != ""
+		return validReviewNumber(v.String())
 	case jq.Number:
-		return string(v) != ""
+		return validReviewNumber(string(v))
 	case string:
-		return v != ""
+		return strings.TrimSpace(v) != ""
 	default:
 		return false
 	}
+}
+
+func validReviewNumber(text string) bool {
+	value, err := strconv.ParseFloat(text, reviewIDFloatBits)
+	if err != nil || value <= 0 || math.IsInf(value, 0) || !json.Valid([]byte(text)) {
+		return false
+	}
+	exact, ok := new(big.Rat).SetString(text)
+	return ok && exact.Sign() > 0 && exact.IsInt()
 }
 
 // completedReviewState reports whether a review state names a landed

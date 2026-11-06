@@ -379,10 +379,8 @@ func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base stri
 	// Only a genuinely absent raw artifact falls back to the filtered
 	// bytes: a present-but-unreadable raw diff refuses instead of
 	// certifying the wrong identity input.
-	raw := filtered
-	if rb, err := os.ReadFile(dir + suffixRawDiff); err == nil {
-		raw = rb
-	} else if !os.IsNotExist(err) {
+	raw, err := identity.ReadRawDiff(dir, filtered)
+	if err != nil {
 		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixRawDiff, err)}
 	}
 	id := identity.Build(ctx, cmdr, filtered, raw, head, base)

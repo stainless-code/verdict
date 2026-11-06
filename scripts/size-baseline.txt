@@ -18,11 +18,12 @@
 # Patch identity on top: bundle identity binding, Verify recompute, receipt
 # strictness, and raw-read distinction add ~35-45 KiB per target over the
 # category baseline. Ceilings sit at the next 10 KiB above the combined
-# measurement, keeping 3.5-14 KiB of toolchain-drift room.
+# measurement. Final receipt-number validation and shared raw-entry checks
+# add up to another 9 KiB; only overflowing ceilings are refreshed.
 deps 0
-darwin/amd64 11330000
+darwin/amd64 11340000
 darwin/arm64 10420000
 linux/amd64 11130000
 linux/arm64 10160000
-windows/amd64 11440000
-windows/arm64 10320000
+windows/amd64 11450000
+windows/arm64 10330000
