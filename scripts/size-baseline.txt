@@ -24,10 +24,15 @@
 # grouped cost/cap enforcement, and validation receipts. Same-toolchain release
 # builds grow by about 0.55-0.66 MB per target; dependencies remain zero. These
 # intentional feature costs are rounded to the next 10 kB as above.
+# Preview and local-rename enforcement on top: the prospective-requirements
+# view, captured-cost identity, old-path policy joins, and both-endpoint
+# privacy filtering. Same-toolchain release builds grow a further 5.7-10.7 kB
+# per target, so the five ceilings that overflowed move to the next 10 kB above
+# their exact measurement; linux/arm64 keeps its higher existing ceiling.
 deps 0
-darwin/amd64 12000000
-darwin/arm64 11010000
-linux/amd64 11790000
+darwin/amd64 12010000
+darwin/arm64 11020000
+linux/amd64 11810000
 linux/arm64 10820000
-windows/amd64 12120000
-windows/arm64 10900000
+windows/amd64 12130000
+windows/arm64 10920000
