@@ -44,7 +44,7 @@ const testPatchID = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d 000000000000000000
 const patchIDKey = "git\x00patch-id\x00--stable"
 
 // Run records argv/stdin/env and replays the canned result.
-func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
 	s.stdin = append(s.stdin, cmd.Stdin != nil)
@@ -235,7 +235,7 @@ func TestRunGitHubHappyPath(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	assertScriptCalls(t, cmdr, fetchHappyArgv())
-	assertBundleFiles(t, filepath.Join(".review", "7"), []string{
+	assertBundleFiles(t, filepath.Join(".verdict", "state", "7"), []string{
 		"PR.json", "full.diff", "identity.json",
 		"toc.txt", "roles.txt", "hunks.tsv", "store.json", "reviews.json", "inline.json",
 		"threads.json", ".difffiles",
@@ -264,11 +264,6 @@ func fetchHappyArgv() [][]string {
 		{"gh", "api", "repos/o/r/pulls/7/comments", "--paginate"},
 		append([]string{"gh"}, readcommon.ReviewThreadsArgv("o", "r", "7", "")...),
 		{"git", "ls-tree", "-lz", fetchTestBase, "--", ".verdict/config.json"},
-		{"git", "ls-tree", "-r", "--name-only", fetchTestBase, "--", ".verdict/overrides/"},
-		{
-			"git", "ls-tree", "-lz", fetchTestBase, "--",
-			".verdict/config.json", ".verdict/kb.jsonl", ".verdict/learnings.md",
-		},
 	}
 }
 
@@ -276,7 +271,7 @@ func fetchHappyArgv() [][]string {
 // identity over the fetched diff.
 func assertIdentityFile(t *testing.T) {
 	t.Helper()
-	raw, err := os.ReadFile(".review/7/identity.json")
+	raw, err := os.ReadFile(".verdict/state/7/identity.json")
 	if err != nil {
 		t.Fatalf("identity.json: %v", err)
 	}
@@ -296,10 +291,10 @@ func assertIdentityFile(t *testing.T) {
 // assertFetchFiles proves the canned bundle bodies landed verbatim.
 func assertFetchFiles(t *testing.T) {
 	t.Helper()
-	if raw, err := os.ReadFile(".review/7/PR.json"); err != nil || string(raw) != fetchTestPR() {
+	if raw, err := os.ReadFile(".verdict/state/7/PR.json"); err != nil || string(raw) != fetchTestPR() {
 		t.Errorf("PR.json = %q, %v", raw, err)
 	}
-	if raw, err := os.ReadFile(".review/7/full.diff"); err != nil || string(raw) != fetchTestDiff() {
+	if raw, err := os.ReadFile(".verdict/state/7/full.diff"); err != nil || string(raw) != fetchTestDiff() {
 		t.Errorf("full.diff = %q, %v", raw, err)
 	}
 }
@@ -317,7 +312,7 @@ func assertFetchData(t *testing.T, resp *core.FetchResponse, human *bytes.Buffer
 // assertFetchIdentity proves the data identity and stats.
 func assertFetchIdentity(t *testing.T, data *core.FetchData) {
 	t.Helper()
-	if data.Dir != ".review/7" || data.HeadSHA != fetchTestHead || data.BaseSHA != fetchTestBase {
+	if data.Dir != ".verdict/state/7" || data.HeadSHA != fetchTestHead || data.BaseSHA != fetchTestBase {
 		t.Errorf("identity = %+v", data)
 	}
 	if data.Files != 1 || data.Hunks != 1 || data.DiffBytes != int64(len(fetchTestDiff())) {
@@ -337,10 +332,10 @@ func assertFetchEnvelope(t *testing.T, resp *core.FetchResponse, human *bytes.Bu
 	env := core.RenderEnvelope("fetch", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)
 	raw := jq.PrettyOrdered(env)
-	if !strings.Contains(raw, `"dir": ".review/7"`) || !strings.Contains(raw, `"verb": "fetch"`) {
+	if !strings.Contains(raw, `"dir": ".verdict/state/7"`) || !strings.Contains(raw, `"verb": "fetch"`) {
 		t.Errorf("envelope missing identity:\n%s", raw)
 	}
-	if got := human.String(); !strings.Contains(got, "done: .review/7/PR.json") ||
+	if got := human.String(); !strings.Contains(got, "done: .verdict/state/7/PR.json") ||
 		!strings.Contains(got, "next: feed SKILL.md") {
 		t.Errorf("human lines:\n%s", got)
 	}
@@ -364,7 +359,7 @@ func TestRunMissingTool(t *testing.T) {
 	}
 	// The bundle dir lands before the need gate (like the old preamble),
 	// but nothing is written into it and no progress streams.
-	if entries, err := os.ReadDir(".review/7"); err != nil || len(entries) != 0 {
+	if entries, err := os.ReadDir(".verdict/state/7"); err != nil || len(entries) != 0 {
 		t.Errorf("bundle files written on missing tool: %v %v", entries, err)
 	}
 	if human.String() != "" || diag.String() != "" {
@@ -459,6 +454,7 @@ func TestRunLocalWorktree(t *testing.T) {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, head)
 	var human, diag bytes.Buffer
 	var streamed []string
 	root := ""
@@ -506,7 +502,7 @@ func assertLocalBundle(t *testing.T, resp *core.FetchResponse, human *bytes.Buff
 		t.Errorf("heads = %q %q", resp.Data.HeadSHA, resp.Data.BaseSHA)
 	}
 	assertLocalFiles(t, diff)
-	if got := human.String(); !strings.Contains(got, "done: .review/local-mine/source.json") {
+	if got := human.String(); !strings.Contains(got, "done: .verdict/state/local-mine/source.json") {
 		t.Errorf("human lines:\n%s", got)
 	}
 }
@@ -514,10 +510,10 @@ func assertLocalBundle(t *testing.T, resp *core.FetchResponse, human *bytes.Buff
 // assertLocalFiles proves the worktree bundle bodies landed.
 func assertLocalFiles(t *testing.T, diff string) {
 	t.Helper()
-	if raw, err := os.ReadFile(".review/local-mine/full.diff"); err != nil || string(raw) != diff {
+	if raw, err := os.ReadFile(".verdict/state/local-mine/full.diff"); err != nil || string(raw) != diff {
 		t.Errorf("full.diff = %q, %v", raw, err)
 	}
-	if _, err := os.Stat(".review/local-mine/source.json"); err != nil {
+	if _, err := os.Stat(".verdict/state/local-mine/source.json"); err != nil {
 		t.Errorf("missing source.json: %v", err)
 	}
 }
@@ -547,10 +543,10 @@ func TestGitHubThreadReadFailureWarns(t *testing.T) {
 	if !warningContains(resp.Warnings, "thread read failed") {
 		t.Errorf("warnings = %v, want the thread-read warning", resp.Warnings)
 	}
-	if raw, rerr := os.ReadFile(".review/7/reviews.json"); rerr != nil || string(raw) != "[]\n" {
+	if raw, rerr := os.ReadFile(".verdict/state/7/reviews.json"); rerr != nil || string(raw) != "[]\n" {
 		t.Errorf("reviews.json = %q, %v; want []", raw, rerr)
 	}
-	if raw, rerr := os.ReadFile(".review/7/inline.json"); rerr != nil || string(raw) != "[]\n" {
+	if raw, rerr := os.ReadFile(".verdict/state/7/inline.json"); rerr != nil || string(raw) != "[]\n" {
 		t.Errorf("inline.json = %q, %v", raw, rerr)
 	}
 }

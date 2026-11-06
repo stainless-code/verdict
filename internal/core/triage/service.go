@@ -10,9 +10,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -58,6 +60,7 @@ func (d *Data) Wire() *jq.Obj {
 
 type state struct { //nolint:govet // triage service state is allocated once per invocation
 	req      *Request
+	run      *config.RunState
 	warnings []string
 	human    string
 	next     string
@@ -96,10 +99,15 @@ func (st *state) response() *Response {
 }
 
 func (st *state) runTriage() *core.RefusalError {
-	dir := readcommon.ResolveBundleDir(st.req.Pr)
+	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref := requireFindingsFile(dir); ref != nil {
 		return ref
 	}
+	run, ref := config.VerifyRunState(dir)
+	if ref != nil {
+		return ref
+	}
+	st.run = run
 	if ref := checkStatus(st.req.Status); ref != nil {
 		return ref
 	}
@@ -191,6 +199,17 @@ func (st *state) rationaleFor() string {
 	return st.req.Rationale
 }
 
+// kbThresholds reads the retirement policy: the bundle's verified typed
+// defaults when it carries them, else the consumed environment names over
+// the built-in floor.
+func (st *state) kbThresholds() (int, string) {
+	if st.run != nil && st.run.Resolved != nil {
+		return st.run.Resolved.Defaults.Values.KBPolicy()
+	}
+	defaults := config.EnvDefaults(st.req.Env, st.warn)
+	return defaults.KBPolicy()
+}
+
 func (st *state) applyFlip(dir string, entries []any, full, now string) *core.RefusalError {
 	ratOut := st.rationaleFor()
 	k := kb.New(st.warn)
@@ -207,14 +226,18 @@ func (st *state) applyFlip(dir string, entries []any, full, now string) *core.Re
 }
 
 func (st *state) stageCredit(k *kb.Ctx, entries []any, full, now string) []any {
-	k.ResolvePolicy(st.req.Env, readcommon.Exists(kb.File))
-	if readcommon.IsFile(kb.File) {
-		if _, err := kb.ParseRows(mustRead(kb.File)); err != nil {
-			st.warn(fmt.Sprintf("kb store %s unreadable — no credit for this flip (fix the bad line)", kb.File))
+	root := st.req.RepoRootPath()
+	store := filepath.Join(root, kb.File)
+	k.Root = root
+	k.Policy = kb.PolicyFrom(st.kbThresholds())
+	exists := readcommon.Exists(store)
+	if readcommon.IsFile(store) {
+		if _, err := kb.ParseRows(mustRead(store)); err != nil {
+			st.warn(fmt.Sprintf("kb store %s unreadable — no credit for this flip (fix the bad line)", store))
 			k.Broken = true
 		}
 	}
-	k.ApplyCredit(entries, full, st.req.Status, "human", "triage", now, readcommon.Exists(kb.File))
+	k.ApplyCredit(entries, full, st.req.Status, "human", "triage", now, exists)
 	if k.Credited == nil {
 		return []any{}
 	}

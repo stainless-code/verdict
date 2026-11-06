@@ -63,7 +63,7 @@ func TestReadBaseReadsBaseNotHead(t *testing.T) {
 	if err := os.WriteFile(".verdict/config.json", []byte("{\"schema_version\":\"2\"}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	found, ref := ReadBase(t.Context(), cmdr, "", base)
+	found, ref := ReadBase(t.Context(), cmdr, "", "", base)
 	if ref != nil {
 		t.Fatalf("ReadBase: %v", ref)
 	}
@@ -83,7 +83,7 @@ func TestReadBaseReadsBaseNotHead(t *testing.T) {
 // base configuration reads as absent, never as an error.
 func TestReadBaseAbsent(t *testing.T) {
 	base := baseRepo(t, map[string]string{"README.md": "hi\n"})
-	found, ref := ReadBase(t.Context(), cmdr, "", base)
+	found, ref := ReadBase(t.Context(), cmdr, "", "", base)
 	if ref != nil {
 		t.Fatalf("ReadBase: %v", ref)
 	}
@@ -103,7 +103,7 @@ func TestReadBaseAbsent(t *testing.T) {
 // without touching the network or the worktree.
 func TestReadBaseBadBase(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if _, ref := ReadBase(t.Context(), cmdr, "", "not-a-sha"); ref == nil {
+	if _, ref := ReadBase(t.Context(), cmdr, "", "", "not-a-sha"); ref == nil {
 		t.Fatal("want a refusal for a non-SHA base")
 	} else if ref.Code != "controls-unavailable" && ref.Code != "controls-too-large" {
 		t.Fatalf("code = %q", ref.Code)

@@ -8,7 +8,7 @@
 5. Diagnose + fix: reproduce locally with the EXACT CI commands, fix with native tools, verify by
    re-running the exact CI command, review diff (only the fix, no debug artifacts, senior-approvable),
    confirm every dirty file maps to the failure (stop-and-report on hitchhikers),
-   record `.review/N/patch.json` (`{findingSig, filesChanged[], commandsRun[], verifyCmd, verifyOutput, baseHead, resultHead}` —
+   record `.verdict/state/N/patch.json` (`{findingSig, filesChanged[], commandsRun[], verifyCmd, verifyOutput, baseHead, resultHead}` —
    `verifyCmd` is the exact rerun proving the fix, `verifyOutput` its tail,
    `baseHead`/`resultHead` bracket verification),
    run gates bare (never `tail` a check), never commit red,

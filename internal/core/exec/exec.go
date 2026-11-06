@@ -26,7 +26,7 @@ type Watchdog struct{}
 // budget: expiry SIGKILLs the group. A nil Stdin or Env inherits the
 // caller's. Infra failures (spawn) come back as errors; completed
 // processes — any exit code — come back as results.
-func (Watchdog) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+func (Watchdog) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
 	}
@@ -75,7 +75,7 @@ func watchdogBudget(ctx context.Context) (int, bool) {
 	return int(time.Until(deadline).Seconds()), true
 }
 
-func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan error, *boundedBuffer, error) {
+func spawnWatched(ctx context.Context, cmd *core.Command) (*osexec.Cmd, chan error, *boundedBuffer, error) {
 	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
 	setGroup(proc)
@@ -86,6 +86,7 @@ func spawnWatched(ctx context.Context, cmd core.Command) (*osexec.Cmd, chan erro
 	proc.Stderr = out
 	proc.Env = cmd.Env
 	proc.Stdin = cmd.Stdin
+	proc.Dir = cmd.Dir
 	if err := proc.Start(); err != nil {
 		releaseTree(proc)
 		return nil, nil, nil, watchdogError("start command: " + err.Error())

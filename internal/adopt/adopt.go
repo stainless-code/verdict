@@ -16,10 +16,11 @@ import (
 
 // Request carries the resolved adopt invocation.
 type Request struct {
-	Env  map[string]string
-	Repo string
-	Pr   string
-	Root string
+	Env      map[string]string
+	Repo     string
+	Pr       string
+	Root     string
+	RepoRoot string
 }
 
 // Run executes `adopt <owner/repo> <pr> --from <local-slug> [--json]`,
@@ -52,9 +53,10 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // typed service request.
 func adoptRequest(r *cli.Runner, req Request, from string) *adoptcore.Request {
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
-		Repo:    req.Repo,
-		Pr:      req.Pr,
+		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
+		Repo:     req.Repo,
+		Pr:       req.Pr,
+		RepoRoot: req.RepoRoot,
 	}
 	out := &adoptcore.Request{From: from}
 	out.ReadRequest = read

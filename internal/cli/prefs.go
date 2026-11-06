@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -97,14 +98,21 @@ func gateMissingFile(eff *Effective, path string) (*PrefsResult, error) {
 	return &PrefsResult{Effective: *eff, Path: path}, nil
 }
 
-func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, eff *Effective) (*PrefsResult, error) {
+// checkSettingsShape refuses a document that names a credential key or that
+// carries a key outside the recognized top-level set or schema version. It is
+// split out of resolveSettingsFile so each refusal stays one readable step.
+func checkSettingsShape(path string, obj map[string]any, doc any) error {
 	if n := countCredKeys(doc); n > 0 {
-		return nil, &RefusalError{Code: "bad-settings-credentials", Message: fmt.Sprintf(msgCredKey, path)}
+		return &RefusalError{Code: "bad-settings-credentials", Message: fmt.Sprintf(msgCredKey, path)}
 	}
 	if ref := checkTopKeys(path, obj); ref != nil {
-		return nil, ref
+		return ref
 	}
-	if ref := checkSchemaKey(path, obj); ref != nil {
+	return checkSchemaKey(path, obj)
+}
+
+func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, eff *Effective) (*PrefsResult, error) {
+	if ref := checkSettingsShape(path, obj, doc); ref != nil {
 		return nil, ref
 	}
 	if ref := resolveOutputFile(r, path, obj); ref != nil {
@@ -119,13 +127,16 @@ func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, ef
 	if ref := resolvePublishFile(path, obj, eff); ref != nil {
 		return nil, ref
 	}
+	if ref := validatePersonalSections(obj); ref != nil {
+		return nil, ref
+	}
 	return &PrefsResult{Effective: *eff, Path: path}, nil
 }
 
 func checkTopKeys(path string, obj map[string]any) error {
 	for _, k := range SortedKeys(obj) {
 		switch k {
-		case "$schema", "output", "layout", "color", "publish":
+		case "$schema", "output", "layout", "color", "publish", "review", "spend", "privacy":
 		default:
 			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTopKey, path, k)}
 		}
@@ -244,6 +255,17 @@ func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 	default:
 		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgColorMode, path, jq.Str(m))}
 	}
+}
+
+// validatePersonalSections validates the review/spend/privacy sections
+// of the settings file through the typed personal parser, so the
+// loader and the fetch-time personal read share one contract. A
+// section violation refuses with its typed configuration code.
+func validatePersonalSections(obj map[string]any) error {
+	if ref := config.ValidatePersonalSections(obj); ref != nil {
+		return &RefusalError{Code: ref.Code, Message: ref.Message}
+	}
+	return nil
 }
 
 func countCredKeys(doc any) int {

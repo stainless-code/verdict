@@ -14,7 +14,7 @@ import (
 func TestResultSizeBudgetKeepsSmallResults(t *testing.T) {
 	t.Parallel()
 	small := successResult("report", jq.NewObj(
-		"dir", ".review/5101",
+		"dir", ".verdict/state/5101",
 		"note", strings.Repeat("x", maxResultTextBytes-1024),
 	))
 	if small.IsError {
@@ -31,7 +31,7 @@ func TestResultSizeBudgetKeepsSmallResults(t *testing.T) {
 func TestResultSizeBudgetTruncatesLargeResults(t *testing.T) {
 	t.Parallel()
 	over := successResult("report", jq.NewObj(
-		"dir", ".review/5101",
+		"dir", ".verdict/state/5101",
 		"findings", []any{strings.Repeat("x", maxResultTextBytes)},
 	))
 	if over.IsError {
@@ -41,7 +41,7 @@ func TestResultSizeBudgetTruncatesLargeResults(t *testing.T) {
 		t.Errorf("text block = %d bytes, want under the %d budget",
 			len(over.Content[0].Text), maxResultTextBytes)
 	}
-	assertTruncationSummary(t, over.Content[0].Text, ".review/5101", len(over.StructuredContent))
+	assertTruncationSummary(t, over.Content[0].Text, ".verdict/state/5101", len(over.StructuredContent))
 
 	var content struct {
 		Findings []string `json:"findings"`

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -37,7 +38,7 @@ func setupIsolation(ctx context.Context, s *session, slug string, mode *localMod
 	if skip {
 		return nil, false, nil
 	}
-	dir, ref := resolveIsolationDir(slug)
+	dir, ref := resolveIsolationDir(s.repoRoot, slug)
 	if ref != nil {
 		return nil, false, ref
 	}
@@ -139,20 +140,22 @@ func dirtyTarget(ctx context.Context, s *session) (string, bool, error) {
 	return target, false, nil
 }
 
-// resolveIsolationDir picks the worktree path under .review (suffixing on
-// collision, so two concurrent fetches never share a checkout). The path
-// is deterministic per slug, which keeps the scripted-argv contract exact;
-// git itself creates the directory, so this only probes. The worktree add
-// is the atomic claim: a lost race refuses typed with git's own
-// already-exists excerpt instead of sharing a checkout.
-func resolveIsolationDir(slug string) (string, error) {
-	if err := os.MkdirAll(reviewDir, dirPerm); err != nil {
+// resolveIsolationDir picks the worktree path under the bundle home
+// (suffixing on collision, so two concurrent fetches never share a
+// checkout). The path is deterministic per slug, which keeps the
+// scripted-argv contract exact; git itself creates the directory, so
+// this only probes. The worktree add is the atomic claim: a lost race
+// refuses typed with git's own already-exists excerpt instead of
+// sharing a checkout.
+func resolveIsolationDir(root, slug string) (string, error) {
+	state := filepath.Join(root, ".verdict", "state")
+	if err := os.MkdirAll(state, dirPerm); err != nil {
 		return "", &core.RefusalError{
 			Code:    codeWorktreeFailed,
-			Message: fmt.Sprintf("could not create %s for an isolated worktree: %v", reviewDir, err),
+			Message: fmt.Sprintf("could not create %s for an isolated worktree: %v", state, err),
 		}
 	}
-	dir := reviewDir + "/.worktree-" + slug
+	dir := filepath.Join(state, ".worktree-"+slug)
 	for i := 2; ; i++ {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			return dir, nil
@@ -160,10 +163,10 @@ func resolveIsolationDir(slug string) (string, error) {
 		if i > numWorktreeSuffixes {
 			return "", &core.RefusalError{
 				Code:    codeWorktreeFailed,
-				Message: fmt.Sprintf("could not reserve an isolated worktree path under %s (too many stale checkouts)", reviewDir),
+				Message: fmt.Sprintf("could not reserve an isolated worktree path under %s (too many stale checkouts)", state),
 			}
 		}
-		dir = fmt.Sprintf("%s/.worktree-%s-%d", reviewDir, slug, i)
+		dir = fmt.Sprintf("%s/.worktree-%s-%d", state, slug, i)
 	}
 }
 

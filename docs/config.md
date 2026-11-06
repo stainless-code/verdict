@@ -19,7 +19,7 @@ lives in `docs/policy-contract.md`.
 .verdict/state/                 ignored, local review state only
 ```
 
-Only `/state/` is ignored, through the nested file. Legacy `.review/` is
+Only `/state/` is ignored, through the nested file. Legacy `.verdict/state/` is
 untouched: no migration, no rewrite, no shim, no implicit fallback.
 `Layout.EnsureStateIgnore` writes `.verdict/.gitignore` before any state
 write, and `Layout.EnsureStateDir` adds a second `*` layer at
@@ -113,18 +113,30 @@ work to the plan, whose status stays `pending` until evidence exists. The
 per-group clause rule still refuses: a group with `no-open-above-block`
 and no applicable clause is `bad-requirement` naming the group.
 
+## Group identity
+
+Each plan group carries a stable `id` beside its `label`. The id is the
+full SHA-256 of an unambiguous, length-prefixed encoding of the group's
+effective work (defaults, requirement content, profile triple) and its
+sorted path membership, so two groups that share a profile label but
+differ in requirements or files are different identities. The label is
+the explanation name only (`<profile>`, or `group N` when unnamed) and no
+observation or refusal uses it as an identity.
+
 ## Evidence
 
 `config.Capture` records the allowlisted fetch-time evidence: effective
 values with origins, shadowed values, consumed input names (never whole
 environment dumps), the base SHA, the configuration hash, per-file scope
-sources, applicable clauses with `pending` status, and the selected plan.
-Stage flags and consents belong to their own invocation records.
+sources, applicable clauses with `pending` status, and the selected plan
+with its group identities. Stage flags and consents belong to their own
+invocation records.
 
 ## Consumers
 
 `fetch`/`fetch-local` resolve the two-phase policy and persist the run
-bundle with the inventory snapshot; `post` enforces clauses, bind, and
-floor; `report` enforces the display floor and appends observations;
-`verdict config` explains and previews. MCP, TypeScript, and the Go
-facade expose the same `configData` profile.
+bundle with the inventory snapshot; `post` enforces clauses, bind, floor,
+and the selected typed checks, appending one observation per scope and
+reviewed head; `report` enforces the display floor and records no check
+evidence; `verdict config` explains and previews. MCP, TypeScript, and the
+Go facade expose the same `configData` profile.

@@ -53,7 +53,7 @@ exit: 1
         "name": "storage-writable",
         "severity": "fail",
         "ok": true,
-        "detail": "cwd writable — .review/ created on first fetch"
+        "detail": "cwd writable — .verdict/state/ created on first fetch"
       }
     ]
   },
@@ -66,5 +66,5 @@ ok   token-scopes — no scopes header — fine-grained token, scopes proven at 
 ok   ps — verify timeout enforced
 ok   git — check-tree/verify available
 WARN api-reachable — cannot reach api.github.com with this token
-ok   storage-writable — cwd writable — .review/ created on first fetch
+ok   storage-writable — cwd writable — .verdict/state/ created on first fetch
 --- files ---

@@ -17,7 +17,7 @@ func (st *state) runProbe(dir string) *core.RefusalError {
 		return st.loadRefusal(err)
 	}
 	now := st.req.TimeUTC()
-	bname := strings.TrimPrefix(dir, ".review/")
+	bname := readcommon.BundleName(dir)
 	known := knownSigs(entries)
 	fileJudgments, err := readJudgeFile(st.req.JudgeFile, known, dir)
 	if err != nil {

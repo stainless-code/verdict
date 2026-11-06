@@ -10,12 +10,12 @@ import (
 func refuseFixture(t *testing.T, dir, review string, extra map[string]string) {
 	t.Helper()
 	files := map[string]string{
-		".review/local-rf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/local-rf/full.diff":   genDiff(2),
-		".review/local-rf/review.json": review,
+		".verdict/state/local-rf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-rf/full.diff":   genDiff(2),
+		".verdict/state/local-rf/review.json": review,
 	}
 	for rel, content := range extra {
-		files[".review/local-rf/"+rel] = content
+		files[".verdict/state/local-rf/"+rel] = content
 	}
 	writeFiles(t, dir, files)
 }
@@ -83,16 +83,16 @@ func TestGoldenSourceShapes(t *testing.T) {
 	goldenBoth(t, "source/corrupt-pr", "4251", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/4251/PR.json":   `{oops`,
-			".review/4251/full.diff": genDiff(2),
+			".verdict/state/4251/PR.json":   `{oops`,
+			".verdict/state/4251/full.diff": genDiff(2),
 		})
 	})
 	// A garbage provider string records (only github is special-cased).
 	goldenBoth(t, "source/garbage-provider", "47", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/47/PR.json":   `{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`,
-			".review/47/full.diff": genDiff(2),
+			".verdict/state/47/PR.json":   `{"provider":"weird","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`,
+			".verdict/state/47/full.diff": genDiff(2),
 		})
 	})
 }

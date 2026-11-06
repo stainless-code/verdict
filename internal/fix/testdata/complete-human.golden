@@ -1,10 +1,10 @@
 exit: 0
 --- stdout ---
-» readiness: .review/local-done — findings 0 open (0 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
-fix complete: .review/local-done — fixed=1 open=0 stopped=0 (ledger .review/local-done/fix.json)
+» readiness: .verdict/state/local-done — findings 0 open (0 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+fix complete: .verdict/state/local-done — fixed=1 open=0 stopped=0 (ledger .verdict/state/local-done/fix.json)
 next: done — no open findings
 --- stderr ---
 
 --- files ---
---- file C/.review/local-done/fix.json ---
+--- file C/.verdict/state/local-done/fix.json ---
 {"sigs":{}}

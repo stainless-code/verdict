@@ -8,11 +8,12 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "address open threads",
   "warnings": [
-    "cost.json unreadable — spend unrecorded for this rollup"
+    "cost.json unreadable — spend unrecorded for this rollup",
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
-    "dir": ".review/5101",
+    "dir": ".verdict/state/5101",
     "head": {
       "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -215,4 +216,5 @@ exit: 0
 }
 --- stderr ---
 warn: cost.json unreadable — spend unrecorded for this rollup
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 --- files ---

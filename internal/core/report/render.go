@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -67,6 +68,17 @@ func buildData(st *state) *core.ReportData {
 	}
 	if st.comp != nil {
 		data.Completeness = st.comp
+	}
+	if st.compliance != nil && st.compliance.HasPolicy {
+		data.Compliance = &core.ReportCompliance{
+			Policy:     true,
+			Verified:   !st.compliance.Unverified,
+			Blockers:   len(st.compliance.Blockers),
+			Conflicted: len(st.compliance.Conflicts),
+			Pending:    len(st.compliance.Pending),
+			Gaps:       len(st.requiredGaps),
+			Satisfied:  st.compliance.Satisfied() && len(st.requiredGaps) == 0,
+		}
 	}
 	return data
 }
@@ -246,6 +258,7 @@ func buildHuman(st *state) []string {
 	if st.flags.Cost {
 		lines = append(lines, costHuman(st)...)
 	}
+	lines = append(lines, extraHuman(st)...)
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
 	}
@@ -253,6 +266,39 @@ func buildHuman(st *state) []string {
 		return append(lines, "next: address open threads")
 	}
 	return append(lines, "next: none open — nothing to address")
+}
+
+// complianceHuman names the captured compliance verdict before any display
+// filter: blockers fail, pending or unverified work stays unknown, and only a
+// fully satisfied capture passes.
+// extraHuman appends the captured compliance verdict, empty when the bundle
+// carries no typed policy.
+func extraHuman(st *state) []string {
+	if line := complianceHuman(st); line != "" {
+		return []string{line}
+	}
+	return nil
+}
+
+func complianceHuman(st *state) string {
+	if st.compliance == nil || !st.compliance.HasPolicy {
+		return ""
+	}
+	switch {
+	case len(st.compliance.Blockers) > 0:
+		return fmt.Sprintf("compliance: unmet — %d blocking finding(s)", len(st.compliance.Blockers))
+	case len(st.compliance.Conflicts) > 0:
+		first := st.compliance.Conflicts[0]
+		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)", first.Path, first.Rule)
+	case st.compliance.Unverified:
+		return "compliance: unknown — captured provenance unavailable"
+	case len(st.compliance.Pending) > 0:
+		return fmt.Sprintf("compliance: unknown — %d required check(s) pending", len(st.compliance.Pending))
+	case len(st.requiredGaps) > 0:
+		return "compliance: unknown — " + st.requiredGaps[0]
+	default:
+		return "compliance: satisfied"
+	}
 }
 
 func sigHuman(entry any) string {
@@ -367,13 +413,15 @@ func receiptFieldFromObj(latest any, key string) string {
 // Dimension ids, statuses, and the gate vocabulary shared by the report check
 // lines and the gate verb's envelope.
 const (
-	dimFindings = "findings"
-	dimHead     = "head"
-	dimLive     = "live_threads"
-	dimPass     = "pass"
-	dimFail     = "fail"
-	dimSkip     = "skip"
-	dimUnknown  = "unknown"
+	dimFindings   = "findings"
+	dimHead       = "head"
+	dimLive       = "live_threads"
+	dimPass       = "pass"
+	dimFail       = "fail"
+	dimSkip       = "skip"
+	dimUnknown    = "unknown"
+	dimCompliance = "compliance"
+	checkPrefix   = "check: "
 )
 
 // gateCheck is one dimension with the report check line it prints; line is
@@ -400,15 +448,11 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 			failed = true
 		}
 	}
-	// Gate observations append after the dimensions decide: the head and
-	// live verdicts become dated execution evidence without touching the
-	// captured inputs.
-	observeReportGates(st, dims)
 	return failed, lines, &core.ReportGate{Passed: !failed, Dimensions: dims}
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head, live.
-const gateDimensions = 3
+const gateDimensions = 4
 
 // gateChecks evaluates the dimensions this run asked for, in wire order.
 func gateChecks(st *state) []gateCheck {
@@ -419,7 +463,75 @@ func gateChecks(st *state) []gateCheck {
 	if st.flags.Completeness {
 		checks = append(checks, gateCompletenessCheck(st))
 	}
-	return append(checks, gateLiveCheck(st))
+	checks = append(checks, gateLiveCheck(st))
+	if st.compliance != nil && st.compliance.HasPolicy {
+		checks = append(checks, gateComplianceCheck(st))
+	}
+	return checks
+}
+
+// gateComplianceCheck evaluates captured requirements: a blocking finding
+// fails, unverified provenance or a pending required check is unknown, and
+// only a fully satisfied capture passes. An absent policy adds no dimension,
+// so legacy bundles keep their exact gate.
+func gateComplianceCheck(st *state) gateCheck {
+	comp := st.compliance
+	if comp == nil {
+		return gateCheck{}
+	}
+	status, detail, count := complianceVerdict(comp, st.requiredGaps, st.headSHA)
+	return gateCheck{
+		dim:  core.GateDimension{ID: dimCompliance, Status: status, Count: new(count), Detail: detail},
+		line: checkPrefix + detail + complianceLineSuffix(status),
+	}
+}
+
+// complianceVerdict maps the captured compliance state to one gate verdict:
+// blockers and privacy conflicts fail, while unverified provenance, required
+// profile work, and pending checks stay unknown — never a pass.
+func complianceVerdict(comp *config.ReadCompliance, gaps []string, head string) (string, string, int) {
+	switch {
+	case len(comp.Blockers) > 0:
+		first := comp.Blockers[0]
+		detail := fmt.Sprintf("%d open finding(s) violate %q", len(comp.Blockers), first.Clause)
+		if first.GroupKnown {
+			detail += " for group " + first.Group
+		}
+		return dimFail, detail, len(comp.Blockers)
+	case len(comp.Conflicts) > 0:
+		first := comp.Conflicts[0]
+		detail := fmt.Sprintf("required review withholds %s (rule %s)", first.Path, first.Rule)
+		if first.Group != "" {
+			detail += " in group " + first.Group
+		}
+		return dimFail, detail + " — unmet, no disclosure", len(comp.Conflicts)
+	case comp.Unverified:
+		return dimUnknown, "captured provenance unavailable", 0
+	case len(gaps) > 0:
+		return dimUnknown, gaps[0] + " — unknown, never a pass", len(gaps)
+	case len(comp.Pending) > 0:
+		return dimUnknown, pendingDetail(comp, head), len(comp.Pending)
+	default:
+		return dimPass, "captured requirements satisfied", 0
+	}
+}
+
+// pendingDetail names the first required check still pending.
+func pendingDetail(comp *config.ReadCompliance, head string) string {
+	first := comp.Pending[0]
+	detail := fmt.Sprintf("%d required check(s) pending for head %s", len(comp.Pending), readcommon.ShortSHA(head))
+	if first.Group != "" {
+		detail += " (first: " + first.Check + " in " + first.Group + ")"
+	}
+	return detail + " — unknown, never a pass"
+}
+
+// complianceLineSuffix names the verdict outcome in the check line.
+func complianceLineSuffix(status string) string {
+	if status == dimPass {
+		return " — gate passes"
+	}
+	return " — gate fails"
 }
 
 func gateTierCheck(st *state) gateCheck {

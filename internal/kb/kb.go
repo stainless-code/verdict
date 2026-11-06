@@ -7,18 +7,19 @@ package kb
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// File names relative to the working directory.
+// File names relative to the reviewed repository root.
 const (
-	File       = ".review/kb.jsonl"
-	Joins      = ".review/kb-joins.jsonl"
-	PolicyFile = ".review/kb-policy"
+	// File is the tracked shared knowledge corpus.
+	File = ".verdict/kb.jsonl"
+	// Joins is the tracked append-only credit audit log beside it.
+	Joins = ".verdict/kb-joins.jsonl"
 )
 
 // Policy carries the resolved retirement thresholds.
@@ -30,6 +31,9 @@ type Policy struct {
 // Ctx carries the KB runtime state for one record run.
 type Ctx struct {
 	Warn func(string)
+	// Root is the reviewed repository root every store write anchors to
+	// ("" reads the working directory).
+	Root string
 	// ReadFile reads a decision store: the worktree by default, the controls
 	// snapshot for record/post (write paths always use the worktree).
 	ReadFile func(string) ([]byte, bool)
@@ -54,90 +58,31 @@ func New(warn func(string)) *Ctx {
 	}
 }
 
+// path anchors one store path under the reviewed repository root.
+func (c *Ctx) path(rel string) string {
+	if c.Root == "" {
+		return rel
+	}
+	return filepath.Join(c.Root, rel)
+}
+
 var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,64}$`)
 
-// ResolvePolicy reads the policy: env wins, then the policy file,
-// then defaults. Invalid values warn and fall back. When no store and no
-// env knobs exist the defaults stand untouched.
-func (c *Ctx) ResolvePolicy(env map[string]string, kbExists bool) {
-	if !kbExists && env[envMinJudged] == "" && env[envMaxFPRate] == "" {
-		return
+// PolicyFrom builds the retirement policy from the resolved typed
+// `kb_policy` defaults: the resolver already folded flag, environment,
+// repository, personal, and built-in layers into one value, so the store
+// enforces exactly what the run resolved. Non-positive quorums and
+// non-rate ceilings keep the built-in defaults instead of weakening
+// retirement.
+func PolicyFrom(minJudged int, maxFPRate string) Policy {
+	pol := Policy{MinJudged: defaultMinJudged, MaxFPRate: defaultMaxFPRate}
+	if minJudged > 0 {
+		pol.MinJudged = minJudged
 	}
-	c.resolveMinJudged(env)
-	c.resolveMaxFPRate(env)
-}
-
-func (c *Ctx) resolveMinJudged(env map[string]string) {
-	if raw, ok := env[envMinJudged]; ok && raw != "" {
-		v := strings.TrimSpace(raw)
-		if n, ok := positiveInt(v); ok {
-			c.Policy.MinJudged = n
-		} else {
-			c.Warn(fmt.Sprintf("ignoring invalid REVIEW_KB_MIN_JUDGED '%s' (want a positive integer) — trying file, then default", raw))
-		}
+	if isRate(maxFPRate) {
+		pol.MaxFPRate = maxFPRate
 	}
-	// The file is read only when the env knob was absent or invalid; the
-	// `min_from_env` gate is folded into the outcome: an accepted env
-	// value wins outright.
-	if _, ok := env[envMinJudged]; !ok || !isPositiveInt(strings.TrimSpace(env[envMinJudged])) {
-		c.resolveMinJudgedFile()
-	}
-}
-
-func (c *Ctx) resolveMinJudgedFile() {
-	raw := c.policyLine(PolicyFile, envMinJudged, "MIN_JUDGED")
-	if raw == "" {
-		return
-	}
-	if n, ok := positiveInt(raw); ok {
-		c.Policy.MinJudged = n
-	} else {
-		c.Warn(fmt.Sprintf("ignoring invalid MIN_JUDGED '%s' in %s (want a positive integer) — default 5", raw, PolicyFile))
-	}
-}
-
-func (c *Ctx) resolveMaxFPRate(env map[string]string) {
-	if raw, ok := env[envMaxFPRate]; ok && raw != "" {
-		v := strings.TrimSpace(raw)
-		if isRate(v) {
-			c.Policy.MaxFPRate = v
-		} else {
-			c.Warn(fmt.Sprintf("ignoring invalid REVIEW_KB_MAX_FP_RATE '%s' (want 0..1) — trying file, then default", raw))
-		}
-	}
-	if _, ok := env[envMaxFPRate]; !ok || !isRate(strings.TrimSpace(env[envMaxFPRate])) {
-		c.resolveMaxFPRateFile()
-	}
-}
-
-func (c *Ctx) resolveMaxFPRateFile() {
-	raw := c.policyLine(PolicyFile, envMaxFPRate, "MAX_FP_RATE")
-	if raw == "" {
-		return
-	}
-	if isRate(raw) {
-		c.Policy.MaxFPRate = raw
-	} else {
-		c.Warn(fmt.Sprintf("ignoring invalid MAX_FP_RATE '%s' in %s (want 0..1) — default 0.5", raw, PolicyFile))
-	}
-}
-
-func (c *Ctx) policyLine(path, k1, k2 string) string {
-	raw, ok := c.ReadFile(path)
-	if !ok {
-		return ""
-	}
-	found := ""
-	for ln := range strings.SplitSeq(string(raw), "\n") {
-		key, val, ok := strings.Cut(ln, "=")
-		if !ok {
-			continue
-		}
-		if key = strings.TrimSpace(key); key == k1 || key == k2 {
-			found = strings.TrimSpace(val)
-		}
-	}
-	return found
+	return pol
 }
 
 // isPositiveInt mirrors `[[ "$raw" =~ ^[0-9]+$ ]] && (( 10#$raw > 0 ))`.
@@ -295,8 +240,8 @@ func (c *Ctx) readRows() ([]*jq.Obj, bool) {
 	return rows, true
 }
 
-func readJoins() ([]*jq.Obj, bool) {
-	raw, err := jq.CappedFile(Joins, jq.MaxKBBytes)
+func (c *Ctx) readJoins() ([]*jq.Obj, bool) {
+	raw, err := jq.CappedFile(c.path(Joins), jq.MaxKBBytes)
 	if err != nil {
 		return nil, true
 	}
@@ -312,6 +257,4 @@ const (
 	defaultMaxFPRate = "0.5"
 	floatBits        = 64
 	kbListCap        = 5
-	envMinJudged     = "REVIEW_KB_MIN_JUDGED"
-	envMaxFPRate     = "REVIEW_KB_MAX_FP_RATE"
 )

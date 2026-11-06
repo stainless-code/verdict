@@ -49,17 +49,17 @@ func snapshotTree(t *testing.T, root string) map[string]string {
 //nolint:cyclop,gocognit,revive // the dry-run assertions read as one block
 func TestDryRunWritesNothing(t *testing.T) {
 	bundle(t, "local-dry", reviewJSON(""))
-	writeFile(t, ".review/local-dry/findings.json", "[]\n")
-	writeFile(t, ".review/local-dry/record.json", `{"old":true}`)
+	writeFile(t, ".verdict/state/local-dry/findings.json", "[]\n")
+	writeFile(t, ".verdict/state/local-dry/record.json", `{"old":true}`)
 	c := &collector{}
 	req := recordRequest(t, c, "local-dry")
 	req.DryRun = true
-	before := snapshotTree(t, ".review/local-dry")
+	before := snapshotTree(t, ".verdict/state/local-dry")
 	resp, ref := recordcore.Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	after := snapshotTree(t, ".review/local-dry")
+	after := snapshotTree(t, ".verdict/state/local-dry")
 	if !reflect.DeepEqual(before, after) {
 		for name, want := range before {
 			if got, ok := after[name]; !ok || got != want {
@@ -134,7 +134,7 @@ func TestStrictPromotesWarnings(t *testing.T) {
 				req.Strict = true
 			}
 			if tc.control {
-				setStrictControl(t, ".review/local-strict/controls.json")
+				setStrictControl(t, ".verdict/state/local-strict/controls.json")
 			}
 			if _, ref := recordcore.Run(context.Background(), req); ref == nil {
 				t.Fatal("strict warning-only input recorded")
@@ -235,12 +235,12 @@ func TestLineLessCommentMovesToBody(t *testing.T) {
 func TestPRBundleDryRun(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".review/5101/PR.json", `{"provider":"github","state":"OPEN",`+
+	writeFile(t, ".verdict/state/5101/PR.json", `{"provider":"github","state":"OPEN",`+
 		`"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 		`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFile(t, ".review/5101/full.diff", "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
+	writeFile(t, ".verdict/state/5101/full.diff", "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 		"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
-	writeFile(t, ".review/5101/review.json", reviewJSON(""))
+	writeFile(t, ".verdict/state/5101/review.json", reviewJSON(""))
 	c := &collector{}
 	req := recordRequest(t, c, "5101")
 	req.DryRun = true

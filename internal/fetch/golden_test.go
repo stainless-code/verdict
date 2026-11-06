@@ -585,7 +585,7 @@ func overCapSetup(controls map[string]string) func(t *testing.T, dir, home strin
 // including the copy the bundle keeps.
 func requireChunkBytes(t *testing.T, out golden.Outputs, diff string) {
 	t.Helper()
-	if got := out.Files["C/.review/4703/full.diff"]; got != diff {
+	if got := out.Files["C/.verdict/state/4703/full.diff"]; got != diff {
 		t.Fatalf("bundle full.diff = %d bytes, want the fetched %d-byte diff", len(got), len(diff))
 	}
 	chunked := joinChunks(t, out.Files)
@@ -600,7 +600,7 @@ func joinChunks(t *testing.T, files map[string]string) string {
 	t.Helper()
 	var joined strings.Builder
 	for i := 1; ; i++ {
-		body, ok := files[fmt.Sprintf("C/.review/4703/chunks/chunk-%02d.diff", i)]
+		body, ok := files[fmt.Sprintf("C/.verdict/state/4703/chunks/chunk-%02d.diff", i)]
 		if !ok {
 			break
 		}
@@ -629,7 +629,7 @@ func TestFetchGoldenBudget(t *testing.T) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
-		writeFile(t, dir, ".review/1/cost.json",
+		writeFile(t, dir, ".verdict/state/1/cost.json",
 			`[{"effort":"standard","est_usd":2.00,"models":[]},{"effort":"standard","est_usd":4.00,"models":[]}]`)
 	}
 	golden.Pin(t, harness, "budget-unset", setup, nil,
@@ -653,8 +653,8 @@ func TestFetchGoldenBudget(t *testing.T) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
-		writeFile(t, dir, ".review/1/cost.json", `{"effort":"standard","est_usd":3.00}`)
-		writeFile(t, dir, ".review/2/cost.json", `not json`)
+		writeFile(t, dir, ".verdict/state/1/cost.json", `{"effort":"standard","est_usd":3.00}`)
+		writeFile(t, dir, ".verdict/state/2/cost.json", `not json`)
 	}, map[string]string{"REVIEW_BUDGET_USD": "10"},
 		"fetch", "acme/app", "4705", "--json")
 }
@@ -980,7 +980,7 @@ func requireEmptyFullDiff(t *testing.T, outs golden.Outputs) {
 func requireSideFullDiff(t *testing.T, side string, outs golden.Outputs) {
 	t.Helper()
 	for k, v := range outs.Files {
-		if !strings.HasSuffix(k, ".review/4711/full.diff") {
+		if !strings.HasSuffix(k, ".verdict/state/4711/full.diff") {
 			continue
 		}
 		if v != "" {

@@ -2,7 +2,9 @@
 // (`git show <base>:<path>` through [core.Commander], or the GitHub contents
 // API when the checkout cannot supply the base) into a bundle; the one
 // opt-out reads the worktree and is stamped in controls.json. post/record
-// re-hash the snapshot and refuse when it is stale or missing.
+// re-hash the snapshot and refuse when it is stale or missing. The inventory
+// is the typed configuration plus its tracked shared support files; legacy
+// `.review/` knobs are never read under any name.
 package controls
 
 import (
@@ -26,6 +28,7 @@ import (
 const (
 	DirName       = "controls"
 	FileName      = "controls.json"
+	schemaVersion = "1"
 	MaxFileBytes  = 256 << 10
 	MaxTotalBytes = 1 << 20
 
@@ -46,21 +49,26 @@ const (
 	dirPerm       = 0o755
 )
 
+// VerdictDir prefixes every typed control path at the Git root, and
+// Inventory is the closed control set: the one typed configuration plus
+// the tracked shared support files that ride beside it. The snapshot sheds
+// this prefix, so control "config.json" is the tracked ".verdict/config.json".
+const VerdictDir = ".verdict"
+
 // Inventory is the closed control set (v1); new controls add rows.
 var Inventory = []string{
-	".review/panel",
-	".review/budget",
-	".review/strict_input",
-	".review/max_bytes",
-	".review/chunk",
-	".review/kb.jsonl",
-	".review/kb-policy",
-	".review/learnings.md",
-	".review/overrides/preamble.md",
-	".review/overrides/footer-order.md",
-	".review/overrides/walkthrough-threshold.md",
-	".review/overrides/attribution.md",
+	VerdictDir + "/config.json",
+	VerdictDir + "/kb.jsonl",
+	VerdictDir + "/learnings.md",
+	VerdictDir + "/overrides/preamble.md",
+	VerdictDir + "/overrides/footer-order.md",
+	VerdictDir + "/overrides/walkthrough-threshold.md",
+	VerdictDir + "/overrides/attribution.md",
 }
+
+// snapshotRel sheds the tracked directory prefix for the snapshot layout:
+// snapshot "kb.jsonl" is the tracked ".verdict/kb.jsonl".
+func snapshotRel(path string) string { return strings.TrimPrefix(path, VerdictDir+"/") }
 
 // Request is one control resolution.
 //
@@ -73,8 +81,8 @@ type Request struct {
 	Repo string
 	// Root is the worktree the opt-out reads; "" is the working directory.
 	Root string
-	// Env carries the fetch environment; REVIEW_STRICT_INPUT=1 wins over the
-	// snapshotted .review/strict_input file.
+	// Env carries the fetch environment: REVIEW_STRICT_INPUT=1 records the
+	// strict-input posture for this run.
 	Env map[string]string
 	// AllowHead reads the worktree instead of the base commit.
 	AllowHead bool
@@ -91,7 +99,7 @@ type Snapshot struct {
 // controls.json. It never falls back to the head on the default path.
 func Resolve(ctx context.Context, cmd core.Commander, req *Request) (*Snapshot, *core.RefusalError) {
 	snap := &Snapshot{Dir: filepath.Join(req.BundleDir, DirName), File: core.ControlsFile{
-		SchemaVersion: "1", Policy: PolicyBase, BaseSHA: req.BaseSHA, SHA: req.BaseSHA,
+		SchemaVersion: schemaVersion, Policy: PolicyBase, BaseSHA: req.BaseSHA, SHA: req.BaseSHA,
 	}}
 	var contents map[string][]byte
 	var ref *core.RefusalError
@@ -99,10 +107,10 @@ func Resolve(ctx context.Context, cmd core.Commander, req *Request) (*Snapshot, 
 		snap.File.Policy, snap.File.SHA = PolicyHead, ""
 		contents, ref = readWorktree(req.Root)
 	} else {
-		contents, ref = readBase(ctx, cmd, req.Repo, req.BaseSHA)
+		contents, ref = readBase(ctx, cmd, req.Repo, req.Root, req.BaseSHA)
 	}
 	if ref == nil {
-		snap.File.StrictInput = strictInput(contents, req.Env)
+		snap.File.StrictInput = strictInput(req.Env)
 		ref = snap.write(req.BundleDir, contents)
 	}
 	if ref != nil {
@@ -111,12 +119,11 @@ func Resolve(ctx context.Context, cmd core.Commander, req *Request) (*Snapshot, 
 	return snap, nil
 }
 
-func strictInput(contents map[string][]byte, env map[string]string) bool {
-	if raw, ok := env["REVIEW_STRICT_INPUT"]; ok && strings.TrimSpace(raw) != "" {
-		return strings.TrimSpace(raw) == "1"
-	}
-	raw, ok := contents[".review/strict_input"]
-	return ok && strings.EqualFold(strings.TrimSpace(string(raw)), "true")
+// strictInput reads the per-invocation strict posture: the environment is
+// the only source, so a PR can never make its own warnings fatal.
+func strictInput(env map[string]string) bool {
+	raw, ok := env["REVIEW_STRICT_INPUT"]
+	return ok && strings.TrimSpace(raw) != "" && strings.TrimSpace(raw) == "1"
 }
 
 func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.RefusalError {
@@ -125,7 +132,7 @@ func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.Ref
 		entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
 		if ok {
 			entry = core.ControlsFileEntry{Path: path, Status: statusUsed, Bytes: int64(len(raw)), SHA256: hash(raw)}
-			if ref := writeAt(filepath.Join(s.Dir, strings.TrimPrefix(path, ".review/")), raw); ref != nil {
+			if ref := writeAt(filepath.Join(s.Dir, filepath.FromSlash(snapshotRel(path))), raw); ref != nil {
 				return ref
 			}
 		}
@@ -154,7 +161,7 @@ func writeAt(dest string, raw []byte) *core.RefusalError {
 func Gate(bundleDir, bundleBase string) (*Snapshot, *core.RefusalError) {
 	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
 	s := &Snapshot{Dir: filepath.Join(bundleDir, DirName)}
-	if err != nil || json.Unmarshal(raw, &s.File) != nil || s.File.SchemaVersion != "1" ||
+	if err != nil || json.Unmarshal(raw, &s.File) != nil || s.File.SchemaVersion != schemaVersion ||
 		(s.File.Policy != PolicyBase && s.File.Policy != PolicyHead) {
 		return nil, refuse(CodeUnavailable, "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)")
 	}
@@ -162,6 +169,37 @@ func Gate(bundleDir, bundleBase string) (*Snapshot, *core.RefusalError) {
 		return nil, ref
 	}
 	return s, nil
+}
+
+// GateRecorded loads a bundle's controls.json and re-hashes the snapshot
+// against the base the file records. Read-only verbs (config preview,
+// explanation) use it when they hold no bundle base of their own: the
+// hashes still prove the captured bytes are unchanged.
+func GateRecorded(bundleDir string) (*Snapshot, *core.RefusalError) {
+	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
+	s := &Snapshot{Dir: filepath.Join(bundleDir, DirName)}
+	if err != nil || json.Unmarshal(raw, &s.File) != nil || s.File.SchemaVersion != schemaVersion ||
+		(s.File.Policy != PolicyBase && s.File.Policy != PolicyHead) {
+		return nil, refuse(CodeUnavailable, "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)")
+	}
+	if ref := s.verify(s.File.BaseSHA); ref != nil {
+		return nil, ref
+	}
+	return s, nil
+}
+
+// Entry finds one inventory row in the snapshot by its tracked path,
+// including rows recorded missing.
+func (s *Snapshot) Entry(rel string) *core.ControlsFileEntry {
+	if s == nil {
+		return nil
+	}
+	for i := range s.File.Files {
+		if s.File.Files[i].Path == rel {
+			return &s.File.Files[i]
+		}
+	}
+	return nil
 }
 
 func (s *Snapshot) verify(bundleBase string) *core.RefusalError {
@@ -190,7 +228,7 @@ func (s *Snapshot) Path(rel string) string {
 	}
 	for _, e := range s.File.Files {
 		if e.Path == rel && e.Status == statusUsed {
-			return filepath.Join(s.Dir, filepath.FromSlash(strings.TrimPrefix(rel, ".review/")))
+			return filepath.Join(s.Dir, filepath.FromSlash(snapshotRel(rel)))
 		}
 	}
 	return ""

@@ -1,6 +1,6 @@
 // Package checktreecore is the check-tree verb's domain service: the
 // machine clean-tree gate for address/fix-ci/build prompts. No network;
-// the skill's own .review/ scratch never trips the gate. The git probe
+// the skill's own .verdict/ scratch never trips the gate. The git probe
 // goes through the injected commander. internal/checktree owns argv
 // parsing, progress routing, envelope rendering, and exit mapping.
 package checktreecore
@@ -149,10 +149,11 @@ func (st *state) response(next string, data *Data, errObj *core.SchemaError, exi
 }
 
 const (
-	porcelainSpaceAt = 2      // separator between the XY columns and the path
-	porcelainPathAt  = 3      // path starts after the XY columns and the space
-	porcelainMinLen  = 4      // XY columns + space + at least one path byte
-	renameSep        = " -> " // rename lines match on the post-arrow path
+	porcelainSpaceAt = 2                 // separator between the XY columns and the path
+	porcelainPathAt  = 3                 // path starts after the XY columns and the space
+	porcelainMinLen  = 4                 // XY columns + space + at least one path byte
+	renameSep        = " -> "            // rename lines match on the post-arrow path
+	stateDir         = ".verdict/state/" // the only run-scratch directory
 	newline          = "\n"
 )
 
@@ -164,7 +165,7 @@ func (st *state) runCheck(ctx context.Context) *Response {
 	own, porcelain := splitScratch(out)
 	scratch := ""
 	if own > 0 {
-		scratch = fmt.Sprintf(" (%d .review/ scratch line(s) ignored)", own)
+		scratch = fmt.Sprintf(" (%d .verdict/ scratch line(s) ignored)", own)
 	}
 	if porcelain == "" {
 		return st.cleanTree(scratch, own)
@@ -180,7 +181,12 @@ func (st *state) gitPorcelain(ctx context.Context) (string, bool) {
 	if cmdr == nil {
 		return "", false
 	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: []string{"git", "status", "--porcelain"}})
+	argv := []string{"git"}
+	if root := st.req.RepoRootPath(); root != "" {
+		argv = append(argv, "-C", root)
+	}
+	argv = append(argv, "status", "--porcelain", "--untracked-files=all")
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv})
 	if err != nil || res.ExitCode != 0 {
 		return "", false
 	}
@@ -208,8 +214,11 @@ func porcelainLinesRaw(porcelain string) []string {
 }
 
 func isScratchLine(line string) bool {
-	return len(line) >= porcelainMinLen && line[porcelainSpaceAt] == ' ' &&
-		strings.HasPrefix(line[porcelainPathAt:], ".review/")
+	if len(line) < porcelainMinLen || line[porcelainSpaceAt] != ' ' {
+		return false
+	}
+	file := stripStatus(line)
+	return strings.HasPrefix(file, stateDir) && strings.HasPrefix(renameTarget(file), stateDir)
 }
 
 func (st *state) notARepo() *Response {

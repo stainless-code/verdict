@@ -9,27 +9,31 @@ import (
 )
 
 // TestResolveBundleDirSlugs pins the slug rules every verb shares: local- and
-// corpus- slugs map straight to their own bundle directory.
+// corpus- slugs map straight to their own bundle directory under the given
+// root, so a subdirectory invocation resolves the same bundles as the root.
 func TestResolveBundleDirSlugs(t *testing.T) {
 	t.Parallel()
 	tests := []struct{ name, pr, want string }{
-		{name: "local slug", pr: "local-7", want: ".review/local-7"},
-		{name: "corpus slug", pr: "corpus-7", want: ".review/corpus-7"},
+		{name: "local slug", pr: "local-7", want: ".verdict/state/local-7"},
+		{name: "corpus slug", pr: "corpus-7", want: ".verdict/state/corpus-7"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := readcommon.ResolveBundleDir(tc.pr); got != tc.want {
+			if got := readcommon.ResolveBundleDir(".", tc.pr); got != tc.want {
 				t.Errorf("ResolveBundleDir(%q) = %q; want %q", tc.pr, got, tc.want)
 			}
 		})
 	}
+	if got := readcommon.ResolveBundleDir("/repo", "42"); got != "/repo/.verdict/state/42" {
+		t.Errorf("rooted ResolveBundleDir = %q, want the git-root bundle dir", got)
+	}
 }
 
 // TestResolveBundleDirLocalPrecedence pins the bare-slug preference: a
-// matching .review/local-<pr> dir wins only while no .review/<pr>/PR.json
-// exists beside it. A corpus slug never falls into that guard, and a bare
-// slug with neither dir reads the plain bundle path.
+// matching local-<pr> dir wins only while no PR bundle exists beside it.
+// A corpus slug never falls into that guard, and a bare slug with neither
+// dir reads the plain bundle path. All paths anchor at the given root.
 func TestResolveBundleDirLocalPrecedence(t *testing.T) {
 	tests := []struct {
 		name string
@@ -37,19 +41,19 @@ func TestResolveBundleDirLocalPrecedence(t *testing.T) {
 		want string
 		seed []string
 	}{
-		{name: "plain slug", pr: "42", want: ".review/42"},
-		{name: "local dir wins", pr: "42", seed: []string{".review/local-42"}, want: ".review/local-42"},
+		{name: "plain slug", pr: "42", want: ".verdict/state/42"},
+		{name: "local dir wins", pr: "42", seed: []string{".verdict/state/local-42"}, want: ".verdict/state/local-42"},
 		{
 			name: "real bundle wins",
 			pr:   "42",
-			seed: []string{".review/local-42", ".review/42"},
-			want: ".review/42",
+			seed: []string{".verdict/state/local-42", ".verdict/state/42"},
+			want: ".verdict/state/42",
 		},
 		{
 			name: "corpus slug beats local dir",
 			pr:   "corpus-7",
-			seed: []string{".review/local-corpus-7"},
-			want: ".review/corpus-7",
+			seed: []string{".verdict/state/local-corpus-7"},
+			want: ".verdict/state/corpus-7",
 		},
 	}
 	for _, tc := range tests {
@@ -64,7 +68,7 @@ func checkResolveBundleDir(t *testing.T, pr string, seed []string, want string) 
 	for _, dir := range seed {
 		seedBundleDir(t, dir)
 	}
-	if got := readcommon.ResolveBundleDir(pr); got != want {
+	if got := readcommon.ResolveBundleDir(".", pr); got != want {
 		t.Errorf("ResolveBundleDir(%q) = %q; want %q", pr, got, want)
 	}
 }

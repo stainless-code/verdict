@@ -163,8 +163,8 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 func mkPRBundle(t *testing.T, dir, pr string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
-		".review/" + pr + "/PR.json":   prDoc(headA),
-		".review/" + pr + "/full.diff": fullDiff,
+		".verdict/state/" + pr + "/PR.json":   prDoc(headA),
+		".verdict/state/" + pr + "/full.diff": fullDiff,
 	})
 }
 
@@ -172,7 +172,7 @@ func mkPRBundle(t *testing.T, dir, pr string) {
 func mkLocalBundle(t *testing.T, dir, slug string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
-		".review/" + slug + "/source.json": sourceDoc(headA),
-		".review/" + slug + "/full.diff":   fullDiff,
+		".verdict/state/" + slug + "/source.json": sourceDoc(headA),
+		".verdict/state/" + slug + "/full.diff":   fullDiff,
 	})
 }

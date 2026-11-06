@@ -11,7 +11,7 @@ HEAD_D="dddddddddddddddddddddddddddddddddddddddd"
 
 comp_mk_post() {
   local pr="$1" head="$2"
-  local dir="$EVAL_SANDBOX/.review/$pr"
+  local dir="$EVAL_SANDBOX/.verdict/state/$pr"
   if [ "$head" = "CORRUPT" ]; then
     printf 'not json{{{' > "$dir/post.json"
   else
@@ -184,7 +184,7 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "dry run posts nothing and writes no post.json"
 else
   bad "dry run exits $EVAL_STATUS / post.json present"
@@ -196,14 +196,14 @@ else
   bad "gate after dry run exits $EVAL_STATUS"
 fi
 
-mkdir -p "$EVAL_SANDBOX/.review/local-compwork"
-cat > "$EVAL_SANDBOX/.review/local-compwork/source.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/local-compwork"
+cat > "$EVAL_SANDBOX/.verdict/state/local-compwork/source.json" <<EOF
 {"schema_version":"1","kind":"range","repo":"acme/app","slug":"compwork","base_ref":null,"head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"$HEAD_D","range":"v1..v2","dirty":false,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}
 EOF
-printf '[]' > "$EVAL_SANDBOX/.review/local-compwork/findings.json"
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/local-compwork/findings.json"
 jq -n --arg h "$HEAD_D" \
   '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/local-compwork/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/local-compwork/post.json"
 run_review report acme/app local-compwork --completeness
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "local bundle matches on source.json head_sha"
@@ -213,7 +213,7 @@ fi
 assert_stream_nogrep "local pass prints no re-fetch hint" "$EVAL_ERR" "fetch-local"
 jq -n --arg h "$HEAD_C" \
   '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/local-compwork/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/local-compwork/post.json"
 run_review report acme/app local-compwork --completeness
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "fetch-local acme/app compwork" "$EVAL_ERR"; then
   good "local mismatch names the fetch-local re-fetch command"

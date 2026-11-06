@@ -29,8 +29,8 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 // (not a repository, or the object is missing) and repo names a GitHub
 // repository, the same base commit is read through the contents API instead;
 // without a repo the read refuses.
-func readBase(ctx context.Context, cmd core.Commander, repo, base string) (map[string][]byte, *core.RefusalError) {
-	return ReadPaths(ctx, cmd, repo, base, Inventory)
+func readBase(ctx context.Context, cmd core.Commander, repo, root, base string) (map[string][]byte, *core.RefusalError) {
+	return ReadPaths(ctx, cmd, repo, root, base, Inventory)
 }
 
 // ReadPaths reads arbitrary inventory paths at the PR base commit through
@@ -39,24 +39,24 @@ func readBase(ctx context.Context, cmd core.Commander, repo, base string) (map[s
 // supply the base. It caps, refuses, and never falls back to the head,
 // exactly like the inventory read above; configuration inputs reuse it so
 // the trust posture stays in one place.
-func ReadPaths(ctx context.Context, cmd core.Commander, repo, base string, paths []string) (map[string][]byte, *core.RefusalError) {
+func ReadPaths(ctx context.Context, cmd core.Commander, repo, root, base string, paths []string) (map[string][]byte, *core.RefusalError) {
 	if !fullSHA.MatchString(base) {
 		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
 	}
 	// One ls-tree sees every path at once: the blob size caps it before
 	// any read, and mode 120000 (a tracked symlink) refuses.
-	tree, err := runGit(ctx, cmd, 0, append([]string{"ls-tree", "-lz", base, "--"}, paths...)...)
+	tree, err := runGit(ctx, cmd, 0, root, append([]string{"ls-tree", "-lz", base, "--"}, paths...)...)
 	if err != nil && repo != "" {
 		return readContents(ctx, cmd, repo, base, paths)
 	}
 	if err != nil {
 		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
 	}
-	return readBlobs(ctx, cmd, base, tree)
+	return readBlobs(ctx, cmd, root, base, tree)
 }
 
 // readBlobs reads every regular blob the ls-tree output lists.
-func readBlobs(ctx context.Context, cmd core.Commander, base, tree string) (map[string][]byte, *core.RefusalError) {
+func readBlobs(ctx context.Context, cmd core.Commander, root, base, tree string) (map[string][]byte, *core.RefusalError) {
 	contents, total := map[string][]byte{}, 0
 	for entry := range strings.FieldsFuncSeq(tree, func(r rune) bool { return r == 0 }) {
 		path, size, ref := parseEntry(entry)
@@ -66,7 +66,7 @@ func readBlobs(ctx context.Context, cmd core.Commander, base, tree string) (map[
 		if total += size; total > MaxTotalBytes {
 			return nil, refuse(CodeTooLarge, fmt.Sprintf("controls exceed the %d-byte total cap — trim them at base", MaxTotalBytes))
 		}
-		body, err := runGit(ctx, cmd, size+1, "show", base+":"+path)
+		body, err := runGit(ctx, cmd, size+1, root, "show", base+":"+path)
 		if err != nil {
 			return nil, refuse(CodeUnavailable, fmt.Sprintf("could not read %s at %s: %v", path, base[:shortLen], err))
 		}
@@ -92,8 +92,12 @@ func parseEntry(entry string) (string, int, *core.RefusalError) {
 
 // runGit runs one git subcommand through the seam. A failure carries the
 // first 300 bytes of stderr, never a bare exit status.
-func runGit(ctx context.Context, cmd core.Commander, outputCap int, args ...string) (string, error) {
-	res, err := cmd.Run(ctx, core.Command{Argv: append([]string{"git"}, args...), OutputCap: outputCap})
+func runGit(ctx context.Context, cmd core.Commander, outputCap int, root string, args ...string) (string, error) {
+	argv := append([]string{"git"}, args...)
+	if root != "" && root != "." {
+		argv = append([]string{"git", "-C", root}, args...)
+	}
+	res, err := cmd.Run(ctx, &core.Command{Argv: argv, OutputCap: outputCap})
 	if err == nil && res.ExitCode != 0 {
 		err = res.ExitFailure("git")
 	}

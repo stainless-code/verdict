@@ -7,10 +7,12 @@ exit: 0
   "pr": 5101,
   "at": "0000-00-00T00:00:00Z",
   "next": "address open threads",
-  "warnings": [],
+  "warnings": [
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors"
+  ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
-    "dir": ".review/5101",
+    "dir": ".verdict/state/5101",
     "head": {
       "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -78,5 +80,5 @@ exit: 0
   "error": null
 }
 --- stderr ---
-
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 --- files ---

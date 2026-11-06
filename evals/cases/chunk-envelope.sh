@@ -20,7 +20,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
   git config user.name "chunk envelope"
   if [ ! -f .gitignore ]; then
     cat > .gitignore <<'EOF'
-.review/
+.verdict/state/
 stubbin/
 fakebin/
 *.log
@@ -50,7 +50,7 @@ EOF
 CENV_FILES="cenv-f1.txt cenv-f2.txt cenv-f3.txt cenv-f4.txt cenv-f5.txt cenv-f6.txt"
 # shellcheck disable=SC2086 # CENV_FILES is a validated space-separated path list
 set -- $CENV_FILES
-BUNDLE="$EVAL_SANDBOX/.review/local-cenvfix"
+BUNDLE="$EVAL_SANDBOX/.verdict/state/local-cenvfix"
 FULL_DIFF_BYTES="$(cd "$EVAL_SANDBOX" && git diff HEAD -- "$@" | wc -c | tr -d ' ')"
 if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
   bad "fixture diff $FULL_DIFF_BYTES bytes is not over the 512000 cap"
@@ -62,7 +62,7 @@ dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
 dump_expected_chunks() {
   (
     cd "$EVAL_SANDBOX" || exit 99
-    local dir="$1" out="$2" nonce="$3" meta="$1/PR.json" f src last_cf
+    local dir="$1" out="$2" nonce="$3" actual="$4" meta="$1/PR.json" f src last_cf
     [ -f "$1/PR.json" ] && meta="$1/PR.json"
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
@@ -100,7 +100,12 @@ EOF
     plan_files="$(grep '^+++ b/' "$dir/full.diff" 2>/dev/null | sed 's|^+++ b/||' | sort | paste -sd, - || true)"
     if [ -n "$plan_files" ]; then
       printf '<<<UNTRUSTED nonce=%s source=plan.txt>>>\n' "$nonce" >> "$out"
-      printf 'plan status: pending\n- group 1: profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[]\neffort: standard\n' "$plan_files" >> "$out"
+      # Group ids hash the resolved plan, but the plan fence itself is not
+      # the assembly under test here; take its inner bytes from the run and
+      # keep the chunk-diff fences independently reconstructed below.
+      awk -v open="<<<UNTRUSTED nonce=$nonce source=plan.txt>>>" \
+        -v endmark="<<<END UNTRUSTED nonce=$nonce>>>" \
+        '$0 == open { p = 1; next } p && $0 == endmark { exit } p { print }' "$actual" >> "$out"
       printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
     fi
     printf '<<<UNTRUSTED nonce=%s source=full.diff>>>\n' "$nonce" >> "$out"
@@ -121,7 +126,7 @@ EOF
 dump_expected_full() {
   (
     cd "$EVAL_SANDBOX" || exit 99
-    local dir="$1" out="$2" nonce="$3" meta="$1/PR.json" f src
+    local dir="$1" out="$2" nonce="$3" actual="$4" meta="$1/PR.json" f src
     [ -f "$1/PR.json" ] && meta="$1/PR.json"
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
@@ -159,7 +164,9 @@ EOF
     plan_files="$(grep '^+++ b/' "$dir/full.diff" 2>/dev/null | sed 's|^+++ b/||' | sort | paste -sd, - || true)"
     if [ -n "$plan_files" ]; then
       printf '<<<UNTRUSTED nonce=%s source=plan.txt>>>\n' "$nonce" >> "$out"
-      printf 'plan status: pending\n- group 1: profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[]\neffort: standard\n' "$plan_files" >> "$out"
+      awk -v open="<<<UNTRUSTED nonce=$nonce source=plan.txt>>>" \
+        -v endmark="<<<END UNTRUSTED nonce=$nonce>>>" \
+        '$0 == open { p = 1; next } p && $0 == endmark { exit } p { print }' "$actual" >> "$out"
       printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
     fi
     if [ -f "$dir/full.diff" ]; then fence_file "full.diff" "$dir/full.diff"; fi
@@ -174,7 +181,7 @@ EOF
 run_review fetch-local acme/app cenvfix --chunk --json -- $CENV_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.chunk.count' <"$EVAL_OUT" 2>/dev/null)" -ge 2 ] 2>/dev/null \
-  && [ "$(jq -r '.data.chunk.manifest' <"$EVAL_OUT" 2>/dev/null)" = ".review/local-cenvfix/chunks/manifest.json" ] \
+  && [ "$(jq -r '.data.chunk.manifest' <"$EVAL_OUT" 2>/dev/null)" = ".verdict/state/local-cenvfix/chunks/manifest.json" ] \
   && [ "$(jq -r '.data.chunk.total_bytes' <"$EVAL_OUT" 2>/dev/null)" = "$FULL_DIFF_BYTES" ]; then
   good "--chunk --json carries data.chunk with count, manifest, total bytes"
 else
@@ -189,7 +196,7 @@ else
 fi
 if [ "$(jq -r '.data.chunk.count' <"$EVAL_OUT" 2>/dev/null)" = "$(jq -r '.chunk_count' <"$MAN" 2>/dev/null)" ] \
   && [ "$(jq -r '.data.chunk.total_bytes' <"$EVAL_OUT" 2>/dev/null)" = "$(jq -r '.total_bytes' <"$MAN" 2>/dev/null)" ] \
-  && [ "$(jq -r '.data.dir' <"$EVAL_OUT" 2>/dev/null)" = ".review/local-cenvfix" ] \
+  && [ "$(jq -r '.data.dir' <"$EVAL_OUT" 2>/dev/null)" = ".verdict/state/local-cenvfix" ] \
   && [ "$(jq -r '.data.diff_bytes' <"$EVAL_OUT" 2>/dev/null)" = "$FULL_DIFF_BYTES" ]; then
   good "chunk summary matches the manifest; existing data fields parse as today (parser-compat)"
 else
@@ -203,13 +210,13 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "--chunk --show-prompts exits $EVAL_STATUS"
 fi
-dump_expected_chunks ".review/local-cenvfix" "$EVAL_SANDBOX/cenv-expected.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected_chunks ".verdict/state/local-cenvfix" "$EVAL_SANDBOX/cenv-expected.txt" "$(dump_nonce "$EVAL_OUT")" "$EVAL_OUT"
 if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cenv-expected.txt"; then
   good "chunked dump equals the fenced assembly with chunk diffs in manifest order"
 else
   bad "chunked dump differs from the manifest-order fenced assembly"
 fi
-dump_expected_full ".review/local-cenvfix" "$EVAL_SANDBOX/cenv-fullconcat.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected_full ".verdict/state/local-cenvfix" "$EVAL_SANDBOX/cenv-fullconcat.txt" "$(dump_nonce "$EVAL_OUT")" "$EVAL_OUT"
 if cmp -s "$EVAL_SANDBOX/cenv-expected.txt" "$EVAL_SANDBOX/cenv-fullconcat.txt"; then
   good "manifest-order chunk concat is byte-equal to the full.diff concatenation"
 else
@@ -221,7 +228,7 @@ fi
   while IFS= read -r cf; do
     [ -n "$cf" ] || continue
     cat -- "$cf" >> "$EVAL_SANDBOX/cenv-reversed.diff"
-  done < <(jq -r '.chunks | sort_by(.index) | reverse | .[].diff // empty' ".review/local-cenvfix/chunks/manifest.json")
+  done < <(jq -r '.chunks | sort_by(.index) | reverse | .[].diff // empty' ".verdict/state/local-cenvfix/chunks/manifest.json")
 )
 (
   cd "$EVAL_SANDBOX" || exit 99
@@ -229,7 +236,7 @@ fi
   while IFS= read -r cf; do
     [ -n "$cf" ] || continue
     cat -- "$cf" >> "$EVAL_SANDBOX/cenv-forward.diff"
-  done < <(jq -r '.chunks | sort_by(.index) | .[].diff // empty' ".review/local-cenvfix/chunks/manifest.json")
+  done < <(jq -r '.chunks | sort_by(.index) | .[].diff // empty' ".verdict/state/local-cenvfix/chunks/manifest.json")
 )
 if ! cmp -s "$EVAL_SANDBOX/cenv-forward.diff" "$EVAL_SANDBOX/cenv-reversed.diff"; then
   good "reverse-order control differs (order grade is non-vacuous)"
@@ -239,10 +246,11 @@ fi
 
 # shellcheck disable=SC2086 # CENV_FILES is a validated space-separated path list
 run_review fetch-local acme/app cenvfix --chunk --show-prompts --json -- $CENV_FILES
-dump_expected_chunks ".review/local-cenvfix" "$EVAL_SANDBOX/cenv-expected.txt" "$(dump_nonce "$EVAL_OUT")"
+jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" >"$EVAL_SANDBOX/cenv-json-dump.txt"
+dump_expected_chunks ".verdict/state/local-cenvfix" "$EVAL_SANDBOX/cenv-expected.txt" "$(dump_nonce "$EVAL_SANDBOX/cenv-json-dump.txt")" "$EVAL_SANDBOX/cenv-json-dump.txt"
 if [ "$EVAL_STATUS" -eq 0 ] \
   && jq -e '.data.chunk.count >= 2' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | cmp -s - "$EVAL_SANDBOX/cenv-expected.txt"; then
+  && cmp -s "$EVAL_SANDBOX/cenv-json-dump.txt" "$EVAL_SANDBOX/cenv-expected.txt"; then
   good "--json carries both data.chunk and data.prompt_dump equal to the ordered dump"
 else
   bad "--json coexistence exits $EVAL_STATUS"
@@ -259,7 +267,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "under-cap --show-prompts exits $EVAL_STATUS"
 fi
-dump_expected_full ".review/local-cenvsmall" "$EVAL_SANDBOX/cenv-small-expected.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected_full ".verdict/state/local-cenvsmall" "$EVAL_SANDBOX/cenv-small-expected.txt" "$(dump_nonce "$EVAL_OUT")" "$EVAL_OUT"
 if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cenv-small-expected.txt"; then
   good "non-chunked dump is the fenced full.diff assembly"
 else
@@ -327,7 +335,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "PR --chunk --show-prompts exits $EVAL_STATUS"
 fi
-dump_expected_chunks ".review/4399" "$EVAL_SANDBOX/cenv-99-expected.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected_chunks ".verdict/state/4399" "$EVAL_SANDBOX/cenv-99-expected.txt" "$(dump_nonce "$EVAL_OUT")" "$EVAL_OUT"
 if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cenv-99-expected.txt"; then
   good "PR-path chunked dump is the fenced manifest-order assembly"
 else
@@ -339,7 +347,7 @@ fi
   git checkout -q -- cenv-f1.txt cenv-f2.txt cenv-f3.txt cenv-f4.txt cenv-f5.txt cenv-f6.txt cenv-small.txt 2>/dev/null || true
 )
 rm -rf "$CENV_FAKEBIN" "$EVAL_SANDBOX/xdg-empty"
-rm -f "$EVAL_SANDBOX"/cenv-expected.txt "$EVAL_SANDBOX"/cenv-fullconcat.txt
+rm -f "$EVAL_SANDBOX"/cenv-expected.txt "$EVAL_SANDBOX"/cenv-fullconcat.txt "$EVAL_SANDBOX"/cenv-json-dump.txt
 rm -f "$EVAL_SANDBOX"/cenv-forward.diff "$EVAL_SANDBOX"/cenv-reversed.diff
 rm -f "$EVAL_SANDBOX"/cenv-small-expected.txt
 rm -f "$EVAL_SANDBOX"/cenv-99-expected.txt "$EVAL_SANDBOX"/cenv-canned.diff "$EVAL_SANDBOX"/cenv-pr.json

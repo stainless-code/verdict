@@ -11,8 +11,10 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -50,6 +52,13 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 		return nil, st.withWarnings(ref)
 	}
 	st.controls = snap
+	if rs, ref := st.verifyRunState(dir); ref != nil {
+		return nil, st.withWarnings(ref)
+	} else {
+		st.run = rs
+		st.warnLensUsage(dir, rs)
+		st.warnDeepValidation(dir, rs)
+	}
 	if ref := reviewRefusal(check, strictRecord(st.req, snap)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -65,6 +74,49 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 		return st.dryRun(dir, now, &res), nil
 	}
 	return st.finalize(ctx, dir, prov, headFull, now, &res)
+}
+
+// verifyRunState binds the bundle to its typed evidence through the
+// same integrity check post enforces: a deleted or tampered run bundle
+// refuses controls-stale instead of silently degrading to no policy.
+// Record is not a binding action, so a bundle that predates typed
+// evidence warns and proceeds; a pre-integrity bundle enforces its
+// stored inputs and reports unavailable provenance.
+func (st *svc) verifyRunState(dir string) (*config.RunState, *core.RefusalError) {
+	rs, ref := config.VerifyRunState(dir)
+	if ref != nil {
+		return nil, ref
+	}
+	if rs == nil {
+		st.addWarning("run bundle has no typed evidence (pre-typed bundle?) — recording without repository policy checks")
+		return nil, nil
+	}
+	if !rs.Verified() {
+		st.addWarning("typed evidence provenance unavailable (pre-integrity bundle) — stored inputs apply without verified evidence")
+	}
+	return rs, nil
+}
+
+// warnLensUsage preserves incomplete, over-cap, and unbound lens evidence
+// as visible warnings on a record that stays available: record never
+// certifies compliance, and silence is reported as unknown, not zero.
+func (st *svc) warnLensUsage(dir string, rs *config.RunState) {
+	usage := config.ReadLensUsage(rs, dir)
+	for _, violation := range usage.Violations() {
+		st.addWarning("profile lens evidence: " + violation.Detail)
+	}
+}
+
+// warnDeepValidation surfaces each deep group's receipt standing on a record
+// that stays available: record never certifies validation it cannot read.
+func (st *svc) warnDeepValidation(dir string, rs *config.RunState) {
+	head := ""
+	if st.store != nil {
+		head = st.store.Head()
+	}
+	for _, gap := range verifycore.DeepGaps(rs, dir, head, st.req.RepoRootPath()) {
+		st.addWarning(gap)
+	}
 }
 
 func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
@@ -150,7 +202,7 @@ func runtimeStrictInput(rt *core.Runtime) bool {
 
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {
 	req := st.req
-	dir = readcommon.ResolveBundleDir(req.Pr)
+	dir = readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	st.store = readcommon.OpenBundle(dir)
 	if prov, ref = resolveProvider(dir, st.store, req.DryRun); ref != nil {
 		return "", "", "", "", ref
@@ -193,6 +245,7 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		Review:       review,
 		ReviewFile:   dir + reviewSuffix,
 		Root:         req.RootPath(),
+		RepoRoot:     req.RepoRootPath(),
 		Body:         reviewBodyOf(review),
 		FindingsFile: dir + "/findings.json",
 		Effective:    req.Effective,
@@ -202,6 +255,7 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		Cmd:          "record",
 		DryRun:       st.req.DryRun,
 		Controls:     st.controls,
+		Run:          st.run,
 		HunkRows:     st.hunkRows,
 		InputChecked: true,
 	})
@@ -221,6 +275,7 @@ func refusalOrFailed(err error) *core.RefusalError {
 type svc struct {
 	req        *core.RecordRequest
 	controls   *controls.Snapshot
+	run        *config.RunState
 	check      *core.CheckSummary
 	store      *readcommon.Bundle
 	normalized []byte
@@ -449,7 +504,7 @@ func typedItems(entries []any) []core.FindingItem {
 }
 
 func resolveProvider(dir string, store *readcommon.Bundle, allowPR bool) (string, *core.RefusalError) {
-	if strings.HasPrefix(dir, ".review/local-") || strings.HasPrefix(dir, ".review/corpus-") {
+	if readcommon.IsLocalBundleDir(dir) || readcommon.IsCorpusBundleDir(dir) {
 		return providerLocal, nil
 	}
 	switch prov := store.Provider(); prov {

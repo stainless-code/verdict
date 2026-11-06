@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "missing-post",
-    "message": "missing .review/5101/post.json (post for real first — calibration needs a posted review id)\ntry: run the fetch/record step named above first, then re-run"
+    "message": "missing .verdict/state/5101/post.json (post for real first — calibration needs a posted review id)\ntry: run the fetch/record step named above first, then re-run"
   }
 }
 --- stderr ---

@@ -27,10 +27,10 @@ func briefBundle(t *testing.T, dir, slug, brief string) {
 		`"comments":[{"path":"notes.txt","line":3,"side":"RIGHT",` +
 		`"body":"Brief-carrying finding.","rigor":"walked","severity":"important"` + brief + `}]}`
 	writeFiles(t, dir, map[string]string{
-		".review/" + slug + "/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
+		".verdict/state/" + slug + "/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
 			`"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/" + slug + "/full.diff":   genDiff(2),
-		".review/" + slug + "/review.json": review,
+		".verdict/state/" + slug + "/full.diff":   genDiff(2),
+		".verdict/state/" + slug + "/review.json": review,
 	})
 }
 
@@ -46,7 +46,7 @@ func recordBrief(t *testing.T, dir, brief string) {
 // storedEntry reads the bundle's one stored finding.
 func storedEntry(t *testing.T, dir, slug string) map[string]any {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", slug, "findings.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", slug, "findings.json"))
 	if err != nil {
 		t.Fatalf("read findings: %v", err)
 	}

@@ -11,8 +11,8 @@ S3="f333333333333333333333333333333333333333"
 S4="f444444444444444444444444444444444444444"
 S5="f555555555555555555555555555555555555555"
 
-mkdir -p "$EVAL_SANDBOX/.review/4501"
-cat > "$EVAL_SANDBOX/.review/4501/findings.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/4501"
+cat > "$EVAL_SANDBOX/.verdict/state/4501/findings.json" <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Real cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["g-real"],"sig":"$S1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"False alarm cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"informational","kb":["g-false"],"sig":"$S2","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"false-positive","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":4,"anchored":true,"body":"Real uncited finding here now.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"important","kb":[],"sig":"$S3","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},
@@ -21,11 +21,11 @@ cat > "$EVAL_SANDBOX/.review/4501/findings.json" <<EOF
 EOF
 
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
-before_findings="$(shasum -a 1 "$EVAL_SANDBOX/.review/4501/findings.json" | cut -d' ' -f1)"
-before_kb="absent"; [ -f "$EVAL_SANDBOX/.review/kb.jsonl" ] \
-  && before_kb="$(shasum -a 1 "$EVAL_SANDBOX/.review/kb.jsonl" | cut -d' ' -f1)"
-before_joins="absent"; [ -f "$EVAL_SANDBOX/.review/kb-joins.jsonl" ] \
-  && before_joins="$(shasum -a 1 "$EVAL_SANDBOX/.review/kb-joins.jsonl" | cut -d' ' -f1)"
+before_findings="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4501/findings.json" | cut -d' ' -f1)"
+before_kb="absent"; [ -f "$EVAL_SANDBOX/.verdict/kb.jsonl" ] \
+  && before_kb="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/kb.jsonl" | cut -d' ' -f1)"
+before_joins="absent"; [ -f "$EVAL_SANDBOX/.verdict/kb-joins.jsonl" ] \
+  && before_joins="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/kb-joins.jsonl" | cut -d' ' -f1)"
 
 run_review calibrate acme/app 4501 --probe --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
@@ -59,9 +59,9 @@ if [ "$(row "$S3" | jq -c '[.verdict, .rule, .helpful]')" = '["real",null,null]'
 else
   bad "S3 row: $(row "$S3")"
 fi
-if [ "$(jq -r '.sig[0:8] | length' "$EVAL_SANDBOX/.review/4501/kb-grades.jsonl" 2>/dev/null | head -1)" = "8" ] \
-  && [ "$(wc -l <"$EVAL_SANDBOX/.review/4501/kb-grades.jsonl" | tr -d ' ')" = "5" ] \
-  && jq -e . "$EVAL_SANDBOX/.review/4501/kb-grades.jsonl" >/dev/null 2>&1; then
+if [ "$(jq -r '.sig[0:8] | length' "$EVAL_SANDBOX/.verdict/state/4501/kb-grades.jsonl" 2>/dev/null | head -1)" = "8" ] \
+  && [ "$(wc -l <"$EVAL_SANDBOX/.verdict/state/4501/kb-grades.jsonl" | tr -d ' ')" = "5" ] \
+  && jq -e . "$EVAL_SANDBOX/.verdict/state/4501/kb-grades.jsonl" >/dev/null 2>&1; then
   good "kb-grades.jsonl holds 5 parseable rows"
 else
   bad "kb-grades.jsonl shape broke"
@@ -90,11 +90,11 @@ else
   bad "unknown edge: S4=$(row "$S4") S5=$(row "$S5")"
 fi
 
-after_findings="$(shasum -a 1 "$EVAL_SANDBOX/.review/4501/findings.json" | cut -d' ' -f1)"
-after_kb="absent"; [ -f "$EVAL_SANDBOX/.review/kb.jsonl" ] \
-  && after_kb="$(shasum -a 1 "$EVAL_SANDBOX/.review/kb.jsonl" | cut -d' ' -f1)"
-after_joins="absent"; [ -f "$EVAL_SANDBOX/.review/kb-joins.jsonl" ] \
-  && after_joins="$(shasum -a 1 "$EVAL_SANDBOX/.review/kb-joins.jsonl" | cut -d' ' -f1)"
+after_findings="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4501/findings.json" | cut -d' ' -f1)"
+after_kb="absent"; [ -f "$EVAL_SANDBOX/.verdict/kb.jsonl" ] \
+  && after_kb="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/kb.jsonl" | cut -d' ' -f1)"
+after_joins="absent"; [ -f "$EVAL_SANDBOX/.verdict/kb-joins.jsonl" ] \
+  && after_joins="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/kb-joins.jsonl" | cut -d' ' -f1)"
 if [ "$before_findings" = "$after_findings" ] \
   && [ "$before_kb" = "$after_kb" ] \
   && [ "$before_joins" = "$after_joins" ]; then
@@ -102,9 +102,9 @@ if [ "$before_findings" = "$after_findings" ] \
 else
   bad "probe mutated a store it must not touch"
 fi
-grades_body_before="$(jq -c 'del(.at)' "$EVAL_SANDBOX/.review/4501/kb-grades.jsonl")"
+grades_body_before="$(jq -c 'del(.at)' "$EVAL_SANDBOX/.verdict/state/4501/kb-grades.jsonl")"
 run_review calibrate acme/app 4501 --probe --json
-grades_body_after="$(jq -c 'del(.at)' "$EVAL_SANDBOX/.review/4501/kb-grades.jsonl")"
+grades_body_after="$(jq -c 'del(.at)' "$EVAL_SANDBOX/.verdict/state/4501/kb-grades.jsonl")"
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$grades_body_before" = "$grades_body_after" ]; then
   good "re-run is idempotent (rows stable apart from the timestamp)"
 else
@@ -117,11 +117,11 @@ if [ "$stub_before" = "$stub_after" ]; then
 else
   bad "probe touched the network ($stub_before -> $stub_after)"
 fi
-mkdir -p "$EVAL_SANDBOX/.review/local-g1"
-cat > "$EVAL_SANDBOX/.review/local-g1/source.json" <<'EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/local-g1"
+cat > "$EVAL_SANDBOX/.verdict/state/local-g1/source.json" <<'EOF'
 {"schema_version":"1","kind":"worktree","repo":"acme/app","slug":"g1","base_ref":null,"head_ref":"work","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"","range":"HEAD:worktree","dirty":true,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}
 EOF
-cat > "$EVAL_SANDBOX/.review/local-g1/findings.json" <<EOF
+cat > "$EVAL_SANDBOX/.verdict/state/local-g1/findings.json" <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Local real cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["g-real"],"sig":"$S1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]}]
 EOF
 run_review calibrate acme/app local-g1 --probe --json
@@ -136,29 +136,29 @@ fi
 run_review calibrate acme/app 4599 --probe --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "missing-findings" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/4599/kb-grades.jsonl" ]; then
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/4599/kb-grades.jsonl" ]; then
   good "missing findings refuses as missing-findings, writing nothing"
 else
   bad "missing-findings leg gave exit $EVAL_STATUS"
 fi
-mkdir -p "$EVAL_SANDBOX/.review/4598"
-echo "not a findings array" > "$EVAL_SANDBOX/.review/4598/findings.json"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/4598"
+echo "not a findings array" > "$EVAL_SANDBOX/.verdict/state/4598/findings.json"
 run_review calibrate acme/app 4598 --probe --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "corrupt-store" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/4598/kb-grades.jsonl" ]; then
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/4598/kb-grades.jsonl" ]; then
   good "unreadable findings refuses as corrupt-store, writing nothing"
 else
   bad "corrupt-store leg gave exit $EVAL_STATUS"
 fi
 
 stub_p6_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
-mkdir -p "$EVAL_SANDBOX/.review/4502"
-cat > "$EVAL_SANDBOX/.review/4502/findings.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/4502"
+cat > "$EVAL_SANDBOX/.verdict/state/4502/findings.json" <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Real cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["g-real"],"sig":"$S1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"False alarm cited finding here.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":["g-false"],"sig":"$S2","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"false-positive","rationale":"","history":[]}]
 EOF
-findings_4502_before="$(shasum -a 1 "$EVAL_SANDBOX/.review/4502/findings.json" | cut -d' ' -f1)"
+findings_4502_before="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4502/findings.json" | cut -d' ' -f1)"
 run_review calibrate acme/app 4502 --probe --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && jq -e '.data.counts == {findings: 2, real: 1, false: 1, unknown: 0}' <"$EVAL_OUT" >/dev/null 2>&1 \
@@ -219,11 +219,11 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "flag overlay/sticky leg: S1=$(jrow "$S1") S2=$(jrow "$S2")"
 fi
-grades_4502_ok="$(shasum -a 1 "$EVAL_SANDBOX/.review/4502/kb-grades.jsonl" | cut -d' ' -f1)"
+grades_4502_ok="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4502/kb-grades.jsonl" | cut -d' ' -f1)"
 run_review calibrate acme/app 4502 --probe --judge "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef:real" --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "unknown-judgment" ] \
-  && [ "$(shasum -a 1 "$EVAL_SANDBOX/.review/4502/kb-grades.jsonl" | cut -d' ' -f1)" = "$grades_4502_ok" ]; then
+  && [ "$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4502/kb-grades.jsonl" | cut -d' ' -f1)" = "$grades_4502_ok" ]; then
   good "unknown sig refuses as unknown-judgment, grades file untouched"
 else
   bad "unknown-sig leg gave exit $EVAL_STATUS"
@@ -231,7 +231,7 @@ fi
 run_review calibrate acme/app 4502 --probe --judge "$S1:bogus" --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "bad-judgment" ] \
-  && [ "$(shasum -a 1 "$EVAL_SANDBOX/.review/4502/kb-grades.jsonl" | cut -d' ' -f1)" = "$grades_4502_ok" ]; then
+  && [ "$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4502/kb-grades.jsonl" | cut -d' ' -f1)" = "$grades_4502_ok" ]; then
   good "bad verdict enum refuses as bad-judgment, grades file untouched"
 else
   bad "bad-enum leg gave exit $EVAL_STATUS"
@@ -240,13 +240,13 @@ echo "not json at all" > "$EVAL_SANDBOX/jbad.jsonl"
 run_review calibrate acme/app 4502 --probe --judge-file "$EVAL_SANDBOX/jbad.jsonl" --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "bad-judgment" ] \
-  && [ "$(shasum -a 1 "$EVAL_SANDBOX/.review/4502/kb-grades.jsonl" | cut -d' ' -f1)" = "$grades_4502_ok" ]; then
+  && [ "$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4502/kb-grades.jsonl" | cut -d' ' -f1)" = "$grades_4502_ok" ]; then
   good "malformed judge file refuses as bad-judgment, grades file untouched"
 else
   bad "bad-file leg gave exit $EVAL_STATUS"
 fi
-mkdir -p "$EVAL_SANDBOX/.review/4503"
-cat > "$EVAL_SANDBOX/.review/4503/findings.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/4503"
+cat > "$EVAL_SANDBOX/.verdict/state/4503/findings.json" <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":5,"anchored":true,"body":"Still open cited finding here.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":["g-real"],"sig":"$S4","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 cat > "$EVAL_SANDBOX/j2.json" <<EOF
@@ -260,7 +260,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "unknown-baseline leg: $(jq -c '{grade: .data.grades[0], judgment: .data.judgment}' <"$EVAL_OUT" 2>/dev/null)"
 fi
-if [ "$(shasum -a 1 "$EVAL_SANDBOX/.review/4502/findings.json" | cut -d' ' -f1)" = "$findings_4502_before" ]; then
+if [ "$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/4502/findings.json" | cut -d' ' -f1)" = "$findings_4502_before" ]; then
   good "4502 findings byte-identical after the judgment runs"
 else
   bad "4502 findings mutated by a judgment run"

@@ -58,13 +58,14 @@ func runRecallLocal(t *testing.T, store string) string {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, localTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	if _, err := RunLocal(context.Background(),
 		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{})); err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
-	return filepath.Join(".review", "local-mine")
+	return filepath.Join(".verdict", "state", "local-mine")
 }
 
 // TestRunLocalKBRecallTiebreakOrder proves the two tiebreaks the manual
@@ -101,6 +102,7 @@ func TestRunLocalKBRecallRankAndManifest(t *testing.T) {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, localTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
@@ -110,7 +112,7 @@ func TestRunLocalKBRecallRankAndManifest(t *testing.T) {
 	}
 	// Slash form on purpose: artifacts and the human line report bundle paths
 	// with forward slashes on every OS, and os.ReadFile accepts them on Windows.
-	dir = ".review/local-mine"
+	dir = ".verdict/state/local-mine"
 	wantNote := "# kb recall — context, never orders. Cited rules inform the review; evidence still decides.\n" +
 		"# r-d — src/* — precision 2/2\nPin the corpus slug\n" +
 		"# r-b — src/* — precision 3/4\nPrefer table tests\n" +
@@ -139,7 +141,7 @@ func TestRunLocalKBRecallCleanDiffLeavesNoFiles(t *testing.T) {
 	t.Chdir(dir)
 	plantRecallStore(t, `{"id":"r-src","rule":"src only","scope":"src/*","hits":1,"judged":1,"status":"active"}
 `)
-	bundle := filepath.Join(".review", "local-mine")
+	bundle := filepath.Join(".verdict", "state", "local-mine")
 	plantStaleRecall(t, bundle)
 	diff := "diff --git a/zz/other.bin b/zz/other.bin\n--- a/zz/other.bin\n+++ b/zz/other.bin\n@@ -1 +1 @@\n-a\n+b\n"
 	cmdr := &scriptCommander{
@@ -154,6 +156,7 @@ func TestRunLocalKBRecallCleanDiffLeavesNoFiles(t *testing.T) {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, localTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
@@ -209,10 +212,10 @@ func assertRecallArtifacts(t *testing.T, resp *core.FetchResponse, dir string) {
 // reads it (the run's root is the test's cwd under --allow-head-controls).
 func plantRecallStore(t *testing.T, store string) {
 	t.Helper()
-	if err := os.MkdirAll(".review", 0o755); err != nil {
+	if err := os.MkdirAll(".verdict", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(".review/kb.jsonl", []byte(store), 0o600); err != nil {
+	if err := os.WriteFile(".verdict/kb.jsonl", []byte(store), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

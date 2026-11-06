@@ -89,7 +89,7 @@ func contentAt(ctx context.Context, cmd core.Commander, repo, base, path string)
 // fetchContent asks the contents API for one path: nil, nil is a 404.
 func fetchContent(ctx context.Context, cmd core.Commander, repo, base, path string) (*contentsDoc, *core.RefusalError) {
 	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
-	res, err := cmd.Run(ctx, core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
+	res, err := cmd.Run(ctx, &core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
 	if err == nil && res.ExitCode != 0 {
 		err = res.ExitFailure("gh")
 	}

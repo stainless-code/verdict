@@ -30,7 +30,7 @@ func pidAlive(pid int) bool {
 func TestWatchdogRun(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	res, err := Watchdog{}.Run(tctx, core.Command{
+	res, err := Watchdog{}.Run(tctx, &core.Command{
 		Argv: []string{"bash", "-c", `printf out; printf err >&2`},
 		Env:  []string{"PATH=/bin:/usr/bin"},
 	})
@@ -50,7 +50,7 @@ func TestWatchdogRun(t *testing.T) {
 func TestWatchdogExitCode(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", `exit 3`}})
+	res, err := Watchdog{}.Run(tctx, &core.Command{Argv: []string{"bash", "-c", `exit 3`}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestWatchdogCapsCombinedOutput(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	const limit = 4096
-	res, err := Watchdog{}.Run(tctx, core.Command{
+	res, err := Watchdog{}.Run(tctx, &core.Command{
 		Argv:      []string{"bash", "-c", "yes | head -c 4194304"},
 		OutputCap: limit,
 	})
@@ -90,7 +90,7 @@ func TestWatchdogNoisyChildStaysBounded(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 1500*time.Millisecond)
 	defer cancel()
 	const limit = 4096
-	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"yes"}, OutputCap: limit})
+	res, err := Watchdog{}.Run(tctx, &core.Command{Argv: []string{"yes"}, OutputCap: limit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestWatchdogNoisyChildStaysBounded(t *testing.T) {
 func TestRunnerExit3IsData(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	res, err := Runner{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", `exit 3`}})
+	res, err := Runner{}.Run(tctx, &core.Command{Argv: []string{"bash", "-c", `exit 3`}})
 	if err != nil {
 		t.Fatalf("err = %v, want a completed result", err)
 	}
@@ -125,7 +125,7 @@ func TestRunnerExit3IsData(t *testing.T) {
 func TestRunnerStreamsStaySeparate(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	res, err := Runner{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", `printf out; printf err >&2`}})
+	res, err := Runner{}.Run(tctx, &core.Command{Argv: []string{"bash", "-c", `printf out; printf err >&2`}})
 	if err != nil {
 		t.Fatalf("err = %v, want a completed result", err)
 	}
@@ -141,14 +141,14 @@ func TestRunnerStdin(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	t.Run("command stdin", func(t *testing.T) {
-		assertRunnerStdout(tctx, t, Runner{}, core.Command{
+		assertRunnerStdout(tctx, t, Runner{}, &core.Command{
 			Argv:  []string{"bash", "-c", `cat`},
 			Stdin: strings.NewReader("from the command"),
 		}, "from the command")
 	})
 	t.Run("runner stdin default", func(t *testing.T) {
 		assertRunnerStdout(tctx, t, Runner{Stdin: strings.NewReader("from the runner")},
-			core.Command{Argv: []string{"bash", "-c", `cat`}}, "from the runner")
+			&core.Command{Argv: []string{"bash", "-c", `cat`}}, "from the runner")
 	})
 }
 
@@ -160,14 +160,14 @@ func TestRunnerMissingTool(t *testing.T) {
 	defer cancel()
 	t.Run("pre-check on", func(t *testing.T) {
 		_, err := Runner{MissingTool: true}.Run(tctx,
-			core.Command{Argv: []string{"verdict-no-such-tool"}})
+			&core.Command{Argv: []string{"verdict-no-such-tool"}})
 		missing, ok := errors.AsType[*core.MissingToolError](err)
 		if !ok || missing.Tool != "verdict-no-such-tool" {
 			t.Fatalf("err = %v, want MissingToolError for the tool", err)
 		}
 	})
 	t.Run("pre-check off", func(t *testing.T) {
-		_, err := Runner{}.Run(tctx, core.Command{Argv: []string{"verdict-no-such-tool"}})
+		_, err := Runner{}.Run(tctx, &core.Command{Argv: []string{"verdict-no-such-tool"}})
 		if err == nil {
 			t.Fatal("err = nil, want a spawn error")
 		}
@@ -177,7 +177,7 @@ func TestRunnerMissingTool(t *testing.T) {
 	})
 }
 
-func assertRunnerStdout(ctx context.Context, t *testing.T, runner Runner, cmd core.Command, want string) {
+func assertRunnerStdout(ctx context.Context, t *testing.T, runner Runner, cmd *core.Command, want string) {
 	t.Helper()
 	res, err := runner.Run(ctx, cmd)
 	if err != nil {
@@ -196,7 +196,7 @@ func TestRunnerCapsStdout(t *testing.T) {
 	defer cancel()
 	const limit = 32
 	t.Run("command cap", func(t *testing.T) {
-		res, err := Runner{}.Run(tctx, core.Command{
+		res, err := Runner{}.Run(tctx, &core.Command{
 			Argv:      []string{"bash", "-c", "head -c 4096 /dev/zero"},
 			OutputCap: limit,
 		})
@@ -204,7 +204,7 @@ func TestRunnerCapsStdout(t *testing.T) {
 	})
 	t.Run("runner cap", func(t *testing.T) {
 		res, err := Runner{OutputCap: limit}.Run(tctx,
-			core.Command{Argv: []string{"bash", "-c", "head -c 4096 /dev/zero"}})
+			&core.Command{Argv: []string{"bash", "-c", "head -c 4096 /dev/zero"}})
 		assertOutputCapped(t, res, err, limit)
 	})
 }
@@ -233,7 +233,7 @@ func TestRunnerKeepsTwentyMiBDiff(t *testing.T) {
 	const diffBytes = 20 << 20
 	tctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	res, err := Runner{OutputCap: FetchOutputCap, MissingTool: true}.Run(tctx, core.Command{
+	res, err := Runner{OutputCap: FetchOutputCap, MissingTool: true}.Run(tctx, &core.Command{
 		Argv: []string{"bash", "-c", "head -c 20971520 /dev/zero"},
 	})
 	if err != nil {
@@ -261,7 +261,7 @@ func TestRunnerCancelDoesNotWaitForPipeHolders(t *testing.T) {
 	defer cancel()
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "holder.pid"))
 	start := time.Now()
-	res, err := Runner{}.Run(tctx, core.Command{
+	res, err := Runner{}.Run(tctx, &core.Command{
 		Argv: []string{"sh", "-c", `sleep ` + holdSeconds + ` & ` + pidReport(pidFile) + `; wait`},
 	})
 	elapsed := time.Since(start)
@@ -286,7 +286,7 @@ func TestRunnerExitZeroWithLingeringPipeHolder(t *testing.T) {
 	defer cancel()
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "holder.pid"))
 	start := time.Now()
-	res, err := Runner{}.Run(tctx, core.Command{
+	res, err := Runner{}.Run(tctx, &core.Command{
 		Argv: []string{"sh", "-c", `printf done; sleep ` + holdSeconds + ` & ` + pidReport(pidFile)},
 	})
 	elapsed := time.Since(start)
@@ -323,7 +323,7 @@ func TestRunnerBothStreamsPastCapDoNotDeadlock(t *testing.T) {
 	script := `head -c 300000 /dev/zero | tr '\0' a >&2 & ` +
 		`head -c 300000 /dev/zero | tr '\0' b; wait; printf END >&2`
 	start := time.Now()
-	res, err := Runner{OutputCap: limit}.Run(tctx, core.Command{Argv: []string{"sh", "-c", script}})
+	res, err := Runner{OutputCap: limit}.Run(tctx, &core.Command{Argv: []string{"sh", "-c", script}})
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Fatalf("Run took %v: a flooded pipe stalled the child", elapsed)
 	}

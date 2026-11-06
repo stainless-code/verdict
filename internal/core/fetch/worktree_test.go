@@ -55,7 +55,7 @@ func worktreeReq(cmdr *scriptCommander, human, diag *bytes.Buffer, streamed *[]s
 func TestRunLocalWorktreeDirty(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	wt := ".review/.worktree-mine"
+	wt := ".verdict/state/.worktree-mine"
 	cmdr := &scriptCommander{
 		t: t,
 		out: map[string]scriptResult{
@@ -71,6 +71,7 @@ func TestRunLocalWorktreeDirty(t *testing.T) {
 			"git\x00worktree\x00remove\x00--force\x00" + wt:                                                                      {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed))
@@ -113,6 +114,7 @@ func TestRunLocalWorktreeSkipClean(t *testing.T) {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	if _, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed)); err != nil {
@@ -129,7 +131,7 @@ func TestRunLocalWorktreeSkipClean(t *testing.T) {
 func TestRunLocalWorktreeRange(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	wt := ".review/.worktree-mine"
+	wt := ".verdict/state/.worktree-mine"
 	base := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	head := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	cmdr := &scriptCommander{
@@ -147,6 +149,7 @@ func TestRunLocalWorktreeRange(t *testing.T) {
 			"git\x00worktree\x00remove\x00--force\x00" + wt:                                             {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, base)
 	var human, diag bytes.Buffer
 	var streamed []string
 	root := ""
@@ -188,7 +191,7 @@ func TestRunLocalWorktreeRange(t *testing.T) {
 func TestRunLocalWorktreeStaged(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	wt := ".review/.worktree-mine"
+	wt := ".verdict/state/.worktree-mine"
 	tree := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	synth := "ffffffffffffffffffffffffffffffffffffffff"
 	cmdr := &scriptCommander{
@@ -207,6 +210,7 @@ func TestRunLocalWorktreeStaged(t *testing.T) {
 			"git\x00worktree\x00remove\x00--force\x00" + wt:                                                          {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	root := ""
@@ -298,7 +302,7 @@ func assertNoWorktreeArgv(t *testing.T, cmdr *scriptCommander) {
 func TestRunLocalWorktreeAddFails(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	wt := ".review/.worktree-mine"
+	wt := ".verdict/state/.worktree-mine"
 	cmdr := &scriptCommander{
 		t: t,
 		out: map[string]scriptResult{
@@ -312,6 +316,7 @@ func TestRunLocalWorktreeAddFails(t *testing.T) {
 			"git\x00worktree\x00remove\x00--force\x00" + wt: {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	_, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed))
@@ -323,7 +328,7 @@ func TestRunLocalWorktreeAddFails(t *testing.T) {
 		t.Errorf("failed setup prints a worktree line:\n%s", got)
 	}
 	assertArgvContains(t, cmdr, []string{"git worktree remove --force " + wt})
-	if _, statErr := os.Stat(".review/local-mine"); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(".verdict/state/local-mine"); !os.IsNotExist(statErr) {
 		t.Errorf("failed setup writes a bundle")
 	}
 }
@@ -333,7 +338,7 @@ func TestRunLocalWorktreeAddFails(t *testing.T) {
 func TestRunLocalWorktreeDiffFailsCleansUp(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	wt := ".review/.worktree-mine"
+	wt := ".verdict/state/.worktree-mine"
 	cmdr := &scriptCommander{
 		t: t,
 		out: map[string]scriptResult{
@@ -348,6 +353,7 @@ func TestRunLocalWorktreeDiffFailsCleansUp(t *testing.T) {
 			"git\x00worktree\x00remove\x00--force\x00" + wt: {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	_, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed))

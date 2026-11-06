@@ -13,6 +13,7 @@ import (
 	"regexp"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
@@ -33,6 +34,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	Review       *jq.Obj
 	ReviewFile   string
 	Root         string
+	RepoRoot     string
 	Body         string
 	DryRun       bool
 	FindingsFile string
@@ -43,6 +45,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	Pr           string
 	Cmd          string
 	Controls     *controls.Snapshot
+	Run          *config.RunState
 	HunkRows     []hunks.Hunk
 	InputChecked bool
 }
@@ -63,6 +66,13 @@ type MergeResult struct { //nolint:govet // field grouping documents the merge c
 	Confidence   any
 	Security     any
 	Warnings     []string
+}
+
+func (in *MergeParams) repoRootPath() string {
+	if in.RepoRoot == "" {
+		return "."
+	}
+	return in.RepoRoot
 }
 
 // Merge runs the shared validate_and_merge core: the merge engine, the
@@ -89,11 +99,13 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		dir:          in.Dir,
 		reviewFile:   in.ReviewFile,
 		root:         in.Root,
+		repoRoot:     in.repoRootPath(),
 		headFull:     in.HeadFull,
 		headShort:    readcommon.ShortSHA(in.HeadFull),
 		prov:         in.Prov,
 		dryRun:       in.DryRun,
 		controls:     in.Controls,
+		run:          in.Run,
 		hunkRows:     in.HunkRows,
 		inputChecked: in.InputChecked,
 	}

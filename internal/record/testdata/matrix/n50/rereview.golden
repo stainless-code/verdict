@@ -11,7 +11,7 @@ exit: 0
     "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
-    "dir": ".review/local-mx",
+    "dir": ".verdict/state/local-mx",
     "anchors": {
       "kept": 0,
       "moved": 0
@@ -20,7 +20,7 @@ exit: 0
       "open": 52,
       "deferred": 1,
       "addressed": 0,
-      "file": ".review/local-mx/findings.json"
+      "file": ".verdict/state/local-mx/findings.json"
     },
     "confidence": null,
     "security_summary": null,
@@ -350,7 +350,7 @@ exit: 0
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-» findings: 53 sigs -> .review/local-mx/findings.json
+» findings: 53 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt
   748484cb  open  true  notes.txt
@@ -404,9 +404,9 @@ warn: $.body: no basis line — inserted the computed counts (basis-replaced)
   99cd29f4  open  body  ### Watch the loop
   e5ae2abb  open  body  ### Check the edges
   1b5fa562  open  body  ### ℹ️ Unanchored observations
-recorded: .review/local-mx/findings.json (52 open) + .review/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-mx/findings.json ---
+--- file C/.verdict/state/local-mx/findings.json ---
 [
   {
     "kind": "inline",
@@ -1791,7 +1791,7 @@ recorded: .review/local-mx/findings.json (52 open) + .review/local-mx/record.jso
     ]
   }
 ]
---- file C/.review/local-mx/record.json ---
+--- file C/.verdict/state/local-mx/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -1803,6 +1803,6 @@ recorded: .review/local-mx/findings.json (52 open) + .review/local-mx/record.jso
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "23fd310331bd0add2e92ef6f67704985b6f314d4dad3856406854f062684068c",
   "model": null
 }

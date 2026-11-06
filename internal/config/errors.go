@@ -25,6 +25,9 @@ const (
 	// nothing to explain. Preview without a bundle resolves the
 	// no-policy layers instead of refusing.
 	CodeNoBundle = "config-no-bundle"
+	// CodeCanceled refuses a canceled read before it touches the bundle:
+	// the shared vocabulary's cancellation code, mapped to the broke exit.
+	CodeCanceled = "canceled"
 )
 
 // refuse builds the layer's sealed refusal. The message always names the

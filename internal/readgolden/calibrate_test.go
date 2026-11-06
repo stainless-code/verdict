@@ -53,7 +53,7 @@ func calibrateLive(t *testing.T, dir string) {
 	t.Helper()
 	mkPRBundle(t, dir, "5101")
 	writeFiles(t, dir, map[string]string{
-		".review/5101/findings.json": findingsDoc(
+		".verdict/state/5101/findings.json": findingsDoc(
 			findingBody(sigCrit, "open", "critical", "Fixed body here with enough substance.", `["r-a1"]`),
 			findingBody(sigImp, "open", "important", "Open body here with enough substance.", `[]`),
 			findingBody(sigAddr, "addressed", "important", "Unseen body here with enough substance.", `["r-a2"]`),
@@ -63,7 +63,7 @@ func calibrateLive(t *testing.T, dir string) {
 				`"sig":"`+sigSect+`","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa",`+
 				`"status":"open","rationale":"","history":[]}`,
 		),
-		".review/5101/post.json": `{"schema_version":"1","review":{"id":424242},` +
+		".verdict/state/5101/post.json": `{"schema_version":"1","review":{"id":424242},` +
 			`"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"2026-10-31T00:00:00Z",` +
 			`"confidence":null,"security_summary":null,` +
 			`"tool_version":"0.0.1-test","prompts_hash":"abc123def456","model":"m"}`,
@@ -108,7 +108,7 @@ func TestCalibrateLiveGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/findings.json": mixedFindings(),
 		})
 	}
 	goArgs = splitRepo("calibrate", "5101", "--json")
@@ -118,7 +118,7 @@ func TestCalibrateLiveGolden(t *testing.T) {
 		t.Helper()
 		calibrateLive(t, dir)
 		writeFiles(t, dir, map[string]string{
-			".review/5101/post.json": `{"schema_version":"1","review":{},` +
+			".verdict/state/5101/post.json": `{"schema_version":"1","review":{},` +
 				`"head":"` + headA + `","posted_at":"2026-10-31T00:00:00Z"}`,
 		})
 	}
@@ -134,7 +134,7 @@ func TestCalibrateLiveGolden(t *testing.T) {
 		t.Helper()
 		mkLocalBundle(t, dir, "local-work")
 		writeFiles(t, dir, map[string]string{
-			".review/local-work/findings.json": mixedFindings(),
+			".verdict/state/local-work/findings.json": mixedFindings(),
 		})
 	}
 	goArgs = splitRepo("calibrate", "local-work", "--json")
@@ -144,10 +144,10 @@ func TestCalibrateLiveGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/PR.json": `{"provider":"gitlab","number":5101,` +
+			".verdict/state/5101/PR.json": `{"provider":"gitlab","number":5101,` +
 				`"head_sha":"` + headA + `"}`,
-			".review/5101/findings.json": mixedFindings(),
-			".review/5101/post.json":     postDoc(headA, 99),
+			".verdict/state/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/post.json":     postDoc(headA, 99),
 		})
 	}
 	goArgs = splitRepo("calibrate", "5101", "--json")
@@ -157,7 +157,7 @@ func TestCalibrateLiveGolden(t *testing.T) {
 		t.Helper()
 		calibrateLive(t, dir)
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": `[` + numericSigEntry() + `]`,
+			".verdict/state/5101/findings.json": `[` + numericSigEntry() + `]`,
 		})
 	}
 	goArgs = splitRepo("calibrate", "5101", "--json")
@@ -183,10 +183,10 @@ func TestCalibrateProbeGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": probeFindings(),
+			".verdict/state/5101/findings.json": probeFindings(),
 		})
 	}
-	grades := allowKeys("C/.review/5101/kb-grades.jsonl")
+	grades := allowKeys("C/.verdict/state/5101/kb-grades.jsonl")
 
 	goArgs := splitRepo("calibrate", "5101", "--probe")
 	goldenRead(t, "calibrate/probe-human", probe, nil, grades, goArgs...)
@@ -198,9 +198,9 @@ func TestCalibrateProbeGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": probeFindings(),
+			".verdict/state/5101/findings.json": probeFindings(),
 			// A sticky prior for a sig still present merges in.
-			".review/5101/kb-grades.jsonl": `{"at":"2026-01-01T00:00:00Z",` +
+			".verdict/state/5101/kb-grades.jsonl": `{"at":"2026-01-01T00:00:00Z",` +
 				`"bundle":"5101","sig":"` + sigCrit + `","verdict":"unknown",` +
 				`"rule":null,"helpful":null,"agent_verdict":"real","agent_helpful":"true",` +
 				`"agreement":null,"grader":"calibrate-probe"}` + "\n",
@@ -214,7 +214,7 @@ func TestCalibrateProbeGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": probeFindings(),
+			".verdict/state/5101/findings.json": probeFindings(),
 		})
 	}
 	goArgs = splitRepo("calibrate", "5101",

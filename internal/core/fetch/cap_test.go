@@ -17,12 +17,20 @@ import (
 const capTestDiff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n"
 
 // runLocalStagedDiff runs one hermetic fetch-local --staged over diff, with
-// the given env knobs and repo-relative files planted first.
+// the given env knobs and repo files planted first. The typed repository
+// configuration (if any) is scripted at the diff base — the base commit
+// owns the policy — while the remaining entries plant worktree files for
+// the legacy controls the base snapshot still carries.
 func runLocalStagedDiff(
 	t *testing.T, diff string, env map[string]string, controls map[string]string, chunk bool,
 ) (*core.FetchResponse, *bytes.Buffer, error) {
 	t.Helper()
+	cmdr := stagedLocalCommander(t, diff)
 	for name, body := range controls {
+		if name == ".verdict/config.json" {
+			scriptBasePolicy(cmdr, localTestHead, body)
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -30,7 +38,6 @@ func runLocalStagedDiff(
 			t.Fatal(err)
 		}
 	}
-	cmdr := stagedLocalCommander(t, diff)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
@@ -192,7 +199,7 @@ func TestRunLocalChunkRepoOptInArmsOverCap(t *testing.T) {
 		t.Fatal("over-cap run with chunk:true wrote no chunks")
 	}
 	_ = human
-	entries, err := os.ReadDir(filepath.Join(".review", "local-mine", "chunks"))
+	entries, err := os.ReadDir(filepath.Join(".verdict", "state", "local-mine", "chunks"))
 	if err != nil || len(entries) == 0 {
 		t.Fatalf("chunk dir missing or empty: %v %v", entries, err)
 	}
@@ -244,7 +251,7 @@ func assertOverrideRefuses(t *testing.T, diff string, capSize int) {
 	if !strings.Contains(ref.Message, strconv.Itoa(capSize)) {
 		t.Errorf("refusal misses the override cap: %q", ref.Message)
 	}
-	if _, serr := os.Stat(filepath.Join(".review", "local-mine", "chunks")); !os.IsNotExist(serr) {
+	if _, serr := os.Stat(filepath.Join(".verdict", "state", "local-mine", "chunks")); !os.IsNotExist(serr) {
 		t.Errorf("over-cap refusal wrote a chunks dir: %v", serr)
 	}
 }
@@ -276,20 +283,22 @@ func overDefaultCapDiff() string {
 	return sb.String()
 }
 
-// TestRunLocalCapLegacyFile pins the migrated knob contract: the legacy
-// .review/max_bytes file arms the cap when env and typed config are
-// absent, loses to both, and garbage refuses typed naming the file.
-func TestRunLocalCapLegacyFile(t *testing.T) {
+// TestRunLocalLegacyCapFileIgnored pins the breaking typed-contract
+// rule: the retired .review/max_bytes knob file no longer arms, loses,
+// or refuses anything. A legacy file alone reads the silent default, a
+// conflicting file loses to the typed repository configuration, and
+// even garbage in the file cannot refuse the run.
+func TestRunLocalLegacyCapFileIgnored(t *testing.T) {
 	size := strconv.Itoa(len(capTestDiff))
-	t.Run("legacy file arms the cap", func(t *testing.T) {
+	t.Run("legacy file alone reads the silent default", func(t *testing.T) {
 		dir := t.TempDir()
 		t.Chdir(dir)
 		got := capLine(t, nil, map[string]string{".review/max_bytes": size + "\n"})
-		if !strings.Contains(got, "» cap: "+size+" bytes (from .review/max_bytes, default 512000)\n") {
-			t.Errorf("cap line misses the legacy source:\n%s", got)
+		if strings.Contains(got, "» cap:") {
+			t.Errorf("retired knob file armed a cap line:\n%s", got)
 		}
 	})
-	t.Run("typed config beats legacy file", func(t *testing.T) {
+	t.Run("typed config wins over a conflicting legacy file", func(t *testing.T) {
 		dir := t.TempDir()
 		t.Chdir(dir)
 		got := capLine(t, nil, map[string]string{
@@ -297,81 +306,78 @@ func TestRunLocalCapLegacyFile(t *testing.T) {
 			".review/max_bytes":    "10\n",
 		})
 		if !strings.Contains(got, "from .verdict/config.json") {
-			t.Errorf("typed config did not win over the legacy file:\n%s", got)
+			t.Errorf("typed config did not win over the retired file:\n%s", got)
 		}
 	})
-	t.Run("env beats legacy file", func(t *testing.T) {
-		dir := t.TempDir()
-		t.Chdir(dir)
-		got := capLine(t, map[string]string{"REVIEW_MAX_BYTES": size},
-			map[string]string{".review/max_bytes": "10\n"})
-		if !strings.Contains(got, "from REVIEW_MAX_BYTES") {
-			t.Errorf("env did not win over the legacy file:\n%s", got)
-		}
-	})
-	t.Run("legacy garbage refuses naming the file", func(t *testing.T) {
-		dir := t.TempDir()
-		t.Chdir(dir)
-		_, _, err := runLocalStagedDiff(t, capTestDiff, nil,
-			map[string]string{".review/max_bytes": "lots\n"}, false)
-		ref := requireRefusal(t, err, "bad-max-bytes")
-		if !strings.Contains(ref.Message, ".review/max_bytes") {
-			t.Errorf("refusal does not name the file: %q", ref.Message)
-		}
-	})
-}
-
-// TestRunLocalChunkKnobFile pins the file opt-in on the over-cap path:
-// true arms slicing with the file named, garbage refuses bad-chunk-knob,
-// and an under-cap run never consults a bad file.
-func TestRunLocalChunkKnobFile(t *testing.T) {
-	t.Run("knob true arms slicing", func(t *testing.T) {
-		dir := t.TempDir()
-		t.Chdir(dir)
-		if err := os.MkdirAll(".review", 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(".review/chunk", []byte("true\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		cmdr := stagedLocalCommander(t, overCapTwoFiles())
-		var human, diag bytes.Buffer
-		var streamed []string
-		resp, err := RunLocal(context.Background(),
-			localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{Staged: true}))
-		if err != nil {
-			t.Fatalf("chunked run: %v", err)
-		}
-		if resp.Data.Chunk == nil {
-			t.Fatal("over-cap run with knob true wrote no chunks")
-		}
-		if !strings.Contains(diag.String(), "chunking opted in (from .review/chunk)") {
-			t.Errorf("opt-in notice misses the file source:\n%s", diag.String())
-		}
-	})
-	t.Run("knob garbage refuses typed", func(t *testing.T) {
-		dir := t.TempDir()
-		t.Chdir(dir)
-		_, _, err := runLocalStagedDiff(t, overCapTwoFiles(), nil,
-			map[string]string{".review/chunk": "maybe\n"}, false)
-		ref := requireRefusal(t, err, "bad-chunk-knob")
-		if !strings.Contains(ref.Message, "maybe") {
-			t.Errorf("refusal does not name the knob: %q", ref.Message)
-		}
-	})
-	t.Run("under-cap never consults a bad knob", func(t *testing.T) {
+	t.Run("legacy garbage cannot refuse the run", func(t *testing.T) {
 		dir := t.TempDir()
 		t.Chdir(dir)
 		if _, _, err := runLocalStagedDiff(t, capTestDiff, nil,
-			map[string]string{".review/chunk": "maybe\n"}, false); err != nil {
-			t.Fatalf("under-cap run with bad knob: %v", err)
+			map[string]string{".review/max_bytes": "lots\n"}, false); err != nil {
+			t.Fatalf("retired knob garbage refused the run: %v", err)
 		}
 	})
 }
 
-// TestRunLocalPanelLegacyFile pins the legacy panel scan: members land
-// in the bundle with the file named, comments and blanks skipped.
-func TestRunLocalPanelLegacyFile(t *testing.T) {
+// TestRunLocalChunkTypedOptIn pins the typed chunk opt-in on the
+// over-cap path: defaults.chunk true arms slicing naming the typed
+// configuration, while the retired .review/chunk file arms nothing —
+// an opted-out over-cap run refuses diff-too-large and even garbage in
+// the file passes silently.
+func TestRunLocalChunkTypedOptIn(t *testing.T) {
+	t.Run("typed chunk true arms slicing", typedChunkArmsSlicing)
+	t.Run("retired chunk file arms nothing", retiredChunkFileArmsNothing)
+	t.Run("retired chunk garbage passes silently", retiredChunkGarbagePassesSilently)
+}
+
+// typedChunkArmsSlicing checks the typed opt-in slices an over-cap diff and
+// names the configuration that armed it.
+func typedChunkArmsSlicing(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	chunked := map[string]string{".verdict/config.json": typedConfig(`"chunk":true`)}
+	cmdr := stagedLocalCommander(t, overCapTwoFiles())
+	scriptBasePolicy(cmdr, localTestHead, chunked[".verdict/config.json"])
+	var human, diag bytes.Buffer
+	var streamed []string
+	resp, err := RunLocal(context.Background(),
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{Staged: true}))
+	if err != nil {
+		t.Fatalf("chunked run: %v", err)
+	}
+	if resp.Data.Chunk == nil {
+		t.Fatal("over-cap run with typed chunk true wrote no chunks")
+	}
+	if !strings.Contains(diag.String(), "chunking opted in (from .verdict/config.json)") {
+		t.Errorf("opt-in notice misses the typed source:\n%s", diag.String())
+	}
+}
+
+// retiredChunkFileArmsNothing checks the retired .review/chunk knob never
+// enables slicing and is not even consulted by the refusal.
+func retiredChunkFileArmsNothing(t *testing.T) {
+	t.Chdir(t.TempDir())
+	_, _, err := runLocalStagedDiff(t, overCapTwoFiles(), nil,
+		map[string]string{".review/chunk": "true\n"}, false)
+	ref := requireRefusal(t, err, "diff-too-large")
+	if strings.Contains(ref.Message, ".review/chunk") {
+		t.Errorf("refusal consults the retired file: %q", ref.Message)
+	}
+}
+
+// retiredChunkGarbagePassesSilently checks unparsable retired content is inert.
+func retiredChunkGarbagePassesSilently(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if _, _, err := runLocalStagedDiff(t, capTestDiff, nil,
+		map[string]string{".review/chunk": "maybe\n"}, false); err != nil {
+		t.Fatalf("retired knob garbage refused the run: %v", err)
+	}
+}
+
+// TestRunLocalLegacyPanelIgnored pins the retired panel file: members
+// in .review/panel no longer land in the bundle — the run reports no
+// panel pinned, exactly like a run with no panel anywhere.
+func TestRunLocalLegacyPanelIgnored(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	resp, human, err := runLocalStagedDiff(t, capTestDiff, nil,
@@ -379,10 +385,10 @@ func TestRunLocalPanelLegacyFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
-	if len(resp.Data.Panel.Members) != 1 || resp.Data.Panel.Members[0] != "base-panel" {
-		t.Errorf("panel = %+v, want the single usable line", resp.Data.Panel)
+	if len(resp.Data.Panel.Members) != 0 {
+		t.Errorf("panel = %+v, want no members from the retired file", resp.Data.Panel)
 	}
-	if !strings.Contains(human.String(), "» panel (1 from .review/panel)") {
-		t.Errorf("panel notice misses the file source:\n%s", human.String())
+	if !strings.Contains(human.String(), "» panel: none pinned") {
+		t.Errorf("panel notice misses the none-pinned line:\n%s", human.String())
 	}
 }

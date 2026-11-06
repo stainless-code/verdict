@@ -1,9 +1,10 @@
 // Package corpuscore loads the benchmark corpus manifests and grades a
 // bundle's findings against their recorded ground truth. A corpus bundle is
-// a .review/corpus-* directory carrying corpus.json (one case manifest),
-// findings.json (the agent output under test), and the normal provenance
-// stores (record.json/cost.json/panel). Nothing here touches the network or
-// writes to disk: calibrate renders one bundle, trend aggregates many.
+// a corpus-* directory in the bundle home carrying corpus.json (one case
+// manifest), findings.json (the agent output under test), and the normal
+// provenance stores (record.json/cost.json/panel). Nothing here touches the
+// network or writes to disk: calibrate renders one bundle, trend
+// aggregates many.
 package corpuscore
 
 import (
@@ -14,6 +15,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -24,8 +26,6 @@ import (
 
 // Bundle conventions and defaults.
 const (
-	// DirPrefix marks a corpus bundle: any .review/corpus-* directory.
-	DirPrefix = ".review/corpus-"
 	// manifestName is the per-bundle copy of a case manifest.
 	manifestName = "/corpus.json"
 	// DefaultLineTolerance is the +/- line window that still counts as the
@@ -66,9 +66,10 @@ const (
 // refusal code for an invalid case manifest.
 const codeCorpusInvalid = "corpus-invalid"
 
-// IsDir reports whether dir names a marked corpus bundle.
+// IsDir reports whether dir names a marked corpus bundle: the last
+// segment carries the corpus- prefix, whatever root anchors it.
 func IsDir(dir string) bool {
-	return strings.HasPrefix(dir, DirPrefix)
+	return strings.HasPrefix(filepath.Base(dir), "corpus-")
 }
 
 // Load reads and validates one bundle's corpus.json. Every failure is a

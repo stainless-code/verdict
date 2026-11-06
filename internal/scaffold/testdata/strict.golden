@@ -1,50 +1,48 @@
 exit: 0
 --- stdout ---
 init: preset strict (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
---- .review/budget (create) ---
-# Verdict spend budget (USD) — written by `verdict init --preset strict`.
-# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.
-0.10
---- .review/panel (create) ---
-# Verdict panel — written by `verdict init --preset strict`.
-# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
-# Replace these placeholders with real slugs; same panel every run keeps verdicts comparable.
-lead
-lens-1
-lens-2
---- .review/kb-policy (create) ---
-# Verdict KB retirement policy — written by `verdict init --preset strict`.
-# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.
-MIN_JUDGED=3
-MAX_FP_RATE=0.3
---- .review/kb.jsonl (create) ---
+--- .verdict/config.json (create) ---
+{
+  "schema_version": "1",
+  "defaults": {
+    "panel": ["lead", "lens-1", "lens-2"],
+    "budget_usd": 0.10,
+    "kb_policy": {
+      "min_judged": 3,
+      "max_fp_rate": 0.3
+    }
+  }
+}
+--- .verdict/kb.jsonl (create) ---
 {"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
 {"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
-wrote: .review/budget
-wrote: .review/panel
-wrote: .review/kb-policy
-wrote: .review/kb.jsonl
-check-tree: clean (1 .review/ scratch line(s) ignored)
-next: replace panel placeholders with real slugs, tune .review/budget, then fetch
+--- .verdict/.gitignore (create) ---
+/state/
+wrote: .verdict/config.json
+wrote: .verdict/kb.jsonl
+wrote: .verdict/.gitignore
+check-tree: dirty worktree — commit or stash first:
+?? .verdict/.gitignore
+?? .verdict/config.json
+?? .verdict/kb.jsonl
+next: pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, then fetch
 --- stderr ---
-
+warn: init completed; the worktree has uncommitted changes (see check-tree above)
 --- files ---
---- file C/.review/budget ---
-# Verdict spend budget (USD) — written by `verdict init --preset strict`.
-# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.
-0.10
---- file C/.review/kb-policy ---
-# Verdict KB retirement policy — written by `verdict init --preset strict`.
-# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.
-MIN_JUDGED=3
-MAX_FP_RATE=0.3
---- file C/.review/kb.jsonl ---
+--- file C/.verdict/.gitignore ---
+/state/
+--- file C/.verdict/config.json ---
+{
+  "schema_version": "1",
+  "defaults": {
+    "panel": ["lead", "lens-1", "lens-2"],
+    "budget_usd": 0.10,
+    "kb_policy": {
+      "min_judged": 3,
+      "max_fp_rate": 0.3
+    }
+  }
+}
+--- file C/.verdict/kb.jsonl ---
 {"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
 {"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
---- file C/.review/panel ---
-# Verdict panel — written by `verdict init --preset strict`.
-# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.
-# Replace these placeholders with real slugs; same panel every run keeps verdicts comparable.
-lead
-lens-1
-lens-2

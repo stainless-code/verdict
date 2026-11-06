@@ -2,7 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: learn --retire needs --reason with 30+ chars (human veto, on the record)
-try: re-run with one of the valid values named above
+error: learn: no rule 'await-err' (no .verdict/kb.jsonl yet — see learn --status)
+try: list rules with learn --status, then re-run
 re-enter: verdict learn --retire ...
 --- files ---

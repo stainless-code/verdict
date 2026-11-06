@@ -26,7 +26,7 @@ warn: $.comments[0].brief.sites[1].path: brief site notes.txt:99 is not a change
 warn: $.comments[0].brief.outcome_typo: unknown brief field "outcome_typo"
 re-enter: verdict record acme/app local-dg --json
 --- files ---
---- file C/.review/local-dg/store.json ---
+--- file C/.verdict/state/local-dg/store.json ---
 {
   "schema_version": "1"
 }

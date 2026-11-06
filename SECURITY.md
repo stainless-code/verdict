@@ -50,9 +50,9 @@ In scope (highest priority first):
 - Fetched diffs and review comments are untrusted input throughout;
   prompt-injection handling and secret redaction in recorded tails
   are in scope where they cross a trust boundary.
-- Control-plane integrity: the review controls (`.review/kb.jsonl`,
-  `panel`, `budget`, `max_bytes`, `chunk`, `kb-policy`, `learnings.md`,
-  and the overrides fragments) are read from the PR base commit and
+- Control-plane integrity: the review controls (`.verdict/config.json`,
+  `.verdict/kb.jsonl`, `.verdict/learnings.md`, and `.verdict/overrides/`
+  fragments) are read from the PR base commit and
   snapshotted into the bundle, so a pull request cannot edit the rules
   it is judged by. `post` and `record` refuse a missing or drifted
   snapshot (`controls-unavailable`, `controls-stale`). Any path where

@@ -1,8 +1,8 @@
-exit: 1
+exit: 0
 --- stdout ---
-
+learned await-err -> .verdict/kb.jsonl (scope *, rigor pointed)
 --- stderr ---
-error: id 'await-err' is taken (pass a different --id)
-try: pass a different --id
-re-enter: verdict learn --rule ... --scope ...
+
 --- files ---
+--- file C/.verdict/kb.jsonl ---
+{"id":"await-err","rule":"A brand new rule","scope":"*","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}

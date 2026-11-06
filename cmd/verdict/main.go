@@ -182,61 +182,71 @@ func dispatch(
 	r.RouteHuman()
 	ctx, stop := shutdownSignalContext()
 	defer stop()
+	switch cmd {
+	case "upgrade":
+		return runUpgrade(ctx, r, rest, env)
+	case "uninstall":
+		return runUninstall(ctx, r, rest, env)
+	}
+	repoRoot, rootErr := readcommon.RepoRoot(ctx)
+	if rootErr != nil {
+		if code, done := r.Canceled(ctx, cmd); done {
+			return code
+		}
+		return r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: rootErr.Error()})
+	}
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{
 			Runtime: &core.Runtime{Env: env, Now: r.Now},
 			Repo:    repo, Pr: pr, Forces: forces, Root: &root,
+			RepoRoot: repoRoot,
 		})
 	}
-	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, env, forces, rest); ok {
+	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, repoRoot, env, forces, rest); ok {
 		return code
 	}
 	fmt.Fprintf(stderr, "%s\n", unknownCmdMessage(cmd))
 	return cli.ExitUsage
 }
 
-//
-//nolint:cyclop // the verb table grows one branch per verb by design
 func dispatchMutating(
-	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
 	env map[string]string, forces *cli.GlobalForces, rest []string,
 ) (code int, ok bool) {
-	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, env, rest); ok {
+	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, repoRoot, env, rest); ok {
 		return code, true
 	}
 	switch cmd {
 	case "record":
-		return record.Run(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}), true
+		return record.Run(ctx, r, rest, &record.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces}), true
 	case "post":
-		return record.RunPost(ctx, r, rest, record.Request{Repo: repo, Pr: pr, Root: root, Env: env, Forces: forces}), true
+		return record.RunPost(ctx, r, rest, &record.Request{
+			Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces,
+		}), true
 	case "triage":
-		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
+		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "adopt":
-		return adopt.Run(ctx, r, rest, adopt.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
+		return adopt.Run(ctx, r, rest, adopt.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "fix":
-		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
+		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "learn":
-		return learn.Run(ctx, r, rest, env), true
+		return learn.Run(ctx, r, rest, repoRoot), true
 	case "init":
-		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env}), true
+		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env, RepoRoot: repoRoot}), true
 	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
-	case "upgrade":
-		return runUpgrade(ctx, r, rest, env), true
-	case "uninstall":
-		return runUninstall(ctx, r, rest, env), true
 	case "verify":
-		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, Env: env}), true
+		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	default:
 		return 0, false
 	}
 }
 
 func dispatchFetch(
-	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root string,
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
 	env map[string]string, rest []string,
 ) (code int, ok bool) {
-	req := fetch.Request{Repo: repo, Pr: pr, Root: root, Env: env}
+	req := fetch.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}
 	switch cmd {
 	case "fetch":
 		return fetch.Run(ctx, r, rest, req), true

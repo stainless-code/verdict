@@ -6,5 +6,5 @@ recommendation: nudge-author — nudge the author instead of reviewing
 --- stderr ---
 
 --- files ---
---- file C/.review/5101/.ready.err ---
+--- file C/.verdict/state/5101/.ready.err ---
 

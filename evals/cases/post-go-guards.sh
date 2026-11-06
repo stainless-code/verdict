@@ -73,7 +73,7 @@ if grep -q "transient GitHub error — retry 1/2" "$EVAL_ERR"; then
 else
   bad "retry stderr: $(head -c 200 "$EVAL_ERR")"
 fi
-if [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEAD" ]; then
+if [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEAD" ]; then
   good "retried post records the reviewed SHA"
 else
   bad "retried post wrote no post.json"
@@ -93,8 +93,8 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "post-failed" ] \
 else
   bad "persistent 429 gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/post-failed/3"
 fi
-if [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ] \
-  && [ -z "$(ls "$EVAL_SANDBOX/.review/$PR"/.posted_* 2>/dev/null || true)" ]; then
+if [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ] \
+  && [ -z "$(ls "$EVAL_SANDBOX/.verdict/state/$PR"/.posted_* 2>/dev/null || true)" ]; then
   good "bounded failure arms nothing (no post.json, no marker)"
 else
   bad "bounded failure armed the record"
@@ -171,7 +171,7 @@ if jq -e '.body | contains("Unanchored observations") and contains("ghost/file.t
   "$EVAL_SANDBOX/posted-4474.json" >/dev/null \
   && jq -e '.comments | length == 0' "$EVAL_SANDBOX/posted-4474.json" >/dev/null \
   && jq -e '[.[] | select(.path == "ghost/file.txt" and .anchored == false)] | length == 1' \
-  "$EVAL_SANDBOX/.review/$PR/findings.json" >/dev/null; then
+  "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" >/dev/null; then
   good "moved comment lands in the body section, never inline"
 else
   bad "moved payload/findings: $(head -c 300 "$EVAL_SANDBOX/posted-4474.json")"

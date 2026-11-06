@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "corrupt-store",
-    "message": "findings store .review/local-adopt1/findings.json is unreadable or not a findings array (re-run record to rebuild, or restore the file)\ntry: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run"
+    "message": "findings store .verdict/state/local-adopt1/findings.json is unreadable or not a findings array (re-run record to rebuild, or restore the file)\ntry: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run"
   }
 }
 --- stderr ---

@@ -10,7 +10,7 @@ func showBundle(t *testing.T, dir, pr string) {
 	t.Helper()
 	mkPRBundle(t, dir, pr)
 	writeFiles(t, dir, map[string]string{
-		".review/" + pr + "/findings.json": findingsDoc(
+		".verdict/state/" + pr + "/findings.json": findingsDoc(
 			`{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,`+
 				`"anchored":true,"body":"Usable body here with enough substance.",`+
 				`"suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical",`+
@@ -32,7 +32,7 @@ func TestNextGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/findings.json": mixedFindings(),
 		})
 	}
 
@@ -46,7 +46,7 @@ func TestNextGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": `[]`,
+			".verdict/state/5101/findings.json": `[]`,
 		})
 	}
 	goArgs = splitRepo("next", "5101", "--json")
@@ -62,7 +62,7 @@ func TestNextGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": `[42]`,
+			".verdict/state/5101/findings.json": `[42]`,
 		})
 	}
 	goArgs = splitRepo("next", "5101", "--json")
@@ -111,7 +111,7 @@ func TestShowGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": `{"not":"a list"}`,
+			".verdict/state/5101/findings.json": `{"not":"a list"}`,
 		})
 	}
 	goArgs = splitRepo("show", "5101", "--sig", "a1111111", "--json")

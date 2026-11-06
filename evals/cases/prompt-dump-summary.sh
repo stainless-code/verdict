@@ -12,7 +12,7 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   git init -q 2>/dev/null || true
   git config user.email "dump-eval@example.com"
   git config user.name "dump eval"
-  grep -qxF '.review/' .gitignore 2>/dev/null || echo ".review/" >> .gitignore
+  grep -qxF '.verdict/state/' .gitignore 2>/dev/null || echo ".verdict/state/" >> .gitignore
   printf '# verdict skill (eval fixture)\n' > SKILL.md
   mkdir -p prompts
   printf '# system (eval fixture)\n' > prompts/system.md
@@ -31,7 +31,7 @@ dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
 dump_expected() {
   (
     cd "$EVAL_SANDBOX" || exit 99
-    local dir="$1" out="$2" nonce="$3" meta="$1/PR.json" f src
+    local dir="$1" out="$2" nonce="$3" meta="$1/PR.json" f src group_id
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
     for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md; do
@@ -67,8 +67,9 @@ EOF
     done
     plan_files="$(grep '^+++ b/' "$dir/full.diff" 2>/dev/null | sed 's|^+++ b/||' | sort | paste -sd, - || true)"
     if [ -n "$plan_files" ]; then
+      group_id="$(jq -r '.resolved.plan.groups[0].id' "$dir/run.json")"
       printf '<<<UNTRUSTED nonce=%s source=plan.txt>>>\n' "$nonce" >> "$out"
-      printf 'plan status: pending\n- group 1: profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[]\neffort: standard\n' "$plan_files" >> "$out"
+      printf 'plan status: pending\n- group 1: id=%s profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false\neffort: standard\n' "$group_id" "$plan_files" >> "$out"
       printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
     fi
     if [ -f "$dir/full.diff" ]; then fence_file "full.diff" "$dir/full.diff"; fi
@@ -87,14 +88,14 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "fetch-local --show-prompts exits $EVAL_STATUS"
 fi
-dump_expected ".review/local-dump-a" "$EVAL_SANDBOX/expected-a.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected ".verdict/state/local-dump-a" "$EVAL_SANDBOX/expected-a.txt" "$(dump_nonce "$EVAL_OUT")"
 if printf '%s' "$(dump_nonce "$EVAL_OUT")" | matches '^[0-9a-f]\{16\}$' \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/expected-a.txt"; then
   good "dump stdout equals the fenced assembly with a well-formed nonce"
 else
   bad "dump stdout differs from the assembled concatenation"
 fi
-if [ -f "$EVAL_SANDBOX/.review/local-dump-a/kb.txt" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/local-dump-a/kb.txt" ]; then
   good "recall file present and included when rules match"
 else
   bad "kb.txt missing (dump-probe rule should match dumpdir/*.txt)"
@@ -107,17 +108,17 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "twin fetch exits $EVAL_STATUS"
 fi
-if [ "$(cd "$EVAL_SANDBOX/.review/local-dump-a" && find . -type f | sort)" = "$(cd "$EVAL_SANDBOX/.review/local-dump-b" && find . -type f | sort)" ]; then
+if [ "$(cd "$EVAL_SANDBOX/.verdict/state/local-dump-a" && find . -type f | sort)" = "$(cd "$EVAL_SANDBOX/.verdict/state/local-dump-b" && find . -type f | sort)" ]; then
   good "with-flag bundle holds exactly the normal fetch file set"
 else
-  bad "bundle file sets differ: $(cd "$EVAL_SANDBOX/.review" && diff <(cd local-dump-a && find . -type f | sort) <(cd local-dump-b && find . -type f | sort) | head -c 300)"
+  bad "bundle file sets differ: $(cd "$EVAL_SANDBOX/.verdict" && diff <(cd local-dump-a && find . -type f | sort) <(cd local-dump-b && find . -type f | sort) | head -c 300)"
 fi
-if cmp -s "$EVAL_SANDBOX/.review/local-dump-a/full.diff" "$EVAL_SANDBOX/.review/local-dump-b/full.diff"; then
+if cmp -s "$EVAL_SANDBOX/.verdict/state/local-dump-a/full.diff" "$EVAL_SANDBOX/.verdict/state/local-dump-b/full.diff"; then
   good "diff bytes identical with and without the flag"
 else
   bad "full.diff differs between flagged and plain fetch"
 fi
-if find "$EVAL_SANDBOX/.review/local-dump-a" -iname '*prompt*' | matches .; then
+if find "$EVAL_SANDBOX/.verdict/state/local-dump-a" -iname '*prompt*' | matches .; then
   bad "dump left prompt-named files in the store"
 else
   good "no prompt-named files in the store"
@@ -174,7 +175,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "fetch --show-prompts exits $EVAL_STATUS"
 fi
-dump_expected ".review/99" "$EVAL_SANDBOX/expected-99.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected ".verdict/state/99" "$EVAL_SANDBOX/expected-99.txt" "$(dump_nonce "$EVAL_OUT")"
 if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/expected-99.txt"; then
   good "PR-path dump equals the fenced assembly"
 else
@@ -193,7 +194,7 @@ if [ "$calls_flagged" = "$calls_plain" ] && [ "$calls_flagged" -gt 0 ]; then
 else
   bad "gh call counts differ (flagged $calls_flagged, plain $calls_plain)"
 fi
-if [ "$(cd "$EVAL_SANDBOX/.review/99" && find . -type f | sort)" = "$(cd "$EVAL_SANDBOX/.review/98" && find . -type f | sort)" ]; then
+if [ "$(cd "$EVAL_SANDBOX/.verdict/state/99" && find . -type f | sort)" = "$(cd "$EVAL_SANDBOX/.verdict/state/98" && find . -type f | sort)" ]; then
   good "PR-path bundles hold identical file sets"
 else
   bad "PR-path bundle file sets differ"
@@ -206,7 +207,7 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$(stdout_docs)" = "1" ]; then
 else
   bad "json dump exits $EVAL_STATUS with $(stdout_docs) docs"
 fi
-dump_expected ".review/local-dump-j" "$EVAL_SANDBOX/expected-j.txt" "$(dump_nonce "$EVAL_OUT")"
+dump_expected ".verdict/state/local-dump-j" "$EVAL_SANDBOX/expected-j.txt" "$(dump_nonce "$EVAL_OUT")"
 if jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | cmp -s - "$EVAL_SANDBOX/expected-j.txt"; then
   good "data.prompt_dump equals the fenced assembly"
 else
@@ -277,7 +278,7 @@ eval_write_findings "$PR" <<'EOF'
 EOF
 jq -n --arg h "$HEAD_A" \
   '{schema_version:"1",review:{id:1},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"No new attack surface."}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4301.md"
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(sed -n '4p' "$EVAL_SANDBOX/out-4301.md")" = "> Confidence: 4/5 · Safety: No new attack surface." ]; then
@@ -300,15 +301,15 @@ PR=4302
 eval_mk_bundle "$PR"
 jq --arg h "$HEAD_A" '.headRefOid = $h
   | .files = ([range(1;10)] | map({path: ("f\(.).txt"), additions: 1, deletions: 0}))
-  | .additions = 9 | .deletions = 0' "$EVAL_SANDBOX/.review/$PR/PR.json" \
-  > "$EVAL_SANDBOX/.review/$PR/PR.json.new"
-mv "$EVAL_SANDBOX/.review/$PR/PR.json.new" "$EVAL_SANDBOX/.review/$PR/PR.json"
+  | .additions = 9 | .deletions = 0' "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" \
+  > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new"
+mv "$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json"
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"f1.txt","side":"RIGHT","line":1,"anchored":true,"body":"Fixed already.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"informational","sig":"2222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]}]
 EOF
 jq -n --arg h "$HEAD_A" \
   '{schema_version:"1",review:{id:2},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:5,security_summary:"None."}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4302.md"
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "^## What we checked$" "$EVAL_SANDBOX/out-4302.md"; then
   good "clean report carries a What we checked section"

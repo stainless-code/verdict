@@ -15,13 +15,13 @@ unset REVIEW_MODEL || true
 
 VER="$(jq -r .version "$EVAL_ROOT/package.json")"
 
-OV="$EVAL_SANDBOX/.review/overrides"
+OV="$EVAL_SANDBOX/.verdict/overrides"
 ov_rm() { rm -rf "$OV"; }
 
 mk_full_bundle() { # $1 = pr; 4 files, priced spend, posted link, one open finding
   local pr="$1" dir=""
-  dir="$EVAL_SANDBOX/.review/$pr"
-  mkdir -p "$dir"
+  eval_mk_bundle "$pr"
+  dir="$EVAL_SANDBOX/.verdict/state/$pr"
   cat > "$dir/PR.json" <<'EOF'
 {"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"a.txt","additions":10,"deletions":2},{"path":"b.txt","additions":3,"deletions":0},{"path":"c.txt","additions":0,"deletions":5},{"path":"d.txt","additions":1,"deletions":1}]}
 EOF
@@ -40,11 +40,12 @@ EOF
     '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
     > "$dir/post.json"
   printf '{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}' > "$dir/review.json"
+  eval_fixture_rebase "$pr"
 }
 
 mk_clean_bundle() { # $1 = pr; same stores but no open findings (preamble renders)
   mk_full_bundle "$1"
-  printf '[]' > "$EVAL_SANDBOX/.review/$1/findings.json"
+  printf '[]' > "$EVAL_SANDBOX/.verdict/state/$1/findings.json"
 }
 
 check_refuse() { # $1 = label, $2 = want code, $3 = want invariant
@@ -58,7 +59,15 @@ check_refuse() { # $1 = label, $2 = want code, $3 = want invariant
   fi
 }
 
+remint() { # $1 = pr — re-fetch so the overrides on disk are the pinned ones
+  case "$1" in
+    4801) mk_full_bundle "$1" ;;
+    4802) mk_clean_bundle "$1" ;;
+  esac
+}
+
 post_refuse() { # $1 = label, $2 = pr, $3 = want code, $4 = want invariant
+  remint "$2"
   run_review post acme/app "$2" --dry-run --json
   if [ "$EVAL_STATUS" -ne 0 ] \
     && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "$3" ] \
@@ -232,6 +241,7 @@ ov_rm
 
 mkdir -p "$OV"
 printf 'We follow the report-machine comment convention documented in the manual.\n' > "$OV/preamble.md"
+remint 4801
 run_review post acme/app 4801 --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "prose mentioning report-machine without markup passes"
@@ -277,7 +287,7 @@ else
 fi
 rm -rf "$EVAL_SANDBOX/.git" "$EVAL_SANDBOX/ct-probe.txt"
 
-if grep -Fq '.review/overrides/' "$EVAL_ROOT/docs/manual.md" \
+if grep -Fq '.verdict/overrides/' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq 'preamble.md' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq 'footer-order.md' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq 'walkthrough-threshold.md' "$EVAL_ROOT/docs/manual.md" \
@@ -304,6 +314,6 @@ unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_MODEL || true
-rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/.review/overrides"
+rm -rf "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/.verdict/overrides"
 
 eval_end

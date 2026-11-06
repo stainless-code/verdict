@@ -24,7 +24,7 @@ type apiFake struct {
 	calls  []string
 }
 
-func (f *apiFake) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (f *apiFake) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if cmd.Argv[0] == "git" {
 		return core.Result{Stderr: "fatal: not a git repository", ExitCode: 128}, errors.New("exit status 128")
 	}
@@ -71,7 +71,7 @@ func TestResolveContentsFallback(t *testing.T) {
 			t.Errorf("%s = %q (ok=%v), want %q", path, got, ok, content)
 		}
 	}
-	if snap.Has(".review/learnings.md") {
+	if snap.Has(".verdict/overrides/preamble.md") {
 		t.Error("a 404 control became used")
 	}
 }
@@ -94,15 +94,20 @@ func contentsFallback(t *testing.T) (*apiFake, *Snapshot, map[string]string) {
 	t.Helper()
 	long := strings.Repeat("a rule that wraps the base64 lines\n", 20)
 	f := &apiFake{bodies: map[string]string{
-		".review/panel":    fileBody("base-model\n"),
-		".review/kb.jsonl": fileBody(long),
-		".review/budget":   fileBody(""),
+		".verdict/config.json":  fileBody(`{"schema_version":"1"}`),
+		".verdict/kb.jsonl":     fileBody(long),
+		".verdict/learnings.md": fileBody("notes\n"),
 	}}
 	snap, ref := apiResolve(t, f, "acme/app")
 	if ref != nil {
 		t.Fatalf("Resolve: %v", ref)
 	}
-	return f, snap, map[string]string{".review/panel": "base-model\n", ".review/kb.jsonl": long, ".review/budget": ""}
+	want := map[string]string{
+		".verdict/config.json":  `{"schema_version":"1"}`,
+		".verdict/kb.jsonl":     long,
+		".verdict/learnings.md": "notes\n",
+	}
+	return f, snap, want
 }
 
 // TestResolveContentsRefusals proves the caps, non-file shapes, bad payloads,
@@ -119,15 +124,15 @@ func TestResolveContentsRefusals(t *testing.T) {
 		bodies, fail map[string]string
 		repo         string
 	}{
-		{"per-file cap on size before decode", CodeTooLarge, map[string]string{".review/panel": over}, nil, "acme/app"},
+		{"per-file cap on size before decode", CodeTooLarge, map[string]string{".verdict/config.json": over}, nil, "acme/app"},
 		{"total cap", CodeTooLarge, totalOver, nil, "acme/app"},
-		{"directory answers an array", CodeUnavailable, map[string]string{".review/panel": `[{"type":"file"}]`}, nil, "acme/app"},
-		{"symlink type", CodeUnavailable, map[string]string{".review/panel": `{"type":"symlink","size":3}`}, nil, "acme/app"},
-		{"undecodable base64", CodeUnavailable, map[string]string{".review/panel": `{"type":"file","encoding":"base64","size":3,"content":"@@@"}`}, nil, "acme/app"},
-		{"size mismatch", CodeUnavailable, map[string]string{".review/panel": `{"type":"file","encoding":"base64","size":9,"content":"YWJj"}`}, nil, "acme/app"},
-		{"non-base64 encoding", CodeUnavailable, map[string]string{".review/panel": `{"type":"file","encoding":"none","size":3,"content":""}`}, nil, "acme/app"},
-		{"server error is not absence", CodeUnavailable, nil, map[string]string{".review/budget": "gh: Server Error (HTTP 500)"}, "acme/app"},
-		{"unknown ref is not absence", CodeUnavailable, nil, map[string]string{".review/panel": "gh: No commit found for the ref (HTTP 422)"}, "acme/app"},
+		{"directory answers an array", CodeUnavailable, map[string]string{".verdict/config.json": `[{"type":"file"}]`}, nil, "acme/app"},
+		{"symlink type", CodeUnavailable, map[string]string{".verdict/config.json": `{"type":"symlink","size":3}`}, nil, "acme/app"},
+		{"undecodable base64", CodeUnavailable, map[string]string{".verdict/config.json": `{"type":"file","encoding":"base64","size":3,"content":"@@@"}`}, nil, "acme/app"},
+		{"size mismatch", CodeUnavailable, map[string]string{".verdict/config.json": `{"type":"file","encoding":"base64","size":9,"content":"YWJj"}`}, nil, "acme/app"},
+		{"non-base64 encoding", CodeUnavailable, map[string]string{".verdict/config.json": `{"type":"file","encoding":"none","size":3,"content":""}`}, nil, "acme/app"},
+		{"server error is not absence", CodeUnavailable, nil, map[string]string{".verdict/learnings.md": "gh: Server Error (HTTP 500)"}, "acme/app"},
+		{"unknown ref is not absence", CodeUnavailable, nil, map[string]string{".verdict/config.json": "gh: No commit found for the ref (HTTP 422)"}, "acme/app"},
 		{"unsafe repo slug", CodeUnavailable, nil, nil, "acme/../app"},
 	} {
 		f := &apiFake{bodies: tc.bodies, fail: tc.fail}
@@ -136,7 +141,7 @@ func TestResolveContentsRefusals(t *testing.T) {
 			t.Errorf("%s: snap = %+v, ref = %+v, want %s", tc.name, snap, ref, tc.code)
 		}
 	}
-	f := &apiFake{bodies: map[string]string{".review/panel": fileBody("x")}}
+	f := &apiFake{bodies: map[string]string{".verdict/config.json": fileBody("x")}}
 	if _, ref := apiResolve(t, f, ""); ref == nil || ref.Code != CodeUnavailable || len(f.calls) != 0 {
 		t.Errorf("no repo: ref = %+v, gh calls = %q", ref, f.calls)
 	}
@@ -146,7 +151,7 @@ func TestResolveContentsRefusals(t *testing.T) {
 // no controls.json.
 func TestResolveContentsLeavesNothingOnRefusal(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "12")
-	f := &apiFake{fail: map[string]string{".review/panel": "gh: boom (HTTP 500)"}}
+	f := &apiFake{fail: map[string]string{".verdict/config.json": "gh: boom (HTTP 500)"}}
 	if _, ref := Resolve(t.Context(), f, &Request{BundleDir: dir, Repo: "acme/app", BaseSHA: apiBase}); ref == nil {
 		t.Fatal("want a refusal")
 	}

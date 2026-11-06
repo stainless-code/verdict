@@ -30,14 +30,14 @@ func kitchenSink(t *testing.T, dir, pr string) {
 	t.Helper()
 	mkPRBundle(t, dir, pr)
 	writeFiles(t, dir, map[string]string{
-		".review/" + pr + "/findings.json":            mixedFindings(),
-		".review/" + pr + "/panel":                    "alice\nbob\n",
-		".review/" + pr + "/patch.json":               `{"sig":"patch1","note":"hello"}`,
-		".review/" + pr + "/post.json":                postDoc(headA, 99),
-		".review/" + pr + "/cost.json":                costTop(),
-		".review/" + pr + "/budget.json":              budgetDoc(),
-		".review/" + pr + "/chunks/manifest.json":     `{"chunks":[{"name":"chunk-a"}]}`,
-		".review/" + pr + "/chunks/chunk-a.cost.json": costChunk(),
+		".verdict/state/" + pr + "/findings.json":            mixedFindings(),
+		".verdict/state/" + pr + "/panel":                    "alice\nbob\n",
+		".verdict/state/" + pr + "/patch.json":               `{"sig":"patch1","note":"hello"}`,
+		".verdict/state/" + pr + "/post.json":                postDoc(headA, 99),
+		".verdict/state/" + pr + "/cost.json":                costTop(),
+		".verdict/state/" + pr + "/budget.json":              budgetDoc(),
+		".verdict/state/" + pr + "/chunks/manifest.json":     `{"chunks":[{"name":"chunk-a"}]}`,
+		".verdict/state/" + pr + "/chunks/chunk-a.cost.json": costChunk(),
 	})
 }
 
@@ -53,7 +53,7 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/findings.json": mixedFindings(),
 		})
 	}
 
@@ -73,9 +73,9 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": mixedFindings(),
-			".review/5101/cost.json":     costTop(),
-			".review/5101/budget.json":   budgetDoc(),
+			".verdict/state/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/cost.json":     costTop(),
+			".verdict/state/5101/budget.json":   budgetDoc(),
 		})
 	}
 	goArgs = splitRepo("report", "5101", "--cost")
@@ -88,8 +88,8 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": mixedFindings(),
-			".review/5101/cost.json":     `{broken`,
+			".verdict/state/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/cost.json":     `{broken`,
 		})
 	}
 	goArgs = splitRepo("report", "5101", "--cost", "--json")
@@ -109,7 +109,7 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": findingsDoc(
+			".verdict/state/5101/findings.json": findingsDoc(
 				finding(sigCrit, "open", "critical", "walked", "inline")),
 		})
 	}
@@ -123,9 +123,9 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5102")
 		writeFiles(t, dir, map[string]string{
-			".review/5102/findings.json": findingsDoc(
+			".verdict/state/5102/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
-			".review/5102/post.json": postDoc(headA, 7),
+			".verdict/state/5102/post.json": postDoc(headA, 7),
 		})
 	}
 	goArgs = splitRepo("report", "5102",
@@ -136,9 +136,9 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5102")
 		writeFiles(t, dir, map[string]string{
-			".review/5102/findings.json": findingsDoc(
+			".verdict/state/5102/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
-			".review/5102/post.json": postDoc(headC, 7),
+			".verdict/state/5102/post.json": postDoc(headC, 7),
 		})
 	}
 	goArgs = splitRepo("report", "5102", "--completeness")
@@ -148,7 +148,7 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5102")
 		writeFiles(t, dir, map[string]string{
-			".review/5102/findings.json": findingsDoc(
+			".verdict/state/5102/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
 		})
 	}
@@ -173,7 +173,7 @@ func TestReportGolden(t *testing.T) {
 		t.Helper()
 		mkLocalBundle(t, dir, "local-work")
 		writeFiles(t, dir, map[string]string{
-			".review/local-work/findings.json": findingsDoc(
+			".verdict/state/local-work/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
 		})
 	}
@@ -218,7 +218,7 @@ func TestReportRefusals(t *testing.T) {
 			mkPRBundle(t, dir, "5101")
 			if doc != "" {
 				writeFiles(t, dir, map[string]string{
-					".review/5101/findings.json": doc,
+					".verdict/state/5101/findings.json": doc,
 				})
 			}
 		}
@@ -230,8 +230,8 @@ func TestReportRefusals(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": mixedFindings(),
-			".review/5101/patch.json":    `{broken`,
+			".verdict/state/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/patch.json":    `{broken`,
 		})
 	}
 	goArgs := splitRepo("report", "5101", "--json")
@@ -242,7 +242,7 @@ func TestReportRefusals(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": `[42]`,
+			".verdict/state/5101/findings.json": `[42]`,
 		})
 	}
 	goArgs = splitRepo("report", "5101")

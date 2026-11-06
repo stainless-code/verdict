@@ -18,7 +18,7 @@ unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVI
 unset REVIEW_PANEL REVIEW_MODEL REVIEW_BUDGET_USD || true
 
 bundle_checksum() {
-  ( cd "$EVAL_SANDBOX/.review/$1" && find . -type f -print | LC_ALL=C sort | xargs shasum )
+  ( cd "$EVAL_SANDBOX/.verdict/state/$1" && find . -type f -print | LC_ALL=C sort | xargs shasum )
 }
 
 check_fix() { # $1 = label, $2 = golden file
@@ -30,11 +30,11 @@ check_fix() { # $1 = label, $2 = golden file
   fi
 }
 
-mkdir -p "$EVAL_SANDBOX/.review/5201"
-cat > "$EVAL_SANDBOX/.review/5201/findings.json" <<'EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/5201"
+cat > "$EVAL_SANDBOX/.verdict/state/5201/findings.json" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Consider clarifying this line.","suggestion":"Use a clearer name.","brief":{"sites":[{"path":"notes.txt","line":2},{"path":"gone/file.go"}],"outcome":"Reject duplicate deliveries before anything is enqueued.","approach":"Track delivery ids in a bounded LRU checked at the top of the handler.","questions":["Should the dedupe window be 24 hours or 7 days?"]},"inBounds":true,"rigor":"pointed","severity":"important","sig":"c111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],"related_files":["notes.txt","src/other.go"]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/5201/patch.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/5201/patch.json" <<'EOF'
 {"sig":"c1111111","verifyCmd":"go test ./...","resultHead":"aaaaaaa","baseHead":"bbbbbbb"}
 EOF
 f1_before="$(bundle_checksum 5201)"
@@ -57,13 +57,13 @@ else
   bad "fix brief: $(jq -c '.data.fix.brief // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 check_fix "F1" "$GOLDENS/full.fix.golden"
-if [ "$(jq -c '.data.item' <"$EVAL_OUT" 2>/dev/null)" = "$(jq -c '.[0]' "$EVAL_SANDBOX/.review/5201/findings.json")" ]; then
+if [ "$(jq -c '.data.item' <"$EVAL_OUT" 2>/dev/null)" = "$(jq -c '.[0]' "$EVAL_SANDBOX/.verdict/state/5201/findings.json")" ]; then
   good "data.item is the stored record byte-for-byte"
 else
   bad "data.item drifted from the stored record"
 fi
 run_review show acme/app 5201 --sig c1111111
-jq '.' "$EVAL_SANDBOX/.review/5201/findings.json" | jq '.[0]' >"$EVAL_SANDBOX/text-expected.json"
+jq '.' "$EVAL_SANDBOX/.verdict/state/5201/findings.json" | jq '.[0]' >"$EVAL_SANDBOX/text-expected.json"
 if [ "$EVAL_STATUS" -eq 0 ] && diff -q "$EVAL_SANDBOX/text-expected.json" "$EVAL_OUT" >/dev/null 2>&1; then
   good "bare show keeps printing the record via the unchanged text path"
 else
@@ -75,8 +75,8 @@ else
   bad "F1 bundle changed during a read"
 fi
 
-mkdir -p "$EVAL_SANDBOX/.review/5202"
-cat > "$EVAL_SANDBOX/.review/5202/findings.json" <<'EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/5202"
+cat > "$EVAL_SANDBOX/.verdict/state/5202/findings.json" <<'EOF'
 [{"kind":"section","heading":"Scope note","anchored":"body","body":"Explains the scope.","suggestion":null,"inBounds":true,"rigor":"walked","severity":null,"sig":"d222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"deferred","rationale":"","history":[],"files":["docs/scope.md"]}]
 EOF
 run_review show acme/app 5202 --sig d2222222 --json
@@ -90,14 +90,14 @@ else
 fi
 check_fix "F2" "$GOLDENS/null-suggestion.fix.golden"
 
-mkdir -p "$EVAL_SANDBOX/.review/5203"
-cat > "$EVAL_SANDBOX/.review/5203/findings.json" <<'EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/5203"
+cat > "$EVAL_SANDBOX/.verdict/state/5203/findings.json" <<'EOF'
 [{"kind":"inline","path":"src/a.go","side":"RIGHT","line":10,"anchored":true,"body":"Check the error path.","suggestion":null,"inBounds":true,"rigor":"ran","severity":"informational","sig":"e333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/5203/verification.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/5203/verification.json" <<'EOF'
 [{"sig":"e3333333","verdict":"VERIFIED","verifyCmd":"go test ./internal/a","resultHead":"eeeeeee"}]
 EOF
-cat > "$EVAL_SANDBOX/.review/5203/patch.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/5203/patch.json" <<'EOF'
 {"sig":"ffffffff","verifyCmd":"go test ./different","resultHead":"fffffff"}
 EOF
 run_review show acme/app 5203 --sig e3333333 --json
@@ -110,8 +110,8 @@ else
 fi
 check_fix "F3" "$GOLDENS/verify-hint.fix.golden"
 
-mkdir -p "$EVAL_SANDBOX/.review/5204"
-cat > "$EVAL_SANDBOX/.review/5204/findings.json" <<'EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/5204"
+cat > "$EVAL_SANDBOX/.verdict/state/5204/findings.json" <<'EOF'
 [{"kind":"inline","path":"a.go","side":"RIGHT","line":1,"anchored":true,"body":"One.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},{"kind":"inline","path":"b.go","side":"RIGHT","line":1,"anchored":true,"body":"Two.","suggestion":null,"inBounds":true,"rigor":"said","severity":"informational","sig":"a222222222222222222222222222222222222222","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 run_review show acme/app 5204 --sig deadbeef --json

@@ -43,7 +43,7 @@ type Runner struct {
 // Run starts cmd.Argv with separated, bounded stream capture, returning the
 // wait status. A completed process returns Result with a nil error whatever
 // its exit code; only a spawn failure or an over-cap stdout returns an error.
-func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
 	}
@@ -59,6 +59,7 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	proc.Stderr = stderr
 	proc.Stdin = commandStdin(cmd, r.Stdin)
 	proc.Env = cmd.Env
+	proc.Dir = cmd.Dir
 	proc.WaitDelay = waitDelay
 	setGroup(proc)
 	proc.Cancel = func() error { return killGroup(proc) }
@@ -86,7 +87,7 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 
 // commandStdin is the command's own stdin when it sets one, else the
 // runner's fallback (nil inherits this process's stdin, like os/exec).
-func commandStdin(cmd core.Command, fallback io.Reader) io.Reader {
+func commandStdin(cmd *core.Command, fallback io.Reader) io.Reader {
 	if cmd.Stdin != nil {
 		return cmd.Stdin
 	}
@@ -118,7 +119,7 @@ func (r Runner) precheck(bin string) error {
 	return nil
 }
 
-func (r Runner) captureCap(cmd core.Command) int {
+func (r Runner) captureCap(cmd *core.Command) int {
 	dflt := r.OutputCap
 	if dflt <= 0 {
 		dflt = ReadOutputCap
@@ -145,7 +146,7 @@ func Gh(ctx context.Context, cmdr core.Commander, args ...string) (stdout, stder
 	if cmdr == nil {
 		return "", "", false
 	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: append([]string{ghBin}, args...)})
+	res, err := cmdr.Run(ctx, &core.Command{Argv: append([]string{ghBin}, args...)})
 	if err != nil || res.ExitCode != 0 {
 		return res.Stdout, res.Stderr, false
 	}

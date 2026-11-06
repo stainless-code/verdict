@@ -94,8 +94,8 @@ set +e
 (cd "$TARGET" && HOME="$HOME" PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset standard --yes </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR")
 init_status=$?
 set -e
-if [ "$init_status" -eq 0 ] && [ -f "$TARGET/.review/budget" ] && [ ! -e "$PKG/.review" ]; then
-  good "init writes .review/ into the cwd target repo, nothing beside the tool"
+if [ "$init_status" -eq 0 ] && [ -f "$TARGET/.verdict/config.json" ] && [ ! -e "$PKG/.verdict" ]; then
+  good "init writes .verdict/ into the cwd target repo, nothing beside the tool"
 else
   bad "init cwd ownership wrong (exit $init_status)"
 fi

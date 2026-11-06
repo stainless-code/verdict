@@ -10,7 +10,7 @@ SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 SHA_F="ffffffffffffffffffffffffffffffffffffffff"
 
 PR=4521
-dir="$EVAL_SANDBOX/.review/$PR"
+dir="$EVAL_SANDBOX/.verdict/state/$PR"
 mkdir -p "$dir"
 cat > "$dir/PR.json" <<EOF
 {"state":"OPEN","headRefOid":"$SHA_A","baseRefOid":"$SHA_B","author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/$PR","files":[{"path":"notes.txt","additions":1,"deletions":1}]}
@@ -52,8 +52,8 @@ fi
 
 PR=4523
 eval_mk_bundle "$PR"
-cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
-{"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$SHA_B","head_sha":"$SHA_B","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[{"path":"notes.txt","status":"modified","additions":1,"deletions":1}],"additions":1,"deletions":1}
+cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
+{"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$EVAL_FIXTURE_BASE","head_sha":"$SHA_B","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[{"path":"notes.txt","status":"modified","additions":1,"deletions":1}],"additions":1,"deletions":1}
 EOF
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed","approved":true,"comments":[{"path":"notes.txt","line":2,"body":"Off by one on the retry count."}]}
@@ -70,22 +70,11 @@ assert_file_grep "provider report renders plain path:line" "$EVAL_SANDBOX/out-45
 assert_file_nogrep "provider report carries no blob URLs" "$EVAL_SANDBOX/out-4523.md" 'blob/' "-F"
 
 PR="local-t2"
-dir="$EVAL_SANDBOX/.review/$PR"
-mkdir -p "$dir"
-cat > "$dir/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
-cat > "$dir/source.json" <<EOF
-{"schema_version":"1","kind":"worktree","head_sha":"$SHA_A","base_sha":"$SHA_B","head_ref":"HEAD","dirty":false}
-EOF
+eval_mk_bundle "$PR"
+dir="$EVAL_SANDBOX/.verdict/state/$PR"
+jq --arg h "$SHA_A" '.head_sha = $h | .head_ref = "HEAD" | .dirty = false' \
+  "$dir/source.json" >"$dir/source.json.tmp"
+mv "$dir/source.json.tmp" "$dir/source.json"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed","approved":true,"comments":[{"path":"notes.txt","line":2,"body":"Off by one on the retry count."}]}
 EOF

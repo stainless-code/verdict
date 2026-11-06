@@ -15,11 +15,11 @@ into your repo as `.github/workflows/verdict-review.yml`.
 2. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast
    when the PR is not reviewable (failing CI, open threads, draft), saving
    agent spend before the expensive steps.
-3. **Fetch** — `verdict fetch <repo> <pr>` builds `.review/<pr>/` (PR record,
+3. **Fetch** — `verdict fetch <repo> <pr>` builds `.verdict/state/<pr>/` (PR record,
    `full.diff`, `toc.txt`, `roles.txt`).
 4. **Agent review** — any agent reads `full.diff` via `toc.txt` (plus
    `PR.json`, `roles.txt`, `SKILL.md` + `prompts/`) and writes exactly one
-   `.review/<pr>/review.json` (`schema_version: 1`, `body`, `approved`,
+   `.verdict/state/<pr>/review.json` (`schema_version: 1`, `body`, `approved`,
    `comments[]`, optional `resolved[]`/`triage[]`).
 5. **Post** — `verdict post <repo> <pr>` validates anchors, merges
    `findings.json`, and submits exactly one review.
@@ -74,7 +74,7 @@ required side whatever platform it runs on.
 | A model key (e.g. `ANTHROPIC_API_KEY`)   | your agent's key, in your repo's secrets  |
 
 `fetch-depth: 0` on checkout keeps the PR base commit in the clone: verdict
-reads the review controls (`.review/kb.jsonl`, `panel`, `budget`, overrides,
+reads the review controls (`.verdict/kb.jsonl`, `panel`, `budget`, overrides,
 ...) from that commit with `git show <base>:<path>`, so a PR cannot edit the
 rules it is judged by. When the checkout cannot supply the base (a shallow
 checkout, or no checkout at all) a GitHub `fetch` reads the same base commit

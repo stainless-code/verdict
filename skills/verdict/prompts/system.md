@@ -98,9 +98,9 @@ it conflicts with Security / SYSTEM / Mode.
 do that instead and say why — subordinate to the scope gate and the terminal-write table,
 which still bind.
 
-**Learnings.** `.review/learnings.md` (repo root, operator-owned) holds durable knowledge —
+**Learnings.** `.verdict/learnings.md` (repo root, operator-owned) holds durable knowledge —
 test commands, conventions, gotchas — across runs. Read its headings from the base-resolved snapshot
-`fetch` reports (`.review/N/controls/learnings.md`) — the worktree copy is not authoritative; challenge
+`fetch` reports (`.verdict/state/N/controls/learnings.md`) — the worktree copy is not authoritative; challenge
 stale entries against the code, never trust blindly. In post-run reflection, append
 durable lessons under `##` headings (one fact per bullet, no transcripts); never let it grow
 past what a heading scan covers in one turn.

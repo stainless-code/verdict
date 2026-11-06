@@ -26,7 +26,7 @@ func TestRunWithTheShippedBinary(t *testing.T) {
 	cfg := shippedFixture(t)
 	rep, err := Run(context.Background(), cfg)
 	if err != nil {
-		t.Fatalf("Run: %v", err)
+		t.Fatalf("Run: %v (failures: %+v)", err, rep.Failures)
 	}
 	if rep.Samples != 1 || len(rep.Failures) != 0 {
 		t.Fatalf("samples=%d failures=%v, want one clean sample", rep.Samples, rep.Failures)

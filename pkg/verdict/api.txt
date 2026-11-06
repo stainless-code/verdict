@@ -8,7 +8,7 @@ published JSON Schemas (schema_version "1"): the core owns every behavior,
 this package only converts typed requests and responses.
 
 Bundle files resolve from the process working directory, exactly like the CLI:
-call from (or change into) the checkout that carries .review/. Options.Dir
+call from (or change into) the checkout that carries .verdict/. Options.Dir
 anchors tool-version and provenance lookups to that checkout. Methods are
 context-first, never call os.Exit, and never touch process stdio: human lines
 and warnings flow through Options.Progress.
@@ -101,10 +101,10 @@ func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse,
     Doctor preflights the harness (auth, git, storage) and reports health.
 
 func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error)
-    Fetch fetches a pull request into .review/<pr>.
+    Fetch fetches a pull request into .verdict/state/<pr>.
 
 func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Result, error)
-    FetchLocal fetches a local git diff into .review/local-<name>.
+    FetchLocal fetches a local git diff into .verdict/state/local-<name>.
 
 func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error)
     Fix runs one bounded fix pass over an inline finding (or reports completion
@@ -118,7 +118,7 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
     It never posts, merges, or writes a store.
 
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
-    Init scaffolds .review control files from a style preset.
+    Init scaffolds .verdict control files from a style preset.
 
 func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
     Learn reads or updates the local structured knowledge base.
@@ -143,7 +143,8 @@ func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, err
 
 func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, error)
     Threads re-reads one provider's review conversations and rewrites only
-    .review/<pr>/threads.json. Human progress streams through Options.Progress.
+    .verdict/state/<pr>/threads.json. Human progress streams through the
+    Options.Progress observer.
 
 func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, error)
     Trend rolls up review outcomes across fetched bundles.
@@ -157,9 +158,12 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 type Command struct {
 	Argv  []string
 	Stdin io.Reader
+	Dir   string
 	Env   []string
 }
-    Command is one spawned process: argv, stdin, and environment.
+    Command is one spawned process: argv, stdin, environment, and the working
+    directory it must run in. Dir is empty when the child inherits the caller's
+    working directory; deep validation sets it to the canonical reviewed root.
 
 type CommandResult struct {
 	Stdout   string
@@ -171,7 +175,7 @@ type CommandResult struct {
     CommandResult is one completed process: captured streams plus wait status.
 
 type Commander interface {
-	Run(ctx context.Context, cmd Command) (CommandResult, error)
+	Run(ctx context.Context, cmd *Command) (CommandResult, error)
 }
     Commander runs one process to completion. The production client shells out
     to the real gh/git; tests inject a scripted Commander.
@@ -262,7 +266,7 @@ type InitRequest struct {
 	Preset string
 	Yes    bool
 }
-    InitRequest scaffolds .review control files from a style preset.
+    InitRequest scaffolds .verdict control files from a style preset.
     Non-interactive only: pass Yes to confirm.
 
 type InitResponse struct {
@@ -282,7 +286,7 @@ type LearnRequest struct {
 	Status                                                      bool
 }
     LearnRequest reads or updates the local knowledge base. It takes no repo/PR
-    positionals; the base lives under .review/.
+    positionals; the base lives under .verdict/.
 
 type MissingToolError struct {
 	Tool string
@@ -308,7 +312,7 @@ type NextResponse struct {
     NextResponse carries the top actionable finding for the bundle.
 
 type Options struct {
-	// Dir is the checkout carrying .review/. It anchors tool-version and
+	// Dir is the checkout carrying .verdict/. It anchors tool-version and
 	// provenance lookups; bundle files still resolve from the process
 	// working directory, like the CLI.
 	Dir string
@@ -478,10 +482,13 @@ type TriageResponse struct {
 
 type VerifyRequest struct {
 	Invocation
-	Timeout string   // raw --timeout value (seconds); bad values refuse
-	Env     []string // ordered child environment snapshot
+	Timeout string
+	Group   string
+	Command string
+	Env     []string
 }
-    VerifyRequest runs the recorded verifyCmd under the watchdog.
+    VerifyRequest runs the recorded verifyCmd under the watchdog, or one deep
+    plan group's explicit command when Group and Command are both set.
 
 type VerifyResponse struct {
 	Result
@@ -489,6 +496,9 @@ type VerifyResponse struct {
 	PatchDir string
 	TimedOut bool
 	Tail     string
+	Group    string // deep validation: the group the receipt certifies
+	Head     string // deep validation: the head the command ran on
+	Receipt  string // deep validation: the recorded receipt path
 }
     VerifyResponse carries the verify outcome and the recorded proof.
 

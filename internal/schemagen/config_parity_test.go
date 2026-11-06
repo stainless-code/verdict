@@ -100,6 +100,8 @@ func TestSchemaParityStructural(t *testing.T) {
 		{"default profile non-string", `{"schema_version":"1","default_profile":42}`, config.CodeBadConfig, "default_profile"},
 		{"scope profile non-string", `{"schema_version":"1","scopes":[{"name":"s","include":["a/**"],"profile":42}]}`, config.CodeBadScope, "profile"},
 		{"kb rate high", `{"schema_version":"1","defaults":{"kb_policy":{"max_fp_rate":2}}}`, config.CodeBadConfig, "max_fp_rate"},
+		{"scoped kb policy", `{"schema_version":"1","scopes":[{"name":"s","include":["a/**"],
+			"defaults":{"kb_policy":{"min_judged":5}}}]}`, config.CodeBadScope, "kb_policy"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -226,9 +228,10 @@ func assertClosedDef(t *testing.T, defs map[string]any, name string) {
 	}
 }
 
-// TestSchemaNullFree pins the no-widening rule: optional defaults carry no
-// null branch, so a present null refuses on both sides.
-func TestSchemaNullFree(t *testing.T) {
+// defaultsProperties walks the generated config schema down to the defaults
+// object's properties, failing when any step is missing or misshapen.
+func defaultsProperties(t *testing.T) map[string]any {
+	t.Helper()
 	doc, ok := paritySchema(t).(map[string]any)
 	if !ok {
 		t.Fatal("generated schema is not a JSON object")
@@ -245,6 +248,13 @@ func TestSchemaNullFree(t *testing.T) {
 	if !ok {
 		t.Fatal("defaults $def carries no properties")
 	}
+	return props
+}
+
+// TestSchemaNullFree pins the no-widening rule: optional defaults carry no
+// null branch, so a present null refuses on both sides.
+func TestSchemaNullFree(t *testing.T) {
+	props := defaultsProperties(t)
 	optional := []string{"panel", "budget_usd", "max_bytes", "chunk", "kb_policy", "effort", "display_min_severity", "post_min_severity"}
 	for _, key := range optional {
 		prop, ok := props[key].(map[string]any)

@@ -181,8 +181,21 @@ func (d *FetchData) Wire() *jq.Obj {
 	return o
 }
 
+// wireCosts renders the cost summary pair: the estimate whenever one exists (a
+// grouped run has one with no ordinary budget) and the ordinary budget only
+// when the run resolved one.
+func (d *FetchData) wireCosts(o *jq.Obj) {
+	if d.Estimate != nil {
+		o.Set("estimate", d.Estimate)
+	}
+	if d.Budget != nil {
+		o.Set("budget", d.Budget)
+	}
+}
+
 // wireTail renders the conditional tail: the incremental base on the fetch
-// verb only, the budget pair only when a budget is set, the cap and chunk
+// verb only, the estimate whenever one exists (a grouped run has one without an
+// ordinary budget) and the budget only when a budget set one, the cap and chunk
 // summaries only when armed, and the prompt dump last when staged.
 func (d *FetchData) wireTail(o *jq.Obj) {
 	if !d.Local {
@@ -192,10 +205,7 @@ func (d *FetchData) wireTail(o *jq.Obj) {
 		}
 		o.Set("incremental_base", base)
 	}
-	if d.Estimate != nil {
-		o.Set("estimate", d.Estimate)
-		o.Set("budget", d.Budget)
-	}
+	d.wireCosts(o)
 	if d.Cap != nil {
 		o.Set("cap", d.Cap)
 	}

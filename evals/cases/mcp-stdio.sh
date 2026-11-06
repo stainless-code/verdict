@@ -122,7 +122,7 @@ EOF
 run_mcp_input "$FRAMES"
 if [ "$EVAL_STATUS" -eq 0 ]; then good "success/refusal session exits 0"; else bad "exit $EVAL_STATUS (want 0)"; fi
 check_stdout_frames
-if jq -e 'select(.id == 2).result | (.isError == false) and (.content[0].type == "text") and ((.content[0].text | fromjson) == .structuredContent) and (.structuredContent.generated_at | type == "string") and (.structuredContent.dir == ".review/5101")' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result | (.isError == false) and (.content[0].type == "text") and ((.content[0].text | fromjson) == .structuredContent) and (.structuredContent.generated_at | type == "string") and (.structuredContent.dir == ".verdict/state/5101")' <"$MCP_OUT" >/dev/null; then
   good "report success returns the envelope data as text and structuredContent"
 else
   bad "report success shape drifted"
@@ -223,11 +223,10 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}
 EOF
 cat >"$FRAMES" <<EOF
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"false","reviewFile":".review/$PR/review.json","dryRun":true}}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"false","reviewFile":".verdict/state/$PR/review.json","dryRun":true}}}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"yes","dryRun":true}}}}
 EOF
 mark="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
-eval_seed_controls
 run_mcp_input "$FRAMES"
 if [ "$EVAL_STATUS" -eq 0 ]; then good "post dry-run session exits 0"; else bad "post dry-run exit $EVAL_STATUS"; fi
 check_stdout_frames
@@ -236,8 +235,8 @@ if jq -e 'select(.id == 1).result | (.isError == false) and ((.content[0].text |
 else
   bad "post dry-run result drifted: $(cat "$MCP_OUT")"
 fi
-if [ -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "post dry-run stages findings.dryrun.json and writes no post.json"
 else
   bad "post dry-run wrote the wrong artifacts"

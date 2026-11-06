@@ -15,7 +15,7 @@ exit: 0
     "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
-    "dir": ".review/local-kb",
+    "dir": ".verdict/state/local-kb",
     "anchors": {
       "kept": 0,
       "moved": 0
@@ -24,7 +24,7 @@ exit: 0
       "open": 0,
       "deferred": 0,
       "addressed": 1,
-      "file": ".review/local-kb/findings.json"
+      "file": ".verdict/state/local-kb/findings.json"
     },
     "confidence": null,
     "security_summary": null,
@@ -46,15 +46,15 @@ warn: verification claim deadbeef ignored (not in store)
 warn: triage claim deadbeef ignored (not in store)
 warn: triage claim without rationale, kept prior status: bfd750df
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-» findings: 1 sigs -> .review/local-kb/findings.json
+» findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  addressed  true  notes.txt
-recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/kb-joins.jsonl ---
+--- file C/.verdict/kb-joins.jsonl ---
 {"at":"0000-00-00T00:00:00Z","sig":"bfd750dfd6a62efb7a91db702664395618b7f845","rule":"rec-rule","outcome":"addressed","actor":"revalidator","verb":"record","bundle":"local-kb","review_id":null}
---- file C/.review/kb.jsonl ---
+--- file C/.verdict/kb.jsonl ---
 {"id":"rec-rule","status":"active","hits":1,"false_hits":0,"judged":1}
---- file C/.review/local-kb/findings.json ---
+--- file C/.verdict/state/local-kb/findings.json ---
 [
   {
     "kind": "inline",
@@ -121,7 +121,7 @@ recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json
     "triagedBy": "agent"
   }
 ]
---- file C/.review/local-kb/record.json ---
+--- file C/.verdict/state/local-kb/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -133,6 +133,6 @@ recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "23fd310331bd0add2e92ef6f67704985b6f314d4dad3856406854f062684068c",
   "model": null
 }

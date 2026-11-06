@@ -2,15 +2,36 @@ package verdict_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/controls"
 	verdict "github.com/stainless-code/verdict/pkg/verdict"
 )
 
 // TestClientConfigExplain proves the read-only policy surface through the
 // SDK: the stored bundle explains with its trust bit and origins, and the
 // data matches the envelope profile byte for byte.
+// requireExplainData asserts the explain profile and the stored budget value
+// with its environment origin.
+func requireExplainData(t *testing.T, doc map[string]any) {
+	t.Helper()
+	if doc["mode"] != "explain" || doc["trusted"] != true {
+		t.Errorf("data = %v, want explain/trusted", doc)
+	}
+	values, ok := doc["values"].([]any)
+	if !ok || len(values) != 1 {
+		t.Fatalf("values = %v, want the stored budget", doc["values"])
+	}
+	first, ok := values[0].(map[string]any)
+	if !ok || first["key"] != "budget_usd" || first["source"] != "REVIEW_BUDGET_USD" {
+		t.Errorf("value = %v, want the stored budget with its origin", values[0])
+	}
+}
+
+// TestClientConfigExplain proves the explain profile through the SDK and that
+// a missing bundle refuses typed.
 func TestClientConfigExplain(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -31,8 +52,14 @@ func TestClientConfigExplain(t *testing.T) {
 			Defaults: config.ResolvedDefaults{Values: config.EffectiveDefaults{BudgetUSD: &guard}},
 		},
 	}
-	if serr := config.WriteRunState(".", "7", rs); serr != nil {
+	bundle := filepath.Join(".", ".verdict", "state", "7")
+	if serr := config.WriteRunState(bundle, rs); serr != nil {
 		t.Fatalf("WriteRunState: %v", serr)
+	}
+	if _, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: bundle, Root: ".", BaseSHA: rs.BaseSHA, AllowHead: true,
+	}); ref != nil {
+		t.Fatalf("controls.Resolve: %v", ref)
 	}
 	c := newSDKClient(nil, nil)
 	defer c.Close()
@@ -43,19 +70,7 @@ func TestClientConfigExplain(t *testing.T) {
 	if resp.At != sdkAt || resp.PR != "7" {
 		t.Errorf("envelope = at %q pr %q", resp.At, resp.PR)
 	}
-	doc := decodeData(t, resp.Data)
-	if doc["mode"] != "explain" || doc["trusted"] != true {
-		t.Errorf("data = %v, want explain/trusted", doc)
-	}
-	values, ok := doc["values"].([]any)
-	if !ok || len(values) != 1 {
-		t.Fatalf("values = %v, want the stored budget", doc["values"])
-	}
-	first, ok := values[0].(map[string]any)
-	if !ok || first["key"] != "budget_usd" || first["source"] != "REVIEW_BUDGET_USD" {
-		t.Errorf("value = %v, want the stored budget with its origin", values[0])
-	}
-
+	requireExplainData(t, decodeData(t, resp.Data))
 	_, err = c.Config(context.Background(), &verdict.ConfigRequest{
 		Invocation: sdkInvocation("99"), Explain: true,
 	})

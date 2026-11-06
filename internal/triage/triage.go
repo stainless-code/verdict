@@ -15,10 +15,11 @@ import (
 
 // Request carries the resolved triage invocation.
 type Request struct {
-	Env  map[string]string
-	Repo string
-	Pr   string
-	Root string
+	Env      map[string]string
+	Repo     string
+	Pr       string
+	Root     string
+	RepoRoot string
 }
 
 // Run executes `triage <owner/repo> <slug> --sig <s> --status <st>
@@ -53,9 +54,10 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // typed service request.
 func triageRequest(r *cli.Runner, req Request, flags flags) *triagecore.Request {
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
-		Repo:    req.Repo,
-		Pr:      req.Pr,
+		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
+		Repo:     req.Repo,
+		Pr:       req.Pr,
+		RepoRoot: req.RepoRoot,
 	}
 	out := &triagecore.Request{
 		Sig:       flags.sig,

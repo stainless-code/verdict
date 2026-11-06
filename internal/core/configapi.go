@@ -45,6 +45,23 @@ type ConfigValue struct {
 	Source string `json:"source"`
 }
 
+// wireConfigFiles renders the per-file configuration in published order.
+func wireConfigFiles(files []ConfigFile) []any {
+	out := make([]any, 0, len(files))
+	for i := range files {
+		file := &files[i]
+		o := jq.NewObj("path", file.Path)
+		if file.OldPath != "" {
+			o.Set("old_path", file.OldPath)
+		}
+		o.Set("scopes", wireStrings(file.Scopes))
+		o.Set("values", wireValues(file.Values))
+		o.Set("shadowed", wireValues(file.Shadowed))
+		out = append(out, o)
+	}
+	return out
+}
+
 // ConfigRequirement is one captured requirement with its fetch-time
 // status and contributing sources.
 type ConfigRequirement struct {
@@ -54,10 +71,12 @@ type ConfigRequirement struct {
 	Sources   []string `json:"sources,omitempty"`
 }
 
-// ConfigPlanGroup is one execution group: the profile, depth, lens
-// budget, required checks, and file list the plan surface carries to
-// the agent.
+// ConfigPlanGroup is one execution group: the stable identity, the
+// explanation label, the profile, depth, lens budget, required checks, and
+// file list the plan surface carries to the agent.
 type ConfigPlanGroup struct {
+	ID        string   `json:"id"`
+	Label     string   `json:"label"`
 	Profile   string   `json:"profile"`
 	Depth     string   `json:"depth"`
 	Checks    []string `json:"checks,omitempty"`
@@ -75,11 +94,12 @@ type ConfigSpend struct {
 	EnforceCap           bool     `json:"enforce_cap"`
 }
 
-// ConfigCheck is one observed check execution: the check, its group,
-// and the latest dated verdict.
+// ConfigCheck is one observed check execution: the check, its scope
+// identity, the fetched head it ran against, and the latest dated verdict.
 type ConfigCheck struct { //nolint:govet // field order is the published property order
 	Check  string `json:"check"`
 	Group  string `json:"group"`
+	Head   string `json:"head"`
 	Passed bool   `json:"passed"`
 	At     string `json:"at"`
 	Detail string `json:"detail,omitempty"`
@@ -100,83 +120,119 @@ type ConfigData struct { //nolint:govet // field order is the published property
 	Spend        ConfigSpend         `json:"spend"`
 	Privacy      []string            `json:"privacy"`
 	Checks       []ConfigCheck       `json:"checks,omitempty"`
+	// Shadowed lists the losing layer values the capture recorded for the
+	// root defaults, so an override is never invisible.
+	Shadowed []ConfigValue `json:"shadowed,omitempty"`
+	// Files carries each reviewed path's effective configuration: the scopes
+	// that shaped it, its winning values with origins, and the values they
+	// overrode.
+	Files []ConfigFile `json:"files,omitempty"`
+}
+
+// ConfigFile is one reviewed path's effective configuration. Values and
+// Shadowed use the same key/value/layer/source shape as the root defaults, so
+// a caller reads one vocabulary at both scopes.
+type ConfigFile struct {
+	Path     string        `json:"path"`
+	OldPath  string        `json:"old_path,omitempty"`
+	Scopes   []string      `json:"scopes"`
+	Values   []ConfigValue `json:"values"`
+	Shadowed []ConfigValue `json:"shadowed"`
 }
 
 // Wire renders the data object in wire order.
 func (d *ConfigData) Wire() *jq.Obj {
 	o := jq.NewObj("mode", d.Mode, "trusted", d.Trusted, "source", d.Source)
-	values := make([]any, 0, len(d.Values))
-	for _, v := range d.Values {
-		values = append(values, jq.NewObj("key", v.Key, "value", v.Value, "layer", v.Layer, "source", v.Source))
-	}
-	o.Set("values", values)
-	requirements := make([]any, 0, len(d.Requirements))
-	for _, r := range d.Requirements {
-		var threshold any
-		if r.Threshold != nil {
-			threshold = *r.Threshold
-		}
-		o := jq.NewObj("key", r.Key, "threshold", threshold, "status", r.Status)
-		if len(r.Sources) > 0 {
-			sources := make([]any, 0, len(r.Sources))
-			for _, s := range r.Sources {
-				sources = append(sources, s)
-			}
-			o.Set("sources", sources)
-		}
-		requirements = append(requirements, o)
-	}
-	o.Set("requirements", requirements)
+	o.Set("values", wireValues(d.Values))
+	o.Set("requirements", wireRequirements(d.Requirements))
 	plan := make([]any, 0, len(d.Plan))
-	for _, g := range d.Plan {
-		plan = append(plan, wirePlanGroup(g))
+	for i := range d.Plan {
+		plan = append(plan, wirePlanGroup(&d.Plan[i]))
 	}
 	o.Set("plan", plan)
 	o.Set("plan_status", d.PlanStatus)
 	o.Set("spend", wireSpend(d.Spend))
-	privacy := make([]any, 0, len(d.Privacy))
-	for _, p := range d.Privacy {
-		privacy = append(privacy, p)
-	}
-	o.Set("privacy", privacy)
+	o.Set("privacy", wireStrings(d.Privacy))
 	if d.Checks != nil {
-		checks := make([]any, 0, len(d.Checks))
-		for _, c := range d.Checks {
-			checks = append(checks, jq.NewObj("check", c.Check, "group", c.Group,
-				"passed", c.Passed, "at", c.At, "detail", c.Detail))
-		}
-		o.Set("checks", checks)
+		o.Set("checks", wireChecks(d.Checks))
+	}
+	if d.Shadowed != nil {
+		o.Set("shadowed", wireValues(d.Shadowed))
+	}
+	if d.Files != nil {
+		o.Set("files", wireConfigFiles(d.Files))
 	}
 	return o
 }
 
-func wirePlanGroup(g ConfigPlanGroup) *jq.Obj {
-	o := jq.NewObj("profile", g.Profile, "depth", g.Depth)
-	if len(g.Checks) > 0 {
-		checks := make([]any, 0, len(g.Checks))
-		for _, c := range g.Checks {
-			checks = append(checks, c)
-		}
-		o.Set("checks", checks)
+// wireValues renders the effective-value rows in capture order.
+func wireValues(values []ConfigValue) []any {
+	out := make([]any, 0, len(values))
+	for _, v := range values {
+		out = append(out, jq.NewObj("key", v.Key, "value", v.Value, "layer", v.Layer, "source", v.Source))
 	}
+	return out
+}
+
+// wireRequirements renders the requirement rows; sources appear only when the
+// capture recorded them.
+func wireRequirements(reqs []ConfigRequirement) []any {
+	out := make([]any, 0, len(reqs))
+	for _, r := range reqs {
+		var threshold any
+		if r.Threshold != nil {
+			threshold = *r.Threshold
+		}
+		row := jq.NewObj("key", r.Key, "threshold", threshold, "status", r.Status)
+		setWireList(row, "sources", r.Sources)
+		out = append(out, row)
+	}
+	return out
+}
+
+// wireChecks renders the check observations in execution order.
+func wireChecks(checks []ConfigCheck) []any {
+	out := make([]any, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, jq.NewObj("check", c.Check, "group", c.Group, "head", c.Head,
+			"passed", c.Passed, "at", c.At, "detail", c.Detail))
+	}
+	return out
+}
+
+// wirePlanGroup renders one plan group: identity first, then the optional
+// checks, lens cap, files, and scopes it carries.
+func wirePlanGroup(g *ConfigPlanGroup) *jq.Obj {
+	o := jq.NewObj("id", g.ID, "label", g.Label, "profile", g.Profile, "depth", g.Depth)
+	setWireList(o, "checks", g.Checks)
 	if g.MaxLenses != nil {
 		o.Set("max_lenses", *g.MaxLenses)
 	}
-	if len(g.Files) > 0 {
-		files := make([]any, 0, len(g.Files))
-		for _, f := range g.Files {
-			files = append(files, f)
-		}
-		o.Set("files", files)
-	}
-	if len(g.Scopes) > 0 {
-		scopes := make([]any, 0, len(g.Scopes))
-		for _, s := range g.Scopes {
-			scopes = append(scopes, s)
-		}
-		o.Set("scopes", scopes)
-	}
+	setWireList(o, "files", g.Files)
+	setWireList(o, "scopes", g.Scopes)
 	return o
+}
+
+// setWireList sets a list key only when the list is non-empty, which keeps an
+// absent optional property out of the wire instead of emitting an empty array.
+func setWireList[T any](o *jq.Obj, key string, items []T) {
+	if len(items) == 0 {
+		return
+	}
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	o.Set(key, out)
+}
+
+// wireStrings renders a string list in order.
+func wireStrings(items []string) []any {
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	return out
 }
 
 func wireSpend(s ConfigSpend) *jq.Obj {

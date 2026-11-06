@@ -15,7 +15,7 @@ func TestGateGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5201")
 		writeFiles(t, dir, map[string]string{
-			".review/5201/findings.json": findingsDoc(
+			".verdict/state/5201/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
 		})
 	}
@@ -29,7 +29,7 @@ func TestGateGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5201")
 		writeFiles(t, dir, map[string]string{
-			".review/5201/findings.json": findingsDoc(
+			".verdict/state/5201/findings.json": findingsDoc(
 				finding(sigCrit, "open", "critical", "walked", "inline")),
 		})
 	}
@@ -43,9 +43,9 @@ func TestGateGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5202")
 		writeFiles(t, dir, map[string]string{
-			".review/5202/findings.json": findingsDoc(
+			".verdict/state/5202/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
-			".review/5202/post.json": postDoc(headC, 7),
+			".verdict/state/5202/post.json": postDoc(headC, 7),
 		})
 	}
 	goArgs = splitRepo("gate", "5202", "--max-severity", "critical", "--require-head", "--live", "skip", "--json")
@@ -58,7 +58,7 @@ func TestGateGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5203")
 		writeFiles(t, dir, map[string]string{
-			".review/5203/findings.json": `[42]`,
+			".verdict/state/5203/findings.json": `[42]`,
 		})
 	}
 	goArgs = splitRepo("gate", "5203", "--max-severity", "critical", "--live", "skip", "--json")

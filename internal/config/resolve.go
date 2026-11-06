@@ -552,3 +552,30 @@ func splitList(raw string) []string {
 	}
 	return out
 }
+
+// KBPolicy renders the effective retirement thresholds: the judged quorum
+// and the false-positive-rate ceiling in the store's display spelling.
+func (d *EffectiveDefaults) KBPolicy() (int, string) {
+	return d.KBMinJudged, strconv.FormatFloat(d.KBMaxFPRate, 'g', -1, floatBits)
+}
+
+// EnvDefaults resolves the consumed environment names over the built-in
+// floor. It serves verbs that read a store without a typed run bundle:
+// the same environment keys, the same bounds, no repository layer. A
+// malformed value falls back to the built-in and reports why through
+// warn, matching the resolver's typed refusal at fetch time.
+func EnvDefaults(env map[string]string, warn func(string)) EffectiveDefaults {
+	partial, warns, ref := ParseEnv(env)
+	for _, w := range warns {
+		warn(w)
+	}
+	if ref != nil {
+		warn(ref.Message)
+		partial = Partial{}
+	}
+	out := mergePartials([]layerValue{
+		{partial: partial, layer: LayerEnv, source: "environment"},
+		{partial: Builtins(), layer: LayerBuiltIn, source: LayerBuiltIn},
+	})
+	return out.Values
+}

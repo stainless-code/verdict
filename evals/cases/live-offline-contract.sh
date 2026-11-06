@@ -40,7 +40,7 @@ live_mk_post() {
   local pr="$1" head="$2"
   jq -n --arg h "$head" \
     '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-    > "$EVAL_SANDBOX/.review/$pr/post.json"
+    > "$EVAL_SANDBOX/.verdict/state/$pr/post.json"
 }
 
 CRIT_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Critical boundary bug here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
@@ -50,7 +50,7 @@ eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode unreachable
-before_hash="$(shasum "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/post.json" | shasum | cut -d' ' -f1)"
+before_hash="$(shasum "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" | shasum | cut -d' ' -f1)"
 m="$(mark)"
 run_review report acme/app "$PR" --check critical --completeness --live strict
 if [ "$EVAL_STATUS" -eq 1 ]; then
@@ -72,7 +72,7 @@ if [ "$(graphql_since "$m")" -ge 1 ]; then
 else
   bad "strict paid no lookup call before failing"
 fi
-after_hash="$(shasum "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/post.json" | shasum | cut -d' ' -f1)"
+after_hash="$(shasum "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" | shasum | cut -d' ' -f1)"
 if [ "$before_hash" = "$after_hash" ]; then
   good "fail-closed gate mutates no store"
 else
@@ -122,14 +122,14 @@ else
 fi
 
 PR=4374
-mkdir -p "$EVAL_SANDBOX/.review/local-offlinec"
-cat > "$EVAL_SANDBOX/.review/local-offlinec/source.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/local-offlinec"
+cat > "$EVAL_SANDBOX/.verdict/state/local-offlinec/source.json" <<EOF
 {"schema_version":"1","kind":"range","repo":"acme/app","slug":"offlinec","base_ref":null,"head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"$HEAD_D","range":"v1..v2","dirty":false,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}
 EOF
-printf '[]' > "$EVAL_SANDBOX/.review/local-offlinec/findings.json"
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/local-offlinec/findings.json"
 jq -n --arg h "$HEAD_D" \
   '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/local-offlinec/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/local-offlinec/post.json"
 set_mode unreachable
 m="$(mark)"
 run_review report acme/app offlinec --check critical --completeness --live strict

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
@@ -44,7 +45,7 @@ func TestRuntimeReportOutputValidates(t *testing.T) {
 	if envelope.Pr == nil || *envelope.Pr != 5101 {
 		t.Errorf("envelope pr = %v", envelope.Pr)
 	}
-	if envelope.Data == nil || (*envelope.Data)["dir"] != ".review/5101" {
+	if envelope.Data == nil || (*envelope.Data)["dir"] != ".verdict/state/5101" {
 		t.Errorf("envelope data = %v", envelope.Data)
 	}
 	if envelope.Error != nil {
@@ -70,14 +71,14 @@ func runReportFixture(t *testing.T) *core.ReportResponse {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFixture(t, ".review/5101/findings.json", "["+fixtureFinding()+"]")
-	writeFixture(t, ".review/5101/post.json",
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`)
-	writeFixture(t, ".review/5101/patch.json", `{"sig":"patch1","note":"hello"}`)
-	writeFixture(t, ".review/5101/cost.json",
+	writeFixture(t, ".verdict/state/5101/patch.json", `{"sig":"patch1","note":"hello"}`)
+	writeFixture(t, ".verdict/state/5101/cost.json",
 		`{"schema_version":"1","effort":"standard","models":[{"name":"m",`+
 			`"input_tokens":100,"output_tokens":50}],"est_usd":0.05}`)
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -115,12 +116,27 @@ func writeFixture(t *testing.T, path, content string) {
 }
 
 // seedControls snapshots the sandbox's controls into a bundle through the
-// head opt-out, standing in for fetch's base resolution.
+// head opt-out and writes the run bundle that binds them, standing in for
+// fetch's base resolution: a snapshot without its run bundle is deletion,
+// not legacy, and the verbs refuse it.
 func seedControls(t *testing.T, bundleDir string) {
 	t.Helper()
-	req := &controls.Request{BundleDir: bundleDir, BaseSHA: strings.Repeat("b", 40), AllowHead: true}
-	if _, ref := controls.Resolve(t.Context(), nil, req); ref != nil {
+	base := strings.Repeat("b", 40)
+	req := &controls.Request{BundleDir: bundleDir, BaseSHA: base, AllowHead: true}
+	snap, ref := controls.Resolve(t.Context(), nil, req)
+	if ref != nil {
 		t.Fatal(ref)
+	}
+	rs := &config.RunState{
+		BaseSHA:    base,
+		Trusted:    true,
+		CapturedAt: "2026-11-02T12:00:00Z",
+		Evidence:   config.Evidence{SchemaVersion: "1", BaseSHA: base, Plan: config.Plan{Status: config.PendingStatus}},
+		Resolved:   &config.Resolved{Plan: config.Plan{Status: config.PendingStatus}},
+		Inventory:  config.InventoryHashes(snap),
+	}
+	if serr := config.WriteRunState(bundleDir, rs); serr != nil {
+		t.Fatal(serr)
 	}
 }
 

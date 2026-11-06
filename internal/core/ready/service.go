@@ -15,8 +15,10 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -96,22 +98,24 @@ func (d *Data) Wire() *jq.Obj {
 }
 
 type state struct {
-	req         *Request
-	warnings    []string
-	live        map[string]any
-	pr          string
-	rec         string
-	mergeable   string
-	mergeState  string
-	prState     string
-	repo        string
-	blockers    []Blocker
-	threadsOpen int
-	bodyLen     int
-	ciTotal     int
-	ciFail      int
-	ready       bool
-	draft       bool
+	req          *Request
+	policy       *config.ReadCompliance
+	warnings     []string
+	requiredGaps []string
+	live         map[string]any
+	pr           string
+	rec          string
+	mergeable    string
+	mergeState   string
+	prState      string
+	repo         string
+	blockers     []Blocker
+	threadsOpen  int
+	bodyLen      int
+	ciTotal      int
+	ciFail       int
+	ready        bool
+	draft        bool
 }
 
 const recWait = "wait"
@@ -215,7 +219,7 @@ func (st *state) data() *Data {
 }
 
 func loadState(ctx context.Context, st *state) *core.RefusalError {
-	dir := readcommon.ResolveBundleDir(st.pr)
+	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.pr)
 	if isLocalDir(dir) {
 		return st.withWarnings(&core.RefusalError{
 			Code:    "no-pr-target",
@@ -241,6 +245,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	if ref := loadThreads(ctx, st); ref != nil {
 		return ref
 	}
+	loadPolicyCompliance(st, dir)
 	computeReadiness(st)
 	return nil
 }
@@ -248,7 +253,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 const providerGitHub = "github"
 
 func isLocalDir(dir string) bool {
-	return strings.HasPrefix(dir, ".review/local-")
+	return readcommon.IsLocalBundleDir(dir)
 }
 
 func isRegular(path string) bool {
@@ -495,7 +500,72 @@ func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 	return nil
 }
 
+// loadPolicyCompliance evaluates captured requirements for the saved head:
+// blockers fail readiness, pending or unverified work stays unknown, and an
+// absent typed policy invents no blocker for legacy reads. It never appends
+// an outcome or executes a command.
+func loadPolicyCompliance(st *state, dir string) {
+	rs, ref := config.VerifyRunState(dir)
+	if ref != nil {
+		st.policy = &config.ReadCompliance{HasPolicy: true, Unverified: true}
+		st.warn("compliance unknown: " + ref.Message)
+		return
+	}
+	if rs == nil || rs.Resolved == nil {
+		return
+	}
+	entries, err := readcommon.LoadFindings(dir)
+	if err != nil {
+		st.policy = &config.ReadCompliance{HasPolicy: true, Unverified: true}
+		st.warn("compliance unknown: findings store is unreadable")
+		return
+	}
+	comp := config.EvaluateReadCompliance(rs, readcommon.PrField(dir, "head_sha"), policyFindings(entries))
+	if comp.HasPolicy {
+		st.policy = &comp
+		st.requiredGaps = requiredProfileGaps(st, dir)
+	}
+}
+
+// requiredProfileGaps reads captured profile work readiness must reflect: a
+// deep group without a current validation receipt, and a capped group without
+// usable lens attestation. Reads never execute and never append outcomes.
+func requiredProfileGaps(st *state, dir string) []string {
+	if st.policy == nil || !st.policy.HasPolicy {
+		return nil
+	}
+	rs, ref := config.VerifyRunState(dir)
+	if ref != nil || rs == nil || rs.Resolved == nil {
+		return nil
+	}
+	head := readcommon.PrField(dir, "head_sha")
+	var gaps []string
+	for _, gap := range verifycore.DeepGaps(rs, dir, head, st.req.RepoRootPath()) {
+		gaps = append(gaps, "required work: "+gap)
+	}
+	usage := config.ReadLensUsage(rs, dir)
+	for _, violation := range usage.Violations() {
+		gaps = append(gaps, "required lens evidence: "+violation.Detail)
+	}
+	return gaps
+}
+
+// policyFindings adapts stored entries to the compliance view.
+func policyFindings(entries []any) []config.FindingView {
+	out := make([]config.FindingView, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, config.FindingView{
+			Path:     jq.StrOf(readcommon.FieldOf(entry, "path")),
+			Category: jq.StrOf(readcommon.FieldOf(entry, "category")),
+			Severity: jq.StrOf(readcommon.FieldOf(entry, "severity")),
+			Status:   jq.StrOf(readcommon.FieldOf(entry, "status")),
+		})
+	}
+	return out
+}
+
 func computeReadiness(st *state) {
+	appendComplianceBlocker(st)
 	appendDraftBlocker(st)
 	appendConflictBlocker(st)
 	appendDescriptionBlocker(st)
@@ -513,6 +583,51 @@ func computeReadiness(st *state) {
 		} else {
 			st.rec = "nudge-author"
 		}
+	}
+}
+
+// appendComplianceBlocker makes the captured policy part of readiness: a
+// blocking finding, pending required check, or unverified capture is a
+// blocker, never a pass.
+func appendComplianceBlocker(st *state) {
+	comp := st.policy
+	if comp == nil || !comp.HasPolicy {
+		return
+	}
+	switch {
+	case len(comp.Blockers) > 0:
+		first := comp.Blockers[0]
+		st.blockers = append(st.blockers, Blocker{
+			Kind:   "compliance",
+			Detail: strconv.Itoa(len(comp.Blockers)) + " blocking finding(s), first clause " + first.Clause,
+			Action: "address or triage the blocking findings, then re-run ready",
+		})
+	case len(comp.Conflicts) > 0:
+		first := comp.Conflicts[0]
+		st.blockers = append(st.blockers, Blocker{
+			Kind:   "compliance-conflict",
+			Detail: "required review withholds " + first.Path + " (rule " + first.Rule + ")",
+			Action: "narrow or endorse the exclusion explicitly, or review the material without disclosure",
+		})
+	case comp.Unverified:
+		st.blockers = append(st.blockers, Blocker{
+			Kind:   "compliance-unknown",
+			Detail: "captured provenance unavailable",
+			Action: "re-fetch the bundle so captured requirements verify",
+		})
+	case len(st.requiredGaps) > 0:
+		st.blockers = append(st.blockers, Blocker{
+			Kind:   "profile-work",
+			Detail: st.requiredGaps[0],
+			Action: "complete the required profile work for this capture, then re-run ready",
+		})
+	case len(comp.Pending) > 0:
+		first := comp.Pending[0]
+		st.blockers = append(st.blockers, Blocker{
+			Kind:   "compliance-pending",
+			Detail: strconv.Itoa(len(comp.Pending)) + " required check(s) pending (first: " + first.Check + ")",
+			Action: "complete the required checks for the saved head, then re-run ready",
+		})
 	}
 }
 

@@ -17,7 +17,11 @@ exit: 0
 --- stderr ---
 triaged 01234567 -> false-positive
 --- files ---
---- file C/.review/4251/findings.json ---
+--- file C/.verdict/kb-joins.jsonl ---
+{"at":"0000-00-00T00:00:00Z","sig":"0123456789abcdef0123456789abcdef01234567","rule":"await-err","outcome":"false-positive","actor":"human","verb":"triage","bundle":"4251","review_id":null}
+--- file C/.verdict/kb.jsonl ---
+{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":0,"false_hits":1,"judged":1,"status":"active"}
+--- file C/.verdict/state/4251/findings.json ---
 [
   {
     "kind": "inline",
@@ -77,7 +81,3 @@ triaged 01234567 -> false-positive
     "history": []
   }
 ]
---- file C/.review/kb-joins.jsonl ---
-{"at":"0000-00-00T00:00:00Z","sig":"0123456789abcdef0123456789abcdef01234567","rule":"await-err","outcome":"false-positive","actor":"human","verb":"triage","bundle":"4251","review_id":null}
---- file C/.review/kb.jsonl ---
-{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":0,"false_hits":1,"judged":1,"status":"active"}

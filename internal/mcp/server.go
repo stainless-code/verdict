@@ -278,7 +278,7 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 
 func (s *Server) instructions() string {
 	lines := []string{
-		"Review one pull request at a time: fetch, read .review/<pr>, write exactly one review.json, then post.",
+		"Review one pull request at a time: fetch, read .verdict/state/<pr>, write exactly one review.json, then post.",
 		"Use report, next, or show to rank and inspect findings; refusals carry a hint, so follow it.",
 		"post is the only terminal write and never writes a review note; dryRun previews it.",
 		"Never call triage while reviewing a PR: propose status changes through triage[] in review.json.",
@@ -343,7 +343,9 @@ func (s *Server) decodeCall(t *tool, id, raw json.RawMessage) (any, bool) {
 
 func (s *Server) call(ctx context.Context, t *tool, request any) any {
 	if t.wire != nil {
-		t.wire(s.bindings(t), request)
+		if err := t.wire(ctx, s.bindings(t), request); err != nil {
+			return refusalResult(rootResolutionRefusal(err))
+		}
 	}
 	data, ref := t.invoke(ctx, request)
 	if ref != nil {
@@ -516,6 +518,13 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 			"narrow the call to get a smaller text block")
 	}
 	return jq.NewObj(pairs...).MarshalCompact()
+}
+
+// rootResolutionRefusal reports a failed repository-root resolution as a
+// served refusal: a tool call must not receive a request anchored at the
+// working directory when the probe could not verify the root.
+func rootResolutionRefusal(err error) *core.RefusalError {
+	return &core.RefusalError{Code: "not-a-repo", Message: err.Error()}
 }
 
 func refusalResult(ref *core.RefusalError) callToolResult {

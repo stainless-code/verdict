@@ -22,7 +22,7 @@ type scriptCommander struct {
 	calls  int
 }
 
-func (c *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.calls++
 	if len(cmd.Argv) != 3 || cmd.Argv[0] != "git" || cmd.Argv[1] != "patch-id" || cmd.Argv[2] != "--stable" {
 		return core.Result{}, errors.New("unexpected argv")
@@ -412,7 +412,7 @@ type mapCommander struct {
 	ids map[string]string
 }
 
-func (c *mapCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *mapCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil {

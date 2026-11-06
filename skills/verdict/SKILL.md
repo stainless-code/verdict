@@ -11,7 +11,7 @@ whatever agent you invoke.
 
 ## Where commands run
 
-Run the CLI from the repo under review: `.review/` is created in the current
+Run the CLI from the repo under review: `.verdict/state/` is created in the current
 directory, never beside the tool. The primary path is the GLOBAL `verdict`
 binary installed once (`curl -fsSL
 https://stainless-code.com/verdict/install.sh
@@ -39,8 +39,8 @@ refreshes it.
 ```bash
 # 1. Fetch the PR bundle (diff + metadata, no clone needed)
 verdict fetch owner/repo 123
-# Done when .review/123/ holds PR.json, full.diff, toc.txt, roles.txt,
-# controls.json. Review controls (.review/kb.jsonl, panel, budget, overrides,
+# Done when .verdict/state/123/ holds PR.json, full.diff, toc.txt, roles.txt,
+# controls.json. Review controls (.verdict/kb.jsonl, panel, budget, overrides,
 # ...) are read from the PR base commit, never the PR head — from the clone,
 # else the GitHub contents API; --allow-head-controls is the one recorded opt-out.
 # Over-cap diffs refuse: re-run fetch with --chunk (or set the typed chunk
@@ -51,7 +51,7 @@ verdict fetch owner/repo 123
 
 # 2. Review with any agent. Load `prompts/system.md`, then the one mode file
 #    from the router below, plus the bundle.
-#    Write exactly one `.review/N/review.json`; the mode file defines its shape
+#    Write exactly one `.verdict/state/N/review.json`; the mode file defines its shape
 #    (`body` and `comments[]` at minimum, plus optional `resolved` sigs and
 #    `triage[]` claims). Verdict repairs a fenced or prose-wrapped document,
 #    scalar-for-array values, the aliases `inBounds`/`rung`/`file`, enum
@@ -61,7 +61,7 @@ verdict fetch owner/repo 123
 #    Before posting or recording, run `verdict record owner/repo <slug>
 #    --dry-run` on the bundle (local or PR), fix every problem it lists, and
 #    repeat at most 3 rounds.
-#    Prior feedback lives in `.review/N/threads.json` (all six hosts): host-resolved
+#    Prior feedback lives in `.verdict/state/N/threads.json` (all six hosts): host-resolved
 #    state, anchors, authors, and `finding_sig` links. `verdict threads owner/repo N`
 #    refreshes it alone — no diff refetch — so run it after pushing fixes and before
 #    a re-review or merge gate.
@@ -73,7 +73,7 @@ verdict post owner/repo 123 --approve=false
 
 Local changes (no PR): `verdict fetch-local owner/repo work
 [--staged] [--range A..B] [--base R] [--stash [n]] [-- paths...]` writes
-`.review/local-work/` (source.json instead of PR.json), the bundle is reviewed
+`.verdict/state/local-work/` (source.json instead of PR.json), the bundle is reviewed
 the same way, and `verdict record owner/repo local-work` merges it
 to `findings.json` — read with `report`, never `post` (no PR target). The
 universal pre-post/record dry run above applies here too; if problems remain
@@ -112,10 +112,27 @@ to write dispatches, lenses run under it.
 
 1. **You are the synthesizer.** Read the complete raw diff end-to-end first, using the
    TOC ranges as coverage checklist. Lenses supplement that reading; they never replace it.
-2. **Fan-out is hypothesis-driven, not capped.** 0–N lenses, one falsifiable question
-   each, dispatched in parallel. A question earns a lens only if its answer could change
-   your verdict. Staff from `.review/N/panel` when `fetch` wrote one — same panel every
-   run keeps verdicts comparable and costs capped.
+2. **Fan-out is hypothesis-driven; the plan's `max_lenses` is the only cap.** 0–N lenses,
+   one falsifiable question each, dispatched in parallel. A question earns a lens only if its answer
+   could change your verdict. When `plan.txt` names `max_lenses=N` for a group, dispatch at most N
+   lenses for that group's files (`0` = none); `unset` means uncapped. Each `plan.txt` group line
+   also prints that group's resolved `panel=[...]`, its `panel_from` origin, and its accounting
+   `effort`; staff that group's files from **that group's** roster, in order. The root
+   `.verdict/state/N/panel` file may hold the shared default roster — it never overrides a group's
+   resolved panel. When one invocation serves several groups, account execution per group: use
+   each group's own roster, respect every group's `max_lenses`, and never apply one group's roster
+   or effort to another group's files. `effort` is an accounting tier that feeds cost estimation —
+   it is not a provider reasoning setting, and `depth=deep` still needs its recorded validation
+   receipt. Record the attestation in `cost.json` as one
+   `{"group": "<plan.txt group id>", "labels": [...]}` entry per plan group, with `"labels": []`
+   for a group you dispatched nothing for; an omitted group reads as unknown, so a capped group
+   blocks approval until its zero is stated. Beside `lenses`, write one `group_costs` entry per
+   group you ran, carrying `group` (the `plan.txt` group id), `effort` (that group's resolved
+   tier), and optional `est_usd` (the number) — using each group's own tier, never the run
+   default or another group's, and omit `est_usd` when you cannot price that group. The record must also carry schema
+   `"schema_version": "2"` with `run` and `inputs_sha256` copied verbatim from `run.json`; a record
+   without that binding is unknown for this capture. Actual cost stays agent attestation: an
+   unknown group cost stays unknown, and one group's actual cost is never split across groups.
 3. **Bar is sound + correct + elegant.** Keep findings that clear all three; tag each with
    its evidence rung (said/pointed/walked/ran/reproduced — scale lives in `review.md`); drop praise,
    style prefs, unverified claims, pre-existing code the PR didn't touch, and bloat-shaped
@@ -136,7 +153,7 @@ to write dispatches, lenses run under it.
 8. **Only posted output counts.** Raw assistant text exists in logs only. Posted output
    reads as a polished teammate's comment, never as thinking-out-loud.
 
-There is no server to consult: the bundle in `.review/N/` plus what `gh` returns
+There is no server to consult: the bundle in `.verdict/state/N/` plus what `gh` returns
 are the whole evidence base for this run.
 
 ## Spend tracking (usage handoff, optional)

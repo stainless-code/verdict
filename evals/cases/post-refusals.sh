@@ -50,8 +50,8 @@ EOF
 
 PR=4311
 mk_clean "$PR"
-printf '%s' '[5]' > "$EVAL_SANDBOX/.review/$PR/findings.json"
-before="$(shasum -a 256 "$EVAL_SANDBOX/.review/$PR/findings.json" | cut -d' ' -f1)"
+printf '%s' '[5]' > "$EVAL_SANDBOX/.verdict/state/$PR/findings.json"
+before="$(shasum -a 256 "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" | cut -d' ' -f1)"
 m="$(mark)"
 run_review post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
@@ -60,31 +60,17 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "corrupt-store" ]; then
 else
   bad "post on [5] prior gave exit $EVAL_STATUS code '$code', want 1/corrupt-store"
 fi
-after_p1="$(shasum -a 256 "$EVAL_SANDBOX/.review/$PR/findings.json" | cut -d' ' -f1)"
+after_p1="$(shasum -a 256 "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" | cut -d' ' -f1)"
 if [ "$before" = "$after_p1" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ] \
   && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
   good "refused post kept the seeded findings byte-identical (no post.json, no POST)"
 else
   bad "refused post rewrote artifacts or posted"
 fi
 
-LB="$EVAL_SANDBOX/.review/local-p1"
-rm -rf "$LB"; mkdir -p "$LB"
-cat > "$LB/source.json" <<'EOF'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
-EOF
-cat > "$LB/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+LB="$EVAL_SANDBOX/.verdict/state/local-p1"
+eval_mk_bundle "local-p1"
 eval_write_review "local-p1" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}
 EOF
@@ -100,7 +86,7 @@ else
 fi
 
 mk_clean "$PR"
-printf '%s' '[null]' > "$EVAL_SANDBOX/.review/$PR/findings.json"
+printf '%s' '[null]' > "$EVAL_SANDBOX/.verdict/state/$PR/findings.json"
 run_review post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "corrupt-store" ]; then
@@ -120,8 +106,8 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "post-failed" ]; then
 else
   bad "garbage POST gave exit $EVAL_STATUS code '$code', want 1/post-failed"
 fi
-if [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ] \
-  && [ -z "$(ls "$EVAL_SANDBOX/.review/$PR"/.posted_* 2>/dev/null || true)" ]; then
+if [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ] \
+  && [ -z "$(ls "$EVAL_SANDBOX/.verdict/state/$PR"/.posted_* 2>/dev/null || true)" ]; then
   good "garbage POST armed nothing (no post.json, no marker)"
 else
   bad "garbage POST left post.json or a marker behind"
@@ -140,8 +126,8 @@ printf '%s' 'empty' > "$EVAL_SANDBOX/post-mode"
 run_review post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "post-failed" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ] \
-  && [ -z "$(ls "$EVAL_SANDBOX/.review/$PR"/.posted_* 2>/dev/null || true)" ]; then
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ] \
+  && [ -z "$(ls "$EVAL_SANDBOX/.verdict/state/$PR"/.posted_* 2>/dev/null || true)" ]; then
   good "empty POST response refuses post-failed (arms nothing)"
 else
   bad "empty POST gave exit $EVAL_STATUS code '$code'"
@@ -154,7 +140,7 @@ m="$(mark)"
 run_review post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "missing-review-file" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ] \
   && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
   good "missing review.json refuses missing-review-file (no post.json, no POST)"
 else
@@ -218,22 +204,8 @@ else
   bad "downgrade stderr: $(head -c 300 "$EVAL_ERR")"
 fi
 
-LB="$EVAL_SANDBOX/.review/local-p7"
-rm -rf "$LB"; mkdir -p "$LB"
-cat > "$LB/source.json" <<'EOF'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
-EOF
-cat > "$LB/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+LB="$EVAL_SANDBOX/.verdict/state/local-p7"
+eval_mk_bundle "local-p7"
 eval_write_review "local-p7" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}
 EOF

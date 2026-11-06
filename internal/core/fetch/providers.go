@@ -27,10 +27,10 @@ func runProvider(
 	if err := fetchProviderBundle(ctx, ctx2, req, f.Provider); err != nil {
 		return nil, "", err
 	}
-	if ref := resolveControls(ctx, ctx2, "", readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
+	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	if ref := phaseTwo(ctx, ctx2, req, f, dir); ref != nil {
+	if ref := phaseTwo(ctx, ctx2, req, f, dir, budget); ref != nil {
 		return nil, "", ref
 	}
 	fc, chunkActive, err := providerCap(r, ctx2.runCfg.resolved, dir, f.ChunkFlag)
@@ -45,7 +45,8 @@ func runProvider(
 		return nil, "", err
 	}
 	headSHA, baseSHA := readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, baseSHA, fc.source, r.privacy.Exclusions)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive,
+		groupLimits(ctx2.runCfg.resolved, f.ChunkFlag), headSHA, baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -182,7 +183,7 @@ func gitlabReadable(r *session, payload string) string {
 
 // gitlabDiff owns the `glab mr diff` read with its raw flag.
 func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
-	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.cliFetch(ctx, binGlab, "mr", gitCmdDiff, pr, flagRepo, repo, "--raw")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
@@ -735,7 +736,7 @@ func forgejoMeta(ctx context.Context, r *session, dir string, auth []string, api
 }
 
 func forgejoDiff(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
-	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.curlFetch(ctx, curlArgs(auth, api+".diff")...)
 	if err != nil {
 		return forgejoDiffFallback(ctx, r, dir, auth, api, metaStdout)
@@ -1043,7 +1044,7 @@ func bitbucketMeta(ctx context.Context, r *session, dir string, auth []string, b
 }
 
 func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, base string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.curlFetch(ctx, append(append([]string{"-sfL"}, auth...), base+"/diff")...)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: werr.Error()}

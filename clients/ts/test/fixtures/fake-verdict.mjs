@@ -46,7 +46,7 @@ switch (mode) {
     emit(
       refusal(
         "missing-findings",
-        "missing .review/4243/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run",
+        "missing .verdict/state/4243/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run",
       ),
     );
     process.exitCode = 1;

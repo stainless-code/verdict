@@ -5,16 +5,16 @@ HERE="$(dirname "$0")"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-HOLD="$EVAL_SANDBOX/.review-hold-kbov"
-mkdir -p "$EVAL_SANDBOX/.review" "$HOLD"
-for e in "$EVAL_SANDBOX"/.review/*; do
+HOLD="$EVAL_SANDBOX/.verdict-hold-kbov"
+mkdir -p "$EVAL_SANDBOX/.verdict" "$HOLD"
+for e in "$EVAL_SANDBOX"/.verdict/state/*; do
   [ -e "$e" ] || continue
   mv "$e" "$HOLD/"
 done
 restore_kbov() {
   for e in "$HOLD"/*; do
     [ -e "$e" ] || continue
-    mv "$e" "$EVAL_SANDBOX/.review/"
+    mv "$e" "$EVAL_SANDBOX/.verdict/state/"
   done
   rmdir "$HOLD" 2>/dev/null || true
 }
@@ -22,8 +22,8 @@ trap restore_kbov EXIT
 
 mkf() { # $1 = pr, stdin = findings array
   local pr="$1"
-  mkdir -p "$EVAL_SANDBOX/.review/$pr"
-  cat > "$EVAL_SANDBOX/.review/$pr/findings.json"
+  mkdir -p "$EVAL_SANDBOX/.verdict/state/$pr"
+  cat > "$EVAL_SANDBOX/.verdict/state/$pr/findings.json"
 }
 
 F1="a111111111111111111111111111111111111111"
@@ -40,7 +40,7 @@ mkf 4401 <<EOF
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"Second cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["r-a2"],"sig":"$F2","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"false-positive","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":4,"anchored":true,"body":"Uncited finding here for real.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"$F3","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/4401/kb-recall.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4401/kb-recall.json" <<'EOF'
 [{"id":"r-a1","score":1,"hits":2,"judged":2},{"id":"r-a2","score":0.5,"hits":0,"judged":0}]
 EOF
 
@@ -48,10 +48,10 @@ mkf 4402 <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Adopted twin cited finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":["r-a2"],"sig":"$G1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":3,"anchored":true,"body":"Invented cite outside recall here.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":["r-out"],"sig":"$G2","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/4402/kb-recall.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4402/kb-recall.json" <<'EOF'
 [{"id":"r-a2","score":0.5,"hits":0,"judged":0},{"id":"r-b1","score":0.5,"hits":0,"judged":0}]
 EOF
-cat > "$EVAL_SANDBOX/.review/4402/post.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4402/post.json" <<'EOF'
 {"schema_version":"1","review":{"id":424242,"state":"COMMENTED"},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"2026-10-31T00:00:00Z","confidence":null,"security_summary":null}
 EOF
 
@@ -62,22 +62,22 @@ EOF
 mkf 4404 <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Empty recall cited finding here.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":["r-d1"],"sig":"$I1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-echo "[]" > "$EVAL_SANDBOX/.review/4404/kb-recall.json"
+echo "[]" > "$EVAL_SANDBOX/.verdict/state/4404/kb-recall.json"
 
 mkf 4405 <<EOF
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Uncited bundle finding here now.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"$J1","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/4405/kb-recall.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4405/kb-recall.json" <<'EOF'
 [{"id":"r-e1","score":0.5,"hits":0,"judged":0}]
 EOF
 
-cat > "$EVAL_SANDBOX/.review/kb-joins.jsonl" <<EOF
+cat > "$EVAL_SANDBOX/.verdict/kb-joins.jsonl" <<EOF
 {"at":"2026-10-31T00:00:01Z","sig":"$F1","rule":"r-a1","outcome":"addressed","actor":"human","verb":"triage","bundle":"4401","review_id":null}
 {"at":"2026-10-31T00:00:02Z","sig":"$F2","rule":"r-a2","outcome":"false-positive","actor":"human","verb":"triage","bundle":"4401","review_id":null}
 {"at":"2026-10-31T00:00:03Z","sig":"$G1","rule":"r-a2","outcome":"addressed","actor":"human","verb":"triage","bundle":"4402","review_id":424242}
 EOF
 
-before_hash="$(cd "$EVAL_SANDBOX" && find .review -type f | LC_ALL=C sort | xargs shasum -a 1)"
+before_hash="$(cd "$EVAL_SANDBOX" && find .verdict -type f | LC_ALL=C sort | xargs shasum -a 1)"
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 run_review trend acme/app --overlap --json
@@ -160,7 +160,7 @@ run_review trend acme/app
 assert_exit "default human trend succeeds" 0
 assert_stream_nogrep "default human output has no overlap section" "$EVAL_OUT" "overlap:"
 
-after_hash="$(cd "$EVAL_SANDBOX" && find .review -type f | LC_ALL=C sort | xargs shasum -a 1)"
+after_hash="$(cd "$EVAL_SANDBOX" && find .verdict -type f | LC_ALL=C sort | xargs shasum -a 1)"
 if [ "$before_hash" = "$after_hash" ]; then
   good "audit writes nothing (fixture bytes identical)"
 else
@@ -172,22 +172,22 @@ if [ "$stub_before" = "$stub_after" ]; then
 else
   bad "audit touched the network ($stub_before -> $stub_after)"
 fi
-echo "not jsonl at all" > "$EVAL_SANDBOX/.review/kb-joins.jsonl"
+echo "not jsonl at all" > "$EVAL_SANDBOX/.verdict/kb-joins.jsonl"
 run_review trend acme/app --overlap --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && jq -e '.data.overlap.joins.rows == 0' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && grep -q "kb joins .review/kb-joins.jsonl unreadable" "$EVAL_ERR"; then
+  && grep -q "kb joins .verdict/kb-joins.jsonl unreadable" "$EVAL_ERR"; then
   good "corrupt joins warns and reads zeros (never fails)"
 else
   bad "corrupt joins handling broke (exit $EVAL_STATUS)"
 fi
-cat > "$EVAL_SANDBOX/.review/kb-joins.jsonl" <<EOF
+cat > "$EVAL_SANDBOX/.verdict/kb-joins.jsonl" <<EOF
 {"at":"2026-10-31T00:00:01Z","sig":"$F1","rule":"r-a1","outcome":"addressed","actor":"human","verb":"triage","bundle":"4401","review_id":null}
 {"at":"2026-10-31T00:00:02Z","sig":"$F2","rule":"r-a2","outcome":"false-positive","actor":"human","verb":"triage","bundle":"4401","review_id":null}
 {"at":"2026-10-31T00:00:03Z","sig":"$G1","rule":"r-a2","outcome":"addressed","actor":"human","verb":"triage","bundle":"4402","review_id":424242}
 EOF
 
-rm -f "$EVAL_SANDBOX"/.review/*/kb-recall.json
+rm -f "$EVAL_SANDBOX"/.verdict/state/*/kb-recall.json
 run_review trend acme/app --overlap --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && jq -e '.data.overlap.precision == null and .data.overlap.coverage == null
@@ -199,8 +199,8 @@ else
   bad "no-manifest edge: $(jq -c '.data.overlap | {precision, coverage, measured_bundles, cited_findings, addressed}' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-mv "$EVAL_SANDBOX/.review" "$EVAL_SANDBOX/.review.hold"
-mkdir -p "$EVAL_SANDBOX/.review"
+mv "$EVAL_SANDBOX/.verdict" "$EVAL_SANDBOX/.verdict.hold"
+mkdir -p "$EVAL_SANDBOX/.verdict"
 run_review trend acme/app --overlap --json
 empty_ok="false"
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -209,8 +209,8 @@ if [ "$EVAL_STATUS" -eq 0 ] \
     and .data.overlap.joins.rows == 0' <"$EVAL_OUT" >/dev/null 2>&1; then
   empty_ok="true"
 fi
-rmdir "$EVAL_SANDBOX/.review"
-mv "$EVAL_SANDBOX/.review.hold" "$EVAL_SANDBOX/.review"
+rmdir "$EVAL_SANDBOX/.verdict"
+mv "$EVAL_SANDBOX/.verdict.hold" "$EVAL_SANDBOX/.verdict"
 if [ "$empty_ok" = "true" ]; then
   good "empty store: nulls + zeros, never an error"
 else

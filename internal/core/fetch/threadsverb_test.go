@@ -30,7 +30,7 @@ func threadsRequest(cmdr Commander, repo, pr string) *ThreadsRequest {
 // writeThreadsBundle writes the bundle metadata the refresh reads.
 func writeThreadsBundle(t *testing.T, pr, head string) {
 	t.Helper()
-	dir := filepath.Join(".review", pr)
+	dir := filepath.Join(".verdict", "state", pr)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestRunThreadsRefreshPagesAndWrites(t *testing.T) {
 	if !strings.Contains(resp.Next, "address open threads") {
 		t.Errorf("next = %q", resp.Next)
 	}
-	raw, rerr := os.ReadFile(".review/7/threads.json")
+	raw, rerr := os.ReadFile(".verdict/state/7/threads.json")
 	if rerr != nil {
 		t.Fatalf("read feed: %v", rerr)
 	}
@@ -146,7 +146,7 @@ func TestRunThreadsKeepsFeedOnTotalFailure(t *testing.T) {
 		`{"id":"t1","path":"a.go","line":2,"start_line":null,"side":"RIGHT","resolved":false,` +
 		`"outdated":false,"url":null,"author":"ana","author_kind":"human","finding_sig":null,` +
 		`"kind":"review-comment","comments":[]}]}`
-	if err := os.WriteFile(".review/7/threads.json", []byte(prior), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/7/threads.json", []byte(prior), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
@@ -156,7 +156,7 @@ func TestRunThreadsKeepsFeedOnTotalFailure(t *testing.T) {
 	if ref == nil || ref.Code != "threads-failed" {
 		t.Fatalf("refusal = %v, want threads-failed", ref)
 	}
-	raw, err := os.ReadFile(".review/7/threads.json")
+	raw, err := os.ReadFile(".verdict/state/7/threads.json")
 	if err != nil || string(raw) != prior {
 		t.Errorf("existing feed changed: %q, %v", raw, err)
 	}
@@ -174,7 +174,7 @@ func TestRunThreadsKeepsFeedOnSilentEmpty(t *testing.T) {
 		`{"id":"t1","path":"a.go","line":2,"start_line":null,"side":"RIGHT","resolved":false,` +
 		`"outdated":false,"url":null,"author":"ana","author_kind":"human","finding_sig":null,` +
 		`"kind":"review-comment","comments":[]}]}`
-	if err := os.WriteFile(".review/7/threads.json", []byte(prior), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/7/threads.json", []byte(prior), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
@@ -184,7 +184,7 @@ func TestRunThreadsKeepsFeedOnSilentEmpty(t *testing.T) {
 	if ref == nil || ref.Code != codeThreadsFailed {
 		t.Fatalf("refusal = %v, want threads-failed", ref)
 	}
-	raw, err := os.ReadFile(".review/7/threads.json")
+	raw, err := os.ReadFile(".verdict/state/7/threads.json")
 	if err != nil || string(raw) != prior {
 		t.Errorf("existing feed changed: %q, %v", raw, err)
 	}
@@ -260,7 +260,7 @@ func TestRunThreadsGitCafeFailedReadRefuses(t *testing.T) {
 	if n := strings.Count(ref.Message, "exit status 1"); n != 2 {
 		t.Errorf("message %q carries %d read failures, want 2 (reviews and comments)", ref.Message, n)
 	}
-	if _, err := os.Stat(".review/7/threads.json"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/7/threads.json"); !os.IsNotExist(err) {
 		t.Errorf("threads.json written on a failed read (err=%v)", err)
 	}
 }
@@ -287,7 +287,7 @@ func TestRunThreadsGitCafePartialReadMarksTruncated(t *testing.T) {
 		t.Errorf("data = %+v, want truncated", resp.Data)
 	}
 	assertWarning(t, resp.Warnings, "thread read was incomplete")
-	raw, err := os.ReadFile(".review/7/threads.json")
+	raw, err := os.ReadFile(".verdict/state/7/threads.json")
 	if err != nil {
 		t.Fatalf("read feed: %v", err)
 	}
@@ -308,16 +308,16 @@ func TestRunThreadsGitCafePartialReadMarksTruncated(t *testing.T) {
 // threads.
 func TestThreadsHint(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if got := threadsHint(".review/7"); got != "" {
+	if got := threadsHint(".verdict/state/7"); got != "" {
 		t.Errorf("missing feed hint = %q", got)
 	}
-	if err := os.MkdirAll(".review/7", 0o755); err != nil {
+	if err := os.MkdirAll(".verdict/state/7", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(".review/7/threads.json", []byte(`{"threads":[{"id":"t"}]}`), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/7/threads.json", []byte(`{"threads":[{"id":"t"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := threadsHint(".review/7"); !strings.Contains(got, ".review/7/threads.json") {
+	if got := threadsHint(".verdict/state/7"); !strings.Contains(got, ".verdict/state/7/threads.json") {
 		t.Errorf("feed hint = %q", got)
 	}
 }

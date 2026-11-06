@@ -14,7 +14,7 @@
     "record": {
       "type": "object",
       "properties": {
-        "schema_version": { "const": "1" },
+        "schema_version": { "const": "2" },
         "effort": {
           "description": "Run tier; missing or unknown values roll up as standard.",
           "type": "string"
@@ -32,10 +32,38 @@
         "diff_bytes": { "type": ["number", "null"] },
         "lenses": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "$ref": "#/$defs/lensUsage" }
+        },
+        "run": { "type": "string" },
+        "inputs_sha256": { "type": "string" },
+        "group_costs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/groupCost" }
         }
       },
       "required": [],
+      "additionalProperties": true
+    },
+    "lensUsage": {
+      "type": "object",
+      "properties": {
+        "group": { "type": "string" },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["group", "labels"],
+      "additionalProperties": true
+    },
+    "groupCost": {
+      "type": "object",
+      "properties": {
+        "est_usd": { "type": ["number", "null"] },
+        "group": { "type": "string" },
+        "effort": { "type": "string" }
+      },
+      "required": ["group", "effort"],
       "additionalProperties": true
     },
     "modelSpend": {

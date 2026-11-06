@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/retry"
 )
 
@@ -39,7 +40,7 @@ const msgCanceledFetch = "canceled before fetch completed"
 // read [core.MissingToolError]); tests inject a scripted commander and
 // assert the exact argv. No service body spawns directly.
 type Commander interface {
-	Run(ctx context.Context, cmd core.Command) (core.Result, error)
+	Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	LookPath(tool string) error
 }
 
@@ -229,6 +230,7 @@ func (st *state) session() (*session, *core.RefusalError) {
 		progress:  st.progress(),
 		warnings:  &st.warnings,
 		commander: cmdr,
+		repoRoot:  st.req.RepoRootPath(),
 	}, nil
 }
 
@@ -297,9 +299,19 @@ type session struct {
 	iso       *isolation
 	controls  *controls.Snapshot
 	Effective core.Effective
-	retryAt   string
-	privacy   config.PrivacyView
-	JSONMode  bool
+	// repoRoot is the reviewed repository root every bundle path
+	// anchors to, resolved once per run from the request.
+	repoRoot string
+	retryAt  string
+	privacy  config.PrivacyView
+	JSONMode bool
+}
+
+// display renders a bundle path for the human stream: repository-relative
+// when the bundle lives under the run's root, so the operator-facing line
+// never carries an absolute local path.
+func (s *session) display(dir string) string {
+	return readcommon.DisplayPath(s.repoRoot, dir)
 }
 
 // nowUTC renders the session clock in the feed's fetched_at format.
@@ -340,7 +352,7 @@ func (s *session) needTool(tool string) error {
 // shell-visible failure text, and callers map both to the fetch
 // warn-or-refuse posture.
 func (s *session) run(ctx context.Context, bin string, args ...string) (core.Result, error) {
-	res, err := s.commander.Run(ctx, core.Command{Argv: append([]string{bin}, args...)})
+	res, err := s.commander.Run(ctx, &core.Command{Argv: append([]string{bin}, args...)})
 	if err != nil {
 		return res, err //nolint:wrapcheck // the seam error passes through by design; callers map it per site
 	}

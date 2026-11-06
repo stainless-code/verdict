@@ -175,8 +175,8 @@ func TestNormalizeCostSynthesizesARecord(t *testing.T) {
 		} `json:"models"`
 		Wall float64 `json:"wall_seconds"`
 	}](t, writeTemp(t, doc))
-	if rec.SchemaVersion != "1" || rec.Effort != "standard" || rec.Wall != 1.235 {
-		t.Errorf("record = %+v, want v1/standard/wall 1.235", rec)
+	if rec.SchemaVersion != "2" || rec.Effort != "standard" || rec.Wall != 1.235 {
+		t.Errorf("record = %+v, want v2/standard/wall 1.235", rec)
 	}
 	if len(rec.Models) != 1 || rec.Models[0].Name != "fixture-good" {
 		t.Errorf("models = %+v, want exactly fixture-good", rec.Models)

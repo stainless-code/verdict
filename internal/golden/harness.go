@@ -1,7 +1,7 @@
 // Package golden provides the golden-test harness shared by the verb
 // suites: it builds the Go binary once, runs it on hermetic fixtures, and
 // pins everything observable — exit codes, stdout/stderr, and every file
-// written anywhere (bundle, .review/ stores, kb files, HOME skill trees),
+// written anywhere (bundle, .verdict/ stores, kb files, HOME skill trees),
 // plus artifact presence — against checked-in golden files. A normalizer
 // that hides real diffs is a defect, so the only scrubs are timestamps, the
 // prompt nonce, and curl's connection timing.

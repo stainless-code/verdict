@@ -131,7 +131,7 @@ func TestClientTrend(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writePRBundle(t, "6101")
 	writeFindings(t, "6101", sdkStore())
-	writeFile(".review/6101/post.json",
+	writeFile(".verdict/state/6101/post.json",
 		`{"schema_version":"1","review":{"id":99},"head":"`+sdkHeadA+`",`+
 			`"posted_at":"2026-01-01T00:00:00Z","confidence":null,"security_summary":null}`)
 	c := newSDKClient(nil, nil)
@@ -176,7 +176,7 @@ func TestClientCalibrate(t *testing.T) {
 	if grades := asSlice(t, doc["grades"], "grades"); len(grades) != 3 {
 		t.Errorf("grades = %v, want 3 rows", grades)
 	}
-	if store := readText(t, ".review/6101/kb-grades.jsonl"); len(splitLines(store)) != 3 {
+	if store := readText(t, ".verdict/state/6101/kb-grades.jsonl"); len(splitLines(store)) != 3 {
 		t.Errorf("kb-grades.jsonl = %s, want 3 lines", store)
 	}
 
@@ -191,7 +191,7 @@ func TestClientCalibrate(t *testing.T) {
 // needs no repo/PR positionals).
 func TestClientDoctor(t *testing.T) {
 	t.Chdir(t.TempDir())
-	t.Setenv("PATH", t.TempDir())
+	onlyPath(t, "git")
 	c := newSDKClient(nil, nil)
 	defer c.Close()
 
@@ -223,7 +223,7 @@ func assertDoctorRows(t *testing.T, rows []any) {
 		"gh-cli":           {"fail", "missing — install github.com/cli/cli", false},
 		"gh-auth":          {"fail", "run gh auth login", false},
 		"api-reachable":    {"warn", "cannot reach api.github.com with this token", false},
-		"storage-writable": {"fail", "cwd writable — .review/ created on first fetch", true},
+		"storage-writable": {"fail", "cwd writable — .verdict/state/ created on first fetch", true},
 	}
 	for _, raw := range rows {
 		row := asMap(t, raw, "check row")

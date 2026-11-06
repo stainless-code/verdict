@@ -140,7 +140,15 @@
         { "required": ["defaults"] },
         { "required": ["requirements"] }
       ],
-      "not": { "required": ["profile", "defaults"] }
+      "not": {
+        "anyOf": [
+          { "required": ["profile", "defaults"] },
+          {
+            "required": ["defaults"],
+            "properties": { "defaults": { "required": ["kb_policy"] } }
+          }
+        ]
+      }
     },
     "profile": {
       "description": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget.",

@@ -1,14 +1,14 @@
 exit: 0
 --- stdout ---
 » anchors: 1 inline, 0 moved to body
-» findings: 1 sigs -> .review/local-kb/findings.json
+» findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  open  true  notes.txt
-recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-kb/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no fetch-time hunk snapshot (.verdict/state/local-kb/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 --- files ---
---- file C/.review/local-kb/findings.json ---
+--- file C/.verdict/state/local-kb/findings.json ---
 [
   {
     "kind": "inline",
@@ -37,7 +37,7 @@ warn: $.body: no basis line — inserted the computed counts (basis-replaced)
     ]
   }
 ]
---- file C/.review/local-kb/hunks.tsv ---
+--- file C/.verdict/state/local-kb/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
 notes.txt	OLD	11	17
@@ -48,7 +48,7 @@ notes.txt	OLD	31	37
 notes.txt	NEW	31	37
 other.txt	OLD	1	3
 other.txt	NEW	1	3
---- file C/.review/local-kb/record.json ---
+--- file C/.verdict/state/local-kb/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -60,10 +60,10 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "23fd310331bd0add2e92ef6f67704985b6f314d4dad3856406854f062684068c",
   "model": null
 }
---- file C/.review/local-kb/store.json ---
+--- file C/.verdict/state/local-kb/store.json ---
 {
   "schema_version": "1"
 }

@@ -1,13 +1,13 @@
 exit: 0
 --- stdout ---
-probe: acme/app#5101 — 3 finding(s): real=1 false=1 unknown=1 (grades: .review/5101/kb-grades.jsonl)
+probe: acme/app#5101 — 3 finding(s): real=1 false=1 unknown=1 (grades: .verdict/state/5101/kb-grades.jsonl)
 c1111111 [real] rule r-a1 helpful=true
 b2222222 [unknown] uncited
 d4444444 [false] rule r-a2 helpful=false
 --- stderr ---
 
 --- files ---
---- file C/.review/5101/kb-grades.jsonl ---
+--- file C/.verdict/state/5101/kb-grades.jsonl ---
 {"at":"0000-00-00T00:00:00Z","bundle":"5101","sig":"c111111111111111111111111111111111111111","verdict":"real","rule":"r-a1","helpful":true,"agent_verdict":null,"agent_helpful":null,"agreement":null,"grader":"calibrate-probe"}
 {"at":"0000-00-00T00:00:00Z","bundle":"5101","sig":"b222222222222222222222222222222222222222","verdict":"unknown","rule":null,"helpful":null,"agent_verdict":null,"agent_helpful":null,"agreement":null,"grader":"calibrate-probe"}
 {"at":"0000-00-00T00:00:00Z","bundle":"5101","sig":"d444444444444444444444444444444444444444","verdict":"false","rule":"r-a2","helpful":false,"agent_verdict":null,"agent_helpful":null,"agreement":null,"grader":"calibrate-probe"}

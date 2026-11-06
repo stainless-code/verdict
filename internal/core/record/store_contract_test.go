@@ -29,15 +29,15 @@ const storeBody = "> [!IMPORTANT] Store contract fixture with enough substance."
 func writeStoreBundle(t *testing.T, slug, review string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
-	writeFile(t, ".review/"+slug+"/source.json",
+	writeFile(t, ".verdict/state/"+slug+"/source.json",
 		`{"head_sha":"`+storeHead+`","base_sha":"`+storeBase+`","head_ref":"work"}`)
-	writeFile(t, ".review/"+slug+"/full.diff", storeDiff)
-	writeFile(t, ".review/"+slug+"/review.json", review)
+	writeFile(t, ".verdict/state/"+slug+"/full.diff", storeDiff)
+	writeFile(t, ".verdict/state/"+slug+"/review.json", review)
 }
 
 func storeEntries(t *testing.T, slug string) []map[string]any {
 	t.Helper()
-	raw, err := os.ReadFile(".review/" + slug + "/findings.json")
+	raw, err := os.ReadFile(".verdict/state/" + slug + "/findings.json")
 	if err != nil {
 		t.Fatalf("read findings.json: %v", err)
 	}
@@ -154,9 +154,9 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 	for _, tc := range fileTests {
 		t.Run(tc.name, func(t *testing.T) {
 			writeStoreBundle(t, "local-shape", valid+`}`)
-			writeFile(t, ".review/local-shape/"+tc.path, tc.content)
+			writeFile(t, ".verdict/state/local-shape/"+tc.path, tc.content)
 			checkShapeRefusal(t, "local-shape", tc.code, tc.wantErr, tc.path == "findings.json")
-			kept, err := os.ReadFile(".review/local-shape/" + tc.path)
+			kept, err := os.ReadFile(".verdict/state/local-shape/" + tc.path)
 			if err != nil || string(kept) != tc.content {
 				t.Errorf("%s = %q (err %v); refusal must not rewrite it", tc.path, kept, err)
 			}
@@ -186,7 +186,7 @@ func checkShapeRefusal(t *testing.T, slug, code, wantErr string, priorStore bool
 		if priorStore && artifact == "findings.json" {
 			continue
 		}
-		if _, err := os.Stat(".review/" + slug + "/" + artifact); !os.IsNotExist(err) {
+		if _, err := os.Stat(".verdict/state/" + slug + "/" + artifact); !os.IsNotExist(err) {
 			t.Errorf("refusal wrote %s", artifact)
 		}
 	}
@@ -214,7 +214,7 @@ func TestRunRecordRefusesOversizeVerification(t *testing.T) {
 	writeStoreBundle(t, "local-cap",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
 	padded := "[" + strings.Repeat(" ", 32<<20) + "]"
-	writeFile(t, ".review/local-cap/verification.json", padded)
+	writeFile(t, ".verdict/state/local-cap/verification.json", padded)
 	checkShapeRefusal(t, "local-cap", "bad-review-input", "32 MiB agent-input cap", false)
 }
 
@@ -228,7 +228,7 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		`"confidence":3,"security_summary":"No new attack surface.",` +
 		`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`
 	writeStoreBundle(t, "local-av", review)
-	writeFile(t, ".review/local-av/cost.json", `[{"models":[{"name":"claude-sonnet-4"}]}]`)
+	writeFile(t, ".verdict/state/local-av/cost.json", `[{"models":[{"name":"claude-sonnet-4"}]}]`)
 
 	c := &collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-av"))
@@ -284,7 +284,7 @@ func TestRunRecordArtifactValues(t *testing.T) {
 // wire keys, so the assertions cannot inherit the writer's Go types.
 func readRecord(t *testing.T, slug string) map[string]any {
 	t.Helper()
-	raw, err := os.ReadFile(".review/" + slug + "/record.json")
+	raw, err := os.ReadFile(".verdict/state/" + slug + "/record.json")
 	if err != nil {
 		t.Fatalf("read record.json: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestRunRecordPriorMerge(t *testing.T) {
 		`{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."},` +
 		`{"path":"notes.txt","line":3,"body":"Second inline finding body for the store."}]}`
 	writeStoreBundle(t, "local-pm", review)
-	writeFile(t, ".review/local-pm/findings.json", prior)
+	writeFile(t, ".verdict/state/local-pm/findings.json", prior)
 
 	c := &collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-pm")); ref != nil {
@@ -435,8 +435,8 @@ func TestRunRecordDeltaReopen(t *testing.T) {
 		`"rationale":"Fixed.","history":[]}]`
 	writeStoreBundle(t, "local-ro",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
-	writeFile(t, ".review/local-ro/findings.json", prior)
-	writeFile(t, ".review/local-ro/incremental.diff",
+	writeFile(t, ".verdict/state/local-ro/findings.json", prior)
+	writeFile(t, ".verdict/state/local-ro/incremental.diff",
 		"diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n")
 
 	c := &collector{}
@@ -541,12 +541,12 @@ func TestRunRecordKeepsFetchSnapshot(t *testing.T) {
 	const pinned = "notes.txt\tNEW\t1\t99\n"
 	writeStoreBundle(t, "local-snap",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
-	writeFile(t, ".review/local-snap/hunks.tsv", pinned)
+	writeFile(t, ".verdict/state/local-snap/hunks.tsv", pinned)
 	c := &collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-snap")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	raw, err := os.ReadFile(".review/local-snap/hunks.tsv")
+	raw, err := os.ReadFile(".verdict/state/local-snap/hunks.tsv")
 	if err != nil {
 		t.Fatalf("hunks.tsv after the run: %v", err)
 	}
@@ -629,10 +629,10 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 			writeStoreBundle(t, slug, `{"schema_version":"1","body":"`+storeBody+`","approved":false,`+
 				`"comments":[`+comment+`]`+tc.resolved+`}`)
 			if tc.prior != "" {
-				writeFile(t, ".review/"+slug+"/findings.json", tc.prior)
+				writeFile(t, ".verdict/state/"+slug+"/findings.json", tc.prior)
 			}
 			if tc.claims != "" {
-				writeFile(t, ".review/"+slug+"/verification.json", tc.claims)
+				writeFile(t, ".verdict/state/"+slug+"/verification.json", tc.claims)
 			}
 			c := &collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
@@ -691,7 +691,7 @@ func TestRunRecordClaimsAllApplyInOneRun(t *testing.T) {
 		`"triage":[{"sig":"` + triagedSig + `","status":"wont-fix",` +
 		`"rationale":"By design: the gate owns that decision and tests cover it."}]}`
 	writeStoreBundle(t, "local-cc", review)
-	writeFile(t, ".review/local-cc/verification.json",
+	writeFile(t, ".verdict/state/local-cc/verification.json",
 		`[{"sig":"`+verifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"},`+
 			`{"sig":"`+secondVerifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`)
 
@@ -821,8 +821,8 @@ func TestRunRecordVerifiedContradiction(t *testing.T) {
 			review := `{"schema_version":"1","body":"` + storeBody + `","approved":false,` +
 				`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`
 			writeStoreBundle(t, slug, review)
-			writeFile(t, ".review/"+slug+"/verification.json", claims)
-			writeFile(t, ".review/"+slug+"/patch.json", tc.patch)
+			writeFile(t, ".verdict/state/"+slug+"/verification.json", claims)
+			writeFile(t, ".verdict/state/"+slug+"/patch.json", tc.patch)
 			c := &collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
 				t.Fatalf("Run refusal: %v", ref)

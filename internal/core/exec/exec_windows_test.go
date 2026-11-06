@@ -19,7 +19,7 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 	vcmd := `trap '' TERM; (trap '' TERM; exec sleep 30) & ` + pidReport(pidFile) + `; exec sleep 30`
 	tctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
+	res, err := Watchdog{}.Run(tctx, &core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 }
 
 func TestSpawnedChildIsInJobBeforeItRuns(t *testing.T) {
-	proc, waitDone, _, err := spawnWatched(t.Context(), core.Command{
+	proc, waitDone, _, err := spawnWatched(t.Context(), &core.Command{
 		Argv: []string{"bash", "-c", "exec sleep 30"}, Env: os.Environ(),
 	})
 	if err != nil {
@@ -76,7 +76,7 @@ func TestCancelKillsGrandchildSpawnedAtStart(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		res, err := Watchdog{}.Run(ctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
+		res, err := Watchdog{}.Run(ctx, &core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
 		done <- outcome{err: err, res: res}
 	}()
 	readPid(t, pidFile)

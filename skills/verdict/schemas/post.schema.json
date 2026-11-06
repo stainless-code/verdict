@@ -48,7 +48,11 @@
       "items": { "$ref": "#/$defs/forcedPost" }
     },
     "post_min_severity": { "enum": ["critical", "important", "informational"] },
-    "below_floor_excluded": { "type": "integer", "minimum": 0 }
+    "below_floor_excluded": { "type": "integer", "minimum": 0 },
+    "post_floor_scoped": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/floorScope" }
+    }
   },
   "required": ["schema_version", "review", "head", "posted_at"],
   "additionalProperties": true,
@@ -75,6 +79,15 @@
         }
       },
       "required": ["reason"],
+      "additionalProperties": true
+    },
+    "floorScope": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "floor": { "enum": ["critical", "important", "informational"] }
+      },
+      "required": ["path", "floor"],
       "additionalProperties": true
     }
   }

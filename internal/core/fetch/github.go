@@ -36,10 +36,10 @@ func runGitHub(
 	if ref := githubFetch(ctx, ctx2, r, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
-	if ref := resolveControls(ctx, ctx2, repo, readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
+	if ref := resolveControls(ctx, ctx2, repo, req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	if ref := phaseTwo(ctx, ctx2, req, f, dir); ref != nil {
+	if ref := phaseTwo(ctx, ctx2, req, f, dir, budget); ref != nil {
 		return nil, "", ref
 	}
 	fc := resolveFetchCap(r, ctx2.runCfg.resolved)
@@ -88,7 +88,7 @@ func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 // githubDiff owns the diff read with its API fallback: the CLI diff
 // first, then the API diff, refusing only when both fail.
 func githubDiff(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» gh pr diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» gh pr diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.ghFetch(ctx, ghCmdPR, gitCmdDiff, pr, "--repo", repo)
 	fmt.Fprint(r.Human, diffRes.Stderr)
 	if err != nil {
@@ -140,7 +140,10 @@ func githubBundle(
 		return nil, "", ref
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, readcommon.PrField(dir, keyBaseSHA), fc.source, r.privacy.Exclusions)
+	chunkJSON, ref := maybeWriteChunks(
+		r.Diag, dir, fc.maxBytes, chunkActive, groupLimits(ctx2.runCfg.resolved, f.ChunkFlag), headSHA,
+		readcommon.PrField(dir, keyBaseSHA), fc.source, r.privacy.Exclusions,
+	)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -214,7 +217,7 @@ func githubIncremental(ctx context.Context, r *session, dir, repo string, f core
 		return incBase, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
-	fmt.Fprintf(r.Human, "» compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, dir)
+	fmt.Fprintf(r.Human, "» compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir))
 	res, err := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/compare/"+f.BaseSHA+gitRange3+headSHA,
 		flagH, "Accept: application/vnd.github.diff")
 	if err != nil {
@@ -296,44 +299,47 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	if ref != nil {
 		return nil, "", ref
 	}
+	if _, err := measuredUsage(ctx2.runner); err != nil {
+		return nil, "", err
+	}
 	ctx2.runCfg = rc
-	rc.root = req.RootPath()
+	rc.root = req.RepoRootPath()
 	for _, warn := range rc.envWarns {
 		ctx2.runner.Warn(warn)
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
 	budget := resolveBudget(ctx2.runner, rc.resolved)
-	if err := budgetGate(ctx2.runner, &budget, rc.resolved, f.BudgetConsent); err != nil {
-		return nil, "", err
-	}
-	dir := ".review/" + req.Pr
+	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	ctx2.dir = dir
+	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+		return nil, "", ref
+	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return nil, "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
 	}
 	return &budget, dir, nil
 }
 
-// phaseTwo resolves the full repository policy once the base commit is
-// known and re-gates the spend with the repository layer in force: an
-// early provisional gate cannot see repository policy, so the full gate
-// repeats here before the bundle builds. Without base policy the
-// phase-two resolution replays the phase-one layers exactly, so the
-// re-gate is skipped (one gate, one estimate line, one tail receipt);
-// with policy the authoritative gate repeats and the tail records the
-// single fresh receipt.
-func phaseTwo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, dir string) *core.RefusalError {
+// phaseTwo resolves the full repository policy over the actual captured file
+// list once the base commit and raw diff are known, then gates the spend once
+// on the shared budget state. Group caps and chunking read this resolution,
+// and the tail receipt reuses the same state instead of a discarded shadow.
+func phaseTwo(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags,
+	dir string, budget *budgetState,
+) *core.RefusalError {
 	baseSHA := readcommon.PrField(dir, keyBaseSHA)
-	if ref := ctx2.runCfg.resolvePhaseTwo(ctx, ctx2.runner.commander, req.Repo, baseSHA, f.ChunkFlag, nil, req.SettingsPath, legacyInputs(ctx2.runner)); ref != nil {
+	if ref := ctx2.runCfg.resolvePhaseTwo(
+		ctx, ctx2.runner.commander, req.Repo, baseSHA, f.ChunkFlag, diffInputs(dir), req.SettingsPath,
+	); ref != nil {
 		return ref
 	}
 	resolved := ctx2.runCfg.resolved
 	ctx2.runner.privacy = resolved.Privacy
-	if ctx2.runCfg.base == nil || !ctx2.runCfg.base.Present {
+	if budget == nil {
 		return nil
 	}
-	budget := resolveBudget(ctx2.runner, resolved)
-	if gateErr := budgetGate(ctx2.runner, &budget, resolved, f.BudgetConsent); gateErr != nil {
+	if gateErr := budgetGate(ctx2.runner, budget, resolved, f.BudgetConsent); gateErr != nil {
 		return budgetRefusal(gateErr)
 	}
 	return nil

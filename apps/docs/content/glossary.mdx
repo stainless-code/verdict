@@ -10,8 +10,8 @@ where you meet them. Each definition matches how the verbs behave today.
 
 ## Review shape
 
-**Bundle.** The directory one fetch produces: `.review/<pr>/` for a fetch, or
-`.review/local-<name>/` for `fetch-local`. It holds the diff, TOC, roles, and
+**Bundle.** The directory one fetch produces: `.verdict/state/<pr>/` for a fetch, or
+`.verdict/state/local-<name>/` for `fetch-local`. It holds the diff, TOC, roles, and
 normalized metadata. Every later verb reads it and never re-fetches on its own.
 
 **Lens.** A read-only subagent dispatched to answer one falsifiable question
@@ -20,11 +20,11 @@ domain (billing, auth, schema migration), not by file list. A review with no
 disposition-changing question dispatches none. The synthesizing agent still
 owns the read, the validation, and the written review.
 
-**Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
-`.review/panel` (one slug per line). `fetch` resolves it into
-`.review/<pr>/panel`; the first entry is the synthesizer, the rest staff lenses,
-used exactly in order and never substituted. No panel means the operator picks
-per run.
+**Panel.** The pinned model roster a review group runs with, resolved from
+`REVIEW_PANEL`, typed configuration, or personal settings. The first entry is
+the synthesizer; the rest staff lenses, used in order and never substituted.
+`plan.txt` carries each group's resolved roster. The bundle's `panel` file is
+the shared default. An unpinned group leaves the choice to the operator.
 
 ## Evidence
 

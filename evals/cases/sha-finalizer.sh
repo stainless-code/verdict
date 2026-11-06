@@ -66,7 +66,7 @@ EOF
 PR=4295
 mk_comment "$PR"
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ "$EVAL_STATUS" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "dry run posts nothing and writes no post.json"
 else
   bad "dry run exits $EVAL_STATUS / post.json present"
@@ -74,14 +74,14 @@ fi
 
 PR=4296
 mk_comment "$PR"
-cp "$EVAL_SANDBOX/.review/$PR/review.json" "$EVAL_SANDBOX/review-$PR.json"
+cp "$EVAL_SANDBOX/.verdict/state/$PR/review.json" "$EVAL_SANDBOX/review-$PR.json"
 export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-$PR.json"
 rm -f "$EVAL_SAVE_PAYLOAD"
 m="$(mark)"
 run_review post acme/app "$PR" --json
 unset EVAL_SAVE_PAYLOAD
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEADA" ]; then
+  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEADA" ]; then
   good "first post completes and records the reviewed SHA"
 else
   bad "first post exits $EVAL_STATUS / head not recorded"
@@ -95,7 +95,7 @@ fi
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — reworded body, same SHA.","approved":false,"comments":[]}
 EOF
-cp "$EVAL_SANDBOX/.review/$PR/post.json" "$EVAL_SANDBOX/post-before.json"
+cp "$EVAL_SANDBOX/.verdict/state/$PR/post.json" "$EVAL_SANDBOX/post-before.json"
 m="$(mark)"
 run_review post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
@@ -110,7 +110,7 @@ if [ "$EVAL_STATUS" -eq 1 ] && grep -q -- "--force" "$EVAL_ERR"; then
 else
   bad "refusal stderr: $(head -c 300 "$EVAL_ERR")"
 fi
-if cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.review/$PR/post.json" \
+if cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" \
   && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
   good "refused repost posted nothing (no POST, post.json identical)"
 else
@@ -119,14 +119,20 @@ fi
 
 FRESH="$EVAL_SANDBOX/fresh"
 rm -rf "$FRESH"
-mkdir -p "$FRESH/.review"
-cp -R "$EVAL_SANDBOX/.review/$PR" "$FRESH/.review/$PR"
-cp "$EVAL_SANDBOX/review-$PR.json" "$FRESH/.review/$PR/review.json"
-rm -f "$FRESH/.review/$PR/post.json" "$FRESH/.review/$PR"/.posted_*
+mkdir -p "$FRESH/.verdict/state"
+cp -R "$EVAL_SANDBOX/.verdict/state/$PR" "$FRESH/.verdict/state/$PR"
+# A fresh checkout of the same repo carries the same controls the snapshot
+# pinned; only the uncommitted receipts and artifacts are new.
+for rel in config.json kb.jsonl kb-joins.jsonl learnings.md overrides; do
+  [ -e "$EVAL_SANDBOX/.verdict/$rel" ] || continue
+  cp -R "$EVAL_SANDBOX/.verdict/$rel" "$FRESH/.verdict/$rel"
+done
+cp "$EVAL_SANDBOX/review-$PR.json" "$FRESH/.verdict/state/$PR/review.json"
+rm -f "$FRESH/.verdict/state/$PR/post.json" "$FRESH/.verdict/state/$PR"/.posted_*
 posted_body="$(jq -r '.body // empty' "$EVAL_SANDBOX/posted-$PR.json" 2>/dev/null || true)"
 jq -n --arg b "$posted_body" --arg h "$HEADA" \
   '[{id:901,body:$b,commit_id:$h,submitted_at:"2026-01-01T00:00:00Z"}]' \
-  >"$FRESH/.review/$PR/reviews.json"
+  >"$FRESH/.verdict/state/$PR/reviews.json"
 m="$(mark)"
 run_review_in "$FRESH" post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
@@ -143,9 +149,9 @@ else
   bad "fresh-bundle refusal message: $(printf '%s' "$msg" | head -c 300)"
 fi
 
-jq --arg h "$HEADB" '.[0].commit_id = $h' "$FRESH/.review/$PR/reviews.json" \
-  >"$FRESH/.review/$PR/reviews.json.new"
-mv "$FRESH/.review/$PR/reviews.json.new" "$FRESH/.review/$PR/reviews.json"
+jq --arg h "$HEADB" '.[0].commit_id = $h' "$FRESH/.verdict/state/$PR/reviews.json" \
+  >"$FRESH/.verdict/state/$PR/reviews.json.new"
+mv "$FRESH/.verdict/state/$PR/reviews.json.new" "$FRESH/.verdict/state/$PR/reviews.json"
 m="$(mark)"
 run_review_in "$FRESH" post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
@@ -183,18 +189,18 @@ fi
 
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.review/$PR/post.json"; then
+  && cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json"; then
   good "dry run after a completed post stays advisory and keeps the record"
 else
   bad "dry run after completed post exits $EVAL_STATUS"
 fi
 
-jq --arg h "$HEADB" '.headRefOid = $h' "$EVAL_SANDBOX/.review/$PR/PR.json" \
-  > "$EVAL_SANDBOX/.review/$PR/PR.json.new"
-mv "$EVAL_SANDBOX/.review/$PR/PR.json.new" "$EVAL_SANDBOX/.review/$PR/PR.json"
+jq --arg h "$HEADB" '.headRefOid = $h' "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" \
+  > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new"
+mv "$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json"
 run_review post acme/app "$PR" --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEADB" ]; then
+  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEADB" ]; then
   good "new-SHA post proceeds and refreshes the record"
 else
   bad "new-SHA post exits $EVAL_STATUS / head not refreshed"
@@ -206,7 +212,7 @@ EOF
 m="$(mark)"
 run_review post acme/app "$PR" --force --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEADB" ]; then
+  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEADB" ]; then
   good "--force overrides the same-SHA refusal"
 else
   bad "forced repost exits $EVAL_STATUS, want 0"
@@ -235,7 +241,7 @@ touch "$EVAL_SANDBOX/post-fail"
 run_review post acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "post-failed" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "failed post writes no post.json"
 else
   bad "failed post gave exit $EVAL_STATUS code '$code' / post.json present"
@@ -243,7 +249,7 @@ fi
 rm -f "$EVAL_SANDBOX/post-fail"
 run_review post acme/app "$PR" --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.review/$PR/post.json" 2>/dev/null)" = "$HEADA" ]; then
+  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEADA" ]; then
   good "retry after failure proceeds (nothing was armed to refuse it)"
 else
   bad "retry after failure exits $EVAL_STATUS, want 0"
@@ -254,7 +260,7 @@ eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review report acme/app "$PR" --completeness
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "stale-head" "$EVAL_ERR" \
@@ -274,13 +280,13 @@ assert_stream_nogrep "missing-post keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 
 PR=4307
 eval_mk_bundle "$PR"
-cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
+cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
 {"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$HEADB","head_sha":"$HEADA","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[],"additions":0,"deletions":0}
 EOF
 printf '[]' | eval_write_findings "$PR"
 jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review report acme/app "$PR" --completeness
 assert_exit "provider stale-head fails the gate" 1
 assert_file_grep "provider stale-head names the typed code" "$EVAL_ERR" "stale-head"
@@ -288,7 +294,7 @@ assert_file_grep "provider stale-head names the plain provider fetch" "$EVAL_ERR
 assert_stream_nogrep "provider stale-head keeps no --base-sha" "$EVAL_ERR" "--base-sha"
 PR=4308
 eval_mk_bundle "$PR"
-cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
+cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
 {"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$HEADB","head_sha":"$HEADA","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[],"additions":0,"deletions":0}
 EOF
 printf '[]' | eval_write_findings "$PR"

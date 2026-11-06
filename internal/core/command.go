@@ -11,9 +11,15 @@ import (
 // inherits the caller's stdin (the verify contract); a nil Env inherits the
 // process environment.
 type Command struct {
-	Argv  []string
 	Stdin io.Reader
-	Env   []string
+	// Dir is the working directory the child runs in. Empty keeps the
+	// inherited working directory, exactly like os/exec. Deep group
+	// validation sets it to the canonical reviewed root, so a command is
+	// never certified at the repository root while actually running in
+	// the caller's subdirectory.
+	Dir  string
+	Argv []string
+	Env  []string
 	// OutputCap is the capture cap in bytes: per stream for the separated
 	// commanders, combined for the watchdog. 0 (or negative) keeps the
 	// commander's documented default. A commander never grows a capture
@@ -45,7 +51,7 @@ type Result struct {
 // lives in internal/core/exec and owns the process-group watchdog; tests
 // inject a scripted commander. No service body calls exec directly.
 type Commander interface {
-	Run(ctx context.Context, cmd Command) (Result, error)
+	Run(ctx context.Context, cmd *Command) (Result, error)
 }
 
 // ExitFailure renders the completed process as the error its wait code

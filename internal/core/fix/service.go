@@ -187,8 +187,8 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 }
 
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
-	dir := readcommon.ResolveBundleDir(st.req.Pr)
-	if !strings.HasPrefix(dir, prefixLocalReview) {
+	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if !readcommon.IsLocalBundleDir(dir) {
 		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
 	}
 	return dir, nil
@@ -394,7 +394,7 @@ func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error
 	if st.req.Commander == nil {
 		return core.Result{}, errNoCommander
 	}
-	res, err := st.req.Commander.Run(ctx, core.Command{Argv: argv})
+	res, err := st.req.Commander.Run(ctx, &core.Command{Argv: argv})
 	if err != nil {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; the refusal carries the contract
 		return core.Result{}, err
@@ -702,7 +702,7 @@ func isEscape(p, anchor string, baseSet map[string]bool) bool {
 	if baseSet[p] {
 		return false
 	}
-	if strings.HasPrefix(p, prefixReview) {
+	if strings.HasPrefix(p, prefixState) {
 		return false
 	}
 	return p != anchor
@@ -1098,10 +1098,9 @@ const (
 	suffixReviews = "/reviews.json"
 	// suffixInline is the stored inline file suffix.
 	suffixInline = "/inline.json"
-	// prefixLocalReview matches local bundle dirs.
-	prefixLocalReview = ".review/local-"
-	// prefixReview filters review-owned paths from scope audits.
-	prefixReview = ".review/"
+	// prefixState filters the generated bundle state tree from scope
+	// audits: run data never counts as fix scope.
+	prefixState = ".verdict/state/"
 	// resolveNone reports no sig match.
 	resolveNone = "NONE"
 	// resolveMany reports an ambiguous sig prefix.
@@ -1166,7 +1165,7 @@ const (
 		"so run anything stronger in your own shell instead\n"
 	// budgetMsg caps review spend.
 	budgetMsg = "loops multiply agent spend — cap review spend with " +
-		"REVIEW_BUDGET_USD or .review/budget (see docs/manual.md)\n"
+		"REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)\n"
 )
 
 var errNotArray = storeError("not a findings array")

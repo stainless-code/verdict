@@ -5,8 +5,8 @@ where you meet them; each definition matches how the verbs behave today.
 
 ## Review shape
 
-**Bundle.** The directory one fetch produces: `.review/<pr>/` for a fetch, or
-`.review/local-<name>/` for `fetch-local`. It holds the diff, TOC, roles, and
+**Bundle.** The directory one fetch produces: `.verdict/state/<pr>/` for a fetch, or
+`.verdict/state/local-<name>/` for `fetch-local`. It holds the diff, TOC, roles, and
 normalized metadata; every later verb reads it and never re-fetches on its own.
 
 **Lens.** A read-only subagent dispatched to answer one falsifiable question
@@ -18,9 +18,13 @@ understanding.
 
 **Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
 the typed `panel` default in `.verdict/config.json` (or the legacy `.review/panel`,
-one slug per line). `fetch` resolves it into `.review/<pr>/panel`;
+one slug per line). `fetch` resolves it into `.verdict/state/<pr>/panel`;
 the first entry is the synthesizer, the rest staff lenses, used exactly in
 order and never substituted. No panel means the operator picks per run.
+The root `panel` file is the shared default roster: `plan.txt` additionally
+exports each group's actually resolved roster (`panel=[...]`, `panel_from`)
+and accounting `effort`, and the shipped dispatcher uses those per-group
+values for that group's files.
 
 ## Evidence
 

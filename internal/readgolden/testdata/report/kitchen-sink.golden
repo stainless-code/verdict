@@ -9,11 +9,12 @@ exit: 1
   "next": "wrote out.md",
   "warnings": [
     "patch identity unavailable — completeness compares heads",
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
     "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
-    "dir": ".review/5101",
+    "dir": ".verdict/state/5101",
     "head": {
       "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -258,6 +259,7 @@ exit: 1
 }
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
 wrote out.sarif
 wrote out.md

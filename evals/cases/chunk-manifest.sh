@@ -20,7 +20,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
   git config user.name "chunk manifest"
   if [ ! -f .gitignore ]; then
     cat > .gitignore <<'EOF'
-.review/
+.verdict/state/
 stubbin/
 fakebin/
 *.log
@@ -44,7 +44,7 @@ EOF
 CMAN_FILES="cman-f1.txt cman-f2.txt cman-f3.txt cman-f4.txt cman-f5.txt cman-f6.txt"
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 set -- $CMAN_FILES
-BUNDLE="$EVAL_SANDBOX/.review/local-cmanfix"
+BUNDLE="$EVAL_SANDBOX/.verdict/state/local-cmanfix"
 FULL_DIFF_BYTES="$(cd "$EVAL_SANDBOX" && git diff HEAD -- "$@" | wc -c | tr -d ' ')"
 if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
   bad "fixture diff $FULL_DIFF_BYTES bytes is not over the 512000 cap"
@@ -53,7 +53,7 @@ fi
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix -- $CMAN_FILES
 assert_exit "absent-knob multi-file over-cap refuses" 1
-assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds its cap 512000 bytes"
 assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
 assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$BUNDLE/chunks" ]; then
@@ -65,7 +65,7 @@ fi
 # shellcheck disable=SC2086 # CMAN_FILES is a validated space-separated path list
 run_review fetch-local acme/app cmanfix --chunk -- $CMAN_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "chunking opted in (from --chunk)" "$EVAL_ERR" \
+  && grep -q "chunking opted in for group" "$EVAL_ERR" \
   && grep -q "chunked: .* chunk(s) at or under 512000 bytes" "$EVAL_ERR"; then
   good "--chunk succeeds with the opt-in + chunked notices"
 else
@@ -75,7 +75,7 @@ MAN="$BUNDLE/chunks/manifest.json"
 if [ -f "$MAN" ] \
   && [ "$(jq -r '.schema_version' <"$MAN" 2>/dev/null)" = "1" ] \
   && [ "$(jq -r '.cap.bytes' <"$MAN" 2>/dev/null)" = "512000" ] \
-  && [ "$(jq -r '.cap.source' <"$MAN" 2>/dev/null)" = "null" ] \
+  && [ "$(jq -r '.cap.source' <"$MAN" 2>/dev/null)" = "per-group: built-in defaults" ] \
   && [ "$(jq -r '.total_bytes' <"$MAN" 2>/dev/null)" = "$FULL_DIFF_BYTES" ] \
   && [ "$(jq -r '.total_bytes' <"$MAN" 2>/dev/null)" = "$(wc -c <"$BUNDLE/full.diff" | tr -d ' ')" ]; then
   good "manifest carries schema 1, cap 512000 + null source, total bytes matching full.diff"
@@ -190,7 +190,7 @@ fi
 run_review fetch-local acme/app cmanfix --chunk --json -- $CMAN_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.chunk.count' <"$EVAL_OUT" 2>/dev/null)" = "$N" ] \
-  && [ "$(jq -r '.data.chunk.manifest' <"$EVAL_OUT" 2>/dev/null)" = ".review/local-cmanfix/chunks/manifest.json" ] \
+  && [ "$(jq -r '.data.chunk.manifest' <"$EVAL_OUT" 2>/dev/null)" = ".verdict/state/local-cmanfix/chunks/manifest.json" ] \
   && [ "$(jq -r '.data.chunk.total_bytes' <"$EVAL_OUT" 2>/dev/null)" = "$FULL_DIFF_BYTES" ]; then
   good "--json carries the additive data.chunk summary"
 else
@@ -215,16 +215,16 @@ fi
 )
 run_review fetch-local acme/app cmanhuge --chunk -- cman-huge.txt
 if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "chunking opted in (from --chunk)" "$EVAL_ERR" \
+  && grep -q "chunking opted in for group" "$EVAL_ERR" \
   && grep -q "single file over cap" "$EVAL_ERR" \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
+  && grep -q "exceeds its cap 512000 bytes" "$EVAL_ERR" \
   && grep -q "try: split the range" "$EVAL_ERR"; then
   good "single over-cap file keeps the advisory refusal with the opted-in notice"
 else
   bad "single-file fallback exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
-if [ ! -d "$EVAL_SANDBOX/.review/local-cmanhuge/chunks" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/local-cmanhuge/chunks/manifest.json" ]; then
+if [ ! -d "$EVAL_SANDBOX/.verdict/state/local-cmanhuge/chunks" ] \
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/local-cmanhuge/chunks/manifest.json" ]; then
   good "fallback writes no chunks dir and no manifest (no half-write)"
 else
   bad "fallback left chunk output behind"
@@ -237,7 +237,7 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "fallback --json exits $EVAL_STATUS"
 fi
-if [ ! -d "$EVAL_SANDBOX/.review/local-cmanhuge/chunks" ]; then
+if [ ! -d "$EVAL_SANDBOX/.verdict/state/local-cmanhuge/chunks" ]; then
   good "fallback --json writes no chunks dir either"
 else
   bad "fallback --json left a chunks dir"
@@ -272,21 +272,21 @@ run_review_fake() {
 run_review_fake fetch acme/app 4399 --chunk
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -q "chunked: .* chunk(s) at or under 512000 bytes" "$EVAL_ERR" \
-  && [ -f "$EVAL_SANDBOX/.review/4399/chunks/manifest.json" ]; then
+  && [ -f "$EVAL_SANDBOX/.verdict/state/4399/chunks/manifest.json" ]; then
   good "PR fetch --chunk succeeds with chunks + manifest"
 else
   bad "PR fetch --chunk exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
-if [ "$(jq -r '.head_sha' <"$EVAL_SANDBOX/.review/4399/chunks/manifest.json" 2>/dev/null)" = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ] \
-  && [ "$(jq -r '.base_sha' <"$EVAL_SANDBOX/.review/4399/chunks/manifest.json" 2>/dev/null)" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ] \
-  && [ "$(jq -r '.total_bytes' <"$EVAL_SANDBOX/.review/4399/chunks/manifest.json" 2>/dev/null)" = "$FULL_DIFF_BYTES" ]; then
+if [ "$(jq -r '.head_sha' <"$EVAL_SANDBOX/.verdict/state/4399/chunks/manifest.json" 2>/dev/null)" = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ] \
+  && [ "$(jq -r '.base_sha' <"$EVAL_SANDBOX/.verdict/state/4399/chunks/manifest.json" 2>/dev/null)" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ] \
+  && [ "$(jq -r '.total_bytes' <"$EVAL_SANDBOX/.verdict/state/4399/chunks/manifest.json" 2>/dev/null)" = "$FULL_DIFF_BYTES" ]; then
   good "PR manifest records the PR head/base SHAs and total bytes"
 else
-  bad "PR manifest: $(jq -c '{head_sha,base_sha,total_bytes}' <"$EVAL_SANDBOX/.review/4399/chunks/manifest.json" 2>/dev/null)"
+  bad "PR manifest: $(jq -c '{head_sha,base_sha,total_bytes}' <"$EVAL_SANDBOX/.verdict/state/4399/chunks/manifest.json" 2>/dev/null)"
 fi
 pr_concat_bytes=0
 pr_over=0
-for f in "$EVAL_SANDBOX"/.review/4399/chunks/chunk-*.diff; do
+for f in "$EVAL_SANDBOX"/.verdict/state/4399/chunks/chunk-*.diff; do
   sz="$(wc -c <"$f" | tr -d ' ')"
   pr_concat_bytes=$((pr_concat_bytes + sz))
   if [ "$sz" -gt 512000 ]; then pr_over=$((pr_over + 1)); fi

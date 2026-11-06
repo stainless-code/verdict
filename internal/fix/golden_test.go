@@ -76,7 +76,7 @@ func mkRepo(t *testing.T, dir string) {
 // mkLocal writes a local bundle with the given findings array.
 func mkLocal(t *testing.T, dir, slug, findings string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "local-"+slug)
+	bdir := filepath.Join(dir, ".verdict", "state", "local-"+slug)
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func mkLocal(t *testing.T, dir, slug, findings string) {
 // seedLedger writes a fix.json ledger for the fixture.
 func seedLedger(t *testing.T, dir, slug, doc string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "local-"+slug)
+	bdir := filepath.Join(dir, ".verdict", "state", "local-"+slug)
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func setupScope(t *testing.T, dir, _ string) {
 func setupNotLocal(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
-	bdir := filepath.Join(dir, ".review", "4291")
+	bdir := filepath.Join(dir, ".verdict", "state", "4291")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func setupNotLocal(t *testing.T, dir, _ string) {
 func setupMissing(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, ".review", "local-empty"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict", "state", "local-empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }

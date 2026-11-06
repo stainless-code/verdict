@@ -8,11 +8,12 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "address open threads",
   "warnings": [
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
     "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
-    "dir": ".review/local-work",
+    "dir": ".verdict/state/local-work",
     "head": {
       "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -97,6 +98,7 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
 --- files ---

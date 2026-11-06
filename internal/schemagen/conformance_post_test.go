@@ -21,7 +21,7 @@ type postCommander struct {
 }
 
 // Run replays the scripted stdout for argv.
-func (c postCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c postCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.t.Helper()
 	key := strings.Join(cmd.Argv, "\x00")
 	out, ok := c.out[key]
@@ -49,13 +49,13 @@ func runPostDryRun(t *testing.T) *core.PostResponse {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
-	writeFixture(t, ".review/5101/full.diff", fixtureDiff())
-	writeFixture(t, ".review/5101/review.json",
+	writeFixture(t, ".verdict/state/5101/full.diff", fixtureDiff())
+	writeFixture(t, ".verdict/state/5101/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
-	seedControls(t, ".review/5101")
+	seedControls(t, ".verdict/state/5101")
 	threads := "gh\x00api\x00graphql\x00--paginate\x00-F\x00owner=acme\x00-F\x00name=app\x00-F\x00pr=5101\x00-f\x00query=" + postQueryLiveCount
 	_ = threads
 	cmdr := postCommander{t: t, out: map[string]string{
@@ -68,7 +68,7 @@ func runPostDryRun(t *testing.T) *core.PostResponse {
 			Commander: cmdr,
 		},
 		Repo: "acme/app", Pr: "5101", Root: &root,
-		Flags:     core.PostFlags{Approve: "false", ReviewFile: ".review/5101/review.json", DryRun: true},
+		Flags:     core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/5101/review.json", DryRun: true},
 		Effective: core.Defaults(),
 	}
 	resp, ref := postcore.Run(context.Background(), req)
@@ -84,13 +84,13 @@ func runPostSubmit(t *testing.T) *core.PostResponse {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
-	writeFixture(t, ".review/5101/full.diff", fixtureDiff())
-	writeFixture(t, ".review/5101/review.json",
+	writeFixture(t, ".verdict/state/5101/full.diff", fixtureDiff())
+	writeFixture(t, ".verdict/state/5101/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
-	seedControls(t, ".review/5101")
+	seedControls(t, ".verdict/state/5101")
 	cmdr := postCommander{t: t, out: map[string]string{
 		"gh\x00api\x00repos/acme/app/pulls/5101\x00--jq\x00.head.sha":                                                                       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
 		"gh\x00api\x00repos/acme/app/pulls/5101/reviews\x00--method\x00POST\x00--input\x00-\x00--jq\x00{id, state, html_url, submitted_at}": `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}`,
@@ -102,7 +102,7 @@ func runPostSubmit(t *testing.T) *core.PostResponse {
 			Commander: cmdr,
 		},
 		Repo: "acme/app", Pr: "5101", Root: &root,
-		Flags:     core.PostFlags{Approve: "false", ReviewFile: ".review/5101/review.json"},
+		Flags:     core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/5101/review.json"},
 		Effective: core.Defaults(),
 		JSONMode:  true,
 	}
@@ -195,7 +195,7 @@ func TestRuntimePostSubmitValidates(t *testing.T) {
 func TestPostArtifactValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "post.schema.json")
 	runPostSubmit(t)
-	raw, err := os.ReadFile(".review/5101/post.json")
+	raw, err := os.ReadFile(".verdict/state/5101/post.json")
 	if err != nil {
 		t.Fatalf("read post.json: %v", err)
 	}

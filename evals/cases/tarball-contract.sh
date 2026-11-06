@@ -77,9 +77,9 @@ elif [ "$refs_seen" -eq 0 ]; then
   bad "SKILL.md names no scripts/ or prompts/ paths (reference parse broke?)"
 fi
 
-if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.review/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' -e '^scripts/review\.sh$' "$PACKED" || true)" \
+if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.verdict/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' -e '^scripts/review\.sh$' "$PACKED" || true)" \
   && [ -z "$offenders" ]; then
-  good "tarball holds no .env, .review, .scratch, evals results, tgz, node_modules, or review.sh"
+  good "tarball holds no .env, .verdict, .scratch, evals results, tgz, node_modules, or review.sh"
 else
   bad "tarball ships forbidden file(s): $(printf '%s' "$offenders" | tr '\n' ' ')"
 fi

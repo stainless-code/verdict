@@ -2,10 +2,13 @@ package config
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -18,14 +21,18 @@ func Run(ctx context.Context, req *core.ConfigRequest) (*core.ConfigResponse, *c
 	var data *core.ConfigData
 	var warnings []string
 	var ref *core.RefusalError
+	root := req.RepoRootPath()
+	if err := ctx.Err(); err != nil {
+		return nil, refuse(CodeCanceled, "canceled before config completed")
+	}
 	if req.Flags.Explain {
-		if name, ref = ResolveBundleName("", req.Pr); ref != nil {
+		if name, ref = ResolveBundleName(root, req.Pr); ref != nil {
 			return nil, ref
 		}
-		data, warnings, ref = Explain("", name)
+		data, warnings, ref = Explain(root, name)
 	} else {
-		name, _ = lookupBundleName("", req.Pr)
-		data, warnings, ref = Preview("", name, req.Flags.File, req.SettingsPath, reqEnvMap(req))
+		name, _ = lookupBundleName(root, req.Pr)
+		data, warnings, ref = Preview(root, name, req.Flags.File, req.SettingsPath, reqEnvMap(req))
 	}
 	if ref != nil {
 		return nil, ref
@@ -33,7 +40,7 @@ func Run(ctx context.Context, req *core.ConfigRequest) (*core.ConfigResponse, *c
 	return &core.ConfigResponse{
 		Repo: req.Repo, Pr: name, At: core.NowUTC(clockNow(req)),
 		Data: data, Warnings: append(append([]string{}, req.Warnings...), warnings...),
-		Next: nextStep(req.Flags, name),
+		Next: nextStep(req.Flags),
 	}, nil
 }
 
@@ -47,7 +54,7 @@ func reqEnvMap(req *core.ConfigRequest) map[string]string {
 
 // nextStep names the envelope follow-up: preview points at explain once
 // a bundle exists, and explain points at the verbs that consume it.
-func nextStep(flags core.ConfigFlags, name string) string {
+func nextStep(flags core.ConfigFlags) string {
 	if flags.Explain {
 		return "post, report, and verify enforce this policy; re-fetch to move it"
 	}
@@ -61,7 +68,7 @@ func ResolveBundleName(root, pr string) (string, *core.RefusalError) {
 	if name, found := lookupBundleName(root, pr); found {
 		return name, nil
 	}
-	return "", refuse(CodeNoBundle, "no run bundle %s (fetch the run first, then explain it)", RunBundlePath(root, pr))
+	return "", refuse(CodeNoBundle, "no run bundle %s (fetch the run first, then explain it)", RunBundlePath(bundleDir(root, pr)))
 }
 
 // lookupBundleName resolves the bundle without refusing: the exact name
@@ -77,6 +84,11 @@ func lookupBundleName(root, pr string) (string, bool) {
 	return pr, false
 }
 
+// bundleDir joins the bundle directory under root.
+func bundleDir(root, name string) string {
+	return filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
+}
+
 // clockNow reads the request clock, defaulting to the wall clock.
 func clockNow(req *core.ConfigRequest) (t time.Time) {
 	if req.Runtime != nil && req.Now != nil {
@@ -90,20 +102,25 @@ func clockNow(req *core.ConfigRequest) (t time.Time) {
 // privacy views, and the appended check outcomes. Explain never
 // re-resolves: later environment or settings changes cannot change the
 // explanation of an existing review. The bundle is required; absent
-// reads config-no-bundle naming the expected path.
+// reads config-no-bundle naming the expected path. A deleted or
+// tampered bundle refuses controls-stale through the same integrity
+// check record and post enforce.
 func Explain(root, name string) (*core.ConfigData, []string, *core.RefusalError) {
-	rs, found, serr := ReadRunState(root, name)
-	if serr != nil {
-		if ref := serr.Refusal(); ref != nil {
-			return nil, nil, ref
-		}
-		return nil, nil, refuse(CodeBadConfig, "could not read run bundle %s: %v", RunBundlePath(root, name), serr)
+	dir := filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
+	rs, ref := VerifyRunState(dir)
+	if ref != nil {
+		return nil, nil, ref
 	}
-	if !found {
-		return nil, nil, refuse(CodeNoBundle, "no run bundle %s (fetch the run first, then explain it)", RunBundlePath(root, name))
+	if rs == nil {
+		return nil, nil, refuse(CodeNoBundle, "no run bundle %s (fetch the run first, then explain it)", RunBundlePath(dir))
 	}
 	data := dataFromEvidence(rs)
 	data.Mode = "explain"
+	if !rs.Verified() {
+		note := "typed evidence provenance unavailable (pre-integrity bundle) — " +
+			"policy enforced from stored capture, not verified evidence"
+		return data, []string{note}, nil
+	}
 	return data, nil, nil
 }
 
@@ -129,14 +146,14 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 		Repo:         cfg,
 		Personal:     personal,
 		SettingsPath: settingsPath,
-		Files:        previewFiles(root, name),
+		Files:        previewFiles(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)),
 		Env:          partial,
 	}
 	resolved, ref := Resolve(in)
 	if ref != nil {
 		return nil, nil, ref
 	}
-	data := dataFromResolved(resolved, nil)
+	data := dataFromResolved(resolved)
 	data.Mode = "preview"
 	data.Trusted = trusted
 	data.Source = source
@@ -148,17 +165,12 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 // beside the run bundle, else no repository policy.
 func previewInputs(root, name, proposedPath string) (*core.Config, bool, string, *core.RefusalError) {
 	if proposedPath != "" {
-		raw, err := os.ReadFile(proposedPath)
-		if err != nil {
-			return nil, false, "", refuse(CodeBadConfig, "could not read proposed config %s: %v", proposedPath, err)
-		}
-		cfg, ref := Parse(raw)
-		if ref != nil {
-			return nil, false, "", ref
-		}
-		return cfg, false, "proposed file " + proposedPath, nil
+		return proposedInputs(proposedPath)
 	}
-	raw, ok := previewInventory(root, name)
+	raw, ok, ref := previewInventory(root, name)
+	if ref != nil {
+		return nil, false, "", ref
+	}
 	if !ok {
 		return nil, false, "no repository policy", nil
 	}
@@ -169,20 +181,53 @@ func previewInputs(root, name, proposedPath string) (*core.Config, bool, string,
 	return cfg, true, "trusted base inventory", nil
 }
 
-// previewInventory reads the trusted-base configuration snapshot the
-// fetch persisted beside the run bundle. Absent reads absent.
-func previewInventory(root, name string) ([]byte, bool) {
-	raw, err := os.ReadFile(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name, inventoryDirName, "config.json"))
+// proposedInputs parses the operator's proposed file: it reports the
+// proposed origin and is never trusted, whatever the base says.
+func proposedInputs(path string) (*core.Config, bool, string, *core.RefusalError) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false
+		return nil, false, "", refuse(CodeBadConfig, "could not read proposed config %s: %v", path, err)
 	}
-	return raw, true
+	cfg, ref := Parse(raw)
+	if ref != nil {
+		return nil, false, "", ref
+	}
+	return cfg, false, "proposed file " + path, nil
 }
 
-// previewFiles reads the legacy bundle's file list for per-file plan
+// previewInventory reads the configuration the fetch captured at the
+// trusted base, re-verifying the snapshot hashes first: a tampered or
+// truncated snapshot refuses controls-stale instead of being previewed as
+// trusted policy. Absent reads absent.
+func previewInventory(root, name string) ([]byte, bool, *core.RefusalError) {
+	dir := filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
+	snap, ref := controls.GateRecorded(dir)
+	if ref != nil {
+		if missingBundle(dir) {
+			return nil, false, nil
+		}
+		return nil, false, ref
+	}
+	raw, ok := snap.ReadFile(ConfigPath)
+	if !ok {
+		return nil, false, nil
+	}
+	return raw, true, nil
+}
+
+// missingBundle reports whether no run bundle exists at dir at all. Only a
+// verifiable absence licenses the no-policy preview: a bundle path that
+// exists but cannot be read (including a file where the bundle directory
+// belongs) keeps the gate refusal instead of previewing as absent.
+func missingBundle(dir string) bool {
+	_, err := os.Stat(dir)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// previewFiles reads the bundle's file list for per-file plan
 // groups when it survives: absent reads global-only resolution.
-func previewFiles(root, name string) []FileInput {
-	raw, err := os.ReadFile(filepath.Join(ifEmpty(root), ".review", name, ".difffiles"))
+func previewFiles(dir string) []FileInput {
+	raw, err := os.ReadFile(filepath.Join(dir, ".difffiles"))
 	if err != nil {
 		return nil
 	}
@@ -196,8 +241,8 @@ func previewFiles(root, name string) []FileInput {
 }
 
 // RunBundlePath names the persisted run bundle for diagnostics.
-func RunBundlePath(root, name string) string {
-	return filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name, runStateFileName)
+func RunBundlePath(dir string) string {
+	return filepath.Join(dir, runStateFileName)
 }
 
 // dataFromEvidence replays the stored capture: later verbs observe
@@ -220,12 +265,16 @@ func dataFromEvidence(rs *RunState) *core.ConfigData {
 			Status: req.Status, Sources: req.Sources,
 		})
 	}
+	data.Shadowed = shadowValues(rs.Evidence.Shadowed)
 	data.Plan = planGroups(rs.Evidence.Plan)
 	data.Spend = spendView(rs.Resolved)
 	data.Privacy = privacyView(rs.Resolved)
+	if rs.Resolved != nil {
+		data.Files = resolvedFiles(rs.Resolved)
+	}
 	for _, obs := range rs.Outcomes {
 		data.Checks = append(data.Checks, core.ConfigCheck{
-			Check: obs.Check, Group: obs.Group,
+			Check: obs.Check, Group: obs.Group, Head: obs.Head,
 			Passed: obs.Passed, At: obs.At, Detail: obs.Detail,
 		})
 	}
@@ -241,12 +290,14 @@ func evidenceSource(rs *RunState) string {
 
 // dataFromResolved resolves the current inputs with no outcomes yet:
 // every check reads pending.
-func dataFromResolved(resolved *Resolved, outcomes []CheckObservation) *core.ConfigData {
+func dataFromResolved(resolved *Resolved) *core.ConfigData {
 	data := &core.ConfigData{
 		Source:     "preview",
 		PlanStatus: resolved.Plan.Status,
 	}
 	data.Values = resolvedValues(resolved)
+	data.Shadowed = shadowValues(resolved.Defaults.Shadowed)
+	data.Files = resolvedFiles(resolved)
 	data.Plan = planGroups(resolved.Plan)
 	data.Spend = spendView(resolved)
 	data.Privacy = privacyView(resolved)
@@ -274,10 +325,11 @@ func resolvedValues(resolved *Resolved) []core.ConfigValue {
 
 func planGroups(plan Plan) []core.ConfigPlanGroup {
 	groups := make([]core.ConfigPlanGroup, 0, len(plan.Groups))
-	for _, group := range plan.Groups {
+	for i := range plan.Groups {
+		group := &plan.Groups[i]
 		groups = append(groups, core.ConfigPlanGroup{
-			Profile: group.Profile, Depth: group.Depth, Checks: group.Checks,
-			MaxLenses: group.MaxLenses, Files: group.Files, Scopes: group.Scopes,
+			ID: group.ID, Label: group.Label, Profile: group.Profile, Depth: group.Depth,
+			Checks: group.Checks, MaxLenses: group.MaxLenses, Files: group.Files, Scopes: group.Scopes,
 		})
 	}
 	return groups

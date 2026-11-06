@@ -4,7 +4,7 @@ triaged 01234567 -> deferred
 --- stderr ---
 
 --- files ---
---- file C/.review/4251/findings.json ---
+--- file C/.verdict/state/4251/findings.json ---
 [
   {
     "kind": "inline",

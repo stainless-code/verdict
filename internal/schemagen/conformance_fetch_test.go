@@ -17,7 +17,7 @@ func TestRuntimeFetchOutputValidates(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	head, base := "aaaa", "bbbb"
 	data := &core.FetchData{
-		Dir:       ".review/5101",
+		Dir:       ".verdict/state/5101",
 		HeadSHA:   head,
 		BaseSHA:   base,
 		Files:     2,
@@ -42,7 +42,7 @@ func TestRuntimeFetchOutputValidates(t *testing.T) {
 	if modeled.Pr == nil || *modeled.Pr != 5101 {
 		t.Errorf("envelope pr = %v", modeled.Pr)
 	}
-	if modeled.Data == nil || (*modeled.Data)["dir"] != ".review/5101" {
+	if modeled.Data == nil || (*modeled.Data)["dir"] != ".verdict/state/5101" {
 		t.Errorf("envelope data = %v", modeled.Data)
 	}
 	if modeled.Error != nil {
@@ -57,7 +57,7 @@ func TestRuntimeFetchLocalOutputValidates(t *testing.T) {
 	kind := "worktree"
 	data := &core.FetchData{
 		Local:     true,
-		Dir:       ".review/local-mine",
+		Dir:       ".verdict/state/local-mine",
 		Kind:      kind,
 		HeadSHA:   "",
 		BaseSHA:   "cccc",
@@ -85,5 +85,50 @@ func TestRuntimeFetchLocalOutputValidates(t *testing.T) {
 	}
 	if _, has := (*modeled.Data)["incremental_base"]; has {
 		t.Errorf("local data carries incremental_base: %v", modeled.Data)
+	}
+}
+
+// TestGroupedFetchEstimateValidatesWithoutBudget proves the grouped estimate a
+// run publishes with no ordinary budget validates against the generated
+// envelope and fetchData profiles, with the unset guard and ceiling absent
+// rather than zero, and decodes into the modeled field.
+func TestGroupedFetchEstimateValidatesWithoutBudget(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	estimate := jq.NewObj("groups", []any{
+		jq.NewObj("group", "group-a", "effort", "standard", "projected_usd", jq.Number("3"),
+			"over_guard", false),
+		jq.NewObj("group", "group-b", "effort", "standard", "over_guard", false),
+	})
+	estimate.Set("personal", jq.NewObj("basis", "known-lower-bound", "known_subtotal_usd", jq.Number("3")))
+	data := &core.FetchData{
+		Dir:       ".verdict/state/5102",
+		HeadSHA:   "aaaa",
+		BaseSHA:   "bbbb",
+		Files:     2,
+		Additions: 3,
+		Deletions: 1,
+		Hunks:     2,
+		Omitted:   []any{},
+		DiffBytes: 123,
+		Panel:     core.FetchPanel{Members: []string{}},
+		Artifacts: jq.NewObj(),
+		Estimate:  estimate,
+	}
+	env := core.RenderEnvelope("fetch", "acme/app", "5102",
+		core.NowUTC(time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)), "feed the bundle", nil,
+		data.Wire(), nil)
+	validateWire(t, doc, "$", doc, decodeWire(t, env))
+	validateWire(t, doc, "grouped fetch data", defOf(t, doc, "fetchData"), decodeWire(t, data.Wire()))
+	wire, isObj := decodeWire(t, data.Wire()).(map[string]any)
+	if !isObj {
+		t.Fatalf("fetch wire is not an object: %#v", wire)
+	}
+	if _, budget := wire["budget"]; budget {
+		t.Fatal("a grouped run with no ordinary budget reported one")
+	}
+	var modeled Envelope
+	unmarshalWire(t, env, &modeled)
+	if modeled.Data == nil {
+		t.Fatal("modeled envelope lost the fetch data")
 	}
 }

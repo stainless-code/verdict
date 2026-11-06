@@ -30,16 +30,23 @@ type EvidenceRequirement struct {
 // and the plan. Credentials are never captured. Later verbs append
 // outcomes by reference; stage flags and consents stay in their own
 // invocation records and never rewrite captured inputs.
+//
+// PatchSHA256 hashes the raw host diff the patch identity covers, while
+// FilteredPatchSHA256 hashes the same diff with privacy-excluded files
+// excised — the model-facing review input. The two labeled hashes prove
+// the filter mapping without carrying excluded content.
 type Evidence struct {
-	Plan           Plan                  `json:"plan"`
-	SchemaVersion  string                `json:"schema_version"`
-	CapturedAt     string                `json:"captured_at"`
-	BaseSHA        string                `json:"base_sha"`
-	ConfigSHA256   string                `json:"config_sha256"`
-	ConsumedInputs []string              `json:"consumed_inputs"`
-	Values         []EvidenceValue       `json:"values"`
-	Shadowed       []ShadowedValue       `json:"shadowed"`
-	Requirements   []EvidenceRequirement `json:"requirements"`
+	Plan                Plan                  `json:"plan"`
+	SchemaVersion       string                `json:"schema_version"`
+	CapturedAt          string                `json:"captured_at"`
+	BaseSHA             string                `json:"base_sha"`
+	ConfigSHA256        string                `json:"config_sha256"`
+	PatchSHA256         string                `json:"patch_sha256,omitempty"`
+	FilteredPatchSHA256 string                `json:"filtered_patch_sha256,omitempty"`
+	ConsumedInputs      []string              `json:"consumed_inputs"`
+	Values              []EvidenceValue       `json:"values"`
+	Shadowed            []ShadowedValue       `json:"shadowed"`
+	Requirements        []EvidenceRequirement `json:"requirements"`
 }
 
 // Capture builds the evidence record for one resolution: configRaw is the
@@ -104,7 +111,7 @@ func consumedInputs(in *Inputs, res *Resolved) []string {
 		note(configSourceName)
 	}
 	if in.SettingsPath != "" && in.Personal != nil {
-		note(in.SettingsPath)
+		note("operator settings")
 	}
 	slices.Sort(out)
 	return out

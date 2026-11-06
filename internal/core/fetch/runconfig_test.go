@@ -26,6 +26,14 @@ func baseLsTree(base, body string) string {
 // and 1.5. The resolution must carry the base values; a head/worktree
 // leak fails the test.
 func TestResolvePhaseTwoPrefersBaseOverWorktree(t *testing.T) {
+	rc, base := resolveOverDirtyWorktree(t)
+	assertBasePolicyWins(t, rc, base)
+}
+
+// resolveOverDirtyWorktree seeds a worktree config that contradicts the base
+// commit and resolves phase two against the base, returning the raw base bytes.
+func resolveOverDirtyWorktree(t *testing.T) (*runConfig, string) {
+	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
 	base := `{"schema_version":"1","defaults":{"panel":["base-panel"],"budget_usd":9.5}}`
@@ -45,9 +53,16 @@ func TestResolvePhaseTwoPrefersBaseOverWorktree(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("phase one: %v", ref)
 	}
-	if rerr := rc.resolvePhaseTwo(context.Background(), cmdr, "o/r", baseSHA, false, nil, "", config.LegacyInputs{}); rerr != nil {
+	if rerr := rc.resolvePhaseTwo(context.Background(), cmdr, "o/r", baseSHA, false, nil, ""); rerr != nil {
 		t.Fatalf("phase two: %v", rerr)
 	}
+	return rc, base
+}
+
+// assertBasePolicyWins checks the resolution carries the base commit's values,
+// bytes, and trust flag — a head or worktree leak fails here.
+func assertBasePolicyWins(t *testing.T, rc *runConfig, base string) {
+	t.Helper()
 	if got := rc.resolved.Defaults.Values.Panel; len(got) != 1 || got[0] != "base-panel" {
 		t.Fatalf("panel = %v, want [base-panel] from the base commit", got)
 	}
@@ -91,32 +106,39 @@ func knownCostSession(t *testing.T, estUSD string) *session {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(filepath.Join(".review", "1"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(".verdict", "state", "1"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cost := `[{"effort":"standard","est_usd":` + estUSD + `,"models":[]}]`
-	if err := os.WriteFile(filepath.Join(".review", "1", "cost.json"), []byte(cost), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(".verdict", "state", "1", "cost.json"), []byte(cost), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var warnings []string
 	return &session{Human: io.Discard, Diag: io.Discard, warnings: &warnings}
 }
 
-// TestBudgetGatePersonalCeilingConsentProof pins the strict spend rule:
-// a known $4 projection against a $5 ordinary guard but a $3 personal
-// ceiling refuses spend-capped even with explicit consent. No consent
-// path exists for the ceiling.
+// TestBudgetGatePersonalCeilingConsentProof pins the consent rule for the
+// personal ceiling: a known $4 projection against a $3 ceiling refuses
+// spend-capped until the operator consents, and the consented run arms a
+// receipt instead of passing silently.
 func TestBudgetGatePersonalCeilingConsentProof(t *testing.T) {
 	r := knownCostSession(t, "4.00")
 	resolved := spendResolved(t, false, false)
+	resolved.Spend.PersonalLimit = new(3.0)
 	budget := resolveBudget(r, resolved)
 	if !budget.hasBudget {
 		t.Fatal("ordinary guard missing: repo budget 5.0 should arm it")
 	}
-	gerr := budgetGate(r, &budget, resolved, true)
+	gerr := budgetGate(r, &budget, resolved, false)
 	var ref *core.RefusalError
 	if !errors.As(gerr, &ref) || ref.Code != "spend-capped" {
-		t.Fatalf("gate with consent = %v, want spend-capped", gerr)
+		t.Fatalf("gate without consent = %v, want spend-capped", gerr)
+	}
+	if gerr := budgetGate(r, &budget, resolved, true); gerr != nil {
+		t.Fatalf("gate with consent = %v, want nil", gerr)
+	}
+	if !budget.receiptNeeded {
+		t.Fatal("a consented ceiling hit armed no receipt")
 	}
 }
 
@@ -151,9 +173,9 @@ func TestBudgetGateOrdinaryGuardConsentReceipt(t *testing.T) {
 }
 
 // TestBudgetGateUnknownEstimate pins the blind-run rules: a set budget
-// with no usable projection refuses spend-unknown when the settings
-// require a known estimate, and a consented blind run arms a receipt
-// instead of proceeding silently.
+// with no usable projection refuses budget-unknown under the strict
+// posture until the operator consents, and a consented blind run arms a
+// receipt instead of proceeding silently.
 func TestBudgetGateUnknownEstimate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -161,13 +183,20 @@ func TestBudgetGateUnknownEstimate(t *testing.T) {
 	r := &session{Human: io.Discard, Diag: io.Discard, warnings: &warnings}
 	strict := spendResolved(t, false, true)
 	budget := resolveBudget(r, strict)
-	gerr := budgetGate(r, &budget, strict, true)
+	gerr := budgetGate(r, &budget, strict, false)
 	if gerr == nil {
-		t.Fatal("unknown estimate with require_known_estimate passed")
+		t.Fatal("unknown estimate without consent passed")
 	}
 	var ref *core.RefusalError
-	if !errors.As(gerr, &ref) || ref.Code != "spend-unknown" {
-		t.Fatalf("unknown gate = %v, want spend-unknown", gerr)
+	if !errors.As(gerr, &ref) || ref.Code != "budget-unknown" {
+		t.Fatalf("unknown gate = %v, want budget-unknown", gerr)
+	}
+	budget = resolveBudget(r, strict)
+	if gerr := budgetGate(r, &budget, strict, true); gerr != nil {
+		t.Fatalf("consented strict blind run = %v, want nil with receipt", gerr)
+	}
+	if !budget.receiptNeeded {
+		t.Fatal("consented strict blind run armed no receipt")
 	}
 	lax := spendResolved(t, false, false)
 	lax.Spend.RequireKnownEstimate = false
@@ -181,20 +210,20 @@ func TestBudgetGateUnknownEstimate(t *testing.T) {
 	}
 }
 
-// TestBudgetGateEnforceCap pins the hard-cap rule: with enforce_cap the
-// ordinary guard refuses even under explicit consent.
+// TestBudgetGateEnforceCap pins the unsupported-cap rule: a request that
+// sets enforce_cap refuses unsupported-cap before any budget, force, or
+// consent can authorize the run.
 func TestBudgetGateEnforceCap(t *testing.T) {
 	r := knownCostSession(t, "6.00")
 	resolved := spendResolved(t, true, false)
 	resolved.Spend.PersonalLimit = nil
-	budget := resolveBudget(r, resolved)
-	gerr := budgetGate(r, &budget, resolved, true)
-	if gerr == nil {
-		t.Fatal("enforce_cap run passed under consent")
-	}
-	var ref *core.RefusalError
-	if !errors.As(gerr, &ref) || ref.Code != "budget-exceeded" {
-		t.Fatalf("enforce_cap gate = %v, want budget-exceeded", gerr)
+	for _, consent := range []bool{false, true} {
+		budget := resolveBudget(r, resolved)
+		gerr := budgetGate(r, &budget, resolved, consent)
+		var ref *core.RefusalError
+		if !errors.As(gerr, &ref) || ref.Code != "unsupported-cap" {
+			t.Fatalf("enforce_cap gate (consent=%v) = %v, want unsupported-cap", consent, gerr)
+		}
 	}
 }
 
@@ -248,6 +277,14 @@ func privacySentinelDiff() string {
 // withholds the sentinel from the prompt dump while the raw bundle
 // keeps every byte and patch identity stays exact.
 func TestPrivacySentinelAbsentFromModelFacingOutputs(t *testing.T) {
+	resp := stagedPrivacyRun(t)
+	assertSentinelWithheld(t, resp.Data.PromptDump)
+}
+
+// stagedPrivacyRun stages an over-cap-free local run with a personal privacy
+// exclusion on secret/** and returns the response plus the bundle directory.
+func stagedPrivacyRun(t *testing.T) *core.FetchResponse {
+	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
 	settings := `{"privacy":{"exclusions":["secret/**"]}}`
@@ -272,16 +309,23 @@ func TestPrivacySentinelAbsentFromModelFacingOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
-	if resp.Data == nil || resp.Data.PromptDump == nil {
+	return resp
+}
+
+// assertSentinelWithheld checks the model-facing dump omits the excluded
+// sentinel while the raw bundle keeps every byte and patch identity.
+func assertSentinelWithheld(t *testing.T, dump *string) {
+	t.Helper()
+	if dump == nil {
 		t.Fatal("no prompt dump staged")
 	}
-	if strings.Contains(*resp.Data.PromptDump, "SENTINEL-ALPHA-7") {
-		t.Fatalf("sentinel reached the prompt dump:\n%s", *resp.Data.PromptDump)
+	if strings.Contains(*dump, "SENTINEL-ALPHA-7") {
+		t.Fatalf("sentinel reached the prompt dump:\n%s", *dump)
 	}
-	if !strings.Contains(*resp.Data.PromptDump, "plan.txt") {
-		t.Fatalf("plan surface missing from the dump:\n%s", *resp.Data.PromptDump)
+	if !strings.Contains(*dump, "plan.txt") {
+		t.Fatalf("plan surface missing from the dump:\n%s", *dump)
 	}
-	raw, err := os.ReadFile(filepath.Join(".review", "local-mine", "full.diff"))
+	raw, err := os.ReadFile(filepath.Join(".verdict", "state", "local-mine", "full.diff"))
 	if err != nil {
 		t.Fatalf("read full.diff: %v", err)
 	}

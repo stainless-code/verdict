@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
@@ -17,6 +18,9 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// eventApprove is the positive binding event the payload and gates name.
+const eventApprove = "APPROVE"
+
 // Commander is the exec seam every post spawn goes through: the live-SHA
 // read, the authorship read, the live-thread recheck, and the reviews POST
 // (stdin payload plus one newline, exact argv). The production
@@ -24,7 +28,7 @@ import (
 // tests inject a scripted commander and assert the exact argv. No service
 // body spawns directly.
 type Commander interface {
-	Run(ctx context.Context, cmd core.Command) (core.Result, error)
+	Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 }
 
 // CodePostFailed is the typed refusal for every post-internal failure.
@@ -45,28 +49,43 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	if err := ctx.Err(); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledPost})
 	}
-	if st.flags.Approve != approveTrue && st.flags.Approve != approveFalse {
-		return nil, st.withWarnings(&core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)})
+	if ref := st.checkApproveFlag(); ref != nil {
+		return nil, st.withWarnings(ref)
 	}
 	if ref := st.prepare(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := st.loadRunPolicy(); ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	if ref := st.complianceGate(); ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	if ref := st.bindRequiredGate(); ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	if ref := st.bindGate(ctx); ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	if ref := st.recheckGate(ctx); ref != nil {
+	if ref := st.runGates(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	return st.publish(ctx)
+}
+
+// runGates loads the policy and runs the refusal gates in their fixed order
+// before any write.
+func (st *state) runGates(ctx context.Context) *core.RefusalError {
+	if ref := st.loadRunPolicy(); ref != nil {
+		return ref
+	}
+	st.recordHeadFact()
+	for _, gate := range []func(context.Context) *core.RefusalError{
+		func(context.Context) *core.RefusalError { return st.complianceGate() },
+		func(context.Context) *core.RefusalError { return st.bindRequiredGate() },
+		st.bindGate, st.recheckGate,
+	} {
+		if ref := gate(ctx); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+// checkApproveFlag refuses an --approve value outside the documented pair.
+func (st *state) checkApproveFlag() *core.RefusalError {
+	if st.flags.Approve == approveTrue || st.flags.Approve == approveFalse {
+		return nil
+	}
+	return &core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)}
 }
 
 type state struct { //nolint:govet // field grouping documents the post run state
@@ -193,7 +212,7 @@ func refusalOrFailed(err error) *core.RefusalError {
 }
 
 func (st *state) prepare(ctx context.Context) *core.RefusalError {
-	st.dir = ".review/" + st.req.Pr
+	st.dir = readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	st.event = eventComment
 	if ref := st.checkBundle(); ref != nil {
 		return ref
@@ -324,7 +343,7 @@ func (st *state) merge() *core.RefusalError {
 		Dir: st.dir, Prov: providerGitHub,
 		HeadFull: st.commitID,
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
-		Root: st.req.RootPath(), Body: st.body,
+		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(), Body: st.body,
 		DryRun: st.flags.DryRun, FindingsFile: st.findingsFile,
 		PreFooter: st.splitPreFooter,
 		Effective: st.req.Effective, Forces: st.req.Forces,
@@ -368,8 +387,20 @@ func (st *state) approveGate() *core.RefusalError {
 	if nOpen+nDeferred > 0 && !st.flags.Force {
 		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlocked, nOpen, nDeferred)}
 	}
+	if ref := st.privacyConflictGate(); ref != nil {
+		return ref
+	}
+	if ref := st.deepValidationGate(); ref != nil {
+		return ref
+	}
+	if ref := st.lensApprovalGate(); ref != nil {
+		return ref
+	}
+	if ref := st.headGate(); ref != nil {
+		return ref
+	}
 	if !st.driftStale {
-		st.event = "APPROVE"
+		st.event = eventApprove
 		return nil
 	}
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
@@ -396,6 +427,44 @@ func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 }
 
 func (st *state) recheckGate(ctx context.Context) *core.RefusalError {
+	if st.requiresCheck(config.CheckNoLiveThreads) {
+		return st.liveThreadsGate(ctx)
+	}
+	return st.legacyRecheckGate(ctx)
+}
+
+// liveThreadsGate enforces a selected no-live-threads: zero unresolved live
+// threads passes, any unresolved thread or an unreadable read fails, and a
+// binding approval refuses on either. --force never applies, a comment run
+// keeps the evidence without certifying it, and a dry run takes the same
+// live read so a preview never claims what the publish would not prove.
+func (st *state) liveThreadsGate(ctx context.Context) *core.RefusalError {
+	count, reason, readable := st.liveThreads(ctx)
+	st.observeLiveThreads(count, readable, reason)
+	if st.event != "APPROVE" {
+		return nil
+	}
+	return st.unmetRefusal(config.CheckNoLiveThreads, msgHintThreads)
+}
+
+// liveThreads reads the live unresolved-thread count once, without touching
+// the review body or the bind decision.
+func (st *state) liveThreads(ctx context.Context) (int, string, bool) {
+	count, reason, err := postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	if err != nil {
+		if reason == "" {
+			reason = err.Error()
+		}
+		return 0, reason, false
+	}
+	return count, "", true
+}
+
+// legacyRecheckGate is the shipped approval guard for runs that select no
+// typed thread check: it blocks on more live threads than stored open
+// findings, a --force run keeps its documented bypass, and an unreachable
+// recheck downgrades to COMMENT.
+func (st *state) legacyRecheckGate(ctx context.Context) *core.RefusalError {
 	if st.event != "APPROVE" || st.flags.DryRun {
 		return nil
 	}
@@ -405,7 +474,6 @@ func (st *state) recheckGate(ctx context.Context) *core.RefusalError {
 	}
 	storedOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
 	blocked := liveOpen > storedOpen
-	st.observeLiveThreads(liveOpen, storedOpen, false)
 	if blocked && !st.flags.Force {
 		nOpen := storedOpen
 		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlockedLive, liveOpen, nOpen, liveOpen-nOpen)}
@@ -419,7 +487,8 @@ func (st *state) probeRecheck(ctx context.Context) (int, bool) {
 		return liveOpen, false
 	}
 	st.warn("live thread recheck unreachable — downgrading to COMMENT (posting on local findings only)")
-	st.body = "> ⚠️ Note: live thread recheck unreachable (" + reason + "); posting as COMMENT instead of APPROVE.\n\n" + st.body
+	st.body = "> ⚠️ Note: live thread recheck unreachable (" + reason +
+		"); posting as COMMENT instead of " + eventApprove + ".\n\n" + st.body
 	st.event = eventComment
 	return 0, true
 }
@@ -549,8 +618,8 @@ func (st *state) forceBypass(code string, patchID, prevBundle, prevHead *string)
 
 // patchGuard refuses a duplicate review of the same patch at a new SHA: it
 // binds the current bundle identity to the bundle's present bytes, the
-// recomputed algorithm result, and head, then scans sibling
-// .review/*/post.json receipts for a completed publication of the same
+// recomputed algorithm result, and head, then scans sibling bundle
+// post.json receipts for a completed publication of the same
 // verified patch in the same repository, refusing unless --force (recorded
 // in forced[]). It reads post.json only as publication proof, so an
 // unposted local bundle never blocks a post. A missing, malformed, stale,
@@ -579,9 +648,9 @@ func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
 		return nil
 	}
 	return &core.RefusalError{Code: "already-reviewed-patch", Message: fmt.Sprintf(
-		"already-reviewed-patch: patch %s was posted from .review/%s at head %s (%s) — "+
+		"already-reviewed-patch: patch %s was posted from %s at head %s (%s) — "+
 			"refusing a duplicate review of the same change (pass --force to post again)",
-		*cur.PatchID, match.bundle, readcommon.ShortSHA(match.head), match.postedAt)}
+		*cur.PatchID, filepath.Join(filepath.Dir(st.dir), match.bundle), readcommon.ShortSHA(match.head), match.postedAt)}
 }
 
 // patchSibling is one completed same-patch sibling receipt.
@@ -594,7 +663,7 @@ type patchSibling struct {
 // scanPatchSiblings returns the first sibling bundle (sorted, deterministic)
 // with a completed same-patch publication: a completed post.json receipt
 // carrying the same verified patch claim in the same repository. Malformed
-// sibling receipts cannot match; a missing .review dir matches nothing.
+// sibling receipts cannot match; a missing .verdict dir matches nothing.
 func scanPatchSiblings(dir string, cur *identity.Identity) *patchSibling {
 	parent := filepath.Dir(dir)
 	entries, err := os.ReadDir(parent)

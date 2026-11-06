@@ -20,7 +20,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
   git config user.name "chunk incremental"
   if [ ! -f .gitignore ]; then
     cat > .gitignore <<'EOF'
-.review/
+.verdict/state/
 stubbin/
 fakebin/
 *.log
@@ -44,7 +44,7 @@ EOF
 CINC_FILES="cinc-f1.txt cinc-f2.txt cinc-f3.txt cinc-f4.txt cinc-f5.txt cinc-f6.txt"
 # shellcheck disable=SC2086 # CINC_FILES is a validated space-separated path list
 set -- $CINC_FILES
-BUNDLE="$EVAL_SANDBOX/.review/local-cinc"
+BUNDLE="$EVAL_SANDBOX/.verdict/state/local-cinc"
 FULL_DIFF_BYTES="$(cd "$EVAL_SANDBOX" && git diff HEAD -- "$@" | wc -c | tr -d ' ')"
 if [ "$FULL_DIFF_BYTES" -le 512000 ]; then
   bad "fixture diff $FULL_DIFF_BYTES bytes is not over the 512000 cap"
@@ -201,7 +201,7 @@ else
   bad "unexpected findings.dryrun.json"
 fi
 
-GBUNDLE="$EVAL_SANDBOX/.review/local-cincgate"
+GBUNDLE="$EVAL_SANDBOX/.verdict/state/local-cincgate"
 # shellcheck disable=SC2086 # CINC_FILES is a validated space-separated path list
 run_review fetch-local acme/app cincgate --chunk -- $CINC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$GBUNDLE/chunks/manifest.json" ]; then

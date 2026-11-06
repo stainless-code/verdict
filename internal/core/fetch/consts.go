@@ -120,7 +120,6 @@ const (
 	tierStandard   = "standard"
 	nullStr        = "null"
 	strTrue        = "true"
-	reviewDir      = ".review"
 	devNullPath    = "/dev/null"
 	emptyJSONArray = "[]\n"
 	newline        = "\n"

@@ -42,7 +42,7 @@ func TestRuntimeRecordOutputValidates(t *testing.T) {
 	if envelope.Pr != nil {
 		t.Errorf("envelope pr = %v, want null", envelope.Pr)
 	}
-	if envelope.Data == nil || (*envelope.Data)["dir"] != ".review/local-rr" {
+	if envelope.Data == nil || (*envelope.Data)["dir"] != ".verdict/state/local-rr" {
 		t.Errorf("envelope data = %v", envelope.Data)
 	}
 	if envelope.Error != nil {
@@ -56,7 +56,7 @@ func TestRuntimeRecordOutputValidates(t *testing.T) {
 func TestRecordArtifactValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "record.schema.json")
 	runRecordFixture(t)
-	raw, err := os.ReadFile(".review/local-rr/record.json")
+	raw, err := os.ReadFile(".verdict/state/local-rr/record.json")
 	if err != nil {
 		t.Fatalf("read record.json: %v", err)
 	}
@@ -91,8 +91,8 @@ func TestFindingsUnknownKeysConform(t *testing.T) {
 		`"future_key":{"nested":true},"zzz":1}`
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/local-rr/findings.json", "["+entry+"]")
-	raw, err := os.ReadFile(".review/local-rr/findings.json")
+	writeFixture(t, ".verdict/state/local-rr/findings.json", "["+entry+"]")
+	raw, err := os.ReadFile(".verdict/state/local-rr/findings.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,17 +124,17 @@ func runRecordFixture(t *testing.T) *core.RecordResponse {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/local-rr/source.json",
+	writeFixture(t, ".verdict/state/local-rr/source.json",
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
-	writeFixture(t, ".review/local-rr/full.diff",
+	writeFixture(t, ".verdict/state/local-rr/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
-	writeFixture(t, ".review/local-rr/review.json",
+	writeFixture(t, ".verdict/state/local-rr/review.json",
 		`{"schema_version":"1","body":"> ✅ Record conformance check with enough length.",`+
 			`"approved":false,"confidence":5,"security_summary":"short summary",`+
 			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT",`+
 			`"body":"Usable body with enough substance.","rigor":"walked","severity":"critical"}]}`)
-	seedControls(t, ".review/local-rr")
+	seedControls(t, ".verdict/state/local-rr")
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	runtime := &core.Runtime{Now: func() time.Time { return now }}
 	read := core.ReadRequest{Runtime: runtime, Repo: "acme/app", Pr: "local-rr"}
@@ -213,7 +213,7 @@ func compareRecordData(t *testing.T, got *core.RecordData, modeled *RecordData) 
 			t.Errorf("item %d anchored = %v, want %v", i, have.Anchored, want.Anchored)
 		}
 	}
-	if !strings.HasPrefix(modeled.Dir, ".review/") {
+	if !strings.HasPrefix(modeled.Dir, ".verdict/state/") {
 		t.Errorf("dir = %q", modeled.Dir)
 	}
 }

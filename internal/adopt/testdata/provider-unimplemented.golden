@@ -17,7 +17,7 @@ exit: 1
 --- stderr ---
 
 --- files ---
---- file C/.review/4311/store.json ---
+--- file C/.verdict/state/4311/store.json ---
 {
   "schema_version": "1"
 }

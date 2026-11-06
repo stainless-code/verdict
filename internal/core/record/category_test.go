@@ -75,7 +75,7 @@ func TestCategoryRoundTrip(t *testing.T) {
 			t.Errorf("category %q missing from the store; seen = %v", want, seen)
 		}
 	}
-	checkWireOrder(t, ".review/local-cat/findings.json")
+	checkWireOrder(t, ".verdict/state/local-cat/findings.json")
 }
 
 // checkWireOrder proves category wires immediately after severity on fresh
@@ -101,7 +101,7 @@ func TestCategoryNotInSig(t *testing.T) {
 		t.Fatalf("plain Run refusal: %v", ref)
 	}
 	plain := storeEntries(t, "local-sigcat")
-	writeFile(t, ".review/local-sigcat/review.json", categoryReview(t, `"security"`))
+	writeFile(t, ".verdict/state/local-sigcat/review.json", categoryReview(t, `"security"`))
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-sigcat")); ref != nil {
 		t.Fatalf("categorized Run refusal: %v", ref)
 	}
@@ -262,14 +262,14 @@ func TestCategoryPreservedAndClearedOnRepost(t *testing.T) {
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-repost")); ref != nil {
 		t.Fatalf("first Run refusal: %v", ref)
 	}
-	writeFile(t, ".review/local-repost/review.json", categoryReview(t, "absent"))
+	writeFile(t, ".verdict/state/local-repost/review.json", categoryReview(t, "absent"))
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-repost")); ref != nil {
 		t.Fatalf("absent re-post refusal: %v", ref)
 	}
 	if got := storeEntries(t, "local-repost")[0]["category"]; got != "security" {
 		t.Errorf("absent re-post category = %#v, want the preserved label", got)
 	}
-	writeFile(t, ".review/local-repost/review.json", categoryReview(t, `null`))
+	writeFile(t, ".verdict/state/local-repost/review.json", categoryReview(t, `null`))
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-repost")); ref != nil {
 		t.Fatalf("explicit-null re-post refusal: %v", ref)
 	}

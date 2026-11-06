@@ -17,8 +17,10 @@ HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 BASEB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 mkcovbundle() { # $1 = pr number
-  local pr="$1" dir="$EVAL_SANDBOX/.review/$1"
+  local pr="$1" dir="$EVAL_SANDBOX/.verdict/state/$1"
   local total="" b1="" b2=""
+  eval_mk_bundle "$pr"
+  BASEB="$EVAL_FIXTURE_BASE"
   mkdir -p "$dir/chunks"
   cat > "$dir/PR.json" <<EOF
 {"state":"OPEN","headRefOid":"$HEADA","baseRefOid":"$BASEB","author":{"login":"teammate"},"files":[{"path":"a.txt","additions":1,"deletions":0},{"path":"b.txt","additions":1,"deletions":0}]}
@@ -65,20 +67,22 @@ EOF
   b2="$(wc -c < "$dir/chunks/chunk-02.diff" | tr -d ' ')"
   jq -n --arg hs "$HEADA" --arg bs "$BASEB" --arg p "$pr" \
     --argjson total "$total" --argjson b1 "$b1" --argjson b2 "$b2" \
-    '{schema_version:"1",bundle:(".review/" + $p),
+    '{schema_version:"1",bundle:(".verdict/state/" + $p),
       head_sha:$hs,base_sha:$bs,cap:{bytes:512000,source:null},
       total_bytes:$total,chunk_count:2,
       chunks:[{index:1,name:"chunk-01",files:["a.txt"],estimated_bytes:$b1,bytes:$b1,
-        diff:(".review/" + $p + "/chunks/chunk-01.diff"),toc:(".review/" + $p + "/chunks/chunk-01.toc.txt"),roles:(".review/" + $p + "/chunks/chunk-01.roles.txt")},
+        diff:(".verdict/state/" + $p + "/chunks/chunk-01.diff"),toc:(".verdict/state/" + $p + "/chunks/chunk-01.toc.txt"),roles:(".verdict/state/" + $p + "/chunks/chunk-01.roles.txt")},
         {index:2,name:"chunk-02",files:["b.txt"],estimated_bytes:$b2,bytes:$b2,
-        diff:(".review/" + $p + "/chunks/chunk-02.diff"),toc:(".review/" + $p + "/chunks/chunk-02.toc.txt"),roles:(".review/" + $p + "/chunks/chunk-02.roles.txt")}]}' \
+        diff:(".verdict/state/" + $p + "/chunks/chunk-02.diff"),toc:(".verdict/state/" + $p + "/chunks/chunk-02.toc.txt"),roles:(".verdict/state/" + $p + "/chunks/chunk-02.roles.txt")}]}' \
     > "$dir/chunks/manifest.json"
 }
 
 # mkcovlocal <slug> — same two-chunk shape as a local bundle for record.
 mkcovlocal() { # $1 = local slug (without the local- prefix)
-  local slug="$1" dir="$EVAL_SANDBOX/.review/local-$1"
+  local slug="$1" dir="$EVAL_SANDBOX/.verdict/state/local-$1"
   local total="" b1="" b2=""
+  eval_mk_bundle "local-$slug"
+  BASEB="$EVAL_FIXTURE_BASE"
   mkdir -p "$dir/chunks"
   cat > "$dir/source.json" <<EOF
 {"head_sha":"$HEADA","base_sha":"$BASEB","head_ref":"feature"}
@@ -111,13 +115,13 @@ EOF
   b2="$(wc -c < "$dir/chunks/chunk-02.diff" | tr -d ' ')"
   jq -n --arg hs "$HEADA" --arg bs "$BASEB" --arg s "$slug" \
     --argjson total "$total" --argjson b1 "$b1" --argjson b2 "$b2" \
-    '{schema_version:"1",bundle:(".review/local-" + $s),
+    '{schema_version:"1",bundle:(".verdict/state/local-" + $s),
       head_sha:$hs,base_sha:$bs,cap:{bytes:512000,source:null},
       total_bytes:$total,chunk_count:2,
       chunks:[{index:1,name:"chunk-01",files:["a.txt"],estimated_bytes:$b1,bytes:$b1,
-        diff:(".review/local-" + $s + "/chunks/chunk-01.diff"),toc:(".review/local-" + $s + "/chunks/chunk-01.toc.txt"),roles:(".review/local-" + $s + "/chunks/chunk-01.roles.txt")},
+        diff:(".verdict/state/local-" + $s + "/chunks/chunk-01.diff"),toc:(".verdict/state/local-" + $s + "/chunks/chunk-01.toc.txt"),roles:(".verdict/state/local-" + $s + "/chunks/chunk-01.roles.txt")},
         {index:2,name:"chunk-02",files:["b.txt"],estimated_bytes:$b2,bytes:$b2,
-        diff:(".review/local-" + $s + "/chunks/chunk-02.diff"),toc:(".review/local-" + $s + "/chunks/chunk-02.toc.txt"),roles:(".review/local-" + $s + "/chunks/chunk-02.roles.txt")}]}' \
+        diff:(".verdict/state/local-" + $s + "/chunks/chunk-02.diff"),toc:(".verdict/state/local-" + $s + "/chunks/chunk-02.toc.txt"),roles:(".verdict/state/local-" + $s + "/chunks/chunk-02.roles.txt")}]}' \
     > "$dir/chunks/manifest.json"
 }
 
@@ -139,16 +143,16 @@ if jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | matches "chunk-02" \
 else
   bad "refusal message misses the chunk/remediation: $(jq -r '.error.message' <"$EVAL_OUT" 2>/dev/null | head -c 300)"
 fi
-if [ ! -f "$EVAL_SANDBOX/.review/4641/findings.json" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/4641/findings.dryrun.json" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/4641/post.json" ]; then
+if [ ! -f "$EVAL_SANDBOX/.verdict/state/4641/findings.json" ] \
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/4641/findings.dryrun.json" ] \
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/4641/post.json" ]; then
   good "refusal merges nothing (no findings, no dry-run file, no post record)"
 else
   bad "refusal left store output behind"
 fi
 
 mkcovlocal covrec
-cat > "$EVAL_SANDBOX/.review/local-covrec/review.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/local-covrec/review.json" <<'EOF'
 {"schema_version":"1","chunks":["chunk-02"],"body":"> ✅ Chunk-02 reviewed, one note.\n> Basis: 0 reproduced · 0 ran · 1 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational"}]}
 EOF
 run_review record acme/app local-covrec --json
@@ -160,15 +164,15 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "record gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
 fi
-if [ ! -f "$EVAL_SANDBOX/.review/local-covrec/findings.json" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/local-covrec/record.json" ]; then
+if [ ! -f "$EVAL_SANDBOX/.verdict/state/local-covrec/findings.json" ] \
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/local-covrec/record.json" ]; then
   good "record refusal merges nothing (no findings, no record)"
 else
   bad "record refusal left store output behind"
 fi
 
 mkcovbundle 4642
-rm "$EVAL_SANDBOX/.review/4642/chunks/chunk-02.diff"
+rm "$EVAL_SANDBOX/.verdict/state/4642/chunks/chunk-02.diff"
 eval_write_review 4642 <<'EOF'
 {"schema_version":"1","chunks":["chunk-01","chunk-02"],"body":"> ✅ Both chunks reviewed, one note.\n> Basis: 0 reproduced · 1 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational"}]}
 EOF
@@ -181,8 +185,8 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "snapshot leg gave exit $EVAL_STATUS code '$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)'"
 fi
-if [ ! -f "$EVAL_SANDBOX/.review/4642/findings.json" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/4642/post.json" ]; then
+if [ ! -f "$EVAL_SANDBOX/.verdict/state/4642/findings.json" ] \
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/4642/post.json" ]; then
   good "snapshot refusal posts nothing partial"
 else
   bad "snapshot refusal left store output behind"
@@ -196,9 +200,9 @@ mkcovbundle 4643
   echo '+++ b/a.txt'
   echo '@@ -1 +1 @@'
   echo ' top'
-  tail -n +8 "$EVAL_SANDBOX/.review/4643/full.diff"
-} > "$EVAL_SANDBOX/.review/4643/full.diff.new"
-mv "$EVAL_SANDBOX/.review/4643/full.diff.new" "$EVAL_SANDBOX/.review/4643/full.diff"
+  tail -n +8 "$EVAL_SANDBOX/.verdict/state/4643/full.diff"
+} > "$EVAL_SANDBOX/.verdict/state/4643/full.diff.new"
+mv "$EVAL_SANDBOX/.verdict/state/4643/full.diff.new" "$EVAL_SANDBOX/.verdict/state/4643/full.diff"
 eval_write_review 4643 <<'EOF'
 {"schema_version":"1","body":"> ✅ One note on the pinned line.\n> Basis: 0 reproduced · 0 ran · 1 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Pinned note: clarify this line.","rigor":"walked","severity":"informational"}]}
 EOF
@@ -226,7 +230,7 @@ jq -n --arg s "$SIGA" --arg b "$ABODY" \
       suggestion:null,kb:[],inBounds:true,rigor:"pointed",severity:"informational",
       sig:$s,sig_version:"1",firstSeen:"0000000",lastSeen:"0000000",
       status:"open",rationale:"",history:[{at:"2026-01-01T00:00:00Z",event:"reported"}]}]' \
-  > "$EVAL_SANDBOX/.review/4644/findings.json"
+  > "$EVAL_SANDBOX/.verdict/state/4644/findings.json"
 eval_write_review 4644 <<EOF
 {"schema_version":"1","chunks":["chunk-01","chunk-02"],"body":"> ✅ Both chunks reviewed, two notes.\n> Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"$ABODY","rigor":"pointed","severity":"informational"},{"path":"b.txt","line":2,"side":"RIGHT","body":"$BBODY","rigor":"pointed","severity":"informational"}]}
 EOF
@@ -277,22 +281,22 @@ if [ "$(jq '.comments | length' <"$EVAL_SANDBOX/posted-4644.json" 2>/dev/null)" 
 else
   bad "payload comments: $(jq -c '.comments' <"$EVAL_SANDBOX/posted-4644.json" 2>/dev/null || echo unreadable)"
 fi
-if [ "$(jq 'length' <"$EVAL_SANDBOX/.review/4644/findings.json" 2>/dev/null)" = "2" ] \
-  && [ "$(jq --arg b "$ABODY" '[.[] | select(.body == $b)] | length' <"$EVAL_SANDBOX/.review/4644/findings.json" 2>/dev/null)" = "1" ] \
-  && [ "$(jq --arg b "$ABODY" -r '[.[] | select(.body == $b)][0].lastSeen' <"$EVAL_SANDBOX/.review/4644/findings.json" 2>/dev/null)" != "0000000" ] \
-  && [ "$(jq --arg b "$BBODY" '[.[] | select(.body == $b and .status == "open")] | length' <"$EVAL_SANDBOX/.review/4644/findings.json" 2>/dev/null)" = "1" ]; then
+if [ "$(jq 'length' <"$EVAL_SANDBOX/.verdict/state/4644/findings.json" 2>/dev/null)" = "2" ] \
+  && [ "$(jq --arg b "$ABODY" '[.[] | select(.body == $b)] | length' <"$EVAL_SANDBOX/.verdict/state/4644/findings.json" 2>/dev/null)" = "1" ] \
+  && [ "$(jq --arg b "$ABODY" -r '[.[] | select(.body == $b)][0].lastSeen' <"$EVAL_SANDBOX/.verdict/state/4644/findings.json" 2>/dev/null)" != "0000000" ] \
+  && [ "$(jq --arg b "$BBODY" '[.[] | select(.body == $b and .status == "open")] | length' <"$EVAL_SANDBOX/.verdict/state/4644/findings.json" 2>/dev/null)" = "1" ]; then
   good "findings merge dedupes by sig (restated entry merges, new entry appends)"
 else
-  bad "findings merge broke: $(jq -c 'map({sig: .sig[0:8], body})' <"$EVAL_SANDBOX/.review/4644/findings.json" 2>/dev/null || echo unreadable)"
+  bad "findings merge broke: $(jq -c 'map({sig: .sig[0:8], body})' <"$EVAL_SANDBOX/.verdict/state/4644/findings.json" 2>/dev/null || echo unreadable)"
 fi
-if [ "$(jq -r '.head' <"$EVAL_SANDBOX/.review/4644/post.json" 2>/dev/null)" = "$HEADA" ] \
+if [ "$(jq -r '.head' <"$EVAL_SANDBOX/.verdict/state/4644/post.json" 2>/dev/null)" = "$HEADA" ] \
   && [ "$(stdout_docs)" = "1" ] \
   && [ "$(jq -r '.data.event' <"$EVAL_OUT" 2>/dev/null)" = "COMMENT" ]; then
   good "one post.json on the reviewed head, one envelope, one event"
 else
   bad "post record/envelope broke"
 fi
-if [ -z "$(ls "$EVAL_SANDBOX/.review/4644"/chunks/*.review.json 2>/dev/null || true)" ]; then
+if [ -z "$(ls "$EVAL_SANDBOX/.verdict/state/4644"/chunks/*.review.json 2>/dev/null || true)" ]; then
   good "no per-chunk review files beside the single synthesis"
 else
   bad "per-chunk review files leaked"
@@ -320,9 +324,9 @@ else
   bad "envelope warnings miss the attestation warn: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-rm -rf "$EVAL_SANDBOX/.review/4641" "$EVAL_SANDBOX/.review/4642" \
-  "$EVAL_SANDBOX/.review/4643" "$EVAL_SANDBOX/.review/4644" \
-  "$EVAL_SANDBOX/.review/local-covrec" "$EVAL_SANDBOX/xdg-empty"
+rm -rf "$EVAL_SANDBOX/.verdict/state/4641" "$EVAL_SANDBOX/.verdict/state/4642" \
+  "$EVAL_SANDBOX/.verdict/state/4643" "$EVAL_SANDBOX/.verdict/state/4644" \
+  "$EVAL_SANDBOX/.verdict/state/local-covrec" "$EVAL_SANDBOX/xdg-empty"
 rm -f "$EVAL_SANDBOX"/posted-4644.json "$EVAL_SANDBOX"/cov-post.log
 unset XDG_CONFIG_HOME EVAL_SAVE_PAYLOAD || true
 

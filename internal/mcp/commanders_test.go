@@ -84,7 +84,7 @@ func TestCommanderOverride(t *testing.T) {
 
 type stubCommander struct{}
 
-func (*stubCommander) Run(_ context.Context, _ core.Command) (core.Result, error) {
+func (*stubCommander) Run(_ context.Context, _ *core.Command) (core.Result, error) {
 	return core.Result{}, nil
 }
 

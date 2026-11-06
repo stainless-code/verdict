@@ -74,7 +74,7 @@ type threadsRun struct {
 
 // RunThreads executes `threads <owner/repo> <pr> [--provider <name>]`:
 // re-read the provider's review conversations and rewrite only
-// .review/<pr>/threads.json. Human progress streams through the runtime
+// .verdict/state/<pr>/threads.json. Human progress streams through the runtime
 // observer; the adapter renders the envelope.
 func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *core.RefusalError) {
 	st := &threadsRun{req: req, warnings: append([]string{}, req.Warnings...)}
@@ -86,7 +86,7 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 		return nil, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", req.Provider)})
 	}
-	dir := readcommon.ResolveBundleDir(req.Pr)
+	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if !fileExists(dir + suffixPRJSON) {
 		return nil, st.withWarnings(&core.RefusalError{
 			Code:    CodeFetchFailed,

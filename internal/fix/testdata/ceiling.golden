@@ -15,10 +15,10 @@ exit: 1
   }
 }
 --- stderr ---
-» readiness: .review/local-ceil — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
-fix complete: .review/local-ceil — fixed=0 open=1 stopped=1 (ledger .review/local-ceil/fix.json)
+» readiness: .verdict/state/local-ceil — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+fix complete: .verdict/state/local-ceil — fixed=0 open=1 stopped=1 (ledger .verdict/state/local-ceil/fix.json)
 next: sig 41234567 hit the 3-pass ceiling — triage it or split the fix
 re-enter: verdict fix acme/app local-ceil --json
 --- files ---
---- file C/.review/local-ceil/fix.json ---
+--- file C/.verdict/state/local-ceil/fix.json ---
 {"sigs":{"4123456789abcdef0123456789abcdef01234567":{"passes":3,"last_at":"0000-00-00T00:00:00Z","stopped":"ceiling"}}}

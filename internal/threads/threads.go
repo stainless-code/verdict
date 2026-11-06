@@ -20,7 +20,7 @@ import (
 type Request = readcommon.Request
 
 // Run executes `threads <owner/repo> <pr> [--provider <name>] [--json]`,
-// returning the process exit code. Only .review/<pr>/threads.json is
+// returning the process exit code. Only .verdict/state/<pr>/threads.json is
 // rewritten; the diff and the rest of the bundle are untouched.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	provider, code, done := parseFlags(r, args)

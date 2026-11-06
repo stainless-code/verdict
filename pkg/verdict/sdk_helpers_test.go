@@ -68,16 +68,16 @@ index 1111111..2222222 100644
 // plus the one-hunk diff).
 func writePRBundle(t *testing.T, pr string) {
 	t.Helper()
-	writeFile(".review/"+pr+"/PR.json",
+	writeFile(".verdict/state/"+pr+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+sdkHeadA+`","baseRefOid":"`+sdkBaseB+`",`+
 			`"author":{"login":"teammate"}}`)
-	writeFile(".review/"+pr+"/full.diff", sdkDiff)
+	writeFile(".verdict/state/"+pr+"/full.diff", sdkDiff)
 }
 
 // writeFindings writes a findings store into a bundle.
 func writeFindings(t *testing.T, pr, store string) {
 	t.Helper()
-	writeFile(".review/"+pr+"/findings.json", store)
+	writeFile(".verdict/state/"+pr+"/findings.json", store)
 }
 
 // sdkInvocation builds the repo/PR positionals every SDK fixture uses.
@@ -130,7 +130,7 @@ type fakeCommander struct {
 }
 
 // Run implements verdict.Commander.
-func (f *fakeCommander) Run(_ context.Context, cmd verdict.Command) (verdict.CommandResult, error) {
+func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
 	f.t.Helper()
 	f.calls = append(f.calls, cmd.Argv)
 	joined := strings.Join(cmd.Argv, " ")

@@ -30,7 +30,7 @@ const samePatchDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..222222
 // diff and fails anything else exactly like an unavailable git.
 type samePatchStubCommander struct{}
 
-func (c *samePatchStubCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *samePatchStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil && string(raw) == samePatchDiff {
@@ -52,15 +52,15 @@ func withIdentityCommander(req core.ReadRequest) core.ReadRequest {
 // the posted head.
 func samePatchBundle(t *testing.T, postedPatch string) {
 	t.Helper()
-	writeFile(t, ".review/5101/full.diff", samePatchDiff)
+	writeFile(t, ".verdict/state/5101/full.diff", samePatchDiff)
 	sum := sha256.Sum256([]byte(samePatchDiff))
 	sha := hex.EncodeToString(sum[:])
-	writeFile(t, ".review/5101/identity.json",
+	writeFile(t, ".verdict/state/5101/identity.json",
 		`{"schema_version":"1","patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id",`+
 			`"diff_sha256":"`+sha+`","raw_diff_sha256":"`+sha+`","head_sha":"`+storeHeadSHA+`","base_sha":"`+samePatchBase+`"}`)
 	post := `{"schema_version":"1","review":{"id":1,"state":"COMMENTED"},"head":"` + samePatchHead + `",` +
 		`"posted_at":"2026-01-01T00:00:00Z","patch_id":"` + postedPatch + `","patch_id_kind":"git-patch-id"}`
-	writeFile(t, ".review/5101/post.json", post)
+	writeFile(t, ".verdict/state/5101/post.json", post)
 }
 
 // TestRunReportCompletenessSamePatch proves the rebase pass: posted and
@@ -141,7 +141,7 @@ func TestRunReportCompletenessDifferentPatch(t *testing.T) {
 // falls back to the SHA comparison and warns.
 func TestRunReportCompletenessLegacyWarns(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
-	writeFile(t, ".review/5101/post.json",
+	writeFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{"id":1},"head":"`+storeHeadSHA+`","posted_at":"2026-01-01T00:00:00Z"}`)
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
@@ -189,7 +189,7 @@ func assertStaleCompleteness(t *testing.T, resp *core.ReportResponse, warn strin
 func TestRunReportCompletenessStaleBytes(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	writeFile(t, ".review/5101/full.diff", "replaced bytes\n")
+	writeFile(t, ".verdict/state/5101/full.diff", "replaced bytes\n")
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
 		Flags:       core.ReportFlags{Completeness: true},
@@ -205,8 +205,8 @@ func TestRunReportCompletenessStaleBytes(t *testing.T) {
 func TestRunReportCompletenessStaleHead(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	raw := readFile(t, ".review/5101/identity.json")
-	writeFile(t, ".review/5101/identity.json",
+	raw := readFile(t, ".verdict/state/5101/identity.json")
+	writeFile(t, ".verdict/state/5101/identity.json",
 		strings.Replace(string(raw), `"head_sha":"`+storeHeadSHA+`"`, `"head_sha":"cccccccccccccccccccccccccccccccccccccccc"`, 1))
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
@@ -225,7 +225,7 @@ func TestRunReportCompletenessStaleHead(t *testing.T) {
 func TestRunReportCompletenessIncompleteReceipt(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	writeFile(t, ".review/5101/post.json",
+	writeFile(t, ".verdict/state/5101/post.json",
 		`{"patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id"}`)
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
@@ -273,7 +273,7 @@ func TestRunReportCompletenessPendingReceipt(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			req := withIdentityCommander(fixture(t, "[]"))
 			samePatchBundle(t, samePatchID)
-			writeFile(t, ".review/5101/post.json", review)
+			writeFile(t, ".verdict/state/5101/post.json", review)
 			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 				ReadRequest: req,
 				Flags:       core.ReportFlags{Completeness: true},
@@ -291,8 +291,8 @@ func TestRunReportCompletenessPendingReceipt(t *testing.T) {
 func TestRunReportCompletenessInvalidIdentity(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	raw := readFile(t, ".review/5101/identity.json")
-	writeFile(t, ".review/5101/identity.json", strings.Replace(string(raw), samePatchID, "not-a-patch-id", 1))
+	raw := readFile(t, ".verdict/state/5101/identity.json")
+	writeFile(t, ".verdict/state/5101/identity.json", strings.Replace(string(raw), samePatchID, "not-a-patch-id", 1))
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
 		Flags:       core.ReportFlags{Completeness: true},
@@ -320,10 +320,10 @@ func TestRunReportCompletenessTamperedClaim(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
 	tampered := strings.Repeat("1", 40)
-	ident := readFile(t, ".review/5101/identity.json")
-	writeFile(t, ".review/5101/identity.json", strings.Replace(string(ident), samePatchID, tampered, 1))
-	posted := readFile(t, ".review/5101/post.json")
-	writeFile(t, ".review/5101/post.json", strings.Replace(string(posted), samePatchID, tampered, 1))
+	ident := readFile(t, ".verdict/state/5101/identity.json")
+	writeFile(t, ".verdict/state/5101/identity.json", strings.Replace(string(ident), samePatchID, tampered, 1))
+	posted := readFile(t, ".verdict/state/5101/post.json")
+	writeFile(t, ".verdict/state/5101/post.json", strings.Replace(string(posted), samePatchID, tampered, 1))
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
 		Flags:       core.ReportFlags{Completeness: true},
@@ -339,7 +339,7 @@ func TestRunReportCompletenessTamperedClaim(t *testing.T) {
 func TestRunReportCompletenessEmptyReceipt(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	writeFile(t, ".review/5101/post.json",
+	writeFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{},"head":"`+samePatchHead+`","posted_at":"2026-01-01T00:00:00Z",`+
 			`"patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id"}`)
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
@@ -357,7 +357,7 @@ func TestRunReportCompletenessEmptyReceipt(t *testing.T) {
 func TestRunReportCompletenessInvalidHeadTime(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	writeFile(t, ".review/5101/post.json",
+	writeFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{},"head":"not-a-head","posted_at":"not-a-time",`+
 			`"patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id"}`)
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
@@ -376,7 +376,7 @@ func TestRunReportCompletenessInvalidHeadTime(t *testing.T) {
 func TestRunReportCompletenessRawUnreadable(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	if err := os.Mkdir(".review/5101/full.raw.diff", 0o755); err != nil {
+	if err := os.Mkdir(".verdict/state/5101/full.raw.diff", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{

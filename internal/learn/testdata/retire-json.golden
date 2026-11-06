@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,36 +6,14 @@ exit: 0
   "repo": "",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "retired rules never recall; restore with learn --restore",
+  "next": "",
   "warnings": [],
-  "data": {
-    "rule": {
-      "id": "await-err",
-      "rule": "Check error paths on every await",
-      "scope": "src/*.ts",
-      "provenance": "manual",
-      "rigor": "walked",
-      "hits": 3,
-      "false_hits": 1,
-      "judged": 4,
-      "status": "retired",
-      "retiredAt": "0000-00-00T00:00:00Z",
-      "retireReason": "the rule stopped matching how this repo writes code",
-      "history": [
-        {
-          "at": "0000-00-00T00:00:00Z",
-          "event": "retired",
-          "actor": "human",
-          "note": "the rule stopped matching how this repo writes code"
-        }
-      ]
-    }
-  },
-  "error": null
+  "data": null,
+  "error": {
+    "code": "unknown-rule",
+    "message": "learn: no rule 'await-err' (no .verdict/kb.jsonl yet — see learn --status)\ntry: list rules with learn --status, then re-run"
+  }
 }
 --- stderr ---
-
+re-enter: verdict learn --retire ... --json
 --- files ---
---- file C/.review/kb.jsonl ---
-{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":3,"false_hits":1,"judged":4,"status":"retired","retiredAt":"0000-00-00T00:00:00Z","retireReason":"the rule stopped matching how this repo writes code","history":[{"at":"0000-00-00T00:00:00Z","event":"retired","actor":"human","note":"the rule stopped matching how this repo writes code"}]}
-{"id":"no-secrets","rule":"Never log secrets in error paths","scope":"src/*.go","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}

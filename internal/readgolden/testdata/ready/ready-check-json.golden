@@ -29,5 +29,5 @@ exit: 0
 ready: yes — acme/app#5101 looks reviewable (CI 1 checks, 0 failing; 0 open threads; mergeable MERGEABLE; body 70 chars)
 recommendation: review — fetch + review
 --- files ---
---- file C/.review/5101/.ready.err ---
+--- file C/.verdict/state/5101/.ready.err ---
 

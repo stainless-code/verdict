@@ -1,7 +1,7 @@
 // Package learncore is the learn verb's domain service: the structured local
 // knowledge base. Exactly one mode per invocation: append a scoped rule, list
 // rules with precision, or retire/restore by human veto with a 30+ char
-// reason. The store is .review/kb.jsonl (one JSON object per line); every
+// reason. The store is .verdict/kb.jsonl (one JSON object per line); every
 // rewrite goes through the shared atomic path. internal/learn owns argv
 // parsing, rentry, envelope rendering, and exit mapping.
 package learncore
@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -64,11 +65,18 @@ func (d *Data) Wire() *jq.Obj {
 
 type state struct {
 	req      *Request
+	root     string
 	now      string
 	next     string
 	data     *Data
 	warnings []string
 }
+
+// storeDir is the tracked shared configuration directory at the Git root.
+func (st *state) storeDir() string { return filepath.Join(st.root, learnStoreDir) }
+
+// kbFile is the tracked shared knowledge corpus the verb reads and writes.
+func (st *state) kbFile() string { return filepath.Join(st.root, kb.File) }
 
 type appendInput struct {
 	rule  string
@@ -80,7 +88,7 @@ type appendInput struct {
 
 // Run executes exactly one learn mode.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
-	st := &state{req: req, now: req.TimeUTC()}
+	st := &state{req: req, root: req.RepoRootPath(), now: req.TimeUTC()}
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
 	}
@@ -177,7 +185,7 @@ func (st *state) runStatus() *core.RefusalError {
 }
 
 func (st *state) readStatusRows() ([]any, *core.RefusalError) {
-	decoded, err := kb.ReadRows()
+	decoded, err := kb.ReadRows(st.root)
 	if errors.Is(err, kb.ErrMissing) {
 		return []any{}, nil
 	}
@@ -256,13 +264,13 @@ func (st *state) runAppend() *core.RefusalError {
 		return ref
 	}
 	row := appendRowDoc(validated)
-	if err := kb.AppendRow(row.MarshalCompact() + "\n"); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, kbFile, err))
+	if err := kb.AppendRow(st.root, row.MarshalCompact()+"\n"); err != nil {
+		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbFile(), err))
 	}
 	st.next = nextAppend
 	st.data = &Data{Rule: row}
 	st.humanf("learned %s -> %s (scope %s, rigor %s)\n",
-		validated.lid, kbFile, validated.scope, validated.rigor)
+		validated.lid, st.kbFile(), validated.scope, validated.rigor)
 	return nil
 }
 
@@ -319,13 +327,13 @@ func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.Refus
 }
 
 func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
-	if err := os.MkdirAll(reviewDir, reviewDirPerm); err != nil {
+	if err := os.MkdirAll(st.storeDir(), reviewDirPerm); err != nil {
 		return st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
 	}
-	if !readcommon.IsFile(kbFile) {
+	if !readcommon.IsFile(st.kbFile()) {
 		return nil
 	}
-	rows, err := kb.ReadRows()
+	rows, err := kb.ReadRows(st.root)
 	if err != nil {
 		return st.corruptStore()
 	}
@@ -434,9 +442,9 @@ func (st *state) appendHistory(cur *jq.Obj, event string) {
 }
 
 func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
-	rows, err := kb.ReadRows()
+	rows, err := kb.ReadRows(st.root)
 	if errors.Is(err, kb.ErrMissing) {
-		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, kbFile))
+		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, st.kbFile()))
 	}
 	if err != nil {
 		return nil, st.corruptStore()
@@ -471,21 +479,19 @@ func mustGet(m *jq.Obj, key string) any {
 }
 
 func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
-	if err := kb.WriteRows(rows); err != nil {
-		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, kbFile))
+	if err := kb.WriteRows(st.root, rows); err != nil {
+		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, st.kbFile()))
 	}
 	return nil
 }
 
 func (st *state) corruptStore() *core.RefusalError {
-	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, kbFile))
+	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, st.kbFile()))
 }
 
 const (
-	// kbFile is the KB store path, mirroring $KB_FILE.
-	kbFile = reviewDir + "/kb.jsonl"
-	// reviewDir is the store directory (the bundle root).
-	reviewDir = ".review"
+	// learnStoreDir is the tracked shared configuration directory.
+	learnStoreDir = ".verdict"
 	// reviewDirPerm is the mode the store dir is created with.
 	reviewDirPerm = 0o777
 	// reasonMin is the veto-reason floor (characters, like ${#}).
@@ -560,7 +566,7 @@ const (
 	msgBadRigor        = "refusing learn: unknown rigor '%s' (want said|pointed|walked|ran|reproduced)"
 	msgBadIDExplicit   = "refusing learn: id '%s' is not ^[a-z0-9][a-z0-9-]{0,64}$ (pass --id explicitly)"
 	msgBadID           = "refusing learn: id '%s' is not ^[a-z0-9][a-z0-9-]{0,64}$"
-	msgMkdirReview     = "learn could not create .review (storage writable?): %v"
+	msgMkdirReview     = "learn could not create .verdict (storage writable?): %v"
 	msgAlreadyLearned  = "rule text already learned (cite the existing rule id instead of learning it twice)"
 	msgIDTaken         = "id '%s' is taken (pass a different --id)"
 	msgWriteKB         = "learn could not write %s: %v"

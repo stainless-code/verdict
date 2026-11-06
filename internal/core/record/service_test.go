@@ -43,12 +43,12 @@ func bundle(t *testing.T, slug, review string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".review/"+slug+"/source.json",
+	writeFile(t, ".verdict/state/"+slug+"/source.json",
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
-	writeFile(t, ".review/"+slug+"/full.diff",
+	writeFile(t, ".verdict/state/"+slug+"/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
-	writeFile(t, ".review/"+slug+"/review.json", review)
+	writeFile(t, ".verdict/state/"+slug+"/review.json", review)
 }
 
 func reviewJSON(kbFrag string) string {
@@ -59,7 +59,7 @@ func reviewJSON(kbFrag string) string {
 
 func recordRequest(t *testing.T, c *collector, slug string) *core.RecordRequest {
 	t.Helper()
-	seedControls(t, ".review/"+slug)
+	seedControls(t, ".verdict/state/"+slug)
 	read := core.ReadRequest{
 		Runtime: testRuntime(c),
 		Repo:    "acme/app",
@@ -106,7 +106,7 @@ func checkRecordResponse(t *testing.T, resp *core.RecordResponse) {
 
 func checkRecordStores(t *testing.T) {
 	t.Helper()
-	raw, err := os.ReadFile(".review/local-rr/record.json")
+	raw, err := os.ReadFile(".verdict/state/local-rr/record.json")
 	if err != nil {
 		t.Fatalf("read record.json: %v", err)
 	}
@@ -152,15 +152,15 @@ func TestRunRecordRefusals(t *testing.T) {
 	}{
 		{"not-local", func(*testing.T) {}, "5101", "not-local"},
 		{"missing-review", func(*testing.T) {
-			_ = os.Remove(".review/local-rf/review.json")
+			_ = os.Remove(".verdict/state/local-rf/review.json")
 		}, "local-rf", "missing-review-file"},
 		{"corrupt-review", func(t *testing.T) {
 			t.Helper()
-			writeFile(t, ".review/local-rf/review.json", "{broken")
+			writeFile(t, ".verdict/state/local-rf/review.json", "{broken")
 		}, "local-rf", "bad-review-input"},
 		{"degenerate", func(t *testing.T) {
 			t.Helper()
-			writeFile(t, ".review/local-rf/review.json", `{"body":"short"}`)
+			writeFile(t, ".verdict/state/local-rf/review.json", `{"body":"short"}`)
 		}, "local-rf", "bad-review-input"},
 	}
 	for _, tc := range cases {
@@ -187,7 +187,7 @@ func checkRecordRefusal(t *testing.T, setup func(t *testing.T), pr, code string)
 	if len(ref.Warnings) == 0 || ref.Warnings[0] != "prefs warning" {
 		t.Errorf("warnings = %v, want prefs warning carried", ref.Warnings)
 	}
-	if _, err := os.Stat(".review/local-rf/findings.json"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/local-rf/findings.json"); !os.IsNotExist(err) {
 		t.Error("refusal wrote findings.json")
 	}
 }
@@ -196,7 +196,7 @@ func checkRecordRefusal(t *testing.T, setup func(t *testing.T), pr, code string)
 // an unknown cite warns the run.
 func TestRunRecordKBCite(t *testing.T) {
 	bundle(t, "local-kb", reviewJSON(`,"kb":["rec-rule"]`))
-	writeFile(t, ".review/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")
+	writeFile(t, ".verdict/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")
 	c := &collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-kb"))
 	if ref != nil {
@@ -205,7 +205,7 @@ func TestRunRecordKBCite(t *testing.T) {
 	if len(resp.Data.Items) != 1 {
 		t.Fatalf("items = %d", len(resp.Data.Items))
 	}
-	raw, err := os.ReadFile(".review/local-kb/findings.json")
+	raw, err := os.ReadFile(".verdict/state/local-kb/findings.json")
 	if err != nil {
 		t.Fatalf("read findings.json: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestRunRecordKBCite(t *testing.T) {
 	}
 
 	bundle(t, "local-kb2", reviewJSON(`,"kb":["nope-missing"]`))
-	writeFile(t, ".review/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")
+	writeFile(t, ".verdict/kb.jsonl", `{"id":"rec-rule","status":"active"}`+"\n")
 	c2 := &collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c2, "local-kb2")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

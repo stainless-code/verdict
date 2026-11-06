@@ -34,6 +34,7 @@ const (
 var internalFieldNames = map[string]bool{
 	"Runtime":     true,
 	"Root":        true,
+	"RepoRoot":    true,
 	"Forces":      true,
 	"Effective":   true,
 	"Warnings":    true,
@@ -278,6 +279,8 @@ var fieldDocs = map[string]string{
 	"Preset":        "Scaffold preset (chill, standard, strict).",
 	"Yes":           "Confirm overwriting existing control files.",
 	"TimeoutRaw":    "Verification timeout in seconds (positive integer).",
+	"Group":         "Deep validation: stable plan group id from run.json. Requires command.",
+	"Command":       "Deep validation: explicit command to run at the reviewed root. Requires group.",
 	"Rationale":     "Explanation for the status change.",
 	"Force":         "Override the refusal that would otherwise block the change.",
 	"DryRun":        "Report what would change without writing.",

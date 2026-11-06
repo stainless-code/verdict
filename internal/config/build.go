@@ -19,6 +19,9 @@ const (
 // configuration. Unknown fields are already refused; every value below is
 // checked for null placement, range, enum, glob, and cross-field shape
 // before it reaches the typed struct, so the runtime never casts blindly.
+// rootLocation names the document root in field-path refusals.
+const rootLocation = "$"
+
 func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	cfg := &core.Config{SchemaVersion: "1"}
 	if raw, ok := root["$schema"]; ok {
@@ -29,10 +32,10 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 		cfg.SchemaRef = str
 	}
 	var ref *core.RefusalError
-	if cfg.Defaults, ref = presentNested(root, defaultsKey, "$", buildDefaults); ref != nil {
+	if cfg.Defaults, ref = presentNested(root, defaultsKey, rootLocation, buildDefaults); ref != nil {
 		return nil, ref
 	}
-	if cfg.Requirements, ref = presentNested(root, requirementsKey, "$", buildRequirements); ref != nil {
+	if cfg.Requirements, ref = presentNested(root, requirementsKey, rootLocation, buildRequirements); ref != nil {
 		return nil, ref
 	}
 	if ref = buildConfigTail(cfg, root); ref != nil {
@@ -45,14 +48,15 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 // the cross-field references between them.
 func buildConfigTail(cfg *core.Config, root map[string]any) *core.RefusalError {
 	var ref *core.RefusalError
-	if cfg.Scopes, ref = presentNested(root, "scopes", "$", func(raw any, _ string) ([]core.ConfigScope, *core.RefusalError) {
+	if cfg.Scopes, ref = presentNested(root, "scopes", rootLocation, func(raw any, _ string) ([]core.ConfigScope, *core.RefusalError) {
 		return buildScopes(raw)
 	}); ref != nil {
 		return ref
 	}
-	if cfg.Profiles, ref = presentNested(root, "profiles", "$", func(raw any, _ string) (map[string]core.ConfigProfile, *core.RefusalError) {
+	profiles := func(raw any, _ string) (map[string]core.ConfigProfile, *core.RefusalError) {
 		return buildProfiles(raw)
-	}); ref != nil {
+	}
+	if cfg.Profiles, ref = presentNested(root, "profiles", rootLocation, profiles); ref != nil {
 		return ref
 	}
 	if raw, ok := root["default_profile"]; ok {

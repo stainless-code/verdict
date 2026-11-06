@@ -67,7 +67,7 @@ func withoutJSON(args []string) []string {
 // edgePatch writes patch.json carrying the verifyCmd.
 func edgePatch(t *testing.T, dir, cmd string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "5201")
+	bdir := filepath.Join(dir, ".verdict", "state", "5201")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func edgePatch(t *testing.T, dir, cmd string) {
 // edgeRecord reads the patch record back.
 func edgeRecord(t *testing.T, dir string) map[string]any {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", "patch.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", "patch.json"))
 	if err != nil {
 		t.Fatalf("read patch.json: %v", err)
 	}
@@ -131,7 +131,7 @@ func requireProcessGone(t *testing.T, pid int) {
 // verifyMarker reads the recorded .verify.timeout marker.
 func verifyMarker(t *testing.T, dir string) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.timeout"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.timeout"))
 	if err != nil {
 		t.Fatalf("read .verify.timeout: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestVerifyContractTruncatedOutput(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.out"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.out"))
 	if err != nil {
 		t.Fatalf("read .verify.out: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestVerifyContractRedaction(t *testing.T) {
 	if !strings.Contains(tail, "***REDACTED***") {
 		t.Fatalf("recorded tail carries no redaction marker:\n%v", rec)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.out"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.out"))
 	if err != nil || !strings.Contains(string(raw), "supersecretvalue123") {
 		t.Fatalf(".verify.out = %q, want raw output", raw)
 	}
@@ -275,7 +275,7 @@ func checkTailRedacted(t *testing.T, tail string) {
 // failed proof needs what the command actually printed.
 func checkRawOutputKept(t *testing.T, dir string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.out"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.out"))
 	if err != nil {
 		t.Fatalf("read .verify.out: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestVerifyContractNoColor(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "5201", ".verify.out"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.out"))
 	if err != nil || string(raw) != "1" {
 		t.Fatalf(".verify.out = %q, want NO_COLOR=1", raw)
 	}
@@ -343,7 +343,7 @@ func assertGateRefusal(t *testing.T, dir, want string) {
 // writeBarePatch writes an empty patch.json, exercising the missing-cmd gate.
 func writeBarePatch(t *testing.T, dir string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "5201")
+	bdir := filepath.Join(dir, ".verdict", "state", "5201")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestVerifyContractCancelIsNotATimeout(t *testing.T) {
 	if !strings.Contains(stdout, `"code": "canceled"`) {
 		t.Errorf("stdout lacks the canceled refusal:\n%s", stdout)
 	}
-	bundle := filepath.Join(dir, ".review", "5201")
+	bundle := filepath.Join(dir, ".verdict", "state", "5201")
 	if marker, _ := os.ReadFile(filepath.Join(bundle, ".verify.timeout")); len(marker) > 0 { //nolint:errcheck // an absent marker is the passing case
 		t.Errorf(".verify.timeout = %q, want no timeout recorded for a cancel", marker)
 	}

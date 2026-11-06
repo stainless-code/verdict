@@ -53,47 +53,21 @@ type chunkOptIn struct {
 	active bool
 }
 
-// resolveChunkOptIn reads the chunk opt-in: an overridden cap wins
+// resolveChunkOptIn reads the chunking opt-in: an overridden cap wins
 // outright (chunking disabled), else explicit --chunk wins, else the
-// resolved chunk default (repository, personal review, built-in off),
-// else the legacy .review/chunk file. The file is consulted only here,
-// on the over-cap path, so under-cap runs never see a bad knob; garbage
-// refuses typed.
-func resolveChunkOptIn(res *config.Resolved, chunkFlag bool, capSource string, knob []byte, hasKnob bool) (chunkOptIn, *core.RefusalError) {
+// resolved chunk default (repository, personal review, built-in off).
+// Malformed values refuse at parse time, never here.
+func resolveChunkOptIn(res *config.Resolved, chunkFlag bool, capSource string) chunkOptIn {
 	if capSource != "" {
-		return chunkOptIn{}, nil
+		return chunkOptIn{}
 	}
 	if chunkFlag {
-		return chunkOptIn{active: true, source: flagChunk}, nil
+		return chunkOptIn{active: true, source: flagChunk}
 	}
 	if res != nil && res.Defaults.Values.Chunk {
-		return chunkOptIn{active: true, source: res.Defaults.Origins["chunk"].Source}, nil
+		return chunkOptIn{active: true, source: res.Defaults.Origins["chunk"].Source}
 	}
-	if !hasKnob {
-		return chunkOptIn{}, nil
-	}
-	switch strings.ToLower(knobLine(knob)) {
-	case "", "false", "off", "0", "no":
-		return chunkOptIn{}, nil
-	case "true", "on", "1", "yes":
-		return chunkOptIn{active: true, source: ".review/chunk"}, nil
-	default:
-		return chunkOptIn{}, &core.RefusalError{Code: "bad-chunk-knob", Message: fmt.Sprintf(
-			"chunk knob '%s' from .review/chunk is not an opt-in flag (want true|false, on|off, 1|0, yes|no — first usable line wins, absent reads off)", strings.TrimSpace(string(knob)))}
-	}
-}
-
-// knobLine reads the first usable line of a knob file: comments and
-// blanks skipped, surrounding whitespace trimmed.
-func knobLine(raw []byte) string {
-	for line := range strings.Lines(string(raw)) {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		return trimmed
-	}
-	return ""
+	return chunkOptIn{}
 }
 
 // checkDiffSize applies the byte cap: empty diffs warn-and-proceed; diffs
@@ -101,6 +75,22 @@ func knobLine(raw []byte) string {
 // single-file degenerate), else refuse diff-too-large with the advisory
 // split candidates riding the envelope.
 func checkDiffSize(r *session, res *config.Resolved, fullDiff string, lim fetchCap, chunkFlag bool) (chunkActive bool, err error) {
+	if limits := groupLimits(res, chunkFlag); len(limits) > 0 {
+		active, ref := checkGroupDiffSize(r, res, fullDiff, chunkFlag)
+		if ref != nil {
+			return false, ref
+		}
+		if allFilesGrouped(fullDiff, limits) {
+			return active, nil
+		}
+		fallback, err := checkTotalDiffSize(r, res, fullDiff, lim, chunkFlag)
+		return active || fallback, err
+	}
+	return checkTotalDiffSize(r, res, fullDiff, lim, chunkFlag)
+}
+
+// checkTotalDiffSize bounds a diff without complete group attribution.
+func checkTotalDiffSize(r *session, res *config.Resolved, fullDiff string, lim fetchCap, chunkFlag bool) (chunkActive bool, err error) {
 	fi, statErr := os.Stat(fullDiff)
 	var total int64
 	if statErr == nil {
@@ -123,11 +113,7 @@ func checkDiffSize(r *session, res *config.Resolved, fullDiff string, lim fetchC
 // boundaries (the single-file degenerate keeps the advisory refusal with
 // no chunks written); otherwise the refusal carries split candidates.
 func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim fetchCap, chunkFlag bool) (bool, error) {
-	knob, hasKnob := r.readControl(".review/chunk")
-	optIn, ref := resolveChunkOptIn(res, chunkFlag, lim.source, knob, hasKnob)
-	if ref != nil {
-		return false, ref
-	}
+	optIn := resolveChunkOptIn(res, chunkFlag, lim.source)
 	if optIn.active {
 		// The opt-in notices own stderr in both modes (`>&2`).
 

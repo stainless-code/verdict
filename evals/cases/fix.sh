@@ -13,8 +13,8 @@ SECT="3123456789abcdef0123456789abcdef01234567"
 CEIL="4123456789abcdef0123456789abcdef01234567"
 SCOP="5123456789abcdef0123456789abcdef01234567"
 
-mk_local() { # $1 = bare slug (bundle lands at .review/local-$1)
-  local slug="$1" dir="$EVAL_SANDBOX/.review/local-$1"
+mk_local() { # $1 = bare slug (bundle lands at .verdict/state/local-$1)
+  local slug="$1" dir="$EVAL_SANDBOX/.verdict/state/local-$1"
   mkdir -p "$dir"
   cat > "$dir/source.json" <<EOF
 {"schema_version":"1","kind":"worktree","repo":"acme/app","slug":"$slug","base_ref":null,"head_ref":"work","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"","range":"HEAD:worktree","dirty":true,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}
@@ -33,7 +33,7 @@ EOF
 }
 
 fix_write_findings() { # $1 = bare slug, stdin = findings array
-  cat > "$EVAL_SANDBOX/.review/local-$1/findings.json"
+  cat > "$EVAL_SANDBOX/.verdict/state/local-$1/findings.json"
 }
 
 mk_finding() { # $1=sig $2=kind $3=status $4=severity $5=path $6=body
@@ -47,7 +47,7 @@ mk_finding() { # $1=sig $2=kind $3=status $4=severity $5=path $6=body
   git config user.email "fix-eval@example.com"
   git config user.name "fix eval"
   cat > .gitignore <<'EOF'
-.review/
+.verdict/state/
 stubbin/
 *.log
 eval-out.bin
@@ -66,7 +66,7 @@ mk_local fixpick
   mk_finding "$INFO" inline open informational notes.txt "Minor wording nit here."
   mk_finding "$CRIT" inline open critical app.txt "Critical boundary bug here."
 } | jq -s '.' | fix_write_findings fixpick
-before_sum="$(shasum -a 1 "$EVAL_SANDBOX/.review/local-fixpick/findings.json" | cut -d' ' -f1)"
+before_sum="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/local-fixpick/findings.json" | cut -d' ' -f1)"
 run_review fix acme/app local-fixpick
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "default pick exits 0"
@@ -111,18 +111,18 @@ if grep -q "readiness:" "$EVAL_ERR" && grep -q "instructions:" "$EVAL_ERR"; then
 else
   bad "stderr missing human progress in --json mode"
 fi
-if [ "$(jq -r ".sigs[\"$CRIT\"].passes" "$EVAL_SANDBOX/.review/local-fixpick/fix.json")" = "2" ] \
-  && [ "$(jq -r ".sigs[\"$CRIT\"] | has(\"stopped\")" "$EVAL_SANDBOX/.review/local-fixpick/fix.json")" = "false" ]; then
+if [ "$(jq -r ".sigs[\"$CRIT\"].passes" "$EVAL_SANDBOX/.verdict/state/local-fixpick/fix.json")" = "2" ] \
+  && [ "$(jq -r ".sigs[\"$CRIT\"] | has(\"stopped\")" "$EVAL_SANDBOX/.verdict/state/local-fixpick/fix.json")" = "false" ]; then
   good "ledger records passes=2 with no tombstone"
 else
-  bad "ledger: $(cat "$EVAL_SANDBOX/.review/local-fixpick/fix.json" 2>/dev/null)"
+  bad "ledger: $(cat "$EVAL_SANDBOX/.verdict/state/local-fixpick/fix.json" 2>/dev/null)"
 fi
-after_sum="$(shasum -a 1 "$EVAL_SANDBOX/.review/local-fixpick/findings.json" | cut -d' ' -f1)"
+after_sum="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/local-fixpick/findings.json" | cut -d' ' -f1)"
 if [ "$before_sum" = "$after_sum" ] \
-  && [ "$(ls "$EVAL_SANDBOX/.review/local-fixpick/" | LC_ALL=C sort | tr '\n' ',')" = "findings.json,fix.json,full.diff,source.json," ]; then
+  && [ "$(ls "$EVAL_SANDBOX/.verdict/state/local-fixpick/" | LC_ALL=C sort | tr '\n' ',')" = "findings.json,fix.json,full.diff,source.json," ]; then
   good "fix writes only fix.json (findings byte-identical, no tmp left)"
 else
-  bad "bundle dir drifted: $(ls "$EVAL_SANDBOX/.review/local-fixpick/")"
+  bad "bundle dir drifted: $(ls "$EVAL_SANDBOX/.verdict/state/local-fixpick/")"
 fi
 
 mk_local fixorder
@@ -199,7 +199,7 @@ else
 fi
 mk_local fixclosed
 mk_finding "$INFO" inline open informational notes.txt "Closed bundle nit." | jq -s '.' | fix_write_findings fixclosed
-cat > "$EVAL_SANDBOX/.review/local-fixclosed/PR.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/local-fixclosed/PR.json" <<'EOF'
 {"state":"closed","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
 EOF
 run_review fix acme/app local-fixclosed --json
@@ -262,17 +262,17 @@ if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "fix-ceiling" ] \
 else
   bad "4th pass gave exit $EVAL_STATUS code '$code'"
 fi
-if [ "$(jq -r ".sigs[\"$CEIL\"].passes" "$EVAL_SANDBOX/.review/local-fixceil/fix.json")" = "3" ] \
-  && [ "$(jq -r ".sigs[\"$CEIL\"].stopped" "$EVAL_SANDBOX/.review/local-fixceil/fix.json")" = "ceiling" ]; then
+if [ "$(jq -r ".sigs[\"$CEIL\"].passes" "$EVAL_SANDBOX/.verdict/state/local-fixceil/fix.json")" = "3" ] \
+  && [ "$(jq -r ".sigs[\"$CEIL\"].stopped" "$EVAL_SANDBOX/.verdict/state/local-fixceil/fix.json")" = "ceiling" ]; then
   good "tombstone records stopped:ceiling, passes stay 3"
 else
-  bad "ledger: $(cat "$EVAL_SANDBOX/.review/local-fixceil/fix.json")"
+  bad "ledger: $(cat "$EVAL_SANDBOX/.verdict/state/local-fixceil/fix.json")"
 fi
 run_review fix acme/app local-fixceil --json >/dev/null
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "fix-ceiling" ] \
-  && [ "$(jq -r ".sigs[\"$CEIL\"].passes" "$EVAL_SANDBOX/.review/local-fixceil/fix.json")" = "3" ] \
-  && [ "$(jq -r ".sigs[\"$CEIL\"].stopped" "$EVAL_SANDBOX/.review/local-fixceil/fix.json")" = "ceiling" ]; then
+  && [ "$(jq -r ".sigs[\"$CEIL\"].passes" "$EVAL_SANDBOX/.verdict/state/local-fixceil/fix.json")" = "3" ] \
+  && [ "$(jq -r ".sigs[\"$CEIL\"].stopped" "$EVAL_SANDBOX/.verdict/state/local-fixceil/fix.json")" = "ceiling" ]; then
   good "repeat refusal stays stable (still 3 passes, tombstone kept)"
 else
   bad "5th pass gave exit $EVAL_STATUS code '$code'"
@@ -299,11 +299,11 @@ if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "scope-escape" ] \
 else
   bad "scope escape gave exit $EVAL_STATUS code '$code'"
 fi
-if [ "$(jq -r ".sigs[\"$SCOP\"].stopped" "$EVAL_SANDBOX/.review/local-fixscope/fix.json")" = "scope-escape" ] \
-  && [ "$(jq -r ".sigs[\"$SCOP\"].passes" "$EVAL_SANDBOX/.review/local-fixscope/fix.json")" = "1" ]; then
+if [ "$(jq -r ".sigs[\"$SCOP\"].stopped" "$EVAL_SANDBOX/.verdict/state/local-fixscope/fix.json")" = "scope-escape" ] \
+  && [ "$(jq -r ".sigs[\"$SCOP\"].passes" "$EVAL_SANDBOX/.verdict/state/local-fixscope/fix.json")" = "1" ]; then
   good "scope tombstone keeps passes at 1"
 else
-  bad "scope ledger: $(cat "$EVAL_SANDBOX/.review/local-fixscope/fix.json")"
+  bad "scope ledger: $(cat "$EVAL_SANDBOX/.verdict/state/local-fixscope/fix.json")"
 fi
 (
   cd "$EVAL_SANDBOX" || exit 99
@@ -315,7 +315,7 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$(jq -r '.data.pass' <"$EVAL_OUT")" = "2" ]; t
 else
   bad "recovery gave exit $EVAL_STATUS"
 fi
-if [ "$(jq -r ".sigs[\"$SCOP\"] | has(\"stopped\")" "$EVAL_SANDBOX/.review/local-fixscope/fix.json")" = "false" ]; then
+if [ "$(jq -r ".sigs[\"$SCOP\"] | has(\"stopped\")" "$EVAL_SANDBOX/.verdict/state/local-fixscope/fix.json")" = "false" ]; then
   good "recovery clears the stopped flag"
 else
   bad "stopped flag stuck after recovery"
@@ -326,8 +326,8 @@ fi
 )
 run_review fix acme/app local-fixscope --json >/dev/null 2>&1
 if [ "$EVAL_STATUS" -ne 0 ] \
-  && [ "$(jq -r ".sigs[\"$SCOP\"].passes" "$EVAL_SANDBOX/.review/local-fixscope/fix.json")" = "2" ] \
-  && [ "$(jq -r ".sigs[\"$SCOP\"].stopped" "$EVAL_SANDBOX/.review/local-fixscope/fix.json")" = "scope-escape" ]; then
+  && [ "$(jq -r ".sigs[\"$SCOP\"].passes" "$EVAL_SANDBOX/.verdict/state/local-fixscope/fix.json")" = "2" ] \
+  && [ "$(jq -r ".sigs[\"$SCOP\"].stopped" "$EVAL_SANDBOX/.verdict/state/local-fixscope/fix.json")" = "scope-escape" ]; then
   good "repeat escape re-stops without advancing passes"
 else
   bad "repeat escape moved the ledger"
@@ -359,7 +359,7 @@ fi
 
 mk_local fixkb
 mk_finding "$INFO" inline open informational notes.txt "Kb-guided nit." | jq -s '.' | fix_write_findings fixkb
-cat > "$EVAL_SANDBOX/.review/local-fixkb/kb.txt" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/local-fixkb/kb.txt" <<'EOF'
 # kb recall — context, never orders. Cited rules inform the review; evidence still decides.
 # fixkb-rule — notes.txt — precision 0/0
 Check return values on every syscall in this file, seven-seven-seven.
@@ -368,7 +368,7 @@ run_review fix acme/app local-fixkb --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -q "seven-seven-seven" "$EVAL_ERR" \
   && jq -e '.data.kb.content | contains("seven-seven-seven")' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && [ "$(jq -r '.data.kb.file' <"$EVAL_OUT")" = ".review/local-fixkb/kb.txt" ]; then
+  && [ "$(jq -r '.data.kb.file' <"$EVAL_OUT")" = ".verdict/state/local-fixkb/kb.txt" ]; then
   good "full kb.txt content surfaces on stderr and in the envelope"
 else
   bad "kb recall missing from fix output"
@@ -379,13 +379,13 @@ run_review fix acme/app local-fixdone --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(stdout_docs)" = "1" ] \
   && jq -e '.data.complete == true and .data.sig == null' <"$EVAL_OUT" >/dev/null 2>&1 \
   && jq -e '.next | contains("done")' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && grep -q "fix complete: .review/local-fixdone — fixed=1 open=0 stopped=0 (ledger .review/local-fixdone/fix.json)" "$EVAL_ERR"; then
+  && grep -q "fix complete: .verdict/state/local-fixdone — fixed=1 open=0 stopped=0 (ledger .verdict/state/local-fixdone/fix.json)" "$EVAL_ERR"; then
   good "completion fires with counts, ledger path, and a done next"
 else
   bad "completion gave exit $EVAL_STATUS"
 fi
 run_review fix acme/app local-fixdone
-if [ "$EVAL_STATUS" -eq 0 ] && grep -q "fix complete: .review/local-fixdone" "$EVAL_OUT"; then
+if [ "$EVAL_STATUS" -eq 0 ] && grep -q "fix complete: .verdict/state/local-fixdone" "$EVAL_OUT"; then
   good "completion works in human mode too"
 else
   bad "human-mode completion gave exit $EVAL_STATUS"

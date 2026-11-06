@@ -1,9 +1,10 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -14,10 +15,11 @@ import (
 // operator settings layer (nil when absent); BaseSHA labels provenance;
 // Files lists the review paths with pre-rename paths where the diff
 // renamed them; SettingsPath records the personal file read, if any.
+// Legacy `.review/` knob files are never a layer: the typed contract
+// ignores them under every name.
 type Inputs struct {
 	Repo         *core.Config
 	Personal     *PersonalSettings
-	Legacy       LegacyInputs
 	BaseSHA      string
 	SettingsPath string
 	Files        []FileInput
@@ -75,14 +77,18 @@ func (p PrivacyView) FilterPaths(paths []string) []string {
 }
 
 // PlanGroup is one execution group: paths sharing identical effective
-// defaults, requirements, and profile.
-type PlanGroup struct {
+// defaults, requirements, and profile. ID is the stable identity every
+// observation and refusal names; Label is the explanation label and never
+// an identity.
+type PlanGroup struct { //nolint:govet // field order is the captured wire order
 	Profile   string   `json:"profile"`
 	Depth     string   `json:"depth"`
 	Checks    []string `json:"checks"`
 	MaxLenses *int     `json:"max_lenses,omitempty"`
 	Files     []string `json:"files"`
 	Scopes    []string `json:"scopes"`
+	ID        string   `json:"id"`
+	Label     string   `json:"label"`
 }
 
 // Plan is the combined plan: one entry per group with its profile, depth,
@@ -97,9 +103,6 @@ type Plan struct {
 // configSourceName is the tracked repository configuration path.
 const configSourceName = ".verdict/config.json"
 
-// listSep joins grouping-key lists.
-const listSep = ","
-
 // Resolve maps stated inputs to effective values, origins, shadowed
 // values, scopes, clauses, and the pending plan. It is pure: no
 // filesystem, process, or network access.
@@ -109,11 +112,7 @@ func Resolve(in *Inputs) (*Resolved, *core.RefusalError) {
 		personal = &PersonalSettings{}
 	}
 	repo, review := repoDefaults(in.Repo), personal.Review
-	legacy, ref := legacyLayers(in.Legacy)
-	if ref != nil {
-		return nil, ref
-	}
-	global := mergePartials(globalLayers(&in.Flags, &in.Env, &repo, &review, legacy))
+	global := mergePartials(globalLayers(&in.Flags, &in.Env, &repo, &review))
 	root := rootRequirements(requirementsOf(in.Repo), in.BaseSHA)
 	out := &Resolved{Defaults: global}
 	for _, file := range in.Files {
@@ -138,12 +137,11 @@ func Resolve(in *Inputs) (*Resolved, *core.RefusalError) {
 // globalLayers orders the invocation and shared layers: flags, then each
 // set environment field with its variable name, then the repository
 // shared defaults, the personal review defaults, and the built-ins.
-func globalLayers(flags, env, repo, personal *Partial, legacy []layerValue) []layerValue {
+func globalLayers(flags, env, repo, personal *Partial) []layerValue {
 	layers := []layerValue{{partial: *flags, layer: LayerFlag, source: "command line"}}
 	layers = append(layers, envLayers(env)...)
-	layers = append(layers, layerValue{partial: *repo, layer: LayerRepo, source: configSourceName})
-	layers = append(layers, legacy...)
 	layers = append(layers,
+		layerValue{partial: *repo, layer: LayerRepo, source: configSourceName},
 		layerValue{partial: *personal, layer: LayerPersonal, source: "operator settings"},
 		layerValue{partial: Builtins(), layer: LayerBuiltIn, source: LayerBuiltIn},
 	)
@@ -159,7 +157,8 @@ func envLayers(env *Partial) []layerValue {
 		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_PANEL", partial: Partial{Panel: env.Panel, PanelSet: true}})
 	}
 	if env.BudgetUSD != nil {
-		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_BUDGET_USD", partial: Partial{BudgetUSD: env.BudgetUSD, BudgetDisplay: env.BudgetDisplay}})
+		partial := Partial{BudgetUSD: env.BudgetUSD, BudgetDisplay: env.BudgetDisplay}
+		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_BUDGET_USD", partial: partial})
 	}
 	if env.MaxBytes != nil {
 		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_MAX_BYTES", partial: Partial{MaxBytes: env.MaxBytes}})
@@ -329,6 +328,12 @@ func buildPlan(in *Inputs, global *ResolvedDefaults, files []FileResolution) (Pl
 		plan.Groups[at].Scopes = unionOrdered(plan.Groups[at].Scopes, files[i].Scopes)
 	}
 	for i := range plan.Groups {
+		// keys stays index-parallel to Groups: both grow only in the
+		// new-group branch above, so one key names one group.
+		plan.Groups[i].ID = groupIdentity(keys[i], plan.Groups[i].Files)
+		plan.Groups[i].Label = groupLabel(plan.Groups[i].Profile, i)
+	}
+	for i := range plan.Groups {
 		if ref := validateGroup(&plan.Groups[i], files, i+1); ref != nil {
 			return Plan{}, ref
 		}
@@ -347,79 +352,132 @@ func plannedProfile(in *Inputs, file *FileResolution) (string, []string, *int) {
 }
 
 // groupKey serializes the grouping identity: effective defaults,
-// requirement content, and profile triple. Provenance is deliberately
-// excluded: identical content groups together while per-file sources stay
-// on the file resolutions.
+// requirement content, and profile triple. Provenance is excluded so
+// identical content groups together while per-file sources stay on the file
+// resolutions; counts and length prefixes keep a path, mask, or profile byte
+// from shifting a field boundary.
 func groupKey(file *FileResolution, depth string, checks []string, maxLenses *int) string {
-	var sb strings.Builder
-	writeDefaultsKey(&sb, &file.Defaults.Values)
-	writeRequirementsKey(&sb, &file.Requirements)
-	writeProfileKey(&sb, file.Profile, depth, checks, maxLenses)
-	return sb.String()
+	w := &identityWriter{}
+	w.text("defaults")
+	w.defaults(&file.Defaults.Values)
+	w.text("requirements")
+	w.requirements(&file.Requirements)
+	w.text("profile")
+	w.profile(file.Profile, depth, checks, maxLenses)
+	return w.String()
 }
 
-// writeDefaultsKey serializes the merged defaults into the grouping key.
-func writeDefaultsKey(sb *strings.Builder, defs *EffectiveDefaults) {
-	sb.WriteString("panel=")
-	sb.WriteString(strings.Join(defs.Panel, listSep))
-	sb.WriteString("|budget=")
-	sb.WriteString(floatText(defs.BudgetUSD))
-	sb.WriteString("|maxbytes=")
-	sb.WriteString(strconv.FormatInt(defs.MaxBytes, decimalBase))
-	sb.WriteString("|chunk=")
-	sb.WriteString(strconv.FormatBool(defs.Chunk))
-	sb.WriteString("|kb=")
-	sb.WriteString(strconv.Itoa(defs.KBMinJudged))
-	sb.WriteString("/")
-	sb.WriteString(strconv.FormatFloat(defs.KBMaxFPRate, 'g', -1, floatBits))
-	sb.WriteString("|effort=")
-	sb.WriteString(defs.Effort)
-	sb.WriteString("|display=")
-	sb.WriteString(strText(defs.DisplayMinSeverity))
-	sb.WriteString("|post=")
-	sb.WriteString(strText(defs.PostMinSeverity))
-	sb.WriteString("|")
+// identityWriter builds the deterministic, unambiguous encoding the group
+// identity hashes: counts and length prefixes, never delimiters.
+type identityWriter struct{ buf []byte }
+
+// String returns the encoded bytes.
+func (w *identityWriter) String() string { return string(w.buf) }
+
+func (w *identityWriter) text(field string) {
+	w.buf = strconv.AppendInt(w.buf, int64(len(field)), decimalBase)
+	w.buf = append(w.buf, ':')
+	w.buf = append(w.buf, field...)
 }
 
-// writeRequirementsKey serializes the requirement content (not its
-// provenance) into the grouping key.
-func writeRequirementsKey(sb *strings.Builder, reqs *RequirementSet) {
+func (w *identityWriter) list(items []string) {
+	w.buf = strconv.AppendInt(w.buf, int64(len(items)), decimalBase)
+	w.buf = append(w.buf, '[')
+	for _, item := range items {
+		w.text(item)
+	}
+}
+
+func (w *identityWriter) truth(v bool) {
+	if v {
+		w.text("true")
+		return
+	}
+	w.text("false")
+}
+
+func (w *identityWriter) defaults(defs *EffectiveDefaults) {
+	w.text("panel")
+	w.list(defs.Panel)
+	w.text("budget")
+	w.text(floatText(defs.BudgetUSD))
+	w.text("max_bytes")
+	w.text(strconv.FormatInt(defs.MaxBytes, decimalBase))
+	w.text("chunk")
+	w.truth(defs.Chunk)
+	w.text("kb_min_judged")
+	w.text(strconv.Itoa(defs.KBMinJudged))
+	w.text("kb_max_fp_rate")
+	w.text(strconv.FormatFloat(defs.KBMaxFPRate, 'g', -1, floatBits))
+	w.text("effort")
+	w.text(defs.Effort)
+	w.text("display_min_severity")
+	w.text(strText(defs.DisplayMinSeverity))
+	w.text("post_min_severity")
+	w.text(strText(defs.PostMinSeverity))
+}
+
+// requirements keeps the path and category masks in separate fields: a
+// category name is not a path.
+func (w *identityWriter) requirements(reqs *RequirementSet) {
+	w.text("clauses")
+	w.buf = strconv.AppendInt(w.buf, int64(len(reqs.Clauses)), decimalBase)
+	w.buf = append(w.buf, '[')
 	for i := range reqs.Clauses {
 		clause := &reqs.Clauses[i].Clause
-		sb.WriteString("clause=")
-		sb.WriteString(clause.Name)
-		sb.WriteString("/")
-		sb.WriteString(clause.Threshold)
-		sb.WriteString("/")
-		sb.WriteString(strings.Join(sortedJoin(clause.Categories, clause.Paths), listSep))
-		sb.WriteString("|")
+		w.text(clause.Name)
+		w.text(clause.Threshold)
+		w.text("categories")
+		w.list(sortedClone(clause.Categories))
+		w.text("paths")
+		w.list(sortedClone(clause.Paths))
 	}
-	sb.WriteString("checks=")
-	sb.WriteString(strings.Join(reqs.Checks, listSep))
-	sb.WriteString("|bind=")
-	sb.WriteString(strconv.FormatBool(reqs.RequireBind))
-	sb.WriteString("|")
+	w.text("checks")
+	w.list(reqs.Checks)
+	w.text("bind")
+	w.truth(reqs.RequireBind)
 }
 
-// writeProfileKey serializes the profile triple into the grouping key.
-func writeProfileKey(sb *strings.Builder, profile, depth string, checks []string, maxLenses *int) {
-	sb.WriteString("profile=")
-	sb.WriteString(profile)
-	sb.WriteString("|depth=")
-	sb.WriteString(depth)
-	sb.WriteString("|planned=")
-	sb.WriteString(strings.Join(checks, listSep))
-	sb.WriteString("|lenses=")
-	sb.WriteString(intText(maxLenses))
+func (w *identityWriter) profile(profile, depth string, checks []string, maxLenses *int) {
+	w.text("name")
+	w.text(profile)
+	w.text("depth")
+	w.text(depth)
+	w.text("planned")
+	w.list(checks)
+	w.text("lenses")
+	w.text(intText(maxLenses))
 }
 
-// sortedJoin sorts category and path masks together for key stability.
-func sortedJoin(categories, paths []string) []string {
-	joined := make([]string, 0, len(categories)+len(paths))
-	joined = append(joined, categories...)
-	joined = append(joined, paths...)
-	slices.Sort(joined)
-	return joined
+// groupIdentity hashes the normalized group identity with the full SHA-256:
+// the effective work together with the sorted path membership. Distinct
+// inputs encode to distinct digest input, so two groups that differ in work
+// or paths cannot alias through the encoding, even when they share a label.
+func groupIdentity(work string, files []string) string {
+	sorted := sortedClone(files)
+	w := &identityWriter{}
+	w.text("work")
+	w.text(work)
+	w.text("files")
+	w.list(sorted)
+	sum := sha256.Sum256(w.buf)
+	return hex.EncodeToString(sum[:])
+}
+
+// groupLabel is the explanation label for one group: the resolved profile
+// name when there is one, else its position. Labels are display-only; the
+// identity is ID.
+func groupLabel(profile string, index int) string {
+	if profile != "" {
+		return profile
+	}
+	return "group " + strconv.Itoa(index+1)
+}
+
+func sortedClone(items []string) []string {
+	out := slices.Clone(items)
+	slices.Sort(out)
+	return out
 }
 
 // validateGroup enforces the per-group clause rule: the findings check is

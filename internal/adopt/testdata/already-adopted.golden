@@ -11,13 +11,13 @@ exit: 1
   "data": null,
   "error": {
     "code": "already-adopted",
-    "message": ".review/4311/findings.json exists — adopt merges once into a fresh fetch (re-fetch or post first)\ntry: use the verb named above for this bundle kind"
+    "message": ".verdict/state/4311/findings.json exists — adopt merges once into a fresh fetch (re-fetch or post first)\ntry: use the verb named above for this bundle kind"
   }
 }
 --- stderr ---
 
 --- files ---
---- file C/.review/4311/store.json ---
+--- file C/.verdict/state/4311/store.json ---
 {
   "schema_version": "1"
 }

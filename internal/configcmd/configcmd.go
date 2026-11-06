@@ -78,7 +78,8 @@ func humanLines(data *core.ConfigData) []string {
 	for _, req := range data.Requirements {
 		lines = append(lines, fmt.Sprintf("  require %s [%s] via %s", req.Key, req.Status, strings.Join(req.Sources, ", ")))
 	}
-	for _, group := range data.Plan {
+	for i := range data.Plan {
+		group := &data.Plan[i]
 		lines = append(lines, fmt.Sprintf("  plan: profile=%s depth=%s checks=[%s] files=%d",
 			orDash(group.Profile), orDash(group.Depth), strings.Join(group.Checks, ","), len(group.Files)))
 	}
@@ -108,32 +109,55 @@ func usd(v *float64) string {
 // --preview, with --file only on preview. Anything else is a usage
 // error.
 func parseFlags(r *cli.Runner, args []string) (core.ConfigFlags, int, bool) {
-	var flags core.ConfigFlags
+	flags := core.ConfigFlags{}
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch a {
-		case "--explain":
-			flags.Explain = true
-		case "--preview":
-			flags.Preview = true
-		case "--file":
-			v, next, u := cli.FlagValue(args, i, a, "<path>")
-			if u != nil {
-				return flags, r.ReportUsage(u), true
-			}
-			flags.File = v
-			i = next
-		default:
-			msg := fmt.Sprintf("unknown flag '%s' for config (want --explain | --preview [--file <path>], --json)", a)
-			return flags, r.ReportUsage(&cli.UsageError{Message: msg}), true
+		next, ref := parseFlag(&flags, args, i)
+		if ref != nil {
+			return flags, r.ReportUsage(ref), true
 		}
+		i = next
 	}
-	if flags.Explain == flags.Preview {
-		msg := "config wants exactly one of --explain or --preview"
-		return flags, r.ReportUsage(&cli.UsageError{Message: msg}), true
-	}
-	if flags.File != "" && !flags.Preview {
-		return flags, r.ReportUsage(&cli.UsageError{Message: "config --file needs --preview"}), true
+	if ref := validateModes(flags); ref != nil {
+		return flags, r.ReportUsage(ref), true
 	}
 	return flags, 0, false
+}
+
+// parseFlag reads args[i], returning the index of its last consumed
+// argument and the usage error for anything config does not accept.
+func parseFlag(flags *core.ConfigFlags, args []string, i int) (int, *cli.UsageError) {
+	switch arg := args[i]; arg {
+	case "--explain":
+		flags.Explain = true
+		return i, nil
+	case "--preview":
+		flags.Preview = true
+		return i, nil
+	case "--file":
+		value, next, ref := cli.FlagValue(args, i, arg, "<path>")
+		if ref != nil {
+			return i, ref
+		}
+		flags.File = value
+		return next, nil
+	default:
+		return i, &cli.UsageError{Message: unknownFlagMessage(arg)}
+	}
+}
+
+// unknownFlagMessage names the rejected flag next to the accepted set.
+func unknownFlagMessage(arg string) string {
+	return fmt.Sprintf("unknown flag '%s' for config (want --explain | --preview [--file <path>], --json)", arg)
+}
+
+// validateModes enforces config's mode gate once the flags are read:
+// exactly one of --explain or --preview, with --file only on preview.
+func validateModes(flags core.ConfigFlags) *cli.UsageError {
+	if flags.Explain == flags.Preview {
+		return &cli.UsageError{Message: "config wants exactly one of --explain or --preview"}
+	}
+	if flags.File != "" && !flags.Preview {
+		return &cli.UsageError{Message: "config --file needs --preview"}
+	}
+	return nil
 }

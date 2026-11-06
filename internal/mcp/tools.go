@@ -90,7 +90,7 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	writeArgs          map[string]string
 	refusedArgs        map[string]bool
 	decode             func(json.RawMessage) (any, error)
-	wire               func(*bindings, any)
+	wire               func(context.Context, *bindings, any) error
 	invoke             func(context.Context, any) (*jq.Obj, *core.RefusalError)
 }
 
@@ -142,7 +142,7 @@ func allTools(readOnly, operator bool) []*tool {
 			func(resp *doctorcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "fetch",
-			description: "Fetch a PR into .review/<pr> (diff, metadata, threads, prompt input). " +
+			description: "Fetch a PR into .verdict/state/<pr> (diff, metadata, threads, prompt input). " +
 				"Call first for any PR review; an over-cap diff refuses, so re-run with chunk=true. " +
 				"Writes the bundle and calls GitHub.",
 			required: requiredRepoPr,
@@ -150,7 +150,7 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: fetchRunner}, decodeFetch, wireFetch, invokeFetch),
 		directTool(&toolSpec{
 			name: "fetch-local",
-			description: "Fetch a local git diff into .review/local-<name>. Call to review " +
+			description: "Fetch a local git diff into .verdict/state/local-<name>. Call to review " +
 				"uncommitted or branch changes without a PR. Writes the bundle; no network.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch local diff", idempotent: true},
@@ -166,7 +166,7 @@ func allTools(readOnly, operator bool) []*tool {
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "init",
-			description: "Scaffold .review control files from a style preset. Call once in a " +
+			description: "Scaffold .verdict control files from a style preset. Call once in a " +
 				"new repository; yes=true overwrites existing controls. Writes controls and " +
 				"runs a tree check.",
 			omit: omitPositionals,
@@ -176,7 +176,7 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "learn",
 			description: "Read or update the local knowledge base. Call to list rules or " +
-				"add, retire, or restore one. Writes .review/kb.jsonl.",
+				"add, retire, or restore one. Writes .verdict/kb.jsonl.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Manage knowledge base", idempotent: true},
 		}, toolDeps{}, decodeLearn, wireLearn, learncore.Run,
@@ -233,7 +233,7 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "threads",
 			description: "Refresh the normalized review-thread feed " +
-				"(.review/<pr>/threads.json) from the host. Call after pushing fixes to re-read " +
+				"(.verdict/state/<pr>/threads.json) from the host. Call after pushing fixes to re-read " +
 				"resolution state before a re-review or merge readiness. Reads the host; writes " +
 				"threads.json only.",
 			required: requiredRepoPr,
@@ -261,7 +261,8 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "verify",
 			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
-				"Call to prove a fix before post. Writes verification.json and runs the recorded command.",
+				"Pass group and command together to validate one deep plan group at the reviewed root and record a bound receipt. " +
+				"Never fabricates a patch or a command from repository configuration.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
@@ -310,7 +311,7 @@ func operatorTool(t *tool) *tool {
 
 func dataTool[Req, S any](
 	spec *toolSpec, deps toolDeps,
-	decode func(*Req, *args), wire func(*bindings, *Req),
+	decode func(*Req, *args), wire func(context.Context, *bindings, *Req) error,
 	svc func(context.Context, *Req) (*S, *core.RefusalError),
 	data func(*S) *jq.Obj,
 ) *tool {
@@ -321,7 +322,7 @@ func dataTool[Req, S any](
 
 func directTool[Req any](
 	spec *toolSpec, deps toolDeps,
-	decode func(*Req, *args), wire func(*bindings, *Req),
+	decode func(*Req, *args), wire func(context.Context, *bindings, *Req) error,
 	run func(context.Context, *Req) (*jq.Obj, *core.RefusalError),
 ) *tool {
 	return newTool(spec, deps, decode, wire, run)
@@ -329,7 +330,7 @@ func directTool[Req any](
 
 func newTool[Req any](
 	spec *toolSpec, deps toolDeps,
-	decode func(*Req, *args), wire func(*bindings, *Req),
+	decode func(*Req, *args), wire func(context.Context, *bindings, *Req) error,
 	run func(context.Context, *Req) (*jq.Obj, *core.RefusalError),
 ) *tool {
 	t := &tool{
@@ -353,10 +354,11 @@ func newTool[Req any](
 	t.decode = func(raw json.RawMessage) (any, error) {
 		return decodeRequest[Req](raw, spec.required, decode, t.refusedArgs)
 	}
-	t.wire = func(b *bindings, raw any) {
+	t.wire = func(ctx context.Context, b *bindings, raw any) error {
 		if req, ok := raw.(*Req); ok {
-			wire(b, req)
+			return wire(ctx, b, req)
 		}
+		return nil
 	}
 	t.invoke = func(ctx context.Context, raw any) (*jq.Obj, *core.RefusalError) {
 		req, ok := raw.(*Req)

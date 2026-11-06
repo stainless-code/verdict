@@ -35,7 +35,7 @@ type scriptResult struct {
 	fail   bool
 }
 
-func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
 	var stdin string
@@ -536,7 +536,7 @@ func TestRunCanceled(t *testing.T) {
 func postBundle(t *testing.T, review string) {
 	t.Helper()
 	head := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	dir := ".review/7"
+	dir := ".verdict/state/7"
 	if err := writeTestFile(dir+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+head+`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",`+
 			`"author":{"login":"someone-else"}}`); err != nil {
@@ -611,7 +611,7 @@ func TestRunDryRun(t *testing.T) {
 	postBundle(t, postReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json", DryRun: true}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -640,7 +640,7 @@ func TestRunDryRun(t *testing.T) {
 			t.Errorf("dry-run posted: %q", c)
 		}
 	}
-	entries := decodeFindingsStore(t, ".review/7/findings.dryrun.json")
+	entries := decodeFindingsStore(t, ".verdict/state/7/findings.dryrun.json")
 	if len(entries) != 1 {
 		t.Fatalf("findings.dryrun.json entries = %d, want 1: %v", len(entries), entries)
 	}
@@ -661,7 +661,7 @@ func TestRunDryRun(t *testing.T) {
 	if !ok || len(sig) != 40 {
 		t.Errorf("findings[0].sig = %q, want a full 40-char sig", sig)
 	}
-	if _, err := os.Stat(".review/7/post.json"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/7/post.json"); !os.IsNotExist(err) {
 		t.Errorf("dry-run wrote post.json")
 	}
 	if got := strings.Join(human, "\n"); !strings.Contains(got, "preflight:") {
@@ -682,7 +682,7 @@ func TestRunSubmit(t *testing.T) {
 	postBundle(t, postReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -725,10 +725,10 @@ func TestRunSubmit(t *testing.T) {
 	if !reflect.DeepEqual(payload["comments"], wantComments) {
 		t.Errorf("posted comments = %#v, want %#v", payload["comments"], wantComments)
 	}
-	if _, err := os.Stat(".review/7/post.json"); err != nil {
+	if _, err := os.Stat(".verdict/state/7/post.json"); err != nil {
 		t.Errorf("missing post.json: %v", err)
 	}
-	if _, err := os.Stat(".review/7/.posted_" + resp.Data.PayloadHash); err != nil {
+	if _, err := os.Stat(".verdict/state/7/.posted_" + resp.Data.PayloadHash); err != nil {
 		t.Errorf("missing posted marker: %v", err)
 	}
 	if resp.Data.Review == nil {

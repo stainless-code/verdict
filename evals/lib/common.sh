@@ -174,34 +174,120 @@ assert_stream_nogrep() {
   fi
 }
 
+# eval_fixture_repo <dir> readies the throwaway checkout the fixture
+# producer builds from: a committed base carrying the old lines and a
+# worktree carrying the reviewed change. It lives apart from the case
+# sandbox so the producer captures the fixture and not the harness's own
+# scratch files.
+eval_fixture_repo() {
+  local repo="$1"
+  mkdir -p "$repo"
+  (
+    cd "$repo" || exit 99
+    if [ ! -d .git ]; then
+      git init -q
+      git config user.email "eval@example.com"
+      git config user.name "eval"
+      printf '.verdict/state/\n' >.gitignore
+      printf 'top\nold line\nbottom\n' >notes.txt
+      git add -A
+      git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false \
+        commit -qm eval-base
+    fi
+    printf 'top\nnew line\nbottom\n' >notes.txt
+  )
+}
+
+# eval_fixture_scratch returns the throwaway producer workspace. It lives
+# outside the case sandbox so the producer's own files never show up as
+# case dirt, and it is removed when the case exits.
+eval_fixture_scratch() {
+  if [ -z "${EVAL_FIXTURE_SCRATCH:-}" ]; then
+    EVAL_FIXTURE_SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/verdict-fixture.XXXXXX")"
+    # shellcheck disable=SC2064 # expand the scratch path now, not at exit
+    trap "rm -rf '$EVAL_FIXTURE_SCRATCH'" EXIT
+  fi
+  printf '%s' "$EVAL_FIXTURE_SCRATCH"
+}
+
+# EVAL_FIXTURE_HEAD is the canonical fixture head every stub and assertion
+# shares; EVAL_FIXTURE_BASE is the base the producer captured.
+EVAL_FIXTURE_HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+EVAL_FIXTURE_BASE=""
+
+# eval_mk_bundle <name> produces a typed review bundle through the real
+# producer: fetch-local captures the controls snapshot and the run
+# evidence, so record/post/verify see the artifact a fetch writes rather
+# than a hand-made shell. A local- name stays that bundle; any other name
+# is shaped as a provider PR bundle (PR.json instead of source.json).
+# The captured base lands in EVAL_FIXTURE_BASE (the producer picks it, so
+# expectations read the variable instead of a literal).
 eval_mk_bundle() {
-  local pr="$1"
-  local dir="$EVAL_SANDBOX/.review/$pr"
-  mkdir -p "$dir"
-  cat > "$dir/PR.json" <<'EOF'
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
-EOF
-  cat > "$dir/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+  local name="$1" slug repo src dst base scratch
+  scratch="$(eval_fixture_scratch)"
+  repo="$scratch/repo"
+  eval_fixture_repo "$repo"
+  # Control files the case wrote at the repo root are the fixture's base
+  # controls: commit them so the producer pins them into the snapshot.
+  mkdir -p "$repo/.verdict"
+  for rel in config.json kb.jsonl kb-joins.jsonl learnings.md overrides; do
+    rm -rf "$repo/.verdict/$rel"
+    [ -e "$EVAL_SANDBOX/.verdict/$rel" ] || continue
+    cp -R "$EVAL_SANDBOX/.verdict/$rel" "$repo/.verdict/$rel"
+  done
+  # Stage only the controls: the fixture's own change must stay uncommitted
+  # so every capture still sees the reviewed diff.
+  ( cd "$repo" && git add -A -- .verdict .gitignore && \
+    git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false \
+      commit -qm eval-controls --allow-empty )
+  slug="fx$(printf '%s' "$name" | cksum | cut -d' ' -f1)"
+  (
+    cd "$repo" || exit 99
+    PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" fetch-local acme/app "$slug" --json \
+      >"$scratch/fetch.json" 2>"$scratch/fetch.err"
+  ) || {
+    bad "fixture producer failed for $name: $(head -c 300 "$scratch/fetch.err" 2>/dev/null)"
+    return 1
+  }
+  src="$repo/.verdict/state/local-$slug"
+  dst="$EVAL_SANDBOX/.verdict/state/$name"
+  base="$(jq -r '.base_sha // empty' "$src/source.json" 2>/dev/null || true)"
+  EVAL_FIXTURE_BASE="$base"
+  mkdir -p "$EVAL_SANDBOX/.verdict/state"
+  rm -rf "$dst"
+  mv "$src" "$dst"
+  case "$name" in
+    local-* | corpus-*)
+      jq --arg h "$EVAL_FIXTURE_HEAD" '.head_sha = $h' "$dst/source.json" >"$dst/source.json.tmp"
+      mv "$dst/source.json.tmp" "$dst/source.json"
+      ;;
+    *)
+      rm -f "$dst/source.json"
+      printf '{"state":"OPEN","headRefOid":"%s","baseRefOid":"%s","author":{"login":"teammate"}}\n' \
+        "$EVAL_FIXTURE_HEAD" "$base" >"$dst/PR.json"
+      ;;
+  esac
+}
+
+# eval_fixture_rebase <name> pins a hand-written PR record to the base the
+# producer captured: the fixture keeps its own head, files, and author, and
+# takes the base from the snapshot it has to match.
+eval_fixture_rebase() {
+  local dir="$EVAL_SANDBOX/.verdict/state/$1"
+  [ -f "$dir/PR.json" ] || return 0
+  jq --arg b "$EVAL_FIXTURE_BASE" --arg h "$EVAL_FIXTURE_HEAD" \
+    '.baseRefOid = $b | .headRefOid = $h' "$dir/PR.json" >"$dir/PR.json.tmp"
+  mv "$dir/PR.json.tmp" "$dir/PR.json"
 }
 
 eval_write_review() {
   local pr="$1"
-  cat > "$EVAL_SANDBOX/.review/$pr/review.json"
+  cat > "$EVAL_SANDBOX/.verdict/state/$pr/review.json"
 }
 
 eval_write_findings() {
   local pr="$1"
-  cat > "$EVAL_SANDBOX/.review/$pr/findings.json"
+  cat > "$EVAL_SANDBOX/.verdict/state/$pr/findings.json"
 }
 
 eval_seed_base() {
@@ -217,46 +303,32 @@ eval_seed_base() {
 eval_commit_controls() {
   (
     cd "$EVAL_SANDBOX" || exit 99
-    for f in panel budget max_bytes chunk kb.jsonl kb-policy learnings.md; do
-      if [ -f ".review/$f" ]; then
-        git add -f ".review/$f"
-      elif git ls-files --error-unmatch ".review/$f" >/dev/null 2>&1; then
-        git rm -q --cached ".review/$f"
+    for f in config.json kb.jsonl learnings.md overrides/preamble.md overrides/footer-order.md \
+      overrides/walkthrough-threshold.md overrides/attribution.md; do
+      if [ -f ".verdict/$f" ]; then
+        git add -f ".verdict/$f"
+      elif git ls-files --error-unmatch ".verdict/$f" >/dev/null 2>&1; then
+        git rm -q --cached ".verdict/$f"
       fi
     done
     git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false commit -q --allow-empty -m controls
   )
 }
 
-eval_seed_controls() {
-  local dir rel src base sha
-  [ -z "${EVAL_NO_SEED:-}" ] || return 0
-  for dir in "$EVAL_SANDBOX"/.review/*/; do
-    dir="${dir%/}"
-    [ -f "$dir/PR.json" ] || [ -f "$dir/source.json" ] || continue
-    if [ -f "$dir/controls.json" ] && [ "$(jq -r .policy "$dir/controls.json")" != head ]; then continue; fi
-    base="$(jq -r '.base_sha // .baseRefOid // empty' "$dir/source.json" "$dir/PR.json" 2>/dev/null | head -1 || true)"
-    [ -n "$base" ] || continue
-    rm -rf "$dir/controls"
-    for rel in panel budget max_bytes chunk kb.jsonl kb-policy learnings.md \
-      overrides/preamble.md overrides/footer-order.md overrides/walkthrough-threshold.md overrides/attribution.md; do
-      src="$EVAL_SANDBOX/.review/$rel"
-      if [ -f "$src" ]; then
-        mkdir -p "$dir/controls/$(dirname "$rel")"
-        cp "$src" "$dir/controls/$rel"
-        sha="$( (sha256sum "$src" 2>/dev/null || shasum -a 256 "$src") | cut -d' ' -f1)"
-        printf '.review/%s\tused\t%s\t%s\n' "$rel" "$(wc -c <"$src" | tr -d ' ')" "$sha"
-      else
-        printf '.review/%s\tmissing\t0\t\n' "$rel"
-      fi
-    done | jq -Rn --arg base "$base" '{schema_version: "1", policy: "head", base_sha: $base, sha: "",
-      files: [inputs | split("\t") | {path: .[0], status: .[1], bytes: (.[2] | tonumber), sha256: .[3]}]}' \
-      >"$dir/controls.json"
-  done
+# eval_unmintable refuses a fixture that hand-writes the controls snapshot:
+# the typed pair (controls.json plus its run evidence) is only mintable by
+# the producer, so a case that needs one calls eval_mk_bundle instead of
+# forging it. Nothing synthesizes provenance.
+eval_assert_produced() {
+  local dir="$1"
+  if [ -f "$dir/controls.json" ] && [ ! -f "$dir/run.json" ]; then
+    bad "fixture $dir carries controls.json without its run evidence; build it with eval_mk_bundle"
+    return 1
+  fi
 }
 
 eval_mk_patch() {
-  local pr="$1" cmd="$2" dir="$EVAL_SANDBOX/.review/$1"
+  local pr="$1" cmd="$2" dir="$EVAL_SANDBOX/.verdict/state/$1"
   mkdir -p "$dir"
   jq -n --arg c "$cmd" '{verifyCmd:$c}' > "$dir/patch.json"
 }
@@ -264,7 +336,6 @@ eval_mk_patch() {
 run_review() {
   case "${1:-}" in
     fetch) eval_seed_base ;;
-    post | record) eval_seed_controls ;;
   esac
   set +e
   (

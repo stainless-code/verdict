@@ -23,7 +23,7 @@ type retryCommander struct {
 	calls   [][]string
 }
 
-func (s *retryCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (s *retryCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
 	if len(s.results) == 0 {
@@ -178,7 +178,7 @@ type cancelRetryCommander struct {
 	calls  int
 }
 
-func (c *cancelRetryCommander) Run(context.Context, core.Command) (core.Result, error) {
+func (c *cancelRetryCommander) Run(context.Context, *core.Command) (core.Result, error) {
 	c.calls++
 	c.cancel()
 	return core.Result{Stderr: c.stderr, ExitCode: 1}, nil
@@ -218,7 +218,7 @@ type cancelAfterCommander struct {
 	after  int
 }
 
-func (c *cancelAfterCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+func (c *cancelAfterCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	res, err := c.retryCommander.Run(ctx, cmd)
 	if len(c.calls) == c.after {
 		c.cancel()
@@ -240,7 +240,7 @@ func TestReadRetryFinalAttemptNeverWaits(t *testing.T) {
 		cancel:         cancel,
 		after:          retry.MaxAttempts,
 	}
-	_, err := runReadRetry(ctx, cmdr, core.Command{Argv: []string{"gh", "api", "x"}})
+	_, err := runReadRetry(ctx, cmdr, &core.Command{Argv: []string{"gh", "api", "x"}})
 	if err == nil || err.Error() != "read retry: gh: exit status 1" {
 		t.Errorf("err = %v, want the last attempt's exit failure, not a cancellation", err)
 	}

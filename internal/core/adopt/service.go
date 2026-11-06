@@ -110,7 +110,8 @@ func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
 }
 
 func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
-	dir := reviewRoot + st.req.Pr
+	root := st.req.RepoRootPath()
+	dir := readcommon.ResolveBundleDir(root, st.req.Pr)
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
 		return "", "", "", st.refuse("bad-target", msgBadTarget)
 	}
@@ -124,9 +125,9 @@ func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, 
 		}
 		return dir, fromDir, display, nil
 	}
-	fromDir := reviewRoot + st.req.From
+	fromDir := readcommon.ResolveBundleDir(root, st.req.From)
 	if !strings.HasPrefix(st.req.From, localPrefix) {
-		fromDir = reviewRoot + localPrefix + st.req.From
+		fromDir = readcommon.ResolveBundleDir(root, localPrefix+st.req.From)
 	}
 	return dir, fromDir, st.req.From, nil
 }
@@ -165,7 +166,7 @@ func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, strin
 			*cur.PatchID, cur.PatchIDKind, dir))
 	case 1:
 		st.autoPatch = *cur.PatchID
-		return reviewRoot + twins[0], "auto -> " + twins[0], nil
+		return readcommon.ResolveBundleDir(st.req.RepoRootPath(), twins[0]), "auto -> " + twins[0], nil
 	default:
 		return "", "", st.refuse("ambiguous-patch-match", ambiguousPatchMessage(*cur.PatchID, twins))
 	}
@@ -173,10 +174,10 @@ func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, strin
 
 // scanPatchTwins returns the sorted local bundle slugs whose verified
 // identity matches cur in the requested repository. The scan is bounded to
-// .review/local-* identity files (non-recursive), so malformed, stale, or
-// foreign receipts skip instead of refusing.
+// the bundle home's local-* identity files (non-recursive), so malformed,
+// stale, or foreign receipts skip instead of refusing.
 func (st *state) scanPatchTwins(ctx context.Context, cur *identity.Identity) []string {
-	entries, err := os.ReadDir(reviewRoot)
+	entries, err := os.ReadDir(readcommon.StateDir(st.req.RepoRootPath()))
 	if err != nil {
 		return nil
 	}
@@ -196,7 +197,7 @@ func (st *state) twinSlug(ctx context.Context, entry os.DirEntry, cur *identity.
 	if !entry.IsDir() || !strings.HasPrefix(name, localPrefix) {
 		return "", false
 	}
-	twinDir := reviewRoot + name
+	twinDir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
 	head := readcommon.JSONStr(twinDir+"/source.json", "head_sha")
 	base := readcommon.JSONStr(twinDir+"/source.json", "base_sha")
 	id, ok := identity.Verify(ctx, st.identityCommander(), twinDir, head, base)
@@ -498,7 +499,6 @@ func parseHunkRow(ln string) (hunks.Hunk, bool) {
 }
 
 const (
-	reviewRoot = ".review/"
 	// localPrefix marks local bundle slugs.
 	localPrefix = "local-"
 	// fromAuto is the reserved --from sentinel for patch-identity matching;
@@ -541,7 +541,7 @@ const (
 
 const (
 	msgBadTarget = "adopt targets a PR bundle, not another local one"
-	msgBadFrom   = "adopt needs --from <local-slug> (a .review/local-* dir with findings.json)"
+	msgBadFrom   = "adopt needs --from <local-slug> (a .verdict/state/local-* dir with findings.json)"
 	nextAdopted  = "post the adopted findings, then calibrate to settle them"
 
 	msgMissingFindings = "missing %s/findings.json (record the local review first)"

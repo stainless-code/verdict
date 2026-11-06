@@ -28,8 +28,8 @@ type BaseConfig struct {
 // the run follows the no-init rule on personal and built-in defaults.
 // Present but malformed input parses (and refuses) downstream; this
 // adapter never creates shared configuration as a side effect of a read.
-func ReadBase(ctx context.Context, cmd core.Commander, repo, base string) (*BaseConfig, *core.RefusalError) {
-	contents, ref := controls.ReadPaths(ctx, cmd, repo, base, []string{ConfigPath})
+func ReadBase(ctx context.Context, cmd core.Commander, repo, root, base string) (*BaseConfig, *core.RefusalError) {
+	contents, ref := controls.ReadPaths(ctx, cmd, repo, root, base, []string{ConfigPath})
 	if ref != nil {
 		return nil, ref
 	}

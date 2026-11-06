@@ -10,29 +10,29 @@ import (
 func trendMixed(t *testing.T, dir string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
-		".review/5101/PR.json":       prDoc(headA),
-		".review/5101/full.diff":     fullDiff,
-		".review/5101/findings.json": mixedFindings(),
-		".review/5101/post.json":     postDoc(headA, 99),
+		".verdict/state/5101/PR.json":       prDoc(headA),
+		".verdict/state/5101/full.diff":     fullDiff,
+		".verdict/state/5101/findings.json": mixedFindings(),
+		".verdict/state/5101/post.json":     postDoc(headA, 99),
 
-		".review/5102/PR.json":   prDoc(headC),
-		".review/5102/full.diff": fullDiff,
-		".review/5102/findings.json": findingsDoc(
+		".verdict/state/5102/PR.json":   prDoc(headC),
+		".verdict/state/5102/full.diff": fullDiff,
+		".verdict/state/5102/findings.json": findingsDoc(
 			finding(sigImp, "addressed", "important", "walked", "inline"),
 			finding(sigInfo, "open", "informational", "said", "inline"),
 		),
-		".review/5102/record.json": `{"recorded_at":"2026-02-01T00:00:00Z"}`,
-		".review/5102/cost.json": `{"schema_version":"1","effort":"deep",` +
+		".verdict/state/5102/record.json": `{"recorded_at":"2026-02-01T00:00:00Z"}`,
+		".verdict/state/5102/cost.json": `{"schema_version":"1","effort":"deep",` +
 			`"models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}`,
-		".review/5102/kb-recall.json": `[{"id":"r-a1","score":1,"hits":2,"judged":2}]`,
+		".verdict/state/5102/kb-recall.json": `[{"id":"r-a1","score":1,"hits":2,"judged":2}]`,
 
-		".review/local-x/source.json": sourceDoc(headA),
-		".review/local-x/full.diff":   fullDiff,
-		".review/local-x/findings.json": findingsDoc(
+		".verdict/state/local-x/source.json": sourceDoc(headA),
+		".verdict/state/local-x/full.diff":   fullDiff,
+		".verdict/state/local-x/findings.json": findingsDoc(
 			finding(sigCrit, "open", "critical", "walked", "inline")),
-		".review/local-x/record.json": `{"recorded_at":"2026-03-01T00:00:00Z"}`,
+		".verdict/state/local-x/record.json": `{"recorded_at":"2026-03-01T00:00:00Z"}`,
 
-		".review/kb-joins.jsonl": `{"at":"2026-10-31T00:00:01Z","sig":"` + sigImp + `",` +
+		".verdict/kb-joins.jsonl": `{"at":"2026-10-31T00:00:01Z","sig":"` + sigImp + `",` +
 			`"rule":"r-a1","outcome":"addressed","actor":"human","verb":"triage",` +
 			`"bundle":"5102","review_id":null}` + "\n",
 	})
@@ -44,9 +44,9 @@ func trendCorrupt(t *testing.T, dir string) {
 	t.Helper()
 	trendMixed(t, dir)
 	writeFiles(t, dir, map[string]string{
-		".review/5109/PR.json":       prDoc(headA),
-		".review/5109/full.diff":     fullDiff,
-		".review/5109/findings.json": `[` + numericSigEntry() + `]`,
+		".verdict/state/5109/PR.json":       prDoc(headA),
+		".verdict/state/5109/full.diff":     fullDiff,
+		".verdict/state/5109/findings.json": `[` + numericSigEntry() + `]`,
 	})
 }
 
@@ -105,7 +105,7 @@ func TestTrendGolden(t *testing.T) {
 		t.Helper()
 		trendMixed(t, dir)
 		writeFiles(t, dir, map[string]string{
-			".review/kb-joins.jsonl": `{broken`,
+			".verdict/kb-joins.jsonl": `{broken`,
 		})
 	}
 	goArgs = splitRepoOnly("--overlap", "--json")

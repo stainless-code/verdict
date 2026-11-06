@@ -222,7 +222,7 @@ func credKey(cr any) string {
 // maybeRetire tombstones an active rule whose
 // false-hit rate exceeds the explicit threshold. It warns, never fails.
 func (c *Ctx) maybeRetire(rid, now string) {
-	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
+	raw, err := jq.CappedFile(c.path(File), jq.MaxKBBytes)
 	if err != nil {
 		return
 	}
@@ -279,8 +279,8 @@ func (c *Ctx) retireRow(rows []*jq.Obj, row *jq.Obj, rid, now string) {
 	AppendHistory(row, jq.NewObj(
 		"at", now, fieldEvent, "auto-retired", fieldActor, "script", fieldNote, reason,
 	))
-	if err := WriteRows(rows); err != nil {
-		c.Warn(fmt.Sprintf("kb auto-retire skipped: could not rewrite %s for '%s'", File, rid))
+	if err := WriteRows(c.Root, rows); err != nil {
+		c.Warn(fmt.Sprintf("kb auto-retire skipped: could not rewrite %s for '%s'", c.path(File), rid))
 		return
 	}
 	c.Warn(fmt.Sprintf("kb rule '%s' auto-retired (%s)", rid, reason))

@@ -1,9 +1,18 @@
 package readcommon
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -22,17 +31,252 @@ const (
 	fieldAuthor  = "author"
 )
 
-// ResolveBundleDir resolves the bundle dir: local-* and corpus-* slugs
-// resolve directly; bare slugs with a matching .review/local-* dir (and no
-// PR bundle) resolve local.
-func ResolveBundleDir(pr string) string {
+// ResolveBundleDir resolves the bundle dir under the reviewed repository
+// root: local-* and corpus-* slugs map straight to their own bundle
+// directory; bare slugs with a matching local-* dir (and no PR bundle)
+// resolve local. Every run artifact for the bundle lives here — the diff,
+// the normalized metadata, the review/store/history/receipts, and the
+// typed config evidence — never in a cwd-relative legacy directory.
+func ResolveBundleDir(root, pr string) string {
+	state := filepath.Join(root, config.VerdictDir, config.StateDirName)
 	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
-		return ".review/" + pr
+		return filepath.Join(state, pr)
 	}
-	if IsDir(".review/local-"+pr) && !Exists(".review/"+pr+prSuffix) {
-		return ".review/local-" + pr
+	if IsDir(filepath.Join(state, localPrefix+pr)) && !Exists(filepath.Join(state, pr, "PR.json")) {
+		return filepath.Join(state, localPrefix+pr)
 	}
-	return ".review/" + pr
+	return filepath.Join(state, pr)
+}
+
+// repoRootTimeout bounds the git top-level probe: a hung git must not hang
+// the verb.
+const repoRootTimeout = 5 * time.Second
+
+// absentCheckoutError marks a probe that ran and answered "no repository here";
+// every other probe failure (spawn, cap, cancellation) proves nothing.
+type absentCheckoutError struct{}
+
+func (absentCheckoutError) Error() string { return "no checkout" }
+
+var errNoCheckout error = absentCheckoutError{}
+
+// repoRootOutputCap bounds the probe's captured streams: a top-level path is
+// far shorter, so a capped stdout is never parsed as a legitimate root.
+const repoRootOutputCap = 4096
+
+// ErrRootUnresolved reports a root probe that could not answer: a failing git,
+// a canceled or expired context, an unreadable working directory, or a probe
+// that failed inside a checkout. It is never reported as ErrNoCheckout, so a
+// broken probe cannot be mistaken for a verified absence of policy.
+var ErrRootUnresolved = errors.New("repository root unresolved")
+
+// rootUnresolvedError seals a failed probe behind ErrRootUnresolved: callers
+// match that sentinel, and [errors.Is] still answers for the underlying cause
+// (cancellation, a capability error), so neither is lost in the diagnostic.
+type rootUnresolvedError struct{ cause error }
+
+func (e rootUnresolvedError) Error() string {
+	return ErrRootUnresolved.Error() + ": " + e.cause.Error()
+}
+
+// Unwrap exposes the sentinel and the cause, in that order.
+func (e rootUnresolvedError) Unwrap() []error { return []error{ErrRootUnresolved, e.cause} }
+
+// rootUnresolved seals a probe failure behind ErrRootUnresolved.
+func rootUnresolved(cause error) error { return rootUnresolvedError{cause: cause} }
+
+// noCheckoutError seals a probe that ran and answered "no repository here".
+// Only this answer may be read as an absent checkout, and the detail git
+// printed stays in the diagnostic.
+type noCheckoutError struct{ detail string }
+
+func (e noCheckoutError) Error() string { return errNoCheckout.Error() + ": " + e.detail }
+
+func (e noCheckoutError) Unwrap() error { return errNoCheckout }
+
+// noCheckout seals the observed "no repository" answer behind errNoCheckout.
+func noCheckout(detail string) error { return noCheckoutError{detail: detail} }
+
+// probeFailureError labels one failed probe step, keeping the cause matchable.
+type probeFailureError struct {
+	cause error
+	label string
+}
+
+func (e probeFailureError) Error() string { return e.label + ": " + e.cause.Error() }
+
+func (e probeFailureError) Unwrap() error { return e.cause }
+
+// probeFailure labels one probe step, keeping the cause matchable.
+func probeFailure(label string, cause error) error {
+	return probeFailureError{cause: cause, label: label}
+}
+
+// RepoRoot resolves the reviewed repository root for the working directory:
+// the git top level, so a subdirectory invocation yields the same bundles and
+// policy as the root. The root itself reads "." so repo-relative output stays
+// stable; elsewhere the resolved top level is named. Outside a verified
+// checkout it reads ".", which is the documented cwd-anchored workflow. A
+// probe that fails inside a checkout, a canceled or expired context, and an
+// unreadable working directory report ErrRootUnresolved wrapped with the
+// cause, so no caller can mistake a broken probe for an absent checkout.
+func RepoRoot(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", rootUnresolved(err)
+	}
+	top, err := gitTopLevel(ctx)
+	if err == nil {
+		if sameDir(top) {
+			return ".", nil
+		}
+		return top, nil
+	}
+	if probeFailed(err) {
+		return "", rootUnresolved(err)
+	}
+	evidence, eerr := checkoutEvidence()
+	if eerr != nil {
+		return "", rootUnresolved(eerr)
+	}
+	if evidence {
+		return "", rootUnresolved(err)
+	}
+	return ".", nil
+}
+
+// probeFailed reports whether a probe error must surface as ErrRootUnresolved
+// instead of standing as proof that there is no checkout here: only a probe
+// that actually answered "no repository" may be read as absence.
+func probeFailed(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	return !errors.Is(err, errNoCheckout)
+}
+
+// gitTopLevel probes the git top level under the caller's context.
+func gitTopLevel(ctx context.Context) (string, error) {
+	probe, stop := context.WithTimeout(ctx, repoRootTimeout)
+	defer stop()
+	res, err := (coreexec.Runner{OutputCap: repoRootOutputCap}).Run(probe, &core.Command{
+		Argv: []string{"git", "rev-parse", "--show-toplevel"}, OutputCap: repoRootOutputCap,
+	})
+	if perr := probe.Err(); perr != nil {
+		return "", probeFailure("probe git rev-parse --show-toplevel", perr)
+	}
+	if err != nil {
+		return "", probeFailure("run git rev-parse --show-toplevel", err)
+	}
+	if res.StdoutTruncated {
+		return "", &core.OutputCappedError{Stream: "stdout", Limit: repoRootOutputCap}
+	}
+	if res.ExitCode != 0 {
+		if cause := strings.TrimSpace(res.Stderr); cause != "" {
+			return "", noCheckout("git rev-parse --show-toplevel: " + cause)
+		}
+		return "", noCheckout(fmt.Sprintf("git rev-parse --show-toplevel: exit status %d", res.ExitCode))
+	}
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+// checkoutEvidence reports whether anything positively identifies a checkout
+// whose probe failed: a .git entry (directory or linked-worktree file) between
+// the working directory and the filesystem root, or an explicit Git root
+// override. An unreadable directory is an error, never absence.
+func checkoutEvidence() (bool, error) {
+	for _, key := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_CEILING_DIRECTORIES"} {
+		if os.Getenv(key) != "" {
+			return true, nil
+		}
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return false, probeFailure("read working directory", err)
+	}
+	return gitEntryAbove(dir)
+}
+
+// gitEntryAbove walks dir and its ancestors for a .git entry: a directory for a
+// normal checkout, a file for a linked worktree.
+func gitEntryAbove(dir string) (bool, error) {
+	for {
+		found, err := gitEntryAt(dir)
+		if err != nil || found {
+			return found, err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false, nil
+		}
+		dir = parent
+	}
+}
+
+// gitEntryAt reports whether dir itself carries a .git entry. An unreadable
+// entry is an error, never absence.
+func gitEntryAt(dir string) (bool, error) {
+	entry := filepath.Join(dir, ".git")
+	switch _, err := os.Lstat(entry); {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, probeFailure("stat "+entry, err)
+	}
+}
+
+// sameDir reports whether the repository top level is the process working
+// directory, so the repo-relative spelling needs no directory prefix.
+func sameDir(top string) bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	realCwd, cwdErr := filepath.EvalSymlinks(cwd)
+	realTop, topErr := filepath.EvalSymlinks(top)
+	if cwdErr != nil || topErr != nil {
+		return cwd == top
+	}
+	return realCwd == realTop
+}
+
+// DisplayPath renders path for operator-facing output: repository-relative
+// when it lives under root, so a human line never carries an absolute local
+// path. A path outside root, or an empty root, renders unchanged.
+func DisplayPath(root, path string) string {
+	if root == "" || !filepath.IsAbs(path) {
+		return path
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.ToSlash(rel)
+}
+
+// IsLocalBundleDir reports whether dir is a local-bundle directory: the
+// last segment carries the local- prefix, whatever root anchors it.
+func IsLocalBundleDir(dir string) bool {
+	return strings.HasPrefix(filepath.Base(dir), localPrefix)
+}
+
+// IsCorpusBundleDir reports whether dir is a corpus-bundle directory:
+// the last segment carries the corpus- prefix, whatever root anchors it.
+func IsCorpusBundleDir(dir string) bool {
+	return strings.HasPrefix(filepath.Base(dir), corpusPrefix)
+}
+
+// BundleName renders the bundle slug for display: the last segment of
+// the bundle directory.
+func BundleName(dir string) string {
+	return filepath.Base(dir)
+}
+
+// StateDir returns the bundle home under root: the ignored local review
+// state directory every bundle lives in.
+func StateDir(root string) string {
+	return filepath.Join(root, config.VerdictDir, config.StateDirName)
 }
 
 // RepoKey returns the bundle's repository identity: a local bundle's
@@ -125,8 +369,17 @@ func (b *Bundle) PrField(field string) string {
 	return neutralField(m, field)
 }
 
-// Head reads the provider-aware head SHA.
-func (b *Bundle) Head() string { return b.PrField(fieldHeadSHA) }
+// Head reads the provider-aware head SHA or a local bundle's captured head.
+func (b *Bundle) Head() string {
+	head := b.PrField(fieldHeadSHA)
+	if head != "" || !strings.HasPrefix(filepath.Base(b.dir), localPrefix) {
+		return head
+	}
+	if _, err := os.Stat(b.dir + prSuffix); !errors.Is(err, fs.ErrNotExist) {
+		return ""
+	}
+	return JSONStr(filepath.Join(b.dir, "source.json"), fieldHeadSHA)
+}
 
 // StrField reads one record field with `jq -r '.<field> // empty'`
 // string-only semantics, bypassing the provider-aware mapping (callers that

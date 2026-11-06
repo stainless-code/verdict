@@ -29,9 +29,20 @@ var (
 	// typed personal sections plus the CLI prefs keys the prefs layer
 	// owns (output, layout, color, publish), which parse but never feed
 	// the resolver.
-	personalTopFields     = []string{"$schema", "review", "spend", "privacy", "output", "layout", "color", "publish"}
+	personalTopFields = []string{
+		"$schema", personalSectionReview, personalSectionSpend, personalSectionPrivacy,
+		"output", "layout", "color", "publish",
+	}
 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
+)
+
+// The typed operator-settings sections: named once so the field contract,
+// the section walker, and the parser cannot drift apart.
+const (
+	personalSectionReview  = "review"
+	personalSectionSpend   = "spend"
+	personalSectionPrivacy = "privacy"
 )
 
 // checkUnknownFields refuses any key outside the contract on fixed-shape
@@ -146,10 +157,29 @@ func checkScopeUnknown(raw any, path string) *core.RefusalError {
 	if ref := checkKeys(path, scope, scopeFields); ref != nil {
 		return ref
 	}
-	if ref := checkPresentSection(scope, "defaults", path, checkDefaultsKeys); ref != nil {
+	if ref := checkScopeDefaults(scope["defaults"], path+".defaults"); ref != nil {
 		return ref
 	}
 	return checkPresentSection(scope, requirementsKey, path, checkRequirementsKeys)
+}
+
+// checkScopeDefaults walks one scope's inline defaults and refuses the KB
+// policy there: knowledge-base thresholds are global-only, so a scope may carry
+// a budget, a chunk size or an effort tier but never its own kb_policy.
+func checkScopeDefaults(raw any, path string) *core.RefusalError {
+	if raw == nil {
+		return nil
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return nil // semantic pass names the misplaced null or wrong type
+	}
+	if _, present := obj[keyKBPolicy]; present {
+		return refuse(CodeBadScope,
+			"%s.kb_policy: kb_policy is global-only — set it in root defaults or personal settings, "+
+				"not inside a scope", path)
+	}
+	return checkDefaultsKeys(raw, path)
 }
 
 // checkPresentSection runs one inline section check when present. Absent

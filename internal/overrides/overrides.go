@@ -1,5 +1,5 @@
 // Package overrides owns the section-override fragments: operator-owned
-// per-block templates under .review/overrides that reword fixed blocks.
+// per-block templates under .verdict/overrides that reword fixed blocks.
 // Absent fragments pass silently (no overrides reads the built-in bytes);
 // any violation fails closed with a typed bad-override refusal.
 package overrides
@@ -18,7 +18,7 @@ import (
 
 // Dir and fragment paths for the overrides namespace.
 const (
-	Dir             = ".review/overrides"
+	Dir             = ".verdict/overrides"
 	Preamble        = Dir + "/preamble.md"
 	FooterOrderPath = Dir + "/footer-order.md"
 	Threshold       = Dir + "/walkthrough-threshold.md"
@@ -26,7 +26,7 @@ const (
 )
 
 // Set is one overrides directory. The zero value reads the worktree default
-// (.review/overrides); At(controlsDir) reads a bundle's controls snapshot.
+// (.verdict/overrides); At(controlsDir) reads a bundle's controls snapshot.
 type Set struct {
 	Dir string
 }

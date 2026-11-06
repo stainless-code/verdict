@@ -88,7 +88,8 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 }
 
 func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
-	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
+	shown := r.display(dir)
+	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/PR.json + %s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s\n",
 		dir, diffFeed(dir, chunked, dir+"/full.diff"), dir, dir, threadsHint(dir))
@@ -294,8 +295,10 @@ func statFiles(st *fetchStats, dir string, m map[string]any) error {
 }
 
 func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, chunkJSON any) {
-	if budget.hasBudget {
+	if budget.hasBudget || budget.estimateJSON != nil {
 		data.Estimate = budget.estimateJSON
+	}
+	if budget.hasBudget {
 		data.Budget = budget.budgetJSON
 	}
 	if fcap.json != nil {
@@ -378,7 +381,7 @@ func fetchTailLocal(
 	fcap *fetchCap, chunkJSON any, mode *localMode,
 	listed string, total, adds, dels int,
 ) (*core.FetchData, string, error) {
-	if ref := finalizeLocalRun(ctx, ctx2, req, f, listed); ref != nil {
+	if ref := finalizeLocalRun(ctx, ctx2, req, f, mode.baseSHA, listed); ref != nil {
 		return nil, "", ref
 	}
 	writeTailReceipt(ctx2, budget)

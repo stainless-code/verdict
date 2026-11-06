@@ -19,6 +19,36 @@ type VerifyRequest struct { //nolint:govet // field grouping documents the reque
 	Environ    []string
 	JSONMode   bool
 	Warnings   []string
+	// Group selects deep group-validation mode: the stable PlanGroup.ID
+	// whose validation this run records, with Command the explicit
+	// operator-supplied command to execute. Both are required together;
+	// neither keeps the ordinary patch.json verify path, which never reads
+	// these fields.
+	Group   string
+	Command string
+}
+
+// ValidationReceipt is the tool-produced deep-validation record for one
+// plan group: the command actually executed, its real status, and the
+// run/group/head identity it is bound to. It is written by verify, never
+// by the reviewed agent, and a receipt for another run, group, or head
+// never certifies this one.
+type ValidationReceipt struct { //nolint:govet // field order is the published property order
+	SchemaVersion string `json:"schema_version"`
+	Run           string `json:"run"`
+	InputsSHA256  string `json:"inputs_sha256"`
+	Group         string `json:"group"`
+	ReviewedHead  string `json:"reviewed_head"`
+	ExecutionHead string `json:"execution_head"`
+	RepoRoot      string `json:"repo_root"`
+	Command       string `json:"command"`
+	At            string `json:"at"`
+	OutputTail    string `json:"output_tail"`
+	Exit          int    `json:"exit"`
+	TimedOut      bool   `json:"timed_out"`
+	Status        string `json:"status"`
+	Failure       string `json:"failure,omitempty"`
+	Passed        bool   `json:"passed"`
 }
 
 // VerifyResponse carries the verify outcome: the envelope data, warnings,
@@ -45,6 +75,9 @@ type VerifyData struct { //nolint:govet // field order is the published property
 	TimedOut   bool   `json:"timedOut"`
 	OutputTail string `json:"outputTail"`
 	Patch      string `json:"patch"`
+	Group      string `json:"group,omitempty"`
+	Head       string `json:"head,omitempty"`
+	Receipt    string `json:"receipt,omitempty"`
 }
 
 // Wire renders the data object in wire order.

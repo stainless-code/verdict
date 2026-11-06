@@ -165,6 +165,21 @@ type ReportCompleteness struct { //nolint:govet // field order is the published 
 	PostedPatchID   *string `json:"posted_patch_id,omitempty"`
 }
 
+// ReportCompliance is the captured-policy compliance view: the unfiltered
+// finding set evaluated against captured clauses, plus required checks still
+// pending for the saved head. Satisfied is true only when the capture states
+// a policy, its provenance verifies, no finding blocks, and no check is
+// pending; unknown or pending work never reads as satisfied.
+type ReportCompliance struct { //nolint:govet // field order is the published property order
+	Policy     bool `json:"policy"`
+	Verified   bool `json:"verified"`
+	Blockers   int  `json:"blockers"`
+	Conflicted int  `json:"conflicted"`
+	Pending    int  `json:"pending"`
+	Gaps       int  `json:"gaps"`
+	Satisfied  bool `json:"satisfied"`
+}
+
 // ReportGate is the composed gate result: every dimension this run requested,
 // in `findings, head, live_threads` order. Passed is true iff no dimension
 // failed or read unknown, so a skip stays neutral.
@@ -177,10 +192,10 @@ type ReportGate struct { //nolint:govet // published wire order: passed before d
 // script parses; Count is the dimension's own tally, absent when the
 // dimension has none to report.
 type GateDimension struct { //nolint:govet // field order is the published property order
-	ID     string `enum:"findings|head|live_threads" json:"id"`
-	Status string `enum:"pass|fail|skip|unknown"     json:"status"`
+	ID     string `enum:"findings|head|live_threads|compliance" json:"id"`
+	Status string `enum:"pass|fail|skip|unknown"                json:"status"`
 	Detail string `json:"detail"`
-	Count  *int   `json:"count"                      min:"0"`
+	Count  *int   `json:"count"                                 min:"0"`
 }
 
 // Wire renders the gate result in the published key order.
@@ -217,6 +232,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Items        []FindingItem       `json:"items"`
 	Cost         *ReportCost         `json:"cost,omitempty"`
 	Completeness *ReportCompleteness `json:"completeness,omitempty"`
+	Compliance   *ReportCompliance   `json:"compliance,omitempty"`
 	Gate         *ReportGate         `json:"gate,omitempty"`
 	CostRaw      *jq.Obj             `json:"-"`
 }

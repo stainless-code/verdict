@@ -20,10 +20,14 @@
 # category baseline. Ceilings sit at the next 10 KiB above the combined
 # measurement. Final receipt-number validation and shared raw-entry checks
 # add up to another 9 KiB; only overflowing ceilings are refreshed.
+# Typed configuration adds strict parsing, captured provenance, scoped plans,
+# grouped cost/cap enforcement, and validation receipts. Same-toolchain release
+# builds grow by about 0.55-0.66 MB per target; dependencies remain zero. These
+# intentional feature costs are rounded to the next 10 kB as above.
 deps 0
-darwin/amd64 11340000
-darwin/arm64 10420000
-linux/amd64 11130000
-linux/arm64 10160000
-windows/amd64 11450000
-windows/arm64 10330000
+darwin/amd64 12000000
+darwin/arm64 11010000
+linux/amd64 11790000
+linux/arm64 10820000
+windows/amd64 12120000
+windows/arm64 10900000

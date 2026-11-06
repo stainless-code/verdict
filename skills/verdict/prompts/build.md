@@ -12,4 +12,4 @@
    Fetch base first if shallow: `git fetch --no-tags --deepen=1000 origin <base>:refs/remotes/origin/<base>`.
    Treat returns as hypotheses: verify, reject ceremony-without-correctness, apply, re-read diff,
    revert bloat. Then `git add && git commit`.
-5. Finalize: confirm every dirty file maps to the task (stop-and-report on hitchhikers), record `.review/N/patch.json` (`{filesChanged[], verifyCmd, verifyOutput, baseHead, resultHead}`), `git status` clean → push → `gh pr create` → summary (open with a 1–2 sentence intent restatement) with PR link (or exact error).
+5. Finalize: confirm every dirty file maps to the task (stop-and-report on hitchhikers), record `.verdict/state/N/patch.json` (`{filesChanged[], verifyCmd, verifyOutput, baseHead, resultHead}`), `git status` clean → push → `gh pr create` → summary (open with a 1–2 sentence intent restatement) with PR link (or exact error).

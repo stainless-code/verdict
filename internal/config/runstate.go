@@ -1,9 +1,9 @@
 package config
 
 import (
-	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,18 +19,31 @@ import (
 // later verbs enforce, with check observations appended as execution
 // evidence arrives. Stage flags and consents stay in their own
 // invocation records; outcomes never rewrite captured inputs.
+//
+// InputsSHA256 binds every captured input (everything below except
+// Outcomes): an outcome append leaves it stable, while any edit of the
+// captured inputs moves it. Inventory pins the trusted-base support
+// bytes by path. RequiresEvidence marks bundles written by the typed
+// fetch: readers enforce the binding, while older artifacts without it
+// report unavailable provenance instead of claiming verified policy.
 type RunState struct {
-	Resolved      *Resolved          `json:"resolved"`
-	SchemaVersion string             `json:"schema_version"`
-	Name          string             `json:"name"`
-	BaseSHA       string             `json:"base_sha"`
-	CapturedAt    string             `json:"captured_at"`
-	ConfigSHA256  string             `json:"config_sha256"`
-	Evidence      Evidence           `json:"evidence"`
-	Outcomes      []CheckObservation `json:"outcomes,omitempty"`
-	Root          RequirementSet     `json:"root"`
-	Trusted       bool               `json:"trusted"`
+	Resolved         *Resolved          `json:"resolved"`
+	SchemaVersion    string             `json:"schema_version"`
+	Name             string             `json:"name"`
+	BaseSHA          string             `json:"base_sha"`
+	CapturedAt       string             `json:"captured_at"`
+	ConfigSHA256     string             `json:"config_sha256"`
+	InputsSHA256     string             `json:"inputs_sha256,omitempty"`
+	Inventory        map[string]string  `json:"inventory,omitempty"`
+	Evidence         Evidence           `json:"evidence"`
+	Outcomes         []CheckObservation `json:"outcomes,omitempty"`
+	Root             RequirementSet     `json:"root"`
+	Trusted          bool               `json:"trusted"`
+	RequiresEvidence bool               `json:"requires_evidence,omitempty"`
 }
+
+// StatusUsed marks a snapshot entry whose bytes were captured.
+const StatusUsed = "used"
 
 // runStateFileName is the one file inside the per-run state directory.
 const runStateFileName = "run.json"
@@ -38,30 +51,26 @@ const runStateFileName = "run.json"
 // runSchemaVersion pins the run-state file shape.
 const runSchemaVersion = "1"
 
-// WriteRunState persists the run bundle under `.verdict/state/<name>/`,
-// ensuring the ignore-first layout before any write. The directory and
-// file land confined: a symlinked state root refuses instead of writing
-// outside the repository.
-func WriteRunState(root, name string, rs *RunState) *stateError {
-	layout := NewLayout(root)
-	if err := layout.EnsureStateIgnore(); err != nil {
-		return err
-	}
-	if err := layout.EnsureStateDir(); err != nil {
-		return err
-	}
+// WriteRunState persists the run bundle at dir/run.json, binding the
+// captured inputs first: the digest covers every input, never the
+// appended outcomes, so a later outcome append leaves it stable. The
+// caller ensures the ignore-first layout; this write only creates the
+// bundle directory itself.
+func WriteRunState(dir string, rs *RunState) *stateError {
 	rs.SchemaVersion = runSchemaVersion
-	rs.Name = name
+	rs.Name = filepath.Base(dir)
+	rs.RequiresEvidence = true
+	rs.InputsSHA256 = inputsDigest(rs)
 	raw, err := json.MarshalIndent(rs, "", "  ")
 	if err != nil {
-		return &stateError{msg: "could not encode run state for " + name, cause: err}
+		return &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
 	}
-	path := filepath.Join(layout.StateDir(), name, runStateFileName)
-	if _, serr := confineJoin(mustConfineRoot(root), filepath.Join(VerdictDir, StateDirName, name)); serr != nil {
+	path := filepath.Join(dir, runStateFileName)
+	if _, serr := confineBundleDir(dir); serr != nil {
 		return serr
 	}
-	if err := os.MkdirAll(filepath.Join(layout.StateDir(), name), stateDirPerm); err != nil {
-		return &stateError{msg: "could not create run state directory " + name, cause: err}
+	if err := os.MkdirAll(dir, stateDirPerm); err != nil {
+		return &stateError{msg: "could not create run state directory " + rs.Name, cause: err}
 	}
 	if werr := atomic.WriteFile(path, append(raw, '\n')); werr != nil {
 		return &stateError{msg: "could not write " + path, cause: werr}
@@ -69,15 +78,25 @@ func WriteRunState(root, name string, rs *RunState) *stateError {
 	return nil
 }
 
-// mustConfineRoot resolves the root for the run directory confinement
-// check, falling back to the raw root when resolution fails (the
-// subsequent MkdirAll surfaces the real error).
-func mustConfineRoot(root string) string {
-	real, err := confineRoot(ifEmpty(root))
+// confineBundleDir proves the bundle directory stays under a repository
+// state area: the path must resolve inside a `.verdict/state` parent, so
+// a caller-supplied bundle path can never escape to an unrelated target.
+func confineBundleDir(dir string) (string, *stateError) {
+	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return ifEmpty(root)
+		return "", &stateError{msg: "could not resolve bundle directory " + dir, cause: err}
 	}
-	return real
+	resolvedDir, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err == nil {
+		abs = filepath.Join(resolvedDir, filepath.Base(abs))
+	}
+	parent := filepath.Base(filepath.Dir(abs))
+	grandparent := filepath.Base(filepath.Dir(filepath.Dir(abs)))
+	if parent != StateDirName || grandparent != VerdictDir {
+		outside := filepath.Join(VerdictDir, StateDirName)
+		return "", &stateError{msg: "refuses to write run state outside " + outside + ": " + dir, operator: true}
+	}
+	return abs, nil
 }
 
 // ifEmpty defaults an empty root to the working directory, matching
@@ -89,13 +108,12 @@ func ifEmpty(root string) string {
 	return root
 }
 
-// ReadRunState loads the persisted run bundle: absent reads (nil, false,
-// nil) so legacy runs degrade to no repository policy instead of
-// refusing. Present but malformed state refuses loudly: the operator
-// re-fetches or removes it.
-func ReadRunState(root, name string) (*RunState, bool, *stateError) {
-	layout := NewLayout(root)
-	path := filepath.Join(layout.StateDir(), name, runStateFileName)
+// ReadRunState loads the persisted run bundle at dir/run.json: absent
+// reads (nil, false, nil) so legacy runs degrade to no repository policy
+// instead of refusing. Present but malformed state refuses loudly: the
+// operator re-fetches or removes it.
+func ReadRunState(dir string) (*RunState, bool, *stateError) {
+	path := filepath.Join(dir, runStateFileName)
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, false, nil
@@ -108,7 +126,8 @@ func ReadRunState(root, name string) (*RunState, bool, *stateError) {
 		return nil, false, &stateError{msg: path + " is not a run bundle (re-fetch to rebuild it)", cause: err, operator: true}
 	}
 	if rs.SchemaVersion != runSchemaVersion {
-		return nil, false, &stateError{msg: path + " has schema_version " + rs.SchemaVersion + " (want 1; re-fetch to rebuild it)", operator: true}
+		msg := path + " has schema_version " + rs.SchemaVersion
+		return nil, false, &stateError{msg: msg + " (want 1; re-fetch to rebuild it)", operator: true}
 	}
 	return &rs, true, nil
 }
@@ -119,8 +138,8 @@ func ReadRunState(root, name string) (*RunState, bool, *stateError) {
 // and inventing one from an outcome would reconstruct inputs the fetch
 // never captured. The error return is the sealed state error as an
 // error so verb packages can warn without naming the type.
-func AppendOutcome(root, name string, obs *CheckObservation) (bool, error) {
-	rs, found, serr := ReadRunState(root, name)
+func AppendOutcome(dir string, obs *CheckObservation) (bool, error) {
+	rs, found, serr := ReadRunState(dir)
 	if serr != nil {
 		return false, serr
 	}
@@ -130,148 +149,156 @@ func AppendOutcome(root, name string, obs *CheckObservation) (bool, error) {
 	rs.Outcomes = append(rs.Outcomes, *obs)
 	raw, err := json.MarshalIndent(rs, "", "  ")
 	if err != nil {
-		return false, &stateError{msg: "could not encode run state for " + name, cause: err}
+		return false, &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
 	}
-	layout := NewLayout(root)
-	path := filepath.Join(layout.StateDir(), name, runStateFileName)
+	path := filepath.Join(dir, runStateFileName)
 	if werr := atomic.WriteFile(path, append(raw, '\n')); werr != nil {
 		return false, &stateError{msg: "could not write " + path, cause: werr}
 	}
 	return true, nil
 }
 
-// inventoryDirName holds the trusted-base support snapshot beside the
-// run bundle.
-const inventoryDirName = "inventory"
-
-// WriteInventory stores the trusted-base support bytes beside the run
-// bundle: the configuration, knowledge corpus, learnings, and override
-// fragments the resolution consumed. Layout paths shed their `.verdict/`
-// prefix, so the snapshot reads `inventory/config.json`. Writes stay
-// confined under the state directory.
-func WriteInventory(root, name string, files map[string][]byte) *stateError {
-	layout := NewLayout(root)
-	base := filepath.Join(layout.StateDir(), name, inventoryDirName)
-	names := make([]string, 0, len(files))
-	for path := range files {
-		names = append(names, path)
+// VerifyRunState loads the run bundle at dir/run.json and binds it to the
+// controls snapshot beside it, refusing controls-stale on any drift: a
+// deleted or corrupt bundle, edited captured inputs, or support bytes
+// that no longer hash to the captured values. A bare bundle directory
+// that predates typed evidence reads legacy (nil, nil): older artifacts
+// report unavailable provenance instead of claiming verified policy. A
+// bundle directory carrying the controls snapshot without its run bundle
+// refuses: that pairing means deletion, not legacy.
+// Callers gate record and post on the refusal and warn on unavailable
+// provenance; Verified reports whether the full binding held.
+func VerifyRunState(dir string) (*RunState, *core.RefusalError) {
+	rs, found, serr := ReadRunState(dir)
+	if serr != nil {
+		return nil, stale(dir, "run bundle is unreadable")
 	}
-	slices.Sort(names)
-	for _, path := range names {
-		rel := strings.TrimPrefix(path, VerdictDir+"/")
-		rel = filepath.FromSlash(rel)
-		target := filepath.Join(base, rel)
-		realRoot, err := confineRoot(ifEmpty(root))
-		if err != nil {
-			return &stateError{msg: "could not resolve repository root " + root, cause: err}
-		}
-		if _, serr := confineJoin(realRoot, filepath.Join(VerdictDir, StateDirName, name, inventoryDirName, rel)); serr != nil {
-			return serr
-		}
-		if err := os.MkdirAll(filepath.Dir(target), stateDirPerm); err != nil {
-			return &stateError{msg: "could not create inventory directory for " + path, cause: err}
-		}
-		if werr := atomic.WriteFile(target, files[path]); werr != nil {
-			return &stateError{msg: "could not write inventory " + path, cause: werr}
+	if !found {
+		return missingRunState(dir)
+	}
+	if rs.InputsSHA256 != "" && inputsDigest(rs) != rs.InputsSHA256 {
+		return nil, stale(dir, "captured inputs changed under the bundle")
+	}
+	return bindRunState(dir, rs)
+}
+
+// missingRunState reads an absent run bundle: a bare directory predates
+// typed evidence (nil, nil), while a directory carrying the controls
+// snapshot alone means the bundle was deleted.
+func missingRunState(dir string) (*RunState, *core.RefusalError) {
+	if _, err := os.Stat(filepath.Join(dir, controls.FileName)); err == nil {
+		return nil, stale(dir, "run bundle was deleted from its typed snapshot")
+	}
+	return nil, nil
+}
+
+// bindRunState re-hashes the controls snapshot and every captured hash
+// the bundle pins: the base snapshot first, then the configuration and
+// support bytes it captured.
+func bindRunState(dir string, rs *RunState) (*RunState, *core.RefusalError) {
+	snap, ref := controls.Gate(dir, rs.BaseSHA)
+	if ref != nil {
+		return nil, ref
+	}
+	if ref := verifyConfigBytes(rs, snap); ref != nil {
+		return nil, ref
+	}
+	if ref := verifyInventory(dir, rs, snap); ref != nil {
+		return nil, ref
+	}
+	return rs, nil
+}
+
+// Verified reports whether the loaded bundle carries the full integrity
+// binding: bundles predating it enforce their stored policy but report
+// unavailable provenance instead of claiming verified evidence.
+func (rs *RunState) Verified() bool {
+	return rs != nil && rs.RequiresEvidence && rs.InputsSHA256 != ""
+}
+
+// stale refuses with the snapshot-drift code: the typed evidence changed
+// under the bundle, so no verb may proceed on it — re-fetch rebuilds it.
+func stale(dir, why string) *core.RefusalError {
+	return &core.RefusalError{Code: controls.CodeStale, Message: "typed evidence " + why +
+		" (" + RunBundlePath(dir) + " changed under the bundle — re-fetch the bundle)"}
+}
+
+// verifyConfigBytes compares the captured configuration hash to the
+// snapshot entry controls.Gate already re-hashed: persisting a hash never
+// proves anything, recomputing it does. No captured policy means nothing
+// to check; a missing snapshot entry under a captured policy is drift.
+func verifyConfigBytes(rs *RunState, snap *controls.Snapshot) *core.RefusalError {
+	if rs.ConfigSHA256 == "" {
+		return nil
+	}
+	entry := snap.Entry(ConfigPath)
+	if entry == nil || entry.SHA256 != rs.ConfigSHA256 {
+		return stale(snap.Dir, "configuration snapshot no longer matches the captured hash")
+	}
+	return nil
+}
+
+// verifyInventory compares every support hash pinned at capture to the
+// snapshot entry controls.Gate already re-hashed: a capture that pins a
+// file the snapshot no longer carries refuses instead of silently
+// degrading to no policy.
+func verifyInventory(dir string, rs *RunState, snap *controls.Snapshot) *core.RefusalError {
+	for _, path := range sortedKeys(rs.Inventory) {
+		entry := snap.Entry(VerdictDir + "/" + path)
+		if entry == nil || entry.SHA256 != rs.Inventory[path] {
+			return stale(dir, "support snapshot "+path+" no longer matches the captured hash")
 		}
 	}
 	return nil
 }
 
-// SnapshotInventory reads the trusted-base inventory beside the
-// configuration: the tracked support files plus every override fragment,
-// each capped before any read. Missing files read absent; the snapshot
-// records exact bytes for evidence hashing, never worktree edits.
-func SnapshotInventory(ctx context.Context, cmd core.Commander, repo, baseSHA string) (map[string][]byte, []string, *core.RefusalError) {
-	paths := append([]string{}, Inventory...)
-	overrides, warnings, ref := listOverrides(ctx, cmd, repo, baseSHA)
-	if ref != nil {
-		return nil, nil, ref
+// inputsDigest hashes the canonical captured inputs: every stored field
+// except the mutable outcome ledger and the digest itself, so valid
+// outcome appends never invalidate the captured input hash.
+func inputsDigest(rs *RunState) string {
+	cp := *rs
+	cp.Outcomes = nil
+	cp.InputsSHA256 = ""
+	// The digest binds logical inputs, not volatile serialization:
+	// capture timestamps and temp paths vary run to run for the same
+	// policy, so they ride along as provenance but stay out of the
+	// seal (values, origins, base, and labeled hashes carry it).
+	cp.CapturedAt = ""
+	cp.Evidence.CapturedAt = ""
+	raw, err := json.Marshal(cp)
+	if err != nil {
+		return ""
 	}
-	paths = append(paths, overrides...)
-	contents, ref := controls.ReadPaths(ctx, cmd, repo, baseSHA, paths)
-	if ref != nil {
-		return nil, nil, ref
-	}
-	out := map[string][]byte{}
-	for _, path := range Inventory {
-		if raw, ok := contents[path]; ok {
-			out[path] = raw
-		}
-	}
-	for _, path := range overrides {
-		if raw, ok := contents[path]; ok {
-			out[path] = raw
-		}
-	}
-	return out, warnings, nil
+	return hashBytes(raw)
 }
 
-// maxOverrideFiles caps the override snapshot: support fragments are
-// small by contract, and the snapshot must not balloon the bundle.
-const maxOverrideFiles = 100
-
-// listOverrides names the tracked override fragments under the base
-// commit: an absent overrides directory is not an error.
-func listOverrides(ctx context.Context, cmd core.Commander, repo, base string) ([]string, []string, *core.RefusalError) {
-	res, err := cmd.Run(ctx, core.Command{Argv: []string{"git", "ls-tree", "-r", "--name-only", base, "--", OverridesDir + "/"}})
-	if err != nil {
-		return nil, nil, &core.RefusalError{Code: controls.CodeUnavailable, Message: fmt.Sprintf("could not list %s at base %s: %v", OverridesDir, shortSHA(base), err)}
-	}
-	if res.ExitCode != 0 {
-		return nil, nil, nil
-	}
-	var names []string
-	for line := range strings.SplitSeq(res.Stdout, "\n") {
-		if strings.TrimSpace(line) != "" {
-			names = append(names, line)
-		}
+// sortedKeys returns the map keys in stable order.
+func sortedKeys[V any](m map[string]V) []string {
+	names := make([]string, 0, len(m))
+	for path := range m {
+		names = append(names, path)
 	}
 	slices.Sort(names)
-	if len(names) > maxOverrideFiles {
-		return names[:maxOverrideFiles], []string{fmt.Sprintf("overrides snapshot truncated to %d files", maxOverrideFiles)}, nil
-	}
-	return names, nil, nil
+	return names
 }
 
-// shortSHA renders the short commit label for messages.
-func shortSHA(full string) string {
-	if len(full) > 7 {
-		return full[:7]
-	}
-	return full
-}
-
-// SnapshotWorktreeInventory reads the same inventory from the working
-// tree for fetch-local runs, where the reviewed content is local.
-// Absent files read absent.
-func SnapshotWorktreeInventory(root string) map[string][]byte {
-	out := map[string][]byte{}
-	for _, path := range Inventory {
-		raw, err := os.ReadFile(filepath.Join(ifEmpty(root), path))
-		if err == nil {
-			out[path] = raw
+// InventoryHashes pins the trusted-base support bytes by snapshot path:
+// the capture-time manifest the integrity check re-checks against the
+// snapshot entries. Paths shed the tracked directory prefix, so
+// "kb.jsonl" is the tracked ".verdict/kb.jsonl".
+func InventoryHashes(snap *controls.Snapshot) map[string]string {
+	out := map[string]string{}
+	for _, entry := range snap.File.Files {
+		if entry.Status != StatusUsed {
+			continue
 		}
-	}
-	entries, err := os.ReadDir(filepath.Join(ifEmpty(root), OverridesDir))
-	if err != nil {
-		return out
-	}
-	names := []string{}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			names = append(names, entry.Name())
-		}
-	}
-	slices.Sort(names)
-	for i, name := range names {
-		if i >= maxOverrideFiles {
-			break
-		}
-		raw, err := os.ReadFile(filepath.Join(ifEmpty(root), OverridesDir, name))
-		if err == nil {
-			out[filepath.Join(OverridesDir, name)] = raw
-		}
+		out[strings.TrimPrefix(entry.Path, VerdictDir+"/")] = entry.SHA256
 	}
 	return out
+}
+
+// hashBytes renders the lowercase hex SHA-256 of raw.
+func hashBytes(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }

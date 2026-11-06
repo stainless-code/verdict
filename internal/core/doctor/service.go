@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Request wires a doctor run.
@@ -261,20 +262,21 @@ func (st *state) checkAPIReachable(ctx context.Context) {
 }
 
 func (st *state) checkStorage() {
-	if stat, err := os.Stat(".review"); err == nil && stat.IsDir() {
-		if writable(".review") {
-			st.add(checkStorageWritable, severityFail, true, ".review/ writable")
+	state := readcommon.DisplayPath(st.req.RepoRootPath(), readcommon.StateDir(st.req.RepoRootPath()))
+	if stat, err := os.Stat(state); err == nil && stat.IsDir() {
+		if writable(state) {
+			st.add(checkStorageWritable, severityFail, true, state+"/ writable")
 		} else {
 			st.add(checkStorageWritable, severityFail, false,
-				".review/ not writable — fetch/record cannot write bundles here")
+				state+"/ not writable — fetch/record cannot write bundles here")
 		}
 		return
 	}
 	if writable(".") {
-		st.add(checkStorageWritable, severityFail, true, "cwd writable — .review/ created on first fetch")
+		st.add(checkStorageWritable, severityFail, true, "cwd writable — "+state+"/ created on first fetch")
 		return
 	}
-	st.add(checkStorageWritable, severityFail, false, "cwd not writable — fetch/record cannot create .review/ here")
+	st.add(checkStorageWritable, severityFail, false, "cwd not writable — fetch/record cannot create "+state+"/ here")
 }
 
 func writable(path string) bool {

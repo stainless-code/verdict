@@ -9,7 +9,7 @@ exit: 0
   "next": "post the adopted findings, then calibrate to settle them",
   "warnings": [],
   "data": {
-    "dir": ".review/4311",
+    "dir": ".verdict/state/4311",
     "from": "adopt1",
     "adopted": 2,
     "open": 2
@@ -17,9 +17,9 @@ exit: 0
   "error": null
 }
 --- stderr ---
-» adopted 2 findings from .review/local-adopt1 (open: 2) — post to publish, calibrate to settle
+» adopted 2 findings from .verdict/state/local-adopt1 (open: 2) — post to publish, calibrate to settle
 --- files ---
---- file C/.review/4311/findings.json ---
+--- file C/.verdict/state/4311/findings.json ---
 [
   {
     "kind": "inline",
@@ -78,7 +78,7 @@ exit: 0
     "rigor_source": "default"
   }
 ]
---- file C/.review/4311/store.json ---
+--- file C/.verdict/state/4311/store.json ---
 {
   "schema_version": "1"
 }

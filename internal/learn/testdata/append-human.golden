@@ -1,8 +1,8 @@
 exit: 0
 --- stdout ---
-learned never-log-secrets-in-error-paths -> .review/kb.jsonl (scope src/*.ts, rigor pointed)
+learned never-log-secrets-in-error-paths -> .verdict/kb.jsonl (scope src/*.ts, rigor pointed)
 --- stderr ---
 
 --- files ---
---- file C/.review/kb.jsonl ---
+--- file C/.verdict/kb.jsonl ---
 {"id":"never-log-secrets-in-error-paths","rule":"Never log secrets in error paths","scope":"src/*.ts","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}

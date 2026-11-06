@@ -10,9 +10,10 @@ import (
 	"github.com/stainless-code/verdict/internal/kb"
 )
 
-func writePaddedKB(t *testing.T, row string, size int64) {
+func writePaddedKB(t *testing.T, root, row string, size int64) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(kbFile), 0o755); err != nil {
+	path := filepath.Join(root, kb.File)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	data := make([]byte, size)
@@ -20,15 +21,15 @@ func writePaddedKB(t *testing.T, row string, size int64) {
 	for i := len(row); i < len(data); i++ {
 		data[i] = ' '
 	}
-	if err := os.WriteFile(kbFile, data, 0o600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func checkLearnReadsAtCap(t *testing.T) {
+func checkLearnReadsAtCap(t *testing.T, root string) {
 	t.Helper()
-	st := &state{req: &Request{}}
-	if rows, err := kb.ReadRows(); err != nil || len(rows) != 1 {
+	st := &state{req: &Request{}, root: root}
+	if rows, err := kb.ReadRows(root); err != nil || len(rows) != 1 {
 		t.Fatalf("kb.ReadRows at cap = %d rows, %v; want 1, nil", len(rows), err)
 	}
 	if rows, ref := st.readRowsStrict("r1"); ref != nil || len(rows) != 1 {
@@ -39,10 +40,10 @@ func checkLearnReadsAtCap(t *testing.T) {
 	}
 }
 
-func checkLearnReadsOverCap(t *testing.T) {
+func checkLearnReadsOverCap(t *testing.T, root string) {
 	t.Helper()
-	st := &state{req: &Request{}}
-	if _, err := kb.ReadRows(); !errors.Is(err, kb.ErrCorrupt) {
+	st := &state{req: &Request{}, root: root}
+	if _, err := kb.ReadRows(root); !errors.Is(err, kb.ErrCorrupt) {
 		t.Errorf("kb.ReadRows over cap = %v, want ErrCorrupt", err)
 	}
 	if _, ref := st.readRowsStrict("r1"); ref == nil || ref.Code != codeCorruptStore {
@@ -57,11 +58,11 @@ func checkLearnReadsOverCap(t *testing.T) {
 // kb.jsonl: at the cap it decodes, one byte over it reads corrupt-store
 // without allocating the store.
 func TestKBStoreReadsRefuseOversizedInput(t *testing.T) {
-	t.Chdir(t.TempDir())
-	writePaddedKB(t, `{"id":"r1","rule":"keep it small"}`, jq.MaxKBBytes)
-	checkLearnReadsAtCap(t)
-	if err := os.Truncate(kbFile, jq.MaxKBBytes+1); err != nil {
+	root := t.TempDir()
+	writePaddedKB(t, root, `{"id":"r1","rule":"keep it small"}`, jq.MaxKBBytes)
+	checkLearnReadsAtCap(t, root)
+	if err := os.Truncate(filepath.Join(root, kb.File), jq.MaxKBBytes+1); err != nil {
 		t.Fatal(err)
 	}
-	checkLearnReadsOverCap(t)
+	checkLearnReadsOverCap(t, root)
 }

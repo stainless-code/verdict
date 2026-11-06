@@ -5,16 +5,16 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-HOLD="$EVAL_SANDBOX/.review-hold-readref"
-mkdir -p "$EVAL_SANDBOX/.review" "$HOLD"
-for e in "$EVAL_SANDBOX"/.review/*; do
+HOLD="$EVAL_SANDBOX/.verdict-hold-readref"
+mkdir -p "$EVAL_SANDBOX/.verdict" "$HOLD"
+for e in "$EVAL_SANDBOX"/.verdict/state/*; do
   [ -e "$e" ] || continue
   mv "$e" "$HOLD/"
 done
 restore_rr() {
   for e in "$HOLD"/*; do
     [ -e "$e" ] || continue
-    mv "$e" "$EVAL_SANDBOX/.review/"
+    mv "$e" "$EVAL_SANDBOX/.verdict/state/"
   done
   rmdir "$HOLD" 2>/dev/null || true
 }
@@ -23,7 +23,7 @@ trap restore_rr EXIT
 VALID_SIG="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 mkf() { # $1 = slug
-  local dir="$EVAL_SANDBOX/.review/$1"
+  local dir="$EVAL_SANDBOX/.verdict/state/$1"
   rm -rf "$dir"; mkdir -p "$dir"
   cat > "$dir/source.json" <<'EOF'
 {"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
@@ -47,7 +47,7 @@ ENTRY_TMPL='{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchore
 expect_store_refusal() { # $1 = label, rest = review args
   local label="$1"; shift
   local before=""
-  before="$(shasum -a 1 "$EVAL_SANDBOX/.review/$SLUG/findings.json" | cut -d' ' -f1)"
+  before="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/$SLUG/findings.json" | cut -d' ' -f1)"
   run_review "$@" --json
   local got=""
   got="$(jq -r '.error.code // empty' "$EVAL_OUT" 2>/dev/null || true)"
@@ -57,7 +57,7 @@ expect_store_refusal() { # $1 = label, rest = review args
     bad "$label exits $EVAL_STATUS with error '$got' (want exit 1, corrupt-store)"
   fi
   local after=""
-  after="$(shasum -a 1 "$EVAL_SANDBOX/.review/$SLUG/findings.json" | cut -d' ' -f1)"
+  after="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/$SLUG/findings.json" | cut -d' ' -f1)"
   if [ "$before" = "$after" ]; then
     good "$label left findings.json byte-identical"
   else
@@ -107,30 +107,30 @@ SLUG="local-rr6"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/; s/"severity":"informational"/"severity":[1]/')" | mkf "$SLUG"
 expect_store_refusal "R6 misshapen severity" calibrate acme/app "$SLUG" --probe
 
-rm -rf "$EVAL_SANDBOX/.review/local-rr1" "$EVAL_SANDBOX/.review/local-rr2" \
-  "$EVAL_SANDBOX/.review/local-rr3" "$EVAL_SANDBOX/.review/local-rr4" \
-  "$EVAL_SANDBOX/.review/local-rr5" "$EVAL_SANDBOX/.review/local-rr6"
+rm -rf "$EVAL_SANDBOX/.verdict/state/local-rr1" "$EVAL_SANDBOX/.verdict/state/local-rr2" \
+  "$EVAL_SANDBOX/.verdict/state/local-rr3" "$EVAL_SANDBOX/.verdict/state/local-rr4" \
+  "$EVAL_SANDBOX/.verdict/state/local-rr5" "$EVAL_SANDBOX/.verdict/state/local-rr6"
 
 SLUG="local-rr7bad"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":7/')" | mkf "$SLUG"
 SLUG="local-rr7good"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/')" | mkf "$SLUG"
-cat > "$EVAL_SANDBOX/.review/$SLUG/kb-recall.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/$SLUG/kb-recall.json" <<'EOF'
 [{"id":"r-ok","score":1,"hits":1,"judged":1}]
 EOF
 run_review trend acme/app --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "trend skips .review/local-rr7bad" "$EVAL_ERR" \
+  && grep -q "trend skips .verdict/state/local-rr7bad" "$EVAL_ERR" \
   && [ "$(jq -r '.data.bundles' "$EVAL_OUT" 2>/dev/null)" = "1" ]; then
   good "R7 trend warns and skips the corrupt bundle (rolls up the readable one)"
 else
   bad "R7 trend exits $EVAL_STATUS (want 0 with a skip warning, 1 bundle)"
 fi
-rm -rf "$EVAL_SANDBOX/.review/local-rr7bad" "$EVAL_SANDBOX/.review/local-rr7good"
+rm -rf "$EVAL_SANDBOX/.verdict/state/local-rr7bad" "$EVAL_SANDBOX/.verdict/state/local-rr7good"
 
 SLUG="local-rr8"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/')" | mkf "$SLUG"
-printf '{broken' > "$EVAL_SANDBOX/.review/$SLUG/patch.json"
+printf '{broken' > "$EVAL_SANDBOX/.verdict/state/$SLUG/patch.json"
 expect_store_refusal "R8 unreadable patch.json" report acme/app "$SLUG"
 
 SLUG="local-rr9"
@@ -141,13 +141,13 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "R9 trend exits $EVAL_STATUS (want 0)"
 fi
-rm -rf "$EVAL_SANDBOX/.review/$SLUG"
+rm -rf "$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 SLUG="7701"
-rm -rf "$EVAL_SANDBOX/.review/$SLUG"; mkdir -p "$EVAL_SANDBOX/.review/$SLUG"
+rm -rf "$EVAL_SANDBOX/.verdict/state/$SLUG"; mkdir -p "$EVAL_SANDBOX/.verdict/state/$SLUG"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/')" \
-  > "$EVAL_SANDBOX/.review/$SLUG/findings.json"
-printf '{broken' > "$EVAL_SANDBOX/.review/$SLUG/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$SLUG/findings.json"
+printf '{broken' > "$EVAL_SANDBOX/.verdict/state/$SLUG/post.json"
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 run_review calibrate acme/app "$SLUG" --json
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
@@ -157,7 +157,7 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$got" = "missing-post" ] && [ "$stub_before" =
 else
   bad "R10 calibrate exits $EVAL_STATUS with error '$got' (want exit 1, missing-post, no gh)"
 fi
-rm -rf "$EVAL_SANDBOX/.review/$SLUG"
+rm -rf "$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 SLUG="local-rr11"
 printf '[%s]' "$(printf '%s' "$ENTRY_TMPL" | sed 's/"sig":"SIG"/"sig":"'"$VALID_SIG"'"/; s/"status":"open"/"status":"addressed"/' | sed 's/"history":\[\]/"history":[],"kb":"r-stray"/')" | mkf "$SLUG"
@@ -168,6 +168,6 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "R11 probe exits $EVAL_STATUS (want 0 with a null rule)"
 fi
-rm -rf "$EVAL_SANDBOX/.review/$SLUG"
+rm -rf "$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 eval_end

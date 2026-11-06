@@ -186,7 +186,7 @@ func buildFeedback(round, maxRounds int, dry *DryRunResult) string {
 // dryRun invokes record dry-run.
 func (t tool) dryRun(ctx context.Context, slug string) (DryRunResult, error) {
 	full := []string{t.bin, "record", t.repo, slug, "--dry-run", "--json"}
-	res, err := coreexec.Runner{}.Run(ctx, core.Command{Argv: full, Env: toolEnv()})
+	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: full, Env: toolEnv()})
 	if err != nil {
 		return DryRunResult{}, jq.NewErrf("record --dry-run: %s", err)
 	}
@@ -502,7 +502,7 @@ func (r *runner) runLoopAgent(ctx context.Context, cr *caseRun, roundPath string
 	start := time.Now()
 	env := loopAgentEnv(r, cr, roundPath, round, feed, prev)
 	res, err := coreexec.Watchdog{}.Run(roundCtx,
-		core.Command{Argv: []string{"sh", "-c", r.cfg.Agent}, Env: env})
+		&core.Command{Argv: []string{"sh", "-c", r.cfg.Agent}, Env: env})
 	wall := roundMillis(time.Since(start).Seconds())
 	logPath := filepath.Join(roundPath, agentLogName)
 	if werr := atomic.WriteFile(logPath, []byte(res.Stdout)); werr != nil {
@@ -578,10 +578,11 @@ func (r *runner) stageLoopBundle(ctx context.Context, cr *caseRun,
 		return err
 	}
 	req := &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true}
-	if _, ref := controls.Resolve(ctx, nil, req); ref != nil {
+	snap, ref := controls.Resolve(ctx, nil, req)
+	if ref != nil {
 		return jq.NewErrf("controls snapshot: %s", ref)
 	}
-	return nil
+	return r.writeRunState(bundle, base, snap)
 }
 
 // writeRoundArtifacts preserves round bytes.

@@ -1,6 +1,7 @@
 // Package identity owns the bundle patch identity: the stable diff id
-// every fetch writes to .review/<bundle>/identity.json, plus the match rule
-// the post guard, adopt --from auto, and report --completeness share. The
+// every fetch writes to .verdict/state/<bundle>/identity.json, plus the
+// match rule the post guard, adopt --from auto, and report
+// --completeness share. The
 // primary algorithm is `git patch-id --stable` over the raw bundle diff; the
 // labeled diff-sha256 fallback covers a missing git or a failed spawn. A
 // patch id is a dedupe key, never an authorization token.
@@ -105,7 +106,7 @@ func gitPatchID(ctx context.Context, cmdr core.Commander, diff []byte) (string, 
 	if cmdr == nil || ctx.Err() != nil {
 		return "", false
 	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: []string{"git", "patch-id", "--stable"}, Stdin: bytes.NewReader(diff)})
+	res, err := cmdr.Run(ctx, &core.Command{Argv: []string{"git", "patch-id", "--stable"}, Stdin: bytes.NewReader(diff)})
 	if err != nil || res.ExitCode != 0 {
 		return "", false
 	}

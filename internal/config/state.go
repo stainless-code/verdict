@@ -124,40 +124,57 @@ func (l Layout) EnsureStateIgnore() *stateError {
 	if serr != nil {
 		return serr
 	}
-	verdict, serr := confineJoin(root, VerdictDir)
+	if serr := ensureManagedDir(root, VerdictDir); serr != nil {
+		return serr
+	}
+	ignorePath, serr := confineJoin(root, GitignorePath)
 	if serr != nil {
 		return serr
 	}
-	if serr := refuseSymlinkLeaf(verdict, VerdictDir); serr != nil {
+	if serr := refuseSymlinkLeaf(ignorePath, GitignorePath); serr != nil {
 		return serr
 	}
-	if err := os.MkdirAll(verdict, stateDirPerm); err != nil {
-		return &stateError{msg: "could not create " + verdict, cause: err}
-	}
-	path := filepath.Join(root, GitignorePath)
-	if _, serr := confineJoin(root, GitignorePath); serr != nil {
-		return serr
-	}
-	if serr := refuseSymlinkLeaf(path, GitignorePath); serr != nil {
-		return serr
-	}
-	raw, err := os.ReadFile(path)
+	return ensureStateLine(ignorePath)
+}
+
+// ensureStateLine writes the `/state/` line into an existing or absent
+// ignore file. A negation able to re-admit state refuses naming the
+// line instead of being silently honored or overwritten.
+func ensureStateLine(ignorePath string) *stateError {
+	raw, err := os.ReadFile(ignorePath)
 	if errors.Is(err, os.ErrNotExist) {
-		if werr := atomic.WriteFile(path, []byte(gitignoreStateLine)); werr != nil {
-			return &stateError{msg: "could not write " + path, cause: werr}
+		if werr := atomic.WriteFile(ignorePath, []byte(gitignoreStateLine)); werr != nil {
+			return &stateError{msg: "could not write " + ignorePath, cause: werr}
 		}
 		return nil
 	}
 	if err != nil {
-		return &stateError{msg: "could not read " + path, cause: err}
+		return &stateError{msg: "could not read " + ignorePath, cause: err}
 	}
 	if line, bad := conflictingStateNegation(string(raw)); bad {
-		return &stateError{msg: path + " negates the state ignore with " + line + ": remove the negation", operator: true}
+		return &stateError{msg: ignorePath + " negates the state ignore with " + line + ": remove the negation", operator: true}
 	}
 	if hasStateLine(string(raw)) {
 		return nil
 	}
-	return appendIgnoreLine(path, raw)
+	return appendIgnoreLine(ignorePath, raw)
+}
+
+// ensureManagedDir resolves one managed repository-relative directory,
+// proves it stays anchored inside the root, refuses a symlinked leaf,
+// and creates it: every managed write goes through this one gate.
+func ensureManagedDir(root, name string) *stateError {
+	full, serr := confineJoin(root, name)
+	if serr != nil {
+		return serr
+	}
+	if serr := refuseSymlinkLeaf(full, name); serr != nil {
+		return serr
+	}
+	if err := os.MkdirAll(full, stateDirPerm); err != nil {
+		return &stateError{msg: "could not create " + full, cause: err}
+	}
+	return nil
 }
 
 // EnsureStateDir creates the ignored local state directory with its
@@ -170,29 +187,26 @@ func (l Layout) EnsureStateDir() *stateError {
 	if serr != nil {
 		return serr
 	}
-	if _, serr := confineJoin(root, VerdictDir); serr != nil {
+	if serr := ensureManagedDir(root, VerdictDir); serr != nil {
 		return serr
 	}
-	if serr := refuseSymlinkLeaf(filepath.Join(root, VerdictDir), VerdictDir); serr != nil {
+	stateName := filepath.Join(VerdictDir, StateDirName)
+	if serr := ensureManagedDir(root, stateName); serr != nil {
 		return serr
 	}
-	state, serr := confineJoin(root, filepath.Join(VerdictDir, StateDirName))
+	layer, serr := confineJoin(root, StateGitignorePath)
 	if serr != nil {
-		return serr
-	}
-	if serr := refuseSymlinkLeaf(state, filepath.Join(VerdictDir, StateDirName)); serr != nil {
-		return serr
-	}
-	if err := os.MkdirAll(state, stateDirPerm); err != nil {
-		return &stateError{msg: "could not create " + state, cause: err}
-	}
-	layer := filepath.Join(root, StateGitignorePath)
-	if _, serr := confineJoin(root, StateGitignorePath); serr != nil {
 		return serr
 	}
 	if serr := refuseSymlinkLeaf(layer, StateGitignorePath); serr != nil {
 		return serr
 	}
+	return ensureStateLayer(layer)
+}
+
+// ensureStateLayer writes the generated-local nested `*` layer, which is
+// ours rather than operator content: a divergent one is rewritten.
+func ensureStateLayer(layer string) *stateError {
 	raw, err := os.ReadFile(layer)
 	if err == nil && string(raw) == stateGitignoreBody {
 		return nil
@@ -213,11 +227,11 @@ func confineRoot(root string) (string, *stateError) {
 	if err != nil {
 		return "", &stateError{msg: "could not resolve repository root " + root, cause: err}
 	}
-	real, err := filepath.EvalSymlinks(abs)
+	resolvedRoot, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		return "", &stateError{msg: "could not resolve repository root " + root, cause: err}
 	}
-	return real, nil
+	return resolvedRoot, nil
 }
 
 // confineJoin joins a repository-relative path under the resolved root
@@ -226,20 +240,33 @@ func confineRoot(root string) (string, *stateError) {
 // instead of writing outside it.
 func confineJoin(root, name string) (string, *stateError) {
 	full := filepath.Join(root, name)
+	prefix, rest, serr := existingPrefix(name, full)
+	if serr != nil {
+		return "", serr
+	}
+	if serr := checkAnchored(root, prefix, name, rest); serr != nil {
+		return "", serr
+	}
+	return full, nil
+}
+
+// existingPrefix walks up from full until a path can be inspected,
+// returning that prefix and the missing tail below it in reverse order.
+// A symlink on the existing part is left for checkAnchored to resolve.
+func existingPrefix(name, full string) (string, []string, *stateError) {
 	prefix := full
 	var rest []string
 	for {
-		if _, err := os.Lstat(prefix); err == nil {
-			if serr := checkAnchored(root, prefix, name, rest); serr != nil {
-				return "", serr
-			}
-			return full, nil
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return "", &stateError{msg: "could not inspect " + name, cause: err}
+		_, err := os.Lstat(prefix)
+		if err == nil {
+			return prefix, rest, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", nil, &stateError{msg: "could not inspect " + name, cause: err}
 		}
 		parent := filepath.Dir(prefix)
 		if parent == prefix {
-			return "", &stateError{msg: "could not resolve " + name}
+			return "", nil, &stateError{msg: "could not resolve " + name}
 		}
 		rest = append(rest, filepath.Base(prefix))
 		prefix = parent
@@ -312,26 +339,29 @@ func isStateNegation(line string) bool {
 	if pattern == "**" {
 		return true
 	}
-	if !strings.Contains(pattern, "/") {
+	if !strings.Contains(pattern, ignoreSeparator) {
 		matched, err := path.Match(pattern, StateDirName)
 		return err == nil && matched
 	}
-	if strings.HasPrefix(pattern, StateDirName+"/") {
+	if strings.HasPrefix(pattern, StateDirName+ignoreSeparator) {
 		return true
 	}
 	matched, err := path.Match(pattern, StateDirName)
 	return err == nil && matched
 }
 
+// ignoreSeparator is the gitignore path separator, always a slash.
+const ignoreSeparator = "/"
+
 // appendIgnoreLine adds the `/state/` line to an existing ignore file,
 // preserving its trailing newline contract.
-func appendIgnoreLine(path string, raw []byte) *stateError {
+func appendIgnoreLine(ignorePath string, raw []byte) *stateError {
 	line := gitignoreStateLine
 	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
 		line = "\n" + line
 	}
-	if werr := atomic.WriteFile(path, append(raw, line...)); werr != nil {
-		return &stateError{msg: "could not write " + path, cause: werr}
+	if werr := atomic.WriteFile(ignorePath, append(raw, line...)); werr != nil {
+		return &stateError{msg: "could not write " + ignorePath, cause: werr}
 	}
 	return nil
 }

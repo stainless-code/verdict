@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,13 +14,15 @@ import (
 )
 
 // policyTestState builds a guard-level state with stored entries and an
-// optional run policy: no bundle, no provider, no merge.
+// optional run policy: no provider, no merge. The bundle dir follows the
+// production resolution under the chdir'd sandbox root.
 func policyTestState(entries []any, rs *config.RunState) *state {
 	var warnings []string
 	st := postTestState(".", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		core.PostFlags{Approve: "false"}, &warnings)
 	st.merged.Entries = entries
 	st.now = "2026-11-06T00:00:00Z"
+	st.dir = filepath.Join(".verdict", "state", "7")
 	if rs != nil {
 		st.policy = &runPolicy{state: rs}
 	}
@@ -56,7 +59,10 @@ func policyRunState() *config.RunState {
 				},
 			},
 			Plan: config.Plan{Status: config.PendingStatus, Groups: []config.PlanGroup{
-				{Profile: "deep-review", Checks: []string{config.CheckNoOpenAboveBlock}, Files: []string{"pay/core.go"}},
+				{
+					ID: "payments-group", Label: "deep-review", Profile: "deep-review",
+					Checks: []string{config.CheckNoOpenAboveBlock}, Files: []string{"pay/core.go"},
+				},
 			}},
 		},
 		Root: config.RequirementSet{RequireBind: true, BindSources: []string{"repo"}},
@@ -117,7 +123,8 @@ func TestComplianceGateLegacyDegrade(t *testing.T) {
 func TestComplianceGateObserves(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if serr := config.WriteRunState(".", "7", policyRunState()); serr != nil {
+	bundle := filepath.Join(".verdict", "state", "7")
+	if serr := config.WriteRunState(bundle, policyRunState()); serr != nil {
 		t.Fatalf("WriteRunState: %v", serr)
 	}
 	st := policyTestState([]any{
@@ -127,7 +134,14 @@ func TestComplianceGateObserves(t *testing.T) {
 	if ref := st.complianceGate(); ref == nil {
 		t.Fatal("gate passed, want requirement-blocked")
 	}
-	loaded, found, serr := config.ReadRunState(".", "7")
+	assertBlockingObservation(t, bundle, "payments-group", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+}
+
+// assertBlockingObservation checks the stored outcome names the blocked group
+// and the reviewed head, so a refusal always leaves its ledger entry.
+func assertBlockingObservation(t *testing.T, bundle, group, head string) {
+	t.Helper()
+	loaded, found, serr := config.ReadRunState(bundle)
 	if serr != nil || !found {
 		t.Fatalf("ReadRunState: found=%v err=%v", found, serr)
 	}
@@ -135,8 +149,11 @@ func TestComplianceGateObserves(t *testing.T) {
 		t.Fatalf("outcomes = %+v, want one observation", loaded.Outcomes)
 	}
 	obs := loaded.Outcomes[0]
-	if obs.Check != config.CheckNoOpenAboveBlock || obs.Group != "deep-review" || obs.Passed {
+	if obs.Check != config.CheckNoOpenAboveBlock || obs.Group != group || obs.Passed {
 		t.Fatalf("observation = %+v, want the failed group check", obs)
+	}
+	if obs.Head != head {
+		t.Fatalf("observation head = %q, want the reviewed head", obs.Head)
 	}
 }
 
@@ -144,34 +161,48 @@ func TestComplianceGateObserves(t *testing.T) {
 // binding approval and no --bind refuses force-proof; --bind, COMMENT
 // events, and legacy runs proceed.
 func TestBindRequiredGate(t *testing.T) {
-	newBindState := func(approve string, bind, force bool) *state {
-		st := policyTestState(nil, policyRunState())
-		st.flags.Approve = approve
-		st.flags.Bind = bind
-		st.flags.Force = force
-		return st
+	tests := []struct {
+		name    string
+		approve string
+		want    string
+		bind    bool
+		force   bool
+		changes bool
+		legacy  bool
+	}{
+		{name: "approve without bind", approve: "true", want: CodeBindRequired},
+		{name: "force cannot bypass", approve: "true", force: true, want: CodeBindRequired},
+		{name: "request-changes without bind", approve: "false", changes: true, want: CodeBindRequired},
+		{name: "approve with bind", approve: "true", bind: true},
+		{name: "comment without bind", approve: "false"},
+		{name: "legacy approve without policy", approve: "true", legacy: true},
 	}
-	if ref := newBindState("true", false, false).bindRequiredGate(); ref == nil || ref.Code != CodeBindRequired {
-		t.Fatalf("approve without bind: gate = %v, want bind-required", ref)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := policyRunState()
+			if tc.legacy {
+				policy = nil
+			}
+			st := policyTestState(nil, policy)
+			st.flags.Approve, st.flags.Bind, st.flags.Force = tc.approve, tc.bind, tc.force
+			st.flags.RequestChanges = tc.changes
+			assertBindGate(t, st.bindRequiredGate(), tc.want)
+		})
 	}
-	if ref := newBindState("true", false, true).bindRequiredGate(); ref == nil || ref.Code != CodeBindRequired {
-		t.Fatalf("force cannot bypass bind-required: gate = %v", ref)
+}
+
+// assertBindGate checks the bind requirement outcome against the wanted
+// refusal code, where an empty code means the gate passes.
+func assertBindGate(t *testing.T, ref *core.RefusalError, want string) {
+	t.Helper()
+	if want == "" {
+		if ref != nil {
+			t.Fatalf("gate = %v, want nil", ref)
+		}
+		return
 	}
-	stChange := newBindState("false", false, false)
-	stChange.flags.RequestChanges = true
-	if ref := stChange.bindRequiredGate(); ref == nil || ref.Code != CodeBindRequired {
-		t.Fatalf("request-changes without bind: gate = %v, want bind-required", ref)
-	}
-	if ref := newBindState("true", true, false).bindRequiredGate(); ref != nil {
-		t.Fatalf("approve with bind: gate = %v, want nil", ref)
-	}
-	if ref := newBindState("false", false, false).bindRequiredGate(); ref != nil {
-		t.Fatalf("comment without bind: gate = %v, want nil", ref)
-	}
-	legacy := policyTestState(nil, nil)
-	legacy.flags.Approve = "true"
-	if ref := legacy.bindRequiredGate(); ref != nil {
-		t.Fatalf("legacy approve without bind: gate = %v, want nil (downgrade path)", ref)
+	if ref == nil || ref.Code != want {
+		t.Fatalf("gate = %v, want %s", ref, want)
 	}
 }
 
@@ -189,16 +220,16 @@ func TestFloorPayload(t *testing.T) {
 	floor := "important"
 	rs.Resolved.Defaults.Values.PostMinSeverity = &floor
 	st := policyTestState(entries, rs)
-	kept, gotFloor, excluded := st.floorPayload()
-	if gotFloor != "important" || excluded != 1 || len(kept) != 3 {
-		t.Fatalf("floor = %q excluded = %d kept = %d, want important/1/3", gotFloor, excluded, len(kept))
+	kept, gotFloor, withheld := st.floorPayload()
+	if gotFloor != "important" || len(withheld) != 1 || len(kept) != 3 {
+		t.Fatalf("floor = %q excluded = %d kept = %d, want important/1/3", gotFloor, len(withheld), len(kept))
 	}
 	if n, _, _ := postCounts(kept); n != 3 {
 		t.Fatalf("payload open count = %d, want 3", n)
 	}
 	plain := policyTestState(entries, nil)
-	if kept, floor, excluded := plain.floorPayload(); len(kept) != 4 || floor != "" || excluded != 0 {
-		t.Fatalf("unset floor filters: kept=%d floor=%q excluded=%d", len(kept), floor, excluded)
+	if kept, floor, withheld := plain.floorPayload(); len(kept) != 4 || floor != "" || len(withheld) != 0 {
+		t.Fatalf("unset floor filters: kept=%d floor=%q excluded=%d", len(kept), floor, len(withheld))
 	}
 }
 
@@ -220,7 +251,7 @@ func TestLoadRunPolicyAbsent(t *testing.T) {
 }
 
 // TestLoadRunPolicyCorrupt pins the loud path: a malformed bundle
-// refuses bad-config instead of degrading silently.
+// refuses controls-stale instead of degrading silently.
 func TestLoadRunPolicyCorrupt(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -234,8 +265,8 @@ func TestLoadRunPolicyCorrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := st.loadRunPolicy()
-	if ref == nil || ref.Code != "bad-config" {
-		t.Fatalf("corrupt bundle: ref = %v, want bad-config", ref)
+	if ref == nil || ref.Code != "controls-stale" {
+		t.Fatalf("corrupt bundle: ref = %v, want controls-stale", ref)
 	}
 }
 
@@ -257,10 +288,11 @@ func policyBundleWithPolicy(t *testing.T) {
 	postBundle(t, postReview)
 	rs := policyRunState()
 	rs.Resolved.Files = nil
-	rs.Resolved.Plan.Groups = []config.PlanGroup{
-		{Profile: "deep-review", Checks: []string{config.CheckNoOpenAboveBlock}},
-	}
-	if serr := config.WriteRunState(".", "7", rs); serr != nil {
+	rs.Resolved.Plan.Groups = []config.PlanGroup{{
+		ID: "bundle-group", Label: "deep-review", Profile: "deep-review",
+		Checks: []string{config.CheckNoOpenAboveBlock},
+	}}
+	if serr := config.WriteRunState(filepath.Join(".verdict", "state", "7"), rs); serr != nil {
 		t.Fatalf("WriteRunState: %v", serr)
 	}
 }
@@ -276,7 +308,7 @@ func TestApproveBindWithPolicyProvesNoCircularPrerequisite(t *testing.T) {
 	policyBundleWithPolicy(t)
 	cmdr := policyCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "true", Bind: true, Force: true, ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run approval: %v", ref)
@@ -284,26 +316,39 @@ func TestApproveBindWithPolicyProvesNoCircularPrerequisite(t *testing.T) {
 	if resp.Data == nil || resp.Data.Event != "APPROVE" {
 		t.Fatalf("event = %+v, want APPROVE", resp.Data)
 	}
-	raw, err := os.ReadFile(".review/7/post.json")
+	assertNoBypassRecorded(t, ".verdict/state/7/post.json")
+	assertPassingCompliance(t, filepath.Join(".verdict", "state", "7"))
+}
+
+// assertNoBypassRecorded checks the receipt never claims the trusted policy
+// clauses were bypassed.
+func assertNoBypassRecorded(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read post.json: %v", err)
 	}
-	if strings.Contains(string(raw), "bind-required") || strings.Contains(string(raw), "requirement-blocked") || strings.Contains(string(raw), "spend-capped") {
-		t.Fatalf("trusted requirement recorded as bypassed:\n%s", raw)
+	for _, claim := range []string{"bind-required", "requirement-blocked", "spend-capped"} {
+		if strings.Contains(string(raw), claim) {
+			t.Fatalf("trusted requirement recorded as bypassed (%s):\n%s", claim, raw)
+		}
 	}
-	loaded, found, serr := config.ReadRunState(".", "7")
+}
+
+// assertPassingCompliance checks the stored ledger carries the passing
+// no-open-above-block observation for the approved run.
+func assertPassingCompliance(t *testing.T, bundle string) {
+	t.Helper()
+	loaded, found, serr := config.ReadRunState(bundle)
 	if serr != nil || !found {
 		t.Fatalf("ReadRunState: found=%v err=%v", found, serr)
 	}
-	seen := false
 	for _, obs := range loaded.Outcomes {
 		if obs.Check == config.CheckNoOpenAboveBlock && obs.Passed {
-			seen = true
+			return
 		}
 	}
-	if !seen {
-		t.Fatalf("outcomes = %+v, want the passing compliance observation", loaded.Outcomes)
-	}
+	t.Fatalf("outcomes = %+v, want the passing compliance observation", loaded.Outcomes)
 }
 
 // TestApproveWithoutBindRefusesForceProof pins the force boundary: the
@@ -315,12 +360,139 @@ func TestApproveWithoutBindRefusesForceProof(t *testing.T) {
 	policyBundleWithPolicy(t)
 	cmdr := policyCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "true", Force: true, ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "true", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	if ref == nil || ref.Code != CodeBindRequired {
 		t.Fatalf("approval without bind under force = %v, want bind-required", ref)
 	}
-	if _, err := os.Stat(".review/7/post.json"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/7/post.json"); !os.IsNotExist(err) {
 		t.Fatal("refused approval wrote post.json")
+	}
+}
+
+// TestPostFloorFollowsEachFindingsOwnScope pins the real payload seam: a
+// scope's stricter post floor withholds its own important finding while the
+// same important finding on an ordinary path publishes, and the compliance
+// gate still blocks on the full stored set.
+func TestPostFloorFollowsEachFindingsOwnScope(t *testing.T) {
+	important, critical := "important", "critical"
+	rs := &config.RunState{Resolved: &config.Resolved{
+		Defaults: config.ResolvedDefaults{
+			Values: config.EffectiveDefaults{PostMinSeverity: &important},
+		},
+		Files: []config.FileResolution{{
+			Path: "vendor/lib.go",
+			Requirements: config.RequirementSet{Clauses: []config.ClauseProvenance{{
+				Clause: core.BlockClause{
+					Name: "vendor-block", Threshold: "important",
+					Categories: []string{"logic"}, Paths: []string{"vendor/**"},
+				},
+				Sources: []string{"scope vendored"},
+			}}},
+			Defaults: config.ResolvedDefaults{
+				Values: config.EffectiveDefaults{PostMinSeverity: &critical},
+			},
+		}},
+	}}
+	st := policyTestState([]any{
+		policyEntry("vendor/lib.go", "logic", "important", "open"),
+		policyEntry("app/main.go", "logic", "important", "open"),
+	}, rs)
+
+	kept, floor, withheld := st.floorPayload()
+	assertScopedFloorPayload(t, kept, floor, withheld)
+
+	blocked := config.CheckCompliance(rs.Resolved, nil, policyFindings(st.merged.Entries))
+	if len(blocked) != 1 {
+		t.Fatalf("compliance saw %d findings; the gate must read the full set, not the payload", len(blocked))
+	}
+}
+
+// assertScopedFloorPayload checks the filtered payload, its scoped receipt,
+// and the global floor label.
+func assertScopedFloorPayload(t *testing.T, kept []any, floor string, withheld []core.FloorScope) {
+	t.Helper()
+	if len(kept) != 1 || len(withheld) != 1 {
+		t.Fatalf("payload = %d entries (%d excluded); want only the ordinary path's", len(kept), len(withheld))
+	}
+	if scoped := scopedFloors(withheld); len(scoped) != 1 || scoped[0] != (core.FloorScope{Path: "vendor/lib.go", Floor: "critical"}) {
+		t.Fatalf("scoped receipt = %v; want vendor/lib.go at critical", scoped)
+	}
+	entry, ok := kept[0].(*jq.Obj)
+	if !ok {
+		t.Fatalf("kept payload is not an object: %T", kept[0])
+	}
+	path, _ := entry.Get("path")
+	if jq.StrOf(path) != "app/main.go" {
+		t.Fatalf("payload kept %v; want app/main.go from the ordinary path", path)
+	}
+	if floor != "important" {
+		t.Fatalf("floor label = %q; the global default is important", floor)
+	}
+}
+
+// TestPostReceiptRecordsScopedOnlyExclusion pins the receipt truth: with no
+// global floor at all, a scope's critical floor still withholds its important
+// finding, so the receipt states one exclusion and the path/floor that caused
+// it instead of implying nothing was filtered.
+func TestPostReceiptRecordsScopedOnlyExclusion(t *testing.T) {
+	t.Chdir(t.TempDir())
+	critical := "critical"
+	rs := &config.RunState{Resolved: &config.Resolved{
+		Files: []config.FileResolution{{
+			Path: "vendor/lib.go",
+			Defaults: config.ResolvedDefaults{
+				Values: config.EffectiveDefaults{PostMinSeverity: &critical},
+			},
+		}},
+	}}
+	st := policyTestState([]any{
+		policyEntry("vendor/lib.go", "logic", "important", "open"),
+		policyEntry("app/main.go", "logic", "important", "open"),
+	}, rs)
+	writeReceipt(t, st)
+	raw, err := os.ReadFile(filepath.Join(st.dir, "post.json"))
+	if err != nil {
+		t.Fatalf("read post.json: %v", err)
+	}
+	var receipt core.Post
+	if uerr := json.Unmarshal(raw, &receipt); uerr != nil {
+		t.Fatalf("post.json is not a receipt: %v", uerr)
+	}
+	if receipt.BelowFloorExcluded != 1 {
+		t.Fatalf("below_floor_excluded = %d; the scoped floor withheld one finding", receipt.BelowFloorExcluded)
+	}
+	if len(receipt.PostFloorScoped) != 1 ||
+		receipt.PostFloorScoped[0] != (core.FloorScope{Path: "vendor/lib.go", Floor: "critical"}) {
+		t.Fatalf("post_floor_scoped = %v; want vendor/lib.go at critical", receipt.PostFloorScoped)
+	}
+	if receipt.PostMinSeverity != nil {
+		t.Fatalf("post_min_severity = %q; the run set no global floor", *receipt.PostMinSeverity)
+	}
+}
+
+// writeReceipt stages the receipt directory and writes post.json for a state.
+func writeReceipt(t *testing.T, st *state) {
+	t.Helper()
+	if err := os.MkdirAll(st.dir, 0o755); err != nil {
+		t.Fatalf("stage bundle dir: %v", err)
+	}
+	if err := writePostReceipt(st, jq.NewObj("id", 1)); err != nil {
+		t.Fatalf("writePostReceipt: %v", err)
+	}
+}
+
+// TestPostReceiptStaysBareWithoutExclusions pins the unchanged receipt: a run
+// that filters nothing gains no floor keys at all.
+func TestPostReceiptStaysBareWithoutExclusions(t *testing.T) {
+	t.Chdir(t.TempDir())
+	st := policyTestState([]any{policyEntry("app/main.go", "logic", "important", "open")}, nil)
+	writeReceipt(t, st)
+	raw, err := os.ReadFile(filepath.Join(st.dir, "post.json"))
+	if err != nil {
+		t.Fatalf("read post.json: %v", err)
+	}
+	if strings.Contains(string(raw), "post_floor_scoped") || strings.Contains(string(raw), "below_floor_excluded") {
+		t.Fatalf("receipt carries floor keys for an unfiltered run:\n%s", raw)
 	}
 }

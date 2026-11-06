@@ -6,29 +6,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 SLUG="local-dryrun"
-LB="$EVAL_SANDBOX/.review/$SLUG"
+LB="$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 mk_local() { # stdin becomes review.json
-  unset EVAL_NO_SEED
-  rm -rf "$LB"
-  mkdir -p "$LB"
-  cat > "$LB/source.json" <<'JSON'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
-JSON
-  cat > "$LB/full.diff" <<'DIFF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-DIFF
+  eval_mk_bundle "$SLUG"
   cat > "$LB/review.json"
-  eval_seed_controls
-  export EVAL_NO_SEED=1
 }
 
 snapshot() {
@@ -46,7 +28,9 @@ check_untouched() { # $1 = label, $2 = snapshot before
   else
     bad "$label changed the bundle"
   fi
-  for artifact in findings.json record.json store.json hunks.tsv; do
+  # store.json and hunks.tsv belong to the fetch that produced the bundle;
+  # findings.json and record.json are the dry run's to withhold.
+  for artifact in findings.json record.json; do
     if [ -e "$LB/$artifact" ]; then
       bad "$label created $artifact"
     fi
@@ -127,6 +111,5 @@ assert_json_field "summary moved anchors" "1" '.data.check.anchors_moved_to_body
 assert_json_field "would record both comments plus the moved body section" "3" '.data.findings.open'
 check_untouched "summary dry run" "$BEFORE"
 
-unset EVAL_NO_SEED
 rm -rf "$LB"
 eval_end

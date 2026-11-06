@@ -172,10 +172,14 @@ func readArray(dec *json.Decoder, path string) (any, *core.RefusalError) {
 	return out, nil
 }
 
+// jsonNull is the JSON null literal, distinct from an absent key: an
+// explicit null records no value, an absent key records nothing.
+const jsonNull = "null"
+
 func jsonKind(v any) string {
 	switch v.(type) {
 	case nil:
-		return "null"
+		return jsonNull
 	case map[string]any:
 		return "object"
 	case []any:

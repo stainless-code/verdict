@@ -43,7 +43,7 @@ type threadStubCommander struct {
 }
 
 // Run answers one scripted live read.
-func (c threadStubCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c threadStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.t.Helper()
 	argv := strings.Join(cmd.Argv, " ")
 	switch {
@@ -70,13 +70,13 @@ func writeThreadCrossFixture(t *testing.T, payload string) core.ReadRequest {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeThreadCrossFile(t, ".review/5101/PR.json",
+	writeThreadCrossFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",`+
 			`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeThreadCrossFile(t, ".review/5101/findings.json", threadCrossFinding)
-	writeThreadCrossFile(t, ".review/5101/post.json",
+	writeThreadCrossFile(t, ".verdict/state/5101/findings.json", threadCrossFinding)
+	writeThreadCrossFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{"id":424242},`+
 			`"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"posted_at":"2026-01-01T00:00:00Z","confidence":null,`+

@@ -61,7 +61,7 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "APPROVE" ]; then
 else
   bad "clear recheck gave exit $EVAL_STATUS event '$event', want 0/APPROVE"
 fi
-if [ -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "real APPROVE post wrote post.json"
 else
   bad "real APPROVE post wrote no post.json"
@@ -91,7 +91,7 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "refusal stderr: $(head -c 300 "$EVAL_ERR")"
 fi
-if [ ! -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "refused APPROVE posted nothing"
 else
   bad "refused APPROVE still wrote post.json"
@@ -183,7 +183,7 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "APPROVE" ]; then
 else
   bad "dry run gave exit $EVAL_STATUS event '$event', want 0/APPROVE"
 fi
-if [ "$(graphql_since "$m")" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ "$(graphql_since "$m")" -eq 0 ] && [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "dry run made zero recheck calls and posted nothing"
 else
   bad "dry run paid $(graphql_since "$m") recheck call(s)"

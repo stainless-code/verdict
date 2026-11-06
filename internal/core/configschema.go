@@ -47,8 +47,8 @@ type ConfigKBPolicy struct {
 // applicable clause must hold for compliance, and named prepublication
 // evaluations accumulate across matching scopes.
 type ConfigRequirements struct { //nolint:govet // field order is the published property order
-	BlockClauses  []BlockClause `json:"block_clauses,omitempty"                                minItems:"1"                    nonnull:"true"`
-	RequireChecks []string      `items_enum:"no-open-above-block|head-current|no-live-threads" json:"require_checks,omitempty" minItems:"1"   nonnull:"true"`
+	BlockClauses  []BlockClause `json:"block_clauses,omitempty"                                minItems:"1"                    nonnull:"true"`                //nolint:revive // tags encode the published order and cannot wrap
+	RequireChecks []string      `items_enum:"no-open-above-block|head-current|no-live-threads" json:"require_checks,omitempty" minItems:"1"   nonnull:"true"` //nolint:revive // tags encode exact enums and cannot wrap
 	RequireBind   *bool         `json:"require_bind,omitempty"                                 nonnull:"true"`
 }
 
@@ -58,9 +58,9 @@ type ConfigRequirements struct { //nolint:govet // field order is the published 
 // absent paths mean every path.
 type BlockClause struct {
 	Name       string   `json:"name"`
-	Threshold  string   `enum:"critical|important|informational"                                              json:"threshold"`
-	Categories []string `items_enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other" json:"categories,omitempty" minItems:"1"   nonnull:"true"`
-	Paths      []string `json:"paths,omitempty"                                                               minItems:"1"                nonnull:"true"`
+	Threshold  string   `enum:"critical|important|informational"                                              json:"threshold"`                                          //nolint:revive // tags encode exact enums and cannot wrap
+	Categories []string `items_enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other" json:"categories,omitempty" minItems:"1"   nonnull:"true"` //nolint:revive // tags encode exact enums and cannot wrap
+	Paths      []string `json:"paths,omitempty"                                                               minItems:"1"                nonnull:"true"`                //nolint:revive // tags encode the published order and cannot wrap
 }
 
 // ConfigScope is one path-scoped entry: the include and exclude globs that

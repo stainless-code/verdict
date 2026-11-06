@@ -8,6 +8,7 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "none — every requested dimension passed",
   "warnings": [
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
     "live recheck skipped (--live skip requested — gating on local dimensions only)"
   ],
   "data": {
@@ -30,6 +31,7 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 gate: findings     pass  no open findings at-or-above critical
 gate: live_threads skip  live recheck skipped (--live skip)

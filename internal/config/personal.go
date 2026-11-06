@@ -87,9 +87,9 @@ func checkPersonalSections(root map[string]any) *core.RefusalError {
 		key    string
 		fields []string
 	}{
-		{"review", defaultsFields},
-		{"spend", personalSpendFields},
-		{"privacy", personalPrivacyFields},
+		{personalSectionReview, defaultsFields},
+		{personalSectionSpend, personalSpendFields},
+		{personalSectionPrivacy, personalPrivacyFields},
 	} {
 		if ref := checkPersonalSection(root, section.key, section.fields); ref != nil {
 			return ref
@@ -116,23 +116,45 @@ func checkPersonalSection(root map[string]any, key string, fields []string) *cor
 // personal layer.
 func buildPersonal(root map[string]any) (*PersonalSettings, *core.RefusalError) {
 	out := &PersonalSettings{}
-	var ref *core.RefusalError
-	if raw, ok := root["review"]; ok {
-		if out.Review, ref = buildPersonalReview(raw); ref != nil {
-			return nil, ref
-		}
+	builders := []struct {
+		build func(raw any) *core.RefusalError
+		key   string
+	}{
+		{key: personalSectionReview, build: func(raw any) *core.RefusalError {
+			val, ref := buildPersonalReview(raw)
+			return assignSection(&out.Review, val, ref)
+		}},
+		{key: personalSectionSpend, build: func(raw any) *core.RefusalError {
+			val, ref := buildPersonalSpend(raw)
+			return assignSection(&out.Spend, val, ref)
+		}},
+		{key: personalSectionPrivacy, build: func(raw any) *core.RefusalError {
+			val, ref := buildPersonalPrivacy(raw)
+			return assignSection(&out.Privacy, val, ref)
+		}},
 	}
-	if raw, ok := root["spend"]; ok {
-		if out.Spend, ref = buildPersonalSpend(raw); ref != nil {
-			return nil, ref
+	// The section order is fixed: it decides which refusal a document
+	// with several violations reports first.
+	for _, b := range builders {
+		raw, ok := root[b.key]
+		if !ok {
+			continue
 		}
-	}
-	if raw, ok := root["privacy"]; ok {
-		if out.Privacy, ref = buildPersonalPrivacy(raw); ref != nil {
+		if ref := b.build(raw); ref != nil {
 			return nil, ref
 		}
 	}
 	return out, nil
+}
+
+// assignSection stores one successfully parsed personal section and
+// forwards its refusal: a refused section contributes nothing.
+func assignSection[T any](dst *T, val T, ref *core.RefusalError) *core.RefusalError {
+	if ref != nil {
+		return ref
+	}
+	*dst = val
+	return nil
 }
 
 // buildPersonalReview validates the personal review defaults: every
@@ -218,6 +240,29 @@ func LoadPersonal(path string) (*PersonalSettings, *core.RefusalError) {
 		return nil, refuse(CodeBadConfig, "could not read personal settings at %s", path)
 	}
 	return ParsePersonal(raw)
+}
+
+// personalSections are the settings sections this parser owns.
+var personalSections = []string{personalSectionReview, personalSectionSpend, personalSectionPrivacy}
+
+// ValidatePersonalSections checks the three typed personal sections of
+// an already-decoded settings document: unknown fields inside them, a
+// misplaced budget_usd, and semantic violations refuse with the typed
+// configuration codes. Presentation sections and unknown top-level
+// sections are the caller's concern. The parse owns the contract so the
+// settings loader and the fetch-time personal read can never disagree.
+func ValidatePersonalSections(doc map[string]any) *core.RefusalError {
+	root := make(map[string]any, len(personalSections))
+	for _, key := range personalSections {
+		if raw, ok := doc[key]; ok {
+			root[key] = raw
+		}
+	}
+	if ref := checkPersonalSections(root); ref != nil {
+		return ref
+	}
+	_, ref := buildPersonal(root)
+	return ref
 }
 
 // credentialScanPersonal runs the credential scan over a personal

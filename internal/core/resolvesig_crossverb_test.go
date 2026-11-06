@@ -19,7 +19,7 @@ import (
 type sigGitCommander struct{}
 
 // Run returns an empty audit for git and fails any unscripted spawn.
-func (sigGitCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (sigGitCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if cmd.Argv[0] == "git" {
 		return core.Result{}, nil
 	}
@@ -41,11 +41,11 @@ func writeSigFixture(t *testing.T, findings ...string) core.ReadRequest {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(".review/local-sig", 0o755); err != nil {
+	if err := os.MkdirAll(".verdict/state/local-sig", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	doc := "[" + strings.Join(findings, ",") + "]"
-	if err := os.WriteFile(".review/local-sig/findings.json", []byte(doc), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/local-sig/findings.json", []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return core.ReadRequest{

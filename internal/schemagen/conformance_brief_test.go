@@ -106,7 +106,7 @@ func TestFindingsBriefConformance(t *testing.T) {
 func TestShowFixBriefConformance(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	t.Chdir(t.TempDir())
-	writeFixture(t, ".review/5201/findings.json", "["+fixtureFindingWithBrief()+"]")
+	writeFixture(t, ".verdict/state/5201/findings.json", "["+fixtureFindingWithBrief()+"]")
 	read := core.ReadRequest{Repo: "acme/app", Pr: "5201"}
 	resp, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{
 		ReadRequest: read,

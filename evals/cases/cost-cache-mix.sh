@@ -14,8 +14,8 @@ unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVI
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
 eval_mk_bundle 4911
-printf '[]' > "$EVAL_SANDBOX/.review/4911/findings.json"
-cat > "$EVAL_SANDBOX/.review/4911/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4911/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4911/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50,"cache_read_input_tokens":30,"cache_creation_input_tokens":10},{"name":"n","input_tokens":20,"output_tokens":5}],"est_usd":0.05}
 EOF
 run_review report acme/app 4911 --cost --json
@@ -38,8 +38,8 @@ else
 fi
 
 eval_mk_bundle 4912
-printf '[]' > "$EVAL_SANDBOX/.review/4912/findings.json"
-cat > "$EVAL_SANDBOX/.review/4912/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4912/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4912/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50}],"est_usd":0.05}
 EOF
 run_review report acme/app 4912 --cost --json
@@ -55,8 +55,8 @@ else
 fi
 
 eval_mk_bundle 4913
-printf '[]' > "$EVAL_SANDBOX/.review/4913/findings.json"
-cat > "$EVAL_SANDBOX/.review/4913/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4913/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4913/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50,"cache_read_input_tokens":null,"cache_creation_input_tokens":null}],"est_usd":0.05}
 EOF
 run_review report acme/app 4913 --cost --json
@@ -69,8 +69,8 @@ else
 fi
 
 eval_mk_bundle 4914
-printf '[]' > "$EVAL_SANDBOX/.review/4914/findings.json"
-cat > "$EVAL_SANDBOX/.review/4914/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4914/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4914/cost.json" <<'EOF'
 [{"schema_version":"1","effort":"cheap","models":[{"name":"m","input_tokens":1000,"output_tokens":200,"cache_read_input_tokens":900,"cache_creation_input_tokens":50}],"est_usd":1.5},{"schema_version":"1","effort":"deep","models":[{"name":"n","input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":4}],"est_usd":0.01}]
 EOF
 run_review report acme/app 4914 --cost --json
@@ -85,8 +85,8 @@ else
   bad "invariant-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-rm -rf "$EVAL_SANDBOX/.review/4911" "$EVAL_SANDBOX/.review/4912" \
-  "$EVAL_SANDBOX/.review/4913" "$EVAL_SANDBOX/.review/4914" "$EVAL_SANDBOX/xdg-empty"
+rm -rf "$EVAL_SANDBOX/.verdict/state/4911" "$EVAL_SANDBOX/.verdict/state/4912" \
+  "$EVAL_SANDBOX/.verdict/state/4913" "$EVAL_SANDBOX/.verdict/state/4914" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
 eval_end

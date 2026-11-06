@@ -13,7 +13,7 @@ SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 mk_overview_fixture() {
   local pr="$1"
-  local dir="$EVAL_SANDBOX/.review/$pr"
+  local dir="$EVAL_SANDBOX/.verdict/state/$pr"
   mkdir -p "$dir"
   cat > "$dir/PR.json" <<EOF
 {"state":"OPEN","headRefOid":"$SHA_A","baseRefOid":"$SHA_B","author":{"login":"teammate"},"files":[{"path":"src/app.ts","additions":10,"deletions":2},{"path":"src/theme.ts","additions":18,"deletions":9},{"path":"test/app.test.ts","additions":5,"deletions":0},{"path":"schema.json","additions":27,"deletions":52}]}
@@ -139,7 +139,7 @@ fi
 
 mk_sized_bundle() { # $1 = pr, $2 = file count, $3 = pad lines per file
   local pr="$1" n="$2" pad="$3"
-  local dir="$EVAL_SANDBOX/.review/$pr" i
+  local dir="$EVAL_SANDBOX/.verdict/state/$pr" i
   mkdir -p "$dir"
   {
     printf '{"state":"OPEN","headRefOid":"%s","baseRefOid":"%s","author":{"login":"teammate"},"files":[' "$SHA_A" "$SHA_B"
@@ -173,7 +173,7 @@ else
   bad "threshold file side gave exit $EVAL_STATUS"
 fi
 mk_sized_bundle 4605 2 1600
-if [ "$(wc -c <"$EVAL_SANDBOX/.review/4605/full.diff" | tr -d ' ')" -gt 24576 ]; then
+if [ "$(wc -c <"$EVAL_SANDBOX/.verdict/state/4605/full.diff" | tr -d ' ')" -gt 24576 ]; then
   good "byte fixture really exceeds 24KB"
 else
   bad "byte fixture too small"
@@ -224,7 +224,7 @@ assert_file_nogrep "env false alone (no file) hides a large bundle" "$EVAL_SANDB
 unset REVIEW_PUBLISH_OVERVIEW || true
 
 PR=4611
-dir="$EVAL_SANDBOX/.review/$PR"
+dir="$EVAL_SANDBOX/.verdict/state/$PR"
 mkdir -p "$dir"
 cat > "$dir/PR.json" <<'EOF'
 {"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"a/theme.ts","additions":3,"deletions":0},{"path":"b/theme.ts","additions":1,"deletions":0},{"path":"src/app.ts","additions":2,"deletions":0},{"path":"c.ts","additions":20,"deletions":20},{"path":"d.ts","additions":20,"deletions":20},{"path":"e.ts","additions":20,"deletions":20},{"path":"f.ts","additions":20,"deletions":20},{"path":"g.ts","additions":20,"deletions":20},{"path":"h.ts","additions":20,"deletions":20}]}

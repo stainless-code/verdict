@@ -9,8 +9,8 @@ exit: 0
   "next": "patch the anchor file, write verification.json, run record to land it, then re-run fix",
   "warnings": [],
   "data": {
-    "dir": ".review/local-pass",
-    "ledger": ".review/local-pass/fix.json",
+    "dir": ".verdict/state/local-pass",
+    "ledger": ".verdict/state/local-pass/fix.json",
     "sig": "1123456789abcdef0123456789abcdef01234567",
     "locator": "notes.txt:2",
     "severity": "informational",
@@ -35,15 +35,15 @@ exit: 0
   "error": null
 }
 --- stderr ---
-» readiness: .review/local-pass — findings 2 open (2 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
-» ledger: .review/local-pass/fix.json — sig 11234567 pass 1/3
-fix: 11234567 [informational] notes.txt:2 (pass 1/3, ledger .review/local-pass/fix.json)
+» readiness: .verdict/state/local-pass — findings 2 open (2 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+» ledger: .verdict/state/local-pass/fix.json — sig 11234567 pass 1/3
+fix: 11234567 [informational] notes.txt:2 (pass 1/3, ledger .verdict/state/local-pass/fix.json)
 finding: Minor wording nit here.
 anchors: notes.txt:2-2 side=RIGHT anchored=true
-instructions: patch the anchor file (notes.txt), then run its verify command yourself and write .review/local-pass/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record acme/app local-pass; re-run fix acme/app local-pass for the next pass
+instructions: patch the anchor file (notes.txt), then run its verify command yourself and write .verdict/state/local-pass/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record acme/app local-pass; re-run fix acme/app local-pass for the next pass
 gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell instead
-loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or .review/budget (see docs/manual.md)
+loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)
 next: patch notes.txt, write verification.json, run record to land it, then re-run fix
 --- files ---
---- file C/.review/local-pass/fix.json ---
-{"sigs":{"1123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":[".review/"]}}}
+--- file C/.verdict/state/local-pass/fix.json ---
+{"sigs":{"1123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":[".verdict/"]}}}

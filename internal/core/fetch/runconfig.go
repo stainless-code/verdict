@@ -2,13 +2,17 @@ package fetchcore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -92,9 +96,12 @@ func loadPersonalLayer(settingsPath string) (*config.PersonalSettings, *core.Ref
 // the review file list. Absent base policy resolves personal, env,
 // flags, and built-ins (the no-init rule); present policy parses
 // strictly and refuses before the bundle builds.
-func (rc *runConfig) resolvePhaseTwo(ctx context.Context, cmd Commander, repo, baseSHA string, chunkFlag bool, files []config.FileInput, settingsPath string, legacy config.LegacyInputs) *core.RefusalError {
+func (rc *runConfig) resolvePhaseTwo(
+	ctx context.Context, cmd Commander, repo, baseSHA string,
+	chunkFlag bool, files []config.FileInput, settingsPath string,
+) *core.RefusalError {
 	rc.baseSHA = baseSHA
-	base, ref := config.ReadBase(ctx, cmd, repo, baseSHA)
+	base, ref := config.ReadBase(ctx, cmd, repo, rc.root, baseSHA)
 	if ref != nil {
 		return ref
 	}
@@ -115,72 +122,82 @@ func (rc *runConfig) resolvePhaseTwo(ctx context.Context, cmd Commander, repo, b
 		Files:        files,
 		Flags:        flagPartial(chunkFlag),
 		Env:          rc.envPartial,
-		Legacy:       legacy,
 	}
-	resolved, ref := config.Resolve(in)
-	if ref != nil {
-		return ref
+	resolved, rref := config.Resolve(in)
+	if rref != nil {
+		return rref
 	}
 	rc.inputs, rc.resolved = in, resolved
 	return nil
 }
 
-// resolveLocalPhaseTwo resolves the fetch-local policy from the
-// worktree configuration: the reviewed content is local, so the
-// worktree file is the trusted input and no base commit is needed.
-func (rc *runConfig) resolveLocalPhaseTwo(root string, chunkFlag bool, files []config.FileInput, settingsPath string, legacy config.LegacyInputs) *core.RefusalError {
-	raw, err := os.ReadFile(filepath.Join(stateRoot(root), config.ConfigPath))
-	if err != nil && !os.IsNotExist(err) {
-		return &core.RefusalError{Code: config.CodeBadConfig, Message: fmt.Sprintf("could not read %s: %v", config.ConfigPath, err)}
-	}
-	var cfg *core.Config
-	if err == nil {
-		parsed, ref := config.Parse(raw)
-		if ref != nil {
-			return ref
-		}
-		cfg, rc.raw, rc.trusted = parsed, raw, true
+// resolveLocalPhaseTwo resolves the fetch-local policy from the diff
+// base commit: the reviewed content is local, so the base commit the
+// diff is measured against carries the trusted inputs — never the
+// mutable worktree. An unresolvable base (a fresh repository with no
+// commit yet) reads no repository policy. Present base policy marks the
+// run trusted with the base recorded; head edits never move it.
+func (rc *runConfig) resolveLocalPhaseTwo(
+	ctx context.Context, cmd Commander, baseSHA string, chunkFlag bool,
+	files []config.FileInput, settingsPath string,
+) *core.RefusalError {
+	rc.baseSHA = baseSHA
+	cfg, ref := rc.readBasePolicy(ctx, cmd, baseSHA)
+	if ref != nil {
+		return ref
 	}
 	in := &config.Inputs{
 		Repo:         cfg,
 		Personal:     rc.personal,
+		BaseSHA:      baseSHA,
 		SettingsPath: settingsPath,
 		Files:        files,
 		Flags:        flagPartial(chunkFlag),
 		Env:          rc.envPartial,
-		Legacy:       legacy,
 	}
-	resolved, ref := config.Resolve(in)
-	if ref != nil {
-		return ref
+	resolved, rref := config.Resolve(in)
+	if rref != nil {
+		return rref
 	}
 	rc.inputs, rc.resolved = in, resolved
 	return nil
 }
 
-// stateRoot anchors the run-state bundle to the reviewed repository:
-// the working directory, exactly like the legacy diff bundle beside it.
-// The request root names the tool checkout (trusted prompts), never the
-// reviewed tree, so state never follows it.
-func stateRoot(_ string) string {
-	return "."
+// readBasePolicy reads and parses the trusted base policy when the run has a
+// base commit: a present document becomes the raw capture the run is trusted
+// with, and head edits never move it.
+func (rc *runConfig) readBasePolicy(ctx context.Context, cmd Commander, baseSHA string) (*core.Config, *core.RefusalError) {
+	if baseSHA == "" {
+		return nil, nil
+	}
+	base, ref := config.ReadBase(ctx, cmd, "", rc.root, baseSHA)
+	if ref != nil {
+		return nil, ref
+	}
+	rc.base = base
+	cfg, ref := config.ParseBase(base)
+	if ref != nil {
+		return nil, ref
+	}
+	if base.Present {
+		rc.raw = base.Raw
+		rc.trusted = true
+	}
+	return cfg, nil
 }
 
-// legacyInputs reads the legacy knob files from the reviewed snapshot:
-// the base commit for remote runs, the reviewed worktree for local runs.
-// Absent files read absent; parsing owns malformed values.
-func legacyInputs(r *session) config.LegacyInputs {
-	var out config.LegacyInputs
-	if raw, ok := r.readControl(".review/panel"); ok {
-		out.Panel = raw
+// diffInputs resolves inputs from the raw captured diff before the bundle
+// manifest exists: the hunk-bearing sections plus rename old paths, so scope
+// matching and per-group caps see actual files, never a speculative list.
+func diffInputs(dir string) []config.FileInput {
+	raw := readOptional(dir + suffixFullDiff)
+	files := diffHunkFiles(raw)
+	slices.Sort(files)
+	out := make([]config.FileInput, 0, len(files))
+	for _, path := range dedupeSorted(files) {
+		out = append(out, config.FileInput{Path: path})
 	}
-	if raw, ok := r.readControl(".review/budget"); ok {
-		out.Budget = raw
-	}
-	if raw, ok := r.readControl(".review/max_bytes"); ok {
-		out.MaxBytes = raw
-	}
-	return out
+	return withRenames(dir, out)
 }
 
 // fileInputs converts the bundle's diff file list to resolution
@@ -235,34 +252,49 @@ func renameMap(dir string) map[string]string {
 		return renames
 	}
 	for _, entry := range jq.Elements(m["files"]) {
-		em, ok := jq.AsMap(entry)
-		if !ok {
-			continue
+		if name, prev, ok := renameOf(entry); ok {
+			renames[name] = prev
 		}
-		name, ok := em["filename"].(string)
-		if !ok || name == "" {
-			continue
-		}
-		prev, ok := em["previous_filename"].(string)
-		if !ok || prev == "" || prev == name {
-			continue
-		}
-		renames[name] = prev
 	}
 	return renames
 }
 
-// persistRunBundle writes the run-state bundle and the trusted-base
-// inventory snapshot under `.verdict/state/<name>/` after a successful
+// renameOf reads one PR-metadata file entry's rename: the current name and the
+// previous path, present only when the provider recorded a real move.
+func renameOf(entry any) (name, prev string, ok bool) {
+	em, ok := jq.AsMap(entry)
+	if !ok {
+		return "", "", false
+	}
+	name, ok = em["filename"].(string)
+	if !ok || name == "" {
+		return "", "", false
+	}
+	prev, ok = em["previous_filename"].(string)
+	if !ok || prev == "" || prev == name {
+		return "", "", false
+	}
+	return name, prev, true
+}
+
+// persistRunBundle writes the typed run bundle and the trusted-base
+// inventory snapshot into the bundle directory after a successful
 // bundle build: the allowlisted fetch-time evidence, the resolved
-// policy, the inventory bytes, and the combined pending plan. Later
-// verbs append outcomes by reference without reconstructing inputs.
-func (rc *runConfig) persistRunBundle(ctx context.Context, cmd Commander, repo, dir, name, capturedAt string, inventory map[string][]byte) *core.RefusalError {
+// policy, the inventory bytes with their capture-time hashes, and the
+// combined pending plan. Later verbs append outcomes by reference
+// without reconstructing inputs.
+func (rc *runConfig) persistRunBundle(snap *controls.Snapshot, dir, name, capturedAt string) *core.RefusalError {
 	if rc.resolved == nil || rc.inputs == nil {
 		return nil
 	}
 	evidence := config.Capture(rc.inputs, rc.resolved, rc.raw, capturedAt)
+	rawHash, filteredHash, ref := diffHashes(dir, rc.resolved.Privacy.Exclusions)
+	if ref != nil {
+		return ref
+	}
+	evidence.PatchSHA256, evidence.FilteredPatchSHA256 = rawHash, filteredHash
 	rs := &config.RunState{
+		Name:         name,
 		BaseSHA:      rc.baseSHA,
 		Trusted:      rc.trusted,
 		CapturedAt:   capturedAt,
@@ -270,18 +302,61 @@ func (rc *runConfig) persistRunBundle(ctx context.Context, cmd Commander, repo, 
 		Evidence:     evidence,
 		Resolved:     rc.resolved,
 		Root:         config.RootSet(rc.inputs.Repo, rc.baseSHA),
+		Inventory:    config.InventoryHashes(snap),
 	}
-	if serr := config.WriteRunState(stateRoot(rc.root), name, rs); serr != nil {
+	if serr := config.WriteRunState(dir, rs); serr != nil {
 		if ref := serr.Refusal(); ref != nil {
 			return ref
 		}
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write run state: %v", serr)}
 	}
-	if serr := config.WriteInventory(stateRoot(rc.root), name, inventory); serr != nil {
+	return nil
+}
+
+// diffHashes binds the raw and filtered patch bytes to the evidence:
+// the raw host diff the patch identity covers, and the same diff with
+// privacy-excluded files excised — the model-facing review input. The
+// roles stay labeled in the evidence; excluded content never leaves the
+// bundle. A missing diff reads both hashes empty.
+func diffHashes(dir string, exclusions []string) (raw, filtered string, ref *core.RefusalError) {
+	body, err := os.ReadFile(dir + suffixFullDiff)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+			"cannot read %s%s: %v — refusing to record unbound diff hashes", dir, suffixFullDiff, err)}
+	}
+	filteredBytes, _, fref := filterDiffChecked(body, exclusions)
+	if fref != nil {
+		return "", "", fref
+	}
+	return sha256HexBytes(body), sha256HexBytes(filteredBytes), nil
+}
+
+// sha256HexBytes renders the lowercase hex SHA-256 of bytes.
+func sha256HexBytes(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+// ensureBundleState creates the ignore-first layout under the reviewed
+// repository root before any bundle write, so generated state is never
+// tracked. Reads never call it: validation, explanation, and preview
+// must not create files.
+func ensureBundleState(root string) *core.RefusalError {
+	layout := config.NewLayout(root)
+	if serr := layout.EnsureStateIgnore(); serr != nil {
 		if ref := serr.Refusal(); ref != nil {
 			return ref
 		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write inventory snapshot: %v", serr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not prepare state directory: %v", serr)}
+	}
+	if serr := layout.EnsureStateDir(); serr != nil {
+		if ref := serr.Refusal(); ref != nil {
+			return ref
+		}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not prepare state directory: %v", serr)}
 	}
 	return nil
 }
@@ -297,9 +372,9 @@ func budgetRefusal(err error) *core.RefusalError {
 
 // finalizeRemoteRun completes the typed policy once the bundle's file
 // list exists: phase two re-resolves with per-file inputs, and the run
-// bundle plus the trusted-base inventory snapshot persist under
-// `.verdict/state/<pr>/`. Later verbs append check outcomes by
-// reference without reconstructing these inputs.
+// bundle plus the trusted-base inventory snapshot persist inside the
+// bundle directory. Later verbs append check outcomes by reference
+// without reconstructing these inputs.
 func finalizeRemoteRun(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) *core.RefusalError {
 	rc := ctx2.runCfg
 	if rc == nil {
@@ -307,36 +382,35 @@ func finalizeRemoteRun(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRe
 	}
 	dir := ctx2.dir
 	baseSHA := readcommon.PrField(dir, keyBaseSHA)
-	if ref := rc.resolvePhaseTwo(ctx, ctx2.runner.commander, req.Repo, baseSHA, f.ChunkFlag, fileInputs(dir), req.SettingsPath, legacyInputs(ctx2.runner)); ref != nil {
+	if ref := rc.resolvePhaseTwo(
+		ctx, ctx2.runner.commander, req.Repo, baseSHA, f.ChunkFlag, fileInputs(dir), req.SettingsPath,
+	); ref != nil {
 		return ref
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
-	inventory, warnings, ref := config.SnapshotInventory(ctx, ctx2.runner.commander, req.Repo, baseSHA)
-	if ref != nil {
-		return ref
-	}
-	for _, warn := range warnings {
-		ctx2.runner.Warn(warn)
-	}
-	return rc.persistRunBundle(ctx, ctx2.runner.commander, req.Repo, dir, req.Pr, core.NowUTC(ctx2.runner.Now()), inventory)
+	return rc.persistRunBundle(ctx2.runner.controls, dir, req.Pr, core.NowUTC(ctx2.runner.Now()))
 }
 
-// finalizeLocalRun completes the fetch-local typed policy from the
-// worktree inventory: the reviewed content is local, so the snapshot
-// reads the worktree files and the bundle lands under
-// `.verdict/state/local-<slug>/`.
-func finalizeLocalRun(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, listed string) *core.RefusalError {
+// finalizeLocalRun completes the fetch-local typed policy from the diff
+// base inventory: the base commit the diff is measured against carries
+// the trusted inputs, and the run bundle lands in the bundle directory
+// beside the diff it describes.
+func finalizeLocalRun(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
+	f *core.FetchLocalFlags, baseSHA, listed string,
+) *core.RefusalError {
 	rc := ctx2.runCfg
 	if rc == nil {
 		return nil
 	}
-	if ref := rc.resolveLocalPhaseTwo(stateRoot(req.RootPath()), f.ChunkFlag, listedInputs(listed), req.SettingsPath, legacyInputs(ctx2.runner)); ref != nil {
+	if ref := rc.resolveLocalPhaseTwo(
+		ctx, ctx2.runner.commander, baseSHA, f.ChunkFlag, listedInputs(listed), req.SettingsPath,
+	); ref != nil {
 		return ref
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
-	inventory := config.SnapshotWorktreeInventory(stateRoot(req.RootPath()))
 	name := "local-" + localSlug(req.Pr)
-	return rc.persistRunBundle(ctx, ctx2.runner.commander, req.Repo, ctx2.dir, name, core.NowUTC(ctx2.runner.Now()), inventory)
+	return rc.persistRunBundle(ctx2.runner.controls, ctx2.dir, name, core.NowUTC(ctx2.runner.Now()))
 }
 
 // listedInputs converts the local stats file list to resolution inputs:

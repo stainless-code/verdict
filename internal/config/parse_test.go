@@ -206,3 +206,20 @@ func TestParseSemanticScopes(t *testing.T) {
 func TestParseSemanticDefaultProfile(t *testing.T) {
 	checkParseRefusal(t, `{"schema_version":"1","default_profile":"ghost"}`, CodeBadConfig, "default_profile")
 }
+
+// TestScopedKBPolicyIsRefused: knowledge-base thresholds are global-only, so
+// a scope carrying its own kb_policy refuses at parse time while the same field
+// in root defaults and in personal settings still parses.
+func TestScopedKBPolicyIsRefused(t *testing.T) {
+	scoped := `{"schema_version":"1","scopes":[{"name":"s","include":["*.go"],
+		"defaults":{"kb_policy":{"min_judged":5}}}]}`
+	checkParseRefusal(t, scoped, CodeBadScope, "kb_policy is global-only")
+	global := `{"schema_version":"1","defaults":{"kb_policy":{"min_judged":5}}}`
+	if _, ref := Parse([]byte(global)); ref != nil {
+		t.Fatalf("global kb_policy refused: %v", ref)
+	}
+	if _, ref := Parse([]byte(`{"schema_version":"1","scopes":[{"name":"s","include":["*.go"],
+		"defaults":{"budget_usd":2}}]}`)); ref != nil {
+		t.Fatalf("a scope's own budget was refused: %v", ref)
+	}
+}

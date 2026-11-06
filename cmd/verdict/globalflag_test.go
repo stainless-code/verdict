@@ -33,7 +33,7 @@ func TestGlobalFlagPlacementIsFree(t *testing.T) {
 	if want.code != cli.ExitRefused || want.out != "" {
 		t.Fatalf("baseline = %+v; want exit %d and an empty stdout", want, cli.ExitRefused)
 	}
-	if !strings.Contains(want.err, "\x1b[31m") || !strings.Contains(want.err, ".review/9") {
+	if !strings.Contains(want.err, "\x1b[31m") || !strings.Contains(want.err, ".verdict/state/9") {
 		t.Fatalf("baseline stderr = %q; want the colored missing-store refusal", want.err)
 	}
 	for _, args := range [][]string{
@@ -197,8 +197,8 @@ func TestMisplacedFlagFetchRefusesAtTheFrontDoor(t *testing.T) {
 	if got.out != "" {
 		t.Errorf("stdout = %q; want the usage block on stderr only", got.out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".review")); err == nil {
-		t.Error("the refused fetch wrote a .review bundle")
+	if _, err := os.Stat(filepath.Join(dir, ".verdict", "state")); err == nil {
+		t.Error("the refused fetch wrote a .verdict/state bundle")
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
@@ -38,10 +39,10 @@ func testConfig() Config {
 func fixture(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
-	writeFile(t, ".review/5101/PR.json",
+	writeFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFile(t, ".review/5101/findings.json", `[]`)
+	writeFile(t, ".verdict/state/5101/findings.json", `[]`)
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -219,7 +220,7 @@ type postCommander struct {
 	calls []string
 }
 
-func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *postCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	joined := strings.Join(cmd.Argv, " ")
 	c.calls = append(c.calls, joined)
 	switch {
@@ -240,18 +241,30 @@ func (c *postCommander) Run(_ context.Context, cmd core.Command) (core.Result, e
 
 func postFixture(t *testing.T) {
 	t.Helper()
-	writeFile(t, ".review/7/PR.json",
+	writeFile(t, ".verdict/state/7/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"`+strings.Repeat("b", 40)+`","author":{"login":"someone-else"}}`)
-	writeFile(t, ".review/7/full.diff",
+	writeFile(t, ".verdict/state/7/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
-	writeFile(t, ".review/7/review.json",
+	writeFile(t, ".verdict/state/7/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
-	writeFile(t, ".review/7/findings.json", `[]`)
-	req := &controls.Request{BundleDir: ".review/7", BaseSHA: strings.Repeat("b", 40), AllowHead: true}
-	if _, ref := controls.Resolve(t.Context(), nil, req); ref != nil {
+	writeFile(t, ".verdict/state/7/findings.json", `[]`)
+	req := &controls.Request{BundleDir: ".verdict/state/7", BaseSHA: strings.Repeat("b", 40), AllowHead: true}
+	snap, ref := controls.Resolve(t.Context(), nil, req)
+	if ref != nil {
 		t.Fatal(ref)
+	}
+	rs := &config.RunState{
+		BaseSHA:    strings.Repeat("b", 40),
+		Trusted:    true,
+		CapturedAt: "2026-11-02T12:00:00Z",
+		Evidence:   config.Evidence{SchemaVersion: "1", BaseSHA: strings.Repeat("b", 40), Plan: config.Plan{Status: config.PendingStatus}},
+		Resolved:   &config.Resolved{Plan: config.Plan{Status: config.PendingStatus}},
+		Inventory:  config.InventoryHashes(snap),
+	}
+	if serr := config.WriteRunState(".verdict/state/7", rs); serr != nil {
+		t.Fatal(serr)
 	}
 }
 
@@ -268,7 +281,7 @@ func TestPostTool(t *testing.T) {
 	cfg.Commanders = map[string]core.Commander{"post": cmdr}
 	lines := []string{
 		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"7","flags":{"approve":"false","reviewFile":".review/7/review.json","dryRun":true}}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"7","flags":{"approve":"false","reviewFile":".verdict/state/7/review.json","dryRun":true}}}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"7","flags":{"approve":"yes","dryRun":true}}}}`,
 	}
 	frames := serve(t, &cfg, lines...)
@@ -305,10 +318,10 @@ func TestPostTool(t *testing.T) {
 	if data["dry_run"] != true || data["event"] != "COMMENT" || data["payload_hash"] == "" {
 		t.Errorf("post dry-run data = %v", data)
 	}
-	if _, err := os.Stat(".review/7/post.json"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/7/post.json"); !os.IsNotExist(err) {
 		t.Error("post dry-run wrote post.json")
 	}
-	if _, err := os.Stat(".review/7/findings.dryrun.json"); err != nil {
+	if _, err := os.Stat(".verdict/state/7/findings.dryrun.json"); err != nil {
 		t.Errorf("post dry-run did not stage findings.dryrun.json: %v", err)
 	}
 	var refused callToolResult
@@ -876,7 +889,7 @@ type threadsCommander struct {
 	page string
 }
 
-func (c *threadsCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *threadsCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
 		return core.Result{Stdout: c.page}, nil
 	}
@@ -892,7 +905,7 @@ func (c *threadsCommander) LookPath(string) error { return nil }
 //nolint:revive // the registry/refresh matrix reads as one assertion block
 func TestThreadsTool(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeFile(t, ".review/7/PR.json",
+	writeFile(t, ".verdict/state/7/PR.json",
 		`{"state":"OPEN","headRefOid":"`+strings.Repeat("a", 40)+`"}`)
 	var registered *tool
 	for _, candidate := range allTools(false, false) {
@@ -929,7 +942,7 @@ func TestThreadsTool(t *testing.T) {
 	if got, _ := data.Get("provider"); got != "github" {
 		t.Errorf("data.provider = %v", got)
 	}
-	if _, err := os.Stat(".review/7/threads.json"); err != nil {
+	if _, err := os.Stat(".verdict/state/7/threads.json"); err != nil {
 		t.Errorf("refresh wrote no feed: %v", err)
 	}
 }

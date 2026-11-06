@@ -51,7 +51,7 @@ func TestRunDriftKeepsPinnedSnapshot(t *testing.T) {
 	live := driftLive
 	cmdr := postBundleCommander(t, &live)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -93,7 +93,7 @@ func TestRunNoDriftIsQuiet(t *testing.T) {
 	live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	cmdr := postBundleCommander(t, &live)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -114,7 +114,7 @@ func TestRunDriftLookupFailed(t *testing.T) {
 	postBundle(t, postReview)
 	cmdr := postBundleCommander(t, nil)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal on a failed lookup: %v", ref)
@@ -144,7 +144,7 @@ func TestRunStaleApproveDowngrades(t *testing.T) {
 	cmdr := postBundleCommander(t, &live)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{
-		Approve: "true", Bind: true, ReviewFile: ".review/7/review.json",
+		Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
@@ -225,7 +225,7 @@ func TestRunRecheckOnlyOnApprove(t *testing.T) {
 		live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		cmdr := postBundleCommander(t, &live)
 		var warnings, human []string
-		req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+		req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 		if _, ref := Run(context.Background(), req); ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
@@ -240,7 +240,7 @@ func TestRunRecheckOnlyOnApprove(t *testing.T) {
 		cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
 		var warnings, human []string
 		req := postTestReq(cmdr, core.PostFlags{
-			Approve: "true", Bind: true, ReviewFile: ".review/7/review.json", DryRun: true,
+			Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json", DryRun: true,
 		}, &warnings, &human)
 		resp, ref := Run(context.Background(), req)
 		if ref != nil {
@@ -310,7 +310,7 @@ func TestRunApproveLiveThreadBoundary(t *testing.T) {
 			cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
 			var warnings, human []string
 			req := postTestReq(cmdr, core.PostFlags{
-				Approve: "true", Bind: true, ReviewFile: ".review/7/review.json",
+				Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json",
 			}, &warnings, &human)
 			resp, ref := Run(context.Background(), req)
 			if !tc.wantRef {
@@ -368,13 +368,13 @@ func TestRunAnchorsUsePinnedSnapshot(t *testing.T) {
 			dir := t.TempDir()
 			t.Chdir(dir)
 			postBundle(t, postReview)
-			if err := writeTestFile(".review/7/hunks.tsv", tc.snapshot); err != nil {
+			if err := writeTestFile(".verdict/state/7/hunks.tsv", tc.snapshot); err != nil {
 				t.Fatal(err)
 			}
 			live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			cmdr := postBundleCommander(t, &live)
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			resp, ref := Run(context.Background(), req)
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -382,7 +382,7 @@ func TestRunAnchorsUsePinnedSnapshot(t *testing.T) {
 			if resp.Data.Anchors.Kept != tc.wantKept {
 				t.Errorf("anchors = %+v, want %d kept", resp.Data.Anchors, tc.wantKept)
 			}
-			if got := readTestFile(t, ".review/7/hunks.tsv"); got != tc.snapshot {
+			if got := readTestFile(t, ".verdict/state/7/hunks.tsv"); got != tc.snapshot {
 				t.Errorf("pinned snapshot was rewritten:\n%q", got)
 			}
 			body := postedBody(t, cmdr)

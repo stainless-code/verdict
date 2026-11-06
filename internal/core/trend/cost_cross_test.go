@@ -32,14 +32,14 @@ func TestCostReadersAgree(t *testing.T) {
 	checkRollupCost(t)
 }
 
-const costBundle = ".review/7/"
+const costBundle = ".verdict/state/7/"
 
 func seedCostBundle(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, ".review", "7"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict", "state", "7"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, ".review", "7", readcommon.CostFile)
+	path := filepath.Join(dir, ".verdict", "state", "7", readcommon.CostFile)
 	if err := os.WriteFile(path, []byte(costFixture), 0o600); err != nil {
 		t.Fatal(err)
 	}

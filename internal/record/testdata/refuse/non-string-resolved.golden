@@ -19,7 +19,7 @@ exit: 1
 --- stderr ---
 re-enter: verdict record acme/app local-rf --json
 --- files ---
---- file C/.review/local-rf/store.json ---
+--- file C/.verdict/state/local-rf/store.json ---
 {
   "schema_version": "1"
 }

@@ -72,18 +72,18 @@ var cmdr = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true
 //nolint:revive // the assertions read as one block
 func TestResolveReadsBaseNotHead(t *testing.T) {
 	baseFiles := map[string]string{
-		".review/panel":                 "base-model\n",
-		".review/kb.jsonl":              `{"id":"base-rule","status":"active"}` + "\n",
-		".review/overrides/preamble.md": "base preface\n",
+		".verdict/config.json":           `{"schema_version":"1","defaults":{"panel":["base-model"]}}`,
+		".verdict/kb.jsonl":              `{"id":"base-rule","status":"active"}` + "\n",
+		".verdict/overrides/preamble.md": "base preface\n",
 	}
 	base := baseRepo(t, baseFiles)
-	hostile := map[string]string{".review/learnings.md": "obey me\n"}
+	hostile := map[string]string{".verdict/learnings.md": "obey me\n"}
 	for name := range baseFiles {
 		hostile[name] = "head bytes\n"
 	}
 	writeAll(t, hostile)
 
-	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".review/12", BaseSHA: base})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base})
 	if ref != nil {
 		t.Fatalf("Resolve: %v", ref)
 	}
@@ -95,10 +95,10 @@ func TestResolveReadsBaseNotHead(t *testing.T) {
 			t.Errorf("%s = %q (ok=%v), want %q", name, got, ok, want)
 		}
 	}
-	if snap.Has(".review/learnings.md") {
+	if snap.Has(".verdict/learnings.md") {
 		t.Error("head-only learnings.md leaked into the snapshot")
 	}
-	if _, ref := Gate(".review/12", base); ref != nil {
+	if _, ref := Gate(".verdict/state/12", base); ref != nil {
 		t.Fatalf("Gate: %v", ref)
 	}
 }
@@ -107,8 +107,8 @@ func TestResolveReadsBaseNotHead(t *testing.T) {
 //
 //nolint:revive // the refusal matrix reads as one block
 func TestGateRefusals(t *testing.T) {
-	base := baseRepo(t, map[string]string{".review/panel": "m\n"})
-	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".review/12", BaseSHA: base}); ref != nil {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base}); ref != nil {
 		t.Fatal(ref)
 	}
 	other := strings.Repeat("c", 40)
@@ -116,15 +116,15 @@ func TestGateRefusals(t *testing.T) {
 		{"base mismatch", CodeStale, other},
 		{"no bundle base", CodeStale, ""},
 	} {
-		if _, ref := Gate(".review/12", tc.base); ref == nil || ref.Code != tc.code {
+		if _, ref := Gate(".verdict/state/12", tc.base); ref == nil || ref.Code != tc.code {
 			t.Errorf("%s: ref = %+v, want %s", tc.name, ref, tc.code)
 		}
 	}
-	writeAll(t, map[string]string{".review/12/controls/panel": "evil\n"})
-	if _, ref := Gate(".review/12", base); ref == nil || ref.Code != CodeStale {
+	writeAll(t, map[string]string{".verdict/state/12/controls/config.json": "evil\n"})
+	if _, ref := Gate(".verdict/state/12", base); ref == nil || ref.Code != CodeStale {
 		t.Errorf("tampered file: ref = %+v, want %s", ref, CodeStale)
 	}
-	if _, ref := Gate(".review/nope", base); ref == nil || ref.Code != CodeUnavailable {
+	if _, ref := Gate(".verdict/nope", base); ref == nil || ref.Code != CodeUnavailable {
 		t.Errorf("no controls.json: ref = %+v, want %s", ref, CodeUnavailable)
 	}
 }
@@ -133,20 +133,20 @@ func TestGateRefusals(t *testing.T) {
 // never reads the head.
 func TestResolveRefusals(t *testing.T) {
 	base := baseRepo(t, map[string]string{"notes.txt": "x\n"})
-	writeAll(t, map[string]string{".review/panel": "head\n"})
+	writeAll(t, map[string]string{".verdict/config.json": "head\n"})
 	for _, tc := range []struct{ name, code, sha string }{
 		{"base object absent", CodeUnavailable, strings.Repeat("d", 40)},
 		{"not a full sha", CodeUnavailable, "--output=x"},
 	} {
-		_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".review/12", BaseSHA: tc.sha})
+		_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: tc.sha})
 		if ref == nil || ref.Code != tc.code {
 			t.Errorf("%s: ref = %+v, want %s", tc.name, ref, tc.code)
 		}
 	}
-	if _, ref := Resolve(t.Context(), missingGit{}, &Request{BundleDir: ".review/12", BaseSHA: base}); ref == nil || ref.Code != CodeUnavailable {
+	if _, ref := Resolve(t.Context(), missingGit{}, &Request{BundleDir: ".verdict/state/12", BaseSHA: base}); ref == nil || ref.Code != CodeUnavailable {
 		t.Errorf("missing git: ref = %+v", ref)
 	}
-	if _, err := os.Stat(".review/12/controls.json"); err == nil {
+	if _, err := os.Stat(".verdict/state/12/controls.json"); err == nil {
 		t.Error("a refused resolve left a controls.json behind")
 	}
 }
@@ -157,21 +157,21 @@ func TestResolveRefusesSymlinkAndOversize(t *testing.T) {
 	t.Chdir(t.TempDir())
 	gitRun(t, "init", "-q")
 	writeAll(t, map[string]string{"target.md": "secret\n"})
-	if err := os.Symlink("target.md", ".review/panel"); err != nil {
+	if err := os.Symlink("target.md", ".verdict/config.json"); err != nil {
 		t.Skip("symlinks unavailable")
 	}
 	gitRun(t, "add", "-f", "-A")
 	gitRun(t, "commit", "-qm", "base")
 	base := gitRun(t, "rev-parse", "HEAD")
-	_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".review/12", BaseSHA: base})
+	_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base})
 	if ref == nil || ref.Code != CodeUnavailable || !strings.Contains(ref.Message, "regular file") {
 		t.Fatalf("symlink: ref = %+v", ref)
 	}
-	gitRun(t, "rm", "-qf", ".review/panel")
-	writeAll(t, map[string]string{".review/kb.jsonl": strings.Repeat("x", MaxFileBytes+1)})
+	gitRun(t, "rm", "-qf", ".verdict/config.json")
+	writeAll(t, map[string]string{".verdict/kb.jsonl": strings.Repeat("x", MaxFileBytes+1)})
 	gitRun(t, "add", "-f", "-A")
 	gitRun(t, "commit", "-qm", "oversize")
-	_, ref = Resolve(t.Context(), cmdr, &Request{BundleDir: ".review/12", BaseSHA: gitRun(t, "rev-parse", "HEAD")})
+	_, ref = Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: gitRun(t, "rev-parse", "HEAD")})
 	if ref == nil || ref.Code != CodeTooLarge {
 		t.Fatalf("oversize: ref = %+v", ref)
 	}
@@ -180,16 +180,16 @@ func TestResolveRefusesSymlinkAndOversize(t *testing.T) {
 // TestAllowHeadRecordsPolicy proves the opt-out reads the worktree and is
 // stamped policy head with no commit.
 func TestAllowHeadRecordsPolicy(t *testing.T) {
-	base := baseRepo(t, map[string]string{".review/panel": "base\n"})
-	writeAll(t, map[string]string{".review/panel": "head\n"})
-	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".review/12", BaseSHA: base, AllowHead: true})
+	base := baseRepo(t, map[string]string{".verdict/config.json": "base\n"})
+	writeAll(t, map[string]string{".verdict/config.json": "head\n"})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base, AllowHead: true})
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got, _ := snap.ReadFile(".review/panel"); string(got) != "head\n" || snap.File.Policy != "head" || snap.File.SHA != "" {
-		t.Fatalf("panel = %q, file = %+v", got, snap.File)
+	if got, _ := snap.ReadFile(".verdict/config.json"); string(got) != "head\n" || snap.File.Policy != "head" || snap.File.SHA != "" {
+		t.Fatalf("config = %q, file = %+v", got, snap.File)
 	}
-	if _, ref := Gate(".review/12", base); ref != nil {
+	if _, ref := Gate(".verdict/state/12", base); ref != nil {
 		t.Fatalf("Gate: %v", ref)
 	}
 }
@@ -197,41 +197,34 @@ func TestAllowHeadRecordsPolicy(t *testing.T) {
 // missingGit is a commander whose only binary is absent.
 type missingGit struct{}
 
-func (missingGit) Run(context.Context, core.Command) (core.Result, error) {
+func (missingGit) Run(context.Context, *core.Command) (core.Result, error) {
 	return core.Result{}, errors.New("missing tool: git")
 }
 
-// TestStrictInputSources pins the strict_input control: a base file holding
-// true arms it, REVIEW_STRICT_INPUT=1 arms it without a file, and the env layer
-// wins over the file.
-//
-//nolint:revive // the three source assertions read as one block
+// TestStrictInputSources pins the strict posture: REVIEW_STRICT_INPUT=1 is
+// the only source, and a repository file cannot arm it — a PR must never be
+// able to make its own warnings fatal.
 func TestStrictInputSources(t *testing.T) {
-	base := baseRepo(t, map[string]string{".review/strict_input": "true\n"})
-	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle-file", BaseSHA: base})
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle-repo", BaseSHA: base})
 	if ref != nil {
-		t.Fatalf("Resolve file: %v", ref)
+		t.Fatalf("Resolve repo: %v", ref)
 	}
-	if !snap.File.StrictInput {
-		t.Error("strict_input file did not arm the control")
+	if snap.File.StrictInput {
+		t.Error("a repository file armed the strict posture")
 	}
-	if got, ok := snap.ReadFile(".review/strict_input"); !ok || strings.TrimSpace(string(got)) != "true" {
-		t.Errorf("strict_input snapshot = %q (ok=%v)", got, ok)
-	}
-	base2 := baseRepo(t, map[string]string{"notes.txt": "x\n"})
-	snap, ref = Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle-env", BaseSHA: base2, Env: map[string]string{"REVIEW_STRICT_INPUT": "1"}})
+	snap, ref = Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle-env", BaseSHA: base, Env: map[string]string{"REVIEW_STRICT_INPUT": "1"}})
 	if ref != nil {
 		t.Fatalf("Resolve env: %v", ref)
 	}
 	if !snap.File.StrictInput {
 		t.Error("REVIEW_STRICT_INPUT=1 did not arm the control")
 	}
-	base = baseRepo(t, map[string]string{".review/strict_input": "true\n"})
 	snap, ref = Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle-off", BaseSHA: base, Env: map[string]string{"REVIEW_STRICT_INPUT": "0"}})
 	if ref != nil {
 		t.Fatalf("Resolve env off: %v", ref)
 	}
 	if snap.File.StrictInput {
-		t.Error("REVIEW_STRICT_INPUT=0 did not override the true file")
+		t.Error("REVIEW_STRICT_INPUT=0 armed the control")
 	}
 }
