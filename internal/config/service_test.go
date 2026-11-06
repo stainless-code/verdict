@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -179,27 +180,68 @@ func TestPreviewProposedFile(t *testing.T) {
 	}
 	assertPanel(t, data.Values, "new-panel")
 	assertBudget(t, data.Values, 3.25)
+	assertProposedOrigins(t, data.Values, proposed)
 }
 
-// TestPreviewNoBundleResolvesNoPolicy pins the no-init preview: with
-// no bundle and no file, the personal and environment layers resolve
-// over the built-ins instead of refusing.
-func TestPreviewNoBundleResolvesNoPolicy(t *testing.T) {
+// assertProposedOrigins pins the proposed relabeling: the repository value
+// names the file that supplied it, and a value another layer supplied keeps
+// that layer's own label.
+func assertProposedOrigins(t *testing.T, values []core.ConfigValue, proposed string) {
+	t.Helper()
+	if panel := mustValue(t, values, "panel"); panel.Layer != LayerRepo || panel.Source != "proposed file "+proposed {
+		t.Fatalf("panel origin = %+v, want the proposed file source", panel)
+	}
+	if budget := mustValue(t, values, "budget_usd"); budget.Layer != LayerEnv || budget.Source != "REVIEW_BUDGET_USD" {
+		t.Fatalf("budget origin = %+v, want the environment layer unchanged", budget)
+	}
+}
+
+// TestPreviewNoBundleReportsUnavailableBase pins the honest no-bundle
+// preview: without a run bundle nothing read the base configuration, so the
+// preview labels the repository layer unavailable with its remedy instead of
+// claiming the repository configures no policy — even when the checkout does
+// carry a tracked configuration. The personal, environment, and built-in
+// layers still resolve, so the preview stays a read that needs no fetch.
+func TestPreviewNoBundleReportsUnavailableBase(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	data, _, ref := Preview(".", "9", "", "", map[string]string{"REVIEW_BUDGET_USD": "1.5"})
+	if err := os.MkdirAll(VerdictDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	checkout := `{"schema_version":"1","requirements":{"require_checks":["head-current"]}}`
+	if err := os.WriteFile(filepath.Join(VerdictDir, "config.json"), []byte(checkout), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data, warns, ref := Preview(".", "9", "", "", map[string]string{"REVIEW_BUDGET_USD": "1.5"})
 	if ref != nil {
 		t.Fatalf("Preview: %v", ref)
 	}
-	if data.Trusted || data.Source != "no repository policy" {
-		t.Fatalf("data = %+v, want untrusted no-policy preview", data)
-	}
+	assertUnavailableBase(t, data, warns)
 	assertBudget(t, data.Values, 1.5)
 	if budget := mustValue(t, data.Values, "budget_usd"); budget.Source != "REVIEW_BUDGET_USD" {
 		t.Fatalf("budget origin = %+v", budget)
 	}
 	if maxBytes := mustValue(t, data.Values, "max_bytes"); maxBytes.Value != int64(512000) {
 		t.Fatalf("max_bytes = %+v, want the built-in", maxBytes)
+	}
+}
+
+// assertUnavailableBase pins the no-bundle report: the label and its warning
+// say the base was never read, no requirement is invented, and the claim is
+// never the unproven "no repository policy".
+func assertUnavailableBase(t *testing.T, data *core.ConfigData, warns []string) {
+	t.Helper()
+	if data.Trusted || data.Source != noBaseLabel {
+		t.Fatalf("data = %+v, want the unavailable-base preview", data)
+	}
+	if data.Source == "no repository policy" {
+		t.Fatal("no-bundle preview claims the base configures no policy")
+	}
+	if len(data.Requirements) != 0 {
+		t.Fatalf("requirements = %+v, want none proven without the base read", data.Requirements)
+	}
+	if !slices.Contains(warns, noBaseWarning) {
+		t.Fatalf("warnings = %v, want the unavailable-base remedy", warns)
 	}
 }
 
@@ -536,5 +578,256 @@ func assertPreviewWroteNothing(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "cheap") {
 		t.Fatalf("preview mutated the working configuration:\n%s", raw)
+	}
+}
+
+// previewPolicy is the preview fixture policy: a root clause, a root required
+// check, the bind requirement, and a scope that adds its own clause, check,
+// and defaults. Every expectation below is a literal, so the assertions check
+// the contract instead of a second call to the same helper.
+const previewPolicy = `{"schema_version":"1",
+	"defaults":{"panel":["base-panel"],"effort":"standard","budget_usd":2.5},
+	"requirements":{"block_clauses":[{"name":"root-security","threshold":"important","categories":["security"]}],
+		"require_checks":["no-open-above-block"],"require_bind":true},
+	"scopes":[{"name":"vendored","include":["vendor/**"],
+		"requirements":{"block_clauses":[{"name":"vendored-sql","threshold":"critical","categories":["security"],"paths":["vendor/**"]}],
+			"require_checks":["head-current"]},
+		"defaults":{"effort":"deep"}}]}`
+
+// previewBundle commits previewPolicy at the base, resolves and captures it
+// with the shipped resolver, persists the run state, and snapshots the trusted
+// base through controls.Resolve: a preview then reads exactly the verified
+// inputs a fetch would have recorded.
+func previewBundle(t *testing.T, files []string) string {
+	t.Helper()
+	base := baseRepo(t, map[string]string{".verdict/config.json": previewPolicy})
+	cfg, ref := Parse([]byte(previewPolicy))
+	if ref != nil {
+		t.Fatalf("Parse: %v", ref)
+	}
+	in := &Inputs{Repo: cfg, BaseSHA: base}
+	for _, path := range files {
+		in.Files = append(in.Files, FileInput{Path: path})
+	}
+	resolved, ref := Resolve(in)
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	dir := filepath.Join(".", VerdictDir, StateDirName, "7")
+	rs := &RunState{
+		BaseSHA: base, Trusted: true, CapturedAt: "2026-11-06T00:00:00Z",
+		Evidence: Capture(in, resolved, []byte(previewPolicy), "2026-11-06T00:00:00Z"),
+		Resolved: resolved,
+	}
+	if err := WriteRunState(dir, rs); err != nil {
+		t.Fatalf("WriteRunState: %v", err)
+	}
+	if _, ref := controls.Resolve(t.Context(), cmdr, &controls.Request{
+		BundleDir: dir, Root: ".", BaseSHA: base,
+	}); ref != nil {
+		t.Fatalf("controls.Resolve: %v", ref)
+	}
+	list := strings.Join(files, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".difffiles"), []byte(list), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return base
+}
+
+// requirementRows renders one requirement list as comparable rows, so a test
+// compares whole entries — key, threshold, status, and sources — as literals.
+func requirementRows(reqs []core.ConfigRequirement) []string {
+	out := make([]string, 0, len(reqs))
+	for _, req := range reqs {
+		threshold := "-"
+		if req.Threshold != nil {
+			threshold = *req.Threshold
+		}
+		out = append(out, req.Key+" "+threshold+" "+req.Status+" via "+strings.Join(req.Sources, ","))
+	}
+	return out
+}
+
+// assertBundleRequirements pins the prospective requirement rows of
+// previewPolicy for the trusted-base bundle.
+func assertBundleRequirements(t *testing.T, reqs []core.ConfigRequirement, base string) {
+	t.Helper()
+	want := []string{
+		"block_clauses/root-security important pending via repo base " + base,
+		"block_clauses/vendored-sql critical pending via scope vendored",
+		"require_bind - pending via repo base " + base,
+		"require_checks/head-current - pending via scope vendored",
+		"require_checks/no-open-above-block - pending via repo base " + base,
+	}
+	if got := requirementRows(reqs); !slices.Equal(got, want) {
+		t.Fatalf("requirements = %v\nwant %v", got, want)
+	}
+}
+
+// assertVendoredChecks pins the plan checks the requirements add: the required
+// root check reaches every group, and the scope's own check reaches only the
+// group that carries the vendored path.
+func assertVendoredChecks(t *testing.T, data *core.ConfigData) {
+	t.Helper()
+	vendored := false
+	for i := range data.Plan {
+		group := &data.Plan[i]
+		if !slices.Contains(group.Files, "vendor/lib.go") {
+			continue
+		}
+		vendored = true
+		if want := []string{"no-open-above-block", "head-current"}; !slices.Equal(group.Checks, want) {
+			t.Fatalf("vendored checks = %v, want %v", group.Checks, want)
+		}
+	}
+	if !vendored {
+		t.Fatalf("plan = %+v, want a group for vendor/lib.go", data.Plan)
+	}
+}
+
+// TestPreviewBundleMatchesProspectivePolicy pins the preview defect closure: a
+// captured trusted base carrying a block clause and required checks previews
+// those requirements instead of an empty list, from the same resolution the
+// capture stores, and the explanation of the same bundle names them
+// identically. Reads stay reads: nothing executes and no check is certified.
+func TestPreviewBundleMatchesProspectivePolicy(t *testing.T) {
+	base := previewBundle(t, []string{"vendor/lib.go", "internal/app.go"})
+	before := walkNames(t, ".")
+	data := configData(t, core.ConfigFlags{Preview: true})
+	if after := walkNames(t, "."); len(after) != len(before) {
+		t.Fatalf("preview wrote files: before=%v after=%v", before, after)
+	}
+	assertTrustedPreview(t, data, base)
+	assertRequirementsMatchExplain(t, data)
+	assertPreviewDriftSafe(t, data, base)
+}
+
+// configData runs one config request through the service and returns its data,
+// so each assertion below reads a real invocation instead of a shortcut.
+func configData(t *testing.T, flags core.ConfigFlags) *core.ConfigData {
+	t.Helper()
+	resp, ref := Run(context.Background(), &core.ConfigRequest{
+		Repo: "acme/app", Pr: "7", Flags: flags,
+	})
+	if ref != nil {
+		t.Fatalf("config %+v: %v", flags, ref)
+	}
+	return resp.Data
+}
+
+// assertTrustedPreview pins the trusted inventory preview: the prospective
+// requirements and the plan checks the run would enforce, with no observation
+// invented.
+func assertTrustedPreview(t *testing.T, data *core.ConfigData, base string) {
+	t.Helper()
+	if data == nil || data.Mode != "preview" || !data.Trusted || data.Source != "trusted base inventory" {
+		t.Fatalf("data = %+v; want the trusted inventory preview", data)
+	}
+	if len(data.Checks) != 0 {
+		t.Fatalf("checks = %+v; a preview executes nothing", data.Checks)
+	}
+	assertBundleRequirements(t, data.Requirements, base)
+	assertVendoredChecks(t, data)
+	assertWireRequirements(t, data)
+}
+
+// assertWireRequirements pins the rendered surface the CLI, the MCP tool, and
+// the TypeScript client read: the envelope data profile prints the prospective
+// requirements instead of an empty array.
+func assertWireRequirements(t *testing.T, data *core.ConfigData) {
+	t.Helper()
+	raw, ok := data.Wire().Get("requirements")
+	rows, isList := raw.([]any)
+	if !ok || !isList || len(rows) != len(data.Requirements) || len(rows) == 0 {
+		t.Fatalf("wire requirements = %v (present=%v); want the prospective rows", raw, ok)
+	}
+}
+
+// assertRequirementsMatchExplain pins that explaining the same bundle names the
+// policy the preview promised: the two surfaces cannot disagree again.
+func assertRequirementsMatchExplain(t *testing.T, preview *core.ConfigData) {
+	t.Helper()
+	explain := configData(t, core.ConfigFlags{Explain: true})
+	if got, want := requirementRows(explain.Requirements), requirementRows(preview.Requirements); !slices.Equal(got, want) {
+		t.Fatalf("explain requirements = %v, preview requirements = %v", got, want)
+	}
+}
+
+// assertPreviewDriftSafe pins that the preview reads the recorded snapshot: a
+// later working-config edit and a later environment value move neither the
+// preview nor the explanation of the existing review.
+func assertPreviewDriftSafe(t *testing.T, before *core.ConfigData, base string) {
+	t.Helper()
+	drift := `{"schema_version":"1","defaults":{"panel":["drifted"]}}`
+	if err := os.WriteFile(filepath.Join(VerdictDir, "config.json"), []byte(drift), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REVIEW_EFFORT", "max")
+	drifted := configData(t, core.ConfigFlags{Preview: true})
+	assertBundleRequirements(t, drifted.Requirements, base)
+	assertPanel(t, drifted.Values, "base-panel")
+	explain := configData(t, core.ConfigFlags{Explain: true})
+	if got, want := requirementRows(explain.Requirements), requirementRows(before.Requirements); !slices.Equal(got, want) {
+		t.Fatalf("explain moved with the working config: %v != %v", got, want)
+	}
+}
+
+// TestPreviewProposedLabelsProvenance pins the proposed labeling: the same
+// policy read from an unmerged file previews its requirements, names that file
+// as the source of every repository-layer value and requirement, and stays
+// untrusted — no value claims the tracked base and no requirement is certified.
+func TestPreviewProposedLabelsProvenance(t *testing.T) {
+	proposed := writeProposed(t, previewPolicy)
+	data, _, ref := Preview(".", "7", proposed, "", nil)
+	if ref != nil {
+		t.Fatalf("Preview: %v", ref)
+	}
+	assertProposedPreview(t, data, proposed)
+	assertProposedRequirements(t, data, proposed)
+}
+
+// writeProposed writes one proposed configuration in a fresh checkout and
+// returns its path.
+func writeProposed(t *testing.T, body string) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Chdir(root)
+	proposed := filepath.Join(root, "proposed.json")
+	if err := os.WriteFile(proposed, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return proposed
+}
+
+// assertProposedPreview pins the untrusted label and the per-value relabeling.
+func assertProposedPreview(t *testing.T, data *core.ConfigData, proposed string) {
+	t.Helper()
+	source := "proposed file " + proposed
+	if data.Mode != "preview" || data.Trusted || data.Source != source {
+		t.Fatalf("data = %+v, want an untrusted proposed preview", data)
+	}
+	if panel := mustValue(t, data.Values, "panel"); panel.Layer != LayerRepo || panel.Source != source {
+		t.Fatalf("panel origin = %+v, want the proposed file on the repo layer", panel)
+	}
+	if built := mustValue(t, data.Values, "max_bytes"); built.Layer != LayerBuiltIn || built.Source != LayerBuiltIn {
+		t.Fatalf("max_bytes origin = %+v; only repo-layer values are relabelled", built)
+	}
+	if len(data.Checks) != 0 {
+		t.Fatalf("checks = %+v; a proposed preview certifies nothing", data.Checks)
+	}
+}
+
+// assertProposedRequirements pins that the prospective requirements name the
+// proposed file as their source, never the tracked path or a base commit.
+func assertProposedRequirements(t *testing.T, data *core.ConfigData, proposed string) {
+	t.Helper()
+	source := "proposed file " + proposed
+	want := []string{
+		"block_clauses/root-security important pending via " + source,
+		"require_bind - pending via " + source,
+		"require_checks/no-open-above-block - pending via " + source,
+	}
+	if got := requirementRows(data.Requirements); !slices.Equal(got, want) {
+		t.Fatalf("requirements = %v\nwant %v", got, want)
 	}
 }

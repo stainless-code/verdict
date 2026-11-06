@@ -130,6 +130,44 @@ sources, applicable clauses with `pending` status, and the selected plan
 with its group identities. Stage flags and consents belong to their own
 invocation records.
 
+## Preview
+
+`config <owner/repo> <pr> --preview [--file <path>]` resolves what a
+prospective review would enforce, with no live call, exec, or write. The
+repository layer comes from the recorded trusted-base inventory beside the
+run bundle when a verified snapshot exists, else from `--file`. It reports
+the same requirement rows the fetch capture stores — the root and
+per-scope clauses, the required checks, and `require_bind` — each
+`pending`, so a block clause can no longer preview as `requirements: []`
+while `--explain` lists it. `checks` stays absent: a preview has no
+observation and none is invented. Plan groups carry the checks those
+requirements add, because the same resolution feeds the plan.
+
+Provenance is labeled, never implied:
+
+- `trusted base inventory` with `trusted: true` only when the recorded
+  snapshot verified and carried `.verdict/config.json`; requirement
+  sources then name the captured base commit.
+- `no repository policy` only when that verified snapshot records the file
+  absent from the base.
+- `trusted base unavailable (no run bundle)`, with a warning naming the
+  remedy, when no bundle exists: nothing then read the base, so the
+  repository layer is unknown and the preview says so instead of claiming
+  the repository configures nothing. The personal, environment, and
+  built-in layers still resolve, and no requirement is reported that
+  nothing proved.
+- `proposed file <path>` with `trusted: false` for `--file`: every value
+  and requirement the repository layer supplied names that file instead of
+  the tracked path the preview never read. Scope, environment, personal,
+  and built-in values keep their own labels, and nothing here certifies the
+  proposed input as trusted policy or its requirements as met.
+
+The selector spelling is a documented difference from D7 §10: the shipped
+CLI takes the bundle selector positionally and the proposed path as
+`--file`, so `--bundle` and `--proposed` are not aliases that exist. Both
+modes travel inside `data` as the `configData` profile, so the CLI, the MCP
+read-only tool, and the TypeScript client read one shape.
+
 ## Consumers
 
 `fetch`/`fetch-local` resolve the two-phase policy and persist the run

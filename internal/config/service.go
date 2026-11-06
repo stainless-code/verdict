@@ -124,11 +124,24 @@ func Explain(root, name string) (*core.ConfigData, []string, *core.RefusalError)
 	return data, nil, nil
 }
 
+// Labels and warnings for a preview whose repository layer is not proven:
+// without a run bundle nothing read the base configuration, so the preview
+// never claims the base holds no policy.
+const (
+	noBaseLabel   = "trusted base unavailable (no run bundle)"
+	noBaseWarning = "trusted base configuration not read: no run bundle for this run, so this preview " +
+		"excludes the repository layer — fetch the run, or preview a proposed file, to see repository policy"
+)
+
 // Preview resolves what would be effective without any live call, exec,
-// or write: a proposed file when given (trusted false), else the
-// trusted-base inventory beside the run bundle when one exists, else
-// the no-policy layers. Per-file plan groups resolve when the legacy
-// bundle's file list survives beside the state.
+// or write: a proposed file when given (never trusted, with every value the
+// repository layer supplied naming that file), else the recorded trusted-base
+// inventory beside the run bundle, else the layers the checkout proves.
+// Per-file plan groups resolve when the bundle's file list survives beside the
+// state. Requirements and plan checks come from the same resolution the fetch
+// capture stores, so a preview and the bundle fetched from it name one policy;
+// every prospective requirement stays pending because a preview has no
+// evidence.
 func Preview(root, name, proposedPath, settingsPath string, env map[string]string) (*core.ConfigData, []string, *core.RefusalError) {
 	personal, ref := LoadPersonal(settingsPath)
 	if ref != nil {
@@ -138,7 +151,7 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 	if ref != nil {
 		return nil, nil, ref
 	}
-	cfg, trusted, source, ref := previewInputs(root, name, proposedPath)
+	src, cfg, ref := previewInputs(root, name, proposedPath)
 	if ref != nil {
 		return nil, nil, ref
 	}
@@ -146,6 +159,7 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 		Repo:         cfg,
 		Personal:     personal,
 		SettingsPath: settingsPath,
+		BaseSHA:      src.baseSHA,
 		Files:        previewFiles(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)),
 		Env:          partial,
 	}
@@ -153,66 +167,154 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 	if ref != nil {
 		return nil, nil, ref
 	}
-	data := dataFromResolved(resolved)
+	data := dataFromResolved(in, resolved)
 	data.Mode = "preview"
-	data.Trusted = trusted
-	data.Source = source
+	data.Trusted = src.trusted
+	data.Source = src.label
+	if src.proposed != "" {
+		labelProposed(data, src.proposed)
+	}
+	if src.warning != "" {
+		warns = append(warns, src.warning)
+	}
 	return data, warns, nil
 }
 
-// previewInputs reads the proposed file or the trusted-base inventory:
-// the file wins outright (proposed, never trusted), else the inventory
-// beside the run bundle, else no repository policy.
-func previewInputs(root, name, proposedPath string) (*core.Config, bool, string, *core.RefusalError) {
+// previewProvenance is where a preview's repository layer came from and how
+// much of it is proven: the trusted-base inventory recorded beside a run
+// bundle, the operator's proposed file, or nothing read at all. Only a
+// verified snapshot sets trusted; a proposed file never does, and an absent
+// bundle proves nothing about the base.
+type previewProvenance struct {
+	label    string
+	proposed string
+	warning  string
+	baseSHA  string
+	trusted  bool
+}
+
+// previewBaseState is what the recorded inventory proves about the base
+// configuration: present, verifiably absent, or never read.
+type previewBaseState int
+
+const (
+	// baseNeverRead: no run bundle exists, so no read covered the base
+	// configuration. The repository layer is unknown, never empty.
+	baseNeverRead previewBaseState = iota
+	// baseNoPolicy: the verified snapshot records no base configuration.
+	baseNoPolicy
+	// baseHasPolicy: the verified snapshot carries the base configuration.
+	baseHasPolicy
+)
+
+// previewInputs reads the proposed file or the recorded trusted-base
+// inventory: the file wins outright (proposed, never trusted), else the
+// inventory beside the run bundle, else the state the checkout proves.
+func previewInputs(root, name, proposedPath string) (previewProvenance, *core.Config, *core.RefusalError) {
 	if proposedPath != "" {
 		return proposedInputs(proposedPath)
 	}
-	raw, ok, ref := previewInventory(root, name)
+	snap, raw, state, ref := previewInventory(root, name)
 	if ref != nil {
-		return nil, false, "", ref
+		return previewProvenance{}, nil, ref
 	}
-	if !ok {
-		return nil, false, "no repository policy", nil
+	if state == baseNoPolicy {
+		return previewProvenance{label: "no repository policy"}, nil, nil
+	}
+	if state == baseNeverRead {
+		return previewProvenance{label: noBaseLabel, warning: noBaseWarning}, nil, nil
 	}
 	cfg, ref := Parse(raw)
 	if ref != nil {
-		return nil, false, "", ref
+		return previewProvenance{}, nil, ref
 	}
-	return cfg, true, "trusted base inventory", nil
+	return previewProvenance{label: "trusted base inventory", trusted: true, baseSHA: snapshotBaseSHA(snap)}, cfg, nil
 }
 
-// proposedInputs parses the operator's proposed file: it reports the
-// proposed origin and is never trusted, whatever the base says.
-func proposedInputs(path string) (*core.Config, bool, string, *core.RefusalError) {
+// snapshotBaseSHA names the base commit the recorded policy was read at. A
+// head-policy snapshot recorded the worktree instead, so it names no base
+// rather than claiming one.
+func snapshotBaseSHA(snap *controls.Snapshot) string {
+	if snap == nil || snap.File.Policy != controls.PolicyBase {
+		return ""
+	}
+	return snap.File.BaseSHA
+}
+
+// proposedInputs parses the operator's proposed file: it reports the proposed
+// origin and is never trusted, whatever the base says.
+func proposedInputs(path string) (previewProvenance, *core.Config, *core.RefusalError) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false, "", refuse(CodeBadConfig, "could not read proposed config %s: %v", path, err)
+		return previewProvenance{}, nil, refuse(CodeBadConfig, "could not read proposed config %s: %v", path, err)
 	}
 	cfg, ref := Parse(raw)
 	if ref != nil {
-		return nil, false, "", ref
+		return previewProvenance{}, nil, ref
 	}
-	return cfg, false, "proposed file " + path, nil
+	label := "proposed file " + path
+	return previewProvenance{label: label, proposed: label}, cfg, nil
 }
 
-// previewInventory reads the configuration the fetch captured at the
-// trusted base, re-verifying the snapshot hashes first: a tampered or
-// truncated snapshot refuses controls-stale instead of being previewed as
-// trusted policy. Absent reads absent.
-func previewInventory(root, name string) ([]byte, bool, *core.RefusalError) {
+// labelProposed moves the provenance of every value and requirement the
+// proposed file supplied from the tracked path to that file: the resolver
+// records .verdict/config.json for the repository layer, but a proposed
+// preview never read it. Layers, values, and keys do not move, so the
+// untrusted bit and the proposed source are the only claims made here; a
+// proposed input is never certified as trusted policy. Scope-sourced values
+// keep their scope label, which names the scope and claims no trust.
+func labelProposed(data *core.ConfigData, source string) {
+	relabelRepoSource(data.Values, source)
+	relabelRepoSource(data.Shadowed, source)
+	for i := range data.Files {
+		relabelRepoSource(data.Files[i].Values, source)
+		relabelRepoSource(data.Files[i].Shadowed, source)
+	}
+	relabelRequirementSources(data.Requirements, repoSource(""), source)
+}
+
+// relabelRepoSource names the proposed file on every value the repository
+// layer supplied, leaving every other layer's own label alone.
+func relabelRepoSource(values []core.ConfigValue, source string) {
+	for i := range values {
+		if values[i].Layer == LayerRepo && values[i].Source == configSourceName {
+			values[i].Source = source
+		}
+	}
+}
+
+// relabelRequirementSources renames one requirement provenance: a root clause
+// the resolver attributes to the tracked configuration came from the proposed
+// file instead, and a scope clause keeps its scope label.
+func relabelRequirementSources(reqs []core.ConfigRequirement, from, to string) {
+	for i := range reqs {
+		for j := range reqs[i].Sources {
+			if reqs[i].Sources[j] == from {
+				reqs[i].Sources[j] = to
+			}
+		}
+	}
+}
+
+// previewInventory reads the configuration the fetch captured at the trusted
+// base, re-verifying the snapshot hashes first: a tampered or truncated
+// snapshot refuses controls-stale instead of being previewed as trusted
+// policy. Absence is reported only when it is proven, and an absent bundle is
+// distinguished from an absent configuration.
+func previewInventory(root, name string) (*controls.Snapshot, []byte, previewBaseState, *core.RefusalError) {
 	dir := filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
 	snap, ref := controls.GateRecorded(dir)
 	if ref != nil {
 		if missingBundle(dir) {
-			return nil, false, nil
+			return nil, nil, baseNeverRead, nil
 		}
-		return nil, false, ref
+		return nil, nil, baseNeverRead, ref
 	}
 	raw, ok := snap.ReadFile(ConfigPath)
 	if !ok {
-		return nil, false, nil
+		return snap, nil, baseNoPolicy, nil
 	}
-	return raw, true, nil
+	return snap, raw, baseHasPolicy, nil
 }
 
 // missingBundle reports whether no run bundle exists at dir at all. Only a
@@ -288,20 +390,41 @@ func evidenceSource(rs *RunState) string {
 	return "run bundle " + rs.Name
 }
 
-// dataFromResolved resolves the current inputs with no outcomes yet:
-// every check reads pending.
-func dataFromResolved(resolved *Resolved) *core.ConfigData {
+// dataFromResolved resolves the current inputs with no outcomes yet: every
+// prospective requirement reads pending, and the plan carries the checks the
+// requirements add, so a preview names the work the run would enforce.
+func dataFromResolved(in *Inputs, resolved *Resolved) *core.ConfigData {
 	data := &core.ConfigData{
 		Source:     "preview",
 		PlanStatus: resolved.Plan.Status,
 	}
 	data.Values = resolvedValues(resolved)
+	data.Requirements = prospectiveRequirements(in, resolved)
 	data.Shadowed = shadowValues(resolved.Defaults.Shadowed)
 	data.Files = resolvedFiles(resolved)
 	data.Plan = planGroups(resolved.Plan)
 	data.Spend = spendView(resolved)
 	data.Privacy = privacyView(resolved)
 	return data
+}
+
+// prospectiveRequirements renders the requirement set the fetch capture would
+// store for these inputs: the root clauses, the per-file scope clauses, the
+// required checks, and the bind, each with pending status and its sources. A
+// preview therefore shows the missing prospective requirements instead of an
+// empty list, and still certifies no compliance because none has evidence.
+func prospectiveRequirements(in *Inputs, resolved *Resolved) []core.ConfigRequirement {
+	merged := evidenceRequirements(in, resolved)
+	out := make([]core.ConfigRequirement, 0, len(merged))
+	for i := range merged {
+		out = append(out, core.ConfigRequirement{
+			Key:       merged[i].Key,
+			Threshold: merged[i].Threshold,
+			Status:    merged[i].Status,
+			Sources:   append([]string{}, merged[i].Sources...),
+		})
+	}
+	return out
 }
 
 // resolvedValues flattens the global effective defaults with origins in
