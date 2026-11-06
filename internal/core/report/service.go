@@ -25,6 +25,7 @@ const (
 	tierImportant     = "important"
 	tierInformational = "informational"
 	codeCanceled      = "canceled"
+	codeBadCategory   = "bad-category"
 	codeReportFailed  = "report-failed"
 	prJSONSuffix      = "/PR.json"
 	fullDiffSuffix    = "/full.diff"
@@ -93,6 +94,9 @@ const (
 // adapter to write.
 func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *core.RefusalError) {
 	flags := normalizeFlags(req)
+	if ref := validateCategory(flags.Category); ref != nil {
+		return nil, ref
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before report completed"}
 	}
@@ -115,6 +119,21 @@ func normalizeFlags(req *core.ReportRequest) Flags {
 	flags.Kind = orDefault(flags.Kind, statusAll)
 	flags.Live = orDefault(flags.Live, liveAuto)
 	return flags
+}
+
+// validateCategory refuses an unknown category filter in core so direct Go
+// API, MCP, and service callers get the same typed bad-category refusal the
+// CLI adapter already reports as exit 2: a filter typo must never read as a
+// passing gate with zero findings.
+func validateCategory(category string) *core.RefusalError {
+	if category == "" || core.ValidCategory(category) {
+		return nil
+	}
+	return &core.RefusalError{
+		Code: codeBadCategory,
+		Message: fmt.Sprintf("report: unknown category '%s' (want %s)",
+			category, strings.Join(core.CategoryValues, "|")),
+	}
 }
 
 func orDefault(v, dflt string) string {

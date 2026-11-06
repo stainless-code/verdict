@@ -191,6 +191,70 @@ func TestNonStringCategory(t *testing.T) {
 	}
 }
 
+// TestFalseCategoryWarnsOnceStoresNull proves a false category warns exactly
+// once and stores null on the ordinary path: only null reads untagged
+// without a warning.
+func TestFalseCategoryWarnsOnceStoresNull(t *testing.T) {
+	checkFalseCategory(t, "local-falsecat", false)
+	entries := storeEntries(t, "local-falsecat")
+	if len(entries) != 1 {
+		t.Fatalf("findings = %d, want 1", len(entries))
+	}
+	if v, ok := entries[0]["category"]; !ok || v != nil {
+		t.Errorf("entry category = %#v (present=%v), want stored null", v, ok)
+	}
+}
+
+// TestFalseCategoryWarnsOnceDryRun proves the same warn-once contract on the
+// record --dry-run path, which shares the merge entries the ordinary path
+// persists above.
+func TestFalseCategoryWarnsOnceDryRun(t *testing.T) {
+	checkFalseCategory(t, "local-falsecat-dry", true)
+}
+
+// checkFalseCategory records one false-category review and proves the run
+// proceeds with exactly one store-null warning and one merged item.
+func checkFalseCategory(t *testing.T, slug string, dryRun bool) {
+	t.Helper()
+	writeStoreBundle(t, slug, categoryReview(t, `false`))
+	c := &collector{}
+	req := recordRequest(t, c, slug)
+	req.DryRun = dryRun
+	resp, ref := recordcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("dryRun=%v Run refusal: %v", dryRun, ref)
+	}
+	if n := countWarnings(c.warns, "category must be a string or null"); n != 1 {
+		t.Errorf("dryRun=%v false-category warnings = %d, want exactly one: %v", dryRun, n, c.warns)
+	}
+	if len(resp.Data.Items) != 1 {
+		t.Fatalf("dryRun=%v items = %d, want 1", dryRun, len(resp.Data.Items))
+	}
+}
+
+// TestFalseCategoryStrictRefuses proves strict input promotes the false
+// warning exactly like every other non-string category: the same review
+// records by default and refuses under strict input.
+func TestFalseCategoryStrictRefuses(t *testing.T) {
+	writeStoreBundle(t, "local-falsecat-strict", categoryReview(t, `false`))
+	c := &collector{}
+	dreq := recordRequest(t, c, "local-falsecat-strict")
+	dreq.DryRun = true
+	if _, ref := recordcore.Run(context.Background(), dreq); ref != nil {
+		t.Fatalf("default Run refusal: %v", ref)
+	}
+	sreq := recordRequest(t, &collector{}, "local-falsecat-strict")
+	sreq.DryRun = true
+	sreq.Strict = true
+	_, ref := recordcore.Run(context.Background(), sreq)
+	if ref == nil || ref.Code != "bad-review-input" {
+		t.Fatalf("strict refusal = %+v, want bad-review-input", ref)
+	}
+	if !strictPromoted(ref.Problems, core.ProblemCodeWrongType) {
+		t.Errorf("strict problems = %+v, want the category wrong-type as an error", ref.Problems)
+	}
+}
+
 // TestCategoryPreservedAndClearedOnRepost proves the re-post merge rule: an
 // absent category preserves the prior label, an explicit null clears it.
 func TestCategoryPreservedAndClearedOnRepost(t *testing.T) {

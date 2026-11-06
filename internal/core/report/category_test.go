@@ -142,6 +142,97 @@ func checkLineNames(lines []string, category string) bool {
 	return false
 }
 
+// TestReportBadCategoryRefusal proves the service refuses an unknown
+// category filter in core, so direct Go API, MCP, and service callers get
+// the typed bad-category refusal instead of a silently passing gate.
+func TestReportBadCategoryRefusal(t *testing.T) {
+	req := fixture(t, categoryStore())
+	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Category: "securty", Check: "important", Live: "skip"},
+	})
+	if ref == nil {
+		t.Fatal("Run with Category securty refused nothing, want bad-category")
+	}
+	if ref.Code != "bad-category" {
+		t.Errorf("refusal code = %q, want bad-category", ref.Code)
+	}
+}
+
+// eligibilityFinding renders one gate-eligibility probe entry: an open
+// important security finding with raw anchored/rigor JSON.
+func eligibilityFinding(sig, anchored, rigor string) string {
+	return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"anchored":` + anchored + `,"body":"Usable body here with enough substance.","suggestion":null,` +
+		`"inBounds":true,"rigor":` + rigor + `,"severity":"important","category":"security",` +
+		`"sig":"` + sig + `","sig_version":"1",` +
+		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open",` +
+		`"rationale":"","history":[]}`
+}
+
+// runEligibilityGate runs one --check important --category security gate over
+// a single-finding store and returns whether the gate failed.
+func runEligibilityGate(t *testing.T, store string) bool {
+	t.Helper()
+	req := fixture(t, store)
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Check: "important", Category: "security", Live: "skip"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	return resp.GateFailed
+}
+
+// TestReportCategoryGateEligibility proves the category gate still requires
+// an anchor and a recorded evidence rung: unanchored or missing/invalid
+// rigor never counts, while every published rung (said included) gates an
+// anchored finding.
+func TestReportCategoryGateEligibility(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		anchored string
+		rigor    string
+		failed   bool
+	}{
+		{"anchored-said-fails", "true", `"said"`, true},
+		{"anchored-walked-fails", "true", `"walked"`, true},
+		{"anchored-ran-fails", "true", `"ran"`, true},
+		{"unanchored-said-passes", "false", `"said"`, false},
+		{"anchored-null-rigor-passes", "true", `null`, false},
+		{"anchored-unknown-rigor-passes", "true", `"maybe"`, false},
+		{"anchored-number-rigor-passes", "true", `3`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := "[" + eligibilityFinding("dddddddddddddddddddddddddddddddddddddddd", tc.anchored, tc.rigor) + "]"
+			if got := runEligibilityGate(t, store); got != tc.failed {
+				t.Errorf("GateFailed = %v, want %v (anchored=%s rigor=%s)",
+					got, tc.failed, tc.anchored, tc.rigor)
+			}
+		})
+	}
+}
+
+// TestReportBaselineGateIgnoresEligibility proves the gate without a
+// category keeps its severity-only semantics: an unanchored said finding
+// still fails it, so the anchor/rigor intersection only narrows the
+// category-gated path.
+func TestReportBaselineGateIgnoresEligibility(t *testing.T) {
+	store := "[" + eligibilityFinding("dddddddddddddddddddddddddddddddddddddddd", "false", `"said"`) + "]"
+	req := fixture(t, store)
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !resp.GateFailed {
+		t.Error("baseline GateFailed = false, want true: the unanchored said finding still counts without a category")
+	}
+}
+
 // TestReportSarifCategory proves the SARIF export carries the category in
 // properties.category without changing the rule id or level.
 func TestReportSarifCategory(t *testing.T) {

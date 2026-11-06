@@ -127,6 +127,8 @@ export interface ReportCounts {
   section: number;
   anchored: number;
   unanchored: number;
+  /** Whole-store finding counts by published category plus untagged; every key is always present with zero defaults. */
+  by_category: unknown;
   [key: string]: unknown;
 }
 
@@ -139,6 +141,8 @@ export interface ReportPanel {
 export interface ReportFilters {
   status: string;
   kind: string;
+  /** The active --category filter, or null when the run did not filter by category. */
+  category: string | null;
   [key: string]: unknown;
 }
 
@@ -483,6 +487,8 @@ export interface TrendData {
   closed: number;
   by_status: TrendStatuses;
   by_tier: TrendTiers;
+  /** Portfolio finding counts by observed category with untagged for null entries; only observed categories appear. */
+  by_category: unknown;
   provenance: TrendProvenance;
   periods: Array<TrendPeriod>;
   per_bundle: Array<TrendBundleRow>;
@@ -543,6 +549,8 @@ export interface TrendBundleRow {
   closed: number;
   by_status: TrendStatuses;
   by_tier: TrendTiers;
+  /** One bundle's finding counts by observed category with untagged for null entries. */
+  by_category: unknown;
   [key: string]: unknown;
 }
 
@@ -552,6 +560,7 @@ export interface CalibrateData {
   head?: CalibrateHead | null;
   pr?: CalibratePR | null;
   outcomes?: unknown[];
+  /** Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged. */
   precision?: unknown;
   provenance?: ProvenanceTriple | null;
   bundle?: string;

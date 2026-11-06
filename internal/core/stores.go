@@ -11,11 +11,12 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// keyAnchored and keyStatus are the FindingEntry wire keys touched in
-// multiple render and decode paths.
+// keyAnchored, keyStatus, and keyCategory are the FindingEntry wire keys
+// touched in multiple render and decode paths.
 const (
 	keyAnchored = "anchored"
 	keyStatus   = "status"
+	keyCategory = "category"
 )
 
 // Review is schemas/review.schema.json: the agent-written review input.
@@ -245,7 +246,7 @@ func (e *FindingEntry) wireSection() *jq.Obj {
 		o.Set("rigor_source", e.RigorSource)
 	}
 	o.Set("severity", e.Severity)
-	o.Set("category", nil)
+	o.Set(keyCategory, nil)
 	return o
 }
 
@@ -269,7 +270,7 @@ func (e *FindingEntry) wireInline() *jq.Obj {
 	}
 	o.Set("severity", e.Severity)
 	if e.Category != nil || e.CategorySet {
-		o.Set("category", e.Category)
+		o.Set(keyCategory, e.Category)
 	}
 	briefWire(e.Brief, o)
 	return o
@@ -456,7 +457,7 @@ var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
 	"body": true, "suggestion": true, "kb": true, "inBounds": true,
-	"rigor": true, "rigor_source": true, "severity": true, "category": true, keyStatus: true, "firstSeen": true,
+	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"history": true,
 }
@@ -491,7 +492,7 @@ func entryLocator(e *FindingEntry, obj *jq.Obj) {
 }
 
 // entryOptions decodes the optional enrichment tail: suggestion, kb,
-// in-bounds, rigor, and severity.
+// in-bounds, rigor, severity, and category with its key presence.
 func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Suggestion = fieldOptString(obj, "suggestion")
 	e.KB = fieldOptStrings(obj, "kb")
@@ -499,7 +500,8 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Rigor, _ = obj.Get("rigor")
 	e.RigorSource, _ = fieldString(obj, "rigor_source")
 	e.Severity, _ = obj.Get("severity")
-	e.Category, _ = obj.Get("category")
+	e.Category, _ = obj.Get(keyCategory)
+	e.CategorySet = obj.Has(keyCategory)
 }
 
 // entryStamps decodes identity, lifecycle, and history: sig, version,

@@ -649,9 +649,10 @@ func (c *checker) checkSeverity(path string, v any) {
 
 // checkCategory validates one comment's category without ever refusing: an
 // unknown or non-string value warns and reads null, so a taxonomy typo still
-// posts. Absent and null read untagged.
+// posts. Only null reads untagged without a warning; every other non-string
+// (false included) warns exactly once. Absent and null read untagged.
 func (c *checker) checkCategory(path string, v any) {
-	if v == nil || v == false {
+	if v == nil {
 		return
 	}
 	s, ok := v.(string)
