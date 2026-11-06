@@ -271,9 +271,9 @@ func TestPreviewUnreadableBundleFailsClosed(t *testing.T) {
 	}
 }
 
-// TestPreviewTrustedInventory pins the trusted path: the inventory
-// snapshot resolves trusted even with no run bundle present.
-func TestPreviewTrustedInventory(t *testing.T) {
+// TestPreviewHeadInventoryIsUntrusted keeps a recorded worktree opt-out
+// distinct from trusted base policy, including a legacy snapshot.
+func TestPreviewHeadInventoryIsUntrusted(t *testing.T) {
 	serviceFixture(t)
 	if err := os.Remove(filepath.Join(".verdict", "state", "7", "run.json")); err != nil {
 		t.Fatal(err)
@@ -282,8 +282,8 @@ func TestPreviewTrustedInventory(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Preview: %v", ref)
 	}
-	if !data.Trusted || data.Source != "trusted base inventory" {
-		t.Fatalf("data = %+v, want the trusted inventory", data)
+	if data.Trusted || data.Source != "recorded worktree inventory" {
+		t.Fatalf("data = %+v, want the untrusted worktree inventory", data)
 	}
 	if valueFor(data.Values, "panel") == nil {
 		t.Fatal("inventory panel missing from preview")
@@ -829,5 +829,77 @@ func assertProposedRequirements(t *testing.T, data *core.ConfigData, proposed st
 	}
 	if got := requirementRows(data.Requirements); !slices.Equal(got, want) {
 		t.Fatalf("requirements = %v\nwant %v", got, want)
+	}
+}
+
+// TestPreviewPreservesCapturedRename checks both preview modes retain old-path
+// identity and the old scope's clause instead of reconstructing new paths only.
+func TestPreviewPreservesCapturedRename(t *testing.T) {
+	base := previewRenamedBundle(t)
+	data := configData(t, core.ConfigFlags{Preview: true})
+	assertRenamedPreview(t, data, "repo base "+base)
+	assertRequirementsMatchExplain(t, data)
+	proposed := filepath.Join(t.TempDir(), "proposed.json")
+	if err := os.WriteFile(proposed, []byte(previewPolicy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data = configData(t, core.ConfigFlags{File: proposed})
+	assertRenamedPreview(t, data, "proposed file "+proposed)
+}
+
+func previewRenamedBundle(t *testing.T) string {
+	t.Helper()
+	base := previewBundle(t, []string{"internal/moved.go"})
+	cfg, ref := Parse([]byte(previewPolicy))
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	in := &Inputs{Repo: cfg, BaseSHA: base, Files: []FileInput{{Path: "internal/moved.go", OldPath: "vendor/lib.go"}}}
+	resolved, ref := Resolve(in)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	dir := filepath.Join(VerdictDir, StateDirName, "7")
+	rs := mustReadRunState(t, dir)
+	rs.Resolved = resolved
+	rs.Evidence = Capture(in, resolved, []byte(previewPolicy), "2026-11-06T00:00:00Z")
+	if err := WriteRunState(dir, rs); err != nil {
+		t.Fatal(err)
+	}
+	return base
+}
+
+func assertRenamedPreview(t *testing.T, data *core.ConfigData, rootSource string) {
+	t.Helper()
+	if len(data.Files) != 1 || data.Files[0].Path != "internal/moved.go" || data.Files[0].OldPath != "vendor/lib.go" {
+		t.Fatalf("files = %+v, want the captured new and old paths", data.Files)
+	}
+	want := []string{
+		"block_clauses/root-security important pending via " + rootSource,
+		"block_clauses/vendored-sql critical pending via scope vendored (old path vendor/lib.go)",
+		"require_bind - pending via " + rootSource,
+		"require_checks/head-current - pending via scope vendored (old path vendor/lib.go)",
+		"require_checks/no-open-above-block - pending via " + rootSource,
+	}
+	if got := requirementRows(data.Requirements); !slices.Equal(got, want) {
+		t.Fatalf("rename requirements = %v; want %v", got, want)
+	}
+}
+
+// TestPreviewRefusesEditedCapturedFiles prevents a renamed file's identity
+// being changed independently of the verified capture's input digest.
+func TestPreviewRefusesEditedCapturedFiles(t *testing.T) {
+	previewRenamedBundle(t)
+	path := filepath.Join(VerdictDir, StateDirName, "7", runStateFileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(raw), "vendor/lib.go", "outside/lib.go")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, ref := Preview(".", "7", "", "", nil)
+	if ref == nil || ref.Code != controls.CodeStale {
+		t.Fatalf("preview refusal = %v, want controls-stale", ref)
 	}
 }

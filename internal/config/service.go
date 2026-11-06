@@ -155,12 +155,16 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 	if ref != nil {
 		return nil, nil, ref
 	}
+	files, ref := previewFiles(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name))
+	if ref != nil {
+		return nil, nil, ref
+	}
 	in := &Inputs{
 		Repo:         cfg,
 		Personal:     personal,
 		SettingsPath: settingsPath,
 		BaseSHA:      src.baseSHA,
-		Files:        previewFiles(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)),
+		Files:        files,
 		Env:          partial,
 	}
 	resolved, ref := Resolve(in)
@@ -227,6 +231,9 @@ func previewInputs(root, name, proposedPath string) (previewProvenance, *core.Co
 	cfg, ref := Parse(raw)
 	if ref != nil {
 		return previewProvenance{}, nil, ref
+	}
+	if snap.File.Policy == controls.PolicyHead {
+		return previewProvenance{label: "recorded worktree inventory"}, cfg, nil
 	}
 	return previewProvenance{label: "trusted base inventory", trusted: true, baseSHA: snapshotBaseSHA(snap)}, cfg, nil
 }
@@ -326,9 +333,39 @@ func missingBundle(dir string) bool {
 	return errors.Is(err, fs.ErrNotExist)
 }
 
-// previewFiles reads the bundle's file list for per-file plan
-// groups when it survives: absent reads global-only resolution.
-func previewFiles(dir string) []FileInput {
+// previewFiles preserves the captured review identities, including rename
+// endpoints. Legacy bundles without run.json fall back to their flat list.
+func previewFiles(dir string) ([]FileInput, *core.RefusalError) {
+	_, found, err := ReadRunState(dir)
+	if err != nil {
+		return nil, stale(dir, "run bundle is unreadable")
+	}
+	if !found {
+		return legacyPreviewFiles(dir), nil
+	}
+	rs, ref := VerifyRunState(dir)
+	if ref != nil {
+		return nil, ref
+	}
+	if rs == nil {
+		return nil, stale(dir, "run bundle disappeared during preview")
+	}
+	return capturedFileInputs(rs), nil
+}
+
+func capturedFileInputs(rs *RunState) []FileInput {
+	if rs.Resolved == nil {
+		return nil
+	}
+	files := make([]FileInput, 0, len(rs.Resolved.Files))
+	for i := range rs.Resolved.Files {
+		file := &rs.Resolved.Files[i]
+		files = append(files, FileInput{Path: file.Path, OldPath: file.OldPath})
+	}
+	return files
+}
+
+func legacyPreviewFiles(dir string) []FileInput {
 	raw, err := os.ReadFile(filepath.Join(dir, ".difffiles"))
 	if err != nil {
 		return nil

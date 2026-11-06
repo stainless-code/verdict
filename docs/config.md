@@ -140,7 +140,8 @@ the same requirement rows the fetch capture stores — the root and
 per-scope clauses, the required checks, and `require_bind` — each
 `pending`, so a block clause can no longer preview as `requirements: []`
 while `--explain` lists it. `checks` stays absent: a preview has no
-observation and none is invented. Plan groups carry the checks those
+observation and none is invented. Captured rename identities retain both paths,
+so an old-path scope stays applicable in preview. Plan groups carry the checks those
 requirements add, because the same resolution feeds the plan.
 
 Provenance is labeled, never implied:
@@ -148,6 +149,8 @@ Provenance is labeled, never implied:
 - `trusted base inventory` with `trusted: true` only when the recorded
   snapshot verified and carried `.verdict/config.json`; requirement
   sources then name the captured base commit.
+- `recorded worktree inventory` with `trusted: false` for the explicit
+  head-controls opt-out: recorded worktree bytes never claim base provenance.
 - `no repository policy` only when that verified snapshot records the file
   absent from the base.
 - `trusted base unavailable (no run bundle)`, with a warning naming the
