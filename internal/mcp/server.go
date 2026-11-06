@@ -104,6 +104,7 @@ func New(cfg *Config) *Server {
 	if cfg.Stderr == nil {
 		cfg.Stderr = io.Discard
 	}
+	cfg.Stderr = &diagWriter{dst: cfg.Stderr}
 	tools := allTools(cfg.ReadOnly, cfg.Operator)
 	applyCommanderOverrides(tools, cfg.Commanders)
 	byName := make(map[string]*tool, len(tools))
@@ -414,6 +415,28 @@ func (s *Server) listTools() toolsListResult {
 		})
 	}
 	return toolsListResult{Tools: out}
+}
+
+// diagWriter serializes one session's diagnostic stream. Every concurrent
+// tool call shares stderr through this writer, so each progress, tool and log
+// write takes the same lock and no line interleaves. Stdout frames keep their
+// own path and ordering.
+type diagWriter struct {
+	dst io.Writer
+	mu  sync.Mutex
+}
+
+func (w *diagWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n, err := w.dst.Write(p)
+	if err != nil {
+		// Diagnostics are best effort: no progress or log caller can act on a
+		// failed stderr write, so the error stops here rather than failing the
+		// tool call whose result is already being produced.
+		return n, nil
+	}
+	return n, nil
 }
 
 type stderrProgress struct {
