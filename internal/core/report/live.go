@@ -120,7 +120,7 @@ func removeErrFile(path string) {
 	_ = os.Remove(path)
 }
 
-func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) {
+func completeness(dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool, string) {
 	var posted string
 	if isRegular(dir + "/post.json") {
 		posted = readcommon.JSONStr(dir+"/post.json", "head")
@@ -134,35 +134,26 @@ func completeness(dir, headSHA string) (*core.ReportCompleteness, bool, string) 
 	if posted != "" {
 		comp.PostedHead = &posted
 	}
-	completePatchIdentity(dir, comp)
+	completePatchIdentity(dir, headSHA, baseSHA, comp)
 	return comp, reviewed, posted
 }
 
 // completePatchIdentity fills the same-patch comparison: the reviewed patch
-// id from the bundle identity, the posted patch id from the post receipt,
-// and same_patch when both are present and agree. A legacy bundle with no
-// identity keeps the SHA comparison; the caller warns.
-func completePatchIdentity(dir string, comp *core.ReportCompleteness) {
-	reviewed, ok := identity.Load(dir)
+// id from the byte-bound bundle identity, the posted patch id from the
+// completed post receipt, and same_patch when both are present and agree.
+// Either side unverified leaves its field absent; a legacy bundle with no
+// verifiable identity keeps the SHA comparison and the caller warns.
+func completePatchIdentity(dir, head, base string, comp *core.ReportCompleteness) {
+	reviewed, ok := identity.Verify(dir, head, base)
 	if !ok {
 		return
 	}
 	if reviewed.PatchID != nil {
 		comp.ReviewedPatchID = reviewed.PatchID
 	}
-	posted := readcommon.PostRecord(dir)
-	if posted == nil {
+	patch, kind, ok := identity.CompletedPatch(readcommon.PostRecord(dir))
+	if !ok {
 		return
-	}
-	var patch, kind string
-	if v, ok := posted["patch_id"].(string); ok {
-		patch = v
-	}
-	if patch == "" {
-		return
-	}
-	if v, ok := posted["patch_id_kind"].(string); ok {
-		kind = v
 	}
 	comp.PostedPatchID = &patch
 	same := identity.Match(reviewed, &identity.Identity{PatchID: &patch, PatchIDKind: kind})

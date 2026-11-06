@@ -169,6 +169,8 @@ notes.txt	NEW	1	3
   "range": "HEAD~1...HEAD",
   "dirty": false,
   "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
+  "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
+  "patch_id_kind": "git-patch-id",
   "files": 1,
   "additions": 1,
   "deletions": 1,

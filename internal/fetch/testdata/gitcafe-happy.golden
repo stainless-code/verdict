@@ -183,6 +183,16 @@ diff --git a/a.txt b/a.txt
 --- file C/.review/4707/hunks.tsv ---
 a.txt	OLD	1	1
 a.txt	NEW	1	1
+--- file C/.review/4707/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "bd03c7be2b599fddea5bd6e6ed9957963abebf70",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "2c9b2f1cce239dd825be072716fb8c7e57b9b932877ca4866e9b665a741db5c1",
+  "raw_diff_sha256": "2c9b2f1cce239dd825be072716fb8c7e57b9b932877ca4866e9b665a741db5c1",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444"
+}
 --- file C/.review/4707/inline.json ---
 [
   {

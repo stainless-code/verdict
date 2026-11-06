@@ -518,19 +518,23 @@ func (st *state) forceBypass(code string, patchID, prevBundle, prevHead *string)
 }
 
 // patchGuard refuses a duplicate review of the same patch at a new SHA: it
-// scans sibling .review/*/post.json receipts for the current patch id and
-// kind, refusing unless --force (recorded in forced[]). It reads post.json
-// only, so an unposted local bundle never blocks a post. A missing or
-// malformed identity warns and proceeds with the SHA-only dedupe.
+// binds the current bundle identity to the bundle's present bytes and head,
+// then scans sibling .review/*/post.json receipts for a completed
+// publication of the same verified patch in the same repository, refusing
+// unless --force (recorded in forced[]). It reads post.json only as
+// publication proof, so an unposted local bundle never blocks a post. A
+// missing, malformed, or stale identity warns and proceeds with the
+// SHA-only dedupe; a patch id never authorizes a post.
 func (st *state) patchGuard() *core.RefusalError {
 	if st.flags.DryRun {
 		return nil
 	}
-	cur, ok := identity.Load(st.dir)
-	if !ok || cur.PatchID == nil || *cur.PatchID == "" {
-		if !ok {
-			st.warn("patch identity unavailable — dedupe by SHA only")
-		}
+	cur, ok := identity.Verify(st.dir, st.commitID, recordcore.BundleBase(st.dir, st.store()))
+	if !ok {
+		st.warn("patch identity unavailable — dedupe by SHA only")
+		return nil
+	}
+	if cur.PatchID == nil {
 		return nil
 	}
 	st.identity = cur
@@ -556,8 +560,9 @@ type patchSibling struct {
 }
 
 // scanPatchSiblings returns the first sibling bundle (sorted, deterministic)
-// whose completed post.json shares the patch id and kind. Malformed sibling
-// receipts cannot match; a missing .review dir matches nothing.
+// with a completed same-patch publication: a completed post.json receipt
+// carrying the same verified patch claim in the same repository. Malformed
+// sibling receipts cannot match; a missing .review dir matches nothing.
 func scanPatchSiblings(dir string, cur *identity.Identity) *patchSibling {
 	parent := filepath.Dir(dir)
 	entries, err := os.ReadDir(parent)
@@ -569,31 +574,31 @@ func scanPatchSiblings(dir string, cur *identity.Identity) *patchSibling {
 		if !entry.IsDir() || entry.Name() == self {
 			continue
 		}
-		if sib := siblingMatch(parent, entry.Name(), cur); sib != nil {
+		if sib := siblingMatch(parent, dir, entry.Name(), cur); sib != nil {
 			return sib
 		}
 	}
 	return nil
 }
 
-// siblingMatch reads one sibling post.json as publication proof: the patch
-// id and kind must match through the shared rule, so an unposted bundle
-// (no post.json, no patch fields) never blocks.
-func siblingMatch(parent, bundle string, cur *identity.Identity) *patchSibling {
-	store := readcommon.OpenBundle(parent + "/" + bundle)
-	posted := store.PostMap()
-	if posted == nil {
+// siblingMatch reads one sibling post.json as publication proof: the
+// receipt must prove a completed publication carrying an algorithm-valid
+// patch claim matching the current verified identity, and both bundles
+// must share a known repository identity. An unposted bundle (no post.json,
+// no patch fields), an incomplete or pending receipt, a stale foreign
+// receipt, or a cross-repository patch never blocks.
+func siblingMatch(parent, current, bundle string, cur *identity.Identity) *patchSibling {
+	sibDir := parent + "/" + bundle
+	store := readcommon.OpenBundle(sibDir)
+	patch, kind, ok := identity.CompletedPatch(store.PostMap())
+	if !ok {
 		return nil
 	}
-	var patch, kind string
-	if v, ok := posted["patch_id"].(string); ok {
-		patch = v
+	claim := &identity.Identity{PatchID: &patch, PatchIDKind: kind}
+	if !identity.Match(cur, claim) {
+		return nil
 	}
-	if v, ok := posted["patch_id_kind"].(string); ok {
-		kind = v
-	}
-	sib := &identity.Identity{PatchID: &patch, PatchIDKind: kind}
-	if !identity.Match(cur, sib) {
+	if !readcommon.SameRepo(current, sibDir) {
 		return nil
 	}
 	head, _ := store.PostedHead()

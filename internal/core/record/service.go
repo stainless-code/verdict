@@ -233,7 +233,7 @@ type svc struct {
 // source.json base_sha, else the PR record's baseRefOid, else its base_sha.
 // store is the caller's decoded bundle so the run reads PR.json once.
 func BundleBase(dir string, store *readcommon.Bundle) string {
-	if base := readcommon.JSONStr(dir+"/source.json", "base_sha"); base != "" {
+	if base := readcommon.JSONStr(dir+sourceSuffix, "base_sha"); base != "" {
 		return base
 	}
 	if store == nil {
@@ -309,7 +309,7 @@ func (st *svc) finalize(dir, prov, headFull, now string, res *MergeResult) (*cor
 		Model:           modelOrNil(model),
 		Repairs:         repairList(st.repairs),
 	}
-	if ident, ok := identity.Load(dir); ok {
+	if ident, ok := identity.Verify(dir, identityHead(dir, prov, st.store), BundleBase(dir, st.store)); ok {
 		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
@@ -471,7 +471,7 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 	source := dir + prSuffix
 	hint := "run fetch --provider first"
 	if prov == providerLocal {
-		source = dir + "/source.json"
+		source = dir + sourceSuffix
 		hint = "run fetch-local first"
 	}
 	if !exists(source) {
@@ -480,9 +480,23 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 	return nil
 }
 
+// identityHead resolves the head the fetch wrote into identity.json: the
+// local source record head (empty for a dirty worktree) or the PR record
+// head. resolveHead's "dirty"/"unknown" display defaults never match a
+// written identity, so they cannot verify here.
+func identityHead(dir, prov string, store *readcommon.Bundle) string {
+	if prov == providerLocal {
+		return readcommon.JSONStr(dir+sourceSuffix, "head_sha")
+	}
+	if store == nil {
+		store = readcommon.OpenBundle(dir)
+	}
+	return store.Head()
+}
+
 func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 	if prov == providerLocal {
-		if headFull := readcommon.JSONStr(dir+"/source.json", "head_sha"); headFull != "" {
+		if headFull := readcommon.JSONStr(dir+sourceSuffix, "head_sha"); headFull != "" {
 			return headFull
 		}
 		return "dirty"

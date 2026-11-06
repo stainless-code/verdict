@@ -58,6 +58,7 @@ const (
 	newline               = "\n"
 	prSuffix              = "/PR.json"
 	reviewSuffix          = "/review.json"
+	sourceSuffix          = "/source.json"
 	diffSuffix            = "/full.diff"
 	providerLocal         = "local"
 	localPrefix           = "local-"

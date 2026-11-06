@@ -189,6 +189,16 @@ index 1111111..2222222 100644
 --- file C/.review/4706/hunks.tsv ---
 a.txt	OLD	1	1
 a.txt	NEW	1	1
+--- file C/.review/4706/identity.json ---
+{
+  "schema_version": "1",
+  "patch_id": "8fcfadfb16c180b2269244cca85ad0b97c9064ac",
+  "patch_id_kind": "git-patch-id",
+  "diff_sha256": "f0f76c0faeee81b8bbd6f88f80b3c71ec86118bc30c380816727eedb265448e3",
+  "raw_diff_sha256": "f0f76c0faeee81b8bbd6f88f80b3c71ec86118bc30c380816727eedb265448e3",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444"
+}
 --- file C/.review/4706/inline.json ---
 [
   {

@@ -363,25 +363,28 @@ func countNewlines(s string) int {
 	return strings.Count(s, newline)
 }
 
-// writeIdentityFile builds the bundle patch identity over the raw diff and
-// writes identity.json beside it. It prefers full.raw.diff when an exclusion
-// pass left one, else the bundle full.diff. A write failure refuses
-// fetch-failed: the identity is part of the bundle contract, not an
-// advisory receipt.
-func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) error {
-	rawPath := dir + suffixFullDiff
-	if _, err := os.Stat(dir + suffixRawDiff); err == nil {
-		rawPath = dir + suffixRawDiff
-	}
-	raw, err := os.ReadFile(rawPath)
+// writeIdentityFile builds the bundle patch identity over the present diff
+// bytes and writes identity.json beside it: the filtered hash covers
+// full.diff, while the identity input prefers full.raw.diff when an
+// exclusion pass left one (so the patch id always tracks the raw
+// pre-exclusion diff even though both hashes coincide today). It returns
+// the built identity so provenance writers stamp the exact bytes-bound
+// record. A write failure refuses fetch-failed: the identity is part of
+// the bundle contract, not an advisory receipt.
+func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) (*identity.Identity, error) {
+	filtered, err := os.ReadFile(dir + suffixFullDiff)
 	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", rawPath, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", dir+suffixFullDiff, err)}
 	}
-	id := identity.Build(ctx, cmdr, raw, head, base)
+	raw := filtered
+	if rb, err := os.ReadFile(dir + suffixRawDiff); err == nil {
+		raw = rb
+	}
+	id := identity.Build(ctx, cmdr, filtered, raw, head, base)
 	if err := atomic.WriteFile(dir+suffixIdentity, []byte(jq.PrettyOrdered(id.Wire()))); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/identity.json: %v", dir, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/identity.json: %v", dir, err)}
 	}
-	return nil
+	return id, nil
 }
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.

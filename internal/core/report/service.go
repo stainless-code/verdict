@@ -206,8 +206,8 @@ func loadStateCompleteness(st *state) {
 	if !st.flags.Completeness {
 		return
 	}
-	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA)
-	if _, ok := identity.Load(st.dir); !ok {
+	st.comp, st.compOK, st.compPosted = completeness(st.dir, st.headSHA, st.baseSHA)
+	if _, ok := identity.Verify(st.dir, st.headSHA, st.baseSHA); !ok {
 		st.warn("patch identity unavailable — completeness compares heads")
 	}
 }

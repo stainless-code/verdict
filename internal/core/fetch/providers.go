@@ -36,6 +36,10 @@ func runProvider(
 	if err := writeProviderBundle(ctx2); err != nil {
 		return nil, "", err
 	}
+	if _, err := writeIdentityFile(ctx, r.commander, dir,
+		readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)); err != nil {
+		return nil, "", err
+	}
 	headSHA, baseSHA := readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)
 	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, baseSHA, fc.source)
 	if ref != nil {

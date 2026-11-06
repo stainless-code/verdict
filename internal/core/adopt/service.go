@@ -131,18 +131,22 @@ func (st *state) resolveAdoptDirs() (string, string, string, *core.RefusalError)
 	return dir, fromDir, st.req.From, nil
 }
 
-// resolveAutoFrom matches the target bundle's patch identity against every
-// local bundle: exactly one twin adopts, zero or many refuse naming the
-// candidates. The auto sentinel matches before the local- prefix rule, so a
-// local bundle literally named local-auto stays reachable as
-// --from local-auto.
+// resolveAutoFrom matches the target bundle's verified patch identity
+// against every local bundle: exactly one twin adopts, zero or many refuse
+// naming the candidates. The target identity must bind the target's present
+// bytes and head, and each twin must bind its own bytes and head with the
+// requested repository — a stale or foreign bundle is not a twin. The auto
+// sentinel matches before the local- prefix rule, so a local bundle
+// literally named local-auto stays reachable as --from local-auto.
 func (st *state) resolveAutoFrom(dir string) (string, string, *core.RefusalError) {
-	cur, ok := identity.Load(dir)
-	if !ok || cur.PatchID == nil || *cur.PatchID == "" {
+	target := readcommon.OpenBundle(dir)
+	cur, ok := identity.Verify(dir, target.Head(), target.Base())
+	if !ok || cur.PatchID == nil {
 		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
-			"no-patch-match: target %s has no patch identity (re-fetch so identity.json exists) — pass --from <local-slug>", dir))
+			"no-patch-match: target %s has no verifiable patch identity "+
+				"(re-fetch so identity.json exists) — pass --from <local-slug>", dir))
 	}
-	twins := scanPatchTwins(cur)
+	twins := st.scanPatchTwins(cur)
 	switch len(twins) {
 	case 0:
 		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
@@ -156,32 +160,39 @@ func (st *state) resolveAutoFrom(dir string) (string, string, *core.RefusalError
 	}
 }
 
-// scanPatchTwins returns the sorted local bundle slugs whose identity
-// matches cur. The scan is bounded to .review/local-* identity files
-// (non-recursive), so malformed receipts skip instead of refusing.
-func scanPatchTwins(cur *identity.Identity) []string {
+// scanPatchTwins returns the sorted local bundle slugs whose verified
+// identity matches cur in the requested repository. The scan is bounded to
+// .review/local-* identity files (non-recursive), so malformed, stale, or
+// foreign receipts skip instead of refusing.
+func (st *state) scanPatchTwins(cur *identity.Identity) []string {
 	entries, err := os.ReadDir(reviewRoot)
 	if err != nil {
 		return nil
 	}
 	var twins []string
 	for _, entry := range entries {
-		if twin, ok := twinSlug(entry, cur); ok {
+		if twin, ok := st.twinSlug(entry, cur); ok {
 			twins = append(twins, twin)
 		}
 	}
 	return twins
 }
 
-// twinSlug reads one candidate bundle: non-local and malformed identities
-// never match.
-func twinSlug(entry os.DirEntry, cur *identity.Identity) (string, bool) {
+// twinSlug reads one candidate bundle: non-local, byte-stale, head-stale,
+// unproven-repository, and foreign-repository identities never match.
+func (st *state) twinSlug(entry os.DirEntry, cur *identity.Identity) (string, bool) {
 	name := entry.Name()
 	if !entry.IsDir() || !strings.HasPrefix(name, localPrefix) {
 		return "", false
 	}
-	id, ok := identity.Load(reviewRoot + name)
+	twinDir := reviewRoot + name
+	head := readcommon.JSONStr(twinDir+"/source.json", "head_sha")
+	base := readcommon.JSONStr(twinDir+"/source.json", "base_sha")
+	id, ok := identity.Verify(twinDir, head, base)
 	if !ok || !identity.Match(cur, id) {
+		return "", false
+	}
+	if repo := readcommon.JSONStr(twinDir+"/source.json", "repo"); repo == "" || repo != st.req.Repo {
 		return "", false
 	}
 	return name, true

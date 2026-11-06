@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -29,7 +30,10 @@ const (
 const (
 	schemaVersion = "1"
 	identityFile  = "identity.json"
+	fullDiffFile  = "full.diff"
+	rawDiffFile   = "full.raw.diff"
 	patchHexLen   = 40
+	shaHexLen     = 64
 )
 
 // Identity is schemas/identity.schema.json: the bundle's stable diff id
@@ -60,22 +64,28 @@ func (id *Identity) Wire() *jq.Obj {
 	)
 }
 
-// Build computes the bundle identity over the raw diff bytes: git patch-id
-// --stable through the injected commander, the index-stripped fallback when
-// git is missing or fails. An empty diff carries a null patch id of kind
+// Build computes the bundle identity: DiffSHA256 hashes the filtered diff,
+// RawDiffSHA256 hashes the raw pre-exclusion diff, and the patch id is
+// always computed over the raw bytes (`git patch-id --stable` through the
+// injected commander, the index-stripped fallback when git is missing or
+// fails). The two hashes stay independent fields even while no exclusion
+// pass ships a separate raw diff, so a future filtered write cannot
+// silently collapse them. An empty raw diff carries a null patch id of kind
 // none, which no guard matches. It never fails: the fallback always hashes.
-func Build(ctx context.Context, cmdr core.Commander, diff []byte, head, base string) *Identity {
-	sum := hashHex(diff)
-	id := &Identity{SchemaVersion: schemaVersion, DiffSHA256: sum, RawDiffSHA256: sum, HeadSHA: head, BaseSHA: base}
-	if len(bytes.TrimSpace(diff)) == 0 {
+func Build(ctx context.Context, cmdr core.Commander, filtered, raw []byte, head, base string) *Identity {
+	id := &Identity{
+		SchemaVersion: schemaVersion,
+		DiffSHA256:    hashHex(filtered), RawDiffSHA256: hashHex(raw), HeadSHA: head, BaseSHA: base,
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
 		id.PatchIDKind = KindNone
 		return id
 	}
-	if patch, ok := gitPatchID(ctx, cmdr, diff); ok {
+	if patch, ok := gitPatchID(ctx, cmdr, raw); ok {
 		id.PatchID, id.PatchIDKind = &patch, KindGit
 		return id
 	}
-	fallback := fallbackHex(diff)
+	fallback := fallbackHex(raw)
 	id.PatchID, id.PatchIDKind = &fallback, KindFallback
 	return id
 }
@@ -109,9 +119,44 @@ func ParsePatchID(stdout string) string {
 	return ""
 }
 
+// ValidPatchID reports whether patch is a well-formed id for its labeled
+// algorithm: 40 lowercase hex chars for git-patch-id (exactly what the
+// builder accepts from `git patch-id --stable`), 64 lowercase hex chars for
+// the sha256-based diff-sha256 fallback, and empty for the none marker.
+// Anything else — "not-a-patch-id", a wrong-length hash, uppercase hex —
+// is malformed and never matches.
+func ValidPatchID(kind, patch string) bool {
+	switch kind {
+	case KindGit:
+		return checkHexID(patch, patchHexLen)
+	case KindFallback:
+		return checkHexID(patch, shaHexLen)
+	case KindNone:
+		return patch == ""
+	default:
+		return false
+	}
+}
+
+// checkHexID reports whether patch is exactly want lowercase hex chars: the
+// decode round-trip rejects uppercase and non-hex input.
+func checkHexID(patch string, want int) bool {
+	if len(patch) != want {
+		return false
+	}
+	decoded, err := hex.DecodeString(patch)
+	if err != nil {
+		return false
+	}
+	return hex.EncodeToString(decoded) == patch
+}
+
 // Load reads the bundle identity: ok is false when the file is missing,
-// unreadable, over cap, undecodable, or malformed (a non-object, a bad kind,
-// or a non-string patch id). The caller warns and proceeds on false.
+// unreadable, over cap, undecodable, or malformed. Malformed covers a
+// non-object document, a missing or unsupported schema_version or kind, a
+// non-string patch id, an algorithm-invalid patch id, a null id on a
+// non-none kind (or vice versa), and missing or non-string sha fields. The
+// caller warns and proceeds on false.
 func Load(dir string) (*Identity, bool) {
 	raw, err := jq.CappedFile(dir+"/"+identityFile, jq.MaxPRBytes)
 	if err != nil {
@@ -125,12 +170,35 @@ func Load(dir string) (*Identity, bool) {
 	if !ok || m == nil {
 		return nil, false
 	}
+	if jq.StrOf(m["schema_version"]) != schemaVersion {
+		return nil, false
+	}
+	id, ok := loadMap(m)
+	if !ok {
+		return nil, false
+	}
+	return id, true
+}
+
+// loadMap validates the decoded identity document: a supported kind, an
+// algorithm-valid patch id (null exactly for the none kind), and present
+// string sha fields. Anything else is malformed.
+func loadMap(m map[string]any) (*Identity, bool) {
 	kind, ok := kindOf(m)
 	if !ok {
 		return nil, false
 	}
 	patch, ok := patchOf(m)
 	if !ok {
+		return nil, false
+	}
+	if (patch == nil) != (kind == KindNone) {
+		return nil, false
+	}
+	if patch != nil && !ValidPatchID(kind, *patch) {
+		return nil, false
+	}
+	if !validSHAFields(m) {
 		return nil, false
 	}
 	return &Identity{
@@ -142,6 +210,18 @@ func Load(dir string) (*Identity, bool) {
 		HeadSHA:       jq.StrOf(m["head_sha"]),
 		BaseSHA:       jq.StrOf(m["base_sha"]),
 	}, true
+}
+
+// validSHAFields reports whether the four sha fields are present strings.
+// Empty values pass here (a worktree head can be empty); the byte binding
+// in Verify rejects hashes that do not match the bundle.
+func validSHAFields(m map[string]any) bool {
+	for _, field := range []string{"diff_sha256", "raw_diff_sha256", "head_sha", "base_sha"} {
+		if _, ok := m[field].(string); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // kindOf reads the labeled kind, accepting only the published values.
@@ -172,20 +252,123 @@ func patchOf(m map[string]any) (*string, bool) {
 	return &patch, true
 }
 
+// Verify loads the bundle identity and binds it to the bundle's present
+// bytes and the caller's current head/base before any gate relaxation,
+// adoption selection, or provenance stamp: ok is false for a missing or
+// malformed identity and for a verified mismatch (stale diff bytes or a
+// moved head/base). A stale or replaced identity must never relax a gate,
+// so the caller warns and falls back to SHA behavior on false.
+func Verify(dir, head, base string) (*Identity, bool) {
+	id, ok := VerifyBytes(dir)
+	if !ok {
+		return nil, false
+	}
+	if id.HeadSHA != head || id.BaseSHA != base {
+		return nil, false
+	}
+	return id, true
+}
+
+// VerifyBytes loads the bundle identity and binds it to the bundle's
+// present diff bytes: full.diff always, full.raw.diff when an exclusion
+// pass left one (else the raw input is full.diff). A caller with no
+// authoritative head — a legacy twin without a source record — uses this
+// cheaper check and resolves the head separately.
+func VerifyBytes(dir string) (*Identity, bool) {
+	id, ok := Load(dir)
+	if !ok {
+		return nil, false
+	}
+	full, err := os.ReadFile(dir + "/" + fullDiffFile)
+	if err != nil {
+		return nil, false
+	}
+	if hashHex(full) != id.DiffSHA256 {
+		return nil, false
+	}
+	raw := full
+	if rb, err := os.ReadFile(dir + "/" + rawDiffFile); err == nil {
+		raw = rb
+	}
+	if hashHex(raw) != id.RawDiffSHA256 {
+		return nil, false
+	}
+	return id, true
+}
+
+// CompletedPatch reads a post.json receipt's patch claim: patch and kind
+// are valid only when the receipt proves a completed publication — schema
+// version 1, a real review object, a non-empty head, a posted_at stamp, no
+// dry-run marker, and no pending/failed review state — carrying an
+// algorithm-valid patch id and kind. Incomplete, pending, dry-run, and
+// failed receipts (including a bare patch_id/patch_id_kind stub) prove
+// nothing, so they never match.
+func CompletedPatch(post map[string]any) (patch, kind string, ok bool) {
+	if !completeReceipt(post) {
+		return "", "", false
+	}
+	patch = jq.StrOf(post["patch_id"])
+	kind = jq.StrOf(post["patch_id_kind"])
+	if !ValidPatchID(kind, patch) {
+		return "", "", false
+	}
+	return patch, kind, true
+}
+
+// completeReceipt reports whether a post record proves a completed
+// publication: schema version 1 with a present review object, and review
+// content proving a landed publication.
+func completeReceipt(post map[string]any) bool {
+	if post == nil {
+		return false
+	}
+	if jq.StrOf(post["schema_version"]) != schemaVersion {
+		return false
+	}
+	review, ok := post["review"].(map[string]any)
+	if !ok || review == nil {
+		return false
+	}
+	return completeReview(post, review)
+}
+
+// completeReview reports whether a present review object proves a landed
+// publication: no dry-run marker, no pending/failed review state, and the
+// head and posted_at stamps recorded.
+func completeReview(post, review map[string]any) bool {
+	if dry, ok := post["dry_run"].(bool); ok && dry {
+		return false
+	}
+	if unsubmittedReview(review) {
+		return false
+	}
+	return jq.StrOf(post["head"]) != "" && jq.StrOf(post["posted_at"]) != ""
+}
+
+// unsubmittedReview reports whether a review object never completed: a
+// PENDING review is created but not submitted, a FAILED one never landed.
+func unsubmittedReview(review map[string]any) bool {
+	if state := jq.StrOf(review["state"]); state != "" {
+		return strings.EqualFold(state, "pending") || strings.EqualFold(state, "failed")
+	}
+	return false
+}
+
 // Match reports whether two identities name the same reviewed change: both
-// carry a non-empty patch id of the same non-none kind. It never compares
-// across kinds, and the empty identity never matches.
+// carry an algorithm-valid, non-empty patch id of the same non-none kind.
+// It never compares across kinds, and the empty identity never matches.
 func Match(a, b *Identity) bool {
-	if a == nil || b == nil || a.PatchID == nil || b.PatchID == nil {
-		return false
-	}
-	if *a.PatchID == "" || *b.PatchID == "" {
-		return false
-	}
-	if a.PatchIDKind == KindNone || b.PatchIDKind == KindNone {
+	if !matchable(a) || !matchable(b) {
 		return false
 	}
 	return a.PatchIDKind == b.PatchIDKind && *a.PatchID == *b.PatchID
+}
+
+// matchable reports whether one identity can participate in a match: a
+// present, non-empty, algorithm-valid patch id of a non-none kind.
+func matchable(id *Identity) bool {
+	return id != nil && id.PatchID != nil && *id.PatchID != "" &&
+		id.PatchIDKind != KindNone && ValidPatchID(id.PatchIDKind, *id.PatchID)
 }
 
 // hashHex renders the lowercase hex SHA-256 of data.

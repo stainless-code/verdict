@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=1001275 sha256=669414bb8a483c5ef7db7e10ad44c27fd06cd490fb9abb04e3b0db721886a172) ---
+--- stdout (size=1001368 sha256=3327a33300dee263be8cd962b0d3da321425a6ddc835fa008477a6348c3d6787) ---
 --- stderr ---
 » chunking opted in (from --chunk) — slicing over-cap diff (999309 bytes, cap 512000) into cap-sized chunks
 » roles -> .review/local-demo/roles.txt (heuristic file roles for triage)
@@ -215,6 +215,8 @@ c.txt	NEW	1	3000
   "range": "HEAD:worktree",
   "dirty": true,
   "diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
+  "patch_id": "87f813ee7f72975271f7c5bea419fa5483ad836f",
+  "patch_id_kind": "git-patch-id",
   "files": 3,
   "additions": 9000,
   "deletions": 9000,
