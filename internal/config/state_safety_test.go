@@ -21,8 +21,8 @@ func symlinkFixture(t *testing.T, target string) string {
 	return root
 }
 
-// dirEntries lists the names directly inside dir, failing the test on
-// error: symlink escapes must leave the target exactly as found.
+// dirEntries lists directory names: symlink escapes must leave the
+// target exactly as found.
 func dirEntries(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -191,7 +191,7 @@ func TestEnsureStateIgnorePreservesBenignNegations(t *testing.T) {
 func checkIgnored(t *testing.T, path string) bool {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git unavailable")
+		t.Fatal("git is required: the ignore contract proves through real git check-ignore")
 	}
 	cmd := exec.CommandContext(t.Context(), "git", "check-ignore", "-q", path)
 	cmd.Env = testenv.Base(nil)

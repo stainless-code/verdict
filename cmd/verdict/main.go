@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/calibrate"
 	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/configcmd"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/doctor"
@@ -50,7 +51,7 @@ const envHome = "HOME"
 const verbSkill = "skill"
 
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp"
+	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -154,6 +155,7 @@ type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request
 const cmdTrend = "trend"
 
 var readVerbs = map[string]readHandler{
+	"config":     configcmd.Run,
 	"report":     report.Run,
 	"next":       report.RunNext,
 	cmdShow:      report.RunShow,

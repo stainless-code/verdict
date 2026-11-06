@@ -269,6 +269,63 @@ export interface ShowData {
   [key: string]: unknown;
 }
 
+export interface ConfigData {
+  mode: "explain" | "preview";
+  trusted: boolean;
+  source: string;
+  values: Array<ConfigValue>;
+  requirements: Array<ConfigRequirement>;
+  plan: Array<ConfigPlanGroup>;
+  plan_status: string;
+  spend: ConfigSpend;
+  privacy: Array<string>;
+  checks?: Array<ConfigCheck>;
+  [key: string]: unknown;
+}
+
+export interface ConfigValue {
+  key: string;
+  value: unknown;
+  layer: string;
+  source: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigRequirement {
+  key: string;
+  threshold?: string | null;
+  status: string;
+  sources?: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface ConfigPlanGroup {
+  profile: string;
+  depth: string;
+  checks?: Array<string>;
+  max_lenses?: number | null;
+  files?: Array<string>;
+  scopes?: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface ConfigSpend {
+  guard_usd?: number | null;
+  personal_limit_usd?: number | null;
+  require_known_estimate: boolean;
+  enforce_cap: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConfigCheck {
+  check: string;
+  group: string;
+  passed: boolean;
+  at: string;
+  detail?: string;
+  [key: string]: unknown;
+}
+
 /** The per-finding repair directive: identity, status, files, locator, embedded suggestion, and the last recorded rerun hint. Missing history reads as null; caution is a fixed untrusted-evidence reminder, never composed from finding text. */
 export interface ShowFix {
   sig: string;

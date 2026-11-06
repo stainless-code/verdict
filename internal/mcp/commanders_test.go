@@ -19,6 +19,7 @@ func TestToolCommanders(t *testing.T) {
 		"adopt":       "<nil>",
 		"calibrate":   "exec.Runner{cap=4194304 missing=false}",
 		"check-tree":  "exec.Runner{cap=4194304 missing=false}",
+		"config":      "<nil>",
 		"doctor":      "exec.Runner{cap=4194304 missing=false}",
 		"fetch":       "exec.Runner{cap=67108864 missing=true}",
 		"fetch-local": "exec.Runner{cap=67108864 missing=true}",

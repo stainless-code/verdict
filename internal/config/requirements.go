@@ -12,24 +12,23 @@ import (
 // matching scopes in file order. Identical clauses (same threshold,
 // categories, and paths) normalize to one entry with all provenances.
 type ClauseProvenance struct {
-	Clause  core.BlockClause
-	Sources []string
+	Clause  core.BlockClause `json:"clause"`
+	Sources []string         `json:"sources"`
 }
 
 // RequirementSet is the accumulated requirements for one file or group:
 // the conjunction of every applicable clause, the union of required
 // checks with per-check sources, and the OR of every require_bind.
 type RequirementSet struct {
-	CheckOrigin map[string][]string
-	Clauses     []ClauseProvenance
-	Checks      []string
-	BindSources []string
-	RequireBind bool
+	CheckOrigin map[string][]string `json:"check_origin"`
+	Clauses     []ClauseProvenance  `json:"clauses"`
+	Checks      []string            `json:"checks"`
+	BindSources []string            `json:"bind_sources"`
+	RequireBind bool                `json:"require_bind"`
 }
 
 // FileInput is one review path with its pre-rename path when the diff
-// renamed it. Clauses apply from both paths, each retaining provenance,
-// so a rename can never evade a clause.
+// renamed it.
 type FileInput struct {
 	Path    string
 	OldPath string
@@ -37,14 +36,16 @@ type FileInput struct {
 
 // FileResolution is the effective configuration for one path: the merged
 // defaults with origins, the accumulated requirements, the resolved
-// profile, and the contributing scopes in match order.
+// profile, and the contributing scopes in match order. Clauses apply from
+// both the new and the old path, each retaining provenance, so a rename
+// can never evade a clause.
 type FileResolution struct {
-	Path         string
-	OldPath      string
-	Profile      string
-	Scopes       []string
-	Requirements RequirementSet
-	Defaults     ResolvedDefaults
+	Path         string           `json:"path"`
+	OldPath      string           `json:"old_path,omitempty"`
+	Profile      string           `json:"profile"`
+	Scopes       []string         `json:"scopes"`
+	Requirements RequirementSet   `json:"requirements"`
+	Defaults     ResolvedDefaults `json:"defaults"`
 }
 
 // repoSource labels root-clause provenance with the trusted base.
@@ -62,6 +63,14 @@ func scopeSource(name, oldPath string, oldOnly bool) string {
 		return "scope " + name + " (old path " + oldPath + ")"
 	}
 	return "scope " + name
+}
+
+// RootSet returns the accumulated root requirements for baseSHA: the
+// repository-level clauses, checks, and bind behind every file. Verbs
+// persist it in the run bundle so compliance reads stored policy,
+// never reconstructed inputs.
+func RootSet(repo *core.Config, baseSHA string) RequirementSet {
+	return rootRequirements(requirementsOf(repo), baseSHA)
 }
 
 // rootRequirements converts the shared requirements into a set with base

@@ -47,19 +47,32 @@ func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
 	r *session, dir, slug string, mode *localMode,
 ) (*core.FetchData, string, error) {
-	if ref := resolveControls(ctx, ctx2, "", mode.baseSHA, f.HeadControls, nil, false); ref != nil {
+	if ref := resolveControls(ctx, ctx2, "", mode.baseSHA, f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	budget, ref := localBudget(r, f, dir)
+	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref
+	}
+	ctx2.runCfg = rc
+	rc.root = req.RootPath()
+	for _, warn := range rc.envWarns {
+		r.Warn(warn)
+	}
+	r.privacy = rc.resolved.Privacy
+	if rerr := rc.resolveLocalPhaseTwo(stateRoot(req.RootPath()), f.ChunkFlag, nil, req.SettingsPath, legacyInputs(r)); rerr != nil {
+		return nil, "", rerr
+	}
+	budget, budgetErr := localBudget(ctx2, f, dir)
+	if budgetErr != nil {
+		return nil, "", budgetErr
 	}
 	if ref := localDiff(ctx, r, dir, mode, f.Paths); ref != nil {
 		return nil, "", ref
 	}
-	fc, chunkActive, ref := localCap(r, dir, f.ChunkFlag)
-	if ref != nil {
-		return nil, "", ref
+	fc, chunkActive, capErr := localCap(ctx2, dir, f.ChunkFlag)
+	if capErr != nil {
+		return nil, "", capErr
 	}
 	listed, numstat, total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, mode, f.Paths)
 	if serr != nil {
@@ -130,20 +143,19 @@ func localSetup(
 	return mode, dir, slug, nil
 }
 
-// localBudget owns the fetch-local budget preamble: resolution, gate,
-// directory, and receipt.
-func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, error) {
-	budget, err := resolveBudget(r.env, r)
-	if err != nil {
-		return budget, err
-	}
-	if err := budgetGate(r, &budget, f.BudgetConsent); err != nil {
+// localBudget owns the fetch-local budget preamble: the gate over the
+// resolved worktree policy, then the directory. The receipt lands with
+// the run bundle at the tail, once per consented run.
+func localBudget(ctx2 *fetchRunCtx, f *core.FetchLocalFlags, dir string) (budgetState, error) {
+	r := ctx2.runner
+	resolved := ctx2.runCfg.resolved
+	budget := resolveBudget(r, resolved)
+	if err := budgetGate(r, &budget, resolved, f.BudgetConsent); err != nil {
 		return budget, err
 	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return budget, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
 	}
-	writeBudgetReceipt(r, &budget, dir, core.NowUTC(r.Now()))
 	return budget, nil
 }
 
@@ -180,12 +192,11 @@ func localDiffFail(dir, stderr string) error {
 
 // localCap owns the fetch-local cap gate: resolution and the over-cap
 // fork (chunks armed or typed refusal with split candidates).
-func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
-	fc, ref := resolveFetchCap(r)
-	if ref != nil {
-		return fc, false, ref
-	}
-	chunkActive, ref := checkDiffSize(r, dir+suffixFullDiff, fc, chunkFlag)
+func localCap(ctx2 *fetchRunCtx, dir string, chunkFlag bool) (fetchCap, bool, error) {
+	r := ctx2.runner
+	resolved := ctx2.runCfg.resolved
+	fc := resolveFetchCap(r, resolved)
+	chunkActive, ref := checkDiffSize(r, resolved, dir+suffixFullDiff, fc, chunkFlag)
 	if ref != nil {
 		return fc, false, ref
 	}
@@ -256,11 +267,11 @@ func localFinish(
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", dir, dir, dir, dir, total)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/source.json + %s to any agent; ask it to write %s/review.json\n", dir, diffFeed(dir, chunkActive, fullDiffFile), dir)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, mode.headSHA, mode.baseSHA, fc.source)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, mode.headSHA, mode.baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTailLocal(ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
+	return fetchTailLocal(ctx, ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
 }
 
 // localSlug owns the fetch-local slug pipeline on bytes: ASCII-lowercase,

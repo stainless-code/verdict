@@ -43,9 +43,9 @@ verdict fetch owner/repo 123
 # controls.json. Review controls (.review/kb.jsonl, panel, budget, overrides,
 # ...) are read from the PR base commit, never the PR head — from the clone,
 # else the GitHub contents API; --allow-head-controls is the one recorded opt-out.
-# Over-cap diffs refuse: re-run fetch with --chunk (or commit true in
-# .review/chunk at the bundle base: the PR base for fetch, the local diff
-# base (HEAD by default) for fetch-local), read each chunk per
+# Over-cap diffs refuse: re-run fetch with --chunk (or set the typed chunk
+# default in .verdict/config.json at the bundle base: the PR base for fetch,
+# the local diff base (HEAD by default) for fetch-local), read each chunk per
 # chunks/manifest.json, and stamp top-level "chunks" naming every manifest
 # chunk in review.json.
 

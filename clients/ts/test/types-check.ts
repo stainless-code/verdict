@@ -54,6 +54,7 @@ type Verb =
   | "fix"
   | "learn"
   | "init"
+  | "config"
   | "gate";
 
 export async function typeChecks(): Promise<void> {

@@ -16,6 +16,7 @@ const (
 	keyAdditionalProperties = "additionalProperties"
 	keyItems                = "items"
 	keyAnyOf                = "anyOf"
+	keyNot                  = "not"
 	keyRef                  = "$ref"
 	keyDefs                 = "$defs"
 	keyConst                = "const"
@@ -98,9 +99,10 @@ func anyNode() *node { return object(false) }
 // definitions emit additionalProperties:false; open ones (the default,
 // preserving every previously published schema) emit true.
 type definition struct {
-	typ    reflect.Type
-	name   string
-	closed bool
+	typ         reflect.Type
+	name        string
+	constraints []member
+	closed      bool
 }
 
 // document is one published schema: its file stem, title, root shape and
@@ -130,7 +132,14 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy", closed: true},
 				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
-				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true},
+				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
+					{keyAnyOf, array(
+						object(false, member{keyRequired, array(stringNode("profile"))}),
+						object(false, member{keyRequired, array(stringNode("defaults"))}),
+						object(false, member{keyRequired, array(stringNode("requirements"))}),
+					)},
+					{keyNot, object(false, member{keyRequired, array(stringNode("profile"), stringNode("defaults"))})},
+				}},
 				{typ: reflect.TypeFor[ConfigProfile](), name: "profile", closed: true},
 			},
 			additionalProperties: false,
@@ -264,6 +273,12 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[Repair](), name: "repair"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
+		{typ: reflect.TypeFor[ConfigData](), name: "configData"},
+		{typ: reflect.TypeFor[ConfigValue](), name: "configValue"},
+		{typ: reflect.TypeFor[ConfigRequirement](), name: "configRequirement"},
+		{typ: reflect.TypeFor[ConfigPlanGroup](), name: "configPlanGroup"},
+		{typ: reflect.TypeFor[ConfigSpend](), name: "configSpend"},
+		{typ: reflect.TypeFor[ConfigCheck](), name: "configCheck"},
 		{typ: reflect.TypeFor[ShowFix](), name: "showFix"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
@@ -373,6 +388,9 @@ func (b *builder) defsNode(defs []definition) (*node, error) {
 		schema, err := b.structNode(def.typ, !def.closed)
 		if err != nil {
 			return nil, err
+		}
+		if len(def.constraints) > 0 {
+			schema.members = append(schema.members, def.constraints...)
 		}
 		members = append(members, member{def.name, schema})
 	}

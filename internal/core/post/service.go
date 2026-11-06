@@ -51,6 +51,15 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	if ref := st.prepare(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := st.loadRunPolicy(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	if ref := st.complianceGate(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	if ref := st.bindRequiredGate(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if ref := st.bindGate(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -89,6 +98,9 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	liveLoaded   bool
 	identity     *identity.Identity
 	forced       []core.ForcedPost
+	// policy is the typed run bundle when the fetch wrote one; nil on
+	// legacy bundles, which degrade to no repository requirements.
+	policy *runPolicy
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -391,8 +403,11 @@ func (st *state) recheckGate(ctx context.Context) *core.RefusalError {
 	if downgraded {
 		return nil
 	}
-	if liveOpen > recordcore.CountStatus(st.merged.Entries, statusOpen) && !st.flags.Force {
-		nOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
+	storedOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
+	blocked := liveOpen > storedOpen
+	st.observeLiveThreads(liveOpen, storedOpen, false)
+	if blocked && !st.flags.Force {
+		nOpen := storedOpen
 		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlockedLive, liveOpen, nOpen, liveOpen-nOpen)}
 	}
 	return nil

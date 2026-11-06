@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -25,66 +25,26 @@ type fetchCap struct {
 	maxBytes int64
 }
 
-// resolveFetchCap resolves the byte cap: REVIEW_MAX_BYTES wins, else the
-// first usable line of .review/max_bytes, else the 512000 default. A set cap
-// prints the » cap line and arms the envelope summary; garbage refuses typed.
-func resolveFetchCap(r *session) (fetchCap, error) {
-	env := r.env
+// resolveFetchCap resolves the byte cap from the effective resolution:
+// flags beat environment, which beats repository scopes and shared
+// defaults, which beat personal review, which beats the 512000 built-in.
+// A non-built-in cap prints the » cap line and arms the envelope
+// summary; malformed values refuse at parse time, never here.
+func resolveFetchCap(r *session, res *config.Resolved) fetchCap {
 	fc := fetchCap{maxBytes: DefaultDiffCap}
-	raw, src := "", ""
-	if v, ok := env["REVIEW_MAX_BYTES"]; ok && v != "" {
-		raw, src = strings.TrimSpace(v), "REVIEW_MAX_BYTES"
-	} else if v, ok := readKnobFile(r, ".review/max_bytes"); ok {
-		raw, src = v, ".review/max_bytes"
+	if res == nil {
+		return fc
 	}
-	if raw == "" {
-		return fc, nil
+	values, origins := res.Defaults.Values, res.Defaults.Origins
+	fc.maxBytes = values.MaxBytes
+	origin := origins["max_bytes"]
+	if origin.Layer == "" || origin.Layer == config.LayerBuiltIn {
+		return fc
 	}
-	n, ok := parsePositiveInt(raw)
-	if !ok {
-		return fc, &core.RefusalError{Code: "bad-max-bytes", Message: fmt.Sprintf(
-			"cap '%s' from %s is not a positive byte count (want e.g. REVIEW_MAX_BYTES=1000000 "+
-				"or a .review/max_bytes file holding 1000000)", raw, src)}
-	}
-	fc.maxBytes, fc.source = n, src
-	fmt.Fprintf(r.Human, "» cap: %d bytes (from %s, default 512000)\n", n, src)
-	fc.json = jq.NewObj("bytes", n, keySource, src)
-	return fc, nil
-}
-
-// parsePositiveInt parses a validated positive byte count.
-func parsePositiveInt(s string) (int64, bool) {
-	if s == "" {
-		return 0, false
-	}
-	for i := range len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return 0, false
-		}
-	}
-	n, err := strconv.ParseInt(s, numBase10, numBitSize)
-	if err != nil || n <= 0 {
-		return 0, false
-	}
-	return n, true
-}
-
-// readKnobFile reads the first usable line of a knob file (comment and
-// blank lines skipped, surrounding whitespace trimmed), reporting ok=false
-// when the file is missing or holds no usable line.
-func readKnobFile(r *session, path string) (string, bool) {
-	raw, ok := r.readControl(path)
-	if !ok {
-		return "", false
-	}
-	for _, line := range splitLines(string(raw)) {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		return trimmed, true
-	}
-	return "", false
+	fc.source = origin.Source
+	fmt.Fprintf(r.Human, "» cap: %d bytes (from %s, default 512000)\n", fc.maxBytes, fc.source)
+	fc.json = jq.NewObj("bytes", fc.maxBytes, keySource, fc.source)
+	return fc
 }
 
 // chunkOptIn carries the resolved chunking opt-in and its source.
@@ -94,44 +54,60 @@ type chunkOptIn struct {
 }
 
 // resolveChunkOptIn reads the chunk opt-in: an overridden cap wins
-// outright (chunking disabled), else explicit --chunk wins, else the first
-// usable line of .review/chunk, else off. Garbage refuses typed.
-func resolveChunkOptIn(r *session, chunkFlag bool, capSource string) (chunkOptIn, error) {
+// outright (chunking disabled), else explicit --chunk wins, else the
+// resolved chunk default (repository, personal review, built-in off),
+// else the legacy .review/chunk file. The file is consulted only here,
+// on the over-cap path, so under-cap runs never see a bad knob; garbage
+// refuses typed.
+func resolveChunkOptIn(res *config.Resolved, chunkFlag bool, capSource string, knob []byte, hasKnob bool) (chunkOptIn, *core.RefusalError) {
 	if capSource != "" {
 		return chunkOptIn{}, nil
 	}
 	if chunkFlag {
 		return chunkOptIn{active: true, source: flagChunk}, nil
 	}
-	knob, ok := readKnobFile(r, ".review/chunk")
-	if !ok {
+	if res != nil && res.Defaults.Values.Chunk {
+		return chunkOptIn{active: true, source: res.Defaults.Origins["chunk"].Source}, nil
+	}
+	if !hasKnob {
 		return chunkOptIn{}, nil
 	}
-	switch strings.ToLower(knob) {
+	switch strings.ToLower(knobLine(knob)) {
 	case "", "false", "off", "0", "no":
 		return chunkOptIn{}, nil
-	case strTrue, "on", "1", "yes":
+	case "true", "on", "1", "yes":
 		return chunkOptIn{active: true, source: ".review/chunk"}, nil
 	default:
 		return chunkOptIn{}, &core.RefusalError{Code: "bad-chunk-knob", Message: fmt.Sprintf(
-			"chunk knob '%s' from .review/chunk is not an opt-in flag (want true|false, on|off, 1|0, yes|no — "+
-				"first usable line wins, absent reads off)", knob)}
+			"chunk knob '%s' from .review/chunk is not an opt-in flag (want true|false, on|off, 1|0, yes|no — first usable line wins, absent reads off)", strings.TrimSpace(string(knob)))}
 	}
+}
+
+// knobLine reads the first usable line of a knob file: comments and
+// blanks skipped, surrounding whitespace trimmed.
+func knobLine(raw []byte) string {
+	for line := range strings.Lines(string(raw)) {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		return trimmed
+	}
+	return ""
 }
 
 // checkDiffSize applies the byte cap: empty diffs warn-and-proceed; diffs
 // over the cap arm chunking on the opted-in path (refusing only the
 // single-file degenerate), else refuse diff-too-large with the advisory
-// split candidates riding the envelope. The chunk knob is consulted only on
-// the over-cap path, so under-cap runs never see bad-chunk-knob.
-func checkDiffSize(r *session, fullDiff string, lim fetchCap, chunkFlag bool) (chunkActive bool, err error) {
+// split candidates riding the envelope.
+func checkDiffSize(r *session, res *config.Resolved, fullDiff string, lim fetchCap, chunkFlag bool) (chunkActive bool, err error) {
 	fi, statErr := os.Stat(fullDiff)
 	var total int64
 	if statErr == nil {
 		total = fi.Size()
 	}
 	if total > lim.maxBytes {
-		active, ref := overCap(r, fullDiff, total, lim, chunkFlag)
+		active, ref := overCap(r, res, fullDiff, total, lim, chunkFlag)
 		if ref != nil {
 			return false, ref
 		}
@@ -146,13 +122,15 @@ func checkDiffSize(r *session, fullDiff string, lim fetchCap, chunkFlag bool) (c
 // overCap handles the over-cap fork: opted-in chunking slices on file
 // boundaries (the single-file degenerate keeps the advisory refusal with
 // no chunks written); otherwise the refusal carries split candidates.
-func overCap(r *session, fullDiff string, total int64, lim fetchCap, chunkFlag bool) (bool, error) {
-	optIn, ref := resolveChunkOptIn(r, chunkFlag, lim.source)
+func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim fetchCap, chunkFlag bool) (bool, error) {
+	knob, hasKnob := r.readControl(".review/chunk")
+	optIn, ref := resolveChunkOptIn(res, chunkFlag, lim.source, knob, hasKnob)
 	if ref != nil {
 		return false, ref
 	}
 	if optIn.active {
 		// The opt-in notices own stderr in both modes (`>&2`).
+
 		if chunkPlanOK(fullDiff, lim.maxBytes) {
 			fmt.Fprintf(r.Diag, "» chunking opted in (from %s) — slicing over-cap diff (%d bytes, cap %d) into cap-sized chunks\n",
 				optIn.source, total, lim.maxBytes)
@@ -167,7 +145,7 @@ func overCap(r *session, fullDiff string, total int64, lim fetchCap, chunkFlag b
 	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"diff %d bytes exceeds cap %d bytes — split the range (fetch-local --range/--base, fetch --base-sha) "+
 			"or narrow with a paths filter, then re-fetch (override deliberate exceptions only: "+
-			"REVIEW_MAX_BYTES=<n> or .review/max_bytes)", total, lim.maxBytes)}
+			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)", total, lim.maxBytes)}
 	refusal.Candidates = cands
 	return false, refusal
 }

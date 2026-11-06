@@ -8,8 +8,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// requireRefusal fails when ref is nil or carries the wrong code, and
-// reports when the message misses the expected fragment.
 func requireRefusal(t *testing.T, ref *core.RefusalError, code, fragment string) {
 	t.Helper()
 	var target *core.RefusalError

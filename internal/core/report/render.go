@@ -49,17 +49,17 @@ func buildData(st *state) *core.ReportData {
 			Stale:   false,
 		},
 		Verdict: core.ReportVerdict{
-			Open:      countStatus(rankedEntries(st), statusOpen),
-			Deferred:  countStatus(rankedEntries(st), "deferred"),
-			Addressed: countStatus(rankedEntries(st), "addressed"),
-			Terminal:  countTerminal(rankedEntries(st)),
+			Open:      countStatus(viewEntries(st), statusOpen),
+			Deferred:  countStatus(viewEntries(st), "deferred"),
+			Addressed: countStatus(viewEntries(st), "addressed"),
+			Terminal:  countTerminal(viewEntries(st)),
 		},
 		Counts:  st.counts,
 		Panel:   panelValue(st),
 		Patch:   st.patch,
 		Output:  outputVal(st.flags.Output),
 		Filters: core.ReportFilters{Status: st.flags.Status, Kind: st.flags.Kind, Category: outputVal(st.flags.Category)},
-		Items:   envelopeItems(st.ranked),
+		Items:   envelopeItems(viewRanked(st)),
 	}
 	if st.cost != nil {
 		data.Cost = costFromObj(st.cost)
@@ -117,9 +117,34 @@ func envelopeItem(item readcommon.Ranked) core.FindingItem {
 	return f
 }
 
-func rankedEntries(st *state) []any {
-	entries := make([]any, 0, len(st.ranked))
-	for _, item := range st.ranked {
+// viewRanked returns the display-filtered ranked set the views render,
+// falling back to the full set for states built without the floor pass.
+func viewRanked(st *state) []readcommon.Ranked {
+	if st.view != nil {
+		return st.view
+	}
+	return st.ranked
+}
+
+// viewOpen counts the open findings in the display-filtered view for
+// the human summary line; gates keep their own full-set tallies.
+func viewOpen(view []readcommon.Ranked) int {
+	n := 0
+	for _, item := range view {
+		if readcommon.StatusOf(item.Entry) == statusOpen {
+			n++
+		}
+	}
+	return n
+}
+
+// viewEntries flattens the display-filtered view for the payload counts
+// and items: the floor withholds below-floor findings from the view
+// while every gate keeps reading the full ranked set.
+func viewEntries(st *state) []any {
+	view := viewRanked(st)
+	entries := make([]any, 0, len(view))
+	for _, item := range view {
 		entries = append(entries, item.Entry)
 	}
 	return entries
@@ -205,9 +230,10 @@ func jqVal(obj *jq.Obj, key string) any {
 }
 
 func buildHuman(st *state) []string {
+	view := viewRanked(st)
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
-		st.dir, len(st.ranked), st.nOpen, readcommon.ShortSHA(st.headSHA))}
-	for _, item := range st.ranked {
+		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
+	for _, item := range view {
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
@@ -374,6 +400,10 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 			failed = true
 		}
 	}
+	// Gate observations append after the dimensions decide: the head and
+	// live verdicts become dated execution evidence without touching the
+	// captured inputs.
+	observeReportGates(st, dims)
 	return failed, lines, &core.ReportGate{Passed: !failed, Dimensions: dims}
 }
 

@@ -17,15 +17,19 @@ const requirementsKey = "requirements"
 var (
 	topFields      = []string{"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile"}
 	defaultsFields = []string{
-		"panel", keyBudgetUSD, "max_bytes", "chunk", "kb_policy", "effort",
-		"display_min_severity", "post_min_severity",
+		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
+		keyDisplayFloor, keyPostFloor,
 	}
-	kbPolicyFields        = []string{"min_judged", "max_fp_rate"}
-	requirementsFields    = []string{"block_clauses", "require_checks", "require_bind"}
-	clauseFields          = []string{"name", "threshold", "categories", "paths"}
-	scopeFields           = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
-	profileFields         = []string{"depth", "checks", "max_lenses"}
-	personalTopFields     = []string{"$schema", "review", "spend", "privacy"}
+	kbPolicyFields     = []string{"min_judged", "max_fp_rate"}
+	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
+	clauseFields       = []string{"name", "threshold", "categories", "paths"}
+	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
+	profileFields      = []string{"depth", "checks", "max_lenses"}
+	// personalTopFields lists the recognized operator-settings keys: the
+	// typed personal sections plus the CLI prefs keys the prefs layer
+	// owns (output, layout, color, publish), which parse but never feed
+	// the resolver.
+	personalTopFields     = []string{"$schema", "review", "spend", "privacy", "output", "layout", "color", "publish"}
 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
 )
@@ -78,7 +82,7 @@ func checkDefaultsKeys(raw any, path string) *core.RefusalError {
 	if ref := checkKeys(path, obj, defaultsFields); ref != nil {
 		return ref
 	}
-	if kb, ok := obj["kb_policy"]; ok {
+	if kb, ok := obj[keyKBPolicy]; ok {
 		kbObj, isObj := kb.(map[string]any)
 		if !isObj {
 			return nil

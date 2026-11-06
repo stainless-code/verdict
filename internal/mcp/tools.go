@@ -8,6 +8,7 @@ import (
 	"maps"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -39,6 +40,7 @@ const (
 	fieldPr            = "Pr"
 	msgRequestMismatch = "tool request type mismatch"
 	artifactPerm       = 0o600
+	codeBadFlags       = "bad-flags"
 )
 
 var (
@@ -121,6 +123,15 @@ func allTools(readOnly, operator bool) []*tool {
 			omit: omitPositionals,
 			meta: toolMeta{title: "Check worktree", readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeCheckTree, wireCheckTree, invokeCheckTree),
+		directTool(&toolSpec{
+			name: "config",
+			description: "Explain the stored effective policy of a fetched run, or preview " +
+				"a proposed configuration file with current settings and environment. " +
+				"Call before acting on policy to see values, requirements, plan, and spend. " +
+				"Reads the run bundle only; writes nothing and never approves.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Explain policy", readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeConfig, wireConfig, invokeConfig),
 		dataTool(&toolSpec{
 			name: "doctor",
 			description: "Preflight gh auth, git, and storage. Call first when a verb " +
@@ -353,7 +364,7 @@ func newTool[Req any](
 			return nil, internalRefusal()
 		}
 		if t.requireDryRun && !requestDryRun(raw) {
-			return nil, &core.RefusalError{Code: "bad-flags", Message: "record writes on a read-only server; re-run with dry_run=true"}
+			return nil, &core.RefusalError{Code: codeBadFlags, Message: "record writes on a read-only server; re-run with dry_run=true"}
 		}
 		return run(ctx, req)
 	}
@@ -415,6 +426,20 @@ func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.Refu
 		data.Set("fix", resp.Fix.Wire())
 	}
 	return data, nil
+}
+
+func invokeConfig(ctx context.Context, req *core.ConfigRequest) (*jq.Obj, *core.RefusalError) {
+	if req.Flags.Explain == req.Flags.Preview {
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: "config needs exactly one of explain or preview"}
+	}
+	if req.Flags.File != "" && !req.Flags.Preview {
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: "config file needs preview"}
+	}
+	resp, ref := config.Run(ctx, req)
+	if ref != nil {
+		return nil, ref
+	}
+	return wireData(resp.Data), nil
 }
 
 func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, *core.RefusalError) {

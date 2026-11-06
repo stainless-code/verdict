@@ -20,6 +20,11 @@ const (
 	CodeBadRequirement = "bad-requirement"
 	// CodeBadScope refuses an invalid path scope.
 	CodeBadScope = "bad-scope"
+	// CodeNoBundle refuses an explanation with no run bundle: explain
+	// renders the fetch-time capture, so a never-fetched run has
+	// nothing to explain. Preview without a bundle resolves the
+	// no-policy layers instead of refusing.
+	CodeNoBundle = "config-no-bundle"
 )
 
 // refuse builds the layer's sealed refusal. The message always names the

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, initData, doctorData, checkTreeData, trendData, calibrateData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -546,6 +546,118 @@
         "fix": { "$ref": "#/$defs/showFix" }
       },
       "required": ["item", "fix"],
+      "additionalProperties": true
+    },
+    "configData": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["explain", "preview"] },
+        "trusted": { "type": "boolean" },
+        "source": { "type": "string" },
+        "values": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configValue" }
+        },
+        "requirements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configRequirement" }
+        },
+        "plan": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configPlanGroup" }
+        },
+        "plan_status": { "type": "string" },
+        "spend": { "$ref": "#/$defs/configSpend" },
+        "privacy": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configCheck" }
+        }
+      },
+      "required": [
+        "mode",
+        "trusted",
+        "source",
+        "values",
+        "requirements",
+        "plan",
+        "plan_status",
+        "spend",
+        "privacy"
+      ],
+      "additionalProperties": true
+    },
+    "configValue": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "value": {},
+        "layer": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "required": ["key", "value", "layer", "source"],
+      "additionalProperties": true
+    },
+    "configRequirement": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "threshold": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["key", "status"],
+      "additionalProperties": true
+    },
+    "configPlanGroup": {
+      "type": "object",
+      "properties": {
+        "profile": { "type": "string" },
+        "depth": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "max_lenses": { "type": ["integer", "null"] },
+        "files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["profile", "depth"],
+      "additionalProperties": true
+    },
+    "configSpend": {
+      "type": "object",
+      "properties": {
+        "guard_usd": { "type": ["number", "null"] },
+        "personal_limit_usd": { "type": ["number", "null"] },
+        "require_known_estimate": { "type": "boolean" },
+        "enforce_cap": { "type": "boolean" }
+      },
+      "required": ["require_known_estimate", "enforce_cap"],
+      "additionalProperties": true
+    },
+    "configCheck": {
+      "type": "object",
+      "properties": {
+        "check": { "type": "string" },
+        "group": { "type": "string" },
+        "passed": { "type": "boolean" },
+        "at": { "type": "string" },
+        "detail": { "type": "string" }
+      },
+      "required": ["check", "group", "passed", "at"],
       "additionalProperties": true
     },
     "showFix": {

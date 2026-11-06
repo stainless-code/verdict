@@ -7,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -133,6 +136,7 @@ func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 		sb.WriteString(fenceSection(nonce, metaLabel, meta))
 	}
 	dumpFencedList(&sb, ctx.dir, nonce, []string{"toc.txt", "roles.txt"})
+	dumpPlan(ctx, &sb, nonce)
 	dumpChunkDiffs(ctx, &sb, nonce)
 	dumpFencedList(&sb, ctx.dir, nonce, []string{"kb.txt", "sensitive.txt", "panel"})
 	return sb.String(), nil
@@ -236,6 +240,9 @@ func writeChunkedDiffs(sb *strings.Builder, nonce, dir, chunked string) {
 }
 
 // dumpFullDiffFallback warns on an unreadable manifest and fences full.diff.
+// Privacy-excluded paths are excised before fencing: the raw bundle keeps
+// every byte for patch identity, but the model-facing dump never carries
+// excluded content.
 func dumpFullDiffFallback(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 	if _, err := os.Stat(ctx.dir + suffixChunkManifest); err == nil {
 		miss := unreadableChunkRef(ctx.dir)
@@ -243,9 +250,141 @@ func dumpFullDiffFallback(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 			"(post/record still refuse the broken bundle; re-fetch with --chunk to restore the pinned snapshots)",
 			miss, ctx.dir))
 	}
-	if _, err := os.Stat(ctx.dir + suffixFullDiff); err == nil {
-		sb.WriteString(fenceSection(nonce, fullDiffFile, ctx.dir+suffixFullDiff))
+	if _, err := os.Stat(ctx.dir + suffixFullDiff); err != nil {
+		return
 	}
+	raw, err := os.ReadFile(ctx.dir + suffixFullDiff)
+	if err != nil {
+		ctx.runner.Warn(fmt.Sprintf("prompt dump skips unreadable %s/full.diff", ctx.dir))
+		return
+	}
+	withheld := withholdDiffPaths(ctx, raw)
+	if len(withheld) > 0 {
+		fmt.Fprintf(sb, "withheld by operator privacy exclusions (%d paths): %s\n",
+			len(withheld), strings.Join(withheld, ", "))
+	}
+	sb.WriteString(fenceOpen(nonce, fullDiffFile))
+	sb.Write(filterDiffBytes(raw, ctx.runner.privacy.Exclusions))
+	sb.WriteString(fenceClose(nonce))
+}
+
+// withholdDiffPaths names the diff files the privacy exclusions cover,
+// in diff order: the dump note proves what was withheld without
+// carrying its content.
+func withholdDiffPaths(ctx *fetchRunCtx, raw []byte) []string {
+	exclusions := ctx.runner.privacy.Exclusions
+	if len(exclusions) == 0 {
+		return nil
+	}
+	files := hunks.Files(string(raw))
+	var out []string
+	for i := range files {
+		for _, glob := range exclusions {
+			if config.Match(glob, files[i].Path) {
+				out = append(out, files[i].Path)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// filterDiffBytes excises excluded files' sections from a diff, keeping
+// every other byte identical. An empty exclusion list returns the input
+// untouched.
+func filterDiffBytes(raw []byte, exclusions []string) []byte {
+	if len(exclusions) == 0 {
+		return raw
+	}
+	files := hunks.Files(string(raw))
+	withheld := withheldPaths(files, exclusions)
+	if len(withheld) == 0 {
+		return raw
+	}
+	lines := strings.SplitAfter(string(raw), "\n")
+	var sb strings.Builder
+	for i := range files {
+		writeKeptFile(&sb, &files[i], lines, withheld)
+	}
+	return []byte(sb.String())
+}
+
+// withheldPaths names the diff files the privacy exclusions cover.
+func withheldPaths(files []hunks.File, exclusions []string) map[string]bool {
+	withheld := map[string]bool{}
+	for i := range files {
+		for _, glob := range exclusions {
+			if config.Match(glob, files[i].Path) {
+				withheld[files[i].Path] = true
+				break
+			}
+		}
+	}
+	return withheld
+}
+
+// writeKeptFile copies one non-withheld file section into the dump,
+// clamping its line range to the split diff.
+func writeKeptFile(sb *strings.Builder, file *hunks.File, lines []string, withheld map[string]bool) {
+	if withheld[file.Path] {
+		return
+	}
+	start, end := file.StartLine-1, file.EndLine
+	if start < 0 {
+		start = 0
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+	for _, line := range lines[start:end] {
+		sb.WriteString(line)
+	}
+}
+
+// dumpPlan renders the combined plan surface into the prompt: one line
+// per group with its profile, depth, lens budget, required checks, and
+// file list, plus the pending status the observations will later move.
+// Profiles and lens budgets that never reach this surface are dead
+// configuration, so the dump proves they arrived.
+func dumpPlan(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
+	rc := ctx.runCfg
+	if rc == nil || rc.resolved == nil || len(rc.resolved.Plan.Groups) == 0 {
+		return
+	}
+	var inner strings.Builder
+	fmt.Fprintf(&inner, "plan status: %s\n", rc.resolved.Plan.Status)
+	for i, group := range rc.resolved.Plan.Groups {
+		name := group.Profile
+		if name == "" {
+			name = fmt.Sprintf("group %d", i+1)
+		}
+		fmt.Fprintf(&inner, "- %s: profile=%s depth=%s max_lenses=%s checks=[%s] files=[%s] scopes=[%s]\n",
+			name, orEmpty(group.Profile), orEmpty(group.Depth), lenses(group.MaxLenses),
+			strings.Join(group.Checks, ","), strings.Join(group.Files, ","), strings.Join(group.Scopes, ","))
+	}
+	if rc.resolved.Plan.EffortTier != "" {
+		fmt.Fprintf(&inner, "effort: %s\n", rc.resolved.Plan.EffortTier)
+	}
+	sb.WriteString(fenceOpen(nonce, planFile))
+	sb.WriteString(inner.String())
+	sb.WriteString(fenceClose(nonce))
+}
+
+// orEmpty renders an empty string as the unset marker the plan surface
+// distinguishes from a named value.
+func orEmpty(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// lenses renders the lens budget: a number when set, unset otherwise.
+func lenses(max *int) string {
+	if max == nil {
+		return "unset"
+	}
+	return strconv.Itoa(*max)
 }
 
 func lastChunkDiff(dir string) string {

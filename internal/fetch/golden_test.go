@@ -276,8 +276,13 @@ func seedBase(t *testing.T, dir string, controls map[string]string) string {
 	for name, content := range controls {
 		writeFile(t, dir, name, content)
 	}
-	if len(controls) > 0 {
-		runGit(t, dir, "add", "-f", ".review")
+	// Only the seeded top-level trees join the base commit: the typed
+	// configuration lives beside the legacy controls, and both read
+	// from the base.
+	for _, tree := range []string{".review", ".verdict"} {
+		if _, err := os.Stat(filepath.Join(dir, tree)); err == nil {
+			runGit(t, dir, "add", "-f", tree)
+		}
 	}
 	runGit(t, dir, "commit", "-q", "--allow-empty", "-m", "parity-base")
 	return strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD"))
@@ -409,7 +414,7 @@ func TestFetchGoldenGitHub(t *testing.T) {
 		stubPR(t, dir)
 		writeCanned(t, dir, "pr.json", strings.ReplaceAll(readCanned(t, dir, "pr.json"), headB, strings.Repeat("c", 40)))
 		writeFile(t, dir, ".review/panel", "head-panel\n")
-		writeContent(t, dir, ".review/panel", "api-base-panel\n")
+		writeContent(t, dir, ".verdict/config.json", typedConfigJSON(`"panel":["api-base-panel"]`))
 	}
 	golden.Pin(t, harness, "controls-base-absent", baseAbsent, nil, "fetch", "acme/app", "4701", "--json")
 	// Any API failure other than a 404 refuses: it is never read as absence.
@@ -523,7 +528,7 @@ func TestFetchGoldenCapChunk(t *testing.T) {
 		"fetch", "acme/app", "4703", "--chunk")
 	golden.Pin(t, harness, "over-cap-absent-text", overSetup, nil,
 		"fetch", "acme/app", "4703")
-	golden.Pin(t, harness, "over-cap-knob", overCapSetup(map[string]string{".review/chunk": "true\n"}), nil,
+	golden.Pin(t, harness, "over-cap-knob", overCapSetup(map[string]string{".verdict/config.json": typedConfigJSON(`"chunk":true`)}), nil,
 		"fetch", "acme/app", "4703", "--json")
 	golden.Pin(t, harness, "cap-override", overSetup,
 		map[string]string{"REVIEW_MAX_BYTES": "100000000"},
@@ -534,7 +539,7 @@ func TestFetchGoldenCapChunk(t *testing.T) {
 	golden.Pin(t, harness, "bad-max-bytes", overSetup,
 		map[string]string{"REVIEW_MAX_BYTES": "nope"},
 		"fetch", "acme/app", "4703", "--json")
-	golden.Pin(t, harness, "bad-chunk-knob", overCapSetup(map[string]string{".review/chunk": "maybe\n"}), nil,
+	golden.Pin(t, harness, "bad-chunk-knob", overCapSetup(map[string]string{".verdict/config.json": typedConfigJSON(`"chunk":"maybe"`)}), nil,
 		"fetch", "acme/app", "4703", "--json")
 	singleSetup := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -551,6 +556,12 @@ func TestFetchGoldenCapChunk(t *testing.T) {
 	}
 	golden.Pin(t, harness, "single-file-degenerate", singleSetup, nil,
 		"fetch", "acme/app", "4704", "--chunk", "--json")
+}
+
+// typedConfigJSON renders one repository configuration committed at the
+// base for the typed-knob goldens.
+func typedConfigJSON(defaults string) string {
+	return `{"schema_version":"1","defaults":{` + defaults + "}}\n"
 }
 
 // overCapSetup plants an over-cap PR whose base commit tracks controls: the

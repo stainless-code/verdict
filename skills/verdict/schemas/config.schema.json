@@ -134,7 +134,13 @@
         "requirements": { "$ref": "#/$defs/requirements" }
       },
       "required": ["name", "include"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["profile"] },
+        { "required": ["defaults"] },
+        { "required": ["requirements"] }
+      ],
+      "not": { "required": ["profile", "defaults"] }
     },
     "profile": {
       "description": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget.",

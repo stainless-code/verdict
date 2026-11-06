@@ -1,12 +1,12 @@
 # Typed configuration — foundation slice
 
-Status: intermediate. This slice lands the typed configuration models, the
-strict parser, the pure resolver, the state layout, and the trusted-base
-source adapter. No verb reads these yet: `fetch`, `record`, `post`,
-`report`, MCP, the TypeScript client, and the router gain their consumers
-in later slices. The schema key set is therefore intentionally ahead of
-its consumers; nothing below is inert — every key resolves, validates, or
-constrains through `internal/config`.
+Status: implemented. The foundation slice (models, strict parser, pure
+resolver, state layout, trusted-base source) is consumed by `fetch` and
+`fetch-local` (two-phase policy, spend gates, privacy, plan surface),
+`post` (compliance, bind, floor), `report` (display floor, observations),
+and `verdict config` (explain/preview) with the MCP tool, the TypeScript
+client, and the Go facade following the same data profile. The rule table
+lives in `docs/policy-contract.md`.
 
 ## Layout
 
@@ -82,10 +82,12 @@ sections) parse under the same order via `config.ParsePersonal`; a
 
 `config.Resolve` is pure over explicit `config.Inputs`: flags, the five
 consumed environment names and values (`ParseEnv`; never the whole
-environment), the trusted-base configuration, personal settings, the base
-SHA, the file list with pre-rename paths, and the settings path when one
-was read. Ordinary defaults merge flag, then environment, then repository
-scopes and shared defaults, then personal review, then built-in; nested
+environment), the trusted-base configuration, the legacy knob files
+(`.review/panel`, `.review/budget`, `.review/max_bytes`), personal
+settings, the base SHA, the file list with pre-rename paths, and the
+settings path when one was read. Ordinary defaults merge flag, then
+environment, then repository scopes and shared defaults, then legacy
+knob files, then personal review, then built-in; nested
 objects merge per field and arrays replace, with per-field origins and
 shadowed values. Personal spend and privacy are constraints, never
 defaults: the repository can never raise the personal limit, and scopes
@@ -119,11 +121,10 @@ environment dumps), the base SHA, the configuration hash, per-file scope
 sources, applicable clauses with `pending` status, and the selected plan.
 Stage flags and consents belong to their own invocation records.
 
-## Remaining interfaces
+## Consumers
 
-`config.ReadBase`/`ParseBase` supply the trusted-base read; the fetch
-slice wires the inventory row, evidence file, and privacy enforcement.
-The compliance slice consumes clauses, checks, `require_bind`, spend
-guards, and display/withholding separation. The config verb slice adds
-`--explain`/`--preview`, the envelope `configData` profile, and the MCP,
-TypeScript, and router entries.
+`fetch`/`fetch-local` resolve the two-phase policy and persist the run
+bundle with the inventory snapshot; `post` enforces clauses, bind, and
+floor; `report` enforces the display floor and appends observations;
+`verdict config` explains and previews. MCP, TypeScript, and the Go
+facade expose the same `configData` profile.

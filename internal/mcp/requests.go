@@ -78,6 +78,21 @@ func wireCheckTree(b *bindings, req *checktreecore.Request) {
 	req.Warnings = b.warningList()
 }
 
+func decodeConfig(req *core.ConfigRequest, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argPr, &req.Pr)
+	a.flags(func(f *args) {
+		f.boolean("explain", &req.Flags.Explain)
+		f.boolean("preview", &req.Flags.Preview)
+		f.str("file", &req.Flags.File)
+	})
+}
+
+func wireConfig(b *bindings, req *core.ConfigRequest) {
+	b.wireRead(&req.ReadRequest)
+	req.Warnings = b.warningList()
+}
+
 func decodeDoctor(_ *doctorcore.Request, _ *args) {}
 
 func wireDoctor(b *bindings, req *doctorcore.Request) {

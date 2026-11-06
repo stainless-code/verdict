@@ -1,0 +1,139 @@
+// Package configcmd is the config CLI adapter: argv parsing (same usage
+// text and exit 2), one call into the config service, envelope rendering,
+// and refusal-vs-cancel exit mapping. The service performs no live calls,
+// no exec, and no writes; nothing here touches the bundle beyond reading
+// it.
+package configcmd
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
+)
+
+// Request carries the resolved config invocation.
+type Request = readcommon.Request
+
+// Run executes `config <owner/repo> <pr> (--explain | --preview
+// [--file <path>]) [--json]`, returning the process exit code.
+func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+	flags, code, done := parseFlags(r, args)
+	if done {
+		return code
+	}
+	if code, done := r.Canceled(ctx, "config"); done {
+		return code
+	}
+	settings := cli.SettingsPath(reqEnv(req, "HOME"), reqEnv(req, "XDG_CONFIG_HOME"))
+	resp, ref := config.Run(ctx, &core.ConfigRequest{
+		ReadRequest:  req,
+		Flags:        flags,
+		SettingsPath: settings,
+		Warnings:     append([]string{}, r.Warnings...),
+	})
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	r.Repo, r.Pr = resp.Repo, resp.Pr
+	return renderConfig(r, resp)
+}
+
+func reqEnv(req Request, key string) string {
+	if req.Runtime == nil || req.Env == nil {
+		return ""
+	}
+	return req.Env[key]
+}
+
+// renderConfig renders a config success: JSON mode prints exactly one
+// envelope to stdout, human mode prints the policy lines.
+func renderConfig(r *cli.Runner, resp *core.ConfigResponse) int {
+	r.Warnings = resp.Warnings
+	if r.JSONMode {
+		env := core.RenderEnvelope("config", resp.Repo, resp.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire(), nil)
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		return cli.ExitOK
+	}
+	for _, line := range humanLines(resp.Data) {
+		fmt.Fprintln(r.Out, line)
+	}
+	return cli.ExitOK
+}
+
+// humanLines renders the policy in the fixed order: trust and source,
+// values with origins, requirements, plan, spend, privacy, and the
+// observed checks on explain.
+func humanLines(data *core.ConfigData) []string {
+	lines := []string{fmt.Sprintf("config %s (trusted=%v): %s", data.Mode, data.Trusted, data.Source)}
+	for _, value := range data.Values {
+		lines = append(lines, fmt.Sprintf("  %s = %s (from %s)", value.Key, jq.Compact(value.Value), value.Source))
+	}
+	for _, req := range data.Requirements {
+		lines = append(lines, fmt.Sprintf("  require %s [%s] via %s", req.Key, req.Status, strings.Join(req.Sources, ", ")))
+	}
+	for _, group := range data.Plan {
+		lines = append(lines, fmt.Sprintf("  plan: profile=%s depth=%s checks=[%s] files=%d",
+			orDash(group.Profile), orDash(group.Depth), strings.Join(group.Checks, ","), len(group.Files)))
+	}
+	lines = append(lines, fmt.Sprintf("  spend: guard=%s limit=%s", usd(data.Spend.GuardUSD), usd(data.Spend.PersonalLimit)))
+	for _, check := range data.Checks {
+		lines = append(lines, fmt.Sprintf("  observed %s/%s: %v (%s)", check.Check, check.Group, check.Passed, check.At))
+	}
+	return lines
+}
+
+// orDash renders an empty profile or depth as the unset marker.
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+func usd(v *float64) string {
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("$%v", *v)
+}
+
+// parseFlags strips config's flags: exactly one of --explain or
+// --preview, with --file only on preview. Anything else is a usage
+// error.
+func parseFlags(r *cli.Runner, args []string) (core.ConfigFlags, int, bool) {
+	var flags core.ConfigFlags
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch a {
+		case "--explain":
+			flags.Explain = true
+		case "--preview":
+			flags.Preview = true
+		case "--file":
+			v, next, u := cli.FlagValue(args, i, a, "<path>")
+			if u != nil {
+				return flags, r.ReportUsage(u), true
+			}
+			flags.File = v
+			i = next
+		default:
+			msg := fmt.Sprintf("unknown flag '%s' for config (want --explain | --preview [--file <path>], --json)", a)
+			return flags, r.ReportUsage(&cli.UsageError{Message: msg}), true
+		}
+	}
+	if flags.Explain == flags.Preview {
+		msg := "config wants exactly one of --explain or --preview"
+		return flags, r.ReportUsage(&cli.UsageError{Message: msg}), true
+	}
+	if flags.File != "" && !flags.Preview {
+		return flags, r.ReportUsage(&cli.UsageError{Message: "config --file needs --preview"}), true
+	}
+	return flags, 0, false
+}

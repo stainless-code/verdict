@@ -27,6 +27,7 @@ const (
 	keyMinLen   = "minLength"
 	keyMaxLen   = "maxLength"
 	keyAnyOf    = "anyOf"
+	keyNot      = "not"
 	keyProps    = "properties"
 	keyRequired = "required"
 	keyAddl     = "additionalProperties"
@@ -50,7 +51,7 @@ const (
 )
 
 var constraintKeys = names(keyRef, keyDefs, keyType, keyFormat, keyPattern,
-	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMinLen, keyMaxLen, keyAnyOf, keyProps,
+	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMinLen, keyMaxLen, keyAnyOf, keyNot, keyProps,
 	keyRequired, keyAddl, keyConst, keyEnum)
 
 var annotationKeys = names("$schema", "$id", "title", "description", "default",
@@ -78,6 +79,7 @@ func (w *walk) applyKeywords(d document, s map[string]any, value any, path strin
 	w.checkPattern(d, s, value, path)
 	w.checkFormat(d, s, value, path)
 	w.checkAnyOf(d, s, value, path)
+	w.checkNot(d, s, value, path)
 }
 
 // checkKeywords fails loudly on a keyword outside the implemented subset, so a
@@ -334,6 +336,25 @@ func (w *walk) checkAnyOf(d document, s map[string]any, value any, path string) 
 		nearest = append(nearest, fmt.Sprintf("%d: %s", index, attempt.fails[0].String()))
 	}
 	w.fail(path, "matches no anyOf branch ("+strings.Join(nearest, "; ")+")")
+}
+
+// checkNot refuses a value the forbidden subschema accepts: the branch
+// must read as a schema object, else the schema itself is malformed.
+func (w *walk) checkNot(d document, s map[string]any, value any, path string) {
+	raw, has := s[keyNot]
+	if !has {
+		return
+	}
+	branch, ok := raw.(map[string]any)
+	if !ok {
+		w.fail(path, "not must be an object")
+		return
+	}
+	attempt := &walk{files: w.files}
+	attempt.check(d, branch, value, path)
+	if len(attempt.fails) == 0 {
+		w.fail(path, "matches the forbidden not branch")
+	}
 }
 
 func propertyNames(s map[string]any) []string {

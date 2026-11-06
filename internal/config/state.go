@@ -5,9 +5,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // State layout: the `.verdict` directory itself is never ignored. Only
@@ -53,14 +55,30 @@ const (
 
 // stateError is the package's sealed error type. State writes fail
 // locally (permissions, storage); callers surface the message without
-// inspecting the cause.
+// inspecting the cause. Operator-caused failures (symlinked layouts,
+// negated ignores, corrupt run bundles) set the operator flag so the
+// caller maps them to the typed bad-config refusal instead of a local
+// failure.
 type stateError struct {
 	cause error
 	msg   string
+	// operator marks failures the repository layout caused: the fix is an
+	// operator edit, not a retry.
+	operator bool
 }
 
 // Error implements error.
 func (e *stateError) Error() string { return e.msg }
+
+// Refusal maps an operator-caused state failure to the typed bad-config
+// refusal; local failures map to nil so the caller wraps them with its
+// own verb code.
+func (e *stateError) Refusal() *core.RefusalError {
+	if e == nil || !e.operator {
+		return nil
+	}
+	return &core.RefusalError{Code: CodeBadConfig, Message: e.msg}
+}
 
 // Unwrap exposes the cause to [errors.Is]/[errors.As].
 func (e *stateError) Unwrap() error { return e.cause }
@@ -134,7 +152,7 @@ func (l Layout) EnsureStateIgnore() *stateError {
 		return &stateError{msg: "could not read " + path, cause: err}
 	}
 	if line, bad := conflictingStateNegation(string(raw)); bad {
-		return &stateError{msg: path + " negates the state ignore with " + line + ": remove the negation"}
+		return &stateError{msg: path + " negates the state ignore with " + line + ": remove the negation", operator: true}
 	}
 	if hasStateLine(string(raw)) {
 		return nil
@@ -212,17 +230,8 @@ func confineJoin(root, name string) (string, *stateError) {
 	var rest []string
 	for {
 		if _, err := os.Lstat(prefix); err == nil {
-			resolved, err := filepath.EvalSymlinks(prefix)
-			if err != nil {
-				return "", &stateError{msg: "could not resolve " + name, cause: err}
-			}
-			real := resolved
-			for i := len(rest) - 1; i >= 0; i-- {
-				real = filepath.Join(real, rest[i])
-			}
-			rel, err := filepath.Rel(root, real)
-			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return "", &stateError{msg: "refuses to write outside the repository: " + name}
+			if serr := checkAnchored(root, prefix, name, rest); serr != nil {
+				return "", serr
 			}
 			return full, nil
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -237,6 +246,24 @@ func confineJoin(root, name string) (string, *stateError) {
 	}
 }
 
+// checkAnchored proves an existing prefix plus the missing tail resolves
+// back inside the repository root.
+func checkAnchored(root, prefix, name string, rest []string) *stateError {
+	resolved, err := filepath.EvalSymlinks(prefix)
+	if err != nil {
+		return &stateError{msg: "could not resolve " + name, cause: err}
+	}
+	anchored := resolved
+	for _, r := range slices.Backward(rest) {
+		anchored = filepath.Join(anchored, r)
+	}
+	rel, err := filepath.Rel(root, anchored)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return &stateError{msg: "refuses to write outside the repository: " + name, operator: true}
+	}
+	return nil
+}
+
 // refuseSymlinkLeaf refuses to read or write through a symlinked managed
 // path: the link target is an unrelated location even when it resolves
 // inside the repository.
@@ -249,7 +276,7 @@ func refuseSymlinkLeaf(full, name string) *stateError {
 		return &stateError{msg: "could not inspect " + name, cause: err}
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return &stateError{msg: name + " is a symlink: refusing to write through it"}
+		return &stateError{msg: name + " is a symlink: refusing to write through it", operator: true}
 	}
 	return nil
 }

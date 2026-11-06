@@ -16,10 +16,10 @@ func mcpUsageText() string {
 		"  stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
 		"  notifications/cancelled. The process exits when stdin closes: no daemon, no HTTP.\n" + //nolint:misspell // MCP method name
-		"  --read-only  expose read tools plus record dry_run (report, next, show, trend, ready, doctor, check-tree, record)\n" +
+		"  --read-only  expose read tools plus record dry_run (report, next, show, trend, ready, doctor, check-tree, config, record)\n" +
 		"  --operator   also expose the human-owned `triage` tool; mutually exclusive with --read-only\n" +
 		"\n" +
-		"  Default tools (18): adopt, calibrate, check-tree, doctor, fetch, fetch-local, fix, init,\n" +
+		"  Default tools (19): adopt, calibrate, check-tree, config, doctor, fetch, fetch-local, fix, init,\n" +
 		"  learn, next, post, ready, record, report, show, threads, trend, verify. `triage` joins\n" +
 		"  them only with --operator: status flips are human-owned, and agents propose `triage[]`\n" +
 		"  in review.json instead.\n" +

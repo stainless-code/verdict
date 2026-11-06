@@ -8,7 +8,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// mustParse parses or fails the test.
 func mustParse(t *testing.T, give string) *core.Config {
 	t.Helper()
 	cfg, ref := Parse([]byte(give))
@@ -18,12 +17,10 @@ func mustParse(t *testing.T, give string) *core.Config {
 	return cfg
 }
 
-// flagPanel builds a flag layer pinning the panel.
 func flagPanel(models ...string) Partial {
 	return Partial{Panel: models, PanelSet: true}
 }
 
-// resolveMust resolves or fails the test.
 func resolveMust(t *testing.T, in *Inputs) *Resolved {
 	t.Helper()
 	res, ref := Resolve(in)

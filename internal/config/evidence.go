@@ -8,18 +8,18 @@ import (
 
 // EvidenceValue is one captured effective value with its origin.
 type EvidenceValue struct {
-	Key    string
-	Value  any
-	Origin FieldOrigin
+	Key    string      `json:"key"`
+	Value  any         `json:"value"`
+	Origin FieldOrigin `json:"origin"`
 }
 
 // EvidenceRequirement is one captured requirement with its fetch-time
 // satisfaction status and contributing sources.
 type EvidenceRequirement struct {
-	Key       string
-	Threshold *string
-	Status    string
-	Sources   []string
+	Key       string   `json:"key"`
+	Threshold *string  `json:"threshold,omitempty"`
+	Status    string   `json:"status"`
+	Sources   []string `json:"sources"`
 }
 
 // Evidence is the fetch-time capture: effective values, origins, shadowed
@@ -31,15 +31,15 @@ type EvidenceRequirement struct {
 // outcomes by reference; stage flags and consents stay in their own
 // invocation records and never rewrite captured inputs.
 type Evidence struct {
-	Plan           Plan
-	SchemaVersion  string
-	CapturedAt     string
-	BaseSHA        string
-	ConfigSHA256   string
-	ConsumedInputs []string
-	Values         []EvidenceValue
-	Shadowed       []ShadowedValue
-	Requirements   []EvidenceRequirement
+	Plan           Plan                  `json:"plan"`
+	SchemaVersion  string                `json:"schema_version"`
+	CapturedAt     string                `json:"captured_at"`
+	BaseSHA        string                `json:"base_sha"`
+	ConfigSHA256   string                `json:"config_sha256"`
+	ConsumedInputs []string              `json:"consumed_inputs"`
+	Values         []EvidenceValue       `json:"values"`
+	Shadowed       []ShadowedValue       `json:"shadowed"`
+	Requirements   []EvidenceRequirement `json:"requirements"`
 }
 
 // Capture builds the evidence record for one resolution: configRaw is the
@@ -70,15 +70,15 @@ func evidenceValues(defaults *ResolvedDefaults) []EvidenceValue {
 	origins := defaults.Origins
 	get := func(key string) FieldOrigin { return origins[key] }
 	return []EvidenceValue{
-		{Key: "panel", Value: slices.Clone(values.Panel), Origin: get("panel")},
+		{Key: keyPanel, Value: slices.Clone(values.Panel), Origin: get(keyPanel)},
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Origin: get(keyBudgetUSD)},
-		{Key: "max_bytes", Value: values.MaxBytes, Origin: get("max_bytes")},
-		{Key: "chunk", Value: values.Chunk, Origin: get("chunk")},
-		{Key: "kb_policy.min_judged", Value: values.KBMinJudged, Origin: get("kb_policy.min_judged")},
-		{Key: "kb_policy.max_fp_rate", Value: values.KBMaxFPRate, Origin: get("kb_policy.max_fp_rate")},
-		{Key: "effort", Value: values.Effort, Origin: get("effort")},
-		{Key: "display_min_severity", Value: values.DisplayMinSeverity, Origin: get("display_min_severity")},
-		{Key: "post_min_severity", Value: values.PostMinSeverity, Origin: get("post_min_severity")},
+		{Key: keyMaxBytes, Value: values.MaxBytes, Origin: get(keyMaxBytes)},
+		{Key: keyChunk, Value: values.Chunk, Origin: get(keyChunk)},
+		{Key: keyKBMinJudged, Value: values.KBMinJudged, Origin: get(keyKBMinJudged)},
+		{Key: keyKBMaxFPRate, Value: values.KBMaxFPRate, Origin: get(keyKBMaxFPRate)},
+		{Key: keyEffort, Value: values.Effort, Origin: get(keyEffort)},
+		{Key: keyDisplayFloor, Value: values.DisplayMinSeverity, Origin: get(keyDisplayFloor)},
+		{Key: keyPostFloor, Value: values.PostMinSeverity, Origin: get(keyPostFloor)},
 	}
 }
 
@@ -141,12 +141,10 @@ type requirementMerger struct {
 	order   []string
 }
 
-// newRequirementMerger builds an empty merger.
 func newRequirementMerger() *requirementMerger {
 	return &requirementMerger{clauses: map[string]*EvidenceRequirement{}, checks: map[string]*EvidenceRequirement{}}
 }
 
-// merge folds one requirement set into the merger.
 func (m *requirementMerger) merge(set *RequirementSet) {
 	for i := range set.Clauses {
 		m.mergeClause(&set.Clauses[i])

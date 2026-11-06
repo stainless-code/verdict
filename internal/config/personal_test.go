@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// checkPersonalRefusal pins one personal-settings refusal.
 func checkPersonalRefusal(t *testing.T, give, code, fragment string) {
 	t.Helper()
 	_, ref := ParsePersonal([]byte(give))
@@ -31,6 +30,20 @@ func TestParsePersonal(t *testing.T) {
 	}
 	if len(got.Privacy.Exclusions) != 1 {
 		t.Fatalf("privacy = %+v", got.Privacy)
+	}
+}
+
+// TestParsePersonalPrefsKeys pins the shared-file rule: the CLI prefs keys
+// a real operator settings file carries parse but never feed the resolver.
+func TestParsePersonalPrefsKeys(t *testing.T) {
+	give := `{"layout":{"compact":true},"output":{"format":"json"},"color":{"mode":"auto"},"publish":{"footer":true},
+		"review":{"panel":["m"]}}`
+	got, ref := ParsePersonal([]byte(give))
+	if ref != nil {
+		t.Fatalf("ParsePersonal: %v", ref)
+	}
+	if len(got.Review.Panel) != 1 {
+		t.Fatalf("review = %+v, want the typed section parsed beside the prefs keys", got.Review)
 	}
 }
 

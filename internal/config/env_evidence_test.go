@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// checkEnvRefusal pins one malformed environment refusal.
 func checkEnvRefusal(t *testing.T, env map[string]string, code string) {
 	t.Helper()
 	_, _, ref := ParseEnv(env)

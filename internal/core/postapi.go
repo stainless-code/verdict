@@ -95,7 +95,12 @@ type Post struct { //nolint:govet // field order is the published property order
 	PatchID         *string        `json:"patch_id,omitempty"`
 	PatchIDKind     string         `json:"patch_id_kind,omitempty"`
 	Forced          []ForcedPost   `json:"forced,omitempty"`
-	ReviewRaw       any            `json:"-"`
+	// PostMinSeverity is the payload severity floor the run policy set:
+	// findings below it never reach the published payload, and
+	// BelowFloorExcluded receipts how many stayed out.
+	PostMinSeverity    *string `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
+	BelowFloorExcluded int     `json:"below_floor_excluded,omitempty"   min:"0"`
+	ReviewRaw          any     `json:"-"`
 }
 
 // ForcedPost is one explicit --force bypass recorded in post.json: the fired

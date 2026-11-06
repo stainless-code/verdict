@@ -45,11 +45,26 @@ const PendingStatus = "pending"
 // and evidence.
 const keyBudgetUSD = "budget_usd"
 
+// Default value keys shared by the field inventory, the evidence capture,
+// and the explain surface, so the three spell each key once.
+const (
+	keyPanel        = "panel"
+	keyMaxBytes     = "max_bytes"
+	keyChunk        = "chunk"
+	keyEffort       = "effort"
+	keyDisplayFloor = "display_min_severity"
+	keyPostFloor    = "post_min_severity"
+	keyKBPolicy     = "kb_policy"
+	keyKBMinJudged  = "kb_policy.min_judged"
+	keyKBMaxFPRate  = "kb_policy.max_fp_rate"
+)
+
 // Partial is one layer's contribution to the ordinary defaults. Each field
 // carries its own presence bit so nested objects merge per field and
 // arrays replace: a set-but-empty panel replaces, an unset one inherits.
 type Partial struct {
 	BudgetUSD          *float64
+	BudgetDisplay      string
 	MaxBytes           *int64
 	Chunk              *bool
 	KBMinJudged        *int
@@ -73,6 +88,9 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 		out.Panel, out.PanelSet = defaults.Panel, true
 	}
 	out.BudgetUSD = defaults.BudgetUSD
+	if defaults.BudgetUSD != nil {
+		out.BudgetDisplay = strconv.FormatFloat(*defaults.BudgetUSD, 'f', -1, floatBits)
+	}
 	out.MaxBytes = defaults.MaxBytes
 	out.Chunk = defaults.Chunk
 	if defaults.KBPolicy != nil {
@@ -103,38 +121,51 @@ func Builtins() Partial {
 // FieldOrigin records the winning layer and the exact source that
 // supplied one effective field.
 type FieldOrigin struct {
-	Layer  string
-	Source string
+	Layer  string `json:"layer"`
+	Source string `json:"source"`
 }
 
 // ShadowedValue records one losing layer value: every shadowed value is
 // reported with its layer and source, so an override never hides silently.
 type ShadowedValue struct {
-	Key    string
-	Value  any
-	Layer  string
-	Source string
+	Key    string `json:"key"`
+	Value  any    `json:"value"`
+	Layer  string `json:"layer"`
+	Source string `json:"source"`
 }
 
 // EffectiveDefaults is the merged ordinary defaults for one file.
 type EffectiveDefaults struct {
-	BudgetUSD          *float64
-	DisplayMinSeverity *string
-	PostMinSeverity    *string
-	Effort             string
-	Panel              []string
-	MaxBytes           int64
-	KBMinJudged        int
-	KBMaxFPRate        float64
-	Chunk              bool
+	BudgetUSD          *float64 `json:"budget_usd,omitempty"`
+	BudgetDisplay      string   `json:"-"`
+	DisplayMinSeverity *string  `json:"display_min_severity,omitempty"`
+	PostMinSeverity    *string  `json:"post_min_severity,omitempty"`
+	Effort             string   `json:"effort"`
+	Panel              []string `json:"panel,omitempty"`
+	MaxBytes           int64    `json:"max_bytes"`
+	KBMinJudged        int      `json:"kb_min_judged"`
+	KBMaxFPRate        float64  `json:"kb_max_fp_rate"`
+	Chunk              bool     `json:"chunk"`
 }
 
 // ResolvedDefaults carries the effective values with per-field origins
 // and the shadowed values they overrode.
 type ResolvedDefaults struct {
-	Origins  map[string]FieldOrigin
-	Shadowed []ShadowedValue
-	Values   EffectiveDefaults
+	Origins  map[string]FieldOrigin `json:"origins"`
+	Shadowed []ShadowedValue        `json:"shadowed"`
+	Values   EffectiveDefaults      `json:"values"`
+}
+
+// firstBudgetDisplay resolves the winning layer's budget literal for
+// human lines: text sources keep their spelling ($1.00 stays $1.00),
+// JSON numbers normalize (no literal survives decoding).
+func firstBudgetDisplay(layers []layerValue) string {
+	for i := range layers {
+		if display := layers[i].partial.BudgetDisplay; layers[i].partial.BudgetUSD != nil && display != "" {
+			return display
+		}
+	}
+	return ""
 }
 
 // layerValue pairs one partial layer with its origin.
@@ -153,6 +184,7 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 		func(p Partial) ([]string, bool) { return p.Panel, p.PanelSet })
 	out.Values.BudgetUSD, out.Origins[keyBudgetUSD], out.Shadowed = pickPointer(layers, keyBudgetUSD, out.Shadowed,
 		func(p Partial) (*float64, bool) { return p.BudgetUSD, p.BudgetUSD != nil })
+	out.Values.BudgetDisplay = firstBudgetDisplay(layers)
 	out.Values.MaxBytes, out.Origins["max_bytes"], out.Shadowed = pickInt64(layers, "max_bytes", out.Shadowed,
 		func(p Partial) (int64, bool) { return derefInt64(p.MaxBytes) })
 	out.Values.Chunk, out.Origins["chunk"], out.Shadowed = pickBool(layers, "chunk", out.Shadowed,
@@ -388,7 +420,6 @@ func envTrim(env map[string]string, name string) (string, bool) {
 	return strings.TrimSpace(raw), true
 }
 
-// panelEnv reads the pinned panel list, which never refuses.
 func panelEnv(env map[string]string, out *Partial) {
 	raw, ok := envTrim(env, "REVIEW_PANEL")
 	if !ok {
@@ -408,7 +439,7 @@ func budgetEnv(env map[string]string, out *Partial) *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
-	out.BudgetUSD = &budget
+	out.BudgetUSD, out.BudgetDisplay = &budget, raw
 	return nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -31,47 +32,35 @@ type budgetState struct {
 	receiptNeeded bool
 }
 
-// resolveBudget reads the budget: REVIEW_BUDGET_USD wins, else the
-// first usable line of .review/budget (a leading $ is stripped). Unset
-// disables the whole plane.
-func resolveBudget(env map[string]string, r *session) (budgetState, error) {
+// resolveBudget reads the ordinary spend guard from the effective
+// resolution: flags beat environment, which beats repository scopes and
+// shared defaults, which beat personal review. Unset disables the
+// ordinary plane; the personal ceiling resolves separately and no
+// repository or environment layer can raise it. Malformed values refuse
+// at parse time, never here.
+func resolveBudget(_ *session, res *config.Resolved) budgetState {
 	var st budgetState
-	raw, src := "", ""
-	if v, ok := env["REVIEW_BUDGET_USD"]; ok && v != "" {
-		raw, src = strings.TrimSpace(v), "REVIEW_BUDGET_USD"
-	} else if v, ok := readKnobFile(r, ".review/budget"); ok {
-		raw, src = strings.TrimSpace(strings.TrimPrefix(v, "$")), ".review/budget"
+	if res == nil || res.Defaults.Values.BudgetUSD == nil {
+		return st
 	}
-	if raw == "" {
-		return st, nil
+	display := res.Defaults.Values.BudgetDisplay
+	if display == "" {
+		display = strconv.FormatFloat(*res.Defaults.Values.BudgetUSD, 'f', -1, 64)
 	}
-	if !isBudgetNumber(raw) {
-		return st, &core.RefusalError{Code: "bad-budget", Message: fmt.Sprintf(
-			"budget '%s' from %s is not a plain USD number (want e.g. REVIEW_BUDGET_USD=0.50 "+
-				"or a .review/budget file holding 0.50)", raw, src)}
-	}
-	st.budgetUSD, st.budgetSrc, st.hasBudget = raw, src, true
-	return st, nil
+	st.budgetUSD, st.budgetSrc, st.hasBudget = display,
+		res.Defaults.Origins["budget_usd"].Source, true
+	return st
 }
 
-func isBudgetNumber(s string) bool {
-	intPart, fracPart, hasDot := strings.Cut(s, ".")
-	if hasDot && strings.Contains(fracPart, ".") {
-		return false
-	}
-	if !readcommon.IsDigits(intPart) {
-		return false
-	}
-	if hasDot && !readcommon.IsDigits(fracPart) {
-		return false
-	}
-	return true
-}
-
-// budgetGate gates a run on the budget: with one set, print the estimate line,
-// arm the envelope summaries, and refuse over-budget runs without consent.
-func budgetGate(r *session, st *budgetState, consent bool) error {
-	if !st.hasBudget {
+// budgetGate gates a run on the spend policy: the ordinary estimate
+// guard against the resolved budget, then the personal ceiling no layer
+// can raise. The ordinary guard yields to an explicit consent receipt;
+// the personal ceiling never does — not with consent and not with force.
+// An unknown projection with a set budget proceeds unenforced unless the
+// personal settings require a known estimate (spend-unknown), and a
+// consented blind run records its receipt like any other.
+func budgetGate(r *session, st *budgetState, res *config.Resolved, consent bool) error {
+	if !st.hasBudget && (res == nil || res.Spend.PersonalLimit == nil) {
 		return nil
 	}
 	if err := costEstimate(r, st); err != nil {
@@ -84,9 +73,17 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 	}
 	st.estimateJSON = estimateObject(st, tierVal)
 	if st.estUSD == "" {
-		return nil
+		return gateUnknownEstimate(r, st, res, consent)
+	}
+	if ref := gatePersonalCeiling(st, res); ref != nil {
+		return ref
 	}
 	if overBudget(st.estUSD, st.budgetUSD) {
+		if res != nil && res.Spend.EnforceCap {
+			return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
+				"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — enforce_cap holds it as a hard cap, consent cannot lift it",
+				st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
+		}
 		if consent {
 			st.receiptNeeded = true
 			return nil
@@ -94,6 +91,40 @@ func budgetGate(r *session, st *budgetState, consent bool) error {
 		return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
 			"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
 			st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
+	}
+	return nil
+}
+
+// gatePersonalCeiling enforces the operator's authorization limit: a
+// known projection above it refuses outright, naming the personal
+// source no repository or environment value can override.
+func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
+	if res == nil || res.Spend.PersonalLimit == nil || st.estUSD == "" {
+		return nil
+	}
+	limit := strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, 64)
+	if overBudget(st.estUSD, limit) {
+		return &core.RefusalError{Code: "spend-capped", Message: fmt.Sprintf(
+			"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (operator settings) from %d comparable run(s) — "+
+				"the ceiling is not consentable: raise it in settings or narrow the run",
+			st.estTier, st.estUSD, st.basisNote(), limit, st.estRuns)}
+	}
+	return nil
+}
+
+// gateUnknownEstimate handles a set budget with no usable projection:
+// consent records a blind-consent receipt and proceeds, a required
+// known estimate refuses, and anything else proceeds unenforced with
+// the legacy warning line.
+func gateUnknownEstimate(r *session, st *budgetState, res *config.Resolved, consent bool) error {
+	if res != nil && res.Spend.RequireKnownEstimate {
+		return &core.RefusalError{Code: "spend-unknown", Message: fmt.Sprintf(
+			"no usable cost projection, but the operator settings require a known estimate — consent cannot blind-approve (budget $%s from %s)",
+			st.budgetUSD, st.budgetSrc)}
+	}
+	if consent {
+		st.receiptNeeded = true
+		fmt.Fprintln(r.Human, "» receipt: consented blind run (no usable cost projection) — recorded alongside the budget ledger")
 	}
 	return nil
 }

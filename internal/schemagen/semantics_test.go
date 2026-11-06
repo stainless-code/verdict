@@ -20,8 +20,10 @@ import (
 var publishedSemantics = map[string]string{
 	// additive config.schema.json (new typed-repository-configuration
 	// document; no existing schema property, required key, or type
-	// changed).
-	"config.schema.json": "c662aa3b82edb85b72fdcdf296af7cb0148e5b475399884cd003377fa625fb86",
+	// changed). The scope $def now carries the presence contract the
+	// parser enforces: at least one of profile, defaults, or requirements
+	// (anyOf), never profile with inline defaults (not).
+	"config.schema.json": "b4c7ecda220d87bce9b9e9d46c4390af5438cea52be2f532a0a3153b34dabf0a",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -77,7 +79,7 @@ var publishedSemantics = map[string]string{
 	// patch identity: additive optional same_patch/reviewed_patch_id/
 	// posted_patch_id on $defs/reportCompleteness. No existing property,
 	// required key, or type changed.
-	"envelope.schema.json": "35d577a05ee4e52152fabedd7cbd422e95c9c85929597972121dd050863eefc2",
+	"envelope.schema.json": "8c5e357473d69856ee80acd63332cfc3dae5f339995d32603732075321da4e02",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -87,7 +89,7 @@ var publishedSemantics = map[string]string{
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
 	"findings.schema.json": "aa0f9fc9500bb90f2c0d7582225633e53d81b56808f5903d96d8764f0239eced",
-	"post.schema.json":     "be4c2a37058f31305bed8c3886ebf9bb9ebbdeda10d18033c6503b083718d080",
+	"post.schema.json":     "224b63d564f1ce959049848a5ec5f295300e3b65e31c662157422cfb444462a6",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",

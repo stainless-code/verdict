@@ -17,6 +17,7 @@ import (
 type Inputs struct {
 	Repo         *core.Config
 	Personal     *PersonalSettings
+	Legacy       LegacyInputs
 	BaseSHA      string
 	SettingsPath string
 	Files        []FileInput
@@ -28,27 +29,27 @@ type Inputs struct {
 // resolutions with clause provenance, the combined plan, and the spend
 // and privacy constraints.
 type Resolved struct {
-	Spend    SpendView
-	Plan     Plan
-	Files    []FileResolution
-	Privacy  PrivacyView
-	Defaults ResolvedDefaults
+	Spend    SpendView        `json:"spend"`
+	Plan     Plan             `json:"plan"`
+	Files    []FileResolution `json:"files"`
+	Privacy  PrivacyView      `json:"privacy"`
+	Defaults ResolvedDefaults `json:"defaults"`
 }
 
 // SpendView separates the two evaluations: the ordinary estimate guard
 // against the resolved budget_usd default, and the personal authorization
 // limit the repository can never raise.
 type SpendView struct {
-	GuardUSD             *float64
-	PersonalLimit        *float64
-	RequireKnownEstimate bool
-	EnforceCap           bool
+	GuardUSD             *float64 `json:"guard_usd,omitempty"`
+	PersonalLimit        *float64 `json:"personal_limit,omitempty"`
+	RequireKnownEstimate bool     `json:"require_known_estimate"`
+	EnforceCap           bool     `json:"enforce_cap"`
 }
 
 // PrivacyView is the exclusion constraint fetch enforces before any
 // model-facing export is produced.
 type PrivacyView struct {
-	Exclusions []string
+	Exclusions []string `json:"exclusions"`
 }
 
 // Excluded reports whether the repository-relative path is withheld from
@@ -76,21 +77,21 @@ func (p PrivacyView) FilterPaths(paths []string) []string {
 // PlanGroup is one execution group: paths sharing identical effective
 // defaults, requirements, and profile.
 type PlanGroup struct {
-	Profile   string
-	Depth     string
-	Checks    []string
-	MaxLenses *int
-	Files     []string
-	Scopes    []string
+	Profile   string   `json:"profile"`
+	Depth     string   `json:"depth"`
+	Checks    []string `json:"checks"`
+	MaxLenses *int     `json:"max_lenses,omitempty"`
+	Files     []string `json:"files"`
+	Scopes    []string `json:"scopes"`
 }
 
 // Plan is the combined plan: one entry per group with its profile, depth,
 // checks, lens budget, and file list. Status stays pending until
 // execution evidence exists.
 type Plan struct {
-	EffortTier string
-	Status     string
-	Groups     []PlanGroup
+	EffortTier string      `json:"effort_tier"`
+	Status     string      `json:"status"`
+	Groups     []PlanGroup `json:"groups"`
 }
 
 // configSourceName is the tracked repository configuration path.
@@ -108,7 +109,11 @@ func Resolve(in *Inputs) (*Resolved, *core.RefusalError) {
 		personal = &PersonalSettings{}
 	}
 	repo, review := repoDefaults(in.Repo), personal.Review
-	global := mergePartials(globalLayers(&in.Flags, &in.Env, &repo, &review))
+	legacy, ref := legacyLayers(in.Legacy)
+	if ref != nil {
+		return nil, ref
+	}
+	global := mergePartials(globalLayers(&in.Flags, &in.Env, &repo, &review, legacy))
 	root := rootRequirements(requirementsOf(in.Repo), in.BaseSHA)
 	out := &Resolved{Defaults: global}
 	for _, file := range in.Files {
@@ -133,11 +138,12 @@ func Resolve(in *Inputs) (*Resolved, *core.RefusalError) {
 // globalLayers orders the invocation and shared layers: flags, then each
 // set environment field with its variable name, then the repository
 // shared defaults, the personal review defaults, and the built-ins.
-func globalLayers(flags, env, repo, personal *Partial) []layerValue {
+func globalLayers(flags, env, repo, personal *Partial, legacy []layerValue) []layerValue {
 	layers := []layerValue{{partial: *flags, layer: LayerFlag, source: "command line"}}
 	layers = append(layers, envLayers(env)...)
+	layers = append(layers, layerValue{partial: *repo, layer: LayerRepo, source: configSourceName})
+	layers = append(layers, legacy...)
 	layers = append(layers,
-		layerValue{partial: *repo, layer: LayerRepo, source: configSourceName},
 		layerValue{partial: *personal, layer: LayerPersonal, source: "operator settings"},
 		layerValue{partial: Builtins(), layer: LayerBuiltIn, source: LayerBuiltIn},
 	)
@@ -153,7 +159,7 @@ func envLayers(env *Partial) []layerValue {
 		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_PANEL", partial: Partial{Panel: env.Panel, PanelSet: true}})
 	}
 	if env.BudgetUSD != nil {
-		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_BUDGET_USD", partial: Partial{BudgetUSD: env.BudgetUSD}})
+		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_BUDGET_USD", partial: Partial{BudgetUSD: env.BudgetUSD, BudgetDisplay: env.BudgetDisplay}})
 	}
 	if env.MaxBytes != nil {
 		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_MAX_BYTES", partial: Partial{MaxBytes: env.MaxBytes}})

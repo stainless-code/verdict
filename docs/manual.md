@@ -418,6 +418,36 @@ Track your controls once so the base commit carries them — in a repo whose
 `.gitignore` admits them, `git add .review/kb.jsonl .review/learnings.md
 .review/panel` (and any other control you use), then commit.
 
+## Typed repository configuration
+
+`.verdict/config.json` is the typed successor to the loose knob files above:
+one strict document (schema `skills/verdict/schemas/config.schema.json`) for
+defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
+the two severity floors), blocking clauses, path scopes, named profiles, and
+the bind requirement. `fetch`/`fetch-local` read it from the base commit (or
+the reviewed worktree for local runs) through the same trusted read; unknown
+fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
+typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)
+before any provider call. Layer order is flags, environment
+(`REVIEW_BUDGET_USD` and friends), repository scopes and shared defaults,
+personal review settings, built-ins. The personal layer lives in the operator
+settings file and carries only a spend ceiling, privacy exclusions, and review
+defaults — it can never raise the repository budget, and its exclusions are
+enforced before any model-facing export while the raw bundle keeps every byte.
+
+Each fetch persists a run bundle (`.verdict/state/<pr>/` or
+`.verdict/state/local-<slug>/`) with the allowlisted fetch-time evidence and
+the combined pending plan. `post` enforces the stored block clauses and
+`require_bind` against the full findings (below-floor findings still gate even
+when they stay out of the payload), `report` renders below-floor findings out
+of the view while gates keep the full set, and every check execution appends
+an observation to the bundle. `verdict config <owner/repo> <pr> --explain`
+renders the stored policy; `--preview [--file <path>]` resolves a proposed
+file (or the trusted inventory, else the no-policy layers) with current
+settings and environment. Explain and preview perform no live calls, no exec,
+and no writes, and never approve. The full rule table lives in
+`docs/policy-contract.md`.
+
 ## Machine surface
 
 `fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
@@ -664,9 +694,9 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 `verdict mcp --help` documents it.
 
 Tools are named after the verbs and take the core request shape: `adopt`,
-`calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
+`calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
 `learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `threads`,
-`trend`, `verify`. That is 18 tools. `upgrade` and `skill` are distribution surfaces,
+`trend`, `verify`. That is 19 tools. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -677,8 +707,8 @@ become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
 a review and calls GitHub, so it is not exposed under `--read-only`.
 
-`--read-only` exposes seven read tools (`report`, `next`, `show`, `trend`,
-`ready`, `doctor`, `check-tree`) plus `record` limited to its `dry_run: true`
+`--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
+`ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
@@ -691,7 +721,7 @@ the binary and its credentials. A call to a tool the flags hide is a JSON-RPC
 that exposes it (`post` under `--read-only`, `triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
-`--operator` adds `triage` (19 tools) for an operator's own assistant that is
+`--operator` adds `triage` (20 tools) for an operator's own assistant that is
 allowed to flip statuses; it is never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's

@@ -211,21 +211,6 @@ func TestRecordBasisMixed(t *testing.T) {
 	}
 }
 
-// TestIsBudgetNumber exercises the fetch helper.
-func TestIsBudgetNumber(t *testing.T) {
-	t.Parallel()
-	for _, good := range []string{"0", "0.50", "10", "10.25", "007", "99999999999999999999"} {
-		if !isBudgetNumber(good) {
-			t.Fatalf("%q reads invalid", good)
-		}
-	}
-	for _, bad := range []string{"", "abc", "1.", ".5", "-1", "1.2.3", " 1", "$1"} {
-		if isBudgetNumber(bad) {
-			t.Fatalf("%q reads valid", bad)
-		}
-	}
-}
-
 // TestPromptNonceShape exercises the fetch helper.
 func TestPromptNonceShape(t *testing.T) {
 	t.Parallel()

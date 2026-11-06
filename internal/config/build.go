@@ -335,7 +335,6 @@ func buildScope(raw any, path string) (core.ConfigScope, *core.RefusalError) {
 	return out, checkScopeRules(&out, path)
 }
 
-// scopeObject requires one scope entry to be an object.
 func scopeObject(raw any, path string) (map[string]any, *core.RefusalError) {
 	obj, ref := asObject(raw, path)
 	if ref != nil {
@@ -472,7 +471,6 @@ func checkClauseNames(cfg *core.Config) *core.RefusalError {
 	return nil
 }
 
-// noteScopeClauseNames records one scope's inline clause list, if any.
 func noteScopeClauseNames(seen map[string]string, scope *core.ConfigScope, si int) *core.RefusalError {
 	if scope.Requirements == nil {
 		return nil

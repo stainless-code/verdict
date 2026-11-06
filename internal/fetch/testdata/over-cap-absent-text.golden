@@ -7,7 +7,7 @@ candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
 - [paths] re-fetch narrowed to f00.txt (~59477 bytes)
 - [paths] re-fetch excluding f00.txt: first 10 of 13 remaining files (~773201 bytes total)
 - [range] split the range in half (~416339 bytes each): fetch-local --range/--base, fetch --base-sha/--since
-error: diff 832678 bytes exceeds cap 512000 bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or .review/max_bytes)
+error: diff 832678 bytes exceeds cap 512000 bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)
 try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 --- files ---
 --- file C/.gh-calls.log ---

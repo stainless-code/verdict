@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -61,6 +62,41 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		GateFailed: resp.GateFailed,
 		Output:     artifactOf(resp.Output),
 		Sarif:      artifactOf(resp.Sarif),
+	}, nil
+}
+
+// ConfigRequest explains the stored effective policy of a fetched run or
+// previews a proposed configuration file. Exactly one of Explain and
+// Preview must be set; File names the proposed file for preview.
+type ConfigRequest struct {
+	Invocation
+	File    string
+	Explain bool
+	Preview bool
+}
+
+// ConfigResponse carries the read-only policy surface: envelope fields
+// plus the typed config data as JSON, byte-identical to the --json
+// envelope's data object.
+type ConfigResponse struct {
+	Result
+}
+
+// Config explains the stored effective policy (--explain) or previews a
+// proposed file with current settings and environment (--preview). It
+// performs no live calls, no exec, and no writes, and never approves.
+func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigResponse, error) {
+	resp, ref := config.Run(ctx, &core.ConfigRequest{
+		ReadRequest: c.read(req.Repo, req.PR),
+		Flags: core.ConfigFlags{
+			Explain: req.Explain, Preview: req.Preview, File: req.File,
+		},
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &ConfigResponse{
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
 	}, nil
 }
 

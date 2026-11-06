@@ -92,6 +92,11 @@ func (c *Client) Close() error
     Close releases client resources. It is a no-op today, kept so embedding code
     never needs a second revision when a resource appears.
 
+func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigResponse, error)
+    Config explains the stored effective policy (--explain) or previews a
+    proposed file with current settings and environment (--preview). It performs
+    no live calls, no exec, and no writes, and never approves.
+
 func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error)
     Doctor preflights the harness (auth, git, storage) and reports health.
 
@@ -170,6 +175,23 @@ type Commander interface {
 }
     Commander runs one process to completion. The production client shells out
     to the real gh/git; tests inject a scripted Commander.
+
+type ConfigRequest struct {
+	Invocation
+	File    string
+	Explain bool
+	Preview bool
+}
+    ConfigRequest explains the stored effective policy of a fetched run or
+    previews a proposed configuration file. Exactly one of Explain and Preview
+    must be set; File names the proposed file for preview.
+
+type ConfigResponse struct {
+	Result
+}
+    ConfigResponse carries the read-only policy surface: envelope fields plus
+    the typed config data as JSON, byte-identical to the --json envelope's data
+    object.
 
 type DoctorRequest struct{}
     DoctorRequest carries no positionals: doctor preflights the harness.

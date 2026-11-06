@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "diff-too-large",
-    "message": "diff 832678 bytes exceeds cap 512000 bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or .review/max_bytes)\ntry: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
+    "message": "diff 832678 bytes exceeds cap 512000 bytes — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\ntry: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
     "candidates": [
       {
         "kind": "paths",

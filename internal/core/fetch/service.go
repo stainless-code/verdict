@@ -12,6 +12,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/retry"
@@ -290,15 +291,14 @@ type session struct {
 	Diag      io.Writer
 	progress  core.Progress
 	commander Commander
-	Now       func() time.Time
-	env       map[string]string
 	warnings  *[]string
-	// retryAt is the last exhausted transient call's RFC 3339 retry time;
-	// finalizeErr copies it onto the refusal (empty on every other path).
-	retryAt   string
+	env       map[string]string
+	Now       func() time.Time
 	iso       *isolation
 	controls  *controls.Snapshot
 	Effective core.Effective
+	retryAt   string
+	privacy   config.PrivacyView
 	JSONMode  bool
 }
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -26,10 +27,13 @@ func runProvider(
 	if err := fetchProviderBundle(ctx, ctx2, req, f.Provider); err != nil {
 		return nil, "", err
 	}
-	if ref := resolveControls(ctx, ctx2, "", readcommon.PrField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+	if ref := resolveControls(ctx, ctx2, "", readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	fc, chunkActive, err := providerCap(r, dir, f.ChunkFlag)
+	if ref := phaseTwo(ctx, ctx2, req, f, dir); ref != nil {
+		return nil, "", ref
+	}
+	fc, chunkActive, err := providerCap(r, ctx2.runCfg.resolved, dir, f.ChunkFlag)
 	if err != nil {
 		return nil, "", err
 	}
@@ -41,20 +45,17 @@ func runProvider(
 		return nil, "", err
 	}
 	headSHA, baseSHA := readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, baseSHA, fc.source)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTail(ctx2, req, f, budget, &fc, chunkJSON, nullStr)
+	return fetchTail(ctx, ctx2, req, f, budget, &fc, chunkJSON, nullStr)
 }
 
 // providerCap owns the provider cap gate and hunk index write.
-func providerCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
-	fc, ref := resolveFetchCap(r)
-	if ref != nil {
-		return fc, false, ref
-	}
-	chunkActive, ref := checkDiffSize(r, dir+suffixFullDiff, fc, chunkFlag)
+func providerCap(r *session, res *config.Resolved, dir string, chunkFlag bool) (fetchCap, bool, error) {
+	fc := resolveFetchCap(r, res)
+	chunkActive, ref := checkDiffSize(r, res, dir+suffixFullDiff, fc, chunkFlag)
 	if ref != nil {
 		return fc, false, ref
 	}

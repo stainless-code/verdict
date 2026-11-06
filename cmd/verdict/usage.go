@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -12,10 +12,10 @@ func usageText() string {
 		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). Incremental re-review\n" +
 		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
-		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.\n" +
-		"    Chunking opt-in only: --chunk (or .review/chunk holding true) marks over-cap fetches for " +
+		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
+		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
 		"chunked slicing (override chain wins; absent reads today's refusal).\n" +
-		"    With REVIEW_BUDGET_USD (or .review/budget) set, fetch prints a pre-run\n" +
+		"    With REVIEW_BUDGET_USD (or the typed budget_usd default) set, fetch prints a pre-run\n" +
 		"    cost estimate from comparable past runs and refuses projected-over-budget\n" +
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
@@ -35,6 +35,12 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
+		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
+		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
+		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +
+		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
+		"    with current personal settings and environment — no live calls, no exec, no writes,\n" +
+		"    and never an approval.\n" +
 		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
@@ -243,7 +249,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall: " +
+		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"

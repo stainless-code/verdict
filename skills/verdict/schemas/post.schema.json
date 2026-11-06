@@ -46,7 +46,9 @@
       "description": "One entry per guard --force bypassed, in guard order; absent when the post needed no override.",
       "type": "array",
       "items": { "$ref": "#/$defs/forcedPost" }
-    }
+    },
+    "post_min_severity": { "enum": ["critical", "important", "informational"] },
+    "below_floor_excluded": { "type": "integer", "minimum": 0 }
   },
   "required": ["schema_version", "review", "head", "posted_at"],
   "additionalProperties": true,

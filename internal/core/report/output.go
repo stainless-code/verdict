@@ -166,8 +166,9 @@ func dedupeValues(vals []any) []any {
 
 func rankedLines(st *state) []string {
 	linkable := provenance.EvidenceLinkable(st.dir, st.headSHA) == strTrue
-	lines := make([]string, 0, len(st.ranked))
-	for _, item := range st.ranked {
+	view := viewRanked(st)
+	lines := make([]string, 0, len(view))
+	for _, item := range view {
 		lines = append(lines, rankedLine(st, item, linkable))
 	}
 	return lines
@@ -214,7 +215,7 @@ func linkDefs(st *state) []string {
 	}
 	base := provenance.EvidenceBaseURL(st.dir, st.req.Repo)
 	var defs []string
-	for _, item := range st.ranked {
+	for _, item := range viewRanked(st) {
 		path := readcommon.FieldOf(item.Entry, "path")
 		line := readcommon.FieldOf(item.Entry, "line")
 		if path == nil || line == nil {

@@ -132,7 +132,6 @@ func readObjectEntry(dec *json.Decoder, obj map[string]any, path string) *core.R
 	return nil
 }
 
-// readObjectKey reads one object key, which must be a string.
 func readObjectKey(dec *json.Decoder, path string) (string, *core.RefusalError) {
 	keyTok, err := dec.Token()
 	if err != nil {
@@ -145,7 +144,6 @@ func readObjectKey(dec *json.Decoder, path string) (string, *core.RefusalError) 
 	return key, nil
 }
 
-// readObjectValue reads the value following one object key.
 func readObjectValue(dec *json.Decoder, path, key string) (any, *core.RefusalError) {
 	valTok, err := dec.Token()
 	if err != nil {
@@ -174,7 +172,6 @@ func readArray(dec *json.Decoder, path string) (any, *core.RefusalError) {
 	return out, nil
 }
 
-// jsonKind names a decoded value for diagnostics.
 func jsonKind(v any) string {
 	switch v.(type) {
 	case nil:

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -21,12 +22,13 @@ type chunkEntry struct {
 	estSize int64
 }
 
-func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive bool, headSHA, baseSHA string, capSrc string) (any, error) {
+func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive bool, headSHA, baseSHA string, capSrc string, exclusions []string) (any, error) {
 	if !chunkActive {
 		return nil, nil //nolint:nilnil // (nil, nil) is the gate-not-armed signal, never an error
 	}
 	fullDiff := dir + suffixFullDiff
 	table := chunkFileTable(fullDiff)
+	table = withholdChunkFiles(table, exclusions)
 	cdir := dir + "/chunks"
 	_ = os.RemoveAll(cdir)
 	if merr := os.MkdirAll(cdir, dirPerm); merr != nil {
@@ -47,6 +49,30 @@ func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive b
 		}
 	}
 	return writeChunkManifest(human, dir, plan, maxBytes, total, n, headSHA, baseSHA, capSrc)
+}
+
+// withholdChunkFiles drops privacy-excluded files from the chunk
+// table before any chunk byte is written: the raw full.diff keeps every
+// file for patch identity, while chunk payloads never carry excluded
+// content.
+func withholdChunkFiles(table []fileSlice, exclusions []string) []fileSlice {
+	if len(exclusions) == 0 {
+		return table
+	}
+	kept := table[:0]
+	for _, entry := range table {
+		excluded := false
+		for _, glob := range exclusions {
+			if config.Match(glob, entry.path) {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // slicePlan owns the plan slice with its typed failure: a missing chunk

@@ -42,8 +42,11 @@ var hintRules = []HintRule{
 		"then re-synthesize across all chunks and re-run"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
-		codes: []string{"not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed"},
-		hint:  "try: run the fetch/record step named above first, then re-run",
+		codes: []string{
+			"not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed",
+			"config-no-bundle",
+		},
+		hint: "try: run the fetch/record step named above first, then re-run",
 	},
 	{
 		codes: []string{"corrupt-store"},

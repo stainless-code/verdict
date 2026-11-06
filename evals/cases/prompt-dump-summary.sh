@@ -65,6 +65,12 @@ EOF
       [ -f "$f" ] || continue
       fence_file "$(basename "$f")" "$f"
     done
+    plan_files="$(grep '^+++ b/' "$dir/full.diff" 2>/dev/null | sed 's|^+++ b/||' | sort | paste -sd, - || true)"
+    if [ -n "$plan_files" ]; then
+      printf '<<<UNTRUSTED nonce=%s source=plan.txt>>>\n' "$nonce" >> "$out"
+      printf 'plan status: pending\n- group 1: profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[]\neffort: standard\n' "$plan_files" >> "$out"
+      printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
+    fi
     if [ -f "$dir/full.diff" ]; then fence_file "full.diff" "$dir/full.diff"; fi
     for f in "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
       [ -f "$f" ] || continue

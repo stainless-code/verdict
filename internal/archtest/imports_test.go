@@ -58,6 +58,7 @@ var forbiddenDeps = []string{
 var facadeAllowedDeps = map[string]bool{
 	"internal/atomic":         true,
 	"internal/brief":          true,
+	"internal/config":         true,
 	"internal/controls":       true,
 	"internal/core":           true,
 	"internal/core/adopt":     true,

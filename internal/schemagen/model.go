@@ -215,6 +215,26 @@ type ShowFix = core.ShowFix
 // VerifyHint is core's patch/verification rerun hint inside a fix block.
 type VerifyHint = core.VerifyHint
 
+// ConfigData is the config verb's --json data profile: the read-only
+// policy surface (explain renders the stored bundle, preview resolves
+// the proposed or trusted inputs with no live calls).
+type ConfigData = core.ConfigData
+
+// ConfigValue is one effective default with its provenance.
+type ConfigValue = core.ConfigValue
+
+// ConfigRequirement is one captured requirement with its sources.
+type ConfigRequirement = core.ConfigRequirement
+
+// ConfigPlanGroup is one execution group on the plan surface.
+type ConfigPlanGroup = core.ConfigPlanGroup
+
+// ConfigSpend separates the ordinary guard from the personal ceiling.
+type ConfigSpend = core.ConfigSpend
+
+// ConfigCheck is one observed check execution.
+type ConfigCheck = core.ConfigCheck
+
 // ShowData is the show verb's --json data profile: the raw finding record
 // plus the read-only fix block.
 type ShowData struct {

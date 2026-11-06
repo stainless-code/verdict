@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -533,4 +534,45 @@ func TestRuntimeCheckTreeEnvelopeValidates(t *testing.T) {
 		"clean":                true,
 		"ignored_review_lines": json.Number("0"),
 	})
+}
+
+// TestRuntimeConfigEnvelopeValidates proves the config explain data
+// validates against the pinned configData profile: the stored bundle
+// from a hand-authored policy renders the wire the schema pins.
+func TestRuntimeConfigEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	guard := 9.5
+	rs := &config.RunState{
+		BaseSHA:    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Trusted:    true,
+		CapturedAt: "2026-11-02T12:00:00Z",
+		Evidence: config.Evidence{
+			SchemaVersion: "1",
+			BaseSHA:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			Plan:          config.Plan{Status: config.PendingStatus},
+			Values: []config.EvidenceValue{
+				{Key: "budget_usd", Value: 9.5, Origin: config.FieldOrigin{Layer: config.LayerEnv, Source: "REVIEW_BUDGET_USD"}},
+			},
+		},
+		Resolved: &config.Resolved{
+			Plan: config.Plan{Status: config.PendingStatus},
+			Defaults: config.ResolvedDefaults{
+				Values: config.EffectiveDefaults{BudgetUSD: &guard},
+			},
+		},
+	}
+	if serr := config.WriteRunState(".", "7", rs); serr != nil {
+		t.Fatalf("WriteRunState: %v", serr)
+	}
+	data, _, ref := config.Explain(".", "7")
+	if ref != nil {
+		t.Fatalf("Explain: %v", ref)
+	}
+	assertWireFields(t, data.Wire(), map[string]any{
+		"mode":    "explain",
+		"trusted": true,
+	})
+	assertEnvelope(t, doc, "config", "7", "2026-11-02T12:00:00Z", "post, report, and verify enforce this policy; re-fetch to move it", nil, data.Wire())
 }

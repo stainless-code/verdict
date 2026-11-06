@@ -210,6 +210,12 @@ func fetchHappyCommander(t *testing.T) *scriptCommander {
 			"gh\x00api\x00repos/o/r/pulls/7/reviews\x00--paginate":  {stdout: "[]\n"},
 			"gh\x00api\x00repos/o/r/pulls/7/comments\x00--paginate": {stdout: "[]\n"},
 			githubThreadCall(""): {stdout: emptyThreadPage},
+			// The typed configuration reads empty at the base (no
+			// repository policy), and no override fragments exist:
+			// the run follows the no-init rule.
+			"git\x00ls-tree\x00-lz\x00" + fetchTestBase + "\x00--\x00.verdict/config.json":                                               {stdout: ""},
+			"git\x00ls-tree\x00-r\x00--name-only\x00" + fetchTestBase + "\x00--\x00.verdict/overrides/":                                  {stdout: ""},
+			"git\x00ls-tree\x00-lz\x00" + fetchTestBase + "\x00--\x00.verdict/config.json\x00.verdict/kb.jsonl\x00.verdict/learnings.md": {stdout: ""},
 		},
 	}
 }
@@ -248,6 +254,7 @@ func fetchHappyArgv() [][]string {
 				"files,additions,deletions,isDraft,reviewDecision,state",
 		},
 		{"gh", "pr", "diff", "7", "--repo", "o/r"},
+		{"git", "ls-tree", "-lz", fetchTestBase, "--", ".verdict/config.json"},
 		{"git", "patch-id", "--stable"},
 		{
 			"gh", "pr", "view", "7", "--repo", "o/r", "--json", "files", "--jq",
@@ -256,6 +263,12 @@ func fetchHappyArgv() [][]string {
 		{"gh", "api", "repos/o/r/pulls/7/reviews", "--paginate"},
 		{"gh", "api", "repos/o/r/pulls/7/comments", "--paginate"},
 		append([]string{"gh"}, readcommon.ReviewThreadsArgv("o", "r", "7", "")...),
+		{"git", "ls-tree", "-lz", fetchTestBase, "--", ".verdict/config.json"},
+		{"git", "ls-tree", "-r", "--name-only", fetchTestBase, "--", ".verdict/overrides/"},
+		{
+			"git", "ls-tree", "-lz", fetchTestBase, "--",
+			".verdict/config.json", ".verdict/kb.jsonl", ".verdict/learnings.md",
+		},
 	}
 }
 

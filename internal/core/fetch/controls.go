@@ -4,16 +4,16 @@ import (
 	"context"
 
 	"github.com/stainless-code/verdict/internal/controls"
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // resolveControls snapshots the review controls at the bundle's base commit
-// (the worktree only under the explicit opt-out) before any reader runs. A
-// budget armed only by the .review/budget file resolves here; the
-// REVIEW_BUDGET_USD env layer already gated before any provider call.
+// (the worktree only under the explicit opt-out) before any reader runs.
+// Spend gates before and after the snapshot through the effective
+// resolution, never through legacy knob files; the REVIEW_BUDGET_USD env
+// layer already gated before any provider call.
 func resolveControls(
-	ctx context.Context, ctx2 *fetchRunCtx, repo, baseSHA string, allowHead bool, budget *budgetState, consent bool,
+	ctx context.Context, ctx2 *fetchRunCtx, repo, baseSHA string, allowHead bool,
 ) error {
 	r := ctx2.runner
 	snap, ref := controls.Resolve(ctx, r.commander, &controls.Request{
@@ -27,18 +27,6 @@ func resolveControls(
 	if allowHead {
 		r.Warn("controls resolved from HEAD/worktree (explicit opt-out --allow-head-controls) — a PR can edit its judge")
 	}
-	if budget == nil || ctx2.env["REVIEW_BUDGET_USD"] != "" {
-		return nil
-	}
-	resolved, err := resolveBudget(ctx2.env, r)
-	if err != nil {
-		return err
-	}
-	*budget = resolved
-	if err := budgetGate(r, budget, consent); err != nil {
-		return err
-	}
-	writeBudgetReceipt(r, budget, ctx2.dir, core.NowUTC(r.Now()))
 	return nil
 }
 

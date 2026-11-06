@@ -36,14 +36,14 @@ func runGitHub(
 	if ref := githubFetch(ctx, ctx2, r, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
-	if ref := resolveControls(ctx, ctx2, repo, readcommon.PrField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+	if ref := resolveControls(ctx, ctx2, repo, readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	fc, ref := resolveFetchCap(r)
-	if ref != nil {
+	if ref := phaseTwo(ctx, ctx2, req, f, dir); ref != nil {
 		return nil, "", ref
 	}
-	chunkActive, ref := checkDiffSize(r, dir+suffixFullDiff, fc, f.ChunkFlag)
+	fc := resolveFetchCap(r, ctx2.runCfg.resolved)
+	chunkActive, ref := checkDiffSize(r, ctx2.runCfg.resolved, dir+suffixFullDiff, fc, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -51,7 +51,7 @@ func runGitHub(
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTail(ctx2, req, f, budget, &fc, chunkJSON, incBase)
+	return fetchTail(ctx, ctx2, req, f, budget, &fc, chunkJSON, incBase)
 }
 
 func githubFetch(ctx context.Context, ctx2 *fetchRunCtx, r *session, dir, repo, pr string) error {
@@ -140,7 +140,7 @@ func githubBundle(
 		return nil, "", ref
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, readcommon.PrField(dir, keyBaseSHA), fc.source)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, readcommon.PrField(dir, keyBaseSHA), fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -292,11 +292,18 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 }
 
 func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
-	budget, ref := resolveBudget(ctx2.env, ctx2.runner)
+	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref
 	}
-	if err := budgetGate(ctx2.runner, &budget, f.BudgetConsent); err != nil {
+	ctx2.runCfg = rc
+	rc.root = req.RootPath()
+	for _, warn := range rc.envWarns {
+		ctx2.runner.Warn(warn)
+	}
+	ctx2.runner.privacy = rc.resolved.Privacy
+	budget := resolveBudget(ctx2.runner, rc.resolved)
+	if err := budgetGate(ctx2.runner, &budget, rc.resolved, f.BudgetConsent); err != nil {
 		return nil, "", err
 	}
 	dir := ".review/" + req.Pr
@@ -304,8 +311,32 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return nil, "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
 	}
-	writeBudgetReceipt(ctx2.runner, &budget, dir, core.NowUTC(ctx2.runner.Now()))
 	return &budget, dir, nil
+}
+
+// phaseTwo resolves the full repository policy once the base commit is
+// known and re-gates the spend with the repository layer in force: an
+// early provisional gate cannot see repository policy, so the full gate
+// repeats here before the bundle builds. Without base policy the
+// phase-two resolution replays the phase-one layers exactly, so the
+// re-gate is skipped (one gate, one estimate line, one tail receipt);
+// with policy the authoritative gate repeats and the tail records the
+// single fresh receipt.
+func phaseTwo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, dir string) *core.RefusalError {
+	baseSHA := readcommon.PrField(dir, keyBaseSHA)
+	if ref := ctx2.runCfg.resolvePhaseTwo(ctx, ctx2.runner.commander, req.Repo, baseSHA, f.ChunkFlag, nil, req.SettingsPath, legacyInputs(ctx2.runner)); ref != nil {
+		return ref
+	}
+	resolved := ctx2.runCfg.resolved
+	ctx2.runner.privacy = resolved.Privacy
+	if ctx2.runCfg.base == nil || !ctx2.runCfg.base.Present {
+		return nil
+	}
+	budget := resolveBudget(ctx2.runner, resolved)
+	if gateErr := budgetGate(ctx2.runner, &budget, resolved, f.BudgetConsent); gateErr != nil {
+		return budgetRefusal(gateErr)
+	}
+	return nil
 }
 
 func prExtraPaths(prJSON string) string {

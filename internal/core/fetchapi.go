@@ -54,25 +54,33 @@ func (f *FetchLocalFlags) Presences() []Presence {
 // flag, the warnings the adapter already accumulated (prefs), and the human
 // and diagnostic streams the adapter routes (the prompt dump owns stdout
 // under --show-prompts, so the service never touches [os.Stdout] itself).
+// SettingsPath is the operator settings file the personal layer reads
+// (empty reads no personal layer).
 type FetchRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	Flags     FetchFlags
-	Effective Effective
-	JSONMode  bool
-	Warnings  []string
-	Human     io.Writer
-	Diag      io.Writer
+	Flags FetchFlags
+	// SettingsPath is adapter-injected (HOME/XDG_CONFIG_HOME), never a
+	// transport argument: MCP/JSON callers cannot set operator paths.
+	SettingsPath string `json:"-"`
+	Effective    Effective
+	JSONMode     bool
+	Warnings     []string
+	Human        io.Writer
+	Diag         io.Writer
 }
 
-// FetchLocalRequest is the fetch-local service invocation.
+// FetchLocalRequest is the fetch-local service invocation. SettingsPath
+// carries the operator settings file like the fetch request.
 type FetchLocalRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	Flags     FetchLocalFlags
-	Effective Effective
-	JSONMode  bool
-	Warnings  []string
-	Human     io.Writer
-	Diag      io.Writer
+	Flags FetchLocalFlags
+	// SettingsPath is adapter-injected like the fetch request.
+	SettingsPath string `json:"-"`
+	Effective    Effective
+	JSONMode     bool
+	Warnings     []string
+	Human        io.Writer
+	Diag         io.Writer
 }
 
 // FetchResponse carries the fetch outcome: the envelope identity, the typed

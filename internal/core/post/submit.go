@@ -373,8 +373,34 @@ func headReason(dir string) string {
 
 const postErrHeadBytes = 300
 
-//nolint:gocognit,revive // the receipt assembles the fixed wire order plus the provenance triple in one place
+// orderedString reads one string field from an ordered JSON object,
+// reporting "" when the key is missing or not a string.
+func orderedString(obj *jq.Obj, key string) string {
+	v, ok := obj.Get(key)
+	if !ok {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// orderedStringPtr reads one string field, reporting nil unless the key
+// carries a string.
+func orderedStringPtr(obj *jq.Obj, key string) *string {
+	v, ok := obj.Get(key)
+	if !ok {
+		return nil
+	}
+	if s, ok := v.(string); ok {
+		return &s
+	}
+	return nil
+}
+
 func writePostReceipt(st *state, obj *jq.Obj) error {
+	_, floor, excluded := st.floorPayload()
 	receipt := &core.Post{
 		SchemaVersion:   "1",
 		Head:            st.commitID,
@@ -382,6 +408,10 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		ReviewRaw:       obj,
+	}
+	if floor != "" {
+		receipt.PostMinSeverity = &floor
+		receipt.BelowFloorExcluded = excluded
 	}
 	if st.identity != nil {
 		receipt.PatchID, receipt.PatchIDKind = st.identity.PatchID, st.identity.PatchIDKind
@@ -394,20 +424,9 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		return jq.Sealed("bundle provenance", err)
 	}
 	if provObj, ok := prov.(*jq.Obj); ok {
-		if v, _ := provObj.Get("tool_version"); v != nil {
-			if s, ok := v.(string); ok {
-				receipt.ToolVersion = s
-			}
-		}
-		if v, _ := provObj.Get("prompts_hash"); v != nil {
-			if s, ok := v.(string); ok {
-				receipt.PromptsHash = s
-			}
-		}
-		if v, _ := provObj.Get("model"); v != nil {
-			if s, ok := v.(string); ok {
-				receipt.Model = &s
-			}
+		receipt.ToolVersion, receipt.PromptsHash = orderedString(provObj, "tool_version"), orderedString(provObj, "prompts_hash")
+		if model := orderedStringPtr(provObj, "model"); model != nil {
+			receipt.Model = model
 		}
 	}
 	if err := atomic.WriteFile(st.dir+"/post.json", []byte(jq.PrettyOrdered(receipt.Wire()))); err != nil {
@@ -417,7 +436,8 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 }
 
 func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse {
-	nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)
+	payload, _, _ := st.floorPayload()
+	nOpen, nDeferred, nAddressed := postCounts(payload)
 	var next string
 	if nOpen > 0 {
 		next = "address open threads"
@@ -436,11 +456,11 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		Findings: core.PostFindings{
 			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed,
 		},
-		Items:           typedPostItems(st.merged.Entries),
+		Items:           typedPostItems(payload),
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     st.phash,
-		ItemsRaw:        recordcore.EnvelopeItems(st.merged.Entries),
+		ItemsRaw:        recordcore.EnvelopeItems(payload),
 		ReviewRaw:       obj,
 	}
 	if m, err := reviewMap(obj); err == nil {

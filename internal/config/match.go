@@ -6,7 +6,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// slashSep splits portable globs into path segments.
 const slashSep = "/"
 
 // Portable path globs: repository-relative, `/`-separated patterns where

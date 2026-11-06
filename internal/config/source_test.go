@@ -16,11 +16,10 @@ func TestMain(m *testing.M) {
 	os.Exit(testenv.Main(m))
 }
 
-// gitRun runs one git command in the current directory, failing on error.
 func gitRun(t *testing.T, args ...string) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git unavailable")
+		t.Fatal("git is required: the trusted-base read proves against a real commit")
 	}
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Env = testenv.Base(map[string]string{
