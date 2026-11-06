@@ -57,13 +57,16 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	stderr := newBoundedBuffer(limit, captureTail)
 	proc.Stdout = stdout
 	proc.Stderr = stderr
-	proc.Stdin = cmd.Stdin
-	if proc.Stdin == nil {
-		proc.Stdin = r.Stdin
-	}
+	proc.Stdin = commandStdin(cmd, r.Stdin)
 	proc.Env = cmd.Env
 	proc.WaitDelay = waitDelay
-	runErr := proc.Run()
+	setGroup(proc)
+	proc.Cancel = func() error { return killGroup(proc) }
+	if err := startTree(proc); err != nil {
+		return core.Result{}, err
+	}
+	defer releaseTree(proc)
+	runErr := proc.Wait()
 	res := core.Result{
 		Stdout:          stdout.String(),
 		Stderr:          stderr.String(),
@@ -79,6 +82,30 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit}
 	}
 	return res, nil
+}
+
+// commandStdin is the command's own stdin when it sets one, else the
+// runner's fallback (nil inherits this process's stdin, like os/exec).
+func commandStdin(cmd core.Command, fallback io.Reader) io.Reader {
+	if cmd.Stdin != nil {
+		return cmd.Stdin
+	}
+	return fallback
+}
+
+// startTree starts proc in its own process group and arms group termination,
+// releasing the group handle on either failure: a spawn error or a Windows
+// job-assignment error leaves nothing for the caller to wait on or kill.
+func startTree(proc *osexec.Cmd) error {
+	if err := proc.Start(); err != nil {
+		releaseTree(proc)
+		return fmt.Errorf("%s: %w", proc.Args[0], err) //nolint:wrapcheck // spawn message assembled here
+	}
+	if err := armStarted(proc); err != nil {
+		releaseTree(proc)
+		return err
+	}
+	return nil
 }
 
 func (r Runner) precheck(bin string) error {
