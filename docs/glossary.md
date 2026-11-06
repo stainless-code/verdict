@@ -17,8 +17,7 @@ owns the read, validation, and the written review — never delegate
 understanding.
 
 **Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
-the typed `panel` default in `.verdict/config.json` (or the legacy `.review/panel`,
-one slug per line). `fetch` resolves it into `.verdict/state/<pr>/panel`;
+the typed `panel` default in `.verdict/config.json`. `fetch` resolves it into `.verdict/state/<pr>/panel`;
 the first entry is the synthesizer, the rest staff lenses, used exactly in
 order and never substituted. No panel means the operator picks per run.
 The root `panel` file is the shared default roster: `plan.txt` additionally

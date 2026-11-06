@@ -78,6 +78,7 @@ func TestComplianceGateBlocksAndForceProof(t *testing.T) {
 			policyEntry("pay/core.go", "security", "critical", "open"),
 		}, policyRunState())
 		st.flags.Force = force
+		st.flags.Approve, st.flags.Bind = approveTrue, true
 		ref := st.complianceGate()
 		if ref == nil || ref.Code != CodeRequirementBlocked {
 			t.Fatalf("force=%v: gate = %v, want requirement-blocked", force, ref)
@@ -131,6 +132,7 @@ func TestComplianceGateObserves(t *testing.T) {
 		policyEntry("pay/core.go", "security", "critical", "open"),
 	}, policyRunState())
 	st.req.Pr = "7"
+	st.flags.Approve, st.flags.Bind = approveTrue, true
 	if ref := st.complianceGate(); ref == nil {
 		t.Fatal("gate passed, want requirement-blocked")
 	}
@@ -494,5 +496,31 @@ func TestPostReceiptStaysBareWithoutExclusions(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "post_floor_scoped") || strings.Contains(string(raw), "below_floor_excluded") {
 		t.Fatalf("receipt carries floor keys for an unfiltered run:\n%s", raw)
+	}
+}
+
+// TestComplianceGateKeepsNonApprovalEvidence
+// keeps failed observations for comments and negative verdicts.
+func TestComplianceGateKeepsNonApprovalEvidence(t *testing.T) {
+	for _, flags := range []core.PostFlags{
+		{Approve: approveFalse},
+		{Approve: approveFalse, Bind: true, RequestChanges: true},
+		{Approve: approveTrue},
+		{Approve: approveTrue, Bind: true, RequestChanges: true},
+	} {
+		st := policyTestState([]any{policyEntry("pay/core.go", "security", "critical", "open")}, policyRunState())
+		st.flags = flags
+		st.flags.DryRun = true
+		if ref := st.complianceGate(); ref != nil {
+			t.Fatalf("flags=%+v: gate = %v, want no approval refusal", flags, ref)
+		}
+		assertFailedCompliance(t, st.policy.state)
+	}
+}
+
+func assertFailedCompliance(t *testing.T, rs *config.RunState) {
+	t.Helper()
+	if len(rs.Outcomes) != 1 || rs.Outcomes[0].Passed || rs.Outcomes[0].Check != config.CheckNoOpenAboveBlock {
+		t.Fatalf("outcomes = %+v, want a failed no-open observation", rs.Outcomes)
 	}
 }

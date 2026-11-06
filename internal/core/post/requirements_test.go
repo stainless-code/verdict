@@ -362,6 +362,7 @@ func TestComplianceGateAttributesRenameToNewGroup(t *testing.T) {
 	}}
 	rs.Resolved.Plan.Groups[1].Files = []string{"b.txt"}
 	st := policyTestState([]any{policyEntry("old.txt", "logic", "critical", "open")}, rs)
+	st.flags.Approve, st.flags.Bind = approveTrue, true
 	ref := st.complianceGate()
 	if ref == nil || ref.Code != CodeRequirementBlocked {
 		t.Fatalf("gate = %v, want %q", ref, CodeRequirementBlocked)
@@ -398,5 +399,36 @@ func TestRunCommentKeepsUnmetEvidence(t *testing.T) {
 	assertLedgerVerdicts(t, readLedger(t), []ledgerWant{
 		{reqGroupB, config.CheckNoLiveThreads, false},
 		{reqGroupA, config.CheckHeadCurrent, true},
+	})
+}
+
+// TestRunBlockedFindingStillAllowsComment
+// proves comments keep blocking findings and record failed compliance.
+func TestRunBlockedFindingStillAllowsComment(t *testing.T) {
+	t.Chdir(t.TempDir())
+	seedRequirementBundle(t, nil)
+	review := `{"schema_version":"1","body":"Blocking issue found.","approved":false,"comments":[` +
+		`{"path":"a.txt","line":2,"side":"RIGHT","body":"This breaks the invariant.",` +
+		`"category":"logic","rigor":"pointed","severity":"critical"}]}`
+	if err := writeTestFile(reqBundle+"/review.json", review); err != nil {
+		t.Fatal(err)
+	}
+	live := reqHeadSHA
+	cmdr := requirementCommander(t, &live, 0, false)
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: reqBundle + "/review.json"}, &warnings, &human)
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("comment run refused: %v (%s)", ref, ref.Message)
+	}
+	if resp.Data.Event != eventComment {
+		t.Fatalf("event = %q, want COMMENT", resp.Data.Event)
+	}
+	if posted := postedPayloads(t, cmdr); len(posted) != 1 || posted[0]["event"] != eventComment {
+		t.Fatalf("posted = %v, want one COMMENT review", posted)
+	}
+	assertLedgerVerdicts(t, readLedger(t), []ledgerWant{
+		{reqGroupA, config.CheckNoOpenAboveBlock, false},
+		{reqGroupB, config.CheckNoOpenAboveBlock, true},
 	})
 }

@@ -232,4 +232,27 @@ else
   good "trend --help makes no local-bundle refusal claim (it rolls them up)"
 fi
 
+# A captured clause blocks approval, while comments keep the finding visible.
+mkdir -p "$EVAL_SANDBOX/.verdict"
+cat > "$EVAL_SANDBOX/.verdict/config.json" <<'EOF'
+{"schema_version":"1","requirements":{"block_clauses":[{"name":"critical-block","threshold":"critical","paths":["**"]}],"require_checks":["no-open-above-block"]}}
+EOF
+PR=4399
+mk_clean "$PR"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"Blocking issue found.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"This breaks the invariant.","category":"logic","rigor":"pointed","severity":"critical"}]}
+EOF
+m="$(mark)"
+run_review post acme/app "$PR" --dry-run --json
+assert_exit "a clause-meeting finding can be posted as a comment" 0
+assert_json_field "the blocking finding does not promote the comment" "COMMENT" '.data.event'
+assert_json_field "the comment payload retains the blocking finding" "1" '.data.findings.open'
+run_review post acme/app "$PR" --approve true --bind --force --dry-run --json
+assert_exit "the same finding refuses binding approval even with force" 1
+assert_json_field "the approval names the configured requirement" "requirement-blocked" '.error.code'
+run_review post acme/app "$PR" --request-changes --bind --dry-run --json
+assert_exit "the same finding permits a negative binding verdict" 0
+assert_json_field "negative verdict stays negative" "REQUEST_CHANGES" '.data.event'
+assert_eq "dry-run policy probes never call the reviews endpoint" "0" "$(reviews_posts_since "$m")"
+
 eval_end

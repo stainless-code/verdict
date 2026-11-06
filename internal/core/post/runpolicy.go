@@ -16,7 +16,7 @@ import (
 // can bypass, because they enforce trusted repository requirements
 // rather than advisory guards.
 const (
-	// CodeRequirementBlocked refuses a publish whose stored findings
+	// CodeRequirementBlocked refuses a binding approval whose stored findings
 	// violate an applicable block clause.
 	CodeRequirementBlocked = "requirement-blocked"
 	// CodeBindRequired refuses a binding approval the effective
@@ -57,13 +57,9 @@ func (st *state) loadRunPolicy() *core.RefusalError {
 	return nil
 }
 
-// complianceGate enforces the stored block clauses against the full
-// stored findings: an open finding on a clause path, in a clause
-// category, at or above the clause threshold rank refuses. Deferred,
-// addressed, and terminal findings never block; unknown severities
-// never block. --force cannot bypass a trusted requirement: the gate
-// never consults the force flag, and the refusal never records a
-// forced[] entry.
+// complianceGate records compliance over the full findings for every post.
+// Block clauses refuse only positive binding approvals; comments and negative
+// verdicts preserve the failed observations without requiring a bypass.
 func (st *state) complianceGate() *core.RefusalError {
 	if st.policy == nil || st.policy.state.Resolved == nil {
 		return nil
@@ -71,7 +67,7 @@ func (st *state) complianceGate() *core.RefusalError {
 	rs := st.policy.state
 	blocked := config.CheckCompliance(rs.Resolved, rs.Root.Clauses, policyFindings(st.merged.Entries))
 	st.recordCompliance(rs, blocked)
-	if len(blocked) == 0 {
+	if len(blocked) == 0 || st.flags.Approve != approveTrue || !st.flags.Bind || st.flags.RequestChanges {
 		return nil
 	}
 	first := blocked[0]

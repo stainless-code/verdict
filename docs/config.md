@@ -19,7 +19,7 @@ lives in `docs/policy-contract.md`.
 .verdict/state/                 ignored, local review state only
 ```
 
-Only `/state/` is ignored, through the nested file. Legacy `.verdict/state/` is
+Only `/state/` is ignored, through the nested file. Legacy `.review/` is
 untouched: no migration, no rewrite, no shim, no implicit fallback.
 `Layout.EnsureStateIgnore` writes `.verdict/.gitignore` before any state
 write, and `Layout.EnsureStateDir` adds a second `*` layer at
@@ -82,13 +82,11 @@ sections) parse under the same order via `config.ParsePersonal`; a
 
 `config.Resolve` is pure over explicit `config.Inputs`: flags, the five
 consumed environment names and values (`ParseEnv`; never the whole
-environment), the trusted-base configuration, the legacy knob files
-(`.review/panel`, `.review/budget`, `.review/max_bytes`), personal
+environment), the trusted-base configuration, personal
 settings, the base SHA, the file list with pre-rename paths, and the
 settings path when one was read. Ordinary defaults merge flag, then
-environment, then repository scopes and shared defaults, then legacy
-knob files, then personal review, then built-in; nested
-objects merge per field and arrays replace, with per-field origins and
+environment, then repository scopes and shared defaults, then personal review,
+then built-in; nested objects merge per field and arrays replace, with per-field origins and
 shadowed values. Personal spend and privacy are constraints, never
 defaults: the repository can never raise the personal limit, and scopes
 and flags can never narrow, remove, or except exclusions.
