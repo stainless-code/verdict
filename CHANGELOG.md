@@ -1,5 +1,220 @@
 # @stainless-code/verdict
 
+## 0.5.0
+
+### Minor Changes
+
+- 027d29a: The bench runner learns a repair loop. Pass `-loop N` to let one sample try up to N rounds: the harness runs `record --dry-run --json`, feeds the problem list back, and records only the last valid round. Round evidence lives under `runs/<slug>/round-NN`, the report gains `loops`, `fix_rates`, and `loop_cost`, and `-loop 1` keeps the old single-shot files byte-identical.
+- 110dda8: Findings can now carry a closed category (`logic`, `edge-case`, `security`,
+  `performance`, `accidental-commit`, `style`, `docs`, `other`): an optional
+  per-comment label that never changes the finding's signature. `report
+--category` filters to one class, `report --check --category` gates only that
+  class, and `report`, `calibrate`, and `trend` all publish per-category counts
+  (untagged for unlabelled findings). Unknown or non-string values warn once
+  and store null; they never refuse a review.
+- 3dbe206: Findings can now carry a repair brief: the affected sites, a one-sentence
+  outcome, an optional approach and open questions. `record` validates it against
+  the fetched change and keeps it across re-records, `show --json` and `fix`
+  print it, and it never changes a finding's signature. A malformed brief warns
+  and is dropped; it never refuses a review.
+- 3bd05e9: `verdict gate` is one composed CI gate over the three dimensions `report`
+  already computes: open findings at-or-above a tier (`--max-severity`), a
+  completed post for the fetched HEAD (`--require-head`), and live unresolved
+  threads (`--live auto|strict|skip`). One exit code carries the answer — 0 pass,
+  1 fail-or-unknown, 2 usage, 3 tool error — and the human tail names each
+  dimension, the tally, and one `try:` hint covering every failing dimension.
+  `--json` adds `data.passed` plus `data.dimensions[]` in `findings, head,
+live_threads` order with `count` null where a dimension has no tally; a failed
+  gate keeps `error: null` because a verdict is not a refusal. `gate` is
+  read-only (no store writes, no post) and absent from MCP: a local pass is not
+  authority to merge.
+- 3089864: **Breaking (experimental MCP):** a host on `verdict mcp --read-only` no longer
+  sees a `threads` tool, and `report` there drops its `--output`/`--sarif`
+  arguments and reports `readOnlyHint: false` instead of claiming to write
+  nothing. Seven tools remain: `report`, `next`, `show`, `trend`, `ready`,
+  `doctor`, `check-tree`. A host that needs the thread feed should refresh with
+  `verdict threads` outside the server or run it without `--read-only`; a host
+  pinning `report` as a read-only tool should stop trusting that hint.
+- eb2572b: Patch identity dedupes re-reviews across rebases. `fetch` and `fetch-local` write `.verdict/state/<bundle>/identity.json` (`git patch-id --stable`, labeled `diff-sha256` fallback), `post` refuses `already-reviewed-patch` on a same-patch sibling unless `--force` (recorded in `post.json` `forced[]`), `adopt --from auto` matches exactly one local twin, and `report --completeness` passes when the posted and fetched heads differ only by a rebase with the same patch.
+- cdb5a61: `verdict record` can now answer "would this record?" before writing anything.
+  `record --dry-run` runs the same checks and writes nothing, returning a
+  summary of the comments, sections, and anchors that would move to the body.
+  Both modes share one checker instead of stopping at the first problem: the
+  refusal carries `error.problems[]` in document order with a JSONPath, a
+  published `code`, the level, the message, the exact `fix`, and an optional
+  `example`, plus `error.problems_truncated` past the 50-problem cap; human mode
+  lists the same problems before its try/re-enter lines. The checker owns the
+  brief, anchor/side, kb-id, chunk-attestation, confidence, security, claim,
+  triage, section, and verification-input checks, not just the top-level shape.
+  Warnings (moved anchors, brief parts dropped without refusing, malformed kb
+  ids, unknown fields, an unset rigor) let the record proceed unless `--strict`
+  or `"strict_input": true` in `controls.json` promotes them.
+  `pkg/verdict.CheckReview` exposes the pure checker, the MCP `record` tool gains
+  `dry_run` (served on a read-only server; a non-dry record is still refused),
+  and the review skill now loops write -> dry-run -> fix for at most three
+  rounds, then reports any remaining problems instead of recording a partial
+  review.
+- 05125d5: `verdict record` now repairs the mechanical shapes weak models emit instead
+  of refusing them. Before checking, `NormalizeReview` unwraps one
+  whole-document code fence, drops prose around exactly one balanced JSON
+  object, wraps a scalar where a string array belongs, renames the
+  `inBounds`/`rung`/`file` aliases, folds rigor synonyms and enum case, and
+  removes a BOM, an explicit null on an optional key, or an exact-duplicate
+  comment. Every rewrite is a warning with its own code, listed in
+  `record.json`'s `repairs[]`; `--strict`, `REVIEW_STRICT_INPUT=1`, or
+  `"strict_input": true` in `controls.json` turns each into an error.
+  `record --dry-run` returns the exact stored object as `data.normalized`
+  plus `data.repairs`, and never rewrites `review.json` on disk. The CLI also
+  owns the body's `> Basis:` line, replacing a disagreeing line (or inserting
+  a missing one) with the computed counts and reporting `basis-replaced`.
+  Unset rigor records as `said` with `rigor_source: default`, and length and
+  numeric bounds now refuse as `out-of-range` instead of `bad-enum`.
+  `pkg/verdict.NormalizeReview` exposes the pure, idempotent primitive.
+- 3089864: **Breaking:** the published schemas moved with the skill, so every schema's
+  `$id` base path is now `skills/verdict/schemas/` rather than `schemas/` —
+  `https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json`,
+  for example. If you resolve a schema by URL, or pin `$id` in a validator, update
+  the base path; the schema contents are unchanged.
+- bdc9938: The Go SDK and the TypeScript client can read review-thread state in-process,
+  so the one review read an embedder had to shell out for is now a method.
+  `verdict.Threads` wraps the `threads` verb: `ThreadsRequest` carries the repo,
+  PR, and `--provider` override, and `ThreadsResponse` returns the envelope plus
+  the refreshed feed tally (`Dir`, `File`, `Provider`, `HeadSHA`, `FetchedAt`,
+  `Truncated`, `Threads`, `Open`, `Outdated`, `Verdict`), with `Data`
+  byte-identical to `threads --json`. The TS client gains `threads(...)`
+  resolving `Envelope<DataFor["threads"]>`, and every review verb now has a typed
+  client method instead of falling back to `run()`. No wire or behavior change:
+  the verb, its data profile, and its MCP tool already existed.
+- 9cb4bfd: `verdict skill install --detect` adds the review skill to every coding agent
+  already set up on the machine, instead of making you look up one path per agent.
+  It names each target and its result, and `--json` lists each target with its
+  status, path, and files written. With no agent set up it refuses and points at
+  `--agent <name>`, and `--detect` is mutually exclusive with `--dir` and
+  `--agent`. `install.sh` and `install.ps1` now close a successful install with
+  that exact command.
+- 7fce8bd: The TypeScript client's verb methods now return their own `data` profile
+  instead of `Envelope<unknown>`: `ready` resolves `ReadyData`, `fetch` resolves
+  `FetchData`, `trend` resolves `TrendData`, and so on for every verb method.
+  `DataFor` exposes the same verb → profile map, so code that passes `data`
+  around can name the profile without restating it.
+
+  Every profile is generated as a `<verb>Data` `$defs` entry in
+  `envelope.schema.json` (with the nested `$defs` it references), so non-TypeScript
+  clients get the same shapes from the published schema. Additions only: `data`
+  stays an open object that allows additional properties, no existing property,
+  required key, or type changed, and `client.run()` still returns
+  `Envelope<unknown>` for verbs without a profile.
+
+- e4ed6a1: Add typed configuration in `.verdict/config.json`, with path scopes, captured explanations, review profiles, grouped spend and diff limits, and recorded deep validation. Local run artifacts now live under `.verdict/state/`; retired `.review/` knob files are no longer read.
+
+  Cost records use schema version 2 with grouped lens and cost evidence. The Go Commander interface now takes a command pointer and preserves its working directory.
+
+### Patch Changes
+
+- 0c54ab2: Corpus cases accept an optional `also_lines` list of alternate anchors for
+  the same defect. Each entry is matched with the same line tolerance and
+  defect-naming rule as the primary line, matching any anchor counts the bug
+  once, and the reported line stays the primary one. The generated
+  `corpus.schema.json` now requires positive line numbers in `also_lines`
+  items, so schema validation rejects `0` and negative entries just as
+  `calibrate` already refused them as `corpus-invalid`.
+- 72db325: `calibrate` and `trend` grade a corpus finding on the defect it names, not the
+  line it picked. A finding used to count as a true positive whenever its path
+  matched and its line sat within `line_tolerance` of a known bug, so on a
+  four-to-seven-line hunk every anchor was correct and the reported precision
+  measured line-guessing rather than review quality; the same line could hold a
+  comment about variable naming and score as a catch. A true positive now also
+  has to name the bug: one of its `keywords` (new, optional in
+  `corpus.schema.json`), its `kind`, or a phrase from the published category
+  vocabulary. The default window drops from three lines to one, and a finding `record` moved out of its hunk is
+  never a true positive, so the anchor is measured and not assumed.
+
+  The human false-positive line says which rule failed, so a run distinguishes a
+  finding that landed off the bug from one that landed on it and described
+  something else. Corpus bundles the benchmark runner writes now carry the
+  reviewed `full.diff` and its `hunks.tsv`, so `record` scores against the hunks
+  the agent read instead of rebuilding an index from a diff that may have moved.
+
+- 58dbc7d: The docs site publishes its documentation guide as the `verdict-docs` skill
+  instead of a second skill named `verdict`. The `verdict` name belongs to the
+  review workflow — `skills/verdict/SKILL.md`, the payload `verdict skill install`,
+  `npx skills add stainless-code/verdict`, and the embedded binary ship — and a
+  harness that indexed both well-known skills loaded whichever won, handing an
+  agent that asked how Verdict works the review workflow, or the reverse. The
+  site's `/.well-known/agent-skills/index.json` now lists one skill,
+  `verdict-docs`, and the docs build fails if two published skills ever share a
+  `name:`.
+- 3089864: Global flags work anywhere on the command line — before the verb, between the
+  verb and the repo, or after the pr — so `verdict --no-json report acme/app 9`
+  and `verdict report acme/app 9 --no-json` print the same output. A bare `--` now
+  ends positional parsing, so everything after it is a positional and
+  `verdict fetch-local acme/app -- --json` is a usage error instead of a stray flag.
+- 0e8ed37: `verdict mcp config --agent codex --write` reads its `config.toml` the way TOML
+  does, so a `verdict` table, key, or comment inside a string is text and no
+  longer a merge target: a file that ends inside an unterminated string, or whose
+  `[mcp_servers.verdict]` line opens one, refuses typed and keeps its bytes
+  instead of having keys appended into the literal. A table spelled inline or
+  dotted refuses rather than guess, the file's own CRLF or LF line endings are
+  kept, and an append no longer drops a trailing line of non-ASCII whitespace.
+- 72d0a60: `verdict post` on a PR that was never fetched now refuses with the typed
+  `missing-bundle` error naming the fetch command, instead of failing internally
+  on its first write.
+- 1b16049: Every release now publishes `commit.txt` — the commit SHA the tag points at and
+  the certificate's workflow-SHA claim — and `install.sh`, `install.ps1`, and
+  `verdict upgrade` pin `cosign verify-blob` to it with
+  `--certificate-github-workflow-sha`; the `setup-verdict` action inherits the pin
+  through `install.sh`. The identity and issuer alone accept any run of the
+  Release workflow, so a bundle from a different build of the same workflow used
+  to satisfy the check; the pin makes that a refusal. A release that publishes no
+  `commit.txt`, or a `commit.txt` that is not a full 40-character SHA, is refused
+  with `verify-failed` instead of being installed unpinned.
+- 3089864: A signed install no longer aborts when `cosign` is on the `PATH`: `install.sh`,
+  `install.ps1`, `verdict upgrade`, and `setup-verdict` now verify the certificate
+  identity the Release workflow actually mints, which is a push to `main` rather
+  than the tag the run publishes under. The old check asked for a `refs/tags/…`
+  identity that no release certificate ever carried.
+- 3089864: The shipped review prompts no longer hand an agent a corrupt skeleton to copy.
+  The "Technical details" block and the mermaid wrapper had a fence opened mid-line
+  with its body flattened onto it, plus orphan closers and an unclosed block, so an
+  agent following them emitted run-together headings and an unterminated fence.
+  Both are well-formed blocks now.
+- c27ea2f: `npx skills add stainless-code/verdict` now installs just the skill instead of
+  copying the whole repository — over a thousand files — because `SKILL.md` and its
+  payload moved into `skills/verdict/`. That directory holds exactly the files
+  `verdict skill install` writes.
+- 3089864: The skill now triggers on every review target it can handle — a pull request, a
+  branch, a commit range, or staged changes — so an agent picks it for local
+  reviews too. `NOTICE.md` carries the full MIT text of the upstream review
+  prompts Verdict adapts, pinned to the upstream commit, and the skill copy under
+  `skills/verdict/` ships that same license beside the prompts it covers.
+- 3089864: The TypeScript client's generated types render `anyOf` as a union instead of
+  collapsing it to `unknown`, and a null variant folds into a trailing `| null`
+  the same way a `"null"` entry in `type` does. `show`'s `data.fix.verify_hint`
+  now types as `VerifyHint | null` rather than `unknown`.
+- 3089864: `verdict upgrade` recognizes an install made with `VERDICT_INSTALL` even after
+  the variable is gone, by reading the installer receipt beside the running
+  binary. A receipt is a hint, never proof of ownership: when npm, Homebrew, a
+  project's `node_modules`, or a skill copy already owns the directory, `upgrade`
+  and `uninstall` keep that channel and delegate or refuse with the owning command
+  instead of replacing or deleting a file the manager tracks.
+- d9366dc: Shell completion now offers `threads`, with its `--provider` and `--json`
+  flags.
+- 22f8e00: `verify` now refuses a path glued to the option that takes it: `tar -C/etc`,
+  `cp -t/etc/cron.d`, `sort -o/etc/x`, `grep -f/etc/passwd`, `gcc -I/usr/include`,
+  `git -C/etc`, and `go build -o/etc/x` exit before the command runs instead of
+  executing it. The pre-exec gate only recognized a path after a space or a
+  separator, so every spelling getopt accepts — a clustered `-czf/etc/x`, a
+  positional `-C` after `--`, a quoted or backslashed `-C/etc`, an uppercase
+  `-C/ETC` — reached the shell with the escape unreported. An attached value is
+  now judged as the path it is, and the refusal names the fragment it read.
+
+  One spelling to know: a relative value that starts with a letter and contains a
+  slash (`git -Ctools/cli`) has the same shape as `-C/etc`, so the gate refuses
+  it rather than guessing. Write `git -C tools/cli` — both spellings of a relative
+  value stay allowed once a space separates the option from its value.
+
+- 32d60ce: A canceled re-verify keeps the last completed proof, and a failed Windows handoff leaves no staged helper behind.
+
 ## 0.4.0
 
 ### Minor Changes
