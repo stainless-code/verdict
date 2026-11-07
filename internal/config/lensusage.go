@@ -329,37 +329,40 @@ func readLensEntries(rs *RunState, path string) ([]core.LensUsage, string, strin
 	if missing != "" {
 		return nil, missing, ""
 	}
-	bound, state, problem := certificateRecord(rs, raw)
+	bound, version, state, problem := certificateRecord(rs, raw)
 	if state != "" {
 		return nil, state, problem
 	}
-	return certifiedEntries(bound)
+	return certifiedEntries(bound, version)
 }
 
 // certificateRecord decodes the cost file and names the record that certifies
 // this capture, or the state and sentence that refuse it.
-func certificateRecord(rs *RunState, raw []byte) (map[string]any, string, string) {
+func certificateRecord(rs *RunState, raw []byte) (record map[string]any, version, state, problem string) {
 	doc, ref := decodeStrict(raw)
 	if ref != nil {
-		return nil, LensUsageMalformed, ""
+		return nil, "", LensUsageMalformed, ""
 	}
 	records, ok := lensRecords(doc)
 	if !ok {
-		return nil, LensUsageMalformed, ""
+		return nil, "", LensUsageMalformed, ""
 	}
-	bound, version, boundOK := newestBinding(records, rs)
+	bound, declared, boundOK := newestBinding(records, rs)
 	if !boundOK {
-		return nil, LensUsageUnbound, ""
+		return nil, "", LensUsageUnbound, ""
 	}
-	if !certifies(version) {
-		return nil, LensUsageVersion, foreignVersionProblem(version)
+	if declared == "" {
+		return nil, "", LensUsageMalformed, unreadableVersionProblem()
 	}
-	return bound, "", ""
+	if !certifies(declared) {
+		return nil, "", LensUsageVersion, foreignVersionProblem(declared)
+	}
+	return bound, declared, "", ""
 }
 
 // certifiedEntries reads the lens list of the record that certifies the run.
-func certifiedEntries(bound map[string]any) ([]core.LensUsage, string, string) {
-	entries, present, ok, problem := lensRecordEntries(bound)
+func certifiedEntries(bound map[string]any, version string) ([]core.LensUsage, string, string) {
+	entries, present, ok, problem := lensRecordEntries(bound, version)
 	if !ok {
 		return nil, LensUsageMalformed, problem
 	}
@@ -394,9 +397,13 @@ func lensRecords(doc any) ([]map[string]any, bool) {
 // declares a version: run and inputs_sha256 both match the verified bundle.
 // That record is the attestation, so a version this build does not certify
 // refuses even when an older certified record sits behind it — an older success
-// never stands in for the newest binding. A binding that declares no version is
-// skipped: it cannot certify, and it is not the diagnosis either. Without a
-// verified name and inputs hash nothing can be bound, so no record can certify.
+// never stands in for the newest binding. Only a binding that declares no
+// version at all is skipped: it cannot certify, and it is not the diagnosis
+// either. A declared version this build cannot read is the newest binding and
+// refuses, because presence is the key, never the string: `"schema_version":
+// null` is a declaration, and reading it as absent would let an older record
+// stand in for the newest attestation. Without a verified name and inputs hash
+// nothing can be bound, so no record can certify.
 func newestBinding(records []map[string]any, rs *RunState) (map[string]any, string, bool) {
 	if !bindable(rs) {
 		return nil, "", false
@@ -405,7 +412,7 @@ func newestBinding(records []map[string]any, rs *RunState) (map[string]any, stri
 		if !bindsCapture(record, rs) {
 			continue
 		}
-		if version := recordVersion(record); version != "" {
+		if version, declared := recordVersion(record); declared {
 			return record, version, true
 		}
 	}
@@ -422,19 +429,27 @@ func boundTo(record map[string]any, rs *RunState) bool {
 // string and the number spelling are accepted; any other version, including
 // an absent one, cannot certify.
 func schemaV2(record map[string]any) bool {
-	return recordVersion(record) == lensSchemaVersion
+	version, _ := recordVersion(record)
+	return version == lensSchemaVersion
 }
 
-// recordVersion reads the declared cost-schema version in either spelling,
-// empty when absent or not a string or number.
-func recordVersion(record map[string]any) string {
-	switch version := record["schema_version"].(type) {
+// recordVersion reads the declared cost-schema version in either spelling.
+// declared says the key is present, which is not the same as readable: an
+// empty, null, boolean, array, or object value is a declaration this build
+// cannot read, and a caller that tested the string instead of the key would
+// treat it as no declaration at all.
+func recordVersion(record map[string]any) (version string, declared bool) {
+	raw, ok := record["schema_version"]
+	if !ok {
+		return "", false
+	}
+	switch value := raw.(type) {
 	case string:
-		return version
+		return value, true
 	case json.Number:
-		return version.String()
+		return value.String(), true
 	default:
-		return ""
+		return "", true
 	}
 }
 
@@ -469,10 +484,20 @@ func unregisteredFieldProblem(version, field string) string {
 }
 
 // foreignVersionProblem names the version that arrived and the one this build
-// certifies: a newer record is refused by version, never re-read as v2.
+// certifies: a newer record is refused by version, never re-read as v2. The
+// version is agent-written text, so it is quoted: an unquoted newline would
+// start a second sentence inside the one-line diagnostic.
 func foreignVersionProblem(version string) string {
-	return "cost.json binds this run at schema_version " + version +
+	return "cost.json binds this run at schema_version " + strconv.Quote(version) +
 		", but this build certifies schema_version " + lensSchemaVersion + " — upgrade verdict"
+}
+
+// unreadableVersionProblem refuses a declaration this build cannot read. It is
+// malformed rather than version-unsupported: there is no version to upgrade
+// from, and an upgrade would not make `null` readable.
+func unreadableVersionProblem() string {
+	return "cost.json declares a schema_version this build cannot read — it must be a string or number, " +
+		"and this build certifies schema_version " + lensSchemaVersion
 }
 
 // unregisteredField returns the first top-level field obj declares beyond the
@@ -508,12 +533,8 @@ func recordString(record map[string]any, key string) string {
 // non-null list, so an empty list attests explicit zero for every group; ok
 // is false for an unreadable entry, and problem carries the sentence when the
 // refusal can name a field or a version.
-func lensRecordEntries(record map[string]any) (entries []core.LensUsage, present, ok bool, problem string) {
-	version := recordVersion(record)
-	keys, certified := lensRecordKeysByVersion[version]
-	if !certified {
-		return nil, false, false, foreignVersionProblem(version)
-	}
+func lensRecordEntries(record map[string]any, version string) (entries []core.LensUsage, present, ok bool, problem string) {
+	keys := lensRecordKeysByVersion[version]
 	if field, found := unregisteredField(record, keys); found {
 		return nil, false, false, unregisteredFieldProblem(version, field)
 	}

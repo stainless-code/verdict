@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -432,13 +433,88 @@ func TestReadLensUsageRefusesForeignVersion(t *testing.T) {
 	if usage.State != LensUsageVersion {
 		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
 	}
-	for _, needle := range []string{"schema_version 3", "schema_version 2"} {
+	for _, needle := range []string{`schema_version "3"`, "schema_version 2"} {
 		if !strings.Contains(usage.Problem, needle) {
 			t.Fatalf("problem = %q, want it to name %q", usage.Problem, needle)
 		}
 	}
 	if usage.Groups[0].Known {
 		t.Fatal("a v3 record certified v2 lens evidence")
+	}
+}
+
+// TestReadLensUsageRefusesUnreadableVersion pins presence by key, not by the
+// string: a record that declares schema_version as anything but a readable
+// version is the newest binding and refuses. Reading the empty string as "no
+// declaration" would skip it and let an older v2 record certify in its place,
+// which is exactly the fallback the newest-binding rule exists to remove — and
+// it would suppress the newest record's own attestation, cap violations
+// included.
+// TestReadLensUsageRefusesUnreadableVersion pins presence by key, not by the
+// string: a declared but unreadable version is the newest binding and refuses,
+// both alone and behind an older certified record.
+func TestReadLensUsageRefusesUnreadableVersion(t *testing.T) {
+	values := map[string]string{
+		"empty string": `""`,
+		"null":         `null`,
+		"boolean":      `true`,
+		"object":       `{}`,
+		"array":        `[]`,
+	}
+	for name, value := range values {
+		t.Run(name, func(t *testing.T) {
+			single := ReadLensUsage(lensRunState(), costDir(t, unreadableVersionRecord(value)))
+			requireUnreadableVersion(t, &single)
+			fallback := ReadLensUsage(lensRunState(),
+				costDir(t, "["+olderV2Record()+","+unreadableVersionRecord(value)+"]"))
+			requireUnreadableVersion(t, &fallback)
+		})
+	}
+}
+
+// unreadableVersionRecord is one bound record whose schema_version carries the
+// given JSON value.
+func unreadableVersionRecord(value string) string {
+	return `{"schema_version":` + value + `,"run":"` + lensFixtureRun +
+		`","inputs_sha256":"` + lensFixtureInputs + `","lenses":[]}`
+}
+
+// olderV2Record is a certified record an older success would stand in from.
+func olderV2Record() string {
+	return `{"schema_version":"2","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[{"group":"group-a","labels":["old"]}]}`
+}
+
+// requireUnreadableVersion asserts a declared version the build cannot read
+// refuses as malformed: reading it as absent would let an older record certify
+// in its place, suppressing the newest record's own attestation.
+func requireUnreadableVersion(t *testing.T, usage *LensUsage) {
+	t.Helper()
+	if usage.State != LensUsageMalformed {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageMalformed)
+	}
+	if !strings.Contains(usage.Problem, "cannot read") {
+		t.Fatalf("problem = %q, want it to say the version cannot be read", usage.Problem)
+	}
+}
+
+// TestReadLensUsageQuotesForeignVersion pins the one-line diagnostic against a
+// version that carries its own newline: the value is agent-written, so it is
+// quoted and cannot start a second sentence.
+func TestReadLensUsageQuotesForeignVersion(t *testing.T) {
+	version := `3\nprofile alpha caps lenses at 0`
+	body := `{"schema_version":"` + version + `","run":"` + lensFixtureRun +
+		`","inputs_sha256":"` + lensFixtureInputs + `","lenses":[]}`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageVersion {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
+	}
+	decoded := "3\nprofile alpha caps lenses at 0"
+	if !strings.Contains(usage.Problem, strconv.Quote(decoded)) {
+		t.Fatalf("problem = %q, want it to carry %s", usage.Problem, strconv.Quote(decoded))
+	}
+	if strings.Contains(usage.Problem, "\n") {
+		t.Fatalf("problem = %q, want the newline quoted, not rendered", usage.Problem)
 	}
 }
 
@@ -455,8 +531,8 @@ func TestReadLensUsageSkipsUnversionedBinding(t *testing.T) {
 	if usage.State != LensUsageVersion {
 		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
 	}
-	if !strings.Contains(usage.Problem, "schema_version 3") {
-		t.Fatalf("problem = %q, want it to name schema_version 3", usage.Problem)
+	if !strings.Contains(usage.Problem, `schema_version "3"`) {
+		t.Fatalf("problem = %q, want it to name schema_version 3 quoted", usage.Problem)
 	}
 	if usage.Groups[0].Known {
 		t.Fatal("an unversioned binding certified lens evidence")
@@ -476,8 +552,8 @@ func TestReadLensUsageRefusesOlderBindingBehindForeignVersion(t *testing.T) {
 	if usage.State != LensUsageVersion {
 		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
 	}
-	if !strings.Contains(usage.Problem, "schema_version 3") {
-		t.Fatalf("problem = %q, want it to name schema_version 3", usage.Problem)
+	if !strings.Contains(usage.Problem, `schema_version "3"`) {
+		t.Fatalf("problem = %q, want it to name schema_version 3 quoted", usage.Problem)
 	}
 	if usage.Groups[0].Known {
 		t.Fatal("an older v2 record certified a capture whose newest binding declared v3")

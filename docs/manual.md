@@ -898,8 +898,12 @@ lens evidence is version-scoped: the newest record bound to the capture by
 `schema_version` defines — an extra field refuses by name and version (for
 example, one carrying a stray `notes` key is told that v2 does not define it) —
 and a record bound to the run at a version this build does not certify refuses
-as `version-unsupported` rather than being re-read as v2. Both leave the capped
-group `usage-unknown`, never zero. Nothing loosens the fail-closed checks: a
+as `version-unsupported` rather than being re-read as v2. A `schema_version`
+this build cannot read at all — `null`, a boolean, an array, an object, an
+empty string — is `malformed`, and it refuses the same way: presence is the
+key, so an unreadable declaration is not an absent one and never lets an older
+record stand in for it. All three leave the capped group `usage-unknown`, never
+zero. Nothing loosens the fail-closed checks: a
 foreign capture, a duplicated key, an unreadable entry, and a mismatched
 binding all still refuse.
 
