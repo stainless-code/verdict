@@ -47,12 +47,13 @@
 # (both amd64 targets gained exactly 8192 bytes, windows/arm64 4608, while
 # darwin/arm64 did not move), and linux/arm64, whose segments pad to 64 KiB,
 # crossed a boundary for 65536. The three ceilings that overflow move to the
-# next 10 kB above their exact measurement; darwin/arm64, windows/amd64 and
-# windows/arm64 stay put.
+# next 10 kB above their exact measurement; darwin/arm64 and windows/amd64
+# stay put. windows/arm64 then measured 10919936 locally but 10920960 on CI,
+# 960 over its ceiling, so it moves to the next 10 kB above the CI measurement.
 deps 0
 darwin/amd64 12030000
 darwin/arm64 11030000
 linux/amd64 11820000
 linux/arm64 10890000
 windows/amd64 12140000
-windows/arm64 10920000
+windows/arm64 10930000
