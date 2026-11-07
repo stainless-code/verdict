@@ -164,10 +164,58 @@ stage_goreleaser() {
 }
 
 build_release() {
-  NOTES_FILE="$(mktemp)"
-  node scripts/release-notes.mjs "$VERSION" > "$NOTES_FILE"
+  prepare_notes
   goreleaser release --clean --release-notes "$NOTES_FILE"
   stage_release_commit
+}
+
+# prepare_notes renders CHANGELOG.md's section for this version into a file
+# outside dist/ (GoReleaser's --clean empties dist). The release body is that
+# section verbatim, so the body is derived from the changelog, never summarized.
+prepare_notes() {
+  if [ -z "$NOTES_FILE" ]; then NOTES_FILE="$(mktemp)"; fi
+  node scripts/release-notes.mjs "$VERSION" > "$NOTES_FILE"
+  [ -s "$NOTES_FILE" ] || die "scripts/release-notes.mjs produced no notes for $VERSION"
+}
+
+# live_body prints the published release body. A missing release dies here: a
+# body stage with nothing to attach a changelog to is a broken run, not a
+# no-op.
+live_body() {
+  local out
+  if out="$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.body // ""' 2>&1)"; then
+    printf '%s' "$out"
+    return 0
+  fi
+  case "$out" in
+    *"HTTP 404"* | *"Not Found"*)
+      die "GitHub Release $TAG does not exist; publish the assets before the body"
+      ;;
+  esac
+  die "gh api release $TAG failed: $out"
+}
+
+# stage_release_body makes the published body the CHANGELOG section and proves
+# it by reading the release back. GoReleaser publishes the assets, but its body
+# path is not dependable: release 0.5.0 went out with a one-byte body while the
+# notes file held 15.9 kB and every step reported success, so the publisher
+# asserts the artifact it can read instead of trusting the pipe that feeds it.
+# An equal body is left untouched, which makes a re-run idempotent.
+stage_release_body() {
+  local live want
+  prepare_notes
+  live="$(live_body)"
+  want="$(<"$NOTES_FILE")"
+  if [ "$live" = "$want" ]; then
+    echo "release: GitHub Release $TAG already carries the $VERSION changelog section"
+    return 0
+  fi
+  echo "release: GitHub Release $TAG body does not match CHANGELOG.md's $VERSION section ($(printf '%s' "$live" | wc -c | tr -d ' ') bytes published, $(wc -c <"$NOTES_FILE" | tr -d ' ') expected); rewriting it"
+  gh release edit "$TAG" --repo "$REPO" --notes-file "$NOTES_FILE"
+  live="$(live_body)"
+  [ "$live" = "$want" ] \
+    || die "GitHub Release $TAG body still does not match CHANGELOG.md's $VERSION section after gh release edit"
+  echo "release: GitHub Release $TAG body set from CHANGELOG.md's $VERSION section"
 }
 
 release_commit() {
@@ -278,6 +326,7 @@ run_all() {
   build_client
   stage_tag
   stage_goreleaser
+  stage_release_body
   stage_npm
   stage_tap
 }
@@ -285,5 +334,6 @@ run_all() {
 case "${1:-all}" in
   all) run_all ;;
   tag | goreleaser | npm | tap) "stage_$1" ;;
-  *) die "unknown stage '$1' (want: tag, goreleaser, npm, tap, or no argument)" ;;
+  body) stage_release_body ;;
+  *) die "unknown stage '$1' (want: tag, goreleaser, body, npm, tap, or no argument)" ;;
 esac
