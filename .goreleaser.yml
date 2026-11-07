@@ -52,6 +52,10 @@ release:
 # The release body is CHANGELOG.md's section for the tagged version, passed as
 # `--release-notes` (scripts/release.sh). GoReleaser's own changelog is off so a
 # run without that file cannot publish a commit list of shas and merges.
+# GoReleaser is not trusted to deliver the body: release 0.5.0 published a
+# one-byte body with this configuration while the notes file held 15.9 kB, so
+# release.sh reads the published body back and repairs it (gh release edit),
+# and the release-body eval holds that behavior.
 changelog:
   disable: true
 

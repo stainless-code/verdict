@@ -456,14 +456,15 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
-      - name: Harness deps (bash/jq/git/go/shellcheck)
+      - name: Harness deps (bash/jq/git/go/shellcheck/node)
         shell: bash
         run: |
           # run.sh fails on a missing dep, but assert up front so the log
           # names the side. precommit-hook grades shellcheck (H1 fails
           # without it), so its absence fails here instead of deep in the
-          # suite.
-          command -v bash jq git go shellcheck
+          # suite. node renders the release-notes fixture the release-body
+          # case grades.
+          command -v bash jq git go shellcheck node
           jq --version
           go version
 
@@ -506,14 +507,15 @@ jobs:
         # The macOS image preinstalls no shellcheck, and the eval suite grades it.
         run: brew install shellcheck
 
-      - name: Harness deps (bash/jq/git/go/shellcheck)
+      - name: Harness deps (bash/jq/git/go/shellcheck/node)
         shell: bash
         run: |
           # run.sh fails on a missing dep, but assert up front so the log
           # names the side. precommit-hook grades shellcheck (H1 fails
           # without it), so its absence fails here instead of deep in the
-          # suite.
-          command -v bash jq git go shellcheck
+          # suite. node renders the release-notes fixture the release-body
+          # case grades.
+          command -v bash jq git go shellcheck node
           jq --version
           go version
 

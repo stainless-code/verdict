@@ -172,8 +172,10 @@ also uploads `commit.txt` — the tag's commit SHA — and refuses to report the
 release complete until GitHub serves it. The release body is the
 `CHANGELOG.md` section for the tagged version — `scripts/release-notes.mjs`
 prints it without the changeset commit ids and `release.sh` passes it as
-`--release-notes` — so a release reads as the curated changeset entry, not a
-commit list. Then `scripts/publish-npm.mjs` publishes six
+`--release-notes`, then reads the published body back and rewrites it with
+`gh release edit` unless it already matches — so a release reads as the curated
+changeset entry, not a commit list, and an empty body fails the run instead of
+shipping. Then `scripts/publish-npm.mjs` publishes six
 `@stainless-code/verdict-<os>-<arch>` platform packages plus the wrapper (no
 postinstall, so `--ignore-scripts` installs work). The same run renders
 `dist/verdict.rb` for the `stainless-code/tap` Homebrew tap.
