@@ -151,5 +151,17 @@ assert_exit "a panel shorter than the record refuses" 1
 assert_json_field "the short panel refuses typed" "cost-entry-unnamed" '.error.code'
 assert_eq "the refusal wrote nothing" "$BEFORE" "$(snapshot)"
 
+# Each record of an array document is its own set of seats, so a panel that
+# matches the total but not each record refuses instead of splitting names
+# across records.
+cat >"$LB/cost.json" <<'JSON'
+[{"schema_version":"1","models":[{"model":"a/one","input_tokens":10}]},{"schema_version":"1","models":[{"model":"a/two","input_tokens":5}]}]
+JSON
+BEFORE="$(snapshot)"
+run_review record acme/app "$SLUG" --cost-names=lead,lens-1 --json
+assert_exit "a panel split across records refuses" 1
+assert_json_field "the split panel refuses typed" "cost-entry-unnamed" '.error.code'
+assert_eq "the split-panel refusal wrote nothing" "$BEFORE" "$(snapshot)"
+
 rm -rf "$LB"
 eval_end

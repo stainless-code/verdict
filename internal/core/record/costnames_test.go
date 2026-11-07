@@ -130,15 +130,62 @@ func TestNameCostModels(t *testing.T) {
 			},
 		},
 		{
-			name: "names every record of an array document",
+			name: "names every record of an array document from the whole panel",
 			files: map[string]string{
-				readcommon.CostFile: `[{"models":[{"model":"m1","input":1}]},{"models":[{"model":"m2","input":2}]}]`,
+				readcommon.CostFile: `[{"models":[{"model":"m1","input":1},{"model":"m2","input":2}]},
+					{"models":[{"model":"m3","input":3},{"model":"m4","input":4}]}]`,
 			},
 			panel:     []string{"lead", "lens-1"},
-			wantNamed: 2,
+			wantNamed: 4,
 			want: map[string]string{
-				readcommon.CostFile: `[{"models":[{"model":"m1","input":1,"name":"lead"}]},
-					{"models":[{"model":"m2","input":2,"name":"lens-1"}]}]`,
+				readcommon.CostFile: `[{"models":[{"model":"m1","input":1,"name":"lead"},{"model":"m2","input":2,"name":"lens-1"}]},
+					{"models":[{"model":"m3","input":3,"name":"lead"},{"model":"m4","input":4,"name":"lens-1"}]}]`,
+			},
+		},
+		{
+			name: "refuses when one record of an array cannot take the whole panel",
+			files: map[string]string{
+				readcommon.CostFile: `[{"models":[{"model":"m1","input":1}]},
+					{"models":[{"model":"m2","input":2},{"model":"m3","input":3}]}]`,
+			},
+			panel:    []string{"lead", "lens-1"},
+			wantCode: codeCostEntryUnnamed,
+			want: map[string]string{
+				readcommon.CostFile: `[{"models":[{"model":"m1","input":1}]},
+					{"models":[{"model":"m2","input":2},{"model":"m3","input":3}]}]`,
+			},
+		},
+		{
+			name: "refuses names sitting on the wrong seat",
+			files: map[string]string{
+				readcommon.CostFile: `{"models":[{"name":"lens-1","input":1},{"name":"lead","input":2}]}`,
+			},
+			panel:    []string{"lead", "lens-1"},
+			wantCode: codeCostEntryContradict,
+			want: map[string]string{
+				readcommon.CostFile: `{"models":[{"name":"lens-1","input":1},{"name":"lead","input":2}]}`,
+			},
+		},
+		{
+			name: "refuses a panel that names one seat twice",
+			files: map[string]string{
+				readcommon.CostFile: `{"models":[{"input":1},{"input":2}]}`,
+			},
+			panel:    []string{"lead", "lead"},
+			wantCode: codeCostPanelUnresolved,
+			want: map[string]string{
+				readcommon.CostFile: `{"models":[{"input":1},{"input":2}]}`,
+			},
+		},
+		{
+			name: "refuses a models entry that is not an object",
+			files: map[string]string{
+				readcommon.CostFile: `{"models":["junk",{"input":5}]}`,
+			},
+			panel:    []string{"lead"},
+			wantCode: codeCostModelsNotArray,
+			want: map[string]string{
+				readcommon.CostFile: `{"models":["junk",{"input":5}]}`,
 			},
 		},
 		{
@@ -168,13 +215,16 @@ func runCostNameCase(t *testing.T, tc *costNameCase) {
 	for name, body := range tc.files {
 		writeCostFile(t, filepath.Join(dir, name), body)
 	}
-	named, ref := NameCostModels(dir, tc.panel, tc.dryRun)
+	named, found, ref := NameCostModels(dir, tc.panel, tc.dryRun)
+	if ref == nil && !found {
+		t.Fatal("every fixture carries a cost record, so a successful pass must report found")
+	}
 	checkCostRefusal(t, tc, named, ref)
 	checkCostFiles(t, dir, tc.want)
 	if tc.wantCode != "" || tc.dryRun {
 		return
 	}
-	again, ref := NameCostModels(dir, tc.panel, false)
+	again, _, ref := NameCostModels(dir, tc.panel, false)
 	if ref != nil || again != 0 {
 		t.Fatalf("second pass: named %d, refusal %v; want 0 and no refusal", again, ref)
 	}
@@ -224,12 +274,15 @@ func checkCostFiles(t *testing.T, dir string, want map[string]string) {
 // TestNameCostModelsNoCostFile pins an absent record as nothing to do: the
 // repair never creates a cost file to have something to name.
 func TestNameCostModelsNoCostFile(t *testing.T) {
-	named, ref := NameCostModels(t.TempDir(), []string{"lead"}, false)
+	named, found, ref := NameCostModels(t.TempDir(), []string{"lead"}, false)
 	if ref != nil {
 		t.Fatalf("an absent record must read as nothing to do, got %q: %s", ref.Code, ref.Message)
 	}
 	if named != 0 {
 		t.Fatalf("named %d entries in an empty bundle", named)
+	}
+	if found {
+		t.Fatal("an empty bundle must report no cost record")
 	}
 }
 
@@ -272,7 +325,7 @@ func TestNameCostModelsFullyNamedDocument(t *testing.T) {
 	dir := t.TempDir()
 	body := `{"models":[{"name":"lead","model":"m1","input":1},{"name":"lens-1","model":"m2","input":2}]}`
 	writeCostFile(t, filepath.Join(dir, readcommon.CostFile), body)
-	named, ref := NameCostModels(dir, []string{"lead", "lens-1"}, false)
+	named, _, ref := NameCostModels(dir, []string{"lead", "lens-1"}, false)
 	if ref != nil || named != 0 {
 		t.Fatalf("a fully named record must be a no-op, got named=%d refusal=%v", named, ref)
 	}
@@ -287,7 +340,7 @@ func TestNameCostModelsRefusesNameOutsidePanel(t *testing.T) {
 	dir := t.TempDir()
 	writeCostFile(t, filepath.Join(dir, readcommon.CostFile),
 		`{"models":[{"name":"intruder","model":"m1","input":1}]}`)
-	_, ref := NameCostModels(dir, []string{"lead"}, false)
+	_, _, ref := NameCostModels(dir, []string{"lead"}, false)
 	if ref == nil || ref.Code != codeCostEntryContradict {
 		t.Fatalf("want %q, got %v", codeCostEntryContradict, ref)
 	}

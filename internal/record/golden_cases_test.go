@@ -260,11 +260,18 @@ func TestGoldenDegenerateInputs(t *testing.T) {
 		{"confidence-valid", `{"schema_version":"1","confidence":4,"security_summary":"nothing alarming","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
 		{"confidence-invalid", `{"schema_version":"1","confidence":"high","security_summary":5,"body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
 		{"unknown-flag", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
+		{"cost-names-empty-seat", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
+		{"cost-names-no-panel", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
 	}
 	for _, tc := range cases {
 		extraArgs := []string{"--json"}
-		if tc.name == "unknown-flag" {
+		switch tc.name {
+		case "unknown-flag":
 			extraArgs = []string{"--bogus"}
+		case "cost-names-empty-seat":
+			extraArgs = []string{"--cost-names=lead,,lens-1"}
+		case "cost-names-no-panel":
+			extraArgs = []string{"--cost-names"}
 		}
 		diff := base[".verdict/state/local-dg/full.diff"]
 		if tc.name == "empty-diff-body" {

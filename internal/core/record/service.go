@@ -38,9 +38,6 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := st.repairCostNames(dir); ref != nil {
-		return nil, st.withWarnings(ref)
-	}
 	check, ref := st.checkInputs(dir)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -71,6 +68,11 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	}
 	res, ref := st.merge(dir, prov, headFull, review)
 	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	// The repair lands after every gate that can refuse, so a refused record
+	// never leaves a cost file rewritten. It writes nothing on a dry run.
+	if ref := st.repairCostNames(dir); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	if st.req.DryRun {

@@ -20,8 +20,8 @@ func TestCostFilesListsBundleAndChunks(t *testing.T) {
 
 	want := []string{
 		filepath.Join(dir, CostFile),
-		filepath.Join(dir, "chunks", "chunk-1.cost.json"),
-		filepath.Join(dir, "chunks", "chunk-2.cost.json"),
+		dir + "/chunks/chunk-1.cost.json",
+		dir + "/chunks/chunk-2.cost.json",
 	}
 	got := CostFiles(dir)
 	if len(got) != len(want) {

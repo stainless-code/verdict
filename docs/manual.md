@@ -1378,12 +1378,14 @@ review-input warnings to errors.
 `cost.json` and its `chunks/*.cost.json` in place, so spend carries the panel
 seat that produced it. `<names>` is a comma-separated list in panel order —
 synthesizer first, then each lens; bare `--cost-names` reads the panel the
-bundle pinned and refuses when it pins none. An entry keeps a name the panel
-agrees with and refuses when the panel contradicts it or cannot explain it, so
-the pass names nothing, changes no token count, and writes nothing on refusal;
-with `--dry-run` it proves the repair without writing. Entries are the array
-`models` the reader prices, so an object-shaped record refuses
-(`cost-models-not-array`) rather than being converted.
+bundle pinned and refuses when it pins none. An entry keeps the name of its
+seat and refuses when a name sits elsewhere, repeats, or comes from outside
+the panel; a name is never invented from a slug. One record's entries are its
+own seats, so a document holding several records gives each the whole panel.
+The pass changes no token count and writes nothing on refusal; with
+`--dry-run` it proves the repair without writing. Entries are the array
+`models` the reader prices, so an object-shaped record or a non-object entry
+refuses (`cost-models-not-array`) rather than being converted.
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

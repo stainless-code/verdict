@@ -121,11 +121,12 @@ func chunkWarn(path string) string {
 const CostFile = "cost.json"
 
 // CostFiles lists every cost record a bundle carries: the bundle record
-// first, then each per-chunk record, deduplicated and sorted within the
-// chunk group. The rollup and the `record --cost-names` repair read the same
-// list, so neither can miss a file the other names.
+// first, then each per-chunk record, deduplicated and sorted within the chunk
+// group. It is the list the `record --cost-names` repair walks; the spend
+// rollup reaches the same records through readCostFile and chunkCostFiles, so
+// a record added to one path is added to both.
 func CostFiles(dir string) []string {
-	return append([]string{dir + "/" + CostFile}, chunkCostFiles(dir)...)
+	return append([]string{filepath.Join(dir, CostFile)}, chunkCostFiles(dir)...)
 }
 
 // CostRecords reads a bundle's spend record: an
