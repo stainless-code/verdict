@@ -340,12 +340,13 @@ func isStateNegation(line string) bool {
 		return false
 	}
 	pattern := strings.TrimSpace(strings.TrimPrefix(trimmed, "!"))
-	pattern = strings.TrimPrefix(pattern, "/")
+	// Both slashes go first: a trailing one would leave the depth strip with
+	// an empty remainder (`**/`) and hide a match-all negation.
+	pattern = strings.Trim(pattern, "/")
 	// `**/` is gitignore for "at any depth" and may repeat, so every leading
 	// segment is stripped first: `!**/state` and `!**/**/state` re-admit the
 	// state directory exactly as `!state` would.
 	pattern = trimDepthPrefixes(pattern)
-	pattern = strings.TrimSuffix(pattern, "/")
 	if pattern == "" {
 		return false
 	}
