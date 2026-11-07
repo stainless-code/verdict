@@ -308,7 +308,12 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 		ctx2.runner.Warn(warn)
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
-	budget := resolveBudget(ctx2.runner, rc.resolved)
+	// The budget resolves over the full policy, which only exists after phase
+	// two: phase one carries flags, environment, and personal settings but no
+	// repository layer, so a tracked budget_usd read here would be missed and
+	// the whole-run guard would silently not arm. phaseTwo fills this state in
+	// over the resolved plan before gating.
+	budget := budgetState{}
 	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	ctx2.dir = dir
 	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
@@ -339,6 +344,7 @@ func phaseTwo(
 	if budget == nil {
 		return nil
 	}
+	*budget = resolveBudget(ctx2.runner, resolved)
 	if gateErr := budgetGate(ctx2.runner, budget, resolved, f.BudgetConsent); gateErr != nil {
 		return budgetRefusal(gateErr)
 	}

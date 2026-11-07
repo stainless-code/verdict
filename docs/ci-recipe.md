@@ -74,8 +74,8 @@ required side whatever platform it runs on.
 | A model key (e.g. `ANTHROPIC_API_KEY`)   | your agent's key, in your repo's secrets  |
 
 `fetch-depth: 0` on checkout keeps the PR base commit in the clone: verdict
-reads the review controls (`.verdict/kb.jsonl`, `panel`, `budget`, overrides,
-...) from that commit with `git show <base>:<path>`, so a PR cannot edit the
+reads the review controls (`.verdict/config.json`, `.verdict/kb.jsonl`,
+`.verdict/learnings.md`, `.verdict/overrides/*`, ...) from that commit with `git show <base>:<path>`, so a PR cannot edit the
 rules it is judged by. When the checkout cannot supply the base (a shallow
 checkout, or no checkout at all) a GitHub `fetch` reads the same base commit
 through the contents API instead (`gh api repos/<owner>/<repo>/contents/<path>?ref=<base>`,

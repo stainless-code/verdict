@@ -94,8 +94,11 @@ func (c *Client) Close() error
 
 func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigResponse, error)
     Config explains the stored effective policy (--explain) or previews a
-    proposed file with current settings and environment (--preview). It performs
-    no live calls, no exec, and no writes, and never approves.
+    proposed file with current settings and environment (--preview). It makes
+    no live calls and no writes, and never approves. Resolving the repository
+    root runs one `git rev-parse` probe through the environment, not through
+    an injected Commander, so a caller that sandboxes execution must cover that
+    probe too.
 
 func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error)
     Doctor preflights the harness (auth, git, storage) and reports health.

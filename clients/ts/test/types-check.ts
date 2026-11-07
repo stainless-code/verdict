@@ -24,7 +24,11 @@ import {
   type TriageData,
   type VerifyData,
 } from "../src/index.js";
-import type { ShowFix, VerifyHint } from "../src/types.gen.js";
+import type {
+  FetchGroupEstimate,
+  ShowFix,
+  VerifyHint,
+} from "../src/types.gen.js";
 
 // True only when A and B are the same type, so a widened union cannot pass.
 type Exact<A, B> =
@@ -127,6 +131,18 @@ export async function typeChecks(): Promise<void> {
   const fetch: Envelope<FetchData> = await client.fetch([]);
   const counted: number = fetch.data.files + fetch.data.hunks;
   void counted;
+  // The v2 estimate keeps its documented shape: the fields stay reachable
+  // without a cast, and the grouped variant keeps its own types. `unknown`
+  // (what a bare-required anyOf used to generate) would fail both reads.
+  if (fetch.data.estimate) {
+    const tier: string | null | undefined = fetch.data.estimate.tier;
+    const projected: number | null | undefined =
+      fetch.data.estimate.projected_usd;
+    const groups: FetchGroupEstimate[] | undefined = fetch.data.estimate.groups;
+    void tier;
+    void projected;
+    void groups;
+  }
 
   const local: Envelope<FetchLocalData> = await client.fetchLocal([]);
   const kind: string = local.data.kind;

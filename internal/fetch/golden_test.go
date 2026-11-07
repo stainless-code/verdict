@@ -657,6 +657,24 @@ func TestFetchGoldenBudget(t *testing.T) {
 		writeFile(t, dir, ".verdict/state/2/cost.json", `not json`)
 	}, map[string]string{"REVIEW_BUDGET_USD": "10"},
 		"fetch", "acme/app", "4705", "--json")
+	// A tracked budget_usd must arm the whole-run guard on the remote path too.
+	// The diff carries no hunks, so no plan group exists to hang a guard on and
+	// only the resolved default can refuse; phase one has no repository layer,
+	// so a budget read there never arms.
+	golden.Pin(t, harness, "budget-repo-config", func(t *testing.T, dir, _ string) {
+		t.Helper()
+		promptFiles(t, dir)
+		stubPR(t, dir)
+		writeContent(t, dir, ".verdict/config.json", typedConfigJSON(`"budget_usd":0.5`))
+		writeFile(t, dir, ".verdict/state/1/cost.json",
+			`[{"effort":"standard","est_usd":2.00,"models":[]},{"effort":"standard","est_usd":4.00,"models":[]}]`)
+		writeCanned(t, dir, "pr.json", `{"state":"OPEN","headRefOid":"`+headA+`","baseRefOid":"`+
+			strings.Repeat("c", 40)+`",`+
+			`"author":{"login":"teammate"},"files":[{"path":"y","additions":0,"deletions":0}],`+
+			`"additions":0,"deletions":0}`)
+		writeCanned(t, dir, "full.diff", "diff --git a/x b/y\nsimilarity index 100%\nrename from x\nrename to y\n")
+		writeCanned(t, dir, "stat.txt", "y (+0/-0)\n")
+	}, nil, "fetch", "acme/app", "4705", "--json")
 }
 
 // TestFetchGoldenLocal proves fetch-local parity across every diff mode:

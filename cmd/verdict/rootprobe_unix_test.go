@@ -113,3 +113,28 @@ func TestBrokenRootProbeJSONKeepsTheEnvelope(t *testing.T) {
 	}
 	assertNoSubdirVerdict(t, sub)
 }
+
+// TestBrokenRootProbeStillRunsRepoFreeVerbs pins the exemption at the front
+// door: doctor exists to report why the probe cannot answer (a missing git is a
+// warning row, never a refusal), and skill only writes the embedded payload, so
+// neither may refuse not-a-repo when the checkout cannot be resolved.
+func TestBrokenRootProbeStillRunsRepoFreeVerbs(t *testing.T) {
+	hermeticEnv(t)
+	brokenProbeRepo(t)
+
+	// Doctor may still exit 1 on FAIL rows (a missing gh is a FAIL row); what
+	// must not happen is the not-a-repo refusal that skips the preflight.
+	doctor := runOne(t, "doctor", "--json")
+	env := refusalEnvelope(t, doctor.out)
+	if env.Verb != "doctor" {
+		t.Errorf("envelope verb = %q, want doctor", env.Verb)
+	}
+	if env.Error.Code != "" {
+		t.Errorf("doctor refused %q instead of reporting the broken probe", env.Error.Code)
+	}
+
+	skill := runOne(t, "skill")
+	if skill.code != cli.ExitOK {
+		t.Fatalf("skill exit = %d, want %d (%s)", skill.code, cli.ExitOK, skill.err)
+	}
+}

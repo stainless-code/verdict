@@ -73,7 +73,13 @@ function toTS(node, defs) {
     if (inline.length <= 70) return inline;
     return "\n" + values.map((value) => `    | ${value}`).join("\n");
   }
-  if (Array.isArray(node.anyOf)) return anyOfTS(node.anyOf, defs);
+  // anyOf on a node that declares its own shape carries structural
+  // constraints -- which of the declared properties must appear -- not
+  // alternative value shapes: every branch is a bare {required: [...]}, so
+  // unioning them collapsed a fully described object to `unknown`. Render the
+  // declared shape; TypeScript cannot express "at least one of" anyway.
+  if (Array.isArray(node.anyOf) && !declaresShape(node))
+    return anyOfTS(node.anyOf, defs);
   const types = Array.isArray(node.type) ? node.type : [node.type];
   const nullable = types.includes("null");
   const concrete = types.filter((t) => t !== "null" && t !== undefined);
@@ -88,6 +94,18 @@ function toTS(node, defs) {
 
 function paren(type) {
   return type.includes(" | ") ? `(${type})` : type;
+}
+
+// declaresShape reports whether a node describes its own value shape. An anyOf
+// on such a node constrains which of those properties must appear rather than
+// offering alternative shapes.
+function declaresShape(node) {
+  return (
+    node.type !== undefined ||
+    node.properties !== undefined ||
+    node.items !== undefined ||
+    node.const !== undefined
+  );
 }
 
 // anyOf joins its variants into a union. A null variant renders the way a

@@ -2,6 +2,8 @@ package verdict_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -401,4 +403,28 @@ func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 // what it checked.
 func matchesDimension(dim verdict.GateDimension, want wantDim) bool {
 	return dim.ID == want.id && dim.Status == want.status && dim.Detail != ""
+}
+
+// TestClientDoctorFallsBackWhenTheProbeFails pins doctor's documented posture
+// on the SDK path: a probe that cannot answer (git absent from PATH inside a
+// checkout) must not become a refusal, because reporting the missing tool is
+// exactly what doctor is for. The root error is sealed at the service
+// boundary, so this path cannot key on errors.Is and must not try.
+func TestClientDoctorFallsBackWhenTheProbeFails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("PATH", t.TempDir())
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	resp, err := c.Doctor(context.Background(), &verdict.DoctorRequest{})
+	requireNoError(t, err)
+	if resp.Healthy {
+		t.Error("healthy = true, want false with no tools on PATH")
+	}
+	doc := decodeData(t, resp.Data)
+	assertDoctorRows(t, asSlice(t, doc["checks"], "checks"))
 }

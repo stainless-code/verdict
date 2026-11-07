@@ -3,7 +3,6 @@ package verdict
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -22,7 +21,6 @@ import (
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
-	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // ReportRequest carries the report options. Output/Sarif name files whose
@@ -89,8 +87,11 @@ type ConfigResponse struct {
 }
 
 // Config explains the stored effective policy (--explain) or previews a
-// proposed file with current settings and environment (--preview). It
-// performs no live calls, no exec, and no writes, and never approves.
+// proposed file with current settings and environment (--preview). It makes
+// no live calls and no writes, and never approves. Resolving the repository
+// root runs one `git rev-parse` probe through the environment, not through an
+// injected Commander, so a caller that sandboxes execution must cover that
+// probe too.
 func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigResponse, error) {
 	rr, err := c.request(ctx, req.Repo, req.PR)
 	if err != nil {
@@ -552,12 +553,12 @@ type DoctorResponse struct {
 func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error) {
 	rr, err := c.requestBare(ctx)
 	if err != nil {
-		// A canceled or expired context still aborts, so cancellation keeps
-		// its contract; any other non-root error passes through untouched.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-		if !errors.Is(err, readcommon.ErrRootUnresolved) {
+		// Only cancellation aborts. Every other probe failure is exactly what
+		// doctor exists to report (a missing git is a warning row, never a
+		// refusal), so fall back to the cwd-relative posture and let the tool
+		// rows speak. The root error is sealed at the service boundary, so
+		// errors.Is on a sentinel can never match it here.
+		if ctx.Err() != nil {
 			return nil, err
 		}
 		// The probe cannot answer (an absent git fails it): doctor diagnoses

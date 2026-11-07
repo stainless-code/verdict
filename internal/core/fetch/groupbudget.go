@@ -337,12 +337,25 @@ func receiptKind(st *budgetState) string {
 	return "consented over-budget run"
 }
 
-// receiptSummary renders the human summary for an armed receipt.
+// receiptSummary renders the human summary for an armed receipt. It names only
+// amounts the run actually carries: a consented blind run has no projection and
+// a run without a ceiling has no budget, and printing `$` with nothing after it
+// implied a ceiling the operator never set.
 func receiptSummary(st *budgetState) string {
 	if st.groupSpend != nil {
 		return groupReceiptSummary(st)
 	}
-	return fmt.Sprintf("projected $%s %s vs budget $%s", st.estUSD, st.estTier, st.budgetUSD)
+	summary := "projection unknown"
+	if st.estUSD != "" {
+		summary = "projected $" + st.estUSD
+		if st.estTier != "" {
+			summary += " " + st.estTier
+		}
+	}
+	if st.budgetUSD == "" {
+		return summary + " with no budget ceiling"
+	}
+	return summary + " vs budget $" + st.budgetUSD
 }
 
 // groupReceiptBody writes the grouped receipt: every group's own guard, the
@@ -436,5 +449,9 @@ func groupReceiptSummary(st *budgetState) string {
 	} else if report.KnownSubtotal != "" {
 		total = "known subtotal $" + report.KnownSubtotal + " (lower bound)"
 	}
-	return strings.Join(parts, listSeparator) + "; " + total + " vs personal " + groupLimitNote(report)
+	tail := "; " + total
+	if report.PersonalLimit != "" {
+		tail += " vs personal $" + report.PersonalLimit
+	}
+	return strings.Join(parts, listSeparator) + tail
 }

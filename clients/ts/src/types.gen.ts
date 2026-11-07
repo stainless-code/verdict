@@ -407,7 +407,22 @@ export interface VerifyHint {
 }
 
 /** fetch --json data.estimate, in exactly one of two shapes. A whole-run resolution names the projected tier and cost from comparable past runs, with basis/harness/measured_runs appearing only when a local harness session priced a comparable run (their absence is the legacy self-reported estimate). A grouped resolution names each plan group's guard, tier and history-backed projection, plus the personal ceiling comparison; projected_usd is absent for a group no bound history priced, and the personal total is absent when any group is unknown, leaving the known subtotal as a lower bound. */
-export type FetchEstimate = unknown | unknown;
+export interface FetchEstimate {
+  tier?: string | null;
+  projected_usd?: number | null;
+  comparable_runs?: number;
+  /** measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed. */
+  basis?: string;
+  /** Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis. */
+  harness?: Array<string>;
+  /** How many priced samples in the projected tier came from a harness session; absent with basis. */
+  measured_runs?: number;
+  /** One entry per resolved plan group: its stable id, effort tier, its own guard when the plan resolved one, and projected_usd only when bound history priced it. */
+  groups?: Array<FetchGroupEstimate>;
+  /** The personal whole-run ceiling comparison: exact-total when every group is priced, known-lower-bound when some are unknown, no-personal-limit when no ceiling was set. limit_usd is absent when unset and never zero; total_usd is absent unless the aggregate is exact. */
+  personal?: FetchGroupPersonal | null;
+  [key: string]: unknown;
+}
 
 /** One plan group's public projection. projected_usd is omitted for an unknown group rather than reported as zero. */
 export interface FetchGroupEstimate {

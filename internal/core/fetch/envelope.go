@@ -385,7 +385,7 @@ func fetchTailLocal(
 		return nil, "", ref
 	}
 	writeTailReceipt(ctx2, budget)
-	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md " +
+	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
 		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)

@@ -168,6 +168,12 @@ var readVerbs = map[string]readHandler{
 	"check-tree": checktree.Run,
 }
 
+// repoFreeVerbs run without a resolvable repository root: doctor exists to
+// report why the probe cannot answer (a missing git is a warning row), and
+// skill only writes the embedded payload into agent directories. They keep a
+// cwd-relative posture instead of refusing not-a-repo.
+var repoFreeVerbs = map[string]bool{"doctor": true, verbSkill: true}
+
 // shutdownSignalContext is the root context of every long-running entry point:
 // SIGINT and SIGTERM cancel it (GO-CLI-05). SIGKILL cannot be caught, so
 // SIGTERM (kill, docker stop, systemd) is the second catchable shutdown signal.
@@ -193,7 +199,10 @@ func dispatch(
 		if code, done := r.Canceled(ctx, cmd); done {
 			return code
 		}
-		return r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: rootErr.Error()})
+		if !repoFreeVerbs[cmd] {
+			return r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: rootErr.Error()})
+		}
+		repoRoot = "."
 	}
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{

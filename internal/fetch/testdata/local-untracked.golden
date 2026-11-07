@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md .verdict/state/local-demo/source.json + full.diff to any agent; ask it to write .verdict/state/local-demo/review.json",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/local-demo/source.json + full.diff to any agent; ask it to write .verdict/state/local-demo/review.json",
   "warnings": [
     "untracked files excluded from bundle (1): new1.txt (stage or commit to include)"
   ],
