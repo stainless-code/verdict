@@ -546,6 +546,90 @@ func TestNameCostModelsRefusesOversizeRewrite(t *testing.T) {
 	}
 }
 
+// TestPlanCostNamesRefusesOversizeAtPlanTime pins where the cap is checked:
+// planning runs before `record` merges, so a rewrite that would grow the record
+// past the reader's cap must refuse there. Checking at write time let the
+// dry run promise a repair the real run could not make, and let the merge land
+// a findings.json the refusal then left behind.
+func TestPlanCostNamesRefusesOversizeAtPlanTime(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, readcommon.CostFile)
+	body, panel := oversizeCostFixture(t)
+	writeCostFile(t, path, body)
+	plans, entries, found, ref := PlanCostNames(dir, panel)
+	if ref == nil || ref.Code != codeCostRecordUnreadable {
+		t.Fatalf("want %q from planning, got %v", codeCostRecordUnreadable, ref)
+	}
+	if !strings.Contains(ref.Message, "cap") {
+		t.Fatalf("message = %q, want it to name the cap", ref.Message)
+	}
+	if plans != nil || entries != 0 || found {
+		t.Fatalf("plans = %v entries = %d found = %v, want nothing planned", plans, entries, found)
+	}
+	if got := readCostFile(t, path); got != body {
+		t.Fatal("a refusal at plan time must leave the file byte-identical")
+	}
+}
+
+// TestPlanCostNamesRefusesOverCapRead pins the read cap on the naming pass:
+// every other cost.json reader refuses input past the cap, so this one must
+// too rather than decoding a file `report --cost` calls unreadable.
+func TestPlanCostNamesRefusesOverCapRead(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, readcommon.CostFile)
+	body := `{"models":[{"input":1}],"pad":"` +
+		strings.Repeat("x", int(jq.MaxCostBytes)) + `"}`
+	writeCostFile(t, path, body)
+	_, _, _, ref := PlanCostNames(dir, []string{"lead"})
+	if ref == nil || ref.Code != codeCostRecordUnreadable {
+		t.Fatalf("want %q, got %v", codeCostRecordUnreadable, ref)
+	}
+	if !strings.Contains(ref.Message, "cap") {
+		t.Fatalf("message = %q, want it to name the cap", ref.Message)
+	}
+	if got := readCostFile(t, path); got != body {
+		t.Fatal("a refused read must leave the file byte-identical")
+	}
+}
+
+// TestPlanCostNamesAcceptsAgreeingScopes pins the false conflict: when the
+// defaults pin nothing, scopes that pin the same panel agree on the one panel
+// that named the run, and every record gets the whole panel regardless of the
+// scope it came from. Refusing them claimed a disagreement that never existed.
+func TestPlanCostNamesAcceptsAgreeingScopes(t *testing.T) {
+	dir := t.TempDir()
+	writeCostFile(t, filepath.Join(dir, readcommon.CostFile), `{"models":[{"input":1},{"input":2}]}`)
+	writeCostFile(t, filepath.Join(dir, "run.json"),
+		`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
+		  "resolved":{
+		    "defaults":{"values":{}},
+		    "files":[{"path":"verdict.toml","scopes":["web"],
+		      "defaults":{"values":{"panel":["lead","lens-1"]}}},
+		     {"path":"verdict.toml","scopes":["api"],
+		      "defaults":{"values":{"panel":["lead","lens-1"]}}}]}}`)
+	st := &svc{req: &core.RecordRequest{Flags: core.RecordFlags{CostNames: true}}}
+	pass, ref := st.planCostNames(dir)
+	if ref != nil {
+		t.Fatalf("two scopes pinning one panel must be accepted, got %v", ref)
+	}
+	if pass == nil || pass.entries != 2 {
+		t.Fatalf("pass = %+v, want both entries planned", pass)
+	}
+	named, ref := ApplyCostNames(pass.plans, false)
+	if ref != nil {
+		t.Fatalf("apply: %v", ref)
+	}
+	if named != 2 {
+		t.Fatalf("named = %d, want 2", named)
+	}
+	got := readCostFile(t, filepath.Join(dir, readcommon.CostFile))
+	for _, seat := range []string{`"name": "lead"`, `"name": "lens-1"`} {
+		if !strings.Contains(got, seat) {
+			t.Fatalf("record = %s, want the adopted panel's %s", got, seat)
+		}
+	}
+}
+
 // oversizeCostFixture builds a record that fits under the reader's cap and
 // grows past it once every entry takes a name, with the panel that names them.
 func oversizeCostFixture(t *testing.T) (body string, panel []string) {

@@ -1,8 +1,9 @@
 package recordcore
 
 import (
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -34,10 +35,10 @@ const detailSep = ": "
 // file before writing any keeps the pass all-or-nothing, so a refusal never
 // leaves half a bundle named.
 type CostNamePlan struct {
-	doc     any
-	path    string
-	gains   int
-	entries int
+	rendered []byte
+	path     string
+	gains    int
+	entries  int
 }
 
 // NameCostModels names the models[] entries of every cost record under dir
@@ -127,23 +128,29 @@ func applyPlan(plan CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 	return plan.gains, nil
 }
 
-// writePlan rewrites one cost file, keeping its modification time: the
-// measured-usage join attaches the session whose window brackets that stamp, so
-// a repair that moved it would silently drop a paid measurement. The rendered
-// document is checked against the spend reader's cap before the write, because
-// pretty-printing can grow a near-cap file past it and the reader would then
-// treat the record as unreadable.
-func writePlan(plan CostNamePlan) *core.RefusalError {
-	rendered := []byte(jq.PrettyOrdered(plan.doc))
+// renderPlan renders a planned rewrite and checks it against the spend
+// reader's cap. It runs at plan time, not write time: pretty-printing can grow
+// a near-cap record past the cap, and a caller that plans before its merge must
+// hear that refusal before anything is merged.
+func renderPlan(path string, doc any) ([]byte, *core.RefusalError) {
+	rendered := []byte(jq.PrettyOrdered(doc))
 	if int64(len(rendered)) > jq.MaxCostBytes {
-		return &core.RefusalError{
+		return nil, &core.RefusalError{
 			Code: codeCostRecordUnreadable,
 			Message: fmt.Sprintf("%s%sadding names would grow the record to %d bytes, "+
 				"past the %d-byte cap the reader enforces — nothing was written",
-				plan.path, detailSep, len(rendered), jq.MaxCostBytes),
+				path, detailSep, len(rendered), jq.MaxCostBytes),
 		}
 	}
-	if err := atomic.WriteFileKeepingModTime(plan.path, rendered); err != nil {
+	return rendered, nil
+}
+
+// writePlan rewrites one cost file from the bytes planning already rendered and
+// cap-checked, keeping its modification time: the measured-usage join attaches
+// the session whose window brackets that stamp, so a repair that moved it would
+// silently drop a paid measurement.
+func writePlan(plan CostNamePlan) *core.RefusalError {
+	if err := atomic.WriteFileKeepingModTime(plan.path, plan.rendered); err != nil {
 		return &core.RefusalError{
 			Code: codeCostRecordUnreadable,
 			Message: "could not write " + plan.path + detailSep + err.Error() +
@@ -185,20 +192,34 @@ func planCostFile(path string, panel []string) (CostNamePlan, bool, *core.Refusa
 	if ref != nil {
 		return CostNamePlan{}, false, ref
 	}
-	return CostNamePlan{doc: doc, path: path, gains: gains, entries: entries}, true, nil
+	plan := CostNamePlan{path: path, gains: gains, entries: entries}
+	if gains > 0 {
+		rendered, ref := renderPlan(path, doc)
+		if ref != nil {
+			return CostNamePlan{}, false, ref
+		}
+		plan.rendered = rendered
+	}
+	return plan, true, nil
 }
 
 // decodeCostFile reads and decodes one cost record, returning a nil document
 // when the file is not there at all.
 func decodeCostFile(path string) (any, *core.RefusalError) {
-	raw, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
+		reason := err.Error()
+		if errors.Is(err, jq.ErrTooLarge) {
+			reason = fmt.Sprintf("the record is larger than the %d-byte cap the spend "+
+				"reader enforces; adding names cannot make it readable again",
+				jq.MaxCostBytes)
+		}
 		return nil, &core.RefusalError{
 			Code:    codeCostRecordUnreadable,
-			Message: "could not read " + path + detailSep + err.Error(),
+			Message: "could not read " + path + detailSep + reason,
 		}
 	}
 	doc, derr := jq.DecodeOrdered(raw)
@@ -504,14 +525,27 @@ func pinnedPanel(dir string) (panel []string, conflict string) {
 		return nil, ""
 	}
 	panel = rs.Resolved.Defaults.Values.Panel
+	pinnedBy := "the defaults"
+	pinVerb := " pin"
+	if len(panel) == 0 {
+		pinnedBy = ""
+	}
 	for i := range rs.Resolved.Files {
 		file := &rs.Resolved.Files[i]
 		scoped := file.Defaults.Values.Panel
 		if len(scoped) == 0 || samePanel(scoped, panel) {
 			continue
 		}
+		if pinnedBy == "" {
+			// The defaults pin nothing, so this scope is the first panel the
+			// bundle names. Adopt it and compare the rest against it: scopes
+			// that agree name one panel, and refusing them would be a false
+			// conflict over a decision they did not make.
+			panel, pinnedBy, pinVerb = scoped, "scope "+scopeName(file), " pins"
+			continue
+		}
 		return panel, "scope " + scopeName(file) + " pins " + panelList(scoped) +
-			" while the defaults pin " + panelList(panel)
+			" while " + pinnedBy + pinVerb + " " + panelList(panel)
 	}
 	return panel, ""
 }
