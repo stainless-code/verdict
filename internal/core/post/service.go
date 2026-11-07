@@ -650,7 +650,7 @@ func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
 	return &core.RefusalError{Code: "already-reviewed-patch", Message: fmt.Sprintf(
 		"already-reviewed-patch: patch %s was posted from %s at head %s (%s) — "+
 			"refusing a duplicate review of the same change (pass --force to post again)",
-		*cur.PatchID, filepath.Join(filepath.Dir(st.dir), match.bundle), readcommon.ShortSHA(match.head), match.postedAt)}
+		*cur.PatchID, filepath.ToSlash(filepath.Join(filepath.Dir(st.dir), match.bundle)), readcommon.ShortSHA(match.head), match.postedAt)}
 }
 
 // patchSibling is one completed same-patch sibling receipt.

@@ -27,7 +27,7 @@ func (c *Ctx) ApplyCredit(entries []any, sig, outcome, actor, verb, now string, 
 	}
 	joins, ok := c.readJoins()
 	if !ok {
-		c.Warn(fmt.Sprintf("kb joins %s unreadable — credit skipped for this flip (fix or remove the file)", c.path(Joins)))
+		c.Warn(fmt.Sprintf("kb joins %s unreadable — credit skipped for this flip (fix or remove the file)", c.display(Joins)))
 		return
 	}
 	entry := findEntry(entries, sig)
@@ -58,7 +58,7 @@ func (c *Ctx) stageCites(entry *jq.Obj, kbList []any, sig, outcome, actor, verb,
 // stageCite stages one rule's credit op when the rule is active.
 func (c *Ctx) stageCite(sig, rid, outcome, actor, verb, now string) {
 	if !c.ruleActive(rid) {
-		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, c.path(File)))
+		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, c.display(File)))
 		return
 	}
 	c.Staged = append(c.Staged, map[string]any{
@@ -197,7 +197,7 @@ func (c *Ctx) loadStore(findingsFile string) ([]*jq.Obj, bool) {
 	raw, err := jq.CappedFile(c.path(File), jq.MaxKBBytes)
 	rows, derr := ParseRows(raw)
 	if err != nil || derr != nil {
-		c.warnDropped("kb store " + c.path(File) + " unreadable at commit")
+		c.warnDropped("kb store " + c.display(File) + " unreadable at commit")
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil
 		return nil, false
@@ -227,13 +227,13 @@ func filterLive(staged []map[string]any, joins []*jq.Obj) []map[string]any {
 func (c *Ctx) rewriteCounters(rows []*jq.Obj, live []map[string]any, findingsFile string) bool {
 	hits, fps := tallyOutcomes(live)
 	if !bumpCounters(rows, hits, fps) {
-		c.warnDropped("kb commit failed: could not rewrite " + c.path(File))
+		c.warnDropped("kb commit failed: could not rewrite " + c.display(File))
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil
 		return false
 	}
 	if err := WriteRows(c.Root, rows); err != nil {
-		c.warnDropped("kb commit failed: could not rewrite " + c.path(File))
+		c.warnDropped("kb commit failed: could not rewrite " + c.display(File))
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil
 		return false
@@ -311,7 +311,7 @@ func (c *Ctx) appendJoins(findingsFile string, live []map[string]any) {
 			"bundle", bundle, "review_id", reviewID,
 		)
 		if err := c.appendJoin(jrow.MarshalCompact() + "\n"); err != nil {
-			c.Warn(fmt.Sprintf("kb audit row for '%s' not written (%s)", rid, c.path(Joins)))
+			c.Warn(fmt.Sprintf("kb audit row for '%s' not written (%s)", rid, c.display(Joins)))
 		}
 	}
 }

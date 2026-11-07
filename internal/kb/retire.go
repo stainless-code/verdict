@@ -3,6 +3,7 @@ package kb
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 
@@ -44,10 +45,11 @@ func StripStamps(findingsFile string, staged []map[string]any, warn func(string)
 }
 
 // recoverySkipped warns that staged stamps are kept, naming
-// kb_strip_stamps failure path byte-for-byte.
+// kb_strip_stamps failure path byte-for-byte, in the slash form every
+// operator line and golden carries on all platforms.
 func recoverySkipped(findingsFile string, warn func(string)) {
 	warn(fmt.Sprintf("kb recovery skipped: could not rewrite %s "+
-		"(staged stamps kept — credit for these flips is spent)", findingsFile))
+		"(staged stamps kept — credit for these flips is spent)", filepath.ToSlash(findingsFile)))
 }
 
 // loadFindingsEntries reads the findings file as an entry list. An oversized
@@ -280,7 +282,7 @@ func (c *Ctx) retireRow(rows []*jq.Obj, row *jq.Obj, rid, now string) {
 		"at", now, fieldEvent, "auto-retired", fieldActor, "script", fieldNote, reason,
 	))
 	if err := WriteRows(c.Root, rows); err != nil {
-		c.Warn(fmt.Sprintf("kb auto-retire skipped: could not rewrite %s for '%s'", c.path(File), rid))
+		c.Warn(fmt.Sprintf("kb auto-retire skipped: could not rewrite %s for '%s'", c.display(File), rid))
 		return
 	}
 	c.Warn(fmt.Sprintf("kb rule '%s' auto-retired (%s)", rid, reason))

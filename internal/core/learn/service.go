@@ -78,6 +78,10 @@ func (st *state) storeDir() string { return filepath.Join(st.root, learnStoreDir
 // kbFile is the tracked shared knowledge corpus the verb reads and writes.
 func (st *state) kbFile() string { return filepath.Join(st.root, kb.File) }
 
+// kbDisplay names the store in operator-facing output: the slash form every
+// golden carries, independent of the OS separator.
+func (st *state) kbDisplay() string { return filepath.ToSlash(st.kbFile()) }
+
 type appendInput struct {
 	rule  string
 	scope string
@@ -265,12 +269,12 @@ func (st *state) runAppend() *core.RefusalError {
 	}
 	row := appendRowDoc(validated)
 	if err := kb.AppendRow(st.root, row.MarshalCompact()+"\n"); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbFile(), err))
+		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
 	}
 	st.next = nextAppend
 	st.data = &Data{Rule: row}
 	st.humanf("learned %s -> %s (scope %s, rigor %s)\n",
-		validated.lid, st.kbFile(), validated.scope, validated.rigor)
+		validated.lid, st.kbDisplay(), validated.scope, validated.rigor)
 	return nil
 }
 
@@ -444,7 +448,7 @@ func (st *state) appendHistory(cur *jq.Obj, event string) {
 func (st *state) readRowsStrict(id string) ([]*jq.Obj, *core.RefusalError) {
 	rows, err := kb.ReadRows(st.root)
 	if errors.Is(err, kb.ErrMissing) {
-		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, st.kbFile()))
+		return nil, st.refuse(codeUnknownRule, fmt.Sprintf(msgUnknownRuleNest, id, st.kbDisplay()))
 	}
 	if err != nil {
 		return nil, st.corruptStore()
@@ -480,13 +484,13 @@ func mustGet(m *jq.Obj, key string) any {
 
 func (st *state) writeRows(rows []*jq.Obj) *core.RefusalError {
 	if err := kb.WriteRows(st.root, rows); err != nil {
-		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, st.kbFile()))
+		return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptMidWrite, st.kbDisplay()))
 	}
 	return nil
 }
 
 func (st *state) corruptStore() *core.RefusalError {
-	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, st.kbFile()))
+	return st.refuse(codeCorruptStore, fmt.Sprintf(msgCorruptStore, st.kbDisplay()))
 }
 
 const (

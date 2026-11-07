@@ -66,6 +66,12 @@ func (c *Ctx) path(rel string) string {
 	return filepath.Join(c.Root, rel)
 }
 
+// display renders one store path for operator-facing output: slash-form on
+// every OS, the same portable form readcommon.DisplayPath gives bundle paths,
+// so warnings and goldens never carry a native separator. Filesystem calls
+// keep using [Ctx.path].
+func (c *Ctx) display(rel string) string { return filepath.ToSlash(c.path(rel)) }
+
 var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,64}$`)
 
 // PolicyFrom builds the retirement policy from the resolved typed
