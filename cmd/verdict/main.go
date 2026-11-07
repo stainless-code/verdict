@@ -48,7 +48,10 @@ var version string
 
 const envHome = "HOME"
 
-const verbSkill = "skill"
+const (
+	verbSkill  = "skill"
+	verbDoctor = "doctor"
+)
 
 const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config"
@@ -164,7 +167,7 @@ var readVerbs = map[string]readHandler{
 	"threads":    threads.Run,
 	cmdTrend:     trend.Run,
 	"calibrate":  calibrate.Run,
-	"doctor":     doctor.Run,
+	verbDoctor:   doctor.Run,
 	"check-tree": checktree.Run,
 }
 
@@ -172,7 +175,7 @@ var readVerbs = map[string]readHandler{
 // report why the probe cannot answer (a missing git is a warning row), and
 // skill only writes the embedded payload into agent directories. They keep a
 // cwd-relative posture instead of refusing not-a-repo.
-var repoFreeVerbs = map[string]bool{"doctor": true, verbSkill: true}
+var repoFreeVerbs = map[string]bool{verbDoctor: true, verbSkill: true}
 
 // shutdownSignalContext is the root context of every long-running entry point:
 // SIGINT and SIGTERM cancel it (GO-CLI-05). SIGKILL cannot be caught, so
@@ -194,15 +197,9 @@ func dispatch(
 	case "uninstall":
 		return runUninstall(ctx, r, rest, env)
 	}
-	repoRoot, rootErr := readcommon.RepoRoot(ctx)
-	if rootErr != nil {
-		if code, done := r.Canceled(ctx, cmd); done {
-			return code
-		}
-		if !repoFreeVerbs[cmd] {
-			return r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: rootErr.Error()})
-		}
-		repoRoot = "."
+	repoRoot, code, ok := resolveRepoRoot(ctx, r, cmd)
+	if !ok {
+		return code
 	}
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{
@@ -216,6 +213,23 @@ func dispatch(
 	}
 	fmt.Fprintf(stderr, "%s\n", unknownCmdMessage(cmd))
 	return cli.ExitUsage
+}
+
+// resolveRepoRoot resolves the reviewed repository root for one verb. A probe
+// failure refuses not-a-repo, except for the repo-free verbs, which keep the
+// cwd-relative posture so they can still report or install.
+func resolveRepoRoot(ctx context.Context, r *cli.Runner, cmd string) (root string, code int, ok bool) {
+	root, err := readcommon.RepoRoot(ctx)
+	if err == nil {
+		return root, 0, true
+	}
+	if exit, done := r.Canceled(ctx, cmd); done {
+		return "", exit, false
+	}
+	if !repoFreeVerbs[cmd] {
+		return "", r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: err.Error()}), false
+	}
+	return ".", 0, true
 }
 
 func dispatchMutating(

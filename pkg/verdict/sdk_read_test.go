@@ -409,7 +409,7 @@ func matchesDimension(dim verdict.GateDimension, want wantDim) bool {
 // on the SDK path: a probe that cannot answer (git absent from PATH inside a
 // checkout) must not become a refusal, because reporting the missing tool is
 // exactly what doctor is for. The root error is sealed at the service
-// boundary, so this path cannot key on errors.Is and must not try.
+// boundary, so this path cannot key on [errors.Is] and must not try.
 func TestClientDoctorFallsBackWhenTheProbeFails(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {

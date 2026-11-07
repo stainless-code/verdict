@@ -193,6 +193,12 @@ func checkProsePaths(t *testing.T, path string) {
 	}
 }
 
+// isRuntimeState reports a path the tool creates in the checkout when it runs
+// rather than one the repository ships with it.
+func isRuntimeState(ref string) bool {
+	return strings.HasPrefix(ref, ".verdict/") || strings.HasPrefix(ref, ".review/")
+}
+
 // danglingRef returns the payload path of a word that names a file the payload
 // lacks. A URL, an absolute path, a glob, or prose makes no such claim; a path
 // the checkout resolves, or one that starts at a payload directory and is not
@@ -215,7 +221,7 @@ func danglingRef(word string) (string, bool) {
 	// read as a dangling repo path once someone has actually used the tool
 	// here. Without this, a used checkout fails the payload check that a
 	// pristine one passes.
-	if strings.HasPrefix(ref, ".verdict/") || strings.HasPrefix(ref, ".review/") {
+	if isRuntimeState(ref) {
 		return "", false
 	}
 	if _, err := os.Stat(filepath.FromSlash(ref)); err == nil {

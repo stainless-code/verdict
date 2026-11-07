@@ -244,7 +244,8 @@ func unknownDetail(state string, group *LensGroupUsage) string {
 	case LensUsageAbsent:
 		return profilePrefix + group.Label + capSentence + limit + " but cost.json recorded no lens usage — unknown, not zero"
 	case LensUsageMalformed:
-		return profilePrefix + group.Label + capSentence + limit + " but cost.json lens usage is unreadable or carries an unregistered field — unknown, not zero"
+		return profilePrefix + group.Label + capSentence + limit +
+			" but cost.json lens usage is unreadable or carries an unregistered field — unknown, not zero"
 	case LensUsageUnbound:
 		return profilePrefix + group.Label + capSentence + limit + " but cost.json holds no record bound to this run — unknown, not zero"
 	default:

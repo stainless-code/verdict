@@ -179,34 +179,49 @@ func gateActions(gate *core.ReportGate) []string {
 }
 
 func gateAction(dim core.GateDimension) string {
-	switch dim.ID {
-	case idFindings:
-		if dim.Status != statusPass {
-			return actionFindings
+	action, ok := gateActionsByID[dim.ID]
+	if !ok {
+		return ""
+	}
+	return action(dim.Status)
+}
+
+// gateActionsByID maps a dimension to the recovery line its verdict calls
+// for; a passing dimension contributes nothing.
+var gateActionsByID = map[string]func(status string) string{
+	idFindings: func(status string) string {
+		if status == statusPass {
+			return ""
 		}
-	case idHead:
-		switch dim.Status {
+		return actionFindings
+	},
+	idHead: func(status string) string {
+		switch status {
 		case statusUnknown:
 			return actionMissing
 		case statusFail:
 			return "post a review for the fetched HEAD"
 		}
-	case idLive:
-		switch dim.Status {
+		return ""
+	},
+	idLive: func(status string) string {
+		switch status {
 		case statusFail:
 			return "resolve or reply to the live threads"
 		case statusUnknown:
 			return "restore the network or re-run with --live skip"
 		}
-	case idCompliance:
-		switch dim.Status {
+		return ""
+	},
+	idCompliance: func(status string) string {
+		switch status {
 		case statusFail:
 			return "clear the compliance blockers and re-run gate"
 		case statusUnknown:
 			return "record the compliance evidence the warnings name, then re-run gate"
 		}
-	}
-	return ""
+		return ""
+	},
 }
 
 // parseFlags parses the gate flags left to right; a missing operand, a bad

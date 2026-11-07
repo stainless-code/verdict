@@ -259,7 +259,7 @@ func usageText() string {
 
 var bareVerbs = map[string]bool{
 	"check-tree": true,
-	"doctor":     true,
+	verbDoctor:   true,
 	"learn":      true,
 	"init":       true,
 	verbSkill:    true,

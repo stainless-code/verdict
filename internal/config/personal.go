@@ -87,25 +87,33 @@ func checkPersonalUnknown(root map[string]any) *core.RefusalError {
 // kb_policy member keep the built-in threshold while the identical typo in
 // .verdict/config.json refused typed.
 func checkPersonalSections(root map[string]any) *core.RefusalError {
+	if ref := checkPresent(root, personalSectionReview, func(raw any) *core.RefusalError {
+		return checkDefaultsKeys(raw, "$."+personalSectionReview)
+	}); ref != nil {
+		return ref
+	}
 	for _, section := range []struct {
-		key   string
-		check func(any) *core.RefusalError
+		key    string
+		fields []string
 	}{
-		{personalSectionReview, func(raw any) *core.RefusalError {
-			return checkDefaultsKeys(raw, "$."+personalSectionReview)
-		}},
-		{personalSectionSpend, flatKeys("$."+personalSectionSpend, personalSpendFields)},
-		{personalSectionPrivacy, flatKeys("$."+personalSectionPrivacy, personalPrivacyFields)},
+		{personalSectionSpend, personalSpendFields},
+		{personalSectionPrivacy, personalPrivacyFields},
 	} {
-		raw, ok := root[section.key]
-		if !ok {
-			continue
-		}
-		if ref := section.check(raw); ref != nil {
+		if ref := checkPresent(root, section.key, flatKeys("$."+section.key, section.fields)); ref != nil {
 			return ref
 		}
 	}
 	return nil
+}
+
+// checkPresent runs one section check when the key is present; absent reads
+// clean and the semantic pass names anything else.
+func checkPresent(root map[string]any, key string, check func(any) *core.RefusalError) *core.RefusalError {
+	raw, ok := root[key]
+	if !ok {
+		return nil
+	}
+	return check(raw)
 }
 
 // flatKeys refuses unknown keys at one level, deferring shape errors to the

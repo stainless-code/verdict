@@ -64,8 +64,8 @@ index 1111111..2222222 100644
  bottom
 `
 
-// writePRBundle writes a GitHub-shaped bundle shell (.verdict/state/<pr>/PR.json
-// plus the one-hunk diff).
+// writePRBundle writes a GitHub-shaped bundle shell
+// (.verdict/state/<pr>/PR.json plus the one-hunk diff).
 func writePRBundle(t *testing.T, pr string) {
 	t.Helper()
 	writeFile(".verdict/state/"+pr+"/PR.json",

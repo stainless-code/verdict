@@ -180,9 +180,9 @@ type ReportCompliance struct { //nolint:govet // field order is the published pr
 	Satisfied  bool `json:"satisfied"`
 }
 
-// ReportGate is the composed gate result: every dimension this run requested,
-// in `findings, head, live_threads, compliance` order. Passed is true iff no dimension
-// failed or read unknown, so a skip stays neutral.
+// ReportGate is the composed gate result: every dimension this run
+// requested, in `findings, head, live_threads, compliance` order. Passed is
+// true iff no dimension failed or read unknown, so a skip stays neutral.
 type ReportGate struct { //nolint:govet // published wire order: passed before dimensions
 	Passed     bool            `json:"passed"`
 	Dimensions []GateDimension `json:"dimensions"`
