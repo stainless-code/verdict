@@ -14,9 +14,10 @@ type ConfigFlags struct { //nolint:govet // field order is the public invocation
 }
 
 // ConfigRequest is the config service invocation: the read runtime and
-// positionals plus the resolved options. The service performs no live
-// calls, no exec, and no writes: it reads the run bundle and the
-// proposed file only.
+// positionals plus the resolved options. The service performs no live calls
+// and no writes: it reads the run bundle and the proposed file only.
+// Resolving the root runs one `git rev-parse` probe through the environment,
+// not the injected commander.
 type ConfigRequest struct { //nolint:govet // field order is the public invocation surface
 	ReadRequest
 	Flags        ConfigFlags

@@ -676,7 +676,8 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, live_threads` order (`id`, `status`, `detail`, `count` —
+in `findings, head, live_threads, compliance` order (`id`, `status`, `detail`,
+`count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
 refusal: the envelope keeps `error: null` and the exit code carries the
 outcome. `gate` is read-only — no store writes, no `post.json`, no review
