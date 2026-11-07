@@ -12,9 +12,9 @@ import (
 func kbBundle(t *testing.T, dir, review string, kbLines []string) {
 	t.Helper()
 	files := map[string]string{
-		".review/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/local-kb/full.diff":   genDiff(4),
-		".review/local-kb/review.json": review,
+		".verdict/state/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-kb/full.diff":   genDiff(4),
+		".verdict/state/local-kb/review.json": review,
 	}
 	writeFiles(t, dir, files)
 	if len(kbLines) > 0 {
@@ -23,7 +23,7 @@ func kbBundle(t *testing.T, dir, review string, kbLines []string) {
 			sb.WriteString(ln + "\n")
 		}
 		content := sb.String()
-		writeFiles(t, dir, map[string]string{".review/kb.jsonl": content})
+		writeFiles(t, dir, map[string]string{".verdict/kb.jsonl": content})
 	}
 }
 
@@ -66,6 +66,73 @@ func TestGoldenKBCitations(t *testing.T) {
 	}
 }
 
+// TestKBCitationIsLiteralAndIdempotent pins what the real .verdict store
+// earns: the active rec-rule attaches to the finding exactly once, it never
+// becomes a fabricated credit stamp, an unknown rule attaches nothing, and a
+// second record of the same review neither duplicates the citation nor grows
+// the history. Runs before any golden refresh, so the claim rests on literal
+// assertions rather than a repinned file.
+func TestKBCitationIsLiteralAndIdempotent(t *testing.T) {
+	dir, home := t.TempDir(), t.TempDir()
+	kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
+	findings := filepath.Join(dir, ".verdict/state/local-kb/findings.json")
+	first := runOne(t, dir, home, "record", "acme/app", "local-kb")
+	if first.Status != 0 {
+		t.Fatalf("record status = %d, want 0 (stderr %s)", first.Status, first.Stderr)
+	}
+	raw, err := os.ReadFile(findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	if n := strings.Count(body, `"rec-rule"`); n != 1 {
+		t.Fatalf("rec-rule appears %d times, want exactly one attached citation: %s", n, body)
+	}
+	if !strings.Contains(body, `"kb"`) {
+		t.Fatalf("the active rule attached no kb citation: %s", body)
+	}
+	if strings.Contains(body, `"kb_credit"`) {
+		t.Fatalf("a first record fabricated a credit stamp: %s", body)
+	}
+	assertRerecordStable(t, dir, home, findings, body)
+}
+
+// assertRerecordStable records the same review again and requires the store to
+// keep exactly one citation and the same history length.
+func assertRerecordStable(t *testing.T, dir, home, findings, first string) {
+	t.Helper()
+	if second := runOne(t, dir, home, "record", "acme/app", "local-kb"); second.Status != 0 {
+		t.Fatalf("second record status = %d, want 0", second.Status)
+	}
+	again, err := os.ReadFile(findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(again), `"rec-rule"`); got != 1 {
+		t.Fatalf("re-record left %d rec-rule citations, want exactly 1", got)
+	}
+	if got, want := strings.Count(string(again), `"event"`), strings.Count(first, `"event"`); got != want {
+		t.Fatalf("re-record changed history entries %d, want %d", got, want)
+	}
+}
+
+// TestUnknownKBAttachesNothing proves the same store refuses a rule it does not
+// hold: a missing id leaves the finding without any kb citation.
+func TestUnknownKBAttachesNothing(t *testing.T) {
+	dir, home := t.TempDir(), t.TempDir()
+	kbBundle(t, dir, kbReview(`["nope-missing"]`), []string{`{"id":"rec-rule","status":"active"}`})
+	if out := runOne(t, dir, home, "record", "acme/app", "local-kb"); out.Status != 0 {
+		t.Fatalf("record status = %d, want 0 (stderr %s)", out.Status, out.Stderr)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict/state/local-kb/findings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "nope-missing") {
+		t.Fatalf("an unknown rule leaked into findings: %s", raw)
+	}
+}
+
 // sequenced runs phase 1 twice over, applies mutate to both bundles,
 // then compares phase 2 — the shape re-review, uncite, and credit flows need.
 // sequencedSlug is the bundle slug for the claims-sequence cases.
@@ -93,7 +160,7 @@ func sequenced(t *testing.T, name string, setup, mutate func(t *testing.T, dir s
 
 func sigsOf(t *testing.T, dir string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", sequencedSlug, "findings.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", sequencedSlug, "findings.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,8 +219,8 @@ func TestGoldenClaimsSequence(t *testing.T) {
 			map[string]any{"sig": sigs[0], "status": "open", "rationale": "short"},
 		}
 		writeFiles(t, dir, map[string]string{
-			".review/local-kb/review.json": marshalJSON(t, doc),
-			".review/local-kb/verification.json": fmt.Sprintf(
+			".verdict/state/local-kb/review.json": marshalJSON(t, doc),
+			".verdict/state/local-kb/verification.json": fmt.Sprintf(
 				`[{"sig":"%s","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"deadbeef","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"%s","verdict":"NOT VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`,
 				sigs[0], sigs[0]),
 		})
@@ -178,7 +245,7 @@ func TestGoldenUnciteSequence(t *testing.T) {
 		}, func(t *testing.T, dir string) {
 			t.Helper()
 			writeFiles(t, dir, map[string]string{
-				".review/local-kb/review.json": kbReview(tc.cite),
+				".verdict/state/local-kb/review.json": kbReview(tc.cite),
 			})
 		}, "--json")
 	}
@@ -205,7 +272,7 @@ func TestGoldenBadTriageStatus(t *testing.T) {
 			},
 		}
 		writeFiles(t, dir, map[string]string{
-			".review/local-kb/review.json": marshalJSON(t, doc),
+			".verdict/state/local-kb/review.json": marshalJSON(t, doc),
 		})
 	}, "--json")
 }
@@ -224,9 +291,9 @@ func TestGoldenIncrementalReopen(t *testing.T) {
 			t.Fatal("no notes.txt entry")
 		}
 		writeFiles(t, dir, map[string]string{
-			".review/local-kb/findings.json":    marshalJSON(t, entries),
-			".review/local-kb/incremental.diff": "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n",
-			".review/local-kb/review.json":      kbReview(``),
+			".verdict/state/local-kb/findings.json":    marshalJSON(t, entries),
+			".verdict/state/local-kb/incremental.diff": "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n",
+			".verdict/state/local-kb/review.json":      kbReview(``),
 		})
 	}, "--json")
 }
@@ -234,7 +301,7 @@ func TestGoldenIncrementalReopen(t *testing.T) {
 // readFindings decodes the bundle's findings.json.
 func readFindings(t *testing.T, dir string) []any {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "local-kb", "findings.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "local-kb", "findings.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,42 +327,42 @@ func flipToAddressed(entries []any) bool {
 // TestGoldenOverrides checks fragment overrides behave identically.
 func TestGoldenOverrides(t *testing.T) {
 	good := map[string]string{
-		".review/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/local-ov/full.diff":   genDiff(2),
-		".review/local-ov/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
+		".verdict/state/local-ov/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-ov/full.diff":   genDiff(2),
+		".verdict/state/local-ov/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
 	}
 	goldenBoth(t, "overrides/marker-fragment", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
-		writeFiles(t, dir, map[string]string{".review/overrides/preamble.md": "> ✅ not allowed here\n"})
+		writeFiles(t, dir, map[string]string{".verdict/overrides/preamble.md": "> ✅ not allowed here\n"})
 	})
 	goldenBoth(t, "overrides/unknown-field", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
-		writeFiles(t, dir, map[string]string{".review/overrides/footer-order.md": "bogus\n"})
+		writeFiles(t, dir, map[string]string{".verdict/overrides/footer-order.md": "bogus\n"})
 	})
 	goldenBoth(t, "overrides/bad-threshold", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
-		writeFiles(t, dir, map[string]string{".review/overrides/walkthrough-threshold.md": "frobnicate: 3\n"})
+		writeFiles(t, dir, map[string]string{".verdict/overrides/walkthrough-threshold.md": "frobnicate: 3\n"})
 	})
 	goldenBoth(t, "overrides/multiline-attribution", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
-		writeFiles(t, dir, map[string]string{".review/overrides/attribution.md": "line one\nline two\n"})
+		writeFiles(t, dir, map[string]string{".verdict/overrides/attribution.md": "line one\nline two\n"})
 	})
 	goldenBoth(t, "overrides/bad-placeholder", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
-		writeFiles(t, dir, map[string]string{".review/overrides/preamble.md": "See {frobnicate} for details.\n"})
+		writeFiles(t, dir, map[string]string{".verdict/overrides/preamble.md": "See {frobnicate} for details.\n"})
 	})
 	goldenBoth(t, "overrides/valid", "local-ov", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, good)
 		writeFiles(t, dir, map[string]string{
-			".review/overrides/footer-order.md":          "link\ncost\n",
-			".review/overrides/walkthrough-threshold.md": "files: 3\n",
-			".review/overrides/attribution.md":           "Reviewed with {version} {tier}.",
+			".verdict/overrides/footer-order.md":          "link\ncost\n",
+			".verdict/overrides/walkthrough-threshold.md": "files: 3\n",
+			".verdict/overrides/attribution.md":           "Reviewed with {version} {tier}.",
 		})
 	})
 }

@@ -1,21 +1,21 @@
 exit: 0
 --- stdout ---
 » anchors: 0 inline, 0 moved to body
-» findings: 0 sigs -> .review/local-ch/findings.json
-recorded: .review/local-ch/findings.json (0 open) + .review/local-ch/record.json — report/triage read it; post stays refused (no PR target)
+» findings: 0 sigs -> .verdict/state/local-ch/findings.json
+recorded: .verdict/state/local-ch/findings.json (0 open) + .verdict/state/local-ch/record.json — report/triage read it; post stays refused (no PR target)
 --- stderr ---
 warn: $.chunks[2]: unknown chunk "zzz" in the chunks attestation
-warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no fetch-time hunk snapshot (.verdict/state/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 --- files ---
---- file C/.review/local-ch/findings.json ---
+--- file C/.verdict/state/local-ch/findings.json ---
 []
---- file C/.review/local-ch/hunks.tsv ---
+--- file C/.verdict/state/local-ch/hunks.tsv ---
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
---- file C/.review/local-ch/record.json ---
+--- file C/.verdict/state/local-ch/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -27,10 +27,10 @@ c1.txt	NEW	1	2
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "5337104e90f2c4073211f45b9bcb04ea062fe248844b53111237de58944e966e",
   "model": null
 }
---- file C/.review/local-ch/store.json ---
+--- file C/.verdict/state/local-ch/store.json ---
 {
   "schema_version": "1"
 }

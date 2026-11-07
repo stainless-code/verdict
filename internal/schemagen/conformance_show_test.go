@@ -15,8 +15,8 @@ import (
 func TestRuntimeShowOutputValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	t.Chdir(t.TempDir())
-	writeFixture(t, ".review/5101/findings.json", "["+fixtureFinding()+"]")
-	writeFixture(t, ".review/5101/patch.json",
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/5101/patch.json",
 		`{"sig":"c1111111","verifyCmd":"go test ./...","resultHead":"aaaaaaa","baseHead":"bbbbbbb"}`)
 	read := core.ReadRequest{Repo: "acme/app", Pr: "5101"}
 	resp, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{

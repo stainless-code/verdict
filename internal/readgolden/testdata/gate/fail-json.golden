@@ -8,6 +8,7 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "address or triage the open findings",
   "warnings": [
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
     "live recheck skipped (--live skip requested — gating on local dimensions only)"
   ],
   "data": {
@@ -30,6 +31,7 @@ exit: 1
   "error": null
 }
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 gate: findings     fail  1 open finding(s) at-or-above important
 gate: live_threads skip  live recheck skipped (--live skip)

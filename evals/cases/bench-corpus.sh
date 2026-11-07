@@ -5,17 +5,17 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-HOLD="$EVAL_SANDBOX/.review-hold-bench"
-mkdir -p "$EVAL_SANDBOX/.review" "$HOLD"
-for e in "$EVAL_SANDBOX"/.review/*; do
+HOLD="$EVAL_SANDBOX/.verdict-hold-bench"
+mkdir -p "$EVAL_SANDBOX/.verdict" "$HOLD"
+for e in "$EVAL_SANDBOX"/.verdict/state/*; do
   [ -e "$e" ] || continue
   mv "$e" "$HOLD/"
 done
 restore_bench() {
-  rm -rf "$EVAL_SANDBOX/.review/corpus-"* "$EVAL_SANDBOX/.review/local-bench"
+  rm -rf "$EVAL_SANDBOX/.verdict/state/corpus-"* "$EVAL_SANDBOX/.verdict/state/local-bench"
   for e in "$HOLD"/*; do
     [ -e "$e" ] || continue
-    mv "$e" "$EVAL_SANDBOX/.review/"
+    mv "$e" "$EVAL_SANDBOX/.verdict/state/"
   done
   rmdir "$HOLD" 2>/dev/null || true
 }
@@ -23,8 +23,8 @@ trap restore_bench EXIT
 
 GOLD="$EVAL_ROOT/evals/fixtures/bench-corpus"
 
-mkdir -p "$EVAL_SANDBOX/.review/9001"
-cat > "$EVAL_SANDBOX/.review/9001/findings.json" <<'FINDINGS_EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/9001"
+cat > "$EVAL_SANDBOX/.verdict/state/9001/findings.json" <<'FINDINGS_EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Ordinary portfolio finding here.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"important","kb":[],"sig":"9001000000000000000000000000000000000000","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 FINDINGS_EOF
 run_review trend acme/bench --json
@@ -57,14 +57,19 @@ for case_dir in "$EVAL_ROOT"/bench/corpus/*/; do
     [ -f "$agent" ] || continue
     model="$(jq -r '.model' "$agent")"
     slug="corpus-${case_id}-${model}"
-    dir="$EVAL_SANDBOX/.review/$slug"
-    mkdir -p "$dir"
+    dir="$EVAL_SANDBOX/.verdict/state/$slug"
+    # The corpus bundle is a typed capture like any other: the producer
+    # pins the controls and run evidence, the case supplies the artifacts.
+    eval_mk_bundle "$slug"
+    jq --arg r "acme/bench" '.repo = $r' "$dir/source.json" >"$dir/source.json.tmp"
+    mv "$dir/source.json.tmp" "$dir/source.json"
     cp "$case_dir/case.json" "$dir/corpus.json"
     cp "$case_dir/full.diff" "$dir/full.diff"
+    # The generic producer's hunk cache describes notes.txt, not this corpus patch.
+    rm -f "$dir/hunks.tsv"
     jq '.review' "$agent" >"$dir/review.json"
     jq -r '.panel[]' "$agent" >"$dir/panel"
     jq -n --arg m "$model" '{schema_version:"1",effort:"standard",models:[{name:$m,input_tokens:100,output_tokens:50}],est_usd:0.01}' >"$dir/cost.json"
-    printf '{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}\n' >"$dir/source.json"
     run_review record acme/bench "$slug" --json
     if [ "$EVAL_STATUS" -eq 0 ] \
       && jq -e '(.data.findings.open + .data.findings.deferred + .data.findings.addressed) >= 1' <"$EVAL_OUT" >/dev/null 2>&1 \
@@ -81,11 +86,11 @@ else
   bad "recorded $bundles corpus bundles, want 16"
 fi
 
-before_hash="$(cd "$EVAL_SANDBOX" && find .review -type f | LC_ALL=C sort | xargs shasum -a 1)"
+before_hash="$(cd "$EVAL_SANDBOX" && find .verdict -type f | LC_ALL=C sort | xargs shasum -a 1)"
 
 actual_cal="$EVAL_SANDBOX/calibrate-actual.jsonl"
 : >"$actual_cal"
-for dir in "$EVAL_SANDBOX"/.review/corpus-*/; do
+for dir in "$EVAL_SANDBOX"/.verdict/state/corpus-*/; do
   [ -d "$dir" ] || continue
   slug="$(basename "$dir")"
   run_review calibrate acme/bench "$slug" --json
@@ -133,8 +138,8 @@ else
   bad "corpus bundle leaked into the portfolio rows"
 fi
 
-mkdir -p "$EVAL_SANDBOX/.review/local-bench"
-cp "$EVAL_SANDBOX/.review/corpus-off-by-one-fixture-good/findings.json" "$EVAL_SANDBOX/.review/local-bench/findings.json"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/local-bench"
+cp "$EVAL_SANDBOX/.verdict/state/corpus-off-by-one-fixture-good/findings.json" "$EVAL_SANDBOX/.verdict/state/local-bench/findings.json"
 stub_local_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 run_review calibrate acme/bench local-bench --json
 stub_local_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
@@ -146,9 +151,9 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "local refusal boundary: exit $EVAL_STATUS $(jq -c '.error // empty' <"$EVAL_OUT" 2>/dev/null)"
 fi
-mkdir -p "$EVAL_SANDBOX/.review/corpus-broken"
-cp "$EVAL_SANDBOX/.review/corpus-off-by-one-fixture-good/findings.json" "$EVAL_SANDBOX/.review/corpus-broken/findings.json"
-echo '{"schema_version":"1","id":"broken","kind":"seeded"}' >"$EVAL_SANDBOX/.review/corpus-broken/corpus.json"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/corpus-broken"
+cp "$EVAL_SANDBOX/.verdict/state/corpus-off-by-one-fixture-good/findings.json" "$EVAL_SANDBOX/.verdict/state/corpus-broken/findings.json"
+echo '{"schema_version":"1","id":"broken","kind":"seeded"}' >"$EVAL_SANDBOX/.verdict/state/corpus-broken/corpus.json"
 run_review calibrate acme/bench corpus-broken --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "corpus-invalid" ]; then
   good "corrupt corpus manifest refuses typed on calibrate"
@@ -157,15 +162,15 @@ else
 fi
 run_review trend acme/bench --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.warnings | map(select(contains("trend skips corpus bundle .review/corpus-broken/"))) | length == 1' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && jq -e '.warnings | map(select(contains("trend skips corpus bundle .verdict/state/corpus-broken/"))) | length == 1' <"$EVAL_OUT" >/dev/null 2>&1 \
   && [ "$(jq -r '.data.corpus.bundles' <"$EVAL_OUT" 2>/dev/null)" = "16" ]; then
   good "trend warns and skips the corrupt corpus bundle, keeping the 16 measured"
 else
   bad "corrupt manifest trend: exit $EVAL_STATUS $(jq -c '.warnings, .data.corpus.bundles' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-rm -rf "$EVAL_SANDBOX/.review/corpus-broken" "$EVAL_SANDBOX/.review/local-bench"
-after_hash="$(cd "$EVAL_SANDBOX" && find .review -type f | LC_ALL=C sort | xargs shasum -a 1)"
+rm -rf "$EVAL_SANDBOX/.verdict/state/corpus-broken" "$EVAL_SANDBOX/.verdict/state/local-bench"
+after_hash="$(cd "$EVAL_SANDBOX" && find .verdict -type f | LC_ALL=C sort | xargs shasum -a 1)"
 if [ "$before_hash" = "$after_hash" ]; then
   good "corpus calibrate/trend wrote nothing (every fixture byte unchanged)"
 else

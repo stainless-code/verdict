@@ -15,7 +15,7 @@ unset REVIEW_PUBLISH_ATTRIBUTION_TEXT REVIEW_PUBLISH_COPYRIGHT || true
 unset REVIEW_PUBLISH_LOGO REVIEW_PUBLISH_LOGO_URL || true
 
 PR=4501
-dir="$EVAL_SANDBOX/.review/$PR"
+dir="$EVAL_SANDBOX/.verdict/state/$PR"
 mkdir -p "$dir"
 cat > "$dir/PR.json" <<'EOF'
 {"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"},"files":[{"path":"a.txt","additions":10,"deletions":2},{"path":"b.txt","additions":3,"deletions":0},{"path":"c.txt","additions":0,"deletions":5},{"path":"d.txt","additions":1,"deletions":1}]}
@@ -71,7 +71,7 @@ eval_write_review "$PR" <<'EOF'
 EOF
 jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review post acme/app "$PR" --dry-run --json
 repost_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
 printf '%s' "$repost_footer" > "$EVAL_SANDBOX/repost-footer.txt"
@@ -85,7 +85,7 @@ eval_write_review "$PR" <<'EOF'
 EOF
 jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
   '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -Fq '[review `101`](https://example.invalid/r/101)' <<<"$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"; then
@@ -115,7 +115,7 @@ eval_write_review "$PR" <<'EOF'
 EOF
 jq -n --arg h "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   '{schema_version:"1",review:{id:101},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 run_review post acme/app "$PR" --dry-run --json
 nourl_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
 assert_exit "no-URL fallback render succeeds" 0
@@ -128,7 +128,7 @@ printf '%s' "$nourl_footer" > "$EVAL_SANDBOX/nourl-footer.txt"
 assert_file_nogrep "same-head omit swallows the plain-text no-URL fallback too" "$EVAL_SANDBOX/nourl-footer.txt" 'review `' "-F"
 
 PR=4502
-dir="$EVAL_SANDBOX/.review/$PR"
+dir="$EVAL_SANDBOX/.verdict/state/$PR"
 mkdir -p "$dir"
 printf '[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Degraded probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"1111111111111111111111111111111111111111","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]' > "$dir/findings.json"
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4502.md"
@@ -308,7 +308,7 @@ STALE_BODY='> ✅ Looks fine.
 <!-- verdict-footer -->
 > <a href="https://stainless-code.com/verdict"><img src="https://example.invalid/old.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 9.9.9**](https://stainless-code.com/verdict) · standard tier · cost unrecorded · files unrecorded'
 jq -n --arg b "$STALE_BODY" '{schema_version:"1",body:$b,approved:false,comments:[]}' \
-  > "$EVAL_SANDBOX/.review/$PR/review.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/review.json"
 run_review post acme/app "$PR" --dry-run
 stale_chars=$(grep -o 'body chars: [0-9]*' "$EVAL_OUT" | grep -o '[0-9]*')
 assert_exit "stale-block repost succeeds" 0
@@ -401,18 +401,20 @@ else
 fi
 
 PR=4517
+# The rule the review cites has to be in the base the producer pins, not a
+# file written after the capture.
+printf '%s\n' '{"id":"b4-rule","status":"active"}' > "$EVAL_SANDBOX/.verdict/kb.jsonl"
 eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Fresh finding to flip.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-printf '%s\n' '{"id":"b4-rule","status":"active"}' > "$EVAL_SANDBOX/.review/kb.jsonl"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 1 said · 1 rules cited · 1 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}],"triage":[{"sig":"cccccccccccccccccccccccccccccccccccccccc","status":"addressed","rationale":"verified the fix path end to end with evidence"}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "triage-addressed flip succeeds" 0
 assert_stream_nogrep "triage-addressed + cited rule count exactly, no warn" "$EVAL_ERR" "basis line counts"
-rm -f "$EVAL_SANDBOX/.review/kb.jsonl"
+rm -f "$EVAL_SANDBOX/.verdict/kb.jsonl"
 
 if grep -Fq 'Confidence is the agent'"'"'s "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.' "$EVAL_ROOT/docs/manual.md"; then
   good "manual carries the confidence metric definition"

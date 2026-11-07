@@ -29,7 +29,7 @@ chmod +x "$EVAL_STUBBIN/gh"
 
 PR=4281
 eval_mk_bundle "$PR"
-printf 'notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n' > "$EVAL_SANDBOX/.review/$PR/hunks.tsv"
+printf 'notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n' > "$EVAL_SANDBOX/.verdict/state/$PR/hunks.tsv"
 {
   echo 'diff --git a/notes.txt b/notes.txt'
   echo 'index 1111111..2222222 100644'
@@ -41,7 +41,7 @@ printf 'notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n' > "$EVAL_SANDBOX/.review/$
   echo '+new line'
   i=1; while [ "$i" -le 48 ]; do echo "+pad $i"; i=$((i + 1)); done
   echo ' bottom'
-} > "$EVAL_SANDBOX/.review/$PR/full.diff"
+} > "$EVAL_SANDBOX/.verdict/state/$PR/full.diff"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Ship it.","approved":false,"comments":[
 {"path":"notes.txt","line":2,"side":"RIGHT","body":"Kept note on a snapshot-covered line.","rigor":"pointed","severity":"informational"},
@@ -82,8 +82,8 @@ if grep -q "commits landed after this review's fetch" "$PAYLOAD_4281"; then
 else
   bad "posted body misses the drift note"
 fi
-if [ "$(jq '[.[] | select(.anchored == true)] | length' <"$EVAL_SANDBOX/.review/$PR/findings.json" 2>/dev/null)" = "1" ] \
-  && [ "$(jq '[.[] | select(.anchored == false)] | length' <"$EVAL_SANDBOX/.review/$PR/findings.json" 2>/dev/null)" = "1" ]; then
+if [ "$(jq '[.[] | select(.anchored == true)] | length' <"$EVAL_SANDBOX/.verdict/state/$PR/findings.json" 2>/dev/null)" = "1" ] \
+  && [ "$(jq '[.[] | select(.anchored == false)] | length' <"$EVAL_SANDBOX/.verdict/state/$PR/findings.json" 2>/dev/null)" = "1" ]; then
   good "findings store records the kept/dropped split"
 else
   bad "findings anchored flags wrong"
@@ -98,7 +98,7 @@ EOF
 }
 PR=4282
 mk_kept "$PR"
-printf 'notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n' > "$EVAL_SANDBOX/.review/$PR/hunks.tsv"
+printf 'notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n' > "$EVAL_SANDBOX/.verdict/state/$PR/hunks.tsv"
 export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4282.json"
 rm -f "$EVAL_SAVE_PAYLOAD"
 run_review post acme/app "$PR" --json
@@ -111,6 +111,9 @@ else
 fi
 PR=4283
 mk_kept "$PR"
+# A bundle fetched before the index landed: the producer's hunks.tsv is
+# gone, so post rebuilds it from the full diff and says so.
+rm -f "$EVAL_SANDBOX/.verdict/state/$PR/hunks.tsv"
 export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4283.json"
 rm -f "$EVAL_SAVE_PAYLOAD"
 run_review post acme/app "$PR" --json

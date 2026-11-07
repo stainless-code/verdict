@@ -9,6 +9,7 @@ exit: 1
   "next": "post a review for the fetched HEAD",
   "warnings": [
     "patch identity unavailable — completeness compares heads",
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
     "live recheck skipped (--live skip requested — gating on local dimensions only)"
   ],
   "data": {
@@ -38,6 +39,7 @@ exit: 1
 }
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 gate: findings     pass  no open findings at-or-above critical
 gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa

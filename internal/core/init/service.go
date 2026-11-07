@@ -1,10 +1,11 @@
 // Package initcore is the init verb's domain service: the guided offline
-// scaffolder that writes the standard local control files (.review/budget,
-// panel, kb-policy, kb.jsonl starter) with style presets, then runs check-tree
-// validation. Existing files print a preview and need --yes/--force (or, in
-// human mode, an interactive confirm) before overwrite — the never-prompts
-// doctrine holds: machine mode never prompts, even on a TTY. internal/scaffold
-// owns argv parsing, stdin, envelope rendering, and exit mapping.
+// scaffolder that writes the typed `.verdict/config.json` with style
+// presets beside the `.verdict/kb.jsonl` starter and the tracked-shape
+// `.verdict/.gitignore`, then runs check-tree validation. Existing files
+// print a preview and need --yes/--force (or, in human mode, an interactive
+// confirm) before overwrite — the never-prompts doctrine holds: machine mode
+// never prompts, even on a TTY. internal/scaffold owns argv parsing, stdin,
+// envelope rendering, and exit mapping.
 package initcore
 
 import (
@@ -12,10 +13,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -27,8 +31,7 @@ const (
 	codeBadBudget    = "bad-budget"
 	codeBadPreset    = "bad-preset"
 	codeNeedsConfirm = "needs-confirm"
-	reviewDir        = ".review/"
-	reviewDot        = ".review"
+	reviewDotName    = ".verdict"
 	newlineStr       = "\n"
 	scaffoldDirPerm  = 0o777
 )
@@ -151,19 +154,32 @@ var presets = map[string]presetVals{
 	"strict":   {budget: "0.10", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
 }
 
-var targets = []string{"budget", "panel", "kb-policy", "kb.jsonl"}
+// configName is the typed control file init scaffolds first.
+const configName = "config.json"
+
+var targets = []string{configName, "kb.jsonl", gitignoreName}
+
+// reviewDot is the reviewed repository root's state directory: every
+// scaffold read, write, preview, and validation anchors here, so a
+// subdirectory invocation never forks the configuration.
+func (st *state) reviewDot() string {
+	return filepath.Join(st.req.RepoRootPath(), reviewDotName)
+}
+
+// reviewPath names one scaffold file under the reviewed repository root.
+func (st *state) reviewPath(name string) string { return filepath.Join(st.reviewDot(), name) }
 
 func (st *state) runInit(ctx context.Context) *core.RefusalError {
 	vals, ref := st.resolvePreset()
 	if ref != nil {
 		return ref
 	}
-	wants := presetFiles(st.req.Preset, vals)
-	if err := os.MkdirAll(reviewDot, scaffoldDirPerm); err != nil {
+	wants := presetFiles(vals)
+	if err := os.MkdirAll(st.reviewDot(), scaffoldDirPerm); err != nil {
 		return st.refuse(codeInitFailed,
-			fmt.Sprintf("init failed: init could not create .review (storage writable?): %v", err))
+			fmt.Sprintf("init failed: init could not create .verdict (storage writable?): %v", err))
 	}
-	statuses, needOverwrite := collectStatuses(wants)
+	statuses, needOverwrite := st.collectStatuses(wants)
 	st.previewScaffold(wants)
 	if code, done, ref := st.writeWithConfirm(wants, needOverwrite); ref != nil {
 		return ref
@@ -171,7 +187,7 @@ func (st *state) runInit(ctx context.Context) *core.RefusalError {
 		st.exit = code
 		return nil
 	}
-	if ref := validateScaffold(); ref != nil {
+	if ref := st.validateScaffold(); ref != nil {
 		return ref
 	}
 	treeClean := st.reportTree(ctx)
@@ -204,13 +220,13 @@ func (st *state) resolvePreset() (presetVals, *core.RefusalError) {
 	return vals, nil
 }
 
-func collectStatuses(wants map[string]string) ([]string, bool) {
+func (st *state) collectStatuses(wants map[string]string) ([]string, bool) {
 	statuses := make([]string, 0, len(targets))
 	needOverwrite := false
 	for _, t := range targets {
-		st := targetStatus(t, wants[t])
-		statuses = append(statuses, t+":"+st)
-		if st == "overwrite" {
+		status := st.targetStatus(t, wants[t])
+		statuses = append(statuses, t+":"+status)
+		if status == "overwrite" {
 			needOverwrite = true
 		}
 	}
@@ -221,7 +237,7 @@ func (st *state) previewScaffold(wants map[string]string) {
 	st.humanf("init: preset %s (chill: unpinned/10/0.7, standard: "+
 		"1 member/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
 	for _, t := range targets {
-		st.humanf("--- .review/%s (%s) ---\n", t, targetStatus(t, wants[t]))
+		st.humanf("--- .verdict/%s (%s) ---\n", t, st.targetStatus(t, wants[t]))
 		st.humanf("%s\n", wants[t])
 	}
 }
@@ -259,32 +275,37 @@ func isYes(ans string) bool {
 
 func (st *state) writeControls(wants map[string]string) *core.RefusalError {
 	for _, t := range targets {
-		if isCurrent(t, wants[t]) {
-			st.humanf("keep: .review/%s (already up to date)\n", t)
+		if st.isCurrent(t, wants[t]) {
+			st.humanf("keep: .verdict/%s (already up to date)\n", t)
 			continue
 		}
-		if err := atomic.WriteFile(reviewDir+t, []byte(wants[t]+newlineStr)); err != nil {
-			return st.cannotWriteControl(t)
+		if ref := st.writeControl(t, wants[t]); ref != nil {
+			return ref
 		}
-		if !readcommon.IsFile(reviewDir + t) {
-			return st.cannotWriteControl(t)
-		}
-		st.humanf("wrote: .review/%s\n", t)
 	}
 	return nil
 }
 
-func isCurrent(t, want string) bool {
-	cur, err := os.ReadFile(reviewDir + t)
-	if err != nil {
-		return false
+// writeControl writes one scaffolded control file and confirms it landed.
+func (st *state) writeControl(name, body string) *core.RefusalError {
+	if name != configName {
+		body += newlineStr
 	}
-	return string(cur) == want+newlineStr
+	if err := atomic.WriteFile(st.reviewPath(name), []byte(body)); err != nil {
+		return st.cannotWriteControl(name)
+	}
+	if !readcommon.IsFile(st.reviewPath(name)) {
+		return st.cannotWriteControl(name)
+	}
+	st.humanf("wrote: .verdict/%s\n", name)
+	return nil
 }
+
+func (st *state) isCurrent(t, want string) bool { return st.targetStatus(t, want) == "keep" }
 
 func (st *state) cannotWriteControl(t string) *core.RefusalError {
 	return st.refuse(codeInitFailed,
-		fmt.Sprintf("init could not write .review/%s (storage writable?)", t))
+		fmt.Sprintf("init could not write .verdict/%s (storage writable?)", t))
 }
 
 func (st *state) reportTree(ctx context.Context) bool {
@@ -294,17 +315,16 @@ func (st *state) reportTree(ctx context.Context) bool {
 		st.humanf("%s\n", rest)
 	}
 	if !treeClean {
-		st.warn("init wrote the control files but the worktree carries non-.review " +
-			"dirt (see check-tree above)")
+		st.warn("init completed; the worktree has uncommitted changes (see check-tree above)")
 	}
 	return treeClean
 }
 
 func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool) {
-	st.humanf("next: replace panel placeholders with real slugs, " +
-		"tune .review/budget, then fetch\n")
+	st.humanf("next: pin real panel slugs in .verdict/config.json, " +
+		"tune defaults.budget_usd, then fetch\n")
 	st.at = st.req.TimeUTC()
-	st.next = "replace panel placeholders with real slugs, tune .review/budget, then fetch"
+	st.next = "pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, then fetch"
 	st.data = &Data{
 		Preset:         st.req.Preset,
 		BudgetUSD:      vals.budget,
@@ -315,34 +335,55 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool) 
 	}
 }
 
-func presetFiles(preset string, vals presetVals) map[string]string {
-	budget := "# Verdict spend budget (USD) — written by `verdict init --preset " + preset + "`.\n" +
-		"# Env REVIEW_BUDGET_USD wins over this file. Edit or delete to change.\n" + vals.budget
-	panel := presetPanel(preset, vals.panel)
-	kbpolicy := "# Verdict KB retirement policy — written by `verdict init --preset " + preset + "`.\n" +
-		"# Env REVIEW_KB_MIN_JUDGED / REVIEW_KB_MAX_FP_RATE win over this file.\n" +
-		"MIN_JUDGED=" + vals.kbMin + "\nMAX_FP_RATE=" + vals.kbRate
+// presetFiles renders the scaffolded shared files: the typed configuration
+// the preset describes, the knowledge-corpus starter, and the tracked-shape
+// ignore that keeps generated state local.
+func presetFiles(vals presetVals) map[string]string {
 	return map[string]string{
-		"budget":    budget,
-		"panel":     panel,
-		"kb-policy": kbpolicy,
-		"kb.jsonl":  kbStarter(),
+		configName:    presetConfig(vals),
+		"kb.jsonl":    kbStarter(),
+		gitignoreName: gitignoreBody,
 	}
 }
 
-func presetPanel(preset, body string) string {
-	if body == "" {
-		return "# Verdict panel — written by `verdict init --preset " + preset + "`" +
-			" (chill: no pinning).\n" +
-			"# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.\n" +
-			"# Replace these comments with real slugs to pin a formation; empty (all comments)\n" +
-			"# means the operator picks per run."
+// presetConfig renders one preset as the canonical typed configuration.
+// Key order follows the published contract; the values are the preset's
+// budget, panel, and retirement quorum.
+func presetConfig(vals presetVals) string {
+	var sb strings.Builder
+	sb.WriteString("{\n  \"schema_version\": \"1\",\n  \"defaults\": {\n")
+	panel := presetPanel(vals.panel)
+	if panel != "" {
+		sb.WriteString(panel)
 	}
-	return "# Verdict panel — written by `verdict init --preset " + preset + "`.\n" +
-		"# One model slug per line, first synthesizes. REVIEW_PANEL wins over this file.\n" +
-		"# Replace these placeholders with real slugs; same panel every run " +
-		"keeps verdicts comparable.\n" + body
+	sb.WriteString("    \"budget_usd\": " + vals.budget + ",\n")
+	sb.WriteString("    \"kb_policy\": {\n")
+	sb.WriteString("      \"min_judged\": " + vals.kbMin + ",\n")
+	sb.WriteString("      \"max_fp_rate\": " + vals.kbRate + "\n")
+	sb.WriteString("    }\n  }\n}")
+	return sb.String()
 }
+
+// presetPanel renders the pinned roster as a JSON array line, or the empty
+// string when the preset pins nothing.
+func presetPanel(body string) string {
+	if body == "" {
+		return ""
+	}
+	slugs := strings.Split(body, "\n")
+	quoted := make([]string, 0, len(slugs))
+	for _, slug := range slugs {
+		quoted = append(quoted, strconv.Quote(slug))
+	}
+	return "    \"panel\": [" + strings.Join(quoted, ", ") + "],\n"
+}
+
+// gitignoreName is the tracked-shape nested ignore file the state dir needs.
+const gitignoreName = ".gitignore"
+
+// gitignoreBody is the entire tracked ignore contract: only generated state
+// stays local, so the configuration and support files are reviewable.
+const gitignoreBody = "/state/"
 
 func kbStarter() string {
 	first := `{"id":"check-error-paths",` +
@@ -357,78 +398,54 @@ func kbStarter() string {
 	return first + newlineStr + second
 }
 
-func targetStatus(t, want string) string {
-	cur, err := os.ReadFile(reviewDir + t)
+func (st *state) targetStatus(t, want string) string {
+	cur, err := os.ReadFile(st.reviewPath(t))
 	if err != nil {
 		return "create"
 	}
-	if string(cur) == want+newlineStr {
+	if string(cur) == want+newlineStr || string(cur) == want {
 		return "keep"
 	}
 	return "overwrite"
 }
 
-func validateScaffold() *core.RefusalError {
-	if ref := checkBudget(); ref != nil {
-		return ref
-	}
-	if ref := checkScaffoldFiles(); ref != nil {
-		return ref
-	}
-	return checkKB()
-}
-
-func checkBudget() *core.RefusalError {
-	raw, err := os.ReadFile(reviewDir + "budget")
+// validateScaffold re-parses the written configuration through the strict
+// parser and re-checks the knowledge starter: the scaffold proves its own
+// output is a valid typed contract, not merely well-shaped text.
+func (st *state) validateScaffold() *core.RefusalError {
+	raw, err := os.ReadFile(st.reviewPath(configName))
 	if err != nil {
-		return &core.RefusalError{
-			Code:    codeBadBudget,
-			Message: "scaffolded .review/budget '' is not a plain USD number",
-		}
+		return &core.RefusalError{Code: codeInitFailed, Message: "scaffolded .verdict/config.json is unreadable after write"}
 	}
-	line := firstUsableLine(string(raw))
-	if !budgetRe.MatchString(line) {
-		return &core.RefusalError{
-			Code: codeBadBudget,
-			Message: fmt.Sprintf(
-				"scaffolded .review/budget '%s' is not a plain USD number", line),
-		}
+	cfg, ref := config.Parse(raw)
+	if ref != nil {
+		return &core.RefusalError{Code: codeBadBudget, Message: "scaffolded .verdict/config.json does not validate: " + ref.Message}
 	}
-	return nil
+	if cfg.Defaults == nil || cfg.Defaults.BudgetUSD == nil {
+		return &core.RefusalError{Code: codeBadBudget, Message: "scaffolded .verdict/config.json carries no defaults.budget_usd"}
+	}
+	return st.checkKB()
 }
 
-func checkScaffoldFiles() *core.RefusalError {
-	if !readcommon.IsFile(reviewDir + "panel") {
-		return &core.RefusalError{Code: codeInitFailed, Message: "scaffolded .review/panel missing after write"}
-	}
-	if !readcommon.IsFile(reviewDir + "kb-policy") {
-		return &core.RefusalError{
-			Code:    codeInitFailed,
-			Message: "scaffolded .review/kb-policy missing after write",
-		}
-	}
-	return nil
-}
-
-func checkKB() *core.RefusalError {
-	kbRaw, err := os.ReadFile(reviewDir + "kb.jsonl")
+func (st *state) checkKB() *core.RefusalError {
+	kbRaw, err := os.ReadFile(st.reviewPath("kb.jsonl"))
 	if err != nil {
 		return &core.RefusalError{
 			Code:    codeBadSettings,
-			Message: "scaffolded .review/kb.jsonl is not valid JSONL",
+			Message: "scaffolded .verdict/kb.jsonl is not valid JSONL",
 		}
 	}
 	vals, err := jq.DecodeSlurp(strings.NewReader(string(kbRaw)))
 	if err != nil {
 		return &core.RefusalError{
 			Code:    codeBadSettings,
-			Message: "scaffolded .review/kb.jsonl is not valid JSONL",
+			Message: "scaffolded .verdict/kb.jsonl is not valid JSONL",
 		}
 	}
 	if countObjects(vals) == 0 {
 		return &core.RefusalError{
 			Code:    codeBadSettings,
-			Message: "scaffolded .review/kb.jsonl carries no rule rows",
+			Message: "scaffolded .verdict/kb.jsonl carries no rule rows",
 		}
 	}
 	return nil
@@ -444,17 +461,6 @@ func countObjects(vals []any) int {
 	return objects
 }
 
-func firstUsableLine(content string) string {
-	for ln := range strings.SplitSeq(content, newlineStr) {
-		trimmed := strings.Trim(ln, " \t\n\v\f\r")
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		return strings.TrimPrefix(trimmed, "$")
-	}
-	return ""
-}
-
 func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest string) {
 	raw, err := st.gitStatus(ctx)
 	if err != nil {
@@ -465,7 +471,7 @@ func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest st
 	restLines := dirtLines(lines)
 	if len(restLines) == 0 {
 		own := len(lines) - len(restLines)
-		return fmt.Sprintf("check-tree: clean (%d .review/ scratch line(s) ignored)", own), true, ""
+		return fmt.Sprintf("check-tree: clean (%d .verdict/ scratch line(s) ignored)", own), true, ""
 	}
 	return "check-tree: dirty worktree — commit or stash first:", false, strings.Join(restLines, newlineStr)
 }
@@ -475,7 +481,9 @@ func (st *state) gitStatus(ctx context.Context) (string, error) {
 	if st.req.Commander == nil {
 		return "", errNoCommander
 	}
-	res, err := st.req.Commander.Run(ctx, core.Command{Argv: []string{"git", "status", "--porcelain"}})
+	res, err := st.req.Commander.Run(ctx, &core.Command{
+		Argv: []string{"git", "-C", st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all"},
+	})
 	if err != nil {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; check-tree reads "not a git repo"
 		return "", err
@@ -496,7 +504,7 @@ func trimTrailingBlanks(lines []string) []string {
 func dirtLines(lines []string) []string {
 	var restLines []string
 	for _, ln := range lines {
-		if ownRe.MatchString(ln) {
+		if isOwnScratch(ln) {
 			continue
 		}
 		restLines = append(restLines, ln)
@@ -504,9 +512,23 @@ func dirtLines(lines []string) []string {
 	return restLines
 }
 
-var budgetRe = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
+// isOwnScratch reports a porcelain line whose content is confined to the run
+// state directory; both sides of a rename must remain within state.
+func isOwnScratch(line string) bool {
+	if !ownRe.MatchString(line) {
+		return false
+	}
+	if _, after, ok := strings.CutLast(line, initRenameSep); ok {
+		return ownTargetRe.MatchString(after)
+	}
+	return true
+}
 
-var ownRe = regexp.MustCompile(`^.. \.review/`)
+const initRenameSep = " -> "
+
+var ownRe = regexp.MustCompile(`^.. \.verdict/state/`)
+
+var ownTargetRe = regexp.MustCompile(`^\.verdict/state/`)
 
 var errNoCommander = scaffoldError("no commander injected")
 

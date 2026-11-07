@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-budget",
-    "message": "budget 'free' from REVIEW_BUDGET_USD is not a plain USD number (want e.g. REVIEW_BUDGET_USD=0.50 or a .review/budget file holding 0.50)\ntry: re-run with one of the valid values named above"
+    "message": "budget 'free' from REVIEW_BUDGET_USD is not a plain USD number (want e.g. REVIEW_BUDGET_USD=0.50)\ntry: re-run with one of the valid values named above"
   }
 }
 --- stderr ---

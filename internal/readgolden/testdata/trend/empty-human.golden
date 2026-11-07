@@ -1,6 +1,6 @@
 exit: 0
 --- stdout ---
-trend: acme/app — no reviewed bundles (no .review/*/findings.json yet)
+trend: acme/app — no reviewed bundles (no .verdict/state/*/findings.json yet)
 --- stderr ---
 
 --- files ---

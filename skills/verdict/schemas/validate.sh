@@ -10,8 +10,9 @@
 # through the hidden `__validate-schema` verb, so the published schemas, the
 # conformance tests, and this script share one keyword subset: $ref (same file
 # or a sibling file), type, const, enum, properties, required, items,
-# additionalProperties (bool or schema), minimum, maximum, minLength, maxLength,
-# pattern, anyOf, format (date-time), $defs. Any other keyword fails loudly.
+# additionalProperties (bool or schema), minimum, maximum, exclusiveMinimum,
+# minItems, minLength, maxLength, pattern, not, anyOf, format (date-time), $defs.
+# Any other keyword fails loudly.
 # This shim resolves the binary exactly like every other skill path
 # (VERDICT_BIN, the skill's bin/verdict, then PATH) and needs no jq.
 set -eu

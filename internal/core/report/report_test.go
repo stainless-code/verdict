@@ -23,10 +23,10 @@ func fixture(t *testing.T, findings string) core.ReadRequest {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".review/5101/PR.json",
+	writeFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFile(t, ".review/5101/findings.json", findings)
+	writeFile(t, ".verdict/state/5101/findings.json", findings)
 	return core.ReadRequest{
 		Runtime: fixedRuntime(),
 		Repo:    "acme/app",
@@ -84,7 +84,7 @@ func TestRunReportData(t *testing.T) {
 	if strings.Join(data.Keys, ",") != strings.Join(wantKeys, ",") {
 		t.Errorf("data keys = %v, want %v", data.Keys, wantKeys)
 	}
-	if len(resp.Human) == 0 || !strings.HasPrefix(resp.Human[0], "report: .review/5101 (1 shown)") {
+	if len(resp.Human) == 0 || !strings.HasPrefix(resp.Human[0], "report: .verdict/state/5101 (1 shown)") {
 		t.Errorf("human = %v", resp.Human)
 	}
 	if resp.Next != "address open threads" {

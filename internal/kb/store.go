@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -33,12 +34,13 @@ func ParseRows(raw []byte) ([]*jq.Obj, error) {
 // ReadRows reads the worktree store: order-preserving rows, or ErrMissing /
 // ErrCorrupt. Every verb that reads kb.jsonl goes through here, so the
 // decode and the size cap exist once.
-func ReadRows() ([]*jq.Obj, error) {
-	if !isFile(File) {
+func ReadRows(root string) ([]*jq.Obj, error) {
+	path := rootPath(root, File)
+	if !isFile(path) {
 		//nolint:wrapcheck // the package sentinel is the classification callers match
 		return nil, ErrMissing
 	}
-	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
+	raw, err := jq.CappedFile(path, jq.MaxKBBytes)
 	if err != nil {
 		//nolint:wrapcheck // the sentinel leads so callers can classify, the cause stays visible
 		return nil, fmt.Errorf("%w: %w", ErrCorrupt, err)
@@ -48,8 +50,8 @@ func ReadRows() ([]*jq.Obj, error) {
 
 // ReadRowsOK reads the store leniently: ok is false for both an absent and
 // an unreadable store (the warn-and-drop callers).
-func ReadRowsOK() (rows []*jq.Obj, ok bool) {
-	rows, err := ReadRows()
+func ReadRowsOK(root string) (rows []*jq.Obj, ok bool) {
+	rows, err := ReadRows(root)
 	if err != nil {
 		return nil, false
 	}
@@ -81,34 +83,43 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 // WriteRows rewrites the store atomically, one compact row per line. Key
 // order is the stored contract (the decoder is order-preserving), so the
 // writer never re-encodes through a map.
-func WriteRows(rows []*jq.Obj) error {
+func WriteRows(root string, rows []*jq.Obj) error {
 	var sb strings.Builder
 	for _, row := range rows {
 		sb.WriteString(row.MarshalCompact())
 		sb.WriteByte('\n')
 	}
-	return atomic.WriteFile(File, []byte(sb.String()))
+	return atomic.WriteFile(rootPath(root, File), []byte(sb.String()))
 }
 
 // AppendRow appends one already-encoded row (the --rule path appends instead
 // of rewriting).
-func AppendRow(line string) error {
+func AppendRow(root, line string) error {
+	path := rootPath(root, File)
 	var prev []byte
-	if isFile(File) {
-		raw, err := jq.CappedFile(File, jq.MaxKBBytes)
+	if isFile(path) {
+		raw, err := jq.CappedFile(path, jq.MaxKBBytes)
 		if err != nil {
 			//nolint:wrapcheck // locally constructed read failure naming the store
-			return fmt.Errorf("read %s: %w", File, err)
+			return fmt.Errorf("read %s: %w", path, err)
 		}
 		prev = raw
 	}
-	return atomic.WriteFile(File, append(prev, line...))
+	return atomic.WriteFile(path, append(prev, line...))
 }
 
 // ValidID reports whether id matches the rule-id shape
 // ^[a-z0-9][a-z0-9-]{0,64}$ shared by the citation gate, --rule, and the
 // triage/retire lookups.
 func ValidID(id string) bool { return idRe.MatchString(id) }
+
+// rootPath anchors one store path under the reviewed repository root.
+func rootPath(root, rel string) string {
+	if root == "" {
+		return rel
+	}
+	return filepath.Join(root, rel)
+}
 
 // isFile reports whether path is a regular file, mirroring [[ -f ]].
 func isFile(path string) bool {

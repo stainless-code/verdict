@@ -43,7 +43,7 @@ type Runner struct {
 // Run starts cmd.Argv with separated, bounded stream capture, returning the
 // wait status. A completed process returns Result with a nil error whatever
 // its exit code; only a spawn failure or an over-cap stdout returns an error.
-func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
 	}
@@ -57,13 +57,17 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	stderr := newBoundedBuffer(limit, captureTail)
 	proc.Stdout = stdout
 	proc.Stderr = stderr
-	proc.Stdin = cmd.Stdin
-	if proc.Stdin == nil {
-		proc.Stdin = r.Stdin
-	}
+	proc.Stdin = commandStdin(cmd, r.Stdin)
 	proc.Env = cmd.Env
+	proc.Dir = cmd.Dir
 	proc.WaitDelay = waitDelay
-	runErr := proc.Run()
+	setGroup(proc)
+	proc.Cancel = func() error { return killGroup(proc) }
+	if err := startTree(proc); err != nil {
+		return core.Result{}, err
+	}
+	defer releaseTree(proc)
+	runErr := proc.Wait()
 	res := core.Result{
 		Stdout:          stdout.String(),
 		Stderr:          stderr.String(),
@@ -81,6 +85,30 @@ func (r Runner) Run(ctx context.Context, cmd core.Command) (core.Result, error) 
 	return res, nil
 }
 
+// commandStdin is the command's own stdin when it sets one, else the
+// runner's fallback (nil inherits this process's stdin, like os/exec).
+func commandStdin(cmd *core.Command, fallback io.Reader) io.Reader {
+	if cmd.Stdin != nil {
+		return cmd.Stdin
+	}
+	return fallback
+}
+
+// startTree starts proc in its own process group and arms group termination,
+// releasing the group handle on either failure: a spawn error or a Windows
+// job-assignment error leaves nothing for the caller to wait on or kill.
+func startTree(proc *osexec.Cmd) error {
+	if err := proc.Start(); err != nil {
+		releaseTree(proc)
+		return fmt.Errorf("%s: %w", proc.Args[0], err) //nolint:wrapcheck // spawn message assembled here
+	}
+	if err := armStarted(proc); err != nil {
+		releaseTree(proc)
+		return err
+	}
+	return nil
+}
+
 func (r Runner) precheck(bin string) error {
 	if !r.MissingTool {
 		return nil
@@ -91,7 +119,7 @@ func (r Runner) precheck(bin string) error {
 	return nil
 }
 
-func (r Runner) captureCap(cmd core.Command) int {
+func (r Runner) captureCap(cmd *core.Command) int {
 	dflt := r.OutputCap
 	if dflt <= 0 {
 		dflt = ReadOutputCap
@@ -118,7 +146,7 @@ func Gh(ctx context.Context, cmdr core.Commander, args ...string) (stdout, stder
 	if cmdr == nil {
 		return "", "", false
 	}
-	res, err := cmdr.Run(ctx, core.Command{Argv: append([]string{ghBin}, args...)})
+	res, err := cmdr.Run(ctx, &core.Command{Argv: append([]string{ghBin}, args...)})
 	if err != nil || res.ExitCode != 0 {
 		return res.Stdout, res.Stderr, false
 	}

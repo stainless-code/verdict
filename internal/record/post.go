@@ -10,6 +10,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // RunPost executes
@@ -17,14 +18,14 @@ import (
 // [--force] [--review-file <path>] [--dry-run] [--json]`, returning the
 // process exit code. Human progress goes to the runner's human stream;
 // --json mode prints exactly one envelope to stdout.
-func RunPost(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
-	dir := ".review/" + req.Pr
+	dir := readcommon.ResolveBundleDir(req.RepoRoot, req.Pr)
 	f, code, done := parsePostFlags(r, args, dir)
 	if done {
 		return code
 	}
-	r.Rentry = postRentry(req.Repo, req.Pr, f, r.JSONMode)
+	r.Rentry = postRentry(req.Repo, req.Pr, dir, f, r.JSONMode)
 	if code, done := r.Canceled(ctx, "post"); done {
 		return code
 	}
@@ -45,14 +46,14 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req Request) int
 // the injected runtime (environment, clock, progress, and the production
 // split-stream commander), the render configuration, and the adapter-routed
 // flags.
-func postRequest(r *cli.Runner, req Request, f core.PostFlags) *core.PostRequest {
+func postRequest(r *cli.Runner, req *Request, f core.PostFlags) *core.PostRequest {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
-		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root,
+		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root, RepoRoot: req.RepoRoot,
 	}
 	return &core.PostRequest{
 		ReadRequest: read,
@@ -118,7 +119,7 @@ func setPostValue(f *core.PostFlags, name, val string) {
 
 // postRentry rebuilds the exact re-run command recorded after flag parsing
 // (flags included, in flag order, so a retry reproduces this invocation).
-func postRentry(repo, pr string, f core.PostFlags, jsonMode bool) string {
+func postRentry(repo, pr, dir string, f core.PostFlags, jsonMode bool) string {
 	var sb strings.Builder
 	sb.WriteString("verdict post " + repo + " " + pr)
 	if f.Approve != "false" {
@@ -133,7 +134,7 @@ func postRentry(repo, pr string, f core.PostFlags, jsonMode bool) string {
 	if f.Force {
 		sb.WriteString(" --force")
 	}
-	if f.ReviewFile != ".review/"+pr+"/review.json" {
+	if f.ReviewFile != dir+"/review.json" {
 		sb.WriteString(" --review-file " + f.ReviewFile)
 	}
 	if f.DryRun {

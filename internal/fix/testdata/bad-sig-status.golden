@@ -15,8 +15,8 @@ exit: 1
   }
 }
 --- stderr ---
-» readiness: .review/local-bad — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+» readiness: .verdict/state/local-bad — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
 re-enter: verdict fix acme/app local-bad --sig 2123456789abcdef0123456789abcdef01234567 --json
 --- files ---
---- file C/.review/local-bad/fix.json ---
+--- file C/.verdict/state/local-bad/fix.json ---
 {"sigs":{}}

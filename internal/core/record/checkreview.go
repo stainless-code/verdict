@@ -416,7 +416,7 @@ func (c *checker) checkKB(path string, v any) {
 		if !kb.ValidID(s) {
 			c.add(c.problem(fmt.Sprintf("%s[%d]", path, i), core.ProblemCodeBadEnum, core.ProblemLevelWarning,
 				fmt.Sprintf("kb id %q is malformed", s),
-				"use ^[a-z0-9][a-z0-9-]{0,64}$ from .review/kb.jsonl"))
+				"use ^[a-z0-9][a-z0-9-]{0,64}$ from .verdict/kb.jsonl"))
 		}
 	}
 }

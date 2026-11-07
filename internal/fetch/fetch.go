@@ -20,10 +20,11 @@ import (
 
 // Request carries the resolved fetch invocation.
 type Request struct {
-	Env  map[string]string
-	Repo string
-	Pr   string
-	Root string
+	Env      map[string]string
+	Repo     string
+	Pr       string
+	Root     string
+	RepoRoot string
 }
 
 // Run executes `fetch <owner/repo> <pr> [--base-sha|--since <sha>]
@@ -86,16 +87,17 @@ func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequ
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
-		Repo: req.Repo, Pr: req.Pr, Root: &root,
+		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
 	return &core.FetchRequest{
-		ReadRequest: read,
-		Flags:       f,
-		Effective:   r.Effective,
-		JSONMode:    r.JSONMode,
-		Warnings:    append([]string{}, r.Warnings...),
-		Human:       r.Human,
-		Diag:        r.Diag,
+		ReadRequest:  read,
+		Flags:        f,
+		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
+		Effective:    r.Effective,
+		JSONMode:     r.JSONMode,
+		Warnings:     append([]string{}, r.Warnings...),
+		Human:        r.Human,
+		Diag:         r.Diag,
 	}
 }
 
@@ -107,16 +109,17 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *cor
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
-		Repo: req.Repo, Pr: req.Pr, Root: &root,
+		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
 	return &core.FetchLocalRequest{
-		ReadRequest: read,
-		Flags:       *f,
-		Effective:   r.Effective,
-		JSONMode:    r.JSONMode,
-		Warnings:    append([]string{}, r.Warnings...),
-		Human:       r.Human,
-		Diag:        r.Diag,
+		ReadRequest:  read,
+		Flags:        *f,
+		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
+		Effective:    r.Effective,
+		JSONMode:     r.JSONMode,
+		Warnings:     append([]string{}, r.Warnings...),
+		Human:        r.Human,
+		Diag:         r.Diag,
 	}
 }
 

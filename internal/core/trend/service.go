@@ -130,13 +130,13 @@ type row struct {
 }
 
 func collectRows(st *state) []row {
-	entries, err := os.ReadDir(".review")
+	entries, err := os.ReadDir(readcommon.StateDir(st.req.RepoRootPath()))
 	if err != nil {
 		return nil
 	}
 	var rows []row
 	for _, e := range entries {
-		if corpuscore.IsDir(".review/" + e.Name()) {
+		if corpuscore.IsDir(readcommon.StateDir(st.req.RepoRootPath()) + "/" + e.Name()) {
 			st.readCorpus(e)
 			continue
 		}
@@ -152,7 +152,7 @@ func readBundleRow(st *state, e os.DirEntry) (row, bool) {
 		return row{}, false
 	}
 	name := e.Name()
-	bundle := ".review/" + name + "/"
+	bundle := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name) + "/"
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
 		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")

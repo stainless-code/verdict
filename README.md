@@ -68,8 +68,8 @@ is non-empty. To target one agent, run `verdict skill install --agent claude`. T
 You need [`gh`](https://cli.github.com) signed in with `repo` scope, and `git`. Run `verdict doctor` to check.
 
 ```bash
-verdict fetch owner/repo 123            # writes .review/123/ (diff, metadata, threads)
-# ask your agent to review PR 123; it reads .review/123/
+verdict fetch owner/repo 123            # writes .verdict/state/123/ (diff, metadata, threads)
+# ask your agent to review PR 123; it reads .verdict/state/123/
 verdict post owner/repo 123 --dry-run   # validate anchors, post nothing
 verdict post owner/repo 123             # post exactly one review
 ```
@@ -77,7 +77,7 @@ verdict post owner/repo 123             # post exactly one review
 No PR yet? Review your working tree instead. This never posts.
 
 ```bash
-verdict fetch-local owner/repo work     # writes .review/local-work/
+verdict fetch-local owner/repo work     # writes .verdict/state/local-work/
 # ask your agent to review local-work
 verdict record owner/repo local-work    # validate anchors, save the findings
 ```

@@ -30,7 +30,7 @@ would have written:
 }
 ```
 
-The run bundle copies `case.json` to `.review/corpus-<run>/corpus.json`, runs
+The run bundle copies `case.json` to `.verdict/state/corpus-<run>/corpus.json`, runs
 `record`, and keeps `cost.json` plus its `panel` file. `calibrate` grades the
 bundle against `corpus.json`; `trend` aggregates every `corpus-*` bundle per
 model and panel. No model runs and no network are involved in the checked-in

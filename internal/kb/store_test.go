@@ -21,9 +21,9 @@ const fixtureKB = `{"id":"rec-rule","rule":"Prefer table tests","scope":"interna
 // path through kb.WriteRows, so key order and the jsonl framing survive.
 func TestWriteRowsRoundTripsStoreBytes(t *testing.T) {
 	path := seedFixtureStore(t)
-	rows := readFixtureRows(t)
+	rows := readFixtureRows(t, filepath.Dir(filepath.Dir(path)))
 	checkStoredKeyOrder(t, rows[0].MarshalCompact())
-	if err := kb.WriteRows(rows); err != nil {
+	if err := kb.WriteRows(filepath.Dir(filepath.Dir(path)), rows); err != nil {
 		t.Fatalf("WriteRows: %v", err)
 	}
 	raw, err := os.ReadFile(path)
@@ -40,11 +40,10 @@ func TestWriteRowsRoundTripsStoreBytes(t *testing.T) {
 func seedFixtureStore(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Chdir(dir)
-	if err := os.MkdirAll(".review", 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(".review", "kb.jsonl")
+	path := filepath.Join(dir, ".verdict", "kb.jsonl")
 	if err := os.WriteFile(path, []byte(fixtureKB), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -52,9 +51,9 @@ func seedFixtureStore(t *testing.T) string {
 }
 
 // readFixtureRows reads the store and checks it parses into two rows.
-func readFixtureRows(t *testing.T) []*jq.Obj {
+func readFixtureRows(t *testing.T, root string) []*jq.Obj {
 	t.Helper()
-	rows, err := kb.ReadRows()
+	rows, err := kb.ReadRows(root)
 	if err != nil {
 		t.Fatalf("ReadRows: %v", err)
 	}
@@ -80,20 +79,20 @@ func checkStoredKeyOrder(t *testing.T, got string) {
 // (learn names the missing store), a malformed line is ErrCorrupt (learn
 // refuses corrupt-store, record warns and drops credit).
 func TestStoreReadSentinels(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if _, err := kb.ReadRows(); !errors.Is(err, kb.ErrMissing) {
+	root := t.TempDir()
+	if _, err := kb.ReadRows(root); !errors.Is(err, kb.ErrMissing) {
 		t.Errorf("absent store = %v; want ErrMissing", err)
 	}
-	if err := os.MkdirAll(".review", 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".verdict"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(".review", "kb.jsonl"), []byte("{broken\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".verdict", "kb.jsonl"), []byte("{broken\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := kb.ReadRows(); !errors.Is(err, kb.ErrCorrupt) {
+	if _, err := kb.ReadRows(root); !errors.Is(err, kb.ErrCorrupt) {
 		t.Errorf("malformed store = %v; want ErrCorrupt", err)
 	}
-	if rows, ok := kb.ReadRowsOK(); ok || rows != nil {
+	if rows, ok := kb.ReadRowsOK(root); ok || rows != nil {
 		t.Errorf("ReadRowsOK on a malformed store = %v, %v; want nil, false", rows, ok)
 	}
 }
@@ -102,16 +101,15 @@ func TestStoreReadSentinels(t *testing.T) {
 // the rows it did not touch.
 func TestAppendRowKeepsPriorBytes(t *testing.T) {
 	dir := t.TempDir()
-	t.Chdir(dir)
-	if err := os.MkdirAll(".review", 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(".review", "kb.jsonl")
+	path := filepath.Join(dir, ".verdict", "kb.jsonl")
 	if err := os.WriteFile(path, []byte(fixtureKB), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	added := `{"id":"rec-rule-3","status":"active"}` + "\n"
-	if err := kb.AppendRow(added); err != nil {
+	if err := kb.AppendRow(dir, added); err != nil {
 		t.Fatalf("AppendRow: %v", err)
 	}
 	raw, err := os.ReadFile(path)

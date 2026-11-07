@@ -41,6 +41,30 @@ type ControlsFile = core.ControlsFile
 // ControlsFileEntry is one control path's snapshot status and hash.
 type ControlsFileEntry = core.ControlsFileEntry
 
+// Config is the typed repository configuration, generated as
+// schemas/config.schema.json. The Go structs shape the structural
+// keywords; the hand-written parser in internal/config owns the semantic
+// checks the schema cannot express.
+type Config = core.Config
+
+// ConfigDefaults is the configuration's ordinary review defaults.
+type ConfigDefaults = core.ConfigDefaults
+
+// ConfigKBPolicy is the configuration's knowledge-base policy.
+type ConfigKBPolicy = core.ConfigKBPolicy
+
+// ConfigRequirements is the configuration's conjunctive requirements.
+type ConfigRequirements = core.ConfigRequirements
+
+// BlockClause is one per-source, per-path blocking predicate.
+type BlockClause = core.BlockClause
+
+// ConfigScope is one path-scoped configuration entry.
+type ConfigScope = core.ConfigScope
+
+// ConfigProfile is one named work-profile description.
+type ConfigProfile = core.ConfigProfile
+
 // Review is core's agent-written review input.
 type Review = core.Review
 
@@ -71,6 +95,15 @@ type KBCredit = core.KBCredit
 // CostRecord is core's agent self-reported spend record (or one element of
 // the array a re-reviewed bundle writes).
 type CostRecord = core.CostRecord
+
+// LensUsage is core's agent-reported per-group lens attestation entry.
+type LensUsage = core.LensUsage
+
+// GroupCost is core's agent-reported per-group spend entry on a cost record.
+type GroupCost = core.GroupCost
+
+// FloorScope is core's per-path posting floor entry on a post record.
+type FloorScope = core.FloorScope
 
 // ModelSpend is core's one-model token record inside a cost record.
 type ModelSpend = core.ModelSpend
@@ -119,6 +152,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Items        []FindingItem      `json:"items"`
 	Cost         ReportCost         `json:"cost"         optional:"true"`
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
+	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"   optional:"true"`
 	Gate         *ReportGate        `anyOf:"null"        json:"gate"         optional:"true"`
 }
 
@@ -148,6 +182,19 @@ type CostTier = core.CostTier
 
 // ReportCompleteness is core's head comparison.
 type ReportCompleteness = core.ReportCompleteness
+
+// ReportCompliance is the captured-policy compliance view. It mirrors
+// core.ReportCompliance with the count bounds the parser enforces; the
+// field-set test keeps the mirror identical to the source DTO.
+type ReportCompliance struct { //nolint:govet // field order is the published property order
+	Policy     bool `json:"policy"`
+	Verified   bool `json:"verified"`
+	Blockers   int  `json:"blockers"   min:"0"`
+	Conflicted int  `json:"conflicted" min:"0"`
+	Pending    int  `json:"pending"    min:"0"`
+	Gaps       int  `json:"gaps"       min:"0"`
+	Satisfied  bool `json:"satisfied"`
+}
 
 // ReportGate is core's composed gate result on a gating report run.
 type ReportGate = core.ReportGate
@@ -190,6 +237,30 @@ type ShowFix = core.ShowFix
 
 // VerifyHint is core's patch/verification rerun hint inside a fix block.
 type VerifyHint = core.VerifyHint
+
+// ConfigData is the config verb's --json data profile: the read-only
+// policy surface (explain renders the stored bundle, preview resolves
+// the proposed or trusted inputs with no live calls).
+type ConfigData = core.ConfigData
+
+// ConfigFile is one reviewed path's effective configuration in the config
+// verb's data profile.
+type ConfigFile = core.ConfigFile
+
+// ConfigValue is one effective default with its provenance.
+type ConfigValue = core.ConfigValue
+
+// ConfigRequirement is one captured requirement with its sources.
+type ConfigRequirement = core.ConfigRequirement
+
+// ConfigPlanGroup is one execution group on the plan surface.
+type ConfigPlanGroup = core.ConfigPlanGroup
+
+// ConfigSpend separates the ordinary guard from the personal ceiling.
+type ConfigSpend = core.ConfigSpend
+
+// ConfigCheck is one observed check execution.
+type ConfigCheck = core.ConfigCheck
 
 // ShowData is the show verb's --json data profile: the raw finding record
 // plus the read-only fix block.
@@ -468,16 +539,41 @@ type CalibrateJudgment struct { //nolint:govet // field order is the published p
 	AgreementRate *float64 `json:"agreement_rate"`
 }
 
-// FetchEstimate is the fetch verb's optional data.estimate object: the
-// projected per-run cost plus, when an explicitly handed usage record priced
-// a comparable run, the measured basis it was built from.
+// FetchEstimate is the fetch verb's optional data.estimate object. A whole-run
+// resolution prices the run's tier and projection from comparable past runs;
+// a grouped resolution prices each plan group against its own guard and states
+// the personal ceiling as an exact total or a known lower bound. Exactly one
+// shape is present.
 type FetchEstimate struct { //nolint:govet // field order is the published property order
-	Tier           *string  `json:"tier"`
-	ProjectedUSD   *float64 `json:"projected_usd"`
-	ComparableRuns int      `json:"comparable_runs"`
-	Basis          string   `json:"basis"           optional:"true"`
-	Harness        []string `json:"harness"         optional:"true"`
-	MeasuredRuns   int      `json:"measured_runs"   optional:"true"`
+	Tier           *string              `json:"tier"            optional:"true"`
+	ProjectedUSD   *float64             `json:"projected_usd"   optional:"true"`
+	ComparableRuns int                  `json:"comparable_runs" optional:"true"`
+	Basis          string               `json:"basis"           optional:"true"`
+	Harness        []string             `json:"harness"         optional:"true"`
+	MeasuredRuns   int                  `json:"measured_runs"   optional:"true"`
+	Groups         []FetchGroupEstimate `json:"groups"          optional:"true"`
+	Personal       *FetchGroupPersonal  `anyOf:"null"           json:"personal" optional:"true"`
+}
+
+// FetchGroupEstimate is one plan group's public projection: its effort tier,
+// its own guard when one resolved, and projected_usd only when the bound
+// history priced it. An absent guard is unset, never zero.
+type FetchGroupEstimate struct { //nolint:govet // field order is the published property order
+	Group        string   `json:"group"`
+	Effort       string   `json:"effort"`
+	GuardUSD     *float64 `json:"guard_usd"     optional:"true"`
+	ProjectedUSD *float64 `json:"projected_usd" optional:"true"`
+	OverGuard    bool     `json:"over_guard"`
+}
+
+// FetchGroupPersonal is the whole-run personal ceiling comparison: the basis
+// (exact-total, known-lower-bound, or no-personal-limit), the limit when a
+// ceiling resolved, and the exact total or the known subtotal, never both.
+type FetchGroupPersonal struct { //nolint:govet // field order is the published property order
+	LimitUSD         *float64 `json:"limit_usd"          optional:"true"`
+	Basis            string   `json:"basis"`
+	TotalUSD         *float64 `json:"total_usd"          optional:"true"`
+	KnownSubtotalUSD *float64 `json:"known_subtotal_usd" optional:"true"`
 }
 
 // FetchData is the fetch verb's --json data profile: the bundle location, the

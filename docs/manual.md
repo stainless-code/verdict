@@ -9,7 +9,7 @@ review, gate, post. The agent reviews; `gh` does GitHub I/O. No servers, no exte
 make build   # writes bin/verdict; or use the installed copy
 export GH_TOKEN="$(gh auth token)"   # or a PAT with contents:read, pull-requests:write, issues:write
 
-# 0. onboard once per repo (optional, offline): scaffold .review/ controls
+# 0. onboard once per repo (optional, offline): scaffold .verdict/state/ controls
 verdict init --preset standard --yes
 
 # 1. fetch
@@ -17,10 +17,10 @@ verdict fetch owner/repo 123
 
 # 2. review with ANY agent (the installed skill is the prompt; add it with
 #    `verdict skill install --detect` if it is missing):
-#    Point the agent at .review/123/. It reads .review/123/full.diff fully via
-#    .review/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
+#    Point the agent at .verdict/state/123/. It reads .verdict/state/123/full.diff fully via
+#    .verdict/state/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
 #    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
-#    Write exactly one .review/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
+#    Write exactly one .verdict/state/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
 verdict post owner/repo 123
@@ -103,7 +103,7 @@ a finding.
 `sections` carries severity tags `{heading, severity}` for `###` body sections — exact heading string, unmatched tags ignored.
 
 The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
-`.review/<bundle>/hunks.tsv` (per-file, side-aware `NEW`/`OLD` ranges from
+`.verdict/state/<bundle>/hunks.tsv` (per-file, side-aware `NEW`/`OLD` ranges from
 the fetched diff) and `post`/`record` validate anchors against that pinned
 snapshot. A push that lands after fetch only adds drift context (the
 stale-`HEAD` note) — it never moves the validation target. Anchors outside
@@ -115,7 +115,7 @@ best-effort warning — re-fetch to pin it.
 
 ## Findings store + triage authority
 
-`post` writes `.review/N/findings.json`: one record per inline comment and body `###`
+`post` writes `.verdict/state/N/findings.json`: one record per inline comment and body `###`
 section with a stable line-number-free signature, `status` (`open`/`addressed`/`wont-fix`/
 `false-positive`/`deferred`), first/last seen SHAs, evidence rung (`said`/`pointed`/`walked`/
 `ran`/`reproduced`, default `pointed`), the optional `brief` (`sites`/`outcome`/`approach`/
@@ -159,7 +159,7 @@ cannot reach the network warns and proceeds — the nudge never refuses.
 
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
-`.review/N/verification.json` evidence (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
+`.verdict/state/N/verification.json` evidence (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
 with `resultHead` matching HEAD — the revalidator writes it); `NOT VERIFIED` reopens,
 `INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
 unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
@@ -254,7 +254,7 @@ a default-filled one, so those entries read as `default` either way. Changing th
 history — that ships as a new `sig_version` with a migration note here, never silently.
 `review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
 versions, warn-and-proceed when the stamp is missing); every bundle carries
-`.review/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
+`.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
 whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 `PR.json`/`reviews.json`/`inline.json` as raw API output (GitHub's schema,
 unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
@@ -293,16 +293,16 @@ agent terminal writes (`report.md` via `prompts/ci.md`, `replies.json` via
 are core-tolerated scratch: core verbs never read them. Anything else a
 plugin or future verb adds MUST live under `x-*` (`x-*.json` recommended) — core
 verbs never read or write `x-*`, so plugins can't collide with core files and
-`check-tree` (which ignores all of `.review/`) never trips on them. Agents write
+`check-tree` (which ignores all of `.verdict/state/`) never trips on them. Agents write
 only `review.json` (plus `verification.json`/`patch.json`/`report.md`/`replies.json`/`noreview.md`
 where a mode file says so);
 everything else in a bundle dir is script-owned.
 
 ## Learnings (durable repo memory)
 
-`.review/learnings.md` at the repo root is the skill's only cross-run memory: durable
+`.verdict/learnings.md` at the repo root is the skill's only cross-run memory: durable
 knowledge (test commands, conventions, gotchas) in `##`-headed sections. `fetch` reports
-its base-resolved copy (`.review/N/controls/learnings.md`, see
+its base-resolved copy (`.verdict/state/N/controls/learnings.md`, see
 [Review controls are base-owned](#review-controls-are-base-owned)); agents read headings
 first and challenge stale claims. Post-run reflection appends durable lessons (never
 transcripts) to the worktree file — commit it, then re-fetch; do not run `learn` or edit
@@ -310,13 +310,13 @@ the file while a review is in flight. Deleting a wrong entry beats editing aroun
 
 ## Knowledge base (scoped local rules)
 
-`.review/kb.jsonl` at the repo root is the structured layer above `learnings.md`:
+`.verdict/kb.jsonl` at the repo root is the structured layer above `learnings.md`:
 one JSON object per line — `{id, rule, scope, provenance, rigor, hits,
 false_hits, judged, status}` (`id` matches `^[a-z0-9][a-z0-9-]{0,64}$`,
 `scope` is a non-empty comma-separated glob list, `rigor` is
 `said`/`pointed`/`walked`/`ran`/`reproduced`, counters are non-negative ints
 with `judged == hits+false_hits`, `status` is `active`/`retired`). Commit it and
-it compounds, in a repo whose `.gitignore` admits the file. `.review/` is run state:
+it compounds, in a repo whose `.gitignore` admits the file. `.verdict/state/` is run state:
 this checkout ignores the whole directory, so no review state is committed here.
 A repo that carries its controls in the base commit negates them in its own
 `.gitignore` instead, where `git add` can see them.
@@ -336,13 +336,13 @@ typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
 
-Recall: `fetch`/`fetch-local` writes `.review/<bundle>/kb.txt` when active
+Recall: `fetch`/`fetch-local` writes `.verdict/state/<bundle>/kb.txt` when active
 rules scope-match the diff — top 3 by precision (`judged==0` reads 0.5),
 tiebreak judged desc then id. Agents read it as context, never orders
 (contract line in `prompts/review.md`); clean diffs leave no file, and with no
 `kb.jsonl` nothing changes at all.
 
-The recall manifest `.review/<bundle>/kb-recall.json` mirrors the note
+The recall manifest `.verdict/state/<bundle>/kb-recall.json` mirrors the note
 machine-readably: a JSON array in rank order, each entry
 `{id, score, hits, judged}` where `score` is the ranker's `0.5` for unjudged
 rules else `hits/judged`. It is written together with `kb.txt` (clean trees
@@ -358,16 +358,17 @@ nothing, `calibrate` never writes counters. Per-finding `kb` arrays cap at 5
 ids (extras warn-and-drop). Re-posting a finding without a `kb` key keeps its
 prior cite; `"kb": []` clears it (uncite); a malformed `kb` warns, drops to
 `[]`, and likewise clears. Every credit appends a
-`.review/kb-joins.jsonl` audit row carrying `bundle` (the bundle dir name)
+`.verdict/kb-joins.jsonl` audit row carrying `bundle` (the bundle dir name)
 and `review_id` (the posted review id, null when no post.json exists yet —
 local bundles and unposted PRs).
 
 Retirement is data-driven: after any credit, a rule with `judged` at/above
 `REVIEW_KB_MIN_JUDGED` (default 5) and `false_hits/judged` above
 `REVIEW_KB_MAX_FP_RATE` (default 0.5) retires with a tombstone. Env wins, then
-`.review/kb-policy` (`MIN_JUDGED=`/`MAX_FP_RATE=` lines), then defaults;
-invalid values warn and fall back, never failing the flip. Retired rules never
-recall; citing one warns and drops.
+the typed `defaults.kb_policy` object in `.verdict/config.json` (global only —
+inline scope or requirement policies refuse `bad-config`), then built-in
+defaults; invalid values warn and fall back, never failing the flip. Retired
+rules never recall; citing one warns and drops.
 
 ## Review controls are base-owned
 
@@ -376,19 +377,18 @@ A pull request must not be able to edit the rules it is judged by. `fetch` and
 `git show <base>:<path>` through the command seam, never the worktree — and
 snapshot the bytes into the bundle:
 
-| Control                                         | Consumed by                           |
-| ----------------------------------------------- | ------------------------------------- |
-| `.review/panel`, `budget`, `max_bytes`, `chunk` | `fetch` panel, budget, cap, chunking  |
-| `.review/kb.jsonl`, `kb-policy`                 | `fetch` recall; `record`/`post` cites |
-| `.review/learnings.md`                          | the review agent (headings)           |
-| `.review/overrides/*.md` (four fragments)       | `record`/`post` body and footer       |
-| `.review/strict_input`                          | `record` warning promotion            |
+| Control                                    | Consumed by                           |
+| ------------------------------------------ | ------------------------------------- |
+| `.verdict/config.json` (typed defaults)    | `fetch` panel, budget, cap, chunking  |
+| `.verdict/kb.jsonl`                        | `fetch` recall; `record`/`post` cites |
+| `.verdict/learnings.md`                    | the review agent (headings)           |
+| `.verdict/overrides/*.md` (four fragments) | `record`/`post` body and footer       |
 
-Set strict input with `REVIEW_STRICT_INPUT=1` or a `.review/strict_input` file
-holding `true`; every `fetch`/`fetch-local` resolves it into `controls.json` (do
-not hand-edit that snapshot) and it makes `record` refuse on review-input
-warnings, the same as `--strict`. `.review/N/controls/`
-holds the bytes and `.review/N/controls.json` records
+Set strict input with `REVIEW_STRICT_INPUT=1`; every `fetch`/`fetch-local`
+resolves it into `controls.json` (do not hand-edit that snapshot) and it makes
+`record` refuse on review-input warnings, the same as `--strict`. Retired
+`.review/` knob files are never read. `.verdict/state/N/controls/`
+holds the bytes and `.verdict/state/N/controls.json` records
 `policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
 files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
 and `sha256` (schema: `schemas/controls.schema.json`). The base is `PR.json`'s base
@@ -415,15 +415,47 @@ used file. They refuse:
 `--allow-head-controls` on `fetch`/`fetch-local` is the only opt-out: it reads the
 worktree as before, warns once (human and JSON), and stamps `policy: "head"`.
 Track your controls once so the base commit carries them — in a repo whose
-`.gitignore` admits them, `git add .review/kb.jsonl .review/learnings.md
-.review/panel` (and any other control you use), then commit.
+`.gitignore` admits them, `git add .verdict/config.json .verdict/kb.jsonl
+.verdict/learnings.md` (and any other control you use), then commit.
+
+## Typed repository configuration
+
+`.verdict/config.json` is the only repository configuration file:
+one strict document (schema `skills/verdict/schemas/config.schema.json`) for
+defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
+the two severity floors), blocking clauses, path scopes, named profiles, and
+the bind requirement. `fetch`/`fetch-local` read it from the base commit (or
+the reviewed worktree for local runs) through the same trusted read; unknown
+fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
+typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)
+before any provider call. Layer order is flags, environment
+(`REVIEW_BUDGET_USD` and friends), repository scopes and shared defaults,
+personal review settings, built-ins. The personal layer lives in the operator
+settings file and carries only a spend ceiling, privacy exclusions, and review
+defaults — it can never raise the repository budget, and its exclusions are
+enforced before any model-facing export while the raw bundle keeps every byte.
+
+Each fetch persists a run bundle (`.verdict/state/<pr>/` or
+`.verdict/state/local-<slug>/`) with the allowlisted fetch-time evidence and
+the combined pending plan. `post` enforces the stored block clauses and
+`require_bind` against the full findings (below-floor findings still gate even
+when they stay out of the payload), `report` renders below-floor findings out
+of the view while gates keep the full set, and every check execution appends
+an observation to the bundle. `verdict config <owner/repo> <pr> --explain`
+renders the stored policy; `--preview [--file <path>]` resolves a proposed
+file or the captured inventory with current settings and environment. Without
+a capture, repository inputs are reported as unavailable. Explain and preview
+perform no live calls and no writes, and never approve; resolving the root runs
+one `git rev-parse` probe through the environment rather than an injected
+commander. The full rule table lives in
+`docs/policy-contract.md`.
 
 ## Machine surface
 
 `fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.review/<pr>/threads.json` from the host (all six
+non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,
 resolutions, or a push. `report` is the pure offline reader over the store
@@ -444,7 +476,7 @@ logo) — see
 Publish footer + attribution knobs. Item bodies
 stay 200-char summaries; full reasoning lives in the `--json` envelope only.
 Distinct from `prompts/ci.md`'s agent-written
-`.review/N/report.md` (no-post CI loop, `SKILL.md` router row) — never point
+`.verdict/state/N/report.md` (no-post CI loop, `SKILL.md` router row) — never point
 `report --output` at that path; the verb's markdown carries `report-machine`
 markers, the agent's does not. Severity is stored at write time (unknown → null,
 prose emoji never parsed) — rank uses status, then severity, then rigor, then
@@ -644,7 +676,8 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, live_threads` order (`id`, `status`, `detail`, `count` —
+in `findings, head, live_threads, compliance` order (`id`, `status`, `detail`,
+`count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
 refusal: the envelope keeps `error: null` and the exit code carries the
 outcome. `gate` is read-only — no store writes, no `post.json`, no review
@@ -653,7 +686,8 @@ method): a local pass is not authority to merge, so the merge stays the
 human's call.
 
 Compose it where `report --check --completeness` used to go; the flag set is
-the same three dimensions, and the flagless form remains advisory `report`.
+the same dimensions (plus the captured compliance verdict), and the flagless
+form remains advisory `report`.
 
 ### MCP server (stdio, experimental until 1.0)
 
@@ -664,9 +698,9 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 `verdict mcp --help` documents it.
 
 Tools are named after the verbs and take the core request shape: `adopt`,
-`calibrate`, `check-tree`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
+`calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
 `learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `threads`,
-`trend`, `verify`. That is 18 tools. `upgrade` and `skill` are distribution surfaces,
+`trend`, `verify`. That is 19 tools. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -677,21 +711,21 @@ become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
 a review and calls GitHub, so it is not exposed under `--read-only`.
 
-`--read-only` exposes seven read tools (`report`, `next`, `show`, `trend`,
-`ready`, `doctor`, `check-tree`) plus `record` limited to its `dry_run: true`
+`--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
+`ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
 nothing there either: the surface drops its `output` and `sarif` arguments and
 refuses them as unknown. `threads` is not exposed at all, because it rewrites
-`.review/<pr>/threads.json` from the host. Every review verb except the
+`.verdict/state/<pr>/threads.json` from the host. Every review verb except the
 human-owned `triage` is exposed by default because the host already authorizes
 the binary and its credentials. A call to a tool the flags hide is a JSON-RPC
 `-32602` error whose message and `data` name the tool and the flag combination
 that exposes it (`post` under `--read-only`, `triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
-`--operator` adds `triage` (19 tools) for an operator's own assistant that is
+`--operator` adds `triage` (20 tools) for an operator's own assistant that is
 allowed to flip statuses; it is never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
@@ -821,30 +855,38 @@ Lenses can run cheaper: map each lens to a smaller sibling of the main model
 synthesizes, 2+ diverse cheaper models lens, different families when possible.
 
 For arena-style parallel runs, pin the panel outside the skill: `REVIEW_PANEL` env
-(comma/space separated) or `.review/panel` (one slug per line, `#` comments).
-`fetch` resolves it to `.review/N/panel` — first entry synthesizes, the rest staff lenses,
-used exactly in order, never substituted. Same panel every run keeps verdicts comparable
-and costs capped; no panel means the operator picks per run. Slugs live in your config
-because they rot; the skill stays name-free.
+(comma/space separated) or the typed `panel` default in `.verdict/config.json`
+(and per-scope overrides). `fetch` resolves it to `.verdict/state/N/panel` — first
+entry synthesizes, the rest staff lenses, used exactly in order, never
+substituted. Same panel every run keeps verdicts comparable and costs capped;
+no panel means the operator picks per run. Slugs live in your config because
+they rot; the skill stays name-free.
 
 ### Cost control (budget, estimate, consent)
 
 Cost accounting (`report --cost`, per-run `cost.json` with effort tiers) grows teeth
-only when the operator sets a spend budget: `REVIEW_BUDGET_USD` env (wins) or a
-`.review/budget` file holding one plain USD number (`#` comments and blanks skipped).
-Unset disables the whole plane — no estimate line, no gate, no receipts.
+only when a spend guard is set: `REVIEW_BUDGET_USD` env (wins) or the typed
+`budget_usd` default in `.verdict/config.json`, resolved per file group. Unset
+leaves a group with no ordinary monetary guard; the personal `spend.budget_usd`
+authorization limit still applies. No guard, no ceiling, and no explicit effort
+plane means no estimate line and no receipts.
 
-With a budget set, `fetch`/`fetch-local` print a pre-run `» estimate` line before any
-network: the most-run effort tier across comparable past runs (every
-`.review/*/cost.json` record, same tier rules as the rollup; ties break toward the
-deeper tier) and its mean `est_usd`. No history, or no priced run in the projected
-tier, reads as `unknown` — never invented, never blocking. A numeric projection over
-budget refuses with typed `budget-exceeded` unless the run carries
-`--consent-over-budget`; consented runs append one receipt to the bundle's
-`budget.json`, which `report --cost` surfaces as a `receipts:` line (and a `receipts`
-key in the JSON cost object). Threshold is the budget itself: projected above budget
-needs consent, at-or-under proceeds. Estimates cover the review run about to start,
-not the fetch reads; unknown estimates never refuse.
+Each resolved file group has its own projection from comparable past runs
+(every `.verdict/state/*/cost.json` record, same tier rules as the rollup; ties
+break toward the deeper tier) and its own `budget_usd` guard. `fetch`/`fetch-local`
+print a pre-run `» estimate` line before any network. A group over its guard, or
+the exact sum of group projections over the personal limit, refuses with typed
+`budget-exceeded` unless the run carries `--consent-over-budget`; consented runs
+append one receipt to the bundle's `budget.json`, which `report --cost` surfaces
+as a `receipts:` line (and a `receipts` key in the JSON cost object). Repository,
+environment, and flag defaults can never raise the personal limit, and no
+repository key grants consent. Any unknown group projection makes the whole-run
+total unknown: with `require_known_estimate` the run refuses typed
+`budget-unknown` until fresh per-invocation consent, whose receipt records
+`unknown-estimate` and invents no USD figure; without it unknown stays
+unenforced. `enforce_cap: true` refuses typed `unsupported-cap` before any
+budget check, force, or consent — the guard is a pre-run projection, never a
+billing cap. Estimates cover the review run about to start, not the fetch reads.
 
 When the agent's provider reports prompt caching, per-model `cost.json` entries
 may carry `cache_read_input_tokens` (served from cache) and
@@ -884,7 +926,7 @@ the path; harness exports (Claude Code transcripts, opencode exports) are
 converted with the optional scripts in `examples/usage-adapters/` — the
 binary never opens those files itself.
 
-A record is joined to a `.review/*/cost.json` entry only when its window
+A record is joined to a `.verdict/state/*/cost.json` entry only when its window
 brackets that record's mtime, so an unrelated session never prices a review.
 The handed USD replaces the self-reported `est_usd` for that run; records
 without a handed twin keep their self-report. Records without a priced
@@ -910,7 +952,7 @@ verdict init --preset standard --yes   # chill|standard|strict, default standard
 ```
 
 `init` writes the standard local control files, then runs check-tree
-validation (same filter: own `.review/` scratch ignored). Existing files
+validation (same filter: own `.verdict/state/` scratch ignored). Existing files
 print a preview and need `--yes`/`--force` (or, in human mode, an
 interactive confirm when stdin is a tty) before overwrite — under `--json`
 there is no prompt: the run refuses typed `needs-confirm` instead. The same
@@ -919,13 +961,13 @@ preview-then-confirm idiom the installer uses. Re-running with the same preset r
 Style presets map to panel strictness plus KB retirement thresholds (the KB
 starter is identical across presets):
 
-| preset     | `.review/budget` | `.review/panel` members    | `.review/kb-policy`                                      |
-| ---------- | ---------------- | -------------------------- | -------------------------------------------------------- |
-| `chill`    | `2.00` (lenient) | none (comments only)       | `MIN_JUDGED=10` `MAX_FP_RATE=0.7` (retires rarely)       |
-| `standard` | `0.50` (default) | `main` (one synthesizer)   | `MIN_JUDGED=5` `MAX_FP_RATE=0.5` (matches code defaults) |
-| `strict`   | `0.10` (tight)   | `lead`, `lens-1`, `lens-2` | `MIN_JUDGED=3` `MAX_FP_RATE=0.3` (retires aggressively)  |
+| preset     | `defaults.budget_usd` | `defaults.panel` members   | `defaults.kb_policy`                                  |
+| ---------- | --------------------- | -------------------------- | ----------------------------------------------------- |
+| `chill`    | `2.00` (lenient)      | none (comments only)       | `min_judged: 10`, `max_fp_rate: 0.7` (retires rarely) |
+| `standard` | `0.50` (default)      | `main` (one synthesizer)   | `min_judged: 5`, `max_fp_rate: 0.5` (code defaults)   |
+| `strict`   | `0.10` (tight)        | `lead`, `lens-1`, `lens-2` | `min_judged: 3`, `max_fp_rate: 0.3` (retires quickly) |
 
-`.review/kb.jsonl` starts with two starter rules (`check-error-paths`,
+`.verdict/kb.jsonl` starts with two starter rules (`check-error-paths`,
 `verify-before-claim`, both `status: active`, counters zeroed) ready for
 `learn --status`. The `verify-before-claim` starter uses scope `*`, so it
 recalls on every bundle until you narrow it — tune scopes early, then replace
@@ -935,9 +977,12 @@ panel every run keeps verdicts comparable and costs capped.
 The prefs file ends env sprawl without forcing migration. Path:
 `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json` (`$XDG_CONFIG_HOME`
 respected, `$schema` key carries a schema hint that is never fetched).
-Presentation keys only — CLI survey: the only presentation surfaces are the
-machine envelope (`--json`), file outputs (`--output`/`--sarif`), and the
-prompt-dump destination, so the file exposes exactly four namespaces:
+The file carries the four presentation namespaces below plus the typed personal
+layer (`review`, `spend`, `privacy`) described under "Typed repository
+configuration" above, so it accepts eight top-level keys in total: `$schema`, `output`,
+`layout`, `color`, `publish`, `review`, `spend`, `privacy`. Anything else —
+server-shaped or `org.*` keys included — refuses typed `bad-settings`. The
+presentation sample:
 
 ```json
 {
@@ -988,7 +1033,7 @@ migration, no env removed.
 ## Install routes and where commands run
 
 One execution model across every route. Run the CLI from the repo under
-review: `.review/` is created in the current directory, never beside the
+review: `.verdict/state/` is created in the current directory, never beside the
 tool. The CLI is the `verdict` binary. Caller tracing, test checks, and
 `verify` all run repo-scoped in that directory, so reviewing another repo
 means running from its checkout (or accepting that the bundle lands wherever
@@ -1239,9 +1284,9 @@ byte-identical whether the knobs are set or not.
 
 ## Section overrides (per-block template fragments)
 
-House style lives in four operator-owned fragments under `.review/overrides/`
-(bundle-adjacent and repo-local like `.review/panel`, `.review/budget` and
-`.review/kb.jsonl` — committable per-repo and check-tree-ignored; not the skill
+House style lives in four operator-owned fragments under `.verdict/overrides/`
+(bundle-adjacent and repo-local like `.verdict/config.json` and
+`.verdict/kb.jsonl` — committable per-repo and check-tree-ignored; not the skill
 install tree, not XDG-global settings). One fragment per overridable block:
 
 | Fragment                   | Overridable block                                                                   | Default (absent reads this)                            |
@@ -1280,7 +1325,7 @@ still kills the block). Validation runs at `check-tree` (authoring-time) and
 is revalidated cheaply at `post`/`record`/`report` time with no re-render —
 every violation refuses loudly with the broken invariant named (fail-closed;
 warn-and-keep never applies to explicit operator intent). With no
-`.review/overrides/` dir the output path is byte-identical to the built-in
+`.verdict/overrides/` dir the output path is byte-identical to the built-in
 fragments.
 
 ## Local review (no PR)
@@ -1298,7 +1343,7 @@ bundle from the worktree instead of the API:
 | `fetch-local owner/repo x -- <paths>`                | any of the above, pathspec-filtered          | as above             |
 
 Flags are mutually exclusive (one diff source per bundle); empty diff exits 0 with
-"nothing to review". Writes `.review/local-<name>/` (`source.json`, `full.diff`,
+"nothing to review". Writes `.verdict/state/local-<name>/` (`source.json`, `full.diff`,
 `toc.txt`, `roles.txt`) — `source.json` stands in for `PR.json` (kind, base/head
 refs+SHAs, range, dirty flag, diff sha256, tool version). The `local-` namespace can
 never collide with a numeric PR dir; downstream verbs address the bundle as
@@ -1334,7 +1379,7 @@ live ground truth.
 
 ### Patch identity (`identity.json`)
 
-Every fetch writes `.review/<bundle>/identity.json`: the stable diff id beside
+Every fetch writes `.verdict/state/<bundle>/identity.json`: the stable diff id beside
 the head/base SHAs. The primary algorithm is `git patch-id --stable` over the raw
 pre-exclusion diff (`patch_id_kind: "git-patch-id"`); when git is missing or the
 spawn fails, the labeled `diff-sha256` fallback (sha256 of the diff minus its
@@ -1350,7 +1395,7 @@ input cannot be read, is not certified: the run warns and falls back to SHA
 behavior instead.
 
 `adopt owner/repo N --from auto` matches the target bundle's verified identity
-against `.review/local-*` twins in the requested repository: exactly one twin
+against `.verdict/state/local-*` twins in the requested repository: exactly one twin
 adopts (printed as `from: auto -> local-<name>`), zero refuse `no-patch-match`,
 and many refuse `ambiguous-patch-match` naming the candidates (max five shown).
 Twins from a foreign repository, with stale bytes, or without a repository record
@@ -1381,7 +1426,7 @@ compares heads` and compares heads only.
 ### Isolated checkout (`--worktree`)
 
 `fetch-local --worktree` checks the review target into a temporary detached
-worktree under `.review/` and builds the bundle from that checkout instead of
+worktree under `.verdict/state/` and builds the bundle from that checkout instead of
 the live tree: the default dirty tree via a read-only stash snapshot, `--staged`
 via a synthesized index commit, `--range`/`--base`/`--stash` at their head
 commits. The bundle bytes match the classic run on a quiet tree, but a dirty
@@ -1402,7 +1447,7 @@ local bundle: it picks the top open inline sig (severity `critical` above
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
 when present) with patch → verify → land → re-run instructions, and records the
-pass in `.review/local-<name>/fix.json`. The agent patches the anchor file,
+pass in `.verdict/state/local-<name>/fix.json`. The agent patches the anchor file,
 runs the verify command itself, writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
 summary with fixed/open/stopped counts plus the ledger path). A ceiling-exhausted
@@ -1416,7 +1461,7 @@ grandfathered (only files changed since the first pass can trip the audit).
 writes `findings.json` (credit still flows through the normal `record` flips);
 PR/provider bundles refuse with `not-local`. Cost note: every pass is another
 agent run over the bundle — loops multiply agent spend, so set
-`REVIEW_BUDGET_USD` (or `.review/budget`) before looping a large backlog. Ceilings
+`REVIEW_BUDGET_USD` (or the typed `budget_usd` default) before looping a large backlog. Ceilings
 constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
 counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
 worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
@@ -1521,18 +1566,16 @@ Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
 the size, the cap, and the split-or-narrow escape, and carries advisory split
 candidates (largest file alone, everything-but-largest, range half-split) —
 nothing auto-narrows. Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
-or a `.review/max_bytes` file holding one plain byte count (env wins, then
-the file, then the 512000 default; either override disables chunking outright
-and the fetch prints its source). The file knobs (`max_bytes`, `chunk`) are read
-from the PR base commit, so a PR cannot raise its own cap.
+or the typed `max_bytes` default in `.verdict/config.json` (env wins, then the
+typed default, then 512000; either override disables chunking outright and the
+fetch prints its source). The typed cap and `chunk` default are read from the PR
+base commit, so a PR cannot raise its own cap.
 
 Chunked fetch is the opted-in over-cap path: pass `--chunk` on `fetch` or
-`fetch-local`, or hold `true` (`on`/`1`/`yes` — first usable line wins) in a
-`.review/chunk` file (`false`/`off`/`0`/`no` and absent read off; any other
-first line refuses typed `bad-chunk-knob`). The flag wins over the file; an
-absent knob refuses byte-identically to today. Under-cap fetches succeed with
-identical bytes whether the knob is set or not (the knob is never consulted
-under the cap).
+`fetch-local`, or set the typed `chunk` default to `true`. The flag wins over the
+typed default; absent means off and refuses byte-identically to today.
+Under-cap fetches succeed with identical bytes whether chunking is on or not
+(the opt-in is never consulted under the cap).
 
 An opted-in over-cap fetch is machine-sliced on file boundaries (greedy
 next-fit in diff order, deterministic — re-fetch reproduces the map):
@@ -1629,12 +1672,12 @@ Read-only join (threads + one compare + PR state), keep-biased:
   than a wrong `informational`.
 - Use: per-model verdict calibration over time (which model judges well feeds the panel file).
   Never auto-tunes thresholds — humans read the report, the script only joins.
-- Enabler: `post` records `.review/N/post.json` (`review` id, `head`, `posted_at`)
+- Enabler: `post` records `.verdict/state/N/post.json` (`review` id, `head`, `posted_at`)
   on every real post. `calibrate` refuses without it.
 
 The offline counterpart is the self-grading probe (X3): `calibrate
 <owner/repo> <pr> --probe` writes one row per finding to
-`.review/<bundle>/kb-grades.jsonl`, each row carrying two separable parts. The
+`.verdict/state/<bundle>/kb-grades.jsonl`, each row carrying two separable parts. The
 script-owned baseline grades every finding against its triage disposition
 (`addressed` = real, `false-positive` = false, anything else = `unknown`,
 never forced) with the first cited rule and its helpfulness (`true` on real,
@@ -1654,7 +1697,7 @@ record, it is not the record.
 
 ## Trend (portfolio outcomes over time)
 
-`trend <owner/repo>` rolls up every reviewed bundle (`.review/*/findings.json`)
+`trend <owner/repo>` rolls up every reviewed bundle (`.verdict/state/*/findings.json`)
 into one time series: findings opened/addressed/closed per review date, broken
 down by severity tier and status, plus per-bundle rows (review time, models and
 effort from `cost.json` when the agent wrote one, provenance from the post
@@ -1670,7 +1713,7 @@ models plus per-tier outcomes is the raw material for per-model tier precision
 over time — run `calibrate` on recent bundles to settle what the trend only counts.
 
 `trend --overlap` adds the KB overlap audit to the same rollup: an offline join
-of `kb-recall.json` manifests, findings `kb` cites, and `.review/kb-joins.jsonl`
+of `kb-recall.json` manifests, findings `kb` cites, and `.verdict/kb-joins.jsonl`
 into the three arena-binding numbers — recall precision (recalled rules actually
 cited), recall coverage of cites (cited rules that came from recall rather than
 invention), and the cited-finding outcome split (`addressed` vs `false-positive`,
@@ -1701,7 +1744,7 @@ verbs and features ship in the release changelog.
 - Added: review-level `confidence` (1–5) + `security_summary` on `record.json`/`post.json`
   (optional, absent → null; a non-integer/out-of-range confidence or non-string
   `security_summary` refuses the review).
-- Added: local bundles — `source.json` standing in for `PR.json` under `.review/local-<name>/`.
+- Added: local bundles — `source.json` standing in for `PR.json` under `.verdict/state/local-<name>/`.
 - Added: store versioning — per-bundle `store.json` marker, `sig_version: "1"` on
   findings entries (backfilled on merge), `schema_version: "1"` on `review.json`
   inputs (unknown refused, missing warned), `post.json`, `record.json`,
@@ -1709,9 +1752,9 @@ verbs and features ship in the release changelog.
   artifact namespace reserved in bundle dirs.
 - Added: findings entries carry `kb` (cited knowledge-base rule ids, `[]` when
   uncited; excluded from sig derivation like rigor/severity); bundles may carry
-  `kb.txt` (top-3 recalled rules as context); repo root gains `.review/kb.jsonl`
-  (rule store), `.review/kb-joins.jsonl` (credit audit), `.review/kb-policy`
-  (retirement thresholds).
+  `kb.txt` (top-3 recalled rules as context); repo root gains `.verdict/kb.jsonl`
+  (rule store), `.verdict/kb-joins.jsonl` (credit audit), and typed
+  `defaults.kb_policy` in `.verdict/config.json` (retirement thresholds).
 - Added: over-cap chunked bundles carry `chunks/` (`chunk-NN.diff` slices each
   at or under the cap, per-chunk `.toc.txt`/`.roles.txt`, versioned
   `manifest.json` with `schema_version: "1"`, per-chunk `<name>.cost.json`) —

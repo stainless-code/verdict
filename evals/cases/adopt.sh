@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 mk_local_findings() { # $1 = bare slug, stdin = findings array
-  local dir="$EVAL_SANDBOX/.review/local-$1"
+  local dir="$EVAL_SANDBOX/.verdict/state/local-$1"
   mkdir -p "$dir"
   cat > "$dir/source.json" <<'EOF'
 {"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}
@@ -48,24 +48,24 @@ if [ "$(jq -r '.verb' <"$EVAL_OUT")" = "adopt" ] \
 else
   bad "envelope data: $(jq -c '.data' <"$EVAL_OUT" 2>/dev/null)"
 fi
-if grep -q "» adopted 2 findings from .review/local-adopt1 (open: 2)" "$EVAL_ERR"; then
+if grep -q "» adopted 2 findings from .verdict/state/local-adopt1 (open: 2)" "$EVAL_ERR"; then
   good "human progress names the handoff on stderr"
 else
   bad "human line: $(head -c 200 "$EVAL_ERR")"
 fi
-if [ "$(jq -r '.[0].lastSeen' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "aaaaaaa" ] \
-  && [ "$(jq -r '.[0].history[-1].event' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "adopted" ] \
-  && [ "$(jq -r '.[0].history[-1].note' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "from adopt1" ]; then
+if [ "$(jq -r '.[0].lastSeen' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json")" = "aaaaaaa" ] \
+  && [ "$(jq -r '.[0].history[-1].event' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json")" = "adopted" ] \
+  && [ "$(jq -r '.[0].history[-1].note' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json")" = "from adopt1" ]; then
   good "handoff stamp lands (lastSeen + adopted history)"
 else
   bad "handoff stamp missing"
 fi
 
-if [ "$(jq -r '.[0].anchored' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "true" ] \
-  && [ "$(jq -r '.[1].anchored' "$EVAL_SANDBOX/.review/$PR/findings.json")" = "false" ]; then
+if [ "$(jq -r '.[0].anchored' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json")" = "true" ] \
+  && [ "$(jq -r '.[1].anchored' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json")" = "false" ]; then
   good "covered anchor kept, drifted anchor cleared"
 else
-  bad "anchors: $(jq -c 'map(.anchored)' "$EVAL_SANDBOX/.review/$PR/findings.json")"
+  bad "anchors: $(jq -c 'map(.anchored)' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json")"
 fi
 
 run_review adopt acme/app local-foo --from adopt1 --json
@@ -91,7 +91,7 @@ else
 fi
 PR=4314
 eval_mk_bundle "$PR"
-rm "$EVAL_SANDBOX/.review/$PR/full.diff"
+rm "$EVAL_SANDBOX/.verdict/state/$PR/full.diff"
 run_review adopt acme/app "$PR" --from adopt1 --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "missing-diff" ]; then
@@ -105,10 +105,10 @@ else
   bad "refusals missing try: hints"
 fi
 run_review adopt acme/app "$PR" --from adopt1 --json >/dev/null 2>&1
-before_sum="$(shasum -a 1 "$EVAL_SANDBOX/.review/$PR/PR.json" | cut -d' ' -f1)"
+before_sum="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" | cut -d' ' -f1)"
 run_review adopt acme/app "$PR" --from adopt1 --json >/dev/null 2>&1
-after_sum="$(shasum -a 1 "$EVAL_SANDBOX/.review/$PR/PR.json" | cut -d' ' -f1)"
-if [ "$before_sum" = "$after_sum" ] && [ ! -e "$EVAL_SANDBOX/.review/$PR/findings.json" ]; then
+after_sum="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" | cut -d' ' -f1)"
+if [ "$before_sum" = "$after_sum" ] && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" ]; then
   good "refused adopt writes nothing"
 else
   bad "refused adopt mutated the target"

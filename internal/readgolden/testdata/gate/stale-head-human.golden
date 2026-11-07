@@ -7,5 +7,6 @@ gate: skipped live_threads
 try: post a review for the fetched HEAD, then re-run gate
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 --- files ---

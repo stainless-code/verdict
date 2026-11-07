@@ -82,12 +82,12 @@ func TestCheckTreeGolden(t *testing.T) {
 	goArgs = splitBare("check-tree", "--expect", "other.txt")
 	goldenRead(t, "check-tree/expect-uncovered", dirty, nil, nil, goArgs...)
 
-	// The .review/ scratch lines read ignored, never failing.
+	// The .verdict/ scratch lines read ignored, never failing.
 	scratch := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		gitRepo(t, dir)
 		writeFiles(t, dir, map[string]string{
-			".review/5101/findings.json": `[]`,
+			".verdict/state/5101/findings.json": `[]`,
 		})
 	}
 	goArgs = splitBare("check-tree")

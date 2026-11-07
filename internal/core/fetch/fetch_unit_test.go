@@ -129,23 +129,23 @@ func TestPickEstimateTier(t *testing.T) {
 		{tier: "cheap", usd: "3.00", has: true},
 		{tier: "standard", usd: "0.50", has: true},
 	}
-	tier, runs, stat, ok := pickEstimateTier(recs)
+	tier, runs, stat, ok := pickEstimateTier(recs, "", false)
 	if !ok || tier != "cheap" || runs != 2 || stat.mean != "2" {
 		t.Fatalf("pick = %s/%d/%s/%v, want cheap/2/2/true", tier, runs, stat.mean, ok)
 	}
 	// Ties break toward the deeper tier.
 	tied := []costRec{{tier: "cheap", usd: "1", has: true}, {tier: "deep", usd: "9", has: true}}
-	tier, _, _, _ = pickEstimateTier(tied)
+	tier, _, _, _ = pickEstimateTier(tied, "", false)
 	if tier != "deep" {
 		t.Fatalf("tie pick = %s, want deep", tier)
 	}
 	// Unpriced tier reads unknown.
 	unpriced := []costRec{{tier: "standard"}}
-	_, _, stat, ok = pickEstimateTier(unpriced)
+	_, _, stat, ok = pickEstimateTier(unpriced, "", false)
 	if !ok || stat.mean != "" {
 		t.Fatalf("unpriced = %q/%v, want empty/true", stat.mean, ok)
 	}
-	if _, _, _, ok := pickEstimateTier(nil); ok {
+	if _, _, _, ok := pickEstimateTier(nil, "", false); ok {
 		t.Fatal("empty records read ok")
 	}
 }
@@ -160,7 +160,7 @@ func TestPickEstimateTierMeasured(t *testing.T) {
 		{tier: "standard", usd: "5.00", has: true, measured: &measured, usageSource: "bench-harness"},
 		{tier: "standard", usd: "0.25", has: true},
 	}
-	tier, runs, stat, ok := pickEstimateTier(recs)
+	tier, runs, stat, ok := pickEstimateTier(recs, "", false)
 	if !ok || tier != "standard" || runs != 2 {
 		t.Fatalf("pick = %s/%d/%v", tier, runs, ok)
 	}
@@ -208,21 +208,6 @@ func TestRecordBasisMixed(t *testing.T) {
 	}
 	if !strings.Contains(st.basisNote(), "partly measured") {
 		t.Fatalf("mixed basisNote = %q", st.basisNote())
-	}
-}
-
-// TestIsBudgetNumber exercises the fetch helper.
-func TestIsBudgetNumber(t *testing.T) {
-	t.Parallel()
-	for _, good := range []string{"0", "0.50", "10", "10.25", "007", "99999999999999999999"} {
-		if !isBudgetNumber(good) {
-			t.Fatalf("%q reads invalid", good)
-		}
-	}
-	for _, bad := range []string{"", "abc", "1.", ".5", "-1", "1.2.3", " 1", "$1"} {
-		if isBudgetNumber(bad) {
-			t.Fatalf("%q reads valid", bad)
-		}
 	}
 }
 

@@ -150,14 +150,16 @@ of a review finding it later.
 ## Versioning
 
 Add `.changeset/<name>.md` (`patch`/`minor`/`major` + user-facing notes)
-with any user-facing change. Use `patch` by default, `minor` for new verbs or
-flags, and `major` for envelope or store breaks. Docs-only, eval-only, and
+with any user-facing change. Use `patch` by default and `minor` for new verbs
+or flags. While the package is on `0.x`, use `minor` for breaking envelope,
+store, or API changes too — v1 requires an explicit operator decision. From
+`1.0` onward, use `major` for breaking changes. Docs-only, eval-only, and
 comment-only merges ship none, and shipped work is never backfilled.
 
 Merging to `main` opens a `chore: version packages` PR. Merging that PR
 publishes to npm (OIDC trusted publishing, no tokens) and cuts the GitHub
 Release with your notes. Tags (`vX.Y.Z`) follow the releases. Store changes
-within a major are additive only. The changelog is at the bottom of
+within a major are additive only from `1.0` onward. The changelog is at the bottom of
 [`docs/manual.md`](docs/manual.md).
 
 ## Release train

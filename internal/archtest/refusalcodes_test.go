@@ -23,6 +23,7 @@ import (
 var refusalSkipDirs = map[string]bool{
 	".git":         true,
 	".pi":          true,
+	".review":      true,
 	".scratch":     true,
 	"apps":         true,
 	"bin":          true,

@@ -18,12 +18,23 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive config.schema.json (new typed-repository-configuration
+	// document; no existing schema property, required key, or type
+	// changed). The scope $def now carries the presence contract the
+	// parser enforces: at least one of profile, defaults, or requirements
+	// (anyOf), never profile with inline defaults, and never a scope's own
+	// defaults.kb_policy — the knowledge-base policy is global-only, which
+	// the parser refuses with bad-scope.
+	"config.schema.json": "d6860823b067abcc43e2cdb77dbb8243ffe232d5d51272aa674b73b63c99ae1e",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
 	// record promote review-input warnings to errors. Additive only. The
 	// description now names its env/file source; shape unchanged.
-	"controls.schema.json": "cb9cbf497e1054727c8ac645cd9e7edae1d2f754898dae2a29702456162991c2",
+	// typed state: the strict_input description names REVIEW_STRICT_INPUT
+	// as its only source and the inventory path description names
+	// .verdict/. Prose only; no property, required key, or type changed.
+	"controls.schema.json": "c98231d08509db237d0622839407995e50f74428a55c1cbad5d03f0d2fc1503e",
 	// additive corpus.schema.json (new document; no existing schema property,
 	// required key, or type changed).
 	// additive corpus bug keywords (optional string array naming the defect in
@@ -35,8 +46,19 @@ var publishedSemantics = map[string]string{
 	// also_lines items now carry minimum 1 to match the calibrate runtime,
 	// which rejects nonpositive anchors as corpus-invalid; outer array
 	// unchanged.
-	"corpus.schema.json": "86ad631c0e4a7b10bf2160f231adf2639ba06fa595dec47cd5dd0d954b2c6391",
-	"cost.schema.json":   "81e6a11f4731b7060f8975db80b01d595a3dd2e0f06bbf6372d1501810609be2",
+	// typed state: the manifest description names the .verdict/state run
+	// bundle path. Prose only.
+	"corpus.schema.json": "2439162a90d51d8ce33fe819df64dbbcfc32f7eaf45ed888326950a433310189",
+	// intentional pre-v1 break: lenses items become per-group
+	// {group,labels[]} entries (an empty labels list is that group's explicit
+	// zero) and schema_version pins 2. No other property, required key, or
+	// type changed; the group identity comes from the verified run.json plan,
+	// never a second plan document.
+	// Accepted cost schema 2: schema_version const 1 -> 2 and lenses[].items
+	// becomes $defs/lensUsage {group, labels} (grouped labels, additional
+	// properties open for the optional run/inputs_sha256 binding). Both are
+	// intentional additions of the accepted record shape over v1.
+	"cost.schema.json": "7d02fc87a47925234ef762f1b6e9fd9b49e63548393b5f57d0fb454b8ad9438c",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
@@ -73,7 +95,16 @@ var publishedSemantics = map[string]string{
 	// patch identity: additive optional same_patch/reviewed_patch_id/
 	// posted_patch_id on $defs/reportCompleteness. No existing property,
 	// required key, or type changed.
-	"envelope.schema.json": "35d577a05ee4e52152fabedd7cbd422e95c9c85929597972121dd050863eefc2",
+	// typed state: the check-tree description names the ignored
+	// .verdict/state paths instead of the legacy .review ones. Prose only.
+	// plan identity: additive configPlanGroup id/label and configCheck head,
+	// each now required because every resolved plan and appended observation
+	// carries them. Pre-v1 deliberate break: an older consumer reading a plan
+	// without the identity fields fails validation instead of guessing one.
+	// Plan identity: verify.planGroup now requires id and label, and
+	// verify.checks requires head, so a verified envelope names the group it
+	// resolved rather than an anonymous profile/depth pair.
+	"envelope.schema.json": "4428b98a022211d0f14cbdcddaa42ca0b662af3b711cf6c28370ec62d71ef627",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -83,7 +114,10 @@ var publishedSemantics = map[string]string{
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
 	"findings.schema.json": "aa0f9fc9500bb90f2c0d7582225633e53d81b56808f5903d96d8764f0239eced",
-	"post.schema.json":     "be4c2a37058f31305bed8c3886ebf9bb9ebbdeda10d18033c6503b083718d080",
+	// post_floor_scoped: additive optional per-path posting floor list with its
+	// $defs/floorScope entry (required path, enum floor). No existing
+	// property, required key, or type changed.
+	"post.schema.json": "7a40a685ebf050858a07a6e4e319590fc49c0bad501de19c398e91a500097dd2",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",

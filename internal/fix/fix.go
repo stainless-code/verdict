@@ -16,10 +16,11 @@ import (
 
 // Request carries the resolved fix invocation.
 type Request struct {
-	Env  map[string]string
-	Repo string
-	Pr   string
-	Root string
+	Env      map[string]string
+	Repo     string
+	Pr       string
+	Root     string
+	RepoRoot string
 }
 
 // Run executes `fix <owner/repo> <local-slug> [--sig <s>] [--json]`,
@@ -63,7 +64,7 @@ func fixRequest(r *cli.Runner, req Request, f flags) *fixcore.Request {
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
-		Repo: req.Repo, Pr: req.Pr,
+		Repo: req.Repo, Pr: req.Pr, RepoRoot: req.RepoRoot,
 	}
 	return out
 }

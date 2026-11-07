@@ -2,6 +2,7 @@ import type {
   AdoptData,
   CalibrateData,
   CheckTreeData,
+  ConfigData,
   DoctorData,
   FetchData,
   FetchLocalData,
@@ -66,6 +67,7 @@ export interface DataFor {
   threads: ThreadsData;
   verify: VerifyData;
   "check-tree": CheckTreeData;
+  config: ConfigData;
   doctor: DoctorData;
   calibrate: CalibrateData;
   trend: TrendData;

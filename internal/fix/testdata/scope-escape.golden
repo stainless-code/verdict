@@ -15,10 +15,10 @@ exit: 1
   }
 }
 --- stderr ---
-» readiness: .review/local-scope — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
-fix complete: .review/local-scope — fixed=0 open=1 stopped=1 (ledger .review/local-scope/fix.json)
+» readiness: .verdict/state/local-scope — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+fix complete: .verdict/state/local-scope — fixed=0 open=1 stopped=1 (ledger .verdict/state/local-scope/fix.json)
 next: worktree escaped the anchor — revert or stash files outside 'notes.txt', then re-run fix
 re-enter: verdict fix acme/app local-scope --json
 --- files ---
---- file C/.review/local-scope/fix.json ---
+--- file C/.verdict/state/local-scope/fix.json ---
 {"sigs":{"5123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":["app.txt","notes.txt"],"stopped":"scope-escape"}}}

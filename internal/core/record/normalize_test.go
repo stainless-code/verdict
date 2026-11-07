@@ -283,14 +283,14 @@ func checkDryRunRepairs(t *testing.T, resp *core.RecordResponse) {
 // the repairs list.
 func checkRecordedRepairs(t *testing.T) {
 	t.Helper()
-	raw, err := readFile(".review/local-norm/findings.json")
+	raw, err := readFile(".verdict/state/local-norm/findings.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(raw, `"rigor_source": "model"`) {
 		t.Errorf("findings.json lacks model rigor provenance:\n%s", raw)
 	}
-	recordRaw, err := readFile(".review/local-norm/record.json")
+	recordRaw, err := readFile(".verdict/state/local-norm/record.json")
 	if err != nil {
 		t.Fatal(err)
 	}

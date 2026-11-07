@@ -37,19 +37,19 @@ func TestPostReadsNormalizedReview(t *testing.T) {
 func writeParityBundles(t *testing.T) {
 	t.Helper()
 	postBundle(t, normalizedParityReview)
-	if err := writeTestFile(".review/local-par/source.json",
+	if err := writeTestFile(".verdict/state/local-par/source.json",
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeTestFile(".review/local-par/full.diff",
+	if err := writeTestFile(".verdict/state/local-par/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeTestFile(".review/local-par/review.json", normalizedParityReview); err != nil {
+	if err := writeTestFile(".verdict/state/local-par/review.json", normalizedParityReview); err != nil {
 		t.Fatal(err)
 	}
-	seedPostControls(t, ".review/local-par", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	seedPostControls(t, ".verdict/state/local-par", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 }
 
 // runParityRecord records the local bundle and returns its findings.
@@ -68,7 +68,7 @@ func runParityRecord(t *testing.T) []map[string]any {
 	if _, ref := recordcore.Run(context.Background(), recReq); ref != nil {
 		t.Fatalf("record refusal: %v", ref)
 	}
-	return readFindingEntries(t, ".review/local-par/findings.json")
+	return readFindingEntries(t, ".verdict/state/local-par/findings.json")
 }
 
 // runParityPost dry-runs post over the PR bundle and returns its findings.
@@ -76,11 +76,11 @@ func runParityPost(t *testing.T) []map[string]any {
 	t.Helper()
 	cmdr := postCommander(t)
 	var warnings, human []string
-	postReq := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json", DryRun: true}, &warnings, &human)
+	postReq := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
 	if _, ref := Run(context.Background(), postReq); ref != nil {
 		t.Fatalf("post dry-run refusal: %v", ref)
 	}
-	return readFindingEntries(t, ".review/7/findings.dryrun.json")
+	return readFindingEntries(t, ".verdict/state/7/findings.dryrun.json")
 }
 
 // checkParityEntries proves both verbs stored one identical inline finding:

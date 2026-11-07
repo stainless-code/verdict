@@ -27,37 +27,37 @@ type bundleGateCase struct {
 // directory behind.
 func TestRunGatesBeforeStoreBackfill(t *testing.T) {
 	closed := func(*testing.T) {}
-	dirOnly := func(t *testing.T) { t.Helper(); mkdirTest(t, ".review/7") }
-	noDiff := func(t *testing.T) { t.Helper(); writeTestFileOrFail(t, ".review/7/review.json", postReview) }
-	review := ".review/7/review.json"
+	dirOnly := func(t *testing.T) { t.Helper(); mkdirTest(t, ".verdict/state/7") }
+	noDiff := func(t *testing.T) { t.Helper(); writeTestFileOrFail(t, ".verdict/state/7/review.json", postReview) }
+	review := ".verdict/state/7/review.json"
 	for _, tc := range []bundleGateCase{
 		{
 			name:     "no bundle dir",
 			flags:    core.PostFlags{Approve: "false", ReviewFile: review},
 			setup:    closed,
 			wantCode: codeMissingBundle,
-			wantMsg:  []string{"missing .review/7 ", "run fetch acme/app 7 first"},
+			wantMsg:  []string{"missing .verdict/state/7 ", "run fetch acme/app 7 first"},
 		},
 		{
 			name:     "no bundle dir on dry run",
 			flags:    core.PostFlags{Approve: "false", ReviewFile: review, DryRun: true},
 			setup:    closed,
 			wantCode: codeMissingBundle,
-			wantMsg:  []string{"missing .review/7 ", "run fetch acme/app 7 first"},
+			wantMsg:  []string{"missing .verdict/state/7 ", "run fetch acme/app 7 first"},
 		},
 		{
 			name:     "bundle dir without review",
 			flags:    core.PostFlags{Approve: "false", ReviewFile: review},
 			setup:    dirOnly,
 			wantCode: codeMissingReviewFile,
-			wantMsg:  []string{"missing .review/7/review.json"},
+			wantMsg:  []string{"missing .verdict/state/7/review.json"},
 		},
 		{
 			name:     "bundle without diff",
 			flags:    core.PostFlags{Approve: "false", ReviewFile: review},
 			setup:    noDiff,
 			wantCode: codeMissingDiff,
-			wantMsg:  []string{"missing .review/7/full.diff"},
+			wantMsg:  []string{"missing .verdict/state/7/full.diff"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

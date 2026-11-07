@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-from",
-    "message": "adopt needs --from <local-slug> (a .review/local-* dir with findings.json)\ntry: re-run with one of the valid values named above"
+    "message": "adopt needs --from <local-slug> (a .verdict/state/local-* dir with findings.json)\ntry: re-run with one of the valid values named above"
   }
 }
 --- stderr ---

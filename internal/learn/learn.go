@@ -16,7 +16,7 @@ import (
 // Run executes `learn [--rule ... --scope ...] [--status] [--retire ...]
 // [--restore ...] [--reason ...] [--id/--provenance/--rigor] [--json]`,
 // returning the process exit code. Learn takes no repo/pr positionals.
-func Run(ctx context.Context, r *cli.Runner, args []string, _ map[string]string) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, repoRoot string) int {
 	r.Repo, r.Pr = "", ""
 	r.Rentry = "verdict learn"
 	f, code, done := parseFlags(r, args)
@@ -27,7 +27,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, _ map[string]string)
 	if code, done := r.Canceled(ctx, "learn"); done {
 		return code
 	}
-	resp, ref := learncore.Run(ctx, learnRequest(r, &f))
+	resp, ref := learncore.Run(ctx, learnRequest(r, &f, repoRoot))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -42,7 +42,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, _ map[string]string)
 
 // learnRequest injects the runner's clock and progress observer into the
 // typed service request.
-func learnRequest(r *cli.Runner, f *flags) *learncore.Request {
+func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 	out := &learncore.Request{
 		Rule:       f.rule,
 		Scope:      f.scope,
@@ -56,7 +56,8 @@ func learnRequest(r *cli.Runner, f *flags) *learncore.Request {
 		JSONMode:   r.JSONMode,
 	}
 	out.ReadRequest = core.ReadRequest{
-		Runtime: &core.Runtime{Now: r.Now, Progress: cli.Progress{R: r}},
+		Runtime:  &core.Runtime{Now: r.Now, Progress: cli.Progress{R: r}},
+		RepoRoot: repoRoot,
 	}
 	return out
 }

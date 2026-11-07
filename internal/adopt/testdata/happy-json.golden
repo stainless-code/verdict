@@ -8,10 +8,10 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "post the adopted findings, then calibrate to settle them",
   "warnings": [
-    "no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+    "no fetch-time hunk snapshot (.verdict/state/4311/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
   ],
   "data": {
-    "dir": ".review/4311",
+    "dir": ".verdict/state/4311",
     "from": "adopt1",
     "adopted": 2,
     "open": 2
@@ -19,10 +19,10 @@ exit: 0
   "error": null
 }
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-» adopted 2 findings from .review/local-adopt1 (open: 2) — post to publish, calibrate to settle
+warn: no fetch-time hunk snapshot (.verdict/state/4311/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+» adopted 2 findings from .verdict/state/local-adopt1 (open: 2) — post to publish, calibrate to settle
 --- files ---
---- file C/.review/4311/findings.json ---
+--- file C/.verdict/state/4311/findings.json ---
 [
   {
     "kind": "inline",
@@ -81,10 +81,10 @@ warn: no fetch-time hunk snapshot (.review/4311/hunks.tsv missing) — rebuildin
     "rigor_source": "default"
   }
 ]
---- file C/.review/4311/hunks.tsv ---
+--- file C/.verdict/state/4311/hunks.tsv ---
 notes.txt	OLD	1	3
 notes.txt	NEW	1	3
---- file C/.review/4311/store.json ---
+--- file C/.verdict/state/4311/store.json ---
 {
   "schema_version": "1"
 }

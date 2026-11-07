@@ -60,7 +60,7 @@ Cap scope per lens: name at most ~12 files and return at most 10 findings.
 ## Panel formation (roles, never slugs)
 
 Synthesizer = strongest available reasoner; lenses = 2+ diverse cheaper models, different
-families when possible; prose = synthesizer. When the dispatch names a `.review/N/panel`
+families when possible; prose = synthesizer. When the dispatch names a `.verdict/state/N/panel`
 file (written by `fetch` from operator config), staff it exactly in order — first entry
 synthesizes, the rest staff the lenses — and never substitute. A pinned panel is what makes
 runs comparable and costs capped; an absent panel means the operator picks per run.

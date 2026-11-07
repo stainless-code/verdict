@@ -45,11 +45,14 @@ type Config struct {
 
 const (
 	// benchRepo is the label every corpus verb takes.
-	benchRepo  = "acme/bench"
-	reviewRoot = ".review"
-	millis     = 1000.0
-	rounding   = 0.5
-	dirPerm    = 0o755
+	benchRepo = "acme/bench"
+	// reviewRoot is the ignored state home every corpus bundle lands in,
+	// and reviewConfig is the tracked typed configuration the panel pins.
+	reviewRoot   = ".verdict/state"
+	reviewConfig = ".verdict/config.json"
+	millis       = 1000.0
+	rounding     = 0.5
+	dirPerm      = 0o755
 	// defaultTimeout bounds one sample, so a wedged agent cannot hold the run.
 	defaultTimeout = 15 * time.Minute
 )
@@ -210,7 +213,7 @@ func absolutize(cfg *Config) error {
 }
 
 // prepareWork makes the run dir and refuses to reuse one: trend scores every
-// corpus bundle under .review, so one dir holds one run's bundles.
+// corpus bundle under .verdict/state, so one dir holds one run's bundles.
 func prepareWork(work string) (string, error) {
 	if work == "" {
 		dir, err := os.MkdirTemp("", "verdict-bench-")
@@ -359,16 +362,30 @@ func missingCases(only, known []string) []string {
 	return missing
 }
 
-// pinPanel writes the panel control every real run reads: one slug per line,
-// in the format fetch resolves, so a bundle's panel is auditable after the
-// fact.
+// pinPanel writes the typed repository panel default every real run reads,
+// so a bundle's panel is auditable after the fact. An existing config keeps
+// its other keys; the panel default is the only field the bench owns.
 func (r *runner) pinPanel(panel []string) error {
-	if err := os.MkdirAll(reviewRoot, dirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(reviewConfig), dirPerm); err != nil {
 		return jq.NewErrf("panel: %s", err)
 	}
-	body := []byte(strings.Join(panel, "\n") + "\n")
-	if err := atomic.WriteFile(filepath.Join(reviewRoot, panelName), body); err != nil {
+	cfg := map[string]any{}
+	if raw, err := os.ReadFile(reviewConfig); err == nil {
+		if uerr := json.Unmarshal(raw, &cfg); uerr != nil {
+			return jq.NewErrf("panel: %s is not JSON: %s", reviewConfig, uerr)
+		}
+	}
+	defaults, ok := cfg["defaults"].(map[string]any)
+	if !ok {
+		defaults = map[string]any{}
+	}
+	defaults["panel"], cfg["schema_version"], cfg["defaults"] = panel, "1", defaults
+	body, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
 		return jq.NewErrf("panel: %s", err)
+	}
+	if werr := atomic.WriteFile(reviewConfig, append(body, '\n')); werr != nil {
+		return jq.NewErrf("panel: %s", werr)
 	}
 	return nil
 }
@@ -566,7 +583,7 @@ func (r *runner) runAgent(ctx context.Context, cr *caseRun) error {
 	runCtx, cancel := context.WithTimeout(ctx, r.cfg.Timeout)
 	defer cancel()
 	start := time.Now()
-	res, err := coreexec.Watchdog{}.Run(runCtx, core.Command{Argv: []string{"sh", "-c", r.cfg.Agent}, Env: r.agentEnv(cr)})
+	res, err := coreexec.Watchdog{}.Run(runCtx, &core.Command{Argv: []string{"sh", "-c", r.cfg.Agent}, Env: r.agentEnv(cr)})
 	cr.wall = roundMillis(time.Since(start).Seconds())
 	logPath := filepath.Join(cr.dir, agentLogName)
 	if logErr := atomic.WriteFile(logPath, []byte(res.Stdout)); logErr != nil {
@@ -668,7 +685,8 @@ func (r *runner) collect(cr *caseRun, data json.RawMessage) error {
 	return nil
 }
 
-// fail keeps the sample's evidence out of .review and names it in the report.
+// fail keeps the sample's evidence out of .verdict/state and names it in the
+// report.
 func (r *runner) fail(rep *Report, cr *caseRun, err error) {
 	if rmErr := os.RemoveAll(filepath.Join(reviewRoot, cr.slug)); rmErr != nil {
 		err = jq.NewErrf("%s (could not drop the partial bundle: %s)", err, rmErr)

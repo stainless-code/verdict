@@ -29,16 +29,16 @@ mkcost() { # $1 = bundle dir; stdin = manifest chunk-name list (one per line)
 }
 
 eval_mk_bundle 4901
-printf '[]' > "$EVAL_SANDBOX/.review/4901/findings.json"
-cat > "$EVAL_SANDBOX/.review/4901/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4901/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4901/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50}],"est_usd":0.05}
 EOF
-mkcost "$EVAL_SANDBOX/.review/4901" "chunk-01
+mkcost "$EVAL_SANDBOX/.verdict/state/4901" "chunk-01
 chunk-02"
-cat > "$EVAL_SANDBOX/.review/4901/chunks/chunk-01.cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4901/chunks/chunk-01.cost.json" <<'EOF'
 {"schema_version":"1","effort":"cheap","models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
 EOF
-cat > "$EVAL_SANDBOX/.review/4901/chunks/chunk-02.cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4901/chunks/chunk-02.cost.json" <<'EOF'
 [{"schema_version":"1","effort":"deep","models":[{"name":"m","input_tokens":1000,"output_tokens":200}],"est_usd":1.5},{"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":20,"output_tokens":10}],"est_usd":0.02}]
 EOF
 run_review report acme/app 4901 --cost --json
@@ -71,14 +71,14 @@ else
 fi
 
 eval_mk_bundle 4902
-printf '[]' > "$EVAL_SANDBOX/.review/4902/findings.json"
-cat > "$EVAL_SANDBOX/.review/4902/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4902/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4902/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":100,"output_tokens":50}],"est_usd":0.05}
 EOF
-mkcost "$EVAL_SANDBOX/.review/4902" "chunk-01
+mkcost "$EVAL_SANDBOX/.verdict/state/4902" "chunk-01
 chunk-02
 chunk-03"
-cat > "$EVAL_SANDBOX/.review/4902/chunks/chunk-01.cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4902/chunks/chunk-01.cost.json" <<'EOF'
 {"schema_version":"1","effort":"cheap","models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
 EOF
 run_review report acme/app 4902 --cost --json
@@ -91,13 +91,13 @@ assert_json_field "absent-grade estimates usd" "0.06" '.data.cost.est_usd'
 assert_stream_nogrep "absent-grade warns about no chunk cost" "$EVAL_ERR" "chunk cost"
 
 eval_mk_bundle 4903
-printf '[]' > "$EVAL_SANDBOX/.review/4903/findings.json"
-mkcost "$EVAL_SANDBOX/.review/4903" "chunk-01
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4903/findings.json"
+mkcost "$EVAL_SANDBOX/.verdict/state/4903" "chunk-01
 chunk-02"
-cat > "$EVAL_SANDBOX/.review/4903/chunks/chunk-01.cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4903/chunks/chunk-01.cost.json" <<'EOF'
 {"schema_version":"1","effort":"deep","models":[{"name":"m","input_tokens":1000,"output_tokens":200}],"est_usd":1.5}
 EOF
-printf 'not json{{{corrupt' > "$EVAL_SANDBOX/.review/4903/chunks/chunk-02.cost.json"
+printf 'not json{{{corrupt' > "$EVAL_SANDBOX/.verdict/state/4903/chunks/chunk-02.cost.json"
 run_review report acme/app 4903 --cost --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -q "chunk-02.cost.json unreadable" "$EVAL_ERR" \
@@ -112,8 +112,8 @@ else
 fi
 
 eval_mk_bundle 4904
-printf '[]' > "$EVAL_SANDBOX/.review/4904/findings.json"
-cat > "$EVAL_SANDBOX/.review/4904/cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4904/findings.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4904/cost.json" <<'EOF'
 [{"schema_version":"1","effort":"standard","models":[{"name":"m","input_tokens":7,"output_tokens":3}],"est_usd":0.1},{"schema_version":"1","effort":"ULTRA","est_usd":0.2}]
 EOF
 run_review report acme/app 4904 --cost --json
@@ -138,10 +138,10 @@ else
 fi
 
 eval_mk_bundle 4905
-printf '[]' > "$EVAL_SANDBOX/.review/4905/findings.json"
-mkdir -p "$EVAL_SANDBOX/.review/4905/chunks"
-printf 'not json{{{corrupt manifest' > "$EVAL_SANDBOX/.review/4905/chunks/manifest.json"
-cat > "$EVAL_SANDBOX/.review/4905/chunks/chunk-01.cost.json" <<'EOF'
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/4905/findings.json"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/4905/chunks"
+printf 'not json{{{corrupt manifest' > "$EVAL_SANDBOX/.verdict/state/4905/chunks/manifest.json"
+cat > "$EVAL_SANDBOX/.verdict/state/4905/chunks/chunk-01.cost.json" <<'EOF'
 {"schema_version":"1","effort":"cheap","models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
 EOF
 run_review report acme/app 4905 --cost --json
@@ -154,9 +154,9 @@ else
   bad "manifest-fallback exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-rm -rf "$EVAL_SANDBOX/.review/4901" "$EVAL_SANDBOX/.review/4902" \
-  "$EVAL_SANDBOX/.review/4903" "$EVAL_SANDBOX/.review/4904" \
-  "$EVAL_SANDBOX/.review/4905" "$EVAL_SANDBOX/xdg-empty"
+rm -rf "$EVAL_SANDBOX/.verdict/state/4901" "$EVAL_SANDBOX/.verdict/state/4902" \
+  "$EVAL_SANDBOX/.verdict/state/4903" "$EVAL_SANDBOX/.verdict/state/4904" \
+  "$EVAL_SANDBOX/.verdict/state/4905" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
 eval_end

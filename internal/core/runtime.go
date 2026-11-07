@@ -64,12 +64,18 @@ func (r Runtime) Diag(line string) {
 
 // ReadRequest is the transport-neutral invocation shared by the read verbs:
 // the injected runtime plus the resolved positionals and global flag forces.
-type ReadRequest struct { //nolint:govet // the transport contract keeps its field order; 56 bytes is cheap to copy
+type ReadRequest struct {
 	*Runtime
 	Repo   string
 	Pr     string
 	Forces *GlobalForces
 	Root   *string
+	// RepoRoot is the reviewed repository root every bundle path anchors
+	// to: the git top level, never the tool checkout in Root and never an
+	// implicit working directory. Empty reads cwd-relative, preserving the
+	// historical behavior for in-process callers; the CLI, MCP, and SDK
+	// adapters always set it from the git top level.
+	RepoRoot string
 }
 
 // ForcesOrEmpty returns the global forces, defaulting to an empty set so
@@ -95,6 +101,15 @@ func (q ReadRequest) RootPath() string {
 		return ""
 	}
 	return *q.Root
+}
+
+// RepoRootPath returns the reviewed repository root every bundle path
+// anchors to ("." when unset, preserving cwd-relative behavior).
+func (q ReadRequest) RepoRootPath() string {
+	if q.RepoRoot == "" {
+		return "."
+	}
+	return q.RepoRoot
 }
 
 // TimeUTC formats the injected clock (zero time when no runtime is set).

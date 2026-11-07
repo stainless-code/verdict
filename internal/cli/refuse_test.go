@@ -98,7 +98,7 @@ func TestRefuseExitEnvelopeCandidates(t *testing.T) {
 	}
 	wantErr := `  "error": {
     "code": "budget-exceeded",
-    "message": "projected $2.40 > budget $2.00\ntry: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/.review/budget",
+    "message": "projected $2.40 > budget $2.00\ntry: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default",
     "candidates": [
       "split the range by directory"
     ],

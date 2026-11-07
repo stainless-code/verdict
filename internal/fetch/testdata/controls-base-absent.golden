@@ -6,10 +6,10 @@ exit: 0
   "repo": "acme/app",
   "pr": 4701,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + full.diff to any agent; ask it to write .review/4701/review.json; prior threads are in .review/4701/threads.json (run verdict threads to refresh)",
+  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + full.diff to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
-    "dir": ".review/4701",
+    "dir": ".verdict/state/4701",
     "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
     "files": 1,
@@ -19,7 +19,7 @@ exit: 0
     "omitted": [],
     "diff_bytes": 146,
     "panel": {
-      "source": ".review/panel",
+      "source": ".verdict/config.json",
       "members": [
         "api-base-panel"
       ]
@@ -38,45 +38,47 @@ exit: 0
       "files": 1
     },
     "artifacts": {
-      "PR.json": ".review/4701/PR.json",
-      "full.diff": ".review/4701/full.diff",
-      "identity.json": ".review/4701/identity.json",
-      "toc.txt": ".review/4701/toc.txt",
-      "roles.txt": ".review/4701/roles.txt",
-      "reviews.json": ".review/4701/reviews.json",
-      "inline.json": ".review/4701/inline.json",
-      "threads.json": ".review/4701/threads.json",
+      "PR.json": ".verdict/state/4701/PR.json",
+      "full.diff": ".verdict/state/4701/full.diff",
+      "identity.json": ".verdict/state/4701/identity.json",
+      "toc.txt": ".verdict/state/4701/toc.txt",
+      "roles.txt": ".verdict/state/4701/roles.txt",
+      "reviews.json": ".verdict/state/4701/reviews.json",
+      "inline.json": ".verdict/state/4701/inline.json",
+      "threads.json": ".verdict/state/4701/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null
     },
-    "incremental_base": null
+    "incremental_base": null,
+    "estimate": {
+      "tier": null,
+      "projected_usd": null,
+      "comparable_runs": 0
+    }
   },
   "error": null
 }
 --- stderr ---
 » gh pr view acme/app#4701
-» gh pr diff -> .review/4701/full.diff
-» roles -> .review/4701/roles.txt (heuristic file roles for triage)
-» panel (1 from .review/panel)
+» gh pr diff -> .verdict/state/4701/full.diff
+» estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
+» roles -> .verdict/state/4701/roles.txt (heuristic file roles for triage)
+» panel (1 from .verdict/config.json)
 » reviews + inline comments
-done: .review/4701/PR.json .review/4701/full.diff .review/4701/toc.txt .review/4701/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .review/4701/PR.json + .review/4701/full.diff (+ .review/4701/roles.txt) to any agent; ask it to write .review/4701/review.json; prior threads are in .review/4701/threads.json (run verdict threads to refresh)
+done: .verdict/state/4701/PR.json .verdict/state/4701/full.diff .verdict/state/4701/toc.txt .verdict/state/4701/roles.txt (1 files)
+next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + .verdict/state/4701/full.diff (+ .verdict/state/4701/roles.txt) to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4701 --repo acme/app
-CALL: api repos/acme/app/contents/.review/panel?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/budget?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/strict_input?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/max_bytes?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/chunk?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/kb.jsonl?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/kb-policy?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/learnings.md?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/overrides/preamble.md?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/overrides/footer-order.md?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/overrides/walkthrough-threshold.md?ref=cccccccccccccccccccccccccccccccccccccccc
-CALL: api repos/acme/app/contents/.review/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/kb.jsonl?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/learnings.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/overrides/preamble.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/overrides/footer-order.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/overrides/walkthrough-threshold.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4701/reviews --paginate
 CALL: api repos/acme/app/pulls/4701/comments --paginate
@@ -103,11 +105,17 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
           }
         }
       }
---- file C/.review/4701/.difffiles ---
+CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
+--- file C/.verdict/.gitignore ---
+/state/
+--- file C/.verdict/state/.gitignore ---
+# generated by verdict: everything under state/ stays local
+*
+--- file C/.verdict/state/4701/.difffiles ---
 notes.txt
---- file C/.review/4701/PR.json ---
+--- file C/.verdict/state/4701/PR.json ---
 {"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"cccccccccccccccccccccccccccccccccccccccc","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
---- file C/.review/4701/controls.json ---
+--- file C/.verdict/state/4701/controls.json ---
 {
   "schema_version": "1",
   "policy": "base",
@@ -115,82 +123,52 @@ notes.txt
   "sha": "cccccccccccccccccccccccccccccccccccccccc",
   "files": [
     {
-      "path": ".review/panel",
+      "path": ".verdict/config.json",
       "status": "used",
-      "bytes": 15,
-      "sha256": "52dfe6b8ed69ffc717ac8d962f4439ae06186452a7472b4aea4d8ad7df11799c"
+      "bytes": 63,
+      "sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
     },
     {
-      "path": ".review/budget",
+      "path": ".verdict/kb.jsonl",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
     },
     {
-      "path": ".review/strict_input",
+      "path": ".verdict/learnings.md",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
     },
     {
-      "path": ".review/max_bytes",
+      "path": ".verdict/overrides/preamble.md",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
     },
     {
-      "path": ".review/chunk",
+      "path": ".verdict/overrides/footer-order.md",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
     },
     {
-      "path": ".review/kb.jsonl",
+      "path": ".verdict/overrides/walkthrough-threshold.md",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
     },
     {
-      "path": ".review/kb-policy",
-      "status": "missing",
-      "bytes": 0,
-      "sha256": ""
-    },
-    {
-      "path": ".review/learnings.md",
-      "status": "missing",
-      "bytes": 0,
-      "sha256": ""
-    },
-    {
-      "path": ".review/overrides/preamble.md",
-      "status": "missing",
-      "bytes": 0,
-      "sha256": ""
-    },
-    {
-      "path": ".review/overrides/footer-order.md",
-      "status": "missing",
-      "bytes": 0,
-      "sha256": ""
-    },
-    {
-      "path": ".review/overrides/walkthrough-threshold.md",
-      "status": "missing",
-      "bytes": 0,
-      "sha256": ""
-    },
-    {
-      "path": ".review/overrides/attribution.md",
+      "path": ".verdict/overrides/attribution.md",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
     }
   ]
 }
---- file C/.review/4701/controls/panel ---
-api-base-panel
---- file C/.review/4701/full.diff ---
+--- file C/.verdict/state/4701/controls/config.json ---
+{"schema_version":"1","defaults":{"panel":["api-base-panel"]}}
+--- file C/.verdict/state/4701/full.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
 --- a/notes.txt
@@ -200,10 +178,10 @@ index 1111111..2222222 100644
 -old line
 +new line
  bottom
---- file C/.review/4701/hunks.tsv ---
+--- file C/.verdict/state/4701/hunks.tsv ---
 notes.txt	OLD	1	3
 notes.txt	NEW	1	3
---- file C/.review/4701/identity.json ---
+--- file C/.verdict/state/4701/identity.json ---
 {
   "schema_version": "1",
   "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
@@ -213,20 +191,290 @@ notes.txt	NEW	1	3
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc"
 }
---- file C/.review/4701/inline.json ---
+--- file C/.verdict/state/4701/inline.json ---
 []
---- file C/.review/4701/panel ---
+--- file C/.verdict/state/4701/panel ---
 api-base-panel
---- file C/.review/4701/reviews.json ---
+--- file C/.verdict/state/4701/reviews.json ---
 []
---- file C/.review/4701/roles.txt ---
+--- file C/.verdict/state/4701/roles.txt ---
 ## docs
 - notes.txt
---- file C/.review/4701/store.json ---
+--- file C/.verdict/state/4701/run.json ---
+{
+  "resolved": {
+    "spend": {
+      "require_known_estimate": false,
+      "enforce_cap": false
+    },
+    "plan": {
+      "effort_tier": "standard",
+      "status": "pending",
+      "groups": [
+        {
+          "profile": "",
+          "depth": "standard",
+          "checks": null,
+          "files": [
+            "notes.txt"
+          ],
+          "scopes": [],
+          "id": "237f83c450868196442d14082d63ef4166b2e920671c195f769b104ce8320aa4",
+          "label": "group 1"
+        }
+      ]
+    },
+    "files": [
+      {
+        "path": "notes.txt",
+        "profile": "",
+        "scopes": [],
+        "requirements": {
+          "check_origin": null,
+          "clauses": [],
+          "checks": null,
+          "bind_sources": null,
+          "require_bind": false
+        },
+        "defaults": {
+          "origins": {
+            "budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "chunk": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "display_min_severity": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_fp_rate": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.min_judged": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "max_bytes": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "panel": {
+              "layer": "repo",
+              "source": ".verdict/config.json"
+            },
+            "post_min_severity": {
+              "layer": "built-in",
+              "source": "built-in"
+            }
+          },
+          "shadowed": null,
+          "values": {
+            "effort": "standard",
+            "panel": [
+              "api-base-panel"
+            ],
+            "max_bytes": 512000,
+            "kb_min_judged": 5,
+            "kb_max_fp_rate": 0.5,
+            "chunk": false
+          }
+        }
+      }
+    ],
+    "privacy": {
+      "exclusions": null
+    },
+    "defaults": {
+      "origins": {
+        "budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "chunk": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "display_min_severity": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "effort": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "kb_policy.max_fp_rate": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "kb_policy.min_judged": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "max_bytes": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "panel": {
+          "layer": "repo",
+          "source": ".verdict/config.json"
+        },
+        "post_min_severity": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      "shadowed": null,
+      "values": {
+        "effort": "standard",
+        "panel": [
+          "api-base-panel"
+        ],
+        "max_bytes": 512000,
+        "kb_min_judged": 5,
+        "kb_max_fp_rate": 0.5,
+        "chunk": false
+      }
+    }
+  },
+  "schema_version": "1",
+  "name": "4701",
+  "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "captured_at": "0000-00-00T00:00:00Z",
+  "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
+  "inputs_sha256": "e445bde5c3c0b8cc288ece34fdc3499c485eb8b0e7cdc188cc32c1ef9c75d4bc",
+  "inventory": {
+    "config.json": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
+  },
+  "evidence": {
+    "plan": {
+      "effort_tier": "standard",
+      "status": "pending",
+      "groups": [
+        {
+          "profile": "",
+          "depth": "standard",
+          "checks": null,
+          "files": [
+            "notes.txt"
+          ],
+          "scopes": [],
+          "id": "237f83c450868196442d14082d63ef4166b2e920671c195f769b104ce8320aa4",
+          "label": "group 1"
+        }
+      ]
+    },
+    "schema_version": "1",
+    "captured_at": "0000-00-00T00:00:00Z",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
+    "patch_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268",
+    "filtered_patch_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268",
+    "consumed_inputs": [
+      ".verdict/config.json",
+      "operator settings"
+    ],
+    "values": [
+      {
+        "key": "panel",
+        "value": [
+          "api-base-panel"
+        ],
+        "origin": {
+          "layer": "repo",
+          "source": ".verdict/config.json"
+        }
+      },
+      {
+        "key": "budget_usd",
+        "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "max_bytes",
+        "value": 512000,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "chunk",
+        "value": false,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "kb_policy.min_judged",
+        "value": 5,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "kb_policy.max_fp_rate",
+        "value": 0.5,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "effort",
+        "value": "standard",
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "display_min_severity",
+        "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "post_min_severity",
+        "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      }
+    ],
+    "shadowed": null,
+    "requirements": []
+  },
+  "root": {
+    "check_origin": null,
+    "clauses": null,
+    "checks": null,
+    "bind_sources": null,
+    "require_bind": false
+  },
+  "trusted": true,
+  "requires_evidence": true
+}
+--- file C/.verdict/state/4701/store.json ---
 {
   "schema_version": "1"
 }
---- file C/.review/4701/threads.json ---
+--- file C/.verdict/state/4701/threads.json ---
 {
   "schema_version": "1",
   "provider": "github",
@@ -293,7 +541,7 @@ api-base-panel
     }
   ]
 }
---- file C/.review/4701/toc.txt ---
+--- file C/.verdict/state/4701/toc.txt ---
 # TOC for PR #4701 (acme/app) — read ranges as coverage checklist
 
 1:diff --git a/notes.txt b/notes.txt

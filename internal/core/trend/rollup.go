@@ -262,7 +262,7 @@ func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRo
 
 func (st *state) emitRollupHuman(out *rollup) {
 	if out.bundles == 0 {
-		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .review/*/findings.json yet)")
+		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .verdict/state/*/findings.json yet)")
 	} else {
 		st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
 			st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))

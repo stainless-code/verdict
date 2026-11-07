@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -26,10 +27,13 @@ func runProvider(
 	if err := fetchProviderBundle(ctx, ctx2, req, f.Provider); err != nil {
 		return nil, "", err
 	}
-	if ref := resolveControls(ctx, ctx2, "", readcommon.PrField(dir, keyBaseSHA), f.HeadControls, budget, f.BudgetConsent); ref != nil {
+	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	fc, chunkActive, err := providerCap(r, dir, f.ChunkFlag)
+	if ref := phaseTwo(ctx, ctx2, req, f, dir, budget); ref != nil {
+		return nil, "", ref
+	}
+	fc, chunkActive, err := providerCap(r, ctx2.runCfg.resolved, dir, f.ChunkFlag)
 	if err != nil {
 		return nil, "", err
 	}
@@ -41,20 +45,18 @@ func runProvider(
 		return nil, "", err
 	}
 	headSHA, baseSHA := readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, headSHA, baseSHA, fc.source)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive,
+		groupLimits(ctx2.runCfg.resolved, f.ChunkFlag), headSHA, baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTail(ctx2, req, f, budget, &fc, chunkJSON, nullStr)
+	return fetchTail(ctx, ctx2, req, f, budget, &fc, chunkJSON, nullStr)
 }
 
 // providerCap owns the provider cap gate and hunk index write.
-func providerCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
-	fc, ref := resolveFetchCap(r)
-	if ref != nil {
-		return fc, false, ref
-	}
-	chunkActive, ref := checkDiffSize(r, dir+suffixFullDiff, fc, chunkFlag)
+func providerCap(r *session, res *config.Resolved, dir string, chunkFlag bool) (fetchCap, bool, error) {
+	fc := resolveFetchCap(r, res)
+	chunkActive, ref := checkDiffSize(r, res, dir+suffixFullDiff, fc, chunkFlag)
 	if ref != nil {
 		return fc, false, ref
 	}
@@ -181,7 +183,7 @@ func gitlabReadable(r *session, payload string) string {
 
 // gitlabDiff owns the `glab mr diff` read with its raw flag.
 func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
-	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.cliFetch(ctx, binGlab, "mr", gitCmdDiff, pr, flagRepo, repo, "--raw")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
@@ -734,7 +736,7 @@ func forgejoMeta(ctx context.Context, r *session, dir string, auth []string, api
 }
 
 func forgejoDiff(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
-	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.curlFetch(ctx, curlArgs(auth, api+".diff")...)
 	if err != nil {
 		return forgejoDiffFallback(ctx, r, dir, auth, api, metaStdout)
@@ -1042,7 +1044,7 @@ func bitbucketMeta(ctx context.Context, r *session, dir string, auth []string, b
 }
 
 func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, base string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", dir)
+	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", r.display(dir))
 	diffRes, err := r.curlFetch(ctx, append(append([]string{"-sfL"}, auth...), base+"/diff")...)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: werr.Error()}

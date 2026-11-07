@@ -2,20 +2,20 @@ exit: 1
 --- stdout ---
 » anchors: 0 inline, 0 moved to body
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no fetch-time hunk snapshot (.verdict/state/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-error: override .review/overrides/footer-order.md violates 'footer-order-subset' (unknown field 'bogus' — want only tier, cost, files, link)
+error: override .verdict/overrides/footer-order.md violates 'footer-order-subset' (unknown field 'bogus' — want only tier, cost, files, link)
 try: re-run with one of the valid values named above
 re-enter: verdict record acme/app local-ov
 --- files ---
---- file C/.review/local-ov/hunks.tsv ---
+--- file C/.verdict/state/local-ov/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
 notes.txt	OLD	11	17
 notes.txt	NEW	11	17
 other.txt	OLD	1	3
 other.txt	NEW	1	3
---- file C/.review/local-ov/store.json ---
+--- file C/.verdict/state/local-ov/store.json ---
 {
   "schema_version": "1"
 }

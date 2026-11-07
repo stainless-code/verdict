@@ -5,5 +5,6 @@ gate: live_threads skip  live recheck skipped (--live skip)
 gate: PASS
 gate: skipped live_threads
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 --- files ---

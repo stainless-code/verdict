@@ -2,27 +2,27 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp [opts]\n" +
+		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
-		"    write .review/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
+		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate/adopt/ready\n" +
 		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
 		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). Incremental re-review\n" +
 		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
-		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or .review/max_bytes) overrides the cap.\n" +
-		"    Chunking opt-in only: --chunk (or .review/chunk holding true) marks over-cap fetches for " +
+		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
+		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
 		"chunked slicing (override chain wins; absent reads today's refusal).\n" +
-		"    With REVIEW_BUDGET_USD (or .review/budget) set, fetch prints a pre-run\n" +
+		"    With REVIEW_BUDGET_USD (or the typed budget_usd default) set, fetch prints a pre-run\n" +
 		"    cost estimate from comparable past runs and refuses projected-over-budget\n" +
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
 		"        [--stash [n]] [--worktree] [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
-		"    .review/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.\n" +
+		"    .verdict/state/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.\n" +
 		"    --worktree checks the review target into a temporary isolated worktree and\n" +
 		"    builds the bundle from that checkout (removed on exit, even on refusal); without\n" +
 		"    it the bundle builds from the live tree exactly as before.\n" +
@@ -35,6 +35,12 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
+		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
+		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
+		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +
+		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
+		"    with current personal settings and environment — no live calls, no writes, and\n" +
+		"    never an approval. One git rev-parse root probe runs outside the caller commander.\n" +
 		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
@@ -44,10 +50,10 @@ func usageText() string {
 		"  fix <owner/repo> <local-slug> [--sig <s>] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
-		"    instructions. Max 3 passes per sig (ledger .review/<bundle>/fix.json);\n" +
+		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
-		"        [--review-file .review/<pr>/review.json] [--dry-run] [--json]\n" +
+		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
@@ -59,7 +65,7 @@ func usageText() string {
 		"    refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
-		"    mutate .review/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
+		"    mutate .verdict/state/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
 		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
@@ -69,9 +75,9 @@ func usageText() string {
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
 		"    --sarif writes a SARIF 2.1.0 file (severity→level, category in properties, sig as\n" +
 		"    fingerprint) for scanners/CI.\n" +
-		"    --cost adds a spend rollup from .review/<pr>/cost.json (absent/unreadable -> zeros, never fails; " +
+		"    --cost adds a spend rollup from .verdict/state/<pr>/cost.json (absent/unreadable -> zeros, never fails; " +
 		"stratified by effort tier).\n" +
-		"    Consented over-budget receipts from .review/<pr>/budget.json surface here when present.\n" +
+		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +
 		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
 		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
 		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +
@@ -102,7 +108,7 @@ func usageText() string {
 		"  show <owner/repo> <pr> --sig <sig> [--json]\n" +
 		"    one full finding record. Pure read.\n" +
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
-		"    refuse on unexpected dirt (own .review/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
+		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--json]\n" +
 		"    execute patch.json verifyCmd with a watchdog, record exit + tail into the patch record.\n" +
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
@@ -112,7 +118,7 @@ func usageText() string {
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
 		"    verify-credential-read, and verify-repo-escape.\n" +
 		"  doctor [--json]\n" +
-		"    preflight the harness: gh auth and .review storage writability hard-fail\n" +
+		"    preflight the harness: gh auth and .verdict storage writability hard-fail\n" +
 		"    the run; scopes, git, ps, and API reachability warn only (never fail). A\n" +
 		"    token granting more than runs need warns on a token-scopes-excess row\n" +
 		"    naming the excess scopes. Exit 0 unless a hard check fails. No repo/PR\n" +
@@ -122,7 +128,7 @@ func usageText() string {
 		"    review head). Read-only; reports outcomes + tier precision, never auto-tunes.\n" +
 		"    --probe grades closed findings offline against recorded triage dispositions\n" +
 		"    (addressed = real, false-positive = false, else unknown — never forced)\n" +
-		"    into additive .review/<bundle>/kb-grades.jsonl rows; writes nothing else,\n" +
+		"    into additive .verdict/state/<bundle>/kb-grades.jsonl rows; writes nothing else,\n" +
 		"    needs no post record, touches no network. Baseline columns\n" +
 		"    (verdict/rule/helpful) regenerate from findings.json every run; agent\n" +
 		"    judgments arrive via --judge/--judge-file, are validated against known\n" +
@@ -139,18 +145,20 @@ func usageText() string {
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
 		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
 		"        [--live auto|strict|skip] [--json]\n" +
-		"    one composed local gate over the three dimensions report already computes: open\n" +
+		"    one composed local gate over the dimensions report already computes: open\n" +
 		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
-		"    HEAD (--require-head), and live unresolved threads (--live, default auto).\n" +
+		"    HEAD (--require-head), live unresolved threads (--live, default auto), and the\n" +
+		"    captured compliance verdict when the bundle carries a typed policy.\n" +
 		"    At least one dimension is required; --live alone is not one. Exits 0 pass,\n" +
 		"    1 gate failed or unknown, 2 usage, 3 tool error; a gate failure carries\n" +
 		"    data.passed false with error null. data.dimensions[] lists findings, head,\n" +
-		"    live_threads with id, status, detail, count. --live skip makes zero network\n" +
-		"    calls; auto keeps the fail-open skip. Never posts, approves, merges, or\n" +
-		"    writes a store: the exit code is the whole integration, and the merge stays\n" +
-		"    the human's. Use report for the ranked items, cost, and artifacts.\n" +
+		"    live_threads, compliance with id, status, detail, count. --live skip makes\n" +
+		"    zero network calls; auto keeps the fail-open skip. Never posts, approves,\n" +
+		"    merges, or writes a store: the exit code is the whole integration, and the\n" +
+		"    merge stays the human's. Use report for the ranked items, cost, and\n" +
+		"    artifacts.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
-		"    refresh .review/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
+		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
 		"    conversation. fetch writes the same feed beside the bundle; this verb re-reads\n" +
 		"    it after replies/resolutions so a re-review sees current state. Writes only\n" +
@@ -169,7 +177,7 @@ func usageText() string {
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
 		"  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]\n" +
-		"    append one rule to .review/kb.jsonl (zeros + status active; provenance\n" +
+		"    append one rule to .verdict/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +
 		"    rule text and taken ids.\n" +
 		"  learn --status [--json]\n" +
@@ -181,9 +189,10 @@ func usageText() string {
 		"    restore a retired rule to active (tombstone history kept);\n" +
 		"    reason needs 30+ chars.\n" +
 		"  init [--preset chill|standard|strict] [--yes] [--force] [--json]\n" +
-		"    guided offline scaffolder: writes the standard local control files\n" +
-		"    (.review/budget, .review/panel, .review/kb-policy, .review/kb.jsonl\n" +
-		"    starter) with style presets, then runs check-tree validation.\n" +
+		"    guided offline scaffolder: writes the typed controls (tracked\n" +
+		"    .verdict/config.json defaults, .verdict/kb.jsonl starter, and the\n" +
+		"    .verdict/.gitignore /state/ line) with style presets, then runs\n" +
+		"    check-tree validation.\n" +
 		"    Presets map to panel strictness + KB retirement thresholds:\n" +
 		"    chill (no pinned panel, MIN_JUDGED=10 MAX_FP_RATE=0.7),\n" +
 		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
@@ -243,7 +252,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall: " +
+		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"
@@ -251,7 +260,7 @@ func usageText() string {
 
 var bareVerbs = map[string]bool{
 	"check-tree": true,
-	"doctor":     true,
+	verbDoctor:   true,
 	"learn":      true,
 	"init":       true,
 	verbSkill:    true,

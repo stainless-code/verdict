@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // RefusalError is a typed refusal: machine code plus human message. Match it
@@ -45,10 +46,13 @@ type Progress interface {
 	Diag(line string)
 }
 
-// Command is one spawned process: argv, stdin, and environment.
+// Command is one spawned process: argv, stdin, environment, and the working
+// directory it must run in. Dir is empty when the child inherits the caller's
+// working directory; deep validation sets it to the canonical reviewed root.
 type Command struct {
 	Argv  []string
 	Stdin io.Reader
+	Dir   string
 	Env   []string
 }
 
@@ -64,12 +68,12 @@ type CommandResult struct {
 // Commander runs one process to completion. The production client shells out
 // to the real gh/git; tests inject a scripted Commander.
 type Commander interface {
-	Run(ctx context.Context, cmd Command) (CommandResult, error)
+	Run(ctx context.Context, cmd *Command) (CommandResult, error)
 }
 
 // Options configures a Client.
 type Options struct { //nolint:govet // field order is the public API surface
-	// Dir is the checkout carrying .review/. It anchors tool-version and
+	// Dir is the checkout carrying .verdict/. It anchors tool-version and
 	// provenance lookups; bundle files still resolve from the process
 	// working directory, like the CLI.
 	Dir string
@@ -169,26 +173,46 @@ type Artifact struct {
 }
 
 // read builds the shared invocation: injected runtime plus positionals.
-func (c *Client) read(repo, pr string) core.ReadRequest {
-	return c.readWith(c.commander, repo, pr)
+func (c *Client) read(ctx context.Context, repo, pr string) (core.ReadRequest, error) {
+	return c.readWith(ctx, c.commander, repo, pr)
 }
 
 // readWith builds an invocation for a specific runner: fetch selects its own
 // posture, every other verb shares the client's.
-func (c *Client) readWith(commander core.Commander, repo, pr string) core.ReadRequest {
+func (c *Client) readWith(ctx context.Context, commander core.Commander, repo, pr string) (core.ReadRequest, error) {
+	repoRoot, err := readcommon.RepoRoot(ctx)
+	if err != nil {
+		return core.ReadRequest{}, jq.Sealed("resolve repository root", err)
+	}
 	root := c.dir
 	return core.ReadRequest{
-		Runtime: &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: commander},
-		Repo:    repo,
-		Pr:      pr,
-		Forces:  &core.GlobalForces{},
-		Root:    &root,
-	}
+		Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: commander},
+		Repo:     repo,
+		Pr:       pr,
+		Forces:   &core.GlobalForces{},
+		Root:     &root,
+		RepoRoot: repoRoot,
+	}, nil
+}
+
+// request resolves the operator-facing invocation with the client runner.
+func (c *Client) request(ctx context.Context, repo, pr string) (core.ReadRequest, error) {
+	return c.read(ctx, repo, pr)
+}
+
+// requestFetch resolves the invocation for the self-postured fetch runner.
+func (c *Client) requestFetch(ctx context.Context, repo, pr string) (core.ReadRequest, error) {
+	return c.readWith(ctx, c.fetch, repo, pr)
+}
+
+// requestBare resolves the invocation for verbs without repo/PR positionals.
+func (c *Client) requestBare(ctx context.Context) (core.ReadRequest, error) {
+	return c.readBare(ctx)
 }
 
 // readBare builds an invocation for verbs without repo/PR positionals.
-func (c *Client) readBare() core.ReadRequest {
-	return c.read("", "")
+func (c *Client) readBare(ctx context.Context) (core.ReadRequest, error) {
+	return c.read(ctx, "", "")
 }
 
 // refusalErr converts a core refusal to the public error. Nil stays nil so
@@ -309,8 +333,8 @@ func (a *commanderAdapter) LookPath(tool string) error {
 }
 
 // Run implements core.Commander.
-func (a *commanderAdapter) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
-	res, err := a.c.Run(ctx, Command{Argv: cmd.Argv, Stdin: cmd.Stdin, Env: cmd.Env})
+func (a *commanderAdapter) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	res, err := a.c.Run(ctx, &Command{Argv: cmd.Argv, Stdin: cmd.Stdin, Env: cmd.Env, Dir: cmd.Dir})
 	if err != nil {
 		return core.Result{}, &commanderError{err: err}
 	}

@@ -21,12 +21,16 @@ type chunkEntry struct {
 	estSize int64
 }
 
-func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive bool, headSHA, baseSHA string, capSrc string) (any, error) {
+func maybeWriteChunks(
+	human io.Writer, dir string, maxBytes int64, chunkActive bool, limits []groupLimit,
+	headSHA, baseSHA, capSrc string, exclusions []string,
+) (any, error) {
 	if !chunkActive {
 		return nil, nil //nolint:nilnil // (nil, nil) is the gate-not-armed signal, never an error
 	}
 	fullDiff := dir + suffixFullDiff
 	table := chunkFileTable(fullDiff)
+	table = withholdChunkFiles(table, exclusions)
 	cdir := dir + "/chunks"
 	_ = os.RemoveAll(cdir)
 	if merr := os.MkdirAll(cdir, dirPerm); merr != nil {
@@ -36,7 +40,7 @@ func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive b
 	if fi, serr := os.Stat(fullDiff); serr == nil {
 		total = fi.Size()
 	}
-	plan := packChunks(table, maxBytes)
+	plan, maxBytes, capSrc := chunkPlanFor(table, limits, maxBytes, capSrc)
 	if err := slicePlan(fullDiff, cdir, plan); err != nil {
 		return nil, err
 	}
@@ -47,6 +51,23 @@ func maybeWriteChunks(human io.Writer, dir string, maxBytes int64, chunkActive b
 		}
 	}
 	return writeChunkManifest(human, dir, plan, maxBytes, total, n, headSHA, baseSHA, capSrc)
+}
+
+// withholdChunkFiles drops privacy-excluded files from the chunk
+// table before any chunk byte is written: the raw full.diff keeps every
+// file for patch identity, while chunk payloads never carry excluded
+// content. Either rename endpoint of a section triggers the drop.
+func withholdChunkFiles(table []fileSlice, exclusions []string) []fileSlice {
+	if len(exclusions) == 0 {
+		return table
+	}
+	kept := table[:0]
+	for _, entry := range table {
+		if !excludedEndpoint(entry.path, entry.oldPath, exclusions) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // slicePlan owns the plan slice with its typed failure: a missing chunk
@@ -101,6 +122,64 @@ func writeChunkManifest(
 // packChunks owns the greedy next-fit pack in diff order: seal the chunk
 // when the next file would not fit. Deterministic: the same diff bytes
 // always yield the same chunk map.
+// chunkPlanFor selects the packer: per-group when limits exist, whole-diff
+// otherwise, and reports the effective manifest cap and source.
+func chunkPlanFor(table []fileSlice, limits []groupLimit, maxBytes int64, capSrc string) ([]chunkEntry, int64, string) {
+	if len(limits) == 0 {
+		return packChunks(table, maxBytes), maxBytes, capSrc
+	}
+	return packChunksWithLimits(table, limits, maxBytes), maxGroupCap(limits), capSummarySource(limits)
+}
+
+// packChunksWithLimits packs a chunk per group with that group's own cap and
+// never mixes groups in one chunk: a small group's cap cannot be bypassed by a
+// larger neighboring group.
+func packChunksWithLimits(table []fileSlice, limits []groupLimit, fallback int64) []chunkEntry {
+	var plan []chunkEntry
+	cur, curBytes := 0, int64(0)
+	curGroup := ""
+	for _, slice := range table {
+		capBytes, groupID := sliceCap(slice, limits, fallback)
+		newGroup := groupID != curGroup
+		if curBytes > 0 && (newGroup || curBytes+slice.size > capBytes) {
+			cur++
+			curBytes = 0
+		}
+		if len(plan) == cur {
+			plan = append(plan, chunkEntry{name: fmt.Sprintf("chunk-%02d", cur+1)})
+		}
+		plan[cur].members = append(plan[cur].members, slice)
+		plan[cur].estSize += slice.size
+		curBytes += slice.size
+		curGroup = groupID
+	}
+	return plan
+}
+
+// sliceCap names one section's group cap: the fallback for an unattributable
+// section, never a neighboring group's larger cap.
+func sliceCap(slice fileSlice, limits []groupLimit, fallback int64) (int64, string) {
+	group, known := limitForPath(limits, slice.path)
+	if !known {
+		return fallback, ""
+	}
+	return group.MaxBytes, group.ID
+}
+
+// maxGroupCap reports the largest per-group cap, the manifest's cap summary.
+func maxGroupCap(limits []groupLimit) int64 {
+	largest := int64(0)
+	for i := range limits {
+		if limits[i].MaxBytes > largest {
+			largest = limits[i].MaxBytes
+		}
+	}
+	if largest == 0 {
+		return DefaultDiffCap
+	}
+	return largest
+}
+
 func packChunks(table []fileSlice, maxBytes int64) []chunkEntry {
 	var plan []chunkEntry
 	cur, curBytes := 0, int64(0)

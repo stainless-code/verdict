@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "missing-diff",
-    "message": "missing .review/4311/full.diff (fetch the PR first)\ntry: run the fetch/record step named above first, then re-run"
+    "message": "missing .verdict/state/4311/full.diff (fetch the PR first)\ntry: run the fetch/record step named above first, then re-run"
   }
 }
 --- stderr ---

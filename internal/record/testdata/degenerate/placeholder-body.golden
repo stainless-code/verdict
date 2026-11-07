@@ -19,7 +19,7 @@ exit: 1
 --- stderr ---
 re-enter: verdict record acme/app local-dg --json
 --- files ---
---- file C/.review/local-dg/store.json ---
+--- file C/.verdict/state/local-dg/store.json ---
 {
   "schema_version": "1"
 }

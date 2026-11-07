@@ -17,18 +17,19 @@ import (
 
 // Request carries the resolved record invocation.
 type Request struct {
-	Env    map[string]string
-	Forces *cli.GlobalForces
-	Repo   string
-	Pr     string
-	Root   string
+	Env      map[string]string
+	Forces   *cli.GlobalForces
+	Repo     string
+	Pr       string
+	Root     string
+	RepoRoot string
 }
 
 // Run executes `record <owner/repo> <local-slug> [--dry-run] [--strict]
 // [--json]`, returning the
 // process exit code. Human progress goes to the runner's human stream;
 // --json mode prints exactly one envelope to stdout.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	setupRunner(r, req)
 	f, code, done := parseRecordFlags(r, args)
 	if done {
@@ -55,14 +56,15 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 }
 
 // recordRequest builds the core request from the runner and invocation.
-func recordRequest(r *cli.Runner, req Request) *core.RecordRequest {
+func recordRequest(r *cli.Runner, req *Request) *core.RecordRequest {
 	root := req.Root
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
-		Repo:    req.Repo,
-		Pr:      req.Pr,
-		Forces:  req.Forces,
-		Root:    &root,
+		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
+		Repo:     req.Repo,
+		Pr:       req.Pr,
+		Forces:   req.Forces,
+		Root:     &root,
+		RepoRoot: req.RepoRoot,
 	}
 	return &core.RecordRequest{
 		ReadRequest: read,
@@ -72,7 +74,7 @@ func recordRequest(r *cli.Runner, req Request) *core.RecordRequest {
 }
 
 // setupRunner records the invocation for envelopes and usage lines.
-func setupRunner(r *cli.Runner, req Request) {
+func setupRunner(r *cli.Runner, req *Request) {
 	r.Repo, r.Pr = req.Repo, req.Pr
 }
 
@@ -99,7 +101,7 @@ func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
 }
 
 // recordRentry rebuilds the exact re-run command after flag parsing.
-func recordRentry(req Request, f recordFlags, jsonMode bool) string {
+func recordRentry(req *Request, f recordFlags, jsonMode bool) string {
 	s := "verdict record " + req.Repo + " " + req.Pr
 	if f.dryRun {
 		s += " --dry-run"

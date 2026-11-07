@@ -20,10 +20,31 @@
 # category baseline. Ceilings sit at the next 10 KiB above the combined
 # measurement. Final receipt-number validation and shared raw-entry checks
 # add up to another 9 KiB; only overflowing ceilings are refreshed.
+# Typed configuration adds strict parsing, captured provenance, scoped plans,
+# grouped cost/cap enforcement, and validation receipts. Same-toolchain release
+# builds grow by about 0.55-0.66 MB per target; dependencies remain zero. These
+# intentional feature costs are rounded to the next 10 kB as above.
+# Preview and local-rename enforcement on top: the prospective-requirements
+# view, captured-cost identity, old-path policy joins, and both-endpoint
+# privacy filtering. Same-toolchain release builds grow a further 5.7-10.7 kB
+# per target, so the five ceilings that overflowed move to the next 10 kB above
+# their exact measurement; linux/arm64 keeps its higher existing ceiling.
+# Preview repair on top: verified captured rename identities in the preview
+# view, plus the explicitly untrusted source-snapshot policy head. Only
+# darwin/amd64 overflowed, by 2048 bytes, so its ceiling moves to the next
+# 10 kB above the exact measurement; every other ceiling stays put.
+# The review-fix pass (scope-audit exemption, learn-store seeding, root-resolved
+# kb reads, the doctor and front-door fallbacks, phase-two spend resolution, the
+# compliance gate dimension, and its per-dimension action table) added 66 bytes
+# over darwin/arm64's ceiling and stayed inside every other one; that ceiling
+# moves to the next 10 kB above the exact measurement.
+# One-warning-per-gap and the depth-scoped state negation add 512 bytes to
+# windows/amd64, the only ceiling they cross; it moves to the next 10 kB above
+# the exact measurement and the others stay put.
 deps 0
-darwin/amd64 11340000
-darwin/arm64 10420000
-linux/amd64 11130000
-linux/arm64 10160000
-windows/amd64 11450000
-windows/arm64 10330000
+darwin/amd64 12020000
+darwin/arm64 11030000
+linux/amd64 11810000
+linux/arm64 10820000
+windows/amd64 12140000
+windows/arm64 10920000

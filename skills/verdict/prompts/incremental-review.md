@@ -11,7 +11,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    (writes `full.diff` + `incremental.diff` when computable). If `incremental.diff` exists it is
    your coverage checklist: read it FIRST in full, then only the `full.diff` ranges the delta
    needs for context. If absent: full TOC, determine what changed since the last review yourself.
-   Also read `.review/N/findings.json` (prior sigs, statuses, history) — it feeds step 6 dedup.
+   Also read `.verdict/state/N/findings.json` (prior sigs, statuses, history) — it feeds step 6 dedup.
    Chunked bundles: when the bundle carries `chunks/manifest.json`, the delta is scoped to the
    affected chunks. Map every `incremental.diff` file to its manifest chunk(s); those chunk diffs
    (`chunks/chunk-NN.diff`, manifest order) are your coverage checklist — read each affected chunk
@@ -20,10 +20,10 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    `incremental.diff` is absent, determine the delta yourself the same way, then scope to the
    chunks it touches.
 3. **Prior feedback — read AND retire it**: run `verdict threads owner/repo N` (refreshes
-   `.review/N/threads.json`; all six hosts, threads only, no diff refetch) and read every
+   `.verdict/state/N/threads.json`; all six hosts, threads only, no diff refetch) and read every
    entry. Triage open threads severity-first (blocking → must-fix → minor).
    For every **open, bot- or verdict-originated** thread (`author_kind` bot|verdict; a
-   verdict root carries `finding_sig` to join `.review/N/findings.json`): read the file at the
+   verdict root carries `finding_sig` to join `.verdict/state/N/findings.json`): read the file at the
    anchor, judge whether new commits substantively resolve it (reformat/rename/move ≠ addressed;
    multi-concern threads need ALL addressed; `outdated: true` anchor-shift ≠ addressed — re-read
    the new location). If addressed: reply one line (`Addressed in <sha>.`) then resolve — BEFORE
@@ -39,7 +39,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
     bundles, name the affected chunk diff paths the same way — the lens contract is unchanged).
    Do NOT tell lenses to skip pre-existing issues — that suppresses regressions new commits
    amplified. The "must be NEW" filter lives at aggregation, not in the lens prompt.
-   Staff lenses from `.review/N/panel` exactly as in `review.md` step 5 when it exists.
+   Staff lenses from `.verdict/state/N/panel` exactly as in `review.md` step 5 when it exists.
    Default to cheap lenses on delta re-reviews; escalate only when the
    disposition test demands a stronger model. Record the run as
    `"effort": "cheap"` in `cost.json` unless you escalated.
@@ -47,7 +47,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    Drop praise/style/speculative/pre-existing-unrelated/re-stated-prior-feedback/not-actionable/
    bloat-shaped (same sound+correct+elegant bar). Tag survivors with the evidence-rung scale
    from `review.md` (unchanged on chunked bundles: chunking moves evidence, never manufactures
-   it; calibration grades the same scale). Tag inline `in-bounds` per `review.md`. Dedup against `.review/N/findings.json` by
+   it; calibration grades the same scale). Tag inline `in-bounds` per `review.md`. Dedup against `.verdict/state/N/findings.json` by
    sig — an already-recorded open finding is not re-reported unless the delta changes it.
    "New lines": `incremental.diff` directly,
    else `git diff <prior-review-sha>..HEAD`. Draft inline with NEW numbers from full diff.
@@ -56,7 +56,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    describe since prior, each starting with a past-tense verb, e.g. `- Extracted shared CLI…`).
    No separate "Prior review feedback" checklist — that lives in your working notes, not the body.
 8. **Submit — EXACTLY ONE of:**
-   - No new issues + non-substantive delta → NO review. Write `.review/N/noreview.md` (1–2 sentences,
+   - No new issues + non-substantive delta → NO review. Write `.verdict/state/N/noreview.md` (1–2 sentences,
      e.g. "No new issues. Changes since last review are formatting-only.") and post as a plain
      issue comment (or stdout if local-only). Do NOT submit an empty review.
    - New critical → `approved:false` + `> [!CAUTION]` + summary.
@@ -67,6 +67,6 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    - No new issues + substantive delta (new behavior/fixes) → review, `approved:true` when prior
      feedback is addressed, body `> ✅ No new issues found.` + summary.
 
-Every review branch above ends the same way: Write exactly one `.review/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits — the same path as an unchunked delta, no extra machinery. On chunked bundles the cross-chunk coverage gate applies unchanged: stamp every manifest chunk in top-level `"chunks"` — the affected chunks re-read for this delta, plus the unaffected chunks carried from the prior completed review (prior `findings.json`, step 2; when no prior review exists, read the unaffected chunks too) — and a synthesis missing one is refused, never posted partial. Top-level `confidence` (1–5) and `security_summary` are optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
+Every review branch above ends the same way: Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits — the same path as an unchunked delta, no extra machinery. On chunked bundles the cross-chunk coverage gate applies unchanged: stamp every manifest chunk in top-level `"chunks"` — the affected chunks re-read for this delta, plus the unaffected chunks carried from the prior completed review (prior `findings.json`, step 2; when no prior review exists, read the unaffected chunks too) — and a synthesis missing one is refused, never posted partial. Top-level `confidence` (1–5) and `security_summary` are optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
 
 Coverage is yours to track against the TOC — no tool checks it; read every range the delta touches. On chunked bundles, track it against the affected chunks' checklists instead — an unread affected chunk is as visible as an unread range.

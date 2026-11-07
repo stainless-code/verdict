@@ -63,14 +63,14 @@ func writeFile(t *testing.T, path, content string) {
 // mkTarget crafts the target PR bundle (PR record + patch).
 func mkTarget(t *testing.T, dir, pr string) {
 	t.Helper()
-	writeFile(t, filepath.Join(dir, ".review", "4311", "PR.json"), pr)
-	writeFile(t, filepath.Join(dir, ".review", "4311", "full.diff"), fixtureDiff)
+	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "PR.json"), pr)
+	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "full.diff"), fixtureDiff)
 }
 
 // mkLocal crafts the source local bundle with its findings store.
 func mkLocal(t *testing.T, dir, findings string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "local-adopt1")
+	bdir := filepath.Join(dir, ".verdict", "state", "local-adopt1")
 	writeFile(t, filepath.Join(bdir, "source.json"),
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`)
 	writeFile(t, filepath.Join(bdir, "full.diff"), fixtureDiff)
@@ -88,7 +88,7 @@ func setupHappy(t *testing.T, dir, _ string) {
 func setupPinned(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupHappy(t, dir, "")
-	writeFile(t, filepath.Join(dir, ".review", "4311", "hunks.tsv"),
+	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "hunks.tsv"),
 		"notes.txt\tNEW\t1\t3\n")
 }
 
@@ -96,7 +96,7 @@ func setupPinned(t *testing.T, dir, _ string) {
 func setupMissingDiff(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkTarget(t, dir, fixturePR)
-	if err := os.Remove(filepath.Join(dir, ".review", "4311", "full.diff")); err != nil {
+	if err := os.Remove(filepath.Join(dir, ".verdict", "state", "4311", "full.diff")); err != nil {
 		t.Fatal(err)
 	}
 	mkLocal(t, dir, fixtureFindings)
@@ -115,7 +115,7 @@ func setupProvider(t *testing.T, dir, _ string) {
 func setupAdopted(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupHappy(t, dir, "")
-	writeFile(t, filepath.Join(dir, ".review", "4311", "findings.json"), "[]")
+	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "findings.json"), "[]")
 }
 
 // setupMissingFrom points --from at a bundle that does not exist.

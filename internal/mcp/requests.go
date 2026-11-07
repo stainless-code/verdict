@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
+	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 type bindings struct { //nolint:govet // grouping documents the injection surface; alignment is irrelevant
@@ -30,7 +33,7 @@ type bindings struct { //nolint:govet // grouping documents the injection surfac
 	commander core.Commander
 }
 
-func (b *bindings) wireRead(req *core.ReadRequest) {
+func (b *bindings) wireRead(ctx context.Context, req *core.ReadRequest) error {
 	root := b.root
 	req.Runtime = &core.Runtime{
 		Env:       b.env,
@@ -40,6 +43,12 @@ func (b *bindings) wireRead(req *core.ReadRequest) {
 	}
 	req.Forces = &core.GlobalForces{}
 	req.Root = &root
+	repoRoot, err := readcommon.RepoRoot(ctx)
+	if err != nil {
+		return jq.Sealed("resolve repository root", err)
+	}
+	req.RepoRoot = repoRoot
+	return nil
 }
 
 func (b *bindings) warningList() []string { return append([]string{}, b.warnings...) }
@@ -52,8 +61,8 @@ func decodeAdopt(req *adoptcore.Request, a *args) {
 	a.str("from", &req.From)
 }
 
-func wireAdopt(b *bindings, req *adoptcore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireAdopt(ctx context.Context, b *bindings, req *adoptcore.Request) error {
+	return b.wireRead(ctx, &req.ReadRequest)
 }
 
 func decodeCalibrate(req *calibratecore.Request, a *args) {
@@ -64,25 +73,52 @@ func decodeCalibrate(req *calibratecore.Request, a *args) {
 	a.str("judgeFile", &req.JudgeFile)
 }
 
-func wireCalibrate(b *bindings, req *calibratecore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireCalibrate(ctx context.Context, b *bindings, req *calibratecore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeCheckTree(req *checktreecore.Request, a *args) {
 	a.str("expect", &req.Expect)
 }
 
-func wireCheckTree(b *bindings, req *checktreecore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireCheckTree(ctx context.Context, b *bindings, req *checktreecore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
+}
+
+func decodeConfig(req *core.ConfigRequest, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argPr, &req.Pr)
+	a.flags(func(f *args) {
+		f.boolean("explain", &req.Flags.Explain)
+		f.boolean("preview", &req.Flags.Preview)
+		f.str("file", &req.Flags.File)
+	})
+}
+
+func wireConfig(ctx context.Context, b *bindings, req *core.ConfigRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeDoctor(_ *doctorcore.Request, _ *args) {}
 
-func wireDoctor(b *bindings, req *doctorcore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireDoctor(ctx context.Context, b *bindings, req *doctorcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeFetch(req *core.FetchRequest, a *args) {
@@ -98,14 +134,17 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 	})
 }
 
-func wireFetch(b *bindings, req *core.FetchRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireFetch(ctx context.Context, b *bindings, req *core.FetchRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Effective = b.effective
 	req.JSONMode = true
 	req.Warnings = b.warningList()
 	req.Human = b.stderr
 	req.Diag = b.stderr
 	core.DerivePresences(&req.Flags)
+	return nil
 }
 
 func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
@@ -125,14 +164,17 @@ func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
 	})
 }
 
-func wireFetchLocal(b *bindings, req *core.FetchLocalRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireFetchLocal(ctx context.Context, b *bindings, req *core.FetchLocalRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Effective = b.effective
 	req.JSONMode = true
 	req.Warnings = b.warningList()
 	req.Human = b.stderr
 	req.Diag = b.stderr
 	core.DerivePresences(&req.Flags)
+	return nil
 }
 
 func decodeFix(req *fixcore.Request, a *args) {
@@ -141,9 +183,12 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str("sig", &req.Sig)
 }
 
-func wireFix(b *bindings, req *fixcore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireFix(ctx context.Context, b *bindings, req *fixcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Human = b.stderr
+	return nil
 }
 
 func decodeInit(req *initcore.Request, a *args) {
@@ -151,10 +196,13 @@ func decodeInit(req *initcore.Request, a *args) {
 	a.boolean("yes", &req.Yes)
 }
 
-func wireInit(b *bindings, req *initcore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireInit(ctx context.Context, b *bindings, req *initcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Human = b.stderr
 	req.Diag = b.stderr
+	return nil
 }
 
 func decodeLearn(req *learncore.Request, a *args) {
@@ -169,9 +217,12 @@ func decodeLearn(req *learncore.Request, a *args) {
 	a.boolean(argStatus, &req.Status)
 }
 
-func wireLearn(b *bindings, req *learncore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireLearn(ctx context.Context, b *bindings, req *learncore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.JSONMode = true
+	return nil
 }
 
 func decodeNext(req *core.NextRequest, a *args) {
@@ -180,10 +231,13 @@ func decodeNext(req *core.NextRequest, a *args) {
 	a.str(argStatus, &req.Status)
 }
 
-func wireNext(b *bindings, req *core.NextRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireNext(ctx context.Context, b *bindings, req *core.NextRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Effective = b.effective
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodePost(req *core.PostRequest, a *args) {
@@ -199,11 +253,14 @@ func decodePost(req *core.PostRequest, a *args) {
 	})
 }
 
-func wirePost(b *bindings, req *core.PostRequest) {
-	b.wireRead(&req.ReadRequest)
+func wirePost(ctx context.Context, b *bindings, req *core.PostRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Effective = b.effective
 	req.JSONMode = true
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeReady(req *readycore.Request, a *args) {
@@ -212,9 +269,12 @@ func decodeReady(req *readycore.Request, a *args) {
 	a.boolean("check", &req.Check)
 }
 
-func wireReady(b *bindings, req *readycore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireReady(ctx context.Context, b *bindings, req *readycore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeRecord(req *core.RecordRequest, a *args) {
@@ -223,10 +283,13 @@ func decodeRecord(req *core.RecordRequest, a *args) {
 	a.boolean("dry_run", &req.DryRun)
 }
 
-func wireRecord(b *bindings, req *core.RecordRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireRecord(ctx context.Context, b *bindings, req *core.RecordRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Effective = b.effective
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeReport(req *core.ReportRequest, a *args) {
@@ -245,10 +308,13 @@ func decodeReport(req *core.ReportRequest, a *args) {
 	})
 }
 
-func wireReport(b *bindings, req *core.ReportRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireReport(ctx context.Context, b *bindings, req *core.ReportRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Effective = b.effective
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeShow(req *core.ShowRequest, a *args) {
@@ -257,9 +323,12 @@ func decodeShow(req *core.ShowRequest, a *args) {
 	a.str("sig", &req.Sig)
 }
 
-func wireShow(b *bindings, req *core.ShowRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireShow(ctx context.Context, b *bindings, req *core.ShowRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeThreads(req *fetchcore.ThreadsRequest, a *args) {
@@ -268,9 +337,12 @@ func decodeThreads(req *fetchcore.ThreadsRequest, a *args) {
 	a.str("provider", &req.Provider)
 }
 
-func wireThreads(b *bindings, req *fetchcore.ThreadsRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireThreads(ctx context.Context, b *bindings, req *fetchcore.ThreadsRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeTrend(req *trendcore.Request, a *args) {
@@ -278,9 +350,12 @@ func decodeTrend(req *trendcore.Request, a *args) {
 	a.boolean("overlap", &req.Overlap)
 }
 
-func wireTrend(b *bindings, req *trendcore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireTrend(ctx context.Context, b *bindings, req *trendcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeTriage(req *triagecore.Request, a *args) {
@@ -293,19 +368,24 @@ func decodeTriage(req *triagecore.Request, a *args) {
 	a.boolean("dryRun", &req.DryRun)
 }
 
-func wireTriage(b *bindings, req *triagecore.Request) {
-	b.wireRead(&req.ReadRequest)
+func wireTriage(ctx context.Context, b *bindings, req *triagecore.Request) error {
+	return b.wireRead(ctx, &req.ReadRequest)
 }
 
 func decodeVerify(req *core.VerifyRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str("timeoutRaw", &req.TimeoutRaw)
+	a.str("group", &req.Group)
+	a.str("command", &req.Command)
 }
 
-func wireVerify(b *bindings, req *core.VerifyRequest) {
-	b.wireRead(&req.ReadRequest)
+func wireVerify(ctx context.Context, b *bindings, req *core.VerifyRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
 	req.Environ = b.environList()
 	req.JSONMode = true
 	req.Warnings = b.warningList()
+	return nil
 }

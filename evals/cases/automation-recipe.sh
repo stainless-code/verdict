@@ -64,7 +64,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 gate_body='{"schema_version":"1","body":"> ✅ Recipe gate review, one note.\\n> Basis: 0 reproduced · 0 ran · 1 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"RECIPEBODY","rigor":"walked","severity":"RECIPESEV"}]}'
 run_review fetch-local acme/app gatecrit
 printf '%s' "$gate_body" | sed 's/RECIPEBODY/Critical: verify this line./; s/RECIPESEV/critical/' \
-  > "$EVAL_SANDBOX/.review/local-gatecrit/review.json"
+  > "$EVAL_SANDBOX/.verdict/state/local-gatecrit/review.json"
 run_review record acme/app local-gatecrit --json
 if [ "$EVAL_STATUS" -ne 0 ]; then
   bad "record exits $EVAL_STATUS on the critical review"
@@ -85,7 +85,7 @@ fi
 )
 run_review fetch-local acme/app gateok
 printf '%s' "$gate_body" | sed 's/RECIPEBODY/Nit: clarify this line./; s/RECIPESEV/informational/' \
-  > "$EVAL_SANDBOX/.review/local-gateok/review.json"
+  > "$EVAL_SANDBOX/.verdict/state/local-gateok/review.json"
 run_review record acme/app local-gateok --json
 if [ "$EVAL_STATUS" -ne 0 ]; then
   bad "record exits $EVAL_STATUS on the informational review"
@@ -104,7 +104,7 @@ fi
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- notes.txt 2>/dev/null || true
 )
-rm -rf "$EVAL_SANDBOX/.review" "$EVAL_SANDBOX/xdg-empty"
+rm -rf "$EVAL_SANDBOX/.verdict" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
 eval_end

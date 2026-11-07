@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -61,7 +63,7 @@ func overlapAudit(st *state, rows []row) *overlapRollup {
 }
 
 func readJoins(st *state) []any {
-	raw, err := os.ReadFile(".review/kb-joins.jsonl")
+	raw, err := os.ReadFile(filepath.Join(st.req.RepoRootPath(), filepath.FromSlash(kb.Joins)))
 	if err != nil {
 		return []any{}
 	}
@@ -71,7 +73,7 @@ func readJoins(st *state) []any {
 	for dec.More() {
 		var v any
 		if err := dec.Decode(&v); err != nil {
-			st.warn("kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)")
+			st.warn("kb joins " + kb.Joins + " unreadable — joins counts off for this rollup (fix or remove the file)")
 			return []any{}
 		}
 		if _, ok := v.(map[string]any); ok {
@@ -106,7 +108,7 @@ func overlapRowFor(st *state, row *row, joins []any) overlapRow {
 	for _, e := range cf {
 		tallyOutcome(&out, readcommon.StatusOf(e))
 	}
-	out.calibrateReady = calibrateEligible(row.bundle)
+	out.calibrateReady = calibrateEligible(st, row.bundle)
 	return out
 }
 
@@ -124,7 +126,7 @@ func tallyOutcome(out *overlapRow, status string) {
 }
 
 func recallManifest(st *state, bundle string) ([]any, bool) {
-	path := ".review/" + bundle + "/kb-recall.json"
+	path := readcommon.ResolveBundleDir(st.req.RepoRootPath(), bundle) + "/kb-recall.json"
 	if !isRegular(path) {
 		return []any{}, false
 	}
@@ -144,7 +146,8 @@ func recallManifest(st *state, bundle string) ([]any, bool) {
 }
 
 func warnManifest(st *state, bundle string) ([]any, bool) {
-	st.warn("trend skips .review/" + bundle + "/kb-recall.json (unreadable or not a manifest array)")
+	st.warn("trend skips " + readcommon.ResolveBundleDir(st.req.RepoRootPath(), bundle) +
+		"/kb-recall.json (unreadable or not a manifest array)")
 	return []any{}, false
 }
 
@@ -178,8 +181,8 @@ func appendCitedIDs(ids []any, e any) []any {
 	if !ok || m == nil {
 		return ids
 	}
-	kb, _ := m.Get("kb")
-	list, ok := kb.([]any)
+	cited, _ := m.Get("kb")
+	list, ok := cited.([]any)
 	if !ok {
 		return ids
 	}
@@ -206,15 +209,15 @@ func kbOf(entry any) any {
 	if !ok || m == nil {
 		return nil
 	}
-	kb, _ := m.Get("kb")
-	if kb == nil {
+	cited, _ := m.Get("kb")
+	if cited == nil {
 		return []any{}
 	}
-	return kb
+	return cited
 }
 
-func kbLength(kb any) float64 {
-	switch t := kb.(type) {
+func kbLength(cited any) float64 {
+	switch t := cited.(type) {
 	case nil:
 		return 0
 	case bool:
@@ -228,7 +231,7 @@ func kbLength(kb any) float64 {
 	case *jq.Obj:
 		return float64(len(t.Keys))
 	default:
-		if f, ok := readcommon.NumVal(kb); ok {
+		if f, ok := readcommon.NumVal(t); ok {
 			if f < 0 {
 				return -f
 			}
@@ -285,11 +288,11 @@ func countJoins(joins []any, bundle string) int {
 	return n
 }
 
-func calibrateEligible(bundle string) bool {
+func calibrateEligible(st *state, bundle string) bool {
 	if len(bundle) >= len("local-") && bundle[:len("local-")] == "local-" {
 		return false
 	}
-	dir := ".review/" + bundle
+	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), bundle)
 	if !isRegular(dir + "/post.json") {
 		return false
 	}

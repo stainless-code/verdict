@@ -14,5 +14,6 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 next: none open — nothing to act on
 --- files ---

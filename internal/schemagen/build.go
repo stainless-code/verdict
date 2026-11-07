@@ -16,6 +16,7 @@ const (
 	keyAdditionalProperties = "additionalProperties"
 	keyItems                = "items"
 	keyAnyOf                = "anyOf"
+	keyNot                  = "not"
 	keyRef                  = "$ref"
 	keyDefs                 = "$defs"
 	keyConst                = "const"
@@ -23,6 +24,11 @@ const (
 	keyMinimum              = "minimum"
 	keyMaximum              = "maximum"
 	keyItemsMinimum         = "items_min"
+	keyMinItems             = "minItems"
+	keyItemsEnum            = "items_enum"
+	keyExclusiveMinimum     = "exclusiveMinimum"
+	keyExclusiveMin         = "exclusiveMin"
+	keyNonNull              = "nonnull"
 	keyFormat               = "format"
 	keyPattern              = "pattern"
 	typeObject              = "object"
@@ -89,10 +95,14 @@ func nullNode() *node { return &node{kind: kindNull} }
 
 func anyNode() *node { return object(false) }
 
-// definition registers one named struct type under a $defs name.
+// definition registers one named struct type under a $defs name. Closed
+// definitions emit additionalProperties:false; open ones (the default,
+// preserving every previously published schema) emit true.
 type definition struct {
-	typ  reflect.Type
-	name string
+	typ         reflect.Type
+	name        string
+	constraints []member
+	closed      bool
 }
 
 // document is one published schema: its file stem, title, root shape and
@@ -110,9 +120,45 @@ var interfaceType = reflect.TypeFor[any]()
 
 const defsRecord = "record"
 
+// keyScopeDefaults is the scope property carrying inline defaults; the scope
+// presence rules name it more than once.
+const keyScopeDefaults = "defaults"
+
 // documents returns every published schema, in filename order.
 func documents() []document {
 	return []document{
+		{
+			name:  "config",
+			title: "config.json — typed repository configuration",
+			root:  reflect.TypeFor[Config](),
+			defs: []definition{
+				{typ: reflect.TypeFor[ConfigDefaults](), name: "defaults", closed: true},
+				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy", closed: true},
+				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
+				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
+				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
+					{keyAnyOf, array(
+						object(false, member{keyRequired, array(stringNode("profile"))}),
+						object(false, member{keyRequired, array(stringNode(keyScopeDefaults))}),
+						object(false, member{keyRequired, array(stringNode("requirements"))}),
+					)},
+					// One not-clause carries both scope rules: profile and
+					// defaults never combine, and scope defaults never carry
+					// kb_policy — the knowledge-base policy is global-only.
+					{keyNot, object(false, member{keyAnyOf, array(
+						object(false,
+							member{keyRequired, array(stringNode("profile"), stringNode(keyScopeDefaults))}),
+						object(false,
+							member{keyRequired, array(stringNode("defaults"))},
+							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
+								member{keyRequired, array(stringNode("kb_policy"))})})},
+						),
+					)})},
+				}},
+				{typ: reflect.TypeFor[ConfigProfile](), name: "profile", closed: true},
+			},
+			additionalProperties: false,
+		},
 		{
 			name:  "controls",
 			title: "controls.json — resolved review controls snapshot",
@@ -138,6 +184,8 @@ func documents() []document {
 			anyOf: []reflect.Type{reflect.TypeFor[CostRecord](), reflect.TypeFor[[]CostRecord]()},
 			defs: []definition{
 				{typ: reflect.TypeFor[CostRecord](), name: defsRecord},
+				{typ: reflect.TypeFor[LensUsage](), name: "lensUsage"},
+				{typ: reflect.TypeFor[GroupCost](), name: "groupCost"},
 				{typ: reflect.TypeFor[ModelSpend](), name: "modelSpend"},
 			},
 			additionalProperties: true,
@@ -174,6 +222,7 @@ func documents() []document {
 			root:  reflect.TypeFor[Post](),
 			defs: []definition{
 				{typ: reflect.TypeFor[ForcedPost](), name: "forcedPost"},
+				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
 			},
 			additionalProperties: true,
 		},
@@ -236,17 +285,32 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CostTiers](), name: "costTiers"},
 		{typ: reflect.TypeFor[CostTier](), name: "costTier"},
 		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
+		{typ: reflect.TypeFor[ReportCompliance](), name: "reportCompliance"},
 		{typ: reflect.TypeFor[ReportGate](), name: "reportGate"},
 		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[Repair](), name: "repair"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
+		{typ: reflect.TypeFor[ConfigData](), name: "configData"},
+		{typ: reflect.TypeFor[ConfigFile](), name: "configFile"},
+		{typ: reflect.TypeFor[ConfigValue](), name: "configValue"},
+		{typ: reflect.TypeFor[ConfigRequirement](), name: "configRequirement"},
+		{typ: reflect.TypeFor[ConfigPlanGroup](), name: "configPlanGroup"},
+		{typ: reflect.TypeFor[ConfigSpend](), name: "configSpend"},
+		{typ: reflect.TypeFor[ConfigCheck](), name: "configCheck"},
 		{typ: reflect.TypeFor[ShowFix](), name: "showFix"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[VerifyHint](), name: "verifyHint"},
-		{typ: reflect.TypeFor[FetchEstimate](), name: "fetchEstimate"},
+		{typ: reflect.TypeFor[FetchEstimate](), name: "fetchEstimate", constraints: []member{
+			{keyAnyOf, array(
+				object(false, member{keyRequired, array(stringNode("tier"))}),
+				object(false, member{keyRequired, array(stringNode("groups"))}),
+			)},
+		}},
+		{typ: reflect.TypeFor[FetchGroupEstimate](), name: "fetchGroupEstimate"},
+		{typ: reflect.TypeFor[FetchGroupPersonal](), name: "fetchGroupPersonal"},
 		{typ: reflect.TypeFor[TriageData](), name: "triageData"},
 		{typ: reflect.TypeFor[ReadyData](), name: "readyData"},
 		{typ: reflect.TypeFor[ReadyBlocker](), name: "readyBlocker"},
@@ -348,9 +412,12 @@ func (b *builder) anyOfRoot(types []reflect.Type) (*node, error) {
 func (b *builder) defsNode(defs []definition) (*node, error) {
 	members := make([]member, 0, len(defs))
 	for _, def := range defs {
-		schema, err := b.structNode(def.typ, true)
+		schema, err := b.structNode(def.typ, !def.closed)
 		if err != nil {
 			return nil, err
+		}
+		if len(def.constraints) > 0 {
+			schema.members = append(schema.members, def.constraints...)
 		}
 		members = append(members, member{def.name, schema})
 	}
@@ -497,7 +564,9 @@ func (b *builder) plainNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 	nullable := false
 	if base.Kind() == reflect.Pointer {
 		base = base.Elem()
-		nullable = true
+		// nonnull keeps an optional pointer from widening: absent reads as
+		// missing through the required list, while a present null refuses.
+		nullable = tag.Get(keyNonNull) != inlineTrue
 	}
 	if tag.Get(keyItemsMinimum) != "" && base.Kind() != reflect.Slice {
 		return nil, errorf("%s: items_min needs a slice", typ)
@@ -548,10 +617,57 @@ func (b *builder) baseNode(typ reflect.Type, tag reflect.StructTag) (*node, erro
 func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	elem := typ.Elem()
 	if elem == interfaceType {
-		if tag.Get(keyItemsMinimum) != "" {
-			return nil, errorf("%s: items_min needs item keywords", typ)
+		if err := untypedItems(tag, typ); err != nil {
+			return nil, err
 		}
 		return object(true, member{keyType, stringNode(typeArray)}), nil
+	}
+	items, err := b.itemsNode(typ, elem, tag)
+	if err != nil {
+		return nil, err
+	}
+	out := object(true, member{keyType, stringNode(typeArray)}, member{keyItems, items})
+	if err := appendArrayBound(out, tag); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// appendArrayBound adds the minItems bound when the tag names one.
+func appendArrayBound(out *node, tag reflect.StructTag) error {
+	bound, ok, err := arrayBound(tag)
+	if err != nil {
+		return err
+	}
+	if ok {
+		out.members = append(out.members, member{keyMinItems, numberNode(bound)})
+	}
+	return nil
+}
+
+// untypedItems refuses item keywords on an interface element, which has no
+// item type to apply them to.
+func untypedItems(tag reflect.StructTag, typ reflect.Type) error {
+	for _, rule := range []struct{ keyword, reason string }{
+		{keyItemsMinimum, "items_min needs item keywords"},
+		{keyItemsEnum, "items_enum needs a typed element"},
+		{keyMinItems, "minItems needs a typed element"},
+	} {
+		if tag.Get(rule.keyword) != "" {
+			return errorf("%s: %s", typ, rule.reason)
+		}
+	}
+	return nil
+}
+
+// itemsNode builds the element schema: a closed enum when the field names
+// one, else the element type with the integer item keywords.
+func (b *builder) itemsNode(typ reflect.Type, elem reflect.Type, tag reflect.StructTag) (*node, error) {
+	if spec := tag.Get(keyItemsEnum); spec != "" {
+		if minimum := tag.Get(keyItemsMinimum); minimum != "" {
+			return nil, errorf("%s: items_enum and items_min do not combine", typ)
+		}
+		return enumNode(spec), nil
 	}
 	items, err := b.typeNode(elem, "")
 	if err != nil {
@@ -565,17 +681,58 @@ func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 			return nil, errorf("%s: items_min needs integer items", typ)
 		}
 	}
-	return object(true, member{keyType, stringNode(typeArray)}, member{keyItems, items}), nil
+	return items, nil
+}
+
+// arrayBound reads an optional non-negative minItems array bound.
+func arrayBound(tag reflect.StructTag) (string, bool, error) {
+	bound := tag.Get(keyMinItems)
+	if bound == "" {
+		return "", false, nil
+	}
+	for i := range len(bound) {
+		if bound[i] < '0' || bound[i] > '9' {
+			return "", false, errorf("minItems %q is not a non-negative integer", bound)
+		}
+	}
+	return bound, true, nil
 }
 
 func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 	if typ.Key().Kind() != reflect.String {
 		return nil, errorf("map key must be a string, got %s", typ.Key())
 	}
+	if ref, ok, err := b.valueRef(typ.Elem()); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return object(false,
+			member{keyType, stringNode(typeObject)},
+			member{keyAdditionalProperties, ref},
+		), nil
+	}
 	return object(false,
 		member{keyType, stringNode(typeObject)},
 		member{keyAdditionalProperties, boolNode(true)},
 	), nil
+}
+
+// valueRef resolves a typed map value: a named struct with a $defs
+// registration validates through that reference. Every other element type
+// keeps the legacy open object, so previously published schemas do not
+// move.
+func (b *builder) valueRef(elem reflect.Type) (*node, bool, error) {
+	if elem.Kind() != reflect.Struct || elem.Name() == "" {
+		return nil, false, nil
+	}
+	if _, ok := b.defNames[elem]; !ok {
+		return nil, false, nil
+	}
+	ref, err := b.refNode(elem)
+	if err != nil {
+		return nil, false, err
+	}
+	return ref, true, nil
 }
 
 func (b *builder) refNode(typ reflect.Type) (*node, error) {
@@ -638,6 +795,9 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 	}
 	if value := tag.Get("max"); value != "" {
 		schema.members = append(schema.members, member{keyMaximum, numberNode(value)})
+	}
+	if value := tag.Get(keyExclusiveMin); value != "" {
+		schema.members = append(schema.members, member{keyExclusiveMinimum, numberNode(value)})
 	}
 	if value := tag.Get(keyFormat); value != "" {
 		schema.members = append(schema.members, member{keyFormat, stringNode(value)})

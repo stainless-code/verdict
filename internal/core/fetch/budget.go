@@ -10,14 +10,22 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// floatBitSize is the bit size of the float64 the budget values parse into.
+const floatBitSize = 64
+
+// codeSpendCapped is the refusal code for a personal-ceiling hit.
+const codeSpendCapped = "spend-capped"
+
 type budgetState struct {
 	estimateJSON  any
 	budgetJSON    any
+	groupSpend    *groupSpendState
 	budgetUSD     string
 	budgetSrc     string
 	estTier       string
@@ -31,71 +39,197 @@ type budgetState struct {
 	receiptNeeded bool
 }
 
-// resolveBudget reads the budget: REVIEW_BUDGET_USD wins, else the
-// first usable line of .review/budget (a leading $ is stripped). Unset
-// disables the whole plane.
-func resolveBudget(env map[string]string, r *session) (budgetState, error) {
+// resolveBudget reads the ordinary spend guard from the effective
+// resolution: flags beat environment, which beats repository scopes and
+// shared defaults, which beat personal review. Unset disables the
+// ordinary plane; the personal ceiling resolves separately and no
+// repository or environment layer can raise it. Malformed values refuse
+// at parse time, never here.
+func resolveBudget(_ *session, res *config.Resolved) budgetState {
 	var st budgetState
-	raw, src := "", ""
-	if v, ok := env["REVIEW_BUDGET_USD"]; ok && v != "" {
-		raw, src = strings.TrimSpace(v), "REVIEW_BUDGET_USD"
-	} else if v, ok := readKnobFile(r, ".review/budget"); ok {
-		raw, src = strings.TrimSpace(strings.TrimPrefix(v, "$")), ".review/budget"
+	if res == nil || res.Defaults.Values.BudgetUSD == nil {
+		return st
 	}
-	if raw == "" {
-		return st, nil
+	display := res.Defaults.Values.BudgetDisplay
+	if display == "" {
+		display = strconv.FormatFloat(*res.Defaults.Values.BudgetUSD, 'f', -1, floatBitSize)
 	}
-	if !isBudgetNumber(raw) {
-		return st, &core.RefusalError{Code: "bad-budget", Message: fmt.Sprintf(
-			"budget '%s' from %s is not a plain USD number (want e.g. REVIEW_BUDGET_USD=0.50 "+
-				"or a .review/budget file holding 0.50)", raw, src)}
-	}
-	st.budgetUSD, st.budgetSrc, st.hasBudget = raw, src, true
-	return st, nil
+	st.budgetUSD, st.budgetSrc, st.hasBudget = display,
+		res.Defaults.Origins["budget_usd"].Source, true
+	return st
 }
 
-func isBudgetNumber(s string) bool {
-	intPart, fracPart, hasDot := strings.Cut(s, ".")
-	if hasDot && strings.Contains(fracPart, ".") {
-		return false
+// budgetGate gates a run on the spend policy: the ordinary estimate
+// guard against the resolved budget, then the personal ceiling. Both
+// ceilings are consentable — a spent-limit hit refuses only until the
+// operator consents, and the consenting run records a receipt that names
+// the ceiling and where it came from. An unknown projection under a
+// strict posture refuses with budget-unknown unless the operator consents,
+// and a consented blind run records its receipt like any other.
+//
+// `enforce_cap` is a hard cap model this build does not implement, so a
+// request that sets it refuses with unsupported-cap before any budget,
+// force, or consent can authorize the run.
+func budgetGate(r *session, st *budgetState, res *config.Resolved, consent bool) error {
+	if ref := refuseUnsupportedCap(res); ref != nil {
+		return ref
 	}
-	if !readcommon.IsDigits(intPart) {
-		return false
+	if hasPlanGroups(res) {
+		return gateGroupedSpend(r, st, res, consent)
 	}
-	if hasDot && !readcommon.IsDigits(fracPart) {
-		return false
-	}
-	return true
+	return gateWholeRunBudget(r, st, res, consent)
 }
 
-// budgetGate gates a run on the budget: with one set, print the estimate line,
-// arm the envelope summaries, and refuse over-budget runs without consent.
-func budgetGate(r *session, st *budgetState, consent bool) error {
-	if !st.hasBudget {
+// gateWholeRunBudget is the whole-run plane for a resolution without plan
+// groups: the historical projection, its guard, and the personal ceiling.
+func gateWholeRunBudget(r *session, st *budgetState, res *config.Resolved, consent bool) error {
+	if !estimationRequired(st, res) {
 		return nil
 	}
-	if err := costEstimate(r, st); err != nil {
+	if err := costEstimate(r, st, res); err != nil {
 		return err
 	}
-	st.budgetJSON = jq.NewObj("usd", jsonNumber(st.budgetUSD), keySource, st.budgetSrc, "consented", consent)
+	recordEstimate(st, consent)
+	if st.estUSD == "" {
+		return gateUnknownEstimate(r, st, res, consent)
+	}
+	if ref := gatePersonalCeiling(st, res); ref != nil {
+		if !consent {
+			return ref
+		}
+		st.receiptNeeded = true
+	}
+	return gateOrdinaryBudget(st, consent)
+}
+
+// hasPlanGroups reports whether the resolution carries resolved plan groups,
+// which select the grouped spend plane instead of the whole-run estimate.
+func hasPlanGroups(res *config.Resolved) bool {
+	return res != nil && len(res.Plan.Groups) > 0
+}
+
+// recordEstimate puts the measured projection on the run's budget record: the
+// ordinary guard only when the run has one, and the estimate object always.
+func recordEstimate(st *budgetState, consent bool) {
+	if st.hasBudget {
+		st.budgetJSON = jq.NewObj("usd", jsonNumber(st.budgetUSD), keySource, st.budgetSrc, "consented", consent)
+	}
 	tierVal := any(nil)
 	if st.estTier != "" {
 		tierVal = st.estTier
 	}
 	st.estimateJSON = estimateObject(st, tierVal)
-	if st.estUSD == "" {
+}
+
+// gateOrdinaryBudget applies the ordinary spend guard to a known projection: a
+// run with no budget has nothing to exceed, and a consented hit arms a receipt
+// instead of refusing.
+func gateOrdinaryBudget(st *budgetState, consent bool) error {
+	if !st.hasBudget || !overBudget(st.estUSD, st.budgetUSD) {
 		return nil
 	}
-	if overBudget(st.estUSD, st.budgetUSD) {
-		if consent {
-			st.receiptNeeded = true
-			return nil
-		}
-		return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
-			"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
-			st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
+	if consent {
+		st.receiptNeeded = true
+		return nil
+	}
+	return budgetExceeded(st)
+}
+
+// estimationRequired reports whether this run needs a cost projection: a
+// monetary guard, the require-known posture, or an explicitly resolved effort
+// tier asks the estimator. Absent all three — the builtin-effort default with
+// no budget and no ceiling — nothing is measured, so a plain run keeps its
+// previous behavior.
+func estimationRequired(st *budgetState, res *config.Resolved) bool {
+	if st.hasBudget || (res != nil && res.Spend.PersonalLimit != nil) {
+		return true
+	}
+	if res != nil && res.Spend.RequireKnownEstimate {
+		return true
+	}
+	_, explicit := requestedEstimateTier(res)
+	return explicit
+}
+
+// refuseUnsupportedCap refuses a request for a hard-cap model this build does
+// not implement, before any budget, force, or consent can authorize it.
+func refuseUnsupportedCap(res *config.Resolved) *core.RefusalError {
+	if res == nil || !res.Spend.EnforceCap {
+		return nil
+	}
+	return &core.RefusalError{Code: "unsupported-cap", Message: "spend.enforce_cap requests a hard-cap " +
+		"model this build does not implement — remove it from the operator settings; budget, force, " +
+		"and consent cannot authorize a cap that is unsupported"}
+}
+
+// budgetExceeded reports a known projection over the resolved budget, naming
+// the source and the comparable runs the projection rests on.
+func budgetExceeded(st *budgetState) error {
+	return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
+		"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
+		st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
+}
+
+// gatePersonalCeiling reports the operator's authorization limit: a
+// known projection above it refuses until the operator consents, naming
+// the personal source no repository or environment value can override.
+// The caller turns the hit into a receipt once consent is given.
+func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
+	if res == nil || res.Spend.PersonalLimit == nil || st.estUSD == "" {
+		return nil
+	}
+	limit := strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, floatBitSize)
+	if config.SpendExceeds(st.estUSD, limit) {
+		return personalCeilingError(st, limit)
 	}
 	return nil
+}
+
+// personalCeilingError reports a projection the operator's own ceiling does not
+// authorize, comparing exact decimals rather than display strings.
+func personalCeilingError(st *budgetState, limit string) error {
+	return &core.RefusalError{Code: codeSpendCapped, Message: fmt.Sprintf(
+		"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (operator settings) from %d "+
+			"comparable run(s) — consent before this run starts, or raise the ceiling in settings and "+
+			"narrow the run",
+		st.estTier, st.estUSD, st.basisNote(), limit, st.estRuns)}
+}
+
+// gateUnknownEstimate handles a set budget with no usable projection:
+// a strict posture refuses until the operator consents (budget-unknown,
+// strict only), and consent — required or not — records a blind-consent
+// receipt that states the reason even when no USD ceiling is set; a
+// lenient posture proceeds unenforced.
+func gateUnknownEstimate(r *session, st *budgetState, res *config.Resolved, consent bool) error {
+	if res != nil && res.Spend.RequireKnownEstimate && !consent {
+		return &core.RefusalError{Code: "budget-unknown", Message: unknownEstimateMessage(st)}
+	}
+	if consent {
+		st.receiptNeeded = true
+		fmt.Fprintln(r.Human, consentedBlindReceipt(st))
+	}
+	return nil
+}
+
+// unknownEstimateMessage names the require-known refusal, quoting the ordinary
+// budget only when the run actually carries one.
+func unknownEstimateMessage(st *budgetState) string {
+	msg := "no usable cost projection, and the operator settings require a known estimate — " +
+		"consent before this blind run starts"
+	if st.hasBudget {
+		return msg + fmt.Sprintf(" (budget $%s from %s)", st.budgetUSD, st.budgetSrc)
+	}
+	return msg
+}
+
+// consentedBlindReceipt names what the consented blind run is recorded
+// against, so a run with no USD ceiling says so instead of implying one.
+func consentedBlindReceipt(st *budgetState) string {
+	if st.hasBudget {
+		return "» receipt: consented blind run (no usable cost projection) — recorded alongside the budget ledger"
+	}
+	return "» receipt: consented blind run (no usable cost projection) — recorded against the " +
+		"require-known spend policy; no USD ceiling is set"
 }
 
 func estimateObject(st *budgetState, tierVal any) *jq.Obj {
@@ -125,10 +259,10 @@ func (st *budgetState) basisNote() string {
 }
 
 // costEstimate averages est_usd over the most-run effort
-// tier across every .review/*/cost.json record (ties break toward the
+// tier across every .verdict/state/*/cost.json record (ties break toward the
 // deeper tier). Unknown history reads unknown, never blocking. Handed usage
 // records price the runs they bracket; a broken handoff refuses typed.
-func costEstimate(r *session, st *budgetState) error {
+func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
 	st.estUSD, st.estRuns, st.estTier, st.tierRuns = "", 0, "", 0
 	usage, err := measuredUsage(r)
 	if err != nil {
@@ -136,33 +270,57 @@ func costEstimate(r *session, st *budgetState) error {
 	}
 	recs := estimateRecs(r, usage)
 	if len(recs) == 0 {
-		fmt.Fprintln(r.Human, "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)")
+		reportNoHistory(r)
 		return nil
 	}
-	tier, tierRuns, stat, ok := pickEstimateTier(recs)
+	want, explicit := requestedEstimateTier(res)
+	tier, tierRuns, stat, ok := pickEstimateTier(recs, want, explicit)
 	st.estRuns = len(recs)
 	if !ok {
-		fmt.Fprintln(r.Human, "» estimate: no comparable past runs — cost unknown (no usable .review/*/cost.json records yet)")
 		st.estRuns = 0
+		reportNoHistory(r)
 		return nil
 	}
 	st.estTier, st.tierRuns = tier, tierRuns
 	st.recordBasis(stat)
 	if stat.mean == "" {
-		fmt.Fprintf(r.Human, "» estimate: tier %s from %d comparable run(s) — projected cost unknown "+
-			"(none reported est_usd); budget $%s (%s) unenforced on unknown\n",
-			tier, tierRuns, st.budgetUSD, st.budgetSrc)
+		reportUnknownProjection(r, st, tier, tierRuns)
 		return nil
 	}
 	st.estUSD = stat.mean
-	line := fmt.Sprintf("» estimate: tier %s ~$%s/run from %d comparable run(s) — ", tier, stat.mean, st.estRuns)
-	if overBudget(stat.mean, st.budgetUSD) {
-		line += fmt.Sprintf("OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
-	} else {
-		line += fmt.Sprintf("within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
-	}
-	fmt.Fprintln(r.Human, line+st.basisNote())
+	fmt.Fprintln(r.Human, estimateLine(st, tier)+st.basisNote())
 	return nil
+}
+
+// reportNoHistory explains an empty sample: unknown history reads unknown, and
+// a run with no guard is not measured against anything.
+func reportNoHistory(r *session) {
+	fmt.Fprintln(r.Human,
+		"» estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)")
+}
+
+// reportUnknownProjection explains a picked tier whose records carry no
+// est_usd, quoting the ordinary budget only when the run actually has one.
+func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns int) {
+	line := fmt.Sprintf("» estimate: tier %s from %d comparable run(s) — projected cost unknown (none reported est_usd)",
+		tier, tierRuns)
+	if st.hasBudget {
+		line += fmt.Sprintf("; budget $%s (%s) unenforced on unknown", st.budgetUSD, st.budgetSrc)
+	}
+	fmt.Fprintln(r.Human, line)
+}
+
+// estimateLine renders a known projection, comparing it against the ordinary
+// guard only when the run carries one.
+func estimateLine(st *budgetState, tier string) string {
+	line := fmt.Sprintf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, st.estUSD, st.estRuns)
+	if !st.hasBudget {
+		return line
+	}
+	if overBudget(st.estUSD, st.budgetUSD) {
+		return line + fmt.Sprintf(" — OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
+	}
+	return line + fmt.Sprintf(" — within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 }
 
 // recordBasis carries the measured split of the picked tier into the gate's
@@ -262,9 +420,31 @@ type tierStat struct {
 }
 
 // no-pick, like max_by over an empty array.
-func pickEstimateTier(recs []costRec) (tier string, tierRuns int, stat tierStat, ok bool) {
+// requestedEstimateTier reports the operator's resolved effort tier when a
+// reviewed layer chose it; the builtin default is not an explicit request and
+// leaves the historical most-used pick in place.
+func requestedEstimateTier(res *config.Resolved) (string, bool) {
+	if res == nil {
+		return "", false
+	}
+	origin, ok := res.Defaults.Origins["effort"]
+	if !ok || origin.Layer == config.LayerBuiltIn {
+		return "", false
+	}
+	return res.Defaults.Values.Effort, true
+}
+
+// pickEstimateTier selects the tier to project from: an explicitly resolved
+// effort tier projects from that tier's records alone, and unknown when that
+// tier has none. With no explicit request it keeps the historical pick — the
+// most-run tier, ties breaking toward the deeper one.
+func pickEstimateTier(recs []costRec, want string, explicit bool) (tier string, tierRuns int, stat tierStat, ok bool) {
 	if len(recs) == 0 {
 		return "", 0, tierStat{}, false
+	}
+	if explicit {
+		stat = tierStats(recs, want)
+		return want, stat.runs, stat, stat.runs > 0
 	}
 	best := [2]float64{-1, -1}
 	for _, t := range []string{"deep", tierStandard, "cheap"} {
@@ -298,12 +478,13 @@ func tierStats(recs []costRec, t string) tierStat {
 	return st
 }
 
-// estimateRecs owns the cost-history sweep: every readable record
-// accumulates, while unreadable files warn once naming every one.
+// estimateRecs owns the cost-history sweep: every readable record under
+// the reviewed repository's bundle home accumulates, while unreadable
+// files warn once naming every one.
 func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	var recs []costRec
 	var bad []string
-	files, gerr := filepath.Glob(".review/*/" + readcommon.CostFile)
+	files, gerr := filepath.Glob(filepath.Join(r.repoRoot, ".verdict", "state", "*", readcommon.CostFile))
 	if gerr != nil {
 		files = nil
 	}
@@ -312,7 +493,7 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 		fileRecs, ok := readCostRecs(f)
 		if !ok {
 			// The warning is user-visible: glob returns OS separators,
-			// so Windows would print `.review\2\cost.json` where every
+			// so Windows would print `.verdict\state\2\cost.json` where every
 			// bundle path uses slashes.
 			bad = append(bad, filepath.ToSlash(f))
 			continue
@@ -389,16 +570,16 @@ func overBudget(projected, budget string) bool {
 }
 
 func jsonNumber(lit string) any {
+	if lit == "" {
+		return nil
+	}
 	return jq.Number(lit)
 }
 
 // jsonFloat renders a computed mean/est literal ("" reads null). Computed
 // values print in canonical jq form.
 func jsonFloat(lit string) any {
-	if lit == "" {
-		return nil
-	}
-	return jq.Number(lit)
+	return jsonNumber(lit)
 }
 
 // writeBudgetReceipt records a consented over-budget
@@ -407,23 +588,16 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 	if !st.receiptNeeded {
 		return
 	}
-	rc := jq.NewObj(
-		"at", now, "budget_usd", jsonNumber(st.budgetUSD), "budget_src", st.budgetSrc,
-		"projected_tier", st.estTier, "projected_usd", jsonFloat(st.estUSD),
-		"comparable_runs", st.estRuns,
-	)
-	if st.measuredRuns > 0 {
-		rc.Set("basis", st.estBasis)
-		rc.Set("measured_runs", st.measuredRuns)
-	}
+	rc := jq.NewObj("at", now)
+	receiptProjectionBody(st, rc)
 	rc.Set("consent", "--consent-over-budget")
 	merged := budgetLedger(r, dir, rc)
 	if err := atomic.WriteFile(dir+"/budget.json", []byte(merged+newline)); err != nil {
 		r.Warn(fmt.Sprintf("could not write %s/budget.json: %v", dir, err))
 		return
 	}
-	fmt.Fprintf(r.Human, "» receipt: consented over-budget run recorded in %s/budget.json (projected $%s %s vs budget $%s)\n",
-		dir, st.estUSD, st.estTier, st.budgetUSD)
+	fmt.Fprintf(r.Human, "» receipt: %s recorded in %s/budget.json (%s)\n",
+		receiptKind(st), dir, receiptSummary(st))
 }
 
 func budgetLedger(r *session, dir string, rc *jq.Obj) string {

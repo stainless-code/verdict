@@ -3,8 +3,8 @@ package core
 // CorpusCase is one benchmark corpus manifest: a real or seeded PR bundle
 // with the ground truth its review output is graded against. The checked-in
 // cases live under bench/corpus/<id>/case.json; a run bundle copies the
-// manifest to .review/corpus-*/corpus.json so calibrate and trend can join
-// offline. Published as schemas/corpus.schema.json.
+// manifest to .verdict/state/corpus-*/corpus.json so calibrate and trend
+// can join it offline. Published as schemas/corpus.schema.json.
 type CorpusCase struct {
 	SchemaVersion string           `const:"1"                       json:"schema_version"`
 	ID            string           `json:"id"`

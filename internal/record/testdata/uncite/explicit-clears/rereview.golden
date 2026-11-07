@@ -11,7 +11,7 @@ exit: 0
     "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
-    "dir": ".review/local-kb",
+    "dir": ".verdict/state/local-kb",
     "anchors": {
       "kept": 1,
       "moved": 0
@@ -20,7 +20,7 @@ exit: 0
       "open": 1,
       "deferred": 0,
       "addressed": 0,
-      "file": ".review/local-kb/findings.json"
+      "file": ".verdict/state/local-kb/findings.json"
     },
     "confidence": null,
     "security_summary": null,
@@ -38,11 +38,11 @@ exit: 0
 --- stderr ---
 » anchors: 1 inline, 0 moved to body
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-» findings: 1 sigs -> .review/local-kb/findings.json
+» findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  open  true  notes.txt
-recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-kb/findings.json ---
+--- file C/.verdict/state/local-kb/findings.json ---
 [
   {
     "kind": "inline",

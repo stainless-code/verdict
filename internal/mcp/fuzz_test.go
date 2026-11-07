@@ -12,7 +12,7 @@ import (
 
 type inertCommander struct{}
 
-func (inertCommander) Run(context.Context, core.Command) (core.Result, error) {
+func (inertCommander) Run(context.Context, *core.Command) (core.Result, error) {
 	return core.Result{}, context.Canceled
 }
 

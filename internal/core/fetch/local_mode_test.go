@@ -52,9 +52,11 @@ func localScriptReq(
 }
 
 // stagedLocalCommander scripts one non-isolated --staged run over diff.
+// The trusted-base probes script absent: hermetic runs carry no
+// repository policy unless a test says otherwise (see scriptBasePolicy).
 func stagedLocalCommander(t *testing.T, diff string) *scriptCommander {
 	t.Helper()
-	return &scriptCommander{
+	cmdr := &scriptCommander{
 		t: t,
 		out: map[string]scriptResult{
 			"git\x00rev-parse\x00--is-inside-work-tree":              {stdout: "true\n"},
@@ -67,6 +69,28 @@ func stagedLocalCommander(t *testing.T, diff string) *scriptCommander {
 			"git\x00ls-files\x00--others\x00--exclude-standard":      {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, localTestHead)
+	return cmdr
+}
+
+// scriptEmptyBasePolicy scripts the trusted-base probes every run
+// performs (typed config read, inventory snapshot, overrides list) as
+// absent at base, so hermetic runs without a repository policy behave.
+func scriptEmptyBasePolicy(cmdr *scriptCommander, base string) {
+	cmdr.out["git\x00ls-tree\x00-lz\x00"+base+"\x00--\x00.verdict/config.json"] = scriptResult{stdout: ""}
+	cmdr.out["git\x00ls-tree\x00-lz\x00"+base+"\x00--\x00.verdict/config.json\x00.verdict/kb.jsonl\x00.verdict/learnings.md"] = scriptResult{stdout: ""}
+	cmdr.out["git\x00ls-tree\x00-r\x00--name-only\x00"+base+"\x00--\x00.verdict/overrides/"] = scriptResult{stdout: ""}
+}
+
+// scriptBasePolicy scripts the trusted-base typed configuration body
+// at base, with the snapshot probes carrying it: the base commit owns
+// the policy, so a worktree file (if any) stays unread.
+func scriptBasePolicy(cmdr *scriptCommander, base, body string) {
+	entry := baseLsTree(base, body)
+	cmdr.out["git\x00ls-tree\x00-lz\x00"+base+"\x00--\x00.verdict/config.json"] = scriptResult{stdout: entry}
+	cmdr.out["git\x00show\x00"+base+":.verdict/config.json"] = scriptResult{stdout: body}
+	cmdr.out["git\x00ls-tree\x00-lz\x00"+base+"\x00--\x00.verdict/config.json\x00.verdict/kb.jsonl\x00.verdict/learnings.md"] = scriptResult{stdout: entry}
+	cmdr.out["git\x00ls-tree\x00-r\x00--name-only\x00"+base+"\x00--\x00.verdict/overrides/"] = scriptResult{stdout: ""}
 }
 
 // TestRunLocalSelectorExclusivity proves the hard manual rule — one diff
@@ -117,7 +141,7 @@ func assertExclusivityRefusal(t *testing.T, flags *core.FetchLocalFlags) {
 	if len(cmdr.calls) != 2 {
 		t.Errorf("refusal spawned %q; want only the two repo probes", cmdr.calls)
 	}
-	if _, serr := os.Stat(filepath.Join(".review", "local-mine")); !os.IsNotExist(serr) {
+	if _, serr := os.Stat(filepath.Join(".verdict", "state", "local-mine")); !os.IsNotExist(serr) {
 		t.Errorf("refusal wrote the bundle dir")
 	}
 }
@@ -160,7 +184,7 @@ func TestRunLocalStagedSingleSelector(t *testing.T) {
 // byte-for-byte and the envelope measures it, with no stray advisories.
 func TestRunLocalStagedBundleAndEnvelope(t *testing.T) {
 	resp := stagedCleanRun(t)
-	if raw, rerr := os.ReadFile(filepath.Join(".review", "local-mine", "full.diff")); rerr != nil || string(raw) != cleanStagedDiff {
+	if raw, rerr := os.ReadFile(filepath.Join(".verdict", "state", "local-mine", "full.diff")); rerr != nil || string(raw) != cleanStagedDiff {
 		t.Errorf("full.diff = %q, %v", raw, rerr)
 	}
 	if resp.Data.DiffBytes != int64(len(cleanStagedDiff)) {
@@ -179,7 +203,7 @@ func TestRunLocalStagedBundleAndEnvelope(t *testing.T) {
 // assertSourceKind proves source.json records the resolved mode.
 func assertSourceKind(t *testing.T, want string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(".review", "local-mine", "source.json"))
+	raw, err := os.ReadFile(filepath.Join(".verdict", "state", "local-mine", "source.json"))
 	if err != nil {
 		t.Fatalf("source.json: %v", err)
 	}
@@ -251,6 +275,7 @@ func TestRunLocalBinaryDiffWarnsNoHunks(t *testing.T) {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, localTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
@@ -287,6 +312,7 @@ func TestRunLocalEmptyDiffWarns(t *testing.T) {
 			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
 		},
 	}
+	scriptEmptyBasePolicy(cmdr, localTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),

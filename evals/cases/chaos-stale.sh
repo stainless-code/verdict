@@ -57,13 +57,13 @@ git -C "$EVAL_SANDBOX" config user.email chaos@example.com
 git -C "$EVAL_SANDBOX" config user.name chaos
 printf 'top\nold line\nbottom\n' > "$EVAL_SANDBOX/notes.txt"
 printf '{"id":"check-error-paths","rule":"Check error paths on every await","scope":"*.txt","provenance":"manual","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}\n' \
-  > "$EVAL_SANDBOX/.review-kb.jsonl"
-mkdir -p "$EVAL_SANDBOX/.review"
-cp "$EVAL_SANDBOX/.review-kb.jsonl" "$EVAL_SANDBOX/.review/kb.jsonl"
+  > "$EVAL_SANDBOX/.verdict-kb.jsonl"
+mkdir -p "$EVAL_SANDBOX/.verdict"
+cp "$EVAL_SANDBOX/.verdict-kb.jsonl" "$EVAL_SANDBOX/.verdict/kb.jsonl"
 (cd "$EVAL_SANDBOX" && git add -A && git -c commit.gpgsign=false commit -qm chaos-base)
 printf 'top\nnew line\nbottom\nextra line\n' > "$EVAL_SANDBOX/notes.txt"
 
-LB="$EVAL_SANDBOX/.review/local-chaos-stale"
+LB="$EVAL_SANDBOX/.verdict/state/local-chaos-stale"
 
 m0="$(mark)"
 run_review fetch-local acme/app chaos-stale --json
@@ -142,7 +142,7 @@ else
 fi
 matrix_row "record" "tampered-controls" "$EVAL_STATUS" "controls-stale" "no" "yes" "same" "$(reviews_since "$m0")"
 
-git -C "$EVAL_SANDBOX" show HEAD:.review/kb.jsonl > "$LB/controls/kb.jsonl"
+git -C "$EVAL_SANDBOX" show HEAD:.verdict/kb.jsonl > "$LB/controls/kb.jsonl"
 norm_store() {
   jq -S '[.[] | {sig, status}] | sort_by(.sig)' "$LB/findings.json" 2>/dev/null || true
 }

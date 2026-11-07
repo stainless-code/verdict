@@ -31,7 +31,7 @@ if grep -Fq 'an unread chunk is as visible as an unread TOC range' "$PROMPT"; th
 else
   bad "prompt misses the unread-chunk visibility rule"
 fi
-if grep -Fq 'chunk-01.diff: /path/.review/N/chunks/chunk-01.diff' "$PROMPT" \
+if grep -Fq 'chunk-01.diff: /path/.verdict/state/N/chunks/chunk-01.diff' "$PROMPT" \
   && grep -Fq 'contract is unchanged' "$PROMPT"; then
   good "prompt names chunk diff paths like full diffs, lens contract unchanged"
 else
@@ -55,10 +55,13 @@ else
 fi
 
 PR=4631
-dir="$EVAL_SANDBOX/.review/$PR"
+dir="$EVAL_SANDBOX/.verdict/state/$PR"
+mkdir -p "$EVAL_SANDBOX/.verdict"
+printf '%s\n' '{"id":"synth-rule-one","status":"active"}' '{"id":"synth-rule-two","status":"active"}' > "$EVAL_SANDBOX/.verdict/kb.jsonl"
+eval_mk_bundle "$PR"
 mkdir -p "$dir/chunks"
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-BASEB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+BASEB="$EVAL_FIXTURE_BASE"
 cat > "$dir/PR.json" <<EOF
 {"state":"OPEN","headRefOid":"$HEADA","baseRefOid":"$BASEB","author":{"login":"teammate"},"files":[{"path":"a.txt","additions":1,"deletions":0},{"path":"b.txt","additions":1,"deletions":0}]}
 EOF
@@ -104,13 +107,13 @@ B1="$(wc -c < "$dir/chunks/chunk-01.diff" | tr -d ' ')"
 B2="$(wc -c < "$dir/chunks/chunk-02.diff" | tr -d ' ')"
 jq -n --arg hs "$HEADA" --arg bs "$BASEB" \
   --argjson total "$TOTAL" --argjson b1 "$B1" --argjson b2 "$B2" \
-  '{schema_version:"1",bundle:".review/4631",
-    head_sha:$hs,base_sha:$bs,cap:{bytes:512000,source:null},
+  '{schema_version:"1",bundle:".verdict/state/4631",
+    head_sha:$hs,base_sha:$bs,cap:{bytes:512000,source:"per-group: built-in defaults"},
     total_bytes:$total,chunk_count:2,
     chunks:[{index:1,name:"chunk-01",files:["a.txt"],estimated_bytes:$b1,bytes:$b1,
-      diff:".review/4631/chunks/chunk-01.diff",toc:".review/4631/chunks/chunk-01.toc.txt",roles:".review/4631/chunks/chunk-01.roles.txt"},
+      diff:".verdict/state/4631/chunks/chunk-01.diff",toc:".verdict/state/4631/chunks/chunk-01.toc.txt",roles:".verdict/state/4631/chunks/chunk-01.roles.txt"},
       {index:2,name:"chunk-02",files:["b.txt"],estimated_bytes:$b2,bytes:$b2,
-      diff:".review/4631/chunks/chunk-02.diff",toc:".review/4631/chunks/chunk-02.toc.txt",roles:".review/4631/chunks/chunk-02.roles.txt"}]}' \
+      diff:".verdict/state/4631/chunks/chunk-02.diff",toc:".verdict/state/4631/chunks/chunk-02.toc.txt",roles:".verdict/state/4631/chunks/chunk-02.roles.txt"}]}' \
   > "$dir/chunks/manifest.json"
 
 MAN="$dir/chunks/manifest.json"
@@ -118,7 +121,7 @@ if [ "$(jq -r '.schema_version' <"$MAN" 2>/dev/null)" = "1" ] \
   && [ "$(jq -r '.head_sha' <"$MAN" 2>/dev/null)" = "$HEADA" ] \
   && [ "$(jq -r '.base_sha' <"$MAN" 2>/dev/null)" = "$BASEB" ] \
   && [ "$(jq -r '.cap.bytes' <"$MAN" 2>/dev/null)" = "512000" ] \
-  && [ "$(jq -r '.cap.source' <"$MAN" 2>/dev/null)" = "null" ] \
+  && [ "$(jq -r '.cap.source' <"$MAN" 2>/dev/null)" = "per-group: built-in defaults" ] \
   && [ "$(jq -r '.total_bytes' <"$MAN" 2>/dev/null)" = "$TOTAL" ] \
   && [ "$(jq -r '.chunk_count' <"$MAN" 2>/dev/null)" = "2" ]; then
   good "manifest carries schema 1, fetched SHAs, cap 512000 + null source, totals"
@@ -154,7 +157,6 @@ fi
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Two chunks reviewed, one minor note each.\n> Basis: 0 reproduced · 1 ran · 1 walked · 0 pointed · 0 said · 2 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"a.txt","line":2,"side":"RIGHT","body":"Chunk-01 note: clarify this line.","rigor":"ran","severity":"informational","kb":["synth-rule-one"]},{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational","kb":["synth-rule-two"]}]}
 EOF
-printf '%s\n' '{"id":"synth-rule-one","status":"active"}' '{"id":"synth-rule-two","status":"active"}' > "$EVAL_SANDBOX/.review/kb.jsonl"
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "summed Basis post succeeds" 0
 assert_stream_nogrep "summed Basis (1 ran + 1 walked, 2 rules) passes with no warning" "$EVAL_ERR" "basis line counts"
@@ -185,14 +187,14 @@ case "$event" in
   COMMENT|APPROVE|REQUEST_CHANGES) good "envelope carries a single event ($event)" ;;
   *) bad "envelope event is '$event', want one of COMMENT/APPROVE/REQUEST_CHANGES" ;;
 esac
-if [ -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ] \
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ] \
   && [ -z "$(ls "$dir"/chunks/*.review.json 2>/dev/null || true)" ]; then
   good "exactly one findings file, no per-chunk review files"
 else
   bad "findings file or per-chunk review files wrong"
 fi
 
-rm -f "$EVAL_SANDBOX/.review/kb.jsonl"
+rm -f "$EVAL_SANDBOX/.verdict/kb.jsonl"
 rm -rf "$EVAL_SANDBOX/xdg-empty"
 rm -f "$EVAL_SANDBOX/synth-concat.diff"
 unset XDG_CONFIG_HOME || true

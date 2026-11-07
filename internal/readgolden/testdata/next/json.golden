@@ -34,5 +34,6 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 next: c1111111 [open] notes.txt:2 — address via address-reviews mode, then post
 --- files ---

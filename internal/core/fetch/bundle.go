@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
@@ -107,7 +108,7 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 	if werr := atomic.WriteFile(ctx.dir+"/toc.txt", []byte(sb.String())); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx.dir, werr)}
 	}
-	fmt.Fprintf(ctx.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.dir)
+	fmt.Fprintf(ctx.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.runner.display(ctx.dir))
 	paths := prFilePaths(ctx.dir + suffixPRJSON)
 	if werr := atomic.WriteFile(ctx.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx.dir, werr)}
@@ -195,11 +196,11 @@ func joinLines(paths []string) string {
 	return strings.Join(paths, newline)
 }
 
-// emitContext resolves the review controls: REVIEW_PANEL wins, else the
-// .review/panel file; the member list lands in $dir/panel. Compact mode skips
-// the advisory notices. Sets panelSrc/panelList on the run context.
+// emitContext resolves the review panel from the effective resolution:
+// the member list lands in $dir/panel. Compact mode skips the advisory
+// notices. Sets panelSrc/panelList on the run context.
 func emitContext(ctx *fetchRunCtx) *core.RefusalError {
-	panelList, panelSrc := resolvePanel(ctx.env, ctx.runner)
+	panelList, panelSrc := resolvePanel(ctx.runner, ctx.runCfg.resolved)
 	ctx.panelSrc, ctx.panelList = panelSrc, panelList
 	if ref := emitPanel(ctx, panelList, panelSrc); ref != nil {
 		return ref
@@ -218,7 +219,8 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 		}
 		fmt.Fprintf(ctx.runner.Human, "» panel (%d from %s)\n", len(panelList), panelSrc)
 	} else if ctx.runner.Effective.Compact != strTrue {
-		fmt.Fprintln(ctx.runner.Human, "» panel: none pinned (set REVIEW_PANEL or .review/panel for comparable, cost-capped runs)")
+		fmt.Fprintln(ctx.runner.Human,
+			"» panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)")
 	}
 	return nil
 }
@@ -227,55 +229,27 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 // compact mode when the file reads.
 func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	if ctx.runner.Effective.Compact != strTrue {
-		if raw, ok := ctx.runner.readControl(".review/learnings.md"); ok {
+		if raw, ok := ctx.runner.readControl(config.LearningsPath); ok {
 			// `wc -l` counts newline bytes, not lines.
 			fmt.Fprintf(ctx.runner.Human, "» learnings: %s (%d lines — read headings first, not the full file)\n",
-				ctx.runner.controls.Path(".review/learnings.md"), countNewlines(string(raw)))
+				ctx.runner.controls.Path(config.LearningsPath), countNewlines(string(raw)))
 		}
 	}
 	return nil
 }
 
-// resolvePanel owns the REVIEW_PANEL / .review/panel precedence: env wins
-// (comma/space split), else the file (comments and blanks skipped).
-func resolvePanel(env map[string]string, r *session) ([]string, string) {
-	if v, ok := env["REVIEW_PANEL"]; ok && v != "" {
-		return splitPanelList(v), "REVIEW_PANEL"
-	}
-	raw, ok := r.readControl(".review/panel")
-	if !ok {
+// resolvePanel reads the panel from the effective resolution: flags beat
+// environment, which beats repository scopes and shared defaults, which
+// beat personal review. The origin source names the winning layer.
+func resolvePanel(_ *session, res *config.Resolved) ([]string, string) {
+	if res == nil {
 		return nil, ""
 	}
-	return panelFileLines(string(raw))
-}
-
-// panelFileLines owns the panel file scan: comments and blanks skipped,
-// empty reading absent.
-func panelFileLines(raw string) ([]string, string) {
-	var out []string
-	for _, line := range splitLines(raw) {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		out = append(out, line)
-	}
-	if len(out) == 0 {
+	list := res.Defaults.Values.Panel
+	if len(list) == 0 {
 		return nil, ""
 	}
-	return out, ".review/panel"
-}
-
-// splitPanelList splits on commas and whitespace, dropping blanks.
-func splitPanelList(s string) []string {
-	var out []string
-	for _, p := range strings.FieldsFunc(s, func(c rune) bool { return c == ',' || c == ' ' }) {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
+	return list, res.Defaults.Origins["panel"].Source
 }
 
 // ensureStore backfills the store marker when absent.
@@ -394,6 +368,7 @@ func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base stri
 type fetchRunCtx struct {
 	runner    *session
 	env       map[string]string
+	runCfg    *runConfig
 	repo      string
 	pr        string
 	dir       string

@@ -139,7 +139,7 @@ func waitForExit(t *testing.T, cmd *exec.Cmd, deadline time.Duration) {
 
 func writeVerifyCmd(t *testing.T, dir, verifyCmd string) {
 	t.Helper()
-	bundle := filepath.Join(dir, ".review", "5201")
+	bundle := filepath.Join(dir, ".verdict", "state", "5201")
 	if err := os.MkdirAll(bundle, 0o755); err != nil {
 		t.Fatal(err)
 	}

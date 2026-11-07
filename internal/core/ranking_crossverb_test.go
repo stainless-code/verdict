@@ -18,7 +18,7 @@ import (
 type rankingGitCommander struct{}
 
 // Run returns an empty audit for git and fails any unscripted spawn.
-func (rankingGitCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (rankingGitCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if cmd.Argv[0] == "git" {
 		return core.Result{}, nil
 	}
@@ -40,11 +40,11 @@ func writeRankingFixture(t *testing.T, findings ...string) core.ReadRequest {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(".review/local-rank", 0o755); err != nil {
+	if err := os.MkdirAll(".verdict/state/local-rank", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	doc := "[" + strings.Join(findings, ",") + "]"
-	if err := os.WriteFile(".review/local-rank/findings.json", []byte(doc), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/local-rank/findings.json", []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return core.ReadRequest{

@@ -36,5 +36,5 @@ ready: no — acme/app#5101 has 1 blocker(s):
   - [threads-open] 1 unresolved thread(s) — action: address or resolve open threads, then re-run ready
 recommendation: nudge-author — nudge the author instead of reviewing
 --- files ---
---- file C/.review/5101/.ready.err ---
+--- file C/.verdict/state/5101/.ready.err ---
 

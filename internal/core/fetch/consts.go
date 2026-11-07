@@ -43,6 +43,9 @@ const (
 	// fullDiffFile names the whole-diff artifact in next-step text and dumps.
 	fullDiffFile = "full.diff"
 
+	// planFile names the combined plan section inside the prompt dump.
+	planFile = "plan.txt"
+
 	suffixChunks        = "/chunks/"
 	suffixChunkManifest = "/chunks/manifest.json"
 	suffixDiffErr       = "/.diff.err"
@@ -117,7 +120,6 @@ const (
 	tierStandard   = "standard"
 	nullStr        = "null"
 	strTrue        = "true"
-	reviewDir      = ".review"
 	devNullPath    = "/dev/null"
 	emptyJSONArray = "[]\n"
 	newline        = "\n"

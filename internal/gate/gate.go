@@ -1,7 +1,7 @@
 // Package gate is the gate verb's CLI adapter: argv parsing, one composed
 // report-core call, and the gate's own exit table (0 pass, 1 gate failed or
 // unknown, 2 usage, 3 tool error). Domain logic lives in internal/core/report,
-// which already evaluates the three dimensions; gate only composes them.
+// which already evaluates every dimension; gate only composes them.
 package gate
 
 import (
@@ -33,6 +33,7 @@ const (
 	idFindings      = "findings"
 	idHead          = "head"
 	idLive          = "live_threads"
+	idCompliance    = "compliance"
 	flagMaxSeverity = "--max-severity"
 	flagRequireHE   = "--require-head"
 	flagLive        = "--live"
@@ -178,27 +179,49 @@ func gateActions(gate *core.ReportGate) []string {
 }
 
 func gateAction(dim core.GateDimension) string {
-	switch dim.ID {
-	case idFindings:
-		if dim.Status != statusPass {
-			return actionFindings
+	action, ok := gateActionsByID[dim.ID]
+	if !ok {
+		return ""
+	}
+	return action(dim.Status)
+}
+
+// gateActionsByID maps a dimension to the recovery line its verdict calls
+// for; a passing dimension contributes nothing.
+var gateActionsByID = map[string]func(status string) string{
+	idFindings: func(status string) string {
+		if status == statusPass {
+			return ""
 		}
-	case idHead:
-		switch dim.Status {
+		return actionFindings
+	},
+	idHead: func(status string) string {
+		switch status {
 		case statusUnknown:
 			return actionMissing
 		case statusFail:
 			return "post a review for the fetched HEAD"
 		}
-	case idLive:
-		switch dim.Status {
+		return ""
+	},
+	idLive: func(status string) string {
+		switch status {
 		case statusFail:
 			return "resolve or reply to the live threads"
 		case statusUnknown:
 			return "restore the network or re-run with --live skip"
 		}
-	}
-	return ""
+		return ""
+	},
+	idCompliance: func(status string) string {
+		switch status {
+		case statusFail:
+			return "clear the compliance blockers"
+		case statusUnknown:
+			return "record the compliance evidence the warnings name"
+		}
+		return ""
+	},
 }
 
 // parseFlags parses the gate flags left to right; a missing operand, a bad

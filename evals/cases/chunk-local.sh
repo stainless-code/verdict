@@ -20,7 +20,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
   git config user.name "chunk local"
   if [ ! -f .gitignore ]; then
     cat > .gitignore <<'EOF'
-.review/
+.verdict/state/
 stubbin/
 fakebin/
 *.log
@@ -54,13 +54,15 @@ CLOC_BYTES="$(cd "$EVAL_SANDBOX" && git diff HEAD -- "$@" | wc -c | tr -d ' ')"
 if [ "$CLOC_BYTES" -le 512000 ]; then
   bad "fixture diff $CLOC_BYTES bytes is not over the 512000 cap"
 fi
-BUNDLE="$EVAL_SANDBOX/.review/local-clocfix"
-KNOB="$EVAL_SANDBOX/.review/chunk"
+BUNDLE="$EVAL_SANDBOX/.verdict/state/local-clocfix"
+KNOB="$EVAL_SANDBOX/.verdict/config.json"
+# knob_config writes the typed repository chunk default the base read sees.
+knob_config() { printf '{"schema_version":"1","defaults":{"chunk":%s}}\n' "$1" >"$KNOB"; }
 
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 assert_exit "absent-knob over-cap local refuses" 1
-assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds its cap 512000 bytes"
 assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
 assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$BUNDLE/chunks" ]; then
@@ -71,21 +73,21 @@ fi
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "chunking opted in (from --chunk)" "$EVAL_ERR" \
+  && grep -q "chunking opted in for group" "$EVAL_ERR" \
   && grep -q "chunked: .* chunk(s) at or under 512000 bytes" "$EVAL_ERR"; then
   good "local --chunk succeeds with the opt-in + chunked notices"
 else
   bad "local --chunk exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
-printf 'true\n' > "$KNOB"
+knob_config true
 eval_commit_controls
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "chunking opted in (from .review/chunk)" "$EVAL_ERR"; then
-  good "knob file alone opts the local path in (notice names .review/chunk)"
+  && grep -q "chunking opted in for group" "$EVAL_ERR"; then
+  good "typed chunk default alone opts the local path in (notice names .verdict/config.json)"
 else
-  bad "knob-file exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
+  bad "chunk-default exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
 rm -f "$KNOB"
 eval_commit_controls
@@ -94,7 +96,7 @@ N="$(jq -r '.chunk_count' <"$MAN" 2>/dev/null || echo 0)"
 if [ -f "$MAN" ] \
   && [ "$(jq -r '.schema_version' <"$MAN" 2>/dev/null)" = "1" ] \
   && [ "$(jq -r '.cap.bytes' <"$MAN" 2>/dev/null)" = "512000" ] \
-  && [ "$(jq -r '.cap.source' <"$MAN" 2>/dev/null)" = "null" ] \
+  && [ "$(jq -r '.cap.source' <"$MAN" 2>/dev/null)" = "per-group: built-in defaults" ] \
   && [ "$(jq -r '.total_bytes' <"$MAN" 2>/dev/null)" = "$CLOC_BYTES" ] \
   && [ "$N" -ge 2 ] 2>/dev/null \
   && [ "$(jq -r '.chunks | length' <"$MAN" 2>/dev/null)" = "$N" ] \
@@ -157,7 +159,7 @@ CLOC_A="$(cd "$EVAL_SANDBOX" && git rev-parse HEAD~1)"
 CLOC_B="$(cd "$EVAL_SANDBOX" && git rev-parse HEAD)"
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocrange --range "$CLOC_A..$CLOC_B" --chunk -- $CLOC_FILES
-RBUNDLE="$EVAL_SANDBOX/.review/local-clocrange"
+RBUNDLE="$EVAL_SANDBOX/.verdict/state/local-clocrange"
 RMAN="$RBUNDLE/chunks/manifest.json"
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.head_sha' <"$RMAN" 2>/dev/null)" = "$CLOC_B" ] \
@@ -196,7 +198,7 @@ run_review_fake() {
   return 0
 }
 run_review_fake fetch acme/app 4421 --chunk
-PMAN="$EVAL_SANDBOX/.review/4421/chunks/manifest.json"
+PMAN="$EVAL_SANDBOX/.verdict/state/4421/chunks/manifest.json"
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.chunk_count' <"$PMAN" 2>/dev/null)" = "$N" ] \
   && [ "$(jq -r '[.chunks[].files[]] | join(" ")' <"$PMAN" 2>/dev/null)" = "$CLOC_FILES" ] \
@@ -231,8 +233,8 @@ fi
 run_review fetch-local acme/app clochuge --chunk -- cloc-huge.txt
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "single file over cap" "$EVAL_ERR" \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && [ ! -d "$EVAL_SANDBOX/.review/local-clochuge/chunks" ]; then
+  && grep -q "exceeds its cap 512000 bytes" "$EVAL_ERR" \
+  && [ ! -d "$EVAL_SANDBOX/.verdict/state/local-clochuge/chunks" ]; then
   good "local single-file keeps the advisory refusal with no chunks dir"
 else
   bad "local degenerate exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
@@ -241,8 +243,8 @@ fi
 run_review_fake fetch acme/app 4422 --chunk
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "single file over cap" "$EVAL_ERR" \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
-  && [ ! -d "$EVAL_SANDBOX/.review/4422/chunks" ]; then
+  && grep -q "exceeds its cap 512000 bytes" "$EVAL_ERR" \
+  && [ ! -d "$EVAL_SANDBOX/.verdict/state/4422/chunks" ]; then
   good "PR single-file keeps the same advisory refusal with no chunks dir"
 else
   bad "PR degenerate exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
@@ -269,19 +271,19 @@ else
   good "under-cap local --chunk succeeds"
 fi
 cp "$EVAL_OUT" "$EVAL_SANDBOX/cloc-under-out.txt"
-cp "$EVAL_SANDBOX/.review/local-clocsmall/full.diff" "$EVAL_SANDBOX/cloc-under.diff"
+cp "$EVAL_SANDBOX/.verdict/state/local-clocsmall/full.diff" "$EVAL_SANDBOX/cloc-under.diff"
 assert_stream_nogrep "under-cap --chunk stays silent about chunking" "$EVAL_ERR" "chunk" "-i"
 run_review fetch-local acme/app clocsmall -- cloc-small.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cloc-under-out.txt" \
-  && cmp -s "$EVAL_SANDBOX/.review/local-clocsmall/full.diff" "$EVAL_SANDBOX/cloc-under.diff" \
-  && [ ! -d "$EVAL_SANDBOX/.review/local-clocsmall/chunks" ] \
+  && cmp -s "$EVAL_SANDBOX/.verdict/state/local-clocsmall/full.diff" "$EVAL_SANDBOX/cloc-under.diff" \
+  && [ ! -d "$EVAL_SANDBOX/.verdict/state/local-clocsmall/chunks" ] \
   && ! jq -e '.data | has("chunk")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "under-cap absent reads identical bytes, mints no chunks, envelope gains no data.chunk"
 else
   bad "under-cap absent parity exits $EVAL_STATUS"
 fi
-printf 'false\n' > "$KNOB"
+knob_config false
 eval_commit_controls
 (
   cd "$EVAL_SANDBOX" || exit 99
@@ -301,9 +303,9 @@ run_review fetch-local acme/app clocfix -- $CLOC_FILES
 if [ "$false_status" -eq 1 ] && [ "$EVAL_STATUS" -eq 1 ] \
   && cmp -s "$EVAL_ERR" "$EVAL_SANDBOX/cloc-false-err.txt" \
   && cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cloc-false-out.txt"; then
-  good "false knob file on the over-cap path reads absent bytes"
+  good "false typed chunk default on the over-cap path reads absent bytes"
 else
-  bad "false-knob parity broke"
+  bad "false-default parity broke"
 fi
 
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -43,8 +44,12 @@ type ReportResponse struct { //nolint:govet // field order is the public API sur
 
 // Report renders the offline review report for the bundle.
 func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Flags: core.ReportFlags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
 			Check: req.Check, Live: req.Live, Cost: req.Cost, Completeness: req.Completeness,
@@ -61,6 +66,48 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		GateFailed: resp.GateFailed,
 		Output:     artifactOf(resp.Output),
 		Sarif:      artifactOf(resp.Sarif),
+	}, nil
+}
+
+// ConfigRequest explains the stored effective policy of a fetched run or
+// previews a proposed configuration file. Exactly one of Explain and
+// Preview must be set; File names the proposed file for preview.
+type ConfigRequest struct {
+	Invocation
+	File    string
+	Explain bool
+	Preview bool
+}
+
+// ConfigResponse carries the read-only policy surface: envelope fields
+// plus the typed config data as JSON, byte-identical to the --json
+// envelope's data object.
+type ConfigResponse struct {
+	Result
+}
+
+// Config explains the stored effective policy (--explain) or previews a
+// proposed file with current settings and environment (--preview). It makes
+// no live calls and no writes, and never approves. Resolving the repository
+// root runs one `git rev-parse` probe through the environment, not through an
+// injected Commander, so a caller that sandboxes execution must cover that
+// probe too.
+func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := config.Run(ctx, &core.ConfigRequest{
+		ReadRequest: rr,
+		Flags: core.ConfigFlags{
+			Explain: req.Explain, Preview: req.Preview, File: req.File,
+		},
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &ConfigResponse{
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
 	}, nil
 }
 
@@ -102,8 +149,12 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 				"(Live alone only sets the offline posture)",
 		})
 	}
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Flags: core.ReportFlags{
 			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live,
 		},
@@ -142,8 +193,12 @@ type NextResponse struct { //nolint:govet // field order is the public API surfa
 
 // Next returns the top actionable finding for the bundle.
 func (c *Client) Next(ctx context.Context, req *NextRequest) (*NextResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := reportcore.RunNext(ctx, &core.NextRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Status:      req.Status,
 		Effective:   core.Defaults(),
 	})
@@ -175,8 +230,12 @@ type ShowResponse struct { //nolint:govet // field order is the public API surfa
 
 // Show returns one full finding record by signature or unique prefix.
 func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := reportcore.RunShow(ctx, &core.ShowRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Sig:         req.Sig,
 	})
 	if ref != nil {
@@ -194,8 +253,12 @@ type RecordRequest struct {
 
 // Record validates and merges a local review.json into the stores.
 func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := recordcore.Run(ctx, &core.RecordRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Effective:   core.Defaults(),
 	})
 	if ref != nil {
@@ -213,8 +276,12 @@ type PostRequest struct {
 
 // Post submits the review payload; DryRun renders without submitting.
 func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := postcore.Run(ctx, &core.PostRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Flags: core.PostFlags{
 			Approve: req.Approve, ReviewFile: req.ReviewFile, RequestChanges: req.RequestChanges,
 			Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
@@ -227,11 +294,14 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 	return resultPtr(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
-// VerifyRequest runs the recorded verifyCmd under the watchdog.
+// VerifyRequest runs the recorded verifyCmd under the watchdog, or one deep
+// plan group's explicit command when Group and Command are both set.
 type VerifyRequest struct {
 	Invocation
-	Timeout string   // raw --timeout value (seconds); bad values refuse
-	Env     []string // ordered child environment snapshot
+	Timeout string
+	Group   string
+	Command string
+	Env     []string
 }
 
 // VerifyResponse carries the verify outcome and the recorded proof.
@@ -241,24 +311,37 @@ type VerifyResponse struct { //nolint:govet // field order is the public API sur
 	PatchDir string
 	TimedOut bool
 	Tail     string
+	Group    string // deep validation: the group the receipt certifies
+	Head     string // deep validation: the head the command ran on
+	Receipt  string // deep validation: the recorded receipt path
 }
 
 // Verify runs the recorded verifyCmd with the watchdog and records proof.
 func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := verifycore.Run(ctx, &core.VerifyRequest{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		TimeoutRaw:  req.Timeout,
+		Group:       req.Group,
+		Command:     req.Command,
 		Environ:     req.Env,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
 	}
+	data := resp.Data
 	return &VerifyResponse{
-		Result:   resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
+		Result:   resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, data),
 		Exit:     resp.Exit,
 		PatchDir: resp.PatchDir,
 		TimedOut: resp.TimedOut,
 		Tail:     resp.Tail,
+		Group:    data.Group,
+		Head:     data.Head,
+		Receipt:  data.Receipt,
 	}, nil
 }
 
@@ -269,10 +352,14 @@ type FetchRequest struct {
 	BudgetConsent, ShowPrompts, Chunk bool
 }
 
-// Fetch fetches a pull request into .review/<pr>.
+// Fetch fetches a pull request into .verdict/state/<pr>.
 func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) {
+	rr, err := c.requestFetch(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
-		ReadRequest: c.readWith(c.fetch, req.Repo, req.PR),
+		ReadRequest: rr,
 		Flags: core.FetchFlags{
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk,
@@ -296,10 +383,14 @@ type FetchLocalRequest struct {
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 }
 
-// FetchLocal fetches a local git diff into .review/local-<name>.
+// FetchLocal fetches a local git diff into .verdict/state/local-<name>.
 func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Result, error) {
+	rr, err := c.requestFetch(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
-		ReadRequest: c.readWith(c.fetch, req.Repo, req.PR),
+		ReadRequest: rr,
 		Flags: core.FetchLocalFlags{
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
@@ -332,10 +423,15 @@ type ThreadsResponse struct { //nolint:govet // field order is the public API su
 }
 
 // Threads re-reads one provider's review conversations and rewrites only
-// .review/<pr>/threads.json. Human progress streams through Options.Progress.
+// .verdict/state/<pr>/threads.json. Human progress streams through the
+// Options.Progress observer.
 func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, error) {
+	rr, err := c.requestFetch(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := fetchcore.RunThreads(ctx, &fetchcore.ThreadsRequest{
-		ReadRequest: c.readWith(c.fetch, req.Repo, req.PR),
+		ReadRequest: rr,
 		Provider:    req.Provider,
 	})
 	if ref != nil {
@@ -365,8 +461,12 @@ type ReadyResponse struct {
 
 // Ready reports merge readiness (checks, threads, draft/conflict).
 func (c *Client) Ready(ctx context.Context, req *ReadyRequest) (*ReadyResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := readycore.Run(ctx, &readycore.Request{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Check:       req.Check,
 	})
 	if ref != nil {
@@ -396,8 +496,12 @@ type TrendResponse struct {
 
 // Trend rolls up review outcomes across fetched bundles.
 func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, error) {
+	rr, err := c.request(ctx, req.Repo, "")
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := trendcore.Run(ctx, &trendcore.Request{
-		ReadRequest: c.read(req.Repo, ""),
+		ReadRequest: rr,
 		Overlap:     req.Overlap,
 	})
 	if ref != nil {
@@ -420,8 +524,12 @@ type CalibrateRequest struct { //nolint:govet // field order is the public API s
 
 // Calibrate compares stored findings against ground truth.
 func (c *Client) Calibrate(ctx context.Context, req *CalibrateRequest) (*Result, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := calibratecore.Run(ctx, &calibratecore.Request{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Probe:       req.Probe,
 		Specs:       req.Specs,
 		JudgeFile:   req.JudgeFile,
@@ -443,7 +551,30 @@ type DoctorResponse struct {
 
 // Doctor preflights the harness (auth, git, storage) and reports health.
 func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error) {
-	resp, ref := doctorcore.Run(ctx, &doctorcore.Request{ReadRequest: c.readBare()})
+	rr, err := c.requestBare(ctx)
+	if err != nil {
+		// Only cancellation aborts. Every other probe failure is exactly what
+		// doctor exists to report (a missing git is a warning row, never a
+		// refusal), so fall back to the cwd-relative posture and let the tool
+		// rows speak. The root error is sealed at the service boundary, so
+		// errors.Is on a sentinel can never match it here.
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		// The probe cannot answer (an absent git fails it): doctor diagnoses
+		// the harness from the cwd-relative posture instead of refusing, so
+		// the tool rows still report.
+		root := c.dir
+		rr = core.ReadRequest{
+			Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: c.commander},
+			Repo:     "",
+			Pr:       "",
+			Forces:   &core.GlobalForces{},
+			Root:     &root,
+			RepoRoot: ".",
+		}
+	}
+	resp, ref := doctorcore.Run(ctx, &doctorcore.Request{ReadRequest: rr})
 	if ref != nil {
 		return nil, refusalErr(ref)
 	}
@@ -468,8 +599,12 @@ type CheckTreeResponse struct {
 // CheckTree gates on a clean git worktree. A not-a-repo checkout returns a
 // typed refusal, not a response.
 func (c *Client) CheckTree(ctx context.Context, req *CheckTreeRequest) (*CheckTreeResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := checktreecore.Run(ctx, &checktreecore.Request{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Expect:      req.Expect,
 	})
 	if ref != nil {
@@ -502,8 +637,12 @@ type TriageResponse struct { //nolint:govet // field order is the public API sur
 
 // Triage flips one finding's status, or previews the flip with DryRun.
 func (c *Client) Triage(ctx context.Context, req *TriageRequest) (*TriageResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := triagecore.Run(ctx, &triagecore.Request{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Sig:         req.Sig,
 		Status:      req.Status,
 		Rationale:   req.Rationale,
@@ -533,8 +672,12 @@ type AdoptResponse struct { //nolint:govet // field order is the public API surf
 
 // Adopt copies findings from a local bundle into the target PR bundle.
 func (c *Client) Adopt(ctx context.Context, req *AdoptRequest) (*AdoptResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := adoptcore.Run(ctx, &adoptcore.Request{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		From:        req.From,
 	})
 	if ref != nil {
@@ -555,8 +698,12 @@ type FixRequest struct {
 // Fix runs one bounded fix pass over an inline finding (or reports
 // completion when nothing is actionable).
 func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := fixcore.Run(ctx, &fixcore.Request{
-		ReadRequest: c.read(req.Repo, req.PR),
+		ReadRequest: rr,
 		Sig:         req.Sig,
 		Human:       c.streamWriter(true),
 	})
@@ -567,7 +714,7 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error) {
 }
 
 // LearnRequest reads or updates the local knowledge base. It takes no
-// repo/PR positionals; the base lives under .review/.
+// repo/PR positionals; the base lives under .verdict/.
 type LearnRequest struct {
 	Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
 	Status                                                      bool
@@ -575,8 +722,12 @@ type LearnRequest struct {
 
 // Learn reads or updates the local structured knowledge base.
 func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error) {
+	rr, err := c.requestBare(ctx)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := learncore.Run(ctx, &learncore.Request{
-		ReadRequest: c.readBare(),
+		ReadRequest: rr,
 		Rule:        req.Rule,
 		Scope:       req.Scope,
 		ID:          req.ID,
@@ -593,7 +744,7 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 	return outcomePtr(resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
-// InitRequest scaffolds .review control files from a style preset.
+// InitRequest scaffolds .verdict control files from a style preset.
 // Non-interactive only: pass Yes to confirm.
 type InitRequest struct {
 	Preset string
@@ -606,10 +757,14 @@ type InitResponse struct {
 	ExitCode int
 }
 
-// Init scaffolds .review control files from a style preset.
+// Init scaffolds .verdict control files from a style preset.
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error) {
+	rr, err := c.requestBare(ctx)
+	if err != nil {
+		return nil, err
+	}
 	resp, ref := initcore.Run(ctx, &initcore.Request{
-		ReadRequest: c.readBare(),
+		ReadRequest: rr,
 		Preset:      req.Preset,
 		Yes:         req.Yes,
 		Human:       c.streamWriter(true),

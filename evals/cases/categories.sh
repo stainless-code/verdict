@@ -45,7 +45,7 @@ EOF
 m="$(mark)"
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "post --dry-run exits 0" 0
-DRY="$EVAL_SANDBOX/.review/$PR/findings.dryrun.json"
+DRY="$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json"
 if [ "$(jq -r '.[0].category' "$DRY")" = "security" ] \
   && [ "$(jq -r '.[1].category' "$DRY")" = "style" ] \
   && [ "$(jq -r '.[2].category' "$DRY")" = "null" ]; then
@@ -117,7 +117,7 @@ jq -n --arg sec "Security boundary bug here with enough substance." \
   ]}}}}}' > "$EVAL_SANDBOX/cat-threads.json"
 jq -n --arg sig "$SEC_SIG" \
   '{schema_version:"1",review:{id:7},head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",posted_at:"2026-11-02T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/$PR/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 m="$(mark)"
 run_review calibrate acme/app "$PR" --json
 assert_exit "calibrate --json exits 0" 0

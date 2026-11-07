@@ -8,7 +8,7 @@ $.comments[0].kb[0]  wrong-type  kb id must be a string
 try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 re-enter: verdict record acme/app local-kb
 --- files ---
---- file C/.review/local-kb/store.json ---
+--- file C/.verdict/state/local-kb/store.json ---
 {
   "schema_version": "1"
 }

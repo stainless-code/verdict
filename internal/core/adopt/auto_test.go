@@ -45,7 +45,7 @@ func autoBundleAt(t *testing.T, bundle, patch, diff, repo string, findings bool)
 // targets and twins.
 func autoBundleFiles(t *testing.T, bundle, patch, diff string) {
 	t.Helper()
-	dir := ".review/" + bundle
+	dir := ".verdict/state/" + bundle
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func autoBundleFiles(t *testing.T, bundle, patch, diff string) {
 // make a bundle an adoptable twin.
 func autoTwinRecords(t *testing.T, bundle, repo string, findings bool) {
 	t.Helper()
-	dir := ".review/" + bundle
+	dir := ".verdict/state/" + bundle
 	head := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	base := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	source := `{"schema_version":"1","repo":"` + repo + `","head_sha":"` + head + `","base_sha":"` + base + `"}`
@@ -92,7 +92,7 @@ func autoTargetRecord(t *testing.T, bundle string) {
 	base := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	pr := `{"state":"OPEN","headRefOid":"` + head + `","baseRefOid":"` + base + `",` +
 		`"url":"https://github.com/acme/app/pull/` + bundle + `"}`
-	if err := os.WriteFile(filepath.Join(".review/"+bundle, "PR.json"), []byte(pr), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(".verdict/state/"+bundle, "PR.json"), []byte(pr), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -117,7 +117,7 @@ type autoStubCommander struct {
 	ids map[string]string
 }
 
-func (c *autoStubCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *autoStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil {
@@ -147,7 +147,7 @@ func TestAdoptAutoMatch(t *testing.T) {
 	if !strings.Contains(resp.Human, "auto -> local-twin") || !strings.Contains(resp.Human, autoTestPatch) {
 		t.Errorf("human line misses the mapping: %q", resp.Human)
 	}
-	raw, err := os.ReadFile(".review/1648/findings.json")
+	raw, err := os.ReadFile(".verdict/state/1648/findings.json")
 	if err != nil {
 		t.Fatalf("adopted findings: %v", err)
 	}
@@ -193,10 +193,10 @@ func TestAdoptAutoAmbiguous(t *testing.T) {
 func TestAdoptAutoNoTargetIdentity(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(".review/1648", 0o755); err != nil {
+	if err := os.MkdirAll(".verdict/state/1648", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(".review/1648/full.diff", []byte("diff --git a/n b/n\n"), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/1648/full.diff", []byte("diff --git a/n b/n\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	autoBundle(t, "local-twin", "acme/app", true)
@@ -226,7 +226,7 @@ func TestAdoptAutoStaleTwinExcludes(t *testing.T) {
 	t.Chdir(dir)
 	autoBundle(t, "1648", "", false)
 	autoBundle(t, "local-twin", "acme/app", true)
-	if err := os.WriteFile(".review/local-twin/full.diff", []byte("replaced bytes\n"), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/local-twin/full.diff", []byte("replaced bytes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, ref := Run(t.Context(), autoRequest("auto"))
@@ -244,7 +244,7 @@ func TestAdoptLocalAutoSentinel(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("resolveAdoptDirs refusal: %v", ref)
 	}
-	if dir != ".review/1648" || fromDir != ".review/local-auto" || display != "local-auto" {
+	if dir != ".verdict/state/1648" || fromDir != ".verdict/state/local-auto" || display != "local-auto" {
 		t.Errorf("resolve = %q %q %q", dir, fromDir, display)
 	}
 }
@@ -257,12 +257,12 @@ func TestAdoptAutoTamperedTwinExcludes(t *testing.T) {
 	t.Chdir(dir)
 	autoBundle(t, "1648", "", false)
 	autoBundle(t, "local-twin", "acme/app", true)
-	raw, err := os.ReadFile(".review/local-twin/identity.json")
+	raw, err := os.ReadFile(".verdict/state/local-twin/identity.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tampered := strings.Replace(string(raw), autoTestPatch, strings.Repeat("1", 40), 1)
-	if err := os.WriteFile(".review/local-twin/identity.json", []byte(tampered), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/local-twin/identity.json", []byte(tampered), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, ref := Run(t.Context(), autoRequest("auto"))
@@ -277,12 +277,12 @@ func TestAdoptAutoTamperedTargetRefuses(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	autoBundle(t, "1648", "", false)
-	raw, err := os.ReadFile(".review/1648/identity.json")
+	raw, err := os.ReadFile(".verdict/state/1648/identity.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tampered := strings.Replace(string(raw), autoTestPatch, strings.Repeat("1", 40), 1)
-	if err := os.WriteFile(".review/1648/identity.json", []byte(tampered), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/1648/identity.json", []byte(tampered), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	autoBundle(t, "local-twin", "acme/app", true)

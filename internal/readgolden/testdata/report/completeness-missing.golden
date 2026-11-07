@@ -9,11 +9,12 @@ exit: 1
   "next": "address open threads",
   "warnings": [
     "patch identity unavailable — completeness compares heads",
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
     "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
-    "dir": ".review/5102",
+    "dir": ".verdict/state/5102",
     "head": {
       "fetched": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -104,6 +105,7 @@ exit: 1
 }
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)
 check: incomplete — no completed post for HEAD aaaaaaa (missing-post: run verdict fetch acme/app 5102, then review + post, then re-check)
 --- files ---

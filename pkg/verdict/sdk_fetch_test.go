@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -32,7 +33,50 @@ func stubTools(t *testing.T, tools ...string) {
 			t.Fatal(err)
 		}
 	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// onlyPath exposes exactly the named host tools: the root probe still needs
+// git, while a verb's own tool must stay absent from PATH.
+func onlyPath(t *testing.T, tools ...string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		onlyPathWindows(t, tools)
+		return
+	}
+	dir := t.TempDir()
+	for _, tool := range tools {
+		physical, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("host %s: %v", tool, err)
+		}
+		if err := os.Symlink(physical, filepath.Join(dir, tool)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Setenv("PATH", dir)
+}
+
+// onlyPathWindows exposes the named host tools without symlinks: a bare
+// symlink name misses PATHEXT and a relocated binary loses its home
+// directory for DLL search, so each tool's home directory rides behind an
+// isolated dir instead. The named tools resolve and run, while anything
+// outside those homes (gh, ps) stays absent.
+func onlyPathWindows(t *testing.T, tools []string) {
+	t.Helper()
+	seen := map[string]bool{}
+	homes := []string{t.TempDir()}
+	for _, tool := range tools {
+		physical, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("host %s: %v", tool, err)
+		}
+		if home := filepath.Dir(physical); !seen[home] {
+			seen[home] = true
+			homes = append(homes, home)
+		}
+	}
+	t.Setenv("PATH", strings.Join(homes, string(os.PathListSeparator)))
 }
 
 // sdkPRJSON is the `gh pr view` body the remote fixture answers with.
@@ -107,14 +151,14 @@ func TestClientFetch(t *testing.T) {
 		t.Errorf("envelope = repo %q pr %q at %q", out.Repo, out.PR, out.At)
 	}
 	if !strings.HasPrefix(out.Next, "feed SKILL.md + prompts/system.md") ||
-		!strings.Contains(out.Next, ".review/7/PR.json") {
+		!strings.Contains(out.Next, ".verdict/state/7/PR.json") {
 		t.Errorf("next = %q, want the review handoff", out.Next)
 	}
 	assertFetchedBundle(t, decodeData(t, out.Data))
-	assertFetchedFiles(t, ".review/7", []string{
+	assertFetchedFiles(t, ".verdict/state/7", []string{
 		"PR.json", "full.diff", "toc.txt", "roles.txt", "reviews.json", "inline.json", "threads.json",
 	})
-	for _, want := range []string{"» gh pr view acme/app#7", "» gh pr diff -> .review/7/full.diff"} {
+	for _, want := range []string{"» gh pr view acme/app#7", "» gh pr diff -> .verdict/state/7/full.diff"} {
 		if !strings.Contains(progress.joinedHuman(), want) {
 			t.Errorf("human = %q, want %q", progress.joinedHuman(), want)
 		}
@@ -134,14 +178,14 @@ func assertFetchedFiles(t *testing.T, dir string, names []string) {
 // assertFetchedBundle proves the remote fetch data profile.
 func assertFetchedBundle(t *testing.T, doc map[string]any) {
 	t.Helper()
-	assertFields(t, doc, map[string]any{"dir": ".review/7", "head_sha": sdkHeadA, "base_sha": sdkBaseB})
+	assertFields(t, doc, map[string]any{"dir": ".verdict/state/7", "head_sha": sdkHeadA, "base_sha": sdkBaseB})
 	assertFields(t, asMap(t, doc["capabilities"], "capabilities"), map[string]any{"provider": "github"})
 	assertFields(t, asMap(t, doc["controls"], "controls"), map[string]any{"policy": "base", "sha": sdkBaseB})
 	assertNumbers(t, doc, map[string]float64{
 		"files": 1, "additions": 1, "deletions": 1, "hunks": 1, "diff_bytes": 146,
 	})
 	artifacts := asMap(t, doc["artifacts"], "artifacts")
-	assertFields(t, artifacts, map[string]any{"PR.json": ".review/7/PR.json", "full.diff": ".review/7/full.diff"})
+	assertFields(t, artifacts, map[string]any{"PR.json": ".verdict/state/7/PR.json", "full.diff": ".verdict/state/7/full.diff"})
 }
 
 // sdkThreadNode renders one GraphQL review-thread node over notes.txt line 2.
@@ -194,12 +238,12 @@ func TestClientThreads(t *testing.T) {
 	}
 	assertThreadsTally(t, out)
 	assertThreadsData(t, out)
-	if !strings.Contains(readText(t, ".review/7/threads.json"), `"schema_version": "1"`) {
+	if !strings.Contains(readText(t, ".verdict/state/7/threads.json"), `"schema_version": "1"`) {
 		t.Error("threads.json does not carry the feed schema version")
 	}
 	for _, want := range []string{
-		"» github threads -> .review/7/threads.json",
-		"done: 2 threads (1 open, 1 outdated) -> .review/7/threads.json",
+		"» github threads -> .verdict/state/7/threads.json",
+		"done: 2 threads (1 open, 1 outdated) -> .verdict/state/7/threads.json",
 	} {
 		if !strings.Contains(progress.joinedHuman(), want) {
 			t.Errorf("human = %q, want %q", progress.joinedHuman(), want)
@@ -210,7 +254,7 @@ func TestClientThreads(t *testing.T) {
 // assertThreadsTally proves the typed response mirrors the feed tally.
 func assertThreadsTally(t *testing.T, out *verdict.ThreadsResponse) {
 	t.Helper()
-	if out.Dir != ".review/7" || out.File != ".review/7/threads.json" ||
+	if out.Dir != ".verdict/state/7" || out.File != ".verdict/state/7/threads.json" ||
 		out.Provider != "github" || out.HeadSHA != sdkHeadA || out.FetchedAt != sdkAt {
 		t.Errorf("feed location = %q/%q provider %q head %q at %q",
 			out.Dir, out.File, out.Provider, out.HeadSHA, out.FetchedAt)
@@ -225,7 +269,7 @@ func assertThreadsTally(t *testing.T, out *verdict.ThreadsResponse) {
 // included.
 func assertThreadsData(t *testing.T, out *verdict.ThreadsResponse) {
 	t.Helper()
-	want := `{"dir":".review/7","file":".review/7/threads.json","provider":"github",` +
+	want := `{"dir":".verdict/state/7","file":".verdict/state/7/threads.json","provider":"github",` +
 		`"head_sha":"` + sdkHeadA + `","fetched_at":"` + sdkAt + `","truncated":false,` +
 		`"threads":2,"open":1,"outdated":1,"verdict":0}`
 	if got := string(out.Data); got != want {
@@ -275,7 +319,7 @@ func TestClientThreadsMissingBundle(t *testing.T) {
 // rather than a fetch refusal.
 func TestClientFetchMissingTool(t *testing.T) {
 	t.Chdir(t.TempDir())
-	t.Setenv("PATH", t.TempDir())
+	onlyPath(t, "git")
 	c := newSDKClient(nil, nil)
 	defer c.Close()
 
@@ -349,7 +393,7 @@ func TestClientFetchDefaultRunner(t *testing.T) {
 	})
 	requireNoError(t, err)
 	assertFetchedBundle(t, decodeData(t, out.Data))
-	assertFetchedFiles(t, ".review/7", []string{"PR.json", "full.diff", "reviews.json", "threads.json"})
+	assertFetchedFiles(t, ".verdict/state/7", []string{"PR.json", "full.diff", "reviews.json", "threads.json"})
 	if !strings.Contains(progress.joinedHuman(), "» gh pr view acme/app#7") {
 		t.Errorf("human = %q, want the streamed reads", progress.joinedHuman())
 	}
@@ -374,15 +418,15 @@ func TestClientFetchLocal(t *testing.T) {
 	if out.Repo != "acme/app" || out.At != sdkAt {
 		t.Errorf("envelope = repo %q at %q", out.Repo, out.At)
 	}
-	if !strings.Contains(out.Next, ".review/local-probe/source.json") {
+	if !strings.Contains(out.Next, ".verdict/state/local-probe/source.json") {
 		t.Errorf("next = %q, want the local review handoff", out.Next)
 	}
 	assertLocalBundle(t, decodeData(t, out.Data))
-	assertFetchedFiles(t, ".review/local-probe", []string{"source.json", "full.diff", "toc.txt", "roles.txt"})
-	if !strings.Contains(readText(t, ".review/local-probe/source.json"), sdkHeadA) {
+	assertFetchedFiles(t, ".verdict/state/local-probe", []string{"source.json", "full.diff", "toc.txt", "roles.txt"})
+	if !strings.Contains(readText(t, ".verdict/state/local-probe/source.json"), sdkHeadA) {
 		t.Error("source.json does not name the head commit")
 	}
-	if !strings.Contains(progress.joinedHuman(), "done: .review/local-probe/source.json") {
+	if !strings.Contains(progress.joinedHuman(), "done: .verdict/state/local-probe/source.json") {
 		t.Errorf("human = %q, want the local fetch summary", progress.joinedHuman())
 	}
 }
@@ -407,10 +451,10 @@ func TestClientFetchLocalDefaultRunner(t *testing.T) {
 	})
 	requireNoError(t, err)
 	doc := decodeData(t, out.Data)
-	assertFields(t, doc, map[string]any{"dir": ".review/local-probe", "kind": "worktree"})
+	assertFields(t, doc, map[string]any{"dir": ".verdict/state/local-probe", "kind": "worktree"})
 	assertNumbers(t, doc, map[string]float64{"files": 1, "additions": 1, "deletions": 1})
-	assertFetchedFiles(t, ".review/local-probe", []string{"source.json", "full.diff", "toc.txt"})
-	if !strings.Contains(readText(t, ".review/local-probe/full.diff"), "+new line") {
+	assertFetchedFiles(t, ".verdict/state/local-probe", []string{"source.json", "full.diff", "toc.txt"})
+	if !strings.Contains(readText(t, ".verdict/state/local-probe/full.diff"), "+new line") {
 		t.Error("full.diff does not carry the worktree change")
 	}
 }
@@ -418,7 +462,7 @@ func TestClientFetchLocalDefaultRunner(t *testing.T) {
 // assertLocalBundle proves the local fetch data profile.
 func assertLocalBundle(t *testing.T, doc map[string]any) {
 	t.Helper()
-	assertFields(t, doc, map[string]any{"dir": ".review/local-probe", "kind": "worktree", "base_sha": sdkHeadA})
+	assertFields(t, doc, map[string]any{"dir": ".verdict/state/local-probe", "kind": "worktree", "base_sha": sdkHeadA})
 	assertNumbers(t, doc, map[string]float64{"files": 1, "additions": 1, "deletions": 1, "hunks": 1, "diff_bytes": 146})
 	if omitted := asSlice(t, doc["omitted"], "omitted"); len(omitted) != 0 {
 		t.Errorf("omitted = %v, want the whole diff in bounds", omitted)
@@ -453,10 +497,10 @@ func TestClientFetchBaseOverride(t *testing.T) {
 	if !cmdr.spawned("compare/" + sdkBaseB + "..." + sdkHeadA) {
 		t.Fatalf("no compare spawn for the base override: %q", cmdr.calls)
 	}
-	if got := readText(t, ".review/7/incremental.diff"); got != incrementalDiff {
+	if got := readText(t, ".verdict/state/7/incremental.diff"); got != incrementalDiff {
 		t.Errorf("incremental.diff = %q, want the compare payload", got)
 	}
-	if want := "» compare " + sdkBaseB + "..." + sdkHeadA + " -> .review/7/incremental.diff"; !strings.Contains(progress.joinedHuman(), want) {
+	if want := "» compare " + sdkBaseB + "..." + sdkHeadA + " -> .verdict/state/7/incremental.diff"; !strings.Contains(progress.joinedHuman(), want) {
 		t.Errorf("human = %q, want %q", progress.joinedHuman(), want)
 	}
 }
@@ -478,13 +522,13 @@ func TestClientFetchNoBaseSkipsCompare(t *testing.T) {
 		BudgetConsent: true,
 	})
 	requireNoError(t, err)
-	if !strings.Contains(readText(t, ".review/7/full.diff"), "+new line") {
+	if !strings.Contains(readText(t, ".verdict/state/7/full.diff"), "+new line") {
 		t.Fatalf("plain fetch did not run: full.diff missing the PR diff")
 	}
 	if cmdr.spawned("compare/") {
 		t.Errorf("no-base fetch spawned a compare: %q", cmdr.calls)
 	}
-	if _, err := os.Stat(".review/7/incremental.diff"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/7/incremental.diff"); !os.IsNotExist(err) {
 		t.Errorf("no-base fetch wrote incremental.diff")
 	}
 }

@@ -20,7 +20,7 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
   git config user.name "chunk recipe"
   if [ ! -f .gitignore ]; then
     cat > .gitignore <<'EOF'
-.review/
+.verdict/state/
 stubbin/
 fakebin/
 *.log
@@ -72,12 +72,12 @@ fi
 
 run_review fetch-local acme/app mrecopt --range "$MREC_BASE..$MREC_C"
 assert_exit "opted-out multi-file over-cap refuses" 1
-assert_file_grep "opted-out refusal names the cap" "$EVAL_ERR" "exceeds cap 512000 bytes"
+assert_file_grep "opted-out refusal names the cap" "$EVAL_ERR" "exceeds its cap 512000 bytes"
 assert_file_grep "opted-out refusal carries the split hint" "$EVAL_ERR" "try: split the range"
 assert_file_grep "opted-out refusal names --range" "$EVAL_ERR" "--range"
 assert_file_grep "opted-out refusal names the paths filter" "$EVAL_ERR" "paths filter"
 assert_stream_nogrep "opted-out refusal mentions no chunking" "$EVAL_ERR" "chunk" "-i"
-if [ ! -d "$EVAL_SANDBOX/.review/local-mrecopt/chunks" ]; then
+if [ ! -d "$EVAL_SANDBOX/.verdict/state/local-mrecopt/chunks" ]; then
   good "opted-out refusal writes no chunks dir"
 else
   bad "opted-out refusal left a chunks dir"
@@ -94,36 +94,36 @@ fi
 
 run_review fetch-local acme/app mreca --range "$MREC_BASE..$MREC_A"
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mreca/full.diff" ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mreca/toc.txt" ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mreca/hunks.tsv" ]; then
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mreca/full.diff" ] \
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mreca/toc.txt" ] \
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mreca/hunks.tsv" ]; then
   good "hand slice 1/3 (--range base..slice-a) completes with a full bundle"
 else
   bad "hand slice 1/3 exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 run_review fetch-local acme/app mrecb --range "$MREC_A..$MREC_B"
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mrecb/full.diff" ]; then
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mrecb/full.diff" ]; then
   good "hand slice 2/3 (--range slice-a..slice-b) completes"
 else
   bad "hand slice 2/3 exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 run_review fetch-local acme/app mrecc --range "$MREC_B..$MREC_C"
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mrecc/full.diff" ]; then
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mrecc/full.diff" ]; then
   good "hand slice 3/3 (--range slice-b..slice-c) completes"
 else
   bad "hand slice 3/3 exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
-if [ "$(( $(wc -c <"$EVAL_SANDBOX/.review/local-mreca/full.diff" | tr -d ' ') + $(wc -c <"$EVAL_SANDBOX/.review/local-mrecb/full.diff" | tr -d ' ') + $(wc -c <"$EVAL_SANDBOX/.review/local-mrecc/full.diff" | tr -d ' ') ))" = "$FULL_DIFF_BYTES" ]; then
+if [ "$(( $(wc -c <"$EVAL_SANDBOX/.verdict/state/local-mreca/full.diff" | tr -d ' ') + $(wc -c <"$EVAL_SANDBOX/.verdict/state/local-mrecb/full.diff" | tr -d ' ') + $(wc -c <"$EVAL_SANDBOX/.verdict/state/local-mrecc/full.diff" | tr -d ' ') ))" = "$FULL_DIFF_BYTES" ]; then
   good "hand slices partition the refused input (slice bytes sum to the full diff)"
 else
   bad "hand-slice sizes do not sum to the refused diff"
 fi
 run_review fetch-local acme/app mrecpath --range "$MREC_BASE..$MREC_C" -- mrec-f1.txt mrec-f2.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mrecpath/full.diff" ] \
-  && [ "$(wc -c <"$EVAL_SANDBOX/.review/local-mrecpath/full.diff" | tr -d ' ')" -le 512000 ]; then
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mrecpath/full.diff" ] \
+  && [ "$(wc -c <"$EVAL_SANDBOX/.verdict/state/local-mrecpath/full.diff" | tr -d ' ')" -le 512000 ]; then
   good "paths-narrowed re-fetch of the refused range completes under the cap"
 else
   bad "paths-narrowed re-fetch exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
@@ -143,14 +143,14 @@ rm -f "$EVAL_SANDBOX/.mrec-1f" "$EVAL_SANDBOX/.mrec-1f-base"
 run_review fetch-local acme/app mrecdegen --chunk --range "$MREC_1F_BASE..$MREC_1F" -- mrec-huge-1file.txt
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "single file over cap" "$EVAL_ERR" \
-  && grep -q "exceeds cap 512000 bytes" "$EVAL_ERR" \
+  && grep -q "exceeds its cap 512000 bytes" "$EVAL_ERR" \
   && grep -q "try: split the range" "$EVAL_ERR"; then
   good "degenerate: single over-cap file with --chunk keeps the advisory refusal naming the manual path"
 else
   bad "degenerate refusal exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
-if [ ! -d "$EVAL_SANDBOX/.review/local-mrecdegen/chunks" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/local-mrecdegen/chunks/manifest.json" ]; then
+if [ ! -d "$EVAL_SANDBOX/.verdict/state/local-mrecdegen/chunks" ] \
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/local-mrecdegen/chunks/manifest.json" ]; then
   good "degenerate refusal writes no chunks dir and no manifest (no half-write)"
 else
   bad "degenerate refusal left chunk output behind"
@@ -158,8 +158,8 @@ fi
 
 run_review fetch-local acme/app mrecdeghalf --range "$MREC_H0..$MREC_H1" -- mrec-huge.txt
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ -s "$EVAL_SANDBOX/.review/local-mrecdeghalf/full.diff" ] \
-  && [ "$(wc -c <"$EVAL_SANDBOX/.review/local-mrecdeghalf/full.diff" | tr -d ' ')" -le 512000 ]; then
+  && [ -s "$EVAL_SANDBOX/.verdict/state/local-mrecdeghalf/full.diff" ] \
+  && [ "$(wc -c <"$EVAL_SANDBOX/.verdict/state/local-mrecdeghalf/full.diff" | tr -d ' ')" -le 512000 ]; then
   good "range-half-split re-fetch of the single huge file completes under the cap"
 else
   bad "range-half-split exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"

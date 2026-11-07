@@ -14,63 +14,51 @@ unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVI
 unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-BASEB="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 EXPECTED_TV="$(jq -r .version "$EVAL_ROOT/package.json")"
 EXPECTED_PH="$(for f in SKILL.md prompts/diagrams.md prompts/review.md prompts/system.md; do printf '== %s ==\n' "$f"; cat "$EVAL_SKILL/$f"; printf '\n'; done | shasum -a 256 | cut -d' ' -f1)"
 
 mklocal() { # $1 = slug (without the local- prefix)
-  local dir="$EVAL_SANDBOX/.review/local-$1"
-  mkdir -p "$dir"
-  cat > "$dir/source.json" <<EOF
-{"head_sha":"$HEADA","base_sha":"$BASEB","head_ref":"feature"}
-EOF
-  cat > "$dir/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+  local dir="$EVAL_SANDBOX/.verdict/state/local-$1"
+  eval_mk_bundle "local-$1"
+  jq --arg h "$HEADA" '.head_sha = $h | .head_ref = "feature"' \
+    "$dir/source.json" >"$dir/source.json.tmp"
+  mv "$dir/source.json.tmp" "$dir/source.json"
   cat > "$dir/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"pointed","severity":"informational"}]}
 EOF
 }
 
 mklocal prov1
-cat > "$EVAL_SANDBOX/.review/local-prov1/cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/local-prov1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"cost-model-1","input_tokens":100,"output_tokens":50}],"est_usd":0.05}
 EOF
 run_review record acme/app local-prov1 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.tool_version' "$EVAL_SANDBOX/.review/local-prov1/record.json" 2>/dev/null)" = "$EXPECTED_TV" ] \
-  && [ "$(jq -r '.prompts_hash' "$EVAL_SANDBOX/.review/local-prov1/record.json" 2>/dev/null)" = "$EXPECTED_PH" ] \
-  && [ "$(jq -r '.model' "$EVAL_SANDBOX/.review/local-prov1/record.json" 2>/dev/null)" = "cost-model-1" ] \
-  && [ "$(jq -r '.schema_version' "$EVAL_SANDBOX/.review/local-prov1/record.json" 2>/dev/null)" = "1" ]; then
+  && [ "$(jq -r '.tool_version' "$EVAL_SANDBOX/.verdict/state/local-prov1/record.json" 2>/dev/null)" = "$EXPECTED_TV" ] \
+  && [ "$(jq -r '.prompts_hash' "$EVAL_SANDBOX/.verdict/state/local-prov1/record.json" 2>/dev/null)" = "$EXPECTED_PH" ] \
+  && [ "$(jq -r '.model' "$EVAL_SANDBOX/.verdict/state/local-prov1/record.json" 2>/dev/null)" = "cost-model-1" ] \
+  && [ "$(jq -r '.schema_version' "$EVAL_SANDBOX/.verdict/state/local-prov1/record.json" 2>/dev/null)" = "1" ]; then
   good "record stamps tool version, prompt-set hash, and cost-record model"
 else
-  bad "record.json: $(cat "$EVAL_SANDBOX/.review/local-prov1/record.json" 2>/dev/null || echo MISSING) (exit $EVAL_STATUS)"
+  bad "record.json: $(cat "$EVAL_SANDBOX/.verdict/state/local-prov1/record.json" 2>/dev/null || echo MISSING) (exit $EVAL_STATUS)"
 fi
 
 mklocal prov2
 run_review record acme/app local-prov2 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.tool_version' "$EVAL_SANDBOX/.review/local-prov2/record.json" 2>/dev/null)" = "$EXPECTED_TV" ] \
-  && [ "$(jq -r '.prompts_hash' "$EVAL_SANDBOX/.review/local-prov2/record.json" 2>/dev/null)" = "$EXPECTED_PH" ] \
-  && jq -e '.model == null' "$EVAL_SANDBOX/.review/local-prov2/record.json" >/dev/null 2>&1; then
+  && [ "$(jq -r '.tool_version' "$EVAL_SANDBOX/.verdict/state/local-prov2/record.json" 2>/dev/null)" = "$EXPECTED_TV" ] \
+  && [ "$(jq -r '.prompts_hash' "$EVAL_SANDBOX/.verdict/state/local-prov2/record.json" 2>/dev/null)" = "$EXPECTED_PH" ] \
+  && jq -e '.model == null' "$EVAL_SANDBOX/.verdict/state/local-prov2/record.json" >/dev/null 2>&1; then
   good "record without a cost record stamps model null with the same hash"
 else
-  bad "model-null record.json: $(cat "$EVAL_SANDBOX/.review/local-prov2/record.json" 2>/dev/null || echo MISSING) (exit $EVAL_STATUS)"
+  bad "model-null record.json: $(cat "$EVAL_SANDBOX/.verdict/state/local-prov2/record.json" 2>/dev/null || echo MISSING) (exit $EVAL_STATUS)"
 fi
 
 eval_mk_bundle 4921
 eval_write_review 4921 <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"pointed","severity":"informational"}]}
 EOF
-cat > "$EVAL_SANDBOX/.review/4921/cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4921/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"dry-model","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
 EOF
 run_review post acme/app 4921 --dry-run --json
@@ -78,28 +66,28 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.provenance.tool_version' <"$EVAL_OUT" 2>/dev/null)" = "$EXPECTED_TV" ] \
   && [ "$(jq -r '.data.provenance.prompts_hash' <"$EVAL_OUT" 2>/dev/null)" = "$EXPECTED_PH" ] \
   && [ "$(jq -r '.data.provenance.model' <"$EVAL_OUT" 2>/dev/null)" = "dry-model" ] \
-  && [ ! -f "$EVAL_SANDBOX/.review/4921/post.json" ]; then
+  && [ ! -f "$EVAL_SANDBOX/.verdict/state/4921/post.json" ]; then
   good "dry-run envelope carries record-identical provenance and writes no post.json"
 else
   bad "dry-run provenance: $(jq -c '.data.provenance // "absent"' <"$EVAL_OUT" 2>/dev/null) (exit $EVAL_STATUS)"
 fi
-rm -rf "$EVAL_SANDBOX/.review/4921" "$EVAL_SANDBOX/.review/local-prov2"
+rm -rf "$EVAL_SANDBOX/.verdict/state/4921" "$EVAL_SANDBOX/.verdict/state/local-prov2"
 
-HOLD="$EVAL_SANDBOX/.review-hold-prov"
+HOLD="$EVAL_SANDBOX/.verdict-hold-prov"
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-saved-prov"
-mkdir -p "$EVAL_SANDBOX/.review" "$HOLD"
+mkdir -p "$EVAL_SANDBOX/.verdict" "$HOLD"
 cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
-for e in "$EVAL_SANDBOX"/.review/*; do
+for e in "$EVAL_SANDBOX"/.verdict/state/*; do
   [ -e "$e" ] || continue
   mv "$e" "$HOLD/"
 done
-mv "$HOLD/local-prov1" "$EVAL_SANDBOX/.review/local-prov1"
+mv "$HOLD/local-prov1" "$EVAL_SANDBOX/.verdict/state/local-prov1"
 restore_prov() {
   cp "$STUB_SAVED" "$EVAL_STUBBIN/gh" 2>/dev/null || true
   rm -f "$STUB_SAVED"
   for e in "$HOLD"/*; do
     [ -e "$e" ] || continue
-    mv "$e" "$EVAL_SANDBOX/.review/" 2>/dev/null || true
+    mv "$e" "$EVAL_SANDBOX/.verdict/state/" 2>/dev/null || true
   done
   rmdir "$HOLD" 2>/dev/null || true
 }
@@ -109,14 +97,14 @@ eval_mk_bundle 4922
 eval_write_findings 4922 <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Consider clarifying this line.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"0123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/4922/post.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4922/post.json" <<'EOF'
 {"schema_version":"1","review":{"id":1},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"2026-01-01T00:00:00Z"}
 EOF
-mkdir -p "$EVAL_SANDBOX/.review/4923"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/4923"
 eval_write_findings 4923 <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Consider clarifying this line.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"0123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"addressed","rationale":"","history":[]}]
 EOF
-cat > "$EVAL_SANDBOX/.review/4923/record.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4923/record.json" <<'EOF'
 {"schema_version":"1","status":"local","head":"dirty","recorded_at":"2026-02-01T00:00:00Z","findings":1,"open":0,"tool_version":"0.1.0","prompts_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","model":"old-model"}
 EOF
 
@@ -168,25 +156,25 @@ eval_mk_bundle 4924
 eval_write_review 4924 <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"pointed","severity":"informational"}]}
 EOF
-cat > "$EVAL_SANDBOX/.review/4924/cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/4924/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[{"name":"post-model","input_tokens":10,"output_tokens":5}],"est_usd":0.01}
 EOF
 run_review post acme/app 4924 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head' "$EVAL_SANDBOX/.review/4924/post.json" 2>/dev/null)" = "$HEADA" ] \
-  && [ "$(jq -r '.review.id' "$EVAL_SANDBOX/.review/4924/post.json" 2>/dev/null)" = "101" ] \
-  && [ "$(jq -r '.tool_version' "$EVAL_SANDBOX/.review/4924/post.json" 2>/dev/null)" = "$EXPECTED_TV" ] \
-  && [ "$(jq -r '.prompts_hash' "$EVAL_SANDBOX/.review/4924/post.json" 2>/dev/null)" = "$EXPECTED_PH" ] \
-  && [ "$(jq -r '.model' "$EVAL_SANDBOX/.review/4924/post.json" 2>/dev/null)" = "post-model" ] \
+  && [ "$(jq -r '.head' "$EVAL_SANDBOX/.verdict/state/4924/post.json" 2>/dev/null)" = "$HEADA" ] \
+  && [ "$(jq -r '.review.id' "$EVAL_SANDBOX/.verdict/state/4924/post.json" 2>/dev/null)" = "101" ] \
+  && [ "$(jq -r '.tool_version' "$EVAL_SANDBOX/.verdict/state/4924/post.json" 2>/dev/null)" = "$EXPECTED_TV" ] \
+  && [ "$(jq -r '.prompts_hash' "$EVAL_SANDBOX/.verdict/state/4924/post.json" 2>/dev/null)" = "$EXPECTED_PH" ] \
+  && [ "$(jq -r '.model' "$EVAL_SANDBOX/.verdict/state/4924/post.json" 2>/dev/null)" = "post-model" ] \
   && [ "$(jq -r '.data.provenance.model' <"$EVAL_OUT" 2>/dev/null)" = "post-model" ] \
   && [ "$(jq -r '.data.dry_run' <"$EVAL_OUT" 2>/dev/null)" = "false" ]; then
   good "real post writes post.json with provenance beside the receipt keys"
 else
-  bad "real post exits $EVAL_STATUS: $(cat "$EVAL_SANDBOX/.review/4924/post.json" 2>/dev/null || echo MISSING)"
+  bad "real post exits $EVAL_STATUS: $(cat "$EVAL_SANDBOX/.verdict/state/4924/post.json" 2>/dev/null || echo MISSING)"
 fi
 
-rm -rf "$EVAL_SANDBOX/.review/local-prov1" "$EVAL_SANDBOX/.review/4922" \
-  "$EVAL_SANDBOX/.review/4923" "$EVAL_SANDBOX/.review/4924" "$EVAL_SANDBOX/xdg-empty"
+rm -rf "$EVAL_SANDBOX/.verdict/state/local-prov1" "$EVAL_SANDBOX/.verdict/state/4922" \
+  "$EVAL_SANDBOX/.verdict/state/4923" "$EVAL_SANDBOX/.verdict/state/4924" "$EVAL_SANDBOX/xdg-empty"
 unset XDG_CONFIG_HOME || true
 
 eval_end

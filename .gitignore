@@ -1,6 +1,7 @@
-# Bundles, run state, and review controls all live under .review/: cwd-local
-# state, never committed. An ignored path is the whole rule; no negation
-# re-admits a control file.
+# Review controls are tracked under .verdict/ (config.json, kb.jsonl,
+# learnings.md, overrides/*); only the generated run state is local, and
+# .verdict/.gitignore carries the /state/ rule that keeps it that way.
+# Legacy .review/ checkouts stay ignored while they exist.
 .review/
 .env
 .env.local

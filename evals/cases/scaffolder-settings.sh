@@ -7,9 +7,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
-for _f in budget panel kb-policy kb.jsonl kb-joins.jsonl learnings.md max_bytes; do
-  if [ -f "$EVAL_SANDBOX/.review/$_f" ]; then
-    cp "$EVAL_SANDBOX/.review/$_f" "$EVAL_SANDBOX/.review/$_f.hold-06"
+for _f in config.json kb.jsonl kb-joins.jsonl learnings.md; do
+  if [ -f "$EVAL_SANDBOX/.verdict/$_f" ]; then
+    cp "$EVAL_SANDBOX/.verdict/$_f" "$EVAL_SANDBOX/.verdict/$_f.hold-06"
   fi
 done
 
@@ -30,23 +30,27 @@ if [ "$st" -eq 0 ]; then
 else
   bad "init exits $st"
 fi
-for _f in budget panel kb-policy kb.jsonl; do
-  if [ -f "$EVAL_SANDBOX/initrepo/.review/$_f" ]; then
-    good "init writes .review/$_f"
+for _f in config.json kb.jsonl .gitignore; do
+  if [ -f "$EVAL_SANDBOX/initrepo/.verdict/$_f" ]; then
+    good "init writes .verdict/$_f"
   else
-    bad "init missing .review/$_f"
+    bad "init missing .verdict/$_f"
   fi
 done
-if grep -q "check-tree: clean" "$EVAL_SANDBOX/init-out.txt"; then
-  good "init runs check-tree validation (clean, .review/ ignored)"
+INIT_ALL="$(cat "$EVAL_SANDBOX/init-out.txt" "$EVAL_SANDBOX/init-err.txt")"
+if grep -q "check-tree: dirty worktree" <<<"$INIT_ALL" \
+  && grep -q "?? .verdict/config.json" <<<"$INIT_ALL" \
+  && grep -q "warn: init completed; the worktree has uncommitted changes" <<<"$INIT_ALL"; then
+  good "init reports the accepted dirty check-tree for its three shared files"
 else
-  bad "init check-tree line: $(cat "$EVAL_SANDBOX/init-out.txt")"
+  bad "init check-tree line: $INIT_ALL"
 fi
-if [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/budget" | grep -v '^[[:space:]]*$' | head -n 1)" = "0.50" ] \
-  && grep -q "^main$" "$EVAL_SANDBOX/initrepo/.review/panel" \
-  && grep -q "^MIN_JUDGED=5$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
-  && grep -q "^MAX_FP_RATE=0.5$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
-  && [ "$(wc -l <"$EVAL_SANDBOX/initrepo/.review/kb.jsonl" | tr -d ' ')" = "2" ]; then
+CFG="$EVAL_SANDBOX/initrepo/.verdict/config.json"
+if [ "$(jq -r '.defaults.budget_usd == 0.5' "$CFG")" = "true" ] \
+  && [ "$(jq -r '.defaults.panel | join(",")' "$CFG")" = "main" ] \
+  && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "5" ] \
+  && [ "$(jq -r '.defaults.kb_policy.max_fp_rate' "$CFG")" = "0.5" ] \
+  && [ "$(wc -l <"$EVAL_SANDBOX/initrepo/.verdict/kb.jsonl" | tr -d ' ')" = "2" ]; then
   good "standard preset contents match the documented mapping"
 else
   bad "standard preset contents drifted"
@@ -62,10 +66,10 @@ fi
 st=0
 (cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill --yes >/dev/null 2>&1) || st=$?
 if [ "$st" -eq 0 ] \
-  && [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/panel" | grep -v '^[[:space:]]*$' | wc -l | tr -d ' ')" = "0" ] \
-  && grep -q "^MIN_JUDGED=10$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
-  && grep -q "^MAX_FP_RATE=0.7$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
-  && [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/budget" | grep -v '^[[:space:]]*$' | head -n 1)" = "2.00" ]; then
+  && [ "$(jq -r '.defaults.panel // [] | length' "$CFG")" = "0" ] \
+  && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "10" ] \
+  && [ "$(jq -r '.defaults.kb_policy.max_fp_rate' "$CFG")" = "0.7" ] \
+  && [ "$(jq -r '.defaults.budget_usd == 2' "$CFG")" = "true" ]; then
   good "chill maps to unpinned panel + 10/0.7 + lenient budget"
 else
   bad "chill mapping drifted (exit $st)"
@@ -73,10 +77,10 @@ fi
 st=0
 (cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset strict --yes >/dev/null 2>&1) || st=$?
 if [ "$st" -eq 0 ] \
-  && [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/panel" | grep -v '^[[:space:]]*$' | wc -l | tr -d ' ')" = "3" ] \
-  && grep -q "^MIN_JUDGED=3$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
-  && grep -q "^MAX_FP_RATE=0.3$" "$EVAL_SANDBOX/initrepo/.review/kb-policy" \
-  && [ "$(grep -v '^[[:space:]]*#' "$EVAL_SANDBOX/initrepo/.review/budget" | grep -v '^[[:space:]]*$' | head -n 1)" = "0.10" ]; then
+  && [ "$(jq -r '.defaults.panel | length' "$CFG")" = "3" ] \
+  && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "3" ] \
+  && [ "$(jq -r '.defaults.kb_policy.max_fp_rate' "$CFG")" = "0.3" ] \
+  && [ "$(jq -r '.defaults.budget_usd == 0.1' "$CFG")" = "true" ]; then
   good "strict maps to lead+2 lenses + 3/0.3 + tight budget"
 else
   bad "strict mapping drifted (exit $st)"
@@ -86,14 +90,14 @@ st=0
 (cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill </dev/null >"$EVAL_SANDBOX/init-needs.txt" 2>"$EVAL_SANDBOX/init-needs-err.txt") || st=$?
 if [ "$st" -ne 0 ] \
   && grep -q "without confirm" "$EVAL_SANDBOX/init-needs-err.txt" \
-  && grep -q "^MIN_JUDGED=3$" "$EVAL_SANDBOX/initrepo/.review/kb-policy"; then
+  && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "3" ]; then
   good "overwrite without --yes refuses (needs-confirm) and writes nothing"
 else
   bad "overwrite guard gave exit $st"
 fi
 st=0
 (cd "$EVAL_SANDBOX/initrepo" && PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" init --preset chill --yes >/dev/null 2>&1) || st=$?
-if [ "$st" -eq 0 ] && grep -q "^MIN_JUDGED=10$" "$EVAL_SANDBOX/initrepo/.review/kb-policy"; then
+if [ "$st" -eq 0 ] && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "10" ]; then
   good "--yes overwrites after preview"
 else
   bad "--yes overwrite exits $st"
@@ -175,14 +179,14 @@ unset XDG_CONFIG_HOME || true
   git init -q 2>/dev/null || true
   git config user.email "scaff-eval@example.com"
   git config user.name "scaff eval"
-  grep -qxF '.review/' .gitignore 2>/dev/null || echo ".review/" >> .gitignore
+  grep -qxF '.verdict/state/' .gitignore 2>/dev/null || echo ".verdict/state/" >> .gitignore
   mkdir -p compactdir
   echo "compact v1" > compactdir/probe.txt
   git add compactdir/probe.txt .gitignore 2>/dev/null || true
   git commit -qm compact-init 2>/dev/null || true
   echo "compact v2" >> compactdir/probe.txt
 )
-mv "$EVAL_SANDBOX/.review/panel" "$EVAL_SANDBOX/.review/panel.hold-06" 2>/dev/null || true
+mv "$EVAL_SANDBOX/.verdict/config.json" "$EVAL_SANDBOX/.verdict/config.json.hold-06" 2>/dev/null || true
 unset XDG_CONFIG_HOME || true
 run_review fetch-local acme/app compact-a
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "panel: none pinned" "$EVAL_OUT"; then
@@ -230,7 +234,7 @@ else
 fi
 unset NO_COLOR || true
 unset XDG_CONFIG_HOME || true
-mv "$EVAL_SANDBOX/.review/panel.hold-06" "$EVAL_SANDBOX/.review/panel" 2>/dev/null || true
+mv "$EVAL_SANDBOX/.verdict/config.json.hold-06" "$EVAL_SANDBOX/.verdict/config.json" 2>/dev/null || true
 
 mkdir -p "$EVAL_SANDBOX/xdg-cred/verdict"
 printf '{"output":{"format":"text"},"gh_token":"x"}' > "$EVAL_SANDBOX/xdg-cred/verdict/settings.json"
@@ -272,11 +276,11 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-for _f in budget panel kb-policy kb.jsonl kb-joins.jsonl learnings.md max_bytes; do
-  if [ -f "$EVAL_SANDBOX/.review/$_f.hold-06" ]; then
-    mv "$EVAL_SANDBOX/.review/$_f.hold-06" "$EVAL_SANDBOX/.review/$_f"
+for _f in config.json kb.jsonl kb-joins.jsonl learnings.md; do
+  if [ -f "$EVAL_SANDBOX/.verdict/$_f.hold-06" ]; then
+    mv "$EVAL_SANDBOX/.verdict/$_f.hold-06" "$EVAL_SANDBOX/.verdict/$_f"
   else
-    rm -f "$EVAL_SANDBOX/.review/$_f"
+    rm -f "$EVAL_SANDBOX/.verdict/$_f"
   fi
 done
 rm -rf "$EVAL_SANDBOX/initrepo" "$EVAL_SANDBOX/xdg-defaults" "$EVAL_SANDBOX/xdg-json" \

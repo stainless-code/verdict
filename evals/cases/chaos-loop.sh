@@ -48,7 +48,7 @@ printf 'top\nold line\nbottom\nmore lines here\nand here\n' > "$EVAL_SANDBOX/not
 (cd "$EVAL_SANDBOX" && git add -A && git -c commit.gpgsign=false commit -qm chaos-base)
 printf 'top\nnew line\nbottom\nmore lines here\nand here\n' > "$EVAL_SANDBOX/notes.txt"
 
-LB="$EVAL_SANDBOX/.review/local-loop1"
+LB="$EVAL_SANDBOX/.verdict/state/local-loop1"
 
 m0="$(mark)"
 run_review fetch-local acme/app loop1 --json

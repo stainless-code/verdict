@@ -3,11 +3,13 @@ package schemagen
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -35,7 +37,7 @@ func TestRuntimeTriageEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/4251/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/4251/findings.json", "["+fixtureFinding()+"]")
 	req := &triagecore.Request{
 		Sig:       "c111",
 		Status:    "addressed",
@@ -61,11 +63,11 @@ func TestRuntimeAdoptEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/4311/PR.json",
+	writeFixture(t, ".verdict/state/4311/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFixture(t, ".review/4311/full.diff", fixtureDiff())
-	writeFixture(t, ".review/local-adopt1/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/4311/full.diff", fixtureDiff())
+	writeFixture(t, ".verdict/state/local-adopt1/findings.json", "["+fixtureFinding()+"]")
 	req := &adoptcore.Request{From: "adopt1"}
 	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "4311"}
 	resp, ref := adoptcore.Run(context.Background(), req)
@@ -74,7 +76,7 @@ func TestRuntimeAdoptEnvelopeValidates(t *testing.T) {
 	}
 	data := resp.Data.Wire()
 	assertWireFields(t, data, map[string]any{
-		"dir":     ".review/4311",
+		"dir":     ".verdict/state/4311",
 		"from":    "adopt1",
 		"adopted": json.Number("1"),
 		"open":    json.Number("1"),
@@ -179,10 +181,11 @@ func fixtureDiff() string {
 //nolint:revive,cyclop // one assertion block per modeled field group
 func TestCostRecordRoundTrips(t *testing.T) {
 	doc := loadSchemaDocument(t, "cost.schema.json")
-	raw := []byte(`{"schema_version":"1","effort":"standard","models":[` +
+	raw := []byte(`{"schema_version":"2","effort":"standard","models":[` +
 		`{"name":"m","input_tokens":100,"output_tokens":50,` +
 		`"cache_read_input_tokens":10,"cache_creation_input_tokens":5}],` +
-		`"est_usd":0.05,"wall_seconds":12.5,"diff_bytes":2048,"lenses":["correctness"]}`)
+		`"est_usd":0.05,"wall_seconds":12.5,"diff_bytes":2048,` +
+		`"lenses":[{"group":"group-a","labels":["correctness"]}]}`)
 	ordered, err := jq.DecodeOrdered(raw)
 	if err != nil {
 		t.Fatalf("decode cost.json: %v", err)
@@ -191,7 +194,7 @@ func TestCostRecordRoundTrips(t *testing.T) {
 
 	var modeled CostRecord
 	unmarshalWire(t, ordered, &modeled)
-	if modeled.SchemaVersion != "1" || modeled.Effort != "standard" {
+	if modeled.SchemaVersion != "2" || modeled.Effort != "standard" {
 		t.Errorf("identity = %+v", modeled)
 	}
 	if len(modeled.Models) != 1 || modeled.Models[0].Name != "m" {
@@ -214,11 +217,11 @@ func TestCostRecordRoundTrips(t *testing.T) {
 // scriptCommander is a canned core.Commander for the read-verb conformance
 // runs: argv selects the canned result, so the live reads stay hermetic.
 type scriptCommander struct {
-	run func(cmd core.Command) (core.Result, error)
+	run func(cmd *core.Command) (core.Result, error)
 }
 
 // Run implements core.Commander.
-func (s scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (s scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	return s.run(cmd)
 }
 
@@ -229,7 +232,7 @@ func errUnexpectedCall(argv []string) error {
 
 // readyStub answers the three live reads deterministically: an open,
 // mergeable PR with a passing check and no unresolved threads.
-func readyStub(cmd core.Command) (core.Result, error) {
+func readyStub(cmd *core.Command) (core.Result, error) {
 	argv := strings.Join(cmd.Argv, " ")
 	switch {
 	case strings.Contains(argv, "pr view"):
@@ -276,10 +279,10 @@ func TestRuntimeReadyEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFixture(t, ".review/5101/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+fixtureFinding()+"]")
 	req := &readycore.Request{Check: true}
 	req.ReadRequest = core.ReadRequest{
 		Runtime: &core.Runtime{Now: fixedNow, Commander: scriptCommander{run: readyStub}},
@@ -322,11 +325,11 @@ func TestRuntimeTrendEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFixture(t, ".review/5101/findings.json", "["+fixtureFinding()+"]")
-	writeFixture(t, ".review/5101/post.json",
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{"id":99},`+
 			`"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"2026-01-01T00:00:00Z",`+
 			`"confidence":null,"security_summary":null,`+
@@ -360,7 +363,7 @@ func TestRuntimeTrendEnvelopeValidates(t *testing.T) {
 
 // calibrateLiveStub answers the live join deterministically: resolved
 // threads matching the posted body and a current live head (no compare).
-func calibrateLiveStub(cmd core.Command) (core.Result, error) {
+func calibrateLiveStub(cmd *core.Command) (core.Result, error) {
 	argv := strings.Join(cmd.Argv, " ")
 	switch {
 	case strings.Contains(argv, "graphql"):
@@ -381,11 +384,11 @@ func TestRuntimeCalibrateLiveEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFixture(t, ".review/5101/findings.json", "["+calibrateLiveFinding()+"]")
-	writeFixture(t, ".review/5101/post.json",
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+calibrateLiveFinding()+"]")
+	writeFixture(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{"id":424242},`+
 			`"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","posted_at":"2026-01-01T00:00:00Z",`+
 			`"confidence":null,"security_summary":null,`+
@@ -437,10 +440,10 @@ func TestRuntimeCalibrateProbeEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/5101/PR.json",
+	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFixture(t, ".review/5101/findings.json", "["+
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+
 		calibrateProbeFinding("addressed", "real")+", "+
 		calibrateProbeFinding("false-positive", "false")+", "+
 		calibrateProbeFinding("open", "unknown")+"]")
@@ -489,7 +492,7 @@ func TestRuntimeDoctorEnvelopeValidates(t *testing.T) {
 	req := &doctorcore.Request{}
 	req.ReadRequest = core.ReadRequest{Runtime: &core.Runtime{
 		Now: fixedNow,
-		Commander: scriptCommander{run: func(cmd core.Command) (core.Result, error) {
+		Commander: scriptCommander{run: func(cmd *core.Command) (core.Result, error) {
 			return core.Result{}, errUnexpectedCall(cmd.Argv)
 		}},
 	}}
@@ -501,12 +504,26 @@ func TestRuntimeDoctorEnvelopeValidates(t *testing.T) {
 	assertServiceEnvelope(t, doc, "doctor", "", "", resp.At, resp.Next, resp.Warnings, data)
 }
 
-// cleanTreeStub answers `git status --porcelain` with a clean tree.
-func cleanTreeStub(cmd core.Command) (core.Result, error) {
-	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" {
+// cleanTreeStub answers the tracked-plus-untracked status probe the clean gate
+// runs with a clean tree.
+func cleanTreeStub(cmd *core.Command) (core.Result, error) {
+	if isStatusProbe(cmd.Argv) {
 		return core.Result{Stdout: ""}, nil
 	}
 	return core.Result{}, errUnexpectedCall(cmd.Argv)
+}
+
+// isStatusProbe reports the exact tracked-plus-untracked status argv the clean
+// gate runs: git [-C root] status --porcelain --untracked-files=all.
+func isStatusProbe(argv []string) bool {
+	if len(argv) < 5 || argv[0] != "git" {
+		return false
+	}
+	rest := argv[1:]
+	if len(rest) >= 2 && rest[0] == "-C" {
+		rest = rest[2:]
+	}
+	return len(rest) == 3 && rest[0] == "status" && rest[1] == "--porcelain" && rest[2] == "--untracked-files=all"
 }
 
 // TestRuntimeCheckTreeEnvelopeValidates proves the check-tree response
@@ -533,4 +550,46 @@ func TestRuntimeCheckTreeEnvelopeValidates(t *testing.T) {
 		"clean":                true,
 		"ignored_review_lines": json.Number("0"),
 	})
+}
+
+// TestRuntimeConfigEnvelopeValidates proves the config explain data
+// validates against the pinned configData profile: the stored bundle
+// from a hand-authored policy renders the wire the schema pins.
+func TestRuntimeConfigEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	guard := 9.5
+	rs := &config.RunState{
+		BaseSHA:    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Trusted:    true,
+		CapturedAt: "2026-11-02T12:00:00Z",
+		Evidence: config.Evidence{
+			SchemaVersion: "1",
+			BaseSHA:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			Plan:          config.Plan{Status: config.PendingStatus},
+			Values: []config.EvidenceValue{
+				{Key: "budget_usd", Value: 9.5, Origin: config.FieldOrigin{Layer: config.LayerEnv, Source: "REVIEW_BUDGET_USD"}},
+			},
+		},
+		Resolved: &config.Resolved{
+			Plan: config.Plan{Status: config.PendingStatus},
+			Defaults: config.ResolvedDefaults{
+				Values: config.EffectiveDefaults{BudgetUSD: &guard},
+			},
+		},
+	}
+	if serr := config.WriteRunState(filepath.Join(".", ".verdict", "state", "7"), rs); serr != nil {
+		t.Fatalf("WriteRunState: %v", serr)
+	}
+	seedControls(t, filepath.Join(".", ".verdict", "state", "7"))
+	data, _, ref := config.Explain(".", "7")
+	if ref != nil {
+		t.Fatalf("Explain: %v", ref)
+	}
+	assertWireFields(t, data.Wire(), map[string]any{
+		"mode":    "explain",
+		"trusted": true,
+	})
+	assertEnvelope(t, doc, "config", "7", "2026-11-02T12:00:00Z", "post, report, and verify enforce this policy; re-fetch to move it", nil, data.Wire())
 }

@@ -283,6 +283,10 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["check-tree"]>>;
+  config(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["config"]>>;
   doctor(
     args?: string[],
     opts?: RunOptions,
@@ -360,6 +364,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     verify: (args, opts) => run<DataFor["verify"]>("verify", args, opts),
     checkTree: (args, opts) =>
       run<DataFor["check-tree"]>("check-tree", args, opts),
+    config: (args, opts) => run<DataFor["config"]>("config", args, opts),
     doctor: (args, opts) => run<DataFor["doctor"]>("doctor", args, opts),
     calibrate: (args, opts) =>
       run<DataFor["calibrate"]>("calibrate", args, opts),

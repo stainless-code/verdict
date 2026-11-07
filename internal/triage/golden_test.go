@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 // mkBundle crafts a GitHub-shaped PR bundle with canned findings.
 func mkBundle(t *testing.T, dir, findings string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "4251")
+	bdir := filepath.Join(dir, ".verdict", "state", "4251")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,10 @@ func mkBundle(t *testing.T, dir, findings string) {
 func kbSeed(t *testing.T, dir string) {
 	t.Helper()
 	row := `{"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}` + "\n"
-	if err := os.WriteFile(filepath.Join(dir, ".review", "kb.jsonl"), []byte(row), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".verdict", "kb.jsonl"), []byte(row), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -87,7 +90,7 @@ func setupCorrupt(t *testing.T, dir, _ string) {
 // setupMissing builds an empty bundle dir with no findings store.
 func setupMissing(t *testing.T, dir, _ string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "4251")
+	bdir := filepath.Join(dir, ".verdict", "state", "4251")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +99,7 @@ func setupMissing(t *testing.T, dir, _ string) {
 // setupLocalBundle builds a local-* bundle with one cited finding plus kb.
 func setupLocalBundle(t *testing.T, dir, _ string) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".review", "local-k6")
+	bdir := filepath.Join(dir, ".verdict", "state", "local-k6")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}

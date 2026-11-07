@@ -42,8 +42,11 @@ var hintRules = []HintRule{
 		"then re-synthesize across all chunks and re-run"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
-		codes: []string{"not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed"},
-		hint:  "try: run the fetch/record step named above first, then re-run",
+		codes: []string{
+			"not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed",
+			"config-no-bundle",
+		},
+		hint: "try: run the fetch/record step named above first, then re-run",
 	},
 	{
 		codes: []string{"corrupt-store"},
@@ -56,7 +59,7 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},
 	{codes: []string{"approve-blocked"}, hint: "try: triage the findings or re-run with --force"},
 	{codes: []string{"budget-exceeded"}, hint: "try: re-run with --consent-over-budget once the spend " +
-		"is approved, or raise REVIEW_BUDGET_USD/.review/budget"},
+		"is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default"},
 	{codes: []string{"bad-usage"}, hint: "try: fix the usage record named above to match " +
 		"schemas/usage.schema.json, then re-run"},
 	{codes: []string{"duplicate-payload"}, hint: "try: re-run with --force to repost the identical payload — " +
@@ -83,7 +86,8 @@ var hintRules = []HintRule{
 	{codes: []string{"needs-confirm"}, hint: "try: re-run with --yes after reviewing the preview, then re-run"},
 	{codes: []string{"bad-settings-credentials"}, hint: "try: remove the credential key from the settings file " +
 		"(credentials never live there), then re-run"},
-	{codes: []string{"bad-settings"}, hint: "try: keep only output/layout/color/publish keys (see docs/manual.md), then re-run"},
+	{codes: []string{"bad-settings"}, hint: "try: keep only output/layout/color/publish/review/spend/privacy keys " +
+		"(see docs/manual.md), then re-run"},
 	{codes: []string{"controls-unavailable"}, hint: "try: check out the PR base (actions/checkout fetch-depth: 0, " +
 		"or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"},
 	{codes: []string{"controls-stale"}, hint: "try: re-fetch the bundle (controls changed under it), then re-run"},

@@ -40,7 +40,7 @@ if [ "$code" = "degenerate-body" ]; then
 else
   bad "refusal names '$code', want degenerate-body"
 fi
-if [ ! -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ]; then
+if [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ]; then
   good "refused review wrote no findings file"
 else
   bad "refused review still wrote findings.dryrun.json"
@@ -66,7 +66,7 @@ case "$event" in
   COMMENT|APPROVE|REQUEST_CHANGES) good "envelope carries a single event ($event)" ;;
   *) bad "envelope event is '$event', want one of COMMENT/APPROVE/REQUEST_CHANGES" ;;
 esac
-if [ -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ]; then
   good "exactly one findings file recorded (findings.dryrun.json)"
 else
   bad "findings.dryrun.json missing"

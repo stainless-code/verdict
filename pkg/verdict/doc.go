@@ -6,7 +6,7 @@
 // behavior, this package only converts typed requests and responses.
 //
 // Bundle files resolve from the process working directory, exactly like the
-// CLI: call from (or change into) the checkout that carries .review/.
+// CLI: call from (or change into) the checkout that carries .verdict/.
 // Options.Dir anchors tool-version and provenance lookups to that checkout.
 // Methods are context-first, never call [os.Exit], and never touch process
 // stdio: human lines and warnings flow through Options.Progress.

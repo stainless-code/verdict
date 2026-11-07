@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "missing-findings",
-    "message": "missing .review/4251/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run"
+    "message": "missing .verdict/state/4251/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run"
   }
 }
 --- stderr ---

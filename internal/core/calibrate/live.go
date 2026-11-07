@@ -85,7 +85,7 @@ func (st *state) liveFindings(dir string) ([]any, string, string, *core.RefusalE
 }
 
 func isLocalDir(dir string) bool {
-	return strings.HasPrefix(dir, ".review/local-")
+	return readcommon.IsLocalBundleDir(dir)
 }
 
 func nestedReviewID(dir string) string {

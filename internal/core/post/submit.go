@@ -51,7 +51,7 @@ func splitOwner(repo string) (owner, name string) {
 }
 
 //nolint:revive // the bounded retry loop branches are the read contract
-func runReadRetry(ctx context.Context, cmdr Commander, cmd core.Command) (core.Result, error) {
+func runReadRetry(ctx context.Context, cmdr Commander, cmd *core.Command) (core.Result, error) {
 	var res core.Result
 	var err error
 	for attempt := range retry.MaxAttempts {
@@ -84,7 +84,9 @@ func ghLiveSHA(ctx context.Context, cmdr Commander, repo, pr string) (string, er
 	if cmdr == nil {
 		return "", errNoCommander
 	}
-	res, err := runReadRetry(ctx, cmdr, core.Command{Argv: []string{toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr, flagJQ, ".head.sha"}})
+	res, err := runReadRetry(ctx, cmdr, &core.Command{
+		Argv: []string{toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr, flagJQ, ".head.sha"},
+	})
 	if err != nil {
 		return "", jq.Sealed("live sha", err)
 	}
@@ -95,7 +97,7 @@ func ghSelfLogin(ctx context.Context, cmdr Commander) (string, error) {
 	if cmdr == nil {
 		return "", errNoCommander
 	}
-	res, err := runReadRetry(ctx, cmdr, core.Command{Argv: []string{toolGH, cmdAPI, "user", flagJQ, ".login"}})
+	res, err := runReadRetry(ctx, cmdr, &core.Command{Argv: []string{toolGH, cmdAPI, "user", flagJQ, ".login"}})
 	if err != nil {
 		return "", jq.Sealed("self login", err)
 	}
@@ -121,7 +123,7 @@ func postRecheck(ctx context.Context, cmdr Commander, repo, pr, dir string) (int
 	if cmdr == nil {
 		err = errNoCommander
 	} else {
-		res, err = runReadRetry(ctx, cmdr, core.Command{Argv: append([]string{toolGH}, threadsArgv(owner, name, pr)...)})
+		res, err = runReadRetry(ctx, cmdr, &core.Command{Argv: append([]string{toolGH}, threadsArgv(owner, name, pr)...)})
 	}
 	if werr := atomic.WriteErrSidecar(dir+"/.recheck.err", []byte(res.Stderr)); werr != nil {
 		return 0, "", jq.Sealed("write .recheck.err", werr)
@@ -233,7 +235,7 @@ func postOnce(ctx context.Context, cmdr Commander, repo, pr, dir, payload string
 		}
 		return "", "no commander in runtime", false
 	}
-	res, err := cmdr.Run(ctx, core.Command{
+	res, err := cmdr.Run(ctx, &core.Command{
 		Argv: []string{
 			toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr + "/reviews",
 			"--method", "POST", "--input", "-", flagJQ, postJQFilter,
@@ -373,8 +375,34 @@ func headReason(dir string) string {
 
 const postErrHeadBytes = 300
 
-//nolint:gocognit,revive // the receipt assembles the fixed wire order plus the provenance triple in one place
+// orderedString reads one string field from an ordered JSON object,
+// reporting "" when the key is missing or not a string.
+func orderedString(obj *jq.Obj, key string) string {
+	v, ok := obj.Get(key)
+	if !ok {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// orderedStringPtr reads one string field, reporting nil unless the key
+// carries a string.
+func orderedStringPtr(obj *jq.Obj, key string) *string {
+	v, ok := obj.Get(key)
+	if !ok {
+		return nil
+	}
+	if s, ok := v.(string); ok {
+		return &s
+	}
+	return nil
+}
+
 func writePostReceipt(st *state, obj *jq.Obj) error {
+	_, floor, withheld := st.floorPayload()
 	receipt := &core.Post{
 		SchemaVersion:   "1",
 		Head:            st.commitID,
@@ -383,32 +411,21 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		ReviewRaw:       obj,
 	}
+	if floor != "" {
+		receipt.PostMinSeverity = &floor
+	}
+	if len(withheld) > 0 {
+		receipt.BelowFloorExcluded = len(withheld)
+		receipt.PostFloorScoped = scopedFloors(withheld)
+	}
 	if st.identity != nil {
 		receipt.PatchID, receipt.PatchIDKind = st.identity.PatchID, st.identity.PatchIDKind
 	}
 	if st.forced != nil {
 		receipt.Forced = st.forced
 	}
-	prov, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(st.req.RootPath(), st.dir)))
-	if err != nil {
-		return jq.Sealed("bundle provenance", err)
-	}
-	if provObj, ok := prov.(*jq.Obj); ok {
-		if v, _ := provObj.Get("tool_version"); v != nil {
-			if s, ok := v.(string); ok {
-				receipt.ToolVersion = s
-			}
-		}
-		if v, _ := provObj.Get("prompts_hash"); v != nil {
-			if s, ok := v.(string); ok {
-				receipt.PromptsHash = s
-			}
-		}
-		if v, _ := provObj.Get("model"); v != nil {
-			if s, ok := v.(string); ok {
-				receipt.Model = &s
-			}
-		}
+	if err := stampProvenance(st, receipt); err != nil {
+		return err
 	}
 	if err := atomic.WriteFile(st.dir+"/post.json", []byte(jq.PrettyOrdered(receipt.Wire()))); err != nil {
 		return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("could not write %s/post.json: %v", st.dir, err)}
@@ -416,8 +433,27 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	return nil
 }
 
+// stampProvenance copies the recorded tool version, prompts hash, and model
+// onto the receipt; a decode failure is sealed, never silently dropped.
+func stampProvenance(st *state, receipt *core.Post) error {
+	prov, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(st.req.RootPath(), st.dir)))
+	if err != nil {
+		return jq.Sealed("bundle provenance", err)
+	}
+	provObj, ok := prov.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	receipt.ToolVersion, receipt.PromptsHash = orderedString(provObj, "tool_version"), orderedString(provObj, "prompts_hash")
+	if model := orderedStringPtr(provObj, "model"); model != nil {
+		receipt.Model = model
+	}
+	return nil
+}
+
 func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse {
-	nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)
+	payload, _, _ := st.floorPayload()
+	nOpen, nDeferred, nAddressed := postCounts(payload)
 	var next string
 	if nOpen > 0 {
 		next = "address open threads"
@@ -436,11 +472,11 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		Findings: core.PostFindings{
 			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed,
 		},
-		Items:           typedPostItems(st.merged.Entries),
+		Items:           typedPostItems(payload),
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     st.phash,
-		ItemsRaw:        recordcore.EnvelopeItems(st.merged.Entries),
+		ItemsRaw:        recordcore.EnvelopeItems(payload),
 		ReviewRaw:       obj,
 	}
 	if m, err := reviewMap(obj); err == nil {

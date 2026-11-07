@@ -30,11 +30,11 @@ func writePaddedStore(t *testing.T, path, content string, size int64) {
 // over.
 func TestFindingsStoreReadRefusesOversizedInput(t *testing.T) {
 	t.Chdir(t.TempDir())
-	path := filepath.Join(".review", "5101", "findings.json")
+	path := filepath.Join(".verdict", "state", "5101", "findings.json")
 	writePaddedStore(t, path, "[]", jq.MaxFindingsBytes)
-	entries, err := os.ReadDir(".review")
+	entries, err := os.ReadDir(filepath.Join(".verdict", "state"))
 	if err != nil || len(entries) != 1 {
-		t.Fatalf("ReadDir(.review) = %d entries, %v; want 1", len(entries), err)
+		t.Fatalf("ReadDir(state) = %d entries, %v; want 1", len(entries), err)
 	}
 	if _, ok := readBundleRow(&state{req: &Request{}}, entries[0]); !ok {
 		t.Fatal("readBundleRow at cap = false, want true")

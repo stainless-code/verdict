@@ -89,12 +89,12 @@ mkdir -p "$EVAL_SANDBOX/np-repo"
 WD_DIR="$EVAL_SANDBOX/np-repo"
 watchdog_review "$LIMIT" "/dev/null" -- init --preset standard --yes
 hung_ok "seed init --preset standard --yes"
-if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_SANDBOX/np-repo/.review/kb.jsonl" ]; then
+if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_SANDBOX/np-repo/.verdict/kb.jsonl" ]; then
   good "seed writes the four control files"
 else
   bad "seed exits $EVAL_STATUS"
 fi
-seed_sums="$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)"
+seed_sums="$(shasum "$EVAL_SANDBOX"/np-repo/.verdict/config.json "$EVAL_SANDBOX"/np-repo/.verdict/kb.jsonl)"
 
 WD_DIR="$EVAL_SANDBOX"
 watchdog_review "$LIMIT" "closed" -- skill install --dir "$NEVER_SKILLS"
@@ -139,7 +139,7 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "overwrite guard exits $EVAL_STATUS"
 fi
-if [ "$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)" = "$seed_sums" ]; then
+if [ "$(shasum "$EVAL_SANDBOX"/np-repo/.verdict/config.json "$EVAL_SANDBOX"/np-repo/.verdict/kb.jsonl)" = "$seed_sums" ]; then
   good "refused overwrite left all four control files byte-identical"
 else
   bad "refused overwrite mutated the control files"
@@ -156,8 +156,8 @@ else
 fi
 
 PR=6101
-mkdir -p "$EVAL_SANDBOX/.review/$PR"
-jq -n '{"verifyCmd":"read -r line || true"}' > "$EVAL_SANDBOX/.review/$PR/patch.json"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/$PR"
+jq -n '{"verifyCmd":"read -r line || true"}' > "$EVAL_SANDBOX/.verdict/state/$PR/patch.json"
 WD_DIR="$EVAL_SANDBOX"
 watchdog_review 20 "closed" -- verify acme/app "$PR" --json --timeout 10
 hung_ok "verify (stdin-consuming verifyCmd) with stdin closed"
@@ -167,7 +167,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "verification exits $EVAL_STATUS (timedOut $(jq -r '.data.timedOut' <"$EVAL_OUT" 2>/dev/null || true))"
 fi
-if [ "$(jq -r '.verifyExit // empty' "$EVAL_SANDBOX/.review/$PR/patch.json" 2>/dev/null)" = "0" ]; then
+if [ "$(jq -r '.verifyExit // empty' "$EVAL_SANDBOX/.verdict/state/$PR/patch.json" 2>/dev/null)" = "0" ]; then
   good "proof recorded into patch.json (verifyExit 0)"
 else
   bad "proof missing from patch.json"
@@ -296,7 +296,7 @@ if [ "${pty_avail:-false}" = "true" ]; then
   fi
   assert_stream_nogrep "no prompt text on stdout under --json on a pty (init)" "$EVAL_OUT" "Proceed?"
   assert_stream_nogrep "no prompt text on stderr under --json on a pty (init)" "$EVAL_ERR" "Proceed?"
-  if [ "$(shasum "$EVAL_SANDBOX"/np-repo/.review/budget "$EVAL_SANDBOX"/np-repo/.review/panel "$EVAL_SANDBOX"/np-repo/.review/kb-policy "$EVAL_SANDBOX"/np-repo/.review/kb.jsonl)" = "$seed_sums" ]; then
+  if [ "$(shasum "$EVAL_SANDBOX"/np-repo/.verdict/config.json "$EVAL_SANDBOX"/np-repo/.verdict/kb.jsonl)" = "$seed_sums" ]; then
     good "pty refused overwrite left all four control files byte-identical"
   else
     bad "pty refused overwrite mutated the control files"
@@ -313,6 +313,6 @@ fi
 
 export HOME="$OLD_HOME"
 rm -rf "$EVAL_SANDBOX/fakehome" "$EVAL_SANDBOX/.agents" "$EVAL_SANDBOX/np-repo" "$EVAL_SANDBOX/never-skills" "$EVAL_SANDBOX/foreign-snap.txt"
-rm -rf "$EVAL_SANDBOX/.review/6101"
+rm -rf "$EVAL_SANDBOX/.verdict/state/6101"
 
 eval_end

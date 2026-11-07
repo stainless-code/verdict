@@ -128,9 +128,9 @@ func matrixSetup(n int) func(t *testing.T, dir string) {
 	return func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/local-mx/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-			".review/local-mx/full.diff":   genDiff(matrixHunks),
-			".review/local-mx/review.json": genReview(t, n, matrixHunks),
+			".verdict/state/local-mx/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+			".verdict/state/local-mx/full.diff":   genDiff(matrixHunks),
+			".verdict/state/local-mx/review.json": genReview(t, n, matrixHunks),
 		})
 	}
 }
@@ -142,7 +142,7 @@ func fencedBodyReview() string {
 
 func mutateSecondPass(t *testing.T, dir string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "local-mx", "findings.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "local-mx", "findings.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func mutateSecondPass(t *testing.T, dir string) {
 		},
 	}
 	writeFiles(t, dir, map[string]string{
-		".review/local-mx/review.json": marshalJSON(t, doc),
+		".verdict/state/local-mx/review.json": marshalJSON(t, doc),
 	})
 }
 
@@ -231,8 +231,8 @@ func matrixRereview(t *testing.T, n int) {
 // TestGoldenDegenerateInputs checks degenerate bodies refuse identically.
 func TestGoldenDegenerateInputs(t *testing.T) {
 	base := map[string]string{
-		".review/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/local-dg/full.diff":   genDiff(4),
+		".verdict/state/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-dg/full.diff":   genDiff(4),
 	}
 	cases := []struct {
 		name   string
@@ -266,14 +266,14 @@ func TestGoldenDegenerateInputs(t *testing.T) {
 		if tc.name == "unknown-flag" {
 			extraArgs = []string{"--bogus"}
 		}
-		diff := base[".review/local-dg/full.diff"]
+		diff := base[".verdict/state/local-dg/full.diff"]
 		if tc.name == "empty-diff-body" {
 			diff = ""
 		}
 		files := map[string]string{
-			".review/local-dg/source.json": base[".review/local-dg/source.json"],
-			".review/local-dg/full.diff":   diff,
-			".review/local-dg/review.json": tc.review,
+			".verdict/state/local-dg/source.json": base[".verdict/state/local-dg/source.json"],
+			".verdict/state/local-dg/full.diff":   diff,
+			".verdict/state/local-dg/review.json": tc.review,
 		}
 		goldenBoth(t, "degenerate/"+tc.name, "local-dg", func(t *testing.T, dir string) {
 			t.Helper()
@@ -285,15 +285,15 @@ func TestGoldenDegenerateInputs(t *testing.T) {
 // TestGoldenMissingFiles checks missing bundle files refuse identically.
 func TestGoldenMissingFiles(t *testing.T) {
 	full := map[string]string{
-		".review/local-mf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/local-mf/full.diff":   genDiff(2),
-		".review/local-mf/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
+		".verdict/state/local-mf/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-mf/full.diff":   genDiff(2),
+		".verdict/state/local-mf/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[]}`,
 	}
 	for _, drop := range []string{"review.json", "full.diff", "source.json"} {
 		goldenBoth(t, "missing/"+drop, "local-mf", func(t *testing.T, dir string) {
 			t.Helper()
 			files := maps.Clone(full)
-			delete(files, ".review/local-mf/"+drop)
+			delete(files, ".verdict/state/local-mf/"+drop)
 			writeFiles(t, dir, files)
 		})
 	}
@@ -301,16 +301,16 @@ func TestGoldenMissingFiles(t *testing.T) {
 	goldenBoth(t, "not-local/github", "4251", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/4251/PR.json":   `{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
-			".review/4251/full.diff": genDiff(2),
+			".verdict/state/4251/PR.json":   `{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+			".verdict/state/4251/full.diff": genDiff(2),
 		})
 	})
 	goldenBoth(t, "provider/gitlab", "47", func(t *testing.T, dir string) {
 		t.Helper()
 		writeFiles(t, dir, map[string]string{
-			".review/47/PR.json":     `{"provider":"gitlab","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","base_sha":"cccccccccccccccccccccccccccccccccccccccc"}`,
-			".review/47/full.diff":   genDiff(2),
-			".review/47/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Provider comment.","rigor":"pointed"}]}`,
+			".verdict/state/47/PR.json":     `{"provider":"gitlab","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","base_sha":"cccccccccccccccccccccccccccccccccccccccc"}`,
+			".verdict/state/47/full.diff":   genDiff(2),
+			".verdict/state/47/review.json": `{"schema_version":"1","body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Provider comment.","rigor":"pointed"}]}`,
 		})
 	})
 }
@@ -323,18 +323,18 @@ func TestGoldenChunked(t *testing.T) {
 	setup := func(t *testing.T, dir string, manifest, review, c1, c2 string) {
 		t.Helper()
 		files := map[string]string{
-			".review/local-ch/source.json":          `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-			".review/local-ch/full.diff":            c1 + c2,
-			".review/local-ch/review.json":          review,
-			".review/local-ch/chunks/manifest.json": manifest,
-			".review/local-ch/chunks/a.diff":        c1,
-			".review/local-ch/chunks/b.diff":        c2,
+			".verdict/state/local-ch/source.json":          `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+			".verdict/state/local-ch/full.diff":            c1 + c2,
+			".verdict/state/local-ch/review.json":          review,
+			".verdict/state/local-ch/chunks/manifest.json": manifest,
+			".verdict/state/local-ch/chunks/a.diff":        c1,
+			".verdict/state/local-ch/chunks/b.diff":        c2,
 		}
 		writeFiles(t, dir, files)
 	}
 	c1 := chunkDiff("-old1\n+new1")
 	c2 := chunkDiff("-old2\n+new2")
-	goodManifest := `{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".review/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".review/local-ch/chunks/b.diff","files":["c1.txt"]}]}`
+	goodManifest := `{"schema_version":"1","chunks":[{"name":"a","index":0,"diff":".verdict/state/local-ch/chunks/a.diff","files":["c1.txt"]},{"name":"b","index":1,"diff":".verdict/state/local-ch/chunks/b.diff","files":["c1.txt"]}]}`
 	goodReview := `{"schema_version":"1","chunks":["a","b"],"body":"> ✅ marker plus enough length to pass.","approved":false,"comments":[{"path":"c1.txt","line":2,"side":"RIGHT","body":"Chunk comment.","rigor":"walked"}]}`
 	goldenBoth(t, "chunk/valid", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
@@ -359,7 +359,7 @@ func TestGoldenChunked(t *testing.T) {
 	goldenBoth(t, "chunk/missing-snapshot", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
 		setup(t, dir, goodManifest, goodReview, c1, c2)
-		if err := os.Remove(filepath.Join(dir, ".review", "local-ch", "chunks", "b.diff")); err != nil {
+		if err := os.Remove(filepath.Join(dir, ".verdict", "state", "local-ch", "chunks", "b.diff")); err != nil {
 			t.Fatal(err)
 		}
 	})

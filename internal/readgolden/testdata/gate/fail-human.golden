@@ -6,5 +6,6 @@ gate: FAIL (1 fail, 1 skip)
 gate: skipped live_threads
 try: address or triage the open findings, then re-run gate
 --- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 --- files ---

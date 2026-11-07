@@ -2,17 +2,17 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no fetch-time hunk snapshot (.verdict/state/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 error: refusing record: chunk snapshot(s) missing: b (pinned chunk diff unreadable) — re-fetch with 'verdict fetch-local acme/app ch --chunk -- <paths>' to restore the chunk snapshots, then re-run (partial results never post)
 try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
 re-enter: verdict record acme/app local-ch
 --- files ---
---- file C/.review/local-ch/hunks.tsv ---
+--- file C/.verdict/state/local-ch/hunks.tsv ---
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
 c1.txt	OLD	1	2
 c1.txt	NEW	1	2
---- file C/.review/local-ch/store.json ---
+--- file C/.verdict/state/local-ch/store.json ---
 {
   "schema_version": "1"
 }

@@ -12,7 +12,7 @@ const hoistHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func hoistPostRecord(t *testing.T) {
 	t.Helper()
-	if err := writeTestFile(".review/7/post.json",
+	if err := writeTestFile(".verdict/state/7/post.json",
 		`{"head":"`+hoistHead+`","posted_at":"2026-01-01T00:00:00Z"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestRunAlreadyPostedZeroNetwork(t *testing.T) {
 	hoistPostRecord(t)
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
 }
@@ -40,10 +40,10 @@ func TestRunLiveAlreadyPostedZeroNetwork(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
-	writeLiveReview(t, ".review/7", markedReview(hoistHead), hoistHead)
+	writeLiveReview(t, ".verdict/state/7", markedReview(hoistHead), hoistHead)
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
 }
@@ -56,7 +56,7 @@ func TestRunAlreadyPostedBeatsApproveBlocked(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
-	if err := writeTestFile(".review/7/findings.json", `[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,`+
+	if err := writeTestFile(".verdict/state/7/findings.json", `[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,`+
 		`"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,`+
 		`"inBounds":true,"rigor":"walked","severity":"important",`+
 		`"sig":"b222222222222222222222222222222222222222","sig_version":"1",`+
@@ -67,7 +67,7 @@ func TestRunAlreadyPostedBeatsApproveBlocked(t *testing.T) {
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{
-		Approve: "true", Bind: true, ReviewFile: ".review/7/review.json",
+		Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
@@ -118,7 +118,7 @@ func TestRunSameSHAPrecedence(t *testing.T) {
 			}
 			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			_, ref := Run(context.Background(), req)
 			assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
 		})
@@ -136,7 +136,7 @@ func TestRunForceSameSHAFallsThrough(t *testing.T) {
 	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{
-		Approve: "false", ReviewFile: ".review/7/review.json", Force: true,
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Force: true,
 	}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
@@ -174,15 +174,15 @@ func seedPostedOnce(t *testing.T) string {
 	t.Helper()
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("seed post refused: %v", ref)
 	}
-	if !exists(".review/7/post.json") {
+	if !exists(".verdict/state/7/post.json") {
 		t.Fatal("seed post wrote no post.json")
 	}
-	if !exists(".review/7/.posted_" + resp.Data.PayloadHash) {
+	if !exists(".verdict/state/7/.posted_" + resp.Data.PayloadHash) {
 		t.Fatalf("seed post wrote no .posted_%s marker", resp.Data.PayloadHash)
 	}
 	return resp.Data.PayloadHash

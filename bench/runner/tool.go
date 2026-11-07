@@ -133,7 +133,7 @@ func gitIn(dir string) func(context.Context, ...string) error {
 			"-c", "user.name=" + gitDisplayName,
 			"-c", "commit.gpgsign=false",
 		}, argv...)
-		res, err := coreexec.Runner{}.Run(ctx, core.Command{Argv: append([]string{"git"}, full...), Env: toolEnv()})
+		res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: append([]string{"git"}, full...), Env: toolEnv()})
 		if err != nil {
 			return jq.NewErrf("git %s: %s", argv[0], err)
 		}
@@ -198,7 +198,7 @@ func (t tool) trend(ctx context.Context) (json.RawMessage, error) {
 func (t tool) json(ctx context.Context, argv ...string) (envelope, error) {
 	full := append([]string{t.bin}, argv...)
 	full = append(full, "--json")
-	res, err := coreexec.Runner{}.Run(ctx, core.Command{Argv: full, Env: toolEnv()})
+	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: full, Env: toolEnv()})
 	if err != nil {
 		return envelope{}, jq.NewErrf("%s: %s", argv[0], err)
 	}

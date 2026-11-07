@@ -25,12 +25,12 @@ func (c *collector) Warn(msg string)   { c.warns = append(c.warns, msg) }
 func (c *collector) Diag(string)       {}
 
 type scriptCommander struct {
-	got []core.Command
+	got []*core.Command
 	err error
 	res core.Result
 }
 
-func (s *scriptCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.got = append(s.got, cmd)
 	if s.err != nil {
 		return core.Result{}, s.err
@@ -52,7 +52,7 @@ func bundle(t *testing.T, patch string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".review/5201/patch.json", patch)
+	writeFile(t, ".verdict/state/5201/patch.json", patch)
 }
 
 func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ []string, jsonMode bool) *core.VerifyRequest {
@@ -102,11 +102,11 @@ func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) 
 	if resp.Exit != 0 || resp.TimedOut || resp.Tail != "ok" {
 		t.Errorf("response = %+v", resp)
 	}
-	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".review/5201" {
+	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".verdict/state/5201" {
 		t.Errorf("data = %+v", resp.Data)
 	}
 	joined := strings.Join(c.human, "\n")
-	for _, want := range []string{"» verify: printf ok (timeout 10s)", "» exit=0 timed_out=false", "recorded into .review/5201/patch.json"} {
+	for _, want := range []string{"» verify: printf ok (timeout 10s)", "» exit=0 timed_out=false", "recorded into .verdict/state/5201/patch.json"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("human lines miss %q:\n%s", want, joined)
 		}
@@ -115,7 +115,7 @@ func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) 
 
 func checkVerifyStores(t *testing.T) {
 	t.Helper()
-	raw, err := os.ReadFile(".review/5201/patch.json")
+	raw, err := os.ReadFile(".verdict/state/5201/patch.json")
 	if err != nil {
 		t.Fatalf("read patch.json: %v", err)
 	}
@@ -129,7 +129,7 @@ func checkVerifyStores(t *testing.T) {
 	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
 		t.Errorf("patch keys = %v, want %v", order, wantOrder)
 	}
-	out, err := os.ReadFile(".review/5201/.verify.out")
+	out, err := os.ReadFile(".verdict/state/5201/.verify.out")
 	if err != nil || string(out) != "ok" {
 		t.Errorf(".verify.out = %q, %v", out, err)
 	}
@@ -186,7 +186,7 @@ func TestVerifyRedaction(t *testing.T) {
 	if !strings.Contains(resp.Tail, "***REDACTED***") {
 		t.Errorf("tail carries no redaction marker: %q", resp.Tail)
 	}
-	out, err := os.ReadFile(".review/5201/.verify.out")
+	out, err := os.ReadFile(".verdict/state/5201/.verify.out")
 	if err != nil || !strings.Contains(string(out), "supersecretvalue123") {
 		t.Errorf(".verify.out scrubbed, want raw: %q", out)
 	}
@@ -204,7 +204,7 @@ func TestVerifyTimeout(t *testing.T) {
 	if !resp.TimedOut {
 		t.Errorf("response = %+v, want timedOut", resp)
 	}
-	marker, err := os.ReadFile(".review/5201/.verify.timeout")
+	marker, err := os.ReadFile(".verdict/state/5201/.verify.timeout")
 	if err != nil || string(marker) != "timeout after 2s\n" {
 		t.Errorf("marker = %q, %v", marker, err)
 	}
@@ -212,7 +212,7 @@ func TestVerifyTimeout(t *testing.T) {
 
 type cancelCommander struct{ cancel context.CancelFunc }
 
-func (c cancelCommander) Run(context.Context, core.Command) (core.Result, error) {
+func (c cancelCommander) Run(context.Context, *core.Command) (core.Result, error) {
 	c.cancel()
 	return core.Result{}, nil
 }
@@ -222,9 +222,9 @@ type proof struct{ patch, out, marker []byte }
 func readProof(t *testing.T) proof {
 	t.Helper()
 	return proof{
-		patch:  readProofFile(t, ".review/5201/patch.json"),
-		out:    readProofFile(t, ".review/5201/.verify.out"),
-		marker: readProofFile(t, ".review/5201/.verify.timeout"),
+		patch:  readProofFile(t, ".verdict/state/5201/patch.json"),
+		out:    readProofFile(t, ".verdict/state/5201/.verify.out"),
+		marker: readProofFile(t, ".verdict/state/5201/.verify.timeout"),
 	}
 }
 
@@ -241,8 +241,8 @@ func readProofFile(t *testing.T, path string) []byte {
 // proof file untouched.
 func TestVerifyCancelKeepsPriorProof(t *testing.T) {
 	bundle(t, `{"verifyCmd":"sleep 30","verifyExit":0,"verifiedAt":"2026-11-01T12:00:00Z","timedOut":false,"verifiedTail":"ok"}`)
-	writeFile(t, ".review/5201/.verify.out", "ok")
-	writeFile(t, ".review/5201/.verify.timeout", "timeout after 2s\n")
+	writeFile(t, ".verdict/state/5201/.verify.out", "ok")
+	writeFile(t, ".verdict/state/5201/.verify.timeout", "timeout after 2s\n")
 	before := readProof(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	req := verifyRequest(&collector{}, &scriptCommander{}, "10", []string{"PATH=/bin"}, true)
@@ -262,12 +262,12 @@ func TestVerifyCancelKeepsPriorProof(t *testing.T) {
 // the previous run's timeout marker.
 func TestVerifySuccessClearsStaleMarker(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	writeFile(t, ".review/5201/.verify.timeout", "timeout after 2s\n")
+	writeFile(t, ".verdict/state/5201/.verify.timeout", "timeout after 2s\n")
 	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
 	if _, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	if marker := readProofFile(t, ".review/5201/.verify.timeout"); len(marker) != 0 {
+	if marker := readProofFile(t, ".verdict/state/5201/.verify.timeout"); len(marker) != 0 {
 		t.Errorf("stale .verify.timeout survived a successful run: %q", marker)
 	}
 }
@@ -284,7 +284,7 @@ func TestVerifyDecoy(t *testing.T) {
 	if resp.Exit != 0 || !resp.TimedOut {
 		t.Errorf("response = %+v, want exit 0 timedOut", resp)
 	}
-	marker, err := os.ReadFile(".review/5201/.verify.timeout")
+	marker, err := os.ReadFile(".verdict/state/5201/.verify.timeout")
 	if err != nil || string(marker) != "orphaned command tree killed after exit\n" {
 		t.Errorf("marker = %q, %v", marker, err)
 	}
@@ -320,9 +320,9 @@ func checkVerifyRefusal(t *testing.T, name, patch, timeout, code string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf ok"}`)
 	if name == "missing-patch" {
-		_ = os.Remove(".review/5201/patch.json")
+		_ = os.Remove(".verdict/state/5201/patch.json")
 	} else {
-		writeFile(t, ".review/5201/patch.json", patch)
+		writeFile(t, ".verdict/state/5201/patch.json", patch)
 	}
 	c, cmdr := &collector{}, &scriptCommander{}
 	req := verifyRequest(c, cmdr, timeout, []string{"PATH=/bin"}, false)
@@ -340,7 +340,7 @@ func checkVerifyRefusal(t *testing.T, name, patch, timeout, code string) {
 	if len(cmdr.got) != 0 {
 		t.Errorf("refusal spawned %d commands", len(cmdr.got))
 	}
-	if _, err := os.Stat(".review/5201/.verify.out"); !os.IsNotExist(err) {
+	if _, err := os.Stat(".verdict/state/5201/.verify.out"); !os.IsNotExist(err) {
 		t.Errorf("refusal wrote .verify.out")
 	}
 }

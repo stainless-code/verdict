@@ -41,9 +41,9 @@ func gateBundle(t *testing.T, findings string) Request {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeGateFile(t, ".review/5101/PR.json",
+	writeGateFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"`+gateHead+`","baseRefOid":"`+strings.Repeat("b", 40)+`"}`)
-	writeGateFile(t, ".review/5101/findings.json", findings)
+	writeGateFile(t, ".verdict/state/5101/findings.json", findings)
 	return Request{Repo: "acme/app", Pr: "5101"}
 }
 
@@ -148,7 +148,7 @@ func TestGateExitTable(t *testing.T) {
 			name: "tool-error", store: `[42]`,
 			args: []string{"--max-severity", "critical", "--live", "skip"},
 			want: cli.ExitBroke,
-			subs: []string{"error: findings store .review/5101/findings.json is unreadable"},
+			subs: []string{"error: findings store .verdict/state/5101/findings.json is unreadable"},
 		},
 	}
 	for _, tc := range tests {
@@ -189,7 +189,7 @@ func assertCarries(t *testing.T, name, output string, subs []string) {
 // where the dimension has no tally, and error null even on a failed gate.
 func TestGateEnvelopeShape(t *testing.T) {
 	req := gateBundle(t, "["+openFinding(gateSigImp, "important")+"]")
-	writeGateFile(t, ".review/5101/post.json", `{"head":"`+strings.Repeat("c", 40)+`"}`)
+	writeGateFile(t, ".verdict/state/5101/post.json", `{"head":"`+strings.Repeat("c", 40)+`"}`)
 	code, stdout, stderr := gateRun(t, []string{"--max-severity", "important", "--require-head", "--live", "skip"}, req, true)
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want 1\nstdout: %s", code, stdout)
@@ -313,7 +313,7 @@ func TestGateNeverWritesOrPosts(t *testing.T) {
 	if got := bundleFingerprint(t); got != before {
 		t.Errorf("bundle bytes moved: %s, want %s", got, before)
 	}
-	if _, err := os.Stat(".review/5101/post.json"); err == nil {
+	if _, err := os.Stat(".verdict/state/5101/post.json"); err == nil {
 		t.Error("gate wrote post.json")
 	}
 	assertReadShapedSpawns(t, cmd.argvs)
@@ -396,7 +396,7 @@ type recordCommander struct {
 	fail   bool
 }
 
-func (c *recordCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *recordCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.argvs = append(c.argvs, cmd.Argv)
 	res := core.Result{Stdout: c.stdout, Stderr: c.stderr}
 	if c.fail {
@@ -409,7 +409,7 @@ func (c *recordCommander) Run(_ context.Context, cmd core.Command) (core.Result,
 func bundleFingerprint(t *testing.T) string {
 	t.Helper()
 	h := fnv.New64a()
-	err := filepath.Walk(".review", func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(".verdict", func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
 		}
@@ -425,4 +425,29 @@ func bundleFingerprint(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return strconv.FormatUint(h.Sum64(), 16)
+}
+
+// TestGateHintNamesReRunOnce pins the recovery line's shape: the hint appends
+// its own re-run clause, so a dimension action must not carry one too.
+func TestGateHintNamesReRunOnce(t *testing.T) {
+	gate := &core.ReportGate{Dimensions: []core.GateDimension{{ID: "compliance", Status: statusFail}}}
+	if got := gateHint(gate); strings.Count(got, "re-run gate") != 1 {
+		t.Errorf("gateHint = %q, want the re-run clause exactly once", got)
+	}
+}
+
+// TestGateNextNamesCompliance pins the fourth dimension: a gate whose only
+// failing dimension is compliance used to publish "none — every requested
+// dimension passed" next to a FAIL verdict, with no recovery line at all.
+func TestGateNextNamesCompliance(t *testing.T) {
+	for _, status := range []string{statusFail, statusUnknown} {
+		gate := &core.ReportGate{Dimensions: []core.GateDimension{{ID: "compliance", Status: status}}}
+		got := gateNext(gate)
+		if got == "none — every requested dimension passed" {
+			t.Errorf("gateNext(%s compliance) = %q, want a recovery action", status, got)
+		}
+		if got == "" {
+			t.Errorf("gateNext(%s compliance) is empty, want a recovery action", status)
+		}
+	}
 }

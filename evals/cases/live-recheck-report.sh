@@ -42,7 +42,7 @@ live_mk_post() {
   local pr="$1" head="$2"
   jq -n --arg h "$head" \
     '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-    > "$EVAL_SANDBOX/.review/$pr/post.json"
+    > "$EVAL_SANDBOX/.verdict/state/$pr/post.json"
 }
 
 INFO_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Nit: clarify this line.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
@@ -103,7 +103,7 @@ PR=4286
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
-before_hash="$(shasum "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/post.json" | shasum | cut -d' ' -f1)"
+before_hash="$(shasum "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" | shasum | cut -d' ' -f1)"
 set_mode open
 run_review report acme/app "$PR" --check critical --completeness
 if [ "$EVAL_STATUS" -eq 1 ]; then
@@ -126,7 +126,7 @@ if grep -q "no open findings at-or-above critical — gate passes" "$EVAL_ERR" \
 else
   bad "local pass lines missing: $(head -c 300 "$EVAL_ERR")"
 fi
-after_hash="$(shasum "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/post.json" | shasum | cut -d' ' -f1)"
+after_hash="$(shasum "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" | shasum | cut -d' ' -f1)"
 if [ "$before_hash" = "$after_hash" ]; then
   good "failed gate mutates no store (report never posts)"
 else
@@ -217,7 +217,7 @@ assert_eq "advisory --json makes zero recheck calls" "0" "$(graphql_since "$m")"
 
 PR=4289
 eval_mk_bundle "$PR"
-cat > "$EVAL_SANDBOX/.review/$PR/PR.json" <<EOF
+cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
 {"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$HEAD_C","head_sha":"$HEAD_A","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[],"additions":0,"deletions":0}
 EOF
 printf '[]' | eval_write_findings "$PR"
@@ -248,14 +248,14 @@ else
   bad "stale provider exits $EVAL_STATUS with $(graphql_since "$m") call(s)"
 fi
 
-mkdir -p "$EVAL_SANDBOX/.review/local-liverep"
-cat > "$EVAL_SANDBOX/.review/local-liverep/source.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/local-liverep"
+cat > "$EVAL_SANDBOX/.verdict/state/local-liverep/source.json" <<EOF
 {"schema_version":"1","kind":"range","repo":"acme/app","slug":"liverep","base_ref":null,"head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"$HEAD_D","range":"v1..v2","dirty":false,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}
 EOF
-printf '[]' > "$EVAL_SANDBOX/.review/local-liverep/findings.json"
+printf '[]' > "$EVAL_SANDBOX/.verdict/state/local-liverep/findings.json"
 jq -n --arg h "$HEAD_D" \
   '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-  > "$EVAL_SANDBOX/.review/local-liverep/post.json"
+  > "$EVAL_SANDBOX/.verdict/state/local-liverep/post.json"
 set_mode clear
 m="$(mark)"
 run_review report acme/app liverep --check critical --completeness
@@ -268,7 +268,7 @@ assert_file_grep "local run warn-skips" "$EVAL_ERR" "live recheck skipped"
 assert_stream_nogrep "local run prints no fetch-local noise" "$EVAL_ERR" "fetch-local" "-i"
 assert_stream_nogrep "local run prints no live open line" "$EVAL_ERR" "live open"
 assert_eq "local run makes zero recheck calls" "0" "$(graphql_since "$m")"
-printf '%s' "$CRIT_FINDING" > "$EVAL_SANDBOX/.review/local-liverep/findings.json"
+printf '%s' "$CRIT_FINDING" > "$EVAL_SANDBOX/.verdict/state/local-liverep/findings.json"
 m="$(mark)"
 run_review report acme/app liverep --check critical
 if [ "$EVAL_STATUS" -eq 1 ] \

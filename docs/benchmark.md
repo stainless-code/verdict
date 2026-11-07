@@ -12,7 +12,7 @@ claim.
 
 ## What the numbers mean
 
-A corpus bundle is `.review/corpus-*` holding `corpus.json` (one case
+A corpus bundle is `.verdict/state/corpus-*` holding `corpus.json` (one case
 manifest), `findings.json` (the output under test), and the normal
 provenance stores (`record.json`, `cost.json`, `panel`). The runner also
 writes the reviewed `full.diff` and the `hunks.tsv` index beside it, so the
@@ -216,13 +216,13 @@ CASE=off-by-one
 MODEL=my-model
 SLUG="corpus-${CASE}-${MODEL}"
 
-mkdir -p ".review/$SLUG"
-cp ".review/123/full.diff" ".review/$SLUG/full.diff"
-cp ".review/123/hunks.tsv" ".review/$SLUG/hunks.tsv"       # the fetch-time index
-cp ".review/123/review.json" ".review/$SLUG/review.json"   # the agent output
-cp "bench/corpus/$CASE/case.json" ".review/$SLUG/corpus.json"
-printf '{"head_sha":"%s","base_sha":"%s"}\n' "$HEAD" "$BASE" > ".review/$SLUG/source.json"
-printf '%s\n' my-panel > ".review/$SLUG/panel"              # same panel every run
+mkdir -p ".verdict/state/$SLUG"
+cp ".verdict/state/123/full.diff" ".verdict/state/$SLUG/full.diff"
+cp ".verdict/state/123/hunks.tsv" ".verdict/state/$SLUG/hunks.tsv"       # the fetch-time index
+cp ".verdict/state/123/review.json" ".verdict/state/$SLUG/review.json"   # the agent output
+cp "bench/corpus/$CASE/case.json" ".verdict/state/$SLUG/corpus.json"
+printf '{"head_sha":"%s","base_sha":"%s"}\n' "$HEAD" "$BASE" > ".verdict/state/$SLUG/source.json"
+printf '%s\n' my-panel > ".verdict/state/$SLUG/panel"              # same panel every run
 # cost.json is the agent's normal token report; record stamps the model.
 verdict record owner/repo "$SLUG" --json
 
@@ -240,7 +240,7 @@ that reports a non-bug is the false positive the rate is measuring.
 
 For seeded cases, skip `fetch` and use the checked-in `full.diff` and
 `agents/<model>.json` review body. Keep the checked-in corpus immutable;
-runs live only under `.review/`.
+runs live only under `.verdict/state/`.
 
 The runner in [`bench/runner`](../bench/README.md) automates this section:
 `-agent` is the model's command line, and each sample gets its own bundle
@@ -251,13 +251,13 @@ it does, and for a bundle it cannot assemble.
 ### 3. Cost estimate per model
 
 The corpus reruns the same review prompt over N cases. Pilot one case per
-model, then read the actual spend from `.review/corpus-*/cost.json`:
+model, then read the actual spend from `.verdict/state/corpus-*/cost.json`:
 
 ```sh
 jq -s '[.[] | .models[] | {model: .name, input: (.input_tokens // 0), output: (.output_tokens // 0)}]
        | group_by(.model)
        | map({model: .[0].model, input_tokens: (map(.input)|add), output_tokens: (map(.output)|add)})' \
-  .review/corpus-*/cost.json
+  .verdict/state/corpus-*/cost.json
 ```
 
 Project the full run as `pilot_tokens * (N / pilot_cases)` and price it with

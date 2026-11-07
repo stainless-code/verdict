@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -47,8 +49,27 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 	if err != nil {
 		return err
 	}
-	if _, ref := controls.Resolve(ctx, nil, &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true}); ref != nil {
+	snap, ref := controls.Resolve(ctx, nil, &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true})
+	if ref != nil {
 		return jq.NewErrf("controls snapshot: %s", ref)
+	}
+	return r.writeRunState(bundle, base, snap)
+}
+
+// writeRunState records the typed capture the later verbs verify. The bench
+// bundle has no trusted source, so the capture stays untrusted; its inputs
+// are exactly the artifacts and inventory the controls snapshot just hashed,
+// which is what binds run.json to this bundle.
+func (r *runner) writeRunState(bundle, base string, snap *controls.Snapshot) error {
+	rs := &config.RunState{
+		BaseSHA:    base,
+		Trusted:    false,
+		CapturedAt: r.cfg.Now.UTC().Format(time.RFC3339),
+		Evidence:   config.Evidence{SchemaVersion: "1", BaseSHA: base},
+		Inventory:  config.InventoryHashes(snap),
+	}
+	if serr := config.WriteRunState(bundle, rs); serr != nil {
+		return jq.NewErrf("run state: %s", serr)
 	}
 	return nil
 }
@@ -86,7 +107,7 @@ func normalizeCost(raw []byte, model string, wall float64) ([]byte, error) {
 			return nil, jq.NewErrf("cost.json: want one spend record object: %s", err)
 		}
 	}
-	rec["schema_version"] = "1"
+	rec["schema_version"] = "2"
 	if _, ok := rec["effort"]; !ok {
 		rec["effort"] = "standard"
 	}
@@ -164,7 +185,7 @@ func repoState(ctx context.Context, root string) (string, bool) {
 }
 
 func gitOut(ctx context.Context, root string, argv ...string) (string, error) {
-	res, err := coreexec.Runner{}.Run(ctx, core.Command{Argv: append([]string{"git", "-C", root}, argv...), Env: toolEnv()})
+	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: append([]string{"git", "-C", root}, argv...), Env: toolEnv()})
 	if err != nil {
 		return "", jq.NewErrf("git %s: %s", argv[0], err)
 	}

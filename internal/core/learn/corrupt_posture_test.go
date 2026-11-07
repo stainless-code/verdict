@@ -23,13 +23,16 @@ func seedCorruptStore(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(filepath.Join(".review", "7"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(".verdict", "state", "7"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(".review", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(kb.File, []byte("{broken\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	findings := filepath.Join(".review", "7", "findings.json")
+	findings := filepath.Join(".verdict", "state", "7", "findings.json")
 	before := `[{"sig":"a1","status":"open","kb_credit":[{"rule":"r1","to":"hits"}]}]` + "\n"
 	if err := os.WriteFile(findings, []byte(before), 0o600); err != nil {
 		t.Fatal(err)

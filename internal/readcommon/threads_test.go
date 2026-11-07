@@ -17,7 +17,7 @@ type threadReadCommander struct {
 }
 
 // Run replays the scripted stdout.
-func (c *threadReadCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *threadReadCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.argv = cmd.Argv
 	return core.Result{Stdout: c.stdout}, nil
 }

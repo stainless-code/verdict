@@ -25,9 +25,9 @@ func (c *Ctx) ApplyCredit(entries []any, sig, outcome, actor, verb, now string, 
 	default:
 		return
 	}
-	joins, ok := readJoins()
+	joins, ok := c.readJoins()
 	if !ok {
-		c.Warn(fmt.Sprintf("kb joins %s unreadable — credit skipped for this flip (fix or remove the file)", Joins))
+		c.Warn(fmt.Sprintf("kb joins %s unreadable — credit skipped for this flip (fix or remove the file)", c.display(Joins)))
 		return
 	}
 	entry := findEntry(entries, sig)
@@ -58,7 +58,7 @@ func (c *Ctx) stageCites(entry *jq.Obj, kbList []any, sig, outcome, actor, verb,
 // stageCite stages one rule's credit op when the rule is active.
 func (c *Ctx) stageCite(sig, rid, outcome, actor, verb, now string) {
 	if !c.ruleActive(rid) {
-		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, File))
+		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, c.display(File)))
 		return
 	}
 	c.Staged = append(c.Staged, map[string]any{
@@ -177,7 +177,7 @@ func (c *Ctx) CommitStaged(findingsFile, now string) {
 	if !ok {
 		return
 	}
-	joins, _ := readJoins()
+	joins, _ := c.readJoins()
 	live := filterLive(c.Staged, joins)
 	if len(live) == 0 {
 		c.Staged = nil
@@ -194,10 +194,10 @@ func (c *Ctx) CommitStaged(findingsFile, now string) {
 }
 
 func (c *Ctx) loadStore(findingsFile string) ([]*jq.Obj, bool) {
-	raw, err := jq.CappedFile(File, jq.MaxKBBytes)
+	raw, err := jq.CappedFile(c.path(File), jq.MaxKBBytes)
 	rows, derr := ParseRows(raw)
 	if err != nil || derr != nil {
-		c.Warn(fmt.Sprintf("kb store %s unreadable at commit — staged credit dropped (flips stand); re-run the flip to retry", File))
+		c.warnDropped("kb store " + c.display(File) + " unreadable at commit")
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil
 		return nil, false
@@ -227,18 +227,24 @@ func filterLive(staged []map[string]any, joins []*jq.Obj) []map[string]any {
 func (c *Ctx) rewriteCounters(rows []*jq.Obj, live []map[string]any, findingsFile string) bool {
 	hits, fps := tallyOutcomes(live)
 	if !bumpCounters(rows, hits, fps) {
-		c.Warn(fmt.Sprintf("kb commit failed: could not rewrite %s (flips stand, staged credit dropped) — re-run the flip to retry", File))
+		c.warnDropped("kb commit failed: could not rewrite " + c.display(File))
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil
 		return false
 	}
-	if err := WriteRows(rows); err != nil {
-		c.Warn(fmt.Sprintf("kb commit failed: could not rewrite %s (flips stand, staged credit dropped) — re-run the flip to retry", File))
+	if err := WriteRows(c.Root, rows); err != nil {
+		c.warnDropped("kb commit failed: could not rewrite " + c.display(File))
 		StripStamps(findingsFile, c.Staged, c.Warn)
 		c.Staged = nil
 		return false
 	}
 	return true
+}
+
+// warnDropped reports one dropped-credit outcome with the shared recovery
+// instruction, so every failure path tells the operator the same next step.
+func (c *Ctx) warnDropped(detail string) {
+	c.Warn(detail + " (flips stand, staged credit dropped) — re-run the flip to retry")
 }
 
 func bumpCounters(rows []*jq.Obj, hits, fps map[string]int) bool {
@@ -304,8 +310,8 @@ func (c *Ctx) appendJoins(findingsFile string, live []map[string]any) {
 			fieldOutcome, op[fieldOutcome], "actor", op["actor"], fieldVerb, op[fieldVerb],
 			"bundle", bundle, "review_id", reviewID,
 		)
-		if err := appendJoin(jrow.MarshalCompact() + "\n"); err != nil {
-			c.Warn(fmt.Sprintf("kb audit row for '%s' not written (%s)", rid, Joins))
+		if err := c.appendJoin(jrow.MarshalCompact() + "\n"); err != nil {
+			c.Warn(fmt.Sprintf("kb audit row for '%s' not written (%s)", rid, c.display(Joins)))
 		}
 	}
 }
@@ -351,8 +357,8 @@ func reviewIDOf(postPath string) any {
 // appendJoin appends one row to the joins log (creating it when absent).
 // A deferred-Close error after a failed write is already reported; after a
 // successful write the close is checked like any other flush.
-func appendJoin(line string) error {
-	f, err := os.OpenFile(Joins, os.O_WRONLY|os.O_APPEND|os.O_CREATE, storeFileMode)
+func (c *Ctx) appendJoin(line string) error {
+	f, err := os.OpenFile(c.path(Joins), os.O_WRONLY|os.O_APPEND|os.O_CREATE, storeFileMode)
 	if err != nil {
 		return jq.Sealed("append joins", err)
 	}

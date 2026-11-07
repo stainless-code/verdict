@@ -276,8 +276,13 @@ func seedBase(t *testing.T, dir string, controls map[string]string) string {
 	for name, content := range controls {
 		writeFile(t, dir, name, content)
 	}
-	if len(controls) > 0 {
-		runGit(t, dir, "add", "-f", ".review")
+	// Only the seeded top-level trees join the base commit: the typed
+	// configuration lives beside the legacy controls, and both read
+	// from the base.
+	for _, tree := range []string{".review", ".verdict"} {
+		if _, err := os.Stat(filepath.Join(dir, tree)); err == nil {
+			runGit(t, dir, "add", "-f", tree)
+		}
 	}
 	runGit(t, dir, "commit", "-q", "--allow-empty", "-m", "parity-base")
 	return strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD"))
@@ -409,7 +414,7 @@ func TestFetchGoldenGitHub(t *testing.T) {
 		stubPR(t, dir)
 		writeCanned(t, dir, "pr.json", strings.ReplaceAll(readCanned(t, dir, "pr.json"), headB, strings.Repeat("c", 40)))
 		writeFile(t, dir, ".review/panel", "head-panel\n")
-		writeContent(t, dir, ".review/panel", "api-base-panel\n")
+		writeContent(t, dir, ".verdict/config.json", typedConfigJSON(`"panel":["api-base-panel"]`))
 	}
 	golden.Pin(t, harness, "controls-base-absent", baseAbsent, nil, "fetch", "acme/app", "4701", "--json")
 	// Any API failure other than a 404 refuses: it is never read as absence.
@@ -523,7 +528,7 @@ func TestFetchGoldenCapChunk(t *testing.T) {
 		"fetch", "acme/app", "4703", "--chunk")
 	golden.Pin(t, harness, "over-cap-absent-text", overSetup, nil,
 		"fetch", "acme/app", "4703")
-	golden.Pin(t, harness, "over-cap-knob", overCapSetup(map[string]string{".review/chunk": "true\n"}), nil,
+	golden.Pin(t, harness, "over-cap-knob", overCapSetup(map[string]string{".verdict/config.json": typedConfigJSON(`"chunk":true`)}), nil,
 		"fetch", "acme/app", "4703", "--json")
 	golden.Pin(t, harness, "cap-override", overSetup,
 		map[string]string{"REVIEW_MAX_BYTES": "100000000"},
@@ -534,7 +539,7 @@ func TestFetchGoldenCapChunk(t *testing.T) {
 	golden.Pin(t, harness, "bad-max-bytes", overSetup,
 		map[string]string{"REVIEW_MAX_BYTES": "nope"},
 		"fetch", "acme/app", "4703", "--json")
-	golden.Pin(t, harness, "bad-chunk-knob", overCapSetup(map[string]string{".review/chunk": "maybe\n"}), nil,
+	golden.Pin(t, harness, "bad-chunk-knob", overCapSetup(map[string]string{".verdict/config.json": typedConfigJSON(`"chunk":"maybe"`)}), nil,
 		"fetch", "acme/app", "4703", "--json")
 	singleSetup := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -551,6 +556,12 @@ func TestFetchGoldenCapChunk(t *testing.T) {
 	}
 	golden.Pin(t, harness, "single-file-degenerate", singleSetup, nil,
 		"fetch", "acme/app", "4704", "--chunk", "--json")
+}
+
+// typedConfigJSON renders one repository configuration committed at the
+// base for the typed-knob goldens.
+func typedConfigJSON(defaults string) string {
+	return `{"schema_version":"1","defaults":{` + defaults + "}}\n"
 }
 
 // overCapSetup plants an over-cap PR whose base commit tracks controls: the
@@ -574,7 +585,7 @@ func overCapSetup(controls map[string]string) func(t *testing.T, dir, home strin
 // including the copy the bundle keeps.
 func requireChunkBytes(t *testing.T, out golden.Outputs, diff string) {
 	t.Helper()
-	if got := out.Files["C/.review/4703/full.diff"]; got != diff {
+	if got := out.Files["C/.verdict/state/4703/full.diff"]; got != diff {
 		t.Fatalf("bundle full.diff = %d bytes, want the fetched %d-byte diff", len(got), len(diff))
 	}
 	chunked := joinChunks(t, out.Files)
@@ -589,7 +600,7 @@ func joinChunks(t *testing.T, files map[string]string) string {
 	t.Helper()
 	var joined strings.Builder
 	for i := 1; ; i++ {
-		body, ok := files[fmt.Sprintf("C/.review/4703/chunks/chunk-%02d.diff", i)]
+		body, ok := files[fmt.Sprintf("C/.verdict/state/4703/chunks/chunk-%02d.diff", i)]
 		if !ok {
 			break
 		}
@@ -618,7 +629,7 @@ func TestFetchGoldenBudget(t *testing.T) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
-		writeFile(t, dir, ".review/1/cost.json",
+		writeFile(t, dir, ".verdict/state/1/cost.json",
 			`[{"effort":"standard","est_usd":2.00,"models":[]},{"effort":"standard","est_usd":4.00,"models":[]}]`)
 	}
 	golden.Pin(t, harness, "budget-unset", setup, nil,
@@ -642,10 +653,28 @@ func TestFetchGoldenBudget(t *testing.T) {
 		t.Helper()
 		promptFiles(t, dir)
 		stubPR(t, dir)
-		writeFile(t, dir, ".review/1/cost.json", `{"effort":"standard","est_usd":3.00}`)
-		writeFile(t, dir, ".review/2/cost.json", `not json`)
+		writeFile(t, dir, ".verdict/state/1/cost.json", `{"effort":"standard","est_usd":3.00}`)
+		writeFile(t, dir, ".verdict/state/2/cost.json", `not json`)
 	}, map[string]string{"REVIEW_BUDGET_USD": "10"},
 		"fetch", "acme/app", "4705", "--json")
+	// A tracked budget_usd must arm the whole-run guard on the remote path too.
+	// The diff carries no hunks, so no plan group exists to hang a guard on and
+	// only the resolved default can refuse; phase one has no repository layer,
+	// so a budget read there never arms.
+	golden.Pin(t, harness, "budget-repo-config", func(t *testing.T, dir, _ string) {
+		t.Helper()
+		promptFiles(t, dir)
+		stubPR(t, dir)
+		writeContent(t, dir, ".verdict/config.json", typedConfigJSON(`"budget_usd":0.5`))
+		writeFile(t, dir, ".verdict/state/1/cost.json",
+			`[{"effort":"standard","est_usd":2.00,"models":[]},{"effort":"standard","est_usd":4.00,"models":[]}]`)
+		writeCanned(t, dir, "pr.json", `{"state":"OPEN","headRefOid":"`+headA+`","baseRefOid":"`+
+			strings.Repeat("c", 40)+`",`+
+			`"author":{"login":"teammate"},"files":[{"path":"y","additions":0,"deletions":0}],`+
+			`"additions":0,"deletions":0}`)
+		writeCanned(t, dir, "full.diff", "diff --git a/x b/y\nsimilarity index 100%\nrename from x\nrename to y\n")
+		writeCanned(t, dir, "stat.txt", "y (+0/-0)\n")
+	}, nil, "fetch", "acme/app", "4705", "--json")
 }
 
 // TestFetchGoldenLocal proves fetch-local parity across every diff mode:
@@ -969,7 +998,7 @@ func requireEmptyFullDiff(t *testing.T, outs golden.Outputs) {
 func requireSideFullDiff(t *testing.T, side string, outs golden.Outputs) {
 	t.Helper()
 	for k, v := range outs.Files {
-		if !strings.HasSuffix(k, ".review/4711/full.diff") {
+		if !strings.HasSuffix(k, ".verdict/state/4711/full.diff") {
 			continue
 		}
 		if v != "" {

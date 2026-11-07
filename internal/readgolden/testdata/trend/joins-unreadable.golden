@@ -8,7 +8,7 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "calibrate recent bundles for per-model tier precision",
   "warnings": [
-    "kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)"
+    "kb joins .verdict/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
@@ -270,5 +270,5 @@ exit: 0
   "error": null
 }
 --- stderr ---
-warn: kb joins .review/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)
+warn: kb joins .verdict/kb-joins.jsonl unreadable — joins counts off for this rollup (fix or remove the file)
 --- files ---

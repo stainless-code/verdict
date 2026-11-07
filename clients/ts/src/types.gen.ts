@@ -102,6 +102,7 @@ export interface ReportData {
   items: Array<FindingItem>;
   cost?: ReportCost;
   completeness?: ReportCompleteness;
+  compliance?: ReportCompliance | null;
   gate?: ReportGate | null;
   [key: string]: unknown;
 }
@@ -189,7 +190,23 @@ export interface ReportCompleteness {
   [key: string]: unknown;
 }
 
-/** Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
+/** The captured-policy compliance view: whether the bundle captured a policy and its provenance verified, how many findings blocked and how many required checks are still pending for the saved head, and whether the work therefore satisfies the policy. Unknown or pending never reads as satisfied. */
+export interface ReportCompliance {
+  policy: boolean;
+  verified: boolean;
+  /** Blocking findings under the captured clauses; never negative. */
+  blockers: number;
+  /** Applicable clauses whose reviewed material is withheld by an accepted privacy exclusion, so the clause cannot be satisfied by absence of findings; never negative. */
+  conflicted: number;
+  /** Required checks still pending for the saved head; never negative. */
+  pending: number;
+  /** Accepted conflicts and pending required work counted together as the standing gap tally; never negative. */
+  gaps: number;
+  satisfied: boolean;
+  [key: string]: unknown;
+}
+
+/** Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
 export interface ReportGate {
   /** The gate verdict the exit code follows: exit 0 when true, exit 1 when false. */
   passed: boolean;
@@ -200,7 +217,7 @@ export interface ReportGate {
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
   /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), or live_threads (unresolved threads on the PR under --live). */
-  id: "findings" | "head" | "live_threads";
+  id: "findings" | "head" | "live_threads" | "compliance";
   /** pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate. */
   status: "pass" | "fail" | "skip" | "unknown";
   detail: string;
@@ -269,6 +286,77 @@ export interface ShowData {
   [key: string]: unknown;
 }
 
+export interface ConfigData {
+  mode: "explain" | "preview";
+  trusted: boolean;
+  source: string;
+  values: Array<ConfigValue>;
+  requirements: Array<ConfigRequirement>;
+  plan: Array<ConfigPlanGroup>;
+  plan_status: string;
+  spend: ConfigSpend;
+  privacy: Array<string>;
+  checks?: Array<ConfigCheck>;
+  shadowed?: Array<ConfigValue>;
+  files?: Array<ConfigFile>;
+  [key: string]: unknown;
+}
+
+export interface ConfigFile {
+  path: string;
+  old_path?: string;
+  scopes: Array<string>;
+  values: Array<ConfigValue>;
+  shadowed: Array<ConfigValue>;
+  [key: string]: unknown;
+}
+
+export interface ConfigValue {
+  key: string;
+  value: unknown;
+  layer: string;
+  source: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigRequirement {
+  key: string;
+  threshold?: string | null;
+  status: string;
+  sources?: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface ConfigPlanGroup {
+  id: string;
+  label: string;
+  profile: string;
+  depth: string;
+  checks?: Array<string>;
+  max_lenses?: number | null;
+  files?: Array<string>;
+  scopes?: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface ConfigSpend {
+  guard_usd?: number | null;
+  personal_limit_usd?: number | null;
+  require_known_estimate: boolean;
+  enforce_cap: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConfigCheck {
+  check: string;
+  group: string;
+  head: string;
+  passed: boolean;
+  at: string;
+  detail?: string;
+  [key: string]: unknown;
+}
+
 /** The per-finding repair directive: identity, status, files, locator, embedded suggestion, and the last recorded rerun hint. Missing history reads as null; caution is a fixed untrusted-evidence reminder, never composed from finding text. */
 export interface ShowFix {
   sig: string;
@@ -318,17 +406,42 @@ export interface VerifyHint {
   [key: string]: unknown;
 }
 
-/** fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did. */
+/** fetch --json data.estimate, in exactly one of two shapes. A whole-run resolution names the projected tier and cost from comparable past runs, with basis/harness/measured_runs appearing only when a local harness session priced a comparable run (their absence is the legacy self-reported estimate). A grouped resolution names each plan group's guard, tier and history-backed projection, plus the personal ceiling comparison; projected_usd is absent for a group no bound history priced, and the personal total is absent when any group is unknown, leaving the known subtotal as a lower bound. */
 export interface FetchEstimate {
-  tier: string | null;
-  projected_usd: number | null;
-  comparable_runs: number;
+  tier?: string | null;
+  projected_usd?: number | null;
+  comparable_runs?: number;
   /** measured when every priced sample in the projected tier was harness-measured, mixed when only some were. Absent means no harness measurement contributed. */
   basis?: string;
   /** Measured session sources behind the projection (e.g. claude-code, opencode); absent with basis. */
   harness?: Array<string>;
   /** How many priced samples in the projected tier came from a harness session; absent with basis. */
   measured_runs?: number;
+  /** One entry per resolved plan group: its stable id, effort tier, its own guard when the plan resolved one, and projected_usd only when bound history priced it. */
+  groups?: Array<FetchGroupEstimate>;
+  /** The personal whole-run ceiling comparison: exact-total when every group is priced, known-lower-bound when some are unknown, no-personal-limit when no ceiling was set. limit_usd is absent when unset and never zero; total_usd is absent unless the aggregate is exact. */
+  personal?: FetchGroupPersonal | null;
+  [key: string]: unknown;
+}
+
+/** One plan group's public projection. projected_usd is omitted for an unknown group rather than reported as zero. */
+export interface FetchGroupEstimate {
+  group: string;
+  effort: string;
+  /** The group's resolved guard. Absent when the plan set none — never reported as zero. */
+  guard_usd?: number | null;
+  projected_usd?: number | null;
+  over_guard: boolean;
+  [key: string]: unknown;
+}
+
+/** The personal ceiling comparison. total_usd appears only with an exact aggregate, known_subtotal_usd only as a lower bound. */
+export interface FetchGroupPersonal {
+  /** The resolved personal ceiling. Absent when none was set — never reported as zero. */
+  limit_usd?: number | null;
+  basis: string;
+  total_usd?: number | null;
+  known_subtotal_usd?: number | null;
   [key: string]: unknown;
 }
 
@@ -449,7 +562,7 @@ export interface DoctorCheck {
   [key: string]: unknown;
 }
 
-/** check-tree --json data: the clean verdict plus exactly one of four explanations — ignored_review_lines (clean, with ignored .review paths), files (dirty), expected_only (only expected paths changed), unexpected (unexpected paths changed). */
+/** check-tree --json data: the clean verdict plus exactly one of four explanations — ignored_review_lines (clean, with ignored .verdict/state paths), files (dirty), expected_only (only expected paths changed), unexpected (unexpected paths changed). */
 export interface CheckTreeData {
   clean: boolean;
   ignored_review_lines?: number;
@@ -480,6 +593,9 @@ export interface VerifyData {
   timedOut: boolean;
   outputTail: string;
   patch: string;
+  group?: string;
+  head?: string;
+  receipt?: string;
   [key: string]: unknown;
 }
 
@@ -650,7 +766,7 @@ export interface FetchData {
   artifacts: unknown;
   incremental_base: string | null;
   estimate?: FetchEstimate;
-  /** The resolved budget summary; present exactly when estimate is. */
+  /** The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead). */
   budget?: unknown;
   /** The armed cost cap summary; absent when no cap is armed. */
   cap?: unknown;
@@ -681,7 +797,7 @@ export interface FetchLocalData {
   /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
   artifacts: unknown;
   estimate?: FetchEstimate;
-  /** The resolved budget summary; present exactly when estimate is. */
+  /** The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead). */
   budget?: unknown;
   /** The armed cost cap summary; absent when no cap is armed. */
   cap?: unknown;

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, initData, doctorData, checkTreeData, trendData, calibrateData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -192,6 +192,9 @@
         },
         "cost": { "$ref": "#/$defs/reportCost" },
         "completeness": { "$ref": "#/$defs/reportCompleteness" },
+        "compliance": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompliance" }]
+        },
         "gate": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
         }
@@ -352,8 +355,47 @@
       "required": ["reviewed", "fetched_head", "posted_head"],
       "additionalProperties": true
     },
+    "reportCompliance": {
+      "description": "The captured-policy compliance view: whether the bundle captured a policy and its provenance verified, how many findings blocked and how many required checks are still pending for the saved head, and whether the work therefore satisfies the policy. Unknown or pending never reads as satisfied.",
+      "type": "object",
+      "properties": {
+        "policy": { "type": "boolean" },
+        "verified": { "type": "boolean" },
+        "blockers": {
+          "description": "Blocking findings under the captured clauses; never negative.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "conflicted": {
+          "description": "Applicable clauses whose reviewed material is withheld by an accepted privacy exclusion, so the clause cannot be satisfied by absence of findings; never negative.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending": {
+          "description": "Required checks still pending for the saved head; never negative.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "gaps": {
+          "description": "Accepted conflicts and pending required work counted together as the standing gap tally; never negative.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "satisfied": { "type": "boolean" }
+      },
+      "required": [
+        "policy",
+        "verified",
+        "blockers",
+        "conflicted",
+        "pending",
+        "gaps",
+        "satisfied"
+      ],
+      "additionalProperties": true
+    },
     "reportGate": {
-      "description": "Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
+      "description": "Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "type": "object",
       "properties": {
         "passed": {
@@ -374,7 +416,7 @@
       "properties": {
         "id": {
           "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), or live_threads (unresolved threads on the PR under --live).",
-          "enum": ["findings", "head", "live_threads"]
+          "enum": ["findings", "head", "live_threads", "compliance"]
         },
         "status": {
           "description": "pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate.",
@@ -548,6 +590,150 @@
       "required": ["item", "fix"],
       "additionalProperties": true
     },
+    "configData": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["explain", "preview"] },
+        "trusted": { "type": "boolean" },
+        "source": { "type": "string" },
+        "values": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configValue" }
+        },
+        "requirements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configRequirement" }
+        },
+        "plan": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configPlanGroup" }
+        },
+        "plan_status": { "type": "string" },
+        "spend": { "$ref": "#/$defs/configSpend" },
+        "privacy": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configCheck" }
+        },
+        "shadowed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configValue" }
+        },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configFile" }
+        }
+      },
+      "required": [
+        "mode",
+        "trusted",
+        "source",
+        "values",
+        "requirements",
+        "plan",
+        "plan_status",
+        "spend",
+        "privacy"
+      ],
+      "additionalProperties": true
+    },
+    "configFile": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "old_path": { "type": "string" },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "values": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configValue" }
+        },
+        "shadowed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/configValue" }
+        }
+      },
+      "required": ["path", "scopes", "values", "shadowed"],
+      "additionalProperties": true
+    },
+    "configValue": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "value": {},
+        "layer": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "required": ["key", "value", "layer", "source"],
+      "additionalProperties": true
+    },
+    "configRequirement": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "threshold": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["key", "status"],
+      "additionalProperties": true
+    },
+    "configPlanGroup": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "profile": { "type": "string" },
+        "depth": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "max_lenses": { "type": ["integer", "null"] },
+        "files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "label", "profile", "depth"],
+      "additionalProperties": true
+    },
+    "configSpend": {
+      "type": "object",
+      "properties": {
+        "guard_usd": { "type": ["number", "null"] },
+        "personal_limit_usd": { "type": ["number", "null"] },
+        "require_known_estimate": { "type": "boolean" },
+        "enforce_cap": { "type": "boolean" }
+      },
+      "required": ["require_known_estimate", "enforce_cap"],
+      "additionalProperties": true
+    },
+    "configCheck": {
+      "type": "object",
+      "properties": {
+        "check": { "type": "string" },
+        "group": { "type": "string" },
+        "head": { "type": "string" },
+        "passed": { "type": "boolean" },
+        "at": { "type": "string" },
+        "detail": { "type": "string" }
+      },
+      "required": ["check", "group", "head", "passed", "at"],
+      "additionalProperties": true
+    },
     "showFix": {
       "description": "The per-finding repair directive: identity, status, files, locator, embedded suggestion, and the last recorded rerun hint. Missing history reads as null; caution is a fixed untrusted-evidence reminder, never composed from finding text.",
       "type": "object",
@@ -648,7 +834,7 @@
       "additionalProperties": true
     },
     "fetchEstimate": {
-      "description": "fetch --json data.estimate: the projected per-run cost from comparable past runs. basis/harness/measured_runs appear only when a local harness session priced a comparable run; their absence is the legacy self-reported estimate. basis is measured when every priced sample in the projected tier came from a harness, mixed when only some did.",
+      "description": "fetch --json data.estimate, in exactly one of two shapes. A whole-run resolution names the projected tier and cost from comparable past runs, with basis/harness/measured_runs appearing only when a local harness session priced a comparable run (their absence is the legacy self-reported estimate). A grouped resolution names each plan group's guard, tier and history-backed projection, plus the personal ceiling comparison; projected_usd is absent for a group no bound history priced, and the personal total is absent when any group is unknown, leaving the known subtotal as a lower bound.",
       "type": "object",
       "properties": {
         "tier": { "type": ["string", "null"] },
@@ -666,9 +852,53 @@
         "measured_runs": {
           "description": "How many priced samples in the projected tier came from a harness session; absent with basis.",
           "type": "integer"
+        },
+        "groups": {
+          "description": "One entry per resolved plan group: its stable id, effort tier, its own guard when the plan resolved one, and projected_usd only when bound history priced it.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/fetchGroupEstimate" }
+        },
+        "personal": {
+          "description": "The personal whole-run ceiling comparison: exact-total when every group is priced, known-lower-bound when some are unknown, no-personal-limit when no ceiling was set. limit_usd is absent when unset and never zero; total_usd is absent unless the aggregate is exact.",
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/fetchGroupPersonal" }
+          ]
         }
       },
-      "required": ["tier", "projected_usd", "comparable_runs"],
+      "required": [],
+      "additionalProperties": true,
+      "anyOf": [{ "required": ["tier"] }, { "required": ["groups"] }]
+    },
+    "fetchGroupEstimate": {
+      "description": "One plan group's public projection. projected_usd is omitted for an unknown group rather than reported as zero.",
+      "type": "object",
+      "properties": {
+        "group": { "type": "string" },
+        "effort": { "type": "string" },
+        "guard_usd": {
+          "description": "The group's resolved guard. Absent when the plan set none — never reported as zero.",
+          "type": ["number", "null"]
+        },
+        "projected_usd": { "type": ["number", "null"] },
+        "over_guard": { "type": "boolean" }
+      },
+      "required": ["group", "effort", "over_guard"],
+      "additionalProperties": true
+    },
+    "fetchGroupPersonal": {
+      "description": "The personal ceiling comparison. total_usd appears only with an exact aggregate, known_subtotal_usd only as a lower bound.",
+      "type": "object",
+      "properties": {
+        "limit_usd": {
+          "description": "The resolved personal ceiling. Absent when none was set — never reported as zero.",
+          "type": ["number", "null"]
+        },
+        "basis": { "type": "string" },
+        "total_usd": { "type": ["number", "null"] },
+        "known_subtotal_usd": { "type": ["number", "null"] }
+      },
+      "required": ["basis"],
       "additionalProperties": true
     },
     "triageData": {
@@ -882,7 +1112,7 @@
       "additionalProperties": true
     },
     "checkTreeData": {
-      "description": "check-tree --json data: the clean verdict plus exactly one of four explanations — ignored_review_lines (clean, with ignored .review paths), files (dirty), expected_only (only expected paths changed), unexpected (unexpected paths changed).",
+      "description": "check-tree --json data: the clean verdict plus exactly one of four explanations — ignored_review_lines (clean, with ignored .verdict/state paths), files (dirty), expected_only (only expected paths changed), unexpected (unexpected paths changed).",
       "type": "object",
       "properties": {
         "clean": { "type": "boolean" },
@@ -936,7 +1166,10 @@
         "exit": { "type": "integer" },
         "timedOut": { "type": "boolean" },
         "outputTail": { "type": "string" },
-        "patch": { "type": "string" }
+        "patch": { "type": "string" },
+        "group": { "type": "string" },
+        "head": { "type": "string" },
+        "receipt": { "type": "string" }
       },
       "required": ["exit", "timedOut", "outputTail", "patch"],
       "additionalProperties": true
@@ -1242,7 +1475,7 @@
         "incremental_base": { "type": ["string", "null"] },
         "estimate": { "$ref": "#/$defs/fetchEstimate" },
         "budget": {
-          "description": "The resolved budget summary; present exactly when estimate is."
+          "description": "The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead)."
         },
         "cap": {
           "description": "The armed cost cap summary; absent when no cap is armed."
@@ -1299,7 +1532,7 @@
         },
         "estimate": { "$ref": "#/$defs/fetchEstimate" },
         "budget": {
-          "description": "The resolved budget summary; present exactly when estimate is."
+          "description": "The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead)."
         },
         "cap": {
           "description": "The armed cost cap summary; absent when no cap is armed."

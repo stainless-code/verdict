@@ -254,7 +254,8 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	} else {
 		st.previewDryRun(footerText)
 	}
-	nOpen, nDeferred, nAddressed := postCounts(st.merged.Entries)
+	payload, _, _ := st.floorPayload()
+	nOpen, nDeferred, nAddressed := postCounts(payload)
 	data := &core.PostData{
 		DryRun:   true,
 		Event:    st.event,
@@ -269,11 +270,11 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 		Findings: core.PostFindings{
 			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed, File: st.findingsFile,
 		},
-		Items:           typedPostItems(st.merged.Entries),
+		Items:           typedPostItems(payload),
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     payloadHash,
-		ItemsRaw:        recordcore.EnvelopeItems(st.merged.Entries),
+		ItemsRaw:        recordcore.EnvelopeItems(payload),
 	}
 	prov := decodeProvenanceTyped(st.req.RootPath(), st.dir)
 	if prov != nil {

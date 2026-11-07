@@ -36,7 +36,7 @@ run_probe() { # $1 = pr
 grade_refuse() { # $1 = pr, $2 = want-code, $3 = label
   local pr="$1" want="$2" label="$3"
   local before after docs msg
-  before="$(shasum -a 1 "$EVAL_SANDBOX/.review/$pr/patch.json" | cut -d' ' -f1)"
+  before="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/$pr/patch.json" | cut -d' ' -f1)"
   run_probe "$pr"
   if [ "$PROBE_STATUS" -ne 1 ]; then
     echo "  FAIL: $label executed with exit $PROBE_STATUS (want refusal $want)"
@@ -58,8 +58,8 @@ grade_refuse() { # $1 = pr, $2 = want-code, $3 = label
     echo "  FAIL: $label message misses try: hint or quoted fragment"
     return 1
   fi
-  after="$(shasum -a 1 "$EVAL_SANDBOX/.review/$pr/patch.json" | cut -d' ' -f1)"
-  if [ "$before" != "$after" ] || [ -e "$EVAL_SANDBOX/.review/$pr/.verify.out" ]; then
+  after="$(shasum -a 1 "$EVAL_SANDBOX/.verdict/state/$pr/patch.json" | cut -d' ' -f1)"
+  if [ "$before" != "$after" ] || [ -e "$EVAL_SANDBOX/.verdict/state/$pr/.verify.out" ]; then
     echo "  FAIL: $label mutated the store"
     return 1
   fi
@@ -70,8 +70,8 @@ grade_exec() { # $1 = pr, $2 = label
   local pr="$1" label="$2"
   run_review verify acme/app "$pr" --json --timeout 10
   if jq -e '.error == null and (.data.exit | type) == "number"' <"$EVAL_OUT" >/dev/null 2>&1 \
-    && [ "$(jq -r '.verifyExit // empty' "$EVAL_SANDBOX/.review/$pr/patch.json")" != "" ] \
-    && [ -f "$EVAL_SANDBOX/.review/$pr/.verify.out" ]; then
+    && [ "$(jq -r '.verifyExit // empty' "$EVAL_SANDBOX/.verdict/state/$pr/patch.json")" != "" ] \
+    && [ -f "$EVAL_SANDBOX/.verdict/state/$pr/.verify.out" ]; then
     return 0
   fi
   echo "  FAIL: $label refused or broke: exit $EVAL_STATUS code $(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)"
@@ -88,8 +88,8 @@ while IFS="$TAB" read -r id expect mode command; do
   fi
   n=$((n + 1))
   pr=$((6050 + n))
-  mkdir -p "$EVAL_SANDBOX/.review/$pr"
-  printf '%s' "$command" | jq -R '{verifyCmd:.}' > "$EVAL_SANDBOX/.review/$pr/patch.json"
+  mkdir -p "$EVAL_SANDBOX/.verdict/state/$pr"
+  printf '%s' "$command" | jq -R '{verifyCmd:.}' > "$EVAL_SANDBOX/.verdict/state/$pr/patch.json"
   case "$expect:$mode" in
     PASS:strict)
       if grade_exec "$pr" "$id PASS $command"; then

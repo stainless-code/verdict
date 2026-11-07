@@ -21,7 +21,7 @@ type fixedCommander struct {
 }
 
 // Run replays the scripted stdout for argv.
-func (c fixedCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c fixedCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.t.Helper()
 	key := strings.Join(cmd.Argv, "\x00")
 	out, ok := c.out[key]
@@ -50,7 +50,7 @@ func TestRuntimeFixEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/local-c1/findings.json", "["+fixtureFinding()+"]")
+	writeFixture(t, ".verdict/state/local-c1/findings.json", "["+fixtureFinding()+"]")
 	req := &fixcore.Request{Human: io.Discard}
 	req.ReadRequest = core.ReadRequest{Runtime: fixRuntime(t), Repo: "acme/app", Pr: "local-c1"}
 	resp, ref := fixcore.Run(context.Background(), req)
@@ -69,12 +69,12 @@ func TestRuntimeLearnEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFixture(t, ".review/kb.jsonl",
+	writeFixture(t, ".verdict/kb.jsonl",
 		`{"id":"await-err","rule":"Check await paths","scope":"src/*.ts",`+
 			`"provenance":"manual","rigor":"walked","hits":2,"false_hits":0,`+
 			`"judged":2,"status":"active"}`+"\n")
 	req := &learncore.Request{Status: true}
-	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime()}
+	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: dir}
 	resp, ref := learncore.Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("learn refusal: %v", ref)
@@ -118,7 +118,7 @@ func TestRuntimeInitEnvelopeValidates(t *testing.T) {
 	}
 	runtime := fixedRuntime()
 	runtime.Commander = fixedCommander{t: t, out: map[string]string{
-		"git\x00status\x00--porcelain": "",
+		"git\x00-C\x00.\x00status\x00--porcelain\x00--untracked-files=all": "",
 	}}
 	req.ReadRequest = core.ReadRequest{Runtime: runtime}
 	resp, ref := initcore.Run(context.Background(), req)

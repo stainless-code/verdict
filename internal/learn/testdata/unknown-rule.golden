@@ -2,7 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: learn: no rule 'nope' (no .review/kb.jsonl yet — see learn --status)
+error: learn: no rule 'nope' (no .verdict/kb.jsonl yet — see learn --status)
 try: list rules with learn --status, then re-run
 re-enter: verdict learn --retire ...
 --- files ---

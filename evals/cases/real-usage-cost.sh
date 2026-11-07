@@ -48,8 +48,8 @@ fetch_pr() { # $1 = PR number, rest = extra args
   EVAL_STUBBIN="$EVAL_SANDBOX/fakebin:$EVAL_STUBBIN" run_review fetch acme/app "$pr" "$@"
 }
 
-mkdir -p "$EVAL_SANDBOX/.review/1"
-cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
+mkdir -p "$EVAL_SANDBOX/.verdict/state/1"
+cat > "$EVAL_SANDBOX/.verdict/state/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":0.10}
 EOF
 
@@ -77,7 +77,7 @@ else
   bad "measured refusal: exit $EVAL_STATUS msg=$(printf '%s' "$msg" | head -1) err=$(head -2 "$EVAL_ERR" | tr '\n' ' ')"
 fi
 
-cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":5.00}
 EOF
 export REVIEW_BUDGET_USD=4.00
@@ -93,7 +93,7 @@ else
   bad "measured pass: exit $EVAL_STATUS estimate=$(jq -c '.data.estimate // "null"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":0.10}
 EOF
 unset VERDICT_USAGE
@@ -130,7 +130,7 @@ else
   bad "tokens-only: exit $EVAL_STATUS estimate=$(jq -c '.data.estimate // "null"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-cat > "$EVAL_SANDBOX/.review/1/cost.json" <<'EOF'
+cat > "$EVAL_SANDBOX/.verdict/state/1/cost.json" <<'EOF'
 {"schema_version":"1","effort":"standard","models":[],"est_usd":0.10}
 EOF
 export VERDICT_USAGE="$EVAL_SANDBOX/usage.json"
@@ -138,11 +138,11 @@ export REVIEW_BUDGET_USD=1.00
 fetch_pr 4706 --consent-over-budget --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.estimate.basis' <"$EVAL_OUT" 2>/dev/null)" = "measured" ] \
-  && [ "$(jq -r '.[0].basis' "$EVAL_SANDBOX/.review/4706/budget.json" 2>/dev/null)" = "measured" ] \
-  && [ "$(jq -r '.[0].measured_runs' "$EVAL_SANDBOX/.review/4706/budget.json" 2>/dev/null)" = "1" ]; then
+  && [ "$(jq -r '.[0].basis' "$EVAL_SANDBOX/.verdict/state/4706/budget.json" 2>/dev/null)" = "measured" ] \
+  && [ "$(jq -r '.[0].measured_runs' "$EVAL_SANDBOX/.verdict/state/4706/budget.json" 2>/dev/null)" = "1" ]; then
   good "consented over-budget receipt preserves the measured basis"
 else
-  bad "receipt basis: exit $EVAL_STATUS receipt=$(jq -c '.' "$EVAL_SANDBOX/.review/4706/budget.json" 2>/dev/null || echo missing)"
+  bad "receipt basis: exit $EVAL_STATUS receipt=$(jq -c '.' "$EVAL_SANDBOX/.verdict/state/4706/budget.json" 2>/dev/null || echo missing)"
 fi
 
 printf '{"schema_version":"1","source":"","usd":-2}' > "$EVAL_SANDBOX/usage-bad.json"
@@ -151,7 +151,7 @@ export REVIEW_BUDGET_USD=1.00
 fetch_pr 4707 --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "bad-usage" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/4707" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/4707" ] \
   && jq -e '.error.message | contains("try:")' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "malformed handoff refuses typed with nothing written"
 else
@@ -163,7 +163,7 @@ export REVIEW_BUDGET_USD=1.00
 fetch_pr 4708 --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "bad-usage" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/4708" ]; then
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/4708" ]; then
   good "missing handoff path refuses typed with nothing written"
 else
   bad "missing-path refusal: exit $EVAL_STATUS code=$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)"

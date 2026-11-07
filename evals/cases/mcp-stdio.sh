@@ -60,10 +60,10 @@ if jq -e 'select(.id == 1).result.instructions | (type == "string") and (contain
 else
   bad "initialize instructions are missing or thin"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 18' <"$MCP_OUT" >/dev/null; then
-  good "tools/list carries 17 core tools (triage is operator-only)"
+if jq -e 'select(.id == 2).result.tools | length == 19' <"$MCP_OUT" >/dev/null; then
+  good "tools/list carries 19 core tools (triage is operator-only)"
 else
-  bad "tools/list count is not 17"
+  bad "tools/list count is not 19"
 fi
 if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("install") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
   good "tool names follow the core surface (install and triage are never tools)"
@@ -122,7 +122,7 @@ EOF
 run_mcp_input "$FRAMES"
 if [ "$EVAL_STATUS" -eq 0 ]; then good "success/refusal session exits 0"; else bad "exit $EVAL_STATUS (want 0)"; fi
 check_stdout_frames
-if jq -e 'select(.id == 2).result | (.isError == false) and (.content[0].type == "text") and ((.content[0].text | fromjson) == .structuredContent) and (.structuredContent.generated_at | type == "string") and (.structuredContent.dir == ".review/5101")' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result | (.isError == false) and (.content[0].type == "text") and ((.content[0].text | fromjson) == .structuredContent) and (.structuredContent.generated_at | type == "string") and (.structuredContent.dir == ".verdict/state/5101")' <"$MCP_OUT" >/dev/null; then
   good "report success returns the envelope data as text and structuredContent"
 else
   bad "report success shape drifted"
@@ -156,8 +156,8 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 8) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
-  good "--read-only exposes report, the dry-run record tool, and no submit verbs"
+if jq -e 'select(.id == 2).result.tools | (length == 9) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("config") != null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+  good "--read-only exposes report, the dry-run record tool, config, and no submit verbs"
 else
   bad "--read-only tool list drifted"
 fi
@@ -185,8 +185,8 @@ else
 fi
 run_mcp_input "$FRAMES" --operator
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 19) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 19 tools including triage with its status enum"
+if jq -e 'select(.id == 2).result.tools | (length == 20) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
+  good "--operator exposes 20 tools including triage with its status enum"
 else
   bad "--operator tool list drifted"
 fi
@@ -223,11 +223,10 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}
 EOF
 cat >"$FRAMES" <<EOF
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"false","reviewFile":".review/$PR/review.json","dryRun":true}}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"false","reviewFile":".verdict/state/$PR/review.json","dryRun":true}}}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post","arguments":{"repo":"acme/app","pr":"$PR","flags":{"approve":"yes","dryRun":true}}}}
 EOF
 mark="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
-eval_seed_controls
 run_mcp_input "$FRAMES"
 if [ "$EVAL_STATUS" -eq 0 ]; then good "post dry-run session exits 0"; else bad "post dry-run exit $EVAL_STATUS"; fi
 check_stdout_frames
@@ -236,8 +235,8 @@ if jq -e 'select(.id == 1).result | (.isError == false) and ((.content[0].text |
 else
   bad "post dry-run result drifted: $(cat "$MCP_OUT")"
 fi
-if [ -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "post dry-run stages findings.dryrun.json and writes no post.json"
 else
   bad "post dry-run wrote the wrong artifacts"

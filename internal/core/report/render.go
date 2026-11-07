@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -32,7 +33,7 @@ func reportNext(st *state) string {
 	if st.flags.Output != "" {
 		return "wrote " + st.flags.Output
 	}
-	if st.nOpen > 0 {
+	if viewOpen(viewRanked(st)) > 0 {
 		return "address open threads"
 	}
 	return "none open — nothing to address"
@@ -49,17 +50,17 @@ func buildData(st *state) *core.ReportData {
 			Stale:   false,
 		},
 		Verdict: core.ReportVerdict{
-			Open:      countStatus(rankedEntries(st), statusOpen),
-			Deferred:  countStatus(rankedEntries(st), "deferred"),
-			Addressed: countStatus(rankedEntries(st), "addressed"),
-			Terminal:  countTerminal(rankedEntries(st)),
+			Open:      countStatus(viewEntries(st), statusOpen),
+			Deferred:  countStatus(viewEntries(st), "deferred"),
+			Addressed: countStatus(viewEntries(st), "addressed"),
+			Terminal:  countTerminal(viewEntries(st)),
 		},
 		Counts:  st.counts,
 		Panel:   panelValue(st),
 		Patch:   st.patch,
 		Output:  outputVal(st.flags.Output),
 		Filters: core.ReportFilters{Status: st.flags.Status, Kind: st.flags.Kind, Category: outputVal(st.flags.Category)},
-		Items:   envelopeItems(st.ranked),
+		Items:   envelopeItems(viewRanked(st)),
 	}
 	if st.cost != nil {
 		data.Cost = costFromObj(st.cost)
@@ -67,6 +68,17 @@ func buildData(st *state) *core.ReportData {
 	}
 	if st.comp != nil {
 		data.Completeness = st.comp
+	}
+	if st.compliance != nil && st.compliance.HasPolicy {
+		data.Compliance = &core.ReportCompliance{
+			Policy:     true,
+			Verified:   !st.compliance.Unverified,
+			Blockers:   len(st.compliance.Blockers),
+			Conflicted: len(st.compliance.Conflicts),
+			Pending:    len(st.compliance.Pending),
+			Gaps:       len(st.requiredGaps),
+			Satisfied:  st.compliance.Satisfied() && len(st.requiredGaps) == 0,
+		}
 	}
 	return data
 }
@@ -117,9 +129,34 @@ func envelopeItem(item readcommon.Ranked) core.FindingItem {
 	return f
 }
 
-func rankedEntries(st *state) []any {
-	entries := make([]any, 0, len(st.ranked))
-	for _, item := range st.ranked {
+// viewRanked returns the display-filtered ranked set the views render,
+// falling back to the full set for states built without the floor pass.
+func viewRanked(st *state) []readcommon.Ranked {
+	if st.view != nil {
+		return st.view
+	}
+	return st.ranked
+}
+
+// viewOpen counts the open findings in the display-filtered view for
+// the human summary line; gates keep their own full-set tallies.
+func viewOpen(view []readcommon.Ranked) int {
+	n := 0
+	for _, item := range view {
+		if readcommon.StatusOf(item.Entry) == statusOpen {
+			n++
+		}
+	}
+	return n
+}
+
+// viewEntries flattens the display-filtered view for the payload counts
+// and items: the floor withholds below-floor findings from the view
+// while every gate keeps reading the full ranked set.
+func viewEntries(st *state) []any {
+	view := viewRanked(st)
+	entries := make([]any, 0, len(view))
+	for _, item := range view {
 		entries = append(entries, item.Entry)
 	}
 	return entries
@@ -205,9 +242,10 @@ func jqVal(obj *jq.Obj, key string) any {
 }
 
 func buildHuman(st *state) []string {
+	view := viewRanked(st)
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
-		st.dir, len(st.ranked), st.nOpen, readcommon.ShortSHA(st.headSHA))}
-	for _, item := range st.ranked {
+		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
+	for _, item := range view {
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
@@ -220,13 +258,50 @@ func buildHuman(st *state) []string {
 	if st.flags.Cost {
 		lines = append(lines, costHuman(st)...)
 	}
+	lines = append(lines, extraHuman(st)...)
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
 	}
-	if st.nOpen > 0 {
+	// The footer follows the view the header reports: with a display floor the
+	// rendered list can be empty while the store still holds open findings, and
+	// "address open threads" beside "(0 shown) open=0" read as a contradiction.
+	if viewOpen(view) > 0 {
 		return append(lines, "next: address open threads")
 	}
 	return append(lines, "next: none open — nothing to address")
+}
+
+// complianceHuman names the captured compliance verdict before any display
+// filter: blockers fail, pending or unverified work stays unknown, and only a
+// fully satisfied capture passes.
+// extraHuman appends the captured compliance verdict, empty when the bundle
+// carries no typed policy.
+func extraHuman(st *state) []string {
+	if line := complianceHuman(st); line != "" {
+		return []string{line}
+	}
+	return nil
+}
+
+func complianceHuman(st *state) string {
+	if st.compliance == nil || !st.compliance.HasPolicy {
+		return ""
+	}
+	switch {
+	case len(st.compliance.Blockers) > 0:
+		return fmt.Sprintf("compliance: unmet — %d blocking finding(s)", len(st.compliance.Blockers))
+	case len(st.compliance.Conflicts) > 0:
+		first := st.compliance.Conflicts[0]
+		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)", first.Path, first.Rule)
+	case st.compliance.Unverified:
+		return "compliance: unknown — captured provenance unavailable"
+	case len(st.compliance.Pending) > 0:
+		return fmt.Sprintf("compliance: unknown — %d required check(s) pending", len(st.compliance.Pending))
+	case len(st.requiredGaps) > 0:
+		return "compliance: unknown — " + st.requiredGaps[0]
+	default:
+		return "compliance: satisfied"
+	}
 }
 
 func sigHuman(entry any) string {
@@ -341,13 +416,15 @@ func receiptFieldFromObj(latest any, key string) string {
 // Dimension ids, statuses, and the gate vocabulary shared by the report check
 // lines and the gate verb's envelope.
 const (
-	dimFindings = "findings"
-	dimHead     = "head"
-	dimLive     = "live_threads"
-	dimPass     = "pass"
-	dimFail     = "fail"
-	dimSkip     = "skip"
-	dimUnknown  = "unknown"
+	dimFindings   = "findings"
+	dimHead       = "head"
+	dimLive       = "live_threads"
+	dimPass       = "pass"
+	dimFail       = "fail"
+	dimSkip       = "skip"
+	dimUnknown    = "unknown"
+	dimCompliance = "compliance"
+	checkPrefix   = "check: "
 )
 
 // gateCheck is one dimension with the report check line it prints; line is
@@ -378,7 +455,7 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head, live.
-const gateDimensions = 3
+const gateDimensions = 4
 
 // gateChecks evaluates the dimensions this run asked for, in wire order.
 func gateChecks(st *state) []gateCheck {
@@ -389,7 +466,75 @@ func gateChecks(st *state) []gateCheck {
 	if st.flags.Completeness {
 		checks = append(checks, gateCompletenessCheck(st))
 	}
-	return append(checks, gateLiveCheck(st))
+	checks = append(checks, gateLiveCheck(st))
+	if st.compliance != nil && st.compliance.HasPolicy {
+		checks = append(checks, gateComplianceCheck(st))
+	}
+	return checks
+}
+
+// gateComplianceCheck evaluates captured requirements: a blocking finding
+// fails, unverified provenance or a pending required check is unknown, and
+// only a fully satisfied capture passes. An absent policy adds no dimension,
+// so legacy bundles keep their exact gate.
+func gateComplianceCheck(st *state) gateCheck {
+	comp := st.compliance
+	if comp == nil {
+		return gateCheck{}
+	}
+	status, detail, count := complianceVerdict(comp, st.requiredGaps, st.headSHA)
+	return gateCheck{
+		dim:  core.GateDimension{ID: dimCompliance, Status: status, Count: new(count), Detail: detail},
+		line: checkPrefix + detail + complianceLineSuffix(status),
+	}
+}
+
+// complianceVerdict maps the captured compliance state to one gate verdict:
+// blockers and privacy conflicts fail, while unverified provenance, required
+// profile work, and pending checks stay unknown — never a pass.
+func complianceVerdict(comp *config.ReadCompliance, gaps []string, head string) (string, string, int) {
+	switch {
+	case len(comp.Blockers) > 0:
+		first := comp.Blockers[0]
+		detail := fmt.Sprintf("%d open finding(s) violate %q", len(comp.Blockers), first.Clause)
+		if first.GroupKnown {
+			detail += " for group " + first.Group
+		}
+		return dimFail, detail, len(comp.Blockers)
+	case len(comp.Conflicts) > 0:
+		first := comp.Conflicts[0]
+		detail := fmt.Sprintf("required review withholds %s (rule %s)", first.Path, first.Rule)
+		if first.Group != "" {
+			detail += " in group " + first.Group
+		}
+		return dimFail, detail + " — unmet, no disclosure", len(comp.Conflicts)
+	case comp.Unverified:
+		return dimUnknown, "captured provenance unavailable", 0
+	case len(gaps) > 0:
+		return dimUnknown, gaps[0] + " — unknown, never a pass", len(gaps)
+	case len(comp.Pending) > 0:
+		return dimUnknown, pendingDetail(comp, head), len(comp.Pending)
+	default:
+		return dimPass, "captured requirements satisfied", 0
+	}
+}
+
+// pendingDetail names the first required check still pending.
+func pendingDetail(comp *config.ReadCompliance, head string) string {
+	first := comp.Pending[0]
+	detail := fmt.Sprintf("%d required check(s) pending for head %s", len(comp.Pending), readcommon.ShortSHA(head))
+	if first.Group != "" {
+		detail += " (first: " + first.Check + " in " + first.Group + ")"
+	}
+	return detail + " — unknown, never a pass"
+}
+
+// complianceLineSuffix names the verdict outcome in the check line.
+func complianceLineSuffix(status string) string {
+	if status == dimPass {
+		return " — gate passes"
+	}
+	return " — gate fails"
 }
 
 func gateTierCheck(st *state) gateCheck {

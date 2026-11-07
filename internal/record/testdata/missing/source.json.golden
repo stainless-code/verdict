@@ -2,7 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: missing .review/local-mf/source.json (run fetch-local first)
+error: missing .verdict/state/local-mf/source.json (run fetch-local first)
 try: run the fetch/record step named above first, then re-run
 re-enter: verdict record acme/app local-mf
 --- files ---

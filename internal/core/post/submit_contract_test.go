@@ -51,7 +51,7 @@ func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 			postBundle(t, postReview)
 			cmdr := postFailCommander(t, scriptResult{stderr: tc.stderr, fail: true})
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			_, ref := Run(context.Background(), req)
 			if ref == nil || ref.Code != codePostFailed {
 				t.Fatalf("ref = %v, want post-failed", ref)
@@ -62,7 +62,7 @@ func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 			if tc.absent != "" && strings.Contains(ref.Message, tc.absent) {
 				t.Errorf("message carries the bytes past the 300-byte head: %q", ref.Message)
 			}
-			if exists(".review/7/post.json") {
+			if exists(".verdict/state/7/post.json") {
 				t.Error("a failed post wrote the receipt")
 			}
 			if matches := globMarkers(t); len(matches) != 0 {
@@ -80,7 +80,7 @@ func writeProvenanceFixture(t *testing.T) {
 	if err := writeTestFile("SKILL.md", "# Verdict review skill\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeTestFile(".review/7/cost.json",
+	if err := writeTestFile(".verdict/state/7/cost.json",
 		`[{"schema_version":"1","effort":"standard","models":[{"name":"gpt-5-codex"}],"est_usd":0.05}]`); err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +98,12 @@ func TestRunReceiptProvenanceTriple(t *testing.T) {
 	writeProvenanceFixture(t)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	receipt := decodePostedPayload(t, readTestFile(t, ".review/7/post.json"))
+	receipt := decodePostedPayload(t, readTestFile(t, ".verdict/state/7/post.json"))
 	if got := receipt["tool_version"]; got != "3.1.4" {
 		t.Errorf("post.json tool_version = %v, want 3.1.4", got)
 	}
@@ -149,7 +149,7 @@ func TestRunSuccessNextLine(t *testing.T) {
 			postBundle(t, tc.review)
 			cmdr := postCommander(t)
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			resp, ref := Run(context.Background(), req)
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -355,7 +355,7 @@ func TestRunDryRunFooterDisposition(t *testing.T) {
 			cmdr := postCommander(t)
 			var warnings, human []string
 			req := postTestReq(cmdr, core.PostFlags{
-				Approve: "false", ReviewFile: ".review/7/review.json", DryRun: true,
+				Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true,
 			}, &warnings, &human)
 			req.Effective.PublishFooter = tc.footer
 			resp, ref := Run(context.Background(), req)
@@ -522,7 +522,7 @@ func TestRunSplitFollowUps(t *testing.T) {
 	cmdr := postBundleCommander(t, &live)
 	cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -574,7 +574,7 @@ func TestRunSplitFollowUpFailure(t *testing.T) {
 	base := postBundleCommander(t, &live)
 	cmdr := &splitFailCommander{scriptCommander: base}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".review/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	if ref == nil || ref.Code != codePostFailed {
 		t.Fatalf("ref = %v, want post-failed", ref)
@@ -590,7 +590,7 @@ func TestRunSplitFollowUpFailure(t *testing.T) {
 	if cmdr.posts != 2 {
 		t.Errorf("POSTs = %d, want the review plus one failed follow-up", cmdr.posts)
 	}
-	if exists(".review/7/post.json") {
+	if exists(".verdict/state/7/post.json") {
 		t.Error("a partial post wrote the receipt")
 	}
 	if matches := globMarkers(t); len(matches) != 0 {
@@ -604,7 +604,7 @@ type splitFailCommander struct {
 }
 
 // first.
-func (s *splitFailCommander) Run(ctx context.Context, cmd core.Command) (core.Result, error) {
+func (s *splitFailCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	if strings.Contains(strings.Join(cmd.Argv, " "), "/reviews") {
 		s.posts++
 		if s.posts > 1 {
@@ -619,7 +619,7 @@ func (s *splitFailCommander) Run(ctx context.Context, cmd core.Command) (core.Re
 // globMarkers lists the armed duplicate markers in the test bundle.
 func globMarkers(t *testing.T) []string {
 	t.Helper()
-	matches, err := filepath.Glob(".review/7/.posted_*")
+	matches, err := filepath.Glob(".verdict/state/7/.posted_*")
 	if err != nil {
 		t.Fatalf("glob markers: %v", err)
 	}

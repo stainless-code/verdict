@@ -46,29 +46,15 @@ cat > "$EVAL_SANDBOX/s1-review.json" <<'EOF'
 EOF
 check "S1 review.json (full)" "$SCH/review.schema.json" "$EVAL_SANDBOX/s1-review.json"
 
-LB="$EVAL_SANDBOX/.review/local-schematest"
-mkdir -p "$LB"
-cat > "$LB/source.json" <<'EOF'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"worktree"}
-EOF
-cat > "$LB/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+LB="$EVAL_SANDBOX/.verdict/state/local-schematest"
+eval_mk_bundle local-schematest
 cat > "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.\n\n**Reviewed changes**\n\n- Touched notes.\n\n### ⚠️ Watch the wording\n\nBody section.","approved":false,
 "comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"walked","severity":"informational"}],
 "confidence":4,"security_summary":"No networked reads; nothing executable."}
 EOF
 cat > "$LB/cost.json" <<'EOF'
-{"schema_version":"1","effort":"standard","models":[{"name":"synth","input_tokens":100,"output_tokens":50,"cache_read_input_tokens":30,"cache_creation_input_tokens":10}],"wall_seconds":12,"diff_bytes":200,"lenses":["scope"],"est_usd":0.05}
+{"schema_version":"2","effort":"standard","models":[{"name":"synth","input_tokens":100,"output_tokens":50,"cache_read_input_tokens":30,"cache_creation_input_tokens":10}],"wall_seconds":12,"diff_bytes":200,"lenses":[{"group":"b703173f532ebdf36d9eef44d8d3b5c3f3a4314591c039e6e84d6df2771c8663","labels":["scope"]}],"group_costs":[{"group":"b703173f532ebdf36d9eef44d8d3b5c3f3a4314591c039e6e84d6df2771c8663","effort":"standard","est_usd":0.05}],"est_usd":0.05}
 EOF
 run_review record acme/app local-schematest --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
@@ -194,7 +180,7 @@ if [ "$(jq -r '.provenance.tool_version | type' "$DATA" 2>/dev/null)" = "string"
 else
   bad "S4 dry-run data misses provenance: $(jq -c '.provenance // "absent"' "$DATA" 2>/dev/null)"
 fi
-check "S4 findings.dryrun.json" "$SCH/findings.schema.json" "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json"
+check "S4 findings.dryrun.json" "$SCH/findings.schema.json" "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json"
 
 # mint one; this pins the writer's shape instead (review passthrough stays open
 # for GitHub's object, provenance rides the same triple the record writer and
@@ -234,8 +220,8 @@ eval_write_findings "$PR" <<'EOF'
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Style nit here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","category":"style","sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Untagged observation with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","category":null,"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-check "S8 findings.json with categories" "$SCH/findings.schema.json" "$EVAL_SANDBOX/.review/$PR/findings.json"
-jq '.[0] | .category = 3' "$EVAL_SANDBOX/.review/$PR/findings.json" > "$EVAL_SANDBOX/s8-badcat.json"
+check "S8 findings.json with categories" "$SCH/findings.schema.json" "$EVAL_SANDBOX/.verdict/state/$PR/findings.json"
+jq '.[0] | .category = 3' "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" > "$EVAL_SANDBOX/s8-badcat.json"
 must_fail "S8 findings non-string category" "$SCH/findings.schema.json" "$EVAL_SANDBOX/s8-badcat.json" "want type"
 jq -n '{"schema_version":"1","body":"> ✅ Category coverage with enough substance.","approved":false,"comments":[
 {"path":"notes.txt","line":2,"side":"RIGHT","body":"Logic bug here.","rigor":"walked","severity":"critical","category":"logic"},
@@ -264,8 +250,8 @@ if [ "$(jq -c '.counts.by_category | keys' "$DATA")" = '["accidental-commit","do
 else
   bad "S8 by_category keys: $(jq -c '.counts.by_category' "$DATA")"
 fi
-rm -rf "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX"/s8-*.json
-rm -rf "$LB" "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX/.review/4950" "$EVAL_SANDBOX"/s1-review.json \
+rm -rf "$EVAL_SANDBOX/.verdict/state/$PR" "$EVAL_SANDBOX"/s8-*.json
+rm -rf "$LB" "$EVAL_SANDBOX/.verdict/state/$PR" "$EVAL_SANDBOX/.verdict/state/4950" "$EVAL_SANDBOX"/s1-review.json \
   "$EVAL_SANDBOX"/s5-post.json "$EVAL_SANDBOX"/s6-*.json "$EVAL_SANDBOX"/s3b-*.json "$DATA"
 
 eval_end

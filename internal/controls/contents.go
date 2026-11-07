@@ -33,18 +33,18 @@ type contentsDoc struct {
 	Size     int    `json:"size"`
 }
 
-// readContents reads every inventory path at the base commit through the
-// GitHub contents API (`gh api`, the same seam as the git reads): the
+// readContents reads every path at the base commit through the GitHub
+// contents API (`gh api`, the same seam as the git reads): the
 // fallback for a checkout that cannot supply the base (not a repository, or
 // the base object missing). A 404 is an absent control; any other failure
 // refuses. The per-file and total caps apply to the reported size, before
 // any byte is decoded.
-func readContents(ctx context.Context, cmd core.Commander, repo, base string) (map[string][]byte, *core.RefusalError) {
+func readContents(ctx context.Context, cmd core.Commander, repo, base string, paths []string) (map[string][]byte, *core.RefusalError) {
 	if !repoSlug.MatchString(repo) {
 		return nil, refuse(CodeUnavailable, "the repository is not an owner/repo slug — cannot read controls through the contents API")
 	}
 	reader := contentsReader{contents: map[string][]byte{}}
-	for _, path := range Inventory {
+	for _, path := range paths {
 		if ref := reader.read(ctx, cmd, repo, base, path); ref != nil {
 			return nil, ref
 		}
@@ -89,7 +89,7 @@ func contentAt(ctx context.Context, cmd core.Commander, repo, base, path string)
 // fetchContent asks the contents API for one path: nil, nil is a 404.
 func fetchContent(ctx context.Context, cmd core.Commander, repo, base, path string) (*contentsDoc, *core.RefusalError) {
 	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
-	res, err := cmd.Run(ctx, core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
+	res, err := cmd.Run(ctx, &core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
 	if err == nil && res.ExitCode != 0 {
 		err = res.ExitFailure("gh")
 	}

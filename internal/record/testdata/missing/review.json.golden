@@ -2,7 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: missing .review/local-mf/review.json (agent must write {body, approved, comments[]})
+error: missing .verdict/state/local-mf/review.json (agent must write {body, approved, comments[]})
 try: run the fetch/record step named above first, then re-run
 re-enter: verdict record acme/app local-mf
 --- files ---

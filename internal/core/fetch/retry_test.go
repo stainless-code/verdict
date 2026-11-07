@@ -100,7 +100,7 @@ type cancelCommander struct {
 }
 
 // Run cancels and reports one retryable failure.
-func (c *cancelCommander) Run(context.Context, core.Command) (core.Result, error) {
+func (c *cancelCommander) Run(context.Context, *core.Command) (core.Result, error) {
 	c.calls++
 	c.cancel()
 	return core.Result{Stderr: c.stderr}, errors.New("exit 1")

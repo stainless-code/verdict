@@ -9,10 +9,10 @@ exit: 0
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
     "$.body: no basis line — inserted the computed counts (basis-replaced)",
-    "kb commit failed: could not rewrite .review/kb.jsonl (flips stand, staged credit dropped) — re-run the flip to retry"
+    "kb commit failed: could not rewrite .verdict/kb.jsonl (flips stand, staged credit dropped) — re-run the flip to retry"
   ],
   "data": {
-    "dir": ".review/local-kb",
+    "dir": ".verdict/state/local-kb",
     "anchors": {
       "kept": 0,
       "moved": 0
@@ -21,7 +21,7 @@ exit: 0
       "open": 0,
       "deferred": 0,
       "addressed": 1,
-      "file": ".review/local-kb/findings.json"
+      "file": ".verdict/state/local-kb/findings.json"
     },
     "confidence": null,
     "security_summary": null,
@@ -39,12 +39,12 @@ exit: 0
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-warn: kb commit failed: could not rewrite .review/kb.jsonl (flips stand, staged credit dropped) — re-run the flip to retry
-» findings: 1 sigs -> .review/local-kb/findings.json
+warn: kb commit failed: could not rewrite .verdict/kb.jsonl (flips stand, staged credit dropped) — re-run the flip to retry
+» findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  addressed  true  notes.txt
-recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-kb/findings.json ---
+--- file C/.verdict/state/local-kb/findings.json ---
 [
   {
     "kind": "inline",
@@ -82,7 +82,7 @@ recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json
     ]
   }
 ]
---- file C/.review/local-kb/record.json ---
+--- file C/.verdict/state/local-kb/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -94,6 +94,6 @@ recorded: .review/local-kb/findings.json (0 open) + .review/local-kb/record.json
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "5337104e90f2c4073211f45b9bcb04ea062fe248844b53111237de58944e966e",
   "model": null
 }

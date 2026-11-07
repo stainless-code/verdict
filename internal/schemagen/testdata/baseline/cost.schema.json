@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/cost.schema.json",
   "title": "cost.json — agent self-reported spend record",
-  "description": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them.",
+  "description": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them, but the lens-evidence gate is stricter: it certifies a record only when every top-level field is one this build registers, so keep records to the documented shape.",
   "anyOf": [
     { "$ref": "#/$defs/record" },
     {
@@ -14,7 +14,7 @@
     "record": {
       "type": "object",
       "properties": {
-        "schema_version": { "const": "1" },
+        "schema_version": { "const": "2" },
         "effort": {
           "description": "Run tier; missing or unknown values roll up as standard.",
           "type": "string"
@@ -32,10 +32,38 @@
         "diff_bytes": { "type": ["number", "null"] },
         "lenses": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "$ref": "#/$defs/lensUsage" }
+        },
+        "run": { "type": "string" },
+        "inputs_sha256": { "type": "string" },
+        "group_costs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/groupCost" }
         }
       },
       "required": [],
+      "additionalProperties": true
+    },
+    "lensUsage": {
+      "type": "object",
+      "properties": {
+        "group": { "type": "string" },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["group", "labels"],
+      "additionalProperties": true
+    },
+    "groupCost": {
+      "type": "object",
+      "properties": {
+        "est_usd": { "type": ["number", "null"] },
+        "group": { "type": "string" },
+        "effort": { "type": "string" }
+      },
+      "required": ["group", "effort"],
       "additionalProperties": true
     },
     "modelSpend": {

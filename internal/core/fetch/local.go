@@ -47,21 +47,25 @@ func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
 	r *session, dir, slug string, mode *localMode,
 ) (*core.FetchData, string, error) {
-	if ref := resolveControls(ctx, ctx2, "", mode.baseSHA, f.HeadControls, nil, false); ref != nil {
-		return nil, "", ref
-	}
-	budget, ref := localBudget(r, f, dir)
-	if ref != nil {
+	if ref := localPolicy(ctx, ctx2, req, f, r, mode); ref != nil {
 		return nil, "", ref
 	}
 	if ref := localDiff(ctx, r, dir, mode, f.Paths); ref != nil {
 		return nil, "", ref
 	}
-	fc, chunkActive, ref := localCap(r, dir, f.ChunkFlag)
-	if ref != nil {
+	listed, numstat := localFileStats(ctx, r, mode, f.Paths)
+	if ref := localResolve(ctx, ctx2, req, f, mode, listed); ref != nil {
 		return nil, "", ref
 	}
-	listed, numstat, total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, mode, f.Paths)
+	budget, budgetErr := localBudgetGates(ctx2, f, req.RepoRootPath(), dir)
+	if budgetErr != nil {
+		return nil, "", budgetErr
+	}
+	fc, chunkActive, capErr := localCap(ctx2, dir, f.ChunkFlag)
+	if capErr != nil {
+		return nil, "", capErr
+	}
+	total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, listed, numstat, f.Paths)
 	if serr != nil {
 		return nil, "", serr
 	}
@@ -69,6 +73,46 @@ func runLocalBuild(
 		return nil, "", ref
 	}
 	return localFinish(ctx, ctx2, req, f, r, dir, &budget, fc, chunkActive, mode, listed, total, adds, dels, diffSHA)
+}
+
+// localPolicy applies the fetch-local policy stack up to the trusted-base
+// parse: head controls, phase one, and the warnings and privacy view. The
+// full plan waits for the actual diff files, so no group-blind spend gate
+// runs here.
+func localPolicy(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
+	f *core.FetchLocalFlags, r *session, mode *localMode,
+) error {
+	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), mode.baseSHA, f.HeadControls); ref != nil {
+		return ref
+	}
+	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
+	if ref != nil {
+		return ref
+	}
+	ctx2.runCfg = rc
+	rc.root = req.RepoRootPath()
+	for _, warn := range rc.envWarns {
+		r.Warn(warn)
+	}
+	r.privacy = rc.resolved.Privacy
+	return nil
+}
+
+// localResolve completes the plan over the actual listed files before caps,
+// chunking, or any model-facing export.
+func localResolve(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
+	f *core.FetchLocalFlags, mode *localMode, listed string,
+) *core.RefusalError {
+	rc := ctx2.runCfg
+	if err := rc.resolveLocalPhaseTwo(
+		ctx, ctx2.runner.commander, mode.baseSHA, f.ChunkFlag, listedInputs(ctx2.dir, listed), req.SettingsPath,
+	); err != nil {
+		return err
+	}
+	ctx2.runner.privacy = rc.resolved.Privacy
+	return nil
 }
 
 // localSlugGate owns the fetch-local name gate: empty, numeric, and
@@ -113,7 +157,7 @@ func localSetup(
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
 		return localMode{}, "", "", ref
 	}
-	dir := ".review/local-" + slug
+	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), "local-"+slug)
 	ctx2.dir = dir
 	if res, err := ctx2.runner.run(ctx, binGit, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res
@@ -127,23 +171,31 @@ func localSetup(
 	if err != nil {
 		return localMode{}, "", "", err
 	}
+	if _, err := measuredUsage(ctx2.runner); err != nil {
+		return localMode{}, "", "", err
+	}
+	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+		return localMode{}, "", "", ref
+	}
 	return mode, dir, slug, nil
 }
 
-// localBudget owns the fetch-local budget preamble: resolution, gate,
-// directory, and receipt.
-func localBudget(r *session, f *core.FetchLocalFlags, dir string) (budgetState, error) {
-	budget, err := resolveBudget(r.env, r)
-	if err != nil {
+// localBudgetGates runs the single spend gate over the full plan, then
+// prepares the bundle directory. The same state rides the tail receipt, so
+// the gate result is never a discarded local shadow.
+func localBudgetGates(ctx2 *fetchRunCtx, f *core.FetchLocalFlags, root, dir string) (budgetState, error) {
+	r := ctx2.runner
+	resolved := ctx2.runCfg.resolved
+	budget := resolveBudget(r, resolved)
+	if err := budgetGate(r, &budget, resolved, f.BudgetConsent); err != nil {
 		return budget, err
 	}
-	if err := budgetGate(r, &budget, f.BudgetConsent); err != nil {
-		return budget, err
+	if ref := ensureBundleState(root); ref != nil {
+		return budget, ref
 	}
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return budget, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
 	}
-	writeBudgetReceipt(r, &budget, dir, core.NowUTC(r.Now()))
 	return budget, nil
 }
 
@@ -180,12 +232,11 @@ func localDiffFail(dir, stderr string) error {
 
 // localCap owns the fetch-local cap gate: resolution and the over-cap
 // fork (chunks armed or typed refusal with split candidates).
-func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
-	fc, ref := resolveFetchCap(r)
-	if ref != nil {
-		return fc, false, ref
-	}
-	chunkActive, ref := checkDiffSize(r, dir+suffixFullDiff, fc, chunkFlag)
+func localCap(ctx2 *fetchRunCtx, dir string, chunkFlag bool) (fetchCap, bool, error) {
+	r := ctx2.runner
+	resolved := ctx2.runCfg.resolved
+	fc := resolveFetchCap(r, resolved)
+	chunkActive, ref := checkDiffSize(r, resolved, dir+suffixFullDiff, fc, chunkFlag)
 	if ref != nil {
 		return fc, false, ref
 	}
@@ -193,17 +244,16 @@ func localCap(r *session, dir string, chunkFlag bool) (fetchCap, bool, error) {
 }
 
 func localStats(
-	ctx context.Context, r *session, dir string, mode *localMode, paths []string,
-) (listed, numstat string, total, adds, dels int, diffSHA string, err error) {
+	ctx context.Context, r *session, dir, listed, numstat string, paths []string,
+) (total, adds, dels int, diffSHA string, err error) {
 	if herr := buildHunksTSV(dir+suffixFullDiff, dir+"/hunks.tsv"); herr != nil {
-		return "", "", 0, 0, 0, "", herr
+		return 0, 0, 0, "", herr
 	}
 	fi, statErr := os.Stat(dir + suffixFullDiff)
 	if statErr == nil && fi.Size() > 0 && !hasHunkHeader(readOptional(dir+suffixFullDiff)) {
 		r.Warn("no @@ hunks — binary/mode-only changes; bundle kept, anchors unchecked, everything kept")
 	}
 	diffSHA = sha256Hex(dir + suffixFullDiff)
-	listed, numstat = localFileStats(ctx, r, mode, paths)
 	total, adds, dels = localCounts(listed, numstat)
 	writeLocalUntrackedWarns(ctx, r, paths)
 	writeLocalBinaryWarns(r, numstat)
@@ -211,14 +261,14 @@ func localStats(
 		shown := strings.Join(paths, spaceSep) + " "
 		r.Warn(fmt.Sprintf("paths filter matched nothing: %s— bundle empty, review proceeds on empty diff", shown))
 	}
-	return listed, numstat, total, adds, dels, diffSHA, nil
+	return total, adds, dels, diffSHA, nil
 }
 
 func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat string) error {
 	if err := writeLocalTOC(ctx2, slug, listed, numstat); err != nil {
 		return err
 	}
-	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", dir)
+	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir))
 	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(listed))); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", dir, err)}
 	}
@@ -253,14 +303,16 @@ func localFinish(
 	if err := writeSourceJSON(dir, req.Repo, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now, ident); err != nil {
 		return nil, "", err
 	}
-	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", dir, dir, dir, dir, total)
+	shown := r.display(dir)
+	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/source.json + %s to any agent; ask it to write %s/review.json\n", dir, diffFeed(dir, chunkActive, fullDiffFile), dir)
-	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive, mode.headSHA, mode.baseSHA, fc.source)
+	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive,
+		groupLimits(ctx2.runCfg.resolved, f.ChunkFlag), mode.headSHA, mode.baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTailLocal(ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
+	return fetchTailLocal(ctx, ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
 }
 
 // localSlug owns the fetch-local slug pipeline on bytes: ASCII-lowercase,
@@ -588,7 +640,7 @@ func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 func untrackedKept(stdout string) []string {
 	var kept []string
 	for _, line := range splitLines(strings.TrimRight(stdout, newline)) {
-		if line == "" || strings.HasPrefix(line, ".review/") {
+		if line == "" || strings.HasPrefix(line, ".verdict/") {
 			continue
 		}
 		kept = append(kept, line)

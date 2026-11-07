@@ -95,7 +95,22 @@ type Post struct { //nolint:govet // field order is the published property order
 	PatchID         *string        `json:"patch_id,omitempty"`
 	PatchIDKind     string         `json:"patch_id_kind,omitempty"`
 	Forced          []ForcedPost   `json:"forced,omitempty"`
-	ReviewRaw       any            `json:"-"`
+	// PostMinSeverity is the global posting floor. PostFloorScoped records
+	// different path-specific floors that withheld findings, and
+	// BelowFloorExcluded counts all withheld findings.
+	PostMinSeverity    *string      `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
+	BelowFloorExcluded int          `json:"below_floor_excluded,omitempty"   min:"0"`
+	PostFloorScoped    []FloorScope `json:"post_floor_scoped,omitempty"`
+	ReviewRaw          any          `json:"-"`
+}
+
+// FloorScope is one path-scoped severity floor that actually withheld a
+// finding, recorded when it differs from the global baseline. Paths are
+// sorted and unique, so the receipt never describes a single floor as if it
+// governed every path.
+type FloorScope struct {
+	Path  string `json:"path"`
+	Floor string `enum:"critical|important|informational" json:"floor"`
 }
 
 // ForcedPost is one explicit --force bypass recorded in post.json: the fired
@@ -205,7 +220,23 @@ func (p *Post) Wire() *jq.Obj {
 	if p.Forced != nil {
 		o.Set("forced", p.Forced)
 	}
+	setPostFloorWire(o, p)
 	return o
+}
+
+// setPostFloorWire appends the payload-floor accounting last: the global
+// baseline the receipt may claim, the excluded count even when no global floor
+// was set, then the path-scoped floors that did the withholding.
+func setPostFloorWire(o *jq.Obj, p *Post) {
+	if p.PostMinSeverity != nil {
+		o.Set("post_min_severity", *p.PostMinSeverity)
+	}
+	if p.PostMinSeverity != nil || p.BelowFloorExcluded > 0 {
+		o.Set("below_floor_excluded", p.BelowFloorExcluded)
+	}
+	if len(p.PostFloorScoped) > 0 {
+		o.Set("post_floor_scoped", p.PostFloorScoped)
+	}
 }
 
 // setPostPatchWire appends the optional patch identity after the provenance

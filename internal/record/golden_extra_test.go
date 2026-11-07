@@ -21,8 +21,8 @@ func claimsSetup(t *testing.T, dir string) {
 func claimMutate(t *testing.T, dir string, claims string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
-		".review/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
-		".review/local-kb/verification.json": claims,
+		".verdict/state/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
+		".verdict/state/local-kb/verification.json": claims,
 	})
 }
 
@@ -122,7 +122,7 @@ func mutatePatchClaims(patch string) func(t *testing.T, dir string) {
 	return func(t *testing.T, dir string) {
 		t.Helper()
 		claimMutate(t, dir, claimAll(t, dir, "VERIFIED", "aaaaaaa", "make check"))
-		writeFiles(t, dir, map[string]string{".review/local-kb/patch.json": patch})
+		writeFiles(t, dir, map[string]string{".verdict/state/local-kb/patch.json": patch})
 	}
 }
 
@@ -135,10 +135,10 @@ func mutateAddressed(t *testing.T, dir string) {
 		t.Fatal("no sigs")
 	}
 	writeFiles(t, dir, map[string]string{
-		".review/local-kb/review.json": fmt.Sprintf(
+		".verdict/state/local-kb/review.json": fmt.Sprintf(
 			`{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[],"triage":[{"sig":%q,"status":"addressed","rationale":"verified by hand with a long enough rationale here"}]}`,
 			sigs[0]),
-		".review/local-kb/verification.json": fmt.Sprintf(
+		".verdict/state/local-kb/verification.json": fmt.Sprintf(
 			`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, sigs[0]),
 	})
 }
@@ -165,9 +165,9 @@ func setupMany(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 	writeFiles(t, dir, map[string]string{
-		".review/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
-		".review/local-kb/full.diff":   genDiff(4),
-		".review/local-kb/review.json": string(raw),
+		".verdict/state/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-kb/full.diff":   genDiff(4),
+		".verdict/state/local-kb/review.json": string(raw),
 	})
 }
 
@@ -176,8 +176,8 @@ func mutateAmbiguous(t *testing.T, dir string) {
 	t.Helper()
 	prefix := sharedPrefix(t, dir)
 	writeFiles(t, dir, map[string]string{
-		".review/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
-		".review/local-kb/verification.json": fmt.Sprintf(`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, prefix),
+		".verdict/state/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
+		".verdict/state/local-kb/verification.json": fmt.Sprintf(`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, prefix),
 	})
 }
 
@@ -214,7 +214,7 @@ func mutateFalsePositive(t *testing.T, dir string) {
 		t.Fatal("no sigs")
 	}
 	writeFiles(t, dir, map[string]string{
-		".review/local-kb/review.json": fmt.Sprintf(
+		".verdict/state/local-kb/review.json": fmt.Sprintf(
 			`{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[],"triage":[{"sig":%q,"status":"false-positive","rationale":"rule misfires on test fixtures with this rationale here"}]}`,
 			sigs[0]),
 	})
@@ -245,15 +245,10 @@ func TestGoldenKBMatrix(t *testing.T) {
 	for _, leg := range kbLegs() {
 		sequenced(t, leg.name, leg.setup, leg.mutate, "--json")
 	}
-	// Invalid policy file values warn and fall back.
-	goldenBoth(t, "kb/bad-policy-file", "local-kb", func(t *testing.T, dir string) {
-		t.Helper()
-		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
-		writeFiles(t, dir, map[string]string{
-			".review/kb-policy": "MIN_JUDGED=abc\nMAX_FP_RATE=zzz\n",
-		})
-	}, "--json")
-	// Invalid policy env knobs warn and fall back.
+	// Invalid policy env knobs cannot override the typed defaults the bundle
+	// carries, so the record run stays warning-free. The EnvDefaults fallback
+	// for bundles without typed evidence is unit-covered in internal/config;
+	// the legacy .review/kb-policy file leg was deleted with PolicyFile itself.
 	goldenBothEnv(t, "kb/bad-policy-env", "local-kb", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
@@ -263,7 +258,7 @@ func TestGoldenKBMatrix(t *testing.T) {
 // stripSigVersion removes sig_version from every stored entry (legacy shape).
 func stripSigVersion(t *testing.T, dir string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, ".review", "local-kb", "findings.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "local-kb", "findings.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +276,7 @@ func stripSigVersion(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFiles(t, dir, map[string]string{".review/local-kb/findings.json": string(out)})
+	writeFiles(t, dir, map[string]string{".verdict/state/local-kb/findings.json": string(out)})
 }
 
 // TestGoldenLegacyMerge checks legacy stores merge identically: missing
@@ -294,7 +289,7 @@ func TestGoldenLegacyMerge(t *testing.T) {
 		t.Helper()
 		stripSigVersion(t, dir)
 		writeFiles(t, dir, map[string]string{
-			".review/local-kb/review.json": kbReview(``),
+			".verdict/state/local-kb/review.json": kbReview(``),
 		})
 	}, "--json")
 }
@@ -312,9 +307,9 @@ func TestGoldenIncrementalStill(t *testing.T) {
 			t.Fatal("no notes.txt entry")
 		}
 		writeFiles(t, dir, map[string]string{
-			".review/local-kb/findings.json":    marshalJSON(t, entries),
-			".review/local-kb/incremental.diff": "diff --git a/other.txt b/other.txt\nindex 3333333..4444444 100644\n--- a/other.txt\n+++ b/other.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n",
-			".review/local-kb/review.json":      kbReview(``),
+			".verdict/state/local-kb/findings.json":    marshalJSON(t, entries),
+			".verdict/state/local-kb/incremental.diff": "diff --git a/other.txt b/other.txt\nindex 3333333..4444444 100644\n--- a/other.txt\n+++ b/other.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n",
+			".verdict/state/local-kb/review.json":      kbReview(``),
 		})
 	}, "--json")
 }

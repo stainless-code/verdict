@@ -54,25 +54,33 @@ func (f *FetchLocalFlags) Presences() []Presence {
 // flag, the warnings the adapter already accumulated (prefs), and the human
 // and diagnostic streams the adapter routes (the prompt dump owns stdout
 // under --show-prompts, so the service never touches [os.Stdout] itself).
+// SettingsPath is the operator settings file the personal layer reads
+// (empty reads no personal layer).
 type FetchRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	Flags     FetchFlags
-	Effective Effective
-	JSONMode  bool
-	Warnings  []string
-	Human     io.Writer
-	Diag      io.Writer
+	Flags FetchFlags
+	// SettingsPath is adapter-injected (HOME/XDG_CONFIG_HOME), never a
+	// transport argument: MCP/JSON callers cannot set operator paths.
+	SettingsPath string `json:"-"`
+	Effective    Effective
+	JSONMode     bool
+	Warnings     []string
+	Human        io.Writer
+	Diag         io.Writer
 }
 
-// FetchLocalRequest is the fetch-local service invocation.
+// FetchLocalRequest is the fetch-local service invocation. SettingsPath
+// carries the operator settings file like the fetch request.
 type FetchLocalRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	Flags     FetchLocalFlags
-	Effective Effective
-	JSONMode  bool
-	Warnings  []string
-	Human     io.Writer
-	Diag      io.Writer
+	Flags FetchLocalFlags
+	// SettingsPath is adapter-injected like the fetch request.
+	SettingsPath string `json:"-"`
+	Effective    Effective
+	JSONMode     bool
+	Warnings     []string
+	Human        io.Writer
+	Diag         io.Writer
 }
 
 // FetchResponse carries the fetch outcome: the envelope identity, the typed
@@ -173,8 +181,21 @@ func (d *FetchData) Wire() *jq.Obj {
 	return o
 }
 
+// wireCosts renders the cost summary pair: the estimate whenever one exists (a
+// grouped run has one with no ordinary budget) and the ordinary budget only
+// when the run resolved one.
+func (d *FetchData) wireCosts(o *jq.Obj) {
+	if d.Estimate != nil {
+		o.Set("estimate", d.Estimate)
+	}
+	if d.Budget != nil {
+		o.Set("budget", d.Budget)
+	}
+}
+
 // wireTail renders the conditional tail: the incremental base on the fetch
-// verb only, the budget pair only when a budget is set, the cap and chunk
+// verb only, the estimate whenever one exists (a grouped run has one without an
+// ordinary budget) and the budget only when a budget set one, the cap and chunk
 // summaries only when armed, and the prompt dump last when staged.
 func (d *FetchData) wireTail(o *jq.Obj) {
 	if !d.Local {
@@ -184,10 +205,7 @@ func (d *FetchData) wireTail(o *jq.Obj) {
 		}
 		o.Set("incremental_base", base)
 	}
-	if d.Estimate != nil {
-		o.Set("estimate", d.Estimate)
-		o.Set("budget", d.Budget)
-	}
+	d.wireCosts(o)
 	if d.Cap != nil {
 		o.Set("cap", d.Cap)
 	}

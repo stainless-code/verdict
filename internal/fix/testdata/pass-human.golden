@@ -1,16 +1,16 @@
 exit: 0
 --- stdout ---
-» readiness: .review/local-pass — findings 2 open (2 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
-» ledger: .review/local-pass/fix.json — sig c1234567 pass 1/3
-fix: c1234567 [critical] app.txt:2 (pass 1/3, ledger .review/local-pass/fix.json)
+» readiness: .verdict/state/local-pass — findings 2 open (2 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+» ledger: .verdict/state/local-pass/fix.json — sig c1234567 pass 1/3
+fix: c1234567 [critical] app.txt:2 (pass 1/3, ledger .verdict/state/local-pass/fix.json)
 finding: Critical boundary bug here.
 anchors: app.txt:2-2 side=RIGHT anchored=true
-instructions: patch the anchor file (app.txt), then run its verify command yourself and write .review/local-pass/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record acme/app local-pass; re-run fix acme/app local-pass for the next pass
+instructions: patch the anchor file (app.txt), then run its verify command yourself and write .verdict/state/local-pass/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record acme/app local-pass; re-run fix acme/app local-pass for the next pass
 gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell instead
-loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or .review/budget (see docs/manual.md)
+loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)
 next: patch app.txt, write verification.json, run record to land it, then re-run fix
 --- stderr ---
 
 --- files ---
---- file C/.review/local-pass/fix.json ---
-{"sigs":{"c123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":[".review/"]}}}
+--- file C/.verdict/state/local-pass/fix.json ---
+{"sigs":{"c123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":[".verdict/"]}}}

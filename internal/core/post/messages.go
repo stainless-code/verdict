@@ -26,6 +26,15 @@ const (
 
 	msgApproveBlocked = "refusing APPROVE with %d open + %d deferred findings (triage or pass --force)"
 
+	msgRequirementBlocked = "finding %s violates block clause %q from %s in %s — " +
+		"address it, narrow the clause, or re-fetch without the policy"
+
+	msgRequirementUnmet = "required check %q is unmet for %s (head %s): %s — %s; --force cannot satisfy a trusted requirement"
+
+	msgHintHead = "fetch the pushed head and review the delta"
+
+	msgHintThreads = "resolve or reply to the open review threads"
+
 	msgApproveBlockedLive = "refusing APPROVE: %d live open thread(s) vs %d local open finding(s) — " +
 		"%d thread(s) the store does not know about (fetch + triage them, or re-run with --force)"
 
@@ -66,3 +75,22 @@ const msgReviewMissing = "missing %s (agent must write {body, approved, comments
 const codeAlreadyPosted = "already-posted"
 
 const codeMissingReviewFile = "missing-review-file"
+
+// msgLensGate names the failing profile evidence, then the ways to publish
+// the shortfall without a false approval.
+const msgLensGate = "profile lens evidence refuses this approval: %s — %s"
+
+// msgDeepValidation names the deep group whose tool-produced validation is
+// missing or stale, then the reason and the step that records it.
+const msgDeepValidation = "deep group %s needs a successful validation receipt for this run and head: %s"
+
+// profileDepthDeep is the profile depth that adds the validation pass.
+const profileDepthDeep = "deep"
+
+// msgRequireBind is the require_bind refusal: the flag is the only way to
+// bind, and no forced path exists.
+const msgRequireBind = "require_bind is set by the run policy — pass --bind to bind this approval " +
+	"(binding downgrades never satisfy a required bind, and --force cannot bypass it)"
+
+// msgLensFix names the two honest remedies for a lens shortfall.
+const msgLensFix = "report the lens shortfall with a comment, or re-run the review so cost.json records every capped group"

@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,11 +17,17 @@ import (
 // fetchTail writes the human done/next lines plus the typed
 // data for the adapter's envelope. incBase is nullStr or the incremental
 // base SHA. The dump rides in Data.PromptDump for the adapter to own on
-// stdout (human mode) or in the envelope (JSON mode).
+// stdout (human mode) or in the envelope (JSON mode). The typed run
+// bundle persists first, so the prompt dump already carries the combined
+// plan and every model-facing export already withholds privacy paths.
 func fetchTail(
-	ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
 ) (*core.FetchData, string, error) {
+	if ref := finalizeRemoteRun(ctx, ctx2, req, f); ref != nil {
+		return nil, "", ref
+	}
+	writeTailReceipt(ctx2, budget)
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
 		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + " to any agent; ask it to write " + dir + "/review.json" +
@@ -81,7 +88,8 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 }
 
 func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
-	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", dir, dir, dir, dir, filesStr)
+	shown := r.display(dir)
+	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/PR.json + %s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s\n",
 		dir, diffFeed(dir, chunked, dir+"/full.diff"), dir, dir, threadsHint(dir))
@@ -287,8 +295,10 @@ func statFiles(st *fetchStats, dir string, m map[string]any) error {
 }
 
 func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, chunkJSON any) {
-	if budget.hasBudget {
+	if budget.hasBudget || budget.estimateJSON != nil {
 		data.Estimate = budget.estimateJSON
+	}
+	if budget.hasBudget {
 		data.Budget = budget.budgetJSON
 	}
 	if fcap.json != nil {
@@ -367,10 +377,14 @@ func addArtifactIfPresent(obj *jq.Obj, dir, key, suffix string) {
 // Data.PromptDump for the adapter to own on stdout (human mode) or in the
 // envelope (JSON mode).
 func fetchTailLocal(
-	ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, mode *localMode,
 	listed string, total, adds, dels int,
 ) (*core.FetchData, string, error) {
+	if ref := finalizeLocalRun(ctx, ctx2, req, f, mode.baseSHA, listed); ref != nil {
+		return nil, "", ref
+	}
+	writeTailReceipt(ctx2, budget)
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
 		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"

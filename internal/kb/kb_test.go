@@ -17,10 +17,10 @@ func writeKB(t *testing.T, dir string, lines ...string) {
 		sb.WriteString(ln + "\n")
 	}
 	content := sb.String()
-	if err := os.MkdirAll(filepath.Join(dir, ".review"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".review", "kb.jsonl"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".verdict", "kb.jsonl"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
@@ -31,6 +31,7 @@ func TestNormalizeExplicitVsAbsent(t *testing.T) {
 	dir := t.TempDir()
 	writeKB(t, dir, `{"id":"rec-rule","status":"active"}`)
 	c := kb.New(func(string) {})
+	c.Root = dir
 	entry := func(v any, has bool) *jq.Obj {
 		o := jq.NewObj()
 		if has {

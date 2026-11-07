@@ -71,7 +71,7 @@ type deadlineCommander struct {
 	has  bool
 }
 
-func (d *deadlineCommander) Run(ctx context.Context, _ core.Command) (core.Result, error) {
+func (d *deadlineCommander) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
 	var dl time.Time
 	dl, d.has = ctx.Deadline()
 	d.left = time.Until(dl)
@@ -103,7 +103,7 @@ func TestVerifyTimeoutIsSeconds(t *testing.T) {
 
 type cancelThenFailCommander struct{ cancel context.CancelFunc }
 
-func (c *cancelThenFailCommander) Run(context.Context, core.Command) (core.Result, error) {
+func (c *cancelThenFailCommander) Run(context.Context, *core.Command) (core.Result, error) {
 	c.cancel()
 	return core.Result{}, errors.New("resume suspended verify process: access denied")
 }

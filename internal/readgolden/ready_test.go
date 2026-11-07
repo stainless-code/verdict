@@ -53,7 +53,7 @@ func readyBundle(t *testing.T, dir, pr string) {
 	t.Helper()
 	mkPRBundle(t, dir, pr)
 	writeFiles(t, dir, map[string]string{
-		".review/" + pr + "/findings.json": mixedFindings(),
+		".verdict/state/" + pr + "/findings.json": mixedFindings(),
 	})
 }
 
@@ -71,39 +71,39 @@ func TestReadyGolden(t *testing.T) {
 
 	goArgs := splitRepo("ready", "5101")
 	goldenRead(t, "ready/refused-dead", dead, nil,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	goArgs = splitRepo("ready", "5101", "--json")
 	goldenRead(t, "ready/refused-dead-json", dead, nil,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	goArgs = splitRepo("ready", "5101", "--check", "--json")
 	goldenRead(t, "ready/refused-dead-check", dead, nil,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	blocked := writeStub(t, readyStubScript, map[string]string{"READY_THREADS": "open"})
 	goArgs = splitRepo("ready", "5101")
 	goldenRead(t, "ready/blocked-human", dead, blocked,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	goArgs = splitRepo("ready", "5101", "--json")
 	goldenRead(t, "ready/blocked-json", dead, blocked,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	goArgs = splitRepo("ready", "5101", "--check")
 	goldenRead(t, "ready/blocked-check", dead, blocked,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	allClear := writeStub(t, readyStubScript, map[string]string{"READY_THREADS": "clear"})
 	goArgs = splitRepo("ready", "5101", "--check", "--json")
 	goldenRead(t, "ready/ready-check-json", dead, allClear,
-		allowKeys("C/.review/5101/.ready.err"), goArgs...)
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	local := func(t *testing.T, dir, _ string) {
 		t.Helper()
 		mkLocalBundle(t, dir, "local-work")
 		writeFiles(t, dir, map[string]string{
-			".review/local-work/findings.json": mixedFindings(),
+			".verdict/state/local-work/findings.json": mixedFindings(),
 		})
 	}
 	goArgs = splitRepo("ready", "local-work", "--json")
@@ -113,9 +113,9 @@ func TestReadyGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".review/5101/PR.json": `{"provider":"gitlab","number":5101,` +
+			".verdict/state/5101/PR.json": `{"provider":"gitlab","number":5101,` +
 				`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
-			".review/5101/findings.json": mixedFindings(),
+			".verdict/state/5101/findings.json": mixedFindings(),
 		})
 	}
 	goArgs = splitRepo("ready", "5101", "--json")

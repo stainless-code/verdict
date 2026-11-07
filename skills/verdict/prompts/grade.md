@@ -11,12 +11,12 @@ in the grades file, so that agreement is measured, not assumed.
 
 1. **Task list** as first action.
 2. **Read the bundle.** Run `verdict report owner/repo <bundle> --status all`
-   and read `.review/<bundle>/findings.json` (sig, status, kb cites per finding).
+   and read `.verdict/state/<bundle>/findings.json` (sig, status, kb cites per finding).
    Closed findings are the sample: `addressed` / `false-positive` carry a
    baseline verdict; `open` / `wont-fix` / `deferred` carry none.
 3. **Baseline.** Run `verdict calibrate owner/repo <bundle> --probe`
    (`--json` for the machine envelope). The script writes
-   `.review/<bundle>/kb-grades.jsonl` — one row per finding with script-owned
+   `.verdict/state/<bundle>/kb-grades.jsonl` — one row per finding with script-owned
    baseline columns (`verdict` from the disposition, first cited `rule`,
    `helpful`). Never hand-edit that file; the next probe run regenerates
    the baseline and overwrites direct edits. To change the baseline itself,

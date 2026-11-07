@@ -23,7 +23,7 @@ func TestExecuteOrphanSweepKillsTree(t *testing.T) {
 	tctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	vcmd := `exec sleep 30 & ` + pidReport(pidFile)
-	res, err := Watchdog{}.Run(tctx, core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
+	res, err := Watchdog{}.Run(tctx, &core.Command{Argv: []string{"bash", "-c", vcmd}, Env: os.Environ()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -129,7 +129,7 @@ func TestRunReportCompletenessGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := fixture(t, "[]")
 			if tc.postSet {
-				writeFile(t, ".review/5101/post.json", tc.post)
+				writeFile(t, ".verdict/state/5101/post.json", tc.post)
 			}
 			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 				ReadRequest: req,
@@ -198,7 +198,7 @@ type threadCommander struct {
 	calls  int
 }
 
-func (c *threadCommander) Run(_ context.Context, _ core.Command) (core.Result, error) {
+func (c *threadCommander) Run(_ context.Context, _ *core.Command) (core.Result, error) {
 	c.calls++
 	res := core.Result{Stdout: c.stdout, Stderr: c.stderr}
 	if c.fail {
@@ -298,7 +298,7 @@ func TestRunReportLiveGate(t *testing.T) {
 			req.Commander = cmd
 			flags := core.ReportFlags{Live: tc.live}
 			if tc.gate {
-				writeFile(t, ".review/5101/post.json", `{"head":"`+storeHeadSHA+`"}`)
+				writeFile(t, ".verdict/state/5101/post.json", `{"head":"`+storeHeadSHA+`"}`)
 				flags.Completeness = true
 			}
 			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})
@@ -343,9 +343,9 @@ func TestRunReportLiveGate(t *testing.T) {
 func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".review/local-gate/source.json",
+	writeFile(t, ".verdict/state/local-gate/source.json",
 		`{"head_sha":"`+storeHeadSHA+`","base_sha":"`+strings.Repeat("b", 40)+`"}`)
-	writeFile(t, ".review/local-gate/findings.json", "["+
+	writeFile(t, ".verdict/state/local-gate/findings.json", "["+
 		entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true")+"]")
 	cmd := &threadCommander{stdout: threadsPage(4, 0)}
 	req := core.ReadRequest{
@@ -480,7 +480,7 @@ func TestRunReportEnvelopeDefaults(t *testing.T) {
 // recovery command names that provider instead of the GitHub default.
 func TestRunReportLiveProviderSkip(t *testing.T) {
 	req := fixture(t, "["+entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true")+"]")
-	writeFile(t, ".review/5101/PR.json",
+	writeFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","provider":"gitlab","headRefOid":"`+storeHeadSHA+`"}`)
 	cmd := &threadCommander{stdout: threadsPage(9, 0)}
 	req.Commander = cmd
@@ -555,7 +555,7 @@ func TestRunReportGateData(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := fixture(t, tc.findings)
 			if tc.post != "" {
-				writeFile(t, ".review/5101/post.json", tc.post)
+				writeFile(t, ".verdict/state/5101/post.json", tc.post)
 			}
 			flags := core.ReportFlags{Check: tc.check, Completeness: tc.complete, Live: tc.live}
 			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})

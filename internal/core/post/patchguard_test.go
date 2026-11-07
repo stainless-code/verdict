@@ -36,7 +36,7 @@ type patchGuardCommander struct {
 	ids map[string]string
 }
 
-func (c *patchGuardCommander) Run(_ context.Context, cmd core.Command) (core.Result, error) {
+func (c *patchGuardCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil {
@@ -61,7 +61,7 @@ func guardCommander() core.Commander {
 // patchGuardState builds a guard test state over the canonical pair
 // whose injected commander recomputes the fixture identities.
 func patchGuardState(flags core.PostFlags, warnings *[]string) *state {
-	p := postTestState(".review/1648", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", flags, warnings)
+	p := postTestState(".verdict/state/1648", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", flags, warnings)
 	p.req.Commander = guardCommander()
 	return p
 }
@@ -79,7 +79,7 @@ func patchGuardBundle(t *testing.T, bundle, patch, kind, head, diff string, post
 // for the cross-repository regression.
 func patchGuardBundleAt(t *testing.T, bundle, patch, kind, head, diff, url string, posted bool) {
 	t.Helper()
-	dir := ".review/" + bundle
+	dir := ".verdict/state/" + bundle
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestPatchGuardRefusesSamePatchNewSHA(t *testing.T) {
 	if ref == nil || ref.Code != "already-reviewed-patch" {
 		t.Fatalf("patchGuard = %v, want already-reviewed-patch", ref)
 	}
-	if !strings.Contains(ref.Message, ".review/1649") || !strings.Contains(ref.Message, "--force") {
+	if !strings.Contains(ref.Message, ".verdict/state/1649") || !strings.Contains(ref.Message, "--force") {
 		t.Errorf("refusal message names neither the prior bundle nor --force: %q", ref.Message)
 	}
 }
@@ -213,7 +213,7 @@ func TestPatchGuardKindMismatch(t *testing.T) {
 func TestPatchGuardLegacy(t *testing.T) {
 	patchGuardProceeds(t, func(t *testing.T) {
 		t.Helper()
-		if err := os.MkdirAll(".review/1648", 0o755); err != nil {
+		if err := os.MkdirAll(".verdict/state/1648", 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}, "patch identity unavailable — dedupe by SHA only")
@@ -224,10 +224,10 @@ func TestPatchGuardLegacy(t *testing.T) {
 func TestPatchGuardMalformedIdentity(t *testing.T) {
 	patchGuardProceeds(t, func(t *testing.T) {
 		t.Helper()
-		if err := os.MkdirAll(".review/1648", 0o755); err != nil {
+		if err := os.MkdirAll(".verdict/state/1648", 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(".review/1648/identity.json", []byte("not json"), 0o644); err != nil {
+		if err := os.WriteFile(".verdict/state/1648/identity.json", []byte("not json"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}, "patch identity unavailable — dedupe by SHA only")
@@ -239,10 +239,10 @@ func TestPatchGuardMalformedSibling(t *testing.T) {
 	patchGuardProceeds(t, func(t *testing.T) {
 		t.Helper()
 		patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
-		if err := os.MkdirAll(".review/1649", 0o755); err != nil {
+		if err := os.MkdirAll(".verdict/state/1649", 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(".review/1649/post.json", []byte("{broken"), 0o644); err != nil {
+		if err := os.WriteFile(".verdict/state/1649/post.json", []byte("{broken"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}, "")
@@ -279,7 +279,7 @@ func TestPatchGuardStaleBytesProceeds(t *testing.T) {
 		t.Helper()
 		patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 		patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
-		if err := os.WriteFile(".review/1648/full.diff", []byte("replaced bytes\n"), 0o644); err != nil {
+		if err := os.WriteFile(".verdict/state/1648/full.diff", []byte("replaced bytes\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}, "patch identity unavailable — dedupe by SHA only")
@@ -292,12 +292,12 @@ func TestPatchGuardInvalidIdentityProceeds(t *testing.T) {
 		t.Helper()
 		patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 		patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
-		raw, err := os.ReadFile(".review/1648/identity.json")
+		raw, err := os.ReadFile(".verdict/state/1648/identity.json")
 		if err != nil {
 			t.Fatal(err)
 		}
 		bogus := strings.Replace(string(raw), patchGuardPatch, "not-a-patch-id", 1)
-		if err := os.WriteFile(".review/1648/identity.json", []byte(bogus), 0o644); err != nil {
+		if err := os.WriteFile(".verdict/state/1648/identity.json", []byte(bogus), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}, "patch identity unavailable — dedupe by SHA only")
@@ -337,7 +337,7 @@ func incompleteReceiptBundle(t *testing.T, receipt string) {
 	t.Helper()
 	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, false)
-	if err := os.WriteFile(".review/1649/post.json", []byte(receipt), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/1649/post.json", []byte(receipt), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -360,7 +360,7 @@ func TestPatchGuardSameSHAWinsFirst(t *testing.T) {
 	const cur = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const sib = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	patchGuardPair(t, cur, sib)
-	if err := os.WriteFile(".review/1648/post.json", []byte(
+	if err := os.WriteFile(".verdict/state/1648/post.json", []byte(
 		`{"schema_version":"1","review":{"id":1,"state":"COMMENTED"},"head":"`+cur+`",`+
 			`"posted_at":"2026-01-01T00:00:00Z","patch_id":"`+patchGuardPatch+`","patch_id_kind":"git-patch-id"}`),
 		0o644); err != nil {
@@ -393,12 +393,12 @@ func TestPatchGuardTamperedClaimProceeds(t *testing.T) {
 	t.Chdir(dir)
 	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
-	raw, err := os.ReadFile(".review/1648/identity.json")
+	raw, err := os.ReadFile(".verdict/state/1648/identity.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tampered := strings.Replace(string(raw), patchGuardPatch, strings.Repeat("1", 40), 1)
-	if err := os.WriteFile(".review/1648/identity.json", []byte(tampered), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/1648/identity.json", []byte(tampered), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var warnings []string
@@ -420,7 +420,7 @@ func TestPatchGuardEmptyReceiptProceeds(t *testing.T) {
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, false)
 	receipt := `{"schema_version":"1","review":{},"head":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",` +
 		`"posted_at":"2026-01-01T00:00:00Z","patch_id":"` + patchGuardPatch + `","patch_id_kind":"git-patch-id"}`
-	if err := os.WriteFile(".review/1649/post.json", []byte(receipt), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/1649/post.json", []byte(receipt), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var warnings []string
@@ -439,7 +439,7 @@ func TestPatchGuardInvalidHeadTimeProceeds(t *testing.T) {
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, false)
 	receipt := `{"schema_version":"1","review":{},"head":"not-a-head","posted_at":"not-a-time",` +
 		`"patch_id":"` + patchGuardPatch + `","patch_id_kind":"git-patch-id"}`
-	if err := os.WriteFile(".review/1649/post.json", []byte(receipt), 0o644); err != nil {
+	if err := os.WriteFile(".verdict/state/1649/post.json", []byte(receipt), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var warnings []string
@@ -456,7 +456,7 @@ func TestPatchGuardRawUnreadableProceeds(t *testing.T) {
 	t.Chdir(dir)
 	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
-	if err := os.Mkdir(".review/1648/full.raw.diff", 0o755); err != nil {
+	if err := os.Mkdir(".verdict/state/1648/full.raw.diff", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	var warnings []string

@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
 
@@ -49,12 +51,12 @@ func chdirTemp() func() {
 	}
 }
 
-// reportBundle writes a minimal .review/5101 bundle: one open finding.
+// reportBundle writes a minimal .verdict/state/5101 bundle: one open finding.
 func reportBundle() {
-	writeFile(".review/5101/PR.json",
+	writeFile(".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFile(".review/5101/findings.json",
+	writeFile(".verdict/state/5101/findings.json",
 		`[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,`+
 			`"anchored":true,"body":"Usable body.","suggestion":null,`+
 			`"inBounds":true,"rigor":"walked","severity":"critical",`+
@@ -78,7 +80,7 @@ func ExampleClient_Report() {
 	fmt.Println(resp.Human[0])
 	fmt.Println(resp.Next)
 	// Output:
-	// report: .review/5101 (1 shown) open=1 head=aaaaaaa
+	// report: .verdict/state/5101 (1 shown) open=1 head=aaaaaaa
 	// address open threads
 }
 
@@ -115,19 +117,32 @@ func ExampleClient_Triage() {
 // ExampleClient_Record merges a local review.json into the stores.
 func ExampleClient_Record() {
 	defer chdirTemp()()
-	writeFile(".review/local-demo/source.json",
+	writeFile(".verdict/state/local-demo/source.json",
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"`+strings.Repeat("b", 40)+`","head_ref":"work"}`)
-	writeFile(".review/local-demo/full.diff",
+	writeFile(".verdict/state/local-demo/full.diff",
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
-	writeFile(".review/local-demo/review.json",
+	writeFile(".verdict/state/local-demo/review.json",
 		`{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,`+
 			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Cited finding here with enough substance.",`+
 			`"rigor":"walked","severity":"important"}]}`)
-	if _, ref := controls.Resolve(context.Background(), nil, &controls.Request{
-		BundleDir: ".review/local-demo", BaseSHA: strings.Repeat("b", 40), AllowHead: true,
-	}); ref != nil {
+	snap, ref := controls.Resolve(context.Background(), nil, &controls.Request{
+		BundleDir: ".verdict/state/local-demo", BaseSHA: strings.Repeat("b", 40), AllowHead: true,
+	})
+	if ref != nil {
 		fmt.Println("error:", ref)
+		return
+	}
+	rs := &config.RunState{
+		BaseSHA:    strings.Repeat("b", 40),
+		Trusted:    true,
+		CapturedAt: core.NowUTC(exampleNow),
+		Evidence:   config.Evidence{SchemaVersion: "1", BaseSHA: strings.Repeat("b", 40), Plan: config.Plan{Status: config.PendingStatus}},
+		Resolved:   &config.Resolved{Plan: config.Plan{Status: config.PendingStatus}},
+		Inventory:  config.InventoryHashes(snap),
+	}
+	if serr := config.WriteRunState(".verdict/state/local-demo", rs); serr != nil {
+		fmt.Println("error:", serr)
 		return
 	}
 	c := verdict.New(verdict.Options{Now: func() time.Time { return exampleNow }})
@@ -147,12 +162,12 @@ func ExampleClient_Record() {
 
 // scriptCommander is the injected command seam: every spawn is scripted.
 type scriptCommander struct {
-	got []verdict.Command
+	got []*verdict.Command
 	res verdict.CommandResult
 }
 
 // Run implements verdict.Commander.
-func (s *scriptCommander) Run(_ context.Context, cmd verdict.Command) (verdict.CommandResult, error) {
+func (s *scriptCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
 	s.got = append(s.got, cmd)
 	return s.res, nil
 }
@@ -162,7 +177,7 @@ func (s *scriptCommander) Run(_ context.Context, cmd verdict.Command) (verdict.C
 // combined stderr through, instead of echoing zero values.
 func TestClientVerifyFakeCommander(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeFile(".review/5201/patch.json", `{"verifyCmd":"printf ok"}`)
+	writeFile(".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
 	cmdr := &scriptCommander{res: verdict.CommandResult{Stdout: "ok", Stderr: "boom\n", ExitCode: 3}}
 	c := verdict.New(verdict.Options{
 		Now:       func() time.Time { return exampleNow },

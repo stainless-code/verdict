@@ -6,30 +6,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 SLUG="local-norm"
-LB="$EVAL_SANDBOX/.review/$SLUG"
+LB="$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 mk_local() { # $1 = slug dir; stdin becomes review.json
-  local lb="$EVAL_SANDBOX/.review/$1"
-  unset EVAL_NO_SEED
-  rm -rf "$lb"
-  mkdir -p "$lb"
-  cat > "$lb/source.json" <<'JSON'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
-JSON
-  cat > "$lb/full.diff" <<'DIFF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-DIFF
+  local lb
+  eval_mk_bundle "$1"
+  lb="$EVAL_SANDBOX/.verdict/state/$1"
   cat > "$lb/review.json"
-  eval_seed_controls
-  export EVAL_NO_SEED=1
 }
 
 WEAK_REVIEW='```json
@@ -72,7 +55,7 @@ else
   bad "finding misses rigor provenance"
 fi
 
-STRICT_BUNDLE="$EVAL_SANDBOX/.review/local-strictfetch"
+STRICT_BUNDLE="$EVAL_SANDBOX/.verdict/state/local-strictfetch"
 (
   cd "$EVAL_SANDBOX" || exit 99
   git init -q 2>/dev/null || true
@@ -113,7 +96,7 @@ else
 fi
 
 ENV_SLUG="local-recordenv"
-ENV_BUNDLE="$EVAL_SANDBOX/.review/$ENV_SLUG"
+ENV_BUNDLE="$EVAL_SANDBOX/.verdict/state/$ENV_SLUG"
 printf '%s' "$WEAK_REVIEW" | mk_local "$ENV_SLUG"
 if [ "$(jq -r '.strict_input // empty' "$ENV_BUNDLE/controls.json" 2>/dev/null)" != "" ]; then
   bad "record-env bundle baked strict_input at seed time"
@@ -134,6 +117,5 @@ else
   bad "env-at-record refusal wrote store files"
 fi
 
-unset EVAL_NO_SEED
 rm -rf "$LB" "$STRICT_BUNDLE" "$ENV_BUNDLE"
 eval_end

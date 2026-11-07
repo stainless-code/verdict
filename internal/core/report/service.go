@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -50,28 +51,36 @@ const (
 type Flags = core.ReportFlags
 
 type state struct { // field grouping documents the loaded dimensions; alignment is irrelevant here
-	req        *core.ReportRequest
-	flags      Flags
-	warnings   []string
-	counts     core.ReportCounts
-	cost       *jq.Obj
-	receipts   []any
-	entries    []any
-	ranked     []readcommon.Ranked
-	panel      []any
-	patch      any
-	comp       *core.ReportCompleteness
-	dir        string
-	now        string
-	headSHA    string
-	baseSHA    string
-	panelSrc   string
-	compPosted string
-	live       liveState
-	nOpen      int
-	nAllOpen   int
-	gate       bool
-	compOK     bool
+	req      *core.ReportRequest
+	flags    Flags
+	warnings []string
+	counts   core.ReportCounts
+	cost     *jq.Obj
+	receipts []any
+	entries  []any
+	ranked   []readcommon.Ranked
+	// view is the display-filtered ranked set the views render: the
+	// effective display_min_severity withholds below-floor findings
+	// while every gate keeps reading ranked. policy is the typed
+	// run bundle the floor and the gate observations come from.
+	view         []readcommon.Ranked
+	policy       *config.RunState
+	compliance   *config.ReadCompliance
+	requiredGaps []string
+	panel        []any
+	patch        any
+	comp         *core.ReportCompleteness
+	dir          string
+	now          string
+	headSHA      string
+	baseSHA      string
+	panelSrc     string
+	compPosted   string
+	live         liveState
+	nOpen        int
+	nAllOpen     int
+	gate         bool
+	compOK       bool
 }
 
 type liveState struct {
@@ -110,6 +119,13 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	if err := loadState(ctx, st); err != nil {
 		return nil, err
 	}
+	if ref := loadRunPolicy(st); ref != nil {
+		return nil, ref
+	}
+	evaluateCompliance(st)
+	applyDisplayFloor(st)
+	warnLensUsage(st)
+	warnDeepValidation(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
 }
@@ -155,7 +171,7 @@ func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 }
 
 func loadState(ctx context.Context, st *state) *core.RefusalError {
-	st.dir = readcommon.ResolveBundleDir(st.req.Pr)
+	st.dir = readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	entries, err := readcommon.LoadFindings(st.dir)
 	if err != nil {
 		return st.withWarnings(loadRefusal(err))

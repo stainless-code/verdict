@@ -47,7 +47,7 @@ go run ./bench/runner \
 
 Everything else is derived, so a run cannot drift from its corpus: the model
 comes from `-model` and is verified twice (the bundle's `record.json` and the
-`calibrate` block must both name it), the panel is pinned in `.review/panel`,
+`calibrate` block must both name it), the panel is pinned in `.verdict/config.json`,
 and the prompt set is copied into the run dir so `prompts_hash` names what the
 agents read.
 
@@ -139,7 +139,7 @@ so the failed attempt keeps its measured spend.
 
 Per-round evidence lives under `runs/<slug>/round-NN`: `prompt.md`,
 `review.json`, `dryrun.json`, `dryrun.stderr.txt`, `normalized.json`,
-`cost.json`, and `agent.log`. The final `.review/<slug>` bundle is written
+`cost.json`, and `agent.log`. The final `.verdict/state/<slug>` bundle is written
 once from the last valid round, with the same layout as a single-shot run.
 A second pass over saved `review.json` bytes gives a deterministic replay
 for tests. `BENCH_FIXTURE_LOOP` selects a fixture with a `reviews` array for
@@ -148,7 +148,7 @@ offline runs.
 ## What it writes
 
 `-workdir` holds the evidence: `runs/<slug>/prompt.md` (the exact bytes the
-agent read), `runs/<slug>/agent.log`, and `.review/<slug>/` for each sample
+agent read), `runs/<slug>/agent.log`, and `.verdict/state/<slug>/` for each sample
 that recorded. The bundle carries the reviewed `full.diff` and the `hunks.tsv`
 index built from it, so `record` keeps the hunks the agent actually read
 instead of rebuilding them later; a comment outside every hunk is recorded as

@@ -100,13 +100,13 @@ rerun_rentry() {
 }
 
 PR=9201
-LB="$EVAL_SANDBOX/.review/local-chaos-order"
+LB="$EVAL_SANDBOX/.verdict/state/local-chaos-order"
 
 m0="$(mark)"
 run_review record acme/app local-ghost --json
 assert_exit "record before any fetch exits 1" 1
 assert_refusal "record before any fetch" "missing-review-file"
-if [ ! -e "$EVAL_SANDBOX/.review/local-ghost" ]; then
+if [ ! -e "$EVAL_SANDBOX/.verdict/state/local-ghost" ]; then
   good "record before fetch created no bundle dir"
 else
   bad "record before fetch created a bundle dir"
@@ -120,39 +120,24 @@ else
   bad "record before fetch reached the stub"
 fi
 
-mkdir -p "$EVAL_SANDBOX/.review/local-empty"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/local-empty"
 m0="$(mark)"
 run_review record acme/app local-empty --json
 assert_exit "record on an empty bundle dir exits 1" 1
 assert_refusal "record on an empty bundle dir" "missing-review-file"
 way_forward "record on an empty bundle dir"
-if [ -z "$(ls -A "$EVAL_SANDBOX/.review/local-empty")" ]; then
+if [ -z "$(ls -A "$EVAL_SANDBOX/.verdict/state/local-empty")" ]; then
   good "record on an empty dir wrote nothing into it"
 else
   bad "record on an empty dir wrote files"
 fi
 matrix_row "record" "empty-dir" "$EVAL_STATUS" "missing-review-file" "no" "yes" "same" "$(reviews_since "$m0")"
-rm -rf "$EVAL_SANDBOX/.review/local-empty"
+rm -rf "$EVAL_SANDBOX/.verdict/state/local-empty"
 
-rm -rf "$LB"; mkdir -p "$LB"
-cat > "$LB/source.json" <<'EOF'
-{"schema_version":"1","kind":"worktree","repo":"acme/app","slug":"order","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":null,"dirty":true}
-EOF
-cat > "$LB/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+eval_mk_bundle local-chaos-order
 cat > "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below with enough length.","approved":false,"comments":[]}
 EOF
-eval_seed_controls
 snap "$LB" "$EVAL_SANDBOX/s2.before"
 m0="$(mark)"
 run_review record acme/app local-chaos-order --dry-run --json
@@ -209,9 +194,9 @@ m0="$(mark)"
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "post --dry-run before any record exits 0" 0
 assert_envelope "post --dry-run before any record"
-if [ -f "$EVAL_SANDBOX/.review/$PR/findings.dryrun.json" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/findings.json" ] \
-  && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "dry run stages only findings.dryrun.json (no findings.json, no post.json)"
 else
   bad "dry run wrote the wrong artifacts"
@@ -237,13 +222,13 @@ matrix_row "post" "local-bundle" "$EVAL_STATUS" "no-pr-target" "no" "yes" "same"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Binding approval with enough length to be a real review.","approved":true,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Critical boundary bug here with enough substance.","rigor":"walked","severity":"critical"}]}
 EOF
-rm -f "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/post.json"
+rm -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 m0="$(mark)"
 run_review post acme/app "$PR" --approve=true --bind --json
 assert_exit "binding post before the gate passes exits 1" 1
 assert_refusal "binding post before the gate passes" "approve-blocked"
 way_forward "binding post before the gate passes"
-if [ "$(reviews_since "$m0")" -eq 0 ] && [ ! -e "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ "$(reviews_since "$m0")" -eq 0 ] && [ ! -e "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "ungated APPROVE posted nothing and minted no post.json"
 else
   bad "ungated APPROVE escaped to the provider or minted post.json"
@@ -263,7 +248,7 @@ export EVAL_SAVE_PAYLOAD
 run_review post acme/app "$PR" --approve=true --bind --json
 unset EVAL_SAVE_PAYLOAD
 assert_exit "recovery post after triage exits 0" 0
-if [ "$(reviews_since "$m0")" -eq 1 ] && [ -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ "$(reviews_since "$m0")" -eq 1 ] && [ -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   good "recovery post submitted exactly one review and minted post.json"
 else
   bad "recovery post made $(reviews_since "$m0") reviews calls"
@@ -284,9 +269,9 @@ fi
 matrix_row "gate" "posted-head" "$EVAL_STATUS" "none" "yes" "no" "same" "0"
 
 jq '.head = "cccccccccccccccccccccccccccccccccccccccc"' \
-  "$EVAL_SANDBOX/.review/$PR/post.json" > "$EVAL_SANDBOX/post-tampered.json" \
-  && mv "$EVAL_SANDBOX/post-tampered.json" "$EVAL_SANDBOX/.review/$PR/post.json"
-snap "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX/s4.before"
+  "$EVAL_SANDBOX/.verdict/state/$PR/post.json" > "$EVAL_SANDBOX/post-tampered.json" \
+  && mv "$EVAL_SANDBOX/post-tampered.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
+snap "$EVAL_SANDBOX/.verdict/state/$PR" "$EVAL_SANDBOX/s4.before"
 m0="$(mark)"
 run_review gate acme/app "$PR" --require-head --live skip --json
 assert_exit "gate on a stale head exits 1" 1
@@ -303,7 +288,7 @@ if grep -q "^try:" "$EVAL_OUT"; then
 else
   bad "human gate tail has no try: line"
 fi
-snap "$EVAL_SANDBOX/.review/$PR" "$EVAL_SANDBOX/s4.after"
+snap "$EVAL_SANDBOX/.verdict/state/$PR" "$EVAL_SANDBOX/s4.after"
 snap_same "gate on a stale head" "$EVAL_SANDBOX/s4.before" "$EVAL_SANDBOX/s4.after"
 if [ "$(calls_since "$m0")" -eq 0 ]; then
   good "stale-head gate paid zero stub calls under --live skip"
@@ -314,7 +299,7 @@ matrix_row "gate" "stale-head" "$EVAL_STATUS" "none" "yes" "no" "same" "0"
 
 for verb in report next show; do
   m0="$(mark)"
-  snap "$EVAL_SANDBOX/.review/no-such-pr" "$EVAL_SANDBOX/s5.$verb.before"
+  snap "$EVAL_SANDBOX/.verdict/state/no-such-pr" "$EVAL_SANDBOX/s5.$verb.before"
   if [ "$verb" = "show" ]; then
     run_review "$verb" acme/app no-such-pr --sig abc --json
   else
@@ -329,7 +314,7 @@ for verb in report next show; do
   else
     bad "$verb on a missing bundle exits $EVAL_STATUS with code '$code' (want the documented gap or a way forward)"
   fi
-  snap "$EVAL_SANDBOX/.review/no-such-pr" "$EVAL_SANDBOX/s5.$verb.after"
+  snap "$EVAL_SANDBOX/.verdict/state/no-such-pr" "$EVAL_SANDBOX/s5.$verb.after"
   snap_same "$verb on a missing bundle" "$EVAL_SANDBOX/s5.$verb.before" "$EVAL_SANDBOX/s5.$verb.after"
   matrix_row "$verb" "no-bundle" "$EVAL_STATUS" "$code" "no" "no" "same" "$(reviews_since "$m0")"
 done

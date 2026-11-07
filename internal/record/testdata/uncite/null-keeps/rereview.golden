@@ -12,7 +12,7 @@ exit: 0
     "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
-    "dir": ".review/local-kb",
+    "dir": ".verdict/state/local-kb",
     "anchors": {
       "kept": 1,
       "moved": 0
@@ -21,7 +21,7 @@ exit: 0
       "open": 1,
       "deferred": 0,
       "addressed": 0,
-      "file": ".review/local-kb/findings.json"
+      "file": ".verdict/state/local-kb/findings.json"
     },
     "confidence": null,
     "security_summary": null,
@@ -40,11 +40,11 @@ exit: 0
 warn: $.comments[0].kb: optional key "kb" was null; dropped it
 » anchors: 1 inline, 0 moved to body
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-» findings: 1 sigs -> .review/local-kb/findings.json
+» findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  open  true  notes.txt
-recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-kb/record.json ---
+--- file C/.verdict/state/local-kb/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -56,7 +56,7 @@ recorded: .review/local-kb/findings.json (1 open) + .review/local-kb/record.json
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "5337104e90f2c4073211f45b9bcb04ea062fe248844b53111237de58944e966e",
   "model": null,
   "repairs": [{"code":"normalized-trivia","path":"$.comments[0].kb"}]
 }

@@ -8,11 +8,11 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
-    "no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+    "no fetch-time hunk snapshot (.verdict/state/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
     "$.body: no basis line — inserted the computed counts (basis-replaced)"
   ],
   "data": {
-    "dir": ".review/local-rf",
+    "dir": ".verdict/state/local-rf",
     "anchors": {
       "kept": 0,
       "moved": 0
@@ -21,7 +21,7 @@ exit: 0
       "open": 0,
       "deferred": 0,
       "addressed": 0,
-      "file": ".review/local-rf/findings.json"
+      "file": ".verdict/state/local-rf/findings.json"
     },
     "confidence": null,
     "security_summary": null,
@@ -30,22 +30,22 @@ exit: 0
   "error": null
 }
 --- stderr ---
-warn: no fetch-time hunk snapshot (.review/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+warn: no fetch-time hunk snapshot (.verdict/state/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 » anchors: 0 inline, 0 moved to body
 warn: $.body: no basis line — inserted the computed counts (basis-replaced)
-» findings: 0 sigs -> .review/local-rf/findings.json
-recorded: .review/local-rf/findings.json (0 open) + .review/local-rf/record.json — report/triage read it; post stays refused (no PR target)
+» findings: 0 sigs -> .verdict/state/local-rf/findings.json
+recorded: .verdict/state/local-rf/findings.json (0 open) + .verdict/state/local-rf/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.review/local-rf/findings.json ---
+--- file C/.verdict/state/local-rf/findings.json ---
 []
---- file C/.review/local-rf/hunks.tsv ---
+--- file C/.verdict/state/local-rf/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
 notes.txt	OLD	11	17
 notes.txt	NEW	11	17
 other.txt	OLD	1	3
 other.txt	NEW	1	3
---- file C/.review/local-rf/record.json ---
+--- file C/.verdict/state/local-rf/record.json ---
 {
   "schema_version": "1",
   "status": "local",
@@ -57,10 +57,10 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "84cda63eb0e693be8b8411338c52d2db2f416a8afc53621db613772e53fdd2fd",
+  "prompts_hash": "5337104e90f2c4073211f45b9bcb04ea062fe248844b53111237de58944e966e",
   "model": null
 }
---- file C/.review/local-rf/store.json ---
+--- file C/.verdict/state/local-rf/store.json ---
 {
   "schema_version": "1"
 }

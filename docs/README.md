@@ -20,9 +20,11 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [Benchmark corpus](benchmark.md): how the measured review rates are built and graded offline, and what the comparison page may cite.
 - [CI and test rules](ci-and-tests.md): the skip-token ban on commit messages, and the rules that keep the suite deterministic.
 - [CI recipe](ci-recipe.md): the copy-paste workflow that runs fetch, review, gate and post on your own runner.
+- [Typed configuration](config.md): strict parsing, cascading defaults, scoped plans, captured provenance, and configuration explain/preview.
 - [Glossary](glossary.md): the vocabulary the help, prompts and reports use, grouped by where you meet it.
 - [Go KB index](go-kb/README.md): what the knowledge base is, and where the `go-*` skills embed a copy of it.
 - [Go knowledge base](go-kb/knowledge-base.md): the 131 cards the `go-*` skills are built from: Rule, Why, Enforce, Since, Sources.
 - [Go rules](go-rules.md): the adopted rules, one per line with their `GO-<TOPIC>-<NN>` IDs and enforcement markers.
 - [Landing claims](landing-claims.md): every factual claim on the home page, and the manual line that checks it.
+- [Policy contract](policy-contract.md): requirement gates, evidence, consent, privacy constraints, and publication outcomes.
 - [Vision](vision.md): what Verdict is, what it refuses to be, and where its craft comes from.

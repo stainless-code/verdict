@@ -36,7 +36,7 @@ live_mk_post() {
   local pr="$1" head="$2"
   jq -n --arg h "$head" \
     '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
-    > "$EVAL_SANDBOX/.review/$pr/post.json"
+    > "$EVAL_SANDBOX/.verdict/state/$pr/post.json"
 }
 
 INFO_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Nit: clarify this line.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]'
@@ -78,15 +78,15 @@ assert_exit "tier-dirty gate exits 1" 1
 assert_file_grep "fail line names the tier and count" "$EVAL_OUT" "1 open finding(s) at-or-above important"
 assert_file_grep "fail tally counts the failing dimension" "$EVAL_OUT" "gate: FAIL (1 fail, 1 skip)"
 assert_file_grep "fail carries a next action" "$EVAL_OUT" "try: address or triage the open findings"
-before_hash="$(cat "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/PR.json" | shasum | cut -d' ' -f1)"
+before_hash="$(cat "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" | shasum | cut -d' ' -f1)"
 run_review gate acme/app "$PR" --max-severity important --live skip --json
 assert_exit "tier-dirty --json exits 1" 1
 assert_eq "json fail carries passed false" "false" "$(jq -r .data.passed <"$EVAL_OUT")"
 assert_eq "a failed gate is not a refusal" "null" "$(jq -r .error <"$EVAL_OUT")"
 assert_eq "json fail marks the dimension" "fail" "$(jq -r '.data.dimensions[] | select(.id=="findings") | .status' <"$EVAL_OUT")"
-after_hash="$(cat "$EVAL_SANDBOX/.review/$PR/findings.json" "$EVAL_SANDBOX/.review/$PR/PR.json" | shasum | cut -d' ' -f1)"
+after_hash="$(cat "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" | shasum | cut -d' ' -f1)"
 assert_eq "a failed gate mutates no store" "$before_hash" "$after_hash"
-if [ -f "$EVAL_SANDBOX/.review/$PR/post.json" ]; then
+if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/post.json" ]; then
   bad "gate wrote post.json"
 else
   good "gate never posts or writes"

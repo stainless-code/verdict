@@ -39,7 +39,7 @@ type corpusRollup struct {
 }
 
 func (st *state) readCorpus(e os.DirEntry) {
-	dir := ".review/" + e.Name()
+	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), e.Name())
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
 		st.warn("trend skips corpus bundle " + dir + "/ (" + ref.Message + ")")

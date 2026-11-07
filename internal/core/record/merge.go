@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/brief"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/diagram"
@@ -25,6 +26,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	security     any
 	review       *jq.Obj
 	controls     *controls.Snapshot
+	run          *config.RunState
 	kb           *kb.Ctx
 	forces       *core.GlobalForces
 	preFooter    func(string) string
@@ -40,6 +42,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	dir          string
 	reviewFile   string
 	root         string
+	repoRoot     string
 	anchorHunks  string
 	headShort    string
 	prov         string
@@ -55,6 +58,18 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	dryRun       bool
 	inputChecked bool
 	warnings     []string
+}
+
+// kbThresholds reads the retirement policy the run resolved: the
+// verified typed defaults when the bundle carries them, else the consumed
+// environment names over the built-in floor for a bundle that predates
+// typed evidence.
+func (st *state) kbThresholds() (int, string) {
+	if st.run != nil && st.run.Resolved != nil {
+		return st.run.Resolved.Defaults.Values.KBPolicy()
+	}
+	defaults := config.EnvDefaults(st.env, st.warn)
+	return defaults.KBPolicy()
 }
 
 func (st *state) warn(msg string) {
@@ -80,8 +95,9 @@ func (st *state) human(line string) {
 
 func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.kb = kb.New(st.warn)
+	st.kb.Root = st.repoRoot
 	st.kb.ReadFile = st.controls.ReadFile
-	st.kb.ResolvePolicy(st.env, st.controls.Has(kb.File))
+	st.kb.Policy = kb.PolicyFrom(st.kbThresholds())
 	st.kb.Broken = false
 	st.kb.QuietShape = st.inputChecked
 	st.loadKB()

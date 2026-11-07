@@ -19,7 +19,8 @@ import (
 
 // Request carries the resolved init invocation (init takes no positionals).
 type Request struct {
-	Env map[string]string
+	Env      map[string]string
+	RepoRoot string
 }
 
 // Run executes `init --preset <chill|standard|strict> [--yes] [--json]`,
@@ -72,6 +73,7 @@ func initRequest(r *cli.Runner, req Request, f flags) *initcore.Request {
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
 		},
+		RepoRoot: req.RepoRoot,
 	}
 	return out
 }

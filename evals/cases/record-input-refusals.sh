@@ -6,31 +6,16 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 SLUG="local-refuse"
-LB="$EVAL_SANDBOX/.review/$SLUG"
+LB="$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 mk_local() { # stdin review.json becomes the bundle input
-  rm -rf "$LB"
-  mkdir -p "$LB"
-  cat > "$LB/source.json" <<'EOF'
-{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}
-EOF
-  cat > "$LB/full.diff" <<'EOF'
-diff --git a/notes.txt b/notes.txt
-index 1111111..2222222 100644
---- a/notes.txt
-+++ b/notes.txt
-@@ -1,3 +1,3 @@
- top
--old line
-+new line
- bottom
-EOF
+  eval_mk_bundle "$SLUG"
   cat > "$LB/review.json"
 }
 
 kb_snapshot() {
   KB_BEFORE=""
-  for f in "$EVAL_SANDBOX/.review/kb.jsonl" "$EVAL_SANDBOX/.review/kb-joins.jsonl"; do
+  for f in "$EVAL_SANDBOX/.verdict/kb.jsonl" "$EVAL_SANDBOX/.verdict/kb-joins.jsonl"; do
     if [ -e "$f" ]; then
       KB_BEFORE="$KB_BEFORE$f:$(shasum -a 256 "$f" | cut -d' ' -f1)
 "
@@ -180,8 +165,8 @@ EOF
 echo '{oops' > "$LB/source.json"
 run_review record acme/app "$SLUG" --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ ! -e "$LB/record.json" ] \
-  && [ "$(jq -r '.error.code // empty' "$EVAL_OUT" 2>/dev/null)" = "controls-unavailable" ]; then
-  good "R9 corrupt source.json refuses controls-unavailable"
+  && [ "$(jq -r '.error.code // empty' "$EVAL_OUT" 2>/dev/null)" = "controls-stale" ]; then
+  good "R9 corrupt source.json refuses controls-stale (the snapshot binds to the base it no longer names)"
 else
   bad "R9 corrupt source.json exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
@@ -195,7 +180,7 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code // empty' "$EVAL_OUT" 2>/
 else
   bad "R10 post --dry-run exits $EVAL_STATUS: $(head -c 300 "$EVAL_ERR")"
 fi
-rm -rf "$EVAL_SANDBOX/.review/$PR"
+rm -rf "$EVAL_SANDBOX/.verdict/state/$PR"
 
 mk_local <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"x body with enough substance.","rigor":"pointed"}]}

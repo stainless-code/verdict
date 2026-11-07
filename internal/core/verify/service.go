@@ -56,7 +56,10 @@ func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *c
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"}
 	}
-	dir := readcommon.ResolveBundleDir(req.Pr)
+	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if req.Group != "" || req.Command != "" {
+		return RunGroup(ctx, req, dir, req.TimeUTC())
+	}
 	if !readcommon.IsFile(patchPath(dir)) {
 		return nil, st.withWarnings(missingPatchRefusal(dir))
 	}
@@ -116,7 +119,7 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	}
 	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
-	res, ref := runCommand(ctx, commander, vcmd, timeout, st.childEnv())
+	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv())
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"})
 	}
@@ -134,12 +137,15 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
-func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int, env []string) (core.Result, *core.RefusalError) {
+func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int,
+	dir string, env []string,
+) (core.Result, *core.RefusalError) {
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	res, err := commander.Run(tctx, core.Command{
+	res, err := commander.Run(tctx, &core.Command{
 		Argv:      []string{"bash", "-c", vcmd},
 		Env:       env,
+		Dir:       dir,
 		OutputCap: coreexec.VerifyOutputCap,
 	})
 	if err != nil {

@@ -8,13 +8,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SIG="6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e"
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-mkdir -p "$EVAL_SANDBOX/.review/7"
-cat >"$EVAL_SANDBOX/.review/7/PR.json" <<EOF
+mkdir -p "$EVAL_SANDBOX/.verdict/state/7"
+cat >"$EVAL_SANDBOX/.verdict/state/7/PR.json" <<EOF
 {"state":"OPEN","headRefOid":"$HEAD","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}
 EOF
-printf 'diff sentinel\n' >"$EVAL_SANDBOX/.review/7/full.diff"
-cp "$EVAL_SANDBOX/.review/7/PR.json" "$EVAL_SANDBOX/pr.before"
-cp "$EVAL_SANDBOX/.review/7/full.diff" "$EVAL_SANDBOX/diff.before"
+printf 'diff sentinel\n' >"$EVAL_SANDBOX/.verdict/state/7/full.diff"
+cp "$EVAL_SANDBOX/.verdict/state/7/PR.json" "$EVAL_SANDBOX/pr.before"
+cp "$EVAL_SANDBOX/.verdict/state/7/full.diff" "$EVAL_SANDBOX/diff.before"
 
 long_body="$(dd if=/dev/zero bs=9000 count=1 2>/dev/null | tr '\0' 'x')"
 jq -n --arg sig "$SIG" --arg long "$long_body" '
@@ -85,13 +85,13 @@ else
 fi
 assert_eq "T1 re-reads both thread pages" "2" "$(grep -c 'api graphql' "$EVAL_STUBLOG")"
 assert_stream_nogrep "T1 never refetches the diff" "$EVAL_STUBLOG" ' pr diff | repos/.*/pulls/' "-E"
-if cmp -s "$EVAL_SANDBOX/pr.before" "$EVAL_SANDBOX/.review/7/PR.json" \
-  && cmp -s "$EVAL_SANDBOX/diff.before" "$EVAL_SANDBOX/.review/7/full.diff"; then
+if cmp -s "$EVAL_SANDBOX/pr.before" "$EVAL_SANDBOX/.verdict/state/7/PR.json" \
+  && cmp -s "$EVAL_SANDBOX/diff.before" "$EVAL_SANDBOX/.verdict/state/7/full.diff"; then
   good "T1 touches only threads.json"
 else
   bad "T1 rewrote the bundle metadata or diff"
 fi
-FEED="$EVAL_SANDBOX/.review/7/threads.json"
+FEED="$EVAL_SANDBOX/.verdict/state/7/threads.json"
 if jq -e --arg head "$HEAD" --arg sig "$SIG" '
   .schema_version == "1" and .provider == "github" and .pr == 7 and .head_sha == $head
   and .truncated == false and (.threads | length) == 3
