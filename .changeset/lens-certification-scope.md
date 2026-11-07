@@ -1,0 +1,5 @@
+---
+"@stainless-code/verdict": minor
+---
+
+Lens certification becomes version-scoped, and aggregation stops refusing records it can read. A cost record offered as `schema_version: "2"` may carry only the top-level fields v2 defines: an extra field now refuses by name and version (`carries top-level field "notes", which that version does not define — remove the field; no version this build certifies defines it`) instead of a generic "unreadable" sentence, and a record bound to the run at a version this build does not certify refuses as `version-unsupported` rather than being re-read as v2. The group estimate and the cost rollup take the other side of the split: they price the fields they know and ignore top-level fields a newer writer added, so one run's stray key no longer voids the history an estimate is built from — that closes a `budget-unknown` refusal under `require_known_estimate` that a single unregistered field could previously trigger. Nested shapes stay strict, and every fail-closed check still fails: foreign capture, duplicated key, unreadable entry, mismatched binding.

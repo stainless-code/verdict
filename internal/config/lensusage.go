@@ -16,7 +16,11 @@ import (
 // bundle. Every field is agent self-report: the CLI never observed the
 // dispatches, so a clean verdict is attestation, not tool proof.
 type LensUsage struct {
-	State     string           `json:"state"`
+	State string `json:"state"`
+	// Problem is the actionable sentence behind a refused record: which
+	// field or version, and what fixes it. It is empty when the record was
+	// refused for a reason that names no single cause.
+	Problem   string           `json:"problem,omitempty"`
 	Groups    []LensGroupUsage `json:"groups"`
 	Unknown   []string         `json:"unknown,omitempty"`
 	Ambiguous []string         `json:"ambiguous,omitempty"`
@@ -35,6 +39,10 @@ const (
 	// LensUsageUnbound means cost.json holds no schema-v2 record bound to
 	// this capture: another run's history never certifies this run's work.
 	LensUsageUnbound = "unbound"
+	// LensUsageVersion means a record binds this capture by run and inputs
+	// hash but declares a cost-schema version this build does not certify:
+	// evidence from another version is never re-read as the current one.
+	LensUsageVersion = "version-unsupported"
 )
 
 // LensGroupUsage is one plan group's counted usage. Known reports whether
@@ -227,7 +235,7 @@ func (u *LensUsage) unknownViolation(group *LensGroupUsage) LensViolation {
 	}
 	return LensViolation{
 		GroupID: group.GroupID, Label: group.Label,
-		Reason: LensUsageUnknown, Detail: unknownDetail(u.State, group),
+		Reason: LensUsageUnknown, Detail: u.unknownDetail(group),
 	}
 }
 
@@ -237,15 +245,19 @@ const (
 	capSentence   = " caps lenses at "
 )
 
-// unknownDetail explains why a capped group has no certifiable usage.
-func unknownDetail(state string, group *LensGroupUsage) string {
+// unknownDetail explains why a capped group has no certifiable usage: the
+// record's own problem sentence when it named one, otherwise the state.
+func (u *LensUsage) unknownDetail(group *LensGroupUsage) string {
 	limit := strconv.Itoa(*group.Cap)
-	switch state {
+	switch u.State {
 	case LensUsageAbsent:
 		return profilePrefix + group.Label + capSentence + limit + " but cost.json recorded no lens usage — unknown, not zero"
-	case LensUsageMalformed:
+	case LensUsageMalformed, LensUsageVersion:
+		if u.Problem != "" {
+			return profilePrefix + group.Label + capSentence + limit + " but " + u.Problem + " — unknown, not zero"
+		}
 		return profilePrefix + group.Label + capSentence + limit +
-			" but cost.json lens usage is unreadable or carries an unregistered field — unknown, not zero"
+			" but cost.json lens usage is unreadable — unknown, not zero"
 	case LensUsageUnbound:
 		return profilePrefix + group.Label + capSentence + limit + " but cost.json holds no record bound to this run — unknown, not zero"
 	default:
@@ -266,30 +278,37 @@ func overCapDetail(group *LensGroupUsage) string {
 
 // ReadLensUsage loads a bundle's lens attestation and evaluates it against
 // the verified plan. A missing cost.json is absent; bytes that do not decode
-// strictly are malformed; a record not bound to this capture is unbound;
-// and a bound record without a lenses list recorded nothing for this run.
-// Every one of those is unknown, never zero. The entries are agent
-// attestation, not observed dispatch proof.
+// strictly are malformed; a record not bound to this capture is unbound; a
+// record bound by run and inputs but declaring an unknown version is
+// version-unsupported; and a bound record without a lenses list recorded
+// nothing for this run. Every one of those is unknown, never zero. The
+// entries are agent attestation, not observed dispatch proof.
 func ReadLensUsage(rs *RunState, dir string) LensUsage {
 	var plan *Plan
 	if rs != nil && rs.Resolved != nil {
 		plan = &rs.Resolved.Plan
 	}
-	entries, state := readLensEntries(rs, filepath.Join(dir, "cost.json"))
-	return EvaluateLensUsage(plan, state, entries)
+	entries, state, problem := readLensEntries(rs, filepath.Join(dir, "cost.json"))
+	usage := EvaluateLensUsage(plan, state, entries)
+	usage.Problem = problem
+	return usage
 }
 
 // lensSchemaVersion is the only cost-record version whose lens entries carry
 // the run binding this reader can certify.
 const lensSchemaVersion = "2"
 
-// lensRecordKeys are the top-level fields a schema-v2 cost record may carry:
-// the billing fields the writer emits plus the binding added with lens
-// evidence. A new field must be registered here before it can certify.
-var lensRecordKeys = map[string]bool{
-	"schema_version": true, "effort": true, "models": true, "est_usd": true,
-	"wall_seconds": true, "diff_bytes": true, "lenses": true,
-	"run": true, "inputs_sha256": true, "group_costs": true,
+// lensRecordKeysByVersion maps every certifiable cost-record version to the
+// exact top-level shape that version defines. Certification is version
+// scoped: a field a version does not define refuses under that version and
+// names both, instead of being read as if it were evidence. A new field that
+// affects lens evidence requires a new version, not a silent addition.
+var lensRecordKeysByVersion = map[string]map[string]bool{
+	lensSchemaVersion: {
+		"schema_version": true, "effort": true, "models": true, "est_usd": true,
+		"wall_seconds": true, "diff_bytes": true, "lenses": true,
+		"run": true, "inputs_sha256": true, "group_costs": true,
+	},
 }
 
 // groupCostKeys is the complete per-group cost shape: an unknown field is an
@@ -303,32 +322,51 @@ var lensEntryKeys = map[string]bool{"group": true, "labels": true}
 // readLensEntries reads the attestation bound to the current capture. Only
 // the last schema-v2 record whose run name and inputs hash both equal the
 // verified bundle's can certify: earlier history is billing evidence, and an
-// incomplete bound record never falls back to an earlier success.
-func readLensEntries(rs *RunState, path string) ([]core.LensUsage, string) {
+// incomplete bound record never falls back to an earlier success. The problem
+// sentence names the refused field or version when there is one to name.
+func readLensEntries(rs *RunState, path string) ([]core.LensUsage, string, string) {
 	raw, missing := readCostFile(path)
 	if missing != "" {
-		return nil, missing
+		return nil, missing, ""
 	}
+	bound, state, problem := certificateRecord(rs, raw)
+	if state != "" {
+		return nil, state, problem
+	}
+	return certifiedEntries(bound)
+}
+
+// certificateRecord decodes the cost file and names the record that certifies
+// this capture, or the state and sentence that refuse it.
+func certificateRecord(rs *RunState, raw []byte) (map[string]any, string, string) {
 	doc, ref := decodeStrict(raw)
 	if ref != nil {
-		return nil, LensUsageMalformed
+		return nil, LensUsageMalformed, ""
 	}
 	records, ok := lensRecords(doc)
 	if !ok {
-		return nil, LensUsageMalformed
+		return nil, LensUsageMalformed, ""
 	}
-	bound, ok := lastBoundRecord(records, rs)
-	if !ok {
-		return nil, LensUsageUnbound
+	bound, version, boundOK := newestBinding(records, rs)
+	if !boundOK {
+		return nil, LensUsageUnbound, ""
 	}
-	entries, present, ok := lensRecordEntries(bound)
+	if !certifies(version) {
+		return nil, LensUsageVersion, foreignVersionProblem(version)
+	}
+	return bound, "", ""
+}
+
+// certifiedEntries reads the lens list of the record that certifies the run.
+func certifiedEntries(bound map[string]any) ([]core.LensUsage, string, string) {
+	entries, present, ok, problem := lensRecordEntries(bound)
 	if !ok {
-		return nil, LensUsageMalformed
+		return nil, LensUsageMalformed, problem
 	}
 	if !present {
-		return nil, LensUsageAbsent
+		return nil, LensUsageAbsent, ""
 	}
-	return entries, LensUsageRecorded
+	return entries, LensUsageRecorded, ""
 }
 
 // lensRecords splits a cost document into its records: one object, or the
@@ -352,43 +390,106 @@ func lensRecords(doc any) ([]map[string]any, bool) {
 	}
 }
 
-// lastBoundRecord picks the newest record bound to the current capture: a
-// schema-v2 record whose run and inputs_sha256 both match the verified
-// bundle. Without a verified name and inputs hash nothing can be bound, so
-// no record can certify.
-func lastBoundRecord(records []map[string]any, rs *RunState) (map[string]any, bool) {
-	if rs == nil || rs.Name == "" || rs.InputsSHA256 == "" {
-		return nil, false
+// newestBinding picks the newest record that binds the current capture and
+// declares a version: run and inputs_sha256 both match the verified bundle.
+// That record is the attestation, so a version this build does not certify
+// refuses even when an older certified record sits behind it — an older success
+// never stands in for the newest binding. A binding that declares no version is
+// skipped: it cannot certify, and it is not the diagnosis either. Without a
+// verified name and inputs hash nothing can be bound, so no record can certify.
+func newestBinding(records []map[string]any, rs *RunState) (map[string]any, string, bool) {
+	if !bindable(rs) {
+		return nil, "", false
 	}
 	for _, record := range slices.Backward(records) {
-		if boundTo(record, rs) {
-			return record, true
+		if !bindsCapture(record, rs) {
+			continue
+		}
+		if version := recordVersion(record); version != "" {
+			return record, version, true
 		}
 	}
-	return nil, false
+	return nil, "", false
 }
 
 // boundTo reports whether one record names this capture: schema-v2 evidence
 // whose run and inputs hash both equal the verified bundle's.
 func boundTo(record map[string]any, rs *RunState) bool {
-	if !schemaV2(record) {
-		return false
-	}
-	return recordString(record, "run") == rs.Name && recordString(record, "inputs_sha256") == rs.InputsSHA256
+	return schemaV2(record) && bindsCapture(record, rs)
 }
 
 // schemaV2 reports the record version that carries the run binding. Both the
 // string and the number spelling are accepted; any other version, including
 // an absent one, cannot certify.
 func schemaV2(record map[string]any) bool {
+	return recordVersion(record) == lensSchemaVersion
+}
+
+// recordVersion reads the declared cost-schema version in either spelling,
+// empty when absent or not a string or number.
+func recordVersion(record map[string]any) string {
 	switch version := record["schema_version"].(type) {
 	case string:
-		return version == lensSchemaVersion
+		return version
 	case json.Number:
-		return version.String() == lensSchemaVersion
+		return version.String()
 	default:
-		return false
+		return ""
 	}
+}
+
+// certifies reports whether this build can certify a record of that version.
+func certifies(version string) bool {
+	_, ok := lensRecordKeysByVersion[version]
+	return ok
+}
+
+// bindable reports a verified capture name and inputs hash: without both, no
+// record can be bound to the run.
+func bindable(rs *RunState) bool {
+	return rs != nil && rs.Name != "" && rs.InputsSHA256 != ""
+}
+
+// bindsCapture reports whether one record names this capture by run and inputs
+// hash, whatever version it declares: a newer writer's evidence is still this
+// run's evidence, refused by version rather than reported as missing.
+func bindsCapture(record map[string]any, rs *RunState) bool {
+	return recordString(record, "run") == rs.Name &&
+		recordString(record, "inputs_sha256") == rs.InputsSHA256
+}
+
+// unregisteredFieldProblem names the top-level field a record declares beyond
+// its own version's shape, and the one fix that works today: drop the field.
+// A newer version that defines it does not exist for this build, so telling the
+// author to declare one would name a step they cannot take.
+func unregisteredFieldProblem(version, field string) string {
+	return "cost.json declares schema_version " + version + " but carries top-level field " +
+		strconv.Quote(field) + ", which that version does not define — remove the field; " +
+		"no version this build certifies defines it"
+}
+
+// foreignVersionProblem names the version that arrived and the one this build
+// certifies: a newer record is refused by version, never re-read as v2.
+func foreignVersionProblem(version string) string {
+	return "cost.json binds this run at schema_version " + version +
+		", but this build certifies schema_version " + lensSchemaVersion + " — upgrade verdict"
+}
+
+// unregisteredField returns the first top-level field obj declares beyond the
+// version's shape, in sorted order so the sentence never depends on map
+// iteration.
+func unregisteredField(obj map[string]any, allowed map[string]bool) string {
+	extra := make([]string, 0, len(obj))
+	for key := range obj {
+		if !allowed[key] {
+			extra = append(extra, key)
+		}
+	}
+	slices.Sort(extra)
+	if len(extra) == 0 {
+		return ""
+	}
+	return extra[0]
 }
 
 // recordString reads one string field, empty when absent or not a string.
@@ -401,29 +502,42 @@ func recordString(record map[string]any, key string) string {
 }
 
 // lensRecordEntries reads the chosen record's lens list. present reports a
-// non-null list, so an empty list attests explicit zero for every group;
-// ok is false for an unknown field or an unreadable entry.
-func lensRecordEntries(record map[string]any) ([]core.LensUsage, bool, bool) {
-	if !knownKeys(record, lensRecordKeys) {
-		return nil, false, false
+// non-null list, so an empty list attests explicit zero for every group; ok
+// is false for an unreadable entry, and problem carries the sentence when the
+// refusal can name a field or a version.
+func lensRecordEntries(record map[string]any) (entries []core.LensUsage, present, ok bool, problem string) {
+	version := recordVersion(record)
+	keys, certified := lensRecordKeysByVersion[version]
+	if !certified {
+		return nil, false, false, foreignVersionProblem(version)
 	}
+	if field := unregisteredField(record, keys); field != "" {
+		return nil, false, false, unregisteredFieldProblem(version, field)
+	}
+	return lensListEntries(record)
+}
+
+// lensListEntries reads the lenses list of a certified record. present reports
+// a non-null list, so an empty list attests explicit zero for every group; ok
+// is false for an unreadable entry.
+func lensListEntries(record map[string]any) (entries []core.LensUsage, present, ok bool, problem string) {
 	raw, present := record["lenses"]
 	if !present || raw == nil {
-		return nil, false, true
+		return nil, false, true, ""
 	}
-	list, ok := raw.([]any)
-	if !ok {
-		return nil, false, false
+	list, listOK := raw.([]any)
+	if !listOK {
+		return nil, false, false, ""
 	}
-	entries := make([]core.LensUsage, 0, len(list))
+	entries = make([]core.LensUsage, 0, len(list))
 	for _, item := range list {
-		parsed, ok := lensListItem(item)
-		if !ok {
-			return nil, true, false
+		parsed, itemOK := lensListItem(item)
+		if !itemOK {
+			return nil, true, false, ""
 		}
 		entries = append(entries, parsed)
 	}
-	return entries, true, true
+	return entries, true, true, ""
 }
 
 // lensListItem reads one list item as a shaped group entry.

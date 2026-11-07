@@ -337,3 +337,22 @@ func writeRecord(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+// TestReadGroupCostsIgnoresUnregisteredTopLevelField pins the split by plane:
+// aggregation prices the fields it knows and ignores a top-level field a newer
+// writer added, so one run's stray key never voids the group history the
+// estimate is built from. The nested entry shape stays strict — see
+// TestReadGroupCostsRejectsUnsupportedShape.
+func TestReadGroupCostsIgnoresUnregisteredTopLevelField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cost.json")
+	writeRecord(t, path, `{"schema_version":"2","run":"local-g","inputs_sha256":"aa","notes":"stray",
+	  "group_costs":[{"group":"group-a","effort":"standard","est_usd":2}]}`)
+	samples, status := ReadGroupCosts(&RunState{Name: "local-g", InputsSHA256: "aa"}, path)
+	if status != LensUsageRecorded {
+		t.Fatalf("status = %q, want recorded despite the stray top-level field", status)
+	}
+	if len(samples) != 1 || len(samples[0].Costs) != 1 || samples[0].Costs[0].EstUSD != "2" {
+		t.Fatalf("samples = %+v, want the record's own group cost", samples)
+	}
+}

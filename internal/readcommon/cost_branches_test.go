@@ -1,6 +1,7 @@
 package readcommon_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -121,5 +122,43 @@ func TestCostRollupManifestNamedChunkOutsideTheGlob(t *testing.T) {
 	}
 	if len(res.Warns) != 0 {
 		t.Errorf("warns = %v; want none", res.Warns)
+	}
+}
+
+// TestCostModelsRejectsObjectShape pins the one accepted models shape: an
+// object is not a models list. Reading it by key order would discard the
+// keys, which are the only place the writer named the model, so the shape
+// gate refuses rather than pricing an entry it cannot attribute.
+func TestCostModelsRejectsObjectShape(t *testing.T) {
+	t.Parallel()
+	rec := map[string]any{"models": map[string]any{
+		"m": map[string]any{"input_tokens": 5, "output_tokens": 5},
+	}}
+	if models, ok := readcommon.CostModels(rec); ok {
+		t.Fatalf("CostModels(object) = %v/true; want the shape gate to fail", models)
+	}
+}
+
+// TestCostRollupObjectModelsIsUnreadable pins the consequence end to end: a
+// store whose models is an object reads as unreadable spend, named by a
+// warning, never as a silently model-less record that drops the tokens.
+func TestCostRollupObjectModelsIsUnreadable(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeStore(t, dir, map[string]string{
+		"cost.json": `{"schema_version":"2","models":{"m":{"input_tokens":100}}}`,
+	})
+	res := readcommon.CostRollup(dir)
+	if got := costNum(t, res.Cost, "total_tokens"); got != 0 {
+		t.Errorf("total_tokens = %v; want 0 for unreadable spend", got)
+	}
+	found := false
+	for _, w := range res.Warns {
+		if strings.Contains(w, "unreadable") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warns = %v; want the unreadable-spend warning", res.Warns)
 	}
 }

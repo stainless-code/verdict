@@ -888,6 +888,21 @@ unenforced. `enforce_cap: true` refuses typed `unsupported-cap` before any
 budget check, force, or consent — the guard is a pre-run projection, never a
 billing cap. Estimates cover the review run about to start, not the fetch reads.
 
+Lens evidence and group costs are read by two consumers with different
+strictness, and both are visible in `report --cost` and the typed refusals.
+Aggregators — the rollup, the group estimate, the receipt — price the fields
+they know and ignore top-level fields a newer writer added, so one record's
+stray key never voids the history an estimate is built from. Certification of
+lens evidence is version-scoped: the newest record bound to the capture by
+`run` and `inputs_sha256` may carry only the top-level fields its
+`schema_version` defines — an extra field refuses by name and version (for
+example, one carrying a stray `notes` key is told that v2 does not define it) —
+and a record bound to the run at a version this build does not certify refuses
+as `version-unsupported` rather than being re-read as v2. Both leave the capped
+group `usage-unknown`, never zero. Nothing loosens the fail-closed checks: a
+foreign capture, a duplicated key, an unreadable entry, and a mismatched
+binding all still refuse.
+
 When the agent's provider reports prompt caching, per-model `cost.json` entries
 may carry `cache_read_input_tokens` (served from cache) and
 `cache_creation_input_tokens` (spent writing the cache) — both subsets of the
@@ -1354,6 +1369,20 @@ POST: hunk index, keep-biased anchor partition, sig merge with append-only histo
 resolved/verification/triage claims, writes `findings.json` + `record.json`.
 Add `--dry-run` to run every check and write nothing; `--strict` promotes
 review-input warnings to errors.
+
+`--cost-names[=<names>]` names the `models[]` entries of the bundle's
+`cost.json` and its `chunks/*.cost.json` in place, so spend carries the panel
+seat that produced it. `<names>` is a comma-separated list in panel order —
+synthesizer first, then each lens; bare `--cost-names` reads the panel the
+bundle pinned and refuses when it pins none. An entry keeps the name of its
+seat and refuses when a name sits elsewhere, repeats, or comes from outside
+the panel; a name is never invented from a slug. One record's entries are its
+own seats, so a document holding several records gives each the whole panel.
+The pass changes no token count, writes nothing when it refuses, and names the
+files it already rewrote if a write fails partway; with `--dry-run` it proves
+the repair without writing. Entries are the array
+`models` the reader prices, so an object-shaped record or a non-object entry
+refuses (`cost-models-not-array`) rather than being converted.
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

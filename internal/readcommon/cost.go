@@ -120,6 +120,54 @@ func chunkWarn(path string) string {
 // rollup, the trend rollup, and the provenance footer.
 const CostFile = "cost.json"
 
+// CostRecordObjects splits a decoded cost document into the record objects this
+// reader prices: a single record object, or an array whose every element is
+// one, empty array included. ok is false for any other shape, because the
+// rollup folds every element of a document and voids the whole file on a single
+// non-object — so a repair that named the readable half would report success on
+// a file the reader still cannot price.
+func CostRecordObjects(doc any) (recs []*jq.Obj, ok bool) {
+	switch d := doc.(type) {
+	case *jq.Obj:
+		return []*jq.Obj{d}, true
+	case []any:
+		return recordObjects(d)
+	case nil:
+		// A null document is one empty record to the rollup (costRecordMap
+		// prices nil as a run with no fields), so it is not a shape to refuse:
+		// there is simply nothing in it to name.
+		return nil, true
+	}
+	return nil, false
+}
+
+// recordObjects collects an array document's records. A null element is the
+// rollup's empty record and is skipped rather than refused; any other
+// non-object voids the array, the way foldRecord voids the file.
+func recordObjects(arr []any) ([]*jq.Obj, bool) {
+	recs := make([]*jq.Obj, 0, len(arr))
+	for _, item := range arr {
+		if item == nil {
+			continue
+		}
+		rec, isObj := item.(*jq.Obj)
+		if !isObj {
+			return nil, false
+		}
+		recs = append(recs, rec)
+	}
+	return recs, true
+}
+
+// CostFiles lists every cost record a bundle carries: the bundle record
+// first, then each per-chunk record, deduplicated and sorted within the chunk
+// group. It is the list the `record --cost-names` repair walks; the spend
+// rollup reaches the same records through readCostFile and chunkCostFiles, so
+// a record added to one path is added to both.
+func CostFiles(dir string) []string {
+	return append([]string{filepath.Join(dir, CostFile)}, chunkCostFiles(dir)...)
+}
+
 // CostRecords reads a bundle's spend record: an
 // array passes, a single object reads as one record, and an absent,
 // oversized, or unparsable store reads nil (the callers degrade, never fail).
@@ -151,10 +199,15 @@ func CostEstimate(rec any) (float64, bool) {
 	return NumVal(est)
 }
 
-// CostModels reads one record's models list: an array passes, an object
-// contributes its values in key order (jq's `.models[]` iterates objects
-// too), and an absent or null list reads empty. Every non-null element must
-// be an object (the shape filter).
+// CostModels reads one record's models list: only an array passes, and an
+// absent or null list reads empty. Every non-null element must be an object
+// (the shape filter).
+//
+// An object-shaped list fails the shape gate rather than being read by key
+// order: the keys are the only place a model's name existed, so coercing the
+// values would drop the identity the writer gave and leave an unattributed
+// entry that still priced. A failing record reads as unreadable spend, which
+// the rollup names and never fails on.
 func CostModels(rec any) ([]any, bool) {
 	m, ok := rec.(map[string]any)
 	if !ok {
@@ -167,31 +220,11 @@ func CostModels(rec any) ([]any, bool) {
 	if !ok || raw == nil {
 		return nil, true
 	}
-	list, ok := coerceModelList(raw)
+	list, ok := raw.([]any)
 	if !ok || !allModelMaps(list) {
 		return nil, false
 	}
 	return list, true
-}
-
-func coerceModelList(raw any) ([]any, bool) {
-	switch t := raw.(type) {
-	case []any:
-		return t, true
-	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		vals := make([]any, 0, len(keys))
-		for _, k := range keys {
-			vals = append(vals, t[k])
-		}
-		return vals, true
-	default:
-		return nil, false
-	}
 }
 
 // readCostFile reads one cost file: records plus its present/parsed

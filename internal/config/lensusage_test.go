@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -238,7 +239,7 @@ func TestReadLensUsageDistinguishesPresence(t *testing.T) {
 		{name: "no binding", body: `{"schema_version":"2","lenses":[{"group":"group-a","labels":["x"]}]}`, state: LensUsageUnbound},
 		{name: "foreign run", body: `{"schema_version":"2","run":"8","inputs_sha256":"f00dfeed","lenses":[]}`, state: LensUsageUnbound},
 		{name: "foreign inputs", body: `{"schema_version":"2","run":"7","inputs_sha256":"beef","lenses":[]}`, state: LensUsageUnbound},
-		{name: "version one", body: `{"schema_version":"1","run":"7","inputs_sha256":"f00dfeed","lenses":[]}`, state: LensUsageUnbound},
+		{name: "version one", body: `{"schema_version":"1","run":"7","inputs_sha256":"f00dfeed","lenses":[]}`, state: LensUsageVersion},
 		{name: "duplicate keys", body: `{"schema_version":"2","run":"7","run":"7","inputs_sha256":"f00dfeed","lenses":[]}`, state: LensUsageMalformed},
 		{name: "trailing document", body: costBody(`[]`) + `{"schema_version":"2"}`, state: LensUsageMalformed},
 		{name: "unknown entry field", body: costBody(`[{"group":"group-a","labels":["x"],"note":"ok"}]`), state: LensUsageMalformed},
@@ -374,4 +375,107 @@ func TestCostRecordEncodesGroupedLenses(t *testing.T) {
 // a missing record without relying on the process's filesystem permissions.
 func TestReadLensUsageOpenFailureStaysUnreadable(t *testing.T) {
 	assertReaderState(t, filepath.Join(t.TempDir(), "invalid\x00path"), LensUsageMalformed)
+}
+
+// TestReadLensUsageNamesTheUnregisteredField pins the refusal's precision: a
+// bound v2 record carrying a field v2 does not define is refused by name and
+// version, there is a field to remove, so the message says which.
+func TestReadLensUsageNamesTheUnregisteredField(t *testing.T) {
+	body := `{"schema_version":"2","effort":"standard","run":"` + lensFixtureRun +
+		`","inputs_sha256":"` + lensFixtureInputs + `","notes":"spent more","lenses":[]}`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageMalformed {
+		t.Fatalf("state = %q, want malformed", usage.State)
+	}
+	for _, needle := range []string{`"notes"`, "schema_version 2"} {
+		if !strings.Contains(usage.Problem, needle) {
+			t.Fatalf("problem = %q, want it to name %q", usage.Problem, needle)
+		}
+	}
+	violations := usage.Violations()
+	if len(violations) != 2 {
+		t.Fatalf("violations = %v, want one per capped group", violations)
+	}
+	if !strings.Contains(violations[0].Detail, `"notes"`) {
+		t.Fatalf("detail = %q, want it to carry the field name", violations[0].Detail)
+	}
+}
+
+// TestReadLensUsageRefusesForeignVersion pins version-scoped certification: a
+// record bound by run and inputs at a version this build does not certify is a
+// version problem, never silently re-read as v2 and never merely "unbound".
+func TestReadLensUsageRefusesForeignVersion(t *testing.T) {
+	body := `{"schema_version":"3","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[{"group":"group-a","labels":["x"]}]}`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageVersion {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
+	}
+	for _, needle := range []string{"schema_version 3", "schema_version 2"} {
+		if !strings.Contains(usage.Problem, needle) {
+			t.Fatalf("problem = %q, want it to name %q", usage.Problem, needle)
+		}
+	}
+	if usage.Groups[0].Known {
+		t.Fatal("a v3 record certified v2 lens evidence")
+	}
+}
+
+// TestReadLensUsageSkipsUnversionedBinding pins the diagnosis order: a binding
+// that declares no version is not a version refusal, so the newest binding that
+// does declare an uncertifiable version names the refusal instead of the run
+// reading as merely unbound.
+func TestReadLensUsageSkipsUnversionedBinding(t *testing.T) {
+	body := `[{"schema_version":"3","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[{"group":"group-a","labels":["old"]}]},` +
+		`{"run":"` + lensFixtureRun + `","inputs_sha256":"` + lensFixtureInputs +
+		`","lenses":[{"group":"group-a","labels":["newest"]}]}]`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageVersion {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
+	}
+	if !strings.Contains(usage.Problem, "schema_version 3") {
+		t.Fatalf("problem = %q, want it to name schema_version 3", usage.Problem)
+	}
+	if usage.Groups[0].Known {
+		t.Fatal("an unversioned binding certified lens evidence")
+	}
+}
+
+// TestReadLensUsageRefusesOlderBindingBehindForeignVersion pins the version
+// half of that rule: the newest binding declares a version this build cannot
+// certify, so a certified record from an earlier review of the same capture
+// never stands in for it — evidence from a newer writer is a version problem,
+// not a stale success.
+func TestReadLensUsageRefusesOlderBindingBehindForeignVersion(t *testing.T) {
+	body := `[` + costBody(`[{"group":"group-a","labels":["earlier"]}]`) + `,` +
+		`{"schema_version":"3","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[]}]`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageVersion {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
+	}
+	if !strings.Contains(usage.Problem, "schema_version 3") {
+		t.Fatalf("problem = %q, want it to name schema_version 3", usage.Problem)
+	}
+	if usage.Groups[0].Known {
+		t.Fatal("an older v2 record certified a capture whose newest binding declared v3")
+	}
+}
+
+// TestReadLensUsageKeepsHistoryReadable pins the other half of the split: an
+// unregistered field refuses certification of that record, while the earlier
+// record bound to the same capture still cannot be certified — the newest
+// bound record is the attestation, never an older success.
+func TestReadLensUsageKeepsHistoryReadable(t *testing.T) {
+	body := `[` + costBody(`[{"group":"group-a","labels":["x"]}]`) + `,` +
+		`{"schema_version":"2","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","notes":"later","lenses":[]}]`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageMalformed {
+		t.Fatalf("state = %q, want malformed", usage.State)
+	}
+	if usage.Groups[0].Known {
+		t.Fatal("an older record certified a capture whose newest bound record was refused")
+	}
 }
