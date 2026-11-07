@@ -321,6 +321,15 @@ func conflictingStateNegation(raw string) (string, bool) {
 	return "", false
 }
 
+// trimDepthPrefixes strips every leading `**/` segment: gitignore's
+// at-any-depth marker may repeat.
+func trimDepthPrefixes(pattern string) string {
+	for strings.HasPrefix(pattern, "**/") {
+		pattern = strings.TrimPrefix(pattern, "**/")
+	}
+	return pattern
+}
+
 // isStateNegation matches `!`-lines whose pattern can match the state
 // directory: the bare `state` name in any anchored or basename form,
 // `state/`-prefixed paths, `*`-style globs matching `state`, and the
@@ -332,9 +341,10 @@ func isStateNegation(line string) bool {
 	}
 	pattern := strings.TrimSpace(strings.TrimPrefix(trimmed, "!"))
 	pattern = strings.TrimPrefix(pattern, "/")
-	// `**/` is gitignore for "at any depth", so `!**/state` re-admits the
+	// `**/` is gitignore for "at any depth" and may repeat, so every leading
+	// segment is stripped first: `!**/state` and `!**/**/state` re-admit the
 	// state directory exactly as `!state` would.
-	pattern = strings.TrimPrefix(pattern, "**/")
+	pattern = trimDepthPrefixes(pattern)
 	pattern = strings.TrimSuffix(pattern, "/")
 	if pattern == "" {
 		return false

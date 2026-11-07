@@ -124,6 +124,37 @@ func TestReportWarnsEachProfileGapOnce(t *testing.T) {
 	}
 }
 
+// TestReportWarnsEachLensGapOnce pins the same single-warning rule on the
+// attestation path: the capped group's gap reaches the operator through the
+// compliance line, not twice.
+func TestReportWarnsEachLensGapOnce(t *testing.T) {
+	req := fixture(t, "[]")
+	capped := "capped"
+	limit := 1
+	repo := &core.Config{
+		SchemaVersion: "1",
+		Profiles:      map[string]core.ConfigProfile{"capped": {MaxLenses: &limit}},
+		Scopes:        []core.ConfigScope{{Name: "capped", Include: []string{"notes.txt"}, Profile: &capped}},
+	}
+	writeResolvedCapture(t, resolveCapture(t, repo, nil))
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	named := 0
+	for _, warning := range resp.Warnings {
+		if strings.Contains(warning, "capped appears in more than one lens entry") ||
+			strings.Contains(warning, "cost.json recorded no lens usage") {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Fatalf("warnings = %q, want the lens gap named once", resp.Warnings)
+	}
+}
+
 // TestReportCappedGroupWithoutAttestationNeverPasses proves a max_lenses-only
 // group counts as required work: absent attestation stays unknown, not pass.
 func TestReportCappedGroupWithoutAttestationNeverPasses(t *testing.T) {

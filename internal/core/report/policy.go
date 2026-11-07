@@ -141,11 +141,9 @@ func warnDeepValidation(st *state) {
 	if st.policy == nil || st.policy.Resolved == nil {
 		return
 	}
-	head := ""
-	if b := readcommon.OpenBundle(st.dir); b != nil {
-		head = b.Head()
-	}
-	for _, gap := range verifycore.DeepGaps(st.policy, st.dir, head, st.req.RepoRootPath()) {
+	// Same head the compliance pass compared against: a second lookup could
+	// name a different head and the prefixed gaps would stop matching.
+	for _, gap := range verifycore.DeepGaps(st.policy, st.dir, st.headSHA, st.req.RepoRootPath()) {
 		if warnedByCompliance(st, gapPrefixWork+gap) {
 			continue
 		}

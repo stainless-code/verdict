@@ -100,6 +100,7 @@ func TestIsStateNegation(t *testing.T) {
 		{"!state/keep.json", true},
 		{"!**", true},
 		{"!**/state", true},
+		{"!**/**/state", true},
 		{"!**/state/**", true},
 		{"!*.json", false},
 		{"!**/other", false},
