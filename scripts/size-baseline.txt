@@ -44,12 +44,13 @@
 # Version-scoped lens certification on top: the per-version record-key table,
 # the refusal sentences that name a field or a version, and the tolerant
 # aggregator path. Measured deltas track segment padding more than code volume
-# (both amd64 targets gained exactly 8192 bytes, windows/arm64 4608, while
-# darwin/arm64 did not move), and linux/arm64, whose segments pad to 64 KiB,
-# crossed a boundary for 65536. The three ceilings that overflow move to the
-# next 10 kB above their exact measurement; darwin/arm64 and windows/amd64
-# stay put. windows/arm64 then measured 10919936 locally but 10920960 on CI,
-# 960 over its ceiling, so it moves to the next 10 kB above the CI measurement.
+# (darwin/amd64 and linux/amd64 each gained exactly 8192 bytes, windows/amd64
+# 5632, windows/arm64 4608, while darwin/arm64 did not move), and linux/arm64,
+# whose segments pad to 64 KiB, crossed a boundary for 65536. The three
+# ceilings that overflow move to the next 10 kB above their exact measurement;
+# darwin/arm64 and windows/amd64 stay put. windows/arm64 then measured 10919936
+# locally but 10920960 on CI, 960 over its ceiling, so it moves to the next
+# 10 kB above the CI measurement.
 deps 0
 darwin/amd64 12030000
 darwin/arm64 11030000
