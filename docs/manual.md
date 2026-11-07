@@ -1382,8 +1382,9 @@ bundle pinned and refuses when it pins none. An entry keeps the name of its
 seat and refuses when a name sits elsewhere, repeats, or comes from outside
 the panel; a name is never invented from a slug. One record's entries are its
 own seats, so a document holding several records gives each the whole panel.
-The pass changes no token count and writes nothing on refusal; with
-`--dry-run` it proves the repair without writing. Entries are the array
+The pass changes no token count, writes nothing when it refuses, and names the
+files it already rewrote if a write fails partway; with `--dry-run` it proves
+the repair without writing. Entries are the array
 `models` the reader prices, so an object-shaped record or a non-object entry
 refuses (`cost-models-not-array`) rather than being converted.
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
