@@ -33,7 +33,7 @@ func reportNext(st *state) string {
 	if st.flags.Output != "" {
 		return "wrote " + st.flags.Output
 	}
-	if st.nOpen > 0 {
+	if viewOpen(viewRanked(st)) > 0 {
 		return "address open threads"
 	}
 	return "none open — nothing to address"
@@ -262,7 +262,10 @@ func buildHuman(st *state) []string {
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
 	}
-	if st.nOpen > 0 {
+	// The footer follows the view the header reports: with a display floor the
+	// rendered list can be empty while the store still holds open findings, and
+	// "address open threads" beside "(0 shown) open=0" read as a contradiction.
+	if viewOpen(view) > 0 {
 		return append(lines, "next: address open threads")
 	}
 	return append(lines, "next: none open — nothing to address")

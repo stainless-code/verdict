@@ -61,6 +61,25 @@ func TestParsePersonalCredentials(t *testing.T) {
 	checkPersonalRefusal(t, `{"bogus":1}`, CodeBadConfig, "bogus")
 }
 
+// TestParsePersonalReachesNestedDefaults pins the recursive walk: a misspelled
+// kb_policy member used to be accepted here and silently keep the built-in
+// threshold, while the identical typo in .verdict/config.json refused.
+func TestParsePersonalReachesNestedDefaults(t *testing.T) {
+	checkPersonalRefusal(t, `{"review":{"kb_policy":{"minjudged":3}}}`, CodeBadConfig, "kb_policy")
+	checkPersonalRefusal(t, `{"review":{"kb_policy":{"max_fp_rate":"half"}}}`, CodeBadConfig, "max_fp_rate")
+	good := `{"review":{"kb_policy":{"min_judged":3,"max_fp_rate":0.3}}}`
+	got, ref := ParsePersonal([]byte(good))
+	if ref != nil {
+		t.Fatalf("ParsePersonal: %v", ref)
+	}
+	if got.Review.KBMinJudged == nil || *got.Review.KBMinJudged != 3 {
+		t.Fatalf("review.kb_policy = %+v", got.Review)
+	}
+	if got.Review.KBMaxFPRate == nil || *got.Review.KBMaxFPRate != 0.3 {
+		t.Fatalf("review.kb_policy rate = %+v", got.Review)
+	}
+}
+
 // TestParsePersonalSemantics pins the personal value rules: non-empty
 // exclusions, portable globs, and a positive limit.
 func TestParsePersonalSemantics(t *testing.T) {

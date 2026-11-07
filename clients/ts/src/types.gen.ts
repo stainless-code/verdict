@@ -206,7 +206,7 @@ export interface ReportCompliance {
   [key: string]: unknown;
 }
 
-/** Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
+/** Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
 export interface ReportGate {
   /** The gate verdict the exit code follows: exit 0 when true, exit 1 when false. */
   passed: boolean;

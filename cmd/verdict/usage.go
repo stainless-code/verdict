@@ -145,9 +145,10 @@ func usageText() string {
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
 		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
 		"        [--live auto|strict|skip] [--json]\n" +
-		"    one composed local gate over the three dimensions report already computes: open\n" +
+		"    one composed local gate over the dimensions report already computes: open\n" +
 		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
-		"    HEAD (--require-head), and live unresolved threads (--live, default auto).\n" +
+		"    HEAD (--require-head), live unresolved threads (--live, default auto), and the\n" +
+		"    captured compliance verdict when the bundle carries a typed policy.\n" +
 		"    At least one dimension is required; --live alone is not one. Exits 0 pass,\n" +
 		"    1 gate failed or unknown, 2 usage, 3 tool error; a gate failure carries\n" +
 		"    data.passed false with error null. data.dimensions[] lists findings, head,\n" +

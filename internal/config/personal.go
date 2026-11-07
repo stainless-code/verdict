@@ -81,35 +81,43 @@ func checkPersonalUnknown(root map[string]any) *core.RefusalError {
 	return checkPersonalSections(root)
 }
 
-// checkPersonalSections walks the three personal sections when present.
+// checkPersonalSections walks the three personal sections when present. The
+// review section carries the same defaults shape as the repository layer, so it
+// gets the same recursive walk: checking only its top level let a misspelled
+// kb_policy member keep the built-in threshold while the identical typo in
+// .verdict/config.json refused typed.
 func checkPersonalSections(root map[string]any) *core.RefusalError {
 	for _, section := range []struct {
-		key    string
-		fields []string
+		key   string
+		check func(any) *core.RefusalError
 	}{
-		{personalSectionReview, defaultsFields},
-		{personalSectionSpend, personalSpendFields},
-		{personalSectionPrivacy, personalPrivacyFields},
+		{personalSectionReview, func(raw any) *core.RefusalError {
+			return checkDefaultsKeys(raw, "$."+personalSectionReview)
+		}},
+		{personalSectionSpend, flatKeys("$."+personalSectionSpend, personalSpendFields)},
+		{personalSectionPrivacy, flatKeys("$."+personalSectionPrivacy, personalPrivacyFields)},
 	} {
-		if ref := checkPersonalSection(root, section.key, section.fields); ref != nil {
+		raw, ok := root[section.key]
+		if !ok {
+			continue
+		}
+		if ref := section.check(raw); ref != nil {
 			return ref
 		}
 	}
 	return nil
 }
 
-// checkPersonalSection refuses unknown keys in one present section.
-// Absent reads clean; present but misshapen defers to the semantic pass.
-func checkPersonalSection(root map[string]any, key string, fields []string) *core.RefusalError {
-	raw, ok := root[key]
-	if !ok {
-		return nil
+// flatKeys refuses unknown keys at one level, deferring shape errors to the
+// semantic pass.
+func flatKeys(path string, fields []string) func(any) *core.RefusalError {
+	return func(raw any) *core.RefusalError {
+		obj, isObj := raw.(map[string]any)
+		if !isObj {
+			return nil
+		}
+		return checkKeys(path, obj, fields)
 	}
-	obj, isObj := raw.(map[string]any)
-	if !isObj {
-		return nil
-	}
-	return checkKeys("$."+key, obj, fields)
 }
 
 // buildPersonal validates the three sections and constructs the typed

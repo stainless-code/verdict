@@ -15,7 +15,7 @@
   },
   "cost": {
     "descriptions": {
-      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them.",
+      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Unknown keys are ignored by the rollup, so this schema allows them, but the lens-evidence gate is stricter: it certifies a record only when every top-level field is one this build registers, so keep records to the documented shape.",
       "/$defs/record/properties/effort": "Run tier; missing or unknown values roll up as standard.",
       "/$defs/record/properties/models": "One entry per model that generated tokens: the synthesizer first, then each lens.",
       "/$defs/record/properties/est_usd": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
@@ -48,7 +48,7 @@
       "/$defs/reportCompleteness/properties/same_patch": "True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id.",
       "/$defs/reportCompleteness/properties/reviewed_patch_id": "Patch id the bundle identity carried at review time; absent when the bundle had no identity.",
       "/$defs/reportCompleteness/properties/posted_patch_id": "Patch id the completed post receipt carried; absent when the post predates patch identity.",
-      "/$defs/reportGate": "Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
+      "/$defs/reportGate": "Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "/$defs/reportGate/properties/passed": "The gate verdict the exit code follows: exit 0 when true, exit 1 when false.",
       "/$defs/gateDimension": "One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report).",
       "/$defs/gateDimension/properties/id": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), or live_threads (unresolved threads on the PR under --live).",

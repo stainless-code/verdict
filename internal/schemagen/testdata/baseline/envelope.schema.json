@@ -395,7 +395,7 @@
       "additionalProperties": true
     },
     "reportGate": {
-      "description": "Composed gate result: every requested dimension in findings, head, live_threads order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
+      "description": "Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "type": "object",
       "properties": {
         "passed": {

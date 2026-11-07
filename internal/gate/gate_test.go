@@ -426,3 +426,19 @@ func bundleFingerprint(t *testing.T) string {
 	}
 	return strconv.FormatUint(h.Sum64(), 16)
 }
+
+// TestGateNextNamesCompliance pins the fourth dimension: a gate whose only
+// failing dimension is compliance used to publish "none — every requested
+// dimension passed" next to a FAIL verdict, with no recovery line at all.
+func TestGateNextNamesCompliance(t *testing.T) {
+	for _, status := range []string{statusFail, statusUnknown} {
+		gate := &core.ReportGate{Dimensions: []core.GateDimension{{ID: "compliance", Status: status}}}
+		got := gateNext(gate)
+		if got == "none — every requested dimension passed" {
+			t.Errorf("gateNext(%s compliance) = %q, want a recovery action", status, got)
+		}
+		if got == "" {
+			t.Errorf("gateNext(%s compliance) is empty, want a recovery action", status)
+		}
+	}
+}

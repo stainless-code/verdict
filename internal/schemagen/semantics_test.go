@@ -58,7 +58,7 @@ var publishedSemantics = map[string]string{
 	// becomes $defs/lensUsage {group, labels} (grouped labels, additional
 	// properties open for the optional run/inputs_sha256 binding). Both are
 	// intentional additions of the accepted record shape over v1.
-	"cost.schema.json": "adc073e9b23b6abc49574f0093c26c0821aed986d346c3bd276c9bfaa53126d7",
+	"cost.schema.json": "7d02fc87a47925234ef762f1b6e9fd9b49e63548393b5f57d0fb454b8ad9438c",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
@@ -104,7 +104,7 @@ var publishedSemantics = map[string]string{
 	// Plan identity: verify.planGroup now requires id and label, and
 	// verify.checks requires head, so a verified envelope names the group it
 	// resolved rather than an anonymous profile/depth pair.
-	"envelope.schema.json": "10820bb81cebdb4d53283221fa2db067f32ee99d35d1bd03079e4ac5b4cae3ea",
+	"envelope.schema.json": "4428b98a022211d0f14cbdcddaa42ca0b662af3b711cf6c28370ec62d71ef627",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

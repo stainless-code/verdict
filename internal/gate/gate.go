@@ -1,7 +1,7 @@
 // Package gate is the gate verb's CLI adapter: argv parsing, one composed
 // report-core call, and the gate's own exit table (0 pass, 1 gate failed or
 // unknown, 2 usage, 3 tool error). Domain logic lives in internal/core/report,
-// which already evaluates the three dimensions; gate only composes them.
+// which already evaluates every dimension; gate only composes them.
 package gate
 
 import (
@@ -33,6 +33,7 @@ const (
 	idFindings      = "findings"
 	idHead          = "head"
 	idLive          = "live_threads"
+	idCompliance    = "compliance"
 	flagMaxSeverity = "--max-severity"
 	flagRequireHE   = "--require-head"
 	flagLive        = "--live"
@@ -196,6 +197,13 @@ func gateAction(dim core.GateDimension) string {
 			return "resolve or reply to the live threads"
 		case statusUnknown:
 			return "restore the network or re-run with --live skip"
+		}
+	case idCompliance:
+		switch dim.Status {
+		case statusFail:
+			return "clear the compliance blockers and re-run gate"
+		case statusUnknown:
+			return "record the compliance evidence the warnings name, then re-run gate"
 		}
 	}
 	return ""

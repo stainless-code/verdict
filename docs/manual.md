@@ -683,7 +683,8 @@ method): a local pass is not authority to merge, so the merge stays the
 human's call.
 
 Compose it where `report --check --completeness` used to go; the flag set is
-the same three dimensions, and the flagless form remains advisory `report`.
+the same dimensions (plus the captured compliance verdict), and the flagless
+form remains advisory `report`.
 
 ### MCP server (stdio, experimental until 1.0)
 
@@ -973,9 +974,12 @@ panel every run keeps verdicts comparable and costs capped.
 The prefs file ends env sprawl without forcing migration. Path:
 `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json` (`$XDG_CONFIG_HOME`
 respected, `$schema` key carries a schema hint that is never fetched).
-Presentation keys only — CLI survey: the only presentation surfaces are the
-machine envelope (`--json`), file outputs (`--output`/`--sarif`), and the
-prompt-dump destination, so the file exposes exactly four namespaces:
+The file carries the four presentation namespaces below plus the typed personal
+layer (`review`, `spend`, `privacy`) described under "typed configuration"
+above, so it accepts eight top-level keys in total: `$schema`, `output`,
+`layout`, `color`, `publish`, `review`, `spend`, `privacy`. Anything else —
+server-shaped or `org.*` keys included — refuses typed `bad-settings`. The
+presentation sample:
 
 ```json
 {

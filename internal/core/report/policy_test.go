@@ -3,6 +3,7 @@ package reportcore_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -68,6 +69,29 @@ func TestDisplayFloorHidesBelowFloorButGatesStayFull(t *testing.T) {
 		t.Fatal("informational check gate passed: gates must read the full set, not the view")
 	}
 	assertGateLine(t, resp.CheckLines, "at-or-above informational")
+}
+
+// TestDisplayFloorEmptyViewDoesNotPromiseThreads pins the footer/view
+// agreement: with every open finding below the floor the header reads
+// "(0 shown) open=0", so the recovery line must not send the operator to
+// threads the report does not show.
+func TestDisplayFloorEmptyViewDoesNotPromiseThreads(t *testing.T) {
+	req := fixture(t, "["+floorFinding("informational", "d222222222222222222222222222222222222222")+"]")
+	writeFloorPolicy(t, "important")
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if len(resp.Data.Items) != 0 {
+		t.Fatalf("items = %d, want the floored view", len(resp.Data.Items))
+	}
+	if resp.Next != "none open — nothing to address" {
+		t.Errorf("next = %q, want no open-thread action with an empty view", resp.Next)
+	}
+	last := resp.Human[len(resp.Human)-1]
+	if strings.Contains(last, "address open threads") {
+		t.Errorf("human footer = %q, want no open-thread action with an empty view", last)
+	}
 }
 
 // assertGateLine checks one gate verdict line names the full-set check.
