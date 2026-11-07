@@ -903,7 +903,10 @@ this build cannot read at all — `null`, a boolean, an array, an object, an
 empty string — is `malformed`, and it refuses the same way: presence is the
 key, so an unreadable declaration is not an absent one and never lets an older
 record stand in for it. All three leave the capped group `usage-unknown`, never
-zero. Nothing loosens the fail-closed checks: a
+zero. A record that declares no `schema_version` key at all is the one case that
+is skipped rather than refused: it makes no claim about its writer's version, so
+the newest _declared_ record decides, even when an unversioned record matched
+later. Nothing loosens the fail-closed checks: a
 foreign capture, a duplicated key, an unreadable entry, and a mismatched
 binding all still refuse.
 
