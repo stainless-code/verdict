@@ -459,12 +459,13 @@ func bindsCapture(record map[string]any, rs *RunState) bool {
 }
 
 // unregisteredFieldProblem names the top-level field a record declares beyond
-// its own version's shape, and the two ways to fix it: drop the field, or
-// declare a version that defines it.
+// its own version's shape, and the one fix that works today: drop the field.
+// A newer version that defines it does not exist for this build, so telling the
+// author to declare one would name a step they cannot take.
 func unregisteredFieldProblem(version, field string) string {
 	return "cost.json declares schema_version " + version + " but carries top-level field " +
-		strconv.Quote(field) + ", which that version does not define — remove the field, or " +
-		"declare a version this build certifies"
+		strconv.Quote(field) + ", which that version does not define — remove the field; " +
+		"no version this build certifies defines it"
 }
 
 // foreignVersionProblem names the version that arrived and the one this build
