@@ -441,6 +441,11 @@ func TestReadLensUsageCertifiesOlderVersionedBinding(t *testing.T) {
 	if len(usage.Groups) == 0 || !usage.Groups[0].Known {
 		t.Fatalf("groups = %+v, want the versioned record's lens evidence", usage.Groups)
 	}
+	// The lenses prove which record certified: the newest entry carries
+	// "newest", so a pass here can only come from the older versioned binding.
+	if lenses := usage.Groups[0].Lenses; len(lenses) != 1 || lenses[0] != "older" {
+		t.Fatalf("lenses = %v, want the older record's evidence", lenses)
+	}
 }
 
 // TestReadLensUsageRefusesForeignVersion pins version-scoped certification: a

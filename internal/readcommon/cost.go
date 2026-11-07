@@ -54,16 +54,25 @@ func CostRollup(dir string) CostResult {
 		attachReceipts(dir, &res)
 		return res
 	}
-	merged := append(append([]any{}, top...), mergeChunkRecords(chunkFiles, &res)...)
+	chunkRecords := mergeChunkRecords(chunkFiles, &res)
+	// An unreadable top-level record is dropped before the merge, for the same
+	// reason an unreadable chunk is: folding it in would void the spend of
+	// every file beside it and blame cost.json for a record it never held.
+	blamed := false
 	if topPresent {
 		if _, ok := rollupOne(top, topParsed); !ok {
 			res.Warns = append(res.Warns, warnCostUnreadable)
+			blamed = true
+			top = nil
 		}
 	}
+	merged := append(append([]any{}, top...), chunkRecords...)
 	if c := rollupRecords(merged); c != nil {
 		res.Cost = c
 	} else {
-		res.Warns = append(res.Warns, warnCostUnreadable)
+		if !blamed {
+			res.Warns = append(res.Warns, warnCostUnreadable)
+		}
 		res.Cost = costZeros()
 	}
 	attachReceipts(dir, &res)

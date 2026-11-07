@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -35,10 +36,22 @@ const detailSep = ": "
 // file before writing any keeps the pass all-or-nothing, so a refusal never
 // leaves half a bundle named.
 type CostNamePlan struct {
-	rendered []byte
 	path     string
+	rendered []byte
 	gains    int
 	entries  int
+	// seen is the file as planning found it. The write refuses when the file
+	// changed since: a producer that finished a cost update between planning
+	// and writing would be overwritten by the older snapshot, and the run would
+	// still report that no token count changed.
+	seen fileStamp
+}
+
+// fileStamp identifies the bytes planning read, so the write can prove it is
+// replacing the file it named rather than a newer one.
+type fileStamp struct {
+	modUnixNano int64
+	size        int64
 }
 
 // NameCostModels names the models[] entries of every cost record under dir
@@ -103,7 +116,8 @@ func writtenFiles(written []string) string {
 func writePlans(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 	renamed := 0
 	written := make([]string, 0, len(plans))
-	for _, plan := range plans {
+	for i := range plans {
+		plan := &plans[i]
 		n, ref := applyPlan(plan, dryRun)
 		if ref != nil {
 			return renamed, &core.RefusalError{Code: ref.Code, Message: ref.Message + writtenFiles(written)}
@@ -118,7 +132,7 @@ func writePlans(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 
 // applyPlan writes one planned rewrite, or counts it on a dry run, reporting
 // how many entries the file gains.
-func applyPlan(plan CostNamePlan, dryRun bool) (int, *core.RefusalError) {
+func applyPlan(plan *CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 	if plan.gains == 0 || dryRun {
 		return plan.gains, nil
 	}
@@ -126,6 +140,19 @@ func applyPlan(plan CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 		return 0, ref
 	}
 	return plan.gains, nil
+}
+
+// stampOf reads the size and modification time that identify a cost file's
+// current bytes.
+func stampOf(path string) (fileStamp, *core.RefusalError) {
+	info, err := fs.Stat(os.DirFS(filepath.Dir(path)), filepath.Base(path))
+	if err != nil {
+		return fileStamp{}, &core.RefusalError{
+			Code:    codeCostRecordUnreadable,
+			Message: "could not stat " + path + detailSep + err.Error(),
+		}
+	}
+	return fileStamp{modUnixNano: info.ModTime().UnixNano(), size: info.Size()}, nil
 }
 
 // renderPlan renders a planned rewrite and checks it against the spend
@@ -149,7 +176,19 @@ func renderPlan(path string, doc any) ([]byte, *core.RefusalError) {
 // cap-checked, keeping its modification time: the measured-usage join attaches
 // the session whose window brackets that stamp, so a repair that moved it would
 // silently drop a paid measurement.
-func writePlan(plan CostNamePlan) *core.RefusalError {
+func writePlan(plan *CostNamePlan) *core.RefusalError {
+	now, ref := stampOf(plan.path)
+	if ref != nil {
+		return ref
+	}
+	if now != plan.seen {
+		return &core.RefusalError{
+			Code: codeCostRecordUnreadable,
+			Message: "refusing to rewrite " + plan.path + detailSep +
+				"the record changed after it was planned, so naming it would drop the " +
+				"update — re-run to plan against the current record",
+		}
+	}
 	if err := atomic.WriteFileKeepingModTime(plan.path, plan.rendered); err != nil {
 		return &core.RefusalError{
 			Code: codeCostRecordUnreadable,
@@ -192,7 +231,11 @@ func planCostFile(path string, panel []string) (CostNamePlan, bool, *core.Refusa
 	if ref != nil {
 		return CostNamePlan{}, false, ref
 	}
-	plan := CostNamePlan{path: path, gains: gains, entries: entries}
+	seen, ref := stampOf(path)
+	if ref != nil {
+		return CostNamePlan{}, false, ref
+	}
+	plan := CostNamePlan{path: path, gains: gains, entries: entries, seen: seen}
 	if gains > 0 {
 		rendered, ref := renderPlan(path, doc)
 		if ref != nil {
@@ -524,30 +567,48 @@ func pinnedPanel(dir string) (panel []string, conflict string) {
 	if err != nil || !ok || rs.Resolved == nil {
 		return nil, ""
 	}
-	panel = rs.Resolved.Defaults.Values.Panel
-	pinnedBy := "the defaults"
-	pinVerb := " pin"
-	if len(panel) == 0 {
-		pinnedBy = ""
+	pin := panelPin{panel: rs.Resolved.Defaults.Values.Panel, by: "the defaults", verb: " pin"}
+	if len(pin.panel) == 0 {
+		pin.by = ""
 	}
-	for i := range rs.Resolved.Files {
-		file := &rs.Resolved.Files[i]
-		scoped := file.Defaults.Values.Panel
-		if len(scoped) == 0 || samePanel(scoped, panel) {
-			continue
+	return pin.panel, pin.addScopes(rs.Resolved.Files)
+}
+
+// panelPin tracks the one panel a bundle pins, and who pinned it, so a second
+// differing pin can name both sides of the disagreement.
+type panelPin struct {
+	verb  string
+	by    string
+	panel []string
+}
+
+// addScopes folds every resolved scope into the pin, returning the first
+// conflict it meets.
+func (p *panelPin) addScopes(files []config.FileResolution) string {
+	for i := range files {
+		if conflict := p.addScope(&files[i]); conflict != "" {
+			return conflict
 		}
-		if pinnedBy == "" {
-			// The defaults pin nothing, so this scope is the first panel the
-			// bundle names. Adopt it and compare the rest against it: scopes
-			// that agree name one panel, and refusing them would be a false
-			// conflict over a decision they did not make.
-			panel, pinnedBy, pinVerb = scoped, "scope "+scopeName(file), " pins"
-			continue
-		}
-		return panel, "scope " + scopeName(file) + " pins " + panelList(scoped) +
-			" while " + pinnedBy + pinVerb + " " + panelList(panel)
 	}
-	return panel, ""
+	return ""
+}
+
+// addScope folds one scope's panel into the pin. A scope that pins nothing, or
+// pins what is already pinned, agrees. When the defaults pin nothing the first
+// scope to pin is adopted and the rest are compared against it: scopes that
+// agree name one panel, and refusing them would be a false conflict over a
+// decision they did not make.
+func (p *panelPin) addScope(file *config.FileResolution) string {
+	scoped := file.Defaults.Values.Panel
+	if len(scoped) == 0 || samePanel(scoped, p.panel) {
+		return ""
+	}
+	if p.by == "" {
+		p.panel, p.by, p.verb = scoped, "scope "+scopeName(file), " pins"
+		return ""
+	}
+	return "scope " + scopeName(file) + " pins " + panelList(scoped) +
+		" while " + p.by + p.verb + " " + panelList(p.panel)
 }
 
 // scopeName names the resolved scope a conflicting panel came from.

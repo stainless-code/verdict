@@ -1393,6 +1393,7 @@ fails partway, and with `--dry-run` it proves the repair without writing.
 Entries are the array `models` the reader prices, so an object-valued `models`
 field or a non-object entry refuses (`cost-models-not-array`) rather than being
 converted.
+
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

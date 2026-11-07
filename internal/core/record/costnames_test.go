@@ -513,6 +513,10 @@ func TestNameCostModelsPreservesModTime(t *testing.T) {
 	if err := os.Chtimes(path, stamp, stamp); err != nil {
 		t.Fatalf("stamp: %v", err)
 	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat before: %v", err)
+	}
 	if named, _, _, ref := NameCostModels(dir, []string{"lead"}, false); ref != nil || named != 1 {
 		t.Fatalf("named=%d ref=%v, want one name and no refusal", named, ref)
 	}
@@ -520,8 +524,11 @@ func TestNameCostModelsPreservesModTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if !info.ModTime().Equal(stamp) {
-		t.Fatalf("mtime = %s, want the original %s", info.ModTime(), stamp)
+	// Compare against the value the filesystem stored, not the literal: a
+	// coarse-timestamp filesystem rounds the stamp it was given, and the repair
+	// must preserve what is on disk rather than what was requested.
+	if !info.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("mtime = %s, want the original %s", info.ModTime(), before.ModTime())
 	}
 }
 
@@ -615,18 +622,48 @@ func TestPlanCostNamesAcceptsAgreeingScopes(t *testing.T) {
 	if pass == nil || pass.entries != 2 {
 		t.Fatalf("pass = %+v, want both entries planned", pass)
 	}
-	named, ref := ApplyCostNames(pass.plans, false)
+	applyAndCheckNames(t, pass.plans, filepath.Join(dir, readcommon.CostFile), "lead", "lens-1")
+}
+
+// applyAndCheckNames applies one planned pass and asserts the record ends up
+// carrying each seat name, in order.
+func applyAndCheckNames(t *testing.T, plans []CostNamePlan, path string, seats ...string) {
+	t.Helper()
+	named, ref := ApplyCostNames(plans, false)
 	if ref != nil {
 		t.Fatalf("apply: %v", ref)
 	}
-	if named != 2 {
-		t.Fatalf("named = %d, want 2", named)
+	if named != len(seats) {
+		t.Fatalf("named = %d, want %d", named, len(seats))
 	}
-	got := readCostFile(t, filepath.Join(dir, readcommon.CostFile))
-	for _, seat := range []string{`"name": "lead"`, `"name": "lens-1"`} {
-		if !strings.Contains(got, seat) {
-			t.Fatalf("record = %s, want the adopted panel's %s", got, seat)
+	got := readCostFile(t, path)
+	for _, seat := range seats {
+		if !strings.Contains(got, `"name": "`+seat+`"`) {
+			t.Fatalf("record = %s, want the adopted panel's %q", got, seat)
 		}
+	}
+}
+
+// TestNameCostModelsRefusesWhenRecordChangedAfterPlanning pins the write guard:
+// a producer that finishes a cost update between planning and writing would be
+// overwritten by the older snapshot, and the run would still report that no
+// token count changed. The repair refuses and keeps the newer bytes.
+func TestNameCostModelsRefusesWhenRecordChangedAfterPlanning(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, readcommon.CostFile)
+	writeCostFile(t, path, `{"models":[{"input":1}]}`)
+	plans, _, _, ref := PlanCostNames(dir, []string{"lead"})
+	if ref != nil || len(plans) != 1 {
+		t.Fatalf("plans = %d ref = %v, want one plan", len(plans), ref)
+	}
+	newer := `{"models":[{"input":1}],"runs":9}`
+	time.Sleep(2 * time.Millisecond)
+	writeCostFile(t, path, newer)
+	if _, ref := ApplyCostNames(plans, false); ref == nil || ref.Code != codeCostRecordUnreadable {
+		t.Fatalf("want %q, got %v", codeCostRecordUnreadable, ref)
+	}
+	if got := readCostFile(t, path); got != newer {
+		t.Fatalf("record = %s, want the newer bytes kept", got)
 	}
 }
 

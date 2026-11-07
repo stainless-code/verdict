@@ -330,6 +330,25 @@ func TestReadGroupCostsRejectsUnsupportedShape(t *testing.T) {
 	}
 }
 
+// TestReadGroupCostsIgnoresLegacyRun pins the incomplete-binding guard: a run
+// with no verified inputs hash binds nothing. Without the guard an empty hash
+// matches every record that omits one, so a record with no binding at all
+// would still turn "unbound" into "recorded" — and its sample would carry an
+// empty binding the estimate then silently drops.
+func TestReadGroupCostsIgnoresLegacyRun(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cost.json")
+	writeRecord(t, path, `{"schema_version":"2","run":"local-g",
+	  "group_costs":[{"group":"group-a","effort":"standard","est_usd":2}]}`)
+	samples, status := ReadGroupCosts(&RunState{Name: "local-g"}, path)
+	if status != LensUsageUnbound {
+		t.Fatalf("status = %q, want unbound: a run with no inputs hash binds nothing", status)
+	}
+	if len(samples) != 0 {
+		t.Fatalf("samples = %+v, want none", samples)
+	}
+}
+
 // writeRecord plants one cost document in the fixture directory.
 func writeRecord(t *testing.T, path, body string) {
 	t.Helper()

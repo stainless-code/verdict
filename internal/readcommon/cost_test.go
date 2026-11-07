@@ -1,9 +1,11 @@
 package readcommon
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
@@ -149,4 +151,36 @@ func classifyAndPrice(t *testing.T, body string) {
 	if accepted && len(recs) != objectElements(doc) {
 		t.Fatalf("%s yields %d records for %d record objects", body, len(recs), objectElements(doc))
 	}
+}
+
+// TestCostRollupKeepsChunkSpendWhenTopIsUnreadable pins the top-level half of
+// the chunk-loss guard: an unreadable cost.json must not void the spend of a
+// chunk that prices on its own, and it must blame itself exactly once.
+func TestCostRollupKeepsChunkSpendWhenTopIsUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	writeCostFixture(t, dir, CostFile, `{"models":{"a":1}}`)
+	writeCostFixture(t, dir, "chunks/manifest.json", `{"chunks":[{"name":"c1"}]}`)
+	writeCostFixture(t, dir, "chunks/c1.cost.json",
+		`[{"models":[{"input_tokens":10,"output_tokens":5,"est_usd":0.02}]}]`)
+	res := CostRollup(dir)
+	text := fmt.Sprint(res.Cost)
+	for _, want := range []string{"input_tokens:10", "output_tokens:5"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("cost = %s, want the chunk's %s", text, want)
+		}
+	}
+	if n := countWarn(res.Warns, warnCostUnreadable); n != 1 {
+		t.Fatalf("warns = %v, want %q exactly once", res.Warns, warnCostUnreadable)
+	}
+}
+
+// countWarn counts exact warn lines, so one repeated warning fails the test.
+func countWarn(warns []string, want string) int {
+	n := 0
+	for _, w := range warns {
+		if w == want {
+			n++
+		}
+	}
+	return n
 }

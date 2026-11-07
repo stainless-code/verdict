@@ -420,6 +420,12 @@ func ReadGroupCosts(rs *RunState, path string) ([]CostSample, string) {
 // strictly: a top-level field a newer writer added is not this build's
 // business, so it neither voids the sample nor prunes the history.
 func boundSamples(records []map[string]any, rs *RunState) ([]CostSample, bool) {
+	if !bindable(rs) {
+		// Without a verified name and inputs hash nothing can be bound: an
+		// empty hash would match every record that omits one, and a sample
+		// that binds to nothing would still turn "unbound" into "recorded".
+		return nil, true
+	}
 	binding := RunBinding{Run: rs.Name, InputsSHA256: rs.InputsSHA256}
 	samples := make([]CostSample, 0, len(records))
 	for _, obj := range records {
