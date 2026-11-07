@@ -16,10 +16,11 @@ import (
 // independent of the repair's own encoder, so a reordering or a dropped
 // count fails even when the names are right.
 type costNameCase struct {
-	name      string
-	wantCode  string
 	files     map[string]string
 	want      map[string]string
+	name      string
+	wantCode  string
+	wantMsg   string
 	panel     []string
 	wantNamed int
 	dryRun    bool
@@ -206,6 +207,28 @@ func TestNameCostModels(t *testing.T) {
 			want:     map[string]string{readcommon.CostFile: `5`},
 		},
 		{
+			name: "blames the offender, not the null it skipped",
+			files: map[string]string{
+				readcommon.CostFile: `[null,5]`,
+			},
+			panel:    []string{"lead"},
+			wantCode: codeCostRecordUnreadable,
+			wantMsg:  "entry 2 is a JSON number",
+			want:     map[string]string{readcommon.CostFile: `[null,5]`},
+		},
+		{
+			name: "numbers records by document position, not by records kept",
+			files: map[string]string{
+				readcommon.CostFile: `[null,{"models":[{"name":"lead"}]},{"models":[{"name":"intruder"}]}]`,
+			},
+			panel:    []string{"lead"},
+			wantCode: codeCostEntryContradict,
+			wantMsg:  "record 3",
+			want: map[string]string{
+				readcommon.CostFile: `[null,{"models":[{"name":"lead"}]},{"models":[{"name":"intruder"}]}]`,
+			},
+		},
+		{
 			name: "refuses an array holding one non-record entry",
 			files: map[string]string{
 				readcommon.CostFile: `[5,{"models":[{"input":1}]}]`,
@@ -276,6 +299,9 @@ func checkCostRefusal(t *testing.T, tc *costNameCase, named int, ref *core.Refus
 	checkRefusalCode(t, tc.wantCode, named, ref)
 	if named != tc.wantNamed {
 		t.Errorf("named %d entries, want %d", named, tc.wantNamed)
+	}
+	if tc.wantMsg != "" && (ref == nil || !strings.Contains(ref.Message, tc.wantMsg)) {
+		t.Errorf("refusal %v must name %q", ref, tc.wantMsg)
 	}
 }
 
