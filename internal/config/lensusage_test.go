@@ -421,6 +421,27 @@ func TestReadLensUsageRefusesForeignVersion(t *testing.T) {
 	}
 }
 
+// TestReadLensUsageSkipsUnversionedBinding pins the diagnosis order: a binding
+// that declares no version is not a version refusal, so the newest binding that
+// does declare an uncertifiable version names the refusal instead of the run
+// reading as merely unbound.
+func TestReadLensUsageSkipsUnversionedBinding(t *testing.T) {
+	body := `[{"schema_version":"3","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[{"group":"group-a","labels":["old"]}]},` +
+		`{"run":"` + lensFixtureRun + `","inputs_sha256":"` + lensFixtureInputs +
+		`","lenses":[{"group":"group-a","labels":["newest"]}]}]`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageVersion {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
+	}
+	if !strings.Contains(usage.Problem, "schema_version 3") {
+		t.Fatalf("problem = %q, want it to name schema_version 3", usage.Problem)
+	}
+	if usage.Groups[0].Known {
+		t.Fatal("an unversioned binding certified lens evidence")
+	}
+}
+
 // TestReadLensUsageKeepsHistoryReadable pins the other half of the split: an
 // unregistered field refuses certification of that record, while the earlier
 // record bound to the same capture still cannot be certified — the newest
