@@ -423,6 +423,26 @@ func TestReadLensUsageRefusesEmptyFieldName(t *testing.T) {
 	}
 }
 
+// TestReadLensUsageCertifiesOlderVersionedBinding pins the other side of the
+// skip: when the newest binding declares no version at all it cannot certify
+// and is not the diagnosis either, so the newest binding that does declare a
+// version certifies. The asymmetry is deliberate — an absent key says nothing
+// about the writer's version, while an unreadable value is a declaration that
+// refuses.
+func TestReadLensUsageCertifiesOlderVersionedBinding(t *testing.T) {
+	body := `[{"schema_version":"2","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[{"group":"group-a","labels":["older"]}]},` +
+		`{"run":"` + lensFixtureRun + `","inputs_sha256":"` + lensFixtureInputs +
+		`","lenses":[{"group":"group-a","labels":["newest"]}]}]`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageRecorded {
+		t.Fatalf("state = %q, want recorded from the older versioned binding", usage.State)
+	}
+	if len(usage.Groups) == 0 || !usage.Groups[0].Known {
+		t.Fatalf("groups = %+v, want the versioned record's lens evidence", usage.Groups)
+	}
+}
+
 // TestReadLensUsageRefusesForeignVersion pins version-scoped certification: a
 // record bound by run and inputs at a version this build does not certify is a
 // version problem, never silently re-read as v2 and never merely "unbound".
