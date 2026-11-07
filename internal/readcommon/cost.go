@@ -151,10 +151,15 @@ func CostEstimate(rec any) (float64, bool) {
 	return NumVal(est)
 }
 
-// CostModels reads one record's models list: an array passes, an object
-// contributes its values in key order (jq's `.models[]` iterates objects
-// too), and an absent or null list reads empty. Every non-null element must
-// be an object (the shape filter).
+// CostModels reads one record's models list: only an array passes, and an
+// absent or null list reads empty. Every non-null element must be an object
+// (the shape filter).
+//
+// An object-shaped list fails the shape gate rather than being read by key
+// order: the keys are the only place a model's name existed, so coercing the
+// values would drop the identity the writer gave and leave an unattributed
+// entry that still priced. A failing record reads as unreadable spend, which
+// the rollup names and never fails on.
 func CostModels(rec any) ([]any, bool) {
 	m, ok := rec.(map[string]any)
 	if !ok {
@@ -167,31 +172,11 @@ func CostModels(rec any) ([]any, bool) {
 	if !ok || raw == nil {
 		return nil, true
 	}
-	list, ok := coerceModelList(raw)
+	list, ok := raw.([]any)
 	if !ok || !allModelMaps(list) {
 		return nil, false
 	}
 	return list, true
-}
-
-func coerceModelList(raw any) ([]any, bool) {
-	switch t := raw.(type) {
-	case []any:
-		return t, true
-	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		vals := make([]any, 0, len(keys))
-		for _, k := range keys {
-			vals = append(vals, t[k])
-		}
-		return vals, true
-	default:
-		return nil, false
-	}
 }
 
 // readCostFile reads one cost file: records plus its present/parsed
