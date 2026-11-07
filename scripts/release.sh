@@ -203,19 +203,39 @@ live_body() {
 # An equal body is left untouched, which makes a re-run idempotent.
 stage_release_body() {
   local live want
+  detect_release
+  [ "$RELEASE_STATE" = complete ] \
+    || die "GitHub Release $TAG is not complete${RELEASE_MISSING:+ (missing:$RELEASE_MISSING)}; a body on an incomplete release would make a broken run look shipped"
   prepare_notes
   live="$(live_body)"
   want="$(<"$NOTES_FILE")"
-  if [ "$live" = "$want" ]; then
-    echo "release: GitHub Release $TAG already carries the $VERSION changelog section"
+  if same_body "$live" "$want"; then
+    if [ "$live" = "$want" ]; then
+      echo "release: GitHub Release $TAG already carries the $VERSION changelog section"
+    else
+      echo "release: GitHub Release $TAG already carries the $VERSION changelog section (whitespace normalised by GitHub)"
+    fi
     return 0
   fi
-  echo "release: GitHub Release $TAG body does not match CHANGELOG.md's $VERSION section ($(printf '%s' "$live" | wc -c | tr -d ' ') bytes published, $(wc -c <"$NOTES_FILE" | tr -d ' ') expected); rewriting it"
+  echo "release: GitHub Release $TAG body does not match CHANGELOG.md's $VERSION section ($(printf '%s' "$live" | wc -c | tr -d '[:space:]') bytes published, $(wc -c <"$NOTES_FILE" | tr -d '[:space:]') expected); rewriting it"
   gh release edit "$TAG" --repo "$REPO" --notes-file "$NOTES_FILE"
   live="$(live_body)"
-  [ "$live" = "$want" ] \
+  same_body "$live" "$want" \
     || die "GitHub Release $TAG body still does not match CHANGELOG.md's $VERSION section after gh release edit"
   echo "release: GitHub Release $TAG body set from CHANGELOG.md's $VERSION section"
+}
+
+# same_body reports whether the published body carries the changelog section's
+# text. GitHub may hand a body back with CRLF line endings or trailing blanks
+# it did not store, so the comparison ignores exactly that and nothing else: a
+# correct release must never fail because of whitespace, and a wrong one must
+# never pass because of it.
+same_body() { # $1 = published body, $2 = changelog section
+  [ "$(normalized_body "$1")" = "$(normalized_body "$2")" ]
+}
+
+normalized_body() {
+  printf '%s' "$1" | tr -d '\r' | sed -e 's/[[:blank:]]*$//'
 }
 
 release_commit() {
