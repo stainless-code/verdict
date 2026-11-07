@@ -101,7 +101,13 @@ func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
 			f.costNames = true
 		case strings.HasPrefix(arg, "--cost-names="):
 			f.costNames = true
-			f.costPanel = splitPanel(strings.TrimPrefix(arg, "--cost-names="))
+			panel, ok := splitPanel(strings.TrimPrefix(arg, "--cost-names="))
+			if !ok {
+				return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+					"empty name in '%s': --cost-names takes one name per seat, in order "+
+						"(want --cost-names=lead,lens-1)", arg)}), true
+			}
+			f.costPanel = panel
 		default:
 			return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 				"unknown flag '%s' for record (want --dry-run, --strict, --cost-names, --json)", arg)}), true
@@ -110,16 +116,24 @@ func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
 	return f, 0, false
 }
 
-// splitPanel splits one --cost-names value into panel slugs, dropping an
-// empty element so a trailing comma does not name a model nothing ran.
-func splitPanel(value string) []string {
-	var panel []string
-	for part := range strings.SplitSeq(value, ",") {
-		if slug := strings.TrimSpace(part); slug != "" {
-			panel = append(panel, slug)
-		}
+// splitPanel splits one --cost-names value into panel slugs. An empty value
+// means no explicit panel, which leaves the pinned panel as the source; an
+// empty element inside the list refuses, because dropping it would shift
+// every later seat onto the wrong model.
+func splitPanel(value string) ([]string, bool) {
+	if strings.TrimSpace(value) == "" {
+		return nil, true
 	}
-	return panel
+	parts := strings.Split(value, ",")
+	panel := make([]string, 0, len(parts))
+	for _, part := range parts {
+		slug := strings.TrimSpace(part)
+		if slug == "" {
+			return nil, false
+		}
+		panel = append(panel, slug)
+	}
+	return panel, true
 }
 
 // recordRentry rebuilds the exact re-run command after flag parsing.

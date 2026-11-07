@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+empty name in '--cost-names=lead,,lens-1': --cost-names takes one name per seat, in order (want --cost-names=lead,lens-1)
+--- files ---
