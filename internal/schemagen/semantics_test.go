@@ -63,7 +63,12 @@ var publishedSemantics = map[string]string{
 	// certification is version-scoped, so an unregistered field refuses by
 	// name. No property, required key, enum, or type changed;
 	// additionalProperties stays open for the aggregators.
-	"cost.schema.json": "131e9b7639b81e8b3851030c43d522ec7d08525479697f34d0d6f9c3c6a008f2",
+	// Cost model names: prose only. The description now states that every
+	// models[] entry must name its model and that the name feeds attribution
+	// while the rollup sums one total. The models array accepts one shape
+	// only; the reader dropped its object-form coercion in the same change.
+	// No property, required key, enum, or type changed.
+	"cost.schema.json": "c6e712e91b587b6f0d5c5f74548f46f37f0ed996a8530f637e985576163507d6",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,

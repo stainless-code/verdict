@@ -3,6 +3,7 @@ package schemagen
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // fixedNow is the conformance clock: one deterministic, valid RFC 3339
@@ -172,6 +174,49 @@ func fixtureDiff() string {
 		"-old line\n" +
 		"+new line\n" +
 		" bottom\n"
+}
+
+// TestCostRecordNamesAreAWriterGateReadersTolerate pins both halves of the
+// cost-record contract in one place, so neither side can drift alone: the
+// schema requires a name on every models entry (the writer's gate), and the
+// reader still prices a record that omits one, reporting the model as
+// unknown rather than the spend as zero and never failing the run (the
+// reader's tolerance). It also pins the one accepted models shape: an object
+// is not a models list.
+func TestCostRecordNamesAreAWriterGateReadersTolerate(t *testing.T) {
+	doc := loadSchemaDocument(t, "cost.schema.json")
+	spend := defOf(t, doc, "modelSpend")
+
+	nameless := map[string]any{"input_tokens": 100.0, "output_tokens": 50.0}
+	if err := validationError(doc, spend, nameless); err == nil {
+		t.Error("a models entry without name validated against modelSpend; want the required name to refuse it")
+	}
+	named := map[string]any{"name": "m", "input_tokens": 100.0, "output_tokens": 50.0}
+	if err := validationError(doc, spend, named); err != nil {
+		t.Errorf("a named models entry was refused: %v", err)
+	}
+
+	record := defOf(t, doc, "record")
+	if err := validationError(doc, record, map[string]any{"models": []any{named}}); err != nil {
+		t.Errorf("the array form was refused: %v", err)
+	}
+	objectModels := map[string]any{"models": map[string]any{"m": map[string]any{"input_tokens": 1.0}}}
+	if err := validationError(doc, record, objectModels); err == nil {
+		t.Error("object-shaped models validated against the record; want the array shape enforced")
+	}
+
+	dir := t.TempDir()
+	raw := []byte(`{"schema_version":"2","models":[{"input_tokens":100,"output_tokens":50}]}`)
+	if err := os.WriteFile(filepath.Join(dir, "cost.json"), raw, 0o600); err != nil {
+		t.Fatalf("write cost.json: %v", err)
+	}
+	res := readcommon.CostRollup(dir)
+	if got, _ := res.Cost.Get("total_tokens"); got != 150.0 {
+		t.Errorf("total_tokens = %v; want 150 for a nameless entry the reader still prices", got)
+	}
+	if len(res.Warns) != 0 {
+		t.Errorf("warns = %v; want none — the reader tolerates a nameless entry", res.Warns)
+	}
 }
 
 // TestCostRecordRoundTrips proves a bundle's cost.json round-trips through
