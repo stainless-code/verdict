@@ -1,17 +1,25 @@
 {
   "name": "@stainless-code/verdict",
   "version": "0.6.0",
-  "description": "Local on-demand PR review for any coding agent. Evidence-graded findings, machine gates, zero install.",
+  "description": "Code review any coding agent can run: fetch, review, gate, post. Evidence-graded findings, cost rollups, one static binary — no server, no account, no daemon.",
+  "homepage": "https://stainless-code.com/verdict",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/stainless-code/verdict.git"
   },
   "keywords": [
+    "ai-agents",
     "agent-skills",
+    "cli",
     "code-review",
+    "coding-agents",
+    "go",
     "github",
-    "verdict"
+    "llm",
+    "mcp",
+    "pull-request",
+    "static-binary"
   ],
   "files": [
     "skills/",

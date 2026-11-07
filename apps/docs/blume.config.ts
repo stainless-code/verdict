@@ -12,7 +12,7 @@ import { manualSource } from "./sources/manual.ts";
 
 const title = "Verdict";
 const description =
-  "Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. Evidence-graded findings and one static binary.";
+  "Code review any coding agent can run: fetch, review, gate, post. Evidence-graded findings, cost rollups, one static binary — no server, no account, no daemon.";
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";
