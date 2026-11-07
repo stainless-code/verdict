@@ -442,6 +442,27 @@ func TestReadLensUsageSkipsUnversionedBinding(t *testing.T) {
 	}
 }
 
+// TestReadLensUsageRefusesOlderBindingBehindForeignVersion pins the version
+// half of that rule: the newest binding declares a version this build cannot
+// certify, so a certified record from an earlier review of the same capture
+// never stands in for it — evidence from a newer writer is a version problem,
+// not a stale success.
+func TestReadLensUsageRefusesOlderBindingBehindForeignVersion(t *testing.T) {
+	body := `[` + costBody(`[{"group":"group-a","labels":["earlier"]}]`) + `,` +
+		`{"schema_version":"3","run":"` + lensFixtureRun + `","inputs_sha256":"` +
+		lensFixtureInputs + `","lenses":[]}]`
+	usage := ReadLensUsage(lensRunState(), costDir(t, body))
+	if usage.State != LensUsageVersion {
+		t.Fatalf("state = %q, want %q", usage.State, LensUsageVersion)
+	}
+	if !strings.Contains(usage.Problem, "schema_version 3") {
+		t.Fatalf("problem = %q, want it to name schema_version 3", usage.Problem)
+	}
+	if usage.Groups[0].Known {
+		t.Fatal("an older v2 record certified a capture whose newest binding declared v3")
+	}
+}
+
 // TestReadLensUsageKeepsHistoryReadable pins the other half of the split: an
 // unregistered field refuses certification of that record, while the earlier
 // record bound to the same capture still cannot be certified — the newest

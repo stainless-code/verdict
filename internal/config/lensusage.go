@@ -347,13 +347,14 @@ func certificateRecord(rs *RunState, raw []byte) (map[string]any, string, string
 	if !ok {
 		return nil, LensUsageMalformed, ""
 	}
-	if bound, boundOK := lastBoundRecord(records, rs); boundOK {
-		return bound, "", ""
+	bound, version, boundOK := newestBinding(records, rs)
+	if !boundOK {
+		return nil, LensUsageUnbound, ""
 	}
-	if version := foreignVersion(records, rs); version != "" {
+	if !certifies(version) {
 		return nil, LensUsageVersion, foreignVersionProblem(version)
 	}
-	return nil, LensUsageUnbound, ""
+	return bound, "", ""
 }
 
 // certifiedEntries reads the lens list of the record that certifies the run.
@@ -389,20 +390,26 @@ func lensRecords(doc any) ([]map[string]any, bool) {
 	}
 }
 
-// lastBoundRecord picks the newest record bound to the current capture: a
-// schema-v2 record whose run and inputs_sha256 both match the verified
-// bundle. Without a verified name and inputs hash nothing can be bound, so
-// no record can certify.
-func lastBoundRecord(records []map[string]any, rs *RunState) (map[string]any, bool) {
-	if rs == nil || rs.Name == "" || rs.InputsSHA256 == "" {
-		return nil, false
+// newestBinding picks the newest record that binds the current capture and
+// declares a version: run and inputs_sha256 both match the verified bundle.
+// That record is the attestation, so a version this build does not certify
+// refuses even when an older certified record sits behind it — an older success
+// never stands in for the newest binding. A binding that declares no version is
+// skipped: it cannot certify, and it is not the diagnosis either. Without a
+// verified name and inputs hash nothing can be bound, so no record can certify.
+func newestBinding(records []map[string]any, rs *RunState) (map[string]any, string, bool) {
+	if !bindable(rs) {
+		return nil, "", false
 	}
 	for _, record := range slices.Backward(records) {
-		if boundTo(record, rs) {
-			return record, true
+		if !bindsCapture(record, rs) {
+			continue
+		}
+		if version := recordVersion(record); version != "" {
+			return record, version, true
 		}
 	}
-	return nil, false
+	return nil, "", false
 }
 
 // boundTo reports whether one record names this capture: schema-v2 evidence
@@ -435,37 +442,6 @@ func recordVersion(record map[string]any) string {
 func certifies(version string) bool {
 	_, ok := lensRecordKeysByVersion[version]
 	return ok
-}
-
-// foreignVersion names the version of the newest record that binds this
-// capture by run and inputs but declares a version this build cannot certify,
-// so the refusal says which version arrived instead of "unbound": evidence
-// from a newer writer is a version problem, not a missing record.
-func foreignVersion(records []map[string]any, rs *RunState) string {
-	if !bindable(rs) {
-		return ""
-	}
-	for _, record := range slices.Backward(records) {
-		if version := foreignCaptureVersion(record, rs); version != "" {
-			return version
-		}
-	}
-	return ""
-}
-
-// foreignCaptureVersion names the version of a record that binds this capture
-// and declares one this build cannot certify, empty otherwise. A binding that
-// declares no version is skipped: the newest binding that does declare an
-// unknown version is the diagnosis, not the newest binding overall.
-func foreignCaptureVersion(record map[string]any, rs *RunState) string {
-	if !bindsCapture(record, rs) {
-		return ""
-	}
-	version := recordVersion(record)
-	if version == "" || certifies(version) {
-		return ""
-	}
-	return version
 }
 
 // bindable reports a verified capture name and inputs hash: without both, no
