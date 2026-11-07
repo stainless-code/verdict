@@ -36,16 +36,20 @@ const (
 // directory; bare slugs with a matching local-* dir (and no PR bundle)
 // resolve local. Every run artifact for the bundle lives here — the diff,
 // the normalized metadata, the review/store/history/receipts, and the
-// typed config evidence — never in a cwd-relative legacy directory.
+// typed config evidence — never in a cwd-relative legacy directory. The
+// returned path is slash-form on every OS: the portable public, wire, and
+// human contract. Filesystem probes inside stay native, and every caller
+// opens the returned path through the OS, which accepts the slash form on
+// Windows exactly like the native one.
 func ResolveBundleDir(root, pr string) string {
 	state := filepath.Join(root, config.VerdictDir, config.StateDirName)
 	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
-		return filepath.Join(state, pr)
+		return filepath.ToSlash(filepath.Join(state, pr))
 	}
 	if IsDir(filepath.Join(state, localPrefix+pr)) && !Exists(filepath.Join(state, pr, "PR.json")) {
-		return filepath.Join(state, localPrefix+pr)
+		return filepath.ToSlash(filepath.Join(state, localPrefix+pr))
 	}
-	return filepath.Join(state, pr)
+	return filepath.ToSlash(filepath.Join(state, pr))
 }
 
 // repoRootTimeout bounds the git top-level probe: a hung git must not hang
@@ -129,7 +133,7 @@ func RepoRoot(ctx context.Context) (string, error) {
 		if sameDir(top) {
 			return ".", nil
 		}
-		return top, nil
+		return canonicalTop(top), nil
 	}
 	if probeFailed(err) {
 		return "", rootUnresolved(err)
@@ -142,6 +146,20 @@ func RepoRoot(ctx context.Context) (string, error) {
 		return "", rootUnresolved(err)
 	}
 	return ".", nil
+}
+
+// canonicalTop names the probed top level the way the rest of the checkout
+// spells it: cleaned to the native separator (git prints C:/Users on
+// Windows) and resolved through symlinks, so the answer is physically the
+// same directory the tests seed. A resolution failure keeps the cleaned
+// spelling instead of falling back to the working directory: an unresolved
+// probe must never read as a verified absent checkout.
+func canonicalTop(top string) string {
+	cleaned := filepath.Clean(top)
+	if physical, err := filepath.EvalSymlinks(cleaned); err == nil {
+		return physical
+	}
+	return cleaned
 }
 
 // probeFailed reports whether a probe error must surface as ErrRootUnresolved
@@ -274,9 +292,11 @@ func BundleName(dir string) string {
 }
 
 // StateDir returns the bundle home under root: the ignored local review
-// state directory every bundle lives in.
+// state directory every bundle lives in. The path is slash-form on every
+// OS, like [ResolveBundleDir]: callers open it through the OS, which
+// accepts the slash form on Windows exactly like the native one.
 func StateDir(root string) string {
-	return filepath.Join(root, config.VerdictDir, config.StateDirName)
+	return filepath.ToSlash(filepath.Join(root, config.VerdictDir, config.StateDirName))
 }
 
 // RepoKey returns the bundle's repository identity: a local bundle's

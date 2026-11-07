@@ -140,22 +140,23 @@ func dirtyTarget(ctx context.Context, s *session) (string, bool, error) {
 	return target, false, nil
 }
 
-// resolveIsolationDir picks the worktree path under the bundle home
+// resolveIsolationDir picks the worktree path under the shared bundle home
 // (suffixing on collision, so two concurrent fetches never share a
 // checkout). The path is deterministic per slug, which keeps the
-// scripted-argv contract exact; git itself creates the directory, so
-// this only probes. The worktree add is the atomic claim: a lost race
-// refuses typed with git's own already-exists excerpt instead of
-// sharing a checkout.
+// scripted-argv contract exact; it is slash-form on every OS, so git argv,
+// human lines, and goldens never carry a native separator. git itself
+// creates the directory, so this only probes. The worktree add is the
+// atomic claim: a lost race refuses typed with git's own already-exists
+// excerpt instead of sharing a checkout.
 func resolveIsolationDir(root, slug string) (string, error) {
-	state := filepath.Join(root, ".verdict", "state")
+	state := readcommon.StateDir(root)
 	if err := os.MkdirAll(state, dirPerm); err != nil {
 		return "", &core.RefusalError{
 			Code:    codeWorktreeFailed,
 			Message: fmt.Sprintf("could not create %s for an isolated worktree: %v", state, err),
 		}
 	}
-	dir := filepath.Join(state, ".worktree-"+slug)
+	dir := filepath.ToSlash(filepath.Join(state, ".worktree-"+slug))
 	for i := 2; ; i++ {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			return dir, nil

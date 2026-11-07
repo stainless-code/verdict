@@ -1,6 +1,7 @@
 package postcore
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -159,12 +160,24 @@ func TestApproveAcceptsMixedWorkAndZero(t *testing.T) {
 	}
 }
 
+// jsonStr renders one string literal for a hand-built JSON fixture: a native
+// Windows root carries backslashes, which are escape introducers in JSON and
+// must be encoded, never interpolated raw.
+func jsonStr(s string) string {
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return `""`
+	}
+	return string(raw)
+}
+
 // deepReceipt is an independent literal of a tool-produced receipt: the post
 // gate must accept only the exact run/group/head/root it names.
 func deepReceipt(run, inputs, group, head, root string, passed bool, exit int) string {
-	return `{"schema_version":"1","run":"` + run + `","inputs_sha256":"` + inputs + `","group":"` + group +
-		`","reviewed_head":"` + head + `","execution_head":"` + head + `","repo_root":"` + root +
-		`","command":"go test ./...","at":"2026-11-06T00:00:00Z","output_tail":"ok","exit":` +
+	return `{"schema_version":"1","run":` + jsonStr(run) + `,"inputs_sha256":` + jsonStr(inputs) +
+		`,"group":` + jsonStr(group) + `,"reviewed_head":` + jsonStr(head) + `,"execution_head":` +
+		jsonStr(head) + `,"repo_root":` + jsonStr(root) +
+		`,"command":"go test ./...","at":"2026-11-06T00:00:00Z","output_tail":"ok","exit":` +
 		strconv.Itoa(exit) + `,"timed_out":false,"status":"` + receiptStatus(passed) + `","passed":` +
 		strconv.FormatBool(passed) + `}`
 }
@@ -271,9 +284,9 @@ func contradictoryState(t *testing.T, head, facts string) *state {
 	if ref != nil {
 		t.Fatalf("CanonicalRoot: %v", ref)
 	}
-	body := `{"schema_version":"1","run":"7","inputs_sha256":"feedface","group":"group-a","reviewed_head":"` +
-		head + `","execution_head":"` + head + `","repo_root":"` + root +
-		`","command":"true","at":"2026-11-06T00:00:00Z","output_tail":"","` + facts + `}`
+	body := `{"schema_version":"1","run":"7","inputs_sha256":"feedface","group":"group-a","reviewed_head":` +
+		jsonStr(head) + `,"execution_head":` + jsonStr(head) + `,"repo_root":` + jsonStr(root) +
+		`,"command":"true","at":"2026-11-06T00:00:00Z","output_tail":"","` + facts + `}`
 	if err := os.WriteFile(filepath.Join(st.dir, "validation-group-a.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package verdict
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -21,6 +22,7 @@ import (
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // ReportRequest carries the report options. Output/Sarif name files whose
@@ -550,7 +552,26 @@ type DoctorResponse struct {
 func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error) {
 	rr, err := c.requestBare(ctx)
 	if err != nil {
-		return nil, err
+		// A canceled or expired context still aborts, so cancellation keeps
+		// its contract; any other non-root error passes through untouched.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		if !errors.Is(err, readcommon.ErrRootUnresolved) {
+			return nil, err
+		}
+		// The probe cannot answer (an absent git fails it): doctor diagnoses
+		// the harness from the cwd-relative posture instead of refusing, so
+		// the tool rows still report.
+		root := c.dir
+		rr = core.ReadRequest{
+			Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: c.commander},
+			Repo:     "",
+			Pr:       "",
+			Forces:   &core.GlobalForces{},
+			Root:     &root,
+			RepoRoot: ".",
+		}
 	}
 	resp, ref := doctorcore.Run(ctx, &doctorcore.Request{ReadRequest: rr})
 	if ref != nil {

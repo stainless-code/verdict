@@ -40,6 +40,10 @@ func stubTools(t *testing.T, tools ...string) {
 // git, while a verb's own tool must stay absent from PATH.
 func onlyPath(t *testing.T, tools ...string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		onlyPathWindows(t, tools)
+		return
+	}
 	dir := t.TempDir()
 	for _, tool := range tools {
 		physical, err := exec.LookPath(tool)
@@ -51,6 +55,28 @@ func onlyPath(t *testing.T, tools ...string) {
 		}
 	}
 	t.Setenv("PATH", dir)
+}
+
+// onlyPathWindows exposes the named host tools without symlinks: a bare
+// symlink name misses PATHEXT and a relocated binary loses its home
+// directory for DLL search, so each tool's home directory rides behind an
+// isolated dir instead. The named tools resolve and run, while anything
+// outside those homes (gh, ps) stays absent.
+func onlyPathWindows(t *testing.T, tools []string) {
+	t.Helper()
+	seen := map[string]bool{}
+	homes := []string{t.TempDir()}
+	for _, tool := range tools {
+		physical, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("host %s: %v", tool, err)
+		}
+		if home := filepath.Dir(physical); !seen[home] {
+			seen[home] = true
+			homes = append(homes, home)
+		}
+	}
+	t.Setenv("PATH", strings.Join(homes, string(os.PathListSeparator)))
 }
 
 // sdkPRJSON is the `gh pr view` body the remote fixture answers with.
