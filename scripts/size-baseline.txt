@@ -33,9 +33,14 @@
 # view, plus the explicitly untrusted source-snapshot policy head. Only
 # darwin/amd64 overflowed, by 2048 bytes, so its ceiling moves to the next
 # 10 kB above the exact measurement; every other ceiling stays put.
+# The review-fix pass (scope-audit exemption, learn-store seeding, root-resolved
+# kb reads, the doctor and front-door fallbacks, phase-two spend resolution, the
+# compliance gate dimension, and its per-dimension action table) added 66 bytes
+# over darwin/arm64's ceiling and stayed inside every other one; that ceiling
+# moves to the next 10 kB above the exact measurement.
 deps 0
 darwin/amd64 12020000
-darwin/arm64 11020000
+darwin/arm64 11030000
 linux/amd64 11810000
 linux/arm64 10820000
 windows/amd64 12130000
