@@ -178,6 +178,26 @@ func TestNameCostModels(t *testing.T) {
 			},
 		},
 		{
+			name: "refuses a document that is not a record at all",
+			files: map[string]string{
+				readcommon.CostFile: `5`,
+			},
+			panel:    []string{"lead"},
+			wantCode: codeCostRecordUnreadable,
+			want:     map[string]string{readcommon.CostFile: `5`},
+		},
+		{
+			name: "refuses an array holding one non-record entry",
+			files: map[string]string{
+				readcommon.CostFile: `[5,{"models":[{"input":1}]}]`,
+			},
+			panel:    []string{"lead"},
+			wantCode: codeCostRecordUnreadable,
+			want: map[string]string{
+				readcommon.CostFile: `[5,{"models":[{"input":1}]}]`,
+			},
+		},
+		{
 			name: "refuses a models entry that is not an object",
 			files: map[string]string{
 				readcommon.CostFile: `{"models":["junk",{"input":5}]}`,
@@ -329,8 +349,10 @@ func TestNameCostModelsFullyNamedDocument(t *testing.T) {
 	if ref != nil || named != 0 {
 		t.Fatalf("a fully named record must be a no-op, got named=%d refusal=%v", named, ref)
 	}
-	if got := readCostFile(t, filepath.Join(dir, readcommon.CostFile)); canonical(t, got) != canonical(t, body) {
-		t.Fatalf("a no-op pass rewrote the file: %s", got)
+	// Byte equality, not a decoded comparison: a decoded comparison passes while
+	// the pass re-emits the file as pretty JSON, which a no-op must not do.
+	if got := readCostFile(t, filepath.Join(dir, readcommon.CostFile)); got != body {
+		t.Fatalf("a no-op pass rewrote the file:\n got %s\nwant %s", got, body)
 	}
 }
 
@@ -359,5 +381,22 @@ func TestPinnedPanelReadsResolvedDefaults(t *testing.T) {
 	}
 	if panel := pinnedPanel(t.TempDir()); panel != nil {
 		t.Fatalf("an absent run.json must pin nothing, got %v", panel)
+	}
+}
+
+// TestWrittenFiles pins the mid-pass failure sentence: an operator resuming a
+// half-written pass needs the files that already landed, not a promise that
+// some were kept.
+func TestWrittenFiles(t *testing.T) {
+	if got := writtenFiles(nil); !strings.Contains(got, "were rewritten") {
+		t.Fatalf("no files written must still read as a plural sentence, got %q", got)
+	}
+	one := writtenFiles([]string{"cost.json"})
+	if !strings.Contains(one, "cost.json was rewritten") || !strings.Contains(one, "is kept") {
+		t.Fatalf("one file must be named singularly, got %q", one)
+	}
+	two := writtenFiles([]string{"cost.json", "chunk-1.cost.json"})
+	if !strings.Contains(two, "cost.json, chunk-1.cost.json were rewritten") {
+		t.Fatalf("both files must be named, got %q", two)
 	}
 }

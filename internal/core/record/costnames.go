@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -21,6 +22,10 @@ const (
 	codeCostEntryUnnamed     = "cost-entry-unnamed"
 	codeCostRecordUnreadable = "cost-unreadable"
 )
+
+// detailSep joins a file name to the reason it refused, one shape for every
+// message so an operator can read the location straight off the line.
+const detailSep = ": "
 
 // costNamePlan is one planned rewrite: the decoded document it came from,
 // the file it belongs to, and how many entries gain a name. Planning every
@@ -61,13 +66,26 @@ func NameCostModels(dir string, panel []string, dryRun bool) (named int, found b
 	return named, found, ref
 }
 
+// writtenFiles lists what a failed pass already rewrote, so the refusal can
+// point at the files on disk instead of describing them.
+func writtenFiles(written []string) string {
+	if len(written) == 1 {
+		return " (" + written[0] + " was rewritten before the failure and is kept)"
+	}
+	return " (" + strings.Join(written, ", ") + " were rewritten before the failure and are kept)"
+}
+
 // writePlans performs the planned rewrites, or counts them on a dry run.
 func writePlans(plans []costNamePlan, dryRun bool) (int, *core.RefusalError) {
 	renamed := 0
+	written := make([]string, 0, len(plans))
 	for _, plan := range plans {
 		n, ref := applyPlan(plan, dryRun)
 		if ref != nil {
-			return renamed, ref
+			return renamed, &core.RefusalError{Code: ref.Code, Message: ref.Message + writtenFiles(written)}
+		}
+		if n > 0 && !dryRun {
+			written = append(written, filepath.Base(plan.path))
 		}
 		renamed += n
 	}
@@ -93,8 +111,8 @@ func writePlan(plan costNamePlan) *core.RefusalError {
 	if err := atomic.WriteFile(plan.path, []byte(jq.PrettyOrdered(plan.doc))); err != nil {
 		return &core.RefusalError{
 			Code: codeCostRecordUnreadable,
-			Message: "could not write " + plan.path + ": " + err.Error() +
-				"; files written earlier in this pass are kept — re-run once the file is writable",
+			Message: "could not write " + plan.path + detailSep + err.Error() +
+				" — re-run once the file is writable to finish the repair",
 		}
 	}
 	return nil
@@ -143,14 +161,14 @@ func decodeCostFile(path string) (any, *core.RefusalError) {
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeCostRecordUnreadable,
-			Message: "could not read " + path + ": " + err.Error(),
+			Message: "could not read " + path + detailSep + err.Error(),
 		}
 	}
 	doc, derr := jq.DecodeOrdered(raw)
 	if derr != nil {
 		return nil, &core.RefusalError{
 			Code:    codeCostRecordUnreadable,
-			Message: "could not decode " + path + ": " + derr.Error(),
+			Message: "could not decode " + path + detailSep + derr.Error(),
 		}
 	}
 	return doc, nil
@@ -161,7 +179,10 @@ func decodeCostFile(path string) (any, *core.RefusalError) {
 // from the whole panel: an array document is a list of runs or groups, so
 // flattening their entries would put one record's seats on another's spend.
 func nameCostDocument(path string, doc any, panel []string) (int, *core.RefusalError) {
-	records := costRecords(doc)
+	records, ok := readcommon.CostRecordObjects(doc)
+	if !ok {
+		return 0, shapeRefusal(path, doc)
+	}
 	if len(records) == 0 {
 		return 0, nil
 	}
@@ -184,7 +205,7 @@ func checkPanel(path string, panel []string) *core.RefusalError {
 	if len(panel) == 0 {
 		return &core.RefusalError{
 			Code:    codeCostPanelUnresolved,
-			Message: filepath.Base(path) + ": no panel to name the cost entries from",
+			Message: filepath.Base(path) + detailSep + "no panel to name the cost entries from",
 		}
 	}
 	if name, ok := repeatedName(panel); !ok {
@@ -252,7 +273,7 @@ func recordEntries(path string, rec *jq.Obj) ([]*jq.Obj, *core.RefusalError) {
 	}
 	list, ok := raw.([]any)
 	if !ok {
-		return nil, notArrayRefusal(path, "models is an object")
+		return nil, notArrayRefusal(path, "models is a JSON "+jsonKind(raw))
 	}
 	entries := make([]*jq.Obj, 0, len(list))
 	for i, item := range list {
@@ -283,21 +304,41 @@ func recordName(path string, index, total int) string {
 	return fmt.Sprintf("%s record %d", filepath.Base(path), index+1)
 }
 
-// costRecords collects the record objects of one decoded cost file.
-func costRecords(doc any) []*jq.Obj {
-	switch d := doc.(type) {
-	case *jq.Obj:
-		return []*jq.Obj{d}
-	case []any:
-		records := make([]*jq.Obj, 0, len(d))
-		for _, item := range d {
-			if rec, ok := item.(*jq.Obj); ok {
-				records = append(records, rec)
+// shapeRefusal refuses a document the reader cannot price, naming the shape it
+// found so the operator knows what to delete rather than guessing.
+func shapeRefusal(path string, doc any) *core.RefusalError {
+	what := "the document is a JSON " + jsonKind(doc) + ", not a record object or an array of them"
+	if arr, isArr := doc.([]any); isArr {
+		for i, item := range arr {
+			if _, isObj := item.(*jq.Obj); !isObj {
+				what = fmt.Sprintf("entry %d is a JSON %s, not a record object", i+1, jsonKind(item))
+				break
 			}
 		}
-		return records
 	}
-	return nil
+	return &core.RefusalError{
+		Code: codeCostRecordUnreadable,
+		Message: filepath.Base(path) + detailSep + what +
+			" — the spend rollup cannot price this file, so naming part of it would report a repair nothing reads",
+	}
+}
+
+// jsonKind names a decoded JSON value's type, so a refusal can say what it
+// found instead of assuming the common case.
+func jsonKind(value any) string {
+	switch value.(type) {
+	case *jq.Obj:
+		return "object"
+	case []any:
+		return "array"
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case nil:
+		return "null"
+	}
+	return "number"
 }
 
 // costName reads an entry's model name, empty when it has none.

@@ -120,6 +120,37 @@ func chunkWarn(path string) string {
 // rollup, the trend rollup, and the provenance footer.
 const CostFile = "cost.json"
 
+// CostRecordObjects splits a decoded cost document into the record objects this
+// reader prices: a single record object, or an array whose every element is
+// one, empty array included. ok is false for any other shape, because the
+// rollup folds every element of a document and voids the whole file on a single
+// non-object — so a repair that named the readable half would report success on
+// a file the reader still cannot price.
+func CostRecordObjects(doc any) (recs []*jq.Obj, ok bool) {
+	if rec, isObj := doc.(*jq.Obj); isObj {
+		return []*jq.Obj{rec}, true
+	}
+	arr, isArr := doc.([]any)
+	if !isArr {
+		return nil, false
+	}
+	return recordObjects(arr)
+}
+
+// recordObjects collects an array document's records, failing the whole array
+// when one element is not a record object.
+func recordObjects(arr []any) ([]*jq.Obj, bool) {
+	recs := make([]*jq.Obj, 0, len(arr))
+	for _, item := range arr {
+		rec, isObj := item.(*jq.Obj)
+		if !isObj {
+			return nil, false
+		}
+		recs = append(recs, rec)
+	}
+	return recs, true
+}
+
 // CostFiles lists every cost record a bundle carries: the bundle record
 // first, then each per-chunk record, deduplicated and sorted within the chunk
 // group. It is the list the `record --cost-names` repair walks; the spend
