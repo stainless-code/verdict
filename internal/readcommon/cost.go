@@ -120,6 +120,14 @@ func chunkWarn(path string) string {
 // rollup, the trend rollup, and the provenance footer.
 const CostFile = "cost.json"
 
+// CostFiles lists every cost record a bundle carries: the bundle record
+// first, then each per-chunk record, deduplicated and sorted within the
+// chunk group. The rollup and the `record --cost-names` repair read the same
+// list, so neither can miss a file the other names.
+func CostFiles(dir string) []string {
+	return append([]string{dir + "/" + CostFile}, chunkCostFiles(dir)...)
+}
+
 // CostRecords reads a bundle's spend record: an
 // array passes, a single object reads as one record, and an absent,
 // oversized, or unparsable store reads nil (the callers degrade, never fail).

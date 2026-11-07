@@ -38,6 +38,9 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := st.repairCostNames(dir); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	check, ref := st.checkInputs(dir)
 	if ref != nil {
 		return nil, st.withWarnings(ref)

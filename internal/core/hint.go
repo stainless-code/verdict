@@ -104,6 +104,13 @@ var hintRules = []HintRule{
 		"or piping env into the network, then re-run"},
 	{codes: []string{"verify-repo-escape"}, hint: "try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run"},
 	{codes: []string{"id-taken"}, hint: "try: pass a different --id"},
+	{codes: []string{"cost-panel-unresolved"}, hint: "try: pass the panel that ran, in order: " +
+		"--cost-names=<lead>,<lens-1>,<lens-2>"},
+	{codes: []string{"cost-models-not-array"}, hint: "try: rewrite models as an array of named entries, then re-run"},
+	{codes: []string{"cost-entry-contradicts-panel"}, hint: "try: pass the panel in the order it ran " +
+		"(synthesizer first), or fix the entry's name, then re-run"},
+	{codes: []string{"cost-entry-unnamed"}, hint: "try: pass every model that ran: --cost-names=<lead>,<lens-1>,<lens-2>"},
+	{codes: []string{"cost-unreadable"}, hint: "try: fix or delete the cost record named above, then re-run"},
 	{codes: []string{"unknown-rule"}, hint: "try: list rules with learn --status, then re-run"},
 	{codes: []string{"already-retired", "not-retired"}, hint: "try: check the rule status with learn --status, then re-run"},
 	{codes: []string{"mcp-config-unparseable"}, hint: "try: fix the JSON/TOML syntax (or move the file aside), then re-run"},
