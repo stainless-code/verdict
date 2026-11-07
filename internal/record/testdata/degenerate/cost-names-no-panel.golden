@@ -1,0 +1,24 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+warn: no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
+error: no panel to name the cost entries from: no list was passed and the bundle pins none
+try: pass the panel that ran, in order: --cost-names=<lead>,<lens-1>,<lens-2>
+re-enter: verdict record acme/app local-dg --cost-names
+--- files ---
+--- file C/.verdict/state/local-dg/hunks.tsv ---
+notes.txt	OLD	1	7
+notes.txt	NEW	1	7
+notes.txt	OLD	11	17
+notes.txt	NEW	11	17
+notes.txt	OLD	21	27
+notes.txt	NEW	21	27
+notes.txt	OLD	31	37
+notes.txt	NEW	31	37
+other.txt	OLD	1	3
+other.txt	NEW	1	3
+--- file C/.verdict/state/local-dg/store.json ---
+{
+  "schema_version": "1"
+}

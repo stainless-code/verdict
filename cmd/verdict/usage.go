@@ -41,9 +41,11 @@ func usageText() string {
 		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
 		"    with current personal settings and environment — no live calls, no writes, and\n" +
 		"    never an approval. One git rev-parse root probe runs outside the caller commander.\n" +
-		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--json]\n" +
+		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--cost-names[=<names>]] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
+		"    --cost-names names the cost record's models[] entries from the panel, in order, and\n" +
+		"    changes no count; bare, it reads the panel pinned in the bundle and refuses without one.\n" +
 		"  adopt <owner/repo> <pr> --from <local-slug> [--json]\n" +
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
 		"    Adopt-into needs a GitHub PR target: non-GitHub targets refuse typed (provider-unimplemented).\n" +

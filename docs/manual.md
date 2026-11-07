@@ -903,7 +903,10 @@ this build cannot read at all — `null`, a boolean, an array, an object, an
 empty string — is `malformed`, and it refuses the same way: presence is the
 key, so an unreadable declaration is not an absent one and never lets an older
 record stand in for it. All three leave the capped group `usage-unknown`, never
-zero. Nothing loosens the fail-closed checks: a
+zero. A record that declares no `schema_version` key at all is the one case that
+is skipped rather than refused: it makes no claim about its writer's version, so
+the newest _declared_ record decides, even when an unversioned record matched
+later. Nothing loosens the fail-closed checks: a
 foreign capture, a duplicated key, an unreadable entry, and a mismatched
 binding all still refuse.
 
@@ -1373,6 +1376,27 @@ POST: hunk index, keep-biased anchor partition, sig merge with append-only histo
 resolved/verification/triage claims, writes `findings.json` + `record.json`.
 Add `--dry-run` to run every check and write nothing; `--strict` promotes
 review-input warnings to errors.
+
+`--cost-names[=<names>]` names the `models[]` entries of the bundle's
+`cost.json` and its `chunks/*.cost.json` in place, so spend carries the panel
+seat that produced it. `<names>` is a comma-separated list in panel order —
+synthesizer first, then each lens; bare `--cost-names` reads the panel the
+bundle pinned and refuses when it pins none, or when the bundle's scopes pin
+different panels — a cost record does not say which scope wrote it, so pass
+the panel that ran. An entry keeps the name of its seat and refuses when a name
+sits elsewhere, repeats, or comes from outside the panel; a name is never
+invented from a slug. One record's entries are its own seats, so a document
+holding several records gives each the whole panel. The pass is planned before
+`findings.json` is written and applied after it, so a refusal never leaves
+findings behind for `fix` to act on; it changes no token count, keeps each
+file's modification time (the
+measured-usage join brackets on it), and refuses a rewrite that would grow a
+file past the reader's cap. It names the files it already rewrote if a write
+fails partway, and with `--dry-run` it proves the repair without writing.
+Entries are the array `models` the reader prices, so an object-valued `models`
+field or a non-object entry refuses (`cost-models-not-array`) rather than being
+converted.
+
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

@@ -51,10 +51,28 @@
 # darwin/arm64 and windows/amd64 stay put. windows/arm64 then measured 10919936
 # locally but 10920960 on CI, 960 over its ceiling, so it moves to the next
 # 10 kB above the CI measurement.
+# Cost naming on top: the shared record predicate, the seat check, the
+# plan-everything-before-writing pass, and the refusal sentences that name a
+# file and an entry. Measured on the stacked tree (darwin/amd64 12041056,
+# darwin/arm64 11053250, linux/amd64 11833504, windows/amd64 12159488,
+# windows/arm64 10940928); each ceiling that crosses moves to the next 10 kB
+# above its own measurement, and linux/arm64 stays put.
+# The review-response round on that same change (plan-before-merge, mtime
+# preservation, the scoped-panel and cap refusals, and a per-chunk read path)
+# adds 752-7616 bytes: four ceilings cross and move to the next 10 kB above
+# their exact measurement — darwin/amd64 12057616, linux/amd64 11841696,
+# windows/amd64 12170752, windows/arm64 10950656. darwin/arm64 (11053426) and
+# linux/arm64 (10879136) stay inside and keep their ceilings.
+# The bot-fact-check round adds the rollup's top-record drop, the bindable
+# guard, and the plan stamp the write compares against: 2832-12288 bytes.
+# Measured here: darwin/amd64 12065936, darwin/arm64 11070066, linux/amd64
+# 11849888, linux/arm64 10879136, windows/amd64 12180992, windows/arm64
+# 10959360 (the earlier 10950656 note was stale). Three ceilings cross and
+# move to the next 10 kB above their measurement; the other three stay put.
 deps 0
-darwin/amd64 12030000
-darwin/arm64 11030000
-linux/amd64 11820000
+darwin/amd64 12070000
+darwin/arm64 11080000
+linux/amd64 11850000
 linux/arm64 10890000
-windows/amd64 12140000
-windows/arm64 10930000
+windows/amd64 12190000
+windows/arm64 10960000

@@ -66,7 +66,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	res, ref := st.merge(dir, prov, headFull, review)
+	res, ref := st.mergeAndName(dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -233,6 +233,26 @@ func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
 		return nil, refusalOrFailed(err)
 	}
 	return review, nil
+}
+
+// mergeAndName merges the review and then applies the cost-name plan validated
+// before it. Planning comes first so a missing panel, a contradiction, or an
+// unpriceable shape refuses while the bundle is untouched: a refused record
+// leaves no findings behind for a later `fix` to consume. Applying writes
+// nothing on a dry run.
+func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
+	names, ref := st.planCostNames(dir)
+	if ref != nil {
+		return MergeResult{}, ref
+	}
+	res, ref := st.merge(dir, prov, headFull, review)
+	if ref != nil {
+		return MergeResult{}, ref
+	}
+	if ref := st.applyCostNames(names); ref != nil {
+		return MergeResult{}, ref
+	}
+	return res, nil
 }
 
 func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
