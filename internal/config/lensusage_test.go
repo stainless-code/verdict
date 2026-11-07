@@ -401,6 +401,27 @@ func TestReadLensUsageNamesTheUnregisteredField(t *testing.T) {
 	}
 }
 
+// TestReadLensUsageRefusesEmptyFieldName pins the sentinel the allowlist must
+// not use: the empty string is a key a writer can declare, and it sorts before
+// every other name, so reading it as "no unregistered field" would let it
+// stand in for any other one and certify a record the version does not define.
+func TestReadLensUsageRefusesEmptyFieldName(t *testing.T) {
+	head := `{"schema_version":"2","run":"` + lensFixtureRun + `","inputs_sha256":"` + lensFixtureInputs + `",`
+	bodies := []string{
+		head + `"":true,"lenses":[]}`,
+		head + `"":true,"notes":"spent more","lenses":[]}`,
+	}
+	for _, body := range bodies {
+		usage := ReadLensUsage(lensRunState(), costDir(t, body))
+		if usage.State != LensUsageMalformed {
+			t.Fatalf("%s: state = %q, want malformed", body, usage.State)
+		}
+		if !strings.Contains(usage.Problem, `top-level field ""`) {
+			t.Fatalf("%s: problem = %q, want it to name the empty field", body, usage.Problem)
+		}
+	}
+}
+
 // TestReadLensUsageRefusesForeignVersion pins version-scoped certification: a
 // record bound by run and inputs at a version this build does not certify is a
 // version problem, never silently re-read as v2 and never merely "unbound".

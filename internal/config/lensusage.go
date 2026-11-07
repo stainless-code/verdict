@@ -477,19 +477,22 @@ func foreignVersionProblem(version string) string {
 
 // unregisteredField returns the first top-level field obj declares beyond the
 // version's shape, in sorted order so the sentence never depends on map
-// iteration.
-func unregisteredField(obj map[string]any, allowed map[string]bool) string {
+// iteration. found says whether any field was unregistered, because the empty
+// string is itself a key a writer can declare: it sorts first, so a predicate
+// that read "" as "clean" would let `"": true` stand in for any other
+// unregistered field and certify a record the version does not define.
+func unregisteredField(obj map[string]any, allowed map[string]bool) (string, bool) {
 	extra := make([]string, 0, len(obj))
 	for key := range obj {
 		if !allowed[key] {
 			extra = append(extra, key)
 		}
 	}
-	slices.Sort(extra)
 	if len(extra) == 0 {
-		return ""
+		return "", false
 	}
-	return extra[0]
+	slices.Sort(extra)
+	return extra[0], true
 }
 
 // recordString reads one string field, empty when absent or not a string.
@@ -511,7 +514,7 @@ func lensRecordEntries(record map[string]any) (entries []core.LensUsage, present
 	if !certified {
 		return nil, false, false, foreignVersionProblem(version)
 	}
-	if field := unregisteredField(record, keys); field != "" {
+	if field, found := unregisteredField(record, keys); found {
 		return nil, false, false, unregisteredFieldProblem(version, field)
 	}
 	return lensListEntries(record)
