@@ -702,7 +702,7 @@ func isEscape(p, anchor string, baseSet map[string]bool) bool {
 	if baseSet[p] {
 		return false
 	}
-	if strings.HasPrefix(p, prefixState) {
+	if p == collapsedState || strings.HasPrefix(p, prefixState) {
 		return false
 	}
 	return p != anchor
@@ -1101,6 +1101,13 @@ const (
 	// prefixState filters the generated bundle state tree from scope
 	// audits: run data never counts as fix scope.
 	prefixState = ".verdict/state/"
+	// collapsedState is the single entry git prints for an untracked state
+	// tree: porcelain's default untracked mode reports the directory, not
+	// each file under it, so prefixState alone never matches. Exempting it
+	// keeps the tool's own run data out of the escape list without hiding
+	// tracked controls like .verdict/kb.jsonl, which git always lists by
+	// name.
+	collapsedState = ".verdict/"
 	// resolveNone reports no sig match.
 	resolveNone = "NONE"
 	// resolveMany reports an ambiguous sig prefix.

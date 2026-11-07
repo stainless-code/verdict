@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
+	"github.com/stainless-code/verdict/internal/kb"
 )
 
 var harness *golden.Harness
@@ -29,13 +30,17 @@ const kbSeed = `{"id":"await-err","rule":"Check error paths on every await","sco
 const kbRetired = `{"id":"old-rule","rule":"An outdated rule kept for the record","scope":"*","provenance":"manual","rigor":"walked","hits":1,"false_hits":0,"judged":1,"status":"retired","retiredAt":"2026-01-01T00:00:00Z","retireReason":"the rule stopped matching how this repo writes code","history":[{"at":"2026-01-01T00:00:00Z","event":"retired","actor":"human","note":"the rule stopped matching how this repo writes code"}]}
 `
 
-// writeKB plants a store at dir/.review/kb.jsonl.
+// writeKB plants a store where production reads it: <dir>/.verdict/kb.jsonl.
+// Seeding the legacy .review/ path made every refusal golden run empty, so
+// duplicate-text, id-taken, tombstone, and corrupt-store guards had no
+// coverage at all.
 func writeKB(t *testing.T, dir, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, ".review"), 0o755); err != nil {
+	path := filepath.Join(dir, filepath.FromSlash(kb.File))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".review", "kb.jsonl"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

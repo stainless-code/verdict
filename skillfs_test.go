@@ -210,6 +210,14 @@ func danglingRef(word string) (string, bool) {
 	if _, err := fs.Stat(skillfs.FS, ref); err == nil {
 		return "", false
 	}
+	// Runtime review state is created in the checkout by the tool itself, not
+	// shipped with it: naming it describes where runs write, so it must not
+	// read as a dangling repo path once someone has actually used the tool
+	// here. Without this, a used checkout fails the payload check that a
+	// pristine one passes.
+	if strings.HasPrefix(ref, ".verdict/") || strings.HasPrefix(ref, ".review/") {
+		return "", false
+	}
 	if _, err := os.Stat(filepath.FromSlash(ref)); err == nil {
 		return ref, true
 	}

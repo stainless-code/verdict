@@ -1,8 +1,8 @@
-exit: 0
+exit: 1
 --- stdout ---
-learned check-error-paths-on-every-await -> .verdict/kb.jsonl (scope src/*.ts, rigor pointed)
---- stderr ---
 
+--- stderr ---
+error: rule text already learned (cite the existing rule id instead of learning it twice)
+try: cite the existing rule id instead of learning it twice
+re-enter: verdict learn --rule ... --scope ...
 --- files ---
---- file C/.verdict/kb.jsonl ---
-{"id":"check-error-paths-on-every-await","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}

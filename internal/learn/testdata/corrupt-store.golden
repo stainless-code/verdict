@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,13 +6,14 @@ exit: 0
   "repo": "",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "learn --rule ... to append; learn --retire/--restore to veto",
+  "next": "",
   "warnings": [],
-  "data": {
-    "rules": []
-  },
-  "error": null
+  "data": null,
+  "error": {
+    "code": "corrupt-store",
+    "message": "kb store .verdict/kb.jsonl is unreadable (restore from backup or fix the bad line)\ntry: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run"
+  }
 }
 --- stderr ---
-
+re-enter: verdict learn --status --json
 --- files ---

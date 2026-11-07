@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "scope-escape",
-    "message": "fix: worktree touches '.verdict/' and 1 more outside anchor 'notes.txt' — revert or stash them, then re-run fix\ntry: revert or stash files outside the anchor path, then re-run fix"
+    "message": "fix: worktree touches 'other.txt' outside anchor 'notes.txt' — revert or stash it, then re-run fix\ntry: revert or stash files outside the anchor path, then re-run fix"
   }
 }
 --- stderr ---

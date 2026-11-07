@@ -245,15 +245,10 @@ func TestGoldenKBMatrix(t *testing.T) {
 	for _, leg := range kbLegs() {
 		sequenced(t, leg.name, leg.setup, leg.mutate, "--json")
 	}
-	// Invalid policy file values warn and fall back.
-	goldenBoth(t, "kb/bad-policy-file", "local-kb", func(t *testing.T, dir string) {
-		t.Helper()
-		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})
-		writeFiles(t, dir, map[string]string{
-			".review/kb-policy": "MIN_JUDGED=abc\nMAX_FP_RATE=zzz\n",
-		})
-	}, "--json")
-	// Invalid policy env knobs warn and fall back.
+	// Invalid policy env knobs cannot override the typed defaults the bundle
+	// carries, so the record run stays warning-free. The EnvDefaults fallback
+	// for bundles without typed evidence is unit-covered in internal/config;
+	// the legacy .review/kb-policy file leg was deleted with PolicyFile itself.
 	goldenBothEnv(t, "kb/bad-policy-env", "local-kb", func(t *testing.T, dir string) {
 		t.Helper()
 		kbBundle(t, dir, kbReview(`["rec-rule"]`), []string{`{"id":"rec-rule","status":"active"}`})

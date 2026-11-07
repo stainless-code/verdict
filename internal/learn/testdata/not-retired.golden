@@ -2,7 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: learn: no rule 'await-err' (no .verdict/kb.jsonl yet — see learn --status)
-try: list rules with learn --status, then re-run
+error: learn: rule 'await-err' is already active
+try: check the rule status with learn --status, then re-run
 re-enter: verdict learn --restore ...
 --- files ---

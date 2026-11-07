@@ -1,8 +1,8 @@
-exit: 1
+exit: 0
 --- stdout ---
-
+restored old-rule (status active, tombstone history kept)
 --- stderr ---
-error: learn: no rule 'old-rule' (no .verdict/kb.jsonl yet — see learn --status)
-try: list rules with learn --status, then re-run
-re-enter: verdict learn --restore ...
+
 --- files ---
+--- file C/.verdict/kb.jsonl ---
+{"id":"old-rule","rule":"An outdated rule kept for the record","scope":"*","provenance":"manual","rigor":"walked","hits":1,"false_hits":0,"judged":1,"status":"active","retiredAt":"0000-00-00T00:00:00Z","retireReason":"the rule stopped matching how this repo writes code","history":[{"at":"0000-00-00T00:00:00Z","event":"retired","actor":"human","note":"the rule stopped matching how this repo writes code"},{"at":"0000-00-00T00:00:00Z","event":"restored","actor":"human","note":"the rule stopped matching how this repo writes code"}]}

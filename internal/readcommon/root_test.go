@@ -71,7 +71,9 @@ func TestRepoRoot(t *testing.T) {
 
 // TestRepoRootHonoursCancellation pins the propagation: from a repository
 // subdirectory a live context resolves the top level, while a canceled one
-// aborts the probe and keeps the cwd-relative answer instead of resolving.
+// aborts the probe and reports ErrRootUnresolved instead of falling back to
+// the cwd-relative answer — a canceled probe must never read as a verified
+// absent checkout.
 func TestRepoRootHonoursCancellation(t *testing.T) {
 	root := t.TempDir()
 	cmd := exec.CommandContext(t.Context(), "git", "init", "-q")
