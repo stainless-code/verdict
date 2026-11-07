@@ -888,6 +888,21 @@ unenforced. `enforce_cap: true` refuses typed `unsupported-cap` before any
 budget check, force, or consent — the guard is a pre-run projection, never a
 billing cap. Estimates cover the review run about to start, not the fetch reads.
 
+Lens evidence and group costs are read by two consumers with different
+strictness, and both are visible in `report --cost` and the typed refusals.
+Aggregators — the rollup, the group estimate, the receipt — price the fields
+they know and ignore top-level fields a newer writer added, so one record's
+stray key never voids the history an estimate is built from. Certification of
+lens evidence is version-scoped: the newest record bound to the capture by
+`run` and `inputs_sha256` may carry only the top-level fields its
+`schema_version` defines — an extra field refuses by name and version (for
+example, one carrying a stray `notes` key is told that v2 does not define it) —
+and a record bound to the run at a version this build does not certify refuses
+as `version-unsupported` rather than being re-read as v2. Both leave the capped
+group `usage-unknown`, never zero. Nothing loosens the fail-closed checks: a
+foreign capture, a duplicated key, an unreadable entry, and a mismatched
+binding all still refuse.
+
 When the agent's provider reports prompt caching, per-model `cost.json` entries
 may carry `cache_read_input_tokens` (served from cache) and
 `cache_creation_input_tokens` (spent writing the cache) — both subsets of the
