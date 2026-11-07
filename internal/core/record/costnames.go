@@ -197,8 +197,9 @@ func nameCostDocument(path string, doc any, panel []string) (gained, entries int
 	if ref := checkPanel(path, panel); ref != nil {
 		return 0, 0, ref
 	}
+	positions, total := recordPositions(doc, len(records))
 	for i, rec := range records {
-		n, seen, ref := nameRecord(path, i, len(records), rec, panel)
+		n, seen, ref := nameRecord(path, positions[i], total, rec, panel)
 		if ref != nil {
 			return 0, 0, ref
 		}
@@ -206,6 +207,24 @@ func nameCostDocument(path string, doc any, panel []string) (gained, entries int
 		entries += seen
 	}
 	return gained, entries, nil
+}
+
+// recordPositions numbers each record by its place in the document, so a
+// refusal points at the element the operator sees: skipping null records must
+// not renumber the records after them. A single-object document has one
+// position and no number at all (recordName omits it when total is one).
+func recordPositions(doc any, records int) (positions []int, total int) {
+	arr, isArr := doc.([]any)
+	if !isArr {
+		return []int{0}, 1
+	}
+	positions = make([]int, 0, records)
+	for i, item := range arr {
+		if _, isObj := item.(*jq.Obj); isObj {
+			positions = append(positions, i)
+		}
+	}
+	return positions, len(arr)
 }
 
 // checkPanel refuses a panel that cannot address seats one to one.
@@ -318,7 +337,7 @@ func shapeRefusal(path string, doc any) *core.RefusalError {
 	what := "the document is a JSON " + jsonKind(doc) + ", not a record object or an array of them"
 	if arr, isArr := doc.([]any); isArr {
 		for i, item := range arr {
-			if _, isObj := item.(*jq.Obj); !isObj {
+			if _, isObj := item.(*jq.Obj); !isObj && item != nil {
 				what = fmt.Sprintf("entry %d is a JSON %s, not a record object", i+1, jsonKind(item))
 				break
 			}
