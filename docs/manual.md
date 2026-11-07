@@ -1378,15 +1378,21 @@ review-input warnings to errors.
 `cost.json` and its `chunks/*.cost.json` in place, so spend carries the panel
 seat that produced it. `<names>` is a comma-separated list in panel order —
 synthesizer first, then each lens; bare `--cost-names` reads the panel the
-bundle pinned and refuses when it pins none. An entry keeps the name of its
-seat and refuses when a name sits elsewhere, repeats, or comes from outside
-the panel; a name is never invented from a slug. One record's entries are its
-own seats, so a document holding several records gives each the whole panel.
-The pass changes no token count, writes nothing when it refuses, and names the
-files it already rewrote if a write fails partway; with `--dry-run` it proves
-the repair without writing. Entries are the array
-`models` the reader prices, so an object-shaped record or a non-object entry
-refuses (`cost-models-not-array`) rather than being converted.
+bundle pinned and refuses when it pins none, or when the bundle's scopes pin
+different panels — a cost record does not say which scope wrote it, so pass
+the panel that ran. An entry keeps the name of its seat and refuses when a name
+sits elsewhere, repeats, or comes from outside the panel; a name is never
+invented from a slug. One record's entries are its own seats, so a document
+holding several records gives each the whole panel. The pass is planned before
+`findings.json` is written and applied after it, so a refusal never leaves
+findings behind for `fix` to act on; it changes no token count, keeps each
+file's modification time (the
+measured-usage join brackets on it), and refuses a rewrite that would grow a
+file past the reader's cap. It names the files it already rewrote if a write
+fails partway, and with `--dry-run` it proves the repair without writing.
+Entries are the array `models` the reader prices, so an object-valued `models`
+field or a non-object entry refuses (`cost-models-not-array`) rather than being
+converted.
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -28,11 +29,11 @@ const (
 // message so an operator can read the location straight off the line.
 const detailSep = ": "
 
-// costNamePlan is one planned rewrite: the decoded document it came from,
+// CostNamePlan is one planned rewrite: the decoded document it came from,
 // the file it belongs to, and how many entries gain a name. Planning every
 // file before writing any keeps the pass all-or-nothing, so a refusal never
 // leaves half a bundle named.
-type costNamePlan struct {
+type CostNamePlan struct {
 	doc     any
 	path    string
 	gains   int
@@ -61,12 +62,28 @@ type costNamePlan struct {
 // The pass is idempotent: a second run changes no byte and reports zero
 // names gained.
 func NameCostModels(dir string, panel []string, dryRun bool) (named, entries int, found bool, ref *core.RefusalError) {
-	plans, entries, found, ref := planCostNames(dir, panel)
+	plans, entries, found, ref := PlanCostNames(dir, panel)
 	if ref != nil {
 		return 0, 0, false, ref
 	}
-	named, ref = writePlans(plans, dryRun)
+	named, ref = ApplyCostNames(plans, dryRun)
 	return named, entries, found, ref
+}
+
+// PlanCostNames decodes every cost record and returns the rewrites the pass
+// would make, writing nothing. Planning is separate from writing so a caller
+// can refuse before it touches the bundle at all: `record` plans before its
+// merge, then applies after it, so a cost-name refusal never leaves findings
+// behind.
+func PlanCostNames(dir string, panel []string) ([]CostNamePlan, int, bool, *core.RefusalError) {
+	return planCostNames(dir, panel)
+}
+
+// ApplyCostNames performs planned rewrites, or counts them on a dry run. It is
+// the only half that writes, so every refusal it can raise is a write failure
+// mid-pass and says which files are already on disk.
+func ApplyCostNames(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError) {
+	return writePlans(plans, dryRun)
 }
 
 // writtenFiles lists what a failed pass already rewrote, so the refusal can
@@ -82,7 +99,7 @@ func writtenFiles(written []string) string {
 }
 
 // writePlans performs the planned rewrites, or counts them on a dry run.
-func writePlans(plans []costNamePlan, dryRun bool) (int, *core.RefusalError) {
+func writePlans(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 	renamed := 0
 	written := make([]string, 0, len(plans))
 	for _, plan := range plans {
@@ -100,7 +117,7 @@ func writePlans(plans []costNamePlan, dryRun bool) (int, *core.RefusalError) {
 
 // applyPlan writes one planned rewrite, or counts it on a dry run, reporting
 // how many entries the file gains.
-func applyPlan(plan costNamePlan, dryRun bool) (int, *core.RefusalError) {
+func applyPlan(plan CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 	if plan.gains == 0 || dryRun {
 		return plan.gains, nil
 	}
@@ -110,11 +127,23 @@ func applyPlan(plan costNamePlan, dryRun bool) (int, *core.RefusalError) {
 	return plan.gains, nil
 }
 
-// writePlan rewrites one cost file. A failure here is mid-pass, so the
-// message says what is already on disk: the pass is idempotent, so re-running
-// finishes the repair once the file is writable.
-func writePlan(plan costNamePlan) *core.RefusalError {
-	if err := atomic.WriteFile(plan.path, []byte(jq.PrettyOrdered(plan.doc))); err != nil {
+// writePlan rewrites one cost file, keeping its modification time: the
+// measured-usage join attaches the session whose window brackets that stamp, so
+// a repair that moved it would silently drop a paid measurement. The rendered
+// document is checked against the spend reader's cap before the write, because
+// pretty-printing can grow a near-cap file past it and the reader would then
+// treat the record as unreadable.
+func writePlan(plan CostNamePlan) *core.RefusalError {
+	rendered := []byte(jq.PrettyOrdered(plan.doc))
+	if int64(len(rendered)) > jq.MaxCostBytes {
+		return &core.RefusalError{
+			Code: codeCostRecordUnreadable,
+			Message: fmt.Sprintf("%s%sadding names would grow the record to %d bytes, "+
+				"past the %d-byte cap the reader enforces — nothing was written",
+				plan.path, detailSep, len(rendered), jq.MaxCostBytes),
+		}
+	}
+	if err := atomic.WriteFileKeepingModTime(plan.path, rendered); err != nil {
 		return &core.RefusalError{
 			Code: codeCostRecordUnreadable,
 			Message: "could not write " + plan.path + detailSep + err.Error() +
@@ -126,9 +155,9 @@ func writePlan(plan costNamePlan) *core.RefusalError {
 
 // planCostNames decodes every cost record and records the rewrite each one
 // needs, refusing on the first that cannot be named correctly.
-func planCostNames(dir string, panel []string) ([]costNamePlan, int, bool, *core.RefusalError) {
+func planCostNames(dir string, panel []string) ([]CostNamePlan, int, bool, *core.RefusalError) {
 	files := readcommon.CostFiles(dir)
-	plans := make([]costNamePlan, 0, len(files))
+	plans := make([]CostNamePlan, 0, len(files))
 	entries := 0
 	found := false
 	for _, path := range files {
@@ -147,16 +176,16 @@ func planCostNames(dir string, panel []string) ([]costNamePlan, int, bool, *core
 }
 
 // planCostFile plans one cost file, reporting false when it holds no record.
-func planCostFile(path string, panel []string) (costNamePlan, bool, *core.RefusalError) {
+func planCostFile(path string, panel []string) (CostNamePlan, bool, *core.RefusalError) {
 	doc, ref := decodeCostFile(path)
 	if ref != nil || doc == nil {
-		return costNamePlan{}, false, ref
+		return CostNamePlan{}, false, ref
 	}
 	gains, entries, ref := nameCostDocument(path, doc, panel)
 	if ref != nil {
-		return costNamePlan{}, false, ref
+		return CostNamePlan{}, false, ref
 	}
-	return costNamePlan{doc: doc, path: path, gains: gains, entries: entries}, true, nil
+	return CostNamePlan{doc: doc, path: path, gains: gains, entries: entries}, true, nil
 }
 
 // decodeCostFile reads and decodes one cost record, returning a nil document
@@ -233,6 +262,12 @@ func checkPanel(path string, panel []string) *core.RefusalError {
 		return &core.RefusalError{
 			Code:    codeCostPanelUnresolved,
 			Message: filepath.Base(path) + detailSep + "no panel to name the cost entries from",
+		}
+	}
+	if slices.Contains(panel, "") {
+		return &core.RefusalError{
+			Code:    codeCostPanelUnresolved,
+			Message: filepath.Base(path) + detailSep + "a panel seat has no name — every seat needs one",
 		}
 	}
 	if name, ok := repeatedName(panel); !ok {
@@ -387,33 +422,58 @@ func seatRefusal(who string, index int, got, want string) *core.RefusalError {
 	}
 }
 
-// repairCostNames runs the cost-name repair when the verb asked for it.
-func (st *svc) repairCostNames(dir string) *core.RefusalError {
-	if !st.req.Flags.CostNames {
-		return nil
-	}
-	return st.nameCostModels(dir, st.req.Flags.CostPanel)
+// costNamePass is one planned repair: every file validated, nothing written,
+// plus the counts the warning needs once it lands.
+type costNamePass struct {
+	plans   []CostNamePlan
+	entries int
+	found   bool
 }
 
-// nameCostModels runs the repair the record verb was asked for: the flag's
-// own list first, then a panel pinned in the bundle, then a refusal. A name
-// is never invented from a slug, because a wrong attribution is worse than
-// an absent one.
-func (st *svc) nameCostModels(dir string, panel []string) *core.RefusalError {
+// planCostNames resolves the panel and validates every cost record, writing
+// nothing. It runs before the merge so a missing panel, a contradiction, or a
+// shape the reader cannot price refuses while the bundle is still untouched:
+// a refusal after the merge would leave findings a later `fix` could consume.
+func (st *svc) planCostNames(dir string) (*costNamePass, *core.RefusalError) {
+	if !st.req.Flags.CostNames {
+		return nil, nil
+	}
+	panel := st.req.Flags.CostPanel
 	if len(panel) == 0 {
-		panel = pinnedPanel(dir)
+		pinned, conflict := pinnedPanel(dir)
+		if conflict != "" {
+			return nil, &core.RefusalError{
+				Code: codeCostPanelUnresolved,
+				Message: "no single panel to name the cost entries from: " + conflict +
+					" — pass --cost-names with the panel that ran, one list for every record",
+			}
+		}
+		panel = pinned
 	}
 	if len(panel) == 0 {
-		return &core.RefusalError{
+		return nil, &core.RefusalError{
 			Code:    codeCostPanelUnresolved,
 			Message: "no panel to name the cost entries from: no list was passed and the bundle pins none",
 		}
 	}
-	named, entries, found, ref := NameCostModels(dir, panel, st.req.DryRun)
+	plans, entries, found, ref := PlanCostNames(dir, panel)
+	if ref != nil {
+		return nil, ref
+	}
+	return &costNamePass{plans: plans, entries: entries, found: found}, nil
+}
+
+// applyCostNames writes the planned rewrites, or counts them on a dry run, and
+// reports what the pass did.
+func (st *svc) applyCostNames(pass *costNamePass) *core.RefusalError {
+	if pass == nil {
+		return nil
+	}
+	named, ref := ApplyCostNames(pass.plans, st.req.DryRun)
 	if ref != nil {
 		return ref
 	}
-	st.addWarning(costNameWarning(named, entries, found, st.req.DryRun))
+	st.addWarning(costNameWarning(named, pass.entries, pass.found, st.req.DryRun))
 	return nil
 }
 
@@ -435,11 +495,49 @@ func costNameWarning(named, entries int, found, dryRun bool) string {
 
 // pinnedPanel reads the panel the bundle was fetched under. Most bundles pin
 // none: the panel came from a one-shot invocation, so the flag's own list is
-// the source in practice.
-func pinnedPanel(dir string) []string {
+// the source in practice. conflict is set when the resolved scopes pin panels
+// that differ: a cost record does not say which scope wrote it, so one pinned
+// list would put the default seats' names on another panel's spend.
+func pinnedPanel(dir string) (panel []string, conflict string) {
 	rs, ok, err := config.ReadRunState(dir)
 	if err != nil || !ok || rs.Resolved == nil {
-		return nil
+		return nil, ""
 	}
-	return rs.Resolved.Defaults.Values.Panel
+	panel = rs.Resolved.Defaults.Values.Panel
+	for i := range rs.Resolved.Files {
+		file := &rs.Resolved.Files[i]
+		scoped := file.Defaults.Values.Panel
+		if len(scoped) == 0 || samePanel(scoped, panel) {
+			continue
+		}
+		return panel, "scope " + scopeName(file) + " pins " + panelList(scoped) +
+			" while the defaults pin " + panelList(panel)
+	}
+	return panel, ""
+}
+
+// scopeName names the resolved scope a conflicting panel came from.
+func scopeName(file *config.FileResolution) string {
+	if len(file.Scopes) > 0 {
+		return strings.Join(file.Scopes, ",")
+	}
+	return file.Path
+}
+
+// panelList renders a panel the way the flag takes it.
+func panelList(panel []string) string {
+	return "[" + strings.Join(panel, ", ") + "]"
+}
+
+// samePanel reports whether two panels name the same seats in the same order.
+func samePanel(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

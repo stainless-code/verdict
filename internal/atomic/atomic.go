@@ -25,30 +25,76 @@ const opDirectWrite = "write "
 // umask-022 default for store files). The temp file lives in the target
 // directory so the rename never crosses filesystems.
 func WriteFile(path string, data []byte) error {
-	return writeFile(path, data, storeFileMode)
+	return writeFile(path, data, storeFileMode, nil)
+}
+
+// WriteFileKeepingModTime writes data atomically and leaves the modification
+// time the file already had, because some readers anchor on it: the measured
+// usage join attaches the session whose window brackets a cost file's mtime, so
+// a rewrite that moves the stamp can silently drop a paid measurement.
+func WriteFileKeepingModTime(path string, data []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return writeFile(path, data, storeFileMode, nil)
+	}
+	stamp := func(staged string) error {
+		// Both stamps take the modification time: atime is not portable, and a
+		// rewrite is not a read, so the value is only a carrier here.
+		return os.Chtimes(staged, info.ModTime(), info.ModTime())
+	}
+	return writeFile(path, data, storeFileMode, stamp)
 }
 
 // WriteFileMode writes data to path atomically with an explicit mode, for
 // payload files that must land executable (the skill shim, schema validator).
 func WriteFileMode(path string, data []byte, mode os.FileMode) error {
-	return writeFile(path, data, mode)
+	return writeFile(path, data, mode, nil)
 }
 
 // WriteErrSidecar writes one command-stderr debug sidecar atomically with
 // mode 0o600: the bytes can carry token-adjacent forge diagnostics and are
 // debug residue, never published bundle content.
 func WriteErrSidecar(path string, data []byte) error {
-	return writeFile(path, data, errSidecarMode)
+	return writeFile(path, data, errSidecarMode, nil)
 }
 
-func writeFile(path string, data []byte, mode os.FileMode) error {
+// writeFile stages data beside path and renames it into place. stamp, when set,
+// runs on the staged file before the rename, so a caller can carry a property
+// the rename would otherwise reset (a modification time) without ever exposing
+// a moment where the file lacks it.
+func writeFile(path string, data []byte, mode os.FileMode, stamp func(string) error) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	tmpName, err := stage(path, dir, data, mode, stamp)
 	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmpName) }() // already renamed on the success path; cleanup rules
+	if err := replaceFile(tmpName, path); err != nil {
 		return jq.Sealed(opWrite+path, err)
 	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }() // cleanup has no recovery path; the write error rules
+	fsyncDir(dir)
+	return nil
+}
+
+// stage writes data into a fresh temp file in dir with mode and the optional
+// stamp applied, returning its name. A failure removes the partial file and
+// comes back sealed, so no caller inherits cleanup or wrapping.
+func stage(path, dir string, data []byte, mode os.FileMode, stamp func(string) error) (string, error) {
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return "", jq.Sealed(opWrite+path, err)
+	}
+	name := tmp.Name()
+	if err := sealStaged(path, tmp, data, mode, stamp); err != nil {
+		_ = os.Remove(name) // the staged bytes are dead; cleanup rules
+		return "", err
+	}
+	return name, nil
+}
+
+// sealStaged finishes the staged file: the bytes, the sync, the mode, and the
+// caller's stamp.
+func sealStaged(path string, tmp *os.File, data []byte, mode os.FileMode, stamp func(string) error) error {
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close() // write error already rules; close adds nothing
 		return jq.Sealed(opWrite+path, err)
@@ -60,13 +106,15 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return jq.Sealed(opWrite+path, err)
 	}
-	if err := os.Chmod(tmpName, mode); err != nil {
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return jq.Sealed(opWrite+path, err)
 	}
-	if err := replaceFile(tmpName, path); err != nil {
+	if stamp == nil {
+		return nil
+	}
+	if err := stamp(tmp.Name()); err != nil {
 		return jq.Sealed(opWrite+path, err)
 	}
-	fsyncDir(dir)
 	return nil
 }
 
@@ -102,7 +150,7 @@ func WriteThrough(path string, data []byte, mode os.FileMode) error {
 	if perm == 0 {
 		perm = mode
 	}
-	return writeFile(target, data, perm)
+	return writeFile(target, data, perm, nil)
 }
 
 // replaceable reports the regular file a rename may replace: path itself, or

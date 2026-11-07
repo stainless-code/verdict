@@ -3,8 +3,10 @@ package recordcore
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -176,6 +178,30 @@ func TestNameCostModels(t *testing.T) {
 			wantCode: codeCostPanelUnresolved,
 			want: map[string]string{
 				readcommon.CostFile: `{"models":[{"input":1},{"input":2}]}`,
+			},
+		},
+		{
+			name: "refuses a panel seat that has no name",
+			files: map[string]string{
+				readcommon.CostFile: `{"models":[{"input":1}]}`,
+			},
+			panel:    []string{""},
+			wantCode: codeCostPanelUnresolved,
+			want: map[string]string{
+				readcommon.CostFile: `{"models":[{"input":1}]}`,
+			},
+		},
+		{
+			name: "a contradiction in one file leaves the repairable one untouched",
+			files: map[string]string{
+				readcommon.CostFile:        `{"models":[{"model":"m1","input":1}]}`,
+				"chunks/chunk-1.cost.json": `{"models":[{"name":"intruder","input":2}]}`,
+			},
+			panel:    []string{"lead"},
+			wantCode: codeCostEntryContradict,
+			want: map[string]string{
+				readcommon.CostFile:        `{"models":[{"model":"m1","input":1}]}`,
+				"chunks/chunk-1.cost.json": `{"models":[{"name":"intruder","input":2}]}`,
 			},
 		},
 		{
@@ -423,12 +449,15 @@ func TestPinnedPanelReadsResolvedDefaults(t *testing.T) {
 	writeCostFile(t, filepath.Join(dir, "run.json"),
 		`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
 		  "resolved":{"defaults":{"values":{"panel":["lead","lens-1"]}}}}`)
-	got := pinnedPanel(dir)
+	got, conflict := pinnedPanel(dir)
 	if len(got) != 2 || got[0] != "lead" || got[1] != "lens-1" {
 		t.Fatalf("pinnedPanel = %v, want [lead lens-1]", got)
 	}
-	if panel := pinnedPanel(t.TempDir()); panel != nil {
-		t.Fatalf("an absent run.json must pin nothing, got %v", panel)
+	if conflict != "" {
+		t.Fatalf("one panel must not read as a conflict, got %q", conflict)
+	}
+	if panel, conflict := pinnedPanel(t.TempDir()); panel != nil || conflict != "" {
+		t.Fatalf("an absent run.json must pin nothing, got %v / %q", panel, conflict)
 	}
 }
 
@@ -469,5 +498,105 @@ func TestCostNameWarning(t *testing.T) {
 			t.Fatalf("named=%d entries=%d found=%v dryRun=%v: got %q, want prefix %q",
 				tc.named, tc.entries, tc.found, tc.dryRun, got, tc.want)
 		}
+	}
+}
+
+// TestNameCostModelsPreservesModTime pins the stamp the measured-usage join
+// reads: the reader attaches the session whose window brackets a cost file's
+// mtime, so a repair that resets it can drop a paid measurement and price the
+// run from its estimate instead.
+func TestNameCostModelsPreservesModTime(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, readcommon.CostFile)
+	writeCostFile(t, path, `{"models":[{"model":"m1","input":1}]}`)
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 123456789, time.UTC)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatalf("stamp: %v", err)
+	}
+	if named, _, _, ref := NameCostModels(dir, []string{"lead"}, false); ref != nil || named != 1 {
+		t.Fatalf("named=%d ref=%v, want one name and no refusal", named, ref)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if !info.ModTime().Equal(stamp) {
+		t.Fatalf("mtime = %s, want the original %s", info.ModTime(), stamp)
+	}
+}
+
+// TestNameCostModelsRefusesOversizeRewrite pins the reader's cap at write time:
+// pretty-printing and the added names can grow a near-cap record past the
+// 8 MiB the spend reader accepts, which would turn a successful repair into a
+// record `report --cost` cannot price.
+func TestNameCostModelsRefusesOversizeRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, readcommon.CostFile)
+	body, panel := oversizeCostFixture(t)
+	writeCostFile(t, path, body)
+	_, _, _, ref := NameCostModels(dir, panel, false)
+	if ref == nil || ref.Code != codeCostRecordUnreadable {
+		t.Fatalf("want %q, got %v", codeCostRecordUnreadable, ref)
+	}
+	if !strings.Contains(ref.Message, "cap") {
+		t.Fatalf("message = %q, want it to name the cap", ref.Message)
+	}
+	if got := readCostFile(t, path); got != body {
+		t.Fatal("a refused rewrite must leave the file byte-identical")
+	}
+}
+
+// oversizeCostFixture builds a record that fits under the reader's cap and
+// grows past it once every entry takes a name, with the panel that names them.
+func oversizeCostFixture(t *testing.T) (body string, panel []string) {
+	t.Helper()
+	entries := make([]string, 3000)
+	for i := range entries {
+		entries[i] = `{"model":"m` + strconv.Itoa(i) + `","input":1}`
+	}
+	head := `{"models":[` + strings.Join(entries, ",") + `],"pad":"`
+	tail := `"}`
+	pad := int(jq.MaxCostBytes) - len(head) - len(tail) - 20000
+	if pad <= 0 {
+		t.Fatalf("fixture arithmetic left no room: %d", pad)
+	}
+	body = head + strings.Repeat("x", pad) + tail
+	if int64(len(body)) >= jq.MaxCostBytes {
+		t.Fatalf("fixture is already over the cap at %d bytes", len(body))
+	}
+	panel = make([]string, len(entries))
+	for i := range panel {
+		panel[i] = "lead-" + strconv.Itoa(i)
+	}
+	return body, panel
+}
+
+// TestPlanCostNamesRefusesScopedPanel pins the attribution guard: a cost record
+// does not say which scope wrote it, so when the resolved scopes pin panels
+// that differ from the defaults, one pinned list would name another panel's
+// seats. The bare flag refuses; the operator passes the panel that ran.
+func TestPlanCostNamesRefusesScopedPanel(t *testing.T) {
+	dir := t.TempDir()
+	writeCostFile(t, filepath.Join(dir, readcommon.CostFile), `{"models":[{"input":1},{"input":2}]}`)
+	writeCostFile(t, filepath.Join(dir, "run.json"),
+		`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
+		  "resolved":{
+		    "defaults":{"values":{"panel":["lead","lens-1"]}},
+		    "files":[{"path":"verdict.toml","scopes":["web"],
+		      "defaults":{"values":{"panel":["lead","lens-9"]}}}]}}`)
+	st := &svc{req: &core.RecordRequest{Flags: core.RecordFlags{CostNames: true}}}
+	if _, ref := st.planCostNames(dir); ref == nil || ref.Code != codeCostPanelUnresolved {
+		t.Fatalf("want %q, got %v", codeCostPanelUnresolved, ref)
+	} else if !strings.Contains(ref.Message, "web") || !strings.Contains(ref.Message, "lens-9") {
+		t.Fatalf("message = %q, want the scope and its panel named", ref.Message)
+	}
+	// The explicit list is the escape hatch: it attributes the record on purpose.
+	st.req.Flags.CostPanel = []string{"lead", "lens-9"}
+	pass, ref := st.planCostNames(dir)
+	if ref != nil {
+		t.Fatalf("an explicit panel must be accepted, got %v", ref)
+	}
+	if pass == nil || pass.entries != 2 {
+		t.Fatalf("pass = %+v, want one entry planned", pass)
 	}
 }

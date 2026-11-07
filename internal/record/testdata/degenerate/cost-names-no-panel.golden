@@ -1,16 +1,12 @@
 exit: 1
 --- stdout ---
-» anchors: 0 inline, 0 moved to body
-» findings: 0 sigs -> .verdict/state/local-dg/findings.json
+
 --- stderr ---
 warn: no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
 error: no panel to name the cost entries from: no list was passed and the bundle pins none
 try: pass the panel that ran, in order: --cost-names=<lead>,<lens-1>,<lens-2>
 re-enter: verdict record acme/app local-dg --cost-names
 --- files ---
---- file C/.verdict/state/local-dg/findings.json ---
-[]
 --- file C/.verdict/state/local-dg/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
