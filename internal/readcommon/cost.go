@@ -127,21 +127,29 @@ const CostFile = "cost.json"
 // non-object — so a repair that named the readable half would report success on
 // a file the reader still cannot price.
 func CostRecordObjects(doc any) (recs []*jq.Obj, ok bool) {
-	if rec, isObj := doc.(*jq.Obj); isObj {
-		return []*jq.Obj{rec}, true
+	switch d := doc.(type) {
+	case *jq.Obj:
+		return []*jq.Obj{d}, true
+	case []any:
+		return recordObjects(d)
+	case nil:
+		// A null document is one empty record to the rollup (costRecordMap
+		// prices nil as a run with no fields), so it is not a shape to refuse:
+		// there is simply nothing in it to name.
+		return nil, true
 	}
-	arr, isArr := doc.([]any)
-	if !isArr {
-		return nil, false
-	}
-	return recordObjects(arr)
+	return nil, false
 }
 
-// recordObjects collects an array document's records, failing the whole array
-// when one element is not a record object.
+// recordObjects collects an array document's records. A null element is the
+// rollup's empty record and is skipped rather than refused; any other
+// non-object voids the array, the way foldRecord voids the file.
 func recordObjects(arr []any) ([]*jq.Obj, bool) {
 	recs := make([]*jq.Obj, 0, len(arr))
 	for _, item := range arr {
+		if item == nil {
+			continue
+		}
 		rec, isObj := item.(*jq.Obj)
 		if !isObj {
 			return nil, false
