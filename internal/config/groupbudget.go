@@ -384,9 +384,11 @@ func decimalLiteral(v float64) string {
 
 // ReadGroupCosts reads the per-group cost claims bound to the current capture:
 // each schema-v2 record whose run and inputs hash match the verified bundle
-// contributes one sample, and only its own group_costs entries. A record with
-// an unreadable or unsupported entry is malformed evidence, never a priced
-// group; the strict shape keeps unknown fields out of the estimate.
+// contributes one sample, and only its own group_costs entries. Top-level
+// fields this build does not know are ignored, because history outlives its
+// writer: one run's stray field never makes another run's estimate unreadable.
+// An unreadable group entry is still malformed evidence, never a priced group:
+// the strict nested shape keeps unknown fields out of the estimate.
 func ReadGroupCosts(rs *RunState, path string) ([]CostSample, string) {
 	if rs == nil {
 		return nil, LensUsageAbsent
@@ -414,14 +416,13 @@ func ReadGroupCosts(rs *RunState, path string) ([]CostSample, string) {
 }
 
 // boundSamples keeps the records bound to the verified capture, each as one
-// sample carrying that record's own group claims.
+// sample carrying that record's own group claims. Only the entries are read
+// strictly: a top-level field a newer writer added is not this build's
+// business, so it neither voids the sample nor prunes the history.
 func boundSamples(records []map[string]any, rs *RunState) ([]CostSample, bool) {
 	binding := RunBinding{Run: rs.Name, InputsSHA256: rs.InputsSHA256}
 	samples := make([]CostSample, 0, len(records))
 	for _, obj := range records {
-		if !knownKeys(obj, lensRecordKeys) {
-			return nil, false
-		}
 		if !boundTo(obj, rs) {
 			continue
 		}
