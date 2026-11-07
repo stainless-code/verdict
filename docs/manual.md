@@ -1369,6 +1369,17 @@ POST: hunk index, keep-biased anchor partition, sig merge with append-only histo
 resolved/verification/triage claims, writes `findings.json` + `record.json`.
 Add `--dry-run` to run every check and write nothing; `--strict` promotes
 review-input warnings to errors.
+
+`--cost-names[=<names>]` names the `models[]` entries of the bundle's
+`cost.json` and its `chunks/*.cost.json` in place, so spend carries the panel
+seat that produced it. `<names>` is a comma-separated list in panel order —
+synthesizer first, then each lens; bare `--cost-names` reads the panel the
+bundle pinned and refuses when it pins none. An entry keeps a name the panel
+agrees with and refuses when the panel contradicts it or cannot explain it, so
+the pass names nothing, changes no token count, and writes nothing on refusal;
+with `--dry-run` it proves the repair without writing. Entries are the array
+`models` the reader prices, so an object-shaped record refuses
+(`cost-models-not-array`) rather than being converted.
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
 bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —

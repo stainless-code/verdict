@@ -111,5 +111,45 @@ assert_json_field "summary moved anchors" "1" '.data.check.anchors_moved_to_body
 assert_json_field "would record both comments plus the moved body section" "3" '.data.findings.open'
 check_untouched "summary dry run" "$BEFORE"
 
+# --cost-names repairs attribution without touching a number: the dry run has
+# to prove the repair write-free, and the real run has to land the panel's
+# names in panel order while every count stays byte-identical.
+mk_local <<'JSON'
+{"schema_version":"1","body":"> ✅ Cost names.","approved":false,"comments":[]}
+JSON
+cat >"$LB/cost.json" <<'JSON'
+{"schema_version":"1","models":[{"model":"a/one","role":"synthesizer","input_tokens":10,"output_tokens":2},{"model":"a/two","role":"lens","input_tokens":5,"output_tokens":1}]}
+JSON
+COUNTS="$(jq -c '[.models[] | [.input_tokens, .output_tokens]]' "$LB/cost.json")"
+BEFORE="$(snapshot)"
+run_review record acme/app "$SLUG" --dry-run --cost-names=lead,lens-1 --json
+assert_exit "cost-name dry run exits 0" 0
+assert_json_field "dry run reports the names it would write" "1" \
+  '[.warnings[] | select(contains("would name 2"))] | length'
+check_untouched "cost-name dry run" "$BEFORE"
+
+run_review record acme/app "$SLUG" --cost-names=lead,lens-1 --json
+assert_exit "cost-name repair exits 0" 0
+assert_eq "panel order names the entries" "lead,lens-1" \
+  "$(jq -r '[.models[].name] | join(",")' "$LB/cost.json")"
+assert_eq "the repair changes no count" "$COUNTS" \
+  "$(jq -c '[.models[] | [.input_tokens, .output_tokens]]' "$LB/cost.json")"
+
+run_review record acme/app "$SLUG" --cost-names=lead,lens-1 --json
+assert_exit "a second repair run exits 0" 0
+assert_eq "a second repair run is a no-op" "lead,lens-1" \
+  "$(jq -r '[.models[].name] | join(",")' "$LB/cost.json")"
+
+# A record with more entries than the panel names cannot be named seat by
+# seat, so it refuses and writes nothing.
+cat >"$LB/cost.json" <<'JSON'
+{"schema_version":"1","models":[{"model":"a/one","input_tokens":10},{"model":"a/two","input_tokens":5}]}
+JSON
+BEFORE="$(snapshot)"
+run_review record acme/app "$SLUG" --cost-names=lead --json
+assert_exit "a panel shorter than the record refuses" 1
+assert_json_field "the short panel refuses typed" "cost-entry-unnamed" '.error.code'
+assert_eq "the refusal wrote nothing" "$BEFORE" "$(snapshot)"
+
 rm -rf "$LB"
 eval_end

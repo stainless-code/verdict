@@ -1,18 +1,26 @@
 package core
 
-// RecordFlags is a placeholder for the record verb's resolved options. The
-// adapter parses argv and the service receives values only; record takes no
-// value flags today (only --json, which the adapter consumes).
-type RecordFlags struct{}
+// RecordFlags carries the record verb's resolved options. The adapter
+// parses argv and the service receives values only.
+//
+// CostNames asks for the cost-name repair. CostPanel carries the names to
+// apply, in the order the panel ran: the flag's own explicit list, which is
+// what a one-shot panel needs. An empty CostPanel with CostNames set means
+// the repair reads the panel the bundle pinned, and refuses when there is
+// none rather than inventing a name from a slug.
+type RecordFlags struct {
+	CostPanel []string `json:"-"`
+	CostNames bool     `json:"-"`
+}
 
 // RecordRequest is the record service invocation: the read runtime and
 // positionals, the render configuration, and the warnings the adapter
 // already accumulated (prefs).
 type RecordRequest struct {
 	ReadRequest
-	Flags     RecordFlags
 	Effective Effective
 	Warnings  []string
+	Flags     RecordFlags
 	DryRun    bool `json:"dry_run"`
 	Strict    bool `json:"-"`
 }
