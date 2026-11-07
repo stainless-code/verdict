@@ -58,7 +58,12 @@ var publishedSemantics = map[string]string{
 	// becomes $defs/lensUsage {group, labels} (grouped labels, additional
 	// properties open for the optional run/inputs_sha256 binding). Both are
 	// intentional additions of the accepted record shape over v1.
-	"cost.schema.json": "7d02fc87a47925234ef762f1b6e9fd9b49e63548393b5f57d0fb454b8ad9438c",
+	// Lens certification split by consumer: prose only. The description now
+	// states that aggregation ignores unknown top-level fields while
+	// certification is version-scoped, so an unregistered field refuses by
+	// name. No property, required key, enum, or type changed;
+	// additionalProperties stays open for the aggregators.
+	"cost.schema.json": "131e9b7639b81e8b3851030c43d522ec7d08525479697f34d0d6f9c3c6a008f2",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
