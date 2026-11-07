@@ -70,6 +70,10 @@ func CostRollup(dir string) CostResult {
 	return res
 }
 
+// mergeChunkRecords keeps the records of every chunk that prices on its own.
+// A chunk that decodes but holds a shape the reader cannot price is dropped as
+// that chunk's loss: folding it into the merged set would void the spend of
+// every chunk beside it and blame cost.json for a file it never came from.
 func mergeChunkRecords(chunkFiles []string, res *CostResult) []any {
 	var merged []any
 	for _, f := range chunkFiles {
@@ -77,7 +81,7 @@ func mergeChunkRecords(chunkFiles []string, res *CostResult) []any {
 		if !present {
 			continue
 		}
-		if !parsed {
+		if !parsed || rollupRecords(recs) == nil {
 			res.Warns = append(res.Warns, chunkWarn(f))
 			continue
 		}

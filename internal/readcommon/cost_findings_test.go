@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
@@ -245,5 +246,34 @@ func TestLoadFindings(t *testing.T) {
 				t.Errorf("LoadFindings(%s) code = %q; want %q", tc.name, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestCostRollupChunkShapeLossIsScopedToTheChunk pins whose loss a shape the
+// reader cannot price is: a chunk carrying an object-valued models field warns
+// under its own name and the chunks beside it still price. Folding the invalid
+// record into the merged set would drop every chunk's spend and blame
+// cost.json, a file the bad bytes never came from.
+func TestCostRollupChunkShapeLossIsScopedToTheChunk(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeStore(t, dir, map[string]string{
+		"cost.json": `{"schema_version":"1","effort":"standard",` +
+			`"models":[{"name":"m","input_tokens":100,"output_tokens":50}],"est_usd":0.05}`,
+		"chunks/chunk-a.cost.json": `{"schema_version":"1","effort":"cheap",` +
+			`"models":[{"name":"m","input_tokens":1000,"output_tokens":200}],"est_usd":1.5}`,
+		"chunks/chunk-b.cost.json": `{"schema_version":"1","effort":"cheap",` +
+			`"models":{"name":"m"},"est_usd":2}`,
+	})
+	res := readcommon.CostRollup(dir)
+	for key, want := range map[string]float64{
+		"runs": 2, "input_tokens": 1100, "output_tokens": 250,
+	} {
+		if got := costNum(t, res.Cost, key); got != want {
+			t.Errorf("cost.%s = %v; want %v (the valid chunk must still price)", key, got, want)
+		}
+	}
+	if len(res.Warns) != 1 || !strings.HasPrefix(res.Warns[0], "chunk cost chunk-b.cost.json unreadable") {
+		t.Fatalf("warns = %v; want one warning naming chunk-b.cost.json", res.Warns)
 	}
 }
