@@ -51,10 +51,15 @@
 # darwin/arm64 and windows/amd64 stay put. windows/arm64 then measured 10919936
 # locally but 10920960 on CI, 960 over its ceiling, so it moves to the next
 # 10 kB above the CI measurement.
+# Cost naming on top: the shared record predicate, the seat check, the
+# plan-everything-before-writing pass, and the refusal sentences that name a
+# file and an entry. Ceilings on this stacked tree are re-measured once the
+# branch rebases onto the certification merge; the five that cross move to the
+# next 10 kB above their own measurement.
 deps 0
-darwin/amd64 12030000
-darwin/arm64 11030000
-linux/amd64 11820000
+darwin/amd64 12050000
+darwin/arm64 11060000
+linux/amd64 11840000
 linux/arm64 10890000
-windows/amd64 12140000
-windows/arm64 10930000
+windows/amd64 12170000
+windows/arm64 10950000
