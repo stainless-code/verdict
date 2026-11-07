@@ -38,10 +38,13 @@
 # compliance gate dimension, and its per-dimension action table) added 66 bytes
 # over darwin/arm64's ceiling and stayed inside every other one; that ceiling
 # moves to the next 10 kB above the exact measurement.
+# One-warning-per-gap and the depth-scoped state negation add 512 bytes to
+# windows/amd64, the only ceiling they cross; it moves to the next 10 kB above
+# the exact measurement and the others stay put.
 deps 0
 darwin/amd64 12020000
 darwin/arm64 11030000
 linux/amd64 11810000
 linux/arm64 10820000
-windows/amd64 12130000
+windows/amd64 12140000
 windows/arm64 10920000

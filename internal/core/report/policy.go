@@ -2,6 +2,7 @@ package reportcore
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -68,17 +69,25 @@ func warnCompliance(st *state, comp *config.ReadCompliance) {
 // requiredProfileGaps reads the captured profile work report and gate must
 // evaluate: a deep group without a current validation receipt, and a capped
 // group without usable lens attestation. Reads never execute or append.
+// The two gap prefixes the compliance line carries. The standalone profile
+// warnings use the same prefixes to recognize a gap the compliance line has
+// already named, so one missing receipt reads once.
+const (
+	gapPrefixWork = "required work: "
+	gapPrefixLens = "required lens evidence: "
+)
+
 func requiredProfileGaps(st *state, comp *config.ReadCompliance) []string {
 	if comp == nil || !comp.HasPolicy || st.policy.Resolved == nil {
 		return nil
 	}
 	var gaps []string
 	for _, gap := range verifycore.DeepGaps(st.policy, st.dir, st.headSHA, st.req.RepoRootPath()) {
-		gaps = append(gaps, "required work: "+gap)
+		gaps = append(gaps, gapPrefixWork+gap)
 	}
 	usage := config.ReadLensUsage(st.policy, st.dir)
 	for _, violation := range usage.Violations() {
-		gaps = append(gaps, "required lens evidence: "+violation.Detail)
+		gaps = append(gaps, gapPrefixLens+violation.Detail)
 	}
 	return gaps
 }
@@ -103,6 +112,12 @@ func jqStrOf(entry any, key string) string {
 	return jq.StrOf(readcommon.FieldOf(entry, key))
 }
 
+// warnedByCompliance reports whether the compliance line already names this
+// gap: warning it again made one missing receipt read as two defects.
+func warnedByCompliance(st *state, prefixed string) bool {
+	return slices.Contains(st.requiredGaps, prefixed)
+}
+
 // warnLensUsage surfaces incomplete or over-cap lens evidence beside the
 // rendered review: report is a read, so the shortfall is a warning and
 // never a pass, and an absent record reads as unknown.
@@ -112,6 +127,9 @@ func warnLensUsage(st *state) {
 	}
 	usage := config.ReadLensUsage(st.policy, st.dir)
 	for _, violation := range usage.Violations() {
+		if warnedByCompliance(st, gapPrefixLens+violation.Detail) {
+			continue
+		}
 		st.warn("profile lens evidence: " + violation.Detail)
 	}
 }
@@ -128,6 +146,9 @@ func warnDeepValidation(st *state) {
 		head = b.Head()
 	}
 	for _, gap := range verifycore.DeepGaps(st.policy, st.dir, head, st.req.RepoRootPath()) {
+		if warnedByCompliance(st, gapPrefixWork+gap) {
+			continue
+		}
 		st.warn(gap)
 	}
 }

@@ -332,6 +332,9 @@ func isStateNegation(line string) bool {
 	}
 	pattern := strings.TrimSpace(strings.TrimPrefix(trimmed, "!"))
 	pattern = strings.TrimPrefix(pattern, "/")
+	// `**/` is gitignore for "at any depth", so `!**/state` re-admits the
+	// state directory exactly as `!state` would.
+	pattern = strings.TrimPrefix(pattern, "**/")
 	pattern = strings.TrimSuffix(pattern, "/")
 	if pattern == "" {
 		return false

@@ -3,6 +3,7 @@ package reportcore_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -90,6 +91,36 @@ func TestReportDeepGroupWithoutReceiptNeverPasses(t *testing.T) {
 	}
 	if resp.Data.Compliance.Gaps == 0 {
 		t.Fatalf("compliance = %+v, want a deep-work gap", resp.Data.Compliance)
+	}
+}
+
+// TestReportWarnsEachProfileGapOnce pins the single warning: the compliance
+// line already names the gap with its requirement prefix, so the standalone
+// profile warning must not repeat it and make one missing receipt read as two
+// separate defects.
+func TestReportWarnsEachProfileGapOnce(t *testing.T) {
+	req := fixture(t, "[]")
+	deep := "deep"
+	repo := &core.Config{
+		SchemaVersion: "1",
+		Profiles:      map[string]core.ConfigProfile{"deep": {Depth: &deep}},
+		Scopes:        []core.ConfigScope{{Name: "deep", Include: []string{"notes.txt"}, Profile: &deep}},
+	}
+	writeResolvedCapture(t, resolveCapture(t, repo, nil))
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	named := 0
+	for _, warning := range resp.Warnings {
+		if strings.Contains(warning, "deep validation pending") {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Fatalf("warnings = %q, want the gap named once", resp.Warnings)
 	}
 }
 

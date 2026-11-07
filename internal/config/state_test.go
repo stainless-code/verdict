@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +84,56 @@ func TestEnsureStateIgnorePreserves(t *testing.T) {
 	kept, err := os.ReadFile(layout.ConfigFile())
 	if err != nil || string(kept) != shared {
 		t.Fatalf("shared config mutated: %q, err = %v", kept, err)
+	}
+}
+
+// TestIsStateNegation pins which `!` lines can re-admit the state directory,
+// including the `**/` depth form.
+func TestIsStateNegation(t *testing.T) {
+	for _, tc := range []struct {
+		line string
+		want bool
+	}{
+		{"!state", true},
+		{"!/state", true},
+		{"!state/", true},
+		{"!state/keep.json", true},
+		{"!**", true},
+		{"!**/state", true},
+		{"!**/state/**", true},
+		{"!*.json", false},
+		{"!**/other", false},
+		{"!state-notes", false},
+		{"state", false},
+	} {
+		if got := isStateNegation(tc.line); got != tc.want {
+			t.Errorf("isStateNegation(%q) = %v, want %v", tc.line, got, tc.want)
+		}
+	}
+}
+
+// TestEnsureStateIgnoreRefusesDeepStateNegation pins the operator path: a
+// `!**/state` line refuses naming the line instead of being preserved.
+func TestEnsureStateIgnoreRefusesDeepStateNegation(t *testing.T) {
+	root := t.TempDir()
+	verdictDir := filepath.Join(root, ".verdict")
+	if err := os.MkdirAll(verdictDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ignore := filepath.Join(verdictDir, ".gitignore")
+	if err := os.WriteFile(ignore, []byte("dist/\n!**/state\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := NewLayout(root).EnsureStateIgnore()
+	if err == nil {
+		t.Fatal("EnsureStateIgnore accepted !**/state")
+	}
+	var serr *stateError
+	if !errors.As(err, &serr) || !serr.operator {
+		t.Fatalf("err = %v, want an operator refusal", err)
+	}
+	if !strings.Contains(err.Error(), "!**/state") {
+		t.Fatalf("err = %v, want the offending line named", err)
 	}
 }
 
