@@ -29,7 +29,7 @@ done
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=evals/lib/testenv.sh
 . "$ROOT/evals/lib/testenv.sh"
-for dep in jq shasum git; do
+for dep in jq shasum git node; do
   command -v "$dep" >/dev/null 2>&1 || { echo "evals need $dep on PATH" >&2; exit 2; }
 done
 
