@@ -48,14 +48,19 @@ type Ctx struct {
 
 // New returns a Ctx with default thresholds.
 func New(warn func(string)) *Ctx {
-	return &Ctx{
+	c := &Ctx{
 		Policy: Policy{MinJudged: defaultMinJudged, MaxFPRate: defaultMaxFPRate},
 		Warn:   warn,
-		ReadFile: func(path string) ([]byte, bool) {
-			raw, err := jq.CappedFile(path, jq.MaxKBBytes)
-			return raw, err == nil
-		},
 	}
+	// The default reader resolves store names through Root exactly like every
+	// write does: a command run from a subdirectory must read the store it is
+	// about to rewrite, not a second one under the cwd. Callers that read
+	// controls from a pinned snapshot (record) replace ReadFile wholesale.
+	c.ReadFile = func(path string) ([]byte, bool) {
+		raw, err := jq.CappedFile(c.path(path), jq.MaxKBBytes)
+		return raw, err == nil
+	}
+	return c
 }
 
 // path anchors one store path under the reviewed repository root.
