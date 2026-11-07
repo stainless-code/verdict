@@ -83,6 +83,25 @@ func writeCostFixture(t *testing.T, dir, name, body string) {
 	}
 }
 
+// objectElements counts the record objects a document carries, which is what an
+// accepted classification must return: a lenient classifier returning too few
+// records would name part of a file and call it repaired.
+func objectElements(doc any) int {
+	switch d := doc.(type) {
+	case *jq.Obj:
+		return 1
+	case []any:
+		n := 0
+		for _, item := range d {
+			if _, isObj := item.(*jq.Obj); isObj {
+				n++
+			}
+		}
+		return n
+	}
+	return 0
+}
+
 // TestCostRecordObjectsPinsTheRollupRule holds the classifier to the rollup's
 // own verdict: a shape it accepts must price without an unreadable warning, and
 // a shape it rejects must be exactly the one the rollup warns about. The
@@ -97,6 +116,10 @@ func TestCostRecordObjectsPinsTheRollupRule(t *testing.T) {
 		"scalar document":       `5`,
 		"string document":       `"text"`,
 		"array with junk":       `[5,{"models":[{"input_tokens":1}]}]`,
+		"array of arrays":       `[[1]]`,
+		"null document":         `null`,
+		"array of null":         `[null]`,
+		"null then a record":    `[null,{"models":[{"input_tokens":1}]}]`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -118,13 +141,12 @@ func classifyAndPrice(t *testing.T, body string) {
 		t.Fatalf("decode %s: %v", body, err)
 	}
 	recs, accepted := CostRecordObjects(doc)
-	unreadable := slices.Contains(CostRollup(dir).Warns, warnCostUnreadable)
+	rollup := CostRollup(dir)
+	unreadable := slices.Contains(rollup.Warns, warnCostUnreadable)
 	if accepted == unreadable {
-		t.Fatalf("classifier and rollup disagree on %s: accepted=%v recs=%d", body, accepted, len(recs))
+		t.Fatalf("classifier and rollup disagree on %s: accepted=%v recs=%d warns=%v", body, accepted, len(recs), rollup.Warns)
 	}
-	if accepted {
-		if arr, isArr := doc.([]any); isArr && len(arr) > 0 && len(recs) == 0 {
-			t.Fatalf("%s classifies as records but yields none", body)
-		}
+	if accepted && len(recs) != objectElements(doc) {
+		t.Fatalf("%s yields %d records for %d record objects", body, len(recs), objectElements(doc))
 	}
 }

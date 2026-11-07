@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -32,9 +33,10 @@ const detailSep = ": "
 // file before writing any keeps the pass all-or-nothing, so a refusal never
 // leaves half a bundle named.
 type costNamePlan struct {
-	doc   any
-	path  string
-	gains int
+	doc     any
+	path    string
+	gains   int
+	entries int
 }
 
 // NameCostModels names the models[] entries of every cost record under dir
@@ -52,23 +54,27 @@ type costNamePlan struct {
 //
 // dryRun plans and validates the same pass without touching a byte, so
 // `record --dry-run --cost-names` proves the repair before it lands. found
-// reports whether the bundle carried any cost record at all, so a caller can
-// tell "nothing to name" from "already named".
+// reports whether the bundle carried any cost record at all and entries how
+// many models[] entries those records hold, so a caller can tell "nothing to
+// name" from "no entries to name" from "already named".
 //
 // The pass is idempotent: a second run changes no byte and reports zero
 // names gained.
-func NameCostModels(dir string, panel []string, dryRun bool) (named int, found bool, ref *core.RefusalError) {
-	plans, found, ref := planCostNames(dir, panel)
+func NameCostModels(dir string, panel []string, dryRun bool) (named, entries int, found bool, ref *core.RefusalError) {
+	plans, entries, found, ref := planCostNames(dir, panel)
 	if ref != nil {
-		return 0, false, ref
+		return 0, 0, false, ref
 	}
 	named, ref = writePlans(plans, dryRun)
-	return named, found, ref
+	return named, entries, found, ref
 }
 
 // writtenFiles lists what a failed pass already rewrote, so the refusal can
 // point at the files on disk instead of describing them.
 func writtenFiles(written []string) string {
+	if len(written) == 0 {
+		return ""
+	}
 	if len(written) == 1 {
 		return " (" + written[0] + " was rewritten before the failure and is kept)"
 	}
@@ -120,22 +126,24 @@ func writePlan(plan costNamePlan) *core.RefusalError {
 
 // planCostNames decodes every cost record and records the rewrite each one
 // needs, refusing on the first that cannot be named correctly.
-func planCostNames(dir string, panel []string) ([]costNamePlan, bool, *core.RefusalError) {
+func planCostNames(dir string, panel []string) ([]costNamePlan, int, bool, *core.RefusalError) {
 	files := readcommon.CostFiles(dir)
 	plans := make([]costNamePlan, 0, len(files))
+	entries := 0
 	found := false
 	for _, path := range files {
 		plan, planned, ref := planCostFile(path, panel)
 		if ref != nil {
-			return nil, false, ref
+			return nil, 0, false, ref
 		}
 		if !planned {
 			continue
 		}
 		found = true
+		entries += plan.entries
 		plans = append(plans, plan)
 	}
-	return plans, found, nil
+	return plans, entries, found, nil
 }
 
 // planCostFile plans one cost file, reporting false when it holds no record.
@@ -144,11 +152,11 @@ func planCostFile(path string, panel []string) (costNamePlan, bool, *core.Refusa
 	if ref != nil || doc == nil {
 		return costNamePlan{}, false, ref
 	}
-	gains, ref := nameCostDocument(path, doc, panel)
+	gains, entries, ref := nameCostDocument(path, doc, panel)
 	if ref != nil {
 		return costNamePlan{}, false, ref
 	}
-	return costNamePlan{doc: doc, path: path, gains: gains}, true, nil
+	return costNamePlan{doc: doc, path: path, gains: gains, entries: entries}, true, nil
 }
 
 // decodeCostFile reads and decodes one cost record, returning a nil document
@@ -178,26 +186,26 @@ func decodeCostFile(path string) (any, *core.RefusalError) {
 // single record object or an array of them. Every record is named on its own
 // from the whole panel: an array document is a list of runs or groups, so
 // flattening their entries would put one record's seats on another's spend.
-func nameCostDocument(path string, doc any, panel []string) (int, *core.RefusalError) {
+func nameCostDocument(path string, doc any, panel []string) (gained, entries int, ref *core.RefusalError) {
 	records, ok := readcommon.CostRecordObjects(doc)
 	if !ok {
-		return 0, shapeRefusal(path, doc)
+		return 0, 0, shapeRefusal(path, doc)
 	}
 	if len(records) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 	if ref := checkPanel(path, panel); ref != nil {
-		return 0, ref
+		return 0, 0, ref
 	}
-	gained := 0
 	for i, rec := range records {
-		n, ref := nameRecord(path, i, len(records), rec, panel)
+		n, seen, ref := nameRecord(path, i, len(records), rec, panel)
 		if ref != nil {
-			return 0, ref
+			return 0, 0, ref
 		}
 		gained += n
+		entries += seen
 	}
-	return gained, nil
+	return gained, entries, nil
 }
 
 // checkPanel refuses a panel that cannot address seats one to one.
@@ -232,24 +240,24 @@ func repeatedName(panel []string) (string, bool) {
 
 // nameRecord names one record's entries from the panel, refusing when the
 // record has no one-to-one seat mapping.
-func nameRecord(path string, index, total int, rec *jq.Obj, panel []string) (int, *core.RefusalError) {
+func nameRecord(path string, index, total int, rec *jq.Obj, panel []string) (gained, found int, ref *core.RefusalError) {
 	entries, ref := recordEntries(path, rec)
 	if ref != nil {
-		return 0, ref
+		return 0, 0, ref
 	}
 	if len(entries) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 	who := recordName(path, index, total)
+	found = len(entries)
 	if len(entries) != len(panel) {
-		return 0, &core.RefusalError{
+		return 0, 0, &core.RefusalError{
 			Code: codeCostEntryUnnamed,
 			Message: fmt.Sprintf("%s: %d models[] entries but %d panel names — "+
 				"pass the panel that ran for this record, in order, so every entry has exactly one name",
 				who, len(entries), len(panel)),
 		}
 	}
-	gained := 0
 	for i, entry := range entries {
 		switch name := costName(entry); name {
 		case panel[i]:
@@ -258,10 +266,10 @@ func nameRecord(path string, index, total int, rec *jq.Obj, panel []string) (int
 			entry.Set("name", panel[i])
 			gained++
 		default:
-			return 0, seatRefusal(who, i, name, panel[i])
+			return 0, 0, seatRefusal(who, i, name, panel[i])
 		}
 	}
-	return gained, nil
+	return gained, found, nil
 }
 
 // recordEntries reads one record's models array, refusing any shape the
@@ -279,7 +287,7 @@ func recordEntries(path string, rec *jq.Obj) ([]*jq.Obj, *core.RefusalError) {
 	for i, item := range list {
 		obj, ok := item.(*jq.Obj)
 		if !ok {
-			return nil, notArrayRefusal(path, fmt.Sprintf("entry %d is not an object", i+1))
+			return nil, notArrayRefusal(path, "entry "+strconv.Itoa(i+1)+" is a JSON "+jsonKind(item))
 		}
 		entries = append(entries, obj)
 	}
@@ -382,19 +390,21 @@ func (st *svc) nameCostModels(dir string, panel []string) *core.RefusalError {
 			Message: "no panel to name the cost entries from: no list was passed and the bundle pins none",
 		}
 	}
-	named, found, ref := NameCostModels(dir, panel, st.req.DryRun)
+	named, entries, found, ref := NameCostModels(dir, panel, st.req.DryRun)
 	if ref != nil {
 		return ref
 	}
-	st.addWarning(costNameWarning(named, found, st.req.DryRun))
+	st.addWarning(costNameWarning(named, entries, found, st.req.DryRun))
 	return nil
 }
 
 // costNameWarning says what the pass did, or would do on a dry run.
-func costNameWarning(named int, found, dryRun bool) string {
+func costNameWarning(named, entries int, found, dryRun bool) string {
 	switch {
 	case !found:
 		return "cost names: this bundle carries no cost record to name"
+	case entries == 0:
+		return "cost names: the cost record holds no models[] entry to name"
 	case named == 0:
 		return "cost names: every models[] entry already names its panel seat"
 	case dryRun:

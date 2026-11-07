@@ -178,6 +178,25 @@ func TestNameCostModels(t *testing.T) {
 			},
 		},
 		{
+			name: "skips a null record, which the rollup prices as empty",
+			files: map[string]string{
+				readcommon.CostFile: `[null,{"models":[{"input":1}]}]`,
+			},
+			panel:     []string{"lead"},
+			wantNamed: 1,
+			want: map[string]string{
+				readcommon.CostFile: `[null,{"models":[{"input":1,"name":"lead"}]}]`,
+			},
+		},
+		{
+			name: "a null-only document has nothing to name",
+			files: map[string]string{
+				readcommon.CostFile: `[null]`,
+			},
+			panel: []string{"lead"},
+			want:  map[string]string{readcommon.CostFile: `[null]`},
+		},
+		{
 			name: "refuses a document that is not a record at all",
 			files: map[string]string{
 				readcommon.CostFile: `5`,
@@ -235,7 +254,7 @@ func runCostNameCase(t *testing.T, tc *costNameCase) {
 	for name, body := range tc.files {
 		writeCostFile(t, filepath.Join(dir, name), body)
 	}
-	named, found, ref := NameCostModels(dir, tc.panel, tc.dryRun)
+	named, _, found, ref := NameCostModels(dir, tc.panel, tc.dryRun)
 	if ref == nil && !found {
 		t.Fatal("every fixture carries a cost record, so a successful pass must report found")
 	}
@@ -244,7 +263,7 @@ func runCostNameCase(t *testing.T, tc *costNameCase) {
 	if tc.wantCode != "" || tc.dryRun {
 		return
 	}
-	again, _, ref := NameCostModels(dir, tc.panel, false)
+	again, _, _, ref := NameCostModels(dir, tc.panel, false)
 	if ref != nil || again != 0 {
 		t.Fatalf("second pass: named %d, refusal %v; want 0 and no refusal", again, ref)
 	}
@@ -294,7 +313,7 @@ func checkCostFiles(t *testing.T, dir string, want map[string]string) {
 // TestNameCostModelsNoCostFile pins an absent record as nothing to do: the
 // repair never creates a cost file to have something to name.
 func TestNameCostModelsNoCostFile(t *testing.T) {
-	named, found, ref := NameCostModels(t.TempDir(), []string{"lead"}, false)
+	named, _, found, ref := NameCostModels(t.TempDir(), []string{"lead"}, false)
 	if ref != nil {
 		t.Fatalf("an absent record must read as nothing to do, got %q: %s", ref.Code, ref.Message)
 	}
@@ -345,9 +364,12 @@ func TestNameCostModelsFullyNamedDocument(t *testing.T) {
 	dir := t.TempDir()
 	body := `{"models":[{"name":"lead","model":"m1","input":1},{"name":"lens-1","model":"m2","input":2}]}`
 	writeCostFile(t, filepath.Join(dir, readcommon.CostFile), body)
-	named, _, ref := NameCostModels(dir, []string{"lead", "lens-1"}, false)
+	named, entries, _, ref := NameCostModels(dir, []string{"lead", "lens-1"}, false)
 	if ref != nil || named != 0 {
 		t.Fatalf("a fully named record must be a no-op, got named=%d refusal=%v", named, ref)
+	}
+	if entries != 2 {
+		t.Fatalf("a no-op on a two-entry record must still report 2 entries, got %d", entries)
 	}
 	// Byte equality, not a decoded comparison: a decoded comparison passes while
 	// the pass re-emits the file as pretty JSON, which a no-op must not do.
@@ -362,7 +384,7 @@ func TestNameCostModelsRefusesNameOutsidePanel(t *testing.T) {
 	dir := t.TempDir()
 	writeCostFile(t, filepath.Join(dir, readcommon.CostFile),
 		`{"models":[{"name":"intruder","model":"m1","input":1}]}`)
-	_, _, ref := NameCostModels(dir, []string{"lead"}, false)
+	_, _, _, ref := NameCostModels(dir, []string{"lead"}, false)
 	if ref == nil || ref.Code != codeCostEntryContradict {
 		t.Fatalf("want %q, got %v", codeCostEntryContradict, ref)
 	}
@@ -388,8 +410,8 @@ func TestPinnedPanelReadsResolvedDefaults(t *testing.T) {
 // half-written pass needs the files that already landed, not a promise that
 // some were kept.
 func TestWrittenFiles(t *testing.T) {
-	if got := writtenFiles(nil); !strings.Contains(got, "were rewritten") {
-		t.Fatalf("no files written must still read as a plural sentence, got %q", got)
+	if got := writtenFiles(nil); got != "" {
+		t.Fatalf("a failure before any write must add no clause at all, got %q", got)
 	}
 	one := writtenFiles([]string{"cost.json"})
 	if !strings.Contains(one, "cost.json was rewritten") || !strings.Contains(one, "is kept") {
@@ -398,5 +420,28 @@ func TestWrittenFiles(t *testing.T) {
 	two := writtenFiles([]string{"cost.json", "chunk-1.cost.json"})
 	if !strings.Contains(two, "cost.json, chunk-1.cost.json were rewritten") {
 		t.Fatalf("both files must be named, got %q", two)
+	}
+}
+
+// TestCostNameWarning pins what the pass tells the operator, including the
+// three no-op cases a user can reach: no record, a record with no entries, and
+// entries that already carry their seat's name.
+func TestCostNameWarning(t *testing.T) {
+	cases := []struct {
+		want           string
+		named, entries int
+		found, dryRun  bool
+	}{
+		{named: 0, entries: 0, found: false, want: "cost names: this bundle carries no cost record to name"},
+		{named: 0, entries: 0, found: true, want: "cost names: the cost record holds no models[] entry to name"},
+		{named: 0, entries: 3, found: true, want: "cost names: every models[] entry already names its panel seat"},
+		{named: 2, entries: 2, found: true, dryRun: true, want: "cost names: would name 2 models[] entries"},
+		{named: 2, entries: 2, found: true, want: "cost names: named 2 models[] entries"},
+	}
+	for _, tc := range cases {
+		if got := costNameWarning(tc.named, tc.entries, tc.found, tc.dryRun); !strings.HasPrefix(got, tc.want) {
+			t.Fatalf("named=%d entries=%d found=%v dryRun=%v: got %q, want prefix %q",
+				tc.named, tc.entries, tc.found, tc.dryRun, got, tc.want)
+		}
 	}
 }
