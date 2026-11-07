@@ -427,6 +427,15 @@ func bundleFingerprint(t *testing.T) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
+// TestGateHintNamesReRunOnce pins the recovery line's shape: the hint appends
+// its own re-run clause, so a dimension action must not carry one too.
+func TestGateHintNamesReRunOnce(t *testing.T) {
+	gate := &core.ReportGate{Dimensions: []core.GateDimension{{ID: "compliance", Status: statusFail}}}
+	if got := gateHint(gate); strings.Count(got, "re-run gate") != 1 {
+		t.Errorf("gateHint = %q, want the re-run clause exactly once", got)
+	}
+}
+
 // TestGateNextNamesCompliance pins the fourth dimension: a gate whose only
 // failing dimension is compliance used to publish "none — every requested
 // dimension passed" next to a FAIL verdict, with no recovery line at all.

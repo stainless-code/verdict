@@ -444,8 +444,10 @@ of the view while gates keep the full set, and every check execution appends
 an observation to the bundle. `verdict config <owner/repo> <pr> --explain`
 renders the stored policy; `--preview [--file <path>]` resolves a proposed
 file or the captured inventory with current settings and environment. Without
-a capture, repository inputs are reported as unavailable. Explain and preview perform no live calls, no exec,
-and no writes, and never approve. The full rule table lives in
+a capture, repository inputs are reported as unavailable. Explain and preview
+perform no live calls and no writes, and never approve; resolving the root runs
+one `git rev-parse` probe through the environment rather than an injected
+commander. The full rule table lives in
 `docs/policy-contract.md`.
 
 ## Machine surface
@@ -975,8 +977,8 @@ The prefs file ends env sprawl without forcing migration. Path:
 `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json` (`$XDG_CONFIG_HOME`
 respected, `$schema` key carries a schema hint that is never fetched).
 The file carries the four presentation namespaces below plus the typed personal
-layer (`review`, `spend`, `privacy`) described under "typed configuration"
-above, so it accepts eight top-level keys in total: `$schema`, `output`,
+layer (`review`, `spend`, `privacy`) described under "Typed repository
+configuration" above, so it accepts eight top-level keys in total: `$schema`, `output`,
 `layout`, `color`, `publish`, `review`, `spend`, `privacy`. Anything else —
 server-shaped or `org.*` keys included — refuses typed `bad-settings`. The
 presentation sample:

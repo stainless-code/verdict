@@ -1,8 +1,8 @@
 // Package configcmd is the config CLI adapter: argv parsing (same usage
 // text and exit 2), one call into the config service, envelope rendering,
-// and refusal-vs-cancel exit mapping. The service performs no live calls,
-// no exec, and no writes; nothing here touches the bundle beyond reading
-// it.
+// and refusal-vs-cancel exit mapping. The service performs no live calls and
+// no writes; nothing here touches the bundle beyond reading it. Resolving the
+// root runs one `git rev-parse` probe outside the injected commander.
 package configcmd
 
 import (

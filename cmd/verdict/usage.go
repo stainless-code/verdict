@@ -39,8 +39,8 @@ func usageText() string {
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
 		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +
 		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
-		"    with current personal settings and environment — no live calls, no exec, no writes,\n" +
-		"    and never an approval.\n" +
+		"    with current personal settings and environment — no live calls, no writes, and\n" +
+		"    never an approval. One git rev-parse root probe runs outside the caller commander.\n" +
 		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
@@ -152,10 +152,11 @@ func usageText() string {
 		"    At least one dimension is required; --live alone is not one. Exits 0 pass,\n" +
 		"    1 gate failed or unknown, 2 usage, 3 tool error; a gate failure carries\n" +
 		"    data.passed false with error null. data.dimensions[] lists findings, head,\n" +
-		"    live_threads with id, status, detail, count. --live skip makes zero network\n" +
-		"    calls; auto keeps the fail-open skip. Never posts, approves, merges, or\n" +
-		"    writes a store: the exit code is the whole integration, and the merge stays\n" +
-		"    the human's. Use report for the ranked items, cost, and artifacts.\n" +
+		"    live_threads, compliance with id, status, detail, count. --live skip makes\n" +
+		"    zero network calls; auto keeps the fail-open skip. Never posts, approves,\n" +
+		"    merges, or writes a store: the exit code is the whole integration, and the\n" +
+		"    merge stays the human's. Use report for the ranked items, cost, and\n" +
+		"    artifacts.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +

@@ -14,8 +14,9 @@ import (
 
 // Run executes one config request: the positional resolves to the run
 // bundle (the fetch-local local- form when that exists), then explain
-// renders the stored bundle or preview resolves the current inputs. No
-// live calls, no exec, no writes, and never an approval.
+// renders the stored bundle or preview resolves the current inputs. No live
+// calls, no writes, and never an approval. Resolving the root runs one
+// `git rev-parse` probe through the environment, not the injected commander.
 func Run(ctx context.Context, req *core.ConfigRequest) (*core.ConfigResponse, *core.RefusalError) {
 	var name string
 	var data *core.ConfigData

@@ -216,9 +216,9 @@ var gateActionsByID = map[string]func(status string) string{
 	idCompliance: func(status string) string {
 		switch status {
 		case statusFail:
-			return "clear the compliance blockers and re-run gate"
+			return "clear the compliance blockers"
 		case statusUnknown:
-			return "record the compliance evidence the warnings name, then re-run gate"
+			return "record the compliance evidence the warnings name"
 		}
 		return ""
 	},
