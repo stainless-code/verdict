@@ -61,7 +61,7 @@ var manualSurfaces = []manualSurface{
 		heading: "### Guarded submission and operator surfaces",
 		terms: []string{
 			"post --review-file", "triage --dry-run", "check-tree --expect",
-			"upgrade --version", "scripts/verdict-complete.sh",
+			"upgrade --version", "upgrade-bad-version", "scripts/verdict-complete.sh",
 			"Retry-After", "upstream-diff-too-large", "300-file", "3000",
 		},
 	},

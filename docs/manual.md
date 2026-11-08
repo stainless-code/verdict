@@ -1012,7 +1012,7 @@ installer-managed binary downloads, verifies, smoke-tests, and atomically
 replaces itself with that release; global npm/pnpm/bun/yarn installs delegate
 the pinned version to the owning manager; Homebrew refuses `--version` because
 the formula owns version selection. `--dry-run` prints the channel and the
-planned action, and a malformed tag refuses `bad-version`.
+planned action, and a malformed tag refuses `upgrade-bad-version`.
 
 Shell completion ships in the npm package as `scripts/verdict-complete.sh`.
 Sourcing it registers bash (`complete`) and zsh (`compdef`) completion for the

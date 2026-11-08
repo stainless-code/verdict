@@ -20,10 +20,10 @@ understanding.
 the typed `panel` default in `.verdict/config.json`. `fetch` resolves it into `.verdict/state/<pr>/panel`;
 the first entry is the synthesizer, the rest staff lenses, used exactly in
 order and never substituted. No panel means the operator picks per run.
-The root `panel` file is the shared default roster: `plan.txt` additionally
-exports each group's actually resolved roster (`panel=[...]`, `panel_from`)
-and accounting `effort`, and the shipped dispatcher uses those per-group
-values for that group's files.
+The root `panel` file is the shared default roster: the `--show-prompts`
+dump's `plan.txt` section additionally exports each group's actually resolved
+roster (`panel=[...]`, `panel_from`) and accounting `effort`, and the shipped
+dispatcher uses those per-group values for that group's files.
 
 ## Evidence
 
