@@ -1,5 +1,13 @@
 # @stainless-code/verdict
 
+## 0.6.1
+
+### Patch Changes
+
+- a5870d1: The npm wrapper and each platform package now ship the repository README, so the registry page renders the project documentation instead of an empty README.
+- 4d7fb67: The package page now names what the tool does rather than a claim that stopped being true: the description drops "zero install" (every route installs a binary) for the loop it actually runs — fetch, review, gate, post — plus cost rollups and one static binary, and the package carries the docs site as its `homepage` instead of letting npm fall back to the repository README. Keywords gain `cli`, `mcp`, `go`, `llm`, `static-binary`, and the agent vocabulary, and drop the self-referential `verdict`. The docs site's own description moves to the same sentence, so the About box, npm, and the site stop disagreeing.
+- 88508a4: Public surfaces now match the binary. The docs site, its home pages, and the CI review example use `.verdict/state/`; the operator manual documents deep validation, path-scoped profiles, the evidence ledger, posting guards, local review coverage, and the shipped CLI flags, and states that `verification.json` is agent attestation rather than tool proof; the TypeScript client throws a typed `VerdictGateError` for a gate-shaped exit 1 instead of a schema error; the Python smoke uses the real bundle path and runs in CI; the Go SDK exposes record dry-run/strict/cost-names and fetch/fetch-local head/worktree controls; `config --explain` human output shows privacy exclusions and plan group ids; `spend-capped` carries a hint; and the README says the Go SDK runs in-process.
+
 ## 0.6.0
 
 ### Minor Changes
