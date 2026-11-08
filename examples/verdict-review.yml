@@ -59,14 +59,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Any agent works: it reads .review/<pr>/full.diff via toc.txt
+          # Any agent works: it reads .verdict/state/<pr>/full.diff via toc.txt
           # (+ PR.json, roles.txt, SKILL.md + prompts/) and writes exactly
-          # one .review/<pr>/review.json ({schema_version: 1, body,
+          # one .verdict/state/<pr>/review.json ({schema_version: 1, body,
           # approved, comments[], resolved?, triage?}). Wire your runner's
           # agent CLI here; it authenticates with YOUR key on YOUR runner,
           # so the diff goes nowhere else.
           PR="${{ github.event.pull_request.number }}"
-          echo "wire your agent CLI here (see docs/ci-recipe.md): review .review/$PR/ and write .review/$PR/review.json"
+          echo "wire your agent CLI here (see docs/ci-recipe.md): review .verdict/state/$PR/ and write .verdict/state/$PR/review.json"
 
       - name: Post the review
         run: |

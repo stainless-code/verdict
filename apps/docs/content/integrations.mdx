@@ -69,8 +69,8 @@ refuses a file it cannot parse.
 Two flags change what the server exposes:
 
 - `--read-only` exposes only tools that neither submit a review nor rewrite
-  the bundle: `report`, `next`, `show`, `trend`, `ready`, `doctor`, and
-  `check-tree`.
+  the bundle: `report`, `next`, `show`, `trend`, `ready`, `doctor`,
+  `check-tree`, and `config`, plus `record` limited to `dry_run: true`.
 - `--operator` adds `triage`. Status changes are the human's call, so an agent
   proposes them in `review.json` and never gets the tool by default.
 

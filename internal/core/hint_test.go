@@ -30,18 +30,24 @@ func TestHintForSpendAndBudget(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			hint := HintFor(tc.code)
-			for _, frag := range tc.want {
-				if !strings.Contains(hint, frag) {
-					t.Errorf("HintFor(%q) = %q, want %q", tc.code, hint, frag)
-				}
-			}
-			for _, frag := range tc.deny {
-				if strings.Contains(hint, frag) {
-					t.Errorf("HintFor(%q) = %q, must not name %q", tc.code, hint, frag)
-				}
-			}
+			assertHintFragments(t, HintFor(tc.code), tc.code, tc.want, tc.deny)
 		})
+	}
+}
+
+// assertHintFragments proves the hint contains every required fragment and
+// none of the forbidden ones.
+func assertHintFragments(t *testing.T, hint, code string, want, deny []string) {
+	t.Helper()
+	for _, frag := range want {
+		if !strings.Contains(hint, frag) {
+			t.Errorf("HintFor(%q) = %q, want %q", code, hint, frag)
+		}
+	}
+	for _, frag := range deny {
+		if strings.Contains(hint, frag) {
+			t.Errorf("HintFor(%q) = %q, must not name %q", code, hint, frag)
+		}
 	}
 }
 

@@ -19,12 +19,13 @@ import (
 const legacyReviewRef = ".review/"
 
 // docsPathRoots are the current-state surfaces a stale bundle path must never
-// reach: the docs site's content, the Python client example, and the root
-// README. apps/docs/dist and apps/docs/.blume-verify are generated and
-// ignored, so they are absent from this list by construction.
+// reach: the docs site's content and hand-written home pages, every example,
+// and the root README. apps/docs/dist and apps/docs/.blume-verify are generated
+// and ignored, so they are absent from this list by construction.
 var docsPathRoots = []string{
 	filepath.Join("apps", "docs", "content"),
-	filepath.Join("examples", "python-client"),
+	filepath.Join("apps", "docs", "pages"),
+	"examples",
 	"README.md",
 }
 
@@ -69,15 +70,21 @@ func TestScanForLegacyReviewRef(t *testing.T) {
 	}
 	write("apps/docs/content/stale.mdx", "line one\nbundle at .review/123/\n")
 	write("apps/docs/content/fixed.mdx", "bundle at .verdict/state/123/\n")
+	write("apps/docs/pages/stale.astro", "bundle at .review/456/\n")
+	write("examples/stale.yml", "review .review/789/\n")
 	write("README.md", "no stale path here\n")
 	if err := os.MkdirAll(filepath.Join(root, "examples", "python-client"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	hits := scanForLegacyReviewRef(t, root)
-	want := filepath.Join("apps", "docs", "content", "stale.mdx") + ":2: bundle at .review/123/"
-	if !slices.Equal(hits, []string{want}) {
-		t.Fatalf("hits = %v; want [%q]", hits, want)
+	want := []string{
+		filepath.Join("apps", "docs", "content", "stale.mdx") + ":2: bundle at .review/123/",
+		filepath.Join("apps", "docs", "pages", "stale.astro") + ":1: bundle at .review/456/",
+		filepath.Join("examples", "stale.yml") + ":1: review .review/789/",
+	}
+	if !slices.Equal(hits, want) {
+		t.Fatalf("hits = %v; want %v", hits, want)
 	}
 }
 
@@ -88,34 +95,49 @@ func scanForLegacyReviewRef(t *testing.T, root string) []string {
 	t.Helper()
 	var hits []string
 	for _, rel := range docsPathRoots {
-		path := filepath.Join(root, rel)
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("scan root %s: %v", rel, err)
-		}
-		if !info.IsDir() {
-			hits = append(hits, scanLegacyReviewFile(t, root, path)...)
-			continue
-		}
-		walkErr := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if docsPathSkipDirs[d.Name()] {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			hits = append(hits, scanLegacyReviewFile(t, root, p)...)
-			return nil
-		})
-		if walkErr != nil {
-			t.Fatalf("walk %s: %v", rel, walkErr)
-		}
+		hits = append(hits, scanLegacyReviewRoot(t, root, rel)...)
 	}
 	slices.Sort(hits)
 	return hits
+}
+
+// scanLegacyReviewRoot scans one current-state root, which may be a directory
+// or a single file, and returns its matching lines.
+func scanLegacyReviewRoot(t *testing.T, root, rel string) []string {
+	t.Helper()
+	path := filepath.Join(root, rel)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("scan root %s: %v", rel, err)
+	}
+	if !info.IsDir() {
+		return scanLegacyReviewFile(t, root, path)
+	}
+	var hits []string
+	walkErr := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		return scanLegacyReviewEntry(t, root, p, d, err, &hits)
+	})
+	if walkErr != nil {
+		t.Fatalf("walk %s: %v", rel, walkErr)
+	}
+	return hits
+}
+
+// scanLegacyReviewEntry is the WalkDir callback for one entry: skip generated
+// directories and append matches from files.
+func scanLegacyReviewEntry(t *testing.T, root, path string, d os.DirEntry, err error, hits *[]string) error {
+	t.Helper()
+	if err != nil {
+		return err
+	}
+	if d.IsDir() {
+		if docsPathSkipDirs[d.Name()] {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	*hits = append(*hits, scanLegacyReviewFile(t, root, path)...)
+	return nil
 }
 
 // scanLegacyReviewFile reports the legacy path on every matching line of one

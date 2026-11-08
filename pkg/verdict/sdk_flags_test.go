@@ -53,6 +53,15 @@ func TestClientRecordDryRun(t *testing.T) {
 	c := newSDKClient(nil, nil)
 	defer c.Close()
 
+	assertDryRunEnvelope(t, c)
+	before := recordAndSnapshot(t, c)
+	assertDryRunLeavesArtifacts(t, c, before)
+}
+
+// assertDryRunEnvelope proves a dry run reports the mode and writes neither
+// findings.json nor record.json.
+func assertDryRunEnvelope(t *testing.T, c *verdict.Client) {
+	t.Helper()
 	out, err := c.Record(context.Background(), &verdict.RecordRequest{
 		Invocation: sdkInvocation("local-dryrun"),
 		DryRun:     true,
@@ -65,7 +74,12 @@ func TestClientRecordDryRun(t *testing.T) {
 	assertFields(t, doc, map[string]any{"dir": ".verdict/state/local-dryrun", "dry_run": true})
 	assertNumbers(t, asMap(t, doc["findings"], "findings"), map[string]float64{"open": 1})
 	requireAbsent(t, ".verdict/state/local-dryrun/findings.json", ".verdict/state/local-dryrun/record.json")
+}
 
+// recordAndSnapshot records the fixture, proves both artifacts are non-empty,
+// and returns their bytes for a later no-op check.
+func recordAndSnapshot(t *testing.T, c *verdict.Client) map[string]string {
+	t.Helper()
 	recorded, err := c.Record(context.Background(), &verdict.RecordRequest{
 		Invocation: sdkInvocation("local-dryrun"),
 	})
@@ -80,7 +94,13 @@ func TestClientRecordDryRun(t *testing.T) {
 			t.Fatalf("%s is empty, want the recorded artifact", name)
 		}
 	}
+	return before
+}
 
+// assertDryRunLeavesArtifacts proves a later dry run does not rewrite either
+// artifact written by the plain record call.
+func assertDryRunLeavesArtifacts(t *testing.T, c *verdict.Client, before map[string]string) {
+	t.Helper()
 	if _, err := c.Record(context.Background(), &verdict.RecordRequest{
 		Invocation: sdkInvocation("local-dryrun"),
 		DryRun:     true,

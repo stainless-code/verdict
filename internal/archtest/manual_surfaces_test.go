@@ -80,15 +80,22 @@ func TestManualKeepsOperatorSurfaces(t *testing.T) {
 	}
 	manual := string(raw)
 	for _, surface := range manualSurfaces {
-		body, ok := manualSection(manual, surface.heading)
-		if !ok {
-			t.Errorf("docs/manual.md lost the %q heading; the %s section is gone", surface.heading, surface.section)
-			continue
-		}
-		for _, term := range surface.terms {
-			if !strings.Contains(body, term) {
-				t.Errorf("docs/manual.md no longer names %q in the %s section (%q)", term, surface.section, surface.heading)
-			}
+		assertManualSurface(t, manual, surface)
+	}
+}
+
+// assertManualSurface checks one surface's heading and every required term in
+// the body that heading owns.
+func assertManualSurface(t *testing.T, manual string, surface manualSurface) {
+	t.Helper()
+	body, ok := manualSection(manual, surface.heading)
+	if !ok {
+		t.Errorf("docs/manual.md lost the %q heading; the %s section is gone", surface.heading, surface.section)
+		return
+	}
+	for _, term := range surface.terms {
+		if !strings.Contains(body, term) {
+			t.Errorf("docs/manual.md no longer names %q in the %s section (%q)", term, surface.section, surface.heading)
 		}
 	}
 }
@@ -99,17 +106,26 @@ func TestManualKeepsOperatorSurfaces(t *testing.T) {
 // bounded body keeps a term in a different section from satisfying the check.
 func manualSection(manual, heading string) (string, bool) {
 	lines := strings.Split(manual, "\n")
-	start, rank := -1, 0
-	for i, line := range lines {
-		if line != heading {
-			continue
-		}
-		start, rank = i, headingRank(line)
-		break
-	}
-	if start < 0 {
+	start, rank, ok := headingLine(lines, heading)
+	if !ok {
 		return "", false
 	}
+	return strings.Join(sectionLines(lines, start, rank), "\n"), true
+}
+
+// headingLine finds the exact heading line and reports its index and rank.
+func headingLine(lines []string, heading string) (int, int, bool) {
+	for i, line := range lines {
+		if line == heading {
+			return i, headingRank(line), true
+		}
+	}
+	return 0, 0, false
+}
+
+// sectionLines collects the lines after start until the next heading of the
+// same or higher rank.
+func sectionLines(lines []string, start, rank int) []string {
 	body := make([]string, 0, len(lines)-start)
 	for _, line := range lines[start+1:] {
 		if level := headingRank(line); level > 0 && level <= rank {
@@ -117,7 +133,7 @@ func manualSection(manual, heading string) (string, bool) {
 		}
 		body = append(body, line)
 	}
-	return strings.Join(body, "\n"), true
+	return body
 }
 
 // headingRank reports a markdown heading's rank, or 0 for any other line.

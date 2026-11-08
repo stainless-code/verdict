@@ -159,8 +159,12 @@ cannot reach the network warns and proceeds — the nudge never refuses.
 
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
-`.verdict/state/N/verification.json` evidence (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
-with `resultHead` matching HEAD — the revalidator writes it); `NOT VERIFIED` reopens,
+a `.verdict/state/N/verification.json` claim (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
+with `resultHead` matching HEAD). The operator or agent writes that claim —
+`verify` writes `patch.json`, not `verification.json`; a claim is attestation,
+not tool proof. `record`/`post` cross-check the bundle's `patch.json` when
+present and warn on a nonzero exit or timeout, but the flip stands; inspect
+`patch.json` for the tool's machine result. `NOT VERIFIED` reopens,
 `INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
 unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
 store directly between runs with `verdict triage … --sig … --status … --rationale …`
@@ -465,7 +469,10 @@ an observation to the bundle. `verdict config <owner/repo> <pr> --explain`
 renders the stored policy; `--preview [--file <path>]` resolves a proposed
 file or the captured inventory with current settings and environment. Without
 a capture, repository inputs are reported as unavailable. Explain and preview
-perform no live calls and no writes, and never approve; resolving the root runs
+perform no live calls and no writes, and never approve; the human explain
+summarizes values, requirements, plan groups, spend, privacy, and checks, while
+`--json` additionally carries shadowed values and per-file resolutions, which
+is the debugger surface. Resolving the root runs
 one `git rev-parse` probe through the environment rather than an injected
 commander. The full rule table lives in
 `docs/policy-contract.md`.
@@ -996,6 +1003,16 @@ policy gates, and the severity floors. A missing path refuses
 `missing-review-file`; `--dry-run` prints the validation and payload summary,
 writes `findings.dryrun.json`, and posts nothing.
 
+Approval intent comes from the review body, not from `--approve=false`: a
+review file with `approved: true` can approve even though `--approve=false` is
+the default. A binding verdict (`APPROVE`/`REQUEST_CHANGES`) still needs
+`--bind`; without it, `post` downgrades to `COMMENT`. A binding verdict on your
+own PR is also downgraded to `COMMENT`, and `--force` does not override that
+guard. A bundle whose stored PR state is not `OPEN` refuses `pr-not-open`; an
+unknown state warns and proceeds. `--dry-run` still performs the live head read
+that backs the stale-head guard (it skips only the live-thread recheck), so it
+is not fully offline; a failed lookup warns.
+
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
 (`data.dry_run: true` in `--json`, and a `next` that says nothing was written).
@@ -1363,7 +1380,9 @@ platform package. A plain `verdict` call consults neither variable.
   `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
   `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
-  create/update/keep/blocked, refuses
+  create/update/keep/blocked (`--dry-run --json` is the drift check: `update`
+  means the installed copy is stale, `keep` means current, `blocked` needs a
+  human), refuses
   a target without a verdict receipt unless `--force`, never removes foreign
   files, never prompts, and makes no network call. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
@@ -1388,7 +1407,7 @@ block at the end:
 
 <!-- verdict-footer -->
 
-> <a href="https://stainless-code.com/verdict"><img src="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 0.2.0**](https://stainless-code.com/verdict) · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
+> <a href="https://stainless-code.com/verdict"><img src="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 0.6.0**](https://stainless-code.com/verdict) · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
 ```
 
 Fields degrade factually, never blank, never failing the run: an unreadable
@@ -1564,12 +1583,18 @@ bundle from the worktree instead of the API:
 | `fetch-local owner/repo x --stash [n]`               | `git diff stash@{n}^ stash@{n}`              | stash commit         |
 | `fetch-local owner/repo x -- <paths>`                | any of the above, pathspec-filtered          | as above             |
 
-Flags are mutually exclusive (one diff source per bundle); empty diff exits 0 with
-"nothing to review". Writes `.verdict/state/local-<name>/` (`source.json`, `full.diff`,
+Flags are mutually exclusive (one diff source per bundle); an empty diff,
+including a paths filter that matches nothing, exits 0 with "nothing to review".
+Default `git diff HEAD` omits untracked files and warns to stage or commit;
+`--staged` includes them after `git add`; binary or mode-only changes are
+skipped with a warning and anchors stay unchecked. Writes `.verdict/state/local-<name>/` (`source.json`, `full.diff`,
 `toc.txt`, `roles.txt`) — `source.json` stands in for `PR.json` (kind, base/head
 refs+SHAs, range, dirty flag, diff sha256, tool version). The `local-` namespace can
 never collide with a numeric PR dir; downstream verbs address the bundle as
-`local-<name>`.
+`local-<name>`. A bare local slug also resolves: `report owner/repo work` reads
+`.verdict/state/local-work/` when no exact `.verdict/state/work/` has a
+`PR.json`; `local-<name>` stays canonical. `config` accepts the same local
+bundle.
 
 `record owner/repo local-<name>` runs the validate+merge half of `post` with no
 POST: hunk index, keep-biased anchor partition, sig merge with append-only history,
@@ -1599,8 +1624,9 @@ converted.
 
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
-bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —
-record predictions locally, settle them after the upgrade below.
+bundles (no PR to post to); plain `calibrate` refuses them too (no threads to
+settle), while `calibrate --probe` grades them offline — record predictions
+locally, settle them after the upgrade below.
 
 Two `post` guards (graded by `evals/cases/post-go-guards.sh`): secondary rate
 limits (a 403/429 with a rate-limit signal) retry within
@@ -1933,8 +1959,9 @@ the findings store; unknown sigs refuse typed), with `agreement` computed per
 row. The evidence number is the agreement rate over doubly-judged rows
 with the sample size recorded alongside. The run is additive-only (that one
 file; findings, joins, and calibration outputs stay byte-identical),
-deterministic and idempotent, and needs no post record and no network — local
-bundles grade too. The agent side lives in `prompts/grade.md`: sample closed
+deterministic and idempotent, and needs no post record and no network —
+provider and local bundles both grade; the probe runs before the live-thread
+path. The agent side lives in `prompts/grade.md`: sample closed
 findings, re-read the code, write judgments — advisory prose supplements the
 record, it is not the record.
 

@@ -84,8 +84,10 @@ func humanLines(data *core.ConfigData) []string {
 			orDash(group.ID), orDash(group.Profile), orDash(group.Depth),
 			strings.Join(group.Checks, ","), len(group.Files)))
 	}
-	lines = append(lines, fmt.Sprintf("  spend: guard=%s limit=%s", usd(data.Spend.GuardUSD), usd(data.Spend.PersonalLimit)))
-	lines = append(lines, "  privacy: "+exclusions(data.Privacy))
+	lines = append(lines,
+		fmt.Sprintf("  spend: guard=%s limit=%s", usd(data.Spend.GuardUSD), usd(data.Spend.PersonalLimit)),
+		"  privacy: "+exclusions(data.Privacy),
+	)
 	for _, check := range data.Checks {
 		lines = append(lines, fmt.Sprintf("  observed %s/%s: %v (%s)", check.Check, check.Group, check.Passed, check.At))
 	}
