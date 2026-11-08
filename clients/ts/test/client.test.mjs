@@ -28,9 +28,58 @@ const {
   VerdictTimeoutError,
   VerdictSpawnError,
   VerdictSchemaError,
+  VerdictGateError,
 } = await import(join(DIST, "index.js"));
 
 const FAKE = join(HERE, "fixtures", "fake-verdict.mjs");
+
+// What fake-verdict.mjs emits in "gate" mode: a check/gate failure on exit 1
+// is a success-shaped envelope, not a refusal body.
+const GATE_DATA = { passed: false, dimensions: [] };
+const GATE_WARNINGS = ["gate read the stored bundle only"];
+const GATE_NEXT = "address or triage the open findings, then re-run gate";
+
+// Every call path whose exit 1 means "the verdict is no", not "refused".
+const GATE_PATHS = [
+  {
+    label: 'run("gate")',
+    verb: "gate",
+    call: (bin, env) => run("gate", [], { bin, stderr: "pipe", env }),
+  },
+  {
+    label: "report(... --check)",
+    verb: "report",
+    call: (bin, env) =>
+      createClient({ bin, stderr: "pipe" }).report(
+        ["acme/app", "4243", "--check"],
+        { env },
+      ),
+  },
+  {
+    label: "gate(...)",
+    verb: "gate",
+    call: (bin, env) =>
+      createClient({ bin, stderr: "pipe" }).gate(
+        ["acme/app", "4243", "--max-severity", "critical"],
+        { env },
+      ),
+  },
+  {
+    label: "ready(... --check)",
+    verb: "ready",
+    call: (bin, env) =>
+      createClient({ bin, stderr: "pipe" }).ready(
+        ["acme/app", "4243", "--check"],
+        { env },
+      ),
+  },
+  {
+    label: "checkTree(...)",
+    verb: "check-tree",
+    call: (bin, env) =>
+      createClient({ bin, stderr: "pipe" }).checkTree(["acme/app"], { env }),
+  },
+];
 
 function runFake(mode, verb = "report", args = [], opts = {}, env = {}) {
   const client = createClient({ bin: FAKE, stderr: "pipe", ...opts });
@@ -224,6 +273,43 @@ describe("unit: fake binary exit paths", () => {
   it("empty exit-1 stdout throws VerdictProcessError, not a refusal", async () => {
     await assert.rejects(runFake("refusal-no-envelope"), (error) => {
       assert.ok(error instanceof VerdictProcessError);
+      assert.ok(!(error instanceof VerdictRefusalError));
+      return true;
+    });
+  });
+
+  for (const path of GATE_PATHS) {
+    it(`gate-shaped exit 1 throws VerdictGateError for ${path.label}`, async () => {
+      const env = {
+        ...process.env,
+        FAKE_MODE: "gate",
+        FAKE_VERB: path.verb,
+      };
+      await assert.rejects(path.call(FAKE, env), (error) => {
+        assert.equal(error.name, "VerdictGateError");
+        assert.ok(error instanceof VerdictGateError);
+        assert.ok(!(error instanceof VerdictRefusalError));
+        assert.ok(!(error instanceof VerdictSchemaError));
+        // The envelope rides along intact: verb, data, warnings, next.
+        assert.equal(error.envelope.verb, path.verb);
+        assert.deepEqual(error.envelope.data, GATE_DATA);
+        assert.deepEqual(error.envelope.warnings, GATE_WARNINGS);
+        assert.equal(error.envelope.next, GATE_NEXT);
+        assert.equal(error.envelope.error, null);
+        // ... and is reachable without reaching into it.
+        assert.equal(error.verb, path.verb);
+        assert.deepEqual(error.data, GATE_DATA);
+        assert.deepEqual(error.warnings, GATE_WARNINGS);
+        assert.equal(error.next, GATE_NEXT);
+        return true;
+      });
+    });
+  }
+
+  it("exit 1 with error null and data null is a schema error, not a gate", async () => {
+    await assert.rejects(runFake("null-data"), (error) => {
+      assert.ok(error instanceof VerdictSchemaError);
+      assert.ok(!(error instanceof VerdictGateError));
       assert.ok(!(error instanceof VerdictRefusalError));
       return true;
     });
@@ -568,6 +654,35 @@ describe("integration: real binary", () => {
         assert.ok(error.hint.startsWith("try:"));
         return true;
       });
+    },
+  );
+
+  it(
+    "report --check gate failure carries the success-shaped envelope",
+    { skip: !haveBinary },
+    async () => {
+      const dir = mkBundle(4243);
+      writeFindings(dir, 4243);
+      const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
+      await assert.rejects(
+        client.report([
+          "acme/app",
+          "4243",
+          "--check",
+          "informational",
+          "--live",
+          "skip",
+        ]),
+        (error) => {
+          assert.ok(error instanceof VerdictGateError, error.name);
+          assert.equal(error.envelope.verb, "report");
+          assert.equal(error.envelope.error, null);
+          assert.equal(error.data.gate?.passed, false);
+          assert.equal(typeof error.next, "string");
+          assert.ok(Array.isArray(error.warnings));
+          return true;
+        },
+      );
     },
   );
 

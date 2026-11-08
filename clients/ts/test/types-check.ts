@@ -1,6 +1,7 @@
 import {
   createClient,
   run,
+  VerdictGateError,
   VerdictRefusalError,
   type AdoptData,
   type CalibrateData,
@@ -266,4 +267,18 @@ export async function typeChecks(): Promise<void> {
     return code;
   }
   void onRefusal;
+
+  // A gate failure carries the success-shaped envelope: the profile stays
+  // typed, so the failing dimensions are readable without a cast.
+  function onGateError(error: VerdictGateError<ReportData>): string {
+    const verb: string = error.envelope.verb;
+    const next: string = error.next;
+    const warnings: string[] = error.warnings;
+    const open: number = error.data.verdict.open;
+    void next;
+    void warnings;
+    void open;
+    return verb;
+  }
+  void onGateError;
 }

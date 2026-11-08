@@ -42,6 +42,27 @@ switch (mode) {
     emit(envelope());
     break;
   }
+  // A gate/check failure: exit 1 carrying the success shape (error null, a
+  // data object), which is what `report --check`, `gate`, `ready --check`,
+  // and `check-tree` emit when the verdict is no. One envelope, never two.
+  case "gate": {
+    emit(
+      envelope({
+        verb: process.env["FAKE_VERB"] ?? "report",
+        next: "address or triage the open findings, then re-run gate",
+        warnings: ["gate read the stored bundle only"],
+        data: { passed: false, dimensions: [] },
+      }),
+    );
+    process.exitCode = 1;
+    break;
+  }
+  // Exit 1 with neither a refusal body nor data: no verdict to report.
+  case "null-data": {
+    emit(envelope({ verb: process.env["FAKE_VERB"] ?? "report", data: null }));
+    process.exitCode = 1;
+    break;
+  }
   case "refusal": {
     emit(
       refusal(

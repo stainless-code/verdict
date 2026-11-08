@@ -1,4 +1,5 @@
 import type { RefusalCode } from "./refusal-codes.gen.js";
+import type { Envelope } from "./envelope.js";
 
 export const VERDICT_REPAIR = "npm i -g @stainless-code/verdict@latest";
 
@@ -18,6 +19,37 @@ export class VerdictRefusalError extends Error {
 }
 
 export type VerdictRefusal = VerdictRefusalError;
+
+/**
+ * Exit 1 carrying a success-shaped envelope: a gate or check run whose verdict
+ * is no (`error` is null and `data` is an object). The envelope rides along, so
+ * a caller reads the failing dimensions instead of guessing from a message.
+ */
+export class VerdictGateError<T = unknown> extends Error {
+  readonly envelope: Envelope<T>;
+
+  constructor(envelope: Envelope<T>) {
+    super(`verdict ${envelope.verb} failed its gate`);
+    this.name = "VerdictGateError";
+    this.envelope = envelope;
+  }
+
+  get verb(): string {
+    return this.envelope.verb;
+  }
+
+  get data(): T {
+    return this.envelope.data;
+  }
+
+  get warnings(): string[] {
+    return this.envelope.warnings;
+  }
+
+  get next(): string {
+    return this.envelope.next;
+  }
+}
 
 export class VerdictUsageError extends Error {
   readonly stderr: string;

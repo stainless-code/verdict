@@ -21,6 +21,7 @@ export {
   VERDICT_REPAIR,
   VerdictRefusalError,
   type VerdictRefusal,
+  VerdictGateError,
   VerdictUsageError,
   VerdictProcessError,
   type VerdictCrash,
