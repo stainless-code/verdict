@@ -142,6 +142,14 @@ function writeJSON(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+// npm renders each package's README on its registry page. The generated tree
+// has no checkout to inherit one from, so copy the repository README into every
+// package (wrapper and platform) before publishing.
+function copyReadme(dir) {
+  mkdirSync(dir, { recursive: true });
+  cpSync(join(REPO_ROOT, "README.md"), join(dir, "README.md"));
+}
+
 export function generateNpmTree(options) {
   const contract = loadContract();
   const root = rootPackage();
@@ -183,6 +191,7 @@ export function generateNpmTree(options) {
       const exe = entry.npmBin.endsWith(".exe") ? "verdict.exe" : "verdict";
       extractBinary(archive, exe, binDest);
     }
+    copyReadme(dir);
     writeJSON(join(dir, "package.json"), {
       name: entry.npmPackage,
       version,
@@ -194,7 +203,7 @@ export function generateNpmTree(options) {
       homepage: root.homepage,
       os: [entry.npmOS],
       cpu: [entry.npmCPU],
-      files: [entry.npmBin],
+      files: [entry.npmBin, "README.md"],
     });
     staged.push(entry.npmPackage);
   }
@@ -204,6 +213,7 @@ export function generateNpmTree(options) {
     deps[entry.npmPackage] = version;
   }
   const wrapperDir = join(out, shortName(contract.npm.wrapper));
+  copyReadme(wrapperDir);
   // TypeScript client (ticket 21): the wrapper ships the built client as a
   // subpath export, so one install carries both the binary and the client.
   // Best-effort by default: the Go contract tests invoke this generator
@@ -244,6 +254,7 @@ export function generateNpmTree(options) {
     bin: contract.npm.bin,
     files: [
       ...contract.npm.wrapperFiles,
+      "README.md",
       ...(clientFiles.length > 0 ? ["client/"] : []),
     ],
     optionalDependencies: deps,
