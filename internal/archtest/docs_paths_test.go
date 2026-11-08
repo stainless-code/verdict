@@ -79,9 +79,9 @@ func TestScanForLegacyReviewRef(t *testing.T) {
 
 	hits := scanForLegacyReviewRef(t, root)
 	want := []string{
-		filepath.Join("apps", "docs", "content", "stale.mdx") + ":2: bundle at .review/123/",
-		filepath.Join("apps", "docs", "pages", "stale.astro") + ":1: bundle at .review/456/",
-		filepath.Join("examples", "stale.yml") + ":1: review .review/789/",
+		filepath.ToSlash(filepath.Join("apps", "docs", "content", "stale.mdx")) + ":2: bundle at .review/123/",
+		filepath.ToSlash(filepath.Join("apps", "docs", "pages", "stale.astro")) + ":1: bundle at .review/456/",
+		filepath.ToSlash(filepath.Join("examples", "stale.yml")) + ":1: review .review/789/",
 	}
 	if !slices.Equal(hits, want) {
 		t.Fatalf("hits = %v; want %v", hits, want)
