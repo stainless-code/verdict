@@ -93,7 +93,7 @@ if grep -Fq '## Versioning' "$EVAL_ROOT/CONTRIBUTING.md" \
 else
   bad "CONTRIBUTING ## Versioning missing the changeset rule"
 fi
-assert_file_grep "manual's store changelog stays on store schemas" "$EVAL_ROOT/docs/manual.md" 'This section tracks store-schema evolution only' "-F"
+assert_file_grep "manual documents the store-schema drift rule" "$EVAL_ROOT/docs/manual.md" 'Drift rule: additive within `schema_version`/`sig_version` `"1"`' "-F"
 assert_file_nogrep "manual never duplicates the version-packages rule" "$EVAL_ROOT/docs/manual.md" 'version packages' "-F"
 
 eval_end
