@@ -124,16 +124,77 @@ func headingLine(lines []string, heading string) (int, int, bool) {
 }
 
 // sectionLines collects the lines after start until the next heading of the
-// same or higher rank.
+// same or higher rank outside a fenced code block. A `#` comment in a shell
+// example is literal text, not a section boundary.
 func sectionLines(lines []string, start, rank int) []string {
 	body := make([]string, 0, len(lines)-start)
+	fence := ""
 	for _, line := range lines[start+1:] {
-		if level := headingRank(line); level > 0 && level <= rank {
+		if fence != "" {
+			body, fence = consumeFencedLine(body, line, fence)
+			continue
+		}
+		if marker := fenceMarker(line); marker != "" {
+			fence = marker
+			body = append(body, line)
+			continue
+		}
+		if isSectionHeading(line, rank) {
 			break
 		}
 		body = append(body, line)
 	}
 	return body
+}
+
+// consumeFencedLine appends one line inside a fenced block and clears fence
+// when the line closes it.
+func consumeFencedLine(body []string, line, fence string) ([]string, string) {
+	if strings.HasPrefix(strings.TrimSpace(line), fence) {
+		fence = ""
+	}
+	return append(body, line), fence
+}
+
+// isSectionHeading reports whether line closes the section headed at rank.
+func isSectionHeading(line string, rank int) bool {
+	level := headingRank(line)
+	return level > 0 && level <= rank
+}
+
+// fenceMarker reports the opening fence marker at the start of a line, if any.
+func fenceMarker(line string) string {
+	trimmed := strings.TrimLeft(line, " \t")
+	switch {
+	case strings.HasPrefix(trimmed, "```"):
+		return "```"
+	case strings.HasPrefix(trimmed, "~~~"):
+		return "~~~"
+	default:
+		return ""
+	}
+}
+
+// TestSectionLinesIgnoreFencedHeadings pins the boundary rule: a shell comment
+// shaped like a heading stays in the fenced body and cannot truncate a section.
+func TestSectionLinesIgnoreFencedHeadings(t *testing.T) {
+	t.Parallel()
+	lines := []string{
+		"### Section",
+		"```sh",
+		"# Example",
+		"term",
+		"```",
+		"### Next",
+		"outside",
+	}
+	got := strings.Join(sectionLines(lines, 0, 3), "\n")
+	if !strings.Contains(got, "# Example") || !strings.Contains(got, "term") {
+		t.Fatalf("fenced body lost: %q", got)
+	}
+	if strings.Contains(got, "### Next") || strings.Contains(got, "outside") {
+		t.Fatalf("section ran past the next heading: %q", got)
+	}
 }
 
 // headingRank reports a markdown heading's rank, or 0 for any other line.

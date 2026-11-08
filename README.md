@@ -138,7 +138,7 @@ Inputs are `version` (default `latest`) and `require-signature` (default `true`)
 | Bitbucket | `bitbucket`  | `curl` with `BITBUCKET_TOKEN`                              | no   | no                                   |
 | Azure     | `azure`      | `az` (login or `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG`) | no   | no                                   |
 
-On the other five hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, `calibrate`, `ready`, and `adopt` refuse with a typed error. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
+On the other five hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
 
 ## Security
 

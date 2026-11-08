@@ -312,15 +312,19 @@ and `plan.txt` is the fence label for its rendered section in the
 Seven artifacts explain what a run knew and what it proved. Each row states
 the artifact, who writes it, and whether a verb gates on it.
 
-| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes. `post`, `record`, `triage`, `report`, `ready`, `config`, and `verify --group` verify it; a deleted bundle or edited captured input refuses `controls-stale`, and an absent file reads as a legacy bundle (warn, no repository requirements). |
-| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                        |
-| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                  |
-| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                           |
-| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                             |
-| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub compare read produced no delta.                                                                                                                                                        | GitHub `fetch --base-sha/--since` on a failed compare         | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                    |
-| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                     |
+| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads as legacy (warn, no repository requirements). |
+| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                            |
+| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                      |
+| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                               |
+| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                 |
+| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub compare read produced no delta.                                                                                                                                                        | GitHub `fetch --base-sha/--since` on a failed compare         | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                        |
+| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                         |
+
+`config --preview` is the exception: when `run.json` is absent it can fall back
+to its legacy file list, though it still verifies `controls.json` and may lose
+captured rename identities.
 
 ## Learnings (durable repo memory)
 
@@ -1011,8 +1015,10 @@ own PR is also downgraded to `COMMENT`, and `--force` does not override that
 guard. A bundle whose stored PR state is not `OPEN` refuses `pr-not-open`; an
 unknown state warns and proceeds. `--dry-run` still performs the live head read that backs the stale-head guard,
 and it still performs the live-thread read a selected `no-live-threads` policy
-requires; only the legacy recheck is skipped. It is not fully offline; a failed
-lookup warns.
+requires; only the legacy recheck is skipped. It is not fully offline. A failed
+live-head lookup warns. A failed live-thread lookup under `no-live-threads`
+refuses a binding approval with `requirement-unmet`; a non-approving run
+continues without a thread-gate warning.
 
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
@@ -1046,7 +1052,9 @@ CLIs): up to three attempts, only for transient failures. A secondary rate
 limit honors `Retry-After` (or the reset marker) up to a 60 s wait; the host's
 internal-error note sleeps 1 s then 2 s; auth, validation, and missing-binary
 failures never retry, and a canceled wait aborts instead of sleeping past the
-signal. Only failed calls retry, so a retry can never double-write.
+signal. A failed call does not prove the host did not write: a lost POST response
+can make the retry publish the same review twice. The duplicate guard runs before
+submission, not between attempts, so re-check the PR after a retryable post failure.
 
 Paging is layered on the same file list. When the hosting CLI returns exactly
 its 100-file cap, `fetch` re-reads the list with pagination to the provider
@@ -1632,7 +1640,7 @@ locally, settle them after the upgrade below.
 Two `post` guards (graded by `evals/cases/post-go-guards.sh`): secondary rate
 limits (a 403/429 with a rate-limit signal) retry within
 bounds — honoring the `retry-after` hint or the reset marker, at most three
-attempts, never publishing twice — and review bodies past the 65,536-char
+attempts — and review bodies past the 65,536-char
 hosting limit split into parts: the first review keeps the footer intact,
 and the remaining parts post as follow-up COMMENT reviews with a continuation
 header. A failed follow-up refuses typed (`post-failed`) and names the review
@@ -1896,8 +1904,9 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `state` as open|closed|merged, `draft`, per-file `additions/deletions`).
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
-`triage`, `show`, `next` work on provider bundles as-is. `post`, `calibrate`,
-and `adopt`-into refuse non-GitHub bundles. The refusal is deliberate, not a
+`triage`, `show`, `next` work on provider bundles as-is. `post`, plain
+`calibrate`, and `adopt`-into refuse non-GitHub bundles; `calibrate --probe`
+grades any bundle offline. The refusal is deliberate, not a
 claim that submit is impossible elsewhere: GitLab accepts per-comment
 discussion POSTs plus one summary note and an approve call, and Forgejo can
 author inline comments through its API even though its CLIs cannot. What those
@@ -1943,7 +1952,7 @@ Read-only join (threads + one compare + PR state), keep-biased:
 - Use: per-model verdict calibration over time (which model judges well feeds the panel file).
   Never auto-tunes thresholds — humans read the report, the script only joins.
 - Enabler: `post` records `.verdict/state/N/post.json` (`review` id, `head`, `posted_at`)
-  on every real post. `calibrate` refuses without it.
+  on every real post. A plain `calibrate` refuses without it; `--probe` works offline.
 
 The offline counterpart is the self-grading probe (X3): `calibrate
 <owner/repo> <pr> --probe` writes one row per finding to

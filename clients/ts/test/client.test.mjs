@@ -77,7 +77,7 @@ const GATE_PATHS = [
     label: "checkTree(...)",
     verb: "check-tree",
     call: (bin, env) =>
-      createClient({ bin, stderr: "pipe" }).checkTree(["acme/app"], { env }),
+      createClient({ bin, stderr: "pipe" }).checkTree([], { env }),
   },
 ];
 

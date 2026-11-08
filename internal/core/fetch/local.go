@@ -83,7 +83,11 @@ func localPolicy(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
 	f *core.FetchLocalFlags, r *session, mode *localMode,
 ) error {
-	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), mode.baseSHA, f.HeadControls); ref != nil {
+	controlsRoot := req.RepoRootPath()
+	if r.iso != nil {
+		controlsRoot = r.iso.dir
+	}
+	if ref := resolveControls(ctx, ctx2, "", controlsRoot, mode.baseSHA, f.HeadControls); ref != nil {
 		return ref
 	}
 	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)

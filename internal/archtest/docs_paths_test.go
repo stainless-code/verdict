@@ -3,6 +3,7 @@ package archtest
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,12 @@ import (
 // docs/config.md and docs/manual.md are allowed to keep the old spelling, and
 // neither file is scanned here.
 const legacyReviewRef = ".review/"
+
+// legacyReviewPath matches a legacy path token, not every substring: the
+// component must start at a boundary that a hostname cannot supply (so a URL
+// such as https://x.review/ is not a hit), and may be followed by a slash or
+// punctuation (so a bare `.review` directory is still reported).
+var legacyReviewPath = regexp.MustCompile(`(^|[^[:alnum:].-])\.review($|[^[:alnum:]_-])`)
 
 // docsPathRoots are the current-state surfaces a stale bundle path must never
 // reach: the docs site's content and hand-written home pages, every example,
@@ -69,6 +76,8 @@ func TestScanForLegacyReviewRef(t *testing.T) {
 		}
 	}
 	write("apps/docs/content/stale.mdx", "line one\nbundle at .review/123/\n")
+	write("apps/docs/content/bare.mdx", "bundle at .review\n")
+	write("apps/docs/content/url.mdx", "see https://x.review/ for the host\n")
 	write("apps/docs/content/fixed.mdx", "bundle at .verdict/state/123/\n")
 	write("apps/docs/pages/stale.astro", "bundle at .review/456/\n")
 	write("examples/stale.yml", "review .review/789/\n")
@@ -79,6 +88,7 @@ func TestScanForLegacyReviewRef(t *testing.T) {
 
 	hits := scanForLegacyReviewRef(t, root)
 	want := []string{
+		filepath.ToSlash(filepath.Join("apps", "docs", "content", "bare.mdx")) + ":1: bundle at .review",
 		filepath.ToSlash(filepath.Join("apps", "docs", "content", "stale.mdx")) + ":2: bundle at .review/123/",
 		filepath.ToSlash(filepath.Join("apps", "docs", "pages", "stale.astro")) + ":1: bundle at .review/456/",
 		filepath.ToSlash(filepath.Join("examples", "stale.yml")) + ":1: review .review/789/",
@@ -158,7 +168,7 @@ func scanLegacyReviewFile(t *testing.T, root, path string) []string {
 	}
 	var hits []string
 	for i, line := range strings.Split(string(raw), "\n") {
-		if strings.Contains(line, legacyReviewRef) {
+		if legacyReviewPath.MatchString(line) {
 			hits = append(hits, filepath.ToSlash(rel)+":"+strconv.Itoa(i+1)+": "+line)
 		}
 	}

@@ -233,6 +233,26 @@ func worktreeCommander(t *testing.T, wt string) *fakeCommander {
 	}}
 }
 
+// worktreeAddCommander adds the fake worktree's filesystem side effect that
+// the canned commander cannot express: the checkout exists before controls
+// resolve from it.
+type worktreeAddCommander struct {
+	*fakeCommander
+	dir string
+}
+
+func (c *worktreeAddCommander) Run(ctx context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
+	if strings.Contains(strings.Join(cmd.Argv, " "), "worktree add") {
+		if err := os.MkdirAll(c.dir+"/.verdict", 0o755); err != nil {
+			c.t.Fatal(err)
+		}
+		if err := os.WriteFile(c.dir+"/.verdict/config.json", []byte("{\"version\":1}\n"), 0o644); err != nil {
+			c.t.Fatal(err)
+		}
+	}
+	return c.fakeCommander.Run(ctx, cmd)
+}
+
 // TestClientFetchLocalWorktreeHeadControls proves the two local fetch flags
 // reach the service: Worktree builds the bundle from the temporary isolated
 // checkout and removes it, and HeadControls records a HEAD controls snapshot
@@ -243,7 +263,7 @@ func TestClientFetchLocalWorktreeHeadControls(t *testing.T) {
 	wt := ".verdict/state/.worktree-probe"
 	cmdr := worktreeCommander(t, wt)
 	progress := &recordedProgress{}
-	c := newSDKClient(progress, cmdr)
+	c := newSDKClient(progress, &worktreeAddCommander{fakeCommander: cmdr, dir: wt})
 	defer c.Close()
 
 	out, err := c.FetchLocal(context.Background(), &verdict.FetchLocalRequest{
@@ -261,6 +281,9 @@ func TestClientFetchLocalWorktreeHeadControls(t *testing.T) {
 	assertNumbers(t, doc, map[string]float64{"files": 1, "additions": 1, "deletions": 1})
 	assertArgvSpawned(t, cmdr, "git -C "+wt+" diff "+sdkHeadA+" "+sdkWorktreeStash)
 	assertArgvSpawned(t, cmdr, "git worktree remove --force "+wt)
+	if got := readText(t, ".verdict/state/local-probe/controls/config.json"); got != "{\"version\":1}\n" {
+		t.Errorf("head controls came from the caller checkout, not the isolated worktree: %q", got)
+	}
 	// The trusted configuration read still comes from the base commit; only
 	// the controls inventory moved to HEAD, so no inventory read appears.
 	if cmdr.spawned(".verdict/kb.jsonl") {

@@ -30,8 +30,10 @@ so the section name is authoritative.
 
 `apps/docs/pages/_home/HowItWorks.astro` prints a local-review transcript from
 `bin/verdict`, with the current `.verdict/state/` bundle paths; `⋯` marks
-elided progress lines. Reproduce the flow with `verdict fetch-local acme/app work`,
-`verdict record acme/app work`, then `verdict report acme/app work --check
-important`; the sig and progress lines depend on the review text and diff. The
-review file was written by hand, the way an agent writes it, and the gate
-exited 1.
+elided progress lines. Reproduce the flow: `verdict fetch-local acme/app work`;
+write `.verdict/state/local-work/review.json` with an important finding anchored
+to the diff; then `verdict record acme/app local-work` and `verdict report
+acme/app local-work --check important`. The explicit `local-work` name avoids a
+collision with a PR bundle named `work`. The sig and progress lines depend on
+the review text and diff. The review file was written by hand, the way an agent
+writes it, and the gate exited 1.

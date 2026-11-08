@@ -31,7 +31,7 @@ export const faq: Qa[] = [
     q: "Which hosts does it work with?",
     a: [
       "`fetch` reads GitHub, GitLab, GitCafe, Forgejo, Bitbucket and Azure DevOps. On all six, `record`, `report`, `triage`, `show` and `next` work on the fetched bundle.",
-      "Posting, `adopt`, `ready`, `calibrate` and incremental re-review need a GitHub bundle. On the other hosts they refuse with a typed error.",
+      "Posting, `adopt`, `ready`, the live `calibrate` join and incremental re-review need a GitHub bundle. On the other hosts they refuse with a typed error; `calibrate --probe` is offline and works on any bundle.",
     ],
   },
   {

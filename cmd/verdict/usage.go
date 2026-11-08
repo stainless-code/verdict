@@ -7,9 +7,10 @@ func usageText() string {
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
-		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate/adopt/ready\n" +
+		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate (live join)/adopt/ready\n" +
 		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
-		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). Incremental re-review\n" +
+		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline\n" +
+		"    and runs on any bundle. Incremental re-review\n" +
 		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
@@ -28,7 +29,8 @@ func usageText() string {
 		"    it the bundle builds from the live tree exactly as before.\n" +
 		"    Same diff cap as fetch (512000 bytes, overridable as above); untracked/binary exclusions warn, never fail.\n" +
 		"    Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.\n" +
-		"    downstream verbs address it as local-<name>; post/calibrate refuse it.\n" +
+		"    downstream verbs address it as local-<name>; post and live calibrate refuse it, while\n" +
+		"    calibrate --probe grades it offline.\n" +
 		"    --show-prompts (fetch and fetch-local) renders the assembled agent prompt —\n" +
 		"    SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md (verbatim) + trust-boundary\n" +
 		"    prologue + nonce-fenced bundle meta + toc.txt + roles.txt + full.diff +\n" +
@@ -112,9 +114,10 @@ func usageText() string {
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
 		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>] [--json]\n" +
-		"    execute patch.json verifyCmd with a watchdog, record exit + tail into the patch record.\n" +
-		"    --group/--command are required together: one deep plan group's command runs at the\n" +
-		"    reviewed head and writes validation-<group>.json (patch.json stays untouched).\n" +
+		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
+		"    record exit + tail in the patch record. --group and --command are required together:\n" +
+		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
+		"    validation-<group>.json (patch.json stays untouched).\n" +
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
