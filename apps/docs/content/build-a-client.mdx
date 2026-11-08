@@ -146,8 +146,8 @@ release version.
   cost, completeness, and similar ride inside `data`. A client ignores unknown
   keys there.
 - **The top-level key set is fixed.** It is not the place to add fields.
-- **A major change needs a new `schema_version` and a migration note.** A
-  client must reject an unknown major instead of guessing. The schemas README
+- **A major change needs a new `schema_version`.** A client must reject an
+  unknown major instead of guessing. The schemas README
   (`make schemas`) remains the source of truth:
   [schemas/README.md](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/README.md).
 - **The clients, the Go SDK, and the MCP tool shapes are experimental until

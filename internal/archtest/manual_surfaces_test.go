@@ -72,6 +72,7 @@ var manualSurfaces = []manualSurface{
 // older behavior or migration paths.
 var currentDocs = []string{
 	"README.md",
+	filepath.Join("docs", "ci-recipe.md"),
 	filepath.Join("docs", "manual.md"),
 	filepath.Join("docs", "config.md"),
 	filepath.Join("docs", "policy-contract.md"),
@@ -80,7 +81,9 @@ var currentDocs = []string{
 // legacyGuidance marks prose that explains an older version rather than the
 // shipped behavior. The words are checked case-insensitively per line so the
 // failure names the exact file and line to delete.
-var legacyGuidance = []string{"legacy", "pre-0.5", "pre-policy", "pre-snapshot"}
+var legacyGuidance = []string{
+	"legacy", "pre-0.5", "pre-policy", "pre-snapshot", "before 0.", "migration note",
+}
 
 // TestCurrentDocsHaveNoLegacyGuidance keeps user docs on current behavior.
 // History belongs in the release changelog, not in an operator's manual.

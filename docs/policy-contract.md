@@ -52,8 +52,13 @@ resolves it.
 
 ## Degrade rules
 
-- No run bundle: every verb uses its no-policy defaults (downgrade warning
-  where one exists). Nothing refuses for a missing bundle except
-  `config --explain`, which refuses `config-no-bundle`.
+- No run bundle: verbs that tolerate it use their no-policy defaults
+  (downgrade warning where one exists). `config --explain` refuses
+  `config-no-bundle`, `config --preview` labels the trusted base unavailable
+  instead of claiming the repository has no policy, and `verify --group`
+  refuses `no-run-bundle`.
+- Missing `run.json` beside `controls.json`: that pairing is deletion, not a
+  bare bundle. Verbs that verify run state refuse `controls-stale`; re-fetch
+  the bundle.
 - Corrupt bundle: loud `bad-config` refusal, never silent degrade.
 - Untrusted preview: resolves, never persists, never approves.

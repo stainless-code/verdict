@@ -1374,8 +1374,7 @@ platform package. A plain `verdict` call consults neither variable.
   symlinks `skills/verdict` into the agent skill dirs (nine agents,
   `--detect`/`--all`, doctor-gated). Updates via `git pull`;
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
-  wiring applies to the checkout only. (Before 0.4 this script was named
-  `install.sh`; the name now belongs to the binary installer.)
+  wiring applies to the checkout only.
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
   `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
   never skew from the binary. In the repository they are the one
