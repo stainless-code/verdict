@@ -102,7 +102,9 @@ func mkBundle(t *testing.T, name string) {
 
 // TestRunExplainEnvelope pins the read path end to end: the stored
 // bundle explains through the envelope with no live calls, and the
-// human lines carry the trust bit and origins.
+// human lines carry the trust bit, origins, the plan group id, and the
+// privacy exclusions. The JSON envelope is unchanged by the human render:
+// both surfaces report the same typed fields.
 func TestRunExplainEnvelope(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeExplainFixture(t)
@@ -110,34 +112,44 @@ func TestRunExplainEnvelope(t *testing.T) {
 	if code != cli.ExitOK {
 		t.Fatalf("Run explain: code=%d", code)
 	}
-	assertContainsAll(t, stdout, `"mode": "explain"`, `"trusted": true`)
+	assertContainsAll(t, stdout, `"mode": "explain"`, `"trusted": true`,
+		`"id": "deep"`, `"privacy": [`, `"secret/**"`)
 	code, stdout = runExplain(t, false)
 	if code != cli.ExitOK {
 		t.Fatalf("human Run explain: code=%d", code)
 	}
-	assertContainsAll(t, stdout, "trusted=true", "budget_usd")
+	assertContainsAll(t, stdout, "trusted=true", "budget_usd",
+		"plan: id=deep profile=deep depth=deep", "privacy: secret/**")
 }
 
 // writeExplainFixture stores a trusted run bundle whose budget came from
-// the environment, then proves controls accepts it before any rendering
-// runs: the envelope assertion below is about the render, not the gate.
+// the environment, whose plan carries one deep group id, and whose
+// operator settings exclude secret/**, then proves controls accepts it
+// before any rendering runs: the envelope assertion below is about the
+// render, not the gate.
 func writeExplainFixture(t *testing.T) {
 	t.Helper()
 	guard := 9.5
+	deep := 2
+	plan := config.Plan{Status: config.PendingStatus, Groups: []config.PlanGroup{{
+		ID: "deep", Profile: "deep", Depth: "deep", Checks: []string{"test"},
+		MaxLenses: &deep, Files: []string{"app/main.go"},
+	}}}
 	rs := &config.RunState{
 		BaseSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Trusted: true,
 		Evidence: config.Evidence{
 			SchemaVersion: "1",
 			BaseSHA:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			Plan:          config.Plan{Status: config.PendingStatus},
+			Plan:          plan,
 			Values: []config.EvidenceValue{
 				{Key: "budget_usd", Value: 9.5, Origin: config.FieldOrigin{Layer: config.LayerEnv, Source: "REVIEW_BUDGET_USD"}},
 			},
 		},
 		Resolved: &config.Resolved{
-			Plan:     config.Plan{Status: config.PendingStatus},
+			Plan:     plan,
 			Defaults: config.ResolvedDefaults{Values: config.EffectiveDefaults{BudgetUSD: &guard}},
+			Privacy:  config.PrivacyView{Exclusions: []string{"secret/**"}},
 		},
 	}
 	if serr := config.WriteRunState(filepath.Join(".", ".verdict", "state", "7"), rs); serr != nil {
@@ -179,5 +191,15 @@ func TestRunExplainMissingBundle(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), config.CodeNoBundle) {
 		t.Fatalf("envelope misses the code: %q", out.String())
+	}
+}
+
+// TestHumanLinesPrivacyNone proves an empty exclusion set renders the
+// explicit none marker instead of dropping the privacy line: an unreported
+// axis must never read as an exempt one.
+func TestHumanLinesPrivacyNone(t *testing.T) {
+	got := strings.Join(humanLines(&core.ConfigData{Mode: "explain"}), "\n")
+	if !strings.Contains(got, "privacy: (none)") {
+		t.Errorf("human lines = %q, want the explicit none marker", got)
 	}
 }

@@ -10,6 +10,7 @@ import {
 } from "./envelope.js";
 import {
   VERDICT_REPAIR,
+  VerdictGateError,
   VerdictProcessError,
   VerdictRefusalError,
   VerdictSchemaError,
@@ -182,6 +183,23 @@ function parseSingleEnvelope(stdout: string): unknown {
   }
 }
 
+// Exit 1 with `error: null` and an object `data` is a gate/check verdict of no,
+// not a refusal. `data: null` stays on the refusal path, where the missing
+// error body is a schema error rather than a gate failure.
+function isGateEnvelope(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const data = record["data"];
+  return (
+    record["error"] === null &&
+    typeof data === "object" &&
+    data !== null &&
+    !Array.isArray(data)
+  );
+}
+
 function throwForExit<T>(
   verb: string,
   result: ChildResult,
@@ -213,6 +231,14 @@ function throwForExit<T>(
   }
   if (result.code === 1) {
     const parsed = parseSingleEnvelope(stdout);
+    // Exit 1 has two shapes: a refusal (`data` null plus an `error` body) and a
+    // gate verdict that is simply no (`error` null plus a `data` object). The
+    // gate shape is still validated, so a malformed exit-1 envelope fails loud
+    // instead of arriving as a typed envelope nobody checked.
+    if (isGateEnvelope(parsed)) {
+      assertEnvelope<T>(parsed, stdout);
+      throw new VerdictGateError(parsed);
+    }
     assertRefusalEnvelope(parsed, stdout);
     throw new VerdictRefusalError(
       parsed.error.code,

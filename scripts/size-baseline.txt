@@ -69,10 +69,13 @@
 # 11849888, linux/arm64 10879136, windows/amd64 12180992, windows/arm64
 # 10959360 (the earlier 10950656 note was stale). Three ceilings cross and
 # move to the next 10 kB above their measurement; the other three stay put.
+# Truthful public surfaces adds the SDK flag plumbing and one refusal hint.
+# Release builds measured linux/amd64 11853984 and windows/arm64 10960384;
+# those two ceilings move to the next 10 kB above their measurement.
 deps 0
 darwin/amd64 12070000
 darwin/arm64 11080000
-linux/amd64 11850000
+linux/amd64 11860000
 linux/arm64 10890000
 windows/amd64 12190000
-windows/arm64 10960000
+windows/arm64 10970000

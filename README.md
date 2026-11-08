@@ -121,7 +121,7 @@ Inputs are `version` (default `latest`) and `require-signature` (default `true`)
 
 - **Skill and CLI.** The skill from step 2 drives the CLI. It works with Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen, Windsurf, and any agent that reads an `agents` skills directory.
 - **MCP.** `verdict mcp` serves the review verbs as tools over stdio. `verdict mcp config --agent claude` prints the config entry, and `--write` merges it into the file. It supports `claude`, `cursor`, and `codex`, and is experimental until 1.0. See the [manual](docs/manual.md#mcp-server-stdio-experimental-until-10).
-- **Go SDK.** [`pkg/verdict`](pkg/verdict) wraps the binary for Go programs.
+- **Go SDK.** [`pkg/verdict`](pkg/verdict) runs the verbs in-process for Go programs, with typed requests and responses — no `verdict` subprocess, no `--json` parsing.
 - **TypeScript client.** `import { createClient } from "@stainless-code/verdict/client"`. It ships in the npm package. See [`clients/ts`](clients/ts/README.md).
 - **Other languages.** Every `--json` envelope and store file has a JSON Schema in [`skills/verdict/schemas/`](skills/verdict/schemas). The [Build a client guide](https://stainless-code.com/verdict/build-a-client) covers exit codes and codegen, with a tested [Python example](examples/python-client/).
 
@@ -138,7 +138,7 @@ Inputs are `version` (default `latest`) and `require-signature` (default `true`)
 | Bitbucket | `bitbucket`  | `curl` with `BITBUCKET_TOKEN`                              | no   | no                                   |
 | Azure     | `azure`      | `az` (login or `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG`) | no   | no                                   |
 
-On the other five hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, `calibrate`, `ready`, and `adopt` refuse with a typed error. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
+On the other five hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
 
 ## Security
 

@@ -5,7 +5,7 @@ import SectionHead from "./SectionHead.astro";
 
 /**
  * The review pipeline as the commands that own each stage, split into what
- * ships in 0.4.0 and what is planned. A row carries a badge only when it is an
+ * ships today and what is planned. A row carries a badge only when it is an
  * exception to its group (MCP is experimental). Rows mirror
  * apps/docs/content/roadmap.mdx; change one, change both. Claim sources are in
  * docs/landing-claims.md.
@@ -22,7 +22,7 @@ const shipped: Row[] = [
   {
     stage: "Bundle",
     commands: ["fetch", "fetch-local"],
-    body: "One diff per target, from a host PR or your working tree, written to `.review/`.",
+    body: "One diff per target, from a host PR or your working tree, written to `.verdict/state/`.",
   },
   {
     stage: "Review",
@@ -31,8 +31,8 @@ const shipped: Row[] = [
   },
   {
     stage: "Gate",
-    commands: ["report", "triage", "next", "trend"],
-    body: "Rank the findings, fail a build on a severity with `--check`, and write SARIF for your scanner.",
+    commands: ["report", "triage", "next", "trend", "gate"],
+    body: "Rank the findings, fail a build on a severity with `--check`, compose the gate dimensions with `gate`, and write SARIF for your scanner.",
   },
   {
     stage: "Post",
@@ -41,8 +41,8 @@ const shipped: Row[] = [
   },
   {
     stage: "Trust",
-    commands: ["verify", "doctor", "calibrate", "ready"],
-    body: "Check the bundle, the host login, past calibration and readiness before anything posts.",
+    commands: ["verify", "check-tree", "doctor", "calibrate", "ready"],
+    body: "Check the bundle, the tree, the host login, past calibration and readiness before anything posts.",
   },
   {
     stage: "Agent surface",
@@ -55,7 +55,7 @@ const shipped: Row[] = [
 const next: Row[] = [
   {
     stage: "Dashboard",
-    body: "A read-only view of `.review/` on localhost: findings, evidence, the gate, cost and trend. For a person who wants to look, or an agent showing its work.",
+    body: "A read-only view of `.verdict/state/` on localhost: findings, evidence, the gate, cost and trend. For a person who wants to look, or an agent showing its work.",
   },
   {
     stage: "Re-review",
@@ -64,7 +64,7 @@ const next: Row[] = [
 ];
 
 const groups = [
-  { title: "Shipped in 0.4.0", rows: shipped },
+  { title: "Shipped today", rows: shipped },
   { title: "Planned", rows: next },
 ];
 ---

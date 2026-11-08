@@ -186,6 +186,14 @@ clients-ts: build
 	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/client.test.mjs
 	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json
 
+# clients-python runs the dependency-free Python example against the built
+# binary: one success, one typed refusal, one exit-2 usage error, and the demo
+# script. smoke.sh skips (exit 0) when python3 is absent, installs nothing,
+# and touches no network, so the target stays safe on a bare machine.
+.PHONY: clients-python
+clients-python: build
+	VERDICT_BIN="$(CURDIR)/$(BIN)" ./examples/python-client/smoke.sh
+
 # tsgen rewrites the TS client sources derived from Go (the refusal codes);
 # the check form runs inside clients-ts.
 .PHONY: tsgen

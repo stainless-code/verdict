@@ -72,7 +72,7 @@ jq -S 'del(.at)' "$EVAL_OUT" >"$EVAL_SANDBOX/explain-saved.json"
 {"schema_version":"1","defaults":{"effort":"cheap","display_min_severity":"informational"}}
 EOF
 )
-export REVIEW_EFFORT=cheap
+export REVIEW_BUDGET_USD=42
 run_review config acme/app local-cfgprobe --explain --json
 assert_exit "explain still reads the capture after drift" 0
 assert_json_field "replayed explain carries its invocation timestamp" "string" '.at | type'
@@ -80,7 +80,7 @@ jq -S 'del(.at)' "$EVAL_OUT" >"$EVAL_SANDBOX/explain-current.json"
 cmp -s "$EVAL_SANDBOX/explain-saved.json" "$EVAL_SANDBOX/explain-current.json" \
   && good "saved values beat the changed configuration and environment" \
   || bad "explain re-read the working configuration or environment"
-unset REVIEW_EFFORT
+unset REVIEW_BUDGET_USD
 
 cat > "$EVAL_SANDBOX/proposed.json" <<'EOF'
 {"schema_version":"1","defaults":{"effort":"standard","budget_usd":1.0}}

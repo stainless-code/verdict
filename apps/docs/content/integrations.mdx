@@ -69,8 +69,8 @@ refuses a file it cannot parse.
 Two flags change what the server exposes:
 
 - `--read-only` exposes only tools that neither submit a review nor rewrite
-  the bundle: `report`, `next`, `show`, `trend`, `ready`, `doctor`, and
-  `check-tree`.
+  the bundle: `report`, `next`, `show`, `trend`, `ready`, `doctor`,
+  `check-tree`, and `config`, plus `record` limited to `dry_run: true`.
 - `--operator` adds `triage`. Status changes are the human's call, so an agent
   proposes them in `review.json` and never gets the tool by default.
 
@@ -119,11 +119,11 @@ func main() {
 }
 ```
 
-Run it from the checkout that holds `.review/`, like the CLI. With a clean
+Run it from the checkout that holds `.verdict/state/`, like the CLI. With a clean
 bundle for `acme/app` PR 123 it prints:
 
 ```text
-report: .review/123 (0 shown) open=0 head=aaaaaaa
+report: .verdict/state/123 (0 shown) open=0 head=aaaaaaa
 none open — nothing to address
 ```
 
@@ -178,7 +178,7 @@ verdict skill files | grep schemas/
 Check an agent-written review before you post it:
 
 ```bash
-schemas/validate.sh schemas/review.schema.json .review/123/review.json
+schemas/validate.sh schemas/review.schema.json .verdict/state/123/review.json
 ```
 
 The script exits `0` when the file is valid and prints one `FAIL` line per

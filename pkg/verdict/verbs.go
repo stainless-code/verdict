@@ -246,9 +246,17 @@ func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, err
 	}, nil
 }
 
-// RecordRequest merges a local review.json into the findings store.
+// RecordRequest merges a local review.json into the findings store. DryRun
+// reports what would be recorded and writes nothing. Strict promotes
+// warning-only input to a refusal. CostNames asks for the cost-name repair,
+// naming models[] entries from CostPanel in the order the panel ran (an
+// empty panel with CostNames set reads the panel the bundle pinned).
 type RecordRequest struct {
 	Invocation
+	CostPanel []string
+	DryRun    bool
+	Strict    bool
+	CostNames bool
 }
 
 // Record validates and merges a local review.json into the stores.
@@ -260,6 +268,11 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 	resp, ref := recordcore.Run(ctx, &core.RecordRequest{
 		ReadRequest: rr,
 		Effective:   core.Defaults(),
+		DryRun:      req.DryRun,
+		Strict:      req.Strict,
+		Flags: core.RecordFlags{
+			CostNames: req.CostNames, CostPanel: req.CostPanel,
+		},
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
@@ -346,10 +359,13 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 }
 
 // FetchRequest carries the fetch options: base/provider overrides and flags.
+// HeadControls reads the review controls from HEAD/the worktree instead of
+// the PR base commit — the explicit opt-out that warns on every run.
 type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	BudgetConsent, ShowPrompts, Chunk bool
+	HeadControls                      bool
 }
 
 // Fetch fetches a pull request into .verdict/state/<pr>.
@@ -362,7 +378,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 		ReadRequest: rr,
 		Flags: core.FetchFlags{
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
-			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk,
+			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
 			HasBase: req.BaseSHA != "", HasProvider: req.Provider != "",
 		},
 		Effective: core.Defaults(),
@@ -375,12 +391,16 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	return resultPtr(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
-// FetchLocalRequest carries the local-diff fetch options.
+// FetchLocalRequest carries the local-diff fetch options. Worktree builds
+// the bundle from a temporary isolated checkout of the review target, and
+// HeadControls reads the review controls from HEAD/the worktree instead of
+// the base commit.
 type FetchLocalRequest struct {
 	Invocation
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
+	Worktree, HeadControls                              bool
 }
 
 // FetchLocal fetches a local git diff into .verdict/state/local-<name>.
@@ -394,7 +414,8 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 		Flags: core.FetchLocalFlags{
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
-			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk,
+			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, Worktree: req.Worktree,
+			HeadControls: req.HeadControls,
 		},
 		Effective: core.Defaults(),
 		Human:     c.streamWriter(true),

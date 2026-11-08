@@ -23,8 +23,9 @@ owns the read, the validation, and the written review.
 **Panel.** The pinned model roster a review group runs with, resolved from
 `REVIEW_PANEL`, typed configuration, or personal settings. The first entry is
 the synthesizer; the rest staff lenses, used in order and never substituted.
-`plan.txt` carries each group's resolved roster. The bundle's `panel` file is
-the shared default. An unpinned group leaves the choice to the operator.
+The `--show-prompts` dump's `plan.txt` section carries each group's resolved
+roster. The bundle's `panel` file is the shared default. An unpinned group
+leaves the choice to the operator.
 
 ## Evidence
 
@@ -55,7 +56,8 @@ fixed keys and `schema_version: "1"`. New information goes inside `data`. See
 
 **Provider.** The code host a bundle came from: GitHub (the default), GitLab,
 GitCafe, Forgejo, Bitbucket, or Azure DevOps. Pick one with
-`fetch --provider`. `post` and `calibrate` need a GitHub bundle.
+`fetch --provider`. `post` and the live `calibrate` join need a GitHub bundle;
+`calibrate --probe` is offline and works on any bundle.
 
 ## Doctrines
 

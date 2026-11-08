@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: "What ships in 0.4.0, what is still experimental, and what comes next."
+description: "What ships today, what is still experimental, and what comes next."
 search:
   tags: ["roadmap", "dashboard", "primitives", "toolkit", "future"]
 ---
@@ -10,21 +10,21 @@ commit range, staged changes — let your agent review it, grade the findings, p
 exactly one review. Every surface below is built from the same verbs, and every
 one of them runs on your machine: no account, no hosted state, no telemetry.
 
-This page is the honest ledger. Shipped means it is in `0.4.0` and documented in
-the [manual](/manual).
+This page is the honest ledger. Shipped means the verb and its contract ship
+today and are documented in the [manual](/manual).
 Planned means it is not built yet, and says so on its own line.
 
-## Shipped in 0.4.0
+## Shipped today
 
-| Stage         | Commands                                               | What they own                                                                                                              |
-| ------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Bundle        | `fetch`, `fetch-local`                                 | One diff per review target, from a host PR or your working tree, into `.review/`. Chunking and a budget gate are opt-in.   |
-| Review        | `record`, `adopt`, `fix`                               | Validate a review, merge it into findings, carry local findings onto a PR, and loop on one finding without escaping scope. |
-| Decide        | `report`, `triage`, `threads`, `next`, `show`, `trend` | Render the bundle, gate on severity (`--check`), emit SARIF (`--sarif`), and read trend across runs.                       |
-| Post          | `post`                                                 | Exactly one review, with anchor validation, stale-SHA and duplicate guards, `--dry-run`, and `--bind` for an approval.     |
-| Trust         | `verify`, `check-tree`, `doctor`, `calibrate`, `ready` | Check the bundle, the tree, the host login, past calibration, and readiness in one place.                                  |
-| Agent surface | `skill`, `mcp`                                         | The embedded skill (`skill`, `skill files`, `skill install`) and the review verbs as MCP tools over stdio.                 |
-| Housekeeping  | `init`, `learn`, `upgrade`, `uninstall`                | Repo config, project rules with provenance, and channel-aware upgrades and removals.                                       |
+| Stage         | Commands                                                       | What they own                                                                                                                              |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bundle        | `fetch`, `fetch-local`                                         | One diff per review target, from a host PR or your working tree, into `.verdict/state/`. Chunking and a budget gate are opt-in.            |
+| Review        | `record`, `adopt`, `fix`                                       | Validate a review, merge it into findings, carry local findings onto a PR, and loop on one finding without escaping scope.                 |
+| Decide        | `report`, `triage`, `threads`, `next`, `show`, `trend`, `gate` | Render the bundle, gate on severity (`--check`), compose the gate dimensions (`gate`), emit SARIF (`--sarif`), and read trend across runs. |
+| Post          | `post`                                                         | Exactly one review, with anchor validation, stale-SHA and duplicate guards, `--dry-run`, and `--bind` for an approval.                     |
+| Trust         | `verify`, `check-tree`, `doctor`, `calibrate`, `ready`         | Check the bundle, the tree, the host login, past calibration, and readiness in one place.                                                  |
+| Agent surface | `skill`, `mcp`                                                 | The embedded skill (`skill`, `skill files`, `skill install`) and the review verbs as MCP tools over stdio.                                 |
+| Housekeeping  | `init`, `config`, `learn`, `upgrade`, `uninstall`              | Repo config, explain policy, project rules with provenance, and channel-aware upgrades and removals.                                       |
 
 Clients and actions over those verbs: the Go SDK (`pkg/verdict`), the TypeScript
 client (`@stainless-code/verdict/client`), the JSON schemas in `schemas/`, and
@@ -38,7 +38,7 @@ client (`@stainless-code/verdict/client`), the JSON schemas in `schemas/`, and
 
 ## Next
 
-**A local dashboard.** One command that opens a read-only view over `.review/`:
+**A local dashboard.** One command that opens a read-only view over `.verdict/state/`:
 the bundles, every finding with its evidence rung and anchor, the gate result,
 cost per run, and the trend line. Started by a human who wants to look, or by an
 agent that needs to show its work. Bound to localhost, reading the same files the

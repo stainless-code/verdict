@@ -159,8 +159,12 @@ cannot reach the network warns and proceeds — the nudge never refuses.
 
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
-`.verdict/state/N/verification.json` evidence (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
-with `resultHead` matching HEAD — the revalidator writes it); `NOT VERIFIED` reopens,
+a `.verdict/state/N/verification.json` claim (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
+with `resultHead` matching HEAD). The operator or agent writes that claim —
+`verify` writes `patch.json`, not `verification.json`; a claim is attestation,
+not tool proof. `record`/`post` cross-check the bundle's `patch.json` when
+present and warn on a nonzero exit or timeout, but the flip stands; inspect
+`patch.json` for the tool's machine result. `NOT VERIFIED` reopens,
 `INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
 unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
 store directly between runs with `verdict triage … --sig … --status … --rationale …`
@@ -297,6 +301,30 @@ verbs never read or write `x-*`, so plugins can't collide with core files and
 only `review.json` (plus `verification.json`/`patch.json`/`report.md`/`replies.json`/`noreview.md`
 where a mode file says so);
 everything else in a bundle dir is script-owned.
+
+`plan.txt` is not a bundle file: the combined plan is captured in `run.json`,
+and `plan.txt` is the fence label for its rendered section in the
+`--show-prompts` dump, one line per group (see
+[Policy engine](#policy-engine-scopes-profiles-deep-validation)).
+
+### Evidence ledger
+
+Seven artifacts explain what a run knew and what it proved. Each row states
+the artifact, who writes it, and whether a verb gates on it.
+
+| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads as legacy (warn, no repository requirements). |
+| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                            |
+| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                      |
+| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                               |
+| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                 |
+| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub compare read produced no delta.                                                                                                                                                        | GitHub `fetch --base-sha/--since` on a failed compare         | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                        |
+| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                         |
+
+`config --preview` is the exception: when `run.json` is absent it can fall back
+to its legacy file list, though it still verifies `controls.json` and may lose
+captured rename identities.
 
 ## Learnings (durable repo memory)
 
@@ -445,10 +473,132 @@ an observation to the bundle. `verdict config <owner/repo> <pr> --explain`
 renders the stored policy; `--preview [--file <path>]` resolves a proposed
 file or the captured inventory with current settings and environment. Without
 a capture, repository inputs are reported as unavailable. Explain and preview
-perform no live calls and no writes, and never approve; resolving the root runs
+perform no live calls and no writes, and never approve; the human explain
+summarizes values, requirements, plan groups, spend, privacy, and checks, while
+`--json` additionally carries shadowed values and per-file resolutions, which
+is the debugger surface. Resolving the root runs
 one `git rev-parse` probe through the environment rather than an injected
 commander. The full rule table lives in
 `docs/policy-contract.md`.
+
+## Policy engine (scopes, profiles, deep validation)
+
+`fetch`/`fetch-local` resolve the repository policy once and persist it in
+`run.json`; the review verbs (`post`, `record`, `triage`, `report`, `ready`,
+`verify --group`) read that capture rather than the live
+`.verdict/config.json`, so an edited capture refuses `controls-stale` instead
+of silently changing the rules. Layers resolve in order: flags, the
+`REVIEW_*` environment, matching path scopes, shared `defaults`, the personal
+settings layer, then built-ins.
+
+### Path scopes and profiles
+
+A `scopes[]` entry is `{name, include, exclude, profile, defaults,
+requirements}`. A scope matches a reviewed path when one `include` glob
+matches and no `exclude` glob does; a rename matches on the old path, the new
+path, or both. Every matching scope refines the defaults field-by-field with
+the later entry winning, and the last matching scope that names a `profile`
+wins (a repository-wide `default_profile` applies when none do). A scope can
+also carry inline `defaults`, so per-path `panel`, `budget_usd`, `max_bytes`,
+`chunk`, `effort`, and the two severity floors need no shared default. A scope
+needs one of `profile`, `defaults`, or `requirements`; naming both a `profile`
+and inline `defaults` refuses `bad-scope`, while `profile` plus
+`requirements` is legal.
+
+A `profiles` entry is `{depth, checks, max_lenses}`. Depth is `standard` or
+`deep`; checks are the typed guards the run must satisfy
+(`no-open-above-block`, `head-current`, `no-live-threads`); `max_lenses` caps
+the lenses a group may dispatch (`0` means none, absent means uncapped).
+Files that resolve to identical effective defaults, requirements, and profile
+become one plan group — the unit every later verb names. `plan.txt` renders
+each group as one line:
+
+```text
+- <label>: id=<stable id> profile=<name> depth=<standard|deep> max_lenses=<N|unset> checks=[...] files=[...] scopes=[...] panel=[...] panel_from=<source> effort=<tier> cap_bytes=<n> cap_from=<source> chunk=<bool>
+```
+
+The group's `panel` (first entry synthesizes, the rest staff lenses) overrides
+the shared roster, `effort` is that group's accounting tier, and `max_lenses`
+is enforced as attestation, not observation: a capped group must carry its
+dispatched labels in the usage record bound to the capture (`cost.json`), and
+a group that record omits stays unknown rather than zero.
+
+### Deep validation
+
+`depth: "deep"` means "standard review plus a recorded validation pass". The
+pass is operator-supplied proof run by the tool:
+
+```bash
+verdict verify owner/repo 123 --group <stable-id> --command "<project proof command>"
+```
+
+Both flags are required: the service enforces the `verify --group <id>
+--command <cmd>` pair, so `--group` without `--command` (or the reverse)
+refuses `bad-group-validation`, and neither keeps the patch `verify` path. The
+bundle must carry a verified `run.json` (`no-run-bundle`) and the id must name
+a plan group (`unknown-group`). Before anything runs, the tool pins three
+facts: the canonical reviewed root, the bundle's reviewed head, and the
+checked-out head, which must be that same commit (otherwise `head-mismatch`).
+
+The command runs once through the same allowlist and watchdog as patch
+verify, and every outcome leaves a receipt — a failure is never dropped. The
+receipt is `<bundle>/validation-<group>.json` (group ids are lowercase
+`[a-z0-9-]`, at most 64 chars, so the path stays confined), read back through
+a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, group id,
+reviewed and execution heads, canonical repo root, command, timestamp, exit
+code, timeout flag, `status` (`passed`, `failed`, `timeout`, `unavailable`,
+`stale-head`), and a redacted output tail. Reads re-derive the verdict: a
+receipt claiming a pass while recording a nonzero exit, a timeout, or another
+status is contradictory evidence and never approves. A head that moves during
+the command records `stale-head`; a capture re-fetched or edited mid-command
+records `unavailable`.
+
+`post` reads the receipts at approval time. A binding approval
+(`--approve=true --bind`) refuses `requirement-unmet` until every deep group
+has a current receipt for this run, inputs digest, group, head, and root;
+`--force` and consent are never consulted. `ready` and `report` show a
+missing or stale receipt as required work without executing anything.
+
+### Readiness blockers
+
+`ready` reports live blockers, each with a recovery action:
+
+| Kind                  | Blocker                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| `ci-failing`          | N failing checks (the failing names are listed).                                       |
+| `threads-open`        | N unresolved review threads.                                                           |
+| `draft`               | The PR is still a draft.                                                               |
+| `conflict`            | `mergeable=CONFLICTING` or `mergeStateStatus=DIRTY`.                                   |
+| `description-thin`    | The description is under ~50 chars.                                                    |
+| `compliance`          | A stored finding violates an applicable block clause.                                  |
+| `compliance-conflict` | A required review withholds a reviewed path by an exclusion rule.                      |
+| `compliance-unknown`  | Captured provenance is unavailable, so compliance is unproven.                         |
+| `profile-work`        | A deep group lacks a current receipt, or a capped group lacks usable lens attestation. |
+| `compliance-pending`  | A required check has no passing observation for the saved head.                        |
+
+`ready` stays advisory (exit 0); `ready --check` turns the same list into the
+machine exits 0 ready, 1 blockers-or-wait, 2 usage, 3 tool error.
+
+### Severity floors
+
+Two typed floors decide what is shown and what is published:
+
+- `display_min_severity` withholds below-floor findings from the rendered
+  `report` view. Gates still read the full ranked set, so a floor never hides
+  a finding a gate would fail on.
+- `post_min_severity` withholds below-floor findings from the published
+  payload. Block clauses, compliance, and the approval guards still read the
+  full stored findings, so a floor mutes what the review says; it never
+  weakens a gate.
+
+Both floors resolve per finding path — a matching scope's own floor outranks
+the shared default — and compare rank, `critical` > `important` >
+`informational`. Missing and unknown severities are never withheld, because
+the vocabulary cannot place them. `post.json` records what the floor did:
+`post_min_severity` when a global floor applied, `below_floor_excluded` for
+the withheld count, and `post_floor_scoped` for each path-scoped floor that
+actually withheld a finding (`[{"path": "vendor/lib.go", "floor":
+"critical"}]`). Omitted keys mean no floor applied and nothing was withheld.
 
 ## Machine surface
 
@@ -846,6 +996,82 @@ carries every row in `data.checks`.
 
 Sigs follow the Sig contract under Findings store.
 
+### Guarded submission and operator surfaces
+
+`post --review-file <path>` submits a review another tool wrote. The default
+is `<bundle>/review.json`, and the flag changes only where the review is read
+from: `post` still runs the same guarded path — review-input checks
+(including `schema_version`), anchor validation against the pinned hunks,
+suggestion rendering, stale-head and duplicate-payload guards, the typed
+policy gates, and the severity floors. A missing path refuses
+`missing-review-file`; `--dry-run` prints the validation and payload summary,
+writes `findings.dryrun.json`, and posts nothing.
+
+Approval intent comes from the review body, not from `--approve=false`: a
+review file with `approved: true` can approve even though `--approve=false` is
+the default. A binding verdict (`APPROVE`/`REQUEST_CHANGES`) still needs
+`--bind`; without it, `post` downgrades to `COMMENT`. A binding verdict on your
+own PR is also downgraded to `COMMENT`, and `--force` does not override that
+guard. A bundle whose stored PR state is not `OPEN` refuses `pr-not-open`; an
+unknown state warns and proceeds. `--dry-run` still performs the live head read that backs the stale-head guard,
+and it still performs the live-thread read a selected `no-live-threads` policy
+requires; only the legacy recheck is skipped. It is not fully offline. A failed
+live-head lookup warns. A failed live-thread lookup under `no-live-threads`
+refuses a binding approval with `requirement-unmet`; a non-approving run
+continues without a thread-gate warning.
+
+`triage --dry-run` computes one status flip and writes nothing: it resolves
+the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
+(`data.dry_run: true` in `--json`, and a `next` that says nothing was written).
+`triage --force` waives the 30-char rationale and stamps `forced without
+rationale` on the record. Neither flag reaches the network.
+
+`check-tree --expect <prefix,...>` is the clean-tree gate for mutating modes. A
+dirty path is accepted only when it starts with one of the comma-separated
+prefixes (a rename is judged by its destination path); any other entry prints
+under `check-tree: unexpected dirt:` and exits 1. Without `--expect` any dirt
+fails. The verb's own `.verdict/state/` scratch is always ignored, so a bundle
+never trips it.
+
+`upgrade --version <v>` pins an exact release (`X.Y.Z` or `vX.Y.Z`), which is
+also the rollback route: re-run it with the version that worked. An
+installer-managed binary downloads, verifies, smoke-tests, and atomically
+replaces itself with that release; global npm/pnpm/bun/yarn installs delegate
+the pinned version to the owning manager; Homebrew refuses `--version` because
+the formula owns version selection. `--dry-run` prints the channel and the
+planned action, and a malformed tag refuses `upgrade-bad-version`.
+
+Shell completion ships in the npm package as `scripts/verdict-complete.sh`.
+Sourcing it registers bash (`complete`) and zsh (`compdef`) completion for the
+verbs, each verb's flags, and the enum values (`--provider`, `--status`,
+`--rigor`, `--preset`, `--live`, `--max-severity`, `--approve`). It hides
+`mcp`: the stdio transport is started by a host config, not typed.
+
+Fetch resilience is the shared bounded retry (fetch, post, and the provider
+CLIs): up to three attempts, only for transient failures. A secondary rate
+limit honors `Retry-After` (or the reset marker) up to a 60 s wait; the host's
+internal-error note sleeps 1 s then 2 s; auth, validation, and missing-binary
+failures never retry, and a canceled wait aborts instead of sleeping past the
+signal. A failed call does not prove the host did not write: a lost POST response
+can make the retry publish the same review twice. The duplicate guard runs before
+submission, not between attempts, so re-check the PR after a retryable post failure.
+
+Paging is layered on the same file list. When the hosting CLI returns exactly
+its 100-file cap, `fetch` re-reads the list with pagination to the provider
+ceiling (3000 files), rewrites `PR.json`, and records the provenance in
+`filesource.json`; a paging failure warns and proceeds with the CLI's first
+100, marked `source: "cli"` with the error. The host's own diff rendering
+limit is separate: when GitHub refuses to render a diff (its 300-file limit)
+and both diff reads fail, `fetch` refuses the typed `upstream-diff-too-large`
+with the range/paths narrowing hint, never the local byte-cap `diff-too-large`
+or a generic `fetch-failed`.
+
+`sensitive.txt` is the advisory manifest, not a gate: `fetch` lists
+secret-adjacent paths with the matched reason, `fetch --json` publishes its
+path under `data.artifacts.sensitive.txt` (null when absent), and the prompt
+dump fences it when present. Nothing withholds or blocks on it, and its header
+asks reviewers to name the path, never quote a flagged value.
+
 ## Model wiring
 
 This kit uses whatever agent you invoke — your current model is the review model.
@@ -1163,7 +1389,9 @@ platform package. A plain `verdict` call consults neither variable.
   `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
   `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
-  create/update/keep/blocked, refuses
+  create/update/keep/blocked (`--dry-run --json` is the drift check: `update`
+  means the installed copy is stale, `keep` means current, `blocked` needs a
+  human), refuses
   a target without a verdict receipt unless `--force`, never removes foreign
   files, never prompts, and makes no network call. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
@@ -1188,7 +1416,7 @@ block at the end:
 
 <!-- verdict-footer -->
 
-> <a href="https://stainless-code.com/verdict"><img src="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 0.2.0**](https://stainless-code.com/verdict) · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
+> <a href="https://stainless-code.com/verdict"><img src="https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 0.6.0**](https://stainless-code.com/verdict) · standard tier · cost $0.05 · 4 files · [review `5722667325`](https://github.com/acme/app/pull/9#pullrequestreview-5722667325)
 ```
 
 Fields degrade factually, never blank, never failing the run: an unreadable
@@ -1364,12 +1592,18 @@ bundle from the worktree instead of the API:
 | `fetch-local owner/repo x --stash [n]`               | `git diff stash@{n}^ stash@{n}`              | stash commit         |
 | `fetch-local owner/repo x -- <paths>`                | any of the above, pathspec-filtered          | as above             |
 
-Flags are mutually exclusive (one diff source per bundle); empty diff exits 0 with
-"nothing to review". Writes `.verdict/state/local-<name>/` (`source.json`, `full.diff`,
+Flags are mutually exclusive (one diff source per bundle); an empty diff,
+including a paths filter that matches nothing, exits 0 with "nothing to review".
+Default `git diff HEAD` omits untracked files and warns to stage or commit;
+`--staged` includes them after `git add`; binary or mode-only changes are
+skipped with a warning and anchors stay unchecked. Writes `.verdict/state/local-<name>/` (`source.json`, `full.diff`,
 `toc.txt`, `roles.txt`) — `source.json` stands in for `PR.json` (kind, base/head
 refs+SHAs, range, dirty flag, diff sha256, tool version). The `local-` namespace can
 never collide with a numeric PR dir; downstream verbs address the bundle as
-`local-<name>`.
+`local-<name>`. A bare local slug also resolves: `report owner/repo work` reads
+`.verdict/state/local-work/` when no exact `.verdict/state/work/` has a
+`PR.json`; `local-<name>` stays canonical. `config` accepts the same local
+bundle.
 
 `record owner/repo local-<name>` runs the validate+merge half of `post` with no
 POST: hunk index, keep-biased anchor partition, sig merge with append-only history,
@@ -1399,13 +1633,14 @@ converted.
 
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
-bundles (no PR to post to); `calibrate` refuses them too (no threads to settle) —
-record predictions locally, settle them after the upgrade below.
+bundles (no PR to post to); plain `calibrate` refuses them too (no threads to
+settle), while `calibrate --probe` grades them offline — record predictions
+locally, settle them after the upgrade below.
 
 Two `post` guards (graded by `evals/cases/post-go-guards.sh`): secondary rate
 limits (a 403/429 with a rate-limit signal) retry within
 bounds — honoring the `retry-after` hint or the reset marker, at most three
-attempts, never publishing twice — and review bodies past the 65,536-char
+attempts — and review bodies past the 65,536-char
 hosting limit split into parts: the first review keeps the footer intact,
 and the remaining parts post as follow-up COMMENT reviews with a continuation
 header. A failed follow-up refuses typed (`post-failed`) and names the review
@@ -1669,8 +1904,9 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `state` as open|closed|merged, `draft`, per-file `additions/deletions`).
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
-`triage`, `show`, `next` work on provider bundles as-is. `post`, `calibrate`,
-and `adopt`-into refuse non-GitHub bundles. The refusal is deliberate, not a
+`triage`, `show`, `next` work on provider bundles as-is. `post`, plain
+`calibrate`, and `adopt`-into refuse non-GitHub bundles; `calibrate --probe`
+grades any bundle offline. The refusal is deliberate, not a
 claim that submit is impossible elsewhere: GitLab accepts per-comment
 discussion POSTs plus one summary note and an approve call, and Forgejo can
 author inline comments through its API even though its CLIs cannot. What those
@@ -1716,7 +1952,7 @@ Read-only join (threads + one compare + PR state), keep-biased:
 - Use: per-model verdict calibration over time (which model judges well feeds the panel file).
   Never auto-tunes thresholds — humans read the report, the script only joins.
 - Enabler: `post` records `.verdict/state/N/post.json` (`review` id, `head`, `posted_at`)
-  on every real post. `calibrate` refuses without it.
+  on every real post. A plain `calibrate` refuses without it; `--probe` works offline.
 
 The offline counterpart is the self-grading probe (X3): `calibrate
 <owner/repo> <pr> --probe` writes one row per finding to
@@ -1733,8 +1969,9 @@ the findings store; unknown sigs refuse typed), with `agreement` computed per
 row. The evidence number is the agreement rate over doubly-judged rows
 with the sample size recorded alongside. The run is additive-only (that one
 file; findings, joins, and calibration outputs stay byte-identical),
-deterministic and idempotent, and needs no post record and no network — local
-bundles grade too. The agent side lives in `prompts/grade.md`: sample closed
+deterministic and idempotent, and needs no post record and no network —
+provider and local bundles both grade; the probe runs before the live-thread
+path. The agent side lives in `prompts/grade.md`: sample closed
 findings, re-read the code, write judgments — advisory prose supplements the
 record, it is not the record.
 

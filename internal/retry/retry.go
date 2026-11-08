@@ -1,8 +1,8 @@
 // Package retry owns the bounded transient retry shared by fetch, post, and
 // the provider CLIs: a secondary rate-limit response or the host's
 // internal-error retry note earns the next attempt; plain auth, validation,
-// and missing-binary failures do not. Only failed calls retry, so a retry can
-// never double-write.
+// and missing-binary failures do not. A failed call is not proof the host did
+// not write: a lost POST response can be retried and duplicate a review.
 package retry
 
 import (

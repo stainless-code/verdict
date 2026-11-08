@@ -60,6 +60,8 @@ var hintRules = []HintRule{
 	{codes: []string{"approve-blocked"}, hint: "try: triage the findings or re-run with --force"},
 	{codes: []string{"budget-exceeded"}, hint: "try: re-run with --consent-over-budget once the spend " +
 		"is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default"},
+	{codes: []string{"spend-capped"}, hint: "try: re-run with --consent-over-budget once the spend is approved, " +
+		"or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run"},
 	{codes: []string{"bad-usage"}, hint: "try: fix the usage record named above to match " +
 		"schemas/usage.schema.json, then re-run"},
 	{codes: []string{"duplicate-payload"}, hint: "try: re-run with --force to repost the identical payload — " +
