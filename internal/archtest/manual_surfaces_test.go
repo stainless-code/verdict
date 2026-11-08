@@ -67,6 +67,55 @@ var manualSurfaces = []manualSurface{
 	},
 }
 
+// currentDocs are the hand-written files that describe the current binary to
+// users. Release changelogs own version history; these files do not explain
+// older behavior or migration paths.
+var currentDocs = []string{
+	"README.md",
+	filepath.Join("docs", "manual.md"),
+	filepath.Join("docs", "config.md"),
+	filepath.Join("docs", "policy-contract.md"),
+}
+
+// legacyGuidance marks prose that explains an older version rather than the
+// shipped behavior. The words are checked case-insensitively per line so the
+// failure names the exact file and line to delete.
+var legacyGuidance = []string{"legacy", "pre-0.5", "pre-policy", "pre-snapshot"}
+
+// TestCurrentDocsHaveNoLegacyGuidance keeps user docs on current behavior.
+// History belongs in the release changelog, not in an operator's manual.
+func TestCurrentDocsHaveNoLegacyGuidance(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	for _, rel := range currentDocs {
+		checkDocForLegacyGuidance(t, root, rel)
+	}
+}
+
+// checkDocForLegacyGuidance reads one current doc and reports every line that
+// explains an older version instead of the shipped behavior.
+func checkDocForLegacyGuidance(t *testing.T, root, rel string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+	for i, line := range strings.Split(string(raw), "\n") {
+		checkLegacyTerms(t, rel, i+1, line)
+	}
+}
+
+// checkLegacyTerms reports each legacy term found on one line.
+func checkLegacyTerms(t *testing.T, rel string, lineNo int, line string) {
+	t.Helper()
+	lower := strings.ToLower(line)
+	for _, term := range legacyGuidance {
+		if strings.Contains(lower, term) {
+			t.Errorf("%s:%d explains %q; document current behavior only", rel, lineNo, term)
+		}
+	}
+}
+
 // TestManualKeepsOperatorSurfaces reads docs/manual.md and fails when a
 // documented section, command, or bundle artifact disappears. It reads the
 // real file rather than a fixture: the manual is the operator contract, and a

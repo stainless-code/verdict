@@ -19,8 +19,7 @@ lives in `docs/policy-contract.md`.
 .verdict/state/                 ignored, local review state only
 ```
 
-Only `/state/` is ignored, through the nested file. Legacy `.review/` is
-untouched: no migration, no rewrite, no shim, no implicit fallback.
+Only `/state/` is ignored, through the nested file.
 `Layout.EnsureStateIgnore` writes `.verdict/.gitignore` before any state
 write, and `Layout.EnsureStateDir` adds a second `*` layer at
 `.verdict/state/.gitignore` so parent negations naming generated files

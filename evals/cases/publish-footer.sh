@@ -395,9 +395,9 @@ run_review post acme/app "$PR" --dry-run
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -q "already carries a footer receipt" "$EVAL_ERR" \
   && grep -Fq "($WANT chars)" "$EVAL_OUT"; then
-  good "hand-written legacy footer warns and keeps, payload unstacked"
+  good "hand-written footer warns and keeps, payload unstacked"
 else
-  bad "legacy hand-written path gave exit $EVAL_STATUS"
+  bad "hand-written footer path gave exit $EVAL_STATUS"
 fi
 
 PR=4517

@@ -507,8 +507,8 @@ func checkPlatformPackage(t *testing.T, out string, entry *archiveEntry) {
 	if toJSON(t, manifest["cpu"]) != `["`+entry.NPMCPU+`"]` {
 		t.Errorf("%s cpu = %v; want [%s]", pkg, manifest["cpu"], entry.NPMCPU)
 	}
-	if toJSON(t, manifest["files"]) != `["`+entry.NPMBin+`"]` {
-		t.Errorf("%s files = %v; want [%s]", pkg, manifest["files"], entry.NPMBin)
+	if toJSON(t, manifest["files"]) != `["`+entry.NPMBin+`","README.md"]` {
+		t.Errorf("%s files = %v; want [%s README.md]", pkg, manifest["files"], entry.NPMBin)
 	}
 	// npm provenance rejects a publish whose repository.url does not name the
 	// repository the workflow ran in (E422 on the first 0.4.0 publish).
@@ -517,6 +517,26 @@ func checkPlatformPackage(t *testing.T, out string, entry *archiveEntry) {
 	}
 	checkNoScripts(t, pkg, manifest)
 	checkBinExecutable(t, pkg, filepath.Join(dir, entry.NPMBin))
+	checkReadme(t, pkg, dir)
+}
+
+// checkReadme asserts npm has a README to render on the package page. The
+// generated tree has no checkout, so every package must carry the repository
+// README byte for byte.
+func checkReadme(t *testing.T, pkg, dir string) {
+	t.Helper()
+	got, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	if err != nil {
+		t.Errorf("%s missing README.md: %v", pkg, err)
+		return
+	}
+	want, err := os.ReadFile(filepath.Join("..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s README.md differs from the repository README.md", pkg)
+	}
 }
 
 // checkBinExecutable asserts the staged binary exists and is executable.
@@ -552,6 +572,7 @@ func checkWrapper(t *testing.T, out string, doc *contractDoc) {
 	}
 	checkWrapperPlatformMap(t, out)
 	checkNoScripts(t, "wrapper", wrapper)
+	checkReadme(t, "wrapper", filepath.Join(out, "verdict"))
 }
 
 // checkWrapperPlatformMap proves the wrapper ships the generated map the shim

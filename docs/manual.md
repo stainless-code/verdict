@@ -110,8 +110,8 @@ stale-`HEAD` note) — it never moves the validation target. Anchors outside
 the snapshot move into the body under `### ℹ️ Unanchored observations`,
 each named with its path/line and reason (e.g. `anchor 50-50 (RIGHT)
 outside reviewed hunks`); drops never fail the run. If the snapshot is
-missing (pre-snapshot bundles), the run rebuilds it from `full.diff` with a
-best-effort warning — re-fetch to pin it.
+missing, the run rebuilds it from `full.diff` with a best-effort warning —
+re-fetch to pin it.
 
 ## Findings store + triage authority
 
@@ -119,8 +119,8 @@ best-effort warning — re-fetch to pin it.
 section with a stable line-number-free signature, `status` (`open`/`addressed`/`wont-fix`/
 `false-positive`/`deferred`), first/last seen SHAs, evidence rung (`said`/`pointed`/`walked`/
 `ran`/`reproduced`, default `pointed`), the optional `brief` (`sites`/`outcome`/`approach`/
-`questions`, stored additively — a finding without one keeps its legacy bytes), rationale for
-terminal states, and append-only `history`.
+`questions`, stored additively — a finding without one is written without the
+field), rationale for terminal states, and append-only `history`.
 Incremental runs dedup by sig — recorded findings are not re-reported unless the delta changes them. Before posting, `post`
 prints a fail-closed preflight block (body verdict, anchor counts, finding counts, hunk index).
 Binding verdicts need `--bind` (else downgraded to `COMMENT`); `APPROVE` is refused while
@@ -255,7 +255,7 @@ onto older entries from the recorded rung: `pointed` reads as `default` because 
 previous merge filled a missing rung with `pointed`, and every other recognized rung
 reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
 a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
-history — that ships as a new `sig_version` with a migration note here, never silently.
+history — that ships as a new `sig_version`, never silently.
 `review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
 versions, warn-and-proceed when the stamp is missing); every bundle carries
 `.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
@@ -312,18 +312,18 @@ and `plan.txt` is the fence label for its rendered section in the
 Seven artifacts explain what a run knew and what it proved. Each row states
 the artifact, who writes it, and whether a verb gates on it.
 
-| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads as legacy (warn, no repository requirements). |
-| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                            |
-| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                      |
-| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                               |
-| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                 |
-| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub compare read produced no delta.                                                                                                                                                        | GitHub `fetch --base-sha/--since` on a failed compare         | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                        |
-| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                         |
+| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
+| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
+| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
+| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
+| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub compare read produced no delta.                                                                                                                                                        | GitHub `fetch --base-sha/--since` on a failed compare         | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
+| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
 
 `config --preview` is the exception: when `run.json` is absent it can fall back
-to its legacy file list, though it still verifies `controls.json` and may lose
+to its file list, though it still verifies `controls.json` and may lose
 captured rename identities.
 
 ## Learnings (durable repo memory)
@@ -414,9 +414,9 @@ snapshot the bytes into the bundle:
 
 Set strict input with `REVIEW_STRICT_INPUT=1`; every `fetch`/`fetch-local`
 resolves it into `controls.json` (do not hand-edit that snapshot) and it makes
-`record` refuse on review-input warnings, the same as `--strict`. Retired
-`.review/` knob files are never read. `.verdict/state/N/controls/`
-holds the bytes and `.verdict/state/N/controls.json` records
+`record` refuse on review-input warnings, the same as `--strict`.
+`.verdict/state/N/controls/` holds the bytes and
+`.verdict/state/N/controls.json` records
 `policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
 files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
 and `sha256` (schema: `schemas/controls.schema.json`). The base is `PR.json`'s base
@@ -1015,7 +1015,7 @@ own PR is also downgraded to `COMMENT`, and `--force` does not override that
 guard. A bundle whose stored PR state is not `OPEN` refuses `pr-not-open`; an
 unknown state warns and proceeds. `--dry-run` still performs the live head read that backs the stale-head guard,
 and it still performs the live-thread read a selected `no-live-threads` policy
-requires; only the legacy recheck is skipped. It is not fully offline. A failed
+requires; only the stored-open recheck is skipped. It is not fully offline. A failed
 live-head lookup warns. A failed live-thread lookup under `no-live-threads`
 refuses a binding approval with `requirement-unmet`; a non-approving run
 continues without a thread-gate warning.
@@ -1185,8 +1185,8 @@ The estimate names its basis whenever a handed record contributed:
 tier came from handed usage) or `mixed`, with `harness[]` naming the
 record `source` strings and `measured_runs` counting them; the human
 estimate line and an over-budget refusal carry
-`[measured from N harness session(s)]`. Those keys are absent — and the
-legacy output stays byte-identical — when nothing was handed over, so a
+`[measured from N harness session(s)]`. Those keys are absent — and the output
+stays byte-identical — when nothing was handed over, so a
 self-reported estimate is never silently labeled as measured. A named path
 that is missing, oversized, or malformed refuses typed (`bad-usage`) before
 the bundle is written: an explicit handoff never silently degrades.
@@ -1288,9 +1288,8 @@ means running from its checkout (or accepting that the bundle lands wherever
 you stand).
 
 The shipped `verdict` is one static Go binary (`make build` writes
-`bin/verdict`) that needs no shell wrapper. `VERDICT_IMPL` — the retired v0
-shell dispatch's knob — is dead: nothing reads it. `VERDICT_BIN` is not the
-binary's: the skill shim and the TypeScript client both consult it. The shim
+`bin/verdict`) that needs no shell wrapper. `VERDICT_BIN` is not the binary's:
+the skill shim and the TypeScript client both consult it. The shim
 (`skills/verdict/scripts/verdict`) resolves it first, then `<skill>/bin/verdict`,
 then `verdict` on `PATH`; `resolveBin` in `clients/ts` takes it ahead of the
 platform package. A plain `verdict` call consults neither variable.
@@ -1461,12 +1460,6 @@ Flags `--footer/--no-footer`, `--attribution [off|product|full]`/`--no-attributi
 `REVIEW_PUBLISH_LOGO`, `REVIEW_PUBLISH_LOGO_URL` env; env wins
 over defaults. Unknown `publish.*` keys refuse typed `bad-settings`, and any
 credential-shaped key at any depth refuses `bad-settings-credentials`.
-
-Migration note: `publish.attribution` was a bool in 0.2.0 and is now
-`off`/`product`/`full` — a file carrying
-`true`/`false` refuses with the mapping named (`"off"` for `false`,
-`"product"` for `true`). `--attribution`/`--no-attribution` keep working
-(product/off); `--attribution full` reaches the maker level.
 
 Confidence is the agent's "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.
 The scale stays 1-5 across
@@ -1690,8 +1683,8 @@ valid head/time metadata. Incomplete, pending, dry-run, failed, empty-review, or
 invalid head/time receipts prove no publication and never block, exactly like an
 unposted bundle. A missing, malformed, stale, tampered, unrecomputable, or
 unreadable-raw `identity.json` warns `patch identity unavailable — dedupe by SHA
-only` and the run falls back to the SHA-only dedupe; a legacy bundle without
-identity warns and proceeds the same way.
+only` and the run falls back to the SHA-only dedupe; a bundle without identity
+warns and proceeds the same way.
 
 `report --completeness` passes a rebase or amend that keeps the patch: when the
 posted and fetched heads differ but the verified bundle identity and the
@@ -2013,62 +2006,7 @@ approval gating, auto-merge, cross-run persistence, upload signing, credential p
 watch feeds, signed-commit flows. For on-demand local review none of these move
 quality — the prompts do.
 
-## Store changelog (additive within schema_version "1" — renames never happen, only additions)
-
-This section tracks store-schema evolution only —
-verbs and features ship in the release changelog.
-
-- Initial: findings records `{sig, kind, path/heading, line, side, anchored, body}` + `status: open/addressed` + `firstSeen/lastSeen` + append-only `history`.
-- Added: `rigor`, `inBounds`, retained `suggestion`, `rationale`/`triagedAt`/`triagedBy`, history `actor`/`sha`; statuses `wont-fix/false-positive/deferred`; `verification.json` evidence gate; `patch.json` gains `verifyCmd/verifyOutput/baseHead/resultHead`.
-- Added: `post.json` capture `{review, head, posted_at}` (calibration enabler).
-- Added: review-level `confidence` (1–5) + `security_summary` on `record.json`/`post.json`
-  (optional, absent → null; a non-integer/out-of-range confidence or non-string
-  `security_summary` refuses the review).
-- Added: local bundles — `source.json` standing in for `PR.json` under `.verdict/state/local-<name>/`.
-- Added: store versioning — per-bundle `store.json` marker, `sig_version: "1"` on
-  findings entries (backfilled on merge), `schema_version: "1"` on `review.json`
-  inputs (unknown refused, missing warned), `post.json`, `record.json`,
-  `source.json`; sig derivation specced as the cross-run join key; `x-*` plugin
-  artifact namespace reserved in bundle dirs.
-- Added: findings entries carry `kb` (cited knowledge-base rule ids, `[]` when
-  uncited; excluded from sig derivation like rigor/severity); bundles may carry
-  `kb.txt` (top-3 recalled rules as context); repo root gains `.verdict/kb.jsonl`
-  (rule store), `.verdict/kb-joins.jsonl` (credit audit), and typed
-  `defaults.kb_policy` in `.verdict/config.json` (retirement thresholds).
-- Added: over-cap chunked bundles carry `chunks/` (`chunk-NN.diff` slices each
-  at or under the cap, per-chunk `.toc.txt`/`.roles.txt`, versioned
-  `manifest.json` with `schema_version: "1"`, per-chunk `<name>.cost.json`) —
-  `post`/`record` gate attested top-level `"chunks"` coverage against the
-  manifest.
-- Added: per-model cache-token split on `cost.json` (`cache_read_input_tokens`,
-  `cache_creation_input_tokens` — optional subsets of `input_tokens`, absent
-  or `null` reads unknown, never zero); `report --cost` rolls them into a
-  top-level `cached_input_tokens` scalar while `total_tokens` stays
-  `input_tokens + output_tokens` exactly.
-- Added: per-provider `threads.json` — the normalized PR-conversation feed
-  (`schema_version: "1"`, published as `schemas/threads.schema.json`): root
-  threads with host id, anchor/state, author kind, optional `finding_sig`, and
-  capped comments[]. Every posted inline comment now carries the hidden
-  final-line marker `<!-- verdict-finding sig=<sig> -->`, so the next
-  `fetch`/`threads` read links a verdict-authored thread back to its finding;
-  older comments without the marker read `finding_sig: null` (backward
-  compatible, never a different bot's marker).
-- Added: per-finding `brief` on review comments and findings entries (`sites[]` with optional
-  `line`, the required `outcome`, optional `approach`/`questions`) — validated against the
-  bundle's pinned hunks (shape/type/range failures refuse; a site outside every hunk,
-  past a cap, or a short approach/question warns and drops only that part), stored additively so a
-  finding without one is byte-identical, preserved across re-record when the fresh comment
-  carries none, and excluded from the sig.
-- Added: review provenance on `post.json`/`record.json` (`tool_version`,
-  `prompts_hash`, `model` — model from the latest cost record when one names
-  it, else `null`); `calibrate`/`trend` surface it so mixed-version histories
-  read as mixed, never one series. `prompts_hash` is sha256 over the sorted
-  prompt-set file names plus contents — exactly `SKILL.md` plus
-  `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, each fed as
-  `== <path> ==` plus its bytes in sorted path order. Old receipts without
-  the fields read as unmarked, never fail.
-
-### Published schemas + drift rule
+## Published schemas + drift rule
 
 The shapes agents write and operators parse are pinned in `schemas/`
 (draft 2020-12, shipped in the npm tarball): `review.schema.json`
@@ -2093,7 +2031,7 @@ other; `evals/cases/schema-contract.sh` asserts representative fixtures
 validate — a shape change that breaks agents or parsers fails the build
 instead of a review.
 
-Drift rule: additive within `schema_version`/`sig_version` `"1"`, matching
-the changelog above — new optional keys pass through the stores and the
-schemas alike; renames, tighter types, and newly required keys never happen
-without a version bump, and a bump ships only by operator decision.
+Drift rule: additive within `schema_version`/`sig_version` `"1"` — new
+optional keys pass through the stores and the schemas alike; renames,
+tighter types, and newly required keys never happen without a version bump,
+and a bump ships only by operator decision.

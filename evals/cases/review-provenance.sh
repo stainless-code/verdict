@@ -114,9 +114,9 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.per_bundle[] | select(.bundle == "4922") | .provenance.model' <"$EVAL_OUT" 2>/dev/null)" = "null" ] \
   && [ "$(jq -r '.data.findings' <"$EVAL_OUT" 2>/dev/null)" = "3" ] \
   && [ "$(jq -r '.data.open' <"$EVAL_OUT" 2>/dev/null)" = "2" ]; then
-  good "legacy receipt keeps today's sums with null (unmarked) provenance"
+  good "receipt without provenance fields keeps today's sums with null (unmarked) provenance"
 else
-  bad "legacy trend: $(jq -c '.data.per_bundle // "absent"' <"$EVAL_OUT" 2>/dev/null) (exit $EVAL_STATUS)"
+  bad "unmarked trend: $(jq -c '.data.per_bundle // "absent"' <"$EVAL_OUT" 2>/dev/null) (exit $EVAL_STATUS)"
 fi
 
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -133,7 +133,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -Fq "$EXPECTED_TV" "$EVAL_OUT" \
   && grep -Fq "0.1.0" "$EVAL_OUT" \
   && grep -Fq "unmarked" "$EVAL_OUT"; then
-  good "human trend names every tool version present, legacy included"
+  good "human trend names every tool version present, unmarked included"
 else
   bad "human trend exits $EVAL_STATUS: $(grep -h 'provenance:' "$EVAL_OUT" || echo MISSING)"
 fi

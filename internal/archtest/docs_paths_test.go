@@ -14,9 +14,9 @@ import (
 // legacyReviewRef is the pre-`.verdict/state` bundle path. The shipped binary
 // writes `.verdict/state/<pr>/` (and `.verdict/state/local-<name>/`) and
 // resolves relative bundle paths there, so a current-state `.review/` mention
-// sends an operator to a directory no verb reads. Only the historical notes in
-// docs/config.md and docs/manual.md are allowed to keep the old spelling, and
-// neither file is scanned here.
+// sends an operator to a directory no verb reads. Historical CHANGELOG entries
+// keep the spelling because they describe past releases; every mutable docs
+// surface is scanned.
 const legacyReviewRef = ".review/"
 
 // legacyReviewPath matches a legacy path token, not every substring: the
@@ -26,12 +26,15 @@ const legacyReviewRef = ".review/"
 var legacyReviewPath = regexp.MustCompile(`(^|[^[:alnum:].-])\.review($|[^[:alnum:]_-])`)
 
 // docsPathRoots are the current-state surfaces a stale bundle path must never
-// reach: the docs site's content and hand-written home pages, every example,
-// and the root README. apps/docs/dist and apps/docs/.blume-verify are generated
-// and ignored, so they are absent from this list by construction.
+// reach: the docs site's content and hand-written home pages, the repository
+// docs, every example, the eval guide, and the root README. apps/docs/dist and
+// apps/docs/.blume-verify are generated and ignored, so they are absent from
+// this list by construction.
 var docsPathRoots = []string{
 	filepath.Join("apps", "docs", "content"),
 	filepath.Join("apps", "docs", "pages"),
+	"docs",
+	filepath.Join("evals", "README.md"),
 	"examples",
 	"README.md",
 }
@@ -80,6 +83,8 @@ func TestScanForLegacyReviewRef(t *testing.T) {
 	write("apps/docs/content/url.mdx", "see https://x.review/ for the host\n")
 	write("apps/docs/content/fixed.mdx", "bundle at .verdict/state/123/\n")
 	write("apps/docs/pages/stale.astro", "bundle at .review/456/\n")
+	write("docs/stale.md", "bundle at .review/012/\n")
+	write("evals/README.md", "bundle at .review/345/\n")
 	write("examples/stale.yml", "review .review/789/\n")
 	write("README.md", "no stale path here\n")
 	if err := os.MkdirAll(filepath.Join(root, "examples", "python-client"), 0o755); err != nil {
@@ -91,6 +96,8 @@ func TestScanForLegacyReviewRef(t *testing.T) {
 		filepath.ToSlash(filepath.Join("apps", "docs", "content", "bare.mdx")) + ":1: bundle at .review",
 		filepath.ToSlash(filepath.Join("apps", "docs", "content", "stale.mdx")) + ":2: bundle at .review/123/",
 		filepath.ToSlash(filepath.Join("apps", "docs", "pages", "stale.astro")) + ":1: bundle at .review/456/",
+		filepath.ToSlash(filepath.Join("docs", "stale.md")) + ":1: bundle at .review/012/",
+		filepath.ToSlash(filepath.Join("evals", "README.md")) + ":1: bundle at .review/345/",
 		filepath.ToSlash(filepath.Join("examples", "stale.yml")) + ":1: review .review/789/",
 	}
 	if !slices.Equal(hits, want) {

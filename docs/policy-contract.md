@@ -52,8 +52,8 @@ resolves it.
 
 ## Degrade rules
 
-- No run bundle: every verb degrades to the pre-policy behavior (legacy
-  path, downgrade warning where one exists). Nothing refuses for a missing
-  bundle except `config --explain`, which refuses `config-no-bundle`.
+- No run bundle: every verb uses its no-policy defaults (downgrade warning
+  where one exists). Nothing refuses for a missing bundle except
+  `config --explain`, which refuses `config-no-bundle`.
 - Corrupt bundle: loud `bad-config` refusal, never silent degrade.
 - Untrusted preview: resolves, never persists, never approves.

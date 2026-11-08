@@ -233,9 +233,9 @@ run_review post acme/app 4424 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && grep -q "patch identity unavailable" "$EVAL_ERR" \
   && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
-  good "legacy bundle without identity warns and proceeds"
+  good "bundle without identity warns and proceeds"
 else
-  bad "legacy post gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+  bad "identity-less post gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
 
 eval_mk_bundle 4425

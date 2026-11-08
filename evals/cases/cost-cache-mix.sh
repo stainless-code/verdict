@@ -49,9 +49,9 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.cost.total_tokens' <"$EVAL_OUT" 2>/dev/null)" = "150" ] \
   && [ "$(jq -r '.data.cost.cached_input_tokens' <"$EVAL_OUT" 2>/dev/null)" = "0" ] \
   && [ "$(jq -c '.data.cost.by_tier.standard' <"$EVAL_OUT" 2>/dev/null)" = '{"runs":1,"input_tokens":100,"output_tokens":50,"total_tokens":150}' ]; then
-  good "legacy record rolls today's exact numbers with by_tier untouched"
+  good "record without cache fields rolls today's exact numbers with by_tier untouched"
 else
-  bad "legacy-grade exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
+  bad "cache-less record exits $EVAL_STATUS: $(jq -c '.data.cost // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
 eval_mk_bundle 4913
