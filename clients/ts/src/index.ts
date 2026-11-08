@@ -58,6 +58,7 @@ export type {
   ReportCompleteness,
   ReportCost,
   ReportData,
+  ReportGate,
   ShowData,
   ShowFix,
   ThreadsData,

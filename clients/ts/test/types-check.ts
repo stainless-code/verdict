@@ -19,6 +19,7 @@ import {
   type ReadyData,
   type RecordData,
   type ReportData,
+  type ReportGate,
   type ShowData,
   type ThreadsData,
   type TrendData,
@@ -84,14 +85,20 @@ export async function typeChecks(): Promise<void> {
     "--max-severity",
     "critical",
   ]);
-  const passed: boolean | undefined = gate.data.gate?.passed;
+  const passed: boolean = gate.data.passed;
   const gateStatus: "pass" | "fail" | "skip" | "unknown" | undefined =
-    gate.data.gate?.dimensions[0]?.status;
+    gate.data.dimensions[0]?.status;
+  const typedGate: ReportGate = gate.data;
   void passed;
   void gateStatus;
+  void typedGate;
   // @ts-expect-error - dimension status is a closed vocabulary
-  const badStatus: "clean" | undefined = gate.data.gate?.dimensions[0]?.status;
+  const badStatus: "clean" | undefined = gate.data.dimensions[0]?.status;
   void badStatus;
+
+  const gateError = new VerdictGateError<ReportGate>(gate);
+  const failedGate: boolean = !gateError.data.passed;
+  void failedGate;
   // @ts-expect-error - verdict.open is a number, not a string
   const badOpen: string = report.data.verdict.open;
 

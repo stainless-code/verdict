@@ -15,6 +15,7 @@ import type {
   RecordData,
   RefusalErrorBody,
   ReportData,
+  ReportGate,
   ShowData,
   ThreadsData,
   TriageData,
@@ -55,7 +56,7 @@ export interface RefusalEnvelope {
  */
 export interface DataFor {
   report: ReportData;
-  gate: ReportData;
+  gate: ReportGate;
   post: PostData;
   record: RecordData;
   next: NextData;
