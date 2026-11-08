@@ -111,8 +111,10 @@ func usageText() string {
 		"    one full finding record. Pure read.\n" +
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
 		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
-		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--json]\n" +
+		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>] [--json]\n" +
 		"    execute patch.json verifyCmd with a watchdog, record exit + tail into the patch record.\n" +
+		"    --group/--command are required together: one deep plan group's command runs at the\n" +
+		"    reviewed head and writes validation-<group>.json (patch.json stays untouched).\n" +
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +

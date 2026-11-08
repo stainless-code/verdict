@@ -80,14 +80,25 @@ func humanLines(data *core.ConfigData) []string {
 	}
 	for i := range data.Plan {
 		group := &data.Plan[i]
-		lines = append(lines, fmt.Sprintf("  plan: profile=%s depth=%s checks=[%s] files=%d",
-			orDash(group.Profile), orDash(group.Depth), strings.Join(group.Checks, ","), len(group.Files)))
+		lines = append(lines, fmt.Sprintf("  plan: id=%s profile=%s depth=%s checks=[%s] files=%d",
+			orDash(group.ID), orDash(group.Profile), orDash(group.Depth),
+			strings.Join(group.Checks, ","), len(group.Files)))
 	}
 	lines = append(lines, fmt.Sprintf("  spend: guard=%s limit=%s", usd(data.Spend.GuardUSD), usd(data.Spend.PersonalLimit)))
+	lines = append(lines, "  privacy: "+exclusions(data.Privacy))
 	for _, check := range data.Checks {
 		lines = append(lines, fmt.Sprintf("  observed %s/%s: %v (%s)", check.Check, check.Group, check.Passed, check.At))
 	}
 	return lines
+}
+
+// exclusions renders the personal privacy exclusions, or the explicit
+// none marker so an empty set never reads as unreported.
+func exclusions(list []string) string {
+	if len(list) == 0 {
+		return "(none)"
+	}
+	return strings.Join(list, ", ")
 }
 
 // orDash renders an empty profile or depth as the unset marker.

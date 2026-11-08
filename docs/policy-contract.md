@@ -19,6 +19,12 @@ resolves it.
 - **Trusted** means the policy came from the base commit (or the reviewed
   worktree for local runs). A proposed file preview is never trusted, and
   preview writes no state, so a proposed config cannot self-approve.
+- **Personal limit** is the operator's own spend ceiling
+  (`spend.budget_usd` in the personal settings; no repository or environment
+  value raises it). **Budget** in the rule table is the ordinary per-group
+  estimate guard. The two refusals never share a code: a personal-ceiling hit
+  is `spend-capped`, an ordinary guard overrun is `budget-exceeded`, and both
+  take a fresh `--consent-over-budget`.
 
 ## Rule table
 
@@ -28,7 +34,7 @@ resolves it.
 | Below-floor findings stay out of the payload                                                                | `post` payload (unknown severities stay visible)            | none (gates keep the full set)                         | —                                       |
 | Binding approval needs `--bind` when any applicable set requires it                                         | `post` bind gate                                            | none: `--force` never consults                         | `bind-required`                         |
 | Approval needs zero open/deferred findings                                                                  | `post` approve guard                                        | `--force` (records `approve-blocked`)                  | `approve-blocked`                       |
-| Personal limit: exact sum of group projections against `spend.budget_usd`                                   | `fetch` personal gate                                       | fresh per-invocation consent (`--consent-over-budget`) | `budget-exceeded`                       |
+| Personal limit: exact sum of group projections against the operator `spend.budget_usd`                      | `fetch` personal gate                                       | fresh per-invocation consent (`--consent-over-budget`) | `spend-capped`                          |
 | Ordinary estimate guard, resolved per file group                                                            | `fetch` group guard                                         | fresh per-invocation consent (`--consent-over-budget`) | `budget-exceeded`                       |
 | Unknown group projection makes the whole-run total unknown                                                  | `fetch` gate with `require_known_estimate`                  | fresh per-invocation consent (`unknown-estimate`)      | `budget-unknown`                        |
 | Hard cap (`spend.enforce_cap: true`)                                                                        | `fetch` gate before budget/force/consent                    | none: force and consent refused                        | `unsupported-cap`                       |

@@ -121,7 +121,7 @@ Inputs are `version` (default `latest`) and `require-signature` (default `true`)
 
 - **Skill and CLI.** The skill from step 2 drives the CLI. It works with Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen, Windsurf, and any agent that reads an `agents` skills directory.
 - **MCP.** `verdict mcp` serves the review verbs as tools over stdio. `verdict mcp config --agent claude` prints the config entry, and `--write` merges it into the file. It supports `claude`, `cursor`, and `codex`, and is experimental until 1.0. See the [manual](docs/manual.md#mcp-server-stdio-experimental-until-10).
-- **Go SDK.** [`pkg/verdict`](pkg/verdict) wraps the binary for Go programs.
+- **Go SDK.** [`pkg/verdict`](pkg/verdict) runs the verbs in-process for Go programs, with typed requests and responses — no subprocess, no `--json` parsing.
 - **TypeScript client.** `import { createClient } from "@stainless-code/verdict/client"`. It ships in the npm package. See [`clients/ts`](clients/ts/README.md).
 - **Other languages.** Every `--json` envelope and store file has a JSON Schema in [`skills/verdict/schemas/`](skills/verdict/schemas). The [Build a client guide](https://stainless-code.com/verdict/build-a-client) covers exit codes and codegen, with a tested [Python example](examples/python-client/).
 

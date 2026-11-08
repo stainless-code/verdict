@@ -35,3 +35,19 @@ func TestVerbHelpPrintsOnlyThatVerb(t *testing.T) {
 		t.Error("an unknown verb has no block")
 	}
 }
+
+// TestVerifyHelpNamesGroupValidationFlags proves `verify --help` documents
+// the deep group-validation pair the adapter already parses: both flags and
+// the receipt they write, so a caller never has to read verify's source.
+func TestVerifyHelpNamesGroupValidationFlags(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"verify", "--help"})
+	if code != 0 || derr != "" {
+		t.Fatalf("verify --help = exit %d stderr %q", code, derr)
+	}
+	for _, want := range []string{"--group <stableID>", "--command <cmd>", "validation-<group>.json"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("verify --help misses %q:\n%s", want, out)
+		}
+	}
+}
