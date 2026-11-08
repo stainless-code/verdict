@@ -378,8 +378,8 @@ func (s *session) curlFetch(ctx context.Context, args ...string) (core.Result, e
 // fetchWithRetry runs one tool with the shared bounded transient retry:
 // secondary rate limits and the host's internal-error retry note run up to
 // retry.MaxAttempts attempts with the attempt-based sleep. A missing binary
-// never retries. Only failed calls retry, so a retry can never double-write
-// (the bundle lands only after a success).
+// never retries. Fetch is read-only, so a retry cannot write twice; the bundle
+// lands only after a success.
 //
 //nolint:revive // the bounded retry loop branches are the retry contract
 func (s *session) fetchWithRetry(ctx context.Context, bin string, args []string) (core.Result, error) {
