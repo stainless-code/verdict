@@ -214,15 +214,22 @@ type FetchLocalRequest struct {
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
+	Worktree, HeadControls                              bool
 }
-    FetchLocalRequest carries the local-diff fetch options.
+    FetchLocalRequest carries the local-diff fetch options. Worktree builds
+    the bundle from a temporary isolated checkout of the review target,
+    and HeadControls reads the review controls from HEAD/the worktree instead of
+    the base commit.
 
 type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	BudgetConsent, ShowPrompts, Chunk bool
+	HeadControls                      bool
 }
     FetchRequest carries the fetch options: base/provider overrides and flags.
+    HeadControls reads the review controls from HEAD/the worktree instead of the
+    PR base commit — the explicit opt-out that warns on every run.
 
 type Finding struct {
 	Sig      string
@@ -379,8 +386,16 @@ type ReadyResponse struct {
 
 type RecordRequest struct {
 	Invocation
+	CostPanel []string
+	DryRun    bool
+	Strict    bool
+	CostNames bool
 }
     RecordRequest merges a local review.json into the findings store.
+    DryRun reports what would be recorded and writes nothing. Strict promotes
+    warning-only input to a refusal. CostNames asks for the cost-name repair,
+    naming models[] entries from CostPanel in the order the panel ran (an empty
+    panel with CostNames set reads the panel the bundle pinned).
 
 type RefusalError struct {
 	Code     string
