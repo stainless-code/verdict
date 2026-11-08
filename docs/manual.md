@@ -489,7 +489,10 @@ path, or both. Every matching scope refines the defaults field-by-field with
 the later entry winning, and the last matching scope that names a `profile`
 wins (a repository-wide `default_profile` applies when none do). A scope can
 also carry inline `defaults`, so per-path `panel`, `budget_usd`, `max_bytes`,
-`chunk`, `effort`, and the two severity floors need no shared default.
+`chunk`, `effort`, and the two severity floors need no shared default. A scope
+needs one of `profile`, `defaults`, or `requirements`; naming both a `profile`
+and inline `defaults` refuses `bad-scope`, while `profile` plus
+`requirements` is legal.
 
 A `profiles` entry is `{depth, checks, max_lenses}`. Depth is `standard` or
 `deep`; checks are the typed guards the run must satisfy

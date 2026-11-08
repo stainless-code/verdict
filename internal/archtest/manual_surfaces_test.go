@@ -31,7 +31,7 @@ var manualSurfaces = []manualSurface{
 	{
 		section: "path scopes and profiles",
 		heading: "### Path scopes and profiles",
-		terms:   []string{"scopes[]", "profiles", "max_lenses", "plan.txt"},
+		terms:   []string{"scopes[]", "profiles", "max_lenses", "plan.txt", "bad-scope"},
 	},
 	{
 		section: "deep validation",
