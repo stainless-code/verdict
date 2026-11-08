@@ -15,8 +15,8 @@ npm i -g @stainless-code/verdict
 
 ## The loop
 
-1. `verdict fetch owner/repo 123` writes one bundle to `.review/123/`.
-2. Your agent reviews the bundle and writes `.review/123/review.json`.
+1. `verdict fetch owner/repo 123` writes one bundle to `.verdict/state/123/`.
+2. Your agent reviews the bundle and writes `.verdict/state/123/review.json`.
 3. `verdict record owner/repo 123` validates the findings and grades each one
    by how it was checked.
 4. `verdict report owner/repo 123` renders the review offline, and gates on

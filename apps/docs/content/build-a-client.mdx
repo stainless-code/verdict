@@ -101,7 +101,7 @@ A refusal is one envelope:
   "data": null,
   "error": {
     "code": "missing-findings",
-    "message": "missing .review/404/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run"
+    "message": "missing .verdict/state/404/findings.json (run post or record first)\ntry: run the fetch/record step named above first, then re-run"
   }
 }
 ```
@@ -187,7 +187,7 @@ interpolation turns an `owner/repo` or a local slug into an injection surface.
 
 Other rules that belong in every wrapper:
 
-- **cwd is part of the call.** Relative bundle paths (`.review/<pr>/`) resolve
+- **cwd is part of the call.** Relative bundle paths (`.verdict/state/<pr>/`) resolve
   against the child's working directory. Default to the caller's cwd and make
   it explicit in the client API.
 - **Bound the run.** A client-side timeout (the TS client uses 300 s) kills the
@@ -261,7 +261,7 @@ structured results without writing a wrapper.
   needs one call and no protocol session. A JSON client does not need MCP.
 - `verdict mcp --read-only` exposes only `report`, `next`, `show`, `trend`,
   `ready`, `doctor`, and `check-tree`. `threads` never joins that set: it
-  rewrites `.review/<pr>/threads.json` from the host.
+  rewrites `.verdict/state/<pr>/threads.json` from the host.
 - Success results are the CLI envelope's `data`; typed refusals return
   `isError: true` with `{code, message, hint}` intact. Malformed calls are
   JSON-RPC `-32602`, not refusals. stdout is the protocol channel; progress and
@@ -441,7 +441,7 @@ make build
 ```
 
 The test copies `examples/python-client/fixtures/bundle` into a temp
-`.review/`, so it never writes to the repository or the caller's store.
+`.verdict/state/`, so it never writes to the repository or the caller's store.
 
 ## Build your own wrapper
 
@@ -470,7 +470,7 @@ Checklist:
    stdout.
 9. Keep a one-shot `run(verb, args)` escape hatch for verbs and future fields
    you have not typed yet.
-10. Test against a fixture `.review/` bundle offline: success, a typed refusal,
+10. Test against a fixture `.verdict/state/` bundle offline: success, a typed refusal,
     a usage error, and a timeout.
 
 The official TS client and its generated types live in

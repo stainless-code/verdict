@@ -15,7 +15,7 @@ from verdict_client import VerdictError, VerdictRefusal, run
 def main(binary: str) -> int:
     root = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory() as tmp:
-        shutil.copytree(root / "fixtures" / "bundle", Path(tmp) / ".review")
+        shutil.copytree(root / "fixtures" / "bundle", Path(tmp) / ".verdict" / "state")
         env, data = report("acme/app", "123", cwd=tmp, binary=binary)
         assert env.schema_version == "1", env.schema_version
         assert data.verdict.open == 0, data.verdict

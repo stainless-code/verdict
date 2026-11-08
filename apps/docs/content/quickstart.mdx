@@ -58,13 +58,13 @@ Three steps: install the binary, add the skill, review a PR.
     verdict fetch owner/repo 123
     ```
 
-    This writes `.review/123/` with the diff, metadata, threads, and file roles.
+    This writes `.verdict/state/123/` with the diff, metadata, threads, and file roles.
     On GitHub it needs no clone.
 
-    Then ask your agent to review `.review/123/`. The skill tells it how: read
+    Then ask your agent to review `.verdict/state/123/`. The skill tells it how: read
     the whole diff first, ask read-only lens subagents one falsifiable question
     each when the answer could change the verdict, and write exactly one
-    `.review/123/review.json`.
+    `.verdict/state/123/review.json`.
 
     Post the review:
 
@@ -100,7 +100,7 @@ Three steps: install the binary, add the skill, review a PR.
     verdict fetch-local owner/repo work
     ```
 
-    Ask your agent to review `.review/local-work/`, then merge its findings:
+    Ask your agent to review `.verdict/state/local-work/`, then merge its findings:
 
     ```bash
     verdict record owner/repo local-work
@@ -120,7 +120,7 @@ Three steps: install the binary, add the skill, review a PR.
 verdict init --preset standard
 ```
 
-This writes starter control files under `.review/`: a budget, a panel, and
+This writes starter control files under `.verdict/`: a budget, a panel, and
 knowledge-base rules. It then runs `check-tree` to validate them. Presets are
 `chill`, `standard`, and `strict`. Reviews work without it.
 

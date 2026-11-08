@@ -1,4 +1,4 @@
-"""Run the client against a local `.review/` bundle.
+"""Run the client against a local `.verdict/state/` bundle.
 
 Usage: python3 example.py [REPO PR [CWD [VERDICT_BIN]]]
 """

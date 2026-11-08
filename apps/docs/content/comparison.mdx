@@ -56,8 +56,8 @@ includes work in progress. Each one wants its account signed in, and each bills 
 review on its own meter.
 
 What Verdict claims instead is narrower, and checkable: the review target is a plain
-bundle on disk. `fetch` writes `.review/<pr>/` with `PR.json`, and `fetch-local` writes
-`.review/local-<name>/` with `source.json`; both carry `full.diff`, `toc.txt` and
+bundle on disk. `fetch` writes `.verdict/state/<pr>/` with `PR.json`, and `fetch-local` writes
+`.verdict/state/local-<name>/` with `source.json`; both carry `full.diff`, `toc.txt` and
 `roles.txt`, and nothing stays running. A local bundle needs no host login, no app
 install and no account. The diff goes only to the model your agent runs, which you pick.
 The same files feed `report --check` in CI and `post` on GitHub, so the gate and the

@@ -13,11 +13,12 @@ server, and never downloads anything.
 ## Run it
 
 Build the binary first (`make build` at the repo root), then run the demo
-against the committed fixture bundle:
+against the committed fixture bundle, copied into the path the binary reads:
 
 ```sh
 tmp=$(mktemp -d)
-cp -R examples/python-client/fixtures/bundle "$tmp/.review"
+mkdir -p "$tmp/.verdict"
+cp -R examples/python-client/fixtures/bundle "$tmp/.verdict/state"
 python3 examples/python-client/example.py acme/app 123 "$tmp"
 ```
 
@@ -25,6 +26,7 @@ Output:
 
 ```text
 report acme/app#123: 0 open
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 ```
 
 The offline smoke test covers a success, the typed refusal for a missing
@@ -79,18 +81,22 @@ Go/CI gates, because tests never pip install:
 
 ## Files
 
-| File                | Purpose                                                        |
-| ------------------- | -------------------------------------------------------------- |
-| `verdict_client.py` | Spawn, parse, validate `schema_version`, and raise.            |
-| `typed.py`          | Convert envelope `data` into generated dataclasses.            |
-| `example.py`        | Walkthrough: one `report` call with typed `ReportData`.        |
-| `models.py`         | Generated dataclasses (do not edit by hand).                   |
-| `smoke.py`          | Offline assertions: success, refusal, exit 2, demo.            |
-| `smoke.sh`          | Gate wrapper; skips when `python3` is missing.                 |
-| `fixtures/bundle/`  | Minimal `.review/` bundles copied into a temp cwd by the test. |
+| File                | Purpose                                                                     |
+| ------------------- | --------------------------------------------------------------------------- |
+| `verdict_client.py` | Spawn, parse, validate `schema_version`, and raise.                         |
+| `typed.py`          | Convert envelope `data` into generated dataclasses.                         |
+| `example.py`        | Walkthrough: one `report` call with typed `ReportData`.                     |
+| `models.py`         | Generated dataclasses (do not edit by hand).                                |
+| `smoke.py`          | Offline assertions: success, refusal, exit 2, demo.                         |
+| `smoke.sh`          | Gate wrapper; skips when `python3` is missing.                              |
+| `fixtures/bundle/`  | Minimal `.verdict/state/` bundles (PRs 123 and 404) copied into a temp cwd. |
 
 ## Protocol facts used here
 
+- The bundle lives at `<cwd>/.verdict/state/<pr>/` (or
+  `.verdict/state/local-<name>/`); a verb resolves its bundle there, so a
+  client sets cwd to the checkout and passes the repo and PR, never a stale
+  bundle path.
 - `--json` produces exactly one envelope on stdout; all human text is on
   stderr. Exit `0` is success (`error: null`, `data` object), `1` is a typed
   refusal (`data: null`, `error: {code, message}`), `2` is a usage error with

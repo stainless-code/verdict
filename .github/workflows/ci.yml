@@ -640,6 +640,13 @@ jobs:
         shell: bash
         run: make build && make clients-ts
 
+      # The Python example is dependency-free; smoke.sh skips (exit 0) when
+      # python3 is absent. The Ubuntu runner ships python3, so this gates the
+      # fixture copy and the client's envelope parsing.
+      - name: Gate the Python client example
+        shell: bash
+        run: make clients-python
+
   audit:
     name: 🛡 Audit
     runs-on: ubuntu-latest
