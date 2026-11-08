@@ -1009,9 +1009,10 @@ the default. A binding verdict (`APPROVE`/`REQUEST_CHANGES`) still needs
 `--bind`; without it, `post` downgrades to `COMMENT`. A binding verdict on your
 own PR is also downgraded to `COMMENT`, and `--force` does not override that
 guard. A bundle whose stored PR state is not `OPEN` refuses `pr-not-open`; an
-unknown state warns and proceeds. `--dry-run` still performs the live head read
-that backs the stale-head guard (it skips only the live-thread recheck), so it
-is not fully offline; a failed lookup warns.
+unknown state warns and proceeds. `--dry-run` still performs the live head read that backs the stale-head guard,
+and it still performs the live-thread read a selected `no-live-threads` policy
+requires; only the legacy recheck is skipped. It is not fully offline; a failed
+lookup warns.
 
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
