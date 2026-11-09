@@ -474,6 +474,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed,
 		},
 		Items:           typedPostItems(payload),
+		Coverage:        st.merged.Coverage.Receipt(),
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     st.phash,

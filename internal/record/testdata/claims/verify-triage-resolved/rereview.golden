@@ -133,6 +133,6 @@ recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "5337104e90f2c4073211f45b9bcb04ea062fe248844b53111237de58944e966e",
+  "prompts_hash": "9c44f7ef97ee173e7cbc722546c1a4f124686a747d60a32e3b49349c8e3f0329",
   "model": null
 }

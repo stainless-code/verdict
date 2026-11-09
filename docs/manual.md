@@ -600,6 +600,58 @@ the withheld count, and `post_floor_scoped` for each path-scoped floor that
 actually withheld a finding (`[{"path": "vendor/lib.go", "floor":
 "critical"}]`). Omitted keys mean no floor applied and nothing was withheld.
 
+### Diff coverage (agent attestation)
+
+A non-chunked bundle has no built-in evidence that the agent read the diff it
+reviewed. `review.json` may carry an attestation, and verdict checks it against
+the bundle's own hunk snapshot:
+
+```json
+"coverage": [
+  {"file": "src/db.ts", "ranges": "1-240,300-320"},
+  {"file": "src/app.ts", "ranges": "all"},
+  {"file": "cmd/verdict/main.go"}
+]
+```
+
+`file` is a repo-relative path that must name a changed file with hunks.
+`ranges` is optional; absent or `"all"` attests the whole file. Otherwise it is
+a comma-separated list of 1-based inclusive source-line intervals, and it is
+side-agnostic — the evaluator unions the file's `OLD` and `NEW` hunk intervals,
+so one interval covers a hunk on either side. Duplicate `file` entries union
+rather than count twice. A malformed range warns and makes that entry count as
+unattested; it never silently attests the file.
+
+Coverage is computed from `hunks.tsv`, the snapshot `fetch` already writes —
+never from a second diff parse and never from `toc.txt` line counts. Paths the
+shared role heuristic classifies as generated or vendored are exempt
+automatically; no sentinel is required. `percent` is `null`, never `0`, when no
+changed line was measured.
+
+The default posture is a warning plus one machine-built body line on a partial
+attestation. An absent `coverage` key warns nothing and adds no line, so a
+legacy review renders byte-identically and `coverage: []` ("I attest nothing")
+stays distinguishable from "no attestation was written".
+
+`--require-coverage` on `post` and `record` turns absence or a gap into a
+`coverage-incomplete` refusal that names the unattested ranges. `--force` does
+not bypass it: this is a read receipt, not a security boundary, but a require
+flag a force flag can ignore is not a contract. The refusal is raised before
+any store write, so a refused run leaves the prior `findings.json` untouched —
+including `post --dry-run`, which refuses identically and writes no dry-run
+store. `next <owner/repo> <pr> --coverage` reads the same numbers with no
+`findings.json`, so the gaps are visible before recording; it exits `0` on a
+partial attestation because it is a nudge, not the gate.
+
+`post.json` and `record.json` carry the measured summary when an attestation was
+present: `{"percent": 82, "attested": 18, "total": 22, "files": 3, "exempt": 1,
+"gaps": 2}`, where `gaps` counts unattested ranges (not lines).
+
+A chunked bundle is not evaluated: `chunks[]` is its attestation and the
+existing `missing-chunk-coverage` refusal is its gate. `coverage[]` on a
+chunked review is ignored with one warning. Do not translate chunks into
+ranges or the reverse.
+
 ## Machine surface
 
 `fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope

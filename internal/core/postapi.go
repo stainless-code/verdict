@@ -147,7 +147,7 @@ func (d *PostData) Wire() *jq.Obj {
 	body := d.Body.Wire(d.DryRun)
 	provenance := Wire(&d.Provenance)
 	if d.DryRun {
-		return jq.NewObj(
+		pairs := []any{
 			"dry_run", d.DryRun,
 			"event", d.Event,
 			"commit_id", d.CommitID,
@@ -155,14 +155,17 @@ func (d *PostData) Wire() *jq.Obj {
 			"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 			"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 			"findings", d.Findings.Wire(),
+		}
+		pairs = appendCoverageWire(pairs, d.Coverage)
+		return jq.NewObj(append(pairs,
 			"confidence", Wire(d.Confidence),
 			"security_summary", Wire(d.SecuritySummary),
 			"items", items,
 			"payload_hash", d.PayloadHash,
 			"provenance", provenance,
-		)
+		)...)
 	}
-	o := jq.NewObj(
+	pairs := []any{
 		"dry_run", d.DryRun,
 		"event", d.Event,
 		"commit_id", d.CommitID,
@@ -170,11 +173,14 @@ func (d *PostData) Wire() *jq.Obj {
 		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 		"findings", d.Findings.Wire(),
+	}
+	pairs = appendCoverageWire(pairs, d.Coverage)
+	o := jq.NewObj(append(pairs,
 		"items", items,
 		"confidence", Wire(d.Confidence),
 		"security_summary", Wire(d.SecuritySummary),
 		"payload_hash", d.PayloadHash,
-	)
+	)...)
 	if review != nil {
 		o.Set("review", review)
 	}
@@ -271,4 +277,14 @@ func findingSummariesWire(items []FindingItem) []any {
 		))
 	}
 	return out
+}
+
+// appendCoverageWire inserts the optional coverage receipt after findings and
+// before items: the published property order, and an absent key when nothing
+// was evaluated so a legacy envelope stays byte-identical.
+func appendCoverageWire(pairs []any, c *CoverageSummary) []any {
+	if c == nil {
+		return pairs
+	}
+	return append(pairs, "coverage", c)
 }

@@ -382,8 +382,11 @@ func (d *RecordData) Wire() *jq.Obj {
 		),
 		"confidence", d.ConfidenceRaw,
 		"security_summary", strOrNull(d.SecuritySummary),
-		"items", items,
 	)
+	if d.Coverage != nil {
+		o.Set("coverage", d.Coverage)
+	}
+	o.Set("items", items)
 	if d.DryRun {
 		o.Set("dry_run", true)
 	}

@@ -37,7 +37,7 @@ func RunNextCoverage(req *core.NextRequest) (*core.NextResponse, *core.RefusalEr
 		At:       req.TimeUTC(),
 		Warnings: append([]string{}, req.Warnings...),
 	}
-	dir := readcommon.ResolveBundleDir(req.RootPath(), req.Pr)
+	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	review, ref := loadCoverageReview(dir)
 	if ref != nil {
 		return resp, ref
