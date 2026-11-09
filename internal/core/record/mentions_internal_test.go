@@ -110,9 +110,30 @@ func TestNeutralizeMentions(t *testing.T) {
 		{
 			// A single `~` is a local-part byte, so `~@example.com` is an
 			// address: escaping it would insert a zero-width space into it.
+			// The dot behind the `@` is what makes it one.
 			name: "tilde-single-address",
 			in:   "Mail ~@example.com about it.\n",
 			want: "Mail ~@example.com about it.\n",
+		},
+		{
+			// The same lone `~` with no domain behind the `@` is prose: a host
+			// notifies the handle, so it escapes like any other mention.
+			name: "tilde-bare-handle",
+			in:   "Ping ~@alice now.\n",
+			want: "Ping ~@" + zwsp + "alice now.\n",
+		},
+		{
+			// A period is not a domain: `~@alice.` has no label behind the dot,
+			// so it is a handle at the end of a sentence and it escapes.
+			name: "tilde-handle-then-period",
+			in:   "Thanks ~@alice.\n",
+			want: "Thanks ~@" + zwsp + "alice.\n",
+		},
+		{
+			// Two labels: still an address, still byte-identical.
+			name: "tilde-single-address-two-labels",
+			in:   "Mail ~@mail.example.co.uk about it.\n",
+			want: "Mail ~@mail.example.co.uk about it.\n",
 		},
 		{
 			name: "tilde-double",
@@ -146,6 +167,11 @@ func TestNeutralizeMentions(t *testing.T) {
 			name: "underscore-local-part",
 			in:   "Mail foo_@example.com about it.\n",
 			want: "Mail foo_@example.com about it.\n",
+		},
+		{
+			name: "address-without-tilde",
+			in:   "Write to user@example.com about it.\n",
+			want: "Write to user@example.com about it.\n",
 		},
 		{
 			name: "tilde-local-part",

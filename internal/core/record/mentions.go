@@ -196,11 +196,12 @@ func opensMention(line string, i int) bool {
 		j--
 	}
 	if i-j == 1 && line[i-1] == '~' {
-		// A lone `~` is a local-part byte, not strikethrough markup:
-		// `~@example.com` is a valid address, so an escape there would insert
-		// a zero-width space into it. Strikethrough is always a run of two or
-		// more, which the walk above still collects.
-		return false
+		// A lone `~` is a local-part byte, not strikethrough markup, but only
+		// when what follows reads as a domain: `~@example.com` is a valid
+		// address, so an escape there would insert a zero-width space into it,
+		// while `~@alice` has no domain and would notify. Strikethrough is
+		// always a run of two or more, which the walk above still collects.
+		return !domainShaped(line[i+1:])
 	}
 	if j < i {
 		// Emphasis markup right before the `@` is markup, not the tail of an
@@ -219,6 +220,18 @@ func opensMention(line string, i int) bool {
 // run of two or more is markup, a single one is the tail of an address.
 func isEmphasisMarkup(c byte) bool {
 	return c == '*' || c == '_' || c == '~'
+}
+
+// domainShaped reports whether s — the text after an `@` — reads as the domain
+// half of an address: a label, a dot, then at least one byte of the next
+// label. A dot with nothing behind it is a sentence's period, so `~@alice.`
+// still has no domain and its handle still notifies.
+func domainShaped(s string) bool {
+	n := handleLen(s)
+	if n == 0 || n+1 >= len(s) || s[n] != '.' {
+		return false
+	}
+	return isHandleByte(s[n+1])
 }
 
 // isLocalPartByte reports whether c may sit in the local part of an address
