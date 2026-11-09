@@ -90,12 +90,32 @@ func TestNeutralizeMentions(t *testing.T) {
 		{
 			name: "bracketed",
 			in:   "Thanks (@alice), merging now.\n",
-			want: "Thanks (@alice), merging now.\n",
+			want: "Thanks (@" + zwsp + "alice), merging now.\n",
+		},
+		{
+			name: "bold",
+			in:   "Credit **@alice** for the fix.\n",
+			want: "Credit **@" + zwsp + "alice** for the fix.\n",
+		},
+		{
+			name: "underscore-emphasis",
+			in:   "Credit _@alice_ for the fix.\n",
+			want: "Credit _@" + zwsp + "alice_ for the fix.\n",
+		},
+		{
+			name: "punctuated-sentence-close",
+			in:   "Thanks, @alice.\n",
+			want: "Thanks, @" + zwsp + "alice.\n",
 		},
 		{
 			name: "address-with-at-local",
 			in:   "Mail first.last+tag@example.co.uk.\n",
 			want: "Mail first.last+tag@example.co.uk.\n",
+		},
+		{
+			name: "address-in-parentheses",
+			in:   "Mail (dev@example.com) about it.\n",
+			want: "Mail (dev@example.com) about it.\n",
 		},
 		{
 			name: "already-neutralized",

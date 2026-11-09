@@ -43,8 +43,9 @@ const (
 //     ends at a blank line, so one stray backtick cannot swallow the body);
 //   - HTML comments, including the `<!-- verdict-finding … -->` markers.
 //
-// A mention needs `@` at line start or after a space or tab, followed by
-// `[A-Za-z0-9-]+`, so `user@example.com` is an address and stays untouched.
+// A mention opens at line start or after anything that is not a local-part
+// byte, so `(@alice)`, `**@alice**`, and `_@alice_` are mentions while
+// `user@example.com` stays an address.
 func NeutralizeMentions(body string) string {
 	if !strings.Contains(body, "@") {
 		return body
@@ -128,7 +129,7 @@ func (s *mentionScan) prose(line string) string {
 			i += len(commentOpen)
 		case line[i] == '`':
 			i = s.openCodeSpan(&out, line, i)
-		case line[i] == '@' && precededBySpace(line, i):
+		case line[i] == '@' && opensMention(line, i):
 			i = copyMention(&out, line, i)
 		default:
 			out.WriteByte(line[i])
@@ -185,10 +186,37 @@ func copyMention(out *strings.Builder, line string, i int) int {
 	return i + 1 + n
 }
 
-// precededBySpace is the mention boundary: line start, a space, or a tab, so
-// `user@example.com` reads as an address and not as a mention.
-func precededBySpace(line string, i int) bool {
-	return i == 0 || line[i-1] == ' ' || line[i-1] == '\t'
+// opensMention reports whether the `@` at i can open a mention. Whitespace and
+// punctuation do, because `(@alice)`, `**@alice**`, and `_@alice_` all notify;
+// a local-part byte does not, because `user@example.com` is an address and an
+// escape there would corrupt it.
+func opensMention(line string, i int) bool {
+	j := i
+	for j > 0 && (line[j-1] == '*' || line[j-1] == '_') {
+		j--
+	}
+	if j < i {
+		// Emphasis markup right before the `@` is markup, not the tail of an
+		// address. A local part that genuinely ends in `_` or `*`
+		// (`foo_@example.com`) keeps it because a local-part byte precedes the
+		// run.
+		return j == 0 || !isLocalPartByte(line[j-1])
+	}
+	return i == 0 || !isLocalPartByte(line[i-1])
+}
+
+// isLocalPartByte reports whether c may sit in the local part of an address
+// immediately before its `@`. A superset of the handle charset, so every
+// address-shaped run stays verbatim.
+func isLocalPartByte(c byte) bool {
+	if isHandleByte(c) {
+		return true
+	}
+	switch c {
+	case '.', '+', '%', '_', '=', '&', '\'', '!', '#', '$', '/', '~':
+		return true
+	}
+	return false
 }
 
 // handleLen counts the leading bytes of s that a host accepts in a handle.

@@ -15,8 +15,9 @@ The escape is U+200B ZERO WIDTH SPACE between the `@` and the handle: invisible
 in rendered Markdown, still plain text, and no host resolves a mention across
 it. Fenced code blocks, inline code spans, HTML comments (finding markers
 included), and the basis/footer blocks are left byte-identical, and an address
-such as `user@example.com` is not a mention because the `@` must follow a space,
-a tab, or a line start and the handle must be `[A-Za-z0-9-]+`. A finding's
+such as `user@example.com` is not a mention because the byte before the `@` can
+sit in an address's local part while the handle must be `[A-Za-z0-9-]+`. A
+finding's
 `suggestion` is code and stays byte-identical too — a zero-width space inside a
 patch would be an edit nobody can see. The rewrite is idempotent and has no
 flag: neutralization is not opt-in.
