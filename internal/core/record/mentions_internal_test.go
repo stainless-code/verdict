@@ -103,6 +103,11 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "Credit _@" + zwsp + "alice_ for the fix.\n",
 		},
 		{
+			name: "strikethrough",
+			in:   "~~@alice~~ shipped it.\n",
+			want: "~~@" + zwsp + "alice~~ shipped it.\n",
+		},
+		{
 			name: "punctuated-sentence-close",
 			in:   "Thanks, @alice.\n",
 			want: "Thanks, @" + zwsp + "alice.\n",
@@ -116,6 +121,21 @@ func TestNeutralizeMentions(t *testing.T) {
 			name: "address-in-parentheses",
 			in:   "Mail (dev@example.com) about it.\n",
 			want: "Mail (dev@example.com) about it.\n",
+		},
+		{
+			name: "underscore-local-part",
+			in:   "Mail foo_@example.com about it.\n",
+			want: "Mail foo_@example.com about it.\n",
+		},
+		{
+			name: "tilde-local-part",
+			in:   "Mail foo~@example.com about it.\n",
+			want: "Mail foo~@example.com about it.\n",
+		},
+		{
+			name: "single-tilde-prose",
+			in:   "Wait approximately ~5 minutes.\n",
+			want: "Wait approximately ~5 minutes.\n",
 		},
 		{
 			name: "already-neutralized",

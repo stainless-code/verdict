@@ -83,6 +83,19 @@ func writeLauncher(path string, rec *launcher) (time.Time, *core.RefusalError) {
 	return info.ModTime(), nil
 }
 
+// sortLongestFirst orders the credential values longest first, so a secret that
+// is a prefix of another cannot consume that longer secret's head and publish
+// its tail: `API_KEY=secretvalue` plus `--token secretvalueEXTRA` must reach
+// `***REDACTED***`, never `***REDACTED***EXTRA`. A handful of values, so the
+// insertion sort costs nothing and pulls in no generic sort machinery.
+func sortLongestFirst(values []string) {
+	for i := 1; i < len(values); i++ {
+		for j := i; j > 0 && len(values[j]) > len(values[j-1]); j-- {
+			values[j], values[j-1] = values[j-1], values[j]
+		}
+	}
+}
+
 // writeRunOutput keeps the child's full combined output for debugging, at
 // 0600: the bytes are raw, so they can carry a secret the child printed. A
 // failure is a warning, never a refusal: the review file is the contract,
@@ -116,6 +129,7 @@ func tailOf(s string, n int) string {
 func scrubSecrets(text string, environ, argSecrets []string) string {
 	values := secretValues(environ)
 	values = append(values, argSecrets...)
+	sortLongestFirst(values)
 	for _, value := range values {
 		// An empty operand (`--api-key ""`) hides nothing, and replacing the
 		// empty string would shred the tail between every rune.

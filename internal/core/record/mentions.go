@@ -44,8 +44,8 @@ const (
 //   - HTML comments, including the `<!-- verdict-finding … -->` markers.
 //
 // A mention opens at line start or after anything that is not a local-part
-// byte, so `(@alice)`, `**@alice**`, and `_@alice_` are mentions while
-// `user@example.com` stays an address.
+// byte, so `(@alice)`, `**@alice**`, `_@alice_`, and `~~@alice~~` are mentions
+// while `user@example.com` stays an address.
 func NeutralizeMentions(body string) string {
 	if !strings.Contains(body, "@") {
 		return body
@@ -192,17 +192,25 @@ func copyMention(out *strings.Builder, line string, i int) int {
 // escape there would corrupt it.
 func opensMention(line string, i int) bool {
 	j := i
-	for j > 0 && (line[j-1] == '*' || line[j-1] == '_') {
+	for j > 0 && isEmphasisMarkup(line[j-1]) {
 		j--
 	}
 	if j < i {
 		// Emphasis markup right before the `@` is markup, not the tail of an
-		// address. A local part that genuinely ends in `_` or `*`
-		// (`foo_@example.com`) keeps it because a local-part byte precedes the
-		// run.
+		// address. A local part that genuinely ends in `_`, `*`, or `~`
+		// (`foo_@example.com`, `foo~@example.com`) keeps it because a
+		// local-part byte precedes the run.
 		return j == 0 || !isLocalPartByte(line[j-1])
 	}
 	return i == 0 || !isLocalPartByte(line[i-1])
+}
+
+// isEmphasisMarkup reports whether c can sit in a run of emphasis or
+// strikethrough markup that ends right before a `@`. `~` belongs here because
+// `~~@alice~~` renders as a strikethrough mention, and `~` is also a valid
+// local-part byte, so the run is the only thing that tells the two apart.
+func isEmphasisMarkup(c byte) bool {
+	return c == '*' || c == '_' || c == '~'
 }
 
 // isLocalPartByte reports whether c may sit in the local part of an address

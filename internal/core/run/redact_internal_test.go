@@ -105,6 +105,23 @@ func TestRecordArgvNeverCollectsTheDirective(t *testing.T) {
 	}
 }
 
+// TestScrubSecretsReplacesTheLongestSecretFirst proves no credential can eat
+// another's prefix and leave its tail in the clear: with `API_KEY=secretvalue`
+// in the environment and `--token secretvalueEXTRA` on the command line, the
+// shorter secret is a prefix of the longer one, so replacing in list order
+// would record `***REDACTED***EXTRA` and publish four bytes of the operator's
+// token.
+func TestScrubSecretsReplacesTheLongestSecretFirst(t *testing.T) {
+	environ := []string{"API_KEY=secretvalue"}
+	got := scrubSecrets("token=secretvalueEXTRA", environ, []string{"secretvalueEXTRA"})
+	if strings.Contains(got, "EXTRA") {
+		t.Fatalf("scrubSecrets leaked the tail of the longer secret: %q", got)
+	}
+	if got != "token="+redactedValue {
+		t.Errorf("scrubSecrets = %q, want only the credential replaced", got)
+	}
+}
+
 // TestScrubSecretsIgnoresEmptyValues proves an empty credential cannot shred
 // the tail: `--api-key ""` carries no bytes worth hiding.
 func TestScrubSecretsIgnoresEmptyValues(t *testing.T) {
