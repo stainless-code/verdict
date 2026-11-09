@@ -1949,27 +1949,24 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `state` as open|closed|merged, `draft`, per-file `additions/deletions`).
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
-`triage`, `show`, `next` work on provider bundles as-is. `post`, plain
-`calibrate`, and `adopt`-into refuse non-GitHub bundles; `calibrate --probe`
-grades any bundle offline. The refusal is deliberate, not a
-claim that submit is impossible elsewhere: GitLab accepts per-comment
-discussion POSTs plus one summary note and an approve call, and Forgejo can
-author inline comments through its API even though its CLIs cannot. What those
-hosts lack is GitHub's single atomic review submit, so a submit path needs the
-comments → summary body → verdict-last ordering and the partial-post receipt
-that already exists here. Until that per-host replay lands, submit stays a
-follow-up rather than unverified code. `fetch --json` publishes the facts in
+`triage`, `show`, `next` work on provider bundles as-is. `post` submits to
+GitHub and GitLab; `post` on the other hosts, plain `calibrate`, and
+`adopt`-into refuse non-GitHub bundles, and `calibrate --probe` grades any
+bundle offline. The refusal names the gap rather than an impossibility: Forgejo
+can author inline comments through its API even though its CLI cannot, but each
+remaining host still needs its own submit path with the comments → summary body
+→ verdict-last ordering laid out below. `fetch --json` publishes the facts in
 `data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`,
 `thread_resolution`, and `review_verdicts`, so an agent can plan before it
 writes a review.
 
-| Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused)                                  |
-| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships |
-| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                            |
-| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                         |
-| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs        | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                              |
+| Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused); `post` approves but cannot request changes |
+| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships            |
+| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                                       |
+| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                    |
+| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs        | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                         |
 
 State maps to open|closed|merged at fetch (`opened`→open, `active`→open,
 `ABANDONED`→closed, `SUPERSEDED`→closed, `completed`/`merged`→merged;
@@ -1978,6 +1975,25 @@ refused earlier anyway). File +/- stats come from the host API where it
 provides them (GitCafe, Forgejo, Bitbucket); otherwise they are derived
 from the reviewed diff itself (`git apply --numstat`), so the coverage
 manifest always describes the fetched object.
+
+### Submit (`post`) per host
+
+GitHub takes one atomic review; GitLab has no such call, so its submit replays
+three primitives in that order. Both hosts post the summary body last and
+neither replays a payload whose first write landed: a mid-way failure refuses
+typed `post-failed`, names what landed in the envelope `warnings`, and writes
+the host's own stderr to `.post.err`.
+
+| Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `github` | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                        |
+| `gitlab` | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `review_verdicts` stays false |
+
+The repeat guard is the same on both hosts: the body's
+`<!-- verdict-review payload=… -->` marker is read from the fetched
+`reviews.json`, so a re-fetch restores it after a post, and the marker keys on
+the exact payload — body, anchors, and reviewed head — never on a diff
+position, which shifts as the branch gains commits.
 
 ## Calibration (predictions vs ground truth)
 

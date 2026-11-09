@@ -15,7 +15,7 @@ func TestPostSidecarsOwnerOnly(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		cmdr := &retryCommander{t: t, results: []retryResult{{stderr: "HTTP 401: bad credentials\n"}}}
-		if _, _, ok := postOnce(context.Background(), cmdr, "acme/app", "7", dir, "{}"); !ok {
+		if res := postOnce(context.Background(), cmdr, providerGitHub, "acme/app", "7", dir, "{}"); !res.ok {
 			t.Fatal("post attempt failed")
 		}
 		assertSidecar(t, dir+"/.post.err", "HTTP 401: bad credentials\n")
