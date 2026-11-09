@@ -822,15 +822,15 @@ export interface FetchLocalData {
 export interface FetchCapabilities {
   provider: string;
   fetch: boolean;
-  post: boolean;
-  inline_anchors: boolean;
-  approve: boolean;
-  request_changes: boolean;
-  thread_resolution: boolean;
+  post?: boolean;
+  inline_anchors?: boolean;
+  approve?: boolean;
+  request_changes?: boolean;
+  thread_resolution?: boolean;
   /** approve && request_changes, kept so a consumer written before the split reads the same truth; new readers branch on approve and request_changes. */
-  review_verdicts: boolean;
+  review_verdicts?: boolean;
   /** One machine-readable reason code per absent capability, keyed by capability name. Only an absent capability appears; a host that carries everything carries an empty object. */
-  unsupported: Record<string, string>;
+  unsupported?: Record<string, string>;
   [key: string]: unknown;
 }
 
