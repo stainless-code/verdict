@@ -105,7 +105,7 @@ deadcode:
 	sh scripts/deadcode.sh $(DEADCODE_VERSION)
 
 .PHONY: ci-go
-ci-go: gofmt-check schemas-check vet deadcode test-race vuln
+ci-go: gofmt-check schemas-check ts-types-check vet deadcode test-race vuln
 
 .PHONY: evals
 evals: build
@@ -199,3 +199,13 @@ clients-python: build
 .PHONY: tsgen
 tsgen:
 	go run ./cmd/tsgen -write
+
+# ts-types-check fails when the generated TypeScript envelope types drift from
+# the published schemas. It is separate from tsgen: tsgen writes the refusal
+# codes from the Go table, while the envelope types come from the schema files
+# through a node script, so a schema change can leave types.gen.ts stale while
+# `make schemas-check` and every Go test stay green (it happened twice in one
+# wave). Wired into ci-go so drift fails CI instead of surprising a reviewer.
+.PHONY: ts-types-check
+ts-types-check:
+	node clients/ts/scripts/gen-ts-types.mjs --check
