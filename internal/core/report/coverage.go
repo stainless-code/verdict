@@ -17,7 +17,7 @@ const (
 	// msgCoverageBasis names what the percentage is a percentage of, beside
 	// the number itself: the evaluator scores every hunk span, so a reader who
 	// assumes "changed lines" under-reports their own coverage.
-	msgCoverageBasis   = "full hunk spans, both sides and context"
+	msgCoverageBasis   = coverage.Basis
 	msgCoverageNoStore = "coverage: %d%% of " + msgCoverageBasis + " — no review.json yet"
 	msgCoverageHuman   = "coverage: %d%% of " + msgCoverageBasis + " (%d/%d lines, %d files%s)"
 	msgCoverageExempt  = ", %d generated exempt"

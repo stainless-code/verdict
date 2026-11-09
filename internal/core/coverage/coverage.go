@@ -27,6 +27,12 @@ import (
 // exactly as it did before this feature.
 const ChunkWarning = "coverage: chunked bundle — chunks[] is the attestation; coverage[] is ignored"
 
+// Basis names what the coverage percentage is a percentage of: the evaluator
+// scores every hunk span on both sides, context included. Every surface that
+// prints the number uses this one constant so the wording cannot drift between
+// `next --coverage` and the record warnings.
+const Basis = "full hunk spans, both sides and context"
+
 // Field is the review.json key the attestation lives under.
 const (
 	Field       = "coverage"

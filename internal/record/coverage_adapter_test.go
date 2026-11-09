@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/hunks"
 )
@@ -181,7 +182,7 @@ func TestRecordAdapterDefaultPostureWarnsOnce(t *testing.T) {
 		t.Fatalf("exit = %d, want 0\nstderr:\n%s", out.Status, out.Stderr)
 	}
 	env := decodeEnvelope(t, out.Stdout)
-	want := "coverage: 66% of changed lines attested (2/3; 1 file(s) with gaps)"
+	want := "coverage: 66% of " + coverage.Basis + " attested (2/3; 1 file(s) with gaps)"
 	if got := coverageWarnings(env.Warnings); len(got) != 1 || got[0] != want {
 		t.Errorf("coverage warnings = %v, want exactly [%q]", got, want)
 	}
