@@ -35,12 +35,20 @@ func (st *state) evaluateCoverage() error {
 		st.warn(coverage.ChunkWarning)
 	}
 	if ref != nil {
-		return ref
+		// The evaluator's refusal is the contract: its code and hint are what the
+		// caller matches. Sealing it here would erase both.
+		return ref //nolint:wrapcheck // typed refusal passes through unchanged
 	}
 	st.coverage = &sum
 	if sum.Chunked || !st.requireCoverage {
 		return nil
 	}
+	return st.coverageGate(&sum)
+}
+
+// coverageGate is the opt-in requirement itself, kept apart from the evaluator
+// bookkeeping so each reads as the rule it enforces.
+func (st *state) coverageGate(sum *coverage.Summary) error {
 	if sum.Total == 0 {
 		// Every changed file is exempt (generated or vendored) or there is
 		// nothing to measure: nothing to attest, so nothing to require.
@@ -57,7 +65,7 @@ func (st *state) evaluateCoverage() error {
 
 // coverageGapMessage names the unattested ranges, capped, so the operator can
 // act without running another verb.
-func coverageGapMessage(sum coverage.Summary) string {
+func coverageGapMessage(sum *coverage.Summary) string {
 	percent := 0
 	if sum.Percent != nil {
 		percent = *sum.Percent
@@ -67,7 +75,7 @@ func coverageGapMessage(sum coverage.Summary) string {
 
 // gapList renders "src/a.ts:1-2, src/b.ts:9" from the summary's gaps, naming at
 // most limit files and summarizing the rest.
-func gapList(sum coverage.Summary, limit int) string {
+func gapList(sum *coverage.Summary, limit int) string {
 	var parts []string
 	for i, g := range sum.Unattested {
 		if i == limit {
@@ -94,7 +102,7 @@ func (st *state) applyCoverageLine(body string) string {
 	if sum.Percent != nil {
 		percent = *sum.Percent
 	}
-	line := fmt.Sprintf(msgCoverageLine, percent, gapList(*sum, lineGapCap))
+	line := fmt.Sprintf(msgCoverageLine, percent, gapList(sum, lineGapCap))
 	return body + "\n\n" + line + "\n"
 }
 
