@@ -36,8 +36,8 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 ## Hazards
 
-- **Never run a real `post`.** It submits a review to GitHub. Exercise the
-  path with `post --dry-run` and a stub `gh` first on `PATH`.
+- **Never run a real `post`.** It submits a review to GitHub or GitLab.
+  Exercise the path with `post --dry-run` and a stub `gh` first on `PATH`.
 - **No network.** Unit tests and evals must pass offline; the eval suite runs
   a network-dead `gh` stub and proves zero real calls (`evals/README.md`).
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`

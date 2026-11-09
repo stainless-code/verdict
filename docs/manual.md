@@ -913,7 +913,8 @@ the arguments. Closed vocabularies and numeric bounds the structs declare
 (`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
 become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
-a review and calls GitHub, so it is not exposed under `--read-only`.
+a review and sends it to the host (GitHub or GitLab), so it is not exposed
+under `--read-only`.
 
 `--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
 `ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
@@ -2014,8 +2015,10 @@ environment, and the split is deliberate (the security rationale is in
 - The **agent `run` launches** inherits your environment for the same reason
   `gh` and `git` do: it authenticates with your key, on your machine. `--json`
   adds `NO_COLOR=1`. The recorded tail in `launcher.json` scrubs the values of
-  your secret-named variables; `.run.out` keeps the child's raw stream, the way
-  `.verify.out` does.
+  your secret-named variables and the argument secrets the argv redaction
+  hides, so the argv and the tail agree about what a credential is. `.run.out`
+  is the child's raw stream — it may hold a credential the child printed — so
+  it is written `0600`, the way `.verify.out` keeps its raw stream.
 
 In tests the counterpart is `internal/testenv`: every harness that spawns
 `git`, `gh`, or `verdict` builds a fixed, secret-free child environment

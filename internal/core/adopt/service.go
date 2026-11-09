@@ -551,8 +551,8 @@ const (
 
 	msgMissingDiff = "missing %s/full.diff (fetch the PR first)"
 
-	msgProviderUnimplemented = "adopt needs a GitHub PR target " +
-		"(only GitHub posts exist to publish into)"
+	msgProviderUnimplemented = "adopt targets a GitHub PR bundle " +
+		"(adopting into another host's bundle is not implemented)"
 
 	msgAlreadyAdopted = "%s/findings.json exists — adopt merges once into a fresh fetch " +
 		"(re-fetch or post first)"

@@ -144,7 +144,7 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "fetch",
 			description: "Fetch a PR into .verdict/state/<pr> (diff, metadata, threads, prompt input). " +
 				"Call first for any PR review; an over-cap diff refuses, so re-run with chunk=true. " +
-				"Writes the bundle and calls GitHub.",
+				"Writes the bundle and calls the PR's host.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch pull request", idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodeFetch, wireFetch, invokeFetch),
