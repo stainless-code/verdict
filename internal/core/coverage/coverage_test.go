@@ -183,6 +183,24 @@ func TestMalformedRangesCountAsUnattested(t *testing.T) {
 	}
 }
 
+// TestNullRangesCountAsUnattested proves a present `ranges: null` is malformed,
+// not a whole-file claim: reading a null as "no ranges given" would attest the
+// entire file the agent never described, and the `--require-coverage` gate
+// would pass on a claim that carries no evidence at all.
+func TestNullRangesCountAsUnattested(t *testing.T) {
+	review := mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":null}]}`)
+	got, warns, ref := Evaluate(writeBundle(t, fixtureRows()), review, generatedMin)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if len(warns) == 0 || !strings.Contains(warns[0], "malformed ranges") {
+		t.Fatalf("warnings = %v, want the malformed-range warning", warns)
+	}
+	if got.Attested != 0 || got.Gaps != 3 {
+		t.Fatalf("attested/gaps = %d/%d, want 0/3 ranges", got.Attested, got.Gaps)
+	}
+}
+
 // TestDuplicateFileUnions proves two claims for one file union instead of
 // double-counting the overlap.
 func TestDuplicateFileUnions(t *testing.T) {

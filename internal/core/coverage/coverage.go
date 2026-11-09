@@ -279,11 +279,12 @@ func fieldOf(o *jq.Obj, key string) any {
 func mustField(o *jq.Obj, key string) any { return fieldOf(o, key) }
 
 // rangeField reads ranges as a trimmed string. A key that is present but not a
-// string is a malformed attestation, not a whole-file claim: attesting more
-// than was written is the one error this package must never make.
+// string — `null` included — is a malformed attestation, not a whole-file
+// claim: attesting more than was written is the one error this package must
+// never make, and a claim only widens by saying `all` or omitting the key.
 func rangeField(o *jq.Obj) (string, bool) {
 	raw, ok := o.Get(FieldRanges)
-	if !ok || raw == nil {
+	if !ok {
 		return "", true
 	}
 	s, isStr := raw.(string)
