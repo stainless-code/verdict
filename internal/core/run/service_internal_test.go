@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -62,10 +63,10 @@ func bundleDir(root string) string {
 const reviewDoc = `{"schema_version":"1","body":"> ✅ no findings\n\n### Nothing to flag\n\nReviewed the diff.","approved":false,"comments":[]}`
 
 // writeReview plants the review artifact at the contract path.
-func writeReview(t *testing.T, dir, body string) string {
+func writeReview(t *testing.T, dir string) string {
 	t.Helper()
 	path := filepath.Join(dir, "review.json")
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(reviewDoc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -95,7 +96,7 @@ func request(root string, cmdr *scripted) *core.RunRequest {
 func TestRunSuccess(t *testing.T) {
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	cmdr := &scripted{write: func() { writeReview(t, dir, reviewDoc) }}
+	cmdr := &scripted{write: func() { writeReview(t, dir) }}
 	resp, ref := Run(t.Context(), request(root, cmdr))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
@@ -118,7 +119,7 @@ func TestRunSuccess(t *testing.T) {
 func TestRunPassThroughArgv(t *testing.T) {
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	cmdr := &scripted{write: func() { writeReview(t, dir, reviewDoc) }}
+	cmdr := &scripted{write: func() { writeReview(t, dir) }}
 	req := request(root, cmdr)
 	req.PassThrough = []string{"--model", "opus", "--max-turns", "12"}
 	if _, ref := Run(t.Context(), req); ref != nil {
@@ -129,6 +130,66 @@ func TestRunPassThroughArgv(t *testing.T) {
 		t.Fatal("launcher.json argv is not an array")
 	}
 	assertPassThroughArgv(t, cmdr.cmd.Argv, shape)
+}
+
+// TestRunScrubsArgumentSecretsFromTail is the argument-leak regression: a
+// credential the operator typed after `--` reaches the child unchanged (that is
+// what pass-through promises), so a child that echoes its own argv prints it.
+// launcher.json is the provenance record and must hide it; .run.out keeps the
+// raw stream, which is why that log is written 0600.
+func TestRunScrubsArgumentSecretsFromTail(t *testing.T) {
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	const secret = "sk-repro-secret-123"
+	cmdr := &scripted{write: func() { writeReview(t, dir) }}
+	cmdr.res = core.Result{Stdout: "argc=4\narg[1]=--api-key\narg[2]=" + secret + "\n"}
+	req := request(root, cmdr)
+	req.PassThrough = []string{"--api-key", secret}
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if !slices.Contains(cmdr.cmd.Argv, secret) {
+		t.Fatalf("spawned argv = %q, want the child to receive the real credential", cmdr.cmd.Argv)
+	}
+	assertTailHides(t, dir, secret)
+	assertRawRunLog(t, dir, secret)
+}
+
+// assertTailHides proves the recorded tail replaced the credential and kept the
+// rest of the child's line, so the omission is a scrub and not an empty tail.
+func assertTailHides(t *testing.T, dir, secret string) {
+	t.Helper()
+	tail, ok := readLauncher(t, dir)["output_tail"].(string)
+	if !ok {
+		t.Fatal("launcher.json recorded no output tail")
+	}
+	if strings.Contains(tail, secret) {
+		t.Errorf("launcher.json output_tail kept the argument secret: %q", tail)
+	}
+	if !strings.Contains(tail, "arg[2]="+redactedValue) {
+		t.Errorf("output_tail = %q, want the echoed credential replaced", tail)
+	}
+}
+
+// assertRawRunLog pins .run.out: the child's stream verbatim (so the credential
+// it printed is there for the operator) at 0600 (so it is nobody else's).
+func assertRawRunLog(t *testing.T, dir, secret string) {
+	t.Helper()
+	path := filepath.Join(dir, runOutputFile)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read .run.out: %v", err)
+	}
+	if !strings.Contains(string(raw), secret) {
+		t.Errorf(".run.out = %q, want the child's raw stream", raw)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat .run.out: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf(".run.out mode = %o, want 600", perm)
+	}
 }
 
 // TestRunPrintSpawnsNothing proves --print renders the exact argv and touches
@@ -197,7 +258,7 @@ func TestRunRefusals(t *testing.T) {
 			name: "artifact older than the run",
 			mutate: func(t *testing.T, root string, _ *core.RunRequest, _ *scripted) {
 				t.Helper()
-				stale := writeReview(t, bundleDir(root), reviewDoc)
+				stale := writeReview(t, bundleDir(root))
 				old := time.Now().Add(-time.Hour)
 				if err := os.Chtimes(stale, old, old); err != nil {
 					t.Fatal(err)

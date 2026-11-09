@@ -91,10 +91,12 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	return st.launch(ctx, &args)
 }
 
-// state carries the accumulated warnings plus the request every step reads.
+// state carries the accumulated warnings, the credential values the recorded
+// argv hid, and the request every step reads.
 type state struct {
-	req      *core.RunRequest
-	warnings []string
+	req        *core.RunRequest
+	argSecrets []string
+	warnings   []string
 }
 
 // launchArgs is the resolved invocation one launch works from: the definition,
@@ -228,12 +230,12 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		SchemaVersion: launcherSchema,
 		Agent:         args.def.Name,
 		Binary:        bin,
-		Argv:          argvShape(args.argv, args.prompt, st.req.Environ),
 		Bundle:        args.bundle,
 		Artifact:      args.artifact,
 		StartedAt:     core.NowUTC(started),
 		Timeout:       args.timeout,
 	}
+	rec.Argv, st.argSecrets = recordArgv(args.argv, args.prompt, st.req.Environ)
 	launched, ref := writeLauncher(args.dir+"/"+launcherFile, rec)
 	if ref != nil {
 		return nil, ref
@@ -409,10 +411,12 @@ func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Ti
 }
 
 // tail is the recorded slice of the child's output: the last bytes, with the
-// operator's own secret values scrubbed. The full stream stays in .run.out, the
-// way verify keeps .verify.out raw for the operator.
+// operator's own secret values scrubbed - the environment's and the ones the
+// recorded argv hid, because a child that echoes its own argv prints the very
+// credential the operator typed after `--`. The full stream stays in .run.out,
+// the way verify keeps .verify.out raw for the operator.
 func (st *state) tail(output string) string {
-	return scrubSecrets(tailOf(output, tailCap), st.req.Environ)
+	return scrubSecrets(tailOf(output, tailCap), st.req.Environ, st.argSecrets)
 }
 
 // response is the successful run's envelope data plus the handoff line.

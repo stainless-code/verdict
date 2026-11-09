@@ -21,15 +21,21 @@ const (
 	envSeparator = "="
 )
 
-// argvShape records the argv the launcher spawned without the prompt body
+// recordArgv records the argv the launcher spawned without the prompt body
 // and without secrets: the directive becomes [promptPlaceholder], the
 // operand after a secret-shaped flag is replaced (both `--flag value` and
 // `--flag=value`), and so is any argument that equals a value the operator's
 // environment holds under a secret name. Over-redaction is acceptable in a
 // provenance record; a leaked model key is not.
-func argvShape(argv []string, prompt string, environ []string) []string {
-	secrets := secretValues(environ)
-	shape := make([]string, 0, len(argv))
+//
+// It also returns the credential values it hid, so the caller can scrub the
+// child's output with the same answer: a credential the operator typed after
+// `--` is in neither the environment nor the prompt, and a child that echoes
+// its own argv prints it verbatim. One walk feeds both scrubs, so the record's
+// argv and its output tail can never disagree about what a credential is.
+func recordArgv(argv []string, prompt string, environ []string) (shape, secrets []string) {
+	known := secretValues(environ)
+	shape = make([]string, 0, len(argv))
 	// operandOfSecretFlag marks the argument that follows a secret-shaped flag,
 	// which is the credential itself; it is cleared before the next flag so a
 	// redacted operand cannot cascade into the argument after it.
@@ -42,14 +48,24 @@ func argvShape(argv []string, prompt string, environ []string) []string {
 		operandOfSecretFlag = !operandOfSecretFlag && namesSecret(arg) && nextIsOperand(argv, i)
 		switch {
 		case arg == prompt:
+			// The directive is tool-generated prose, not a credential, and is
+			// never collected even when a flag precedes it: scrubbing hundreds
+			// of bytes of prose out of the tail would erase the tail.
 			shape = append(shape, promptPlaceholder)
-		case redactedSeparate, isSecretValue(arg, secrets):
+		case redactedSeparate, isSecretValue(arg, known):
 			shape = append(shape, redactedValue)
+			secrets = append(secrets, arg)
 		default:
-			shape = append(shape, redactFlagValue(arg))
+			name, value, ok := inlineSecretValue(arg)
+			if !ok {
+				shape = append(shape, arg)
+				continue
+			}
+			shape = append(shape, name+"="+redactedValue)
+			secrets = append(secrets, value)
 		}
 	}
-	return shape
+	return shape, secrets
 }
 
 // nextIsOperand reports whether argv has an argument after i that is not
@@ -70,13 +86,16 @@ func namesSecret(arg string) bool {
 	return envsecret.IsSecret(strings.TrimLeft(name, "-"))
 }
 
-// redactFlagValue rewrites the value of an inline `--flag=value` secret flag.
-func redactFlagValue(arg string) string {
-	name, value, ok := strings.Cut(arg, "=")
-	if !ok || value == "" || !namesSecret(name) {
-		return arg
+// inlineSecretValue splits the value out of an inline `--flag=value` secret
+// flag, reporting ok false for every other argument. It is the one recognition
+// rule for the inline spelling: the record replaces the value with
+// [redactedValue] and the output scrub hides the value itself.
+func inlineSecretValue(arg string) (name, value string, ok bool) {
+	name, value, found := strings.Cut(arg, "=")
+	if !found || value == "" || !namesSecret(name) {
+		return "", "", false
 	}
-	return name + "=" + redactedValue
+	return name, value, true
 }
 
 // secretValues collects the environment values that live under a secret name.

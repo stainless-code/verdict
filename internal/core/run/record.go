@@ -21,6 +21,10 @@ const (
 	// .verify.out carries its command's: raw, for operator debugging, while the
 	// redacted tail lives in launcher.json.
 	runOutputFile = ".run.out"
+	// runOutputFileMode is the log's permission: a raw child stream can hold
+	// anything the child printed, so it is the operator's to read and nobody
+	// else's, unlike the 0644 store files beside it.
+	runOutputFileMode = 0o600
 	// launcherSchema is the record's own schema_version, independent of the
 	// review file's.
 	launcherSchema = "1"
@@ -79,11 +83,12 @@ func writeLauncher(path string, rec *launcher) (time.Time, *core.RefusalError) {
 	return info.ModTime(), nil
 }
 
-// writeRunOutput keeps the child's full combined output for debugging. A
+// writeRunOutput keeps the child's full combined output for debugging, at
+// 0600: the bytes are raw, so they can carry a secret the child printed. A
 // failure is a warning, never a refusal: the review file is the contract,
 // the log is evidence.
 func writeRunOutput(path, output string) error {
-	if err := atomic.WriteFile(path, []byte(output)); err != nil {
+	if err := atomic.WriteFileMode(path, []byte(output), runOutputFileMode); err != nil {
 		return jq.Sealed("write run output "+path, err)
 	}
 	return nil
@@ -97,13 +102,26 @@ func tailOf(s string, n int) string {
 	return s
 }
 
-// scrubSecrets replaces every secret-named environment value in text. It is
-// the narrow scrub the launcher's recorded tail gets: the operator's own
-// credentials never land in launcher.json, while .run.out keeps the raw
-// stream the way verify keeps .verify.out (the fuller token-shape scrub
-// belongs to verify's proof record, not to a launcher's log line).
-func scrubSecrets(text string, environ []string) string {
-	for _, value := range secretValues(environ) {
+// scrubSecrets replaces every credential value in text: the secret-named
+// environment values and the argument secrets the argv redactor hid, because a
+// credential the operator typed after `--` is in neither the environment nor
+// the prompt. An argument value is not length-gated the way an environment
+// match is: the operator named the flag, so the value is a credential by
+// construction, and a needlessly scrubbed short one costs nothing but a garbled
+// 4000-byte tail that .run.out still holds in full. It is the narrow scrub the
+// launcher's recorded tail gets: the operator's own credentials never land in
+// launcher.json, while .run.out keeps the raw stream the way verify keeps
+// .verify.out (the fuller token-shape scrub belongs to verify's proof record,
+// not to a launcher's log line).
+func scrubSecrets(text string, environ, argSecrets []string) string {
+	values := secretValues(environ)
+	values = append(values, argSecrets...)
+	for _, value := range values {
+		// An empty operand (`--api-key ""`) hides nothing, and replacing the
+		// empty string would shred the tail between every rune.
+		if value == "" {
+			continue
+		}
 		text = strings.ReplaceAll(text, value, redactedValue)
 	}
 	return text

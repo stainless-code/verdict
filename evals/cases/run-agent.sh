@@ -270,6 +270,31 @@ assert_file_grep "the child received the real credential" "$STUB_AGENT_LOG" \
   "^arg\\[[0-9]+\\]=$SECRET$" "-E"
 unset ANTHROPIC_API_KEY
 
+# --- the same credential, echoed by the child, must not reach the record ----
+# The leg above cannot catch the leak this case exists for: the stub wrote its
+# argv to a log file, so the credential never entered the child's stream, and
+# the value also sat in the environment where the old scrub found it. Here the
+# credential is argument-only (no variable holds it) and the stub echoes its
+# argv to stdout - a cooperating agent, a stray debug print, or a model
+# repeating its prompt all do this. launcher.json is the provenance record, so
+# the tail it carries must hide the operand; .run.out is the child's raw stream
+# (docs/manual.md, "Child environment"), kept for debugging and written 0600
+# because it can hold exactly these bytes, so the receipt proof lives there.
+ARG_SECRET="sk-ant-eval-argonly-0002"
+export STUB_AGENT_LOG=/dev/stdout
+export STUB_AGENT_MODE=write
+run_review run acme/app "$LOCAL" --agent claude --json \
+  -- --api-key "$ARG_SECRET" --fast
+export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
+assert_exit "a child that echoes its own argv still launches" 0
+assert_json_field "the record still marks the credential's position" "true" \
+  '.output_tail | contains("arg[1]=--api-key") and contains("arg[2]=***REDACTED***")' "$LAUNCHER"
+assert_file_nogrep "the record carries no credential the child printed" "$LAUNCHER" "$ARG_SECRET" "-F"
+assert_file_grep "the child received the real credential (raw log)" "$LOCAL_DIR/.run.out" \
+  "^arg\\[2\\]=$ARG_SECRET$" "-E"
+assert_eq "the child's raw log is operator-only" "-rw-------" \
+  "$(ls -l "$LOCAL_DIR/.run.out" | cut -c1-10)"
+
 # --- the shipped recipe: docs claim no more than the launcher proves ---------
 if [ -f "$RECIPE" ]; then
   good "docs/ci-and-tests.md exists"
