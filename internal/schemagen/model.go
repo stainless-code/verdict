@@ -588,13 +588,16 @@ type FetchGroupPersonal struct { //nolint:govet // field order is the published 
 type FetchCapabilities struct { //nolint:govet // field order is the published property order
 	Provider         string            `json:"provider"`
 	Fetch            bool              `json:"fetch"`
-	Post             bool              `json:"post"`
-	InlineAnchors    bool              `json:"inline_anchors"`
-	Approve          bool              `json:"approve"`
-	RequestChanges   bool              `json:"request_changes"`
-	ThreadResolution bool              `json:"thread_resolution"`
-	ReviewVerdicts   bool              `json:"review_verdicts"`
-	Unsupported      map[string]string `json:"unsupported"`
+	Post             bool              `json:"post"             optional:"true"`
+	InlineAnchors    bool              `json:"inline_anchors"   optional:"true"`
+	Approve          bool              `json:"approve"          optional:"true"`
+	RequestChanges   bool              `json:"request_changes"  optional:"true"`
+	ThreadResolution bool              `json:"thread_resolution" optional:"true"`
+	ReviewVerdicts   bool              `json:"review_verdicts"  optional:"true"`
+	Unsupported      map[string]string `json:"unsupported"      optional:"true"`
+	// Post, anchors, verdicts, and reasons are optional so an envelope written
+	// before the capability split still validates: only provider and fetch were
+	// universal. New writers always emit every key.
 }
 
 // FetchData is the fetch verb's --json data profile: the bundle location, the

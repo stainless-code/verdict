@@ -1597,17 +1597,7 @@
           "additionalProperties": { "type": "string" }
         }
       },
-      "required": [
-        "provider",
-        "fetch",
-        "post",
-        "inline_anchors",
-        "approve",
-        "request_changes",
-        "thread_resolution",
-        "review_verdicts",
-        "unsupported"
-      ],
+      "required": ["provider", "fetch"],
       "additionalProperties": true
     },
     "fetchPanel": {

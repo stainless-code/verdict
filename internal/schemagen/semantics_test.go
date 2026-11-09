@@ -117,10 +117,11 @@ var publishedSemantics = map[string]string{
 	// honest capabilities: fetchData/fetchLocalData.capabilities stops being an
 	// untyped placeholder and becomes $defs/fetchCapabilities — the booleans,
 	// the derived review_verdicts sum, and the unsupported reason map (whose
-	// values are typed strings). Deliberate pre-v1 narrowing: the writer always
-	// emitted the object, the schema now says so. No other property, required
-	// key, enum, or type changed.
-	"envelope.schema.json": "1ef106c2d9a202c86a912af17e7f2366f252dea074b2d51755443e5f0e43b06f",
+	// values are typed strings). Only provider and fetch are required, because
+	// those are the only keys every previously written envelope carried; the
+	// split keys stay optional so legacy envelopes keep validating, while new
+	// writers always emit all of them. No other property, enum, or type changed.
+	"envelope.schema.json": "8a1a05803066cbf7e0e4349940d3019605b85e44ecd3d368f5d232d3d3944151",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
