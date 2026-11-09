@@ -147,7 +147,7 @@ rm -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.json"
 run_review next acme/app "$PR" --coverage
 assert_exit "next --coverage needs no findings.json and exits 0" 0
 assert_file_grep "unattested review reads 0% over the union of both sides" "$EVAL_OUT" \
-  'coverage: 0% (0/22 changed lines, 1 files, 1 generated exempt)'
+  'coverage: 0% of full hunk spans, both sides and context (0/22 lines, 1 files, 1 generated exempt)'
 assert_file_grep "the whole db range is named as one gap" "$EVAL_OUT" '^- src/db.ts:10-20,40-50$'
 assert_file_nogrep "the generated file is never a gap" "$EVAL_OUT" 'dist/app.min.js'
 if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" ]; then
@@ -161,7 +161,7 @@ review_with "$PR" '[{"file":"src/db.ts","ranges":"10-15,40-45"}]'
 run_review next acme/app "$PR" --coverage
 assert_exit "partial attestation still reads (exit 0)" 0
 assert_file_grep "partial attestation reads 54% of 22 lines" "$EVAL_OUT" \
-  'coverage: 54% (12/22 changed lines, 1 files, 1 generated exempt)'
+  'coverage: 54% of full hunk spans, both sides and context (12/22 lines, 1 files, 1 generated exempt)'
 assert_file_grep "the gaps are the unattested tails of both ranges" "$EVAL_OUT" \
   '^- src/db.ts:16-20,46-50$'
 run_review next acme/app "$PR" --coverage --json
@@ -175,7 +175,7 @@ run_review post acme/app "$PR" --dry-run --require-coverage --json
 assert_exit "post --dry-run --require-coverage refuses a partial attestation" 1
 assert_refusal "coverage refusal keeps the envelope contract" "coverage-incomplete"
 assert_file_grep "the refusal names the percentage and the gap" "$EVAL_OUT" \
-  '54% of changed lines attested (12/22)'
+  '54% of full hunk spans, both sides and context attested (12/22)'
 if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ]; then
   bad "the refused dry run wrote findings.dryrun.json"
 else

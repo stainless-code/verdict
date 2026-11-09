@@ -198,6 +198,7 @@ To verify a release by hand, download `checksums.txt`,
 cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-trigger push \
   --certificate-github-workflow-sha "$(cat commit.txt)" \
   checksums.txt
 ```
@@ -206,7 +207,10 @@ The certificate identity is the `main` push that signed the release, not the
 tag: the Release workflow triggers on `on: push: branches: [main]`, so GitHub
 mints `.../release.yml@refs/heads/main`. The certificate's workflow-SHA claim
 is the commit the tag points at, and `commit.txt` publishes that commit so
-verification pins to this build instead of any run of the same workflow.
+verification pins to this build instead of any run of the same workflow. The
+trigger pin (`--certificate-github-workflow-trigger push`) rules out a
+`workflow_dispatch` run at that same commit, which would otherwise mint the
+same identity and the same SHA claim.
 
 Then compare the archive's SHA-256 with its line in `checksums.txt`.
 

@@ -11,6 +11,10 @@ COSIGN_IDENTITY='https://github.com/stainless-code/verdict/.github/workflows/rel
 # identity must stay anchored on it so no other run can sign this artifact.
 COSIGN_IDENTITY_RE='^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$'
 COSIGN_ISSUER='https://token.actions.githubusercontent.com'
+# Only a push-triggered run may sign a release. The SHA pin below is the commit
+# the tag points at, so a workflow_dispatch run of the same workflow at that
+# commit would satisfy it; the trigger claim is what rules that run out.
+COSIGN_TRIGGER='push'
 MARKER='# verdict installer'
 MODE=install; ARCHIVE=''; REMOVE_PATH=0; TMP=''; STAGE=''
 
@@ -200,6 +204,7 @@ if [ -n "$COSIGN" ]; then
   "$COSIGN" verify-blob --bundle "$BUNDLE_PATH" \
     --certificate-identity-regexp "$COSIGN_IDENTITY_RE" \
     --certificate-oidc-issuer "$COSIGN_ISSUER" \
+    --certificate-github-workflow-trigger "$COSIGN_TRIGGER" \
     --certificate-github-workflow-sha "$commit_sha" "$CHECKSUMS_PATH" >&2 \
     || die "signature verification failed; nothing installed"
 elif [ "$REQUIRE_SIGNATURE" = 1 ]; then

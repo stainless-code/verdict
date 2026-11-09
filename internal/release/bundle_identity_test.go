@@ -18,12 +18,13 @@ import (
 // release pipeline mints without trusting the contract to describe itself.
 const recordedBundle = "testdata/v0.4.0-checksums.txt.sigstore.json"
 
-// Fulcio OIDC extensions: 1.1 is the token issuer, 1.3 is the workflow SHA,
-// 1.6 is the git ref.
+// Fulcio OIDC extensions: 1.1 is the token issuer, 1.2 is the workflow
+// trigger, 1.3 is the workflow SHA, 1.6 is the git ref.
 const (
-	oidcIssuerExt      = "1.3.6.1.4.1.57264.1.1"
-	oidcWorkflowSHAExt = "1.3.6.1.4.1.57264.1.3"
-	oidcRefExt         = "1.3.6.1.4.1.57264.1.6"
+	oidcIssuerExt          = "1.3.6.1.4.1.57264.1.1"
+	oidcWorkflowTriggerExt = "1.3.6.1.4.1.57264.1.2"
+	oidcWorkflowSHAExt     = "1.3.6.1.4.1.57264.1.3"
+	oidcRefExt             = "1.3.6.1.4.1.57264.1.6"
 )
 
 // cosignPolicy is the contract's signing section.
@@ -31,6 +32,7 @@ type cosignPolicy struct {
 	Identity       string `json:"identity"`
 	IdentityRegexp string `json:"identityRegexp"`
 	Issuer         string `json:"issuer"`
+	Trigger        string `json:"trigger"`
 }
 
 // contractCosign reads the cosign section of the embedded contract.
@@ -42,7 +44,7 @@ func contractCosign(t *testing.T) cosignPolicy {
 	if err := json.Unmarshal(contract.ContractJSON(), &doc); err != nil {
 		t.Fatalf("release contract: %v", err)
 	}
-	if doc.Cosign.Identity == "" || doc.Cosign.IdentityRegexp == "" || doc.Cosign.Issuer == "" {
+	if doc.Cosign.Identity == "" || doc.Cosign.IdentityRegexp == "" || doc.Cosign.Issuer == "" || doc.Cosign.Trigger == "" {
 		t.Fatalf("contract cosign section incomplete: %+v", doc.Cosign)
 	}
 	return doc.Cosign
@@ -135,5 +137,20 @@ func TestRecordedCertificateCarriesFullCommit(t *testing.T) {
 	}
 	if sha != releaseCommitSHA {
 		t.Errorf("fixture commit.txt = %q; bundle workflow sha = %q", releaseCommitSHA, sha)
+	}
+}
+
+// The installers also pin --certificate-github-workflow-trigger. That flag only
+// helps if Fulcio records the trigger, so prove the recorded release run minted
+// "push" and that the contract pins the same value: a workflow_dispatch run of
+// the same workflow mints "workflow_dispatch" and must not verify.
+func TestRecordedCertificateCarriesPushTrigger(t *testing.T) {
+	doc := contractCosign(t)
+	trigger := extValue(t, recordedCert(t), oidcWorkflowTriggerExt)
+	if trigger != doc.Trigger {
+		t.Errorf("bundle workflow trigger = %q; contract trigger = %q", trigger, doc.Trigger)
+	}
+	if trigger != "push" {
+		t.Errorf("bundle workflow trigger = %q; want push", trigger)
 	}
 }

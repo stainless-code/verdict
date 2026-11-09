@@ -1,10 +1,10 @@
 #requires -Version 5.1
 # Windows leg of the installer-binary eval: install.ps1 against locally built
 # fake release zips served from a loopback HTTP server (no real network).
-# Grades: contract archive name, signature argv + build-commit pin + fail-closed,
-# checksum mismatch, missing commit.txt, wrong/unknown arch, version pin, latest
-# redirect, PATH opt-outs, idempotent re-install, uninstall/foreign refusal,
-# checksum-only fallback.
+# Grades: contract archive name, signature argv + push-trigger pin + build-commit
+# pin + fail-closed, checksum mismatch, missing commit.txt, wrong/unknown arch,
+# version pin, latest redirect, PATH opt-outs, idempotent re-install,
+# uninstall/foreign refusal, checksum-only fallback.
 param(
   [string]$Installer = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'install.ps1')
 )
@@ -171,9 +171,10 @@ try {
   $source = [System.IO.File]::ReadAllText($Installer)
   if ($source.Contains($contract.checksums) -and $source.Contains($contract.signatureBundle) `
       -and $source.Contains($contract.commit) -and $source.Contains('--certificate-github-workflow-sha') `
+      -and $source.Contains('$WorkflowTrigger = ''push''') -and $source.Contains('--certificate-github-workflow-trigger') `
       -and $source.Contains($contract.cosign.issuer) -and $source.Contains($contract.cosign.identityRegexp) `
       -and $source.Contains('https://github.com/stainless-code/verdict/releases/latest')) {
-    Good 'install.ps1 names the contract checksums, bundle, commit, cosign issuer, and commit pin'
+    Good 'install.ps1 names the contract checksums, bundle, commit, cosign issuer, trigger pin, and commit pin'
   } else {
     Bad 'install.ps1 drifted from release/contract.json'
   }
@@ -286,6 +287,11 @@ try {
     Good 'cosign is pinned to the release build commit'
   } else {
     Bad "cosign argv missing the build-commit pin: $(Get-Content -Raw $CosignLog -ErrorAction SilentlyContinue)"
+  }
+  if (File-Contains $CosignLog '--certificate-github-workflow-trigger push') {
+    Good 'cosign is pinned to a push-triggered run'
+  } else {
+    Bad "cosign argv missing the push-trigger pin: $(Get-Content -Raw $CosignLog -ErrorAction SilentlyContinue)"
   }
 
   # --- checksum and signature failures leave the old binary in place ---

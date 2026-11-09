@@ -17,6 +17,10 @@ $BundleName = 'checksums.txt.sigstore.json'
 $CommitName = 'commit.txt'
 $IdentityRegexp = '^https://github\.com/stainless-code/verdict/\.github/workflows/release\.yml@refs/heads/main$'
 $Issuer = 'https://token.actions.githubusercontent.com'
+# Only a push-triggered run may sign a release. The commit pin below is the
+# commit the tag points at, so a workflow_dispatch run of the same workflow at
+# that commit would satisfy it; the trigger claim is what rules that run out.
+$WorkflowTrigger = 'push'
 
 if ($env:VERDICT_NO_MODIFY_PATH -eq '1') { $NoModifyPath = $true }
 if ($env:VERDICT_REQUIRE_SIGNATURE -eq '1') { $RequireSignature = $true }
@@ -139,7 +143,8 @@ try {
   if ($Cosign) {
     if (-not $BundleOk) { throw "cosign is installed but $BundleName is missing; refusing an unverified install" }
     Write-Host "install: verifying the sigstore bundle for $ChecksumsName"
-    & $Cosign verify-blob --bundle $BundlePath --certificate-identity-regexp $IdentityRegexp --certificate-oidc-issuer $Issuer --certificate-github-workflow-sha $Commit $ChecksumsPath
+    & $Cosign verify-blob --bundle $BundlePath --certificate-identity-regexp $IdentityRegexp --certificate-oidc-issuer $Issuer `
+      --certificate-github-workflow-trigger $WorkflowTrigger --certificate-github-workflow-sha $Commit $ChecksumsPath
     if ($LASTEXITCODE -ne 0) { throw 'signature verification failed; nothing installed' }
   } elseif ($RequireSignature) {
     throw 'VERDICT_REQUIRE_SIGNATURE=1 but cosign is not installed; nothing installed'

@@ -12,10 +12,11 @@ import (
 // Messages for the coverage surface. The percentage and the gap list are
 // always computed, never composed from finding text.
 const (
-	msgCoverageWarn   = "coverage: %d%% of changed lines attested (%d/%d; %d file(s) with gaps)"
+	msgCoverageWarn   = "coverage: %d%% of " + coverage.Basis + " attested (%d/%d; %d file(s) with gaps)"
 	msgCoverageLine   = "> ⚠️ coverage: %d%% of changed lines attested (unattested: %s)"
 	msgCoverageAbsent = "coverage-incomplete: no coverage[] attestation in review.json on a non-chunked bundle"
-	msgCoverageGap    = "coverage-incomplete: %d%% of changed lines attested (%d/%d); unattested: %s"
+	msgCoverageGap    = "coverage-incomplete: %d%% of " + msgCoverageBasis + " attested (%d/%d); unattested: %s"
+	msgCoverageBasis  = coverage.Basis
 	msgCoverageMore   = " +%d more"
 	// lineGapCap is how many files the body line names before it summarizes.
 	lineGapCap = 3

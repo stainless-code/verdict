@@ -36,10 +36,10 @@ In scope (highest priority first):
   credential-reading, repo-escaping commands) are a security boundary;
   any bypass is a vulnerability.
 - The installers (`install.sh`, `install.ps1`): archive checksum, cosign
-  verification pinned to the release's published build commit, atomic
-  replace, no execution before verification. A verification bypass, a
-  path that runs an unverified download, or an install that accepts a
-  release without `commit.txt` is a vulnerability.
+  verification pinned to the release's published build commit and to a
+  push-triggered run, atomic replace, no execution before verification. A
+  verification bypass, a path that runs an unverified download, or an install
+  that accepts a release without `commit.txt` is a vulnerability.
 - The `upgrade` channel: verified self-replace for
   installer-managed installs, owning-manager delegation otherwise
   (never privilege escalation, never background checks).

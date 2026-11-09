@@ -97,6 +97,7 @@
   "cosign": {
     "identity": "https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/heads/main",
     "issuer": "https://token.actions.githubusercontent.com",
-    "identityRegexp": "^https://github\\.com/stainless-code/verdict/\\.github/workflows/release\\.yml@refs/heads/main$"
+    "identityRegexp": "^https://github\\.com/stainless-code/verdict/\\.github/workflows/release\\.yml@refs/heads/main$",
+    "trigger": "push"
   }
 }

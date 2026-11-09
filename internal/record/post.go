@@ -35,9 +35,7 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		fmt.Fprint(r.Out, jq.PrettyOrdered(postcore.RenderPostEnvelope(resp)))
 	}
 	return cli.ExitOK
 }
