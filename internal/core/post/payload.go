@@ -290,9 +290,9 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 }
 
 // RenderPostEnvelope builds the `post --json` envelope from a finished
-// response. The CLI renders through this function and the tests assert its
-// bytes, so a change to the argument list moves both instead of letting the
-// test print an approximation the CLI never emits.
+// response. The CLI prints through this function and the tests decode the same
+// bytes, so a change to the argument list moves both instead of letting a test
+// render an approximation the CLI never emits.
 func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
 	return core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)

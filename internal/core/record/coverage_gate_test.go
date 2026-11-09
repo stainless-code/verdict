@@ -11,7 +11,6 @@ import (
 
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
-	"github.com/stainless-code/verdict/internal/core/coverage"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -245,7 +244,7 @@ func TestMergeCoveragePartialWarnsOnceAndAddsOneLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default posture refused a partial attestation: %v", err)
 	}
-	wantWarn := "coverage: 66% of " + coverage.Basis + " attested (2/3; 1 file(s) with gaps)"
+	wantWarn := "coverage: 66% of full hunk spans, both sides and context attested (2/3; 1 file(s) with gaps)"
 	if got := coverageWarnings(warns); len(got) != 1 || got[0] != wantWarn {
 		t.Errorf("coverage warnings = %v, want exactly [%q]", got, wantWarn)
 	}

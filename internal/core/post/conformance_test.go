@@ -1257,6 +1257,5 @@ func conformanceGapPhrases() []string {
 // for `post --json`: the frozen key order over the ordered data object.
 func conformanceEnvelopeBytes(t *testing.T, resp *core.PostResponse) string {
 	t.Helper()
-	env := core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire(), nil)
-	return jq.PrettyOrdered(env)
+	return jq.PrettyOrdered(RenderPostEnvelope(resp))
 }

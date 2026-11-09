@@ -135,6 +135,8 @@ agent_step_env >"$STEPENV"
 # token: GH_TOKEN is scoped to the steps that call gh.
 assert_file_nogrep "the Agent review step never receives the workflow token" \
   "$STEPENV" "GH_TOKEN=" "-F"
+assert_stream_nogrep "the job sets no job-level GH_TOKEN for the agent to inherit" \
+  "$WORKFLOW" '^ {6}GH_TOKEN:' "-E"
 set -a
 # shellcheck disable=SC1090 # generated from the workflow's own env: block
 . "$STEPENV"
