@@ -88,6 +88,11 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "Write to user@example.com about it.\n",
 		},
 		{
+			name: "bracketed",
+			in:   "Thanks (@alice), merging now.\n",
+			want: "Thanks (@alice), merging now.\n",
+		},
+		{
 			name: "address-with-at-local",
 			in:   "Mail first.last+tag@example.co.uk.\n",
 			want: "Mail first.last+tag@example.co.uk.\n",
