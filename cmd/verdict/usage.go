@@ -280,7 +280,7 @@ func usageText() string {
 		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
-		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"
+		"  Glossary: https://stainless-code.com/verdict/glossary\n"
 }
 
 var bareVerbs = map[string]bool{
