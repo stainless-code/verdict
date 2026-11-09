@@ -106,8 +106,7 @@ func tailOf(s string, n int) string {
 // environment values and the argument secrets the argv redactor hid, because a
 // credential the operator typed after `--` is in neither the environment nor
 // the prompt. An argument value is not length-gated the way an environment
-// match is: the operator named the flag, so the value is a credential by
-// construction, and a needlessly scrubbed short one costs nothing but a garbled
+// match is, and a needlessly scrubbed short one costs nothing but a garbled
 // 4000-byte tail that .run.out still holds in full. It is the narrow scrub the
 // launcher's recorded tail gets: the operator's own credentials never land in
 // launcher.json, while .run.out keeps the raw stream the way verify keeps
@@ -116,8 +115,10 @@ func tailOf(s string, n int) string {
 //
 // The matching is [envsecret.ScrubValues], shared with verify's redactor so an
 // overlap between two credentials is resolved once, in one place. What lives
-// here is only the policy: which values count (environment plus argv) and that
-// neither set is length-gated.
+// here is only the policy: which values count. The environment set is
+// secret-named and keeps its length floor, so a short value is not treated as a
+// credential; the argv set carries no floor, because the operator named the
+// flag and the value is a credential by construction.
 func scrubSecrets(text string, environ, argSecrets []string) string {
 	values := secretValues(environ)
 	values = append(values, argSecrets...)

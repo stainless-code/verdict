@@ -12,8 +12,10 @@ const (
 	// tool-generated prose of a few hundred bytes, identical for every run of the
 	// same bundle, and not what the provenance record exists to explain.
 	promptPlaceholder = "<prompt>"
-	// redactedValue replaces a secret-shaped argument.
-	redactedValue = "***REDACTED***"
+	// redactedValue replaces a secret-shaped argument. It is the same marker
+	// every scrubber in the binary writes, so an argv redaction and a tail
+	// redaction are never distinguishable in the record.
+	redactedValue = envsecret.Redacted
 	// secretMinLen is the value length below which an environment match is not a
 	// credential worth scrubbing (the verify tail redactor uses the same bound).
 	secretMinLen = 8
