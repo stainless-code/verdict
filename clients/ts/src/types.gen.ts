@@ -88,6 +88,16 @@ export interface Provenance {
   [key: string]: unknown;
 }
 
+export interface CoverageSummary {
+  percent: number | null;
+  attested: number;
+  total: number;
+  files: number;
+  exempt: number;
+  gaps: number;
+  [key: string]: unknown;
+}
+
 /** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set, receipt keys only when budget.json parses. */
 export interface ReportData {
   generated_at: string;
@@ -242,6 +252,7 @@ export interface PostData {
   /** Real-post only: the accepted GitHub review object. */
   review?: unknown;
   provenance?: Provenance;
+  coverage?: CoverageSummary | null;
   [key: string]: unknown;
 }
 
@@ -257,6 +268,7 @@ export interface RecordData {
   dry_run?: boolean;
   /** Present only on a clean dry run: the review-input summary. */
   check?: CheckSummary | null;
+  coverage?: CoverageSummary | null;
   /** Present on record --dry-run: the exact review object the checker read after safe repairs, as an object. */
   normalized?: unknown;
   /** Present on record --dry-run: every safe review.json rewrite applied, in document order. */
