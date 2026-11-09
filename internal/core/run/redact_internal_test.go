@@ -105,39 +105,11 @@ func TestRecordArgvNeverCollectsTheDirective(t *testing.T) {
 	}
 }
 
-// TestScrubSecretsReplacesTheLongestSecretFirst proves no credential can eat
-// another's prefix and leave its tail in the clear: with `API_KEY=secretvalue`
-// in the environment and `--token secretvalueEXTRA` on the command line, the
-// shorter secret is a prefix of the longer one, so replacing in list order
-// would record `***REDACTED***EXTRA` and publish four bytes of the operator's
-// token.
-func TestScrubSecretsReplacesTheLongestSecretFirst(t *testing.T) {
-	environ := []string{"API_KEY=secretvalue"}
-	got := scrubSecrets("token=secretvalueEXTRA", environ, []string{"secretvalueEXTRA"})
-	if strings.Contains(got, "EXTRA") {
-		t.Fatalf("scrubSecrets leaked the tail of the longer secret: %q", got)
-	}
-	if got != "token="+redactedValue {
-		t.Errorf("scrubSecrets = %q, want only the credential replaced", got)
-	}
-}
-
-// TestScrubSecretsIgnoresEmptyValues proves an empty credential cannot shred
-// the tail: `--api-key ""` carries no bytes worth hiding.
-func TestScrubSecretsIgnoresEmptyValues(t *testing.T) {
-	if got := scrubSecrets("exit=0", nil, []string{""}); got != "exit=0" {
-		t.Errorf("scrubSecrets = %q, want the text unchanged", got)
-	}
-}
-
-// TestScrubSecretsOverlaps proves two credentials that overlap without being
-// prefixes are redacted as one region. Sorting longest first settles only the
-// prefix case: `API_KEY=secretvalue` with `--token valueEXTRA` still records
-// `***REDACTED***EXTRA`, because replacing `secretvalue` consumed the bytes the
-// second secret needed to match. The mirror case leaks the head instead. One
-// left-to-right pass that takes the longest match at each position, and extends
-// a match over every credential starting inside it, hides both in full.
-func TestScrubSecretsOverlaps(t *testing.T) {
+// TestScrubSecretsKeepsItsPolicy proves what the launcher's scrub owns now
+// that the matching lives in [envsecret.ScrubValues]: environment values under
+// a secret-shaped name, argument secrets the argv redactor hid, and an empty
+// argument value that must not shred the tail.
+func TestScrubSecretsKeepsItsPolicy(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name    string
@@ -147,76 +119,39 @@ func TestScrubSecretsOverlaps(t *testing.T) {
 		args    []string
 	}{
 		{
-			// The shorter secret's tail is the longer one's head.
-			name:    "overlap-tail-into-head",
+			// The operator named the flag, so the value is a credential by
+			// construction: no length gate, unlike the environment path.
+			name: "argument-secret-below-the-environment-floor",
+			text: "arg[3]=short",
+			args: []string{"short"},
+			want: "arg[3]=" + redactedValue,
+		},
+		{
+			// Environment and argument values both reach the one scrubber, and
+			// the overlap between them is resolved there.
+			name:    "environment-and-argument-overlap",
 			text:    "token=secretvalueEXTRA",
 			environ: []string{"API_KEY=secretvalue"},
 			args:    []string{"valueEXTRA"},
 			want:    "token=" + redactedValue,
 		},
 		{
-			// The mirror: the longer secret starts inside the shorter one and
-			// reaches past its end, so replacing the longer one first would
-			// leave the shorter one's head in the clear.
-			name:    "overlap-head-into-tail",
-			text:    "token=a1b2c3d4e5f6",
-			environ: []string{"API_KEY=a1b2c3d4"},
-			args:    []string{"b2c3d4e5f6"},
-			want:    "token=" + redactedValue,
+			name: "empty-argument-value",
+			text: "exit=0",
+			args: []string{""},
+			want: "exit=0",
 		},
 		{
-			name:    "prefix",
-			text:    "token=secretvalueEXTRA",
-			environ: []string{"API_KEY=secretvalue"},
-			args:    []string{"secretvalueEXTRA"},
-			want:    "token=" + redactedValue,
-		},
-		{
-			name:    "prefix-reverse-order",
-			text:    "token=secretvalueEXTRA",
-			environ: nil,
-			args:    []string{"valueEXTRA", "secretvalue", "secretvalueEXTRA"},
-			want:    "token=" + redactedValue,
-		},
-		{
-			// Three credentials each overlapping the next: one region, one
-			// marker, and no four-byte tail left readable.
-			name:    "three-deep-chain",
-			text:    "token=abcdefghijkl",
-			environ: []string{"API_KEY=abcdefgh"},
-			args:    []string{"cdefghij", "efghijkl"},
-			want:    "token=" + redactedValue,
-		},
-		{
-			name:    "same-value-twice",
-			text:    "a=secretvalue b=secretvalue",
-			environ: []string{"API_KEY=secretvalue"},
-			args:    []string{"secretvalue"},
-			want:    "a=" + redactedValue + " b=" + redactedValue,
-		},
-		{
-			// A one-byte argument secret still hides itself everywhere it
-			// stands alone, and the longer credential beside it is taken whole
-			// rather than as a prefix.
-			name:    "single-byte-against-longer",
-			text:    "a=ab b=a",
-			environ: nil,
-			args:    []string{"a", "ab"},
-			want:    redactedValue + "=" + redactedValue + " b=" + redactedValue,
-		},
-		{
-			name:    "empty-secret",
-			text:    "exit=0",
-			environ: []string{"API_KEY="},
-			args:    []string{""},
-			want:    "exit=0",
+			name:    "non-secret-variable-untouched",
+			text:    "path=/usr/bin/gh",
+			environ: []string{"PATH=/usr/bin/gh"},
+			want:    "path=/usr/bin/gh",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := scrubSecrets(tc.text, tc.environ, tc.args)
-			if got != tc.want {
+			if got := scrubSecrets(tc.text, tc.environ, tc.args); got != tc.want {
 				t.Errorf("scrubSecrets(%q) = %q, want %q", tc.text, got, tc.want)
 			}
 		})
