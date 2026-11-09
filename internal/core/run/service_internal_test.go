@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -172,7 +173,8 @@ func assertTailHides(t *testing.T, dir, secret string) {
 }
 
 // assertRawRunLog pins .run.out: the child's stream verbatim (so the credential
-// it printed is there for the operator) at 0600 (so it is nobody else's).
+// it printed is there for the operator), owner-only where the platform has
+// permission bits (so it is nobody else's).
 func assertRawRunLog(t *testing.T, dir, secret string) {
 	t.Helper()
 	path := filepath.Join(dir, runOutputFile)
@@ -182,6 +184,13 @@ func assertRawRunLog(t *testing.T, dir, secret string) {
 	}
 	if !strings.Contains(string(raw), secret) {
 		t.Errorf(".run.out = %q, want the child's raw stream", raw)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows has no mode bits for Go to set: OpenFile's perm argument is
+		// ignored and the file takes the directory's inherited ACL, which is
+		// why the same probe reads 0666 there. Nothing in the write path can
+		// change that, so the mode claim is Unix-only and the assertion skips.
+		return
 	}
 	info, err := os.Stat(path)
 	if err != nil {

@@ -2018,7 +2018,9 @@ environment, and the split is deliberate (the security rationale is in
   your secret-named variables and the argument secrets the argv redaction
   hides, so the argv and the tail agree about what a credential is. `.run.out`
   is the child's raw stream — it may hold a credential the child printed — so
-  it is written `0600`, the way `.verify.out` keeps its raw stream.
+  it is written `0600` on Unix, the way `.verify.out` keeps its raw stream.
+  Windows has no mode bits for Go to set, so there it takes the directory's
+  inherited ACL and the owner-only guarantee does not apply.
 
 In tests the counterpart is `internal/testenv`: every harness that spawns
 `git`, `gh`, or `verdict` builds a fixed, secret-free child environment
