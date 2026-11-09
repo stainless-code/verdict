@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
+		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -37,6 +37,20 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
+		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode>\n" +
+		"      [--timeout <secs, default 300>] [--print] [-- <agent args>...] [--json]\n" +
+		"    launch YOUR agent against an existing bundle: one process, one bundle, one shot.\n" +
+		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
+		"    than the launch refuses stale-review-artifact), names the next command, and never\n" +
+		"    reads the agent's prose, retries, repairs, or posts. The agent inherits your\n" +
+		"    environment (your key) and may use the network; verdict itself makes no calls.\n" +
+		"    A non-zero agent exit is the process exit code (agent-failed); the watchdog\n" +
+		"    timeout (agent-timeout), a missing binary (agent-missing), and a spawn failure\n" +
+		"    (agent-spawn-failed) refuse typed with a hint. Provenance lands in\n" +
+		"    .verdict/state/<bundle>/launcher.json (agent, binary, argv shape, timings, exit)\n" +
+		"    and the full child output in .run.out. --print renders the exact command and\n" +
+		"    exits 0 without spawning; everything after '--' goes to the agent unchanged.\n" +
+		"    run passes a short tool-generated directive, never bundle bytes.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
 		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +
@@ -261,7 +275,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
+		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"

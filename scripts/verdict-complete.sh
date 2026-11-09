@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local record adopt fix check-tree ready gate threads trend learn init skill upgrade uninstall config
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run record adopt fix check-tree ready gate threads trend learn init skill upgrade uninstall config
 }
 
 _verdict_flags() { # $1 = verb
@@ -20,6 +20,7 @@ _verdict_flags() { # $1 = verb
     doctor|calibrate|record|trend) printf '%s\n' --json;;
     threads) printf '%s\n' --provider --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --consent-over-budget --json;;
+    run) printf '%s\n' --agent --timeout --print --json;;
     learn) printf '%s\n' --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;
@@ -42,6 +43,11 @@ _verdict_values() { # $1 = verb, $2 = flag
         *) return 0;;
       esac;;
     --kind) printf '%s\n' inline section all;;
+    --agent)
+      case "$1" in
+        run) printf '%s\n' claude codex cursor opencode;;
+        *) return 0;;
+      esac;;
     --rigor)
       case "$1" in
         learn) printf '%s\n' said pointed walked ran reproduced;;

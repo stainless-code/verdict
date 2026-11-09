@@ -106,6 +106,21 @@ var hintRules = []HintRule{
 	{codes: []string{"verify-credential-read"}, hint: "try: rewrite verifyCmd without reading credential paths " +
 		"or piping env into the network, then re-run"},
 	{codes: []string{"verify-repo-escape"}, hint: "try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run"},
+	{codes: []string{"agent-missing"}, hint: "try: install the agent CLI (or put it on PATH), or re-run with " +
+		"--agent <name> for one you have"},
+	{codes: []string{"agent-spawn-failed"}, hint: "try: check the binary runs from your shell " +
+		"(permissions, shebang), then re-run"},
+	{codes: []string{"agent-timeout"}, hint: "try: re-run with a larger --timeout, " +
+		"or pass the agent's faster flags after '--'"},
+	{codes: []string{"agent-failed"}, hint: "try: read the recorded tail in launcher.json, " +
+		"fix the invocation (the agent's own flags go after '--'), then re-run"},
+	{codes: []string{"agent-record-failed"}, hint: "try: make the bundle directory writable " +
+		"(or re-fetch the bundle), then re-run"},
+	{codes: []string{"no-review-artifact"}, hint: "try: run the printed command yourself " +
+		"(--print) to see why no review.json appeared, then re-run"},
+	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +
+		"(or let the agent overwrite it), then re-run"},
+	{codes: []string{"unknown-agent"}, hint: "try: re-run with one of the known agent names listed above"},
 	{codes: []string{"id-taken"}, hint: "try: pass a different --id"},
 	{codes: []string{"cost-panel-unresolved"}, hint: "try: pass the panel that ran, in order: " +
 		"--cost-names=<lead>,<lens-1>,<lens-2>"},

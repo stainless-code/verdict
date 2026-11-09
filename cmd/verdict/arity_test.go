@@ -17,7 +17,7 @@ import (
 func TestArityMatrix(t *testing.T) {
 	t.Parallel()
 	checkPositionalVerbs(t, []string{
-		"fetch", "fetch-local", "record", "adopt", "fix", "post",
+		"fetch", "fetch-local", "run", "record", "adopt", "fix", "post",
 		"triage", "report", "next", "show", "verify", "calibrate",
 		"ready", "gate",
 	})
