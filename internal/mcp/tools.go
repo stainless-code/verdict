@@ -403,9 +403,21 @@ func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.
 }
 
 func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.RefusalError) {
-	resp, ref := reportcore.RunNext(ctx, req)
+	// coverage is a read mode, not a decoration: dispatching it to RunNext
+	// would return the findings item and silently ignore the request.
+	var resp *core.NextResponse
+	var ref *core.RefusalError
+	if req.Coverage {
+		resp, ref = reportcore.RunNextCoverage(req)
+	} else {
+		resp, ref = reportcore.RunNext(ctx, req)
+	}
 	if ref != nil {
 		return nil, ref
+	}
+	if req.Coverage {
+		return jq.NewObj("coverage", resp.Coverage, "human", resp.Human,
+			"warnings", resp.Warnings), nil
 	}
 	var item any
 	if resp.Item != nil {

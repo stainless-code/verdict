@@ -45,7 +45,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	rc.Strict = f.strict
 	rc.Flags.CostNames = f.costNames
 	rc.Flags.RequireCoverage = f.requireCoverage
-	rc.Flags.RequireCoverage = f.requireCoverage
 	rc.Flags.CostPanel = f.costPanel
 	resp, ref := recordcore.Run(ctx, rc)
 	if ref != nil {
